@@ -60,7 +60,9 @@ Two prototypes, measured on the owner's Mac with Qwen3 and the voice clone.
 "A showntell, wie es ist", which loaded [showntell](https://github.com/rahimnathwani/showntell)'s
 Claude Code plugin into the look-up agent:
 
-- Worth taking over: a pointer that follows the narration word by word; checks that tell the agent
+- Worth taking over: its look. The slides' design; a player whose progress bar is cut into one
+  segment per slide; the spoken sentence shown large enough to read along with every word, switched
+  on and off with one click (and C). Also a pointer that follows the narration word by word; checks that tell the agent
   what is wrong while it writes (a line that does not exist, a slide too full, narration that only
   reads the slide out), on which it revised four slides; diagrams that build up as they are
   narrated.
@@ -86,6 +88,9 @@ Claude Code plugin into the look-up agent:
   diagrams. The rule that the owner does not read code stays, with this one exception.
 - **Obeya speaks walkthroughs** (owner, 2026-11-06): "Obeya does not speak" gives way for them.
   Confirmations and answers in text stay written.
+- **The look follows showntell's** (owner, 2026-11-06): its slide design, the progress bar in one
+  segment per slide, and captions to read along that one click switches on and off. Obeya's demo
+  videos take over the same player look.
 
 ### The live walkthrough
 
@@ -132,5 +137,16 @@ Claude Code plugin into the look-up agent:
   demo settings without a voice play the slides with captions at a reading pace; a walkthrough
   being voiced when Obeya restarts is voiced on afterwards and plays on.
 
-W3, W4 and W5 can run side by side once W1 has landed; W2 needs only W1's thread path. Each
+- [ ] **W6:** The walkthrough's look. Needs W1. Slides and player take showntell's design as their
+  model: the slides' typography, layout and colours, in Obeya's light and dark; a progress bar cut
+  into one segment per slide, which jumps to a slide on a click; the spoken sentence as a caption
+  large enough to read every word along, switched on and off with one click on the player (and C),
+  the choice kept for the next walkthrough.
+- [ ] **W7:** The demo videos' player in the same look. After W6. The demo on the card and on the
+  shared demo pages plays in a player of the walkthrough's look, from the same code where it fits:
+  the progress bar in one segment per chapter, the captions to read along, switched on and off with
+  one click, and the keys the demo player has today.
+
+W3, W4, W5 and W6 can run side by side once W1 has landed; W2 needs only W1's thread path; W7
+follows W6. Each
 workstream keeps the chapters it touches current in the same change.
