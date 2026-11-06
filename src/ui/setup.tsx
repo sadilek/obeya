@@ -12,6 +12,7 @@ import { useCopy } from './copy';
 import { Sign } from './logo';
 import { failText, fileSize, t } from './strings';
 import { canvasPath } from './address';
+import { FolderPick } from './folderPick';
 
 const PLATFORMS: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 /** The machine's system and processor, as the owner knows them: "macOS (arm64)". */
@@ -462,15 +463,6 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
     return () => clearInterval(timer);
   }, [saved]);
 
-  const pick = async () => {
-    setStatus('');
-    try {
-      const { path } = await api.setupPick(s.pickPrompt);
-      if (path) setPath(path);
-    } catch (e) {
-      failed(e);
-    }
-  };
   /** `withoutGit`: the folder stays without git, its cards working in it directly. */
   const create = async (withoutGit = false) => {
     setBusy(true);
@@ -513,11 +505,7 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
                 <span className="hint">{s.first.folder}</span>
                 <span className="c-row">
                   <input className="c-path" spellCheck={false} placeholder={s.first.pathPlaceholder} value={path} onChange={(e) => setPath(e.target.value)} />
-                  {view.picker && (
-                    <button className="btn small setup-pick" onClick={pick}>
-                      {s.first.pick}
-                    </button>
-                  )}
+                  <FolderPick prompt={s.pickPrompt} available={view.picker} onPick={setPath} onError={failed} />
                 </span>
               </label>
               {branch && <p className="hint setup-branch">{s.first.branch(branch)}</p>}

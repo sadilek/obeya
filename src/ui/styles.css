@@ -1596,6 +1596,8 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .cfg-repo-path { display: flex; align-items: center; gap: 12px; max-width: 664px; }
 .cfg-repo-path > .c-path { flex: 1; }
 .cfg-repo-path > .c-del { margin-left: 0; }
+/* „Auswählen …“ beside a folder's path (setup assistant, configuration): on the field's line, never squeezing it */
+.folder-pick { margin-top: 0 !important; flex: none; white-space: nowrap; }
 .cfg-repo-problem { margin: 2px 0 8px; }
 .cfg-repo > .c-row { margin: 6px 0 4px; max-width: 900px; }
 .cfg-group { margin-top: 18px; border-radius: 2px; }
@@ -2035,7 +2037,6 @@ button.link:hover { text-decoration: underline; }
 .setup-first label { display: block; margin: 6px 0; }
 .setup-first label:not(.setup-choice) > .hint { display: block; font-size: 11.5px; margin-bottom: 2px; }
 .setup-first .c-path { width: 100%; padding: 7px 9px; }
-.setup-pick { margin-top: 0 !important; flex: none; }
 .setup-saved { font-size: 13.5px; color: var(--ink); }
 /* setting up git in a folder: the offer, then what the first commit holds */
 .git-setup { margin: 8px 0; }
