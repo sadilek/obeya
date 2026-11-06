@@ -2,7 +2,7 @@
 // no Bun and no checkout, with the UI and SQLite in it, and beside it the resources other
 // processes run or import (src/server/resources.ts): the plugin with the demo skill and the
 // Playwright it records with, and the voice sidecars;
-// the skills' scripts that read a repository's settings (`recipe.ts`, `check.ts`) are bundled with them in place.
+// the skills' scripts that read a repository's settings or theme (`recipe.ts`, `check.ts`, `preview.ts`) are bundled with them in place.
 //
 //   bun scripts/build.ts [<target>…] [--all] [--out <dir>]
 //
@@ -49,9 +49,10 @@ function resources(dir: string) {
   // the plugin's TypeScript runs on plain Node, which reads it as ES modules by this
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify({ name: 'obeya-resources', version: pkg.version, private: true, type: 'module' }, null, 2)}\n`);
   cpSync(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'));
-  // the settings skill reads the reference up the tree, as in the checkout
+  // the settings and theme skills read the reference up the tree, as in the checkout
   cpSync(join(ROOT, 'docs', 'settings.md'), join(dir, 'docs', 'settings.md'));
-  for (const script of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/settings/lib/check.ts'])
+  cpSync(join(ROOT, 'docs', 'design', 'sharing-demos.md'), join(dir, 'docs', 'design', 'sharing-demos.md'));
+  for (const script of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/settings/lib/check.ts', 'plugin/skills/theme/lib/preview.ts'])
     run([process.execPath, 'build', script, '--target', 'bun', '--outfile', join(dir, script)]);
 }
 

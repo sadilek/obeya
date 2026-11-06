@@ -731,6 +731,51 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     expect(setup('web')).toBeUndefined();
   });
 
+  test('once a page of a repository without a theme is online, Obeya proposes the card that writes one, once; a theme takes it away', async () => {
+    fresh();
+    const settings = { '.obeya/settings.json': '{ "checks": ["bun test"] }\n' };
+    const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', ...settings });
+    const web = gitRepo(join(dir, 'web'), { 'README.md': 'Web\n', ...settings });
+    const docs = gitRepo(join(dir, 'docs'), { 'README.md': 'Docs\n', ...settings, '.obeya/theme.css': ':root { --accent: #c0392b; }\n' });
+    canvas.shutdown();
+    const store = new Store(':memory:');
+    const start = () => CanvasRuntime.start({ repos: [{ path: shop }, { path: web }, { path: docs }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
+    canvas = await start();
+    const proposed = (repo: string) => canvas.board.snapshot().items.find((i) => i.repo === repo && i.proposal?.setup);
+    await settle();
+    // nothing shared yet
+    expect(proposed('shop')).toBeUndefined();
+    for (const repo of ['shop', 'web', 'docs']) {
+      const card = canvas.board.create({ title: 'Checkout', x: 0, y: 0, repo });
+      canvas.board.work(card.id, { state: 'done', share: JSON.stringify({ slug: 'checkout', url: `https://demos.example/${repo}/checkout/` }) });
+    }
+    canvas.shutdown();
+    canvas = await start();
+    await until(() => !!proposed('shop') && !!proposed('web'));
+    expect(proposed('shop')).toMatchObject({ state: 'proposal', title: 'Demo-Seiten von shop im Look des Projekts', proposal: { reason: expect.stringContaining('shop') } });
+    expect(proposed('shop')!.body).toContain('obeya:theme');
+    // a repository with a theme gets none
+    expect(proposed('docs')).toBeUndefined();
+    // dismissed, it does not come back
+    const id = proposed('shop')!.id;
+    canvas.act(id, { action: 'dismiss' });
+    canvas.shutdown();
+    canvas = await start();
+    await settle();
+    expect(proposed('shop')).toBeUndefined();
+    // still open, it goes once a theme is on the main branch
+    expect(proposed('web')).toBeDefined();
+    writeFileSync(join(web, '.obeya/theme.css'), ':root { --accent: #2e7d32; }\n');
+    git(web, 'add', '.obeya/theme.css');
+    git(web, 'commit', '--quiet', '-m', 'Theme');
+    await canvas.settingsChanged();
+    await until(() => !proposed('web'));
+    canvas.shutdown();
+    canvas = await start();
+    await settle();
+    expect(proposed('web')).toBeUndefined();
+  });
+
   test("a demo site set in them is shared on once it is complete, without a restart", async () => {
     fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n' });

@@ -1,5 +1,5 @@
 {
   "name": "obeya",
-  "description": "What Obeya gives its workers: the demo skill, which records a narrated video of a change with a one-page report, the settings skill, which writes a repository's Obeya settings, and the browser skill, a headless browser of the session's own for UI checks.",
+  "description": "What Obeya gives its workers: the demo skill, which records a narrated video of a change with a one-page report, the settings skill, which writes a repository's Obeya settings, the theme skill, which gives its shared demo pages the project's look, and the browser skill, a headless browser of the session's own for UI checks.",
   "version": "1.0.0"
 }

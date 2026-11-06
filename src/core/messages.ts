@@ -505,6 +505,12 @@ const de = {
     body: 'Füll mit dem Skill `obeya:settings` die Einstellungen dieses Repositorys für alle aus (`.obeya/settings.json`, in der Konfiguration unter „Einstellungen“ als „aus dem Repository“ zu sehen): welche Prüfungen laufen, wie Arbeit landet, wie ein Agent die App betreibt (starten, nach einer Änderung, für eine Demo), wie Obeya sie stoppt, und wo die Plan-Docs liegen, die Obeya als Projekte zeigt. Hat das Repository noch ein `.obeya/adapter/`, übernimm, was darin steht, in die Einstellungen und lösch es. Was du im Repository nicht herausfindest (Login, Testdaten), frag mich.',
     reason: (repo: string) => `Obeya weiß noch nicht, wie die App von ${repo} startet, welche Prüfungen laufen und wie ein Agent sie für eine Demo betreibt.`,
   },
+  /** The card that gives a repository's shared demo pages a look of its own, proposed once its first page is out and while it has no theme. */
+  themeCard: {
+    title: (repo: string) => `Demo-Seiten von ${repo} im Look des Projekts`,
+    body: 'Schreib mit dem Skill `obeya:theme` ein `.obeya/theme.css` für die geteilten Demo-Seiten dieses Repositorys: die Farbvariablen für hell und dunkel, mit Kommentaren, was jede färbt und wo ein Logo hingehört, abgeleitet aus dem eigenen Look des Repositorys (die Farben im CSS seiner App, eine Logo-Datei), wo es einen hat. Deine Demo zeigt eine geteilte Demo-Seite und die Übersicht in den Farben des Projekts, hell und dunkel, neben Obeyas eigenem Look.',
+    reason: (repo: string) => `Die geteilten Demo-Seiten von ${repo} sehen aus wie Obeyas eigene; ein .obeya/theme.css gibt ihnen die Farben und das Logo des Projekts.`,
+  },
   /** The card that turns a doc in the plan directory that is not a project into one. */
   preparePlanDoc: {
     title: (file: string) => `${file.slice(file.lastIndexOf('/') + 1)} als Projekt aufbereiten`,
@@ -972,6 +978,11 @@ const en: Messages = {
     title: (repo: string) => `Set up Obeya for ${repo}`,
     body: "With the skill `obeya:settings`, fill in this repository's settings for everyone (`.obeya/settings.json`, shown in the configuration under “Settings” as “from the repository”): which checks run, how work lands, how an agent runs the app (starting it, after a change, for a demo), how Obeya stops it, and where the plan docs are that Obeya shows as projects. If the repository still has a `.obeya/adapter/`, move what it says into the settings and delete it. Ask me what you cannot find out in the repository (login, test data).",
     reason: (repo: string) => `Obeya does not know yet how the app of ${repo} starts, which checks run or how an agent runs it for a demo.`,
+  },
+  themeCard: {
+    title: (repo: string) => `Demo pages of ${repo} in the project's look`,
+    body: "With the skill `obeya:theme`, write a `.obeya/theme.css` for this repository's shared demo pages: the colour variables for light and dark, with comments on what each one colours and where a logo goes, derived from the repository's own look (the colours in its app's CSS, a logo file) where it has one. Your demo shows a shared demo page and the overview in the project's colours, light and dark, beside Obeya's own look.",
+    reason: (repo: string) => `The shared demo pages of ${repo} look like Obeya's own; a .obeya/theme.css gives them the project's colours and logo.`,
   },
   preparePlanDoc: {
     title: (file: string) => `Prepare ${file.slice(file.lastIndexOf('/') + 1)} as a project`,

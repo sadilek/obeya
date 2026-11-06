@@ -323,6 +323,20 @@ What a theme styles is the pages' markup, which is its interface and changes onl
 A logo goes in as a `background-image` on an element there or a `::before`. "Recorded with Obeya"
 stays in the markup of every page; a theme may hide it.
 
+Nobody learns of the file from the pages, so Obeya proposes it: once a page of a repository is
+online and the repository's default branch has no theme, the canvas gets Obeya's proposal of a card
+"Demo pages of <repo> in the project's look", with why. Like the setup card (see Canvases in
+Repositories and configuration), accepted it is the owner's card, and it comes once per repository
+and canvas: dismissed, accepted or done, it does not come back; still open, it goes once the
+repository has a theme, withdrawn rather than dismissed. Its worker writes the theme with the
+plugin's skill `theme` (`obeya:theme`): from a template that holds the colour variables for light
+and dark with Obeya's own values, a comment on what each colours, and a logo rule to enable, filled
+in from the repository's own look (its app's colours, a logo file) or, where it has none, from the
+owner's answer. A preview the skill runs in the checkout writes sample pages and an overview with
+the theme as the checkout has it, put in as on the site, beside the same pages in Obeya's look; the
+worker's demo shows them, light and dark. The compiled binary carries this chapter where the skill
+finds it.
+
 #### Static sites
 
 A static host takes the site as a directory, deployed whole with each change. Obeya keeps it under its
@@ -567,6 +581,11 @@ another machine withdrew loses its link here, with a line naming the machine.
   commit, not its remote's address: the same for every clone and remote, and the public site names
   no repository. A theme changed without a page shared again marks no overview outdated of its own
   and deploys nothing: the pages it would come from are outdated already.
+- **Obeya proposes the theme as a card of its own, once a page is online** (2026-11-03): until then
+  nobody looks at the pages, and a theme needs the project's look found and checked, a worker's
+  job. Rejected: part of the setup card (setting up a repository is about running it; the pages
+  may never be shared), a proposal for every repository that could share (one per repository on
+  the canvas, mostly never needed).
 - **A page is outdated by a change written down for its viewers** (2026-10-16). Rejected: a hash of
   the pages' bytes, which marked pages outdated without saying what changed, also where nothing
   showed, so the owner could not judge whether resharing 70 pages was worth it.

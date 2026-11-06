@@ -588,9 +588,10 @@ export interface Proposal {
    */
   startAt?: string;
   /**
-   * Obeya's own proposal of the card that fills in a repository's settings, while it knows them not
-   * yet (design: Repositories and configuration): accepted, it is the owner's card like the one the
-   * Konfiguration dialog makes.
+   * Obeya's own proposal of a card that sets up a repository: the one that fills in its settings,
+   * while Obeya knows them not yet (design: Repositories and configuration), or the one that gives
+   * its shared pages a theme (design: Sharing demos). Accepted, it is the owner's card like the one
+   * the Konfiguration dialog makes.
    */
   setup?: true;
 }

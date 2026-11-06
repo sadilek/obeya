@@ -72,7 +72,7 @@ export const SITES_DIR = 'sites';
 export const MAX_FILE = 25 * 1024 * 1024;
 
 /** What a page's directory on the site keeps besides its files, for the overview. */
-interface Meta {
+export interface Meta {
   /** Absent on video pages. */
   kind?: 'html';
   title: string;
@@ -1037,7 +1037,7 @@ function versionFiles(dir: string): VersionFiles {
  * holds. A page of an unlisted site links no overview and no tags, and keeps itself out of search
  * engines. `theme`: the CSS of the card's repository's theme.
  */
-function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
+export function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
   const { language } = m;
   const w = PAGE_WORDS[language];
   const parts = {
@@ -1134,7 +1134,7 @@ const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9"
  * icon, those shown all at once by „Links kopieren“: as HTML links and as a Markdown list. It all
  * runs in the browser; the site stays static.
  */
-function overviewHtml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage, theme?: string): string {
+export function overviewHtml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage, theme?: string): string {
   const w = PAGE_WORDS[language];
   const has = (d: string, v: string) => pages.some((p) => p.tags?.[d]?.includes(v));
   const dims = dimensions(site.tags).flatMap(([d, values]) => {

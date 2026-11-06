@@ -36,8 +36,8 @@ Under Obeya the card shows the video and the handover summary instead, a problem
 change is a proposal, and a defect in a contributor's pull request is a finding of its review card.
 
 Obeya loads the plugin into every worker session (the Agent SDK's `plugins` option), so a worker has
-`obeya:demo`, which its brief names, `obeya:browser` (see UI checks) and `obeya:settings` (see
-Writing the settings). The skill also
+`obeya:demo`, which its brief names, `obeya:browser` (see UI checks), `obeya:settings` (see
+Writing the settings) and `obeya:theme` (see A repository's theme in Sharing demos). The skill also
 runs without Obeya, as the plugin or as a user skill linking to `plugin/skills/demo`. Claude Code
 lists a skill file once: when Obeya's plugin is the very directory such a user skill links to, the
 session knows the skill as `demo`, not `obeya:demo` (Claude Code 2.1.299, 2026-10-14). So the brief

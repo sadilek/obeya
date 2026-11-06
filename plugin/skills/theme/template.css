@@ -1,0 +1,48 @@
+/*
+ * The look of this repository's shared demo pages: Obeya puts this file into every page and the
+ * overview after its own style, so what is set here wins. Files named here with url() or @import
+ * (a logo, a font) go in when they lie in .obeya/ beside this file; anything else (another
+ * directory, an address on the internet) is dropped. Which parts of the pages a theme can style:
+ * the chapter "Sharing demos" (A repository's theme) of Obeya's design doc.
+ *
+ * The values below are Obeya's own look: replace them with the project's colours.
+ */
+
+:root {
+  --bg: #e8e2d4;     /* the page behind everything */
+  --card: #fdfbf5;   /* the overview's entries, the search field, the chapter under the video's playhead */
+  --ink: #1f1b14;    /* text, the title */
+  --muted: #776e5e;  /* secondary text: who shared it when, the dates in the overview, chapter times, the closing line */
+  --line: #e2dccd;   /* borders: the overview's entries, the search field, the line above a later version */
+  --chip: #f0ebdf;   /* the tags, the chapter list's background, the tags in the overview */
+  --accent: #08888e; /* links, a hovered or focused entry, a chosen filter chip */
+}
+
+/*
+ * A logo above every page and the overview: put the file into .obeya/ (logo.svg, say) and remove
+ * the comment around the rule. A logo that only reads on light ground gets a second file for dark,
+ * in the media query below.
+ */
+/*
+main::before {
+  content: '';
+  display: block;
+  height: 36px;
+  margin-bottom: 20px;
+  background: url('logo.svg') left center / contain no-repeat;
+}
+*/
+
+/* The same for a reader whose system is set to dark. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121110;
+    --card: #23211d;
+    --ink: #efe9dc;
+    --muted: #a69e8e;
+    --line: #36322b;
+    --chip: #2c2925;
+    --accent: #27b9b6;
+  }
+  /* main::before { background-image: url('logo-dark.svg'); } */
+}
