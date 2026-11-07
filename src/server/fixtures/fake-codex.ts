@@ -2,7 +2,7 @@
 // A stand-in for `codex app-server` in tests (codex.test.ts): it speaks the app server's JSON-RPC
 // over stdio and plays a turn by what the user's text asks for. Every request it gets goes to the
 // file `FAKE_CODEX_LOG` names, a JSON line each. It lists a few models (`model/list`), or the ones
-// `FAKE_CODEX_MODELS` gives.
+// `FAKE_CODEX_MODELS` gives. Its process id goes to the file `FAKE_CODEX_PID` names, where one does.
 //
 // - `tool <name> <json>`: calls the dynamic tool and says what it returned.
 // - `command <cmd>`: runs a shell command, asks for its approval, and says the decision.
@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, writeFileSync } from 'node:fs';
 
 const log = process.env.FAKE_CODEX_LOG;
+if (process.env.FAKE_CODEX_PID) writeFileSync(process.env.FAKE_CODEX_PID, String(process.pid));
 const efforts = (...e: string[]) => e.map((reasoningEffort) => ({ reasoningEffort }));
 /** The models it lists unless `FAKE_CODEX_MODELS` names others. */
 const CATALOG = [

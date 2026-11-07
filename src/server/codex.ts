@@ -484,6 +484,8 @@ class CodexSession implements AgentSession {
         if (this.closed) return;
         if (this.there && (this.lost || e instanceof HostError)) this.emit({ type: 'lost', message: `the connection to ${this.there!.host.name} was lost` });
         else this.emit({ type: 'error', message: withStderr(messageOf(e), this.server?.stderr ?? '') });
+        // a start that failed leaves no app server behind (nor a host's session with it)
+        this.server?.close();
       })
       .finally(() => (this.carryable(), this.hooks?.close()));
   }
