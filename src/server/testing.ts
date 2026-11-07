@@ -150,7 +150,7 @@ export function gitClone(source: string, path: string, { bare = false } = {}): s
   const text = readFileSync(config, 'utf8');
   const url = /(\[remote "origin"\]\n(?:\t.*\n)*?)\turl = .*\n/;
   if (!url.test(text)) throw new Error(`gitClone: no origin url in ${config}`);
-  const quoted = `"${source.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+  const quoted = `"${source.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n')}"`;
   writeFileSync(config, text.replace(url, (_, section: string) => `${section}\turl = ${quoted}\n`));
   copies.set(resolve(path), clone);
   return path;
