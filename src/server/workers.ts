@@ -4097,13 +4097,16 @@ export class Workers {
     if (!stop) return;
     const workspace = this.o.board.row(cardId).workspace!;
     const generation = this.generation.get(cardId);
-    if (keep && (await runAppCommand(workspace, keep)).ok) {
+    const kept = keep ? await runAppCommand(workspace, keep) : null;
+    if (kept?.ok && !kept.missing) {
       if (this.generation.get(cardId) === generation) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parkKept);
       return;
     }
     const result = await runAppCommand(workspace, stop);
     // the card's work ended or started afresh meanwhile: its row is no longer this workspace's
     if (this.generation.get(cardId) !== generation) return;
+    // a branch older than the stop command: nothing of the app runs there to stop
+    if (result.missing) return;
     if (!result.ok) {
       this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.parkFailed(clip(result.output, 600)));
       return;

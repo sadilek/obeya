@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Board } from './board';
 import { Store } from './db';
-import { gitRepo, identify, until } from './testing';
+import { runAppCommand, scriptOf } from './app-command';
+import { alive, gitRepo, identify, leftBehind, until } from './testing';
 import { addTrailer, defaultBranch, git, Workspaces } from './workspaces';
 
 let dir: string;
@@ -184,6 +185,57 @@ describe('a workspace git frees', () => {
     expect(await again.ready!).toBe(first.path);
     expect(git(again.path, 'branch', '--show-current')).toBe('obeya/a');
     expect(git(repo, 'worktree', 'list').split('\n')).toHaveLength(2);
+  });
+
+  test("a landed card's worktree goes with what still runs from it, which its stop command did not know of", async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    const store = new Store(':memory:');
+    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const log = join(dir, 'stopped.log');
+    const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: repo, dir: join(dir, 'ws'), stop: `echo stopped>> ${log}` });
+    const a = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const { path, ready } = spaces.lease(a, 'obeya/a');
+    await ready;
+    const app = await leftBehind(path);
+    try {
+      await spaces.removeLanded(a, 'obeya/a');
+      expect(readFileSync(log, 'utf8')).toContain('stopped');
+      await until(() => !alive(app), 5000);
+      expect(existsSync(path)).toBe(false);
+    } finally {
+      if (alive(app)) process.kill(app, 'SIGKILL');
+    }
+  }, 30_000);
+
+  test('a stop command whose script the branch lacks does not run, and counts as nothing to stop', async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    expect(await runAppCommand(repo, 'node .obeya/app.mjs stop')).toEqual({ ok: true, output: '', missing: '.obeya/app.mjs' });
+    expect(await runAppCommand(repo, './scripts/stop.sh')).toEqual({ ok: true, output: '', missing: './scripts/stop.sh' });
+    expect(scriptOf('node "scripts/stop app.mjs" stop')).toBe('scripts/stop app.mjs');
+    expect(scriptOf('bash scripts/stop.sh')).toBe('scripts/stop.sh');
+    expect(scriptOf('/usr/bin/node .obeya/app.mjs stop')).toBe('.obeya/app.mjs');
+    expect(scriptOf('"C:\\Program Files\\nodejs\\node.exe" .obeya\\app.mjs stop')).toBe('.obeya\\app.mjs');
+    expect(scriptOf('node --require ./setup.cjs stop.mjs')).toBe('stop.mjs');
+    expect(scriptOf("node --eval='console.log(42)' absent.mjs")).toBeNull();
+    expect(scriptOf('node stop.mjs')).toBe('stop.mjs');
+    expect(scriptOf('cd server && node ../x/stop.mjs')).toBeNull();
+    expect(scriptOf('make stop')).toBeNull();
+    expect(scriptOf('bun run stop')).toBeNull();
+    expect(scriptOf('python -m myapp.stop')).toBeNull();
+    expect(scriptOf('docker compose -f deploy/compose.yml down --remove-orphans')).toBeNull();
+    writeFileSync(join(repo, 'stop.mjs'), '');
+    expect(await runAppCommand(repo, 'echo ok ./stop.mjs')).toMatchObject({ ok: true, output: expect.stringContaining('ok') });
+  });
+
+  test('a stop command runs whatever else it names that is not there: a pid file it reads, an address, a log it writes', async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    expect(await runAppCommand(repo, 'cat .run/app.pid 2>/dev/null; echo ran')).toMatchObject({ ok: true, output: 'ran' });
+    expect(await runAppCommand(repo, 'echo ran $(cat .run/app.pid 2>/dev/null)')).toMatchObject({ ok: true, output: 'ran' });
+    expect(await runAppCommand(repo, 'echo ran localhost:3000/stop')).toMatchObject({ ok: true, output: 'ran localhost:3000/stop' });
+    expect(await runAppCommand(repo, 'mkdir -p logs && echo ran > logs/stop.log && cat logs/stop.log')).toMatchObject({ ok: true, output: 'ran' });
+    expect(scriptOf('kill $(cat .run/app.pid)')).toBeNull();
+    expect(scriptOf('curl -s localhost:3000/stop')).toBeNull();
+    expect(scriptOf('./scripts/stop.sh --log logs/stop.log')).toBe('./scripts/stop.sh');
   });
 
   test('a worktree given back and taken again by its card while git removes it (the card deleted and brought back) is made again once git is done', async () => {
@@ -621,6 +673,24 @@ describe('clones the configuration no longer names', () => {
     expect(readFileSync(join(path, 'new.txt'), 'utf8')).toBe('work\n');
     expect(spaces.leasedBy(a)).toBe(path);
   });
+
+  test('what the app writes as it is ended keeps the folder', async () => {
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws });
+    const [path] = (await spaces.ensureClones(origin, 1)) as [string];
+    // an app that saves its state when asked to end, which no stop command knows of
+    const script = `process.on('SIGTERM', () => { require('fs').writeFileSync('saved.txt', 'snapshot'); process.exit(0); }); setInterval(() => {}, 1000);`;
+    const starter = `const c = require('child_process').spawn(process.execPath, ['-e', ${JSON.stringify(script)}], { cwd: ${JSON.stringify(path)}, detached: true, stdio: 'ignore' }); c.unref(); console.log(c.pid);`;
+    const app = Number((await new Response(Bun.spawn([process.execPath, '-e', starter], { stdout: 'pipe' }).stdout).text()).trim());
+    try {
+      await Bun.sleep(300);
+      spaces.keepOnly(null, []);
+      await until(() => spaces.pool([])[0]!.kept?.length === 1, 15_000);
+      expect(readFileSync(join(path, 'saved.txt'), 'utf8')).toBe('snapshot');
+      expect(alive(app)).toBe(false);
+    } finally {
+      if (alive(app)) process.kill(app, 'SIGKILL');
+    }
+  }, 30_000);
 
   test('what the stop command leaves behind keeps the folder', async () => {
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo snapshot > saved.txt' });
