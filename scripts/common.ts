@@ -1,7 +1,7 @@
 // What several scripts need: their options, Rust's tools on the PATH, and what a build left.
 
 import { existsSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 /** The value after `--<name>` on the command line, if given. */
@@ -22,3 +22,13 @@ export const endingIn = (dir: string, end: string) => {
   const f = existsSync(dir) && readdirSync(dir).find((f) => f.endsWith(end));
   return f ? join(dir, f) : undefined;
 };
+
+/**
+ * The folder scratch Obeyas keep their dirs and port claims in: /tmp on macOS and Linux, as docs
+ * and demos name it; on Windows the system temp folder, since Bun reads /tmp there as \tmp on the
+ * current drive, which a fresh machine does not have.
+ */
+export const scratchBase = (platform: NodeJS.Platform = process.platform, temp = tmpdir()) => (platform === 'win32' ? temp : '/tmp');
+
+/** The dir a scratch Obeya on `port` is staged in when its stage gives none. */
+export const scratchDir = (port: number) => join(scratchBase(), `obeya-scratch-${port}`);

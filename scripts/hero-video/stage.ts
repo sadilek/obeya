@@ -4,6 +4,7 @@
 // sits under the microphone or the minimap.
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { scratchDir } from '../common';
 
 export const PORT = 4730;
 const APP = join(import.meta.dirname, 'tipjar');
@@ -21,7 +22,7 @@ export function writeStage(file: string) {
   const rest = Object.fromEntries(Object.entries(all).filter(([p]) => !p.startsWith('docs/plan/')));
   const stage = {
     port: PORT,
-    dir: `/tmp/obeya-scratch-${PORT}`,
+    dir: scratchDir(PORT),
     name: 'Tipjar',
     // the repository's settings (.obeya/settings.json) among the files: work lands on main
     files: rest,

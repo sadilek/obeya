@@ -17,7 +17,9 @@
 // --login, --say and --artifact take the `port` it printed. Staging afresh from the same stage
 // file with the same --code or --binary (`from`) replaces the scratch Obeya staged from them
 // before and takes its port again while that is free; with another --code, the two run side by
-// side. The dir is --dir, else the stage file's `dir`, else /tmp/obeya-scratch-<port>.
+// side. The dir is --dir, else the stage file's `dir`, else obeya-scratch-<port> in
+// /tmp on macOS and Linux and in the system temp folder (%TEMP%) on Windows; the port claims lie
+// beside it.
 // `url` signs browsers in (design: Who may talk to it), until the scratch Obeya stops; --login
 // prints it again. --stop ends only the server it staged, never another program that has its
 // process number by now, and fails if the server still runs after it. The script itself talks to the API with the owner's key of the scratch home.
@@ -175,7 +177,7 @@ import { loginLink, ownerHeaders } from '../src/server/owner';
 import { findTailscale, type NamedEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';
 import { branchName } from '../src/server/workspaces';
-import { opt } from './common';
+import { opt, scratchBase, scratchDir } from './common';
 import { waitUp } from './wait-up';
 
 type StageEvent = NonNullable<StageCard['events']>[number];
@@ -304,7 +306,6 @@ const fail = (msg: string): never => {
   console.error(`scratch-obeya: ${msg}`);
   process.exit(1);
 };
-const scratchDir = (port: number) => `/tmp/obeya-scratch-${port}`;
 /** What --say has the card's agent do for each kind of its lines in the conversation (as in a stage file's `events`). */
 const SAYS = {
   say: (text: string) => ({ say: text }),
@@ -898,9 +899,9 @@ async function pickPort(givenDir: string | undefined): Promise<number> {
 }
 
 function scratchDirs() {
-  return readdirSync('/tmp')
+  return readdirSync(scratchBase())
     .filter((n) => /^obeya-scratch-\d+$/.test(n))
-    .map((n) => `/tmp/${n}`);
+    .map((n) => join(scratchBase(), n));
 }
 
 function stagedIn(d: string): { port?: number; from?: unknown } | undefined {
