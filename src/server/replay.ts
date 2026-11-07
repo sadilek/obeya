@@ -206,6 +206,99 @@ async function descends(cwd: string, from: string, to: string): Promise<boolean>
   );
 }
 
+/** A commit as `rebuilt` compares it: what makes two commits of two stagings the same one. */
+interface Commit {
+  hash: string;
+  tree: string;
+  parents: string[];
+  /** Author and message. */
+  said: string;
+}
+
+/** The commits `args` of `git log` name in `cwd`, parents first. */
+async function commitsOf(cwd: string, ...args: string[]): Promise<Commit[]> {
+  const out = await gitAsync(cwd, 'log', '--topo-order', '--reverse', '--format=%H%x1f%T%x1f%P%x1f%an <%ae>%x1f%B%x1e', ...args);
+  return out
+    .split('\x1e')
+    .map((r) => r.replace(/^\n/, ''))
+    .filter(Boolean)
+    .map((r) => {
+      const [hash, tree, parents, ...said] = r.split('\x1f');
+      return { hash: hash!, tree: tree!, parents: parents ? parents.split(' ') : [], said: said.join('\x1f').trimEnd() };
+    });
+}
+
+/**
+ * The recorded commit `ref` (which follows `from`) built in the workspace `cwd` onto the commits of
+ * today, which differ from the recorded ones in their dates and so their hashes: `from` stands for
+ * the workspace's HEAD; any other recorded commit for the commit of today with its tree, author,
+ * message and parents (main and a pull request's head as staged today: what the workspace has, and
+ * what its remotes hold that it has not fetched yet), else for a new one as recorded, its change
+ * carried onto the parent of today where that holds other files. Merges stay merges. The head's
+ * hash of today.
+ */
+async function rebuilt(cwd: string, ref: string, from: string): Promise<string> {
+  const remotes = (await gitAsync(cwd, 'remote')).split('\n').filter(Boolean);
+  const fetched = 'refs/obeya-replay-remotes';
+  try {
+    for (const r of remotes) await gitAsync(cwd, 'fetch', '-q', '--no-tags', r, `+refs/*:${fetched}/${r}/*`).catch(() => {});
+    const today = await commitsOf(cwd, '--exclude=refs/obeya-replay/*', '--all');
+    const key = (c: Pick<Commit, 'tree' | 'parents' | 'said'>) => `${c.tree} ${c.parents.join(' ')}\n${c.said}`;
+    const same = new Map(today.map((c) => [key(c), c.hash]));
+    const treeOf = new Map(today.map((c) => [c.hash, c.tree]));
+    const recorded = await commitsOf(cwd, ref);
+    const recordedTree = new Map(recorded.map((c) => [c.hash, c.tree]));
+    const now = new Map([[from, await gitAsync(cwd, 'rev-parse', 'HEAD')]]);
+    for (const c of recorded) {
+      if (now.has(c.hash)) continue;
+      const parents = c.parents.map((p) => now.get(p)!);
+      const found = same.get(key({ ...c, parents }));
+      if (found) now.set(c.hash, found);
+      else {
+        const made = await written(cwd, c, parents, recordedTree, treeOf);
+        now.set(c.hash, made.hash);
+        treeOf.set(made.hash, made.tree);
+      }
+    }
+    // the recorded head is the last, its parents before it
+    return now.get(recorded.at(-1)!.hash)!;
+  } finally {
+    for (const r of remotes) {
+      const refs = (await gitAsync(cwd, 'for-each-ref', '--format=%(refname)', `${fetched}/${r}/`).catch(() => '')).split('\n').filter(Boolean);
+      for (const x of refs) await gitAsync(cwd, 'update-ref', '-d', x).catch(() => {});
+    }
+  }
+}
+
+/** The recorded commit `c` written anew onto `parents` of today, author, committer, dates and message as recorded. */
+async function written(cwd: string, c: Commit, parents: string[], recordedTree: Map<string, string>, treeOf: Map<string, string>): Promise<{ hash: string; tree: string }> {
+  const [p, q] = [c.parents[0], parents[0]];
+  // what the commit changed of its first parent, onto the first parent of today where that holds other files
+  const tree = p && q && treeOf.get(q) !== recordedTree.get(p) ? (await gitAsync(cwd, 'merge-tree', '--write-tree', `--merge-base=${p}`, q, c.hash)).split('\n')[0]! : c.tree;
+  const raw = await gitAsync(cwd, 'cat-file', 'commit', c.hash);
+  const split = raw.indexOf('\n\n');
+  const headers = (split < 0 ? raw : raw.slice(0, split))
+    .split('\n')
+    // a signature no longer holds for the commit of today; continuation lines start with a space
+    .reduce<{ out: string[]; skip: boolean }>(
+      (acc, line) => {
+        const cont = line.startsWith(' ');
+        const skip = cont ? acc.skip : /^(tree|parent|gpgsig|gpgsig-sha256) /.test(line);
+        if (!skip) acc.out.push(line);
+        return { out: acc.out, skip };
+      },
+      { out: [], skip: false },
+    ).out;
+  const object = [`tree ${tree}`, ...parents.map((x) => `parent ${x}`), ...headers].join('\n') + (split < 0 ? '\n' : raw.slice(split)) + '\n';
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-replay-'));
+  try {
+    writeFileSync(join(dir, 'commit'), object);
+    return { hash: await gitAsync(cwd, 'hash-object', '-t', 'commit', '-w', join(dir, 'commit')), tree };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** A recorded session as `replayRuntime` reads it. */
 interface Recorded {
   n: number;
@@ -545,17 +638,16 @@ function play(rec: Recorded, spec: AgentSpec, p: Player): AgentSession {
     const cwd = spec.cwd;
     const ref = `refs/obeya-replay/${head.to}`;
     await gitAsync(cwd, 'fetch', '-q', join(p.dir, head.bundle), `+HEAD:${ref}`);
-    const [name, email] = (await gitAsync(cwd, 'log', '-1', '--format=%an%n%ae', head.to)).split('\n');
-    const as = ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
     try {
       if (!head.rewritten) {
-        await gitAsync(cwd, ...as, 'cherry-pick', '--allow-empty', '--keep-redundant-commits', `${head.from}..${head.to}`).catch(async (error) => {
-          await gitAsync(cwd, 'cherry-pick', '--abort').catch(() => {});
-          throw error;
-        });
+        // the recorded commits as they were, merges too, built onto the commits of today they stand for
+        const to = await rebuilt(cwd, ref, head.from);
+        if (to !== (await gitAsync(cwd, 'rev-parse', 'HEAD'))) await gitAsync(cwd, 'merge', '-q', '--ff-only', to);
         return;
       }
       // rewritten (an amend; a rebase, which the landing of today did too): what changed, as one commit
+      const [name, email] = (await gitAsync(cwd, 'log', '-1', '--format=%an%n%ae', head.to)).split('\n');
+      const as = ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
       if ((await gitAsync(cwd, 'rev-parse', 'HEAD^{tree}')) === (await gitAsync(cwd, 'rev-parse', `${head.to}^{tree}`))) return;
       const patch = join(mkdtempSync(join(tmpdir(), 'obeya-replay-')), 'change.patch');
       const diff = await gitAsync(cwd, 'diff', '--binary', head.from, head.to);

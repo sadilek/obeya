@@ -355,8 +355,12 @@ tools, the one with the same first message where several are left (so that two w
 another order each get their own). Its events go out again, its calls run Obeya's tools of the code
 being run with the recorded arguments, a step recorded after a message waits until that message
 comes, and one that read a context update (the owner's words in the middle of a turn) until there
-is one. Before a worker's call its recorded commits go onto the card's workspace, picked one by one;
-rewritten ones (an amend, a rebase) go as one commit of what they changed, or not at all where the
+is one. Before a worker's call its recorded commits go onto the card's workspace as recorded,
+merges too: each stands for the commit of today with its tree, author, message and parents (the
+staged main, a pull request's head, also where only the workspace's remote has them yet), and one
+without such a commit is written anew onto the commits of today, with its change carried over where
+its parent of today holds other files; the branch then moves forward to the recorded head. Rewritten
+ones (an amend, a rebase) go as one commit of what they changed, or not at all where the
 workspace holds that already (a rebase the landing of today did too). Before a handover the demo
 goes back where it was. Everything else is Obeya's own code as it stands: card states, layout, held
 comments, the handover, the landing; the page is always live, so a change to the UI never breaks a
@@ -679,6 +683,14 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 - **A playback keeps the recorded pace except across the take's cuts** (2026-10-22): the scenes then
   find the agents where the recorded take found them (the worker still at work when the video looks
   in), and what was cut costs no time.
+- **Recorded commits are rebuilt as a graph, not cherry-picked** (2026-11-07): a review card's
+  worker that merged main into a pull request's head handed over a merge commit, and picking the
+  range linearised it (main's commit first, then the pull request's, which conflicted with it), so
+  the playback refused. The recorded commits are matched to today's by everything but their dates
+  (the staging's commits get new dates and so new hashes each time), so the merge's parents are
+  today's pull request head and main, and a push of the branch onto the pull request stays a
+  fast-forward. Rejected: resetting the branch to the recorded head (its history would be the
+  recorded staging's, unrelated to today's main and pull request).
 - **The demo directory is a demo setting of the machine** (2026-10-26), in `demo.json` beside the
   voice: it is a local path of one computer (`/opt/work/demos` on one, nothing on another), and the
   skill already reads those settings without Obeya. Rejected: a repository setting (a path of the
