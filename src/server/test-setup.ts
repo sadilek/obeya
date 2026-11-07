@@ -31,15 +31,6 @@ const run = mkdtempSync(join(tmpdir(), `${RUN}${process.pid}-`));
 // TEMP and TMP are where Windows looks
 process.env.TMPDIR = process.env.TEMP = process.env.TMP = run;
 
-// git's automatic maintenance after each commit, fetch and merge is a git process more for nothing
-// in a test's repository, and starting one is slow on Windows (a virus scanner looks at each)
-const count = Number(process.env.GIT_CONFIG_COUNT) || 0;
-for (const [i, [key, value]] of [['maintenance.auto', 'false'], ['gc.auto', '0']].entries()) {
-  process.env[`GIT_CONFIG_KEY_${count + i}`] = key;
-  process.env[`GIT_CONFIG_VALUE_${count + i}`] = value;
-}
-process.env.GIT_CONFIG_COUNT = String(count + 2);
-
 // the Arbeitsrückschau looks for transcripts there: never the machine's own. The live tests need
 // the machine's login from there, so they set it back while they run (from `OBEYA_MACHINE_CLAUDE_CONFIG_DIR`).
 if (process.env.CLAUDE_CONFIG_DIR) process.env.OBEYA_MACHINE_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
