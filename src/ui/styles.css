@@ -108,6 +108,9 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
   cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
 .project > .head .head-btn:hover:not(:disabled) { background: var(--working); border-color: var(--working); color: var(--on-ink); }
 .project > .head .arrange { color: var(--muted); }
+/* a done project's archive button shows while the pointer is over the project, as a finished card's does */
+.project > .head .archive { visibility: hidden; }
+.project:hover > .head .archive, .project > .head .archive:focus-visible { visibility: visible; }
 .project > .head .arrange:disabled { cursor: default; animation: arranging 1.4s ease-in-out infinite; }
 @keyframes arranging { 50% { opacity: .45; } }
 .z-far .project .head-btn { display: none; }

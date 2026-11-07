@@ -197,7 +197,7 @@ A project's work is done when every workstream in its plan doc is ticked on the 
 when the doc is deleted once every workstream was ticked or its card had landed (the last workstream
 often takes the doc away with it). A workstream still at work then (or its worker finishing after the
 landing) keeps the project at work until that worker is done. Done, the project stays on the canvas
-in its place, saying so, with "Archive" in its head and "Archive the project" in its sheet; the
+in its place, saying so, with "Archive" in its head while the pointer is over it and "Archive the project" in its sheet; the
 owner archives it from there or with all finished cards at once (see Archive). It moves into the
 archive with its workstreams, which are not listed on their own, and its sheet there offers "Back onto
 the canvas". A doc deleted before its work was done (dropped, or renamed into a new project) takes
