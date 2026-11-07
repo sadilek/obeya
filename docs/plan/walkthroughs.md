@@ -36,8 +36,11 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
 - *A pointer word by word* (design: The Koordinator → Walkthroughs; W3): the caption marks the word
   being spoken, from voice in's recognition hearing each sentence back; a flow's boxes build up as
   the narration names them.
-- *Not yet*: the tool checks a slide's
-  form, not whether its lines say what it claims or its narration only reads it out (W4); the player
+- *Checks while the agent writes* (W4): the tool refuses a slide that does not fit the player at
+  the sheet's default width and a narration that only reads its slide out, saying why. Whether a
+  code slide's lines say what it claims stays unchecked (owner, 2026-11-07: only the two cheap
+  checks).
+- *Not yet*: the player
   is not tuned for the phone, demo settings without a voice end in "Voicing failed", and sentences
   left unvoiced by a restart stay so, the player saying the voicing stopped (W5); the look is the
   prototype's, in Obeya's colours (W6).
@@ -140,10 +143,11 @@ Claude Code plugin into the look-up agent:
 - [x] **W3:** A pointer word by word. Needs W1. The caption marks the word being spoken, with the
   times from Parakeet hearing each sentence back; diagram boxes build up as the narration reaches
   them.
-- [ ] **W4:** Checks while the agent writes. Needs W1. A slide handed over is checked at once (the
-  code lines exist and say what the slide claims, the slide is not too full, the narration does more
-  than read the slide out), and what fails goes back to the agent in the tool's reply, so it revises
-  the slide before going on.
+- [x] **W4:** Checks while the agent writes. Needs W1. A slide handed over is checked at once (the
+  slide is not too full, the narration does more than read the slide out), and what fails goes back
+  to the agent in the tool's reply, so it revises the slide before going on. Whether code lines say
+  what the slide claims is left out (owner, 2026-11-07): it would need a model and seconds per slide
+  while the walkthrough plays, for code slides that come only when the owner asks for code.
 - [ ] **W5:** Phone, no voice, restart. Needs W1. The player on the phone works as on the desktop;
   demo settings without a voice play the slides with captions at a reading pace; a walkthrough
   being voiced when Obeya restarts is voiced on afterwards and plays on.

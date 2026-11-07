@@ -974,13 +974,15 @@ textarea.p-body:focus { border-color: var(--muted); }
 .answer-files figcaption a { color: inherit; }
 .answer-page iframe { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 2px; background: #fff; display: block; }
 .answer-image img { display: block; max-width: 100%; max-height: 480px; border: 1px solid var(--line); border-radius: 2px; background: #fff; }
-/* an answer told as a walkthrough: slides scaled to the player's width, the voice's progress under them */
+/* an answer told as a walkthrough: slides scaled to the player's width, the voice's progress under them; src/server/slide-checks.ts
+   estimates how its slides lay out (sizes, widths of the fonts) and changes with it */
 .wt { margin: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--card); container-type: inline-size; }
 .wt-loading { padding: 10px 12px; }
 .wt-stage { position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
 .wt-slide { position: absolute; inset: 0; padding: 5.5cqw 6cqw 7cqw; display: flex; flex-direction: column; animation: wt-in .45s; }
 @keyframes wt-in { from { opacity: 0; transform: translateY(8px); } }
-.wt-kicker { font: 500 max(10px, 2.2cqw) var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.2cqw; }
+.wt-kicker { font: 500 max(10px, 2.2cqw) var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.2cqw;
+  flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wt h1, .wt h2 { font-family: var(--serif); color: var(--ink); }
 .wt h2 { margin: 0 0 3cqw; font-size: max(15px, 4.2cqw); line-height: 1.2; font-weight: 600; }
 .wt-title { justify-content: center; }

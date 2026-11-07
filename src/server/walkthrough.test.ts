@@ -82,6 +82,26 @@ describe('a walkthrough handed over slide by slide', () => {
     expect(hand(w, { type: 'points', title: '9', points: ['a'], narration: 'a.' })).toBe('Not shown: a walkthrough has at most 8 slides. Call answer_owner now.');
   });
 
+  test('a slide too full for the player, or whose narration only reads it out, goes back to the agent with what to change', () => {
+    const w = told();
+    hand(w, TITLE);
+    const long = 'The approved card is rebased onto main and its checks run before the merge lands';
+    expect(hand(w, { type: 'points', title: 'Three steps', points: [long, long, long, long], narration: 'Each step waits for the one before it, so a failing check stops the landing.' })).toBe(
+      'Not shown: the slide is too full for the player (256 px wide where the owner usually watches): it runs about 1 line past its bottom. Shorten its points (the narration can say the rest), or spread them over two slides.',
+    );
+    const steps = ['Freigabe', 'Zusammenführung', 'Prüfung', 'Fertig'];
+    expect(hand(w, { type: 'flow', title: 'Der Weg', steps, narration: 'Nichts davon braucht dich, bis die Karte auf main ist.' })).toBe(
+      'Not shown: "Zusammenführung" in step 2 is wider than its box in the player (256 px wide where the owner usually watches), where a flow of 4 steps gives each box room for about 6 characters: use shorter words or fewer steps, and let the narration say the rest.',
+    );
+    const points = ['Rebase onto main', 'The checks run', 'Merge into main'];
+    expect(hand(w, { type: 'points', title: 'Three steps', points, narration: ['First, it rebases onto main.', 'Next, the checks run.', 'Finally it merges into main.'] })).toBe(
+      'Not shown: its narration only reads the slide out (7 of its 10 words are on the slide). The owner sees the slide already: say what it does not show (why it is so, what follows from it, an example).',
+    );
+    expect(read('how-a-card-lands.walkthrough.json').slides).toHaveLength(1);
+    // revised: the same points, told with what the slide does not show
+    expect(hand(w, { type: 'points', title: 'Three steps', points, narration: ["Obeya replays the card's commits on the newest main, so nothing that landed meanwhile is lost.", "The repository's own tests and types decide.", 'Only then does main move forward.'] })).toStartWith('Slide 2 is shown');
+  });
+
   test("a file or a clips directory of that name the agent put there (a link elsewhere, say) is passed by", () => {
     symlinkSync(dir, join(dir, 'answers', 'how-a-card-lands.clips'));
     const w = told();
@@ -95,7 +115,7 @@ describe('a walkthrough handed over slide by slide', () => {
     const w = told();
     hand(w, TITLE);
     expect(hand(w, { type: 'code', title: 'Big', file: 'big.txt', lines: [1, 1], narration: 'Big.' })).toBe('Not shown: big.txt is too large for a code slide.');
-    hand(w, { type: 'code', title: 'Wide', file: 'wide.txt', lines: [1, 1], narration: 'Wide.' });
+    hand(w, { type: 'code', title: 'Wide', file: 'wide.txt', lines: [1, 1], narration: 'One line, cut where it gets too long.' });
     expect(read('how-a-card-lands.walkthrough.json').slides[1]).toMatchObject({ type: 'code' });
     expect((read('how-a-card-lands.walkthrough.json').slides[1] as { code: string[] }).code[0]!.length).toBeLessThanOrEqual(400);
   });
