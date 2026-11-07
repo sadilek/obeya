@@ -1022,6 +1022,8 @@ const de = {
       '2026-10-30-commit': 'Ist die Arbeit ohne Pull Request auf main gelandet, verlinkt die Seite den Commit (bei mehreren den Vergleich über alle).',
       '2026-10-30-steady':
         'Der Rahmen des Artefakts nimmt gleich die Höhe der Seite an und bleibt dabei: Bei einer Seite mit Bildern in voller Breite sprang er beim Öffnen eine Sekunde lang zwischen zwei Höhen, und eine kurze Seite stand in einem zu hohen Rahmen.',
+      '2026-11-07-canonical':
+        'Für Suchmaschinen nennt jede Seite ihre eine Adresse (rel="canonical"): Sie führen die Seite einmal statt auch unter Varianten wie ?alone.',
       theme: 'Theme geändert: Die Datei .obeya/theme.css des Repositorys ist neu, anders oder entfernt.',
     } satisfies Record<OutdatedBy, string>,
     pages: (n: number) => (n === 1 ? 'eine Seite' : `${n} Seiten`),
@@ -3138,6 +3140,7 @@ const en: Strings = {
       '2026-10-30-commit': 'Where the work landed on main without a pull request, the page links its commit (for several, the comparison over them).',
       '2026-10-30-steady':
         'The artifact’s frame takes the page’s height at once and keeps it: for a page of images as wide as itself, it jumped between two heights for a second as it opened, and a short page stood in a frame too high for it.',
+      '2026-11-07-canonical': 'For search engines, every page names its one address (rel="canonical"): they list the page once instead of also under variants such as ?alone.',
       theme: 'Theme changed: the repository’s .obeya/theme.css is new, different or removed.',
     },
     pages: (n: number) => (n === 1 ? 'one page' : `${n} pages`),

@@ -376,7 +376,10 @@ first sentence as summary, the whole text as content, the page's address as link
 overview's date, the page's language, who shared it as author), and a sitemap (`sitemap.xml`: the
 overview and every page, dated as in the feed), written together and so equally current. Where the
 site is its host's root, a `robots.txt` lets every crawler in and names the sitemap; under a path,
-where crawlers do not look for one, there is none. Beside them lies `404.html`, which Cloudflare
+where crawlers do not look for one, there is none. The overview and every page name their address
+for search engines (`<link rel="canonical">`, the site's root and the page's address, absolute and
+without a query), so a filtered overview (`?Area=…`) or a page shown alone (`?alone`) counts as that
+page, not as one more. Beside them lies `404.html`, which Cloudflare
 Pages, GitHub Pages and Netlify answer an address the site lacks with (HTTP 404): in the overview's
 language and theme, it says there is no demo at this address or it has been withdrawn, and links
 the overview by its full address, since the host serves it at any path. A page keeps its date while
@@ -659,6 +662,14 @@ another machine withdrew loses its link here, with a line naming the machine.
   unknown address, which search engines count as soft 404s, and a withdrawn demo's old link showed
   the overview as if nothing were amiss. Rejected: redirecting to the overview (still no 404 for
   search engines, and the reader is not told why the demo is gone).
+- **The overview's filters and a page's `?alone` are named as variants by `rel="canonical"` alone**
+  (2026-11-07): Google crawled 19 filtered overviews, each the whole overview, and listed every
+  page as having no canonical of its own. The query is applied in the browser, so every variant is
+  the same file and the canonical holds for each. Rejected: `noindex` on the filtered overview (a
+  static site can only set it from a script, and a fault there would take the overview itself out
+  of the index), a `Disallow` for addresses with a query (hides the canonical from crawlers). The
+  answer to an address the site lacks names none (it is served at every address, with `noindex`),
+  nor does an unlisted site's page (`noindex`), nor a page exported as a file (it has no address).
 - **No `robots.txt` on the unlisted site** (2026-10-28): its `Disallow` hides the `noindex` from
   search engines, which may then list a linked address without its content.
 - **Several machines pull before they push** (2026-10-09). Rejected: refusing deploys while the live

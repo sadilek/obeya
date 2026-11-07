@@ -299,6 +299,24 @@ describe('a site Obeya keeps', () => {
     expect(existsSync(join(at, 'robots.txt'))).toBe(false);
   });
 
+  test('the overview and each page name their address for search engines, which every variant with a query is', async () => {
+    await target.publish(page('a-111111'));
+    const canonical = (html: string) => html.match(/<link rel="canonical" href="([^"]*)">/g);
+    // the overview at the site's root, whatever filter its query names
+    const overview = await (await fetch(`${URL_}?Area=Billing&q=pdf`)).text();
+    expect(canonical(overview)).toEqual([`<link rel="canonical" href="${URL_}">`]);
+    // a page at its own address, shown alone too
+    expect(canonical(await (await fetch(`${URL_}a-111111/?alone`)).text())).toEqual([`<link rel="canonical" href="${URL_}a-111111/">`]);
+    // the answer to an address the site lacks names none: it is served at any address, and never indexed
+    expect(canonical(readFileSync(join(siteDir(), NOT_FOUND), 'utf8'))).toBeNull();
+    // under a path of its host, the site's own addresses
+    const under = `${URL_}demos/`;
+    await make(SITE({ url: under })).publish(page('b-222222'));
+    const at = join(home, 'sites', siteKey(under), 'site');
+    expect(canonical(readFileSync(join(at, 'index.html'), 'utf8'))).toEqual([`<link rel="canonical" href="${under}">`]);
+    expect(canonical(readFileSync(join(at, 'b-222222', 'index.html'), 'utf8'))).toEqual([`<link rel="canonical" href="${under}b-222222/">`]);
+  });
+
   test('an address the site lacks answers 404 with a page in the site’s language linking the overview, a withdrawn page’s too', async () => {
     target = make(SITE(), home, 'a', 'en');
     await target.publish(page('a-111111'));
