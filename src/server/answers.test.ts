@@ -928,7 +928,7 @@ describe('an answer told as a walkthrough', () => {
     expect(said.map((e) => [e.text, e.answer!.live, e.answer!.files?.map((f) => f.name)])).toEqual([['So läuft er ab.', undefined, ['der-login.walkthrough.json']]]);
   });
 
-  test('"Show as walkthrough" asks the agent of its thread again, in its session, with the voice loading meanwhile', async () => {
+  test('"Show as walkthrough" asks the agent of its thread again, in its session, its player there at once and the voice loading meanwhile', async () => {
     const first = await lookedUp('ideenkarte oder fragekarte?', 'Idea card or Question card?', 'Eine Ideenkarte, wenn …', 'look-1');
     const asked = canvas.answers.showAsWalkthrough(first);
     expect(board().exchange(asked)).toMatchObject({ said: 'Als Walkthrough zeigen', reply: 'Ich erzähle die Antwort als Walkthrough.', thread: first, follows: first });
@@ -939,9 +939,30 @@ describe('an answer told as a walkthrough', () => {
     // the answer the owner clicked, which need not be the thread's last
     expect(a.inbox[0]).toContain('The question: Idea card or Question card?');
     expect(a.inbox[0]).toContain('<answer>\nEine Ideenkarte, wenn …\n</answer>');
+    // its player stands there at once, empty until the title slide, named after the question
+    const pending = 'idea-card-or-question-card.walkthrough.json';
+    expect(board().exchange(asked)!.files).toEqual([{ name: pending, caption: '' }]);
+    expect(canvas.answers.walkthrough(first, pending)).toMatchObject({ title: '', slides: [], done: false });
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Ideenkarte oder Fragekarte', narration: 'So.' } });
+    expect(board().exchange(asked)!.files).toEqual([{ name: pending, caption: 'Ideenkarte oder Fragekarte' }]);
+    expect(canvas.answers.walkthrough(first, pending)).toMatchObject({ title: 'Ideenkarte oder Fragekarte', slides: [{ type: 'title' }] });
+    a.call('answer_owner', { text: 'Der Walkthrough zeigt den Unterschied.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(board().exchange(asked)).toMatchObject({ answer: 'Der Walkthrough zeigt den Unterschied.', files: [{ name: pending, caption: 'Ideenkarte oder Fragekarte' }] });
     // only a looked-up answer has a thread to ask
     await say('hallo', {}, 'reply', { confirm: 'Hallo.' });
     expect(() => canvas.answers.showAsWalkthrough(board().talk().at(-1)!.id)).toThrow(BadRequest);
+  });
+
+  test('asked for with the button and answered as text after all, the empty walkthrough goes', async () => {
+    const first = await lookedUp('ideenkarte oder fragekarte?', 'Idea card or Question card?', 'Eine Ideenkarte, wenn …', 'look-1');
+    const asked = canvas.answers.showAsWalkthrough(first);
+    const a = answerer();
+    a.call('answer_owner', { text: 'Das lässt sich nicht gut zeigen.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(board().exchange(asked)!.files).toBeUndefined();
   });
 
   test("a project's agent tells walkthroughs too", async () => {

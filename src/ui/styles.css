@@ -961,15 +961,15 @@ textarea.p-body:focus { border-color: var(--muted); }
 /* a looked-up answer: "Make it a card" in its head, always in view; its files under the text */
 .talk .msg .who:has(> .msg-card) { display: flow-root; }
 .msg-card { float: right; margin: -2px 0 0 8px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; background: none;
-  color: var(--muted); font: 500 11px var(--cond); cursor: pointer; }
+  color: var(--muted); font: 500 11px/16px var(--cond); height: 20px; box-sizing: border-box; cursor: pointer; }
 .msg-card:hover { color: var(--ink); border-color: var(--question); }
 .msg-card.on { color: var(--question); border-color: color-mix(in srgb, var(--question) 50%, transparent); }
 .talk .moved { margin: 2px 0 8px; }
 .talk .moved .msg-card { float: none; margin: 0; }
-/* "Show as walkthrough" appears on hover over its answer; always where nothing hovers */
-.msg-walk { opacity: 0; transition: opacity .15s; }
-.msg:hover .msg-walk, .msg-walk:focus-visible { opacity: 1; }
-@media (hover: none) { .msg-walk { opacity: 1; } }
+/* the actions in an answer's head ("Make it a card", "Show as walkthrough") appear on hover over it, as replying does; always where nothing hovers */
+.msg-card:not(.on) { opacity: 0; transition: opacity .15s; }
+.msg:hover .msg-card, .msg-card:focus-visible { opacity: 1; }
+@media (hover: none) { .msg-card:not(.on) { opacity: 1; } }
 .continues { margin-top: 4px; font-size: 11.5px; color: var(--muted); }
 .answer-files { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .answer-files figure { margin: 0; min-width: 0; }
@@ -989,6 +989,13 @@ textarea.p-body:focus { border-color: var(--muted); }
 .wt-title { justify-content: center; }
 .wt-title h1 { margin: 0 0 2cqw; font-size: max(19px, 6cqw); line-height: 1.15; font-weight: 600; }
 .wt-title p { margin: 0; font-size: max(12px, 3cqw); color: var(--muted); max-width: 80%; }
+/* a walkthrough asked for, before its first slide: the shape of a title slide, shimmering */
+.wt-pending p { margin-top: 2.4cqw; }
+.wt-ghost { display: block; height: max(16px, 4.6cqw); width: 46%; margin-bottom: 2cqw; border-radius: .8cqw;
+  background: linear-gradient(90deg, var(--chip) 25%, color-mix(in srgb, var(--chip) 40%, var(--card)) 50%, var(--chip) 75%) 0 0 / 300% 100%; animation: wt-shimmer 1.6s linear infinite; }
+.wt-ghost.wide { width: 72%; height: max(22px, 6cqw); }
+@keyframes wt-shimmer { to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .wt-ghost { animation: none; } }
 .wt-bar { width: 9cqw; height: .8cqw; background: var(--working); border-radius: 1cqw; margin-bottom: 3cqw; }
 .wt-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2.2cqw; }
 .wt-points li { font-size: max(12.5px, 3.1cqw); line-height: 1.35; padding-left: 4cqw; position: relative; opacity: .18; transition: opacity .4s, color .4s; }

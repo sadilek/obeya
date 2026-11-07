@@ -296,7 +296,17 @@ export function WalkthroughPlayer({ thread, file, autoplay = false }: { thread: 
   return (
     <figure className="wt">
       <div className="wt-stage">
-        {slide && <SlideView key={p.slide} p={p} title={d.title} index={p.slide} item={item} />}
+        {slide ? (
+          <SlideView key={p.slide} p={p} title={d.title} index={p.slide} item={item} />
+        ) : (
+          // asked for and not begun yet: a slide taking shape, so it is plain that one is being written
+          <div className="wt-slide wt-title wt-pending" aria-label={t.walkthrough.preparing}>
+            <div className="wt-bar" />
+            <i className="wt-ghost wide" />
+            <i className="wt-ghost" />
+            <p>{t.walkthrough.preparing}</p>
+          </div>
+        )}
         {status && (
           <div className={`wt-status${d.error ? ' error' : ''}`} title={d.error && d.error !== INTERRUPTED ? d.error : undefined}>
             {status}
@@ -313,10 +323,10 @@ export function WalkthroughPlayer({ thread, file, autoplay = false }: { thread: 
         <button className="btn small" aria-label={t.walkthrough.previous} title={t.walkthrough.previous} disabled={p.slide === 0} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide - 1)}>
           ◀
         </button>
-        <button className="btn small wt-play" aria-label={p.playing ? t.walkthrough.pause : t.walkthrough.resume} title={p.playing ? t.walkthrough.pause : t.walkthrough.resume} onMouseDown={(e) => e.preventDefault()} onClick={p.toggle}>
+        <button className="btn small wt-play" disabled={!slide} aria-label={p.playing ? t.walkthrough.pause : t.walkthrough.resume} title={p.playing ? t.walkthrough.pause : t.walkthrough.resume} onMouseDown={(e) => e.preventDefault()} onClick={p.toggle}>
           {p.playing ? '❚❚' : '▶'}
         </button>
-        <button className="btn small" aria-label={t.walkthrough.next} title={t.walkthrough.next} disabled={p.slide >= d.slides.length - 1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide + 1)}>
+        <button className="btn small" aria-label={t.walkthrough.next} title={t.walkthrough.next} disabled={!slide || p.slide >= d.slides.length - 1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide + 1)}>
           ▶▶
         </button>
         <div className="wt-segments">
@@ -326,7 +336,7 @@ export function WalkthroughPlayer({ thread, file, autoplay = false }: { thread: 
             </button>
           ))}
         </div>
-        <span className="wt-count">{t.walkthrough.slide(p.slide + 1, d.slides.length, !d.done)}</span>
+        {slide && <span className="wt-count">{t.walkthrough.slide(p.slide + 1, d.slides.length, !d.done)}</span>}
         <button className={`btn small${p.captions ? ' on' : ''}`} aria-pressed={p.captions} title={t.walkthrough.captions} onMouseDown={(e) => e.preventDefault()} onClick={p.toggleCaptions}>
           CC
         </button>

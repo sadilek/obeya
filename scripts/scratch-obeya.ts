@@ -110,8 +110,9 @@
 // what „Agenten und Modelle“ sets per group (`settings.json`'s `agents`: Codex for workers, say).
 // `"voice": true` gives the scratch Obeya the voice of the machine's Obeya (OBEYA_HOME where the
 // script runs, else ~/.obeya): a copy of its demo settings and a link to its installed voices, for
-// what Obeya itself speaks (a walkthrough); without it, the scratch home has the default settings
-// and no voice installed.
+// what Obeya itself speaks (a walkthrough); an object instead is demo settings over the machine's
+// (`{ "voice": "kokoro" }`: another voice than the owner's, so a demo tells what Obeya says apart
+// from its own narration). Without it, the scratch home has the default settings and no voice installed.
 // A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
@@ -227,8 +228,8 @@ interface Stage {
   language?: Language;
   /** The owner's conversation language; the interface's without it. */
   conversation?: Language;
-  /** Speaks in the voice of the machine's Obeya. */
-  voice?: boolean;
+  /** Speaks in the voice of the machine's Obeya, or in the demo settings given over its. */
+  voice?: boolean | Record<string, unknown>;
   /** What „Agenten und Modelle“ sets per group, as `settings.json` keeps it under `agents`. */
   agents?: Record<string, unknown>;
   /** The directory of the canvas's repository under the scratch directory, and so its id (default `repo`). */
@@ -381,7 +382,8 @@ for (const k of ['language', 'conversation'] as const) if (stage[k] && !LANGUAGE
 writeFileSync(join(home, 'settings.json'), `${JSON.stringify({ language: stage.language ?? demoSettingsHere().language, ...(stage.conversation ? { conversationLanguage: stage.conversation } : {}), ...(stage.agents ? { agents: stage.agents } : {}) })}\n`);
 if (stage.voice) {
   const machine = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
-  if (existsSync(join(machine, 'demo.json'))) copyFileSync(join(machine, 'demo.json'), join(home, 'demo.json'));
+  const settings = existsSync(join(machine, 'demo.json')) ? (JSON.parse(readFileSync(join(machine, 'demo.json'), 'utf8')) as Record<string, unknown>) : {};
+  writeFileSync(join(home, 'demo.json'), `${JSON.stringify({ ...settings, ...(typeof stage.voice === 'object' ? stage.voice : {}) }, null, 2)}\n`);
   if (existsSync(join(machine, 'voices')) && !existsSync(join(home, 'voices'))) symlinkSync(join(machine, 'voices'), join(home, 'voices'));
 }
 // the owner's key, made before the server starts, which takes it from the home (owner.ts); code from before it has none and ignores it

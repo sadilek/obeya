@@ -344,11 +344,14 @@ answer has one walkthrough), a ninth slide, a narration in parts that do not mat
 slide's file outside the repository or too large to show from, lines it lacks, more than 30 lines,
 or a range outside them. A file the agent passes on as a walkthrough of its own is left out.
 
-With its first slide the walkthrough shows under the question, before the answer's words: in the
+One asked for with "Show as walkthrough" shows its player at once, at full size, with the shape of a
+title slide shimmering and "The walkthrough is being written …" until its title slide comes, so it
+is plain that it is being made; one the agent answers as text after all goes again. Any other
+walkthrough shows with its first slide under the question, before the answer's words: in the
 sheet, in the log of the card it was asked on, on a Question card in its conversation, as a message
 without words that cannot be replied to yet. The answer's words then come in above it without
 interrupting it, and the walkthrough is the first of the answer's files. It is a file of the
-thread's directory, `<name>.walkthrough.json` named after its title (a later answer gets a name of
+thread's directory, `<name>.walkthrough.json` named after its title (one asked for with the button, after its question) (a later answer gets a name of
 its own), holding the slides as shown (a code slide with its lines), each slide's narration as the
 sentences it is voiced in (and for a narration in parts, the item of each), whether every slide is
 there, each sentence's clip once voiced (its file and seconds) and why voicing failed; the clips
@@ -382,7 +385,8 @@ while its message is drawn anew (the answer's words arriving) and pauses once no
 
 #### Question cards
 
-"Make it a card" in a looked-up answer's head moves its thread onto a **Question card** beside the
+"Make it a card" in a looked-up answer's head (on hover, as replying is; always on a screen without
+hover) moves its thread onto a **Question card** beside the
 card whose log held it: its question as title, its exchanges as conversation, the same session going on.
 While the card exists, the sheet shows "On the card “…”" in place of its answers; once it is
 archived or deleted they return, and "Make it a card" again opens the card, back from the archive if
@@ -564,6 +568,9 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   first sound came 7–12 s after a click on "Show as walkthrough" and 2–5 s after the first slide of
   a new question (Qwen3 with the owner's clone, its first slide 20–30 s after the question); with
   three walkthroughs voiced at once the player still waited 2–5 s now and then.
+- **The actions in an answer's head show on hover** (owner, 2026-11-07): "Make it a card" and "Show
+  as walkthrough" appear as the reply button beside them does, for one look; on a screen without
+  hover they stay in view.
 - **The player is Obeya's page, the walkthrough a file of data** (2026-11-06). Rejected: a player
   page written into the thread's directory with the slides (as an HTML artifact, sandboxed): every
   walkthrough would keep the player of its day, and its words and look would live apart from the

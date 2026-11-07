@@ -29,6 +29,9 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
 - *"Show as walkthrough"* shows on hover in the head of a text answer in Obeya's sheet only (W2
   brings it everywhere). It follows up in the answer's thread; a direct answer has no thread and no
   button.
+- *Demos of walkthroughs* (owner, 2026-11-07): in a demo video of this feature, the walkthrough
+  inside it speaks in Kokoro (a scratch Obeya staged with `"voice": {"voice": "kokoro"}`), so the
+  presentation in the video is told apart from the video's own narration in the owner's voice.
 - *Not yet*: the caption is the whole sentence, without a pointer (W3); the tool checks a slide's
   form, not whether its lines say what it claims or its narration only reads it out (W4); the player
   is not tuned for the phone, demo settings without a voice end in "Voicing failed", and sentences

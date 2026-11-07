@@ -22,7 +22,7 @@ import type { AgentRuntime } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './workers';
 import { clip, messageOf } from '../core/text';
-import { AnswerWalkthrough, readWalkthrough, type Voicing, WALKTHROUGH_RULES } from './walkthrough';
+import { AnswerWalkthrough, prepareWalkthrough, readWalkthrough, type Told, type Voicing, WALKTHROUGH_RULES } from './walkthrough';
 import { isWalkthrough, type Walkthrough } from '../core/walkthrough';
 
 export interface AnswerOptions {
@@ -56,6 +56,8 @@ type Exchange = Talk & { about?: string; session?: string };
 type By = 'koordinator' | 'project';
 
 export class Answers {
+  /** "Show as walkthrough": the walkthrough each exchange asked for, shown before its first slide. */
+  private prepared = new Map<number, Told>();
   /** Exchanges being looked up, so a resume does not ask twice. */
   private busy = new Set<number>();
   /** The turns of each thread, one after the other: two never run in one session at once. */
@@ -90,7 +92,8 @@ export class Answers {
     }
     this.busy.add(talkId);
     // a walkthrough the look-up began before a restart: the one it tells now takes its place
-    if (t.files?.length) this.o.board.talkFiles(talkId, []);
+    const prepared = this.prepared.get(talkId);
+    if (t.files?.length && !prepared) this.o.board.talkFiles(talkId, []);
     const { by, about, project } = this.agentFor(root);
     const reading = t.cardId && this.o.board.item(t.cardId) ? t.cardId : undefined;
     // what it reads shows on the open card, as an exploration agent's reading does
@@ -119,6 +122,7 @@ export class Answers {
           this.o.board.talkFiles(talkId, files);
           if (reading) this.showLive(reading, 'say', by, thread, files);
         },
+        ...(prepared ? { prepared } : {}),
         // under the question in the sheet, and in the conversation of the card it was asked on
         onLimit: (until) => {
           this.o.board.waitsForLimit({ talk: talkId }, until);
@@ -134,7 +138,10 @@ export class Answers {
       })
         .then((a) => this.deliver(talkId, thread, by, t.question!, a, reading, project))
         .catch((e) => this.deliver(talkId, thread, by, t.question!, { text: this.o.board.t.answer.failed(messageOf(e)) }, reading, project)),
-    ).finally(() => this.busy.delete(talkId));
+    ).finally(() => {
+      this.busy.delete(talkId);
+      this.prepared.delete(talkId);
+    });
   }
 
   /**
@@ -270,6 +277,10 @@ export class Answers {
     const talk = this.o.board.addTalk(this.o.board.t.answer.walkthroughAsked, this.o.board.t.answer.walkthroughReply, null, { question: asWalkthrough(t.question ?? t.said, t.answer), about: t.about ?? null });
     this.o.board.followTalk(talk, talkId);
     this.o.voicing.warm(this.o.board.conversation());
+    // its player stands there at once, at full size, until the first slide comes
+    const prepared = prepareWalkthrough(this.o.dirOf(t.thread), t.question ?? t.said, this.o.board.conversation());
+    this.prepared.set(talk, prepared);
+    this.o.board.talkFiles(talk, [{ name: prepared.file.slice(this.o.dirOf(t.thread).length + 1), caption: '' }]);
     this.lookUp(talk);
     return talk;
   }
@@ -445,11 +456,13 @@ export class Answers {
     onLimit: (until: number | undefined) => void;
     /** The walkthrough of the answer has its first slide: its player shows before the answer's words. */
     onShown: (files: AnswerFile[]) => void;
+    /** The walkthrough the owner asked for, showing already. */
+    prepared?: Told;
   }): Promise<OwnerAnswer> {
     const dir = this.o.dirOf(c.thread);
     mkdirSync(dir, { recursive: true });
     const voicing = this.o.voicing;
-    const told = voicing && new AnswerWalkthrough({ dir, checkout: this.o.pathFor(c.about), language: this.o.board.conversation(), voicing, onShown: c.onShown });
+    const told = voicing && new AnswerWalkthrough({ dir, checkout: this.o.pathFor(c.about), language: this.o.board.conversation(), voicing, onShown: c.onShown, ...(c.prepared ? { prepared: c.prepared } : {}) });
     if (!told) return this.consulted(c, dir);
     // the walkthrough comes with the answer, first among its files
     return this.consulted(c, dir, told)

@@ -173,6 +173,12 @@ export class Told {
     // a directory of its own, made here: one that is there already is not the server's
     mkdirSync(this.clipsPath);
     this.data = { title, slides: [], done: false, clips: [], clipsDir };
+    this.write();
+  }
+
+  /** Its title, once the title slide gives it (a walkthrough shown before its first slide has none yet). */
+  titled(title: string) {
+    this.data.title = title;
   }
 
   push(slide: Slide) {
@@ -220,8 +226,12 @@ export class AnswerWalkthrough {
       language: Language;
       voicing: Voicing;
       onShown?: (files: AnswerFile[]) => void;
+      /** The walkthrough the owner asked for, shown before its first slide (`prepareWalkthrough`). */
+      prepared?: Told;
     },
-  ) {}
+  ) {
+    this.told = o.prepared;
+  }
 
   tool(): AgentTool {
     return {
@@ -235,7 +245,7 @@ export class AnswerWalkthrough {
   /** The answer's file, once the walkthrough has its first slide. */
   files(): AnswerFile[] {
     const t = this.told;
-    return t ? [{ name: t.file.slice(this.o.dir.length + 1), caption: t.data.title }] : [];
+    return t?.data.slides.length ? [{ name: t.file.slice(this.o.dir.length + 1), caption: t.data.title }] : [];
   }
 
   /** The turn is over: the walkthrough has all the slides it gets. */
@@ -247,13 +257,14 @@ export class AnswerWalkthrough {
     const parsed = SLIDE.safeParse(input);
     if (!parsed.success) return `Not shown: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'slide'}: ${i.message}`).join('; ')}.`;
     const given = parsed.data;
-    const t = this.told;
-    if (!t && given.type !== 'title') return 'Not shown: a walkthrough begins with its title slide.';
-    if (t && given.type === 'title') return 'Not shown: an answer has one walkthrough, and it has its title slide already.';
-    if (t && t.data.slides.length >= MAX_SLIDES) return `Not shown: a walkthrough has at most ${MAX_SLIDES} slides. Call answer_owner now.`;
+    const begun = !!this.told?.data.slides.length;
+    if (!begun && given.type !== 'title') return 'Not shown: a walkthrough begins with its title slide.';
+    if (begun && given.type === 'title') return 'Not shown: an answer has one walkthrough, and it has its title slide already.';
+    if (begun && this.told!.data.slides.length >= MAX_SLIDES) return `Not shown: a walkthrough has at most ${MAX_SLIDES} slides. Call answer_owner now.`;
     const slide = this.slideOf(given);
     if (typeof slide === 'string') return `Not shown: ${slide}`;
-    const told = t ?? (this.told = new Told(this.fileFor(given.title), this.o.language, given.title.trim()));
+    const told = this.told ?? (this.told = new Told(walkthroughFile(this.o.dir, given.title), this.o.language, given.title.trim()));
+    if (!begun) told.titled(given.title.trim());
     told.push(slide);
     const n = told.data.slides.length;
     if (n === 1) this.o.onShown?.(this.files());
@@ -316,26 +327,36 @@ export class AnswerWalkthrough {
     return lines.slice(from - 1, to);
   }
 
-  /** A file of its own in the thread's directory, named after its title: earlier answers keep theirs. */
-  private fileFor(title: string): string {
-    mkdirSync(this.o.dir, { recursive: true });
-    const base =
-      title
-        .normalize('NFKD')
-        .replace(/\p{M}/gu, '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]+/gu, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 50)
-        .replace(/-+$/, '') || 'walkthrough';
-    // neither it nor its clips' directory there yet, so nothing of the agent's stands in for them (a link elsewhere)
-    for (let n = 1; ; n++) {
-      const name = n === 1 ? base : `${base}-${n}`;
-      const file = join(this.o.dir, `${name}${WALKTHROUGH_SUFFIX}`);
-      if (!existsSync(file) && !lexists(join(this.o.dir, `${name}.clips`)) && !lexists(file)) return file;
-    }
+}
+
+/**
+ * A file of its own in the thread's directory, named after its title: earlier answers keep theirs.
+ */
+export function walkthroughFile(dir: string, title: string): string {
+  mkdirSync(dir, { recursive: true });
+  const base =
+    title
+      .normalize('NFKD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50)
+      .replace(/-+$/, '') || 'walkthrough';
+  // neither it nor its clips' directory there yet, so nothing of the agent's stands in for them (a link elsewhere)
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? base : `${base}-${n}`;
+    const file = join(dir, `${name}${WALKTHROUGH_SUFFIX}`);
+    if (!existsSync(file) && !lexists(join(dir, `${name}.clips`)) && !lexists(file)) return file;
   }
 }
+
+
+/**
+ * "Show as walkthrough": the walkthrough the owner asked for, shown at once and empty until its
+ * agent hands over the title slide, named after the question it answers.
+ */
+export const prepareWalkthrough = (dir: string, question: string, language: Language) => new Told(walkthroughFile(dir, question), language, '');
 
 const lexists = (path: string) => {
   try {
