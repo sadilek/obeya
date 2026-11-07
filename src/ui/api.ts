@@ -190,6 +190,8 @@ export const api = {
   /** The token from `claude setup-token`, for the sessions that run on a token. */
   setupToken: (token: string) => call<{ saved: true }>('POST', '/api/setup/token', { token }),
   setupIdentity: (name: string, email: string) => call<MachineView>('POST', '/api/setup/identity', { name, email }),
+  /** Whether the system's folder dialog is offered to this browser: the machine has one, and the browser runs on it. */
+  setupPicker: () => call<{ picker: boolean }>('GET', '/api/setup/pick'),
   /** A folder from the system's dialog; null when cancelled. */
   setupPick: (prompt: string) => call<{ path: string | null }>('POST', '/api/setup/pick', { prompt }),
   /** The first canvas from a folder (saved at once) or a clone (the view follows it). */
@@ -723,6 +725,34 @@ export interface EveryCanvas {
 }
 
 /**
+ * What the connection to every canvas does with what it hears, each part of `EveryCanvas` set
+ * through `set`. The last canvas stopped (its repository gone, say): the page goes to `/` (setup, or
+ * a canvas started since), as a canvas's own page does once its canvas is gone, and the phone view
+ * never gets an empty list of canvases.
+ */
+export function everyCanvasHeard(
+  set: {
+    snapshots: (f: (s: Record<string, CanvasSnapshot>) => Record<string, CanvasSnapshot>) => void;
+    usage: (u: Usage | null) => void;
+    canvases: (c: CanvasInfo[]) => void;
+  },
+  leave = () => location.replace('/'),
+): Link['message'] {
+  return (msg) => {
+    const on = msg.canvas;
+    if (msg.type === 'snapshot' && on) set.snapshots((s) => ({ ...s, [on]: msg.snapshot }));
+    else if (msg.type === 'usage') set.usage(msg.usage);
+    else if (msg.type === 'canvases' && !msg.canvases.length) leave();
+    else if (msg.type === 'canvases') {
+      set.canvases(msg.canvases);
+      // a canvas stopped: its cards go with it
+      const ids = new Set(msg.canvases.map((c) => c.id));
+      set.snapshots((s) => (Object.keys(s).every((k) => ids.has(k)) ? s : Object.fromEntries(Object.entries(s).filter(([k]) => ids.has(k)))));
+    }
+  };
+}
+
+/**
  * Every canvas live over one WebSocket, for the phone view, which shows them all: it opens in one
  * handshake and hears what is server-wide once. A socket per canvas (until 2026-11-06) made a phone
  * on a slow network wait for each in turn (a browser opens one at a time to the same host), and it
@@ -738,17 +768,7 @@ export function useEveryCanvas(): EveryCanvas {
       keepOpen(EVERY, {
         path: 'ws',
         ...quiet,
-        message: (msg) => {
-          const on = msg.canvas;
-          if (msg.type === 'snapshot' && on) setSnapshots((s) => ({ ...s, [on]: msg.snapshot }));
-          else if (msg.type === 'usage') setUsage(msg.usage);
-          else if (msg.type === 'canvases') {
-            setCanvases(msg.canvases);
-            // a canvas stopped: its cards go with it
-            const ids = new Set(msg.canvases.map((c) => c.id));
-            setSnapshots((s) => (Object.keys(s).every((k) => ids.has(k)) ? s : Object.fromEntries(Object.entries(s).filter(([k]) => ids.has(k)))));
-          }
-        },
+        message: everyCanvasHeard({ snapshots: setSnapshots, usage: setUsage, canvases: setCanvases }),
         lost: () => checkAccess(),
       }),
     [],

@@ -203,7 +203,12 @@ On each open finding the owner decides "To contributor", "Change it myself", "As
 "Ignore" (a second click takes it back), as they pick a question's options: the decisions stand in the card's draft, show above the
 field ("Finding 1: To contributor") and go to the worker with the one Send of every card, with words
 of the owner's or alone; with several chosen as follow-up tasks the field says how many tasks they
-make as bundled ("→ 1 follow-up task"). The finding then reads what is under way ("Going to amerlander
+make as bundled ("→ 1 follow-up task"). Decisions still standing unsent at the approval go with it
+where they fit a merge: "As a follow-up task" and "Ignore" are decided as on the Send, shown in the
+card's log before the merge, and the worker hears them with it (on their own where the approval
+merges nothing, or the forge refuses the merge). "To contributor" and "Change it myself" hold the PR
+up: while one stands unsent, the approve buttons are greyed and a line below them says to send it
+first or take it back. The finding then reads what is under way ("Going to amerlander
 …", "Becoming a follow-up task …") until the worker records what came of it. Words alone that ask the same („schick ihm Befund 1“) count the
 same; anything else the owner says (a question, more to look at) stays on the card.
 
@@ -511,6 +516,12 @@ A card no agent worked on, a prototype or an archived card has no field.
   so alone it costs no turn. Rejected: only saying so in words („Befund 2 ist egal“; it works, but is
   not found beside the other choices, and costs a turn of the worker); a click that ignores at once
   (every other choice goes with the Send).
+- **Decisions on findings left unsent go with the merge where they fit it** (2026-11-06, the review
+  of PR #57: the owner chose "As a follow-up task" for both findings and clicked "Merge" without
+  Send; the choices stayed in the field and no task was made). A follow-up task or an ignored finding
+  asks nothing of the PR, so the approval carries it. Rejected: carrying a request to the
+  contributor or the worker's own change too (either means the PR is not to be merged as it is);
+  greying "Merge" while any decision stands unsent (the owner's intent is plain for the other two).
 - **Waiting for the contributor without a request is a snooze of the handover** (2026-11-03, the
   review of PR #37: the owner waited for the contributor's answer to a question on the PR, while the
   card went on asking for the merge). A snooze keeps the handover approvable and "Wake now"

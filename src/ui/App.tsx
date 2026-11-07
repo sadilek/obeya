@@ -34,9 +34,9 @@ import { know, known } from './known';
 import { addAll, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, movesWith, shifted, toggle } from './selection';
 import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
 import { PlanDirNote, planDirBoxes, useHiddenEmptyNotes } from './planDirs';
-import { pastedShots } from './pasteHint';
-import { attachTo, imageFiles } from './shots';
-import { cardDraft, drafted, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
+import { pastedShots, pastedText } from './pasteHint';
+import { filesTo, imageFiles } from './shots';
+import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
 import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath, linkSpot, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
@@ -1194,16 +1194,24 @@ function Canvas({
   useEffect(() => {
     const up = (e: KeyboardEvent) => e.code === 'Space' && letGoRef.current();
     const release = () => letGoRef.current();
-    // a screenshot pasted (⌘V) anywhere but in a text field goes to the field in view, or beside the mic
+    // a screenshot, a file copied in the file manager (by its path) or text pasted (⌘V) anywhere but
+    // in a text field goes to the field in view, or beside the mic
     const paste = (e: ClipboardEvent) => {
       const el = e.target;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)) return;
-      const files = imageFiles(e.clipboardData?.files);
+      const files = [...(e.clipboardData?.files ?? [])];
       const key = fieldFor(where());
-      if (!files.length || !takesImages(key)) return;
+      if (files.length) {
+        if (!takesImages(key)) return;
+        e.preventDefault();
+        if (imageFiles(e.clipboardData?.files).length) pastedShots();
+        return void filesTo(key, files);
+      }
+      const text = e.clipboardData?.getData('text/plain').trim() ?? '';
+      if (!text) return;
       e.preventDefault();
-      pastedShots();
-      void attachTo(key, files);
+      pastedText();
+      insertPasted(key, [text]);
     };
     addEventListener('keyup', up, true);
     addEventListener('pointerup', release);

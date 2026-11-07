@@ -250,14 +250,23 @@ export function serve(
   const named = (id: string, text: string) => `{"canvas":${JSON.stringify(id)},${text.slice(1)}`;
   /**
    * A snapshot to a page that is behind (a slow network, a phone in a tunnel) does not queue up
-   * behind the ones before it: the page gets the newest once it caught up (`drain`).
+   * behind the ones before it: the page is owed canvas `id`'s and gets the newest once it caught
+   * up (`drain`). One that Bun dropped (past its backpressure limit) stays owed too. False when owed.
    */
   const deliver = (ws: ServerWebSocket<Socket>, id: string, type: ServerMessage['type'], text: string) => {
-    if (type === 'snapshot') {
-      if (ws.getBufferedAmount() > BEHIND_BYTES) return void (ws.data.owed ??= new Set()).add(id);
-      ws.data.owed?.delete(id);
+    if (type !== 'snapshot') {
+      put(ws, text);
+      return true;
     }
-    put(ws, text);
+    const sent = ws.getBufferedAmount() <= BEHIND_BYTES && put(ws, text) !== 0;
+    if (sent) ws.data.owed?.delete(id);
+    else (ws.data.owed ??= new Set()).add(id);
+    return sent;
+  };
+  /** Canvas `c`'s message as page `ws` takes it: naming the canvas on a connection to every canvas. */
+  const toward = (ws: ServerWebSocket<Socket>, c: CanvasRuntime, msg: ServerMessage) => {
+    const text = JSON.stringify(msg);
+    return deliver(ws, c.id, msg.type, ws.data.canvas === EVERY ? named(c.id, text) : text);
   };
   const sendTo = (id: string, msg: ServerMessage) => {
     const text = JSON.stringify(msg);
@@ -269,10 +278,7 @@ export function serve(
   };
   /** What canvas `c` sends a page as it connects: its restart, its snapshot, the notices still to undo. */
   const greet = (ws: ServerWebSocket<Socket>, c: CanvasRuntime) => {
-    const send = (msg: ServerMessage) => {
-      const text = JSON.stringify(msg);
-      put(ws, ws.data.canvas === EVERY ? named(c.id, text) : text);
-    };
+    const send = (msg: ServerMessage) => toward(ws, c, msg);
     send({ type: 'restart', restart: pending(c.id) });
     send({ type: 'snapshot', snapshot: c.board.snapshot() });
     if (ws.data.canvas !== EVERY) put(ws, waitingMessage());
@@ -395,6 +401,8 @@ export function serve(
     <T,>(x: T | undefined, fn: (x: T, req: Request) => unknown | Promise<unknown>) =>
     (req: Request): Response | Promise<Response> =>
       x ? handle(() => fn(x, req)) : notFound();
+  /** The system's folder dialog, for a browser on this machine that has one. */
+  const picker = (req: Request, srv: Bun.Server<unknown>) => !!machine?.picker && access.isLocal(req, srv);
   /** Nothing the owner said came through: Whisper understood nothing (`null`), or heard nothing. */
   const unheard = (c: CanvasRuntime, text: string | null) => ({ confirm: text === null ? c.board.t.voice.notUnderstood : c.board.t.voice.nothingHeard, unheard: true });
 
@@ -662,10 +670,13 @@ export function serve(
       '/api/setup/git-preview': { POST: needs(machine, async (m, req) => m.gitPreview(await req.json())) },
       '/api/setup/git': { POST: needs(machine, async (m, req) => m.gitSetup(await req.json())) },
       '/api/setup/canvas': { POST: needs(machine, async (m, req) => m.canvas(await req.json())) },
-      // the system's folder dialog, open as long as the owner takes
+      // the system's folder dialog, open as long as the owner takes; whether it is offered here (GET);
+      // only on this machine, as it opens on this machine's screen
       '/api/setup/pick': {
+        GET: (req, srv) => Response.json({ picker: picker(req, srv) }),
         POST: async (req, srv) => {
           if (!machine) return notFound();
+          if (!access.isLocal(req, srv)) return onlyHere();
           srv.timeout(req, 0);
           const { prompt } = ((await req.json().catch(() => ({}))) ?? {}) as { prompt?: unknown };
           return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));
@@ -1116,12 +1127,11 @@ export function serve(
       drain: (ws: ServerWebSocket<Socket>) => {
         const owed = ws.data.owed;
         if (!owed?.size) return;
+        // Bun calls this while bytes are still buffered: what does not fit yet waits for the next call
         for (const id of [...owed]) {
-          owed.delete(id);
           const c = byId.get(id);
-          if (!c) continue;
-          const text = JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage);
-          put(ws, ws.data.canvas === EVERY ? named(id, text) : text);
+          if (!c) owed.delete(id);
+          else if (!toward(ws, c, { type: 'snapshot', snapshot: c.board.snapshot() })) return;
         }
       },
       close: (ws: ServerWebSocket<Socket>) => {

@@ -330,7 +330,8 @@ the card's agent.
 ### Other files
 
 A file of another kind (a PDF, a log, a spreadsheet, a folder in the app) dropped on a field or on
-the microphone, or together with screenshots, goes in by its path, as a terminal agent's prompt
+the microphone, or together with screenshots, or copied in the file manager and pasted (in a field,
+or outside one where a pasted screenshot would go, see Pasted text), goes in by its path, as a terminal agent's prompt
 takes a file dragged from the file manager, so the owner can have the agent read it, move it or
 change it where it lies. The app knows the path from the system (see App). A browser does not tell
 a page where a dropped file lies, so Obeya looks for it on its own machine: Spotlight on a Mac, else
@@ -355,6 +356,21 @@ A recording nothing came of, or that Obeya refused, leaves the screenshots where
 connection breaks before the answer, the page asks Obeya by the recording's id whether it arrived,
 and returns words and screenshots to the field only if not; the command's line then says "Obeya has
 it; only its answer did not come through." instead of "That did not work".
+
+### Pasted text
+
+Text pasted (⌘V / Ctrl+V) outside a text field, with no file in the clipboard, goes where a
+pasted screenshot goes: into the field in view (the open card's, or Obeya's sidebar's), at the end of
+its text in a paragraph of its own, without taking the focus, so holding the microphone next sends
+it with what is said. With no such field it waits beside the microphone, shown by its first two
+lines (× removes it, the tooltip shows more), and goes with the next recording; several pastes wait
+side by side, each its own paragraph. It moves into Obeya's field when the sidebar opens and back
+when it closes, as dropped files' paths do, while it still stands in the field's text, and a reload
+keeps it. What stood in the field goes first in the message, the spoken words after it. A file
+copied in the file manager comes into the page as the file (Chrome hands it over, not its name):
+it goes in by its path as a dropped one does (see Other files). Until the owner has pasted text
+this way once, the line under the microphone names the key ("⌘V adds text, a screenshot or a
+file"), on devices with a mouse or trackpad; the legend of keys lists it too.
 
 ### Skills by `/`
 
@@ -394,6 +410,9 @@ image.
 
 ### Decisions
 
+- **Text pasted on the canvas waits beside the microphone** (2026-11-06), so a question or a task
+  about it can be spoken at once, as with a pasted screenshot. Rejected: opening Obeya's sidebar with
+  the text in its field, which takes the canvas from view and leaves speaking to it a second step.
 - **A conversation, not the log** (2026-10-05). Rejected: both side by side. Workers answer notes
   with `reply`. Rejected: their last words before the owner's next message (often "Ich committe
   jetzt") and a small model summarizing each turn (cost on every turn). A note withdraws an open

@@ -19,7 +19,8 @@
 // later still takes pages offline: `audit` finds the pages shared from here that the live site
 // lacks, and `repair` deploys them again. A manifest that cannot be read refuses the deploy (a site
 // with nothing at its URL is the first one). A host may answer every missing file with a page of its
-// own (Cloudflare Pages serves the overview): a manifest answered that way is missing, not unreadable.
+// own (Cloudflare Pages serves the overview for a site without a `404.html`, as one deployed before
+// Obeya wrote it): a manifest answered that way is missing, not unreadable.
 //
 // The pages come from Obeya's own templates (`demo-page.ts`), each in its demo's language, the
 // overview in the site's. A call writes only its own page and the overview: a page shared earlier
@@ -544,10 +545,10 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   };
 
   /**
-   * Writes the overview, the feed and the sitemap (with a `robots.txt` naming it where the site is
-   * its host's root) from the pages in the directory, and the headers of the artifacts' files. An
-   * unlisted site has none of them: its root and its answer to an address it lacks (`404.html`) are
-   * a blank page, so neither leads to a page.
+   * Writes the overview, the answer to an address the site lacks (`404.html`), the feed and the
+   * sitemap (with a `robots.txt` naming it where the site is its host's root) from the pages in the
+   * directory, and the headers of the artifacts' files. An unlisted site has none of them: its root
+   * and its answer to an address it lacks are a blank page, so neither leads to a page.
    */
   const writeOverview = async (written: Manifest) => {
     await mkdir(dir, { recursive: true });
@@ -564,6 +565,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       .sort((a, b) => newest(b).localeCompare(newest(a)) || a.slug.localeCompare(b.slug));
     const theme = await overviewTheme(dir, pages, written.pages);
     await writeFile(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), theme));
+    await writeFile(join(dir, NOT_FOUND), notFoundHtml(site, overviewLanguage(), theme));
     await writeFile(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
     await writeFile(join(dir, SITEMAP), sitemapXml(site, pages));
     if (new URL(site.url).pathname === '/') await writeFile(join(dir, ROBOTS), robotsTxt(site));
@@ -1166,6 +1168,24 @@ ${
 <script>${overviewScript(w)}</script>`
     : `<p>${esc(w.noDemos)}</p>`
 }
+${credit(language)}</main></body></html>
+`;
+}
+
+/**
+ * A listed site's answer to an address it lacks, in the site's language and with the overview's
+ * theme: no such page, or withdrawn, and a link to the overview. The host serves it at any address,
+ * so it links the overview by its full address and holds everything it needs.
+ */
+function notFoundHtml(site: DemoSite, language: PageLanguage, theme?: string): string {
+  const w = PAGE_WORDS[language];
+  return `<!doctype html>
+<html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>${esc(`${w.notFound} · ${site.title}`)}</title><style>${PAGE_STYLE} .text { margin-top: 14px; }</style>${themeStyle(theme)}</head>
+<body><main>
+<div class="top"><a href="${esc(`${site.url.replace(/\/+$/, '')}/`)}">${esc(w.allDemos)}</a></div>
+<h1>${esc(w.notFound)}</h1>
+<div class="text"><p>${esc(w.notFoundText)}</p></div>
 ${credit(language)}</main></body></html>
 `;
 }

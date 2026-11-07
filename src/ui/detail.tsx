@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
@@ -141,6 +141,8 @@ export function Detail(p: Props) {
     run(async () => {
       if (a.action === 'approve' || a.action === 'pushChanges') await saveHeld(item.id);
       await api.act(item.id, a);
+      // the decisions on findings that went with the approval are no longer the field's to send
+      if (a.action === 'approve' && a.findings) updateDraft(cardDraft(item.id), { findings: undefined });
     }, done);
   // the repository the card is to be built in, before work on it begins: one of the canvas's or a new one
   const choice = useRepoChoice(item, p.onEdit);
@@ -311,7 +313,7 @@ export function Detail(p: Props) {
   const pr = !inFolder && !item.noChange && (item.lands?.land ?? (repoRef?.pullRequests ? 'pr' : 'main')) === 'pr';
   const direct = pr && (item.lands?.direct ?? !!repoRef?.direct);
   const approveButton = item.contribution ? (
-    <ApproveReview c={item.contribution} act={act} />
+    <ApproveReview item={item} act={act} />
   ) : inFolder ? (
     <>
       <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.folder.approved })}>
@@ -334,6 +336,10 @@ export function Detail(p: Props) {
 
   // work waiting for the owner's verdict, with a demo or a summary
   const review = handedOver(item);
+  // on a review card, the findings decided in the field that hold the merge up until they are sent
+  const heldUp = Object.entries(useUnsentDecisions(item))
+    .filter(([, route]) => route === 'contributor' || route === 'self')
+    .map(([id]) => Number(id));
   const demoWaits = item.state === 'waiting' && item.need === 'demo';
   // an agent is on the card and can be stopped
   const running = item.state === 'working' || item.state === 'waiting' || !!item.finishing;
@@ -734,6 +740,7 @@ export function Detail(p: Props) {
       {item.state === 'planned' && !worked && !item.queue && fresh && <p className="hint">{fresh.hint}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
       {review && direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
+      {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
     </>
   );
 }
@@ -765,22 +772,26 @@ function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) 
  * requests to the contributor beside them „Pushen und an … schicken“, which merges nothing and
  * leaves the card waiting for them.
  */
-function ApproveReview({ c, act }: { c: Contribution; act: (a: CardAction, done: ActDone) => Promise<void> }) {
-  const go = (ack: string, pending: string) => act({ action: 'approve' }, { close: true, ack, pending });
+function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+  const c = item.contribution!;
+  const decided = useUnsentDecisions(item);
+  // a follow-up task or an ignored finding goes with the merge; a decision that holds the PR up goes with Send first
+  const heldUp = Object.values(decided).some((route) => route === 'contributor' || route === 'self');
+  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, pending });
   if (c.held?.asks.length)
     return (
-      <button className="btn primary" title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
+      <button className="btn primary" disabled={heldUp} title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
         {t.review.pushSend(c.author)}
       </button>
     );
   const label = c.held ? (c.clash ? t.review.pushMergeAnyway(c.number) : t.review.pushMerge(c.number)) : c.clash ? t.review.mergeAnyway(c.number) : t.review.merge(c.number);
   return (
     <>
-      <button className="btn primary" title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
+      <button className="btn primary" disabled={heldUp} title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
         {label}
       </button>
       {c.held && (
-        <button className="btn" title={c.held.body ? t.review.pushOnlyHint : t.review.pushOnlyQuietHint} onClick={() => act({ action: 'pushChanges' }, { close: true, ack: c.held!.body ? t.review.pushed(c.number) : t.review.pushedQuiet(c.number), pending: t.review.pushingHeld })}>
+        <button className="btn" disabled={heldUp} title={c.held.body ? t.review.pushOnlyHint : t.review.pushOnlyQuietHint} onClick={() => act({ action: 'pushChanges' }, { close: true, ack: c.held!.body ? t.review.pushed(c.number) : t.review.pushedQuiet(c.number), pending: t.review.pushingHeld })}>
           {c.held.body ? t.review.pushOnly : t.review.pushOnlyQuiet}
         </button>
       )}
@@ -2409,6 +2420,13 @@ function Clash({ clash, onPush }: { clash: ClashFound; onPush?: () => void }) {
   );
 }
 
+/** What the owner decided in the card's draft for the findings still open and undecided on the card, which has not gone out yet. */
+function useUnsentDecisions(item: Item): Record<string, ChangeRoute> {
+  const all = useDraft(cardDraft(item.id)).findings;
+  const findings = item.contribution?.findings;
+  return all ? Object.fromEntries(Object.entries(all).filter(([id]) => findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided))) : {};
+}
+
 /** A finding whose bundle still means something: open, or made a follow-up task. */
 const bundled = (f: Finding) => f.status === 'open' || f.status === 'later';
 
@@ -3130,8 +3148,8 @@ function Talk({ item, past, field }: { item: Item; past?: boolean; field?: TalkF
   const at = field && !field.listener && !options ? place : null;
   // a review card's field, where its agent hears the words: the owner's decisions on its findings go with them
   const review = !!item.contribution && !!field && !field.listener && !finished(item.state);
-  const allDecided = useDraft(draft).findings;
-  const decided = review && allDecided ? Object.fromEntries(Object.entries(allDecided).filter(([id]) => item.contribution!.findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided))) : {};
+  const unsent = useUnsentDecisions(item);
+  const decided = review ? unsent : {};
   const deciding = Object.keys(decided).length > 0;
   const send = async (words: string, images?: string[], to?: Reply['to']) => {
     const replyTo = typeof to === 'number' ? to : undefined;

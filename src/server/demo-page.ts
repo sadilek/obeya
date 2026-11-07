@@ -47,6 +47,9 @@ export const PAGE_WORDS: Record<
     copyLink: string;
     copied: string;
     noMatch: string;
+    /** A listed site's answer to an address it lacks (`404.html`): its heading and its line. */
+    notFound: string;
+    notFoundText: string;
   }
 > = {
   de: {
@@ -76,6 +79,8 @@ export const PAGE_WORDS: Record<
     copyLink: 'Link kopieren',
     copied: 'Kopiert',
     noMatch: 'Keine Demo passt zum Filter.',
+    notFound: 'Diese Seite gibt es nicht',
+    notFoundText: 'Unter dieser Adresse liegt keine Demo, oder sie wurde zurückgezogen.',
   },
   en: {
     locale: 'en-US',
@@ -104,6 +109,8 @@ export const PAGE_WORDS: Record<
     copyLink: 'Copy link',
     copied: 'Copied',
     noMatch: 'No demo matches the filter.',
+    notFound: 'This page does not exist',
+    notFoundText: 'There is no demo at this address, or it has been withdrawn.',
   },
 };
 

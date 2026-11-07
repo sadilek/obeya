@@ -211,8 +211,8 @@ render takes one to three minutes). Not with `&`, and do not wait with `sleep` o
 (sleep is blocked; `pgrep -f "node demo.ts"` matches its own command line). A second run of the
 same demo while one runs is refused with the PID of the first.
 
-Narration is synthesised first by `lib/tts.py` (except in a silent demo), in the voice of the demo settings: Piper (the
-default) or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
+Narration is synthesised first by `lib/tts.py` (except in a silent demo), in the voice of the demo settings: Kokoro (the
+default; German narration with it is Piper's), Piper or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
 (Gemini, OpenAI, ElevenLabs, Azure, an own endpoint) with its key from its environment variable or
 a key file. Qwen3 hears each sentence back with Parakeet, the speech recognition that came with
 it, and makes one it stumbled over again. The settings live in `demo.json` in Obeya's home

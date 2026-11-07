@@ -113,12 +113,23 @@ rmSync(out, { recursive: true, force: true });
 const developerId = os === 'darwin' && !!(process.env.APPLE_SIGNING_IDENTITY || process.env.APPLE_CERTIFICATE);
 // without a name, Tauri takes the certificate's own (null removes the ad hoc "-" of tauri.conf.json)
 const signing = developerId ? ['--config', JSON.stringify({ bundle: { macOS: { signingIdentity: process.env.APPLE_SIGNING_IDENTITY ?? null } } })] : [];
-const tauri = (bundles: string, ...more: string[]) =>
-  run(
-    [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : []), ...(opt('config') ? ['--config', opt('config')!] : []), ...signing, ...more],
-    APP,
-    { CI: 'true' },
-  );
+const tauri = (bundles: string, ...more: string[]) => {
+  const cmd = (verbose: boolean) => [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(verbose ? ['--verbose'] : []), ...(opt('config') ? ['--config', opt('config')!] : []), ...signing, ...more];
+  // Tauri's bundle_dmg.sh now and then fails on GitHub's Intel Mac runner where the same commit
+  // builds on the next try (2026-11-05 and -06); Tauri says why only with --verbose, which the
+  // tries after the first add. Bundling again reuses what Rust compiled.
+  const pauses = os === 'darwin' && bundles.split(',').includes('dmg') ? [10, 30] : [];
+  for (const [n, pause] of pauses.entries()) {
+    const verbose = args.includes('--verbose') || n > 0;
+    console.log(`$ ${cmd(verbose).join(' ')}`);
+    const r = Bun.spawnSync(cmd(verbose), { cwd: APP, stdout: 'inherit', stderr: 'inherit', env: { ...process.env, CI: 'true' } });
+    if (r.exitCode === 0) return;
+    console.warn(`build-app: tauri build failed (exit ${r.exitCode}), again in ${pause} s, with --verbose`);
+    rmSync(join(out, 'dmg'), { recursive: true, force: true });
+    Bun.sleepSync(pause * 1000);
+  }
+  run(cmd(args.includes('--verbose') || pauses.length > 0), APP, { CI: 'true' });
+};
 const wanted = bundles.split(',');
 // the updater's archive is of the app, which a DMG's build does not leave in bundle/macos
 if (os === 'darwin' && process.env.TAURI_SIGNING_PRIVATE_KEY && !wanted.includes('app')) wanted.unshift('app');

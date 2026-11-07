@@ -22,11 +22,12 @@ import { knownLanguage, type Language, LANGUAGE_NAMES, LANGUAGES } from './local
 export type NarrationLanguage = Language;
 /**
  * The voice providers (`voices.ts` turns each into what `tts.py` runs). Local models Obeya
- * installs on request (`piper`, the default, and `qwen3`), macOS `say`, the owner's own command or
+ * installs on request (`kokoro`, the default, which speaks English and leaves other languages to
+ * Piper; `piper`; `qwen3`), macOS `say`, the owner's own command or
  * HTTP endpoint, and templates for four hosted services. `none`: no voice at all, a silent video
  * whose subtitles tell what the narration would; each scene lasts as long as its text takes to read.
  */
-export const VOICES = ['none', 'piper', 'qwen3', 'say', 'command', 'http', 'gemini', 'openai', 'elevenlabs', 'azure'] as const;
+export const VOICES = ['none', 'kokoro', 'piper', 'qwen3', 'say', 'command', 'http', 'gemini', 'openai', 'elevenlabs', 'azure'] as const;
 export type VoiceKind = (typeof VOICES)[number];
 /** The hosted services `tts.py` has a template for. */
 export const SERVICES = ['gemini', 'openai', 'elevenlabs', 'azure'] as const satisfies readonly VoiceKind[];
@@ -45,7 +46,7 @@ export interface DemoSettings {
   command?: string;
   /** `http`: the endpoint; `openai`: another base URL; `azure`: the region or the endpoint. */
   url?: string;
-  /** Which of the provider's voices: a Piper voice, a Qwen3 speaker, a `say` voice, a service's voice. */
+  /** Which of the provider's voices: a Kokoro voice, a Piper voice, a Qwen3 speaker, a `say` voice, a service's voice. */
   voiceName?: string;
   /**
    * `qwen3`: a clip to clone per narration language (`.wav`, its exact transcript beside it as
@@ -70,7 +71,7 @@ export interface DemoSettings {
   subtitles?: string[];
 }
 
-export const DEFAULT_DEMO_SETTINGS: DemoSettings = { language: 'de', voice: 'piper' };
+export const DEFAULT_DEMO_SETTINGS: DemoSettings = { language: 'de', voice: 'kokoro' };
 export const DEMO_SETTINGS_FILE = 'demo.json';
 export const DEFAULT_DEMO_DIRECTORY = '~/demos';
 

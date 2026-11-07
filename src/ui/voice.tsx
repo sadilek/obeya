@@ -11,13 +11,14 @@
 import { createContext, useEffect, useRef, useState } from 'react';
 import type { Place } from '../core/layout';
 import { ApiError, api, confirmShownMs, type Heard, holdRestart, undoShownMs, type Where } from './api';
-import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, MIC_DRAFT, moveFiles, moveImages, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, wordsOf } from './draft';
+import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, insertPasted, MIC_DRAFT, moveFiles, moveImages, pastedIn, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, withoutPasted, withoutWords, wordsOf } from './draft';
 import { Aside } from './aside';
 import { type Recording, record } from './recorder';
 import { AttachButton, ShotStrip, useShotInput } from './shots';
 import { replyOn, setReply, useReply } from './reply';
 import { sent, take, type Taken } from './spot';
-import { failText, t } from './strings';
+import { failText, pasteKeys, t } from './strings';
+import { usePasteTextHint } from './pasteHint';
 
 /** Starts a recording, for a text field's microphone and Space held in it; null where nobody listens. */
 export const HoldToTalk = createContext<(() => void) | null>(null);
@@ -393,14 +394,17 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
   const shots = useShotInput({ draft: key, off: !takesImages(key) });
   // the screenshots and files for Obeya show where Obeya is spoken to: in its field while that is in view, else beside the microphone
   const obeya = useRef<string | null>(null);
-  const { images: waiting, text: paths } = useDraft(MIC_DRAFT);
+  const beside = useDraft(MIC_DRAFT);
+  const { images: waiting, text: paths } = beside;
   useEffect(() => {
     if (toObeya(key) && takesImages(key)) {
       obeya.current = key;
       moveImages(MIC_DRAFT, key);
       if (paths.trim()) {
-        insertFiles(key, wordsOf(paths));
-        updateDraft(MIC_DRAFT, { text: '' });
+        const texts = pastedIn(beside);
+        insertFiles(key, wordsOf(withoutPasted(paths, texts)));
+        insertPasted(key, texts);
+        updateDraft(MIC_DRAFT, { text: '', pasted: [] });
       }
     } else if (key === MIC_DRAFT && obeya.current) {
       moveImages(obeya.current, MIC_DRAFT);
@@ -408,12 +412,15 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
       obeya.current = null;
     }
   }, [key, waiting, paths]);
-  const { text } = useDraft(key);
+  const draft = useDraft(key);
+  const pasted = pastedIn(draft);
+  const text = withoutPasted(draft.text, pasted);
   const quote = useReply(key);
+  const pasteHint = usePasteTextHint();
   const into = useFocusedDraft();
   const n = shots.images.length;
   const mic = useHeldByTouch<HTMLButtonElement>();
-  const parts = [...(text.trim() ? [t.voice.withText] : []), ...(n ? [t.voice.withShots(n)] : []), ...(on && quote ? [t.voice.withQuote] : [])];
+  const parts = [...(text.trim() ? [t.voice.withText] : []), ...(pasted.length ? [t.voice.withPasted] : []), ...(n ? [t.voice.withShots(n)] : []), ...(on && quote ? [t.voice.withQuote] : [])];
   return (
     <div id="ptt" className={`${phase}${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
       <div className="ptt-row">
@@ -455,7 +462,7 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
         target !== null && (
           <div id="target">
             → <b>{target}</b>
-            {parts.length > 0 && <span className="with"> {t.voice.with(parts)}</span>}
+            {parts.length > 0 ? <span className="with"> {t.voice.with(parts)}</span> : pasteHint && <span className="hint"> · {t.voice.pasteText(pasteKeys().paste)}</span>}
           </div>
         )
       )}
@@ -463,16 +470,30 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
   );
 }
 
-/** The files dropped on the microphone without a field to take their paths, by name, each to remove. */
+/**
+ * The files dropped on the microphone without a field to take their paths, by name, and the texts
+ * pasted outside a field, by their start: each to remove.
+ */
 function FileChips() {
-  const words = wordsOf(useDraft(MIC_DRAFT).text);
-  if (!words.length) return null;
+  const draft = useDraft(MIC_DRAFT);
+  const texts = pastedIn(draft);
+  const words = wordsOf(withoutPasted(draft.text, texts));
+  if (!words.length && !texts.length) return null;
+  const drop = (text: string) => updateDraft(MIC_DRAFT, { text });
   return (
     <div className="ptt-files">
       {words.map((w, i) => (
-        <span key={i} className="c-file" title={w}>
+        <span key={`f${i}`} className="c-file" title={w}>
           <span className="name">{w.replace(/"/g, '').split(/[\\/]/).at(-1)}</span>
-          <button className="remove" title={t.shots.remove} onClick={() => updateDraft(MIC_DRAFT, { text: words.filter((_, j) => j !== i).join(' ') })}>
+          <button className="remove" title={t.shots.remove} onClick={() => drop(withoutWords(draft.text, [w]))}>
+            ×
+          </button>
+        </span>
+      ))}
+      {texts.map((p, i) => (
+        <span key={`t${i}`} className="c-file c-pasted" title={p.length > PASTED_TITLE ? `${p.slice(0, PASTED_TITLE)} …` : p}>
+          <span className="name">{p.slice(0, 300)}</span>
+          <button className="remove" title={t.shots.remove} onClick={() => drop(withoutPasted(draft.text, [p]))}>
             ×
           </button>
         </span>
@@ -480,6 +501,9 @@ function FileChips() {
     </div>
   );
 }
+
+/** How much of a pasted text its chip's tooltip shows. */
+const PASTED_TITLE = 600;
 
 export function MicIcon({ size }: { size?: number }) {
   return (

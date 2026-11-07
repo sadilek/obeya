@@ -653,6 +653,55 @@ describe('a review card', () => {
     expect(runtime.last.inbox.at(-1)).toContain('Obeya merged the pull request');
   });
 
+  test('decisions on findings left unsent go with the approval: follow-up tasks and ignored findings with the merge', async () => {
+    const id = await reviewCard();
+    await handOver();
+    await workers.approve(id, { findings: { 1: 'later', 2: 'drop' } });
+    expect(fake.said.merges).toEqual([prHead]);
+    expect(board.item(id)!.state).toBe('live');
+    expect(board.item(id)!.contribution!.findings!.map((f) => [f.id, f.status, f.decided])).toEqual([
+      [1, 'open', 'later'],
+      [2, 'dropped', undefined],
+    ]);
+    // the owner reads them in the card's log, before the merge
+    const texts = board.events(id).map((e) => e.text);
+    const decided = texts.findIndex((x) => x.includes('Befund 1 „Path in the file name“: als Folgeaufgabe'));
+    expect(decided).toBeGreaterThan(-1);
+    expect(texts[decided]).toContain('Befund 2 „No shortcut“: ignorieren');
+    expect(decided).toBeLessThan(texts.findIndex((x) => x.includes('PR #5') && x.includes('gemergt')));
+    // the worker hears them with the merge and makes the task, which starts at once: the PR is merged
+    const told = runtime.last.inbox.at(-1)!;
+    expect(told).toContain('Obeya merged the pull request');
+    expect(told).toContain('As follow-up tasks: #1 „Path in the file name“');
+    expect(told).toContain('Ignored: #2 „No shortcut“');
+    runtime.last.call('follow_up_task', { findings: [1], title: 'Check the file name', task: 'The title goes into the file name unchecked.' });
+    expect(board.item(id)!.contribution!.findings![0]!.status).toBe('later');
+    expect(followed.map(([, review]) => review)).toEqual([id]);
+  });
+
+  test('a decision that holds the PR up does not go with the approval: nothing is merged or decided', async () => {
+    const id = await reviewCard();
+    await handOver();
+    await expect(workers.approve(id, { findings: { 1: 'contributor', 2: 'later' } })).rejects.toMatchObject({ code: 'decideFirst' });
+    await expect(workers.approve(id, { findings: { 2: 'self' } })).rejects.toMatchObject({ code: 'decideFirst' });
+    expect(fake.said.merges).toEqual([]);
+    expect(board.item(id)!.state).toBe('waiting');
+    expect(board.item(id)!.contribution!.findings!.map((f) => [f.status, f.decided])).toEqual([
+      ['open', undefined],
+      ['open', undefined],
+    ]);
+  });
+
+  test('a merge the forge refuses after the decisions went with it: the worker hears them all the same', async () => {
+    const id = await reviewCard();
+    await handOver();
+    fake.said.refuse = 'base branch policy prohibits the merge';
+    await expect(workers.approve(id, { findings: { 1: 'later' } })).rejects.toMatchObject({ code: 'mergeRefused' });
+    expect(board.item(id)!.state).toBe('waiting');
+    expect(board.item(id)!.contribution!.findings![0]!.decided).toBe('later');
+    expect(runtime.last.inbox.at(-1)).toContain('As follow-up tasks: #1 „Path in the file name“');
+  });
+
   test('where the PR collides with unpushed commits on the local main, the card says so before the merge, naming the card that landed them', async () => {
     const x = landedLocally('poll.ts', 'Polls every minute');
     const id = await reviewCard();

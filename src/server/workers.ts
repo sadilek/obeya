@@ -1507,14 +1507,19 @@ export class Workers {
       : undefined;
   }
 
-  /** `direct`: the work goes onto the default branch at once instead of into a pull request, where the repository's settings allow it. */
-  async approve(cardId: string, { direct = false }: { direct?: boolean } = {}) {
+  /**
+   * `direct`: the work goes onto the default branch at once instead of into a pull request, where
+   * the repository's settings allow it. `findings`: on a review card, what the owner decided for its
+   * findings and had not sent yet, which goes with the approval (`mergeContribution`).
+   */
+  async approve(cardId: string, { direct = false, findings }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined } = {}) {
     const card = this.card(cardId);
     if (!handedOver(card) || this.landing.has(cardId) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
     if (card.contribution) {
       if (direct) throw new BadRequest('noDirect', 'a review card merges its pull request');
-      return this.mergeContribution(cardId);
+      return this.mergeContribution(cardId, findings && Object.keys(findings).length ? { findings } : {});
     }
+    if (findings && Object.keys(findings).length) throw new BadRequest('notReview', 'only a review card has findings to decide on');
     if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) {
@@ -1593,12 +1598,31 @@ export class Workers {
    * once it is online (`onApproval`; the description stays the contributor's). A refused merge
    * leaves the card waiting for the owner, with the reason. Merged, the card is live and, where work
    * lands on the local main, the checkout pulls the merge.
+   *
+   * `findings`: decisions on findings the owner made and did not send before approving. Those that
+   * fit a merge (a follow-up task, ignored) go with it: decided where the approval goes through
+   * (after a push and its post), and the worker hears them with the merge, or on their own where
+   * nothing is merged; the others (to the contributor, the worker's own change) hold the merge up
+   * and are refused.
    */
-  private async mergeContribution(cardId: string, { merge = true }: { merge?: boolean } = {}) {
+  private async mergeContribution(cardId: string, { merge = true, findings }: { merge?: boolean; findings?: Record<number, ChangeRoute> } = {}) {
     const forge = this.o.forge;
     const c = contributionOf(this.o.board.row(cardId));
     if (!forge || !c) throw new BadRequest('notReview', 'the card reviews no pull request');
     if (!merge && !c.held) throw new BadRequest('notReady', 'nothing of the agent’s waits to be pushed');
+    if (findings) {
+      if (Object.values(findings).some((route) => route !== 'later' && route !== 'drop')) throw new BadRequest('decideFirst', 'a finding for the contributor or the agent’s own change holds the merge up: send that decision first');
+      const shut = Object.keys(findings).filter((id) => !c.findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided));
+      if (shut.length) throw new BadRequest('noFinding', `finding ${shut.join(', ')} is not open`);
+    }
+    // the decisions as the owner reads them in the card's log, and the worker with the approval
+    const decide = (): Comments | undefined => {
+      if (!findings) return undefined;
+      const decided = this.decide(cardId, findings);
+      this.o.board.log(cardId, 'hint', 'owner', decided.log);
+      return { text: decided.note, images: [] };
+    };
+    const along = (a: Comments | undefined, b: Comments | undefined): Comments | undefined => (a && b ? { text: `${a.text}\n\n${b.text}`, images: [...a.images, ...b.images] } : (a ?? b));
     const t = this.o.board.t.worker;
     const generation = this.generation.get(cardId);
     const held = this.held(cardId).length > 0;
@@ -1612,7 +1636,7 @@ export class Workers {
         throw new BadRequest('mergeRefused', messageOf(e));
       });
       if (!handedOver(this.card(cardId)) || this.generation.get(cardId) !== generation) throw new BadRequest('notReady', 'the card is not ready for review');
-      if (now.state === 'MERGED') return this.merged(cardId, now.mergeCommit, t.mergedContribution(c.number));
+      if (now.state === 'MERGED') return this.merged(cardId, now.mergeCommit, t.mergedContribution(c.number), decide());
       if (now.state === 'CLOSED') throw new BadRequest('prClosed', 'the pull request was closed');
       // the worker's own commits go on top of the head they were made on; already there, only their text is still to post
       if (!c.reviewed || (now.head !== c.reviewed && now.head !== c.held?.base)) throw this.moved(cardId, c, now.head);
@@ -1631,10 +1655,14 @@ export class Workers {
         if (now.head !== c.reviewed) await this.pushHeld(cardId, c);
         if (this.generation.get(cardId) !== generation || !this.o.board.item(cardId)) return;
         await this.postHeld(cardId, c);
-        if (c.held.asks.length || !merge) return;
+        if (c.held.asks.length || !merge) {
+          const decided = decide();
+          if (decided) this.deliver(cardId, decided.text, [], true);
+          return;
+        }
       }
-      // the comments held back while the owner watched go with the approval
-      const comments = this.approvalComments(cardId);
+      // the decisions the owner had not sent, and the comments held back while they watched, go with the approval
+      const comments = along(decide(), this.approvalComments(cardId));
       this.o.board.work(cardId, { contribution: JSON.stringify({ ...(contributionOf(this.o.board.row(cardId)) ?? c), approved: true } satisfies StoredContribution) });
       this.o.board.log(cardId, 'state', 'owner', t.approvedMerge(c.number));
       this.o.onApproval?.(cardId);
