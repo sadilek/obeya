@@ -379,7 +379,7 @@ export function silentWav(seconds: number): Buffer {
 /**
  * The voice of walkthroughs, for a test: each sentence it speaks is in `said` (with its language)
  * and lasts a second; `held` keeps it from speaking until `go`, so a test sees the order it takes;
- * a sentence with „stumm“ in it fails.
+ * a sentence with "mute" in it fails.
  */
 export function fakeVoicing() {
   const said: string[] = [];
@@ -388,7 +388,7 @@ export function fakeVoicing() {
   const voicing = new Voicing({
     speak: async (text, out, language) => {
       if (gate) await gate.promise;
-      if (/stumm/i.test(text)) throw new Error('the voice failed\nno model');
+      if (/\bmute\b/i.test(text)) throw new Error('the voice failed\nno model');
       said.push(`${language}:${text}`);
       writeFileSync(out, silentWav(1));
     },

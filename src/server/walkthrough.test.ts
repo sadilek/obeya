@@ -133,16 +133,16 @@ describe('the voice of walkthroughs', () => {
 
   test('a sentence the voice cannot speak fails the walkthrough, which the player says; the others go on', async () => {
     const w = told();
-    hand(w, { type: 'title', title: 'Stumm', narration: 'Eins.' });
-    await until(() => !!read('stumm.walkthrough.json').error);
-    expect(read('stumm.walkthrough.json').error).toBe('no model');
+    hand(w, { type: 'title', title: 'Mute', narration: 'One.' });
+    await until(() => !!read('mute.walkthrough.json').error);
+    expect(read('mute.walkthrough.json').error).toBe('no model');
     // its further slides are shown, not voiced
-    hand(w, { type: 'points', title: 'Zwei', points: ['x'], narration: 'Weiter.' });
-    expect(read('stumm.walkthrough.json').slides).toHaveLength(2);
+    hand(w, { type: 'points', title: 'Two', points: ['x'], narration: 'Next.' });
+    expect(read('mute.walkthrough.json').slides).toHaveLength(2);
     const other = told();
-    hand(other, { type: 'title', title: 'Laut', narration: 'Zwei.' });
-    await until(() => voice.said.includes('en:Zwei.'));
-    expect(voice.said).not.toContain('en:Weiter.');
+    hand(other, { type: 'title', title: 'Loud', narration: 'Two.' });
+    await until(() => voice.said.includes('en:Two.'));
+    expect(voice.said).not.toContain('en:Next.');
   });
 
   test('loads when asked, before the first slide', () => {

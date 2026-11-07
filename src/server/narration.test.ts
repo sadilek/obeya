@@ -11,8 +11,8 @@ import { asOwner } from './testing';
 
 /**
  * Logs its start, each clip and its end; `dies` as the speaker makes it die at the second clip,
- * `stumm` at loading, `lahm` says it loads, then nothing more, `träge` waits 350 ms before it starts,
- * longer than the 300 ms loading deadline the tests give it. A clip whose text says „hängt“ gets no answer, as
+ * `mute` at loading, `stalls` says it loads, then nothing more, `slow` waits 350 ms before it starts,
+ * longer than the 300 ms loading deadline the tests give it. A clip whose text says "hangs" gets no answer, as
  * the Qwen3 voice gave none on 2026-10-21; a clip of several sentences reports each after a while.
  * Given the script as written, it says it heard the text as said.
  */
@@ -20,19 +20,19 @@ const FAKE_VOICE = `
 import { appendFileSync, writeFileSync } from 'node:fs';
 const [log, who] = process.argv.slice(2);
 // a process start slowed down by a busy machine
-if (who === 'träge') await Bun.sleep(350);
+if (who === 'slow') await Bun.sleep(350);
 appendFileSync(log, 'start ' + who + '\\n');
 console.log('loading weights ...');
 // it logs that it stalls once its diagnostic is out
-if (who === 'lahm') { console.error('waiting for the GPU'); appendFileSync(log, 'stalls lahm\\n'); await new Promise(() => {}); }
-if (who === 'stumm') { console.error('cannot load the model'); process.exit(2); }
+if (who === 'stalls') { console.error('waiting for the GPU'); appendFileSync(log, 'stalled\\n'); await new Promise(() => {}); }
+if (who === 'mute') { console.error('cannot load the model'); process.exit(2); }
 console.log(JSON.stringify({ ready: true }));
 let asked = 0;
 for await (const line of console) {
   if (!line.trim()) continue;
   const request = JSON.parse(line);
   if (who === 'dies' && ++asked === 2) { console.error('out of memory'); process.exit(3); }
-  if (request.text.includes('hängt')) { console.error('generating ' + request.text); await new Promise(() => {}); }
+  if (request.text.includes('hangs')) { console.error('generating ' + request.text); await new Promise(() => {}); }
   const sentences = request.text.split('. ');
   if (sentences.length > 1) for (const n of sentences.keys()) { await Bun.sleep(150); console.log(JSON.stringify({ sentence: n + 1, of: sentences.length })); }
   writeFileSync(request.out, 'RIFF');
@@ -120,8 +120,8 @@ describe('the voice Obeya holds', () => {
     expect(await host.clip(clip('eins', 'dies'))).toEqual({ ok: true, seconds: 0.01 });
     expect(await host.clip(clip('zwei', 'dies'))).toEqual({ error: expect.stringContaining('the voice stopped (3): out of memory') });
     expect(await host.clip(clip('drei', 'dies'))).toEqual({ ok: true, seconds: 0.01 });
-    expect(await host.clip(clip('vier', 'stumm'))).toEqual({ error: expect.stringContaining('the voice stopped (2): cannot load the model') });
-    expect(log().filter((l) => l.startsWith('start'))).toEqual(['start dies', 'start dies', 'start stumm']);
+    expect(await host.clip(clip('vier', 'mute'))).toEqual({ error: expect.stringContaining('the voice stopped (2): cannot load the model') });
+    expect(log().filter((l) => l.startsWith('start'))).toEqual(['start dies', 'start dies', 'start mute']);
   });
 });
 
@@ -137,13 +137,13 @@ describe('a voice that stops answering', () => {
         replies.push(`${name}:${text} ${'ok' in reply ? 'ok' : reply.error}`);
       }
     };
-    const a = render('a', ['a1 hängt', 'a2']);
+    const a = render('a', ['a1 hangs', 'a2']);
     const b = render('b', ['b1', 'b2']);
     await until(() => log().includes('start ryan'));
     const sample = host.clip(clip('Probe', 'ryan', 'de'));
     await Promise.all([a, b, sample]);
     expect(await sample).toEqual({ ok: true, seconds: 0.01 });
-    expect(replies[0]).toMatch(/^a:a1 hängt the voice said nothing for 0.4 s while making a clip and was ended: .*generating a1 hängt/s);
+    expect(replies[0]).toMatch(/^a:a1 hangs the voice said nothing for 0.4 s while making a clip and was ended: .*generating a1 hangs/s);
     expect(replies.slice(1)).toEqual(['b:b1 ok', 'a:a2 ok', 'b:b2 ok']);
     // the stuck voice is gone: a new one took the next clip, another the sample (German), a third the renders again
     expect(log().filter((l) => !l.startsWith('end'))).toEqual(['start ryan', 'start ryan', 'en:b1', 'start ryan', 'de:Probe', 'start ryan', 'en:a2', 'en:b2']);
@@ -159,17 +159,17 @@ describe('a voice that stops answering', () => {
     };
     hold(60_000, { loadMs: 300, deadline });
     let settled = false;
-    const loading = host.clip(clip('eins', 'lahm')).then((reply) => { settled = true; return reply; });
+    const loading = host.clip(clip('eins', 'stalls')).then((reply) => { settled = true; return reply; });
     // its diagnostic is out, and the host has read its line of loading output
-    await until(() => log().includes('stalls lahm') && deadlines.length === 2);
-    expect(log()).toEqual(['start lahm', 'stalls lahm']);
+    await until(() => log().includes('stalled') && deadlines.length === 2);
+    expect(log()).toEqual(['start stalls', 'stalled']);
     expect(settled).toBe(false);
     expect(deadlines.map(({ ms, cancelled }) => ({ ms, cancelled }))).toEqual([{ ms: 300, cancelled: true }, { ms: 300, cancelled: false }]);
     deadlines[1]!.expire();
     expect(await loading).toEqual({ error: 'the voice said nothing for 0.3 s while loading and was ended: waiting for the GPU' });
     expect(host.loaded).toBe(false);
-    expect(await host.clip(clip('zwei', 'träge'))).toEqual({ ok: true, seconds: 0.01 });
-    expect(log()).toEqual(['start lahm', 'stalls lahm', 'start träge', 'de:zwei']);
+    expect(await host.clip(clip('zwei', 'slow'))).toEqual({ ok: true, seconds: 0.01 });
+    expect(log()).toEqual(['start stalls', 'stalled', 'start slow', 'de:zwei']);
     // every deadline of the new voice ended by an answer, none by hand
     expect(deadlines.length).toBeGreaterThan(2);
     expect(deadlines.every((d) => d.cancelled)).toBe(true);
@@ -194,7 +194,7 @@ describe('a clip over HTTP', () => {
       expect(await done.json()).toEqual({ ok: true, seconds: 0.01 });
       // a page elsewhere can send text/plain without asking first
       expect((await post(clip('zwei'), 'text/plain')).status).toBe(415);
-      expect((await post({ ...clip('zwei'), out: 'relativ.wav' })).status).toBe(400);
+      expect((await post({ ...clip('zwei'), out: 'relative.wav' })).status).toBe(400);
       expect(log()).toEqual(['start ryan', 'de:eins']);
     } finally {
       server.stop(true);
