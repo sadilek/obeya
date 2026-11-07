@@ -35,50 +35,164 @@ export function hidden(args: unknown[]): unknown[] {
 }
 
 type Options = Omit<Bun.SpawnOptions.SpawnOptions<Bun.SpawnOptions.Writable, 'pipe', 'pipe'>, 'stdout' | 'stderr'>;
+type Output = { code: number; stdout: string; stderr: string; signal: string | null };
 
 /**
- * How many processes `spawnOutput` starts in one turn of the event loop. Starting one takes the
- * server's thread a moment, under load many milliseconds: dozens started at once (a git call in
- * each clone, several landings) held it up for most of a second, in which it answered no page.
- * Those beyond wait for the next turn, so that what else waits comes between.
+ * Where `spawnOutput` starts its processes: on threads of their own, not the server's. Starting a
+ * process holds the thread that starts it until the system has created the process, through the
+ * async `Bun.spawn` too: on Windows tens of milliseconds on an idle machine, under load (antivirus,
+ * many git calls at once) seconds each. A burst of them (a git call in each clone, several
+ * landings, the upstream's fetch) held the server up for 10–20 s, in which it answered no page and
+ * a WebSocket timed out opening; starting only a few per turn of the event loop shortened none of
+ * those stretches. On a thread of its own a slow start holds up only the starts queued behind it
+ * there; two threads, so one slow start does not hold up all. The thread's code is a string, not a
+ * file: the compiled binary has no file to start it from.
  */
-const STARTS_PER_TURN = 4;
-let startedThisTurn = 0;
-const waitingToStart: (() => void)[] = [];
-let turning = false;
-
-/** Settles once a process may start in this turn of the event loop (`STARTS_PER_TURN`). */
-function startTurn(): Promise<void> | undefined {
-  nextTurn();
-  if (startedThisTurn < STARTS_PER_TURN && !waitingToStart.length) {
-    startedThisTurn++;
-    return;
+const THREADS = 2;
+const THREAD_CODE = `
+// first, before any process: a thread that fails without having said so started none
+postMessage({ ready: true });
+self.onmessage = async ({ data: { id, argv, o } }) => {
+  try {
+    const p = Bun.spawn(argv, { ...o, stdout: 'pipe', stderr: 'pipe' });
+    const [stdout, stderr, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+    postMessage({ id, out: { code, stdout, stderr, signal: p.signalCode } });
+  } catch (e) {
+    postMessage({ id, error: { message: String(e?.message ?? e), code: e?.code, errno: e?.errno, syscall: e?.syscall, path: e?.path } });
   }
-  return new Promise((go) => waitingToStart.push(go));
+};`;
+
+/** The options a thread can be given (what crosses to it is copied): the others start the process on the server's thread. */
+const THREADED = new Set(['cwd', 'env', 'stdin', 'timeout', 'killSignal', 'windowsHide', 'windowsVerbatimArguments', 'argv0', 'detached', 'maxBuffer']);
+
+/** A worker as Bun has it: one that may let the server end (`unref`) while it waits for nothing. */
+type RefWorker = Worker & { ref(): void; unref(): void };
+
+interface Thread {
+  worker: RefWorker;
+  waiting: Map<number, { argv: string[]; o: Options; done: (out: Output) => void; failed: (e: Error) => void }>;
+  /** Whether its code has run: one that fails before then started no process. */
+  ready: boolean;
+  /** Set once it failed or ended: it takes no more processes. */
+  lost: boolean;
+}
+const threads: Thread[] = [];
+let lastId = 0;
+/** Set once a thread could not be started: the processes start on the server's thread then. */
+let noThreads = false;
+
+/**
+ * Runs `fn` in a turn of the event loop of its own. A promise settled straight from a thread's
+ * message stays pending for `expect(…).rejects` and `.resolves` of `bun test` (Bun 1.4.3), which
+ * then waits until the test times out; settled from a turn of its own, it is not.
+ */
+const settle = (fn: () => void) => setImmediate(fn);
+
+/** The thread with the fewest processes waiting, a new one while there are fewer than `THREADS`. */
+function thread(): Thread | null {
+  const idle = threads.find((t) => !t.waiting.size);
+  if (idle || threads.length >= THREADS) return idle ?? threads.reduce((a, b) => (b.waiting.size < a.waiting.size ? b : a));
+  if (noThreads) return null;
+  let worker: RefWorker;
+  try {
+    worker = new Worker(URL.createObjectURL(new Blob([THREAD_CODE], { type: 'text/javascript' }))) as RefWorker;
+  } catch (e) {
+    noThreads = true;
+    console.error(`Obeya: processes start on the server's thread, a thread of their own failed to start: ${(e as Error).message}`);
+    return null;
+  }
+  // it keeps the server running only while a process it started is waited for
+  worker.unref();
+  const t: Thread = { worker, waiting: new Map(), ready: false, lost: false };
+  worker.onmessage = ({ data }: MessageEvent<{ ready?: true; id: number; out?: Output; error?: Error & Record<string, unknown> }>) => {
+    if (data.ready) return void (t.ready = true);
+    const w = t.waiting.get(data.id);
+    if (!w) return;
+    t.waiting.delete(data.id);
+    if (!t.waiting.size) worker.unref();
+    settle(() => (data.out ? w.done(data.out) : w.failed(Object.assign(new Error(data.error?.message), data.error))));
+  };
+  worker.onerror = (e) => lose(t, e.message);
+  // ended without an error (terminated): what it was given would wait forever
+  worker.addEventListener('close', () => lose(t, 'it ended'));
+  threads.push(t);
+  return t;
 }
 
-function nextTurn() {
-  if (turning) return;
-  turning = true;
-  setImmediate(() => {
-    turning = false;
-    startedThisTurn = 0;
-    while (startedThisTurn < STARTS_PER_TURN && waitingToStart.length) {
-      startedThisTurn++;
-      waitingToStart.shift()!();
+/** Takes a thread that failed or ended out of use, and settles what it was given. */
+function lose(t: Thread, why: string) {
+  if (t.lost) return;
+  t.lost = true;
+  threads.splice(threads.indexOf(t), 1);
+  t.worker.terminate();
+  if (!t.ready) {
+    noThreads = true;
+    console.error(`Obeya: processes start on the server's thread, a thread of their own failed to start: ${why}`);
+  }
+  const given = [...t.waiting.values()];
+  t.waiting.clear();
+  settle(() => {
+    for (const w of given) {
+      // one whose code never ran started nothing: what it was given starts here instead. One that
+      // ran may have started it: it is not started twice (a push, a landing), it failed
+      if (t.ready) w.failed(new Error(`the thread that started ${w.argv[0]} failed: ${why}`));
+      else run(w.argv, w.o).then(w.done, w.failed);
     }
-    if (waitingToStart.length) nextTurn();
   });
 }
 
-/** Runs `argv` and waits for it: its exit code, its output, and the signal that stopped it (a timeout), if one did. */
-export function spawnOutput(argv: string[], o: Options = {}): Promise<{ code: number; stdout: string; stderr: string; signal: string | null }> {
-  // at once where it may, as a caller expects of a process it started
-  const turn = startTurn();
-  return turn ? turn.then(() => run(argv, o)) : run(argv, o);
+/** Ends the threads `spawnOutput` starts its processes on, as a thread ends that dies without an error; settles once they have: for tests. */
+export function endThreads(): Promise<void> {
+  return Promise.all(
+    threads.map((t) => {
+      const ended = new Promise((go) => t.worker.addEventListener('close', go));
+      t.worker.terminate();
+      return ended;
+    }),
+  ).then(() => new Promise((go) => setImmediate(go)));
 }
 
-async function run(argv: string[], o: Options): Promise<{ code: number; stdout: string; stderr: string; signal: string | null }> {
+/**
+ * What is told of each process `spawnOutput` is about to start, on the server's thread, with what
+ * it will answer: for tests, which see no `Bun.spawn` of it and cannot tell when a thread starts it.
+ */
+const starting = new Set<(argv: string[], out: Promise<Output>) => void>();
+export function onStart(fn: (argv: string[], out: Promise<Output>) => void): () => void {
+  starting.add(fn);
+  return () => starting.delete(fn);
+}
+
+/** Runs `argv` and waits for it: its exit code, its output, and the signal that stopped it (a timeout), if one did. */
+export function spawnOutput(argv: string[], o: Options = {}): Promise<Output> {
+  // started only after this: the ones told may change what it finds
+  const out = start(argv, o);
+  for (const fn of starting) fn(argv, out);
+  return out;
+}
+
+async function start(argv: string[], o: Options): Promise<Output> {
+  const given = await threadOptions(o);
+  const t = given && thread();
+  if (!t) return run(argv, o);
+  const id = ++lastId;
+  return new Promise<Output>((done, failed) => {
+    if (!t.waiting.size) t.worker.ref();
+    t.waiting.set(id, { argv, o, done, failed });
+    t.worker.postMessage({ id, argv, o: given });
+  });
+}
+
+/** `o` as a thread is given it: the server's environment where it names none, stdin's bytes; null where an option cannot cross. */
+async function threadOptions(o: Options): Promise<Record<string, unknown> | null> {
+  if (Object.keys(o).some((k) => !THREADED.has(k))) return null;
+  let stdin: unknown = o.stdin;
+  if (stdin instanceof Blob) stdin = new Uint8Array(await stdin.arrayBuffer());
+  else if (!(stdin == null || typeof stdin === 'string' || ArrayBuffer.isView(stdin))) return null;
+  // as hideConsoleWindows does on the server's thread; the thread's environment may be older
+  return { ...o, stdin, env: o.env ?? { ...process.env }, windowsHide: o.windowsHide ?? true };
+}
+
+async function run(argv: string[], o: Options): Promise<Output> {
   const p = Bun.spawn<Bun.SpawnOptions.Writable, 'pipe', 'pipe'>(argv, { ...o, stdout: 'pipe', stderr: 'pipe' });
   const [stdout, stderr, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
   return { code, stdout, stderr, signal: p.signalCode };

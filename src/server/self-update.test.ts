@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, uti
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Busy, headSeal, installDependencies, ownCheckout, Restarter, symbolicTarget, watchOwnCode, whenIdle } from './self-update';
+import { onStart } from './spawn';
 import { gitRepo } from './testing';
 import { git } from './workspaces';
 
@@ -91,17 +92,15 @@ test('a commit while git looks at what changed has not held still: the restart w
   const start = git(repo, 'rev-parse', 'HEAD');
   const first = commit('src/a.ts', 'b');
   let second = '';
-  const spawn = Bun.spawn;
-  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
-    if (!second && (args[0] as string[]).includes('diff')) second = commit('src/b.ts', 'c');
-    return spawn(...args);
-  }) as typeof Bun.spawn;
+  const watching = onStart((argv) => {
+    if (!second && argv.includes('diff')) second = commit('src/b.ts', 'c');
+  });
   const calls: [string, string][] = [];
   try {
     stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
     await until(() => calls.length > 0);
   } finally {
-    Bun.spawn = spawn;
+    watching();
   }
   expect(second).not.toBe('');
   expect(calls).toEqual([[start, second]]);
@@ -109,8 +108,10 @@ test('a commit while git looks at what changed has not held still: the restart w
 }, 20_000);
 
 test('while HEAD stands still, the watch starts no git', async () => {
-  const spawn = Bun.spawn;
   let started = 0;
+  // through spawnOutput (its threads call no Bun.spawn of this one) and through Bun.spawn itself
+  const watching = onStart(() => started++);
+  const spawn = Bun.spawn;
   Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => (started++, spawn(...args))) as typeof Bun.spawn;
   const calls: string[] = [];
   let rounds = 0;
@@ -123,6 +124,7 @@ test('while HEAD stands still, the watch starts no git', async () => {
     await until(() => rounds >= from + 5);
     expect(rounds).toBeGreaterThanOrEqual(from + 5);
   } finally {
+    watching();
     Bun.spawn = spawn;
   }
   expect(started).toBe(0);

@@ -342,9 +342,14 @@ configuration, restarting a repository's agents, checking the configuration and 
 repository's commands, whatever the number of canvases and repositories. A repository's `origin` as
 configured (before git's `insteadOf`) is read with the rest of it, and a host's GitHub login is read
 in the background from the start and again once it is ten minutes old, the one before standing
-meanwhile; a command on the host waits only for the first. Of the processes Obeya waits for without
-blocking, a few start per turn of the event loop, the rest in the next; starting one takes the
-thread a moment, under load many milliseconds. Sharing on a demo site Obeya keeps reads and writes
+meanwhile; a command on the host waits only for the first. Most processes Obeya runs without
+blocking and reads once they end, with their exit code and output (git calls above all, and the
+commands on a host), start on two threads of their own, not the server's: starting a process holds
+the thread that starts it until the system has created it, on Windows tens of milliseconds on an
+idle machine and seconds each under load. A few such ones (Tailscale's commands, the reads for a
+theme, Codex), and those it talks to while they run or reads as their output comes (an agent, a
+voice sidecar, a stream of git objects), still start on the server's thread. Which skill name a worker's session knows the demo skill by is known
+while the user's skills directory holds the same skills. Sharing on a demo site Obeya keeps reads and writes
 its files without blocking, and touches only the page it changes: what it has read of the site's
 directory (each page's `meta.json`, which pages hold their files) it keeps while it runs, since only
 Obeya changes that directory, and lists the directory afresh to notice a page that went. A site of a
@@ -602,6 +607,22 @@ workers are busy.
   stands where it was (its own moves, the checkout's HEAD and branch by `stat`); the default
   branch's CLAUDE.md for a review card's session is read while the session waits to start, and
   stands while the refs do.
+- **Processes start off the server's thread** (2026-11-06, from `stalls.log` of a busy Windows
+  machine): on Windows the system creates a process synchronously on the thread that asks, through
+  Bun's async spawn too; with antivirus and many git calls at once that took seconds each, and a
+  burst (a git call in each clone, landings, the upstream's fetch) held the server up for 10–22 s,
+  in which phones showed "Obeya is not answering" and WebSockets timed out opening. The processes Obeya
+  runs most often and reads once they end (git above all) are started by two worker threads, which hand back the exit code and output; options
+  that cannot cross to a thread (a stream as input), or no thread to be had, start on the server's
+  thread as before. A thread that fails or ends before its code ran started nothing: what it was
+  given starts on the server's thread. One that fails or ends later fails what it was running, and
+  nothing is started twice (a push, a landing). What a thread answers settles in a turn of the event
+  loop of its own: settled straight from the thread's message, a promise `bun test` waits for with
+  `expect(…).rejects` or `.resolves` stayed pending (Bun 1.4.3) and the test file hung. Rejected:
+  starting only a few per turn of the event loop (what it was until then: each start still held
+  the thread, and four slow ones in a row were seconds); a cap on
+  processes running at once (see the trust check above); fewer git calls alone (the bursts come
+  from many clones and canvases, each call needed).
 - **Programs run without a window on Windows by default, not by an option at each call**
   (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
   for its window.

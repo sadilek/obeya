@@ -44,10 +44,18 @@ const realpath = (path: string) => {
  * instead, and the session knows no `obeya:demo`.
  */
 export function demoSkillName(skills = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'skills'), file = DEMO_SKILL_FILE): string {
+  if (!existsSync(skills)) return DEMO_SKILL;
+  const names = readdirSync(skills);
+  // what is known while the directory holds the same skills: following each one's links took
+  // seconds on a busy Windows machine with many of them, at every worker's start
+  const key = [skills, file, statSync(skills).mtimeMs, ...names].join('\0');
+  if (skillNamed?.key === key) return skillNamed.name;
   const own = realpath(file);
-  if (!own || !existsSync(skills)) return DEMO_SKILL;
-  return readdirSync(skills).find((name) => realpath(join(skills, name, 'SKILL.md')) === own) ?? DEMO_SKILL;
+  const name = (own && names.find((name) => realpath(join(skills, name, 'SKILL.md')) === own)) || DEMO_SKILL;
+  skillNamed = { key, name };
+  return name;
 }
+let skillNamed: { key: string; name: string } | undefined;
 
 /** The files of a video demo the UI loads, beside a caption file per language (`captions.<language>.vtt`); nothing else in the directory is served. */
 export const DEMO_FILES = ['demo.mp4', 'poster.jpg', 'captions.vtt'] as const;
