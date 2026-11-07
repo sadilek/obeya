@@ -799,7 +799,10 @@ describe('clones the configuration no longer names', () => {
     expect(paths.slice(1)).toContain(again.path);
     await again.ready;
     expect(existsSync(again.path)).toBe(true);
-    expect(spaces.lease(c, 'obeya/c').path).not.toBe(again.path);
+    const other = spaces.lease(c, 'obeya/c');
+    expect(other.path).not.toBe(again.path);
+    // git is through with it before the test's folder goes
+    await other.ready;
   });
 
   test("a card's own worktree whose folder is gone stays the card's", () => {
