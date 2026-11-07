@@ -11,7 +11,7 @@ import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEven
 import { cardPath } from './address';
 import { Naming } from './cardLink';
 import { useCopy } from './copy';
-import { firstOpening } from './demoSeen';
+import { arrivedOnOpenCard, held, markSeen, openedWith, sameDemo, unseen } from './demoSeen';
 import { know, known } from './known';
 import { Branch } from './diff';
 import { ResultFiles } from './files';
@@ -119,6 +119,15 @@ function QueuePlace({ item, items }: { item: Item; items: Item[] }) {
 export function Detail(p: Props) {
   const { item, parent } = p;
   const [error, setError] = useState('');
+  // the demo the card opened to (demoSeen.ts); closing the card forgets one that waited on it
+  const [opened] = useState(() => openedWith(sessionStorage, item.id, item.demo));
+  useEffect(() => () => held.clear(sessionStorage, item.id), []);
+  const demoWaits = item.state === 'waiting' && item.need === 'demo';
+  // a demo starts by itself only when the owner opens the card to it; one that arrives on the open card waits behind its play button
+  const arrived = !!item.demo && arrivedOnOpenCard(opened, item.demo);
+  useEffect(() => {
+    if (arrived && demoWaits && item.demo) held.set(sessionStorage, item.id, item.demo);
+  }, [arrived, demoWaits, item.demo?.handover, item.demo && JSON.stringify(item.demo.chapters)]);
   const all = p.all;
   const run = async (fn: () => Promise<void>, done: ActDone) => {
     setError('');
@@ -306,7 +315,6 @@ export function Detail(p: Props) {
   const heldUp = Object.entries(useUnsentDecisions(item))
     .filter(([, route]) => route === 'contributor' || route === 'self')
     .map(([id]) => Number(id));
-  const demoWaits = item.state === 'waiting' && item.need === 'demo';
   // an agent is on the card and can be stopped
   const running = item.state === 'working' || item.state === 'waiting' || !!item.finishing;
   const archivable = finishedArchivable(item);
@@ -555,7 +563,7 @@ export function Detail(p: Props) {
                       <DemoView
                         item={item}
                         demo={item.demo}
-                        autoplay={demoWaits}
+                        autoplay={demoWaits && !arrived}
                         comments={agentListens(item)}
                         top={
                           (!demoWaits || sharing) &&
@@ -1793,6 +1801,7 @@ function DemoView({
   children?: ReactNode;
   /** above the video or artifact, where it is seen on opening however long the chapters or the artifact: sharing, about the demo shown */
   top?: false | ((shown: Demo, latest: boolean) => ReactNode);
+  /** starts by itself when this browser has not played it yet */
   autoplay?: boolean;
   comments?: boolean;
 }) {
@@ -1817,9 +1826,9 @@ function DemoView({
   // where the demo shown next plays from, when a comment on a place in it took the owner there
   const playFrom = useRef<number | null>(null);
   const show = (d: Demo) => setShownN(d === latest ? null : (d as EarlierDemo).n);
-  // start once the card has unfolded, like the mock, the first time only; a demo kept on a finished card waits to be played.
+  // start once the card has unfolded, like the mock, until it has played once; a demo kept on a finished card waits to be played.
   // A page out of sight (a tab in the background, an agent's browser) does not start it: nobody would see it, only hear it
-  const [autostart] = useState(() => autoplay && demo.kind !== 'html' && !document.hidden && firstOpening(localStorage, cardId, demo));
+  const [autostart] = useState(() => autoplay && demo.kind !== 'html' && !document.hidden && unseen(localStorage, cardId, demo));
   // a video that does not start on its own shows a big play button over it until it first plays
   const [started, setStarted] = useState(autostart);
   useEffect(() => {
@@ -1828,6 +1837,13 @@ function DemoView({
     return () => clearTimeout(h);
   }, []);
   useEffect(() => () => holdRestart('video', null), []);
+  // a later handover on the open card waits behind the play button too, unless the owner is on an earlier demo
+  const shownLatest = useRef(latest);
+  useEffect(() => {
+    if (sameDemo(shownLatest.current, latest)) return;
+    shownLatest.current = latest;
+    if (shownN === null) setStarted(false);
+  }, [latest]);
   const zoom = useZoom(video);
   // the phone view, which puts the conversation elsewhere, puts the video into full screen itself (fullscreen.ts)
   const fullscreen = useFullscreen(zoom.screen, video, !!elsewhere);
@@ -1935,6 +1951,8 @@ function DemoView({
                   setStarted(true);
                   holdRestart('video', 'video');
                 }}
+                // played once it runs, not while it still loads after the click: closed before that, it starts at the next opening
+                onPlaying={() => demo === latest && markSeen(localStorage, cardId, demo)}
                 onPause={() => holdRestart('video', null)}
                 onEnded={() => {
                   holdRestart('video', null);
