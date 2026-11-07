@@ -11,15 +11,16 @@ import { asOwner } from './testing';
 
 /**
  * Logs its start, each clip and its end; `dies` as the speaker makes it die at the second clip,
- * `stumm` at loading, `lahm` says it loads, then nothing more. A clip whose text says „hängt“ gets no answer, as
+ * `stumm` at loading, `lahm` says it loads, then nothing more, `träge` waits 350 ms before it starts,
+ * longer than the 300 ms loading deadline the tests give it. A clip whose text says „hängt“ gets no answer, as
  * the Qwen3 voice gave none on 2026-10-21; a clip of several sentences reports each after a while.
  * Given the script as written, it says it heard the text as said.
  */
 const FAKE_VOICE = `
 import { appendFileSync, writeFileSync } from 'node:fs';
 const [log, who] = process.argv.slice(2);
-// Reproduce a replacement process getting less CPU than the host's short test deadline allows.
-if (who === 'slow') await Bun.sleep(400);
+// a process start slowed down by a busy machine
+if (who === 'träge') await Bun.sleep(350);
 appendFileSync(log, 'start ' + who + '\\n');
 console.log('loading weights ...');
 // it logs that it stalls once its diagnostic is out
@@ -167,8 +168,8 @@ describe('a voice that stops answering', () => {
     deadlines[1]!.expire();
     expect(await loading).toEqual({ error: 'the voice said nothing for 0.3 s while loading and was ended: waiting for the GPU' });
     expect(host.loaded).toBe(false);
-    expect(await host.clip(clip('zwei', 'slow'))).toEqual({ ok: true, seconds: 0.01 });
-    expect(log()).toEqual(['start lahm', 'stalls lahm', 'start slow', 'de:zwei']);
+    expect(await host.clip(clip('zwei', 'träge'))).toEqual({ ok: true, seconds: 0.01 });
+    expect(log()).toEqual(['start lahm', 'stalls lahm', 'start träge', 'de:zwei']);
     // every deadline of the new voice ended by an answer, none by hand
     expect(deadlines.length).toBeGreaterThan(2);
     expect(deadlines.every((d) => d.cancelled)).toBe(true);
