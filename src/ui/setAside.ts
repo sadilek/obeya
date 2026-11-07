@@ -11,9 +11,12 @@ import { type Item, needsYou } from '../core/types';
 export type SetAside = Record<string, { canvas: string; since: string | null }>;
 
 const KEY = 'obeya-phone-aside';
+/** What could not be written to the browser's storage (full, or refused): kept for this page instead. */
+let unsaved: SetAside | null = null;
 
 /** What this browser keeps set aside, as it stands now: every tab of the phone view changes the same. */
 export function loadAside(): SetAside {
+  if (unsaved) return unsaved;
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
@@ -34,7 +37,10 @@ export function changeAside(change: (a: SetAside) => SetAside): SetAside {
   try {
     if (Object.keys(next).length) localStorage.setItem(KEY, JSON.stringify(next));
     else localStorage.removeItem(KEY);
-  } catch {}
+    unsaved = null;
+  } catch {
+    unsaved = next;
+  }
   return next;
 }
 

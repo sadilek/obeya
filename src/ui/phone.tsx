@@ -329,11 +329,14 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     if (on) change((a) => ({ ...a, [i.id]: asideMark(i, on) }));
   };
   const bringBack = (i: Item) => change(({ [i.id]: _, ...rest }) => rest);
-  // forgotten once a card is back by itself, or gone from its canvas
+  // forgotten once a card is back by itself, or gone from its canvas; judged on new snapshots only, so
+  // that a tab behind on them leaves alone what a tab up to date set aside
   useEffect(() => {
-    const gone = forgotten(aside, Object.fromEntries(ordered.map((c) => [c.id, snaps[c.id]!.items])));
+    const gone = forgotten(loadAside(), Object.fromEntries(ordered.map((c) => [c.id, snaps[c.id]!.items])));
     if (gone.length) change((a) => Object.fromEntries(Object.entries(a).filter(([id]) => !gone.includes(id))));
-  }, [all, aside]);
+  }, [all]);
+  // the canvases folded within the lists, where the nudge looks for a card in sight
+  const folded = useFoldedCanvases(CANVASES_FOLDED);
   // approved cards the server is still landing: they need the owner no longer
   const [underway, setUnderway] = useState<string[]>([]);
   useEffect(() => setUnderway((u) => u.filter((id) => byId(id)?.state === 'waiting')), [snaps]);
@@ -633,7 +636,6 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const waitsHere = forYouTotal(ordered, snaps, leftOut);
   const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
   // until the owner has swiped a card aside once, the first one in sight nudges, with a line above it saying how
-  const folded = useFoldedCanvases(CANVASES_FOLDED);
   const inSight = (list: string, c: CanvasInfo) => !several || !folded.includes(`${list}:${c.id}`);
   const firstWaiting = ordered.filter((c) => inSight('forYou', c)).flatMap((c) => forYouOf(snaps[c.id]!, leftOut).cards)[0];
   const firstRunning = ordered.filter((c) => inSight('running', c)).flatMap((c) => running.filter((x) => x.canvas.id === c.id))[0]?.item;
