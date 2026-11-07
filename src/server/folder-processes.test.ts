@@ -39,12 +39,22 @@ describe('runsFrom', () => {
   });
 
   test('the folder by the path its links lead to (macOS: /var is /private/var)', () => {
-    expect(runsFrom(proc({ cwd: '/private/var/folders/x/ws' }), ['/var/folders/x/ws', '/private/var/folders/x/ws'], false)).toBe(true);
+    const dirs = ['/var/folders/x/ws', '/private/var/folders/x/ws'];
+    expect(runsFrom(proc({ cwd: '/private/var/folders/x/ws' }), dirs, false)).toBe(true);
+    expect(runsFrom(proc({ cwd: '/', cmd: 'node /private/var/folders/x/ws/server.js' }), dirs, false)).toBe(true);
+  });
+
+  test("a runtime's words are what it runs, after flags that take one of their own", () => {
+    const ws = '/home/me/ws/1';
+    expect(runsFrom(proc({ cwd: '/', cmd: `node --require /opt/preload.js ${ws}/server.js` }), [ws], false)).toBe(true);
+    expect(runsFrom(proc({ cwd: '/', cmd: `node --title myapp ${ws}/server.js` }), [ws], false)).toBe(true);
+    expect(runsFrom(proc({ cwd: '/', cmd: `node --import=${ws}/setup.mjs app` }), [ws], false)).toBe(true);
+    expect(runsFrom(proc({ cwd: '/', cmd: 'node /opt/other/server.js' }), [ws], false)).toBe(false);
   });
 
   test("a terminal opened in the folder is someone's, a shell running a script there the app's", () => {
     const ws = '/home/me/ws/1';
-    for (const cmd of ['-zsh', '/bin/bash -l', 'zsh -i', '"C:\\Windows\\system32\\cmd.exe"', 'pwsh.exe -NoLogo']) expect(interactive(proc({ cmd }))).toBe(true);
+    for (const cmd of ['-zsh', '/bin/bash -l', 'zsh -i', '/bin/bash --init-file /dev/null -i', '"C:\\Windows\\system32\\cmd.exe"', 'pwsh.exe -NoLogo']) expect(interactive(proc({ cmd }))).toBe(true);
     for (const cmd of ['sh -c npm run dev', 'bash /srv/run.sh', 'sh ./run.sh', 'cmd.exe /c start.cmd', 'node index.mjs']) expect(interactive(proc({ cmd }))).toBe(false);
     expect(runsFrom(proc({ cwd: ws, cmd: '-zsh' }), [ws], false)).toBe(false);
     expect(runsFrom(proc({ cwd: ws, cmd: 'sh ./run.sh' }), [ws], false)).toBe(true);

@@ -339,7 +339,7 @@ Before a workspace's folder goes from disk (a worktree once its card has landed,
 done with it, a follow-up's temporary worktree, a clone left the pool), `app.stop` runs in it, and
 then Obeya ends every process still running from the folder, with what each started, wherever that
 works: one whose program lies in the folder, whose working directory does, or whose command line
-runs something there (its program, or the script a runtime runs: `node /ws/node_modules/vite/bin/vite.js`).
+runs something there (its program, or what a runtime is given: `node /ws/node_modules/vite/bin/vite.js`).
 A command line that only names a file there is not enough (an editor with one of the folder's files
 open, an `ssh` session naming the path), nor is a working directory there for a shell that waits for
 input (a terminal opened in the folder): those are someone's, not the app's. The folder is matched by
@@ -356,8 +356,8 @@ working directory is part of the match since a dev server often names its folder
 (`node index.mjs` started there). Windows tells another process's working directory through no
 command, so Obeya reads it from the process's own memory, in a thread of its own (on a machine
 short of memory each read may wait for the disk): first for the processes started since the folder
-was made, then for older ones (which can only have moved into it later) while 30 seconds have not
-passed; a listing that does not answer within them leaves the folder to go without it. Rejected:
+was made, then for older ones (which can only have moved into it later) while 25 seconds have not
+passed; a listing that does not answer within 30 leaves the folder to go without it. Rejected:
 matching command lines alone (misses such a server), and asking each repository's stop command to
 be thorough (a fault in one leaves its apps running).
 

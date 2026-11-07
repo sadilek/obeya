@@ -213,6 +213,10 @@ describe('a workspace git frees', () => {
     expect(await runAppCommand(repo, './scripts/stop.sh')).toEqual({ ok: true, output: '', missing: './scripts/stop.sh' });
     expect(scriptOf('node "scripts/stop app.mjs" stop')).toBe('scripts/stop app.mjs');
     expect(scriptOf('bash scripts/stop.sh')).toBe('scripts/stop.sh');
+    expect(scriptOf('/usr/bin/node .obeya/app.mjs stop')).toBe('.obeya/app.mjs');
+    expect(scriptOf('"C:\\Program Files\\nodejs\\node.exe" .obeya\\app.mjs stop')).toBe('.obeya\\app.mjs');
+    expect(scriptOf('node --require ./setup.cjs stop.mjs')).toBe('stop.mjs');
+    expect(scriptOf("node --eval='console.log(42)' absent.mjs")).toBeNull();
     expect(scriptOf('node stop.mjs')).toBe('stop.mjs');
     expect(scriptOf('cd server && node ../x/stop.mjs')).toBeNull();
     expect(scriptOf('make stop')).toBeNull();

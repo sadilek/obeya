@@ -39,6 +39,9 @@ export const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'tcsh
 /** The flags with which a shell runs a command rather than waiting for one typed. */
 const COMMAND_FLAGS = new Set(['-c', '/c', '/k', '-command', '-file', '-encodedcommand', '-ec']);
 
+/** A shell's flags that take the next word (`bash --rcfile ~/.rc -i`): not a script. */
+const SHELL_OPERANDS = new Set(['--init-file', '--rcfile', '-o', '+o', '-O', '+O']);
+
 /** The program's name in `word`: no folder, no `.exe`, no login shell's `-`, lower case. */
 export const programName = (word: string) =>
   word
@@ -78,14 +81,20 @@ export function commandWords(cmd: string): string[] {
 export function interactive(p: Running): boolean {
   const [program, ...args] = commandWords(p.cmd);
   if (!program || !SHELLS.has(programName(program))) return false;
-  // a flag alone (`-l`, `-NoLogo`, cmd's `/q`); a command to run or a script (`/srv/run.sh`) makes it the app's
-  return args.every((a) => /^-|^\/[a-z?]$/i.test(a) && !COMMAND_FLAGS.has(a.toLowerCase()));
+  // flags alone (`-l`, `-NoLogo`, cmd's `/q`, `--rcfile <file>`); a command to run or a script (`/srv/run.sh`) makes it the app's
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (COMMAND_FLAGS.has(a.toLowerCase())) return false;
+    if (SHELL_OPERANDS.has(a)) i++;
+    else if (!/^[-+]|^\/[a-z?]$/i.test(a)) return false;
+  }
+  return true;
 }
 
 /**
  * Whether `p` runs from the folder at one of `dirs` (its path, and the one its links lead to): its
  * program lies in it, its working directory, or what it runs (the program its command line starts
- * with, or the script a runtime installed elsewhere runs, `node /ws/node_modules/vite/bin/vite.js`).
+ * with, or what a runtime installed elsewhere is given, `node /ws/node_modules/vite/bin/vite.js`).
  * A command line that only names a file there (an editor's, `ssh host 'cd /ws'`) is not the folder's;
  * nor is a shell waiting for input, whose working directory is the folder (someone's terminal).
  */
@@ -103,14 +112,14 @@ export function runsFrom(p: Running, dirs: string[], windows: boolean): boolean 
   // the folder's path as one word, though it has spaces and `ps` lost its quotes
   const HERE = '\u0000';
   let cmd = norm(p.cmd);
-  for (const base of bases) cmd = cmd.split(base).join(HERE);
+  // the longest first: `/var/ws` is inside `/private/var/ws`
+  for (const base of bases.toSorted((a, b) => b.length - a.length)) cmd = cmd.split(base).join(HERE);
   const there = (w: string) => w === HERE || w.startsWith(HERE + sep);
   const [program, ...args] = commandWords(cmd);
   if (!program) return false;
   if (there(program)) return true;
-  if (!RUNTIMES.has(programName(program))) return false;
-  const script = args.find((a) => !a.startsWith('-'));
-  return !!script && there(script);
+  // a runtime's words are what it runs: its script, what it loads first (`--require`), what the script works on
+  return RUNTIMES.has(programName(program)) && args.some((a) => there(a.replace(/^-[^=]*=/, '')));
 }
 
 /** The processes `pids` started, and what those started, down the line (`all` tells who started whom). */
@@ -199,8 +208,9 @@ export async function localProcesses(since = 0): Promise<Running[]> {
         worker.onerror = (e) => fail(new Error(e.message));
         worker.addEventListener('close', () => fail(new Error('the process listing ended without an answer')));
         // a listing that hangs (a read that never comes back) leaves the folder to go without it
-        timer = setTimeout(() => fail(new Error(`the process listing took longer than ${WINDOWS_LIST_MS / 1000} s`)), WINDOWS_LIST_MS + 5000);
-        worker.postMessage({ since, until: Date.now() + WINDOWS_LIST_MS });
+        timer = setTimeout(() => fail(new Error(`the process listing took longer than ${WINDOWS_LIST_MS / 1000} s`)), WINDOWS_LIST_MS);
+        // the older processes are read while there is time left to answer
+        worker.postMessage({ since, until: Date.now() + WINDOWS_LIST_MS - 5000 });
       });
     } finally {
       clearTimeout(timer);
