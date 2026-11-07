@@ -13,7 +13,10 @@
 // times `PATIENCE` (five on Windows), unless the args give a `--timeout` of their own. git runs
 // without its automatic maintenance (a git process more after each commit and fetch): set here, in
 // the environment the test processes start with, since what a test or the preload sets in
-// `process.env` reaches no process they start. The args, the output and the exit code pass through.
+// `process.env` reaches no process they start. Nor does git read the machine's system-wide
+// configuration: Git for Windows' installer writes `pull.rebase=false` there, which tests of how
+// Obeya pulls where git sets no way of pulling would take for the owner's. The args, the output and
+// the exit code pass through.
 import { spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { PATIENCE } from '../src/server/patience';
@@ -28,5 +31,6 @@ for (const [i, [key, value]] of [['maintenance.auto', 'false'], ['gc.auto', '0']
   env[`GIT_CONFIG_VALUE_${count + i}`] = value;
 }
 env.GIT_CONFIG_COUNT = String(count + 2);
+env.GIT_CONFIG_NOSYSTEM = '1';
 const r = spawnSync(process.execPath, ['test', parallel, ...timeout, ...args], { stdio: 'inherit', env });
 process.exit(r.status ?? 1);

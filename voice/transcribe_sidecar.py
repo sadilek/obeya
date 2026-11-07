@@ -173,6 +173,16 @@ class Faster:
             model.__dict__.pop("generate_segments", None)
 
 
+def answer(reply: dict) -> None:
+    """A reply to Obeya on stdout. Obeya gone is a BrokenPipeError, on Windows too, where writing to the closed pipe fails with EINVAL."""
+    try:
+        print(json.dumps(reply), flush=True)
+    except BrokenPipeError:
+        raise
+    except OSError as e:
+        raise BrokenPipeError(e.errno, e.strerror) from e
+
+
 def main() -> None:
     # Ctrl-C in Obeya's terminal is for Obeya, which ends the sidecar itself once it stops
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -183,7 +193,7 @@ def main() -> None:
     ear = Parakeet(model) if backend == "parakeet" else Mlx(model) if backend == "mlx" else Faster(model)
     # load the model and warm it up on a second of silence, so the first recording is as quick as the rest
     ear.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), None)
-    print(json.dumps({"ready": True}), flush=True)
+    answer({"ready": True})
     for line in sys.stdin:
         if not line.strip():
             continue
@@ -195,7 +205,7 @@ def main() -> None:
             level = f"voice: {len(audio) / SAMPLE_RATE:.1f} s, peak {dbfs(peak)}, rms {dbfs(np.sqrt(np.mean(audio ** 2)) if len(audio) else 0)}"
             if quiet:
                 print(f"{level}; too quiet to transcribe", file=sys.stderr, flush=True)
-                print(json.dumps({"id": job["id"], "text": "", "doubtful": False}), flush=True)
+                answer({"id": job["id"], "text": "", "doubtful": False})
                 continue
             if isinstance(ear, Parakeet):
                 print(level, file=sys.stderr, flush=True)
@@ -206,11 +216,11 @@ def main() -> None:
                 print(f"{level}, {language}{f' ({sure:.0%})' if len(languages) > 1 else ''}", file=sys.stderr, flush=True)
                 segments = ear.transcribe(audio, job.get("prompt") or None, language)
             text = " ".join(s["text"].strip() for s in segments)
-            print(json.dumps({"id": job["id"], "text": text.strip(), "doubtful": any(map(doubtful, segments))}), flush=True)
+            answer({"id": job["id"], "text": text.strip(), "doubtful": any(map(doubtful, segments))})
         except BrokenPipeError:
             raise
         except Exception as e:  # one bad recording must not take the sidecar down
-            print(json.dumps({"id": job["id"], "error": str(e)}), flush=True)
+            answer({"id": job["id"], "error": str(e)})
 
 
 def load_audio(path: str) -> np.ndarray:

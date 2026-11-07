@@ -2454,7 +2454,8 @@ export class Workers {
     const outside: string[] = [];
     for (const f of files) {
       let given = String(f.path).trim();
-      const root = roots.find((r) => given.startsWith(`${r}/`));
+      // a path of the workspace, with backslashes where it is one of Windows
+      const root = roots.find((r) => given.startsWith(r) && /^[\\/]/.test(given.slice(r.length)));
       if (root) given = given.slice(root.length + 1);
       const path = isAbsolute(given) ? null : normalPath(given);
       if (!path || !changed.includes(path)) outside.push(String(f.path));

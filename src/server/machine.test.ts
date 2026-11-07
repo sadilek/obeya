@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CLONES, type MachineView } from '../core/types';
@@ -10,7 +10,7 @@ import { Store } from './db';
 import { claudeToken } from './hosts';
 import { Harnesses } from './harnesses';
 import { cloneName, machineHint, MachineSetup, runnable, WELCOME_FILE, welcome } from './machine';
-import { gitRepo } from './testing';
+import { fakeProgram, gitRepo, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
 import { git } from './workspaces';
 
@@ -30,13 +30,10 @@ beforeEach(() => {
   store = new Store(':memory:');
   applied = [];
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
-/** A program on the test's PATH that answers as the script says. */
-function fake(name: string, script: string) {
-  writeFileSync(join(bin, name), `#!/bin/sh\n${script}\n`);
-  chmodSync(join(bin, name), 0o755);
-}
+/** A program on the test's PATH that answers as the script says; its path. */
+const fake = (name: string, script: string) => fakeProgram(bin, name, script);
 
 const config = () =>
   new Config({
@@ -56,25 +53,26 @@ const section = (v: MachineView, id: string) => v.sections.find((s) => s.id === 
 
 describe('what Obeya needs on this machine', () => {
   test('reauthenticates even when auth status still reports a login', async () => {
-    fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn":true,"email":"ada@example.com"}\';; esac');
+    const claude = fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn":true,"email":"ada@example.com"}\';; esac');
     const machine = setup();
     expect(section(await machine.view(), 'needed').items.find((i) => i.id === 'claudeLogin')).toMatchObject({ state: 'ok' });
     // No terminal on this PATH: a valid login action returns the manual-command fallback.
-    expect(await machine.login({ section: 'needed', id: 'claudeLogin' })).toEqual({ opened: false, command: `${bin}/claude auth login` });
+    expect(await machine.login({ section: 'needed', id: 'claudeLogin' })).toEqual({ opened: false, command: `${claude} auth login` });
     await expect(machine.login({ section: 'needed', id: 'git' })).rejects.toThrow();
   });
 
   test('a session on a token gets a new one: claude setup-token, its token kept for the sessions from then on', async () => {
-    fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn":true,"authMethod":"oauth_token"}\';; esac');
+    const claude = fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn":true,"authMethod":"oauth_token"}\';; esac');
     const env: Record<string, string> = { PATH: bin, CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-old' };
     const machine = new MachineSetup({ home, config: config(), env, platform: 'linux', arch: 'x64', compiled: true });
-    expect(await machine.login({ section: 'needed', id: 'claudeLogin', token: true })).toEqual({ opened: false, command: `${bin}/claude setup-token` });
+    expect(await machine.login({ section: 'needed', id: 'claudeLogin', token: true })).toEqual({ opened: false, command: `${claude} setup-token` });
     await expect(machine.login({ section: 'needed', id: 'gh', token: true })).rejects.toThrow();
     expect(() => machine.saveToken({ token: 'two words' })).toThrow();
     expect(() => machine.saveToken({ token: ' ' })).toThrow();
     expect(machine.saveToken({ token: ' sk-ant-oat01-new\n' })).toEqual({ saved: true });
     expect(readFileSync(join(home, 'claude-token'), 'utf8')).toBe('sk-ant-oat01-new\n');
-    expect(statSync(join(home, 'claude-token')).mode & 0o777).toBe(0o600);
+    // Windows has no such modes: a file in the user's profile is the user's
+    if (process.platform !== 'win32') expect(statSync(join(home, 'claude-token')).mode & 0o777).toBe(0o600);
     expect(claudeToken(home, {})).toBe('sk-ant-oat01-new');
     // this machine runs on the token: its sessions from now on take the new one
     expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-ant-oat01-new');
@@ -140,10 +138,10 @@ describe('what Obeya needs on this machine', () => {
     expect(harnesses.ready('codex')).toBe(true);
     expect(harnesses.ready('claude')).toBe(false);
     expect(harnesses.preferred()).toBe('codex');
-    fake('codex', 'case "$1" in --version) echo "codex-cli 0.159.2";; login) echo "Not logged in" >&2; exit 1;; esac');
+    const codex = fake('codex', 'case "$1" in --version) echo "codex-cli 0.159.2";; login) echo "Not logged in" >&2; exit 1;; esac');
     const out = section(await machine.view(), 'needed').items;
     expect(out.find((i) => i.id === 'codexLogin')).toEqual({ id: 'codexLogin', state: 'missing', install: { commands: ['codex login'] }, act: 'login', or: true });
-    expect(await machine.login({ section: 'needed', id: 'codexLogin' })).toEqual({ opened: false, command: `${bin}/codex login` });
+    expect(await machine.login({ section: 'needed', id: 'codexLogin' })).toEqual({ opened: false, command: `${codex} login` });
     expect(harnesses.preferred()).toBe('claude');
   });
 
@@ -153,11 +151,11 @@ describe('what Obeya needs on this machine', () => {
   });
 
   test('installs at a click only what needs no password', () => {
-    fake('brew', 'exit 0');
+    const brew = fake('brew', 'exit 0');
     const env = { PATH: bin };
     expect(runnable('curl -LsSf https://astral.sh/uv/install.sh | sh', env, 'linux')).toEqual(['sh', '-c', 'curl -LsSf https://astral.sh/uv/install.sh | sh']);
     expect(runnable('irm https://claude.ai/install.ps1 | iex', env, 'win32')).toEqual(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'irm https://claude.ai/install.ps1 | iex']);
-    expect(runnable('brew install gh', env, 'darwin')).toEqual([join(bin, 'brew'), 'install', 'gh']);
+    expect(runnable('brew install gh', env, 'darwin')).toEqual([brew, 'install', 'gh']);
     expect(runnable('sudo apt install gh', env, 'linux')).toBeNull();
     // winget is not on this PATH
     expect(runnable('winget install --id GitHub.cli -e', env, 'win32')).toBeNull();
@@ -180,8 +178,7 @@ describe('what Obeya needs on this machine', () => {
     expect(section(await machine.view(), 'needed').items.find((i) => i.id === 'git')).toMatchObject({ state: 'missing' });
     // the owner installs git by hand and comes back to the window
     mkdirSync(later, { recursive: true });
-    writeFileSync(join(later, 'git'), '#!/bin/sh\ncase "$1" in --version) echo "git version 2.51.0.windows.1";; config) echo Ada;; esac\n');
-    chmodSync(join(later, 'git'), 0o755);
+    fakeProgram(later, 'git', 'case "$1" in --version) echo "git version 2.51.0.windows.1";; config) echo Ada;; esac');
     expect(section(await machine.view(), 'needed').items.find((i) => i.id === 'git')).toEqual({ id: 'git', state: 'ok', found: '2.51.0.windows.1' });
   });
 
@@ -205,7 +202,7 @@ describe('what Obeya needs on this machine', () => {
 
   test("sets git's name and e-mail as the owner gives them", async () => {
     const log = join(dir, 'git.log');
-    fake('git', `echo "$@" >> ${log}; case "$1" in --version) echo "git version 2.45.0";; config) [ $# -gt 3 ] || exit 1;; esac`);
+    fake('git', `echo "$@" >> '${log}'; case "$1" in --version) echo "git version 2.45.0";; config) [ $# -gt 3 ] || exit 1;; esac`);
     await setup().identity({ name: ' Ada Lovelace ', email: 'ada@example.com' });
     expect(readFileSync(log, 'utf8')).toContain('config --global user.name Ada Lovelace\nconfig --global user.email ada@example.com\n');
   });

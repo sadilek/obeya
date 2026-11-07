@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ListenBackend } from '../core/types';
@@ -7,6 +7,7 @@ import { resource } from './resources';
 import { listenBackend, LocalTranscriber, looping, silence, VoiceIn } from './voice';
 import { CloudError, cloudInUse, readVoiceFile, VOICE_FILE } from './voice-cloud';
 import { CHECK_CLIP, VoiceSetup } from './voice-setup';
+import { fakeProgram, removeDir } from './testing';
 
 test('a loop is one word, phrase or syllable six times in a row, whatever the case and punctuation', () => {
   for (const loop of [
@@ -84,11 +85,13 @@ test('"Installieren" loads the recognition and times it on a short sentence, and
   try {
     let loaded = 0;
     // uv is there; the package is not in its cache
-    writeFileSync(join(home, 'uv'), '#!/bin/sh\ncase "$1" in --version) echo "uv 0.9.2";; *) exit 1;; esac\n');
-    chmodSync(join(home, 'uv'), 0o755);
-    const setup = new VoiceSetup({ home, local: hearing('Starte die Karte', 30, () => void loaded++), env: { PATH: home } });
+    fakeProgram(home, 'uv', 'case "$1" in --version) echo "uv 0.9.2";; *) exit 1;; esac');
+    // it loads once the test has seen it running: a look at the machine (uv) may take longer than the loading
+    const { promise: seen, resolve: go } = Promise.withResolvers<void>();
+    const setup = new VoiceSetup({ home, local: { ...hearing('Starte die Karte', 30), prepare: () => seen.then(() => void loaded++) }, env: { PATH: home } });
     await setup.install();
     expect((await setup.view()).job).toMatchObject({ running: true });
+    go();
     await setup.finished();
     expect(loaded).toBe(1);
     const view = await setup.view();
@@ -213,6 +216,6 @@ test('the recognition sidecar ends quietly when Obeya is gone before it has writ
     expect(log).toContain('voice: 3.0 s');
     expect(log).not.toContain('BrokenPipeError');
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
   }
 }, 60_000);

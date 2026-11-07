@@ -571,10 +571,10 @@ async function bundle(dir: string, entry: string, files?: Record<string, string>
     } as Bun.BuildConfig);
     // a module that loads a stylesheet or splits into chunks needs files the copy does not have
     if (!r.success || r.outputs.length !== 1 || !r.metafile) return null;
-    // the modules it read, relative to the working directory
+    // the modules it read, relative to the working directory; on Windows one on another drive as `../C:/…`
     const root = realpathSync(dir) + sep;
     for (const input of Object.keys(r.metafile.inputs)) {
-      const path = resolve(input);
+      const path = resolve(/(?:^|[\\/])([A-Za-z]:[\\/].*)$/.exec(input)?.[1] ?? input);
       if (files && path === resolve(entry)) continue;
       if (!realpathSync(path).startsWith(root)) return null;
     }

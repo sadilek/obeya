@@ -2,11 +2,11 @@
 // refuses back to the agent, and the order the one voice speaks the sentences of all walkthroughs in.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Walkthrough } from '../core/walkthrough';
-import { fakeVoicing, until } from './testing';
+import { fakeVoicing, removeDir, until } from './testing';
 import { AnswerWalkthrough, readWalkthrough, writtenIn } from './walkthrough';
 
 let dir: string;
@@ -21,7 +21,7 @@ beforeEach(() => {
   mkdirSync(join(dir, 'answers'));
   voice = fakeVoicing();
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 const told = (shown: string[][] = []) =>
   new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, voicing: voice.voicing, onShown: (files) => shown.push(files.map((f) => f.name)) });

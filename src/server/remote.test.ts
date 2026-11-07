@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccessView, Pairing } from '../core/types';
@@ -11,7 +11,7 @@ import { Access, deviceName, machineAddresses, PAIRING_MS, UNUSED_MS } from './r
 import { serve } from './server';
 import { Tailscale } from './tailscale';
 import { Push } from './push';
-import { asOwner, fakeTailscale, gitRepo, noForge, tailscaleStatus, until } from './testing';
+import { asOwner, fakeProgram, fakeTailscale, gitRepo, noForge, removeDir, tailscaleStatus, until } from './testing';
 import { b64u } from './webpush';
 
 const NAME = 'mac.tail1234.ts.net';
@@ -46,10 +46,10 @@ beforeEach(async () => {
   });
   server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, access, push);
 });
-afterEach(() => {
+afterEach(async () => {
   access.stop();
   server.stop(true);
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 // on this machine: with the owner's key
@@ -339,13 +339,12 @@ describe('pairing', () => {
 
 describe("the system's folder dialog", () => {
   test('opens only for a browser on this machine, and is offered to no other device', async () => {
-    // a machine whose folder dialog (zenity) answers with a folder at once
+    // a machine whose folder dialog (zenity; on Windows PowerShell's) answers with a folder at once
     const bin = join(dir, 'bin');
-    mkdirSync(bin);
-    writeFileSync(join(bin, 'zenity'), '#!/bin/sh\necho /home/ada/dev/quizzle/\n');
-    chmodSync(join(bin, 'zenity'), 0o755);
+    const windows = process.platform === 'win32';
+    fakeProgram(bin, windows ? 'powershell' : 'zenity', 'echo /home/ada/dev/quizzle/');
     const config = new Config({ file: join(dir, 'canvases.json'), source: 'file', started: [], store, running: () => [], server: { port: 4417, home: dir, permissionMode: 'auto' }, apply: () => {} });
-    const machine = new MachineSetup({ home: dir, config, env: { PATH: bin }, platform: 'linux', arch: 'x64', compiled: true });
+    const machine = new MachineSetup({ home: dir, config, env: { PATH: bin }, platform: windows ? 'win32' : 'linux', arch: 'x64', compiled: true });
     server.stop(true);
     server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, config, undefined, undefined, machine, undefined, undefined, access, push);
     const post = { method: 'POST', body: JSON.stringify({ prompt: 'Folder' }) };

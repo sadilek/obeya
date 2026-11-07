@@ -1,9 +1,9 @@
 import { basename } from 'node:path';
 import type { RepoAdapter, RepoInfo } from './types';
 
-/** Repository name from the `origin` URL, else the directory name. */
+/** Repository name from the `origin` URL (or its path, on Windows with backslashes), else the directory name. */
 export function repoName(repo: RepoInfo): string {
-  const fromRemote = repo.remote?.replace(/\.git$/, '').split(/[/:]/).pop();
+  const fromRemote = repo.remote?.replace(/\.git$/, '').split(/[/\\:]/).pop();
   return fromRemote || basename(repo.path);
 }
 

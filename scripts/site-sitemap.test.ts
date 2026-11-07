@@ -48,6 +48,7 @@ test('a page git does not have yet goes in undated', () => {
 });
 
 test("obeya.si's robots.txt lets every crawler in and names the sitemap the workflow writes", () => {
-  expect(readFileSync(join(import.meta.dirname, '../site/robots.txt'), 'utf8')).toBe('User-agent: *\nAllow: /\n\nSitemap: https://obeya.si/sitemap.xml\n');
+  // with \r\n where git checks files out so (core.autocrlf on Windows)
+  expect(readFileSync(join(import.meta.dirname, '../site/robots.txt'), 'utf8').replaceAll('\r\n', '\n')).toBe('User-agent: *\nAllow: /\n\nSitemap: https://obeya.si/sitemap.xml\n');
   expect(readFileSync(join(import.meta.dirname, '../.github/workflows/pages.yml'), 'utf8')).toContain('bun scripts/site-sitemap.ts site https://obeya.si/');
 });

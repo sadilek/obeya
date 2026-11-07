@@ -5,12 +5,15 @@ import { join } from 'node:path';
 import { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
-import { alive, gitClone, gitRepo, identify, leftBehind, until } from './testing';
+import { alive, gitClone, gitRepo, identify, leftBehind, removeDir, until } from './testing';
 import { addTrailer, defaultBranch, git, Workspaces } from './workspaces';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
+
+/** Stop commands go to the platform's shell (`runAppCommand`): cmd.exe on Windows, sh elsewhere. */
+const WINDOWS = process.platform === 'win32';
 
 describe('the main branch', () => {
   test("is origin's HEAD where the checkout knows one, whatever branch it is on", () => {
@@ -229,10 +232,16 @@ describe('a workspace git frees', () => {
 
   test('a stop command runs whatever else it names that is not there: a pid file it reads, an address, a log it writes', async () => {
     const repo = gitRepo(join(dir, 'repo'));
-    expect(await runAppCommand(repo, 'cat .run/app.pid 2>/dev/null; echo ran')).toMatchObject({ ok: true, output: 'ran' });
-    expect(await runAppCommand(repo, 'echo ran $(cat .run/app.pid 2>/dev/null)')).toMatchObject({ ok: true, output: 'ran' });
-    expect(await runAppCommand(repo, 'echo ran localhost:3000/stop')).toMatchObject({ ok: true, output: 'ran localhost:3000/stop' });
-    expect(await runAppCommand(repo, 'mkdir -p logs && echo ran > logs/stop.log && cat logs/stop.log')).toMatchObject({ ok: true, output: 'ran' });
+    if (WINDOWS) {
+      expect(await runAppCommand(repo, 'type .run\\app.pid 2>nul & echo ran')).toMatchObject({ ok: true, output: 'ran' });
+      expect(await runAppCommand(repo, 'echo ran localhost:3000/stop')).toMatchObject({ ok: true, output: 'ran localhost:3000/stop' });
+      expect(await runAppCommand(repo, 'mkdir logs && echo ran> logs\\stop.log && type logs\\stop.log')).toMatchObject({ ok: true, output: 'ran' });
+    } else {
+      expect(await runAppCommand(repo, 'cat .run/app.pid 2>/dev/null; echo ran')).toMatchObject({ ok: true, output: 'ran' });
+      expect(await runAppCommand(repo, 'echo ran $(cat .run/app.pid 2>/dev/null)')).toMatchObject({ ok: true, output: 'ran' });
+      expect(await runAppCommand(repo, 'echo ran localhost:3000/stop')).toMatchObject({ ok: true, output: 'ran localhost:3000/stop' });
+      expect(await runAppCommand(repo, 'mkdir -p logs && echo ran > logs/stop.log && cat logs/stop.log')).toMatchObject({ ok: true, output: 'ran' });
+    }
     expect(scriptOf('kill $(cat .run/app.pid)')).toBeNull();
     expect(scriptOf('curl -s localhost:3000/stop')).toBeNull();
     expect(scriptOf('./scripts/stop.sh --log logs/stop.log')).toBe('./scripts/stop.sh');
@@ -558,18 +567,20 @@ describe('a resolved pull lands', () => {
 });
 
 describe('clones the configuration no longer names', () => {
+  /** Writes the folder it runs in to `stopped` beside the clones. */
+  const STOP = WINDOWS ? 'echo %CD%>> ..\\stopped' : 'echo "$PWD" >> ../stopped';
   let origin: string;
   let store: Store;
   let board: Board;
   let ws: string;
   const make = async (n: number) => {
-    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo "$PWD" >> ../stopped' });
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: STOP });
     const paths = await spaces.ensureClones(origin, n);
     for (const p of paths) identify(p);
     return { spaces, paths };
   };
   // what the stop command ran in, as the path names it (macOS's temporary directory is behind a link)
-  const stopped = () => (existsSync(join(ws, 'stopped')) ? readFileSync(join(ws, 'stopped'), 'utf8').trim().split('\n').map((p) => p.replace(/^\/private\//, '/')) : []);
+  const stopped = () => (existsSync(join(ws, 'stopped')) ? readFileSync(join(ws, 'stopped'), 'utf8').trim().split(/\s*\n/).map((p) => p.replace(/^\/private\//, '/')) : []);
 
   beforeEach(() => {
     gitRepo(join(dir, 'main'));
@@ -601,7 +612,7 @@ describe('clones the configuration no longer names', () => {
     git(unpushed, 'add', '.');
     git(unpushed, 'commit', '--quiet', '-m', 'not pushed');
     let changes = 0;
-    const watched = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo "$PWD" >> ../stopped', changed: () => changes++ });
+    const watched = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: STOP, changed: () => changes++ });
     watched.keepOnly(null, []);
     expect(watched.list()).toEqual([]);
     await until(() => watched.pool([])[0]!.kept?.length === 4);
@@ -615,7 +626,7 @@ describe('clones the configuration no longer names', () => {
     rmSync(join(untracked, 'notes.txt'));
     git(stashed, 'stash', 'drop', '--quiet');
     git(unpushed, 'push', '--quiet', 'origin', 'obeya/card-abc123');
-    const next = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo "$PWD" >> ../stopped' });
+    const next = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: STOP });
     next.sweep();
     await until(() => paths.every((p) => !existsSync(p)) && !next.pool([])[0]!.kept);
     expect(stopped().toSorted()).toEqual(paths);
@@ -638,9 +649,9 @@ describe('clones the configuration no longer names', () => {
     commit(deleted, 'gone.txt');
     git(deleted, 'push', '--quiet', 'origin', 'obeya/gone');
     git(origin, 'branch', '--quiet', '-D', 'obeya/gone');
-    // a name with a tab or a leading space is its own file, not one main has
+    // a name with a tab (none on Windows) or a leading space is its own file, not one main has
     git(odd, 'checkout', '--quiet', '-b', 'odd');
-    commit(odd, 'notes\tsecret.txt');
+    if (!WINDOWS) commit(odd, 'notes\tsecret.txt');
     commit(odd, ' leading.txt');
     git(squashed, 'checkout', '--quiet', '-b', 'obeya/squashed');
     commit(squashed, 'a.txt');
@@ -674,7 +685,8 @@ describe('clones the configuration no longer names', () => {
     expect(spaces.leasedBy(a)).toBe(path);
   });
 
-  test('what the app writes as it is ended keeps the folder', async () => {
+  // Windows ends a process without a signal it could save its state on
+  test.skipIf(WINDOWS)('what the app writes as it is ended keeps the folder', async () => {
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws });
     const [path] = (await spaces.ensureClones(origin, 1)) as [string];
     // an app that saves its state when asked to end, which no stop command knows of
@@ -693,11 +705,11 @@ describe('clones the configuration no longer names', () => {
   }, 30_000);
 
   test('what the stop command leaves behind keeps the folder', async () => {
-    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo snapshot > saved.txt' });
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo snapshot> saved.txt' });
     const [path] = (await spaces.ensureClones(origin, 1)) as [string];
     spaces.keepOnly(null, []);
     await until(() => spaces.pool([])[0]!.kept?.length === 1);
-    expect(readFileSync(join(path, 'saved.txt'), 'utf8')).toBe('snapshot\n');
+    expect(readFileSync(join(path, 'saved.txt'), 'utf8')).toMatch(/^snapshot\r?\n$/);
   });
 
   test('a clone of another repository in its directory is not its to remove', async () => {

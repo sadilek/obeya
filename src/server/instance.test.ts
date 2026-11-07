@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { claim, INSTANCE_FILE, recorded, release, restarting, running, takenOver } from './instance';
 import { ownerHeaders } from './owner';
-import { gitRepo, until } from './testing';
+import { gitRepo, removeDir, until } from './testing';
 
 let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-instance-'));
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 const entry = (pid: number, port: number) => ({ pid, port, url: `http://127.0.0.1:${port}`, version: '0.1.0' });
 

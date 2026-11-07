@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Notice } from '../core/types';
@@ -7,7 +7,7 @@ import type { BadRequest } from './board';
 import { Canvases } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
-import { FakeRuntime, gitRepo, noForge, until } from './testing';
+import { FakeRuntime, gitRepo, noForge, removeDir, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -44,11 +44,11 @@ beforeEach(async () => {
   notices = [];
   docsCanvas().board.onNotice((n) => notices.push(n));
 });
-afterEach(() => {
+afterEach(async () => {
   set.shutdown();
   if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
   else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 const docsCanvas = () => set.get('docs')!;

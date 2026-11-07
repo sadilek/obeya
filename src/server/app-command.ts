@@ -61,9 +61,12 @@ export async function runAppCommand(cwd: string, command: string, timeout = APP_
     return { ok: r.code === 0, output: `${r.stdout}${r.stderr}`.trim() || (r.code === 0 ? '' : `exit code ${r.code}`) };
   }
   if (script && !existsSync(join(cwd, script))) return { ok: true, output: '', missing: script };
-  const shell = process.platform === 'win32' ? ['cmd.exe', '/d', '/s', '/c', command] : ['sh', '-c', command];
+  // cmd.exe takes the command as written, in quotes it drops (`/s`): escaped for a program as Bun
+  // escapes arguments, its own quotes would reach cmd.exe as \"
+  const windows = process.platform === 'win32';
+  const shell = windows ? ['cmd.exe', '/d', '/s', '/c', `"${command}"`] : ['sh', '-c', command];
   try {
-    const r = await spawnOutput(shell, { cwd, stdin: 'ignore', timeout });
+    const r = await spawnOutput(shell, { cwd, stdin: 'ignore', timeout, ...(windows ? { windowsVerbatimArguments: true } : {}) });
     return { ok: r.code === 0, output: `${r.stdout}${r.stderr}`.trim() || (r.code === 0 ? '' : r.signal ? `stopped (${r.signal})` : `exit code ${r.code}`) };
   } catch (e) {
     return { ok: false, output: messageOf(e) };

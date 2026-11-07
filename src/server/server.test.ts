@@ -16,7 +16,7 @@ import type { NarrationHost } from './narration';
 import { KEY_HEADER, keyOf } from './owner';
 import { Stalls } from './stalls';
 import { serve, serveNarration } from './server';
-import { artifact, asOwner, FakeRuntime, gitClone, gitRepo, identify, noForge, until } from './testing';
+import { artifact, asOwner, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, until } from './testing';
 import { git, RECHECK_MS } from './workspaces';
 import type { Transcript } from './voice';
 
@@ -57,15 +57,17 @@ beforeEach(async () => {
   };
   server = serve([canvas], { transcriber }, 0);
 });
-afterEach(() => {
+afterEach(async () => {
   server.stop(true);
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
   setSystemTime();
 });
 
 // what the page, the app's shell and scripts send: the owner's key (owner.ts)
 const { fetch, WebSocket } = asOwner(() => server);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** A path as a script git runs through its sh reads it: with slashes on Windows, where sh takes a backslash for an escape. */
+const shPath = (p: string) => p.replaceAll('\\', '/');
 const card = () => board.create({ title: 'A', x: 0, y: 0 });
 const post = (path: string, body: string) => fetch(new URL(path, server.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body });
 const codeOf = async (res: Promise<Response>) => ((await (await res).json()) as { code: string }).code;
@@ -887,7 +889,7 @@ describe('other files', () => {
     const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 1, 2, 3]);
     const { path } = (await (await upload(pdf, 'Rechnung März 2026.pdf')).json()) as { path: string };
     expect(path.startsWith(join(canvas.files.dir, ''))).toBe(true);
-    expect(path).toMatch(/[0-9a-f-]{36}\/Rechnung-März-2026\.pdf$/);
+    expect(path).toMatch(/[0-9a-f-]{36}[\\/]Rechnung-März-2026\.pdf$/);
     expect(new Uint8Array(readFileSync(path))).toEqual(pdf);
     // the same name twice: two files
     const again = (await (await upload(pdf, 'Rechnung März 2026.pdf')).json()) as { path: string };
@@ -1328,7 +1330,7 @@ describe('landing approved work', () => {
     git(repo, 'remote', 'add', 'origin', origin);
     git(repo, 'fetch', '--quiet', 'origin');
     const pushing = join(dir, 'pushing');
-    writeFileSync(join(origin, 'hooks/pre-receive'), `#!/bin/sh\ntouch '${pushing}'\nsleep 1\n`, { mode: 0o755 });
+    writeFileSync(join(origin, 'hooks/pre-receive'), `#!/bin/sh\ntouch '${shPath(pushing)}'\nsleep 1\n`, { mode: 0o755 });
     const pushed = await CanvasRuntime.start({ repos: [{ path: repo, clones: 2, settings: { land: 'pr', direct: true, workspaces: 'clones' } }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
     server.stop(true);
     server = serve([canvas, pushed], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
@@ -1372,7 +1374,7 @@ describe('starting a card', () => {
     // git that takes its time: adding a worktree (a large repository), fetching into a clone (a slow network)
     const marks = join(dir, 'marks');
     mkdirSync(marks);
-    const slow = (mark: string, then = '') => `#!/bin/sh\ntouch '${join(marks, mark)}'\nsleep 2\n${then}`;
+    const slow = (mark: string, then = '') => `#!/bin/sh\ntouch '${shPath(join(marks, mark))}'\nsleep 2\n${then}`;
     const trees = gitRepo(join(dir, 'trees'));
     mkdirSync(join(trees, '.git/hooks'), { recursive: true });
     writeFileSync(join(trees, '.git/hooks/post-checkout'), slow('worktree'), { mode: 0o755 });
@@ -1383,7 +1385,7 @@ describe('starting a card', () => {
     const worktrees = await CanvasRuntime.start({ name: 'Worktrees', repos: [{ path: trees, settings: { workspaces: 'worktrees' } }] }, deps('home-trees'));
     const clones = await CanvasRuntime.start({ name: 'Clones', repos: [{ path: cloned, clones: 1, settings: { workspaces: 'clones' } }] }, deps('home-clones'));
     const [clone] = clones.repos[0]!.workspaces.list();
-    git(clone!.path, 'config', 'remote.origin.uploadpack', uploadPack);
+    git(clone!.path, 'config', 'remote.origin.uploadpack', shPath(uploadPack));
     server.stop(true);
     server = serve([canvas, worktrees, clones], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
 
@@ -1439,8 +1441,8 @@ describe('the Lesestand and the free clones', () => {
     // `git status` in a free clone (a large repository, or one on another machine); each goes on once the test lets it
     const slow = (mark: string, then: string) => {
       const script = join(dir, `slow-${mark}`);
-      writeFileSync(script, `#!/bin/sh\ntouch '${join(marks, mark)}'\nwhile [ ! -e '${join(marks, `${mark}.go`)}' ]; do sleep 0.05; done\ntouch '${join(marks, `${mark}.done`)}'\n${then}\n`, { mode: 0o755 });
-      return script;
+      writeFileSync(script, `#!/bin/sh\ntouch '${shPath(join(marks, mark))}'\nwhile [ ! -e '${shPath(join(marks, `${mark}.go`))}' ]; do sleep 0.05; done\ntouch '${shPath(join(marks, `${mark}.done`))}'\n${then}\n`, { mode: 0o755 });
+      return shPath(script);
     };
     const go = (mark: string) => writeFileSync(join(marks, `${mark}.go`), '');
     const hold = (mark: string) => rmSync(join(marks, `${mark}.go`), { force: true });
@@ -1505,8 +1507,8 @@ describe('freeing and discarding workspaces', () => {
     // git that takes its time (a large repository, a clone on another machine): it goes on once the test lets it
     const slow = (mark: string, then: string) => {
       const script = join(dir, `slow-${mark}`);
-      writeFileSync(script, `#!/bin/sh\ntouch '${join(marks, mark)}'\nwhile [ ! -e '${join(marks, `${mark}.go`)}' ]; do sleep 0.05; done\n${then}\n`, { mode: 0o755 });
-      return script;
+      writeFileSync(script, `#!/bin/sh\ntouch '${shPath(join(marks, mark))}'\nwhile [ ! -e '${shPath(join(marks, `${mark}.go`))}' ]; do sleep 0.05; done\n${then}\n`, { mode: 0o755 });
+      return shPath(script);
     };
     const go = (mark: string) => writeFileSync(join(marks, `${mark}.go`), '');
     const hold = (mark: string) => {

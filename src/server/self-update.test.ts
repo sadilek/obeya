@@ -242,7 +242,8 @@ test('the seal of HEAD follows a branch whose name git allows beyond ASCII lette
     git(repo, 'checkout', '--quiet', '-b', name.slice('refs/heads/'.length));
     expect(git(repo, 'symbolic-ref', 'HEAD')).toBe(name);
     const before = headSeal(repo);
-    expect(before).toContain(name);
+    // the seal names the file the branch is in: with backslashes on Windows
+    expect(before?.replaceAll('\\', '/')).toContain(name);
     commit('src/a.ts', name);
     expect(headSeal(repo)).not.toBe(before);
   }

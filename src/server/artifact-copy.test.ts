@@ -207,8 +207,10 @@ describe('artifactCopy', () => {
   });
 
   describe('takes in no file from outside its directory', () => {
-    const secret = join(root, 'secret.json');
-    writeFileSync(secret, '{"token":"of the owner"}');
+    const file = join(root, 'secret.json');
+    writeFileSync(file, '{"token":"of the owner"}');
+    // as a module names it, with slashes on Windows too: a backslash in a string escapes
+    const secret = file.replaceAll('\\', '/');
     writeFileSync(join(root, 'secret.woff2'), 'the owner');
 
     test('a module script that imports one stays as it is', async () => {

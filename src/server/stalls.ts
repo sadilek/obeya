@@ -71,13 +71,21 @@ function command(argv: string[]): string {
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
+/** How many ms apart the samples were taken: the interval asked for, or longer where the system's timer is coarser (Windows: about 15.6 ms). */
+function sampledEvery(traces: Trace[], intervalMs: number): number {
+  const gaps = traces.slice(1).map((t, i) => (t.timestamp - traces[i]!.timestamp) * 1000).sort((a, b) => a - b);
+  return Math.max(intervalMs, gaps[gaps.length >> 1] ?? 0);
+}
+
 /**
  * The lines a server stall of `ms` gets: where the samples taken meanwhile were, by share, and the
- * processes it waited for. Null where the samples cover too little of it to have run at all;
- * `traces` null where there is no profiler to ask.
+ * processes it waited for. Null where neither the samples nor those processes cover enough of it
+ * for the server to have run at all (on Windows the profiler takes no samples while the thread
+ * waits for a process); `traces` null where there is no profiler to ask.
  */
 export function describeStall(ms: number, traces: Trace[] | null, waited: Waited[], intervalMs = 1): string[] | null {
-  if (traces && traces.length * intervalMs < ms * RAN_SHARE) return null;
+  const inProcesses = waited.reduce((sum, w) => sum + w.ms, 0);
+  if (traces && traces.length * sampledEvery(traces, intervalMs) < ms * RAN_SHARE && inProcesses < ms * RAN_SHARE) return null;
   const counts = new Map<string, number>();
   for (const t of traces ?? []) {
     const p = placeOf(t);
