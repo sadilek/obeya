@@ -105,6 +105,7 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     for (const [models, why] of [
       ['fail', 'Codex on this machine did not list its models, so the agent did not start. (models unavailable)'],
       ['[]', 'Codex on this machine lists no model of the family Sol and no default, so the agent did not start.'],
+      ['old', 'Codex on this machine is too old to list its models, so the agent did not start. Update Codex there.'],
     ] as const) {
       const pidDir = mkdtempSync(join(tmpdir(), 'obeya-codex-pid-'));
       dirs.push(pidDir);
@@ -112,6 +113,8 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
       const s = start({ model: 'gpt-#-sol', env: { FAKE_CODEX_MODELS: models, FAKE_CODEX_PID: pidFile } }, 'hello');
       await until(() => s.events.some((e) => e.type === 'error'));
       expect(s.events).toEqual([{ type: 'error', message: expect.stringContaining(why) }]);
+      // not the whole list of what an old Codex does know
+      expect(s.events[0]).not.toMatchObject({ message: expect.stringContaining('expected one of') });
       expect(s.requests().some((r) => r.method === 'thread/start')).toBe(false);
       // the app server it started is gone, without the session being closed
       const pid = Number(readFileSync(pidFile, 'utf8'));

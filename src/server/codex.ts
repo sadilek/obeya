@@ -421,6 +421,9 @@ export function codexLoginFailed(info: unknown, message: string): boolean {
 /** A failure for Codex's missing login on `host` (null: this machine), as `codexLoginLost` reads it on the card. */
 export const notLoggedIn = (host: string | null, message: string) => `Codex is not logged in on ${host ?? 'this machine'}. (${message})`;
 
+/** An app server's answer to a request it does not know (`model/list` before Codex had it): it lists every method it does know. */
+export const tooOld = (e: CodexError) => /unknown variant `model\/list`/.test(e.message);
+
 /** How long a session waits for Codex's list of models before it gives up starting. */
 const MODELS_WAIT_MS = 30_000;
 /** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
@@ -529,6 +532,7 @@ class CodexSession implements AgentSession {
       catalog = await Promise.race([listModels(server), late]);
     } catch (e) {
       if (e instanceof CodexError && codexLoginFailed(undefined, e.message)) throw new Error(notLoggedIn(this.there?.host.name ?? null, e.message));
+      if (e instanceof CodexError && tooOld(e)) throw new Error(`Codex on ${where} is too old to list its models, so the agent did not start. Update Codex there.`);
       throw new Error(`Codex on ${where} did not list its models, so the agent did not start. (${messageOf(e)})`);
     } finally {
       clearTimeout(timer);

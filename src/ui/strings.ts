@@ -1306,8 +1306,6 @@ const de = {
       notReady: (name: string) => `${name} (nicht eingerichtet)`,
       /** Where a harness is not set up: what makes it one to choose. */
       setUp: 'Einrichten unter Einrichtung → Agenten.',
-      /** Under Codex's models in a card's menu: what picking one of them means. */
-      codexFamily: 'Folgt der neuesten Version der Familie auf dem Rechner, auf dem der Agent läuft',
       roles: {
         koordinator: { name: 'Obeya', hint: 'Befehle, Planung, Nachschlagen, Projekt-Agenten, Lernen' },
         worker: { name: 'Agenten an Aufgaben', hint: 'bauen die Aufgaben' },
@@ -3371,7 +3369,6 @@ const en: Strings = {
       effort: 'Effort',
       notReady: (name: string) => `${name} (not set up)`,
       setUp: 'Set it up under Setup → Agents.',
-      codexFamily: 'Follows the newest version of the family on the machine the agent runs on',
       roles: {
         koordinator: { name: 'Obeya', hint: 'commands, planning, look-ups, project agents, learning' },
         worker: { name: 'Agents on tasks', hint: 'build the tasks' },

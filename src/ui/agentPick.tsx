@@ -133,7 +133,6 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
                       </button>
                     );
                   })}
-                  {h === 'codex' && <div className="hint agent-family">{t.config.agents.codexFamily}</div>}
                 </div>
               );
             })}

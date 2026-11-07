@@ -47,7 +47,8 @@ explicit model: right before starting or resuming, the session asks its own app 
 catalog (`model/list`, on the machine it runs on, a host included) and takes the newest model of
 the family it is to run on (see Harnesses, models and effort), else the one the catalog marks as
 its default; a resumed thread may so move to a newer version. Where the catalog cannot be had
-(no answer within half a minute) or has neither, the agent does not start and its card says why:
+(no answer within half a minute; a Codex too old to list its models, which the card says needs
+updating) or has neither, the agent does not start and its card says why:
 the model is never left to Codex's own configuration. An effort the model does not take becomes
 the nearest one it takes, the higher of two as near. A message to an idle session starts a turn
 with the effort of its group; one during a turn steers it (`turn/steer`); one that comes
@@ -109,8 +110,7 @@ Koordinator's setting changes (as for another language).
 A card may run on another harness, model or effort than its group. Joined to each button that
 starts a card (and "Accept and start" on a proposed task, "Start anyway" in the queue) is a narrow
 part with a triangle that opens a menu: each ready harness's models, as "Agents and models" lists
-them (under Codex's a line saying they follow the newest version of the family on the machine the
-agent runs on), and the efforts the model takes, with what applies checked (the workers' setting until the
+them, and the efforts the model takes, with what applies checked (the workers' setting until the
 card has one of its own). Picking what the workers have is no choice of the card's: it follows
 their setting. What the card chose of its own stands small beside the button ("Codex · Sol ·
 effort very high"); without a choice nothing does. The choice is the card's, stored with it, and

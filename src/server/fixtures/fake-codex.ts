@@ -160,8 +160,9 @@ process.stdin.setEncoding('utf8').on('data', (d: string) => {
         setTimeout(() => send({ method: 'account/login/completed', params: { loginId: 'login-1', success: true, error: null } }), 50);
         break;
       case 'model/list':
-        // `FAKE_CODEX_MODELS`: the catalog as `model/list` gives it (JSON), `fail` for a list that fails
+        // `FAKE_CODEX_MODELS`: the catalog as `model/list` gives it (JSON), `fail` for a list that fails, `old` for a Codex without it
         if (process.env.FAKE_CODEX_MODELS === 'fail') send({ id: m.id, error: { code: -32603, message: 'models unavailable' } });
+        else if (process.env.FAKE_CODEX_MODELS === 'old') send({ id: m.id, error: { code: -32600, message: 'Invalid request: unknown variant `model/list`, expected one of `initialize`, `thread/start`, `turn/start`' } });
         else send({ id: m.id, result: { data: process.env.FAKE_CODEX_MODELS ? JSON.parse(process.env.FAKE_CODEX_MODELS) : CATALOG, nextCursor: null } });
         break;
       case 'hooks/list':
