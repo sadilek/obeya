@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { messageOf } from '../core/text';
 import type { AgentEffort, HarnessModel, UsageLimit } from '../core/types';
-import { AGENT_EFFORTS, codexFamily, nearestEffort, resolveCodexModel } from '../core/types';
+import { AGENT_EFFORTS, codexFamily, codexFamilyName, nearestEffort, resolveCodexModel } from '../core/types';
 import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
@@ -421,9 +421,9 @@ export function codexLoginFailed(info: unknown, message: string): boolean {
 /** A failure for Codex's missing login on `host` (null: this machine), as `codexLoginLost` reads it on the card. */
 export const notLoggedIn = (host: string | null, message: string) => `Codex is not logged in on ${host ?? 'this machine'}. (${message})`;
 
-/** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
-/** How long a session waits for Codex's list of models before it starts without one. */
+/** How long a session waits for Codex's list of models before it gives up starting. */
 const MODELS_WAIT_MS = 30_000;
+/** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
 const hookPortThere = () => 30_000 + Math.floor(Math.random() * 30_000);
 
 /** Runs agents through `codex app-server`, on the Codex login of the machine they work on: this one, or a host's over SSH. */
@@ -513,23 +513,26 @@ class CodexSession implements AgentSession {
   /**
    * The model the session starts or resumes on: the newest of the family it is to run on (the
    * preset's where it names none) in the catalog of the app server it talks to, which is the one of
-   * the machine it runs on, else the catalog's default; none where the catalog cannot be had or has
-   * neither, and Codex's own configuration decides. An effort that model does not take becomes the
-   * nearest it does.
+   * the machine it runs on, else the catalog's default. Where the catalog cannot be had or has
+   * neither, the session fails rather than leave the model to Codex's own configuration, which may
+   * name one the login cannot use. An effort that model does not take becomes the nearest it does.
    */
-  private async model(server: AppServer): Promise<string | undefined> {
+  private async model(server: AppServer): Promise<string> {
     const family = codexFamily(this.spec.model ?? 'default');
+    const where = this.there?.host.name ?? 'this machine';
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer in ${MODELS_WAIT_MS / 1000} seconds`)), MODELS_WAIT_MS)));
-    const catalog = await Promise.race([listModels(server), late])
-      .catch((e) => void console.warn(`Obeya: Codex did not list its models; the session starts on Codex's own configuration: ${messageOf(e)}`))
-      .finally(() => clearTimeout(timer));
-    if (!catalog) return undefined;
-    const model = resolveCodexModel(catalog, family);
-    if (!model) {
-      console.warn(`Obeya: Codex lists no model of the family ${family} nor a default; the session starts on Codex's own configuration`);
-      return undefined;
+    let catalog: HarnessModel[];
+    try {
+      catalog = await Promise.race([listModels(server), late]);
+    } catch (e) {
+      if (e instanceof CodexError && codexLoginFailed(undefined, e.message)) throw new Error(notLoggedIn(this.there?.host.name ?? null, e.message));
+      throw new Error(`Codex on ${where} did not list its models, so the agent did not start. (${messageOf(e)})`);
+    } finally {
+      clearTimeout(timer);
     }
+    const model = resolveCodexModel(catalog, family);
+    if (!model) throw new Error(`Codex on ${where} lists no model of the family ${codexFamilyName(family)} and no default, so the agent did not start.`);
     if (this.effort) this.effort = nearestEffort(this.effort, model.efforts);
     return model.id;
   }
@@ -597,7 +600,7 @@ class CodexSession implements AgentSession {
     if (this.closed) return;
     const settings = {
       cwd,
-      ...(model ? { model } : {}),
+      model,
       approvalPolicy: spec.readOnly ? 'never' : 'on-request',
       ...(spec.readOnly ? {} : { approvalsReviewer: 'auto_review' }),
       sandbox: spec.readOnly ? 'read-only' : 'workspace-write',

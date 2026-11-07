@@ -45,11 +45,12 @@ dynamic tools of the namespace `obeya` (the model sees them as `obeya__<name>`),
 thread's id after a restart, since Codex keeps a thread's tools with it. Either way it gets an
 explicit model: right before starting or resuming, the session asks its own app server for the
 catalog (`model/list`, on the machine it runs on, a host included) and takes the newest model of
-the family it is to run on (see Harnesses, models and effort), else the one the catalog marks as its
-default; a resumed thread may so move to a newer version. Where the catalog cannot be had or has
-neither, the thread starts without a model and Codex's own configuration decides (logged; the card
-shows the model it took). An effort the model does not take becomes the nearest one it takes, the
-higher of two as near. A message to an idle session starts a turn with the effort of its group; one during a turn steers it (`turn/steer`); one that comes
+the family it is to run on (see Harnesses, models and effort), else the one the catalog marks as
+its default; a resumed thread may so move to a newer version. Where the catalog cannot be had
+(no answer within half a minute) or has neither, the agent does not start and its card says why:
+the model is never left to Codex's own configuration. An effort the model does not take becomes
+the nearest one it takes, the higher of two as near. A message to an idle session starts a turn
+with the effort of its group; one during a turn steers it (`turn/steer`); one that comes
 as the turn ends starts the next. Codex's items reach the card as Claude Code's tool calls would: a
 command as `Bash`, a file added as `Write` and changed as `Edit`, Obeya's tools as `mcp__obeya__…`.
 What changed since the instructions were built goes with the result of Obeya's next tool, or after
@@ -91,8 +92,8 @@ throughout, high effort for workers and exploration agents, medium otherwise. A 
 by its name without a version (Sol, Terra; Codex Max for `gpt-#-codex-max`; one named only by its
 version, as `o#`, by its newest model here, o3) and stands for whatever is newest of it where an
 agent runs (see Codex), as Opus does for Claude Code; a version cannot be pinned. Which version
-runs shows on a started card's conversation heading, as Claude Code's does (Codex · GPT-6.1-Sol). A family is the
-model id with its version number taken out (`gpt-6.1-sol` and `gpt-5.6-sol` are both `gpt-#-sol`;
+runs shows on a started card's conversation heading, as Claude Code's does (Codex · GPT-6.1-Sol).
+A family is the model id with its version number taken out (`gpt-6.1-sol` and `gpt-5.6-sol` are both `gpt-#-sol`;
 an id without a number is a family of its own), so families with other names (`gpt-#-codex`, `o#`)
 work alike. Claude Code's default is no entry of its own; Codex's needs none. A family the catalog no
 longer lists stays shown as chosen. Another harness starts from its own preset model (for Codex the
@@ -462,18 +463,18 @@ for its hooks), and what the repository's work needs.
   organization until an admin enables it, usage-based billing (since June 2026, $19 of credit a
   month on Business) is used up by a few long parallel cards, and whether ACP resumes a session
   after a restart and reports the usage for the bar is unchecked.
-- **A harness's default model is no entry of its own, and Codex's older versions are left out**
-  (owner, 2026-11-05): the owner picks the model they want by name, and an older version of a family
-  beside the newest is only noise. Rejected: "Claude Code default" and "Codex default (GPT-6.1-Sol)"
-  as entries beside the models (the default named twice); Codex's whole list.
-- **Codex settings name a family, and every Codex start passes an explicit model** (2026-11-06,
-  GitHub issue #58, pull request #59): what an agent runs on must not depend on the local Codex
-  `config.toml`, which may name a model the login's catalog lacks (`model_not_found`). The family
-  resolves in the session, against the catalog of the machine the agent runs on, since a host's
-  login and Codex version may list other models than this machine's. Rejected: a "Use Codex
-  settings" entry deferring to Codex's own configuration (nobody needed it); resolving the family
-  from this machine's cached catalog before the start (wrong for a host); storing model ids, which
-  pin a version the catalog later drops.
+- **Codex models are chosen by family, and every Codex start passes an explicit model** (owner,
+  2026-11-06): the owner picks a family by name (Sol, Terra), as Claude Code's aliases, and an
+  agent runs on its newest version. What an agent runs on must not depend on the local Codex
+  `config.toml`, which may name a model the login's catalog lacks (`model_not_found`), so without a
+  catalog to resolve the family against the agent does not start. The family resolves in the
+  session, against the catalog of the machine the agent runs on, since a host's login and Codex
+  version may list other models than this machine's. Rejected: a "Use Codex settings" entry
+  deferring to Codex's own configuration (nobody needed it); starting without a model where the
+  catalog cannot be had (the same `model_not_found`); resolving the family from this machine's
+  cached catalog before the start (wrong for a host); storing model ids, which pin a version the
+  catalog later drops; Codex's whole list, or its versions side by side (only noise); "Claude Code
+  default" and "Codex default (GPT-6.1-Sol)" as entries beside the models (the default named twice).
 - **The harness column is called "Runs on"** (owner, 2026-11-03), under the title "Agents and
   models", which names the rows. Rejected: "Harness", jargon beside that title; „Werkzeug“ or
   „Tool“, which agents' commands are called already, and which undersells a coding agent.

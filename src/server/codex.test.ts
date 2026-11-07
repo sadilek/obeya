@@ -101,13 +101,15 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     expect(u.requests().find((r) => r.method === 'thread/start')!.params.model).toBe('gpt-6.1-sol');
   });
 
-  test("without a catalog the session starts on Codex's own configuration", async () => {
-    for (const models of ['fail', '[]']) {
+  test("without a model to give Codex the session does not start, and says why, rather than leave it to Codex's own configuration", async () => {
+    for (const [models, why] of [
+      ['fail', 'Codex on this machine did not list its models, so the agent did not start. (models unavailable)'],
+      ['[]', 'Codex on this machine lists no model of the family Sol and no default, so the agent did not start.'],
+    ] as const) {
       const s = start({ model: 'gpt-#-sol', env: { FAKE_CODEX_MODELS: models } }, 'hello');
-      await until(() => s.idles() === 1);
-      expect(s.requests().find((r) => r.method === 'thread/start')!.params.model).toBeUndefined();
-      expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-5.5' });
-      expect(s.texts()).toEqual(['echo: hello']);
+      await until(() => s.events.some((e) => e.type === 'error'));
+      expect(s.events).toEqual([{ type: 'error', message: expect.stringContaining(why) }]);
+      expect(s.requests().some((r) => r.method === 'thread/start')).toBe(false);
     }
   });
 
