@@ -198,6 +198,11 @@ const de = {
     expand: 'Aufklappen: die Workstreams wieder zeigen',
     /** The project's conversation with its project agent, in its sheet. */
     askHead: 'Projekt-Agent',
+    /** A project whose every workstream is done, which waits on the canvas for the owner to archive it. */
+    done: 'Alle Workstreams sind erledigt.',
+    archive: 'Archivieren',
+    archiveLong: 'Projekt archivieren',
+    archiveHint: 'Nimmt das Projekt mit seinen Workstreams von der Leinwand ins Archiv; von dort kommt es zurück.',
     askHint: 'Frag hier den Projekt-Agenten: Er kennt das Plandokument, die Entscheidungen und den Stand jedes Workstreams. Was du Obeya zu diesem Projekt fragst, steht auch hier.',
     askPlaceholder: 'Frage zum Projekt …',
     askSend: 'An den Projekt-Agenten senden',
@@ -2069,12 +2074,12 @@ const de = {
     /** No archived card matches what the owner typed into the archive's search field. */
     noMatch: (q: string) => `Nichts im Archiv passt zu „${q}“.`,
     archive: 'Archivieren',
-    archiveDone: (n: number) => (n === 1 ? '1 erledigte Aufgabe archivieren' : `${n} erledigte Aufgaben archivieren`),
+    archiveDone: (n: number) => (n === 1 ? '1 erledigte Karte archivieren' : `${n} erledigte Karten archivieren`),
     unarchive: 'Zurück auf die Leinwand',
     /** Why a stopped task whose workspace holds work cannot go into the archive. */
     holdsWork: 'Auf dem Branch liegt Arbeit, die noch nicht gelandet ist: neu starten oder löschen.',
     archived: (title: string) => `„${title}“ archiviert.`,
-    archivedMany: (n: number) => (n === 1 ? '1 Aufgabe archiviert.' : `${n} Aufgaben archiviert.`),
+    archivedMany: (n: number) => (n === 1 ? '1 Karte archiviert.' : `${n} Karten archiviert.`),
     unarchived: (title: string) => `„${title}“ ist zurück auf der Leinwand.`,
     /** The heading over the cards archived on one day. */
     day: (d: Date, today = new Date()) => {
@@ -2091,6 +2096,8 @@ const de = {
     /** On the archive's timeline, beside a card: when it went into the archive that day. */
     time: (d: Date) => clock(d),
     /** Over an archived project: its plan doc is gone, and the sheet shows it as it last stood. */
+    /** An archived project whose every workstream is done, which can go back on the canvas. */
+    projectDone: (d: Date) => `Alle Workstreams erledigt, ${de.archive.when(d)}.`,
     projectGone: (d: Date) => `Das Plan-Dokument ist weg (${de.archive.when(d)}). So stand es zuletzt; kommt die Datei zurück, kehrt das Projekt an seinen Platz zurück.`,
     workstreams: (n: number) => (n === 1 ? '1 Workstream' : `${n} Workstreams`),
   },
@@ -2394,6 +2401,11 @@ const en: Strings = {
     collapse: 'Collapse: only the project’s head stays on the canvas',
     expand: 'Expand: show the workstreams again',
     askHead: 'Project agent',
+    /** A project whose every workstream is done, which waits on the canvas for the owner to archive it. */
+    done: 'All workstreams are done.',
+    archive: 'Archive',
+    archiveLong: 'Archive the project',
+    archiveHint: 'Takes the project with its workstreams off the canvas into the archive; it can come back from there.',
     askHint: 'Ask the project agent here: it knows the plan doc, the decisions and where each workstream stands. What you ask Obeya about this project stands here too.',
     askPlaceholder: 'A question about the project …',
     askSend: 'Send to the project agent',
@@ -4134,11 +4146,11 @@ const en: Strings = {
     /** No archived card matches what the owner typed into the archive's search field. */
     noMatch: (q: string) => `Nothing in the archive matches “${q}”.`,
     archive: 'Archive',
-    archiveDone: (n: number) => (n === 1 ? 'Archive 1 finished task' : `Archive ${n} finished tasks`),
+    archiveDone: (n: number) => (n === 1 ? 'Archive 1 finished card' : `Archive ${n} finished cards`),
     unarchive: 'Back onto the canvas',
     holdsWork: 'Its branch holds work that has not landed: start it again or delete it.',
     archived: (title: string) => `“${title}” archived.`,
-    archivedMany: (n: number) => (n === 1 ? '1 task archived.' : `${n} tasks archived.`),
+    archivedMany: (n: number) => (n === 1 ? '1 card archived.' : `${n} cards archived.`),
     unarchived: (title: string) => `“${title}” is back on the canvas.`,
     day: (d: Date, today = new Date()) => {
       const days = Math.round((startOfDay(today) - startOfDay(d)) / 86_400_000);
@@ -4151,6 +4163,8 @@ const en: Strings = {
       return `archived ${day === 'Today' || day === 'Yesterday' ? day.toLowerCase() : `on ${day}`}, ${clock(d)}`;
     },
     time: (d: Date) => clock(d),
+    /** An archived project whose every workstream is done, which can go back on the canvas. */
+    projectDone: (d: Date) => `Every workstream done, ${en.archive.when(d)}.`,
     projectGone: (d: Date) => `The plan doc is gone (${en.archive.when(d)}). This is how it last stood; if the file comes back, the project returns to its place.`,
     workstreams: (n: number) => (n === 1 ? '1 workstream' : `${n} workstreams`),
   },

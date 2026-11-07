@@ -963,6 +963,31 @@ function Canvas({
     }
   }, []);
 
+  /** The archive button of a project whose work is done, on the canvas and in its sheet: takes it off the canvas, with a moment to undo. */
+  async function archiveProjectNow(p: Item) {
+    try {
+      await api.archive(p.id);
+      if (focusRef.current?.type === 'project' && focusRef.current.id === p.id) await closeProject(false);
+      showAck(t.archive.archived(plain(p.title)), () => api.unarchive(p.id));
+    } catch (e) {
+      fail(e);
+    }
+  }
+  const archiveProjectRef = useRef(archiveProjectNow);
+  archiveProjectRef.current = archiveProjectNow;
+  const archiveProject = useCallback((p: Item) => void archiveProjectRef.current(p), []);
+
+  /** "Back to the canvas" in the sheet of an archived project whose work is done. */
+  async function unarchiveProject(p: Item) {
+    try {
+      await api.unarchive(p.id);
+      await closeProject(false);
+      showAck(t.archive.unarchived(plain(p.title)));
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   /**
    * The project's button, on its card and in its sheet: all planned workstreams go to the
    * Koordinator together, which waits a few seconds before it plans them, so the start can be taken back.
@@ -1928,7 +1953,7 @@ function Canvas({
             </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
-                <ProjectView key={item.id} item={item} b={b} lit={item.id === litId} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
+                <ProjectView key={item.id} item={item} b={b} lit={item.id === litId} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} onArchive={archiveProject} />
               ) : (
                 <CardView
                   key={item.id}
@@ -2185,6 +2210,8 @@ function Canvas({
           onRead={(r) => sheetProject && readPlan(sheetProject, r)}
           onStartAll={startAll}
           onArrange={arrange}
+          onArchive={archiveProject}
+          onUnarchive={(p) => void unarchiveProject(p)}
           els={sheetEls}
           version={snapshot}
         />

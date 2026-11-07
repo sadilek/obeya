@@ -121,36 +121,96 @@ describe('plan docs', () => {
     expect(board.card(w1!.id)).toEqual(board.archived()[1]!);
   });
 
-  test('every workstream ticked off ends the project; an open one added later brings it back to its place', () => {
+  test('every workstream ticked off ends the project, which stays on the canvas until the owner archives it; an open one added later brings it back', () => {
     const p = board.snapshot().items[0]!;
     board.patch(p.id, { x: -500, y: 42 });
     const ticked = { ...docA, workstreams: docA.workstreams.map((w) => ({ ...w, done: true })) };
     docs = [ticked];
     board.docsChanged();
+    expect(board.snapshot().items.map((i) => [i.label ?? i.title, i.state])).toEqual([
+      ['A', 'done'],
+      ['W1', 'live'],
+      ['W2', 'live'],
+      ['W3', 'live'],
+    ]);
+    expect(board.archived()).toEqual([]);
+    // read again, it still stands
+    board.docsChanged();
+    expect(board.item(p.id)!.state).toBe('done');
+    board.archive([p.id]);
     expect(board.snapshot().items).toEqual([]);
     expect(board.archived().map((i) => [i.title, i.state])).toEqual([
-      ['A', 'planned'],
+      ['A', 'done'],
       ['Title W1', 'live'],
       ['Title W2', 'live'],
       ['Title W3', 'live'],
     ]);
+    // and stays there, read again
+    board.docsChanged();
+    expect(board.snapshot().items).toEqual([]);
+    // back on the canvas, and into the archive again
+    board.unarchive(p.id);
+    expect(board.snapshot().items[0]).toMatchObject({ id: p.id, state: 'done', x: -500, y: 42 });
+    board.archive([p.id]);
     docs = [{ ...ticked, workstreams: [...ticked.workstreams, ws('W4')] }];
     board.docsChanged();
     expect(board.snapshot().items.map((i) => i.label ?? i.title)).toEqual(['A', 'W1', 'W2', 'W3', 'W4']);
-    expect(board.snapshot().items[0]).toMatchObject({ id: p.id, x: -500, y: 42 });
+    expect(board.snapshot().items[0]).toMatchObject({ id: p.id, state: 'planned', x: -500, y: 42 });
     expect(board.archived()).toEqual([]);
   });
 
-  test('a workstream still at work keeps its project on the canvas once every box is ticked', () => {
+  test('a project with work still open is not archived, and "Archive finished" takes a project whose work is done', () => {
+    const [p, w1] = board.snapshot().items;
+    expect(() => board.archive([p!.id])).toThrow(BadRequest);
+    // a workstream goes with its project, not on its own
+    expect(() => board.archive([w1!.id])).toThrow(BadRequest);
+    docs = [{ ...docA, workstreams: docA.workstreams.map((w) => ({ ...w, done: true })) }];
+    board.docsChanged();
+    expect(board.snapshot().items.filter(archivedWithDone).map((i) => i.id)).toEqual([p!.id]);
+    expect(board.archiveDone()).toEqual([p!.id]);
+    expect(board.snapshot().items).toEqual([]);
+  });
+
+  test('a workstream still at work keeps its project at work once every box is ticked', () => {
     const w2 = board.snapshot().items.find((i) => i.label === 'W2')!;
     board.work(w2.id, { state: 'working' });
     docs = [{ ...docA, workstreams: docA.workstreams.map((w) => ({ ...w, done: true })) }];
     board.docsChanged();
     expect(board.item(w2.id)!.state).toBe('working');
-    // its worker done, the project ends without reading the doc again
+    expect(board.snapshot().items[0]!.state).toBe('planned');
+    expect(() => board.archive([board.snapshot().items[0]!.id])).toThrow(BadRequest);
+    // its worker done, the project's work is done without reading the doc again
     board.work(w2.id, { state: 'live' });
+    expect(board.snapshot().items[0]).toMatchObject({ title: 'A', state: 'done' });
+    expect(board.archived()).toEqual([]);
+  });
+
+  test('a doc gone once all its work landed leaves its project on the canvas, as the doc last stood, until the owner archives it', () => {
+    const [p] = board.snapshot().items;
+    for (const label of ['W2', 'W3']) board.work(board.snapshot().items.find((i) => i.label === label)!.id, { state: 'live' });
+    docs = [];
+    board.docsChanged();
+    expect(board.snapshot().items.map((i) => [i.label ?? i.title, i.state])).toEqual([
+      ['A', 'done'],
+      ['W1', 'live'],
+      ['W2', 'live'],
+      ['W3', 'live'],
+    ]);
+    // its doc as it last stood
+    expect(board.planDoc(p!.id).markdown).toBe(docA.markdown);
+    board.archive([p!.id]);
     expect(board.snapshot().items).toEqual([]);
-    expect(board.archived()[0]!.title).toBe('A');
+    expect(board.archived()[0]).toMatchObject({ id: p!.id, state: 'done' });
+    board.unarchive(p!.id);
+    expect(board.snapshot().items[0]).toMatchObject({ id: p!.id, state: 'done' });
+  });
+
+  test('a doc gone before its work was done ends its project in the archive, which does not bring it back', () => {
+    const [p] = board.snapshot().items;
+    docs = [];
+    board.docsChanged();
+    expect(board.archived()[0]).toMatchObject({ id: p!.id, state: 'planned' });
+    expect(() => board.unarchive(p!.id)).toThrow(BadRequest);
   });
 
   test('a workstream whose worker finishes after the landing keeps its project, as its doc last stood, once the doc is gone', () => {

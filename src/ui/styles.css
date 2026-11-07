@@ -1541,6 +1541,10 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .sheet .arrange { margin-top: 10px; }
 .sheet .arrange .btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; font-size: 13px; }
 .sheet .arrange .hint { margin: 6px 0 0; font-size: 12px; }
+.sheet .archive { margin-top: 14px; }
+.sheet .archive > p:not(.hint) { margin: 0 0 8px; font-size: 14px; }
+.sheet .archive .btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; font-size: 13px; }
+.sheet .archive .hint { margin: 6px 0 0; font-size: 12px; }
 
 /* Obeya's configuration: a dialog over the page, nearly as large as the window, its sections listed
    on the left and the one chosen on the right; settings as rows of label and control, without boxes */

@@ -665,7 +665,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     expect(state(w.id)).toBe('live');
   });
 
-  test('the last workstream ticked off: the project stays while its worker finishes, then goes into the archive', async () => {
+  test('the last workstream ticked off: the project stays at work while its worker finishes, then its work is done', async () => {
     const w = await handOver();
     const project = board.snapshot().items.find((i) => i.kind === 'project')!;
     setDocs([{ ...doc, workstreams: [{ ...ws('W1'), done: true }] }]);
@@ -673,11 +673,11 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     board.docsChanged();
     expect(state(w.id)).toBe('live');
     runtime.last.emit({ type: 'idle' });
-    expect(board.item(project.id)).toBeUndefined();
-    expect(board.archived().map((i) => i.id)).toEqual([project.id, w.id]);
+    expect(board.item(project.id)!.state).toBe('done');
+    expect(board.archived()).toEqual([]);
   });
 
-  test('the last workstream lands and its doc goes: the project stays while its worker finishes, then goes into the archive', async () => {
+  test('the last workstream lands and its doc goes: the project stays at work while its worker finishes, then its work is done', async () => {
     const w = await handOver();
     const project = board.snapshot().items.find((i) => i.kind === 'project')!;
     // the landing takes the done doc away
@@ -688,8 +688,8 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     expect(board.item(w.id)!.finishing).toBe(true);
     runtime.last.emit({ type: 'idle' });
     expect(spaces.leasedBy(w.id)).toBeNull();
-    expect(board.item(project.id)).toBeUndefined();
-    expect(board.archived().map((i) => i.id)).toEqual([project.id, w.id]);
+    expect(board.item(project.id)!.state).toBe('done');
+    expect(board.archived()).toEqual([]);
   });
 
   describe('awaiting a restart', () => {
@@ -714,7 +714,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
       return b;
     };
 
-    test('the project stays over the restart and goes into the archive once its worker is done', async () => {
+    test('the project stays over the restart, its work done once its worker is', async () => {
       const w = await landWaiting();
       const project = board.snapshot().items.find((i) => i.kind === 'project')!;
       board.docsChanged();
@@ -724,11 +724,11 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
       expect(runtime.last.spec.resume).toBe('sess-1');
       runtime.last.emit({ type: 'idle' });
       expect(spaces.leasedBy(w.id)).toBeNull();
-      expect(after.item(project.id)).toBeUndefined();
-      expect(after.archived().map((i) => i.id)).toEqual([project.id, w.id]);
+      expect(after.item(project.id)!.state).toBe('done');
+      expect(after.archived()).toEqual([]);
     });
 
-    test('a project archived while its workstream finished comes back, and goes once its worker is done', async () => {
+    test('a project archived while its workstream finished comes back, its work done once its worker is', async () => {
       const w = await landWaiting();
       const project = board.snapshot().items.find((i) => i.kind === 'project')!;
       // as Obeya did before: archived at the landing, its worker unseen
@@ -738,8 +738,8 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
       expect(after.item(w.id)!.finishing).toBe(true);
       runtime.last.emit({ type: 'idle' });
       expect(spaces.leasedBy(w.id)).toBeNull();
-      expect(after.item(project.id)).toBeUndefined();
-      expect(after.archived().map((i) => i.id)).toEqual([project.id, w.id]);
+      expect(after.item(project.id)!.state).toBe('done');
+      expect(after.archived()).toEqual([]);
     });
   });
 
@@ -1065,7 +1065,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     expect(board.events(w.id).map((e) => e.text)).not.toContain('Im Plan-Doc abgehakt: Workspace freigegeben.');
     // its project, every box ticked, stays on the canvas with it
     expect(board.item(w.parent!)).toBeDefined();
-    // started again, its work lands, and the box counts: the project ends once its worker is done
+    // started again, its work lands, and the box counts: the project's work is done once its worker is
     await workers.start(w.id);
     expect(board.row(w.id).workspace).toBe(clone);
     await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
@@ -1075,6 +1075,6 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     expect(state(w.id)).toBe('live');
     expect(git(main, 'log', '--format=%s')).toContain('Config');
     runtime.last.emit({ type: 'idle' });
-    expect(board.archived().map((i) => i.id)).toEqual([w.parent!, w.id]);
+    expect(board.item(w.parent!)!.state).toBe('done');
   });
 });

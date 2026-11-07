@@ -1619,9 +1619,11 @@ describe('plan docs that are not projects, and projects whose work is done', () 
     expect(canvas.board.snapshot().planDirs).toBeUndefined();
   });
 
-  test('a project goes into the archive once every workstream is ticked on the default branch, and comes back with an open one', async () => {
+  test('a project is done once every workstream is ticked on the default branch, goes into the archive by the owner, and comes back with an open one', async () => {
     const before = project('API')!;
     await land('docs/plan/plan.md', '# API\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** Erster Schritt.\n');
+    expect(project('API')).toMatchObject({ id: before.id, state: 'done' });
+    canvas.board.archive([before.id]);
     expect(project('API')).toBeUndefined();
     expect(canvas.board.archived().map((i) => i.title)).toEqual(['API', 'Erster Schritt']);
     await land('docs/plan/plan.md', '# API\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** Erster Schritt.\n- [ ] **W2:** Zweiter.\n');

@@ -193,11 +193,17 @@ prototype of an archived idea), not with every change on the canvas.
 
 ### Projects end
 
-A project ends when every workstream in its plan doc is ticked on the default branch, or when the
-doc is deleted: it moves into the archive with its workstreams, which are not listed on their own. A
-workstream still at work then (or its worker finishing after the landing) keeps the project on the
-canvas until that worker is done. Opened from the archive, its sheet shows read-only the goal and
-workstreams as the doc last stood, each workstream with its conversation and demo. When the file
+A project's work is done when every workstream in its plan doc is ticked on the default branch, or
+when the doc is deleted once every workstream was ticked or its card had landed (the last workstream
+often takes the doc away with it). A workstream still at work then (or its worker finishing after the
+landing) keeps the project at work until that worker is done. Done, the project stays on the canvas
+in its place, saying so, with "Archive" in its head and "Archive the project" in its sheet; the
+owner archives it from there or with all finished cards at once (see Archive). It moves into the
+archive with its workstreams, which are not listed on their own, and its sheet there offers "Back onto
+the canvas". A doc deleted before its work was done (dropped, or renamed into a new project) takes
+its project into the archive at once, for good. Opened from the archive, a project's sheet shows
+read-only the goal and workstreams as the doc last stood, each workstream with its conversation and
+demo; on the canvas, a project whose doc is gone shows its doc as it last stood too. When the file
 comes back, or gets an open workstream, the project returns to its place.
 
 Every project's sheet holds its conversation with its project agent (see Asking in a project's
@@ -253,7 +259,7 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
 - **A finished card keeps a field for questions to its agent** (2026-10-08).
 - **What the owner archives**: only their own finished cards, ideas once parked or dropped (a parked
   idea's result may have been used outside Obeya, 2026-10-15), and stopped tasks (2026-10-15).
-  "Archive n finished tasks" leaves ideas alone, as well as Question cards (done when the owner
+  "Archive n finished cards" takes projects whose work is done and leaves ideas alone, as well as Question cards (done when the owner
   says so) and a task whose agent still finishes after the landing; its button counts exactly what
   it takes, by the same rule as the server, or it offers a click that archives nothing (2026-11-04).
   A workstream goes with its project. Archiving
@@ -264,6 +270,12 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
   Rejected: pages loaded from the server as the owner scrolls, which would move the search to the
   server and leave the cards that open from the archive or by their address without their full
   data.
+- **A project whose work is done waits on the canvas for the owner to archive it** (2026-11-07,
+  issue #70): taking it off the canvas with the last landing made the whole project vanish when one
+  workstream finished, and the owner had to look for it in the archive. Rejected: archiving it
+  automatically after a delay (it still vanishes unasked). A doc deleted before its work was done
+  still ends its project at once: nothing of it is left to look at, and a renamed doc would leave a
+  husk beside its new project.
 - **No card goes into the archive while its worker finishes after the landing** (2026-10-16):
   workers are looked up among the cards on the canvas, so the worker of an archived card never ended
   its turn and held its clone out of the owner's sight.

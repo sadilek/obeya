@@ -789,8 +789,10 @@ export class Board {
 
   /** The plan doc of a project, as written, for the owner to read. */
   planDoc(id: string): { file: string; markdown: string } {
-    const ref = this.own(id).plan_ref;
-    const doc = ref && !ref.includes('#') ? (this.docs ??= this.read()).find((d) => d.file === ref) : undefined;
+    const row = this.own(id);
+    const ref = row.plan_ref;
+    // a doc gone from a project whose work is done, as it last stood
+    const doc = ref && !ref.includes('#') ? ((this.docs ??= this.read()).find((d) => d.file === ref) ?? (row.plan ? (JSON.parse(row.plan) as PlanDoc) : undefined)) : undefined;
     if (!doc) throw new BadRequest('invalid', 'not a project with a plan doc');
     return { file: doc.file, markdown: doc.markdown };
   }
@@ -1632,10 +1634,14 @@ export class Board {
 
   // ---------------------------------------------------------------- archive
 
-  /** Takes finished cards, stopped tasks and parked or dropped ideas of the owner's off the canvas into its archive. */
+  /** Takes finished cards, stopped tasks, parked or dropped ideas of the owner's and projects whose work is done off the canvas into its archive. */
   archive(ids: string[]) {
     for (const id of ids) {
       const row = this.own(id);
+      if (row.kind === 'project' && row.plan_ref) {
+        if (this.items().find((i) => i.id === id)?.state !== 'done') throw new BadRequest('notDone', 'a project goes into the archive once its work is done');
+        continue;
+      }
       if (row.plan_ref) throw new BadRequest('planCard', 'a workstream stays with its project');
       if (row.state === 'idea') {
         if (this.idea(id).status === 'open') throw new BadRequest('notDone', 'an idea under discussion cannot be archived');
@@ -1664,11 +1670,17 @@ export class Board {
     return ids;
   }
 
-  /** Puts an archived card back where it was on the canvas; a project comes back with its doc. */
+  /**
+   * Puts an archived card back where it was on the canvas. A project comes back with its doc; one
+   * whose work is done also on its own, as its doc last stood if it is gone.
+   */
   unarchive(id: string) {
     const row = this.own(id);
-    if (row.plan_ref) throw new BadRequest('planCard', 'a project comes back when its plan doc does');
     if (!row.archived_at) throw new BadRequest('notArchived', 'the card is not archived');
+    if (row.kind === 'project' && row.plan_ref) {
+      const doc = (this.docs ??= this.read()).find((d) => d.file === row.plan_ref) ?? (row.plan ? (JSON.parse(row.plan) as PlanDoc) : null);
+      if (!doc || !workDone(doc, this.store.cards(this.canvas.id))) throw new BadRequest('planCard', 'a project comes back when its plan doc does');
+    } else if (row.plan_ref) throw new BadRequest('planCard', 'a workstream comes back with its project');
     // a new attempt is a new prototype
     if (row.prototype_of) throw new BadRequest('prototypeEnded', 'a discarded or built prototype stays in the archive');
     this.store.update(id, { archived_at: null });
@@ -1696,7 +1708,9 @@ export class Board {
     const projects = rows.filter((r) => r.plan_ref);
     const docs = projects.map((r) => JSON.parse(r.plan!) as PlanDoc);
     const kids = this.store.children(projects.map((r) => r.id));
-    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked, this.themeNow));
+    // a project whose work is done may come back to the canvas
+    const done = new Set(projects.flatMap((r, n) => (workDone(docs[n]!, kids) ? [r.id] : [])));
+    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked, this.themeNow)).map((i) => (done.has(i.id) ? { ...i, state: 'done' as const } : i));
     const byId = new Map(items.map((i) => [i.id, i]));
     const kidsOf = Map.groupBy(items.filter((i) => i.parent), (i) => i.parent!);
     return rows.flatMap((r) => {
@@ -1891,7 +1905,7 @@ export class Board {
     const all = this.docs;
     this.follow(all, read);
     let rows = this.store.cards(this.canvas.id);
-    const docs = this.openDocs(all, rows);
+    const { docs, ended } = this.openDocs(all, rows);
     const open = docs.map((d) => d.file).join('\n');
     if (read || open !== this.open) {
       this.open = open;
@@ -1909,6 +1923,8 @@ export class Board {
       rows = this.store.cards(this.canvas.id);
       items = toItems(rows, docs, this.home, this.worked, this.themeNow);
     }
+    // a project whose work is done waits on the canvas for the owner to archive it
+    if (ended.size) items = items.map((i) => (i.kind === 'project' && i.plan && ended.has(i.plan.file) ? { ...i, state: 'done' } : i));
     const manual = this.manualDependencies();
     if (manual.length) {
       const eligible = new Set(items.filter(connectable).map((i) => i.id));
@@ -2030,22 +2046,33 @@ export class Board {
   }
 
   /**
-   * The docs whose projects stand on the canvas: those with a workstream still open, and those
-   * whose every workstream is ticked, or whose doc is gone (as it last stood), while one of their
-   * cards is still at work (in progress, or its worker finishing after the landing). The others'
-   * projects have ended.
+   * The docs whose projects stand on the canvas: those with a workstream still open; those whose
+   * every workstream is ticked, or whose doc is gone (as it last stood), while one of their cards is
+   * still at work (in progress, or its worker finishing after the landing); and those whose work is
+   * done and whose project the owner has not archived yet (`ended`). A project whose doc went before
+   * its work was done (dropped, renamed) has ended without it, as have those the owner archived.
    */
-  private openDocs(all: PlanDoc[], rows: CardRow[]): PlanDoc[] {
+  private openDocs(all: PlanDoc[], rows: CardRow[]): { docs: PlanDoc[]; ended: Set<string> } {
     const busy = new Set(
       rows
         .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace) || tickedAhead(r)))
         .map((r) => r.plan_ref!.slice(0, r.plan_ref!.indexOf('#'))),
     );
+    // the projects on the canvas, as just read: an archived one is not among the rows
+    const standing = new Set(rows.flatMap((r) => (r.kind === 'project' && r.plan_ref ? [r.plan_ref] : [])));
     const files = new Set(all.map((d) => d.file));
-    const gone = this.projectsOf(rows)
-      .filter((r) => r.plan && busy.has(r.plan_ref!) && !files.has(r.plan_ref!))
-      .map((r) => JSON.parse(r.plan!) as PlanDoc);
-    return [...all.filter((d) => !allTicked(d) || busy.has(d.file)), ...gone];
+    const ended = new Set<string>();
+    const done = all.filter((d) => allTicked(d) && !busy.has(d.file) && standing.has(d.file));
+    for (const d of done) ended.add(d.file);
+    const gone = this.projectsOf(rows).flatMap((r) => {
+      if (!r.plan || files.has(r.plan_ref!)) return [];
+      const doc = JSON.parse(r.plan) as PlanDoc;
+      if (busy.has(r.plan_ref!)) return [doc];
+      if (!standing.has(r.plan_ref!) || !workDone(doc, rows)) return [];
+      ended.add(r.plan_ref!);
+      return [doc];
+    });
+    return { docs: [...all.filter((d) => !allTicked(d) || busy.has(d.file) || ended.has(d.file)), ...gone], ended };
   }
 
   /**
@@ -3145,6 +3172,15 @@ const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
  * nothing of: the worker ticks it there at once, in no commit, so it may be ticked while the card is
  * in its pull request (before it is even open) or stopped with its branch.
  */
+/** Whether the work of a project's doc is done: each workstream ticked, or its card (among `rows`) finished. */
+function workDone(doc: PlanDoc, rows: Pick<CardRow, 'plan_ref' | 'state'>[]): boolean {
+  const states = new Map(rows.flatMap((r) => (r.plan_ref?.startsWith(`${doc.file}#`) && r.state ? [[r.plan_ref, r.state]] : [])));
+  return doc.workstreams.every((w) => {
+    const state = states.get(`${doc.file}#${w.key}`);
+    return w.done || (!!state && finished(state));
+  });
+}
+
 function tickedAhead(r: Pick<CardRow, 'plan_ref' | 'state' | 'branch'>): boolean {
   if (!r.plan_ref || !OUTSIDE_PATH.test(pathOfRef(r.plan_ref))) return false;
   return r.state === 'inPr' || (r.state === 'planned' && !!r.branch);

@@ -141,6 +141,14 @@ const ColumnsIcon = ({ size }: { size: number }) => (
   </svg>
 );
 
+/** The box on the buttons that take a finished card or project into the archive. */
+const ArchiveIcon = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="5" rx="1" />
+    <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4" />
+  </svg>
+);
+
 const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 /** The classes that give a card its look: its state's colour, an idea's stock, the owner's turn, an agent at it. */
@@ -289,10 +297,7 @@ export const CardView = memo(
               onArchive(item);
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="5" rx="1" />
-              <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4" />
-            </svg>
+            <ArchiveIcon size={14} />
           </button>
         )}
       </div>
@@ -844,6 +849,7 @@ export const ProjectView = memo(
     onArrange,
     onCollapse,
     onOpen,
+    onArchive,
     lit,
   }: {
     item: Item;
@@ -856,6 +862,8 @@ export const ProjectView = memo(
     onArrange: (project: Item) => void;
     onCollapse: (project: Item, collapsed: boolean) => void;
     onOpen: (i: Item) => void;
+    /** Takes the project, its work done, into the archive. */
+    onArchive: (project: Item) => void;
     /** It, or a workstream it holds folded, has its row in the search under the pointer or picked. */
     lit?: boolean;
   }) {
@@ -888,7 +896,7 @@ export const ProjectView = memo(
           <span className="progress">{t.progress(live, kids.length)}</span>
           <CardNumber n={item.number} className="head-no" />
           {/* collapsed, its workstreams are not on the canvas to arrange; its sheet still has the button */}
-          {!collapsed && (item.arranging || arrangeable(kids)) && (
+          {!collapsed && item.state !== 'done' && (item.arranging || arrangeable(kids)) && (
             <button
               className="head-btn arrange"
               disabled={item.arranging}
@@ -915,6 +923,20 @@ export const ProjectView = memo(
             >
               <PlayIcon size={10} />
               {t.plan.startAllShort(startable)}
+            </button>
+          )}
+          {item.state === 'done' && (
+            <button
+              className="head-btn archive"
+              title={`${t.plan.archiveLong}. ${t.plan.archiveHint}`}
+              onPointerDown={own}
+              onClick={(e) => {
+                e.stopPropagation();
+                onArchive(item);
+              }}
+            >
+              <ArchiveIcon size={11} />
+              {t.plan.archive}
             </button>
           )}
         </div>
@@ -970,6 +992,7 @@ export const ProjectView = memo(
     a.onArrange === b.onArrange &&
     a.onCollapse === b.onCollapse &&
     a.onOpen === b.onOpen &&
+    a.onArchive === b.onArchive &&
     sameBounds(a.b, b.b) &&
     a.kids.length === b.kids.length &&
     a.kids.every((k, i) => k === b.kids[i]),
@@ -1216,6 +1239,8 @@ export function Sheet({
   onRead,
   onStartAll,
   onArrange,
+  onArchive,
+  onUnarchive,
   els,
   version,
 }: {
@@ -1232,6 +1257,10 @@ export function Sheet({
   onStartAll: (project: Item, count: number) => void;
   /** Puts the workstreams in columns by what builds on what. */
   onArrange: (project: Item) => void;
+  /** Takes the project, its work done, into the archive. */
+  onArchive: (project: Item) => void;
+  /** Puts the archived project, its work done, back on the canvas. */
+  onUnarchive: (project: Item) => void;
   /** Where the cards opened from the sheet unfold from (an archived project's are not on the canvas). */
   els: Map<string, HTMLElement>;
   /** Changes when the canvas does, so the decisions are read again. */
@@ -1307,7 +1336,7 @@ export function Sheet({
         <>
           <div className="p-kind">{project.archivedAt ? t.archivedProject : t.planSheet}</div>
           <h2>{plain(project.title)}</h2>
-          {project.archivedAt && <p className="hint">{t.archive.projectGone(new Date(project.archivedAt))}</p>}
+          {project.archivedAt && <p className="hint">{(project.state === 'done' ? t.archive.projectDone : t.archive.projectGone)(new Date(project.archivedAt))}</p>}
           <div className="goal">
             <Inline md={project.plan.goal} />
           </div>
@@ -1317,6 +1346,24 @@ export function Sheet({
               {t.plan.read}
             </button>
           )}
+          {project.state === 'done' && (
+            <div className="archive">
+              {project.archivedAt ? (
+                <button className="btn" onClick={() => onUnarchive(project)}>
+                  {t.archive.unarchive}
+                </button>
+              ) : (
+                <>
+                  <p>{t.plan.done}</p>
+                  <button className="btn primary" onClick={() => onArchive(project)}>
+                    <ArchiveIcon size={12} />
+                    {t.plan.archiveLong}
+                  </button>
+                  <p className="hint">{t.plan.archiveHint}</p>
+                </>
+              )}
+            </div>
+          )}
           {!project.archivedAt && startable > 0 && (
             <div className="start-all">
               <button className="btn primary" onClick={() => onStartAll(project, startable)}>
@@ -1325,7 +1372,7 @@ export function Sheet({
               <p className="hint">{t.plan.startAllHint}</p>
             </div>
           )}
-          {!project.archivedAt && (project.arranging || arrangeable(kids)) && (
+          {!project.archivedAt && project.state !== 'done' && (project.arranging || arrangeable(kids)) && (
             <div className="arrange">
               <button className="btn" disabled={project.arranging} onClick={() => onArrange(project)}>
                 <ColumnsIcon size={12} />

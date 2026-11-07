@@ -206,11 +206,12 @@ server hands out only docs it shows as projects, by project card, never by path.
 
 #### When a project ends
 
-A plan doc with every workstream ticked, or one that disappears, ends its project (see Projects end).
-The docs as last read decide, checked again whenever a card changes, since a worker finishing after
-the landing holds its project (for a doc that is gone, as it last stood; that worker's turn end reads
-the docs again). A doc already done when first read goes straight into the archive. A renamed doc
-makes a new project and leaves the old one archived.
+A plan doc with every workstream ticked, or one that disappears, ends its project (see Projects end):
+done, it waits on the canvas for the owner to archive it; gone before its work was done, it goes
+into the archive. The docs as last read decide, checked again whenever a card changes, since a
+worker finishing after the landing holds its project (for a doc that is gone, as it last stood; that
+worker's turn end reads the docs again). A doc already done when first read goes straight into the
+archive. A renamed doc makes a new project and leaves the old one archived.
 
 #### Watching the plan directory
 
@@ -594,7 +595,7 @@ Prompts only agents read stay English, with German examples of what the owner ma
   (2026-10-21): done and remaining could not be told apart, nor what a running workstream was meant
   to do. Rejected: the text only as the conversation's first message.
 - **A plan doc with every workstream ticked ends its project** (2026-10-12, the owner), or finished
-  plans kept in a repository stay on the canvas forever.
+  plans kept in a repository stay on the canvas forever; the owner archives it (see Projects end).
 - **A plan doc that disappears ends its project automatically** (2026-10-01); an explicit
   "Finish" may sit on top later. Rejected: reading old content from git history (fragile).
 - **The configuration is the file `canvases.json`**, edited in the UI or by the Koordinator

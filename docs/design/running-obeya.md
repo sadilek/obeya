@@ -181,7 +181,7 @@ does once its canvas is gone. It shows five lists:
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
   what it does on the canvas ("Start agent", "Later …"), so a task can be started from the phone.
 - **"Done"**: the finished cards that are not archived yet, those the archive's "Archive …
-  finished tasks" would take, and none the lists above hold.
+  finished cards" would take but projects, and none the lists above hold.
 
 *Setting a card aside.* A card swiped sideways (past a third of its width, or flicked; as the lines
 above the microphone) does what stands behind it as it moves. Swiped to the right in "Needs you" or
