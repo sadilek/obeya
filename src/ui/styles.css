@@ -992,7 +992,7 @@ textarea.p-body:focus { border-color: var(--muted); }
   background: linear-gradient(90deg, var(--chip) 25%, color-mix(in srgb, var(--chip) 40%, var(--card)) 50%, var(--chip) 75%) 0 0 / 300% 100%; animation: wt-shimmer 1.6s linear infinite; }
 .wt-ghost.wide { width: 72%; height: max(22px, 6cqw); }
 @keyframes wt-shimmer { to { background-position: -150% 0; } }
-@media (prefers-reduced-motion: reduce) { .wt-ghost { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .wt-ghost { animation: none; } .wt-step, .wt-arrow { transform: none !important; } }
 .wt-bar { width: 9cqw; height: .8cqw; background: var(--working); border-radius: 1cqw; margin-bottom: 3cqw; }
 .wt-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2.2cqw; }
 .wt-points li { font-size: max(12.5px, 3.1cqw); line-height: 1.35; padding-left: 4cqw; position: relative; opacity: .18; transition: opacity .4s, color .4s; }
@@ -1002,13 +1002,13 @@ textarea.p-body:focus { border-color: var(--muted); }
 .wt-flow { flex: 1; display: flex; align-items: center; }
 .wt-step-wrap { flex: 1; min-width: 0; display: flex; align-items: center; }
 .wt-step { flex: 1; min-width: 0; border: .3cqw solid var(--line); border-radius: 1.4cqw; background: var(--panel); padding: 2.2cqw 1.6cqw; text-align: center;
-  opacity: .25; transition: opacity .4s, border-color .4s, box-shadow .4s, transform .4s; }
+  opacity: 0; transform: translateY(2cqw) scale(.94); transition: opacity .45s, border-color .4s, box-shadow .4s, transform .45s cubic-bezier(.2, .9, .3, 1.2); }
 .wt-step b { display: block; font-size: max(11px, 2.6cqw); line-height: 1.25; }
 .wt-step span { display: block; font-size: max(10px, 1.9cqw); color: var(--muted); margin-top: .8cqw; line-height: 1.3; }
-.wt-step.shown { opacity: 1; }
+.wt-step.shown { opacity: 1; transform: none; }
 .wt-step.now { border-color: var(--working); box-shadow: 0 0 0 .6cqw color-mix(in srgb, var(--working) 18%, transparent); transform: translateY(-.6cqw); }
-.wt-arrow { flex: 0 0 4cqw; text-align: center; font-size: max(12px, 3.4cqw); color: var(--muted); opacity: .25; transition: opacity .4s; }
-.wt-arrow.shown { opacity: 1; }
+.wt-arrow { flex: 0 0 4cqw; text-align: center; font-size: max(12px, 3.4cqw); color: var(--muted); opacity: 0; transform: translateX(-1.4cqw); transition: opacity .35s, transform .35s; }
+.wt-arrow.shown { opacity: 1; transform: none; }
 .wt-code-slide h2 { margin-bottom: 1.4cqw; }
 .wt-file { font: max(10px, 1.9cqw)/1.3 var(--mono); color: var(--muted); margin-bottom: 1.2cqw; }
 .wt-code { flex: 1; min-height: 0; overflow: hidden; background: #1d2027; border-radius: 1.2cqw; padding: 1.4cqw 0; font: max(10px, 1.75cqw)/1.55 var(--mono); color: #d7dae0; }
@@ -1020,6 +1020,10 @@ textarea.p-body:focus { border-color: var(--muted); }
 .wt-note { margin-top: 1.4cqw; font-size: max(11px, 2.2cqw); color: var(--muted); }
 /* the sentence being spoken, under the slide rather than over it, so it hides nothing of it */
 .wt-caption { min-height: calc(2 * 1.45em + 12px); padding: 6px 12px; border-top: 1px solid var(--line); text-align: center; font-size: max(12.5px, 2.1cqw); line-height: 1.45; color: var(--ink); }
+.wt-caption span span { border-radius: 3px; transition: color .15s, background-color .15s, box-shadow .15s; }
+.wt-caption.pointing span span { color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.wt-caption.pointing span span.said { color: var(--ink); }
+.wt-caption.pointing span span.now { color: var(--ink); background: color-mix(in srgb, var(--working) 22%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--working) 22%, transparent); }
 .wt-start { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: 0 6cqw 6cqw; background: none; border: 0; cursor: pointer; font: inherit; }
 .wt-start span { display: flex; align-items: center; gap: 1.6cqw; background: var(--working); color: #fff; border-radius: 99px; padding: 1.8cqw 3.4cqw 1.8cqw 2.8cqw;
   font: 600 max(12px, 2.7cqw) var(--cond); box-shadow: 0 1cqw 3cqw color-mix(in srgb, var(--working) 35%, transparent); }

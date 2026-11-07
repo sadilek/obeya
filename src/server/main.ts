@@ -71,6 +71,7 @@ import { Awake } from './awake';
 import { claudeToken } from './hosts';
 import { serve, serveNarration } from './server';
 import { LocalTranscriber, VoiceIn } from './voice';
+import { cloudInUse } from './voice-cloud';
 import { VoiceSetup } from './voice-setup';
 import { useLib } from '../../plugin/skills/demo/lib/here.ts';
 import { DEMO_SETTINGS_FILE, expandHome, inLanguage, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -259,7 +260,11 @@ const voicing = new Voicing({
   warm: (language) => {
     const spec = voiceSpec(narrator(language), home);
     if (spec.kind === 'command' && spec.host) narration.load(spec.host, language);
+    // the recognition that hears its sentences back for the times of their words
+    if (!cloudInUse(home)) transcriber.local.warm();
   },
+  // heard back with voice in's recognition on this machine; with voice in through a cloud service, none is there to hear with
+  hear: (wav, language) => (cloudInUse(home) ? Promise.resolve([]) : transcriber.local.timed(wav, language)),
   log: (line) => console.log(line),
 });
 // the disk space demos take, and the frames of old renders deleted (demo-space.ts)

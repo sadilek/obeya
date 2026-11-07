@@ -1,12 +1,13 @@
 // The player of a looked-up answer told as a walkthrough, under the question from its first slide on
 // while the agent still tells it: it reads the walkthrough as it grows and plays slides and voice in
-// step, items lighting up as the narration reaches them, the spoken sentence as a caption. What it
+// step, items lighting up (a flow's boxes building up) as the narration reaches them, the spoken
+// sentence as a caption whose pointer marks the word being spoken. What it
 // plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
 // drawn anew (the answer's words arriving above it) and pauses only once no message shows it.
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AnswerFile } from '../core/types';
-import { INTERRUPTED, itemsOf, type Walkthrough } from '../core/walkthrough';
+import { estimatedStarts, INTERRUPTED, itemStarts, type Walkthrough, wordsOf } from '../core/walkthrough';
 import { answerFile, api, at } from './api';
 import { known, know } from './known';
 import { t } from './strings';
@@ -90,8 +91,8 @@ class Playback {
 
   private complete() {
     const d = this.data;
-    // with its voice failed, it still gets the slides the agent writes
-    return !!d && d.done && (!!d.error || d.clips.every((c) => c.every(Boolean)));
+    // with its voice failed, it still gets the slides the agent writes; each sentence's words come once it is heard back
+    return !!d && d.done && (!!d.error || d.clips.every((c) => c.every((x) => x?.words)));
   }
 
   /** Reads the walkthrough, and again and again while it grows and a message shows it. */
@@ -150,23 +151,38 @@ class Playback {
     return this.partStart(slide, this.data?.slides[slide]?.parts.length ?? 0);
   }
 
+  /** Where in its sentence the player is; `undefined` while that sentence does not play (it waits for its voice). */
+  private inPart() {
+    return this.audio.dataset.key === `${this.slide}-${this.part}` ? this.audio.currentTime || 0 : undefined;
+  }
+
   /** Where in its slide the player is. */
   now() {
-    const playingThis = this.audio.dataset.key === `${this.slide}-${this.part}`;
-    return this.partStart(this.slide, this.part) + (playingThis ? this.audio.currentTime || 0 : 0);
+    return this.partStart(this.slide, this.part) + (this.inPart() ?? 0);
+  }
+
+  /** The second of its sentence each word starts at: as heard back, else as its length suggests. */
+  wordStarts(slide: number, part: number) {
+    return this.clip(slide, part)?.words ?? estimatedStarts(this.data?.slides[slide]?.parts[part] ?? '', this.partSeconds(slide, part));
+  }
+
+  /** The word of the sentence being spoken, -1 before the first or while it does not play. */
+  word(): number {
+    const t = this.inPart();
+    if (t === undefined) return -1;
+    let now = -1;
+    for (const [k, start] of this.wordStarts(this.slide, this.part).entries()) if (t >= start - 0.05) now = k;
+    return now;
   }
 
   /** The item of the slide shown last by now, -1 before the first. */
   item(): number {
     const s = this.data?.slides[this.slide];
     if (!s) return -1;
-    const n = itemsOf(s);
     const time = this.now();
+    const starts = itemStarts(s, (part, word) => this.partStart(this.slide, part) + (this.wordStarts(this.slide, part)[word] ?? 0), this.slideSeconds(this.slide));
     let shown = -1;
-    for (let k = 0; k < n; k++) {
-      const from = s.items ? this.partStart(this.slide, Math.max(0, s.items.indexOf(k))) : (k / n) * this.slideSeconds(this.slide) * 0.9;
-      if (time >= from - 0.05) shown = k;
-    }
+    for (const [k, from] of starts.entries()) if (time >= from - 0.05) shown = k;
     return shown;
   }
 
@@ -327,7 +343,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
           </button>
         )}
       </div>
-      {p.captions && p.started && slide && <div className="wt-caption">{p.writing ? '' : slide.parts[p.part]}</div>}
+      {p.captions && p.started && slide && <Caption sentence={p.writing ? '' : (slide.parts[p.part] ?? '')} word={p.word()} />}
       <div className="wt-controls">
         <button className="btn small" aria-label={t.walkthrough.previous} title={t.walkthrough.previous} disabled={p.slide === 0} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide - 1)}>
           ◀
@@ -351,6 +367,20 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
         </button>
       </div>
     </figure>
+  );
+}
+
+/** The sentence being spoken, the word being spoken marked, the words said before it apart from those still to come. */
+function Caption({ sentence, word }: { sentence: string; word: number }) {
+  return (
+    <div className={`wt-caption${word >= 0 ? ' pointing' : ''}`}>
+      {wordsOf(sentence).map((w, k) => (
+        <span key={k}>
+          {k > 0 && ' '}
+          <span className={k < word ? 'said' : k === word ? 'now' : undefined}>{w}</span>
+        </span>
+      ))}
+    </div>
   );
 }
 

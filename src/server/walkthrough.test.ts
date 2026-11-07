@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { Walkthrough } from '../core/walkthrough';
 import { fakeVoicing, until } from './testing';
 import { AnswerWalkthrough, readWalkthrough, writtenIn } from './walkthrough';
+import { estimatedStarts } from '../core/walkthrough';
 
 let dir: string;
 let repo: string;
@@ -45,7 +46,7 @@ describe('a walkthrough handed over slide by slide', () => {
     // a sentence each, each with the item it shows with
     expect(file.slides[1]!.parts).toEqual(['First it rebases.', 'Then the checks run.', 'They must pass.', 'Then it merges.']);
     expect(file.slides[1]!.items).toEqual([0, 1, 1, 2]);
-    expect(file.clips[1]).toEqual([1, 2, 3, 4].map((n) => ({ file: `2-${n}.wav`, seconds: 1 })));
+    expect(file.clips[1]!.map((c) => c && { file: c.file, seconds: c.seconds })).toEqual([1, 2, 3, 4].map((n) => ({ file: `2-${n}.wav`, seconds: 1 })));
     expect(existsSync(join(dir, 'answers', file.clipsDir, '2-4.wav'))).toBe(true);
     expect(voice.said).toEqual(['How a card lands.', 'Approving a card starts the landing.', 'It takes three steps.', 'First it rebases.', 'Then the checks run.', 'They must pass.', 'Then it merges.'].map((s) => `en:${s}`));
     // the first slide shows once only
@@ -159,6 +160,19 @@ describe('the voice of walkthroughs', () => {
     expect(voice.said).not.toContain('en:Next.');
   });
 
+  test("hears each sentence back for the times of its words; one it cannot hear gets them by its words' length", async () => {
+    const w = told();
+    hand(w, { type: 'title', title: 'Heard', language: 'en', narration: 'It hears this one. Not this deaf one.' });
+    await until(() => read('heard.walkthrough.json').clips[0]!.every((c) => c?.words));
+    const [title, heard, deaf] = read('heard.walkthrough.json').clips[0]!;
+    expect(title!.words).toEqual([0]);
+    expect(heard!.words).toEqual([0, 0.1, 0.2, 0.3]);
+    expect(deaf!.words).toHaveLength(4);
+    expect(deaf!.words).not.toEqual([0, 0.1, 0.2, 0.3]);
+    // a player reads it as voiced and heard
+    expect(readWalkthrough(join(dir, 'answers'), 'heard.walkthrough.json', voice.voicing)?.error).toBeUndefined();
+  });
+
   test('loads when asked, before the first slide', () => {
     voice.voicing.warm('de');
     expect(voice.warmed).toEqual(['de']);
@@ -184,5 +198,8 @@ describe('a walkthrough read by its player', () => {
     const left = read('how-a-card-lands.walkthrough.json');
     writeFileSync(file, JSON.stringify({ ...left, clips: [[left.clips[0]![0], null, null]] }));
     expect(readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', fakeVoicing().voicing)?.error).toBe('interrupted');
+    // and a sentence it voiced but did not hear back gets the times of its words by their length
+    writeFileSync(file, JSON.stringify({ ...left, clips: [[{ file: '1-1.wav', seconds: 1 }, null, null]] }));
+    expect(readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', fakeVoicing().voicing)?.clips[0]![0]!.words).toEqual(estimatedStarts('How a card lands.', 1));
   });
 });

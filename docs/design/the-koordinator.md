@@ -363,7 +363,8 @@ interrupting it, and the walkthrough is the first of the answer's files. It is a
 thread's directory, `<name>.walkthrough.json` named after its title (one asked for with the button, after its question) (a later answer gets a name of
 its own), holding the slides as shown (a code slide with its lines), each slide's narration as the
 sentences it is voiced in (and for a narration in parts, the item of each), whether every slide is
-there, each sentence's clip once voiced (its file and seconds) and why voicing failed; the clips
+there, each sentence's clip once voiced (its file and seconds, and once heard back the second each
+of its words starts at) and why voicing failed; the clips
 are WAVs in `<name>.clips/` beside it. The player reads it from `GET
 /api/c/<canvas>/threads/<thread>/walkthroughs/<name>` while it grows, and its clips as the answer's
 files; both come through Obeya's server, as every answer file does, so a walkthrough plays wherever
@@ -384,9 +385,23 @@ sentences still waiting when the server stopped are not voiced afterwards, and t
 the voicing stopped with the restart.
 
 The player plays slides and sound in step: the items of a slide light up as the narration reaches
-them (before the first play, a slide shows them all), a code slide scrolls its highlighted range
-into view, and the sentence being spoken stands under the slide as a caption, which "CC" switches
-on and off. Its progress bar has a segment per slide, which jumps there on a click; ◀ and ▶▶ go a
+them and a flow's boxes build up one by one, each with its arrow (before the first play, a slide
+shows them all); a code slide scrolls its highlighted range into view; and the sentence being
+spoken stands under the slide as a caption, which "CC" switches on and off, with a pointer on the
+word being spoken, the words before it in full colour and those still to come faint. With a
+narration in parts an item comes with its part; with one text, at the word that first names it
+(the same word or its stem, among its words of four letters or more, in the items' order), and one
+named nowhere between its neighbours.
+
+The times of the words come from hearing each sentence back once it is voiced, with the speech
+recognition of voice in on this machine (Parakeet, or Whisper where set), while the voice goes on
+with the next sentence: so the first sound comes no later. The recognition writes some words
+otherwise ("Obia" for "Obeya", a number in digits, a compound apart), so sentence and transcript are
+lined up letter by letter, and a word starts where its first letter was heard; a word heard nowhere
+gets a start between its neighbours' by its length. Until a sentence is heard back, and where it
+cannot be (voice in through a cloud service, a recognition that fails or takes over a minute, a
+walkthrough voiced before a restart), its words start by their length over the clip. "Show as
+walkthrough" loads the recognition with the voice. Its progress bar has a segment per slide, which jumps there on a click; ◀ and ▶▶ go a
 slide back and on. Where the next sentence is not voiced yet it waits, showing "Voicing … 8/43";
 where the agent is still writing the next slide, "The next slide is being written …". A walkthrough
 asked for with the button starts by itself in the page that clicked (the click allows the sound),
@@ -502,6 +517,13 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   came. Rejected: promising nothing it cannot take itself (the owner asks for both in one breath); a
   follow-up card whose worker does it (configuration is the Koordinator's, with check and undo);
   conditions beyond the two a worker waits for on another card.
+- **A walkthrough's word times come from hearing its sentences back** (2026-11-07), with voice in's
+  recognition, the same way for every voice. Rejected: the voices' own timestamps, which only
+  ElevenLabs and Azure give (Qwen3-TTS, Kokoro as Obeya runs it on ONNX, Piper, `say`, OpenAI and
+  Gemini give audio alone); the Parakeet inside the Qwen3 voice, which hears its sentences already
+  (only that voice, and its hearing does not come back through a single clip); times by word length
+  alone (off wherever the voice pauses or lingers). Parakeet heard a Kokoro sentence of 5.9 s in
+  0.9 s with the start of every word part, on the CPU of an M4 Pro.
 - **A card waits rather than risking a collision**; the estimate is taken once, before the start,
   and a waiting card is checked again when its blockers finish.
 - **A new card does not overtake a queued one it likely conflicts with**, even one far from done:
