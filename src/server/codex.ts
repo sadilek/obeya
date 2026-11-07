@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { messageOf } from '../core/text';
 import type { AgentEffort, HarnessModel, UsageLimit } from '../core/types';
-import { AGENT_EFFORTS } from '../core/types';
+import { AGENT_EFFORTS, codexFamily, codexFamilyName, nearestEffort, resolveCodexModel } from '../core/types';
 import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
@@ -421,6 +421,11 @@ export function codexLoginFailed(info: unknown, message: string): boolean {
 /** A failure for Codex's missing login on `host` (null: this machine), as `codexLoginLost` reads it on the card. */
 export const notLoggedIn = (host: string | null, message: string) => `Codex is not logged in on ${host ?? 'this machine'}. (${message})`;
 
+/** An app server's answer to a request it does not know (`model/list` before Codex had it): it lists every method it does know. */
+export const tooOld = (e: CodexError) => /unknown variant `model\/list`/.test(e.message);
+
+/** How long a session waits for Codex's list of models before it gives up starting. */
+const MODELS_WAIT_MS = 30_000;
 /** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
 const hookPortThere = () => 30_000 + Math.floor(Math.random() * 30_000);
 
@@ -460,12 +465,15 @@ class CodexSession implements AgentSession {
   private lost = false;
   /** The calls a hook told of before they ran, by Codex's item id: their items need no watch of their own. */
   private hooked = new Set<string>();
+  /** The effort the turns run with: the one chosen, or the nearest the model takes (`model`). */
+  private effort: AgentEffort | undefined;
 
   constructor(
     private spec: AgentSpec,
     firstMessage: string | undefined,
     images: string[] | undefined,
   ) {
+    this.effort = spec.effort;
     this.carrying = new Promise((r) => (this.carryable = r));
     let unknownHost: unknown;
     try {
@@ -479,6 +487,8 @@ class CodexSession implements AgentSession {
         if (this.closed) return;
         if (this.there && (this.lost || e instanceof HostError)) this.emit({ type: 'lost', message: `the connection to ${this.there!.host.name} was lost` });
         else this.emit({ type: 'error', message: withStderr(messageOf(e), this.server?.stderr ?? '') });
+        // a start that failed leaves no app server behind (nor a host's session with it)
+        this.server?.close();
       })
       .finally(() => (this.carryable(), this.hooks?.close()));
   }
@@ -503,6 +513,34 @@ class CodexSession implements AgentSession {
     this.closed = true;
     this.queue = [];
     this.server?.close();
+  }
+
+  /**
+   * The model the session starts or resumes on: the newest of the family it is to run on (the
+   * preset's where it names none) in the catalog of the app server it talks to, which is the one of
+   * the machine it runs on, else the catalog's default. Where the catalog cannot be had or has
+   * neither, the session fails rather than leave the model to Codex's own configuration, which may
+   * name one the login cannot use. An effort that model does not take becomes the nearest it does.
+   */
+  private async model(server: AppServer): Promise<string> {
+    const family = codexFamily(this.spec.model ?? 'default');
+    const where = this.there?.host.name ?? 'this machine';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer in ${MODELS_WAIT_MS / 1000} seconds`)), MODELS_WAIT_MS)));
+    let catalog: HarnessModel[];
+    try {
+      catalog = await Promise.race([listModels(server), late]);
+    } catch (e) {
+      if (e instanceof CodexError && codexLoginFailed(undefined, e.message)) throw new Error(notLoggedIn(this.there?.host.name ?? null, e.message));
+      if (e instanceof CodexError && tooOld(e)) throw new Error(`Codex on ${where} is too old to list its models, so the agent did not start. Update Codex there.`);
+      throw new Error(`Codex on ${where} did not list its models, so the agent did not start. (${messageOf(e)})`);
+    } finally {
+      clearTimeout(timer);
+    }
+    const model = resolveCodexModel(catalog, family);
+    if (!model) throw new Error(`Codex on ${where} lists no model of the family ${codexFamilyName(family)} and no default, so the agent did not start.`);
+    if (this.effort) this.effort = nearestEffort(this.effort, model.efforts);
+    return model.id;
   }
 
   private emit(e: AgentEvent) {
@@ -564,9 +602,11 @@ class CodexSession implements AgentSession {
       ...(spec.untrusted ? { project_doc_max_bytes: 0 } : {}),
       ...trust,
     };
+    const model = await this.model(server);
+    if (this.closed) return;
     const settings = {
       cwd,
-      ...(spec.model ? { model: spec.model } : {}),
+      model,
       approvalPolicy: spec.readOnly ? 'never' : 'on-request',
       ...(spec.readOnly ? {} : { approvalsReviewer: 'auto_review' }),
       sandbox: spec.readOnly ? 'read-only' : 'workspace-write',
@@ -588,7 +628,7 @@ class CodexSession implements AgentSession {
       throw e;
     }
     this.thread = opened.thread.id;
-    this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}`, ...(opened.model ? { model: opened.model } : {}), ...(this.spec.effort ? { effort: this.spec.effort } : {}) });
+    this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}`, ...(opened.model ? { model: opened.model } : {}), ...(this.effort ? { effort: this.effort } : {}) });
     this.pump();
     const code = await exited;
     if (this.closed) return;
@@ -643,7 +683,7 @@ class CodexSession implements AgentSession {
     this.starting = true;
     this.failure = undefined;
     server
-      .request<{ turn: { id: string } }>('turn/start', { threadId: this.thread, input: given, ...(this.spec.effort ? { effort: this.spec.effort } : {}) })
+      .request<{ turn: { id: string } }>('turn/start', { threadId: this.thread, input: given, ...(this.effort ? { effort: this.effort } : {}) })
       .then(
         (r) => {
           // a quick turn may have started and ended before its start's answer is read
@@ -827,19 +867,20 @@ async function once<T>(cwd: string, ask: (s: AppServer) => Promise<T>, env: Env 
   }
 }
 
-/** The models Codex offers the login on this machine. */
-export async function codexModels(cwd: string): Promise<HarnessModel[]> {
-  return once(cwd, async (s) => {
-    const models: ListedModel[] = [];
-    let cursor: string | null | undefined;
-    do {
-      const r = await s.request<{ data: ListedModel[]; nextCursor?: string | null }>('model/list', cursor ? { cursor } : {});
-      models.push(...r.data);
-      cursor = r.nextCursor;
-    } while (cursor);
-    return modelsOf(models);
-  });
+/** The models an app server offers its login, every page of them. */
+async function listModels(server: AppServer): Promise<HarnessModel[]> {
+  const models: ListedModel[] = [];
+  let cursor: string | null | undefined;
+  do {
+    const r = await server.request<{ data: ListedModel[]; nextCursor?: string | null }>('model/list', cursor ? { cursor } : {});
+    models.push(...r.data);
+    cursor = r.nextCursor;
+  } while (cursor);
+  return modelsOf(models);
 }
+
+/** The models Codex offers the login on this machine. */
+export const codexModels = (cwd: string): Promise<HarnessModel[]> => once(cwd, listModels);
 
 /** The kind and group a window takes by its length: five hours is the session's, a week the week's. */
 function windowKind(minutes: number | null): { kind: string; group: string } {

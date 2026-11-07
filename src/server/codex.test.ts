@@ -26,9 +26,9 @@ function start(o: Partial<AgentSpec> = {}, first?: string) {
     cwd: dir,
     system: 'You are a test agent.',
     tools: [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: (a) => `shown: ${a.status}` }],
-    env: { OBEYA_CODEX: FAKE, FAKE_CODEX_LOG: log },
     onEvent: (e) => events.push(e),
     ...o,
+    env: { OBEYA_CODEX: FAKE, FAKE_CODEX_LOG: log, ...o.env },
   };
   const session = codexRuntime.start(spec, first);
   sessions.push(session);
@@ -51,8 +51,9 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
   test("starts a thread with Obeya's tools, the instructions and the sandbox, says what the agent says and when its turn ends", async () => {
     const s = start({}, 'hello');
     await until(() => s.idles() === 1);
-    // kept marked as Codex's, so that a resume goes to Codex whatever the group runs on by then; with the model Codex runs it on
-    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-5.5' });
+    // kept marked as Codex's, so that a resume goes to Codex whatever the group runs on by then; with the model Codex runs it on,
+    // the preset family's newest where none is named
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-6.1-sol' });
     expect(s.texts()).toEqual(['echo: hello']);
     const thread = s.requests().find((r) => r.method === 'thread/start')!.params;
     expect(thread).toMatchObject({ developerInstructions: 'You are a test agent.', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', sandbox: 'workspace-write' });
@@ -70,7 +71,7 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
   });
 
   test('a message during a turn steers it; one after it starts the next turn, with the effort chosen', async () => {
-    const s = start({ effort: 'high', model: 'gpt-6.1-sol' }, 'wait');
+    const s = start({ effort: 'high', model: 'gpt-#-sol' }, 'wait');
     await until(() => s.requests().some((r) => r.method === 'turn/start'));
     await Bun.sleep(50);
     s.session.send('stop waiting');
@@ -84,6 +85,50 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     expect(s.requests().find((r) => r.method === 'thread/start')!.params.model).toBe('gpt-6.1-sol');
   });
 
+  test("a family runs on its newest model in the session's own catalog, with the nearest effort that model takes", async () => {
+    const s = start({ model: 'gpt-#-luna', effort: 'max' }, 'hello');
+    await until(() => s.idles() === 1);
+    expect(s.requests().find((r) => r.method === 'thread/start')!.params.model).toBe('gpt-6-luna');
+    expect(s.requests().find((r) => r.method === 'turn/start')!.params.effort).toBe('high');
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-6-luna', effort: 'high' });
+    // a newer version in the catalog of the machine it runs on is taken, a family it no longer lists runs on the default
+    const newer = [{ id: 'gpt-6.2-sol', isDefault: true }, { id: 'gpt-6.1-sol' }];
+    const t = start({ model: 'gpt-#-sol', env: { FAKE_CODEX_MODELS: JSON.stringify(newer) } }, 'hello');
+    await until(() => t.idles() === 1);
+    expect(t.events[0]).toMatchObject({ model: 'gpt-6.2-sol' });
+    const u = start({ model: 'gpt-#-terra' }, 'hello');
+    await until(() => u.idles() === 1);
+    expect(u.requests().find((r) => r.method === 'thread/start')!.params.model).toBe('gpt-6.1-sol');
+  });
+
+  test("without a model to give Codex the session does not start, and says why, rather than leave it to Codex's own configuration", async () => {
+    for (const [models, why] of [
+      ['fail', 'Codex on this machine did not list its models, so the agent did not start. (models unavailable)'],
+      ['[]', 'Codex on this machine lists no model of the family Sol and no default, so the agent did not start.'],
+      ['old', 'Codex on this machine is too old to list its models, so the agent did not start. Update Codex there.'],
+    ] as const) {
+      const pidDir = mkdtempSync(join(tmpdir(), 'obeya-codex-pid-'));
+      dirs.push(pidDir);
+      const pidFile = join(pidDir, 'pid');
+      const s = start({ model: 'gpt-#-sol', env: { FAKE_CODEX_MODELS: models, FAKE_CODEX_PID: pidFile } }, 'hello');
+      await until(() => s.events.some((e) => e.type === 'error'));
+      expect(s.events).toEqual([{ type: 'error', message: expect.stringContaining(why) }]);
+      // not the whole list of what an old Codex does know
+      expect(s.events[0]).not.toMatchObject({ message: expect.stringContaining('expected one of') });
+      expect(s.requests().some((r) => r.method === 'thread/start')).toBe(false);
+      // the app server it started is gone, without the session being closed
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      const alive = () => {
+        try {
+          return process.kill(pid, 0);
+        } catch {
+          return false;
+        }
+      };
+      await until(() => !alive());
+    }
+  });
+
   test('a message that comes as the turn ends starts the next turn, and the end says one follows', async () => {
     const s = start({}, 'late');
     await until(() => s.requests().some((r) => r.method === 'turn/start'));
@@ -95,12 +140,13 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     expect(s.texts()).toEqual(['echo: too late']);
   });
 
-  test('resumes a thread by its id, whose tools Codex keeps', async () => {
-    const s = start({ resume: 'codex:thread-7' }, 'again');
+  test('resumes a thread by its id, whose tools Codex keeps, on its family resolved afresh', async () => {
+    const s = start({ resume: 'codex:thread-7', model: 'gpt-#-luna' }, 'again');
     await until(() => s.idles() === 1);
-    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-7', model: 'gpt-5.5' });
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-7', model: 'gpt-6-luna' });
     const resume = s.requests().find((r) => r.method === 'thread/resume')!.params;
     expect(resume.threadId).toBe('thread-7');
+    expect(resume.model).toBe('gpt-6-luna');
     expect(resume.dynamicTools).toBeUndefined();
     expect(s.requests().some((r) => r.method === 'thread/start')).toBe(false);
   });

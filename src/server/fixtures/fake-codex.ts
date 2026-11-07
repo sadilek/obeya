@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // A stand-in for `codex app-server` in tests (codex.test.ts): it speaks the app server's JSON-RPC
 // over stdio and plays a turn by what the user's text asks for. Every request it gets goes to the
-// file `FAKE_CODEX_LOG` names, a JSON line each.
+// file `FAKE_CODEX_LOG` names, a JSON line each. It lists a few models (`model/list`), or the ones
+// `FAKE_CODEX_MODELS` gives. Its process id goes to the file `FAKE_CODEX_PID` names, where one does.
 //
 // - `tool <name> <json>`: calls the dynamic tool and says what it returned.
 // - `command <cmd>`: runs a shell command, asks for its approval, and says the decision.
@@ -20,6 +21,14 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, writeFileSync } from 'node:fs';
 
 const log = process.env.FAKE_CODEX_LOG;
+if (process.env.FAKE_CODEX_PID) writeFileSync(process.env.FAKE_CODEX_PID, String(process.pid));
+const efforts = (...e: string[]) => e.map((reasoningEffort) => ({ reasoningEffort }));
+/** The models it lists unless `FAKE_CODEX_MODELS` names others. */
+const CATALOG = [
+  { id: 'gpt-6.1-sol', displayName: 'GPT-6.1-Sol', isDefault: true, supportedReasoningEfforts: efforts('low', 'medium', 'high', 'xhigh', 'max') },
+  { id: 'gpt-5.6-sol', displayName: 'GPT-5.6-Sol', supportedReasoningEfforts: efforts('low', 'medium', 'high') },
+  { id: 'gpt-6-luna', displayName: 'GPT-6-Luna', supportedReasoningEfforts: efforts('low', 'medium', 'high') },
+];
 let next = 1000;
 let turns = 0;
 let thread = 'thread-1';
@@ -149,6 +158,12 @@ process.stdin.setEncoding('utf8').on('data', (d: string) => {
         // the owner signs in a moment later
         send({ id: m.id, result: { type: 'chatgpt', authUrl: 'https://auth.openai.com/oauth/authorize?fake', loginId: 'login-1' } });
         setTimeout(() => send({ method: 'account/login/completed', params: { loginId: 'login-1', success: true, error: null } }), 50);
+        break;
+      case 'model/list':
+        // `FAKE_CODEX_MODELS`: the catalog as `model/list` gives it (JSON), `fail` for a list that fails, `old` for a Codex without it
+        if (process.env.FAKE_CODEX_MODELS === 'fail') send({ id: m.id, error: { code: -32603, message: 'models unavailable' } });
+        else if (process.env.FAKE_CODEX_MODELS === 'old') send({ id: m.id, error: { code: -32600, message: 'Invalid request: unknown variant `model/list`, expected one of `initialize`, `thread/start`, `turn/start`' } });
+        else send({ id: m.id, result: { data: process.env.FAKE_CODEX_MODELS ? JSON.parse(process.env.FAKE_CODEX_MODELS) : CATALOG, nextCursor: null } });
         break;
       case 'hooks/list':
         send({ id: m.id, result: { data: [{ cwd: process.cwd(), hooks: hooks.map((h) => ({ key: h.key, source: 'sessionFlags', currentHash: h.hash, trustStatus: 'untrusted' })), warnings: [], errors: [] }] } });

@@ -81,6 +81,8 @@ import {
   type Harness,
   HARNESSES,
   modelFits,
+  cardAgentOf,
+  storedModel,
 } from '../core/types';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
 import type { Images } from './images';
@@ -1546,7 +1548,7 @@ export class Board {
         (!both && effort === undefined)
       )
         throw new BadRequest('invalid', 'agent must be a harness with a model it takes, an effort, or both');
-      chosen = { ...(both ? { harness: harness as Harness, model: model as string } : {}), ...(effort !== undefined ? { effort: effort as AgentEffort } : {}) };
+      chosen = { ...(both ? { harness: harness as Harness, model: storedModel(harness as Harness, model as string) } : {}), ...(effort !== undefined ? { effort: effort as AgentEffort } : {}) };
     }
     this.store.update(id, { agent: chosen && JSON.stringify(chosen) });
     this.changed();
@@ -3399,7 +3401,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(r.snoozed ? { snoozed: JSON.parse(r.snoozed) as Snooze } : {}),
     ...(r.app && r.workspace && !r.parked ? { app: r.app } : {}),
     ...(r.session_id && r.model ? { runsOn: { harness: sessionHarness(r.session_id), model: r.model, ...(r.effort ? { effort: r.effort as AgentEffort } : {}) } } : {}),
-    ...(r.agent ? { agent: JSON.parse(r.agent) as CardAgent } : {}),
+    ...(r.agent ? { agent: cardAgentOf(r.agent) } : {}),
   };
 }
 

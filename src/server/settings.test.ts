@@ -81,14 +81,17 @@ test("the harness, model and effort per group of agents: preset, chosen one grou
   expect(agentSetting(home, 'worker')).toEqual({ harness: 'claude', model: 'opus', effort: 'low' });
 });
 
-test("a group on Codex: another harness starts from its own default model, keeps the effort, and takes Codex's model ids", () => {
+test("a group on Codex: another harness starts from its preset family (Sol), keeps the effort, and stores a family, a model id as its family", () => {
   const home = scratchHome();
   saveAgents(home, { worker: { model: 'fable', effort: 'xhigh' } });
   saveAgents(home, { worker: { harness: 'codex' } });
-  expect(agentSetting(home, 'worker')).toEqual({ harness: 'codex', model: 'default', effort: 'xhigh' });
-  saveAgents(home, { worker: { model: 'gpt-6.1-sol' } });
-  expect(agentSetting(home, 'worker')).toEqual({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'xhigh' });
-  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8')).agents).toEqual({ worker: { harness: 'codex', model: 'gpt-6.1-sol', effort: 'xhigh' } });
+  expect(agentSetting(home, 'worker')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'xhigh' });
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8')).agents).toEqual({ worker: { harness: 'codex', effort: 'xhigh' } });
+  saveAgents(home, { worker: { model: 'gpt-#-luna' } });
+  expect(agentSetting(home, 'worker')).toEqual({ harness: 'codex', model: 'gpt-#-luna', effort: 'xhigh' });
+  saveAgents(home, { worker: { model: 'gpt-6.1-terra' } });
+  expect(agentSetting(home, 'worker')).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'xhigh' });
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8')).agents).toEqual({ worker: { harness: 'codex', model: 'gpt-#-terra', effort: 'xhigh' } });
   // a Claude alias is no Codex model
   expect(() => saveAgents(home, { worker: { model: 'opus' } })).toThrow();
   // back on Claude Code, its default model again
@@ -96,11 +99,24 @@ test("a group on Codex: another harness starts from its own default model, keeps
   expect(agentSetting(home, 'worker')).toEqual({ harness: 'claude', model: 'opus', effort: 'xhigh' });
 });
 
+test('a settings file from before families: a Codex model id reads as its family, `default` as the preset; the next save writes the family', () => {
+  const home = scratchHome();
+  writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ agents: { worker: { harness: 'codex', model: 'gpt-6.1-terra' }, explorer: { harness: 'codex', model: 'default' }, chores: { harness: 'codex', model: 'gpt-5.6-sol' } } }));
+  expect(agentSetting(home, 'worker')).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'high' });
+  expect(agentSetting(home, 'explorer')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
+  expect(agentSetting(home, 'chores')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'medium' });
+  saveAgents(home, { worker: { effort: 'low' } });
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8')).agents).toEqual({ worker: { harness: 'codex', model: 'gpt-#-terra', effort: 'low' }, explorer: { harness: 'codex' }, chores: { harness: 'codex' } });
+  // the API takes `default` as the preset too
+  saveAgents(home, { worker: { model: 'default' } });
+  expect(agentSetting(home, 'worker').model).toBe('gpt-#-sol');
+});
+
 test('a group the owner chose no harness for runs on the fallback (Codex on a machine with only Codex), without a Claude model it would not take', () => {
   const home = scratchHome();
   saveAgents(home, { koordinator: { model: 'haiku' } });
-  expect(agentSetting(home, 'koordinator', 'codex')).toEqual({ harness: 'codex', model: 'default', effort: 'medium' });
-  expect(agentSetting(home, 'worker', 'codex')).toEqual({ harness: 'codex', model: 'default', effort: 'high' });
+  expect(agentSetting(home, 'koordinator', 'codex')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'medium' });
+  expect(agentSetting(home, 'worker', 'codex')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
   expect(agentsView(home, [], 'codex').agents.chores.harness).toBe('codex');
   // the Konfiguration names that preset
   expect(agentsView(home, [], 'codex').preset).toBe('codex');
@@ -110,7 +126,7 @@ test('a group the owner chose no harness for runs on the fallback (Codex on a ma
   expect(agentSetting(home, 'worker', 'codex')).toEqual({ harness: 'claude', model: 'opus', effort: 'high' });
 });
 
-test("an agent of a group starts on the group's harness with its model and effort, asked at every start; a harness's default model is none given", () => {
+test("an agent of a group starts on the group's harness with its model and effort, asked at every start; Claude Code's default model is none given, Codex always gets a family", () => {
   const fake = new FakeRuntime();
   let worker: AgentSetting = { harness: 'claude', model: 'opus', effort: 'high' };
   const runtime = withAgentSetting(fake, (role) => (role === 'worker' ? worker : AGENT_DEFAULTS[role]));
@@ -123,19 +139,18 @@ test("an agent of a group starts on the group's harness with its model and effor
   expect('model' in fake.last.spec).toBe(false);
   runtime.start({ ...spec, role: 'chores' });
   expect(fake.last.spec).toMatchObject({ model: 'opus', effort: 'medium' });
-  worker = { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' };
+  worker = { harness: 'codex', model: 'gpt-#-terra', effort: 'high' };
   runtime.start({ ...spec, role: 'worker' });
-  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' });
-  // a worker on another machine runs on its group's harness too
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-#-terra', effort: 'high' });
+  // a worker on another machine runs on its group's harness too, the family resolved there
   runtime.start({ ...spec, cwd: 'ssh://mini/r', role: 'worker' });
-  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' });
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-#-terra', effort: 'high' });
   // a session resumed stays on its harness: a Claude Code one after the group moved to Codex, and back
   runtime.start({ ...spec, role: 'worker', resume: 'b9e1c0de-claude-session' });
   expect(fake.last.spec).toMatchObject({ harness: 'claude', model: 'opus', effort: 'high' });
   worker = { harness: 'claude', model: 'fable', effort: 'low' };
   runtime.start({ ...spec, role: 'worker', resume: 'codex:01a1a0cf-thread' });
-  expect(fake.last.spec).toMatchObject({ harness: 'codex', effort: 'low' });
-  expect('model' in fake.last.spec).toBe(false);
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-#-sol', effort: 'low' });
   // an agent of no group starts as its job says
   runtime.start({ ...spec, effort: 'low' });
   expect(fake.last.spec.effort).toBe('low');
@@ -146,8 +161,8 @@ test("an agent with a harness, model or effort of its own (a card's) starts on t
   const fake = new FakeRuntime();
   const runtime = withAgentSetting(fake, (role) => (role === 'worker' ? { harness: 'claude', model: 'opus', effort: 'xhigh' } : AGENT_DEFAULTS[role]));
   const spec = { cwd: '/r', system: '', tools: [], onEvent: () => {}, role: 'worker' as const };
-  runtime.start({ ...spec, agent: { harness: 'codex', model: 'gpt-6.1-sol' } });
-  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'xhigh' });
+  runtime.start({ ...spec, agent: { harness: 'codex', model: 'gpt-#-luna' } });
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-#-luna', effort: 'xhigh' });
   expect('agent' in fake.last.spec).toBe(false);
   runtime.start({ ...spec, agent: { harness: 'claude', model: 'default' } });
   expect(fake.last.spec).toMatchObject({ harness: 'claude', effort: 'xhigh' });
@@ -157,13 +172,12 @@ test("an agent with a harness, model or effort of its own (a card's) starts on t
   expect(fake.last.spec).toMatchObject({ harness: 'claude', model: 'sonnet' });
   // a session on another harness than the one chosen goes on there, on its default model
   runtime.start({ ...spec, agent: { harness: 'claude', model: 'sonnet' }, resume: 'codex:01a1a0cf-thread' });
-  expect(fake.last.spec).toMatchObject({ harness: 'codex', effort: 'xhigh' });
-  expect('model' in fake.last.spec).toBe(false);
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-#-sol', effort: 'xhigh' });
   // an effort of its own, on the group's harness and model or on its own
   runtime.start({ ...spec, agent: { effort: 'low' } });
   expect(fake.last.spec).toMatchObject({ harness: 'claude', model: 'opus', effort: 'low' });
-  runtime.start({ ...spec, agent: { harness: 'codex', model: 'gpt-6.1-sol', effort: 'medium' } });
-  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'medium' });
+  runtime.start({ ...spec, agent: { harness: 'codex', model: 'gpt-#-sol', effort: 'medium' } });
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-#-sol', effort: 'medium' });
 });
 
 test('byHarness starts each agent on the runtime of the harness its spec names, Claude Code where it names none', () => {

@@ -6,7 +6,7 @@
 
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type CardAgent, type Harness, HARNESSES, type Item, listedModel, modelName } from '../core/types';
+import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
 import { useMenuClose } from './queue';
 import { placeOnScreen } from './snooze';
 import { api } from './api';
@@ -16,14 +16,12 @@ import { t } from './strings';
 let last: AgentsView | null = null;
 const agentsView = () => api.agents().then((v) => (last = v));
 
-/** A harness and model as the owner knows them: „Claude Code · Opus“, „Codex · GPT-6.1-Sol“, Codex's default by the model it is. */
+/** A harness and model as the owner knows them: „Claude Code · Opus“, „Codex · Sol“ (a Codex family by its name, without a version). */
 export function agentLabel(view: AgentsView | null, harness: Harness, model: string): string {
   const a = t.config.agents;
   if (harness === 'claude') return model === 'default' ? a.models.default : `${t.harnesses.claude} · ${a.models[model as AgentModel] ?? model}`;
-  const codex = view?.harnesses.find((h) => h.id === 'codex');
-  const id = listedModel(codex, model);
-  if (id === 'default') return a.codexDefault;
-  return `${t.harnesses.codex} · ${codex?.models.find((m) => m.id === id)?.name ?? id}`;
+  const choice = modelChoices(view?.harnesses.find((h) => h.id === 'codex'), model).find((c) => c.value === model);
+  return `${t.harnesses.codex} · ${choice?.name ?? model}`;
 }
 
 /** The card's choice without what is empty; nothing left: the group's again. */
@@ -66,12 +64,12 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const group = view.agents.worker;
   const own = item.agent ?? {};
   const listed = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  // a harness's default is checked as the model it is
-  const groupModel = listedModel(listed(group.harness), group.model);
   const harness = own.harness && own.model ? own.harness : group.harness;
-  const model = listedModel(listed(harness), own.harness && own.model ? own.model : group.model);
+  const model = own.harness && own.model ? own.model : group.model;
+  // each harness's models as the Konfiguration lists them, the one checked among them even where no longer listed
+  const choices = (h: Harness) => modelChoices(listed(h), harness === h ? model : undefined);
   // the efforts the model takes (Codex lists them), the one chosen among them
-  const takes = listed(harness)?.models.find((m) => m.id === model)?.efforts ?? AGENT_EFFORTS;
+  const takes = choices(harness).find((m) => m.value === model)?.efforts ?? AGENT_EFFORTS;
   const save = (next: CardAgent | null) => {
     if (JSON.stringify(next) === JSON.stringify(item.agent ?? null)) return;
     setSaving(true);
@@ -81,9 +79,9 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   };
   // what equals the workers' setting is no choice of the card's: it follows that setting
   const pickModel = (h: Harness, m: string) => {
-    const mine = h !== group.harness || m !== groupModel;
+    const mine = h !== group.harness || m !== group.model;
     // an effort the new model does not take goes back to the group's
-    const kept = own.effort && (listed(h)?.models.find((x) => x.id === m)?.efforts ?? AGENT_EFFORTS).includes(own.effort) ? own.effort : undefined;
+    const kept = own.effort && (choices(h).find((x) => x.value === m)?.efforts ?? AGENT_EFFORTS).includes(own.effort) ? own.effort : undefined;
     save(choice({ ...(mine ? { harness: h, model: m } : {}), ...(kept ? { effort: kept } : {}) }));
   };
   const pickEffort = (e: AgentEffort) => save(choice({ ...(own.harness && own.model ? { harness: own.harness, model: own.model } : {}), ...(e !== group.effort ? { effort: e } : {}) }));
@@ -126,13 +124,12 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
               return (
                 <div key={h} className="agent-group" role="group" aria-label={t.harnesses[h]}>
                   <div className="snooze-h agent-h">{t.harnesses[h]}</div>
-                  {/* a model chosen that the harness no longer offers stays shown */}
-                  {(harness !== h || found.models.some((m) => m.id === model) ? found.models : [...found.models, { id: model }]).map((m) => {
-                    const on = harness === h && model === m.id;
+                  {choices(h).map((m) => {
+                    const on = harness === h && model === m.value;
                     return (
-                      <button key={m.id} className="snooze-opt" role="menuitemradio" aria-checked={on} onClick={() => pickModel(h, m.id)}>
+                      <button key={m.value} className="snooze-opt" role="menuitemradio" aria-checked={on} onClick={() => pickModel(h, m.value)}>
                         <Check on={on} />
-                        {agentLabel(view, h, m.id).replace(`${t.harnesses[h]} · `, '')}
+                        {h === 'claude' ? (t.config.agents.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}
                       </button>
                     );
                   })}

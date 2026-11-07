@@ -1301,17 +1301,28 @@ describe('workers', () => {
 
   test("the harness and model chosen for a card go to each session of its run, its later turns too, and change only while it waits to start", async () => {
     const c = manual();
+    // a Codex model is stored as its family
     board.chooseAgent(c.id, { harness: 'codex', model: 'gpt-6.1-sol' });
-    expect(board.item(c.id)!.agent).toEqual({ harness: 'codex', model: 'gpt-6.1-sol' });
+    expect(board.item(c.id)!.agent).toEqual({ harness: 'codex', model: 'gpt-#-sol' });
+    board.chooseAgent(c.id, { harness: 'codex', model: 'gpt-#-terra' });
+    expect(board.item(c.id)!.agent).toEqual({ harness: 'codex', model: 'gpt-#-terra' });
+    // one stored before families reads as its family, `default` as the preset's
+    store.update(c.id, { agent: JSON.stringify({ harness: 'codex', model: 'gpt-6.1-sol' }) });
+    board.changed();
+    expect(board.item(c.id)!.agent).toEqual({ harness: 'codex', model: 'gpt-#-sol' });
+    store.update(c.id, { agent: JSON.stringify({ harness: 'codex', model: 'default', effort: 'low' }) });
+    board.changed();
+    expect(board.item(c.id)!.agent).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'low' });
+    board.chooseAgent(c.id, { harness: 'codex', model: 'gpt-#-sol' });
     await workers.start(c.id);
-    expect(runtime.last.spec.agent).toEqual({ harness: 'codex', model: 'gpt-6.1-sol' });
+    expect(runtime.last.spec.agent).toEqual({ harness: 'codex', model: 'gpt-#-sol' });
     // the worker on Codex is told to wait as Codex can
     expect(runtime.last.spec.system).toContain('commands that wait 30 seconds at most');
     expect(() => board.chooseAgent(c.id, null)).toThrow('at work');
     runtime.last.emit({ type: 'session', id: 'codex:thread-1', model: 'gpt-6.1-sol' });
     workers.shutdown();
     workers.message(c.id, 'Weiter');
-    expect(runtime.last.spec).toMatchObject({ resume: 'codex:thread-1', agent: { harness: 'codex', model: 'gpt-6.1-sol' } });
+    expect(runtime.last.spec).toMatchObject({ resume: 'codex:thread-1', agent: { harness: 'codex', model: 'gpt-#-sol' } });
     // an effort alone, with or without a harness and model; the group's again; nothing a harness would not take
     board.work(c.id, { state: 'planned' });
     board.chooseAgent(c.id, { effort: 'max' });

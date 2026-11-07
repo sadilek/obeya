@@ -1335,7 +1335,7 @@ const de = {
       title: 'Agenten und Modelle',
       /** By what a group the owner chose nothing for runs on here (`AgentsView.preset`). */
       hint: (preset: Harness) =>
-        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit seinem Standardmodell, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.`,
+        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.`,
       harness: 'Läuft auf',
       model: 'Modell',
       effort: 'Effort',
@@ -1343,8 +1343,6 @@ const de = {
       notReady: (name: string) => `${name} (nicht eingerichtet)`,
       /** Where a harness is not set up: what makes it one to choose. */
       setUp: 'Einrichten unter Einrichtung → Agenten.',
-      /** Codex's own default model. */
-      codexDefault: 'Codex Standard',
       roles: {
         koordinator: { name: 'Obeya', hint: 'Befehle, Planung, Nachschlagen, Projekt-Agenten, Lernen' },
         worker: { name: 'Agenten an Aufgaben', hint: 'bauen die Aufgaben' },
@@ -3427,13 +3425,12 @@ const en: Strings = {
     agents: {
       title: 'Agents and models',
       hint: (preset: Harness) =>
-        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with its default model throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. Applies at once to every agent that starts afterwards; one at work keeps what it started with.`,
+        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with.`,
       harness: 'Runs on',
       model: 'Model',
       effort: 'Effort',
       notReady: (name: string) => `${name} (not set up)`,
       setUp: 'Set it up under Setup → Agents.',
-      codexDefault: 'Codex default',
       roles: {
         koordinator: { name: 'Obeya', hint: 'commands, planning, look-ups, project agents, learning' },
         worker: { name: 'Agents on tasks', hint: 'build the tasks' },

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { Harnesses, newestOfFamilies } from './harnesses';
+import { Harnesses } from './harnesses';
 
 test('a group without a harness of its own runs on Claude Code, unless only Codex is ready; Codex counts once a look says so', async () => {
   let claude: { version: string; loggedIn: boolean } | null = { version: '2.1.300', loggedIn: true };
@@ -41,11 +41,4 @@ test("the Konfiguration's harnesses: Claude Code's aliases, Codex's models witho
   // asked once for a while
   await h.view();
   expect(asked).toBe(1);
-});
-
-test("of each family of Codex's models only the newest version is offered, and the default", () => {
-  const ids = ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.10-codex', 'gpt-5.9-codex', 'gpt-5.1-codex-max', 'o3'];
-  expect(newestOfFamilies(ids.map((id) => ({ id }))).map((m) => m.id)).toEqual(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-5.10-codex', 'gpt-5.1-codex-max', 'o3']);
-  // the model Codex runs by default stays, old or not
-  expect(newestOfFamilies([{ id: 'gpt-6.1-sol' }, { id: 'gpt-5.6-sol', isDefault: true }]).map((m) => m.id)).toEqual(['gpt-6.1-sol', 'gpt-5.6-sol']);
 });
