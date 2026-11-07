@@ -1237,7 +1237,19 @@ const de = {
     running: 'Läuft',
     nothingWaits: 'Nichts wartet auf dich.',
     nothingRuns: 'Gerade arbeitet kein Agent.',
-    /** Below „Läuft“, closed until tapped: the tasks nobody has started yet. */
+    /** The same while cards of the list are set aside. */
+    nothingElseWaits: 'Sonst wartet nichts auf dich.',
+    nothingElseRuns: 'Sonst arbeitet gerade kein Agent.',
+    /** Above the card that nudges, until the owner has swiped a card aside once: in „Braucht dich“, and in „Läuft“ where nothing waits. */
+    swipeHint: 'Wisch eine Karte nach rechts, um sie auf diesem Telefon beiseitezulegen, wenn du dich lieber am Rechner um sie kümmerst. Nach links stellst du sie zurück, bis später.',
+    swipeHintRunning: 'Wisch eine Karte zur Seite, um sie auf diesem Telefon beiseitezulegen, wenn du dich lieber am Rechner um sie kümmerst.',
+    /** Behind a card as it is swiped: what letting go does. */
+    asideLabel: 'Auf diesem Telefon beiseitelegen',
+    backLabel: 'Zurückholen',
+    /** Below „Läuft“, closed until tapped: the cards swiped aside. */
+    setAside: 'Beiseitegelegt',
+    setAsideHint: 'Nur auf diesem Telefon beiseitegelegt, für den Rechner: Dort stehen diese Karten wie bisher. Sie kommen von selbst zurück, sobald sie dich wieder brauchen; wisch eine zur Seite, um sie gleich zurückzuholen.',
+    /** Below „Beiseitegelegt“, closed until tapped: the tasks nobody has started yet. */
     planned: 'Geplant',
     /** Below „Geplant“, closed until tapped: the cards done but not archived yet. */
     done: 'Erledigt',
@@ -3322,6 +3334,14 @@ const en: Strings = {
     running: 'Running',
     nothingWaits: 'Nothing waits for you.',
     nothingRuns: 'No agent is at work right now.',
+    nothingElseWaits: 'Nothing else waits for you.',
+    nothingElseRuns: 'No other agent is at work right now.',
+    swipeHint: 'Swipe a card right to set it aside on this phone, when you would rather handle it at your desk. Swipe it left to snooze it until later.',
+    swipeHintRunning: 'Swipe a card aside to set it aside on this phone, when you would rather handle it at your desk.',
+    asideLabel: 'Set aside on this phone',
+    backLabel: 'Bring back',
+    setAside: 'Set aside',
+    setAsideHint: 'Set aside on this phone only, for your desk: the canvas there shows these cards as before. They come back by themselves once they need you again; swipe one aside to bring it back now.',
     planned: 'Planned',
     done: 'Done',
     obeyaAnswered: 'Obeya answered',

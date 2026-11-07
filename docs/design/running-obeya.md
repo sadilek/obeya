@@ -163,31 +163,56 @@ instead. The view is settled at load; turning the phone does not switch it. It h
 for every canvas (`/api/ws`): each message about one canvas names it, the server-wide ones come once,
 and what waits for the owner is left out, since the canvases' snapshots hold it. Once the last canvas
 stops while it is open, it goes to `/` (setup, or a canvas started since), as a canvas's own page
-does once its canvas is gone. It shows four lists:
+does once its canvas is gone. It shows five lists:
 
 - **"Needs you"**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then "Obeya answered" where an answer waits unread. Each card says what it waits
   for (its state line: "Demo ready", "Question for you" …) and since when (the server keeps that across
-  restarts). A card the owner snoozed leaves it until it comes back (see Snoozing a card). Its heading counts what waits, as
-  the navigation's head does. The canvas's navigation shows the same entries in the same order,
-  built once for both, as light rows (see The navigation).
+  restarts). A card the owner snoozed leaves it until it comes back (see Snoozing a card), and so
+  does one set aside on the phone (below). Its heading counts what it shows. The canvas's
+  navigation shows the same entries in the same order, built once for both, as light rows, those
+  set aside on the phone among them (see The navigation).
 - **"Running"**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
-  at the end, those the owner snoozed while they waited for them among them. Every card that leaves "Needs you" without being done stands here.
+  at the end, those the owner snoozed while they waited for them among them. Every card that leaves
+  "Needs you" without being done stands here, unless it is set aside.
+- **"Set aside"**: the cards of the two lists above that the owner set aside on this phone (below).
 - **"Planned"**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
   what it does on the canvas ("Start agent", "Later …"), so a task can be started from the phone.
 - **"Done"**: the finished cards that are not archived yet, those the archive's "Archive …
   finished tasks" would take, and none the lists above hold.
 
-"Planned" and "Done" are closed until their head (with the count) is tapped, since either may
-hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar so its
-cards show; it stays open while a card is open and over a reload, and is closed again in a new tab.
-Without such cards it is not there.
+*Setting a card aside.* A card swiped sideways (past a third of its width, or flicked; as the lines
+above the microphone) does what stands behind it as it moves. Swiped to the right in "Needs you" or
+"Running" ("Set aside on this phone"), it leaves both for "Set aside", for what the owner would
+rather handle at the desk than on the phone, until it needs the owner anew: it comes back by itself
+once it waits for them with a wait other than the one it was set aside in (a card set aside while it
+ran, at its next question or handover; one set aside while it waited, after it went on at the desk
+and waits again), while the same wait leaves it aside however long it lasts. Swiped to the left, a
+card in "Needs you" opens the "Later …" menu beside it instead (see Snoozing a card) and stays
+until a time is picked; one in "Running" is set aside that way too, since snoozing would stop its
+agent. Swiped either way in "Set aside" ("Bring back"), a card comes back at once.
 
-The cards look as on the canvas, as wide as the screen and without the pin, their kind line led by
-the canvas's name where there are several; where two of at least
-340 px fit (the phone turned) they stand side by side.
+The phone keeps what is set aside in its browser, the same in each of its tabs: the canvas at the
+desk, its navigation and the pushes show every card as before, and "Set aside" says so above its
+cards. A card whose canvas is not running stays set aside and is so again when the canvas is back;
+one removed from its canvas is forgotten. "Needs you" says "Nothing else waits for you." when all
+that waits is set aside ("Running" likewise, each for its own cards). Until the owner has swiped a
+card once in this browser, a line says how above the first card in sight that can be swiped (in
+"Needs you", else in "Running"), which nudges aside and back.
+
+"Set aside", "Planned" and "Done" are closed until their head (with the count) is tapped, since
+each may hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar
+so its cards show; it stays open while a card is open and over a reload, and is closed again in a
+new tab. Without such cards it is not there.
+
+With several canvases, each list holds its cards canvas by canvas in the switcher's order, each
+canvas under a head with its name and how many cards it has there (orange in "Needs you", as the
+navigation counts); a tap on the head folds that canvas's cards in that list away and keeps the
+count, as the navigation folds its canvases, kept per list and canvas in the browser. A canvas
+without cards in a list has no head there. The cards look as on the canvas, as wide as the screen
+and without the pin; where two of at least 340 px fit (the phone turned) they stand side by side.
 
 *Obeya's conversation* is a panel over the list, opened by the canvas's speech-bubble button with its
 unread count across canvases, left of the microphone at a finger's size, or by the card "Obeya
@@ -561,6 +586,22 @@ workers are busy.
 - **Done cards on the phone in a list of their own, closed by default** (2026-10-28, the owner):
   the owner wants to see what is done but not archived from the phone, without it pushing what
   waits and what runs further down.
+- **Cards are set aside on the phone by a swipe, until they need the owner anew** (2026-11-06, the
+  owner): with many cards at work the phone's lists overwhelmed, though much of it the owner only
+  handles at the desk. It ends with a new wait, not with a time (that is snoozing, which also takes
+  the card off the canvas's lists) and not when the owner acts at the desk (the card would be back
+  while it runs, which the owner did not want to see on the phone). Kept in the phone's browser,
+  not on the server: it sorts the phone's lists only, and a second phone sorts its own. Rejected: a
+  button on each card (clutter for an action of the list, not of the card).
+- **Swiped the other way, a card waiting for the owner is snoozed** (2026-11-07, the owner): besides
+  handling it at the desk, putting it off until later is the other way to be rid of an orange card
+  for now. The swipe opens the "Later …" menu rather than picking a time itself, so the owner picks
+  as on the card; on a card at work it sets aside too, since snoozing stops its agent. What the
+  swipe does stands behind the card while it moves, and the set-aside one says it holds on this
+  phone only.
+- **The phone's lists group their cards by canvas under foldable heads** (2026-11-06, the owner):
+  one column of cards from every canvas ran together; a head per canvas, folded as in the
+  navigation, replaces the canvas's name in each card's kind line.
 - **Phone conversations are a panel from below, sized with a grip** (2026-10-17). Rejected: the
   conversation as a box in the scrolling page (a scroll area inside another, and the page scrolled
   past the field to make room for the microphone); a grip that only closes or springs back. Cards
