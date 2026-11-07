@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { alive, gitClone, gitRepo, identify, leftBehind, until } from './testing';
-import { addTrailer, defaultBranch, git, Workspaces } from './workspaces';
+import { addTrailer, defaultBranch, git, localOrigin, Workspaces } from './workspaces';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
@@ -71,6 +72,68 @@ describe('a leased clone', () => {
     expect(() => spaces.lease(b, 'obeya/b')).toThrow(expect.objectContaining({ code: 'noWorkspace' }));
     // the pool says why the free clone goes to no card
     expect(spaces.pool([])[0]!.blocked).toEqual([{ path: clone!, why: 'failed', error: expect.stringContaining('fetch'), made: true }]);
+  });
+});
+
+describe('a clone made ready for a card', () => {
+  test('starts from main as its origin has it now, fetching only where the origin has branches or tags it lacks', async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    const store = new Store(':memory:');
+    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
+    const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
+    const fetchHead = join(clone, '.git', 'FETCH_HEAD');
+    let card: string | undefined;
+    const start = async (title: string) => {
+      if (card) spaces.release(card);
+      rmSync(fetchHead, { force: true });
+      card = board.create({ title, x: 0, y: 0 }).id;
+      await spaces.lease(card, `obeya/${title}`).ready;
+      return existsSync(fetchHead);
+    };
+    // as cloned: nothing to fetch
+    expect(await start('a')).toBe(false);
+    // main moved on
+    writeFileSync(join(repo, 'b.txt'), 'b');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '--quiet', '-m', 'b');
+    expect(await start('b')).toBe(true);
+    expect(git(clone, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'main'));
+    // a tag on a commit the clone has, and a branch of its own
+    git(repo, 'tag', 'v1', 'HEAD~1');
+    expect(await start('c')).toBe(true);
+    expect(git(clone, 'tag', '--list')).toBe('v1');
+    git(repo, 'branch', 'feature');
+    expect(await start('d')).toBe(true);
+    expect(git(clone, 'rev-parse', 'origin/feature')).toBe(git(repo, 'rev-parse', 'main'));
+    expect(await start('e')).toBe(false);
+  });
+
+  test("its origin, read without git, is the path or file URL the clone's config names; none where git might read it otherwise", () => {
+    const clone = join(dir, 'clone');
+    const repo = join(dir, 'repo');
+    mkdirSync(join(clone, '.git'), { recursive: true });
+    mkdirSync(repo);
+    // git writes a backslash as two
+    const escaped = (p: string) => p.replaceAll('\\', '\\\\');
+    const path = escaped(repo);
+    const config = (origin: string, fetch = '+refs/heads/*:refs/remotes/origin/*', more = '') =>
+      writeFileSync(join(clone, '.git', 'config'), `[core]\n\tbare = false\n[remote "origin"]\n${origin}\n\tfetch = ${fetch}\n[branch "main"]\n\tremote = origin\n${more}`);
+    config(`\turl = ${path} ; a comment`);
+    expect(localOrigin(clone)).toBe(repo);
+    config(`\turl = "${pathToFileURL(repo).href}"`);
+    expect(localOrigin(clone)).toBe(repo);
+    for (const [origin, fetch, more] of [
+      ['\turl = git@github.com:a/b.git'],
+      [`\turl = ${escaped(join(dir, 'gone'))}`],
+      [`\turl = ${path}\n\turl = ${path}`],
+      [`\turl = ${path}`, '+refs/heads/main:refs/remotes/origin/main'],
+      [`\turl = ${path}`, undefined, '[include]\n\tpath = more.config\n'],
+      [`\turl = ${path}`, undefined, '[url "git@github.com:"]\n\tinsteadOf = https://github.com/\n'],
+    ] as [string, string?, string?][]) {
+      config(origin, fetch, more);
+      expect(localOrigin(clone)).toBeNull();
+    }
   });
 });
 

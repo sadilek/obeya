@@ -25,7 +25,7 @@ import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, 
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
-import { readingShared } from '../adapters';
+import { readingSettings, REPO_SETTINGS_FILE } from '../adapters';
 import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
@@ -2017,9 +2017,9 @@ export class Workers {
    */
   async landingOf(cardId: string): Promise<{ land: 'main' | 'pr'; direct: boolean; own?: CardLanding }> {
     const repo = { land: this.o.adapter.land, direct: !!this.o.adapter.direct };
-    const fork = await this.o.workspaces.forkPoint(cardId);
+    const fork = await this.o.workspaces.forkPoint(cardId, REPO_SETTINGS_FILE);
     if (!fork) return repo;
-    const [now, before] = await gitSteps(fork.ws, together(readingShared('HEAD'), readingShared(fork.base)));
+    const [now, before] = await gitSteps(fork.ws, together(readingSettings('HEAD'), readingSettings(fork.base)));
     const machine = this.o.machineSettings?.();
     const own: CardLanding = {};
     for (const field of ['land', 'direct'] as const) {

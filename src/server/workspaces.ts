@@ -6,10 +6,11 @@
 // created on start, as many in parallel as there are cards unless the repository has slots; kept
 // across stop and restart until the card's work has landed.
 
-import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { hostname } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type CardDiff, cardDiff } from '../core/diff';
 import type { BlockedClone, PoolHost, WorkspaceShortage } from '../core/types';
 import type { Store } from './db';
@@ -182,6 +183,23 @@ function listed(files: string[]): string[] {
 /** The whole diff from `base` to `to` (a commit; the working tree when left out), as `git diff` has it. */
 export function gitDiff(cwd: string, base: string, to?: string): Promise<string> {
   return gitAsync(cwd, ...DIFF, base, ...(to ? [to] : []));
+}
+
+/**
+ * The commit of the checkout `repo`'s main branch `base` in its clone `ws`, fetched from the checkout
+ * unless a branch of the clone (`refs`) stands on it already: the clone's work started from it, say,
+ * and main has not moved since. A fetch from a path starts `git-upload-pack` through a shell, on
+ * Windows seconds under load.
+ */
+async function mainInClone(repo: string, ws: string, base: string, refs: Branches | null): Promise<string> {
+  const commit = await gitAsync(repo, 'rev-parse', '--verify', '-q', `refs/heads/${base}^{commit}`).catch(() => null);
+  if (!commit) {
+    // the fetch tells what is wrong
+    await gitAsync(ws, 'fetch', '--quiet', repo, `refs/heads/${base}`);
+    return gitAsync(ws, 'rev-parse', 'FETCH_HEAD');
+  }
+  if (!refs || ![...refs.local.values(), ...refs.remote.values()].includes(commit)) await gitAsync(ws, 'fetch', '--quiet', repo, commit);
+  return commit;
 }
 
 /** The landing under way per Obeya checkout: landings of one repository run one after the other. */
@@ -491,7 +509,7 @@ export interface CardWorkspaces {
   evict(cardId: string): Promise<string | null>;
   abandon(path: string): Promise<boolean>;
   retake(cardId: string, path: string): boolean;
-  forkPoint(cardId: string): Promise<{ ws: string; base: string } | null>;
+  forkPoint(cardId: string, changing?: string): Promise<{ ws: string; base: string } | null>;
   addedFiles(cardId: string, dir: string): Promise<string[]>;
   landOnMain(cardId: string, branch: string, trailer?: string): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
@@ -544,6 +562,8 @@ export class Workspaces implements CardWorkspaces {
   private looks = new Map<string, Seen & { at: number }>();
   /** The looks at free clones under way, by path. */
   private looking = new Map<string, Promise<Seen>>();
+  /** The main branch per workspace (or the checkout) as git finds it now (`mainAsync`), while git is at it. */
+  private mains = new Map<string, Promise<string>>();
   /** Clones the configuration no longer names that a card still holds: they leave the pool once it gives them back (`keepOnly`). */
   private leaving = new Set<string>();
   /** The directory Obeya makes its clones in on each host, once it has made sure they are there (`ensureHostClones`). */
@@ -1037,9 +1057,14 @@ export class Workspaces implements CardWorkspaces {
     if (!ws || this.preparing.has(cardId)) return false;
     try {
       if (!(await existsAsync(ws))) return false;
-      if (await gitAsync(ws, 'status', '--porcelain')) return true;
-      const up = await this.upstreamAsync(ws);
-      if ((await gitAsync(ws, 'rev-list', '--count', `${up}..HEAD`)) === '0') return false;
+      // `# branch.…` headers, then a line per change; the main branch beside it, which a `forkPoint` asked at the same time shares
+      const [lines, up] = await Promise.all([gitAsync(ws, 'status', '--porcelain=v2', '--branch'), this.upstreamAsync(ws)]);
+      const status = lines.split('\n');
+      if (status.some((line) => line && !line.startsWith('# '))) return true;
+      // where the branch tracks that branch (a clone's card branch does), status counted the commits beyond it
+      const ab = status.includes(`# branch.upstream ${up}`) ? status.find((line) => line.startsWith('# branch.ab +')) : undefined;
+      const ahead = ab ? ab.split(' ')[2]!.slice(1) : await gitAsync(ws, 'rev-list', '--count', `${up}..HEAD`);
+      if (ahead === '0') return false;
       // commits main holds as copies of its own (its unpushed commits rebased by a pull) are not the card's: a landing drops them
       return (await gitAsync(ws, 'rev-list', '--count', '--cherry-pick', '--right-only', `${up}...HEAD`)) !== '0';
     } catch {
@@ -1162,13 +1187,17 @@ export class Workspaces implements CardWorkspaces {
 
   /**
    * The card's workspace and the commit its branch left the branch it lands on at, where it has
-   * one: what the branch changes is told by comparing its `HEAD` with that commit.
+   * one: what the branch changes is told by comparing its `HEAD` with that commit. `changing`: only
+   * where the branch changes that file since then, which one call of git tells most of the time.
    */
-  async forkPoint(cardId: string): Promise<{ ws: string; base: string } | null> {
+  async forkPoint(cardId: string, changing?: string): Promise<{ ws: string; base: string } | null> {
     const ws = this.leasedBy(cardId);
     if (!ws) return null;
     try {
-      return { ws, base: await gitAsync(ws, 'merge-base', 'HEAD', await this.upstreamAsync(ws)) };
+      const up = await this.upstreamAsync(ws);
+      // `a...b`: from where they parted to b
+      if (changing && (await gitRun(ws, ['diff', '--quiet', '--no-ext-diff', '--no-textconv', `${up}...HEAD`, '--', changing])).code === 0) return null;
+      return { ws, base: await gitAsync(ws, 'merge-base', 'HEAD', up) };
     } catch {
       return null;
     }
@@ -1204,9 +1233,10 @@ export class Workspaces implements CardWorkspaces {
     let switched: { branch: string | null; commit: string } | undefined;
     for (let attempt = 0; ; attempt++) {
       try {
-        const base = await this.mainAsync(ws);
+        const refs = this.cloned(ws) ? await gitSteps(ws, readingBranches()) : undefined;
+        const base = await this.mainAsync(ws, refs);
         // a clone goes onto main as the checkout has it: its origin may be the remote, which lacks what landed here since
-        const onto = this.cloned(ws) ? () => gitAsync(ws, 'fetch', '--quiet', repo, `refs/heads/${base}`).then(() => gitAsync(ws, 'rev-parse', 'FETCH_HEAD')) : async () => base;
+        const onto = refs !== undefined ? () => mainInClone(repo, ws, base, refs) : async () => base;
         const problem = await rebased(ws, base, onto);
         if (problem) return problem;
         await withTrailer(ws, trailer);
@@ -1221,11 +1251,11 @@ export class Workspaces implements CardWorkspaces {
       }
       let tip = branch;
       try {
+        let from: string;
         if (this.cloned(ws)) {
           await gitAsync(repo, 'fetch', '--quiet', ws, branch);
-          tip = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
-        }
-        const from = await gitAsync(repo, 'rev-parse', 'HEAD');
+          [tip = branch, from = ''] = (await gitAsync(repo, 'rev-parse', 'FETCH_HEAD', 'HEAD')).split('\n');
+        } else from = await gitAsync(repo, 'rev-parse', 'HEAD');
         await gitAsync(repo, 'merge', '--ff-only', '--quiet', tip);
         const to = await gitAsync(repo, 'rev-parse', 'HEAD');
         if (!switched) return { from, to };
@@ -1637,8 +1667,8 @@ export class Workspaces implements CardWorkspaces {
    */
   private async base(ws: string): Promise<string> {
     const up = await this.upstreamAsync(ws);
-    const [main, at] = await Promise.all([gitAsync(ws, 'merge-base', 'HEAD', up), gitAsync(ws, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD')]);
-    const [head, branch] = at.split('\n');
+    const [main, at] = await Promise.all([gitAsync(ws, 'merge-base', 'HEAD', up), gitAsync(ws, 'rev-parse', 'HEAD', up, '--abbrev-ref', 'HEAD')]);
+    const [head, upCommit, branch] = at.split('\n');
     // the card's branch here and in remotes, whatever its name
     const cards = [`${CARD_BRANCH}*`, ...(branch && branch !== 'HEAD' ? [branch] : [])];
     const own = (
@@ -1646,7 +1676,8 @@ export class Workspaces implements CardWorkspaces {
     )
       .split('\n')
       .filter(Boolean);
-    if (own.length) {
+    // copies need commits of the main branch that the card's branch lacks
+    if (own.length && main !== upCommit) {
       const copies = new Set(
         (await gitAsync(ws, 'rev-list', '--cherry-mark', '--right-only', '--no-merges', `${up}...HEAD`))
           .split('\n')
@@ -1675,8 +1706,19 @@ export class Workspaces implements CardWorkspaces {
    * owner set for the repository, else the one its `origin` has. Without blocking: finding a clone's
    * main branch asks git, over SSH for a clone on another machine.
    */
-  private async mainAsync(ws: string): Promise<string> {
-    return branchSetting(this.o.repoPath) || (await gitSteps(this.cloned(ws) ? ws : this.o.repoPath, detectingBranch()));
+  private async mainAsync(ws: string, refs?: Branches | null): Promise<string> {
+    const set = branchSetting(this.o.repoPath);
+    if (set) return set;
+    const at = this.cloned(ws) ? ws : this.o.repoPath;
+    if (refs !== undefined) return gitSteps(at, detectingBranch(refs));
+    // asked again while git still answers (whether the card has work and where it lands, side by side): one answer
+    let asked = this.mains.get(at);
+    if (!asked) {
+      const now = gitSteps(at, detectingBranch());
+      this.mains.set(at, (asked = now));
+      void now.finally(() => this.mains.get(at) === now && this.mains.delete(at)).catch(() => {});
+    }
+    return asked;
   }
 
   /** The branch the workspace's work goes onto as the workspace has it: the main branch itself in a worktree, `origin`'s copy in a clone. */
@@ -1692,8 +1734,11 @@ export class Workspaces implements CardWorkspaces {
    * there; where none is left, `ready` fails with the shortage.
    */
   private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null): Lease {
+    const looking = new Set(this.looking.keys());
     const found = this.place(overSlots, from);
     if ('short' in found) throw new WorkspaceError(SHORT_TEXT[found.short], SHORT_CODE[found.short]);
+    // a look `place` began at the clone just now is the look below, unless git is still busy there
+    const begun = looking.has(found.path) || this.clears.has(found.path) ? undefined : this.looking.get(found.path);
     this.take(found.path, cardId);
     return this.prepare(
       cardId,
@@ -1702,7 +1747,7 @@ export class Workspaces implements CardWorkspaces {
         let path = found.path;
         // what git still does there for the card that held it before (its work kept, `evict`) is through first
         await this.clears.get(path)?.catch(() => {});
-        for (let seen = await cloneState(path); seen.found !== 'clean'; seen = await cloneState(path)) {
+        for (let seen = await (begun ?? cloneState(path)); seen.found !== 'clean'; seen = await cloneState(path)) {
           // given back first: the shortage, where no other is left, counts it as the dirty clone it is
           this.free(path);
           this.looks.set(path, { ...seen, at: Date.now() });
@@ -1711,15 +1756,17 @@ export class Workspaces implements CardWorkspaces {
           this.take(next.path, cardId);
           path = next.path;
         }
-        const base = await this.mainAsync(path);
-        await gitAsync(path, 'fetch', '--quiet', 'origin');
+        const refs = await gitSteps(path, readingBranches(true));
+        const base = await this.mainAsync(path, refs);
+        if (!(await nothingToFetch(path, refs))) await gitAsync(path, 'fetch', '--quiet', 'origin');
         // the branch as the clone it was kept in holds it, which may be newer than a copy here
-        if (from && from !== path) {
+        const kept = !!from && from !== path;
+        if (kept) {
           await gitAsync(path, 'checkout', '--quiet', '--detach');
           await gitAsync(path, 'fetch', '--quiet', pathThere(from), `+refs/heads/${branch}:refs/heads/${branch}`);
         }
         // a branch that already exists holds work: check it out, never reset it
-        if (await gitAsync(path, 'branch', '--list', branch)) await gitAsync(path, 'checkout', '--quiet', branch);
+        if (kept || refs?.local.has(branch)) await gitAsync(path, 'checkout', '--quiet', branch);
         else await gitAsync(path, 'checkout', '--quiet', '-b', branch, `origin/${base}`);
         // the work it had not committed when its workspace was taken is uncommitted again, unless the
         // card was stopped meanwhile: then the clone goes back clean and the one that kept the branch keeps it
@@ -2119,16 +2166,19 @@ export interface Branches {
   local: Map<string, string>;
   /** `origin`'s branches as the checkout last fetched them, and their commits. */
   remote: Map<string, string>;
+  /** The names of the tags, where they were asked for. */
+  tags?: Set<string>;
 }
 
 /**
  * Reads `Branches` as git steps, all with one call: Obeya reads them each time it needs the main
  * branch, and each call of git takes a few milliseconds. Null where there is no git repository.
+ * `tags`: with the names of the tags.
  */
-export function* readingBranches(): GitSteps<Branches | null> {
-  const [refs] = yield [['for-each-ref', '--format=%(refname)%00%(objectname)%00%(symref)', 'refs/heads/', 'refs/remotes/origin/']];
+export function* readingBranches(tags = false): GitSteps<Branches | null> {
+  const [refs] = yield [['for-each-ref', '--format=%(refname)%00%(objectname)%00%(symref)', 'refs/heads/', 'refs/remotes/origin/', ...(tags ? ['refs/tags/'] : [])]];
   if (refs == null) return null;
-  const b: Branches = { local: new Map(), remote: new Map() };
+  const b: Branches = { local: new Map(), remote: new Map(), ...(tags ? { tags: new Set<string>() } : {}) };
   const ORIGIN = 'refs/remotes/origin/';
   for (const line of refs.split('\n')) {
     const [ref = '', commit = '', symref = ''] = line.split('\0');
@@ -2136,8 +2186,82 @@ export function* readingBranches(): GitSteps<Branches | null> {
       if (symref.startsWith(ORIGIN)) b.originHead = symref.slice(ORIGIN.length);
     } else if (ref.startsWith('refs/heads/')) b.local.set(ref.slice('refs/heads/'.length), commit);
     else if (ref.startsWith(ORIGIN)) b.remote.set(ref.slice(ORIGIN.length), commit);
+    else if (ref.startsWith('refs/tags/')) b.tags?.add(ref.slice('refs/tags/'.length));
   }
   return b;
+}
+
+/**
+ * Whether `git fetch origin` in the clone at `path` would bring nothing: its origin a repository on
+ * this machine whose branches the clone has (`refs`, read with tags) as they are there, and its tags
+ * too. Asking that takes one quick git call in the origin; a fetch from a path starts
+ * `git-upload-pack` through a shell, on Windows seconds under load.
+ */
+async function nothingToFetch(path: string, refs: Branches | null): Promise<boolean> {
+  if (!refs?.tags || hostName(path) !== null) return false;
+  const origin = localOrigin(path);
+  if (!origin) return false;
+  const r = await gitRun(origin, ['for-each-ref', '--format=%(refname)%00%(objectname)', 'refs/heads/', 'refs/tags/']).catch(() => null);
+  if (r?.code !== 0) return false;
+  for (const line of r.stdout.split('\n')) {
+    if (!line) continue;
+    const [ref = '', commit = ''] = line.split('\0');
+    if (ref.startsWith('refs/heads/') ? refs.remote.get(ref.slice('refs/heads/'.length)) !== commit : !refs.tags.has(ref.slice('refs/tags/'.length))) return false;
+  }
+  return true;
+}
+
+/**
+ * The repository on this machine that the clone at `path` names as its `origin`, fetched from as
+ * `git clone` set it up, as its `.git/config` has it, read without git; null where it names another
+ * kind of remote, fetches other refs, or where the file holds anything that could make git read it
+ * otherwise (includes, rewritten URLs, two URLs).
+ */
+export function localOrigin(path: string): string | null {
+  let text: string;
+  try {
+    text = readFileSync(join(path, '.git', 'config'), 'utf8');
+  } catch {
+    return null;
+  }
+  if (/^\s*\[\s*(include|includeIf|url)\b/im.test(text)) return null;
+  const urls: string[] = [];
+  const fetches: string[] = [];
+  let origin = false;
+  for (const line of text.split(/\r?\n/)) {
+    const section = line.match(/^\s*\[([^\]]*)\]/);
+    if (section) origin = /^\s*remote\s+"origin"\s*$/i.test(section[1]!);
+    else if (origin) {
+      const m = line.match(/^\s*(url|fetch)\s*=\s*(.*)$/i);
+      if (m) (m[1]!.toLowerCase() === 'url' ? urls : fetches).push(configValue(m[2]!));
+    }
+  }
+  if (urls.length !== 1 || fetches.join(' ') !== '+refs/heads/*:refs/remotes/origin/*') return null;
+  let url = urls[0]!;
+  if (url.startsWith('file://')) {
+    try {
+      url = fileURLToPath(url);
+    } catch {
+      return null;
+    }
+  }
+  return isAbsolute(url) && existsSync(url) ? url : null;
+}
+
+/** A value of a git config file as git reads it: quotes taken off, escapes resolved, a comment after it dropped. */
+function configValue(raw: string): string {
+  let out = '';
+  let quoted = false;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]!;
+    if (c === '"') quoted = !quoted;
+    else if (c === '\\') {
+      const n = raw[++i];
+      out += n === 'n' ? '\n' : n === 't' ? '\t' : n === 'b' ? '\b' : (n ?? '');
+    } else if (!quoted && (c === '#' || c === ';')) break;
+    else out += c;
+  }
+  return out.trim();
 }
 
 /**
