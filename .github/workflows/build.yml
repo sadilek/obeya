@@ -59,11 +59,11 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - name: bun test
+      - name: bun run test
         run: |
           git config --global user.name CI
           git config --global user.email ci@example.com
-          bun test --parallel
+          bun run test
 
   # the local demo voices Obeya installs on request (Kokoro, Piper) install and speak on each
   # platform, downloaded afresh (scripts/check-voice.ts)

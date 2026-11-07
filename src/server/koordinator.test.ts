@@ -9,7 +9,7 @@ import { Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
 import { cardTag } from '../core/card-number';
 import { move, queueOrder, reach } from '../core/queue';
-import { artifact, FakeRuntime, type FakeSession, gitRepo } from './testing';
+import { artifact, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE } from './testing';
 import { Workers } from './workers';
 import { git, HERE, parseChanges, Workspaces } from './workspaces';
 import { withLimitWait } from './runtime';
@@ -623,6 +623,7 @@ describe('Koordinator waits for a free workspace', () => {
       dir: join(dir, 'clones'),
       ...(slots !== undefined ? { machines: [{ host: null, slots }], busy: () => workers.busyOn(null) } : {}),
     });
+    for (let i = 1; i <= n; i++) gitClone(main, join(dir, 'clones', String(i)));
     await workspaces.ensureClones(main, n);
     clones = workspaces.list().map((w) => w.path);
     workers = new Workers({ board, runtime, workspaces, adapter });
@@ -806,7 +807,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
   /** Waits until `done` holds: git keeps a card's work and frees its clone in the background. */
   async function until(done: () => boolean) {
-    for (const end = Date.now() + 5000; !done() && Date.now() < end; ) await Bun.sleep(5);
+    for (const end = Date.now() + 5000 * PATIENCE; !done() && Date.now() < end; ) await Bun.sleep(5);
     await settle();
   }
 

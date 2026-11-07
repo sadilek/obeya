@@ -9,7 +9,7 @@ import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
-import { artifact, FakeRuntime, gitRepo, heard, identify, noForge, syncGitCalls, until } from './testing';
+import { artifact, FakeRuntime, gitClone, gitRepo, heard, identify, noForge, syncGitCalls, until } from './testing';
 import { git, HERE } from './workspaces';
 import { type SkillPlace, Skills } from './skills';
 import { OBEYA_PLUGIN } from './demo';
@@ -369,11 +369,11 @@ test('canvases start, take a new configuration and restart a repository without 
   // a repository with an origin on a server (named after it), its Lesestand a worktree, clones to make and one listed
   const upstream = repo('shop.git', 'Shop');
   const shop = join(dir, 'shop');
-  git(dir, 'clone', '--quiet', upstream, shop);
+  gitClone(upstream, shop);
   git(shop, 'config', 'url.' + upstream + '.insteadOf', 'https://github.com/acme/shop.git');
   git(shop, 'remote', 'set-url', 'origin', 'https://github.com/acme/shop.git');
   const listed = join(dir, 'shop-listed');
-  git(dir, 'clone', '--quiet', upstream, listed);
+  gitClone(upstream, listed);
   const docs = repo('docs', 'Docs');
   const api = repo('api', 'API');
   const shopConfig = (clones: number) => ({ path: shop, clones, workspaces: [listed], settings: { land: 'pr' as const } });
@@ -639,7 +639,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', '.obeya/settings.json': '{ "land": "main", "checks": ["bun test"], "planDocs": { "dir": "plans", "exclude": [] } }\n' });
     const clone = join(dir, 'clone');
-    git(dir, 'clone', '--quiet', shop, clone);
+    gitClone(shop, clone);
     let settings: RepoSettings | undefined;
     canvas.shutdown();
     canvas = await CanvasRuntime.start({ repos: [{ path: clone }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, settings: () => settings });
@@ -960,7 +960,7 @@ describe('the configuration changed while the canvas runs', async () => {
 
   test('clones the configuration no longer names leave the pool: a free one at once, one a card holds once it gives it back', async () => {
     const own = join(dir, 'x-own');
-    git(dir, 'clone', '--quiet', web, own);
+    gitClone(web, own);
     await open([{ path: web, settings: { land: 'pr' }, clones: 2, workspaces: [own] }]);
     expect(canvas.repos[0]!.workspaces.list()).toHaveLength(3);
     const w = await atWork('web', 'W');
@@ -984,7 +984,7 @@ describe('the configuration changed while the canvas runs', async () => {
 
   test('the checkout among the workspaces stays out of them where work lands on its main, and is one where work goes out as pull requests', async () => {
     const own = join(dir, 'x-own');
-    git(dir, 'clone', '--quiet', web, own);
+    gitClone(web, own);
     await open([{ path: web, settings: { land: 'main' }, workspaces: [web, own] }]);
     expect(canvas.repos[0]!.workspaces.list().map((x) => x.path)).toEqual([own]);
     await open([{ path: web, settings: { land: 'pr' }, workspaces: [web, own] }]);
@@ -1125,7 +1125,7 @@ describe('the configuration changed while the canvas runs', async () => {
   /** A clone of the repository at `of`, which a configuration may list as a workspace of it. */
   const cloneOf = (of: string, name: string) => {
     const path = join(dir, name);
-    git(dir, 'clone', '--quiet', of, path);
+    gitClone(of, path);
     return path;
   };
 
@@ -1206,8 +1206,8 @@ describe('the canvases Obeya serves', () => {
     // a clone listed for web and one listed for shop that belong to api: their workspaces refuse them
     const forWeb = join(dir, 'x-web');
     const forShop = join(dir, 'x-shop');
-    git(dir, 'clone', '--quiet', api, forWeb);
-    git(dir, 'clone', '--quiet', api, forShop);
+    gitClone(api, forWeb);
+    gitClone(api, forShop);
     const configs = [
       { name: 'Web', repos: [{ path: web, settings: { land: 'pr' as const }, workspaces: [forWeb] }] },
       { name: 'API', repos: [{ path: api, settings: { land: 'pr' as const } }, { path: shop, settings: { land: 'pr' as const }, workspaces: [forShop] }] },
@@ -1320,7 +1320,7 @@ test('a clone registered for a repository must be one of it', async () => {
   fresh();
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
-  git(dir, 'clone', '--quiet', api, join(dir, 'api-clone'));
+  gitClone(api, join(dir, 'api-clone'));
   const deps = { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge };
   expect(() => CanvasRuntime.start({ repos: [{ path: web, workspaces: [join(dir, 'api-clone')] }] }, deps)).toThrow('is not a clone of');
   // the repository itself counts too, though it has no origin (where work lands on its main, it stays out of the pool)
@@ -1334,7 +1334,7 @@ test('clones of the repository count as its own whether their origin is over htt
   git(shop, 'remote', 'add', 'origin', 'https://github.com/acme/shop.git');
   const clones = ['https', 'ssh', 'scp'].map((name) => {
     const path = join(dir, `shop-${name}`);
-    git(dir, 'clone', '--quiet', shop, path);
+    gitClone(shop, path);
     return path;
   });
   git(clones[0]!, 'remote', 'set-url', 'origin', 'https://github.com/acme/shop');

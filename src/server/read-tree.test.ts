@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ReadTree, refsSeal } from './read-tree';
-import { artifact, FakeRuntime, gitRepo, identify, noForge, syncGitCalls, until } from './testing';
+import { artifact, FakeRuntime, gitClone, gitRepo, identify, noForge, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 const doc = (title: string, ticked = '') =>
@@ -26,7 +26,7 @@ beforeEach(() => {
   checkout = join(dir, 'checkout');
   other = join(dir, 'other');
   for (const c of [checkout, other]) {
-    git(dir, 'clone', '--quiet', origin, c);
+    gitClone(origin, c);
     identify(c);
   }
 });

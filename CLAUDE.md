@@ -12,8 +12,9 @@ description instead of adding the old behaviour to it. Work in progress is plann
 under `docs/plan/` (Obeya shows them as projects); when one is done, what passes the same test moves
 into the chapters under `docs/design/` (or the index) and the doc goes.
 
-- Bun + TypeScript throughout; tests with `bun test --parallel` (a file per process, from Bun 1.4 on;
-  older Bun ignores the flag and runs them one after the other), types with `bun run typecheck`.
+- Bun + TypeScript throughout; tests with `bun run test` (`bun test --parallel`, a file per process,
+  from Bun 1.4 on; older Bun ignores the flag and runs them one after the other; on Windows a quarter
+  of the cores, see `scripts/test.ts`), types with `bun run typecheck`.
 - `src/core/` is shared by server and UI (types, plan-doc parser, layout); `src/server/` is the
   Bun server with SQLite; `src/ui/` the React canvas; `src/adapters/` what Obeya knows of a repository (its defaults, its settings).
 - Code that drives agents is tested against the fake runtime in `src/server/testing.ts` and real

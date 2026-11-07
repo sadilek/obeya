@@ -16,7 +16,7 @@ import type { NarrationHost } from './narration';
 import { KEY_HEADER, keyOf } from './owner';
 import { Stalls } from './stalls';
 import { serve, serveNarration } from './server';
-import { artifact, asOwner, FakeRuntime, gitRepo, identify, noForge, until } from './testing';
+import { artifact, asOwner, FakeRuntime, gitClone, gitRepo, identify, noForge, until } from './testing';
 import { git, RECHECK_MS } from './workspaces';
 import type { Transcript } from './voice';
 
@@ -1074,7 +1074,7 @@ describe('new commits on the upstream of the checkout Obeya runs from', () => {
     const up = join(dir, 'up');
     gitRepo(up, { 'src/a.ts': 'a\n' });
     const clone = join(dir, 'clone');
-    git(dir, 'clone', '--quiet', up, clone);
+    gitClone(up, clone);
     writeFileSync(join(up, 'src/a.ts'), 'b\n');
     identify(up);
     git(up, 'commit', '--quiet', '-am', 'Faster');
@@ -1324,7 +1324,7 @@ describe('landing approved work', () => {
     const repo = join(dir, 'pushed');
     gitRepo(repo);
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', repo, origin);
+    gitClone(repo, origin, { bare: true });
     git(repo, 'remote', 'add', 'origin', origin);
     git(repo, 'fetch', '--quiet', 'origin');
     const pushing = join(dir, 'pushing');
@@ -1427,7 +1427,7 @@ describe('the Lesestand and the free clones', () => {
     const doc = (title: string) => `# ${title}\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Eins.\n`;
     const origin = gitRepo(join(dir, 'shop'), { 'docs/plan/export.md': doc('Export'), '.gitattributes': '*.md filter=slow\n' });
     const checkout = join(dir, 'checkout');
-    git(dir, 'clone', '--quiet', origin, checkout);
+    gitClone(origin, checkout);
     // work goes out as pull requests: the Lesestand is a worktree of the checkout, apart from the pool's clone
     const shop = await CanvasRuntime.start(
       { name: 'Shop', repos: [{ path: checkout, clones: 1, settings: { land: 'pr', workspaces: 'clones' } }] },
