@@ -206,7 +206,7 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.snoozed .state { --c: var(--muted); }
 .card.snoozed .state::after { display: none; }
 .card .state .clock-mark { flex: none; margin-right: -2px; }
-.ph-card .state .clock-mark { margin-right: 5px; vertical-align: -1px; }
+.ph-card .state .clock-mark { align-self: flex-start; margin: 2px 5px 0 0; }
 @keyframes flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
 /* the pin that holds a card needing the owner: its disc (::before) and its pulse (::after) lie under
@@ -2115,7 +2115,8 @@ button.link:hover { text-decoration: underline; }
    stock, the owner's turn framed and pinned, the state line in its colour */
 /* one column held upright, two (or more) side by side once the screen is wide enough, the phone turned, say */
 .ph-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; }
-.ph-list > li { display: flex; }
+/* no line of a card, however long, widens its column past the screen */
+.ph-list > li { display: flex; min-width: 0; }
 .ph-card { position: relative; display: flex; flex-direction: column; width: 100%; text-align: left; color: var(--ink); border: 0; padding: 14px 14px 12px; }
 .ph-card:hover { transform: none; }
 .ph-card:active { transform: translateY(1px); }
@@ -2126,9 +2127,10 @@ button.link:hover { text-decoration: underline; }
 .ph-card > .ttl:first-child ~ .card-no { top: 20px; }
 .ph-card .ttl { font-size: 18.5px; line-height: 1.2; margin-top: 2px; -webkit-line-clamp: 3; }
 .ph-card .meta { font-size: 14px; }
-.ph-card .state { position: static; margin-top: auto; padding-top: 8px; font-size: 13px; flex-wrap: wrap; gap: 0; }
+.ph-card .state { position: static; margin-top: auto; padding-top: 8px; font-size: 13px; gap: 0; }
 .ph-card .state::after { margin-left: 7px; }
-.ph-card .state .state-text { display: contents; }
+/* the state line wraps here instead of being cut to one line as on the canvas, the clock beside its first line; nothing clipped, so the landed badge keeps its frame */
+.ph-card .state .state-text { flex: 0 1 auto; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .ph-card .state .since { color: var(--muted); font-weight: 500; white-space: pre; }
 /* everything in „Braucht dich“ waits for the owner: the heading says so, no pin on each card */
 .ph-card .badge { display: none; }
