@@ -6,8 +6,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Walkthrough } from '../core/walkthrough';
-import { fakeVoicing, until } from './testing';
-import { AnswerWalkthrough, readWalkthrough, writtenIn } from './walkthrough';
+import { fakeVoicing, silentWav, until } from './testing';
+import { AnswerWalkthrough, readWalkthrough, Voicing, writtenIn } from './walkthrough';
 import { estimatedStarts } from '../core/walkthrough';
 
 let dir: string;
@@ -171,6 +171,24 @@ describe('the voice of walkthroughs', () => {
     expect(deaf!.words).not.toEqual([0, 0.1, 0.2, 0.3]);
     // a player reads it as voiced and heard
     expect(readWalkthrough(join(dir, 'answers'), 'heard.walkthrough.json', voice.voicing)?.error).toBeUndefined();
+  });
+
+  test('a sentence being voiced while the one before is heard back is not taken for interrupted', async () => {
+    let last = () => {};
+    const voicing = new Voicing({
+      speak: async (text, out) => {
+        if (text === 'Second.') await new Promise<void>((r) => (last = r));
+        writeFileSync(out, silentWav(1));
+      },
+      hear: async () => [[' First', 0]],
+    });
+    const w = new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, voicing });
+    w.tool().run({ slide: { type: 'title', title: 'First', language: 'en', narration: 'Second.' } });
+    w.finish();
+    await until(() => !!read('first.walkthrough.json').clips[0]![0]?.words);
+    expect(readWalkthrough(join(dir, 'answers'), 'first.walkthrough.json', voicing)?.error).toBeUndefined();
+    last();
+    await until(() => !!read('first.walkthrough.json').clips[0]![1]?.words);
   });
 
   test('loads when asked, before the first slide', () => {

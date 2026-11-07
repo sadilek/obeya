@@ -390,8 +390,8 @@ shows them all); a code slide scrolls its highlighted range into view; and the s
 spoken stands under the slide as a caption, which "CC" switches on and off, with a pointer on the
 word being spoken, the words before it in full colour and those still to come faint. With a
 narration in parts an item comes with its part; with one text, at the word that first names it
-(the same word or its stem, among its words of four letters or more, in the items' order), and one
-named nowhere between its neighbours.
+(the same word or its stem, among its words of four letters or more that the other items do not
+share, in the items' order), and one named nowhere between its neighbours.
 
 The times of the words come from hearing each sentence back once it is voiced, with the speech
 recognition of voice in on this machine (Parakeet, or Whisper where set), while the voice goes on

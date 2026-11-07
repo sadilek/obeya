@@ -45,6 +45,20 @@ describe("a slide's items as the narration reaches them", () => {
     ]);
   });
 
+  test('by the words that tell them apart, not those they share', () => {
+    const shared: Slide = {
+      type: 'flow',
+      title: 'Pull requests',
+      steps: [{ label: 'Open pull request' }, { label: 'Review pull request' }, { label: 'Merge pull request' }],
+      parts: ['Someone opens a pull request.', 'A colleague reviews it.', 'Then it is merged.'],
+    };
+    expect(mentions(shared)).toEqual([
+      { part: 0, word: 1 },
+      { part: 1, word: 2 },
+      { part: 2, word: 3 },
+    ]);
+  });
+
   test('one it never names shows between its neighbours, the first from the start', () => {
     const unnamed: Slide = { ...flow, steps: [{ label: 'Queue' }, { label: 'Rebase' }, { label: 'Wait' }, { label: 'Merged' }] };
     const at = (part: number, word: number) => part * 10 + word;

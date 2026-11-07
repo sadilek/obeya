@@ -156,17 +156,29 @@ function alignment(a: string, b: string): [number, number][] {
   return pairs.reverse();
 }
 
-/** The words of an item's text that tell the narration has reached it: those of four letters or more, else its longest. */
-function telling(text: string) {
+/**
+ * The words of an item's text that tell the narration has reached it: those of four letters or more
+ * (else its longest), without those the other items share ("pull request" in "Open pull request" and
+ * "Merge pull request"), unless it has no other.
+ */
+function telling(text: string, others: string[]) {
   const words = wordsOf(text).map(lettersOf).filter(Boolean);
   const long = words.filter((w) => w.length >= 4);
-  return long.length ? long : words.sort((a, b) => b.length - a.length).slice(0, 1);
+  const own = long.length ? long : words.sort((a, b) => b.length - a.length).slice(0, 1);
+  const theirs = others.flatMap((o) => wordsOf(o).map(lettersOf));
+  const apart = own.filter((w) => !theirs.some((t) => names(t, w)));
+  return apart.length ? apart : own;
 }
 
-/** Whether a word of the narration names the item's word: the same, or the same stem ("approves", "approved"). */
+/**
+ * Whether a word of the narration names the item's word: the same, the same with an ending of a
+ * letter or two ("open", "opens"), or the same stem ("approves", "approved").
+ */
 function names(said: string, word: string) {
   if (said === word) return true;
-  const stem = Math.min(said.length, word.length) - 1;
+  const [short, long] = said.length <= word.length ? [said, word] : [word, said];
+  if (short.length >= 4 && long.length - short.length <= 2 && long.startsWith(short)) return true;
+  const stem = short.length - 1;
   return stem >= 4 && said.slice(0, stem) === word.slice(0, stem);
 }
 
@@ -179,12 +191,12 @@ export function mentions(s: Slide): ({ part: number; word: number } | undefined)
   const texts = s.type === 'points' ? s.points : s.type === 'flow' ? s.steps.map((x) => x.label) : [];
   const said = s.parts.flatMap((p, part) => wordsOf(p).map((w, word) => ({ part, word, letters: lettersOf(w) })));
   let from = 0;
-  return texts.map((text) => {
-    const words = telling(text);
-    const k = said.findIndex((x, i) => i >= from && words.some((w) => names(x.letters, w)));
-    if (k < 0) return undefined;
-    from = k + 1;
-    return { part: said[k]!.part, word: said[k]!.word };
+  return texts.map((text, k) => {
+    const words = telling(text, texts.filter((_, j) => j !== k));
+    const at = said.findIndex((x, i) => i >= from && words.some((w) => names(x.letters, w)));
+    if (at < 0) return undefined;
+    from = at + 1;
+    return { part: said[at]!.part, word: said[at]!.word };
   });
 }
 

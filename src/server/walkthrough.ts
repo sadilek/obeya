@@ -93,6 +93,8 @@ export class Voicing {
   private told = new Map<string, Told>();
   /** The sentences being heard back, per walkthrough. */
   private hearing = new Map<Told, number>();
+  /** The walkthrough of the sentence the voice is speaking. */
+  private speaking?: Told;
 
   constructor(private o: VoicingOptions) {}
 
@@ -128,7 +130,11 @@ export class Voicing {
     if (this.busy) return;
     this.busy = true;
     try {
-      for (let job = this.next(); job; job = this.next()) await this.voice(job);
+      for (let job = this.next(); job; job = this.next()) {
+        this.speaking = job.w;
+        await this.voice(job).finally(() => (this.speaking = undefined));
+        this.settle(job.w);
+      }
     } finally {
       this.busy = false;
     }
@@ -163,7 +169,6 @@ export class Voicing {
       w.failed(messageOf(e).trim().split('\n').at(-1) || 'the voice failed');
       this.o.log?.(`Obeya: voicing the walkthrough ${w.file} failed: ${messageOf(e)}`);
     }
-    this.settle(w);
   }
 
   /** Hears a sentence back for the times of its words, while the voice goes on with the next. */
@@ -194,7 +199,7 @@ export class Voicing {
 
   /** Done with a walkthrough once nothing of it waits for the voice or to be heard back. */
   private settle(w: Told) {
-    if (this.jobs.some((j) => j.w === w) || this.hearing.get(w)) return;
+    if (this.speaking === w || this.jobs.some((j) => j.w === w) || this.hearing.get(w)) return;
     this.hearing.delete(w);
     this.told.delete(w.file);
     this.playing.delete(w.file);
