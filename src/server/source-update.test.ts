@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceUpdates } from './source-update';
-import { gitRepo } from './testing';
+import { gitClone, gitRepo } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -23,7 +23,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-source-'));
   up = gitRepo(join(dir, 'up'), { 'src/a.ts': 'a\n', 'docs/design.md': 'design\n' });
   clone = join(dir, 'clone');
-  git(dir, 'clone', '--quiet', up, clone);
+  gitClone(up, clone);
 });
 
 afterEach(() => rmSync(dir, { recursive: true, force: true }));

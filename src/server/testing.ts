@@ -1,8 +1,8 @@
 // Test doubles, and git repositories for tests.
 
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { git } from './workspaces';
@@ -76,8 +76,23 @@ export class FakeRuntime implements AgentRuntime {
   }
 }
 
+/**
+ * How many times as long as elsewhere a test may take on Windows, where starting a process (git,
+ * above all) costs ten times as much and more: a virus scanner looks at each. Tests that pass in a
+ * second elsewhere took over five there with the other test files running beside them.
+ * `OBEYA_TEST_PATIENCE` sets it (test-setup.ts sets Bun's timeout by it, which `--timeout` no longer changes).
+ */
+export const PATIENCE = Number(process.env.OBEYA_TEST_PATIENCE) || (process.platform === 'win32' ? 5 : 1);
+
 const templates = new Map<string, string>();
 let templateDir: string | undefined;
+/** The repositories `gitRepo` and `gitClone` copied, each with the template it is a copy of. */
+const copies = new Map<string, string>();
+/** The clones of templates, themselves templates: by the template cloned and whether bare. */
+const clones = new Map<string, string>();
+
+/** Lets git trust a copy of a repository: it keeps mtime and size, not inode and ctime. */
+const trustCopies = (gitDir: string) => appendFileSync(join(gitDir, 'config'), '[core]\n\tcheckStat = minimal\n\ttrustctime = false\n');
 
 /**
  * Makes `path` a git repository on `main` with `files` committed as "init", in which tests can
@@ -92,8 +107,7 @@ export function gitRepo(path: string, files: Record<string, string> = { 'README.
     template = join(templateDir, String(templates.size));
     git(templateDir, 'init', '--quiet', '--template=', '-b', 'main', template);
     identify(template);
-    // a copy keeps mtime and size but not inode and ctime: git is to trust what the copy keeps
-    appendFileSync(join(template, '.git/config'), '[core]\n\tcheckStat = minimal\n\ttrustctime = false\n');
+    trustCopies(join(template, '.git'));
     // git's automatic maintenance after a commit would run in the background and could add or
     // remove files (objects/maintenance.lock) while another test copies the template
     appendFileSync(join(template, '.git/config'), '[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n');
@@ -106,7 +120,57 @@ export function gitRepo(path: string, files: Record<string, string> = { 'README.
     templates.set(key, template);
   }
   cpSync(template, path, { recursive: true, preserveTimestamps: true });
+  copies.set(resolve(path), template);
   return path;
+}
+
+/**
+ * `git clone` of `source` into `path` (`bare`: `--bare`), as tests set up the clones of a
+ * repository. A git clone costs a second on Windows, where starting git and the processes it starts
+ * for a clone is slow: where `source` is a copy `gitRepo` or `gitClone` made whose branches have not
+ * moved since, the clone is a copy of a clone of its template, made once.
+ */
+export function gitClone(source: string, path: string, { bare = false } = {}): string {
+  const template = copies.get(resolve(source));
+  if (!template || refsOf(source) !== refsOf(template)) {
+    mkdirSync(dirname(path), { recursive: true });
+    git(dirname(path), 'clone', '--quiet', ...(bare ? ['--bare'] : []), source, path);
+    return path;
+  }
+  const key = `${template}\n${bare}`;
+  let clone = clones.get(key);
+  if (!clone) {
+    clone = join(templateDir!, `clone-${clones.size}${bare ? '.git' : ''}`);
+    git(templateDir!, 'clone', '--quiet', '--template=', ...(bare ? ['--bare'] : []), template, clone);
+    trustCopies(gitDir(clone));
+    clones.set(key, clone);
+  }
+  cpSync(clone, path, { recursive: true, preserveTimestamps: true });
+  // the clone's origin is `source`, written as git writes it (a backslash escaped)
+  const config = join(gitDir(path), 'config');
+  const quoted = (p: string) => `\turl = ${p.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}\n`;
+  writeFileSync(config, readFileSync(config, 'utf8').replace(quoted(template), quoted(source)));
+  copies.set(resolve(path), clone);
+  return path;
+}
+
+const gitDir = (repo: string) => (existsSync(join(repo, '.git')) ? join(repo, '.git') : repo);
+
+/** A repository's branches and tags, and where its HEAD points: what a clone of it takes. */
+function refsOf(repo: string): string {
+  const dir = gitDir(repo);
+  const read = (p: string) => {
+    try {
+      return readFileSync(p, 'utf8');
+    } catch {
+      // none there, or a directory
+      return '';
+    }
+  };
+  // a copy deleted since has none
+  const names = existsSync(join(dir, 'refs')) ? (readdirSync(join(dir, 'refs'), { recursive: true }) as string[]) : [];
+  const refs = names.sort().map((r) => `${r}:${read(join(dir, 'refs', r)).trim()}`);
+  return [read(join(dir, 'HEAD')), read(join(dir, 'packed-refs')), ...refs].join('\n');
 }
 
 /** Removes the templates of `gitRepo`; test-setup.ts calls it once all tests have run. */
@@ -114,6 +178,8 @@ export function removeTemplates() {
   if (templateDir) rmSync(templateDir, { recursive: true, force: true });
   templateDir = undefined;
   templates.clear();
+  copies.clear();
+  clones.clear();
 }
 
 /** Lets tests commit in `repo`, a repository or a clone of one, as T. */
@@ -151,7 +217,7 @@ export function asOwner(of: () => object) {
 /** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
 export const heard = () => Bun.sleep(0);
 
-export const until = async (done: () => unknown, ms = 3000) => {
+export const until = async (done: () => unknown, ms = 3000 * PATIENCE) => {
   for (const end = Date.now() + ms; !(await done()); await Bun.sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
 };
 

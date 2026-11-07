@@ -10,7 +10,7 @@ import { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, fakeGh, gitRepo, noContributions, until } from './testing';
+import { artifact, FakeRuntime, fakeGh, gitClone, gitRepo, noContributions, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -43,6 +43,7 @@ beforeEach(async () => {
   language = 'de';
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => language);
   workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
+  gitClone(main, join(dir, 'ws', '1'));
   await workspaces.ensureClones(main, 1);
   runtime = new FakeRuntime();
   opened = [];
