@@ -352,7 +352,6 @@ describe("the system's folder dialog", () => {
 
     // this machine: offered, and the folder comes back
     expect(await (await local('/api/setup/pick')).json()).toEqual({ picker: true });
-    expect(((await (await local('/api/setup')).json()) as { picker: boolean }).picker).toBe(true);
     expect(await (await local('/api/setup/pick', { ...post, headers: { 'content-type': 'application/json' } })).json()).toEqual({ path: '/home/ada/dev/quizzle' });
 
     // a paired phone: not offered, and refused
@@ -361,7 +360,8 @@ describe("the system's folder dialog", () => {
     const cookie = cookieOf(await viaTailnet(`/pair?code=${p.code}`));
     const phone = { cookie, origin: `https://${NAME}`, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
     expect(await (await viaTailnet('/api/setup/pick', phone)).json()).toEqual({ picker: false });
-    expect(((await (await viaTailnet('/api/setup', phone)).json()) as { picker: boolean }).picker).toBe(false);
+    // nor by the setup assistant's view, which any of its actions sends back
+    expect(await (await viaTailnet('/api/setup', phone)).json()).not.toHaveProperty('picker');
     const refused = await viaTailnet('/api/setup/pick', phone, post);
     expect(refused.status).toBe(403);
     expect(await refused.json()).toMatchObject({ code: 'onlyHere' });

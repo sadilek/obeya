@@ -505,7 +505,7 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
                 <span className="hint">{s.first.folder}</span>
                 <span className="c-row">
                   <input className="c-path" spellCheck={false} placeholder={s.first.pathPlaceholder} value={path} onChange={(e) => setPath(e.target.value)} />
-                  <FolderPick prompt={s.pickPrompt} available={view.picker} onPick={setPath} onError={failed} />
+                  <FolderPick prompt={s.pickPrompt} onPick={setPath} onOpen={() => setStatus('')} onError={failed} />
                 </span>
               </label>
               {branch && <p className="hint setup-branch">{s.first.branch(branch)}</p>}

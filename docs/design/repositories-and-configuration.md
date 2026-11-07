@@ -382,7 +382,8 @@ branch group.
 The path can be typed, or picked with "Choose …" beside it in the system's folder dialog (macOS
 `choose folder`, Windows' folder browser, zenity or kdialog on Linux), the same control as in the
 first canvas of the setup assistant. A picked folder fills the field and is checked as a typed one
-(its choice of going without git starts afresh); cancelling changes nothing. The dialog opens on the
+(its choice of going without git starts afresh); cancelling changes nothing, and what went wrong
+shows under the field until the next attempt. The dialog opens on the
 screen of the machine Obeya runs on, so the button shows only to a browser on that machine, and only
 where it has such a dialog; the server opens it for no request from another device (2026-11-06: a
 browser never hands a page a folder's absolute path, and repositories are added at the machine

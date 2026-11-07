@@ -11,29 +11,29 @@ let offered: Promise<boolean> | null = null;
 const pickerHere = () => (offered ??= api.setupPicker().then((r) => r.picker, () => false));
 
 /**
- * The button; nothing where the dialog isn't offered. `available`: what the caller already knows of
- * that (the setup assistant's view), asked of the server otherwise. A chosen folder goes to `onPick`;
- * cancelling the dialog changes nothing.
+ * The button; nothing where the dialog isn't offered (the server says, for this browser). A chosen
+ * folder goes to `onPick`; cancelling the dialog changes nothing. `onOpen` as the dialog opens (what
+ * an earlier attempt said no longer holds), `onError` with what went wrong.
  */
-export function FolderPick({ prompt, available, onPick, onError }: { prompt: string; available?: boolean; onPick: (path: string) => void; onError?: (e: unknown) => void }) {
-  const [asked, setAsked] = useState<boolean | null>(null);
+export function FolderPick({ prompt, onPick, onOpen, onError }: { prompt: string; onPick: (path: string) => void; onOpen: () => void; onError: (e: unknown) => void }) {
+  const [here, setHere] = useState(false);
   useEffect(() => {
-    if (available !== undefined) return;
     let live = true;
-    void pickerHere().then((p) => live && setAsked(p));
+    void pickerHere().then((p) => live && setHere(p));
     return () => {
       live = false;
     };
-  }, [available]);
+  }, []);
   const [open, setOpen] = useState(false);
-  if (!(available ?? asked)) return null;
+  if (!here) return null;
   const pick = async () => {
     setOpen(true);
+    onOpen();
     try {
       const { path } = await api.setupPick(prompt);
       if (path) onPick(path);
     } catch (e) {
-      onError?.(e);
+      onError(e);
     }
     setOpen(false);
   };

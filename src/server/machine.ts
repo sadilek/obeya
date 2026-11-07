@@ -294,7 +294,6 @@ export class MachineSetup {
       sections,
       checkedClaude: CHECKED_CLAUDE,
       ...(job ? { job } : {}),
-      picker: this.picker,
       cloneInto: homedir(),
     };
   }

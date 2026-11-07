@@ -1794,6 +1794,8 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
       {leaving}
     </Field>
   );
+  // what went wrong with the system's folder dialog, under the path
+  const [pickFailed, setPickFailed] = useState('');
   // another folder, typed or picked: whether it goes without git is chosen for it anew
   const setPath = (path: string) => {
     const { git: _, ...rest } = repo;
@@ -1805,9 +1807,10 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
       <Field label={t.config.path} hint={home || folder ? [...(home ? [t.config.home] : []), ...(folder ? [t.config.folderMode] : [])].join(' · ') : undefined}>
         <div className="cfg-repo-path">
           <input className="c-path" aria-label={t.config.path} value={repo.path} placeholder={t.config.path} spellCheck={false} onChange={(e) => setPath(e.target.value)} />
-          <FolderPick prompt={t.config.pickPrompt} onPick={setPath} />
+          <FolderPick prompt={t.config.pickPrompt} onPick={setPath} onOpen={() => setPickFailed('')} onError={(e) => setPickFailed(failText(e))} />
           <RemoveButton label={t.config.removeRepo} onClick={() => onChange(null)} />
         </div>
+        {pickFailed && <p className="hint c-status cfg-pick-failed">{pickFailed}</p>}
       </Field>
       {problems.map((p, k) => (
         <div key={k} className="cfg-repo-problem">

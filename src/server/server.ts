@@ -649,8 +649,7 @@ export function serve(
         DELETE: needs(setup, (s) => s.useLocal()),
       },
       // the setup assistant: what Obeya needs on this machine, installed, logged in; then the first canvas
-      // the folder dialog is offered only to a browser on this machine: it opens on this machine's screen
-      '/api/setup': { GET: (req, srv) => (machine ? handle(async () => ({ ...(await machine.view()), picker: picker(req, srv) })) : notFound()) },
+      '/api/setup': { GET: needs(machine, (m) => m.view()) },
       '/api/setup/install': { POST: needs(machine, async (m, req) => m.install(await req.json())) },
       '/api/setup/login': { POST: needs(machine, async (m, req) => m.login(await req.json())) },
       '/api/setup/token': { POST: needs(machine, async (m, req) => m.saveToken(await req.json())) },
