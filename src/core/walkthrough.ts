@@ -201,18 +201,19 @@ export function mentions(s: Slide): ({ part: number; word: number } | undefined)
 }
 
 /**
- * The second of its slide from which each item shows: with its part of the narration (a narration in
- * parts), where the narration first names it (one text), else spread between its neighbours, the
- * first from the start. `at`: the second of the slide a sentence's word starts at.
+ * The second of its slide from which each item shows: the first with the slide, so it never stands
+ * empty; the others with their part of the narration (a narration in parts), where the narration
+ * first names them (one text), else spread between their neighbours. `at`: the second of the slide
+ * a sentence's word starts at; `part`: the second a sentence starts at.
  */
-export function itemStarts(s: Slide, at: (part: number, word: number) => number, seconds: number): number[] {
+export function itemStarts(s: Slide, at: (part: number, word: number) => number, part: (part: number) => number, seconds: number): number[] {
   const n = itemsOf(s);
-  if (s.items) return Array.from({ length: n }, (_, k) => at(Math.max(0, s.items!.indexOf(k)), 0));
+  if (s.items) return Array.from({ length: n }, (_, k) => (k ? part(Math.max(0, s.items!.indexOf(k))) : 0));
   const found = s.type === 'code' ? [] : mentions(s).map((m) => m && at(m.part, m.word));
   const starts: number[] = [];
   for (let k = 0; k < n; k++) {
     const f = found[k];
-    if (f !== undefined) {
+    if (f !== undefined && k > 0) {
       starts.push(Math.max(f, starts[k - 1] ?? 0));
       continue;
     }

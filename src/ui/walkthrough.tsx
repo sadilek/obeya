@@ -180,7 +180,12 @@ class Playback {
     const s = this.data?.slides[this.slide];
     if (!s) return -1;
     const time = this.now();
-    const starts = itemStarts(s, (part, word) => this.partStart(this.slide, part) + (this.wordStarts(this.slide, part)[word] ?? 0), this.slideSeconds(this.slide));
+    const starts = itemStarts(
+      s,
+      (part, word) => this.partStart(this.slide, part) + (this.wordStarts(this.slide, part)[word] ?? 0),
+      (part) => this.partStart(this.slide, part),
+      this.slideSeconds(this.slide),
+    );
     let shown = -1;
     for (const [k, from] of starts.entries()) if (time >= from - 0.05) shown = k;
     return shown;

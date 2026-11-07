@@ -59,14 +59,15 @@ describe("a slide's items as the narration reaches them", () => {
     ]);
   });
 
-  test('one it never names shows between its neighbours, the first from the start', () => {
+  test('the first shows with the slide, one never named between its neighbours', () => {
+    expect(itemStarts(flow, (part, word) => part * 10 + word, (part) => part * 10, 20)).toEqual([0, 6, 12, 17]);
     const unnamed: Slide = { ...flow, steps: [{ label: 'Queue' }, { label: 'Rebase' }, { label: 'Wait' }, { label: 'Merged' }] };
     const at = (part: number, word: number) => part * 10 + word;
-    expect(itemStarts(unnamed, at, 20)).toEqual([0, 6, 11.5, 17]);
+    expect(itemStarts(unnamed, at, (part) => part * 10, 20)).toEqual([0, 6, 11.5, 17]);
   });
 
   test('with a narration in parts, show with their part', () => {
     const parted: Slide = { type: 'points', title: 'Two', points: ['a', 'b'], parts: ['First.', 'Also first.', 'Second.'], items: [0, 0, 1] };
-    expect(itemStarts(parted, (part) => part * 2, 6)).toEqual([0, 4]);
+    expect(itemStarts(parted, (part, word) => part * 2 + word + 0.3, (part) => part * 2, 6)).toEqual([0, 4]);
   });
 });

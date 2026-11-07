@@ -388,8 +388,9 @@ The player plays slides and sound in step: the items of a slide light up as the 
 them and a flow's boxes build up one by one, each with its arrow (before the first play, a slide
 shows them all); a code slide scrolls its highlighted range into view; and the sentence being
 spoken stands under the slide as a caption, which "CC" switches on and off, with a pointer on the
-word being spoken, the words before it in full colour and those still to come faint. With a
-narration in parts an item comes with its part; with one text, at the word that first names it
+word being spoken, the words before it in full colour and those still to come faint. The first
+item shows with its slide, so a slide never stands empty; after it, with a narration in parts an
+item comes with its part; with one text, at the word that first names it
 (the same word or its stem, among its words of four letters or more that the other items do not
 share, in the items' order), and one named nowhere between its neighbours.
 
