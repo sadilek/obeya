@@ -32,13 +32,13 @@ export type CardState = (typeof STATES)[number];
 /** A card whose work is over: `live` once it landed, `done` when it needed no change to the code (a demo, an analysis). */
 export const finished = (s: CardState) => s === 'live' || s === 'done';
 /** A card an agent worked on until the owner stopped it: planned again, its branch stays the card's. */
-export const stopped = (i: Pick<Item, 'state' | 'branch'>) => i.state === 'planned' && !!i.branch;
+export const stopped = (i: Pick<Item, 'state' | 'branch' | 'unstarted'>) => i.state === 'planned' && !!i.branch && !i.unstarted;
 /**
  * A stopped card of the owner's the archive may take: nothing waits to start it, and its workspace
  * holds no work (a branch with commits or changes keeps it, and archiving would leave that work
  * unseen in a clone).
  */
-export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'source' | 'queue' | 'workspace' | 'keptIn' | 'prototypeOf' | 'kind'>) =>
+export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'unstarted' | 'source' | 'queue' | 'workspace' | 'keptIn' | 'prototypeOf' | 'kind'>) =>
   stopped(i) && i.source === 'manual' && i.kind === 'task' && !i.prototypeOf && !i.queue && !i.workspace && !i.keptIn;
 /** A finished card of the owner's whose agent is done: the archive may take it. */
 export const finishedArchivable = (i: Pick<Item, 'state' | 'source' | 'finishing'>) => finished(i.state) && i.source === 'manual' && !i.finishing;
@@ -122,13 +122,43 @@ export const plannableAsProject = (i: Item) =>
   i.source === 'manual' && i.kind === 'task' && buildableOn(i) && !i.prototypeOf && !i.becomesProject;
 
 /**
- * The workstream of a project, among `items`, that its idea's prototypes are built for: the one
- * nobody has started that mentions prototypes, as the plan doc's worker writes it. None when no
- * such workstream, or several, leave it to the owner.
+ * The name a plan doc gives a prototype by: its variant, or else its approach as its title has it
+ * after the idea's (which tells apart two prototypes of the same variant, "… (2)").
  */
-export function prototypeWorkstream(items: Item[], projectId: string): Item | undefined {
-  const named = items.filter((i) => i.parent === projectId && buildableOn(i) && /prototyp/i.test(`${i.title}\n${i.body}`));
-  return named.length === 1 ? named[0] : undefined;
+export function prototypeName(p: Pick<Item, 'title' | 'variant'>): string {
+  const variant = p.variant?.trim();
+  if (variant && p.title.endsWith(variant)) return variant;
+  return p.title.split(' – ').slice(1).join(' – ').trim() || variant || p.title;
+}
+
+/**
+ * Which of an idea's prototypes the project it became builds on, and in which workstream, as the
+ * plan doc says it: the one open workstream that names one prototype by its name (`prototypeName`)
+ * in quotes; with a single prototype, also the one open workstream that mentions prototypes at all.
+ * `also`: the other workstreams that mention prototypes all the same. `none` where no workstream
+ * mentions a prototype; `unclear` where several name one, one names several, or one mentions a
+ * prototype without naming which, with the workstreams that do.
+ */
+export function prototypeBuild<W extends { title: string; body: string }, P extends Pick<Item, 'title' | 'variant'>>(
+  workstreams: W[],
+  prototypes: P[],
+): { workstream: W; prototype: P; also: W[] } | { none: true } | { unclear: 'several' | 'many' | 'unnamed'; workstreams: W[] } {
+  const flat = (s: string) => s.toLowerCase().replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  const quoted = (text: string, name: string) => name !== '' && new RegExp(`[„“”"‚‘’'«»‹›]\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[„“”"‚‘’'«»‹›]`).test(text);
+  const named = workstreams.flatMap((w) => {
+    const text = flat(`${w.title}\n${w.body}`);
+    const own = prototypes.filter((p) => quoted(text, flat(prototypeName(p))));
+    return own.length ? [{ w, own }] : [];
+  });
+  const mentioning = workstreams.filter((w) => /prototyp/i.test(`${w.title}\n${w.body}`));
+  if (named.length > 1) return { unclear: 'several', workstreams: named.map((n) => n.w) };
+  if (named.length === 1) {
+    const [{ w, own }] = named as [{ w: W; own: P[] }];
+    return own.length > 1 ? { unclear: 'many', workstreams: [w] } : { workstream: w, prototype: own[0]!, also: mentioning.filter((m) => m !== w) };
+  }
+  if (!mentioning.length) return { none: true };
+  if (mentioning.length === 1 && prototypes.length === 1) return { workstream: mentioning[0]!, prototype: prototypes[0]!, also: [] };
+  return { unclear: mentioning.length > 1 ? 'several' : 'unnamed', workstreams: mentioning };
 }
 
 /** What a `waiting` card waits for: `demo` a handover with a demo, `review` one without. */
@@ -445,6 +475,8 @@ export interface Item {
   prototypes?: Item[];
   /** A card that was an idea, or a workstream of the project an idea became, built on the branch of one of the idea's prototypes: that prototype. */
   builtOn?: string;
+  /** Built on a prototype's branch, and no agent has worked on it since: it is planned, not stopped. */
+  unstarted?: true;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
   /** While `finishing`: nothing just landed, the owner asked about the finished card and its agent answers. */
@@ -686,6 +718,8 @@ export interface AnswerRef {
   thread: number;
   files?: AnswerFile[];
   continues?: string;
+  /** Its walkthrough plays while the agent still tells it: the answer's words take this message's place once they come. */
+  live?: true;
 }
 
 /** A few lines of HTML the idea's agent writes to show how something would look; the card shows it in a sandboxed frame. */
@@ -1533,8 +1567,11 @@ export type CardAction =
   | { action: 'pushChanges' }
   /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
   | { action: 'editHeld'; body: string }
-  /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
-  | { action: 'approve'; direct?: boolean }
+  /**
+   * `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`).
+   * `findings`: on a review card, the decisions on its findings that stood unsent, which go with the merge (a follow-up task, ignored).
+   */
+  | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute> }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */
   | { action: 'undo' }
   /** Start a queued card although it may collide. */
@@ -1607,10 +1644,9 @@ export type CardAction =
   | { action: 'prototype'; text?: string; variants?: string[] }
   /**
    * Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are
-   * discarded. Once the idea has become a project, one of its workstreams is built on it instead:
-   * `workstream`, or else the one the plan doc builds on the prototypes with.
+   * discarded. Not once the idea becomes a project, whose plan doc settles its prototypes.
    */
-  | { action: 'buildPrototype'; workstream?: string }
+  | { action: 'buildPrototype' }
   /** Prototypes: thrown away, into the archive with log, demo and summary. */
   | { action: 'discard' }
   /**
@@ -1677,6 +1713,8 @@ export type ErrorCode =
   /** „Selbst ändern“ on a review card whose contributor does not allow maintainers' edits, or a decision on a finding it does not have open. */
   | 'noEdits'
   | 'noFinding'
+  /** „Mergen“ with a decision on a finding standing unsent that holds the PR up (to the contributor, the agent's own change). */
+  | 'decideFirst'
   /** Approving a review card: its PR moved since the handover, was closed, or the forge refused the merge (the detail says why). */
   | 'prMoved'
   /** „main pushen“ on a review card whose PR collides with nothing unpushed (any more), or taking back a push that is not waiting. */
@@ -1746,14 +1784,10 @@ export type ErrorCode =
   | 'noSplit'
   /** A prototype for the idea is still running. */
   | 'prototypeRunning'
-  /** The prototype's idea is becoming a project: its plan doc is not there yet. */
+  /** The prototype's idea is becoming a project, or is one: the plan doc decides which workstream builds on which prototype. */
   | 'projectPending'
   /** The prototype's idea is gone from the canvas, and no project of it is there. */
   | 'ideaGone'
-  /** The prototype's idea became a project whose plan doc does not say which workstream builds on it, and none was chosen. */
-  | 'workstreamMissing'
-  /** The workstream to build on a prototype was started already. */
-  | 'workstreamStarted'
   /** Every variant the idea's agent planned has its prototype on the canvas already. */
   | 'variantsRunning'
   /** A project has no planned workstream left that is not already with the Koordinator. */
@@ -2747,8 +2781,6 @@ export interface MachineView {
   /** The Claude Code Obeya was checked with (the Agent SDK's); the machine's may be newer or older. */
   checkedClaude: string;
   job?: MachineJob;
-  /** Obeya can open the system's folder dialog here. */
-  picker: boolean;
   /** Where a clone goes by default: the owner's home directory. */
   cloneInto: string;
 }

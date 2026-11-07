@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccessView, Pairing } from '../core/types';
 import { CanvasRuntime } from './canvas';
+import { Config } from './config';
 import { Store } from './db';
+import { MachineSetup } from './machine';
 import { Access, deviceName, machineAddresses, PAIRING_MS, UNUSED_MS } from './remote';
 import { serve } from './server';
 import { Tailscale } from './tailscale';
@@ -332,6 +334,37 @@ describe('pairing', () => {
     expect((await viaTailnet('/api/c/main/cards', { ...own, origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' }, { method: 'POST', body: '{}' })).status).toBe(403);
     // nor does the page over plain HTTP under the same name
     expect((await viaTailnet('/api/c/main/cards', { ...own, origin: `http://${NAME}` }, { method: 'POST', body: '{}' })).status).toBe(403);
+  });
+});
+
+describe("the system's folder dialog", () => {
+  test('opens only for a browser on this machine, and is offered to no other device', async () => {
+    // a machine whose folder dialog (zenity) answers with a folder at once
+    const bin = join(dir, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'zenity'), '#!/bin/sh\necho /home/ada/dev/quizzle/\n');
+    chmodSync(join(bin, 'zenity'), 0o755);
+    const config = new Config({ file: join(dir, 'canvases.json'), source: 'file', started: [], store, running: () => [], server: { port: 4417, home: dir, permissionMode: 'auto' }, apply: () => {} });
+    const machine = new MachineSetup({ home: dir, config, env: { PATH: bin }, platform: 'linux', arch: 'x64', compiled: true });
+    server.stop(true);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, config, undefined, undefined, machine, undefined, undefined, access, push);
+    const post = { method: 'POST', body: JSON.stringify({ prompt: 'Folder' }) };
+
+    // this machine: offered, and the folder comes back
+    expect(await (await local('/api/setup/pick')).json()).toEqual({ picker: true });
+    expect(await (await local('/api/setup/pick', { ...post, headers: { 'content-type': 'application/json' } })).json()).toEqual({ path: '/home/ada/dev/quizzle' });
+
+    // a paired phone: not offered, and refused
+    await turnOn();
+    const p = await pairing();
+    const cookie = cookieOf(await viaTailnet(`/pair?code=${p.code}`));
+    const phone = { cookie, origin: `https://${NAME}`, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
+    expect(await (await viaTailnet('/api/setup/pick', phone)).json()).toEqual({ picker: false });
+    // nor by the setup assistant's view, which any of its actions sends back
+    expect(await (await viaTailnet('/api/setup', phone)).json()).not.toHaveProperty('picker');
+    const refused = await viaTailnet('/api/setup/pick', phone, post);
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ code: 'onlyHere' });
   });
 });
 

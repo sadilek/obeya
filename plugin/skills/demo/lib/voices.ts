@@ -1,13 +1,15 @@
 // The voice providers: what each needs installed, how Obeya installs it, and the spec `tts.py`
-// synthesises with. Every voice is text in, WAV out. A local one runs as a command (Piper, the
-// Qwen3-TTS helper `qwen3.py`, macOS `say`, the owner's own command), once per clip, or once per
+// synthesises with. Every voice is text in, WAV out. A local one runs as a command (Kokoro's
+// helper `kokoro.py`, Piper, the Qwen3-TTS helper `qwen3.py`, macOS `say`, the owner's own
+// command), once per clip, or once per
 // render for one that can stay loaded (Qwen3-TTS), which a running Obeya holds loaded across
 // renders instead (`src/server/narration.ts`); a hosted one is an HTTP request `tts.py`
 // makes from a template (Gemini, OpenAI, ElevenLabs, Azure, or the owner's own endpoint).
 //
-// Piper and Qwen3-TTS are installed on request into `voices/` in Obeya's home, each in a Python
-// environment of its own made by uv; Piper's voice files go beside it, Qwen3's models into the
-// Hugging Face cache, where a model downloaded before is found again. Run on its own,
+// Kokoro, Piper and Qwen3-TTS are installed on request into `voices/` in Obeya's home, each in a
+// Python environment of its own made by uv; Piper's voice files go beside it, Kokoro's and Qwen3's
+// models into the Hugging Face cache, where a model downloaded before is found again. Kokoro speaks
+// English only: with it, narration in another language is Piper's. Run on its own,
 // `node voices.ts status` says whether the voice of the settings is installed and
 // `node voices.ts install` installs it, for a session without Obeya.
 //
@@ -23,6 +25,31 @@ import { type DemoSettings, demoSettingsHere, expandHome, type NarrationLanguage
 /** Piper's voices: one per language unless the settings name another. */
 export const PIPER_VOICES: Record<NarrationLanguage, string> = { de: 'de_DE-thorsten-high', en: 'en_US-ryan-high' };
 const PIPER_BASE = 'https://huggingface.co/rhasspy/piper-voices/resolve/main';
+/** Piper runs sentences together: this much silence after each one, in seconds. */
+export const PIPER_SENTENCE_SILENCE = 0.4;
+/**
+ * Kokoro-82M on ONNX Runtime, the full-precision export (the int8 one sounded further from the
+ * original model), with the English voices (`a…` American, `b…` British).
+ */
+export const KOKORO_MODEL = { repo: 'onnx-community/Kokoro-82M-v1.0-ONNX', file: 'onnx/model.onnx', voices: ['voices/a*.bin', 'voices/b*.bin'] };
+export const KOKORO_VOICE = 'af_heart';
+/** The languages Kokoro narrates; in the others its settings speak with Piper. */
+const KOKORO_LANGUAGES: readonly NarrationLanguage[] = ['en'];
+/**
+ * Kokoro's environment: ONNX Runtime, and misaki, its English frontend, with spaCy's small English
+ * model (which misaki would otherwise fetch on its first run) and espeak-ng for words misaki's
+ * dictionary lacks. No PyTorch.
+ */
+const KOKORO_PACKAGES = [
+  'onnxruntime',
+  'misaki==0.9.4',
+  'num2words',
+  'spacy',
+  'phonemizer-fork',
+  'espeakng-loader',
+  'huggingface_hub',
+  'https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl',
+];
 /** Qwen3-TTS: a stock speaker from the CustomVoice model, or a clone of a clip with the Base model. */
 export const QWEN3_SPEAKER = 'ryan';
 /**
@@ -122,6 +149,22 @@ function hfHub() {
   return path.join(process.env.HF_HOME || path.join(os.homedir(), '.cache', 'huggingface'), 'hub');
 }
 
+/** Whether these files of a model are in one snapshot in the Hugging Face cache; a `*` in a file's name stands for any text, and at least one file must match it. */
+export function hfFilesPresent(repo: string, files: string[]) {
+  const snapshots = path.join(hfHub(), `models--${repo.replace('/', '--')}`, 'snapshots');
+  if (!fs.existsSync(snapshots)) return false;
+  const matches = (pattern: string) => (name: string) => {
+    const [head = '', ...rest] = pattern.split('*');
+    return rest.length ? name.startsWith(head) && name.endsWith(rest.at(-1) ?? '') : name === pattern;
+  };
+  return fs.readdirSync(snapshots).some((snap) =>
+    files.every((f) => {
+      const dir = path.join(snapshots, snap, path.dirname(f));
+      return fs.existsSync(dir) && fs.readdirSync(dir).some(matches(path.basename(f)));
+    }),
+  );
+}
+
 /** Whether a model is in the Hugging Face cache: its config and its weights (safetensors, or CTranslate2's `model.bin`). */
 export function hfModelPresent(repo: string) {
   const snapshots = path.join(hfHub(), `models--${repo.replace('/', '--')}`, 'snapshots');
@@ -186,8 +229,33 @@ const PART_WORDS: Record<NarrationLanguage, { piperVoice: (name: string) => stri
   en: { piperVoice: (name) => `Piper voice ${name}`, model: (repo) => `Model ${repo}` },
 };
 
+/**
+ * The settings a clip in their narration language is spoken with: Kokoro's in a language it does
+ * not speak are Piper's, with Piper's voice for the language.
+ */
+export function speaking(s: DemoSettings): DemoSettings {
+  if (s.voice !== 'kokoro' || KOKORO_LANGUAGES.includes(s.language)) return s;
+  const { voiceName: _, ...rest } = s;
+  return { ...rest, voice: 'piper' };
+}
+
 /** What the voice of these settings needs installed; empty for a voice that needs nothing from Obeya. */
-export function components(s: DemoSettings, home = obeyaHome()): Component[] {
+export function components(given: DemoSettings, home = obeyaHome()): Component[] {
+  const s = speaking(given);
+  if (s.voice === 'kokoro') {
+    const dir = path.join(voicesHome(home), 'kokoro');
+    const files = ['tokenizer.json', KOKORO_MODEL.file, ...KOKORO_MODEL.voices];
+    return [
+      pythonEnv(dir, KOKORO_PACKAGES, 'Kokoro', 450),
+      {
+        label: PART_WORDS[s.language].model(KOKORO_MODEL.repo),
+        mb: 340,
+        installed: () => hfFilesPresent(KOKORO_MODEL.repo, files),
+        install: (log) =>
+          exec(envPython(dir), ['-c', `from huggingface_hub import snapshot_download; snapshot_download(${JSON.stringify(KOKORO_MODEL.repo)}, allow_patterns=${JSON.stringify(files)})`], log),
+      },
+    ];
+  }
   if (s.voice === 'piper') {
     const dir = path.join(voicesHome(home), 'piper');
     const voice = piperVoice(s);
@@ -247,12 +315,27 @@ function qwen3Command(voice: HeldVoice, language: NarrationLanguage, home: strin
 export const qwen3Serve = (voice: HeldVoice, language: NarrationLanguage, home = obeyaHome()) => [...qwen3Command(voice, language, home), '--serve'];
 
 /** The spec `tts.py` synthesises the voice of these settings with. */
-export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
+export function voiceSpec(given: DemoSettings, home = obeyaHome()): VoiceSpec {
+  const s = speaking(given);
   const keyFile = s.keyFile ? expandHome(s.keyFile) : undefined;
   switch (s.voice) {
+    case 'kokoro': {
+      const voice = s.voiceName || KOKORO_VOICE;
+      const python = envPython(path.join(voicesHome(home), 'kokoro'));
+      const british = voice.startsWith('b') ? ['--british'] : [];
+      const argv = [python, lib('kokoro.py'), '--model', KOKORO_MODEL.repo, '--file', KOKORO_MODEL.file, '--voice', voice, ...british, '--out', '{out}'];
+      return { kind: 'command', argv, tag: `kokoro|${KOKORO_MODEL.file}|${voice}`, heavy: false };
+    }
     case 'piper': {
       const { python, onnx } = piperFiles(s, home);
-      return { kind: 'command', argv: [python, '-m', 'piper', '-m', onnx, '-f', '{out}'], tag: `piper|${piperVoice(s).name}`, heavy: false, respell: true };
+      const silence = String(PIPER_SENTENCE_SILENCE);
+      return {
+        kind: 'command',
+        argv: [python, '-m', 'piper', '-m', onnx, '--sentence-silence', silence, '-f', '{out}'],
+        tag: `piper|${piperVoice(s).name}|${silence}`,
+        heavy: false,
+        respell: true,
+      };
     }
     case 'qwen3': {
       const clip = referenceOf(s);
@@ -307,10 +390,15 @@ export const SAMPLE_TEXT: Record<NarrationLanguage, string> = {
  * for `lock`, the machine's TTS_LOCK unless a test gives its own.
  */
 export function sample(s: DemoSettings, out: string, home = obeyaHome(), obeyaUrl?: string, lockFile = TTS_LOCK): Promise<void> {
+  return speak(s, SAMPLE_TEXT[s.language], out, home, obeyaUrl, lockFile);
+}
+
+/** One clip of `text` in the voice of `s`, as `sample` makes it (a walkthrough's narration). */
+export function speak(s: DemoSettings, text: string, out: string, home = obeyaHome(), obeyaUrl?: string, lockFile = TTS_LOCK): Promise<void> {
   const spec = voiceSpec(s, home);
   const specFile = `${out}.spec.json`;
   fs.writeFileSync(specFile, JSON.stringify(spec));
-  const args = [...ttsArgs(spec, lockFile), '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
+  const args = [...ttsArgs(spec, lockFile), '--sample', specFile, s.language, text, out];
   return exec('uv', args, () => {}, obeyaUrl ? { OBEYA_URL: obeyaUrl } : undefined).finally(() => fs.rmSync(specFile, { force: true }));
 }
 

@@ -313,10 +313,12 @@ fails is replaced once, for the same command). From letting go to the confirmati
 2.8 s on a small canvas, the first command after a start included, 2 s of it the Koordinator's turn;
 the undo window starts with the confirmation.
 
-### No voice out
+### Voice out
 
-Obeya does not speak. Confirmations and answers are written: in the card's conversation, the
-Koordinator's sheet and the line above the mic. Demo narration is separate (see Demos).
+Obeya speaks its walkthroughs, the answers it tells with slides and narration, in the voice of the
+demo settings (see Walkthroughs in The Koordinator), and nothing else: confirmations and answers in
+text are written, in the card's conversation, the Koordinator's sheet and the line above the mic.
+Demo narration is separate (see Demos).
 
 ### Decisions
 
@@ -398,5 +400,7 @@ Koordinator's sheet and the line above the mic. Demo narration is separate (see 
   gets by saying "Review PR #…" on it).
 - **The Koordinator's preset model is the workers'** (Opus): Sonnet, Haiku or a shorter prompt saved
   nothing reliable.
-- **Obeya does not speak** (2026-10-08): spoken confirmations and answers distracted the owner, who
-  reads them anyway.
+- **Obeya speaks walkthroughs, nothing else** (owner, 2026-11-06): an explanation of how something
+  goes is followed more easily told one slide at a time than read as a block of text. Confirmations
+  and text answers stay unspoken (2026-10-08): spoken, they distracted the owner, who reads them
+  anyway.

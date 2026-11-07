@@ -695,7 +695,8 @@ describe('the configuration over HTTP', () => {
     // without a narration language of their own, demos speak the owner's
     writeFileSync(join(dir, 'settings.json'), JSON.stringify({ language: 'de' }));
     const before = (await call('GET', '/api/demo-settings')).body as unknown as DemoSettingsView;
-    expect(before).toMatchObject({ file: join(dir, 'demo.json'), settings: { language: 'de', voice: 'piper' }, check: { person: 'third', problems: [] } });
+    expect(before).toMatchObject({ file: join(dir, 'demo.json'), settings: { language: 'de', voice: 'kokoro' }, check: { person: 'third', problems: [] } });
+    // Kokoro speaks no German: German narration needs Piper
     expect(before.check.install).toMatchObject({ installed: false, missing: ['Piper', 'Piper-Stimme de_DE-thorsten-high'] });
     expect((await call('PUT', '/api/demo-settings', { language: 'fr', voice: 'piper' })).status).toBe(400);
     const saved = await call('PUT', '/api/demo-settings', { language: 'en', voice: 'command', command: ' speak ', ownVoice: true });

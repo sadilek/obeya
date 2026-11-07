@@ -1,6 +1,7 @@
-// A line above the microphone that the phone lets the owner swipe aside, to either side, to be rid
-// of it before it goes by itself: Obeya's reply, a confirmation, a command still being read. Until
-// the owner has swiped one away, each line nudges aside and back once after it appears.
+// What the phone lets the owner swipe aside, to either side: a line above the microphone, to be rid
+// of it before it goes by itself (Obeya's reply, a confirmation, a command still being read), and a
+// card in the phone's lists, to set it aside on the phone. Until the owner has swiped one of a kind
+// away in this browser, it nudges aside and back once after it appears.
 
 import { type ReactNode, useRef, useState } from 'react';
 
@@ -10,6 +11,8 @@ const SLOP = 8;
 const SETTLE_MS = 180;
 /** In this browser the owner has swiped a line aside: the lines no longer nudge. */
 const SWIPED = 'obeya.swipedAside';
+/** The same for the phone's cards. */
+export const SWIPED_CARD = 'obeya.swipedCard';
 
 /**
  * Whether a line let go `dx` px aside (moving at `v` px/ms when let go) goes, `width` px wide:
@@ -20,19 +23,47 @@ export function goesAside(dx: number, v: number, width: number): boolean {
   return Math.abs(dx) > 24 && Math.abs(v) > 0.4 && Math.sign(v) === Math.sign(dx);
 }
 
-function swipedOnce(): boolean {
+/** Whether the owner has swiped one aside in this browser of the kind kept under `key`. */
+export function swipedOnce(key = SWIPED): boolean {
   try {
-    return localStorage.getItem(SWIPED) === '1';
+    return localStorage.getItem(key) === '1';
   } catch {
     return false;
   }
 }
 
+/** Which way a line or card went: to the right (1) or to the left (-1). */
+export type Side = 1 | -1;
+
 /**
- * A line above the microphone; with `on` (the phone) the owner swipes it aside and `onGone` drops
- * it. Without `on` it is a plain line.
+ * A line above the microphone (or a card); with `on` (the phone) the owner swipes it aside and
+ * `onGone` drops it. Without `on` it is a plain line. `learnt`: where this browser keeps that the
+ * owner has swiped one of its kind, after which none nudges; with `nudge` false, this one never does.
+ * `behind`: what a swipe to each side does, shown behind it as it moves that way; `flies`: whether
+ * it flies out that way (by default it does), else it springs back before `onGone` (the swipe opens
+ * something, a menu, rather than taking it away).
  */
-export function Aside({ on, onGone, id, className, children }: { on: boolean; onGone: () => void; id?: string; className: string; children: ReactNode }) {
+export function Aside({
+  on,
+  onGone,
+  id,
+  className,
+  learnt = SWIPED,
+  nudge = true,
+  behind,
+  flies = () => true,
+  children,
+}: {
+  on: boolean;
+  onGone: (side: Side) => void;
+  id?: string;
+  className: string;
+  learnt?: string;
+  nudge?: boolean;
+  behind?: Partial<Record<'right' | 'left', ReactNode>>;
+  flies?: (side: Side) => boolean;
+  children: ReactNode;
+}) {
   const [dx, setDx] = useState(0);
   const [settling, setSettling] = useState(false);
   const [held, setHeld] = useState(false);
@@ -51,11 +82,13 @@ export function Aside({ on, onGone, id, className, children }: { on: boolean; on
     const v = e.timeStamp - p.last.t > 80 ? 0 : p.v;
     if (e.type === 'pointerup' && goesAside(now, v, width)) {
       try {
-        localStorage.setItem(SWIPED, '1');
+        localStorage.setItem(learnt, '1');
       } catch {}
-      setDx(Math.sign(now) * window.innerWidth);
+      const side: Side = now > 0 ? 1 : -1;
+      const out = flies(side);
+      setDx(out ? side * window.innerWidth : 0);
       setTimeout(() => {
-        onGone();
+        onGone(side);
         setSettling(false);
         setDx(0);
         setHeld(false);
@@ -72,10 +105,10 @@ export function Aside({ on, onGone, id, className, children }: { on: boolean; on
   const style = dx || settling
     ? { transform: `translateX(${dx}px)`, opacity: 1 - Math.min(1, Math.abs(dx) / (window.innerWidth * 0.8)), transition: settling ? `transform ${SETTLE_MS}ms ease-out, opacity ${SETTLE_MS}ms ease-out` : 'none' }
     : undefined;
-  return (
+  const moving = (
     <div
       id={id}
-      className={`${className} aside${!held && !swipedOnce() ? ' nudge' : ''}`}
+      className={`${className} aside${!held && nudge && !swipedOnce(learnt) ? ' nudge' : ''}`}
       style={style}
       onPointerDown={(e) => {
         if (e.button !== 0 || settling) return;
@@ -102,7 +135,7 @@ export function Aside({ on, onGone, id, className, children }: { on: boolean; on
       }}
       onPointerUp={letGo}
       onPointerCancel={letGo}
-      // a line pulled aside and let go is no tap on its „Rückgängig“
+      // a line pulled aside and let go is no tap on its „Rückgängig“, a card no tap that opens it
       onClickCapture={(e) => {
         if (!dragged.current) return;
         dragged.current = false;
@@ -111,6 +144,15 @@ export function Aside({ on, onGone, id, className, children }: { on: boolean; on
       }}
     >
       {children}
+    </div>
+  );
+  if (!behind) return moving;
+  // what the swipe does stands on the side the line uncovers
+  const shown = dx > 0 ? behind.right : dx < 0 ? behind.left : undefined;
+  return (
+    <div className="aside-track">
+      {shown && <div className={`aside-behind ${dx > 0 ? 'at-left' : 'at-right'}`}>{shown}</div>}
+      {moving}
     </div>
   );
 }

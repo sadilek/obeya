@@ -55,7 +55,8 @@ export const NARRATION_SENTENCE_MS = 5 * 60_000;
 
 interface Job {
   argv: string[];
-  request: ClipRequest;
+  /** None: the voice is only to be loaded (`load`). */
+  request?: ClipRequest;
   resolve: (reply: ClipReply) => void;
 }
 
@@ -65,7 +66,17 @@ interface Running {
   lines: AsyncIterator<string>;
   /** The tail of its stderr: why, when it dies. */
   stderr: string[];
+  /** Settles once its stderr is read to the end. */
+  drained: Promise<void>;
 }
+
+/** Calls `expire` after `ms` unless the returned cancel comes first. */
+export type Deadline = (ms: number, expire: () => void) => () => void;
+
+const realDeadline: Deadline = (ms, expire) => {
+  const timer = setTimeout(expire, ms);
+  return () => clearTimeout(timer);
+};
 
 export class NarrationHost {
   private queue: Job[] = [];
@@ -80,6 +91,8 @@ export class NarrationHost {
       idleMs?: number;
       loadMs?: number;
       sentenceMs?: number;
+      /** The clock for the silence deadlines: tests expire them by hand. */
+      deadline?: Deadline;
       log?: (line: string) => void;
     },
   ) {}
@@ -90,6 +103,15 @@ export class NarrationHost {
       this.queue.push({ argv: this.o.argv(request.voice, request.language), request, resolve });
       void this.serve();
     });
+  }
+
+  /**
+   * Loads the voice in its turn without a clip, so the clips asked for soon after skip the load (a
+   * walkthrough the owner just asked for, walkthrough.ts); one loaded already stays as it is.
+   */
+  load(voice: HeldVoice, language: ClipRequest['language']) {
+    this.queue.push({ argv: this.o.argv(voice, language), resolve: () => {} });
+    void this.serve();
   }
 
   /** Whether a voice is loaded (for tests and the log). */
@@ -123,6 +145,7 @@ export class NarrationHost {
       const started = await this.start(key, argv);
       if ('error' in started) return started;
     }
+    if (!request) return { ok: true, seconds: 0 };
     const voice = this.voice!;
     try {
       const { text, script, out, language } = request;
@@ -147,14 +170,15 @@ export class NarrationHost {
     } catch (e) {
       return { error: `the voice did not start: ${messageOf(e)}` };
     }
-    const voice: Running = { key, child, lines: lines(child.stdout)[Symbol.asyncIterator](), stderr: [] };
+    const stderr: string[] = [];
     // read all along, so a chatty voice never blocks on a full pipe
-    void (async () => {
+    const drained = (async () => {
       for await (const line of lines(child.stderr)) {
-        voice.stderr.push(line);
-        if (voice.stderr.length > 40) voice.stderr.shift();
+        stderr.push(line);
+        if (stderr.length > 40) stderr.shift();
       }
-    })();
+    })().catch(() => {});
+    const voice: Running = { key, child, lines: lines(child.stdout)[Symbol.asyncIterator](), stderr, drained };
     this.voice = voice;
     this.o.log?.(`Obeya: starting the narration voice (${argv.slice(-6).join(' ')})`);
     const ready = await this.reply(voice, this.o.loadMs ?? NARRATION_LOAD_MS);
@@ -170,9 +194,9 @@ export class NarrationHost {
    */
   private async reply(voice: Running, ms: number): Promise<Record<string, unknown> | null | 'stuck'> {
     while (true) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const silent = new Promise<'stuck'>((resolve) => (timer = setTimeout(() => resolve('stuck'), ms)));
-      const next = await Promise.race([voice.lines.next(), silent]).finally(() => clearTimeout(timer));
+      let cancel = () => {};
+      const silent = new Promise<'stuck'>((resolve) => (cancel = (this.o.deadline ?? realDeadline)(ms, () => resolve('stuck'))));
+      const next = await Promise.race([voice.lines.next(), silent]).finally(() => cancel());
       if (next === 'stuck') return next;
       if (next.done) return null;
       let reply: unknown;
@@ -201,7 +225,7 @@ export class NarrationHost {
       await gone(5000);
     }
     const silence = ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${ms / 1000} s`;
-    const why = voice.stderr.join('\n').trim().slice(-1500);
+    const why = await this.said(voice);
     const error = `the voice said nothing for ${silence} while ${doing} and was ended${why ? `: ${why}` : ''}`;
     this.o.log?.(`Obeya: ${error}`);
     return { error };
@@ -210,11 +234,18 @@ export class NarrationHost {
   private async died(voice: Running): Promise<{ error: string }> {
     if (this.voice === voice) this.voice = undefined;
     const code = await voice.child.exited;
-    // the stderr reader may still hold the last lines
-    await Bun.sleep(50);
-    const error = `the voice stopped (${code}): ${voice.stderr.join('\n').trim().slice(-1500)}`;
+    const error = `the voice stopped (${code}): ${await this.said(voice)}`;
     this.o.log?.(`Obeya: ${error}`);
     return { error };
+  }
+
+  /**
+   * The tail of what an ended voice wrote to stderr, once the reader has the last lines; a bounded
+   * wait, since a process the voice started may still hold the pipe open.
+   */
+  private async said(voice: Running) {
+    await Promise.race([voice.drained, Bun.sleep(1000)]);
+    return voice.stderr.join('\n').trim().slice(-1500);
   }
 
   /** Ends the voice gently. */

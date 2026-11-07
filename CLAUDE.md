@@ -51,6 +51,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - UI strings live in one place, `src/ui/strings.ts`, in German and English (two tables of one shape).
   German UI texts and docs call a button "Button" or "Schaltfläche", never "Knopf". Docs written in
   English name UI elements by their labels in the English table, never by the German ones.
+- Names in code and tests (identifiers, fixture and fake names) are in English, so English-speaking
+  contributors can follow them; German belongs only in the German UI string table and in test data
+  that has to be German.
 - An interaction that several kinds of card share (answering questions with comments and one Send
   button, the conversation history, starting ("Build it like this", "Accept and start") while the agent
   is still working) is built once in shared code and works the same on each of them; no card kind
@@ -89,6 +92,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   every dictated text it shows is transcribed completely and correctly (no missing words or
   numbers, no misrecognitions), and what the agents in it say points out no fault (a comment cut
   off, input missing).
+- When a demo video shows a feature that speaks itself (the narrated walkthrough, say), that
+  feature speaks in a different voice than the video's narration (Kokoro for the walkthrough), so
+  viewers can tell the demo's narrator from the presentation inside it.
 - Videos on the site (the hero video, anything for obeya.si) are narrated in the owner's ElevenLabs
   voice clone (voice ID `IErGHDQU4vPqicCi8dwR`), not the voice of the demo settings; demo videos
   published elsewhere (in a PR or issue comment, say) keep the voice of the demo settings. Its API

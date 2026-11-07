@@ -7,6 +7,8 @@ import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { git } from './workspaces';
 import { KEY_HEADER, keyOf } from './owner';
+import { Voicing } from './walkthrough';
+import type { Language } from '../core/locale';
 
 /** The calls of a forge that only review cards make, for a fake forge of a test that has none. */
 export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {} };
@@ -150,6 +152,25 @@ export function asOwner(of: () => object) {
 
 /** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
 export const heard = () => Bun.sleep(0);
+
+/** Starts a process that runs on in `cwd` the way an app's start script leaves one behind: detached, its starter gone. Its pid. */
+export async function leftBehind(cwd: string): Promise<number> {
+  const script = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: ${JSON.stringify(cwd)}, detached: true, stdio: 'ignore' }); c.unref(); console.log(c.pid);`;
+  const starter = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe' });
+  const pid = Number((await new Response(starter.stdout).text()).trim());
+  await starter.exited;
+  return pid;
+}
+
+/** Whether the process `pid` runs. */
+export const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 export const until = async (done: () => unknown, ms = 3000) => {
   for (const end = Date.now() + ms; !(await done()); await Bun.sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
@@ -334,4 +355,58 @@ export function tailscaleStatus(dir: string, s: TailscaleStatus) {
       User: { 1: { LoginName: s.account ?? 'owner@example.com' } },
     }),
   );
+}
+
+/** A WAV of `seconds` of silence, 16 kHz mono 16-bit, as a voice writes one. */
+export function silentWav(seconds: number): Buffer {
+  const data = Math.round(seconds * 16000) * 2;
+  const b = Buffer.alloc(44 + data);
+  b.write('RIFF', 0, 'ascii');
+  b.writeUInt32LE(36 + data, 4);
+  b.write('WAVEfmt ', 8, 'ascii');
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(16000, 24);
+  b.writeUInt32LE(32000, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write('data', 36, 'ascii');
+  b.writeUInt32LE(data, 40);
+  return b;
+}
+
+/**
+ * The voice of walkthroughs, for a test: each sentence it speaks is in `said` (with its language)
+ * and lasts a second; `held` keeps it from speaking until `go`, so a test sees the order it takes;
+ * a sentence with "mute" in it fails.
+ */
+export function fakeVoicing() {
+  const said: string[] = [];
+  const warmed: Language[] = [];
+  let gate: { promise: Promise<void>; open: () => void } | undefined;
+  const voicing = new Voicing({
+    speak: async (text, out, language) => {
+      if (gate) await gate.promise;
+      if (/\bmute\b/i.test(text)) throw new Error('the voice failed\nno model');
+      said.push(`${language}:${text}`);
+      writeFileSync(out, silentWav(1));
+    },
+    warm: (language) => void warmed.push(language),
+  });
+  return {
+    voicing,
+    said,
+    warmed,
+    hold() {
+      let open = () => {};
+      const promise = new Promise<void>((r) => (open = r));
+      gate = { promise, open };
+    },
+    go() {
+      const g = gate;
+      gate = undefined;
+      g?.open();
+    },
+  };
 }

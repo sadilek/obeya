@@ -1440,6 +1440,12 @@ export class Board {
     this.changed();
   }
 
+  /** The files an exchange shows while its answer is still being looked up: the walkthrough it plays meanwhile. */
+  talkFiles(id: number, files: AnswerFile[]) {
+    this.store.talkFiles(id, files);
+    this.changed();
+  }
+
   /** The exchange follows up on the answer of `follows`: it goes on in that one's thread. */
   followTalk(id: number, follows: number) {
     const f = this.store.exchange(follows);
@@ -3185,7 +3191,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.thread ? { thread: threadOf(r) } : {}),
         ...(r.becomes_project ? { becomesProject: true } : {}),
         ...(r.prototype_of ? { prototypeOf: r.prototype_of, ...prototypeOf(r) } : {}),
-        ...(r.built_on ? { builtOn: r.built_on } : {}),
+        ...(r.built_on ? { builtOn: r.built_on, ...(r.session_id ? {} : { unstarted: true as const }) } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
         ...(r.retro ? { retro: r.retro } : {}),
         ...(r.proposal ? (r.state === 'proposal' ? { proposal: storedProposal(r)! } : { proposed: true as const, ...supersededOf(r) }) : {}),
@@ -3250,7 +3256,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(w.label ? { label: w.label } : {}),
         ...work(r),
         ...(shipped ? { landedPart: { ...(shipped.commit ? { commit: shipped.commit } : {}), ...(shipped.pr ? { pr: shipped.pr } : {}) } } : {}),
-        ...(r.built_on ? { builtOn: r.built_on } : {}),
+        ...(r.built_on ? { builtOn: r.built_on, ...(r.session_id ? {} : { unstarted: true as const }) } : {}),
         ...(buildsOn.length ? { buildsOn } : {}),
         ...(groupOf.get(r.parent_id) ? { group: groupOf.get(r.parent_id)! } : {}),
       },

@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, askable, type BackgroundTask, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
@@ -119,9 +119,6 @@ function QueuePlace({ item, items }: { item: Item; items: Item[] }) {
 export function Detail(p: Props) {
   const { item, parent } = p;
   const [error, setError] = useState('');
-  // a prototype whose idea has become a project: the workstream to build on it
-  const [workstream, setWorkstream] = useState('');
-  const [picking, setPicking] = useState(false);
   // the demo the card opened to (demoSeen.ts); closing the card forgets one that waited on it
   const [opened] = useState(() => openedWith(sessionStorage, item.id, item.demo));
   useEffect(() => () => held.clear(sessionStorage, item.id), []);
@@ -144,6 +141,8 @@ export function Detail(p: Props) {
     run(async () => {
       if (a.action === 'approve' || a.action === 'pushChanges') await saveHeld(item.id);
       await api.act(item.id, a);
+      // the decisions on findings that went with the approval are no longer the field's to send
+      if (a.action === 'approve' && a.findings) updateDraft(cardDraft(item.id), { findings: undefined });
     }, done);
   // the repository the card is to be built in, before work on it begins: one of the canvas's or a new one
   const choice = useRepoChoice(item, p.onEdit);
@@ -250,57 +249,26 @@ export function Detail(p: Props) {
     );
   // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
   const ideaTitle = plain(item.ideaTitle ?? p.from?.title ?? '');
-  // once the idea has become a project, one of its workstreams is built on the prototype instead
+  // once the idea is a project, its plan doc settles the prototypes: the one it builds on goes to that workstream, the others are discarded
   const project = item.prototypeOf ? all.find((i) => i.kind === 'project' && i.origin === item.prototypeOf) : undefined;
   const ideaCard = item.prototypeOf ? all.find((i) => i.id === item.prototypeOf) : undefined;
   const builtOn = item.builtOn ? item.prototypes?.find((x) => x.id === item.builtOn) : undefined;
-  const workstreams = project ? all.filter((i) => i.parent === project.id && buildableOn(i)) : [];
-  // the plan doc says which workstream builds on the prototypes; the owner picks only where it does not, or another
-  const named = project && !picking ? prototypeWorkstream(all, project.id) : undefined;
-  const chosen = named ?? workstreams.find((w) => w.id === workstream);
   const ideaThinking = !project && !!p.from?.idea?.thinking;
   const planning = !project && !!p.from?.becomesProject;
+  const buildable = !project && !planning;
   const buildOn = (label: string) => (
     <button
       className="btn primary"
-      disabled={ideaThinking || planning || (!!project && !chosen)}
-      title={ideaThinking ? t.idea.prototypeWaits : planning ? t.idea.waitForProject : project && !chosen ? t.idea.chooseWorkstream : undefined}
-      onClick={() =>
-        act(
-          { action: 'buildPrototype', ...(chosen ? { workstream: chosen.id } : {}) },
-          { close: true, ack: chosen ? t.idea.builtWorkstream(workstreamName(chosen)) : t.idea.builtPrototype(ideaTitle) },
-        )
-      }
+      disabled={ideaThinking}
+      title={ideaThinking ? t.idea.prototypeWaits : undefined}
+      onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(ideaTitle) })}
     >
       {label}
     </button>
   );
-  const workstreamPick = project && named ? (
-    <div className="build-on">
-      <span>
-        {t.idea.buildsWorkstream(workstreamName(named))}{' '}
-        <button className="link" onClick={() => setPicking(true)}>
-          {t.idea.otherWorkstream}
-        </button>
-      </span>
-    </div>
-  ) : project && (
-    <label className="build-on">
-      {t.idea.workstreamOf(plain(project.title))}
-      <select value={workstream} onChange={(e) => setWorkstream(e.target.value)}>
-        <option value="">{workstreams.length ? t.idea.chooseWorkstream : t.idea.noWorkstream}</option>
-        {workstreams.map((w) => (
-          <option key={w.id} value={w.id}>
-            {workstreamName(w)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
   const prototypeActions = item.prototypeOf && (
     <>
-      {item.branch && workstreamPick}
-      {item.branch && buildOn(t.idea.buildPrototype)}
+      {item.branch && buildable && buildOn(t.idea.buildPrototype)}
       <button className="btn" onClick={() => act({ action: 'discard' }, { close: true, ack: t.idea.discarded })}>
         {t.idea.discard}
       </button>
@@ -314,7 +282,7 @@ export function Detail(p: Props) {
   const pr = !inFolder && !item.noChange && (item.lands?.land ?? (repoRef?.pullRequests ? 'pr' : 'main')) === 'pr';
   const direct = pr && (item.lands?.direct ?? !!repoRef?.direct);
   const approveButton = item.contribution ? (
-    <ApproveReview c={item.contribution} act={act} />
+    <ApproveReview item={item} act={act} />
   ) : inFolder ? (
     <>
       <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.folder.approved })}>
@@ -337,6 +305,10 @@ export function Detail(p: Props) {
 
   // work waiting for the owner's verdict, with a demo or a summary
   const review = handedOver(item);
+  // on a review card, the findings decided in the field that hold the merge up until they are sent
+  const heldUp = Object.entries(useUnsentDecisions(item))
+    .filter(([, route]) => route === 'contributor' || route === 'self')
+    .map(([id]) => Number(id));
   const demoWaits = item.state === 'waiting' && item.need === 'demo';
   // a demo starts by itself only when the owner opens the card to it; one that arrives on the open card waits behind its play button
   const arrived = !!item.demo && arrivedOnOpenCard(opened, item.demo);
@@ -348,6 +320,8 @@ export function Detail(p: Props) {
   const archivable = finishedArchivable(item);
   // a stopped task starts again, or goes into the archive with its conversation, from the row below it
   const halted = stopped(item) && !item.queue;
+  // a workstream given a prototype's branch, which no agent has worked on since, starts from the same row
+  const onPrototype = item.state === 'planned' && !!item.unstarted && !item.queue;
   // a workstream planned again after a part of it landed starts its rest from the same row
   const rest = item.state === 'planned' && !!item.landedPart && !item.branch && !item.queue;
   // an archived project's doc is gone
@@ -485,21 +459,14 @@ export function Detail(p: Props) {
 
       {item.prototypeOf && (
         <p className="hint">
-          {project ? (
-            <Naming text={t.idea.prototypeOfProject} cards={[{ card: ideaCard, title: ideaTitle }, { card: project }]} />
-          ) : (
-            <Naming text={planning ? t.idea.prototypeOfPlanning : t.idea.prototypeOf} cards={[{ card: ideaCard, title: ideaTitle }]} />
-          )}
+          <Naming text={planning || project ? t.idea.prototypeOfPlanning : t.idea.prototypeOf} cards={[{ card: ideaCard, title: ideaTitle }]} />
         </p>
       )}
       {item.buildProposal && (
         <div className="question proposal">
           <h4>{t.idea.buildProposal}</h4>
           <div className="q-text">{item.buildProposal}</div>
-          <div className="actions">
-            {workstreamPick}
-            {buildOn(t.idea.acceptBuild)}
-          </div>
+          {buildable && <div className="actions">{buildOn(t.idea.acceptBuild)}</div>}
         </div>
       )}
       {item.builtOn && (
@@ -709,8 +676,15 @@ export function Detail(p: Props) {
       )}
 
       {/* the decisions go below both columns, as on an idea or a proposal */}
-      {worked && (running || archivable || halted || rest || snoozable(item)) && (
+      {worked && (running || archivable || halted || onPrototype || rest || snoozable(item)) && (
         <div className="actions">
+          {onPrototype && !item.snoozed && (
+            <StartOn item={item} act={act}>
+              <button className="btn primary" title={t.startHint} onClick={() => act({ action: 'start' }, { close: false })}>
+                {t.start}
+              </button>
+            </StartOn>
+          )}
           {rest && (
             <StartOn item={item} act={act}>
               <button className="btn primary" title={t.landedPart.startHint} onClick={() => act({ action: 'start' }, { close: false })}>
@@ -743,6 +717,7 @@ export function Detail(p: Props) {
       {item.state === 'planned' && !worked && !item.queue && fresh && <p className="hint">{fresh.hint}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
       {review && direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
+      {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
     </>
   );
 }
@@ -774,22 +749,26 @@ function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) 
  * requests to the contributor beside them „Pushen und an … schicken“, which merges nothing and
  * leaves the card waiting for them.
  */
-function ApproveReview({ c, act }: { c: Contribution; act: (a: CardAction, done: ActDone) => Promise<void> }) {
-  const go = (ack: string, pending: string) => act({ action: 'approve' }, { close: true, ack, pending });
+function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+  const c = item.contribution!;
+  const decided = useUnsentDecisions(item);
+  // a follow-up task or an ignored finding goes with the merge; a decision that holds the PR up goes with Send first
+  const heldUp = Object.values(decided).some((route) => route === 'contributor' || route === 'self');
+  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, pending });
   if (c.held?.asks.length)
     return (
-      <button className="btn primary" title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
+      <button className="btn primary" disabled={heldUp} title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
         {t.review.pushSend(c.author)}
       </button>
     );
   const label = c.held ? (c.clash ? t.review.pushMergeAnyway(c.number) : t.review.pushMerge(c.number)) : c.clash ? t.review.mergeAnyway(c.number) : t.review.merge(c.number);
   return (
     <>
-      <button className="btn primary" title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
+      <button className="btn primary" disabled={heldUp} title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
         {label}
       </button>
       {c.held && (
-        <button className="btn" title={c.held.body ? t.review.pushOnlyHint : t.review.pushOnlyQuietHint} onClick={() => act({ action: 'pushChanges' }, { close: true, ack: c.held!.body ? t.review.pushed(c.number) : t.review.pushedQuiet(c.number), pending: t.review.pushingHeld })}>
+        <button className="btn" disabled={heldUp} title={c.held.body ? t.review.pushOnlyHint : t.review.pushOnlyQuietHint} onClick={() => act({ action: 'pushChanges' }, { close: true, ack: c.held!.body ? t.review.pushed(c.number) : t.review.pushedQuiet(c.number), pending: t.review.pushingHeld })}>
           {c.held.body ? t.review.pushOnly : t.review.pushOnlyQuiet}
         </button>
       )}
@@ -1285,7 +1264,6 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
 }
 
 /** A workstream as the owner picks it: its label and title. */
-const workstreamName = (w: Item) => `${w.label ? `${w.label} ` : ''}${plain(w.title)}`;
 
 /** The demos of an idea's prototypes, each under its title and how it stands; the latest one open. */
 function PrototypeDemos({ item }: { item: Item }) {
@@ -1642,7 +1620,8 @@ function Message({
       who={`${t.author[e.author]}${e.kind === 'question' ? ` · ${t.talk.question}` : e.kind === 'review' ? ` · ${t.talk.handover}` : ''}`}
       at={e.at}
       ev={e.id}
-      onReply={onReply && !turn.quiet ? () => onReply(e) : undefined}
+      // an answer whose walkthrough plays before its words: the answer to reply to is still to come
+      onReply={onReply && !turn.quiet && !e.answer?.live ? () => onReply(e) : undefined}
       onDelete={onDelete}
       deleteLabel={unread ? t.talk.withdraw : t.demo.unsay}
       head={answer.head}
@@ -2432,6 +2411,13 @@ function Clash({ clash, onPush }: { clash: ClashFound; onPush?: () => void }) {
   );
 }
 
+/** What the owner decided in the card's draft for the findings still open and undecided on the card, which has not gone out yet. */
+function useUnsentDecisions(item: Item): Record<string, ChangeRoute> {
+  const all = useDraft(cardDraft(item.id)).findings;
+  const findings = item.contribution?.findings;
+  return all ? Object.fromEntries(Object.entries(all).filter(([id]) => findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided))) : {};
+}
+
 /** A finding whose bundle still means something: open, or made a follow-up task. */
 const bundled = (f: Finding) => f.status === 'open' || f.status === 'later';
 
@@ -3153,8 +3139,8 @@ function Talk({ item, past, field }: { item: Item; past?: boolean; field?: TalkF
   const at = field && !field.listener && !options ? place : null;
   // a review card's field, where its agent hears the words: the owner's decisions on its findings go with them
   const review = !!item.contribution && !!field && !field.listener && !finished(item.state);
-  const allDecided = useDraft(draft).findings;
-  const decided = review && allDecided ? Object.fromEntries(Object.entries(allDecided).filter(([id]) => item.contribution!.findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided))) : {};
+  const unsent = useUnsentDecisions(item);
+  const decided = review ? unsent : {};
   const deciding = Object.keys(decided).length > 0;
   const send = async (words: string, images?: string[], to?: Reply['to']) => {
     const replyTo = typeof to === 'number' ? to : undefined;

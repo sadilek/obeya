@@ -31,6 +31,8 @@ export interface Draft {
   findings?: Record<string, ChangeRoute>;
   /** The paths of dropped files among the words (`insertFiles`), which go back beside the microphone with the screenshots (`moveFiles`). */
   files?: string[];
+  /** Texts pasted outside a text field among the words (`insertPasted`): beside the microphone they show apart from the paths, and they move with them (`moveFiles`). */
+  pasted?: string[];
 }
 
 export interface Picks {
@@ -41,13 +43,14 @@ export interface Picks {
 /** Which questions picks belong to: they count only while the same questions stand. */
 export const questionsKey = (questions: unknown[]) => JSON.stringify(questions);
 
-type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'findings'>;
-const keptOf = ({ text, images, picks, reply, files, findings }: Draft): Kept | null => {
+type Kept = Pick<Draft, 'text' | 'images' | 'picks' | 'reply' | 'files' | 'pasted' | 'findings'>;
+const keptOf = ({ text, images, picks, reply, files, pasted, findings }: Draft): Kept | null => {
   const picked = picks?.picks.some((p) => p.length) ? picks : undefined;
   const decided = findings && Object.keys(findings).length ? findings : undefined;
   const standing = filesIn(text, files);
+  const texts = filesIn(text, pasted);
   return text.trim() || images.length || picked || reply || decided
-    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(decided ? { findings: decided } : {}) }
+    ? { text, images, ...(picked ? { picks: picked } : {}), ...(reply ? { reply } : {}), ...(standing.length ? { files: standing } : {}), ...(texts.length ? { pasted: texts } : {}), ...(decided ? { findings: decided } : {}) }
     : null;
 };
 
@@ -138,8 +141,8 @@ export function keepDrafts(store: Store, canvas: string) {
   kept = { store, canvas };
   try {
     const saved = JSON.parse(store.getItem(storeKey(canvas)) ?? '{}') as Record<string, Kept>;
-    for (const [key, { text, images, picks, reply, files, findings }] of Object.entries(saved))
-      if (!drafts.has(key)) drafts.set(key, { ...EMPTY, text, images, ...(picks ? { picks } : {}), ...(reply ? { reply } : {}), ...(files ? { files } : {}), ...(findings ? { findings } : {}) });
+    for (const [key, { text, images, picks, reply, files, pasted, findings }] of Object.entries(saved))
+      if (!drafts.has(key)) drafts.set(key, { ...EMPTY, text, images, ...(picks ? { picks } : {}), ...(reply ? { reply } : {}), ...(files ? { files } : {}), ...(pasted ? { pasted } : {}), ...(findings ? { findings } : {}) });
   } catch {}
   try {
     const saved = JSON.parse(store.getItem(markupsKey(canvas)) ?? '{}') as Record<string, Markup>;
@@ -216,15 +219,18 @@ export function moveImages(from: string, to: string) {
 }
 
 /**
- * The paths of dropped files that still stand in draft `from`'s text leave it and go after the words
- * of draft `to`, beside the microphone; the words the owner wrote around them stay.
+ * The paths of dropped files and the texts pasted outside a field that still stand in draft `from`'s
+ * text leave it and go after the words of draft `to`, beside the microphone; the words the owner
+ * wrote around them stay.
  */
 export function moveFiles(from: string, to: string) {
-  const { text, files } = draftOf(from);
-  if (!files || from === to) return;
+  const { text, files, pasted } = draftOf(from);
+  if ((!files && !pasted) || from === to) return;
   const moving = filesIn(text, files);
-  updateDraft(from, { text: withoutWords(text, moving), files: [] });
+  const texts = filesIn(text, pasted);
+  updateDraft(from, { text: withoutPasted(withoutWords(text, moving), texts), files: [], pasted: [] });
   if (moving.length) updateDraft(to, (d) => ({ text: appended(d.text, moving.join(' ')) }));
+  insertPasted(to, texts);
 }
 
 /** Forgets a draft whose field is gone for good. */
@@ -362,6 +368,48 @@ export function insertFiles(key: string, words: string[]) {
   if (!words.length) return;
   insert(key, words.join(' '));
   updateDraft(key, (d) => ({ files: [...(d.files ?? []), ...words] }));
+}
+
+/** `text` with `piece` after it, in a paragraph of its own. */
+const paragraphAfter = (text: string, piece: string) => (text.trim() ? `${text.replace(/\s+$/, '')}\n\n${piece}` : piece);
+
+/**
+ * Texts pasted outside a text field put into the draft, each at its end in a paragraph of its own,
+ * and known there as pasted (`moveFiles`, `pastedIn`). A field on the page gets them as typed words,
+ * whether its text is the draft's or its own; the focus stays where it is, so the microphone sends
+ * them with what is said next.
+ */
+export function insertPasted(key: string, texts: string[]) {
+  texts = texts.map((s) => s.trim()).filter(Boolean);
+  if (!texts.length) return;
+  const el = fields.get(key);
+  const before = el?.value ?? draftOf(key).text;
+  const after = texts.reduce(paragraphAfter, before);
+  if (el) {
+    el.setRangeText(after.slice(before.length), before.length, before.length, 'end');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  updateDraft(key, (d) => ({ ...(el ? {} : { text: after }), pasted: [...(d.pasted ?? []), ...texts] }));
+}
+
+/** The texts pasted outside a field that still stand in the draft's words, each once. */
+export const pastedIn = ({ text, pasted }: Pick<Draft, 'text' | 'pasted'>) => filesIn(text, pasted);
+
+/** `text` without the pasted `texts`, each where it first stands, with the space that parted it from the words after it, or at the end from those before. */
+export function withoutPasted(text: string, texts: string[]) {
+  for (const p of texts) {
+    const i = wordAt(text, p);
+    if (i < 0) continue;
+    let [start, end] = [i, i + p.length];
+    const space = /^\s*/.exec(text.slice(end))![0].length;
+    if (end + space < text.length) end += space;
+    else {
+      end = text.length;
+      while (start > 0 && /\s/.test(text[start - 1]!)) start--;
+    }
+    text = text.slice(0, start) + text.slice(end);
+  }
+  return text;
 }
 
 /** Where `word` stands in `text` as a word of its own, between spaces or at an end: -1 where it does not. */

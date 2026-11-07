@@ -1,7 +1,7 @@
 import { type ClipboardEvent, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { dictating, useSpaceToTalk } from './dictation';
 import { useDraft, useDraftField } from './draft';
-import { useFitHeight } from './fitHeight';
+import { keepScroll, useFitHeight } from './fitHeight';
 import { sourceAt } from './markdown';
 import { Body } from './message';
 import { t } from './strings';
@@ -60,6 +60,9 @@ export function MdField({
 }) {
   const [editing, setEditing] = useState(false);
   const caret = useRef<number | null>(null);
+  // where the panes around the formatted text stood when it was clicked: the field, which grows to its
+  // text only once it shows, keeps them (WebKit scrolled a pane at its end up when it came in short)
+  const scrolled = useRef<(() => void) | null>(null);
   const own = useRef<HTMLTextAreaElement>(null);
   const ref = field ?? own;
   const spoken = dictating(useDraft(draft ?? ''));
@@ -81,10 +84,13 @@ export function MdField({
     if (!editing || caret.current === null || !el) return;
     el.focus();
     el.setSelectionRange(caret.current, caret.current);
+    scrolled.current?.();
     caret.current = null;
+    scrolled.current = null;
   }, [editing]);
-  const edit = (at: number) => {
+  const edit = (at: number, shown: Element) => {
     caret.current = at;
+    scrolled.current = keepScroll(shown);
     setEditing(true);
   };
   if (shown)
@@ -96,12 +102,12 @@ export function MdField({
         // a link, a code block's copy button or text being selected keep their own click
         onClick={(e) => {
           if ((e.target as Element).closest('a, button') || !getSelection()?.isCollapsed) return;
-          edit(clickedAt(text, e.currentTarget, e.clientX, e.clientY));
+          edit(clickedAt(text, e.currentTarget, e.clientX, e.clientY), e.currentTarget);
         }}
         onKeyDown={(e) => {
           if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
           e.preventDefault();
-          edit(text.length);
+          edit(text.length, e.currentTarget);
         }}
       >
         <Body md={text} />

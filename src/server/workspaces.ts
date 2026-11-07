@@ -15,6 +15,7 @@ import type { BlockedClone, PoolHost, WorkspaceShortage } from '../core/types';
 import type { Store } from './db';
 import { type GithubLogin, HostError, hostName, LOST, onHost, remote, sh as shWord, type SshHost, TOKEN_HELPER, TOKEN_HELPER_ARGS } from './hosts';
 import { runAppCommand } from './app-command';
+import { endProcessesIn } from './folder-processes';
 import { messageOf } from '../core/text';
 import { oneAtATime } from '../core/one-at-a-time';
 import { demoFile } from './demo-page';
@@ -406,7 +407,7 @@ export interface WorkspaceOptions {
   machines?: { host: string | null; slots?: number }[];
   /** How many of the repository's workers are in a turn on a machine now (null: this one). */
   busy?: (host: string | null) => number;
-  /** The repository's command that stops its app (`app.stop`), run in a clone of Obeya's own before its folder goes. */
+  /** The repository's command that stops its app (`app.stop`), run in a workspace before its folder goes (`quiet`). */
   stop?: string;
   /** What its clones are clones of (its remote, its checkout): a folder whose `origin` is none of them is not one of its clones, and stays. */
   origins?: string[];
@@ -714,7 +715,8 @@ export class Workspaces implements CardWorkspaces {
     // registered again, on any canvas, while it was looked at: it is a workspace again
     const taken = () => claimed.has(path) || this.store.hasWorkspace(path);
     const o = { origins: this.o.origins ?? [], main: branchSetting(this.o.repoPath) || undefined };
-    // what the stop command leaves behind (a snapshot it writes, say) counts too: looked at again after it
+    // what stopping the app leaves behind (a snapshot its stop command or the app on ending writes, say)
+    // counts too: looked at again after it
     for (const after of [false, true]) {
       const lost = await unlanded(path, o);
       // the host does not answer, origin cannot be asked, or it is not a clone of the repository: next time
@@ -732,9 +734,8 @@ export class Workspaces implements CardWorkspaces {
         }
         return;
       }
-      if (after || !this.o.stop) break;
-      const stopped = await runAppCommand(path, this.o.stop);
-      if (!stopped.ok) console.error(`clone ${path}: ${this.o.stop} failed: ${stopped.output}`);
+      if (after) break;
+      await this.quiet(path);
       if (taken()) return;
     }
     // moved aside before it goes: once moved, nothing registers or leases the folder (here at once, on a host
@@ -1126,6 +1127,7 @@ export class Workspaces implements CardWorkspaces {
       }
       if (existsSync(path)) {
         if ((await gitAsync(path, 'status', '--porcelain').catch(() => null)) !== '') return false;
+        await this.quiet(path);
         if ((await gitAsync(this.o.repoPath, 'worktree', 'remove', path).catch(() => null)) === null) return false;
       }
       this.store.removeWorkspace(path);
@@ -1446,7 +1448,10 @@ export class Workspaces implements CardWorkspaces {
     if (this.cloned(ws)) return this.release(cardId);
     this.store.removeWorkspace(ws);
     await this.clearing(ws, async () => {
-      if (existsSync(ws)) await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+      if (existsSync(ws)) {
+        await this.quiet(ws);
+        await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+      }
       try {
         if (await gitAsync(this.o.repoPath, 'branch', '--list', branch)) await gitAsync(this.o.repoPath, 'branch', '--quiet', '-d', branch);
       } catch (e) {
@@ -1466,7 +1471,10 @@ export class Workspaces implements CardWorkspaces {
     if (!this.cloned(ws)) {
       this.store.removeWorkspace(ws);
       return this.clearing(ws, async () => {
-        if (existsSync(ws)) await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+        if (existsSync(ws)) {
+          await this.quiet(ws);
+          await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+        }
         if (await gitAsync(this.o.repoPath, 'branch', '--list', branch)) await gitAsync(this.o.repoPath, 'branch', '--quiet', '-D', branch);
       });
     }
@@ -1764,7 +1772,29 @@ export class Workspaces implements CardWorkspaces {
   async removeFollowUpTree(path: string) {
     // one git is still adding goes once it is there
     await this.trees.get(path)?.catch(() => {});
+    if (existsSync(path)) await this.quiet(path);
     await removeTree(path);
+  }
+
+  /**
+   * Stops what runs from the workspace at `path` before its folder goes: the repository's stop
+   * command (`app.stop`), then every process still running
+   * from the folder (`endProcessesIn`), which that command's own bookkeeping may not know of (an
+   * app started some other way, or one whose list of process IDs went first). On Windows a process
+   * holds the files it has open: one left running would keep the removal from finishing, and run on
+   * with nothing to find it by. Best effort: the folder goes either way.
+   */
+  private async quiet(path: string) {
+    if (this.o.stop) {
+      const stopped = await runAppCommand(path, this.o.stop);
+      if (!stopped.ok) console.error(`workspace ${path}: ${this.o.stop} failed: ${stopped.output}`);
+    }
+    try {
+      const ended = await endProcessesIn(path);
+      if (ended.length) console.log(`workspace ${path}: ended ${ended.length} process(es) still running from it (${ended.join(', ')})`);
+    } catch (e) {
+      console.error(`workspace ${path}: ending what runs from it: ${messageOf(e)}`);
+    }
   }
 
   /**

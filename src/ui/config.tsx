@@ -13,6 +13,7 @@ import { api, reload, type SiteHow } from './api';
 import { keepConfigDraft, keptConfigDraft } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
+import { FolderPick } from './folderPick';
 import { demoState, GitSetup, platformName, RecognitionDetail, SetupList, useFolderWithoutGit, voiceState } from './setup';
 import { useFitHeight } from './fitHeight';
 import { useCopy } from './copy';
@@ -686,13 +687,14 @@ function ServerBlock({ server }: { server: ConfigView['server'] }) {
 
 /** Voices grouped as the settings sheet offers them; `say` only on a Mac. */
 const VOICE_GROUPS: { group: 'local' | 'service' | 'own'; voices: VoiceKind[] }[] = [
-  { group: 'local', voices: ['piper', 'qwen3', 'say'] },
+  { group: 'local', voices: ['kokoro', 'piper', 'qwen3', 'say'] },
   { group: 'service', voices: ['gemini', 'openai', 'elevenlabs', 'azure'] },
   { group: 'own', voices: ['command', 'http'] },
 ];
 /** The fields each voice reads, in the order the sheet shows them. */
 const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'command' | 'url' | 'keyFile')[]> = {
   none: [],
+  kokoro: ['voiceName'],
   piper: ['voiceName'],
   qwen3: ['voiceName'],
   say: ['voiceName'],
@@ -704,7 +706,7 @@ const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'command' | 'url' | 'keyFil
   azure: ['url', 'voiceName', 'keyFile'],
 };
 /** A stock voice of a model or service is nobody's own, and no voice at all neither. */
-const STOCK_ONLY: VoiceKind[] = ['none', 'piper', 'say'];
+const STOCK_ONLY: VoiceKind[] = ['none', 'kokoro', 'piper', 'say'];
 /** The language codes of a list as typed: separated by commas or spaces. */
 const codesOf = (text: string) => text.split(/[\s,;]+/).filter(Boolean);
 /** Where demos go when the settings name no directory (`DEFAULT_DEMO_DIRECTORY` of the demo skill, which the page cannot import). */
@@ -1793,18 +1795,23 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
       {leaving}
     </Field>
   );
+  // what went wrong with the system's folder dialog, under the path
+  const [pickFailed, setPickFailed] = useState('');
+  // another folder, typed or picked: whether it goes without git is chosen for it anew
+  const setPath = (path: string) => {
+    const { git: _, ...rest } = repo;
+    onChange({ ...rest, path });
+  };
   // a repository of the canvas: its path, what is wrong with it, then where its agents work and its settings, each group under a heading
   return (
     <section className="cfg-repo">
       <Field label={t.config.path} hint={home || folder ? [...(home ? [t.config.home] : []), ...(folder ? [t.config.folderMode] : [])].join(' · ') : undefined}>
         <div className="cfg-repo-path">
-          <input className="c-path" aria-label={t.config.path} value={repo.path} placeholder={t.config.path} spellCheck={false} onChange={(e) => {
-              // another folder: whether it goes without git is chosen for it anew
-              const { git: _, ...rest } = repo;
-              onChange({ ...rest, path: e.target.value });
-            }} />
+          <input className="c-path" aria-label={t.config.path} value={repo.path} placeholder={t.config.path} spellCheck={false} onChange={(e) => setPath(e.target.value)} />
+          <FolderPick prompt={t.config.pickPrompt} onPick={setPath} onOpen={() => setPickFailed('')} onError={(e) => setPickFailed(failText(e))} />
           <RemoveButton label={t.config.removeRepo} onClick={() => onChange(null)} />
         </div>
+        {pickFailed && <p className="hint c-status cfg-pick-failed">{pickFailed}</p>}
       </Field>
       {problems.map((p, k) => (
         <div key={k} className="cfg-repo-problem">

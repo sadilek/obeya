@@ -376,8 +376,14 @@ first sentence as summary, the whole text as content, the page's address as link
 overview's date, the page's language, who shared it as author), and a sitemap (`sitemap.xml`: the
 overview and every page, dated as in the feed), written together and so equally current. Where the
 site is its host's root, a `robots.txt` lets every crawler in and names the sitemap; under a path,
-where crawlers do not look for one, there is none. A page keeps its date while its demo's own files
-stay the same.
+where crawlers do not look for one, there is none. The overview and every page name their address
+for search engines (`<link rel="canonical">`, the site's root and the page's address, absolute and
+without a query), so a filtered overview (`?Area=…`) or a page shown alone (`?alone`) counts as that
+page, not as one more. Beside them lies `404.html`, which Cloudflare
+Pages, GitHub Pages and Netlify answer an address the site lacks with (HTTP 404): in the overview's
+language and theme, it says there is no demo at this address or it has been withdrawn, and links
+the overview by its full address, since the host serves it at any path. A page keeps its date while
+its demo's own files stay the same.
 
 Each page names who shared it ("Shared by Ada Lovelace on October 20, 2026"), and the overview
 after the date, as colleagues publish to one site from their own Obeya: git's `user.name` in the
@@ -524,7 +530,8 @@ deployment that dropped the change makes it redo once, a second fails the share.
 A deployment racing past this check still takes a page offline (no compare-and-swap on a static
 host): the once-a-minute check when the owner comes back redeploys pages the live site lacks or has
 older, with a line on their cards. An unreadable manifest refuses the deploy; a 404 is the first
-deploy; a manifest answered with the host's fallback page (HTTP 200) counts as missing. A page
+deploy; a manifest answered with the host's fallback page (HTTP 200: Cloudflare Pages serves the
+root's `index.html` for a site deployed without a `404.html`) counts as missing. A page
 another machine withdrew loses its link here, with a line naming the machine.
 
 ### Decisions
@@ -650,6 +657,19 @@ another machine withdrew loses its link here, with a line naming the machine.
   `demos.obeya.si`'s pages, though obeya.si links it. A listed site is public anyway, and its
   overview links every page; the sitemap only says so with dates. Each host has its own: a sitemap
   names addresses of its own host only.
+- **A listed site answers an address it lacks with a page of its own, not the overview**
+  (2026-11-05): without a `404.html`, Cloudflare Pages served the overview with HTTP 200 for every
+  unknown address, which search engines count as soft 404s, and a withdrawn demo's old link showed
+  the overview as if nothing were amiss. Rejected: redirecting to the overview (still no 404 for
+  search engines, and the reader is not told why the demo is gone).
+- **The overview's filters and a page's `?alone` are named as variants by `rel="canonical"` alone**
+  (2026-11-07): Google crawled 19 filtered overviews, each the whole overview, and listed every
+  page as having no canonical of its own. The query is applied in the browser, so every variant is
+  the same file and the canonical holds for each. Rejected: `noindex` on the filtered overview (a
+  static site can only set it from a script, and a fault there would take the overview itself out
+  of the index), a `Disallow` for addresses with a query (hides the canonical from crawlers). The
+  answer to an address the site lacks names none (it is served at every address, with `noindex`),
+  nor does an unlisted site's page (`noindex`), nor a page exported as a file (it has no address).
 - **No `robots.txt` on the unlisted site** (2026-10-28): its `Disallow` hides the `noindex` from
   search engines, which may then list a linked address without its content.
 - **Several machines pull before they push** (2026-10-09). Rejected: refusing deploys while the live

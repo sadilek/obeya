@@ -66,7 +66,9 @@ for (const target of targets) {
   // Bun (1.3.12) leaves a copy of its runtime in the working directory (`.<hex>.bun-build`): there it goes
   // the UI it carries is bundled now, not when it is served: as `bun start` serves it, React's production build
   const production = ['--define', 'process.env.NODE_ENV="production"'];
-  run([process.execPath, 'build', '--compile', `--target=bun-${target}`, ...production, join(ROOT, 'src/server/main.ts'), '--outfile', binary], dir);
+  // a Worker's script goes in as an entrypoint of its own, or the binary has none to start
+  const workers = ['src/server/windows-processes.ts'].map((f) => join(ROOT, f));
+  run([process.execPath, 'build', '--compile', `--target=bun-${target}`, ...production, join(ROOT, 'src/server/main.ts'), ...workers, '--outfile', binary], dir);
   for (const f of readdirSync(dir)) if (f.endsWith('.bun-build')) rmSync(join(dir, f), { force: true });
   if (target.startsWith('darwin')) {
     if (process.platform === 'darwin') {

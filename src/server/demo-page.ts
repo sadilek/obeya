@@ -47,6 +47,9 @@ export const PAGE_WORDS: Record<
     copyLink: string;
     copied: string;
     noMatch: string;
+    /** A listed site's answer to an address it lacks (`404.html`): its heading and its line. */
+    notFound: string;
+    notFoundText: string;
   }
 > = {
   de: {
@@ -76,6 +79,8 @@ export const PAGE_WORDS: Record<
     copyLink: 'Link kopieren',
     copied: 'Kopiert',
     noMatch: 'Keine Demo passt zum Filter.',
+    notFound: 'Diese Seite gibt es nicht',
+    notFoundText: 'Unter dieser Adresse liegt keine Demo, oder sie wurde zurückgezogen.',
   },
   en: {
     locale: 'en-US',
@@ -104,6 +109,8 @@ export const PAGE_WORDS: Record<
     copyLink: 'Copy link',
     copied: 'Copied',
     noMatch: 'No demo matches the filter.',
+    notFound: 'This page does not exist',
+    notFoundText: 'There is no demo at this address, or it has been withdrawn.',
   },
 };
 
@@ -141,8 +148,11 @@ interface PageParts {
   /** A link above the title (say, to all demos). */
   top?: { href: string; text: string };
   /** The page's tags, by dimension, each a link (say, to the overview showing the pages with it). */
-  tags?: { dimension: string; value: string; href: string }[];  /** A page of an unlisted site: kept out of search engines, and its links send no referrer. */
+  tags?: { dimension: string; value: string; href: string }[];
+  /** A page of an unlisted site: kept out of search engines, and its links send no referrer. */
   unlisted?: true;
+  /** Its address for search engines, without a query, so they take each variant (`?alone`) for the page itself; none where it has no address of its own (a page exported as a file). */
+  canonical?: string;
   /** The theme of the card's repository (theme.ts): its CSS, after Obeya's own style. */
   theme?: string;
 }
@@ -431,7 +441,7 @@ const UNLISTED_META = '<meta name="robots" content="noindex, nofollow"><meta nam
 function pageStart(p: PageParts, language: PageLanguage, policy?: string, style = '', list = ''): string {
   policy ??= p.theme ? pagePolicy(ON_DISK) : undefined;
   return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8">${policy ? `<meta http-equiv="Content-Security-Policy" content="${policy}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">${p.unlisted ? UNLISTED_META : ''}
+<html lang="${language}"><head><meta charset="utf-8">${policy ? `<meta http-equiv="Content-Security-Policy" content="${policy}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">${p.unlisted ? UNLISTED_META : ''}${p.canonical ? `<link rel="canonical" href="${esc(p.canonical)}">` : ''}
 <title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}${style}</style>${themeStyle(p.theme)}</head>
 <body><main>
 ${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>

@@ -276,7 +276,8 @@ start task, from which it derives the worker's steps.
 
 The answer comes 10–30 s later: its start above the microphone (as plain text on one line, its
 Markdown stripped), in full in the open card's log, else
-in the Koordinator's sheet; meanwhile the open card shows what the agent reads. An answer in the
+in the Koordinator's sheet; meanwhile the open card shows what the agent reads. An answer told as a
+walkthrough shows its first slide there before its words (see Walkthroughs). An answer in the
 sheet stays unread until the owner has the sheet in view (open, the page not hidden): until then
 Obeya's button counts it in orange, it counts once in the navigation and stands in its "Needs you" as one entry, and Tab
 goes there after the cards that need the owner; such answers keep an orange edge until the sheet
@@ -315,9 +316,77 @@ file that would run when opened (a `.command`, a `.bat`) is shown selected in it
 Each has ↓ to download, and "Show in folder" opens the directory. Follow-ups build on the files
 already there.
 
+#### Walkthroughs
+
+Where an answer explains how something works or what happens when (a flow through the code, one
+thing after another, what a change does, how two variants differ), the look-up agent tells it as a
+short walkthrough with slides and narration instead of a block of text, and it plays while the
+agent still writes it. The agent judges which questions need one; the Koordinator's look-ups and
+the project agents alike can tell one. A text answer in Obeya's sheet has "Show as walkthrough" in
+its head, on hover (always on a screen without hover): it asks the same thread, as the owner's
+words "Show as walkthrough" following up on the answer with Obeya's reply "I'll tell the answer as a
+walkthrough.", to tell that answer as a walkthrough (quoted to it, since it need not be the thread's
+last), which comes as the next answer.
+
+A walkthrough has 4 to 8 slides: a title slide first, then points (up to five), flows (three to six
+steps in a row joined by arrows, each with an optional note) and, only when the owner asks to see
+code, code slides: real lines of a file of the repository, at most 30, which Obeya reads from the
+file by the line numbers the agent gives, with ranges highlighted one after the other. Otherwise
+the rule that the owner does not read code holds. Each slide's narration is in the owner's
+language, spoken prose that explains rather than reads the slide out: one text, or one part per
+item (point, step, range), each spoken while its item shows.
+
+The agent hands the slides over one at a time with a tool, the title slide as soon as it knows what
+the walkthrough answers, each further one once it has checked what it says; then it answers with a
+sentence or two on what the walkthrough shows. What is wrong with a slide goes back in the tool's
+reply and the slide is not shown: a first slide that is no title slide, a second title slide (an
+answer has one walkthrough), a ninth slide, a narration in parts that do not match the items, a code
+slide's file outside the repository or too large to show from, lines it lacks, more than 30 lines,
+or a range outside them. A file the agent passes on as a walkthrough of its own is left out.
+
+One asked for with "Show as walkthrough" shows its player at once, at full size, with the shape of a
+title slide shimmering and "The walkthrough is being written …" until its title slide comes, so it
+is plain that it is being made; one the agent answers as text after all goes again. Any other
+walkthrough shows with its first slide under the question, before the answer's words: in the
+sheet, in the log of the card it was asked on, on a Question card in its conversation, as a message
+without words that cannot be replied to yet. The answer's words then come in above it without
+interrupting it, and the walkthrough is the first of the answer's files. It is a file of the
+thread's directory, `<name>.walkthrough.json` named after its title (one asked for with the button, after its question) (a later answer gets a name of
+its own), holding the slides as shown (a code slide with its lines), each slide's narration as the
+sentences it is voiced in (and for a narration in parts, the item of each), whether every slide is
+there, each sentence's clip once voiced (its file and seconds) and why voicing failed; the clips
+are WAVs in `<name>.clips/` beside it. The player reads it from `GET
+/api/c/<canvas>/threads/<thread>/walkthroughs/<name>` while it grows, and its clips as the answer's
+files; both come through Obeya's server, as every answer file does, so a walkthrough plays wherever
+the page plays: on the phone and on other machines too. A look-up that runs again after a restart
+drops the walkthrough it had begun, for the one it tells anew.
+
+Obeya voices each slide as it comes, sentence by sentence, in the voice of the demo settings for
+the owner's conversation language (see The demo settings and voices in Demos), through the voice it
+holds loaded where it can (see A voice that stays loaded): one sentence at a time for all
+walkthroughs, in the queue the renders' clips wait in. A title slide says its title first, a short
+sentence voiced quickly. A player that plays says which slide it is on: the voice speaks next the
+first sentence it still needs from there; with none playing, the newest walkthrough goes first.
+"Show as walkthrough" loads the voice at the click, while the agent writes the first slide. A
+sentence the voice cannot speak ends the voicing of its walkthrough, and the player says why;
+sentences still waiting when the server stopped are not voiced afterwards, and the player says that
+the voicing stopped with the restart.
+
+The player plays slides and sound in step: the items of a slide light up as the narration reaches
+them (before the first play, a slide shows them all), a code slide scrolls its highlighted range
+into view, and the sentence being spoken stands under the slide as a caption, which "CC" switches
+on and off. Its progress bar has a segment per slide, which jumps there on a click; ◀ and ▶▶ go a
+slide back and on. Where the next sentence is not voiced yet it waits, showing "Voicing … 8/43";
+where the agent is still writing the next slide, "The next slide is being written …". A walkthrough
+asked for with the button starts by itself in the page that clicked (the click allows the sound),
+as soon as its first sentence is voiced; one the agent chose shows its first slide and "Play
+walkthrough". One walkthrough plays at a time: starting one pauses the others. A player goes on
+while its message is drawn anew (the answer's words arriving) and pauses once no view shows it.
+
 #### Question cards
 
-"Make it a card" in a looked-up answer's head moves its thread onto a **Question card** beside the
+"Make it a card" in a looked-up answer's head (on hover, as replying is; always on a screen without
+hover) moves its thread onto a **Question card** beside the
 card whose log held it: its question as title, its exchanges as conversation, the same session going on.
 While the card exists, the sheet shows "On the card “…”" in place of its answers; once it is
 archived or deleted they return, and "Make it a card" again opens the card, back from the archive if
@@ -479,6 +548,33 @@ passed the words on through `to_obeya` hears that the owner finds the link under
 - **A look-up is a thread with files** (2026-10-14). Rejected: one-shot look-ups whose follow-ups
   started over, and markdown-only answers written in the Lesestand, where files would be left as
   uncommitted changes.
+- **Obeya's own walkthrough, played live** (owner, 2026-11-06). Rejected: showntell's Claude Code
+  plugin as it is (English only, a dependency on a young project with one author, its player loaded
+  from a local service on its own port, which Obeya's page policy had to be opened for and which
+  does not play from the phone or another machine); showntell with Obeya's voice (changing it to do
+  what Obeya's own already does); rendered explainer videos (the whole render passes before the
+  first frame). Looked-up answers and Question cards came first; idea agents and workers do not
+  tell walkthroughs.
+- **The agent decides, the owner can ask** (owner, 2026-11-06): the agent judges where a walkthrough
+  explains more than text, and "Show as walkthrough" covers where it judged otherwise. A sharp hint
+  is what moves it: told only how to make one, an agent answered three of three questions as text;
+  told "how something works or what happens when → walkthrough", it chose a walkthrough for two of
+  three.
+- **Code slides only when the owner asks for code** (owner, 2026-11-06); otherwise points and flows.
+  Told only that the owner does not read code, the agent never chose one.
+- **Handed over slide by slide and voiced sentence by sentence** (owner, 2026-11-06): a walkthrough
+  handed over whole took about two minutes from the click to the first sound. Slide by slide, with
+  the title said first, the voice loaded at the click and a playing player's sentences first, the
+  first sound came 7–12 s after a click on "Show as walkthrough" and 2–5 s after the first slide of
+  a new question (Qwen3 with the owner's clone, its first slide 20–30 s after the question); with
+  three walkthroughs voiced at once the player still waited 2–5 s now and then.
+- **The actions in an answer's head show on hover** (owner, 2026-11-07): "Make it a card" and "Show
+  as walkthrough" appear as the reply button beside them does, for one look; on a screen without
+  hover they stay in view.
+- **The player is Obeya's page, the walkthrough a file of data** (2026-11-06). Rejected: a player
+  page written into the thread's directory with the slides (as an HTML artifact, sandboxed): every
+  walkthrough would keep the player of its day, and its words and look would live apart from the
+  interface's strings and its light and dark.
 - **A look-up waits for its background work** (2026-10-19). Rejected: taking its words so far
   ("still downloading …") as the answer, which closed the session and stopped the work.
 - **The project agent can be asked from the project's sheet** (2026-10-21, a colleague's feedback),

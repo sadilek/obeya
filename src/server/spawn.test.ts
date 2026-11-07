@@ -1,26 +1,87 @@
 import { expect, test } from 'bun:test';
-import { hidden, hideConsoleWindows, spawnOutput } from './spawn';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { endThreads, hidden, hideConsoleWindows, onStart, spawnOutput } from './spawn';
 
-test('dozens of processes asked for at once start a few at a time, with turns of the event loop between', async () => {
+// first in the file: after other tests have run, Bun no longer shows the wait this test is about
+test('what a thread answers settles for expect(…).rejects and .resolves too, not only for await', async () => {
+  await spawnOutput([process.execPath, '--version']);
+  await expect(spawnOutput([process.execPath, '-e', 'process.exit(4)']).then((r) => r.code)).resolves.toBe(4);
+  await expect(spawnOutput([process.execPath, '--version']).then(() => Promise.reject(new Error('expected')))).rejects.toThrow('expected');
+  await expect(spawnOutput(['obeya-no-such-program'])).rejects.toThrow();
+}, 10_000);
+
+test("processes start on threads of their own: the server's thread starts none of them", async () => {
   const spawn = Bun.spawn;
   let started = 0;
   Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
     started++;
     return spawn(...args);
   }) as typeof Bun.spawn;
+  const told: string[][] = [];
+  const stop = onStart((argv) => told.push(argv));
   try {
-    const all = Array.from({ length: 20 }, () => spawnOutput([process.execPath, '--version']));
-    // the first ones at once, as a caller expects of a process it started
-    expect(started).toBe(4);
-    await new Promise((go) => setImmediate(go));
-    expect(started).toBeLessThanOrEqual(8);
-    const done = await Promise.all(all);
-    expect(started).toBe(20);
-    expect(done.every((r) => r.code === 0 && r.stdout.trim() === Bun.version)).toBe(true);
+    const all = await Promise.all(Array.from({ length: 20 }, () => spawnOutput([process.execPath, '--version'])));
+    expect(all.every((r) => r.code === 0 && r.stdout.trim() === Bun.version && r.signal === null)).toBe(true);
+    expect(started).toBe(0);
+    expect(told.length).toBe(20);
   } finally {
+    stop();
     Bun.spawn = spawn;
   }
 });
+
+test('a process on a thread of its own gets what the server gives it: directory, environment, input, a timeout', async () => {
+  const script = (code: string, o: Parameters<typeof spawnOutput>[1] = {}) => spawnOutput([process.execPath, '-e', code], o);
+  const dir = (await script('console.log(process.cwd())', { cwd: import.meta.dir })).stdout.trim();
+  expect(dir).toBe(import.meta.dir);
+  expect((await script('console.log(process.env.OBEYA_SPAWN_TEST)', { env: { ...process.env, OBEYA_SPAWN_TEST: 'given' } })).stdout.trim()).toBe('given');
+  // without an environment of its own, the server's as it is now
+  process.env.OBEYA_SPAWN_TEST = 'now';
+  try {
+    expect((await script('console.log(process.env.OBEYA_SPAWN_TEST)')).stdout.trim()).toBe('now');
+  } finally {
+    delete process.env.OBEYA_SPAWN_TEST;
+  }
+  const echo = 'process.stdout.write(await Bun.stdin.text())';
+  expect((await script(echo, { stdin: new Blob(['from a ', 'blob']) })).stdout).toBe('from a blob');
+  expect((await script(echo, { stdin: Buffer.from('from a buffer') })).stdout).toBe('from a buffer');
+  const failed = await script('console.error("wrong"); process.exit(3)');
+  expect([failed.code, failed.stderr.trim()]).toEqual([3, 'wrong']);
+  const slow = await script('await Bun.sleep(10_000)', { timeout: 200 });
+  expect(slow.signal).not.toBeNull();
+  expect(await spawnOutput(['obeya-no-such-program']).then(() => null, (e: unknown) => e)).toBeInstanceOf(Error);
+}, 30_000);
+
+test('a thread that dies while its process runs fails that call without starting it again; the next call gets a thread anew', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-spawn-'));
+  try {
+    const log = join(dir, 'started');
+    // a thread of its own, for which this process is the first
+    await endThreads();
+    const running = spawnOutput([process.execPath, '-e', `require('fs').appendFileSync(${JSON.stringify(log)}, 'x'); await Bun.sleep(5000)`]);
+    const t0 = Date.now();
+    while (!readFileSync(log, { flag: 'a+' }).length && Date.now() - t0 < 5000) await Bun.sleep(20);
+    await endThreads();
+    await expect(running).rejects.toThrow(/thread/);
+    // started a second time, it would have written at once
+    await Bun.sleep(500);
+    expect(readFileSync(log, 'utf8')).toBe('x');
+    // and the next one on a thread again, not on the server's
+    const spawn = Bun.spawn;
+    let here = 0;
+    Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => (here++, spawn(...args))) as typeof Bun.spawn;
+    try {
+      expect((await spawnOutput([process.execPath, '--version'])).stdout.trim()).toBe(Bun.version);
+    } finally {
+      Bun.spawn = spawn;
+    }
+    expect(here).toBe(0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 15_000);
 
 test('programs started on Windows run without a window, unless the call asks for one', () => {
   expect(hidden([['git', 'status'], { cwd: '/repo' }])).toEqual([['git', 'status'], { cwd: '/repo', windowsHide: true }]);
