@@ -1,9 +1,28 @@
 import { type RefObject, useLayoutEffect, useRef } from 'react';
 
-/** The height (border included) that holds a text box's text, or its placeholder, at its width as it stands. */
+/** The scroll positions of the panes `el` stands in, as they are now: called, it puts them back. */
+export function keepScroll(el: Element) {
+  const scrolled: [Element, number][] = [];
+  for (let e = el.parentElement; e; e = e.parentElement) if (e.scrollTop) scrolled.push([e, e.scrollTop]);
+  return () => {
+    for (const [e, top] of scrolled) e.scrollTop = top;
+  };
+}
+
+/**
+ * The height (border included) that holds a text box's text, or its placeholder, at its width as it
+ * stands. Measuring shrinks the box for a moment, which shortens what scrolls around it: WebKit then
+ * scrolls a pane standing at its end up, and a space typed by script (Space held to talk) brings no
+ * caret back into view, so the box gets its height back and the panes their scroll positions.
+ */
 export function textHeight(el: HTMLTextAreaElement) {
+  const restore = keepScroll(el);
+  const height = el.style.height;
   el.style.height = 'auto';
-  return el.scrollHeight + el.offsetHeight - el.clientHeight;
+  const h = el.scrollHeight + el.offsetHeight - el.clientHeight;
+  el.style.height = height;
+  restore();
+  return h;
 }
 
 /**

@@ -93,6 +93,13 @@ WebKit, the webview on macOS and Linux, knows `user-select` only by its `-webkit
 unprefixed property alone, dragging a card selects some of its text in the app, though not in Chrome
 (2026-10-30). The stylesheet sets both wherever it sets one, and a test holds it to that.
 
+A text field as tall as its text is measured by shrinking it for a moment. WebKit scrolls a pane
+standing at its end up when that shortens it, and only the browser's own typing brings the caret
+back into view: each Space typed by the page (Space held to talk types a tap itself) and each click
+into a formatted text that opens its field left the field at the pane's end half out of view, in the
+app though not in Chrome (2026-11-07). Measuring and opening such a field keep the scroll positions
+of the panes around it.
+
 #### The app from a checkout
 
 `bun run app` builds the shell alone and runs it from the terminal on the checkout's server (`bun
