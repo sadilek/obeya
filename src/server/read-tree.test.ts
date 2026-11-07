@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ReadTree, refsSeal } from './read-tree';
-import { artifact, FakeRuntime, gitRepo, identify, noForge, syncGitCalls, until } from './testing';
+import { artifact, FakeRuntime, gitClone, gitRepo, identify, noForge, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 const doc = (title: string, ticked = '') =>
@@ -26,7 +26,7 @@ beforeEach(() => {
   checkout = join(dir, 'checkout');
   other = join(dir, 'other');
   for (const c of [checkout, other]) {
-    git(dir, 'clone', '--quiet', origin, c);
+    gitClone(origin, c);
     identify(c);
   }
 });
@@ -382,6 +382,8 @@ describe("a repository's settings for everyone", () => {
     expect(told).not.toContain('after_restart');
     expect(c.repos[0]!.adapter.checks).toEqual(['bun test']);
     runtime.last.emit({ type: 'idle' });
+    // its worktree gone (what still ran from it ended first), the restart waits for no card but the next
+    await c.repos[0]!.workers.freed();
 
     // to clones: the worker in its turn hears of the restart and holds it up until it pauses
     const before = c.repos[0];

@@ -12,7 +12,7 @@ import { DEMO_MARKER, SHARE_CWD, Sharing, withDemoLink } from './share';
 import { siteKey } from './site';
 import { missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import type { Theme } from './theme';
-import { FakeRuntime, gitRepo, noContributions } from './testing';
+import { FakeRuntime, gitRepo, noContributions, PATIENCE } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -171,7 +171,7 @@ const slug = (id: string) => (JSON.parse(board.row(id).share!) as { slug: string
 /** What the latest deploy said of the card's page. */
 const meta = (id: string) => calls().at(-1)!.pages[slug(id)]!.meta!;
 async function until(ok: () => boolean) {
-  for (let i = 0; i < 400 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 400 * PATIENCE && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
   expect(ok()).toBe(true);
 }
 const log = (id: string) => board.events(id).map((e) => e.text);

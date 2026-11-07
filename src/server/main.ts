@@ -73,9 +73,11 @@ import { serve, serveNarration } from './server';
 import { LocalTranscriber, VoiceIn } from './voice';
 import { VoiceSetup } from './voice-setup';
 import { useLib } from '../../plugin/skills/demo/lib/here.ts';
-import { DEMO_SETTINGS_FILE, expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { DEMO_SETTINGS_FILE, expandHome, inLanguage, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { DemoSpace } from './demo-space';
-import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
+import { qwen3Serve, speak, voiceSpec } from '../../plugin/skills/demo/lib/voices.ts';
+import { Voicing } from './walkthrough';
+import type { Language } from '../core/locale';
 import { agentSetting, conversationLanguage, ownerLanguage, usageMeterView } from './settings';
 import { loginLink } from './owner';
 import { Stalls } from './stalls';
@@ -250,6 +252,16 @@ const narration = new NarrationHost({ argv: (voice, language) => qwen3Serve(voic
 // narration and nothing else, from a worker here as from one on another machine (design: Hosts)
 const narrationServer = serveNarration(narration);
 const narrationUrl = `http://127.0.0.1:${narrationServer.port}`;
+// looked-up answers told as walkthroughs, in the voice of the demo settings, through the voice held above where it can stay loaded
+const narrator = (language: Language) => inLanguage(readDemoSettings(home), language);
+const voicing = new Voicing({
+  speak: (text, out, language) => speak(narrator(language), text, out, home, narrationUrl),
+  warm: (language) => {
+    const spec = voiceSpec(narrator(language), home);
+    if (spec.kind === 'command' && spec.host) narration.load(spec.host, language);
+  },
+  log: (line) => console.log(line),
+});
 // the disk space demos take, and the frames of old renders deleted (demo-space.ts)
 const demoSpace = new DemoSpace({ home, settings: () => readDemoSettings(home), file: join(home, DEMO_SETTINGS_FILE), log: (line) => console.log(line) }).start();
 const config = new Config({
@@ -302,6 +314,7 @@ canvases = await Canvases.start(
     ownCheckout: own,
     config,
     workerEnv: { OBEYA_URL: narrationUrl, OBEYA_NARRATION_URL: narrationUrl },
+    voicing,
     ...(process.env.OBEYA_PARK_GRACE ? { parkGrace: Number(process.env.OBEYA_PARK_GRACE) * 1000 } : {}),
     ...(process.env.OBEYA_PR_POLL ? { prPollMs: Number(process.env.OBEYA_PR_POLL) * 1000 } : {}),
     language: () => ownerLanguage(home),

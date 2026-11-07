@@ -8,6 +8,8 @@ import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuo
 import { api } from './api';
 import { Inline, plain } from './markdown';
 import { AnswerFiles, Body, Continues, Msg, Quote, Reading, ThreadCard } from './message';
+import { askedForHere, WalkthroughButton } from './walkthrough';
+import { isWalkthrough } from '../core/walkthrough';
 import { type Reply, setReply, talkEv, talkQuote } from './reply';
 import { clock, failText, t } from './strings';
 import { CiteButton } from './cite';
@@ -353,22 +355,31 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
             ) : (
               <>
                 {/* a question it looked up: the answer follows the acknowledgement */}
-                {x.question && x.answer === undefined && (
+                {x.question && x.answer === undefined && !x.files?.length && (
                   <Msg by={x.askedIn ? 'project' : 'koordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'koordinator']}>
                     <div className="hint">{x.limitedUntil ? t.koordinator.lookUpLimited(clock(x.limitedUntil)) : t.koordinator.lookingUp}</div>
                   </Msg>
                 )}
-                {x.answer !== undefined && (
+                {/* its walkthrough plays here from its first slide on, and plays on as the answer's words come in above it */}
+                {(x.answer !== undefined || (x.question && !!x.files?.length)) && (
                   <Msg
                     by={x.answerBy ?? 'koordinator'}
                     className={fresh.includes(x.id) ? 'fresh' : undefined}
                     who={t.author[x.answerBy ?? 'koordinator']}
                     ev={talkEv({ talk: x.id, part: 'answer' })}
-                    onReply={reply('answer', x.answerBy ?? 'koordinator', x.answer)}
-                    head={x.thread !== undefined && <ThreadCard thread={x.thread} onOpen={onOpen} />}
+                    onReply={x.answer !== undefined ? reply('answer', x.answerBy ?? 'koordinator', x.answer) : undefined}
+                    head={
+                      x.thread !== undefined &&
+                      x.answer !== undefined && (
+                        <>
+                          <ThreadCard thread={x.thread} onOpen={onOpen} />
+                          {!x.files?.some((f) => isWalkthrough(f.name)) && <WalkthroughButton talk={x.id} />}
+                        </>
+                      )
+                    }
                   >
-                    <Body md={x.answer} />
-                    {x.thread !== undefined && <AnswerFiles thread={x.thread} files={x.files} />}
+                    {x.answer !== undefined ? <Body md={x.answer} /> : <div className="hint">{t.koordinator.lookingUp}</div>}
+                    {x.thread !== undefined && <AnswerFiles thread={x.thread} files={x.files} autoplay={askedForHere(x.id)} />}
                   </Msg>
                 )}
               </>

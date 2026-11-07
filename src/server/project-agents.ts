@@ -29,19 +29,27 @@ export class ProjectAgents {
    * session. `dir`: the output directory of the looked-up thread, which the answer's files are in;
    * `signal` ends the turn at once; `onLimit` shows where it waits for the usage limit; `onWaiting`
    * passes the owner's words in while it waits for its background work (`Briefing.onWaiting`).
-   * `asked`: written in the project's sheet, straight to it: its screenshots, and `to_obeya` for what
-   * the words ask of Obeya rather than of it.
+   * Written in the project's sheet, straight to it: its screenshots (`images`), and `toObeya` for
+   * what the words ask of Obeya rather than of it. `tools` and `rules`: what the look-up adds (a
+   * walkthrough's).
    */
   inform(
     project: Item,
     message: string,
     onLimit: (until: number | undefined) => void,
-    onTool?: (name: string, input: Record<string, unknown>) => void,
-    dir?: string,
-    signal?: AbortSignal,
-    onWaiting?: Briefing['onWaiting'],
-    asked?: { images: string[]; toObeya?: AgentTool },
+    more: {
+      onTool?: (name: string, input: Record<string, unknown>) => void;
+      dir?: string;
+      signal?: AbortSignal;
+      onWaiting?: Briefing['onWaiting'];
+      images?: string[];
+      toObeya?: AgentTool;
+      tools?: AgentTool[];
+      rules?: string;
+    } = {},
   ): Promise<OwnerAnswer> {
+    const { onTool, dir, signal, onWaiting, images, toObeya, rules = '' } = more;
+    const tools = [...(more.tools ?? []), ...(toObeya ? [toObeya] : [])];
     return this.queued(project, () =>
       inform({
         onLimit,
@@ -54,9 +62,9 @@ export class ProjectAgents {
         ...(signal ? { signal } : {}),
         ...(onWaiting ? { onWaiting } : {}),
         ...(this.permissionMode ? { permissionMode: this.permissionMode } : {}),
-        ...(asked?.images.length ? { images: asked.images } : {}),
-        ...(asked?.toObeya ? { tools: [asked.toObeya] } : {}),
-        system: `You are the project agent of the project "${project.title}", directed through Obeya. Its plan doc is ${project.plan?.file ?? '(none)'}${project.plan && outsidePlanDir(pathOfRef(project.plan.file)) ? '' : ' in this repository'}; you know it and the history of its workstreams.\n\n${INFORM_RULES}${asked?.toObeya ? `\n\n${TO_OBEYA}` : ''}`,
+        ...(images?.length ? { images } : {}),
+        ...(tools.length ? { tools } : {}),
+        system: `You are the project agent of the project "${project.title}", directed through Obeya. Its plan doc is ${project.plan?.file ?? '(none)'}${project.plan && outsidePlanDir(pathOfRef(project.plan.file)) ? '' : ' in this repository'}; you know it and the history of its workstreams.\n\n${INFORM_RULES}${rules}${toObeya ? `\n\n${TO_OBEYA}` : ''}`,
         message: [message, `Decisions taken in this project so far:\n${decisionLog(this.board.decisions(project.id))}`, this.preferences()].filter(Boolean).join('\n\n'),
         language: this.board.conversation(),
       }),

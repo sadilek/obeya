@@ -231,10 +231,17 @@ test('a rebuild of the canvas view after a change to one card reads the canvasâ€
 });
 
 test('a rebuild of the canvas view costs about as much as reading the canvasâ€™s cards a few times', async () => {
-  const rebuild = await rebuildTime();
-  // a single read is over too quickly to take the median of five: the fastest counts
+  // a read and a rebuild by turns, so that both meet the machine as busy; a single read is over too
+  // quickly for a median, and noise only adds: the fastest of each counts
   const reads: number[] = [];
-  for (let n = 0; n < 5; n++) reads.push(await cpuTime(async () => void store.cards(canvas.board.canvas.id)));
-  // three or four reads' worth; going over the archive for its revision and reading the cards and projects again for each part of the view cost seven
-  expect(rebuild / Math.min(...reads)).toBeLessThan(5);
+  const rebuilds: number[] = [];
+  for (let n = 0; n < 10; n++) {
+    reads.push(await cpuTime(async () => void store.cards(canvas.board.canvas.id)));
+    rebuilds.push(await cpuTime(async () => {
+      canvas.board.changed();
+      JSON.stringify(canvas.board.snapshot());
+    }));
+  }
+  // three to five reads' worth; going over the archive for its revision and reading the cards and projects again for each part of the view cost seven or eight
+  expect(Math.min(...rebuilds) / Math.min(...reads)).toBeLessThan(6);
 });

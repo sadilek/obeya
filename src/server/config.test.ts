@@ -10,7 +10,7 @@ import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './co
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, FakeRuntime, noForge, gitRepo, syncGitCalls, until } from './testing';
+import { asOwner, FakeRuntime, gitClone, gitRepo, noForge, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -144,14 +144,14 @@ describe("Obeya's configuration", () => {
     git(web, 'remote', 'add', 'origin', 'https://github.com/acme/web.git');
     const clone = (name: string, origin: string) => {
       const path = join(dir, name);
-      git(dir, 'clone', '--quiet', web, path);
+      gitClone(web, path);
       git(path, 'remote', 'set-url', 'origin', origin);
       return path;
     };
     const ssh = clone('web-ssh', 'git@github.com:acme/web.git');
     const https = clone('web-https', 'https://github.com/acme/web');
     const local = join(dir, 'web-local');
-    git(dir, 'clone', '--quiet', web, local);
+    gitClone(web, local);
     const other = clone('api-clone', 'git@github.com:acme/api.git');
     const check = async (workspaces: string[]) => (await c.check([{ repos: [{ path: web, workspaces }] }])).problems;
     expect(await check([web, ssh, https, local])).toEqual([]);
@@ -459,7 +459,7 @@ describe("Obeya's configuration", () => {
   test("„Für alle ins Repository übernehmen“ where work goes out as pull requests: one is opened, this machine keeps its values until it is merged", async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', web, origin);
+    gitClone(web, origin, { bare: true });
     git(web, 'remote', 'add', 'origin', origin);
     git(web, 'fetch', '--quiet', 'origin');
     const settings = { land: 'pr' as const, checks: ['bun test'] };
@@ -494,7 +494,7 @@ describe("Obeya's configuration", () => {
     git(web, 'add', '.obeya/settings.json');
     git(web, 'commit', '--quiet', '-m', 'settings');
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', web, origin);
+    gitClone(web, origin, { bare: true });
     git(web, 'remote', 'add', 'origin', origin);
     git(web, 'fetch', '--quiet', 'origin');
     const opened: unknown[] = [];
@@ -516,7 +516,7 @@ describe("Obeya's configuration", () => {
   test("„Für alle ins Repository übernehmen“ straight onto origin's main, where work may go there beside pull requests", async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', web, origin);
+    gitClone(web, origin, { bare: true });
     git(web, 'remote', 'add', 'origin', origin);
     git(web, 'fetch', '--quiet', 'origin');
     const without = { land: 'pr' as const, checks: ['bun test'] };
@@ -567,7 +567,7 @@ describe("Obeya's configuration", () => {
   test('a setting the Arbeitsrückschau proposed, taken for everyone where work goes out as pull requests: one is opened, and the value applies here meanwhile', async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', web, origin);
+    gitClone(web, origin, { bare: true });
     git(web, 'remote', 'add', 'origin', origin);
     git(web, 'fetch', '--quiet', 'origin');
     const settings = { land: 'pr' as const };
@@ -607,7 +607,7 @@ describe("Obeya's configuration", () => {
   test('a check reads each repository once, all of them at once, and never makes the server wait for git', async () => {
     const c = config('file', []);
     const clone = join(dir, 'web-clone');
-    git(dir, 'clone', '--quiet', web, clone);
+    gitClone(web, clone);
     // an origin on a server, as configured before git's insteadOf rewrites it, is read with the rest
     git(api, 'remote', 'add', 'origin', 'https://github.com/acme/api.git');
     git(api, 'config', `url.${web}.insteadOf`, 'https://github.com/acme/api.git');
@@ -695,7 +695,8 @@ describe('the configuration over HTTP', () => {
     // without a narration language of their own, demos speak the owner's
     writeFileSync(join(dir, 'settings.json'), JSON.stringify({ language: 'de' }));
     const before = (await call('GET', '/api/demo-settings')).body as unknown as DemoSettingsView;
-    expect(before).toMatchObject({ file: join(dir, 'demo.json'), settings: { language: 'de', voice: 'piper' }, check: { person: 'third', problems: [] } });
+    expect(before).toMatchObject({ file: join(dir, 'demo.json'), settings: { language: 'de', voice: 'kokoro' }, check: { person: 'third', problems: [] } });
+    // Kokoro speaks no German: German narration needs Piper
     expect(before.check.install).toMatchObject({ installed: false, missing: ['Piper', 'Piper-Stimme de_DE-thorsten-high'] });
     expect((await call('PUT', '/api/demo-settings', { language: 'fr', voice: 'piper' })).status).toBe(400);
     const saved = await call('PUT', '/api/demo-settings', { language: 'en', voice: 'command', command: ' speak ', ownVoice: true });

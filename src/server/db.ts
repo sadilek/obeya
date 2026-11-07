@@ -1225,6 +1225,11 @@ export class Store {
       .run({ id, answer, by, files: files.length ? JSON.stringify(files) : null });
   }
 
+  /** The files an exchange shows while its answer is still being looked up (a walkthrough that plays as it is told). */
+  talkFiles(id: number, files: AnswerFile[]) {
+    this.db.query('UPDATE talk SET files = $files WHERE id = $id').run({ id, files: files.length ? JSON.stringify(files) : null });
+  }
+
   /** A follow-up continues the answer `follows`, in the thread `thread`. */
   followTalk(id: number, thread: number, follows: number) {
     this.db.query('UPDATE talk SET thread = $thread, follows = $follows WHERE id = $id').run({ id, thread, follows });

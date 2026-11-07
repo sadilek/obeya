@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, setMarkup, updateDraft, updateDraftAt, withoutWords } from './draft';
+import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, withoutPasted, withoutWords } from './draft';
 
 const store = () => {
   const m = new Map<string, string>();
@@ -109,6 +109,36 @@ test("the paths of dropped files go back beside the microphone when Obeya's fiel
   expect(draftOf(MIC_DRAFT).text).toBe(spaced);
   dropDraft(MIC_DRAFT);
   dropDraft(OBEYA_DRAFT);
+});
+
+test('text pasted outside a field waits beside the microphone, each in a paragraph of its own, and goes into Obeya\'s field and back', () => {
+  insertFiles(MIC_DRAFT, ['/o/a/Rechnung.pdf']);
+  insertPasted(MIC_DRAFT, ['  Error: the build failed\nat step 3  ']);
+  insertPasted(MIC_DRAFT, ['second one']);
+  expect(draftOf(MIC_DRAFT).text).toBe('/o/a/Rechnung.pdf\n\nError: the build failed\nat step 3\n\nsecond one');
+  expect(pastedIn(draftOf(MIC_DRAFT))).toEqual(['Error: the build failed\nat step 3', 'second one']);
+  // kept across a reload, as what it is
+  expect(JSON.parse(s.getItem('obeya-drafts-shop')!)[MIC_DRAFT].pasted).toEqual(['Error: the build failed\nat step 3', 'second one']);
+  // what stays when the pasted ones are taken out is the path
+  expect(wordsOf(withoutPasted(draftOf(MIC_DRAFT).text, pastedIn(draftOf(MIC_DRAFT))))).toEqual(['/o/a/Rechnung.pdf']);
+  // the sidebar opens: they go after what stands in its field, and back when it closes, the owner's words staying
+  updateDraft(OBEYA_DRAFT, { text: 'Was heißt das?' });
+  insertPasted(OBEYA_DRAFT, pastedIn(draftOf(MIC_DRAFT)));
+  updateDraft(MIC_DRAFT, { text: '', pasted: [] });
+  expect(draftOf(OBEYA_DRAFT).text).toBe('Was heißt das?\n\nError: the build failed\nat step 3\n\nsecond one');
+  moveFiles(OBEYA_DRAFT, MIC_DRAFT);
+  expect(draftOf(OBEYA_DRAFT)).toMatchObject({ text: 'Was heißt das?', pasted: [] });
+  expect(draftOf(MIC_DRAFT).text).toBe('Error: the build failed\nat step 3\n\nsecond one');
+  expect(pastedIn(draftOf(MIC_DRAFT))).toEqual(['Error: the build failed\nat step 3', 'second one']);
+  dropDraft(MIC_DRAFT);
+  dropDraft(OBEYA_DRAFT);
+});
+
+test('a pasted text taken out of a text takes the space after it, or at the end the one before', () => {
+  expect(withoutPasted('a b', ['a b'])).toBe('');
+  expect(withoutPasted('Schau\n\na b\n\nund das', ['a b'])).toBe('Schau\n\nund das');
+  expect(withoutPasted('Schau\n\na b', ['a b'])).toBe('Schau');
+  expect(withoutPasted('a b\n\nSchau', ['a b'])).toBe('Schau');
 });
 
 test('a word taken out of a text takes the space after it, or at the end of a line the one before', () => {

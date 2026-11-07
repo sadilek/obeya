@@ -20,7 +20,12 @@ const alive = (pid: number) => {
 };
 for (const name of readdirSync(tmpdir())) {
   const pid = Number(name.startsWith(RUN) && name.slice(RUN.length).split('-')[0]);
-  if (pid && !alive(pid)) rmSync(join(tmpdir(), name), { recursive: true, force: true });
+  if (!pid || alive(pid)) continue;
+  try {
+    rmSync(join(tmpdir(), name), { recursive: true, force: true });
+  } catch {
+    // on Windows, a process the run left behind still has a file in it open: a later run removes it
+  }
 }
 const run = mkdtempSync(join(tmpdir(), `${RUN}${process.pid}-`));
 // TEMP and TMP are where Windows looks
@@ -34,5 +39,9 @@ const claude = (process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'obey
 afterAll(() => {
   removeTemplates();
   rmSync(claude, { recursive: true, force: true });
-  rmSync(run, { recursive: true, force: true });
+  try {
+    rmSync(run, { recursive: true, force: true });
+  } catch {
+    // a process a test left behind on Windows still has a file in it open: the next run removes it
+  }
 });

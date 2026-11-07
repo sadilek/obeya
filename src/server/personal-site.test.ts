@@ -102,6 +102,8 @@ describe('an unlisted site', () => {
     expect(html).not.toContain('All demos');
     expect(html).not.toContain('class="tags"');
     expect(html).not.toContain(' · Demos</title>');
+    // nor names its address for them: it is in no index to be listed once
+    expect(html).not.toContain('rel="canonical"');
     // the credit line stays, and goes without a referrer
     expect(html).toContain('href="https://obeya.si"');
     const headers = readFileSync(join(siteDir(), '_headers'), 'utf8');

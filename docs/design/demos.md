@@ -58,8 +58,12 @@ narration.
 Local voices run as a command per clip with the text on stdin as UTF-8 (`PYTHONUTF8`: Piper on
 Windows read the code page otherwise):
 
-- Piper, the default (`de_DE-thorsten-high`, `en_US-ryan-high`; about twice real time on a laptop
-  CPU, and Whisper heard its clips back word for word, 2026-10-02);
+- Kokoro, the default: Kokoro-82M (the full-precision ONNX export, on ONNX Runtime on the CPU,
+  without PyTorch; voice `af_heart` unless the settings name another of its English voices), with
+  misaki for its phonemes. It speaks English only: with it, narration in German is Piper's, with
+  Piper's voice for German, and needs what Piper needs;
+- Piper (`de_DE-thorsten-high`, `en_US-ryan-high`; about twice real time on a laptop CPU), with
+  0.4 s of silence after each sentence;
 - Qwen3-TTS (1.7B, MLX on Apple Silicon, PyTorch elsewhere): a stock speaker, or a clone of a clip
   with its transcript beside it. A clone continues its clip, so a German clip carries German accent
   into English narration: the settings hold a clip per language (`references: { de, en }`; a single
@@ -199,10 +203,10 @@ since Obeya started shows beside it (when, how many demos, how much freed).
 
 #### Installing voices
 
-Obeya installs Piper and Qwen3-TTS on request from the configuration dialog, which first shows what
-is missing and about how large it is (each in its own uv-made Python environment under `voices/` in
-Obeya's home, Qwen3's models in the Hugging Face cache, where one downloaded before counts as
-installed; without Obeya the skill installs them the same way from the command line). Qwen3's
+Obeya installs Kokoro, Piper and Qwen3-TTS on request from the configuration dialog, which first
+shows what is missing in the narration language and about how large it is (each in its own uv-made
+Python environment under `voices/` in Obeya's home, Kokoro's and Qwen3's models in the Hugging Face
+cache, where one downloaded before counts as installed; without Obeya the skill installs them the same way from the command line). Qwen3's
 environment holds the speech recognition it hears its sentences back with (onnx-asr); one installed
 with fewer packages than today's counts as missing, and installing it again adds the rest. A render
 refuses a voice that is not installed and says how to install it. "Listen"
@@ -213,7 +217,8 @@ transcript beside it).
 #### A voice that stays loaded
 
 A voice that can stay loaded (so far Qwen3-TTS) is started on the first uncached clip of a render
-(or an "Listen") and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
+(or an "Listen", or a walkthrough's first sentence; "Show as walkthrough" starts it at the click,
+see Walkthroughs in The Koordinator) and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
 once the model is loaded, a line per sentence done, then `ok` or `error` per clip. So the model and
 the reference load once (a warm load costs about 2 s, a cold one 17 s, a clip 2–4 s). The libraries
 print on stdout too, so the voice moves its stdout to stderr and keeps a duplicate for the protocol;
@@ -269,7 +274,7 @@ language}`, JSON only, so another page cannot send one without a preflight) and 
 with its seconds and WAV, or `error`; Obeya's own server answers the route too, with the owner's key,
 and there may write to an absolute `out`. Clips of all renders wait in one queue, one at a time, and
 each render asks for its next clip only once the last is done, so parallel renders take turns clip
-by clip. The voice runs on for 5 minutes after the queue empties; a clip for another voice
+by clip; walkthroughs ask the same way, a sentence at a time. The voice runs on for 5 minutes after the queue empties; a clip for another voice
 (reference, speaker or language) ends it at once, as does Obeya's shutdown. The protocol and its
 limits hold between server and voice; a voice that stops answering fails its clip and the next clip
 starts a new one. Without `OBEYA_URL`, or when Obeya does not answer, the render loads the voice
@@ -690,6 +695,20 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   range); a range answered in full (a whole video read for one answer).
 - **Every worker gets the plugin** (2026-10-08), not only those of a repository with demo settings,
   which otherwise had no way to the skill that writes them.
+- **Kokoro is the default voice for English narration, Piper stays for German** (owner,
+  2026-11-06). Piper ran sentences together: Parakeet heard sentence breaks in the wrong place
+  ("…while Obeya runs. Here because the clones it needs cannot be made, the phone view…"), and one
+  take of a German clip lost word endings where another of the same text did not. Kokoro-82M (as
+  showntell narrates with it) paused at full stops and commas and was heard almost word for word;
+  of its voices the owner chose `af_heart`. It speaks no German. A German fine-tune
+  (Thorsten-Voice/Kokoro) ran on the official packages with espeak-ng phonemes once its weights
+  were renamed, and was heard as well as Piper with pauses, but it exists only as PyTorch weights
+  (about 1 GB with PyTorch, against 265 MB for Piper), so German stays with Piper, which now pauses
+  0.4 s after each sentence. The full-precision ONNX export matched the PyTorch original; the int8
+  one (92 MB instead of 326) came out further from it. A saved `piper` stays Piper: whether it was
+  chosen or saved with other settings cannot be told, so nobody is switched; only settings without
+  a voice get Kokoro. Rejected: the German fine-tune through its authors' forks of misaki and
+  kokoro (not on any package index); Kokoro's own reading of German (it has no German).
 - **Qwen3's sentences are heard back, the other voices' clips are not** (2026-11-01). Qwen3 stumbles
   over a word it cannot read and still ends in time, which no frame limit catches, and hearing a
   sentence costs a twentieth of making it again. Rejected: hearing every voice's clips and

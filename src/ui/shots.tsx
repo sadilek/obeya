@@ -100,6 +100,13 @@ export async function fileTo(key: string, files: File[], put: (path: string) => 
   return arrived;
 }
 
+/** Pasted or dropped files for a draft whose text is its own: the screenshots as screenshots, the others by their paths. How many arrived. */
+export async function filesTo(key: string, files: File[]) {
+  const shots = attachTo(key, files.filter(isImage));
+  const others = fileTo(key, files.filter((f) => !isImage(f)), (path) => insertFiles(key, [pathWord(path)]));
+  return (await shots) + (await others);
+}
+
 /**
  * Screenshots going into a text field: pasted, dropped or picked, uploaded at once. They belong to
  * the field's `draft` (`draft.ts`), or without one to this field alone. `onChange` hears every
@@ -189,12 +196,12 @@ export function useShotInput({ draft, initial = [], onChange, off = false, put }
         attach(files);
       },
     },
-    /** For the text field: a pasted screenshot is attached instead of pasted as text. */
+    /** For the text field: a pasted screenshot is attached instead of pasted as text, a file copied in the file manager goes in by its path. */
     onPaste: (e: ClipboardEvent) => {
-      const files = imageFiles(e.clipboardData.files);
+      const files = [...e.clipboardData.files];
       if (off || !files.length) return;
       e.preventDefault();
-      pastedShots();
+      if (files.some(isImage)) pastedShots();
       attach(files);
     },
   };

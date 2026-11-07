@@ -103,8 +103,12 @@ export class Koordinator {
   /** Cards giving up their workspace now, the undo window through: queued already, they start once that is done. */
   private giving = new Set<string>();
 
+  /** Set once its canvas stopped (`shutdown`): it decides and starts nothing more. */
+  private ended = false;
+  private unwatch: () => void;
+
   constructor(private o: KoordinatorOptions) {
-    o.board.onChange(() => {
+    this.unwatch = o.board.onChange(() => {
       this.scheduleDrain();
       this.readPendingDeps();
     });
@@ -124,6 +128,8 @@ export class Koordinator {
   }
 
   shutdown() {
+    this.ended = true;
+    this.unwatch();
     clearTimeout(this.recheck);
     for (const t of this.evictions.values()) clearTimeout(t);
   }
@@ -819,7 +825,7 @@ export class Koordinator {
 
   /** Queued cards start once nothing they wait for is in progress or queued any more. */
   private scheduleDrain() {
-    if (this.draining) return;
+    if (this.draining || this.ended) return;
     this.draining = true;
     setTimeout(() => {
       this.draining = false;
@@ -1172,8 +1178,9 @@ export class Koordinator {
 
   // ---------------------------------------------------------------- helpers
 
+  /** What it decides goes one after the other; what was still to come when its canvas stopped does not run. */
   private serial(fn: () => unknown) {
-    this.chain = this.chain.then(fn).catch((e) => console.error('Koordinator:', e));
+    this.chain = this.chain.then(() => (this.ended ? undefined : fn())).catch((e) => console.error('Koordinator:', e));
   }
 
   /** The repository of a card it was deciding on stopped running on the canvas: the card is planned again, for the owner to start once it is back. */

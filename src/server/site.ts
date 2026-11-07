@@ -19,7 +19,8 @@
 // later still takes pages offline: `audit` finds the pages shared from here that the live site
 // lacks, and `repair` deploys them again. A manifest that cannot be read refuses the deploy (a site
 // with nothing at its URL is the first one). A host may answer every missing file with a page of its
-// own (Cloudflare Pages serves the overview): a manifest answered that way is missing, not unreadable.
+// own (Cloudflare Pages serves the overview for a site without a `404.html`, as one deployed before
+// Obeya wrote it): a manifest answered that way is missing, not unreadable.
 //
 // The pages come from Obeya's own templates (`demo-page.ts`), each in its demo's language, the
 // overview in the site's. A call writes only its own page and the overview: a page shared earlier
@@ -125,7 +126,9 @@ export function siteKey(url: string): string {
 export const siteBase = (home: string, site: DemoSite) => join(home, SITES_DIR, siteKey(site.url));
 
 /** The page's URL on the site. */
-export const pageUrl = (site: DemoSite, slug: string) => `${site.url.replace(/\/+$/, '')}/${slug}/`;
+/** The site's root, the overview's address. */
+export const siteRoot = (site: DemoSite) => `${site.url.replace(/\/+$/, '')}/`;
+export const pageUrl = (site: DemoSite, slug: string) => `${siteRoot(site)}${slug}/`;
 
 /** The site's host and path, as the owner reads it. */
 export const siteName = (site: DemoSite) => site.url.replace(/^https?:\/\//, '').replace(/\/+$/, '');
@@ -544,10 +547,10 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   };
 
   /**
-   * Writes the overview, the feed and the sitemap (with a `robots.txt` naming it where the site is
-   * its host's root) from the pages in the directory, and the headers of the artifacts' files. An
-   * unlisted site has none of them: its root and its answer to an address it lacks (`404.html`) are
-   * a blank page, so neither leads to a page.
+   * Writes the overview, the answer to an address the site lacks (`404.html`), the feed and the
+   * sitemap (with a `robots.txt` naming it where the site is its host's root) from the pages in the
+   * directory, and the headers of the artifacts' files. An unlisted site has none of them: its root
+   * and its answer to an address it lacks are a blank page, so neither leads to a page.
    */
   const writeOverview = async (written: Manifest) => {
     await mkdir(dir, { recursive: true });
@@ -564,6 +567,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       .sort((a, b) => newest(b).localeCompare(newest(a)) || a.slug.localeCompare(b.slug));
     const theme = await overviewTheme(dir, pages, written.pages);
     await writeFile(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), theme));
+    await writeFile(join(dir, NOT_FOUND), notFoundHtml(site, overviewLanguage(), theme));
     await writeFile(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
     await writeFile(join(dir, SITEMAP), sitemapXml(site, pages));
     if (new URL(site.url).pathname === '/') await writeFile(join(dir, ROBOTS), robotsTxt(site));
@@ -796,7 +800,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             };
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             if (p.theme) await writeFile(join(target, PAGE_THEME), p.theme.css);
-            await writeFile(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, p.theme?.css));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, p.theme?.css));
             return { ...(await entryOf(slug)), rev };
           },
           log,
@@ -851,7 +855,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             // the page around its files in today's template, with the theme it went out with
             const theme = await readFile(join(target, PAGE_THEME), 'utf8').catch(() => undefined);
-            await writeFile(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, theme));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, theme));
             return { ...(await entryOf(slug)), rev };
           },
           log,
@@ -974,15 +978,15 @@ export function pagesHash(): { video: string; html: string; stacked: string } {
   const commit = { url: 'https://github.com/o/r/commit/b' };
   const commits = { url: 'https://github.com/o/r/compare/a...b', several: true as const };
   const files = () => ({ poster: true, tracks: [{ file: 'captions.vtt' }] });
-  const video = hash(languages.flatMap((language) => [pageHtml(site, { ...sample, language }, files), pageHtml(site, { ...sample, language, pr: null, commit }, files)]));
-  const html = hash(languages.map((language) => pageHtml(site, { ...sample, kind: 'html', chapters: [], language }, () => ({ poster: false, tracks: [] })) + sealed(withHeightReport('<body></body>'), new URL(site.url).origin)));
+  const video = hash(languages.flatMap((language) => [pageHtml(site, 'title-1', { ...sample, language }, files), pageHtml(site, 'title-1', { ...sample, language, pr: null, commit }, files)]));
+  const html = hash(languages.map((language) => pageHtml(site, 'title-1', { ...sample, kind: 'html', chapters: [], language }, () => ({ poster: false, tracks: [] })) + sealed(withHeightReport('<body></body>'), new URL(site.url).origin)));
   // a page with several versions: a video, then an artifact and a video as addenda
   const more: MoreMeta[] = [
     { kind: 'html', title: 'Second', text: 'A detail.', chapters: [], dir: '2', handed: at, at, source: '' },
     { title: 'Third', text: 'Another detail.', chapters: [[0, 'Only']], dir: '3', handed: at, at, source: '' },
   ];
   // the same on every machine: the time of an addendum is said in the machine's time zone
-  const stacked = hash(languages.flatMap((language) => [pageHtml(site, { ...sample, language, more }, files, 'UTC'), pageHtml(site, { ...sample, language, more, pr: null, commit: commits }, files, 'UTC')]));
+  const stacked = hash(languages.flatMap((language) => [pageHtml(site, 'title-1', { ...sample, language, more }, files, 'UTC'), pageHtml(site, 'title-1', { ...sample, language, more, pr: null, commit: commits }, files, 'UTC')]));
   return { video, html, stacked };
 }
 
@@ -1033,11 +1037,12 @@ function versionFiles(dir: string): VersionFiles {
 
 /**
 
- * A page of the site, in its language; `files`: what a version's directory (the page's own: '')
- * holds. A page of an unlisted site links no overview and no tags, and keeps itself out of search
- * engines. `theme`: the CSS of the card's repository's theme.
+ * The page at `slug` of the site, in its language; `files`: what a version's directory (the page's
+ * own: '') holds. A listed site's page names its address for search engines; a page of an unlisted
+ * site links no overview and no tags, and keeps itself out of search engines. `theme`: the CSS of
+ * the card's repository's theme.
  */
-export function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
+export function pageHtml(site: DemoSite, slug: string, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
   const { language } = m;
   const w = PAGE_WORDS[language];
   const parts = {
@@ -1052,6 +1057,7 @@ export function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => Versio
     ...(unlisted
       ? { unlisted: true as const }
       : {
+          canonical: pageUrl(site, slug),
           top: { href: '../', text: w.allDemos },
           // each links the overview showing the pages that have it
           tags: Object.entries(m.tags ?? {}).flatMap(([dimension, values]) => values.map((value) => ({ dimension, value, href: `../?${new URLSearchParams({ [dimension]: value })}` }))),
@@ -1155,7 +1161,7 @@ ${dims.map(([d, values]) => `<div class="dim" role="group" aria-label="${esc(d)}
 `;
   return `<!doctype html>
 <html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(site.title)}</title><link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="${FEED}"><style>${PAGE_STYLE}${OVERVIEW_STYLE}</style>${themeStyle(theme)}</head>
+<title>${esc(site.title)}</title><link rel="canonical" href="${esc(siteRoot(site))}"><link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="${FEED}"><style>${PAGE_STYLE}${OVERVIEW_STYLE}</style>${themeStyle(theme)}</head>
 <body><main>
 <h1>${esc(site.title)}</h1>
 <div class="when">${esc(w.overview)} · <a href="${FEED}">${esc(w.feed)}</a></div>
@@ -1166,6 +1172,24 @@ ${
 <script>${overviewScript(w)}</script>`
     : `<p>${esc(w.noDemos)}</p>`
 }
+${credit(language)}</main></body></html>
+`;
+}
+
+/**
+ * A listed site's answer to an address it lacks, in the site's language and with the overview's
+ * theme: no such page, or withdrawn, and a link to the overview. The host serves it at any address,
+ * so it links the overview by its full address and holds everything it needs.
+ */
+function notFoundHtml(site: DemoSite, language: PageLanguage, theme?: string): string {
+  const w = PAGE_WORDS[language];
+  return `<!doctype html>
+<html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>${esc(`${w.notFound} · ${site.title}`)}</title><style>${PAGE_STYLE} .text { margin-top: 14px; }</style>${themeStyle(theme)}</head>
+<body><main>
+<div class="top"><a href="${esc(siteRoot(site))}">${esc(w.allDemos)}</a></div>
+<h1>${esc(w.notFound)}</h1>
+<div class="text"><p>${esc(w.notFoundText)}</p></div>
 ${credit(language)}</main></body></html>
 `;
 }
@@ -1244,7 +1268,7 @@ const xml = (s: string) => esc(printable(s));
  * without pages dates it now.
  */
 function feedXml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage): string {
-  const base = `${site.url.replace(/\/+$/, '')}/`;
+  const base = siteRoot(site);
   const updated = pages.length ? newest(pages[0]!) : new Date().toISOString();
   const entry = (d: Meta & { slug: string }) => {
     const url = xml(pageUrl(site, d.slug));
@@ -1290,7 +1314,7 @@ function sitemapXml(site: DemoSite, pages: (Meta & { slug: string })[]): string 
   const url = (loc: string, at?: string) => `<url><loc>${xml(loc)}</loc>${at ? `<lastmod>${xml(at)}</lastmod>` : ''}</url>\n`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${url(`${site.url.replace(/\/+$/, '')}/`, pages[0] && newest(pages[0]))}${pages.map((d) => url(pageUrl(site, d.slug), newest(d))).join('')}</urlset>
+${url(siteRoot(site), pages[0] && newest(pages[0]))}${pages.map((d) => url(pageUrl(site, d.slug), newest(d))).join('')}</urlset>
 `;
 }
 
@@ -1298,5 +1322,5 @@ ${url(`${site.url.replace(/\/+$/, '')}/`, pages[0] && newest(pages[0]))}${pages.
 const robotsTxt = (site: DemoSite) => `User-agent: *
 Allow: /
 
-Sitemap: ${site.url.replace(/\/+$/, '')}/${SITEMAP}
+Sitemap: ${siteRoot(site)}${SITEMAP}
 `;

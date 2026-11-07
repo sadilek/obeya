@@ -22,6 +22,8 @@ import type { AgentRuntime } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './workers';
 import { clip, messageOf } from '../core/text';
+import { AnswerWalkthrough, prepareWalkthrough, readWalkthrough, type Told, type Voicing, WALKTHROUGH_RULES } from './walkthrough';
+import { isWalkthrough, type Walkthrough } from '../core/walkthrough';
 
 export interface AnswerOptions {
   board: Board;
@@ -43,6 +45,8 @@ export interface AnswerOptions {
   onAnswer?: (talk: number, question: string, answer: string) => void;
   /** Passes on what the owner's words on a Question card ask of Obeya (`to_obeya`). */
   toObeya?: (cardId: string, request: string) => Promise<string>;
+  /** The voice of walkthroughs: without it, answers come as text only. */
+  voicing?: Voicing;
 }
 
 /** Log lines of a card the answering agent reads. */
@@ -52,6 +56,8 @@ type Exchange = Talk & { about?: string; session?: string };
 type By = 'koordinator' | 'project';
 
 export class Answers {
+  /** "Show as walkthrough": the walkthrough each exchange asked for, shown before its first slide. */
+  private prepared = new Map<number, Told>();
   /** Exchanges being looked up, so a resume does not ask twice. */
   private busy = new Set<number>();
   /** The turns of each thread, one after the other: two never run in one session at once. */
@@ -85,6 +91,9 @@ export class Answers {
       return;
     }
     this.busy.add(talkId);
+    // a walkthrough the look-up began before a restart: the one it tells now takes its place
+    const prepared = this.prepared.get(talkId);
+    if (t.files?.length && !prepared) this.o.board.talkFiles(talkId, []);
     const { by, about, project } = this.agentFor(root);
     const reading = t.cardId && this.o.board.item(t.cardId) ? t.cardId : undefined;
     // what it reads shows on the open card, as an exploration agent's reading does
@@ -108,6 +117,12 @@ export class Answers {
         ...(asked ? { asked } : {}),
         onTool,
         onSession: (id) => this.o.board.talkSession(talkId, id),
+        // under the question while the agent tells on, and in the log of the card it was asked on
+        onShown: (files) => {
+          this.o.board.talkFiles(talkId, files);
+          if (reading) this.showLive(reading, 'say', by, thread, files);
+        },
+        ...(prepared ? { prepared } : {}),
         // under the question in the sheet, and in the conversation of the card it was asked on
         onLimit: (until) => {
           this.o.board.waitsForLimit({ talk: talkId }, until);
@@ -123,7 +138,10 @@ export class Answers {
       })
         .then((a) => this.deliver(talkId, thread, by, t.question!, a, reading, project))
         .catch((e) => this.deliver(talkId, thread, by, t.question!, { text: this.o.board.t.answer.failed(messageOf(e)) }, reading, project)),
-    ).finally(() => this.busy.delete(talkId));
+    ).finally(() => {
+      this.busy.delete(talkId);
+      this.prepared.delete(talkId);
+    });
   }
 
   /**
@@ -249,6 +267,47 @@ export class Answers {
   }
 
   /**
+   * "Show as walkthrough" on a looked-up answer: a follow-up in its thread that asks for the answer
+   * told as a walkthrough, which comes as the next answer. The voice loads meanwhile, so the
+   * walkthrough sounds soon after its first slide.
+   */
+  showAsWalkthrough(talkId: number): number {
+    const t = this.o.board.exchange(talkId);
+    if (!t?.thread || t.answer === undefined || !this.o.voicing) throw new BadRequest('invalid', 'no looked-up answer to tell as a walkthrough');
+    const talk = this.o.board.addTalk(this.o.board.t.answer.walkthroughAsked, this.o.board.t.answer.walkthroughReply, null, { question: asWalkthrough(t.question ?? t.said, t.answer), about: t.about ?? null });
+    this.o.board.followTalk(talk, talkId);
+    this.o.voicing.warm(this.o.board.conversation());
+    // its player stands there at once, at full size, until the first slide comes
+    const prepared = prepareWalkthrough(this.o.dirOf(t.thread), t.question ?? t.said, this.o.board.conversation());
+    this.prepared.set(talk, prepared);
+    this.o.board.talkFiles(talk, [{ name: prepared.file.slice(this.o.dirOf(t.thread).length + 1), caption: '' }]);
+    this.lookUp(talk);
+    return talk;
+  }
+
+  /**
+   * A walkthrough of the thread as its player reads it, `playing` the slide it plays (`-1`: none),
+   * which the voice speaks first what it needs of; `undefined` for none.
+   */
+  walkthrough(thread: number, name: string, playing?: number): Walkthrough | undefined {
+    return readWalkthrough(this.o.dirOf(thread), name, this.o.voicing, playing);
+  }
+
+  /**
+   * A walkthrough's first slide is there while its agent tells on: its answer shows in the card's
+   * conversation with the player and no words yet, until the answer takes its place.
+   */
+  private showLive(cardId: string, kind: 'say' | 'talk', by: By, thread: number, files: AnswerFile[]) {
+    this.dropLive(cardId, thread);
+    this.o.board.log(cardId, kind, by, '', { answer: { thread, files, live: true } });
+  }
+
+  /** The answer of the thread that showed in the card's conversation before its words came, if one did. */
+  private dropLive(cardId: string, thread: number) {
+    for (const e of this.o.board.events(cardId)) if (e.answer?.live && e.answer.thread === thread) this.o.board.unlog(cardId, e.id);
+  }
+
+  /**
    * "Make it a card": the thread moves onto a Question card, near the card whose log holds it: the
    * question as its title, its exchanges as its conversation, the same agent going on. A thread that
    * moved before has its card, put back from the archive if need be.
@@ -324,6 +383,7 @@ export class Answers {
         },
         onSession: (id, model) => this.o.board.work(cardId, { session_id: id, model: model ?? null }),
         onLimit: (until) => this.o.board.waitsForLimit({ card: cardId }, until),
+        onShown: (files) => this.showLive(cardId, 'talk', by, stored.talk, files),
         resume: this.o.board.row(cardId).session_id ?? undefined,
         message: `${resumed}${followUp(words, undefined, true)}`,
         // with the words passed in meanwhile, which the session that failed had heard
@@ -347,8 +407,8 @@ export class Answers {
         },
       });
     } catch (e) {
-      // paused: what it was asked stays pending
-      if (e instanceof Interrupted) return;
+      // paused: what it was asked stays pending, and a walkthrough it began goes with the turn
+      if (e instanceof Interrupted) return this.dropLive(cardId, stored.talk);
       a = { text: this.o.board.t.answer.failed(messageOf(e)) };
     } finally {
       this.reading.delete(cardId);
@@ -357,6 +417,7 @@ export class Answers {
     }
     const text = clip(a.text, 12000);
     // the card may have become an idea meanwhile; the answer stands in its conversation all the same
+    this.dropLive(cardId, stored.talk);
     this.o.board.log(cardId, 'talk', by, text, { answer: answerRef(stored.talk, a.files) });
     const now = this.o.board.row(cardId).thread ? this.o.board.thread(cardId) : undefined;
     if (now) {
@@ -393,20 +454,47 @@ export class Answers {
     onSession: (id: string, model?: string) => void;
     /** Where it shows that it waits for the usage limit. */
     onLimit: (until: number | undefined) => void;
+    /** The walkthrough of the answer has its first slide: its player shows before the answer's words. */
+    onShown: (files: AnswerFile[]) => void;
+    /** The walkthrough the owner asked for, showing already. */
+    prepared?: Told;
   }): Promise<OwnerAnswer> {
     const dir = this.o.dirOf(c.thread);
     mkdirSync(dir, { recursive: true });
+    const voicing = this.o.voicing;
+    const told = voicing && new AnswerWalkthrough({ dir, checkout: this.o.pathFor(c.about), language: this.o.board.conversation(), voicing, onShown: c.onShown, ...(c.prepared ? { prepared: c.prepared } : {}) });
+    if (!told) return this.consulted(c, dir);
+    // the walkthrough comes with the answer, first among its files
+    return this.consulted(c, dir, told)
+      .then((a) => {
+        const shown = told.files();
+        // a walkthrough is the one the agent told, never a file of that name it passes on
+        const files = [...shown, ...(a.files ?? []).filter((f) => !isWalkthrough(f.name))];
+        return { ...a, ...(files.length ? { files } : {}) };
+      })
+      .finally(() => told.finish());
+  }
+
+  private consulted(c: Parameters<Answers['consult']>[0], dir: string, told?: AnswerWalkthrough): Promise<OwnerAnswer> {
+    const rules = told ? `\n\n${WALKTHROUGH_RULES}` : '';
     if (c.by === 'project') {
       const from = c.asked?.from;
-      const asked = c.asked && { images: c.asked.images, ...(from && this.o.toObeya ? { toObeya: toObeyaTool((request) => this.o.toObeya!(from, request)) } : {}) };
-      return this.o.projectAgent(c.project!).inform(c.project!, `${c.message}\n\n${filesNote(dir)}`, c.onLimit, c.onTool, dir, c.signal, c.onWaiting, asked);
+      return this.o.projectAgent(c.project!).inform(c.project!, `${c.message}\n\n${filesNote(dir)}`, c.onLimit, {
+        onTool: c.onTool,
+        dir,
+        ...(c.signal ? { signal: c.signal } : {}),
+        ...(c.onWaiting ? { onWaiting: c.onWaiting } : {}),
+        ...(c.asked ? { images: c.asked.images } : {}),
+        ...(from && this.o.toObeya ? { toObeya: toObeyaTool((request) => this.o.toObeya!(from, request)) } : {}),
+        ...(told ? { tools: [told.tool()], rules } : {}),
+      });
     }
     const toObeya = c.card && this.o.toObeya ? this.o.toObeya : undefined;
     const ask = (message: string, images: string[] | undefined, resume?: string) =>
       inform({
         runtime: this.o.runtime,
         cwd: this.o.pathFor(c.about),
-        system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.\n\n${INFORM_RULES}${toObeya ? `\n\n${TO_OBEYA}` : ''}`,
+        system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.\n\n${INFORM_RULES}${rules}${toObeya ? `\n\n${TO_OBEYA}` : ''}`,
         message: [message, filesNote(dir), this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
         dir,
         onTool: c.onTool,
@@ -415,7 +503,7 @@ export class Answers {
         language: this.o.board.conversation(),
         ...(resume ? { resume } : {}),
         ...(images?.length ? { images } : {}),
-        ...(toObeya ? { tools: [toObeyaTool((request) => toObeya(c.card!, request))] } : {}),
+        tools: [...(told ? [told.tool()] : []), ...(toObeya ? [toObeyaTool((request) => toObeya(c.card!, request))] : [])],
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         ...(c.signal ? { signal: c.signal } : {}),
         ...(c.onWaiting ? { onWaiting: c.onWaiting } : {}),
@@ -461,8 +549,12 @@ export class Answers {
     const moved = t?.movedTo && this.o.board.item(t.movedTo)?.kind === 'question' ? t.movedTo : undefined;
     this.o.board.answerTalk(talkId, text, by, a.files);
     const ref = answerRef(thread, a.files, t?.continues);
-    if (card) this.o.board.log(card, 'say', by, text, { answer: ref });
+    if (card) {
+      this.dropLive(card, thread);
+      this.o.board.log(card, 'say', by, text, { answer: ref });
+    }
     if (moved) {
+      this.dropLive(moved, thread);
       this.o.board.log(moved, 'talk', by, text, { answer: ref });
       const s = this.o.board.thread(moved);
       this.o.board.setThread(moved, { answers: s.answers + 1, files: s.files + (a.files?.length ?? 0) });
@@ -554,6 +646,13 @@ const RESUMED =
 /** Where the thread's files go, as every turn of it hears. */
 const filesNote = (dir: string) =>
   `Your output directory for this conversation is ${dir}, outside every repository; it stays with the conversation, so what you wrote there before is there still, and earlier answers still show their files: leave those as they are and write a changed version under a new name. Files the owner asks for, or that help your answer, go there and never into a repository: a spreadsheet of the numbers, a chart or a page, the queries and scripts behind them, a draft as a document, whatever fits. Pass those the owner should see with answer_owner's files, each with a one-line caption; a page (HTML) or an image shows under your answer, any other file opens with the owner's app for it.`;
+
+/**
+ * What the agent of a thread is asked when the owner wants an answer of it as a walkthrough ("Show
+ * as walkthrough"): that answer, which need not be its last.
+ */
+const asWalkthrough = (question: string, answer: string) =>
+  `Tell this answer of yours as a walkthrough, as your instructions describe, rather than as text: the same content, walked through.\n\nThe question: ${question}\n\nYour answer:\n<answer>\n${clip(answer, 6000)}\n</answer>`;
 
 const answerRef = (thread: number, files?: AnswerFile[], continues?: string): AnswerRef => ({
   thread,

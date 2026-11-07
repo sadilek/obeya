@@ -379,6 +379,16 @@ goes on it, all behind "Another host, entered by hand …" beside "Set up a demo
 no site), then "Take over into the repository for everyone". A folder without git has no workspace or
 branch group.
 
+The path can be typed, or picked with "Choose …" beside it in the system's folder dialog (macOS
+`choose folder`, Windows' folder browser, zenity or kdialog on Linux), the same control as in the
+first canvas of the setup assistant. A picked folder fills the field and is checked as a typed one
+(its choice of going without git starts afresh); cancelling changes nothing, and what went wrong
+shows under the field until the next attempt. The dialog opens on the
+screen of the machine Obeya runs on, so the button shows only to a browser on that machine, and only
+where it has such a dialog; the server opens it for no request from another device (2026-11-06: a
+browser never hands a page a folder's absolute path, and repositories are added at the machine
+itself, so other devices keep the text field rather than getting a folder browser of Obeya's own).
+
 With clones, it shows the existing clones ("Existing clones, one per line"), then the ones Obeya makes on top of them ("Also create
 new clones"), the slots, the sum ("4 clones on this machine in all (2 existing, 2 new)") and the
 other machines; with worktrees, only the slots. With no clone the line warns that no card would start. For

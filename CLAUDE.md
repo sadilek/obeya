@@ -12,8 +12,9 @@ description instead of adding the old behaviour to it. Work in progress is plann
 under `docs/plan/` (Obeya shows them as projects); when one is done, what passes the same test moves
 into the chapters under `docs/design/` (or the index) and the doc goes.
 
-- Bun + TypeScript throughout; tests with `bun test --parallel` (a file per process, from Bun 1.4 on;
-  older Bun ignores the flag and runs them one after the other), types with `bun run typecheck`.
+- Bun + TypeScript throughout; tests with `bun run test` (`bun test --parallel`, a file per process,
+  from Bun 1.4 on; older Bun ignores the flag and runs them one after the other; on Windows a quarter
+  of the cores, see `scripts/test.ts`), types with `bun run typecheck`.
 - `src/core/` is shared by server and UI (types, plan-doc parser, layout); `src/server/` is the
   Bun server with SQLite; `src/ui/` the React canvas; `src/adapters/` what Obeya knows of a repository (its defaults, its settings).
 - Code that drives agents is tested against the fake runtime in `src/server/testing.ts` and real
@@ -51,6 +52,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - UI strings live in one place, `src/ui/strings.ts`, in German and English (two tables of one shape).
   German UI texts and docs call a button "Button" or "Schaltfläche", never "Knopf". Docs written in
   English name UI elements by their labels in the English table, never by the German ones.
+- Names in code and tests (identifiers, fixture and fake names) are in English, so English-speaking
+  contributors can follow them; German belongs only in the German UI string table and in test data
+  that has to be German.
 - An interaction that several kinds of card share (answering questions with comments and one Send
   button, the conversation history, starting ("Build it like this", "Accept and start") while the agent
   is still working) is built once in shared code and works the same on each of them; no card kind
@@ -89,6 +93,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   every dictated text it shows is transcribed completely and correctly (no missing words or
   numbers, no misrecognitions), and what the agents in it say points out no fault (a comment cut
   off, input missing).
+- When a demo video shows a feature that speaks itself (the narrated walkthrough, say), that
+  feature speaks in a different voice than the video's narration (Kokoro for the walkthrough), so
+  viewers can tell the demo's narrator from the presentation inside it.
 - Videos on the site (the hero video, anything for obeya.si) are narrated in the owner's ElevenLabs
   voice clone (voice ID `IErGHDQU4vPqicCi8dwR`), not the voice of the demo settings; demo videos
   published elsewhere (in a PR or issue comment, say) keep the voice of the demo settings. Its API

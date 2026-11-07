@@ -9,13 +9,13 @@ beforeEach(() => (home = mkdtempSync(join(tmpdir(), 'obeya-demo-settings-'))));
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 describe('demo settings', () => {
-  test("without a file, a demo is narrated by Piper in the owner's conversation language, else the interface's", () => {
+  test("without a file, a demo is narrated by Kokoro in the owner's conversation language, else the interface's", () => {
     writeFileSync(join(home, 'settings.json'), JSON.stringify({ language: 'de' }));
-    expect(readDemoSettings(home)).toEqual({ language: 'de', voice: 'piper' });
+    expect(readDemoSettings(home)).toEqual({ language: 'de', voice: 'kokoro' });
     writeFileSync(join(home, 'settings.json'), JSON.stringify({ language: 'de', conversationLanguage: 'en' }));
-    expect(readDemoSettings(home)).toEqual({ language: 'en', voice: 'piper' });
+    expect(readDemoSettings(home)).toEqual({ language: 'en', voice: 'kokoro' });
     writeFileSync(join(home, 'settings.json'), JSON.stringify({ language: 'en' }));
-    expect(readDemoSettings(home)).toEqual({ language: 'en', voice: 'piper' });
+    expect(readDemoSettings(home)).toEqual({ language: 'en', voice: 'kokoro' });
     // a file without a language takes it from there too
     writeFileSync(join(home, 'demo.json'), JSON.stringify({ voice: 'say' }));
     expect(readDemoSettings(home)).toEqual({ language: 'en', voice: 'say' });
@@ -23,10 +23,12 @@ describe('demo settings', () => {
 
   test('keep what is valid and fall back to the defaults for the rest', () => {
     expect(tidyDemoSettings({ language: 'fr', voice: 'command', command: '  ', url: ' x ', extra: 1 })).toEqual({ language: 'de', voice: 'command', url: 'x' });
-    expect(tidyDemoSettings({ voice: 'nope', ownVoice: 'yes' })).toEqual({ language: 'de', voice: 'piper' });
+    expect(tidyDemoSettings({ voice: 'nope', ownVoice: 'yes' })).toEqual({ language: 'de', voice: 'kokoro' });
+    // a voice saved before Kokoro was the default stays
+    expect(tidyDemoSettings({ language: 'en', voice: 'piper' })).toEqual({ language: 'en', voice: 'piper' });
     writeFileSync(join(home, 'settings.json'), JSON.stringify({ language: 'de' }));
     writeFileSync(join(home, 'demo.json'), 'not json');
-    expect(readDemoSettings(home)).toEqual({ language: 'de', voice: 'piper' });
+    expect(readDemoSettings(home)).toEqual({ language: 'de', voice: 'kokoro' });
   });
 
   test('keep frames a whole number of days, or always', () => {

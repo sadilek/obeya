@@ -27,7 +27,8 @@ lines, what is server-wide (a waiting restart, a newer version, the usage limits
 owner on each canvas). What goes to another device is compressed (`permessage-deflate`; the JSON
 shrinks to about a tenth), what goes to this machine is not. A page that falls behind (more than a
 quarter of a megabyte unsent, a phone on a slow network) gets no snapshot queued behind those it has
-not received yet: once it caught up, it gets the newest of each canvas it missed one of.
+not received yet, those it is sent as it connects included: once it caught up, it gets the newest of
+each canvas it missed one of, one after the other while it stays caught up.
 
 #### Who may talk to it
 
@@ -160,31 +161,58 @@ same bundle. A phone is a device with a coarse pointer whose screen's shorter si
 a tablet and a narrow window at the desk keep the canvas. `?view=phone` or `?view=canvas` decides
 instead. The view is settled at load; turning the phone does not switch it. It holds one WebSocket
 for every canvas (`/api/ws`): each message about one canvas names it, the server-wide ones come once,
-and what waits for the owner is left out, since the canvases' snapshots hold it. It shows four lists:
+and what waits for the owner is left out, since the canvases' snapshots hold it. Once the last canvas
+stops while it is open, it goes to `/` (setup, or a canvas started since), as a canvas's own page
+does once its canvas is gone. It shows five lists:
 
 - **"Needs you"**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then "Obeya answered" where an answer waits unread. Each card says what it waits
   for (its state line: "Demo ready", "Question for you" …) and since when (the server keeps that across
-  restarts). A card the owner snoozed leaves it until it comes back (see Snoozing a card). Its heading counts what waits, as
-  the navigation's head does. The canvas's navigation shows the same entries in the same order,
-  built once for both, as light rows (see The navigation).
+  restarts). A card the owner snoozed leaves it until it comes back (see Snoozing a card), and so
+  does one set aside on the phone (below). Its heading counts what it shows. The canvas's
+  navigation shows the same entries in the same order, built once for both, as light rows, those
+  set aside on the phone among them (see The navigation).
 - **"Running"**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
-  at the end, those the owner snoozed while they waited for them among them. Every card that leaves "Needs you" without being done stands here.
+  at the end, those the owner snoozed while they waited for them among them. Every card that leaves
+  "Needs you" without being done stands here, unless it is set aside.
+- **"Set aside"**: the cards of the two lists above that the owner set aside on this phone (below).
 - **"Planned"**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
   what it does on the canvas ("Start agent", "Later …"), so a task can be started from the phone.
 - **"Done"**: the finished cards that are not archived yet, those the archive's "Archive …
   finished tasks" would take, and none the lists above hold.
 
-"Planned" and "Done" are closed until their head (with the count) is tapped, since either may
-hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar so its
-cards show; it stays open while a card is open and over a reload, and is closed again in a new tab.
-Without such cards it is not there.
+*Setting a card aside.* A card swiped sideways (past a third of its width, or flicked; as the lines
+above the microphone) does what stands behind it as it moves. Swiped to the right in "Needs you" or
+"Running" ("Set aside on this phone"), it leaves both for "Set aside", for what the owner would
+rather handle at the desk than on the phone, until it needs the owner anew: it comes back by itself
+once it waits for them with a wait other than the one it was set aside in (a card set aside while it
+ran, at its next question or handover; one set aside while it waited, after it went on at the desk
+and waits again), while the same wait leaves it aside however long it lasts. Swiped to the left, a
+card in "Needs you" opens the "Later …" menu beside it instead (see Snoozing a card) and stays
+until a time is picked; one in "Running" is set aside that way too, since snoozing would stop its
+agent. Swiped either way in "Set aside" ("Bring back"), a card comes back at once.
 
-The cards look as on the canvas, as wide as the screen and without the pin, their kind line led by
-the canvas's name where there are several; where two of at least
-340 px fit (the phone turned) they stand side by side.
+The phone keeps what is set aside in its browser, the same in each of its tabs: the canvas at the
+desk, its navigation and the pushes show every card as before, and "Set aside" says so above its
+cards. A card whose canvas is not running stays set aside and is so again when the canvas is back;
+one removed from its canvas is forgotten. "Needs you" says "Nothing else waits for you." when all
+that waits is set aside ("Running" likewise, each for its own cards). Until the owner has swiped a
+card once in this browser, a line says how above the first card in sight that can be swiped (in
+"Needs you", else in "Running"), which nudges aside and back.
+
+"Set aside", "Planned" and "Done" are closed until their head (with the count) is tapped, since
+each may hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar
+so its cards show; it stays open while a card is open and over a reload, and is closed again in a
+new tab. Without such cards it is not there.
+
+With several canvases, each list holds its cards canvas by canvas in the switcher's order, each
+canvas under a head with its name and how many cards it has there (orange in "Needs you", as the
+navigation counts); a tap on the head folds that canvas's cards in that list away and keeps the
+count, as the navigation folds its canvases, kept per list and canvas in the browser. A canvas
+without cards in a list has no head there. The cards look as on the canvas, as wide as the screen
+and without the pin; where two of at least 340 px fit (the phone turned) they stand side by side.
 
 *Obeya's conversation* is a panel over the list, opened by the canvas's speech-bubble button with its
 unread count across canvases, left of the microphone at a finger's size, or by the card "Obeya
@@ -339,9 +367,14 @@ configuration, restarting a repository's agents, checking the configuration and 
 repository's commands, whatever the number of canvases and repositories. A repository's `origin` as
 configured (before git's `insteadOf`) is read with the rest of it, and a host's GitHub login is read
 in the background from the start and again once it is ten minutes old, the one before standing
-meanwhile; a command on the host waits only for the first. Of the processes Obeya waits for without
-blocking, a few start per turn of the event loop, the rest in the next; starting one takes the
-thread a moment, under load many milliseconds. Sharing on a demo site Obeya keeps reads and writes
+meanwhile; a command on the host waits only for the first. Most processes Obeya runs without
+blocking and reads once they end, with their exit code and output (git calls above all, and the
+commands on a host), start on two threads of their own, not the server's: starting a process holds
+the thread that starts it until the system has created it, on Windows tens of milliseconds on an
+idle machine and seconds each under load. A few such ones (Tailscale's commands, the reads for a
+theme, Codex), and those it talks to while they run or reads as their output comes (an agent, a
+voice sidecar, a stream of git objects), still start on the server's thread. Which skill name a worker's session knows the demo skill by is known
+while the user's skills directory holds the same skills. Sharing on a demo site Obeya keeps reads and writes
 its files without blocking, and touches only the page it changes: what it has read of the site's
 directory (each page's `meta.json`, which pages hold their files) it keeps while it runs, since only
 Obeya changes that directory, and lists the directory afresh to notice a page that went. A site of a
@@ -398,7 +431,7 @@ rereads `PATH` from the registry.
 #### The first canvas
 
 On the first start the page ends with "Where is your project?": two cards with a radio button each,
-"Already on this computer" (a folder: a path or the system's folder dialog) and "On GitHub / a
+"Already on this computer" (a folder: a path or, from a browser on this machine, the system's folder dialog) and "On GitHub / a
 server" (a clone: `owner/name` through `gh repo clone` where gh is logged in, else by URL; any git
 URL; into the home directory unless another is given). It shows the main branch Obeya found there. A
 folder without git gets the offer to set it up (see Setting up git in a folder), whose confirmation
@@ -553,6 +586,22 @@ workers are busy.
 - **Done cards on the phone in a list of their own, closed by default** (2026-10-28, the owner):
   the owner wants to see what is done but not archived from the phone, without it pushing what
   waits and what runs further down.
+- **Cards are set aside on the phone by a swipe, until they need the owner anew** (2026-11-06, the
+  owner): with many cards at work the phone's lists overwhelmed, though much of it the owner only
+  handles at the desk. It ends with a new wait, not with a time (that is snoozing, which also takes
+  the card off the canvas's lists) and not when the owner acts at the desk (the card would be back
+  while it runs, which the owner did not want to see on the phone). Kept in the phone's browser,
+  not on the server: it sorts the phone's lists only, and a second phone sorts its own. Rejected: a
+  button on each card (clutter for an action of the list, not of the card).
+- **Swiped the other way, a card waiting for the owner is snoozed** (2026-11-07, the owner): besides
+  handling it at the desk, putting it off until later is the other way to be rid of an orange card
+  for now. The swipe opens the "Later …" menu rather than picking a time itself, so the owner picks
+  as on the card; on a card at work it sets aside too, since snoozing stops its agent. What the
+  swipe does stands behind the card while it moves, and the set-aside one says it holds on this
+  phone only.
+- **The phone's lists group their cards by canvas under foldable heads** (2026-11-06, the owner):
+  one column of cards from every canvas ran together; a head per canvas, folded as in the
+  navigation, replaces the canvas's name in each card's kind line.
 - **Phone conversations are a panel from below, sized with a grip** (2026-10-17). Rejected: the
   conversation as a box in the scrolling page (a scroll area inside another, and the page scrolled
   past the field to make room for the microphone); a grip that only closes or springs back. Cards
@@ -599,6 +648,22 @@ workers are busy.
   stands where it was (its own moves, the checkout's HEAD and branch by `stat`); the default
   branch's CLAUDE.md for a review card's session is read while the session waits to start, and
   stands while the refs do.
+- **Processes start off the server's thread** (2026-11-06, from `stalls.log` of a busy Windows
+  machine): on Windows the system creates a process synchronously on the thread that asks, through
+  Bun's async spawn too; with antivirus and many git calls at once that took seconds each, and a
+  burst (a git call in each clone, landings, the upstream's fetch) held the server up for 10–22 s,
+  in which phones showed "Obeya is not answering" and WebSockets timed out opening. The processes Obeya
+  runs most often and reads once they end (git above all) are started by two worker threads, which hand back the exit code and output; options
+  that cannot cross to a thread (a stream as input), or no thread to be had, start on the server's
+  thread as before. A thread that fails or ends before its code ran started nothing: what it was
+  given starts on the server's thread. One that fails or ends later fails what it was running, and
+  nothing is started twice (a push, a landing). What a thread answers settles in a turn of the event
+  loop of its own: settled straight from the thread's message, a promise `bun test` waits for with
+  `expect(…).rejects` or `.resolves` stayed pending (Bun 1.4.3) and the test file hung. Rejected:
+  starting only a few per turn of the event loop (what it was until then: each start still held
+  the thread, and four slow ones in a row were seconds); a cap on
+  processes running at once (see the trust check above); fewer git calls alone (the bursts come
+  from many clones and canvases, each call needed).
 - **Programs run without a window on Windows by default, not by an option at each call**
   (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
   for its window.
@@ -713,11 +778,26 @@ workers are busy.
   directories are polled as well).
 - **Git is called directly, and test repositories are copied**: on macOS Obeya calls the binary
   `xcrun --find git` names, not the `/usr/bin/git` shim, which looks it up on every call (10 ms instead
-  of 4, over a few thousand calls a test run); test repositories are copies of a template committed
-  once. Together they halved the test suite. A repository's main branch and its commit are read with
+  of 4, over a few thousand calls a test run); on Windows the `git.exe` in git's exec path, not Git
+  for Windows' `cmd\git.exe`, a launcher that starts it as a second process (2026-11-06). Starting a
+  process costs 50 ms to over a second there (the virus scanner looks at each, more on a loaded
+  machine), so the launcher doubled what each call costs; the real one finds its helpers (sh, ssh,
+  the credential manager) by itself. Test repositories are copies of a template committed once, and
+  the clones tests set up copies of a clone of it: a clone starts four processes on Windows, a shell
+  among them, and took several seconds. Together they halved the test suite on macOS. Tests run
+  without git's automatic maintenance (a process more after each commit and fetch), set by the checks'
+  runner in the environment the test processes start with: what a test or the preload sets in Bun's
+  `process.env` reaches no process it starts. On Windows,
+  where the suite is bound by process starts, a test, a hook and a wait for an event get five times
+  the time: with Bun's 5 s, half the suite timed out there. The checks' runner sets that timeout, so a
+  `--timeout` given to it still holds. A repository's main branch and its commit are read with
   one `for-each-ref` (2026-10-15), not four to seven calls each time.
 - **Tests run a file per process** (`bun test --parallel`, Bun 1.4+, 2026-10-15): one after the other
   the suite took 165 s, mostly waiting for git; in parallel 27 s. The longest file sets the run's
-  length, so large test files are split by theme around a shared fixture.
+  length, so large test files are split by theme around a shared fixture. On Windows a quarter of the
+  cores (2026-11-06): starting processes is what the suite waits for there, and the machine starts
+  only so many at once, however many cores it has; a process per core made each test wait so long
+  that half of them timed out, and eleven of the slowest files took 40 minutes instead of 14. The
+  checks run `bun run test`, which picks the number by platform.
 - **The first canvas is chosen with two cards and radio buttons**: pills read as buttons in a user
   test, not as a choice.

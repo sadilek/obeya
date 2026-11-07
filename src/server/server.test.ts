@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { CardAction, ClientMessage, ServerMessage } from '../core/types';
@@ -12,9 +13,10 @@ import { Restarter } from './self-update';
 import { SourceUpdates } from './source-update';
 import { UsageMeter, UsageMeters } from './usage';
 import type { NarrationHost } from './narration';
+import { KEY_HEADER, keyOf } from './owner';
 import { Stalls } from './stalls';
 import { serve, serveNarration } from './server';
-import { artifact, asOwner, FakeRuntime, gitRepo, identify, noForge, until } from './testing';
+import { artifact, asOwner, FakeRuntime, gitClone, gitRepo, identify, noForge, until } from './testing';
 import { git, RECHECK_MS } from './workspaces';
 import type { Transcript } from './voice';
 
@@ -376,7 +378,73 @@ describe('the connection to every canvas', () => {
     expect(messages.some((m) => m.type === 'waiting')).toBe(false);
     ws.close();
   });
+
+  test('that falls behind gets the newest snapshot of each canvas once it reads again', async () => {
+    // three canvases of some 6 MB each: together past what Bun buffers for a socket before it drops sends
+    const others = await Promise.all(
+      ['second', 'third'].map((name) => {
+        const path = gitRepo(join(dir, name), { 'README.md': 'hi\n' });
+        return CanvasRuntime.start({ repos: [{ path }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+      }),
+    );
+    const all = [canvas, ...others];
+    for (const c of all) for (let i = 0; i < 300; i++) c.board.create({ title: `Card ${i}`, body: 'x'.repeat(20000), x: i, y: 0 });
+    const many = serve(all, { transcriber: { transcribe: async () => ({ text: '', doubtful: false }), warm: () => {} } }, 0);
+    const page = slowPage(many);
+    try {
+      await sleep(300);
+      const newest = all.map((c) => c.board.create({ title: 'Newest', x: 0, y: 1 }).id);
+      await sleep(100);
+      page.read();
+      await until(() => all.every((c, i) => page.snapshots.get(c.board.canvas.id)?.items.some((x) => x.id === newest[i])));
+    } finally {
+      page.close();
+      many.stop(true);
+    }
+  });
 });
+
+/**
+ * A phone view on a network that stops carrying: its connection to every canvas reads nothing
+ * until `read`, and then keeps the last snapshot of each canvas it has read.
+ */
+function slowPage(server: ReturnType<typeof serve>) {
+  const snapshots = new Map<string, Extract<ServerMessage, { type: 'snapshot' }>['snapshot']>();
+  const socket = connect(Number(server.port), server.url.hostname);
+  socket.pause();
+  socket.write(
+    `GET /api/ws HTTP/1.1\r\nHost: ${server.url.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+      `Sec-WebSocket-Key: ${btoa('obeya-slow-page!')}\r\nSec-WebSocket-Version: 13\r\n${KEY_HEADER}: ${keyOf(server)}\r\n\r\n`,
+  );
+  let buffer = Buffer.alloc(0);
+  let upgraded = false;
+  const parts: Buffer[] = [];
+  const take = (chunk: Buffer) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    if (!upgraded) {
+      const end = buffer.indexOf('\r\n\r\n');
+      if (end < 0) return;
+      buffer = buffer.subarray(end + 4);
+      upgraded = true;
+    }
+    // frames from the server: unmasked, a text message perhaps in several
+    for (;;) {
+      if (buffer.length < 2) return;
+      let length = buffer[1]! & 0x7f;
+      let at = 2;
+      if (length === 126) [length, at] = [buffer.length < 4 ? -1 : buffer.readUInt16BE(2), 4];
+      else if (length === 127) [length, at] = [buffer.length < 10 ? -1 : Number(buffer.readBigUInt64BE(2)), 10];
+      if (length < 0 || buffer.length < at + length) return;
+      const [fin, opcode] = [buffer[0]! & 0x80, buffer[0]! & 0x0f];
+      if (opcode <= 2) parts.push(buffer.subarray(at, at + length));
+      buffer = buffer.subarray(at + length);
+      if (!fin || opcode > 2) continue;
+      const msg = JSON.parse(Buffer.concat(parts.splice(0)).toString()) as ServerMessage & { canvas?: string };
+      if (msg.type === 'snapshot') snapshots.set(msg.canvas!, msg.snapshot);
+    }
+  };
+  return { snapshots, read: () => void socket.on('data', take).resume(), close: () => socket.destroy() };
+}
 
 describe('groups', () => {
   test('are created with cards, renamed and assigned, and every page hears of it', async () => {
@@ -831,6 +899,24 @@ describe('other files', () => {
 
 });
 
+describe('a walkthrough an answer comes with', () => {
+  test("is read by its player, the owner's alone, by its name in the thread's directory; its clips come as the answer's files", async () => {
+    const thread = board.addTalk('wie landet eine karte?', 'Moment.', null, { question: 'How does a card land?', about: null });
+    const out = canvas.answerDir(thread);
+    mkdirSync(join(out, 'landen.clips'), { recursive: true });
+    const w = { title: 'Landen', slides: [{ type: 'title', title: 'Landen', parts: ['Landen.'] }], done: false, clips: [[{ file: '1-1.wav', seconds: 1 }]], clipsDir: 'landen.clips' };
+    writeFileSync(join(out, 'landen.walkthrough.json'), JSON.stringify(w));
+    writeFileSync(join(out, 'landen.clips', '1-1.wav'), 'RIFF');
+    const read = (name: string) => fetch(new URL(api(`/threads/${thread}/walkthroughs/${name}?playing=0`), server.url));
+    expect(await (await read('landen.walkthrough.json')).json()).toEqual(w);
+    expect((await read('landen.clips%2F1-1.wav')).status).toBe(404);
+    expect((await read('nichts.walkthrough.json')).status).toBe(404);
+    expect((await globalThis.fetch(new URL(api(`/threads/${thread}/walkthroughs/landen.walkthrough.json`), server.url))).status).toBe(401);
+    const clip = await fetch(new URL(api(`/threads/${thread}/files/landen.clips/1-1.wav`), server.url));
+    expect(await clip.text()).toBe('RIFF');
+  });
+});
+
 describe('„Merk dir“', () => {
   test('adds a rule, changes the one it replaces, and adds it anew when that one is gone', () => {
     const run = CanvasRuntime.prototype.run.bind(canvas);
@@ -988,7 +1074,7 @@ describe('new commits on the upstream of the checkout Obeya runs from', () => {
     const up = join(dir, 'up');
     gitRepo(up, { 'src/a.ts': 'a\n' });
     const clone = join(dir, 'clone');
-    git(dir, 'clone', '--quiet', up, clone);
+    gitClone(up, clone);
     writeFileSync(join(up, 'src/a.ts'), 'b\n');
     identify(up);
     git(up, 'commit', '--quiet', '-am', 'Faster');
@@ -1238,7 +1324,7 @@ describe('landing approved work', () => {
     const repo = join(dir, 'pushed');
     gitRepo(repo);
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', repo, origin);
+    gitClone(repo, origin, { bare: true });
     git(repo, 'remote', 'add', 'origin', origin);
     git(repo, 'fetch', '--quiet', 'origin');
     const pushing = join(dir, 'pushing');
@@ -1341,7 +1427,7 @@ describe('the Lesestand and the free clones', () => {
     const doc = (title: string) => `# ${title}\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Eins.\n`;
     const origin = gitRepo(join(dir, 'shop'), { 'docs/plan/export.md': doc('Export'), '.gitattributes': '*.md filter=slow\n' });
     const checkout = join(dir, 'checkout');
-    git(dir, 'clone', '--quiet', origin, checkout);
+    gitClone(origin, checkout);
     // work goes out as pull requests: the Lesestand is a worktree of the checkout, apart from the pool's clone
     const shop = await CanvasRuntime.start(
       { name: 'Shop', repos: [{ path: checkout, clones: 1, settings: { land: 'pr', workspaces: 'clones' } }] },

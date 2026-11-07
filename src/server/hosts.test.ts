@@ -15,7 +15,7 @@ import { githubToken, HostError, hostName, onHost, registerHost, remote, session
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
 import { type AgentEvent, sdkRuntime } from './runtime';
-import { FakeRuntime, fakeSsh, gitRepo, identify, syncGitCalls, until } from './testing';
+import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
 import { git, gitAsync, HERE, RECHECK_MS, Workspaces } from './workspaces';
 
@@ -224,7 +224,7 @@ describe('clones on a host', () => {
   beforeEach(() => {
     gitRepo(join(dir, 'main'));
     origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', join(dir, 'main'), origin);
+    gitClone(join(dir, 'main'), origin, { bare: true });
     store = new Store(':memory:');
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
@@ -423,7 +423,7 @@ describe('a worker on a host', () => {
   test('whose connection drops resumes its session once the host answers, with the message it had not taken', async () => {
     gitRepo(join(dir, 'main'));
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', join(dir, 'main'), origin);
+    gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
     const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
@@ -483,7 +483,7 @@ describe('a worker on a host', () => {
   test('that could not start there, as the host did not answer, starts once it does, with its task', async () => {
     gitRepo(join(dir, 'main'));
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', join(dir, 'main'), origin);
+    gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
     const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
@@ -527,7 +527,7 @@ describe('the app of a card on a host', () => {
     apps = [];
     gitRepo(join(dir, 'main'));
     const origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', join(dir, 'main'), origin);
+    gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });

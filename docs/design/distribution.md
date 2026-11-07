@@ -93,6 +93,13 @@ WebKit, the webview on macOS and Linux, knows `user-select` only by its `-webkit
 unprefixed property alone, dragging a card selects some of its text in the app, though not in Chrome
 (2026-10-30). The stylesheet sets both wherever it sets one, and a test holds it to that.
 
+A text field as tall as its text is measured by shrinking it for a moment. WebKit scrolls a pane
+standing at its end up when that shortens it, and only the browser's own typing brings the caret
+back into view: each Space typed by the page (Space held to talk types a tap itself) and each click
+into a formatted text that opens its field left the field at the pane's end half out of view, in the
+app though not in Chrome (2026-11-07). Measuring and opening such a field keep the scroll positions
+of the panes around it.
+
 #### The app from a checkout
 
 `bun run app` builds the shell alone and runs it from the terminal on the checkout's server (`bun
@@ -140,7 +147,12 @@ is packed again. `bun scripts/check-app.ts <program>` checks an installed app in
 `.github/workflows/build.yml` builds the app on GitHub's runners, each platform on its own (the
 AppImage on Ubuntu 22.04 for its glibc), checks the compiled server there with
 `scripts/check-binary.ts`, and runs typecheck and tests on Linux (with uv and ffmpeg for the demo
-voice's tests). A run takes about ten minutes.
+voice's tests). `scripts/check-voice.ts` installs the local demo voices (Kokoro, Piper) afresh on
+Linux, Windows and macOS and has each speak a sentence: Kokoro's espeak-ng refused a data path of
+over 150 characters, which only a deep home (a temporary directory) showed (2026-11-06). A run takes about ten minutes. Tauri's DMG script now and then fails on the Intel
+Mac runner where the same commit builds on the next try (2026-11-05 and -06), so a DMG is bundled up
+to three times, the tries after the first with `--verbose`, the only way Tauri shows the script's
+output.
 
 Builds and tests use Bun 1.4.3. Obeya needs Bun 1.3.14 or later: in 1.3.12 on Linux, a closed
 `fs.watch` can deadlock Bun's work pool, after which every page bundle hangs for good (2026-10-13).

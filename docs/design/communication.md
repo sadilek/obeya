@@ -179,7 +179,8 @@ cards' agents have no such tool.
 
 The owner snoozes with "Later …" (a visible button with a clock in the action row; by voice „stell
 das bis morgen früh zurück“): this evening 18:00 (while more than half an hour off), tomorrow 08:00,
-next Monday 08:00, or a date and time. One menu serves every kind of card. It is offered on cards at
+next Monday 08:00, or a date and time. One menu serves every kind of card; on the phone, a card in
+"Needs you" swiped to the left opens it too (see The phone view in Running Obeya). It is offered on cards at
 work, cards waiting for the owner, and planned tasks not yet with the Koordinator:
 
 - A card at work stops as on a pause and goes on where it stopped at the time.

@@ -17,7 +17,9 @@
 // --login, --say and --artifact take the `port` it printed. Staging afresh from the same stage
 // file with the same --code or --binary (`from`) replaces the scratch Obeya staged from them
 // before and takes its port again while that is free; with another --code, the two run side by
-// side. The dir is --dir, else the stage file's `dir`, else /tmp/obeya-scratch-<port>.
+// side. The dir is --dir, else the stage file's `dir`, else obeya-scratch-<port> in
+// /tmp on macOS and Linux and in the system temp folder (%TEMP%) on Windows; the port claims lie
+// beside it.
 // `url` signs browsers in (design: Who may talk to it), until the scratch Obeya stops; --login
 // prints it again. --stop ends only the server it staged, never another program that has its
 // process number by now, and fails if the server still runs after it. The script itself talks to the API with the owner's key of the scratch home.
@@ -108,6 +110,11 @@
 // write them in that language. `language` is the interface's; `conversation`, the language agents
 // write the owner in before the owner's words say otherwise, follows it where left out. `agents` is
 // what „Agenten und Modelle“ sets per group (`settings.json`'s `agents`: Codex for workers, say).
+// `"voice": true` gives the scratch Obeya the voice of the machine's Obeya (OBEYA_HOME where the
+// script runs, else ~/.obeya): a copy of its demo settings and a link to its installed voices, for
+// what Obeya itself speaks (a walkthrough); an object instead is demo settings over the machine's
+// (`{ "voice": "kokoro" }`: another voice than the owner's, so a demo tells what Obeya says apart
+// from its own narration). Without it, the scratch home has the default settings and no voice installed.
 // A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
@@ -160,6 +167,7 @@
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGES } from '../src/core/locale';
@@ -169,7 +177,7 @@ import { loginLink, ownerHeaders } from '../src/server/owner';
 import { findTailscale, type NamedEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';
 import { branchName } from '../src/server/workspaces';
-import { opt } from './common';
+import { opt, scratchBase, scratchDir } from './common';
 import { waitUp } from './wait-up';
 
 type StageEvent = NonNullable<StageCard['events']>[number];
@@ -222,6 +230,8 @@ interface Stage {
   language?: Language;
   /** The owner's conversation language; the interface's without it. */
   conversation?: Language;
+  /** Speaks in the voice of the machine's Obeya, or in the demo settings given over its. */
+  voice?: boolean | Record<string, unknown>;
   /** What „Agenten und Modelle“ sets per group, as `settings.json` keeps it under `agents`. */
   agents?: Record<string, unknown>;
   /** The directory of the canvas's repository under the scratch directory, and so its id (default `repo`). */
@@ -296,7 +306,6 @@ const fail = (msg: string): never => {
   console.error(`scratch-obeya: ${msg}`);
   process.exit(1);
 };
-const scratchDir = (port: number) => `/tmp/obeya-scratch-${port}`;
 /** What --say has the card's agent do for each kind of its lines in the conversation (as in a stage file's `events`). */
 const SAYS = {
   say: (text: string) => ({ say: text }),
@@ -372,6 +381,12 @@ mkdirSync(home, { recursive: true });
 for (const k of ['language', 'conversation'] as const) if (stage[k] && !LANGUAGES.includes(stage[k])) fail(`"${k}" is ${LANGUAGES.join(' or ')}, not ${stage[k]}`);
 // the languages of Obeya's interface and of its agents' conversation with the owner (src/server/settings.ts)
 writeFileSync(join(home, 'settings.json'), `${JSON.stringify({ language: stage.language ?? demoSettingsHere().language, ...(stage.conversation ? { conversationLanguage: stage.conversation } : {}), ...(stage.agents ? { agents: stage.agents } : {}) })}\n`);
+if (stage.voice) {
+  const machine = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
+  const settings = existsSync(join(machine, 'demo.json')) ? (JSON.parse(readFileSync(join(machine, 'demo.json'), 'utf8')) as Record<string, unknown>) : {};
+  writeFileSync(join(home, 'demo.json'), `${JSON.stringify({ ...settings, ...(typeof stage.voice === 'object' ? stage.voice : {}) }, null, 2)}\n`);
+  if (existsSync(join(machine, 'voices')) && !existsSync(join(home, 'voices'))) symlinkSync(join(machine, 'voices'), join(home, 'voices'));
+}
 // the owner's key, made before the server starts, which takes it from the home (owner.ts); code from before it has none and ignores it
 const owner = ownerHeaders(home);
 
@@ -451,7 +466,7 @@ for (const h of stage.hosts ?? []) {
   if (h.gone) continue;
   const ssh = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', h.ssh];
   // through ssh rather than scp, which takes no ssh://user@host:port target
-  const tar = spawnSync('tar', ['-C', dir, '-cf', '-', 'scratch.git'], { maxBuffer: 1 << 30 });
+  const tar = spawnSync('tar', ['-cf', '-', 'scratch.git'], { cwd: dir, maxBuffer: 1 << 30 });
   const r = spawnSync('ssh', [...ssh, `rm -rf '${dir}' && mkdir -p '${dir}' && tar --no-same-owner -xf - -C '${dir}'`], { input: tar.stdout, encoding: 'utf8' });
   if (tar.status !== 0 || r.status !== 0) fail(`copying the origin to ${h.name}: ${r.stderr || tar.stderr}`);
 }
@@ -464,9 +479,11 @@ if (commit) {
   mkdirSync(code);
   const archive = spawnSync('git', ['-C', ROOT, 'archive', commit], { maxBuffer: 1 << 30 });
   if (archive.status !== 0) fail(`git archive ${commit}: ${archive.stderr}`);
-  const tar = spawnSync('tar', ['-x', '-C', code], { input: archive.stdout });
+  // tar in the directory rather than with -C, whose Windows path (D:\…) Git's MSYS tar takes for host D
+  const tar = spawnSync('tar', ['-xf', '-'], { cwd: code, input: archive.stdout });
   if (tar.status !== 0) fail(`tar: ${tar.stderr}`);
-  symlinkSync(join(ROOT, 'node_modules'), join(code, 'node_modules'));
+  // a junction on Windows, which needs no developer mode; other systems ignore the type
+  symlinkSync(join(ROOT, 'node_modules'), join(code, 'node_modules'), 'junction');
 }
 const binary = opt('binary') && resolve(opt('binary')!);
 if (binary && !existsSync(binary)) fail(`${binary} does not exist`);
@@ -882,9 +899,9 @@ async function pickPort(givenDir: string | undefined): Promise<number> {
 }
 
 function scratchDirs() {
-  return readdirSync('/tmp')
+  return readdirSync(scratchBase())
     .filter((n) => /^obeya-scratch-\d+$/.test(n))
-    .map((n) => `/tmp/${n}`);
+    .map((n) => join(scratchBase(), n));
 }
 
 function stagedIn(d: string): { port?: number; from?: unknown } | undefined {

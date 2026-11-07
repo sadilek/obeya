@@ -1,12 +1,15 @@
 // Test doubles, and git repositories for tests.
 
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
+import { PATIENCE } from './patience';
 import { git } from './workspaces';
 import { KEY_HEADER, keyOf } from './owner';
+import { Voicing } from './walkthrough';
+import type { Language } from '../core/locale';
 
 /** The calls of a forge that only review cards make, for a fake forge of a test that has none. */
 export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {} };
@@ -76,8 +79,18 @@ export class FakeRuntime implements AgentRuntime {
   }
 }
 
+/** How much longer a test may take on this machine: `patience.ts`. */
+export { PATIENCE };
+
 const templates = new Map<string, string>();
 let templateDir: string | undefined;
+/** The repositories `gitRepo` and `gitClone` copied, each with the template it is a copy of. */
+const copies = new Map<string, string>();
+/** The clones of templates, themselves templates: by the template cloned and whether bare. */
+const clones = new Map<string, string>();
+
+/** Lets git trust a copy of a repository: it keeps mtime and size, not inode and ctime. */
+const trustCopies = (gitDir: string) => appendFileSync(join(gitDir, 'config'), '[core]\n\tcheckStat = minimal\n\ttrustctime = false\n');
 
 /**
  * Makes `path` a git repository on `main` with `files` committed as "init", in which tests can
@@ -92,8 +105,7 @@ export function gitRepo(path: string, files: Record<string, string> = { 'README.
     template = join(templateDir, String(templates.size));
     git(templateDir, 'init', '--quiet', '--template=', '-b', 'main', template);
     identify(template);
-    // a copy keeps mtime and size but not inode and ctime: git is to trust what the copy keeps
-    appendFileSync(join(template, '.git/config'), '[core]\n\tcheckStat = minimal\n\ttrustctime = false\n');
+    trustCopies(join(template, '.git'));
     // git's automatic maintenance after a commit would run in the background and could add or
     // remove files (objects/maintenance.lock) while another test copies the template
     appendFileSync(join(template, '.git/config'), '[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n');
@@ -106,7 +118,63 @@ export function gitRepo(path: string, files: Record<string, string> = { 'README.
     templates.set(key, template);
   }
   cpSync(template, path, { recursive: true, preserveTimestamps: true });
+  copies.set(resolve(path), template);
   return path;
+}
+
+/**
+ * `git clone` of `source` into `path` (`bare`: `--bare`), as tests set up the clones of a
+ * repository. A git clone costs a second on Windows, where starting git and the processes it starts
+ * for a clone is slow: where `source` is a copy `gitRepo` or `gitClone` made whose branches have not
+ * moved since, the clone is a copy of a clone of its template, made once.
+ */
+export function gitClone(source: string, path: string, { bare = false } = {}): string {
+  const template = copies.get(resolve(source));
+  // refsOf reads the files backend's refs: a reftable repository's (init.defaultRefFormat) it cannot compare
+  if (!template || existsSync(join(gitDir(source), 'reftable')) || refsOf(source) !== refsOf(template)) {
+    mkdirSync(dirname(path), { recursive: true });
+    git(dirname(path), 'clone', '--quiet', ...(bare ? ['--bare'] : []), source, path);
+    return path;
+  }
+  const key = `${template}\n${bare}`;
+  let clone = clones.get(key);
+  if (!clone) {
+    clone = join(templateDir!, `clone-${clones.size}${bare ? '.git' : ''}`);
+    // with git's template, as `git clone` makes it: tests put hooks into hooks/
+    git(templateDir!, 'clone', '--quiet', ...(bare ? ['--bare'] : []), template, clone);
+    trustCopies(gitDir(clone));
+    clones.set(key, clone);
+  }
+  cpSync(clone, path, { recursive: true, preserveTimestamps: true });
+  // the clone's origin is `source`: its url line, however git wrote it (quoted where the path has a
+  // # or ;), becomes a quoted one. A copy whose origin stayed the template would push into it
+  const config = join(gitDir(path), 'config');
+  const text = readFileSync(config, 'utf8');
+  const url = /(\[remote "origin"\]\n(?:\t.*\n)*?)\turl = .*\n/;
+  if (!url.test(text)) throw new Error(`gitClone: no origin url in ${config}`);
+  const quoted = `"${source.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n')}"`;
+  writeFileSync(config, text.replace(url, (_, section: string) => `${section}\turl = ${quoted}\n`));
+  copies.set(resolve(path), clone);
+  return path;
+}
+
+const gitDir = (repo: string) => (existsSync(join(repo, '.git')) ? join(repo, '.git') : repo);
+
+/** A repository's branches and tags, and where its HEAD points: what a clone of it takes. */
+function refsOf(repo: string): string {
+  const dir = gitDir(repo);
+  const read = (p: string) => {
+    try {
+      return readFileSync(p, 'utf8');
+    } catch {
+      // none there, or a directory
+      return '';
+    }
+  };
+  // a copy deleted since has none
+  const names = existsSync(join(dir, 'refs')) ? (readdirSync(join(dir, 'refs'), { recursive: true }) as string[]) : [];
+  const refs = names.sort().map((r) => `${r}:${read(join(dir, 'refs', r)).trim()}`);
+  return [read(join(dir, 'HEAD')), read(join(dir, 'packed-refs')), ...refs].join('\n');
 }
 
 /** Removes the templates of `gitRepo`; test-setup.ts calls it once all tests have run. */
@@ -114,6 +182,8 @@ export function removeTemplates() {
   if (templateDir) rmSync(templateDir, { recursive: true, force: true });
   templateDir = undefined;
   templates.clear();
+  copies.clear();
+  clones.clear();
 }
 
 /** Lets tests commit in `repo`, a repository or a clone of one, as T. */
@@ -151,7 +221,26 @@ export function asOwner(of: () => object) {
 /** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
 export const heard = () => Bun.sleep(0);
 
-export const until = async (done: () => unknown, ms = 3000) => {
+/** Starts a process that runs on in `cwd` the way an app's start script leaves one behind: detached, its starter gone. Its pid. */
+export async function leftBehind(cwd: string): Promise<number> {
+  const script = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: ${JSON.stringify(cwd)}, detached: true, stdio: 'ignore' }); c.unref(); console.log(c.pid);`;
+  const starter = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe' });
+  const pid = Number((await new Response(starter.stdout).text()).trim());
+  await starter.exited;
+  return pid;
+}
+
+/** Whether the process `pid` runs. */
+export const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const until = async (done: () => unknown, ms = 3000 * PATIENCE) => {
   for (const end = Date.now() + ms; !(await done()); await Bun.sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
 };
 
@@ -334,4 +423,58 @@ export function tailscaleStatus(dir: string, s: TailscaleStatus) {
       User: { 1: { LoginName: s.account ?? 'owner@example.com' } },
     }),
   );
+}
+
+/** A WAV of `seconds` of silence, 16 kHz mono 16-bit, as a voice writes one. */
+export function silentWav(seconds: number): Buffer {
+  const data = Math.round(seconds * 16000) * 2;
+  const b = Buffer.alloc(44 + data);
+  b.write('RIFF', 0, 'ascii');
+  b.writeUInt32LE(36 + data, 4);
+  b.write('WAVEfmt ', 8, 'ascii');
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(16000, 24);
+  b.writeUInt32LE(32000, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write('data', 36, 'ascii');
+  b.writeUInt32LE(data, 40);
+  return b;
+}
+
+/**
+ * The voice of walkthroughs, for a test: each sentence it speaks is in `said` (with its language)
+ * and lasts a second; `held` keeps it from speaking until `go`, so a test sees the order it takes;
+ * a sentence with "mute" in it fails.
+ */
+export function fakeVoicing() {
+  const said: string[] = [];
+  const warmed: Language[] = [];
+  let gate: { promise: Promise<void>; open: () => void } | undefined;
+  const voicing = new Voicing({
+    speak: async (text, out, language) => {
+      if (gate) await gate.promise;
+      if (/\bmute\b/i.test(text)) throw new Error('the voice failed\nno model');
+      said.push(`${language}:${text}`);
+      writeFileSync(out, silentWav(1));
+    },
+    warm: (language) => void warmed.push(language),
+  });
+  return {
+    voicing,
+    said,
+    warmed,
+    hold() {
+      let open = () => {};
+      const promise = new Promise<void>((r) => (open = r));
+      gate = { promise, open };
+    },
+    go() {
+      const g = gate;
+      gate = undefined;
+      g?.open();
+    },
+  };
 }

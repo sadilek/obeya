@@ -294,7 +294,6 @@ export class MachineSetup {
       sections,
       checkedClaude: CHECKED_CLAUDE,
       ...(job ? { job } : {}),
-      picker: !!folderDialog(this.platform, this.env, ''),
       cloneInto: homedir(),
     };
   }
@@ -519,6 +518,11 @@ export class MachineSetup {
       if ((await output('git', ['config', '--global', key, value.trim()], this.env)) === null) throw new BadRequest('invalid', `git config ${key} failed`);
     }
     return this.view();
+  }
+
+  /** Obeya can open the system's folder dialog on this machine's screen. */
+  get picker(): boolean {
+    return !!folderDialog(this.platform, this.env, '');
   }
 
   /** A folder chosen in the system's dialog; null when the owner cancelled it. */

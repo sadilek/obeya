@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
 import { needsYou, stopped } from '../core/types';
-import { artifact, identify, until } from './testing';
+import { artifact, gitClone, identify, until } from './testing';
 import { Board } from './board';
 import { Workers } from './workers';
 import { board, dir, doc, eachTest, flush, main, manual, merged, origin, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
@@ -201,7 +201,7 @@ describe('approving directly onto main where work goes out as a pull request', (
   /** Someone else pushes a commit onto origin's main. */
   const pushElsewhere = (file: string, msg: string) => {
     const other = join(dir, `other-${msg}`);
-    git(dir, 'clone', '--quiet', origin, other);
+    gitClone(origin, other);
     identify(other);
     commitIn(other, file, msg);
     git(other, 'push', '--quiet', 'origin', 'main');

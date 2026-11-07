@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { CUT_MS, GAP_MS, paced, readRecording, recordingRuntime, replayRuntime, Swap } from './replay';
 import type { AgentEvent, AgentSpec, AgentTool } from './runtime';
+import { onStart } from './spawn';
 import { FakeRuntime, gitRepo, identify, until } from './testing';
 import { git } from './workspaces';
 
@@ -50,6 +51,16 @@ async function recordTwoTurns(root: string, rec: string) {
   s.emit({ type: 'idle' });
   return then;
 }
+
+/** Settles once the recording has read the workspace's HEAD at a session's start: a commit before then would count as there from the start. */
+const headRead = () =>
+  new Promise<void>((read) => {
+    const stop = onStart((argv, out) => {
+      if (!argv.includes('rev-parse')) return;
+      stop();
+      out.then(() => read(), () => read());
+    });
+  });
 
 test('a recorded session plays back with the ids and paths of the staging, its second turn on a message', async () => {
   const root = mkdtempSync(join(tmpdir(), 'replay-'));
@@ -145,7 +156,9 @@ test('a handover plays the recorded commits into the workspace of today and its 
   git(join(a, 'ws'), 'checkout', '-q', '-b', 'obeya/split');
   const fake = new FakeRuntime();
   const then: Record<string, unknown>[] = [];
+  const started = headRead();
   recordingRuntime(fake, rec, join(a, 'home')).start(worker(a, then), 'Build it.');
+  await started;
   writeFileSync(join(a, 'ws', 'split.js'), 'export const split = (bill, people) => bill / people;\n');
   git(join(a, 'ws'), 'add', '-A');
   git(join(a, 'ws'), 'commit', '-qm', 'Split the bill');
@@ -214,7 +227,9 @@ test("a worker's commits go into the workspace at its next call; rewritten ones 
   gitRepo(join(a, 'ws'));
   identify(join(a, 'ws'));
   const fake = new FakeRuntime();
+  const started = headRead();
   recordingRuntime(fake, rec, join(a, 'home')).start(worker(a, []), 'Build it.');
+  await started;
   commit(join(a, 'ws'), 'one.txt', 'First step');
   await fake.last.call('report', { status: 'One step' });
   // amended

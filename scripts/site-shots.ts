@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { chromium, type Page } from 'playwright-core';
 import { demoDirectory } from '../plugin/skills/demo/lib/settings.ts';
 import { ownerHeaders } from '../src/server/owner';
+import { scratchDir } from './common';
 import { writeStage } from './hero-video/stage';
 
 const PORT = 4740;
@@ -58,7 +59,7 @@ const stageFile = join(dir, 'stage.json');
 writeStage(stageFile);
 const stage = JSON.parse(readFileSync(stageFile, 'utf8'));
 stage.port = PORT;
-stage.dir = `/tmp/obeya-scratch-${PORT}`;
+stage.dir = scratchDir(PORT);
 stage.cards = [
   { key: 'P', project: 'docs/plan/tipjar-2.md', x: 40, y: 100 },
   { key: 'W2', workstream: 'W2', state: 'working', statusLine: 'Reading the receipt photo', branch: 'obeya/scan-receipt' },

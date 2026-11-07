@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installState, onMlx, qwen3Serve, voiceSpec } from './voices.ts';
+import { installState, KOKORO_MODEL, onMlx, qwen3Serve, voiceSpec } from './voices.ts';
 
 let home: string;
 let hub: string;
@@ -19,12 +19,39 @@ afterEach(() => {
 });
 
 describe('voices', () => {
-  test('Piper speaks with the voice of the language, from its own environment in the home', () => {
+  test('Piper speaks with the voice of the language, from its own environment in the home, pausing after each sentence', () => {
     const spec = voiceSpec({ language: 'de', voice: 'piper' }, home);
-    expect(spec).toMatchObject({ kind: 'command', tag: 'piper|de_DE-thorsten-high', heavy: false });
+    expect(spec).toMatchObject({ kind: 'command', tag: 'piper|de_DE-thorsten-high|0.4', heavy: false });
     expect(spec.kind === 'command' && spec.argv).toContain(join(home, 'voices', 'piper', 'de_DE-thorsten-high.onnx'));
-    expect(voiceSpec({ language: 'en', voice: 'piper' }, home)).toMatchObject({ tag: 'piper|en_US-ryan-high' });
-    expect(voiceSpec({ language: 'en', voice: 'piper', voiceName: 'en_GB-alan-medium' }, home)).toMatchObject({ tag: 'piper|en_GB-alan-medium' });
+    expect(spec.kind === 'command' && spec.argv?.join(' ')).toContain('--sentence-silence 0.4');
+    expect(voiceSpec({ language: 'en', voice: 'piper' }, home)).toMatchObject({ tag: 'piper|en_US-ryan-high|0.4' });
+    expect(voiceSpec({ language: 'en', voice: 'piper', voiceName: 'en_GB-alan-medium' }, home)).toMatchObject({ tag: 'piper|en_GB-alan-medium|0.4' });
+  });
+
+  test('Kokoro speaks English with its own environment, and leaves German to Piper', () => {
+    const spec = voiceSpec({ language: 'en', voice: 'kokoro' }, home);
+    expect(spec).toMatchObject({ kind: 'command', tag: `kokoro|${KOKORO_MODEL.file}|af_heart`, heavy: false });
+    expect(spec).not.toHaveProperty('respell');
+    expect(spec.kind === 'command' && spec.argv?.[0]).toStartWith(join(home, 'voices', 'kokoro', 'env'));
+    expect(spec.kind === 'command' && spec.argv).not.toContain('--british');
+    expect(voiceSpec({ language: 'en', voice: 'kokoro', voiceName: 'bf_emma' }, home)).toMatchObject({ argv: expect.arrayContaining(['bf_emma', '--british']) });
+    // German narration is Piper's, with Piper's German voice whatever Kokoro voice is named
+    expect(voiceSpec({ language: 'de', voice: 'kokoro', voiceName: 'af_bella' }, home)).toMatchObject({ tag: 'piper|de_DE-thorsten-high|0.4', respell: true });
+  });
+
+  test('Kokoro is installed once its environment and its model files are in the Hugging Face cache', () => {
+    const s = { language: 'en', voice: 'kokoro' } as const;
+    expect(installState(s, home)).toEqual({ installed: false, missing: ['Kokoro', `Model ${KOKORO_MODEL.repo}`], mb: 790 });
+    const snap = join(hub, `models--${KOKORO_MODEL.repo.replace('/', '--')}`, 'snapshots', 'abc');
+    mkdirSync(join(snap, 'onnx'), { recursive: true });
+    mkdirSync(join(snap, 'voices'));
+    for (const f of ['tokenizer.json', KOKORO_MODEL.file, 'voices/af_heart.bin']) writeFileSync(join(snap, f), '');
+    // a British voice is missing yet
+    expect(installState(s, home).missing).toContain(`Model ${KOKORO_MODEL.repo}`);
+    writeFileSync(join(snap, 'voices', 'bf_emma.bin'), '');
+    expect(installState(s, home).missing).toEqual(['Kokoro']);
+    // in German, what is missing is Piper's
+    expect(installState({ language: 'de', voice: 'kokoro' }, home).missing).toEqual(['Piper', 'Piper-Stimme de_DE-thorsten-high']);
   });
 
   test('Piper is installed once its environment and its voice are there', () => {

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { CanvasSnapshot } from '../src/core/types';
 import { ownerHeaders } from '../src/server/owner';
 import { worked } from '../src/ui/talk';
+import { scratchBase } from './common';
 
 const script = join(import.meta.dir, 'scratch-obeya.ts');
 const tmp = mkdtempSync(join(tmpdir(), 'obeya-stage-'));
@@ -20,6 +21,12 @@ afterAll(() => {
 });
 
 const artifact = join(tmp, 'artifact');
+
+test('scratch dirs and port claims go under /tmp on macOS and Linux, under the system temp folder on Windows', () => {
+  expect(scratchBase('darwin', '/var/folders/xy/T')).toBe('/tmp');
+  expect(scratchBase('linux', '/tmp')).toBe('/tmp');
+  expect(scratchBase('win32', 'C:\\Users\\dev\\AppData\\Local\\Temp')).toBe('C:\\Users\\dev\\AppData\\Local\\Temp');
+});
 
 test('stages a scratch Obeya with its cards in the states the stage file gives', async () => {
   const stage = join(tmp, 'stage.json');
@@ -126,7 +133,7 @@ test('without a port, stagings at the same time each pick a free one, and stagin
     expect(one!.port).not.toBe(two!.port);
     for (const s of [one!, two!]) {
       expect(s.port).not.toBe(4417);
-      expect(s.dir).toBe(`/tmp/obeya-scratch-${s.port}`);
+      expect(s.dir).toBe(join(scratchBase(), `obeya-scratch-${s.port}`));
       expect((await fetch(s.url, { redirect: 'manual' })).status).toBe(200);
     }
     const again = await stageAt(stages[0]!);
