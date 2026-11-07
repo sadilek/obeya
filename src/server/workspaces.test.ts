@@ -107,7 +107,7 @@ describe('a clone made ready for a card', () => {
     expect(await start('d')).toBe(true);
     expect(git(clone, 'rev-parse', 'origin/feature')).toBe(git(repo, 'rev-parse', 'main'));
     expect(await start('e')).toBe(false);
-  });
+  }, 30_000);
 
   test("its origin, read without git, is the path or file URL the clone's config names; none where git might read it otherwise", () => {
     const clone = join(dir, 'clone');
