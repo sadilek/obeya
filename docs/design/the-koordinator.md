@@ -334,7 +334,8 @@ code, code slides: real lines of a file of the repository, at most 30, which Obe
 file by the line numbers the agent gives, with ranges highlighted one after the other. Otherwise
 the rule that the owner does not read code holds. Each slide's narration is in the owner's
 language, spoken prose that explains rather than reads the slide out: one text, or one part per
-item (point, step, range), each spoken while its item shows.
+item (point, step, range), each spoken while its item shows. The title slide names that language
+(German or English), which the walkthrough is voiced in; a title slide without it is refused.
 
 The agent hands the slides over one at a time with a tool, the title slide as soon as it knows what
 the walkthrough answers, each further one once it has checked what it says; then it answers with a
@@ -362,12 +363,14 @@ the page plays: on the phone and on other machines too. A look-up that runs agai
 drops the walkthrough it had begun, for the one it tells anew.
 
 Obeya voices each slide as it comes, sentence by sentence, in the voice of the demo settings for
-the owner's conversation language (see The demo settings and voices in Demos), through the voice it
+the language the title slide names (see The demo settings and voices in Demos), through the voice it
 holds loaded where it can (see A voice that stays loaded): one sentence at a time for all
 walkthroughs, in the queue the renders' clips wait in. A title slide says its title first, a short
 sentence voiced quickly. A player that plays says which slide it is on: the voice speaks next the
 first sentence it still needs from there; with none playing, the newest walkthrough goes first.
-"Show as walkthrough" loads the voice at the click, while the agent writes the first slide. A
+"Show as walkthrough" loads the voice at the click, while the agent writes the first slide: for the
+language the answer it tells is written in, as its most common words show (the conversation
+language where they tell none). A
 sentence the voice cannot speak ends the voicing of its walkthrough, and the player says why;
 sentences still waiting when the server stopped are not voiced afterwards, and the player says that
 the voicing stopped with the restart.
@@ -568,6 +571,11 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   first sound came 7–12 s after a click on "Show as walkthrough" and 2–5 s after the first slide of
   a new question (Qwen3 with the owner's clone, its first slide 20–30 s after the question); with
   three walkthroughs voiced at once the player still waited 2–5 s now and then.
+- **The agent names the walkthrough's language** (owner, 2026-11-07): the voice followed the
+  owner's conversation language, so with an English interface a walkthrough the agent narrated in
+  German, as the owner had written, was spoken in the owner's English voice clone, with a strong
+  accent. The agent knows the language it writes; guessing it from the narration's words is used
+  only to load the voice at the click, where a wrong guess costs a reload and nothing more.
 - **The actions in an answer's head show on hover** (owner, 2026-11-07): "Make it a card" and "Show
   as walkthrough" appear as the reply button beside them does, for one look; on a screen without
   hover they stay in view. "Reply" has their look too, an outlined button with its label (owner,

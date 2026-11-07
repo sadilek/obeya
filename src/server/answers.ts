@@ -22,7 +22,7 @@ import type { AgentRuntime } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './workers';
 import { clip, messageOf } from '../core/text';
-import { AnswerWalkthrough, prepareWalkthrough, readWalkthrough, type Told, type Voicing, WALKTHROUGH_RULES } from './walkthrough';
+import { AnswerWalkthrough, prepareWalkthrough, readWalkthrough, type Told, type Voicing, WALKTHROUGH_RULES, writtenIn } from './walkthrough';
 import { isWalkthrough, type Walkthrough } from '../core/walkthrough';
 
 export interface AnswerOptions {
@@ -276,9 +276,11 @@ export class Answers {
     if (!t?.thread || t.answer === undefined || !this.o.voicing) throw new BadRequest('invalid', 'no looked-up answer to tell as a walkthrough');
     const talk = this.o.board.addTalk(this.o.board.t.answer.walkthroughAsked, this.o.board.t.answer.walkthroughReply, null, { question: asWalkthrough(t.question ?? t.said, t.answer), about: t.about ?? null });
     this.o.board.followTalk(talk, talkId);
-    this.o.voicing.warm(this.o.board.conversation());
+    // most likely the language of the answer it tells, which the title slide then names
+    const language = writtenIn(t.answer) ?? this.o.board.conversation();
+    this.o.voicing.warm(language);
     // its player stands there at once, at full size, until the first slide comes
-    const prepared = prepareWalkthrough(this.o.dirOf(t.thread), t.question ?? t.said, this.o.board.conversation());
+    const prepared = prepareWalkthrough(this.o.dirOf(t.thread), t.question ?? t.said, language);
     this.prepared.set(talk, prepared);
     this.o.board.talkFiles(talk, [{ name: prepared.file.slice(this.o.dirOf(t.thread).length + 1), caption: '' }]);
     this.lookUp(talk);
@@ -462,7 +464,7 @@ export class Answers {
     const dir = this.o.dirOf(c.thread);
     mkdirSync(dir, { recursive: true });
     const voicing = this.o.voicing;
-    const told = voicing && new AnswerWalkthrough({ dir, checkout: this.o.pathFor(c.about), language: this.o.board.conversation(), voicing, onShown: c.onShown, ...(c.prepared ? { prepared: c.prepared } : {}) });
+    const told = voicing && new AnswerWalkthrough({ dir, checkout: this.o.pathFor(c.about), voicing, onShown: c.onShown, ...(c.prepared ? { prepared: c.prepared } : {}) });
     if (!told) return this.consulted(c, dir);
     // the walkthrough comes with the answer, first among its files
     return this.consulted(c, dir, told)

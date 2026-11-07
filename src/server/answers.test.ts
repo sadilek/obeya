@@ -768,7 +768,7 @@ describe('a thread on a Question card', () => {
     const { first, card } = await moved();
     canvas.tell(card.id, 'wie entsteht die tabelle?', [], false);
     let a = answerer();
-    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Tabelle', narration: 'So entsteht sie.' } });
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Tabelle', language: 'de', narration: 'So entsteht sie.' } });
     const live = board().events(card.id).at(-1)!;
     expect(live).toMatchObject({ kind: 'talk', author: 'koordinator', text: '', answer: { thread: first, live: true, files: [{ name: 'die-tabelle.walkthrough.json' }] } });
     a.call('answer_owner', { text: 'Der Walkthrough zeigt, wie die Tabelle entsteht.' });
@@ -782,7 +782,7 @@ describe('a thread on a Question card', () => {
 
     canvas.tell(card.id, 'und die summen?', [], false);
     a = answerer();
-    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Summen', narration: 'Eins.' } });
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Summen', language: 'de', narration: 'Eins.' } });
     expect(board().events(card.id).at(-1)!.answer?.live).toBe(true);
     canvas.act(card.id, { action: 'pause' });
     await settle();
@@ -887,7 +887,7 @@ describe('an answer told as a walkthrough', () => {
     expect(a.spec.system).toContain('Walkthroughs: an answer that explains how something works or what happens when');
     expect(a.spec.tools.map((t) => t.name)).toContain('walkthrough_slide');
     const talk = board().talk().at(-1)!;
-    expect(a.call('walkthrough_slide', { slide: { type: 'title', title: 'Wie eine Karte landet', narration: 'Drei Schritte.' } })).toStartWith('Slide 1 is shown');
+    expect(a.call('walkthrough_slide', { slide: { type: 'title', title: 'Wie eine Karte landet', language: 'de', narration: 'Drei Schritte.' } })).toStartWith('Slide 1 is shown');
     await settle();
     expect(board().exchange(talk.id)).toMatchObject({ files: [{ name: 'wie-eine-karte-landet.walkthrough.json', caption: 'Wie eine Karte landet' }] });
     expect(board().exchange(talk.id)!.answer).toBeUndefined();
@@ -919,7 +919,7 @@ describe('an answer told as a walkthrough', () => {
     await say('wie läuft der login ab?', { card: login.id }, 'look_up', { question: 'How does login go?', confirm: 'Moment.' });
     const thread = board().talk().at(-1)!.id;
     const a = answerer();
-    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Der Login', narration: 'Er geht so.' } });
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Der Login', language: 'de', narration: 'Er geht so.' } });
     expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: '', answer: { thread, live: true } });
     a.call('answer_owner', { text: 'So läuft er ab.' });
     a.emit({ type: 'idle' });
@@ -943,7 +943,7 @@ describe('an answer told as a walkthrough', () => {
     const pending = 'idea-card-or-question-card.walkthrough.json';
     expect(board().exchange(asked)!.files).toEqual([{ name: pending, caption: '' }]);
     expect(canvas.answers.walkthrough(first, pending)).toMatchObject({ title: '', slides: [], done: false });
-    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Ideenkarte oder Fragekarte', narration: 'So.' } });
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Ideenkarte oder Fragekarte', language: 'de', narration: 'So.' } });
     expect(board().exchange(asked)!.files).toEqual([{ name: pending, caption: 'Ideenkarte oder Fragekarte' }]);
     expect(canvas.answers.walkthrough(first, pending)).toMatchObject({ title: 'Ideenkarte oder Fragekarte', slides: [{ type: 'title' }] });
     a.call('answer_owner', { text: 'Der Walkthrough zeigt den Unterschied.' });
@@ -953,6 +953,16 @@ describe('an answer told as a walkthrough', () => {
     // only a looked-up answer has a thread to ask
     await say('hallo', {}, 'reply', { confirm: 'Hallo.' });
     expect(() => canvas.answers.showAsWalkthrough(board().talk().at(-1)!.id)).toThrow(BadRequest);
+  });
+
+  test('"Show as walkthrough" loads the voice for the language of the answer it tells, which the title slide then names', async () => {
+    // the conversation language is German here, the answer English
+    const first = await lookedUp('idea card or question card?', 'Idea card or Question card?', 'An idea card, when the owner wants to think it through with an agent first.', 'look-1');
+    canvas.answers.showAsWalkthrough(first);
+    expect(voice.warmed).toEqual(['en']);
+    answerer().call('walkthrough_slide', { slide: { type: 'title', title: 'Idea card or Question card', language: 'en', narration: 'Two kinds of card.' } });
+    await until(() => voice.said.length === 2);
+    expect(voice.said).toEqual(['en:Idea card or Question card.', 'en:Two kinds of card.']);
   });
 
   test('asked for with the button and answered as text after all, the empty walkthrough goes', async () => {
@@ -973,14 +983,14 @@ describe('an answer told as a walkthrough', () => {
     expect(a.spec.system).toContain('project agent of the project "PR-Loop"');
     expect(a.spec.system).toContain('Walkthroughs:');
     expect(a.spec.tools.map((t) => t.name)).toEqual(['answer_owner', 'walkthrough_slide', 'to_obeya']);
-    a.call('walkthrough_slide', { slide: { type: 'title', title: 'W4', narration: 'So.' } });
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'W4', language: 'de', narration: 'So.' } });
     await settle();
     expect(board().talk().at(-1)!.files).toEqual([{ name: 'w4.walkthrough.json', caption: 'W4' }]);
   });
 
   test('one begun when Obeya restarts makes way for the one the look-up tells anew', async () => {
     await say('wie landet eine karte?', {}, 'look_up', { question: 'How does a card land?', confirm: 'Moment.' });
-    answerer().call('walkthrough_slide', { slide: { type: 'title', title: 'Landen', narration: 'So.' } });
+    answerer().call('walkthrough_slide', { slide: { type: 'title', title: 'Landen', language: 'de', narration: 'So.' } });
     const talk = board().talk().at(-1)!.id;
     expect(board().exchange(talk)!.files).toHaveLength(1);
     canvas.shutdown();

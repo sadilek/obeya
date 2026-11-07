@@ -3,7 +3,7 @@
 // walkthrough answers; Obeya reads a code slide's lines from the repository itself, keeps the
 // walkthrough as a file of the thread's output directory (`<name>.walkthrough.json`) that the player
 // under the question reads as it grows, and voices each slide's narration sentence by sentence in
-// the voice of the demo settings, so the player starts with the first sentence while the agent still
+// the voice of the demo settings for the language the title slide names, so the player starts with the first sentence while the agent still
 // writes the slides after it. One voice speaks for every walkthrough of the server, a sentence at a
 // time, in the queue it shares with the renders (narration.ts): what a playing player needs next
 // goes first.
@@ -11,7 +11,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { z } from 'zod';
-import type { Language } from '../core/locale';
+import { LANGUAGES, type Language } from '../core/locale';
 import type { AnswerFile } from '../core/types';
 import { type Clip, INTERRUPTED, itemsOf, type Slide, type SlideContent, type Walkthrough, WALKTHROUGH_SUFFIX } from '../core/walkthrough';
 import { clip, messageOf } from '../core/text';
@@ -31,13 +31,13 @@ export const WALKTHROUGH_RULES = `
 Walkthroughs: an answer that explains how something works or what happens when (a flow through the code, what happens one thing after the other, what a change does, how two variants differ) comes as a short narrated walkthrough rather than a block of text or a numbered list: the owner follows it more easily told one slide at a time. Other answers stay text; you judge which kind a question is, and the owner can always ask for a walkthrough of a text answer.
 - Tell it with walkthrough_slide, one call per slide, in order. The owner sees and hears each slide as soon as you have handed it over, while you work on the next: hand over the title slide as soon as you know what the walkthrough answers, each further slide once you have checked what it says.
 - 4 to ${MAX_SLIDES} slides: a title slide first, then points, flows and, only when the owner asks to see the code, code slides; otherwise the owner does not read code.
-- Each slide's narration is in the owner's language, spoken prose of two to four sentences that explains rather than reads the slide out. Give it as one text, or on a slide whose items show one after the other (points, steps, focus ranges) as one part per item, each spoken while its item shows.
+- Each slide's narration is in the owner's language, spoken prose of two to four sentences that explains rather than reads the slide out. The title slide names that language (language), and the voice speaks the walkthrough in it. Give it as one text, or on a slide whose items show one after the other (points, steps, focus ranges) as one part per item, each spoken while its item shows.
 - Then call answer_owner with a sentence or two on what the walkthrough shows: it comes with your answer by itself.
 `.trim();
 
 const narration = z.union([z.string(), z.array(z.string())]);
 const SLIDE = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('title'), title: z.string(), subtitle: z.string().optional(), narration: narration.optional() }),
+  z.object({ type: z.literal('title'), title: z.string(), subtitle: z.string().optional(), language: z.enum(LANGUAGES), narration: narration.optional() }),
   z.object({ type: z.literal('points'), title: z.string(), points: z.array(z.string()).min(1).max(5), narration }),
   z.object({ type: z.literal('flow'), title: z.string(), steps: z.array(z.union([z.string(), z.object({ label: z.string(), note: z.string().optional() })])).min(3).max(6), narration }),
   z.object({
@@ -165,7 +165,8 @@ export class Told {
   constructor(
     /** Its file, absolute. */
     readonly file: string,
-    readonly language: Language,
+    /** The language its narration is voiced in: the title slide's, a guess before that (`prepareWalkthrough`). */
+    public language: Language,
     title: string,
   ) {
     const clipsDir = `${file.slice(file.lastIndexOf(sep) + 1, -WALKTHROUGH_SUFFIX.length)}.clips`;
@@ -176,9 +177,10 @@ export class Told {
     this.write();
   }
 
-  /** Its title, once the title slide gives it (a walkthrough shown before its first slide has none yet). */
-  titled(title: string) {
+  /** Its title and language, once the title slide gives them (a walkthrough shown before its first slide has none yet). */
+  titled(title: string, language: Language) {
     this.data.title = title;
+    this.language = language;
   }
 
   push(slide: Slide) {
@@ -223,7 +225,6 @@ export class AnswerWalkthrough {
       dir: string;
       /** The repository a code slide's lines are read from. */
       checkout: string;
-      language: Language;
       voicing: Voicing;
       onShown?: (files: AnswerFile[]) => void;
       /** The walkthrough the owner asked for, shown before its first slide (`prepareWalkthrough`). */
@@ -236,7 +237,7 @@ export class AnswerWalkthrough {
   tool(): AgentTool {
     return {
       name: 'walkthrough_slide',
-      description: `Hands the next slide of your walkthrough to Obeya, which shows it to the owner at once and voices its narration (see Walkthroughs in your instructions). The first slide is the title slide. Kinds: title (title, subtitle); points (title, up to five short points); flow (title, three to six steps in a row joined by arrows, each a label or {label, note}); code (title, file: its path in the repository, lines: [from, to] as you read them, at most ${MAX_CODE_LINES}, which Obeya reads from the file itself; focus: ranges within them highlighted one after the other; note). narration: one text, or one part per point, step or focus range.`,
+      description: `Hands the next slide of your walkthrough to Obeya, which shows it to the owner at once and voices its narration (see Walkthroughs in your instructions). The first slide is the title slide. Kinds: title (title, subtitle, language: the language every narration of the walkthrough is in, which the voice speaks); points (title, up to five short points); flow (title, three to six steps in a row joined by arrows, each a label or {label, note}); code (title, file: its path in the repository, lines: [from, to] as you read them, at most ${MAX_CODE_LINES}, which Obeya reads from the file itself; focus: ranges within them highlighted one after the other; note). narration: one text, or one part per point, step or focus range.`,
       schema: { slide: SLIDE },
       run: ({ slide }) => this.add(slide),
     };
@@ -261,10 +262,11 @@ export class AnswerWalkthrough {
     if (!begun && given.type !== 'title') return 'Not shown: a walkthrough begins with its title slide.';
     if (begun && given.type === 'title') return 'Not shown: an answer has one walkthrough, and it has its title slide already.';
     if (begun && this.told!.data.slides.length >= MAX_SLIDES) return `Not shown: a walkthrough has at most ${MAX_SLIDES} slides. Call answer_owner now.`;
-    const slide = this.slideOf(given);
+    const language = given.type === 'title' ? given.language : this.told!.language;
+    const slide = this.slideOf(given, language);
     if (typeof slide === 'string') return `Not shown: ${slide}`;
-    const told = this.told ?? (this.told = new Told(walkthroughFile(this.o.dir, given.title), this.o.language, given.title.trim()));
-    if (!begun) told.titled(given.title.trim());
+    const told = this.told ?? (this.told = new Told(walkthroughFile(this.o.dir, given.title), language, given.title.trim()));
+    if (!begun) told.titled(given.title.trim(), language);
     told.push(slide);
     const n = told.data.slides.length;
     if (n === 1) this.o.onShown?.(this.files());
@@ -273,7 +275,7 @@ export class AnswerWalkthrough {
   }
 
   /** A slide as the player plays it, or what is wrong with it. */
-  private slideOf(given: Given): Slide | string {
+  private slideOf(given: Given, language: Language): Slide | string {
     let content: SlideContent;
     if (given.type === 'title') content = { type: 'title', title: given.title.trim(), ...(given.subtitle?.trim() ? { subtitle: given.subtitle.trim() } : {}) };
     else if (given.type === 'points') content = { type: 'points', title: given.title, points: given.points };
@@ -283,7 +285,7 @@ export class AnswerWalkthrough {
       if (typeof code === 'string') return code;
       content = { type: 'code', title: given.title, file: given.file, lines: given.lines, focus: given.focus ?? [], ...(given.note ? { note: given.note } : {}), code };
     }
-    const parts = this.partsOf(content, given.narration);
+    const parts = this.partsOf(content, given.narration, language);
     return typeof parts === 'string' ? parts : { ...content, ...parts };
   }
 
@@ -292,8 +294,8 @@ export class AnswerWalkthrough {
    * sentence shows with. A title slide says its title first: a short sentence, voiced quickly, so the
    * first sound comes soon.
    */
-  private partsOf(s: SlideContent, given: string | string[] | undefined): { parts: string[]; items?: number[] } | string {
-    const sentences = (text: string) => sentencesOf(text.trim(), this.o.language).filter(Boolean);
+  private partsOf(s: SlideContent, given: string | string[] | undefined, language: Language): { parts: string[]; items?: number[] } | string {
+    const sentences = (text: string) => sentencesOf(text.trim(), language).filter(Boolean);
     const items = itemsOf(s);
     if (Array.isArray(given) && given.length > 1 && s.type !== 'title') {
       if (given.length !== items) return `its narration has ${given.length} parts for ${items} ${s.type === 'code' ? 'focus ranges' : s.type === 'flow' ? 'steps' : 'points'}: give one part per item, or one text.`;
@@ -354,9 +356,28 @@ export function walkthroughFile(dir: string, title: string): string {
 
 /**
  * "Show as walkthrough": the walkthrough the owner asked for, shown at once and empty until its
- * agent hands over the title slide, named after the question it answers.
+ * agent hands over the title slide, named after the question it answers. `language`: the one its
+ * narration will most likely be in, until the title slide says.
  */
 export const prepareWalkthrough = (dir: string, question: string, language: Language) => new Told(walkthroughFile(dir, question), language, '');
+
+/** Words frequent in prose of one language and rare in the other's. */
+const COMMON: Record<Language, Set<string>> = {
+  de: new Set('der die das und ist nicht ein eine einen dem den des mit auf für sich auch wird werden wenn dann noch nur oder aber wie bei zu im zum zur von sie es er ich du wir'.split(' ')),
+  en: new Set('the and is not a of to with on for it its this that be are when then only or but how at from by they you we what which'.split(' ')),
+};
+
+/**
+ * The language a text of some sentences is written in, as far as its most common words tell (an
+ * answer a walkthrough is to tell, so the voice for it can load before the title slide names it);
+ * `undefined` where they tell none.
+ */
+export function writtenIn(text: string): Language | undefined {
+  const words = text.toLowerCase().match(/\p{L}+/gu) ?? [];
+  const hits = LANGUAGES.map((l) => words.filter((w) => COMMON[l].has(w)).length);
+  const best = Math.max(...hits);
+  return best && hits.filter((h) => h === best).length === 1 ? LANGUAGES[hits.indexOf(best)] : undefined;
+}
 
 const lexists = (path: string) => {
   try {

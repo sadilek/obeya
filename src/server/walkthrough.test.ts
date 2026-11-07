@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Walkthrough } from '../core/walkthrough';
 import { fakeVoicing, until } from './testing';
-import { AnswerWalkthrough, readWalkthrough } from './walkthrough';
+import { AnswerWalkthrough, readWalkthrough, writtenIn } from './walkthrough';
 
 let dir: string;
 let repo: string;
@@ -23,11 +23,11 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const told = (shown: string[][] = [], language: 'de' | 'en' = 'en') =>
-  new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, language, voicing: voice.voicing, onShown: (files) => shown.push(files.map((f) => f.name)) });
+const told = (shown: string[][] = []) =>
+  new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, voicing: voice.voicing, onShown: (files) => shown.push(files.map((f) => f.name)) });
 const hand = (w: AnswerWalkthrough, slide: unknown) => w.tool().run({ slide }) as string;
 const read = (name: string): Walkthrough => JSON.parse(readFileSync(join(dir, 'answers', name), 'utf8'));
-const TITLE = { type: 'title', title: 'How a card lands', subtitle: 'From approval to main', narration: 'Approving a card starts the landing. It takes three steps.' };
+const TITLE = { type: 'title', title: 'How a card lands', subtitle: 'From approval to main', language: 'en', narration: 'Approving a card starts the landing. It takes three steps.' };
 
 describe('a walkthrough handed over slide by slide', () => {
   test('shows from its title slide on, which says its title first, and comes with the answer once the turn is over', async () => {
@@ -107,10 +107,24 @@ describe('a walkthrough handed over slide by slide', () => {
     expect(read('how-a-card-lands.walkthrough.json').slides).toHaveLength(1);
   });
 
-  test('German narration splits as German captions do', () => {
-    const w = told([], 'de');
-    hand(w, { type: 'title', title: 'Wie eine Karte landet', narration: 'Am 1. November kam das. Es geht so.' });
+  test('is voiced in the language its title slide names, and German narration splits as German captions do', async () => {
+    const w = told();
+    hand(w, { type: 'title', title: 'Wie eine Karte landet', language: 'de', narration: 'Am 1. November kam das. Es geht so.' });
+    hand(w, { type: 'points', title: 'Drei Schritte', points: ['Rebase'], narration: 'Erst rebasen.' });
     expect(read('wie-eine-karte-landet.walkthrough.json').slides[0]!.parts).toEqual(['Wie eine Karte landet.', 'Am 1. November kam das.', 'Es geht so.']);
+    await until(() => voice.said.length === 4);
+    expect(voice.said).toEqual(['Wie eine Karte landet.', 'Am 1. November kam das.', 'Es geht so.', 'Erst rebasen.'].map((x) => `de:${x}`));
+  });
+
+  test('a title slide without the language of its narration is refused', () => {
+    const { language: _, ...bare } = TITLE;
+    expect(hand(told(), bare)).toStartWith('Not shown: language: ');
+  });
+
+  test('the language of an answer it is to tell shows in its common words', () => {
+    expect(writtenIn('Eine Präferenz wirkt nur, während ein Agent ohnehin arbeitet. Review-Karten entstehen nur auf dein Wort hin.')).toBe('de');
+    expect(writtenIn('A preference only applies while an agent is working anyway. Review cards for pull requests come only when you say so.')).toBe('en');
+    expect(writtenIn('Review-Karten, PRs.')).toBeUndefined();
   });
 });
 
@@ -118,11 +132,11 @@ describe('the voice of walkthroughs', () => {
   test('speaks first what a playing player needs from its slide on, else the newest walkthrough', async () => {
     voice.hold();
     const a = told();
-    hand(a, { type: 'title', title: 'A', narration: 'A one.' });
+    hand(a, { type: 'title', title: 'A', language: 'en', narration: 'A one.' });
     for (const n of [2, 3]) hand(a, { type: 'points', title: `A${n}`, points: ['x'], narration: `A${n}.` });
     await Bun.sleep(2);
     const b = told();
-    hand(b, { type: 'title', title: 'B', narration: 'B one.' });
+    hand(b, { type: 'title', title: 'B', language: 'en', narration: 'B one.' });
     // its player plays the second slide of A
     readWalkthrough(join(dir, 'answers'), 'a.walkthrough.json', voice.voicing, 1);
     voice.go();
@@ -133,14 +147,14 @@ describe('the voice of walkthroughs', () => {
 
   test('a sentence the voice cannot speak fails the walkthrough, which the player says; the others go on', async () => {
     const w = told();
-    hand(w, { type: 'title', title: 'Mute', narration: 'One.' });
+    hand(w, { type: 'title', title: 'Mute', language: 'en', narration: 'One.' });
     await until(() => !!read('mute.walkthrough.json').error);
     expect(read('mute.walkthrough.json').error).toBe('no model');
     // its further slides are shown, not voiced
     hand(w, { type: 'points', title: 'Two', points: ['x'], narration: 'Next.' });
     expect(read('mute.walkthrough.json').slides).toHaveLength(2);
     const other = told();
-    hand(other, { type: 'title', title: 'Loud', narration: 'Two.' });
+    hand(other, { type: 'title', title: 'Loud', language: 'en', narration: 'Two.' });
     await until(() => voice.said.includes('en:Two.'));
     expect(voice.said).not.toContain('en:Next.');
   });
