@@ -853,3 +853,17 @@ test("Obeya's line that a card waits for others before it starts stands, in eith
   expect(t.shown.map((x) => x.e)).toEqual([drawn, inferred]);
   expect(t.shown.every((x) => x.line)).toBe(true);
 });
+
+test("a review card's merge, also one Obeya makes on an approval kept through a conflict, stands as a line", () => {
+  for (const l of ['de', 'en'] as const) {
+    const w = MESSAGES[l].worker;
+    const handover = ev('review', 'worker', 'Resolved.');
+    const merging = ev('state', 'obeya', w.mergingResolved(12));
+    const merged = ev('state', 'obeya', w.mergedContribution(12));
+    expect(talkTurns([handover, merging, merged]).shown).toEqual([
+      { e: handover, steps: [] },
+      { e: merging, steps: [], line: true },
+      { e: merged, steps: [], line: true },
+    ]);
+  }
+});
