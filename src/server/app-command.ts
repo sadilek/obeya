@@ -5,43 +5,56 @@ import { join } from 'node:path';
 import { remote, sh } from './hosts';
 import { messageOf } from '../core/text';
 import { spawnOutput } from './spawn';
+import { commandWords, programName, RUNTIMES, SHELLS } from './folder-processes';
 
 /** An app's stop takes seconds; one that hangs this long counts as failed. */
 const APP_TIMEOUT = 2 * 60_000;
 
+/** The flags after which a runtime or shell runs no script of a file: code to run (`-e`, `-c`) or a module (`python -m`). */
+const NO_SCRIPT = new Set(['-c', '-e', '-p', '-m', '--eval', '--print', '/c', '/k', '-command', '-encodedcommand']);
+
 /**
- * The files `command` names by a relative path (`.obeya/app.mjs` of `node .obeya/app.mjs stop`),
- * up to its first shell operator: what it runs or reads in the workspace.
+ * The script `command` runs, where it names one by a relative path: the program itself
+ * (`./scripts/stop.sh`), or what a runtime or shell runs (`.obeya/app.mjs` of `node .obeya/app.mjs stop`).
+ * Only that: the other words may be anything (`curl localhost:3000/stop`, a log file the command
+ * writes, `kill $(cat .run/app.pid)`), so a missing one says nothing.
  */
-export function namedFiles(command: string): string[] {
-  const words = command.split(/\s+/);
+export function scriptOf(command: string): string | null {
+  const words = commandWords(command);
   const end = words.findIndex((w) => /^(&&|\|\||;|\||&|[0-9]?>>?|<)$/.test(w));
-  return words
-    .slice(0, end < 0 ? undefined : end)
-    .map((w) => w.replace(/^["']|["']$/g, ''))
-    .filter((w) => /[\\/]/.test(w) && !/^[-~$%]|^[a-zA-Z]:|^[\\/]|:\/\/|[=*?{}`;&|<>]/.test(w));
+  const [program, ...args] = words.slice(0, end < 0 ? undefined : end);
+  if (!program) return null;
+  const relative = (w: string) => !/^[-~$%]|^[a-zA-Z]:|^[\\/]|:|[=*?{}()`$;&|<>]/.test(w);
+  if (/[\\/]/.test(program)) return relative(program) ? program : null;
+  const name = programName(program);
+  if (!RUNTIMES.has(name) && !SHELLS.has(name)) return null;
+  for (const a of args) {
+    if (NO_SCRIPT.has(a.toLowerCase())) return null;
+    if (a.startsWith('-')) continue;
+    // a script by its path or its name (`node stop.mjs`), not a subcommand (`bun run stop`, `deno task stop`)
+    return relative(a) && (/[\\/]/.test(a) || /\.[a-z]{1,4}$/i.test(a)) ? a : null;
+  }
+  return null;
 }
 
 /**
  * Runs `command` through the platform's shell in `cwd` (there, for a workspace on another machine):
- * whether it exited 0, and what it printed. A file it names that the workspace lacks (`missing`)
- * means its branch is older than the command (the script came into the repository later): nothing
- * of it can run there, so there is nothing to stop, and the command does not run.
+ * whether it exited 0, and what it printed. A script it runs that the workspace lacks (`missing`,
+ * `scriptOf`) means its branch is older than the command (the script came into the repository
+ * later): nothing of it can run there, so there is nothing to stop, and the command does not run.
  */
 export async function runAppCommand(cwd: string, command: string, timeout = APP_TIMEOUT): Promise<{ ok: boolean; output: string; missing?: string }> {
-  const files = namedFiles(command);
+  const script = scriptOf(command);
   const there = remote(cwd);
   if (there) {
-    if (files.length) {
-      const r = await there.host.run(`for f in ${files.map(sh).join(' ')}; do [ -e "$f" ] || echo "$f"; done`, { cwd: there.path, timeout });
-      const missing = r.code === 0 ? r.stdout.split('\n')[0]!.trim() : '';
-      if (missing) return { ok: true, output: '', missing };
+    if (script) {
+      const r = await there.host.run(`[ -e ${sh(script)} ] || echo missing`, { cwd: there.path, timeout });
+      if (r.code === 0 && r.stdout.trim() === 'missing') return { ok: true, output: '', missing: script };
     }
     const r = await there.host.run(command, { cwd: there.path, timeout });
     return { ok: r.code === 0, output: `${r.stdout}${r.stderr}`.trim() || (r.code === 0 ? '' : `exit code ${r.code}`) };
   }
-  const missing = files.find((f) => !existsSync(join(cwd, f)));
-  if (missing) return { ok: true, output: '', missing };
+  if (script && !existsSync(join(cwd, script))) return { ok: true, output: '', missing: script };
   const shell = process.platform === 'win32' ? ['cmd.exe', '/d', '/s', '/c', command] : ['sh', '-c', command];
   try {
     const r = await spawnOutput(shell, { cwd, stdin: 'ignore', timeout });

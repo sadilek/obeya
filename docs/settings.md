@@ -150,8 +150,8 @@ them itself; how the app starts and where it is, the workers find from the recip
   fails is an error on the card. An app the owner opened from the card to try it by hand ("Open
   app", offered while it runs) is stopped no sooner than 30 minutes after. Before a
   workspace's folder is deleted, Obeya runs `stop` there too, and then ends whatever still runs
-  from the folder. A `stop` that names a file the workspace lacks (a branch older than the script
-  it runs) does not run: nothing of it runs there.
+  from the folder. A `stop` or `keep` whose script the workspace lacks (a branch older than the
+  script, as in `node .obeya/app.mjs stop`) does not run: nothing of it runs there.
 - `keep`: run before `stop`; exiting 0 means the app holds what must not be lost (a restored
   database, say), and Obeya leaves it running and says so on the card. The owner who wants it
   stopped anyway tells the worker.

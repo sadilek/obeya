@@ -328,25 +328,38 @@ arriving during the stop waits for it. A failed stop is an error on the card; th
 nothing of it. After a restart,
 waiting cards are parked the same way. Only processes go; the workspace stays the card's.
 
-A stop command that names a file the workspace lacks by a relative path (`node .obeya/app.mjs stop`
-on a branch older than the script) does not run: nothing of it can run there, so there is nothing
-to stop, no error and no "stopped" on the card.
+A stop command whose script the workspace lacks (`node .obeya/app.mjs stop` on a branch older than
+the script) does not run: nothing of it can run there, so there is nothing to stop, no error and no
+"stopped" on the card. The script is the program itself, given by a relative path, or the file a
+runtime or shell runs (`node`, `python`, `sh`); the command's other words are not looked at, since a
+missing one says nothing (a file of process IDs it reads, an address like `localhost:3000/stop`, a
+log it writes). The same holds for `keep`.
 
 Before a workspace's folder goes from disk (a worktree once its card has landed, was discarded or is
 done with it, a follow-up's temporary worktree, a clone left the pool), `app.stop` runs in it, and
-then Obeya ends every process still running from the folder, with what each started: one whose
-program lies in it, whose working directory does, or whose command line names a path in it. Obeya's
-own process, those that started it and those it started itself are spared. Decided 2026-11-06,
-after a card's app ran on for days: the stop command finds only what its own bookkeeping names (a
-file of process IDs written at the start, which an app started otherwise lacks, or which went first),
-and on Windows the files a running process holds keep the folder from going, so the removal stopped
-halfway with the bookkeeping gone and the app still running. The working directory is part of the
-match since a dev server often names its folder nowhere else (`node index.mjs` started there).
-Windows tells another process's working directory through no command, so Obeya reads it from the
-process's own memory, in a thread of its own (on a machine short of memory each read may wait for
-the disk), and only for processes started since the folder was made: no older one can have started
-from it. Rejected: matching command lines alone (misses such a server), and asking each repository's
-stop command to be thorough (a fault in one leaves its apps running).
+then Obeya ends every process still running from the folder, with what each started, wherever that
+works: one whose program lies in the folder, whose working directory does, or whose command line
+runs something there (its program, or the script a runtime runs: `node /ws/node_modules/vite/bin/vite.js`).
+A command line that only names a file there is not enough (an editor with one of the folder's files
+open, an `ssh` session naming the path), nor is a working directory there for a shell that waits for
+input (a terminal opened in the folder): those are someone's, not the app's. The folder is matched by
+its path and by the one its links lead to (macOS reports `/var/…` as `/private/var/…`). Obeya's own
+process, those that started it and those it started itself are spared (on another machine, the
+shell that lists the processes there); a card's agent has ended before its folder goes. A clone
+that left the pool is looked at for files that would be lost once its app has been stopped and its
+processes ended (an app may save its state as it ends), and stays where there are any. Decided
+2026-11-06, after a card's app ran on for days: the stop command finds only what its own
+bookkeeping names (a file of process IDs written at the start, which an app started otherwise
+lacks, or which went first), and on Windows the files a running process holds keep the folder from
+going, so the removal stopped halfway with the bookkeeping gone and the app still running. The
+working directory is part of the match since a dev server often names its folder nowhere else
+(`node index.mjs` started there). Windows tells another process's working directory through no
+command, so Obeya reads it from the process's own memory, in a thread of its own (on a machine
+short of memory each read may wait for the disk): first for the processes started since the folder
+was made, then for older ones (which can only have moved into it later) while 30 seconds have not
+passed; a listing that does not answer within them leaves the folder to go without it. Rejected:
+matching command lines alone (misses such a server), and asking each repository's stop command to
+be thorough (a fault in one leaves its apps running).
 
 ### Hosts
 

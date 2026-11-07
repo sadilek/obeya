@@ -715,7 +715,8 @@ export class Workspaces implements CardWorkspaces {
     // registered again, on any canvas, while it was looked at: it is a workspace again
     const taken = () => claimed.has(path) || this.store.hasWorkspace(path);
     const o = { origins: this.o.origins ?? [], main: branchSetting(this.o.repoPath) || undefined };
-    // what the stop command leaves behind (a snapshot it writes, say) counts too: looked at again after it
+    // what stopping the app leaves behind (a snapshot its stop command or the app on ending writes, say)
+    // counts too: looked at again after it
     for (const after of [false, true]) {
       const lost = await unlanded(path, o);
       // the host does not answer, origin cannot be asked, or it is not a clone of the repository: next time
@@ -733,13 +734,10 @@ export class Workspaces implements CardWorkspaces {
         }
         return;
       }
-      if (after || !this.o.stop) break;
-      const stopped = await runAppCommand(path, this.o.stop);
-      if (!stopped.ok) console.error(`clone ${path}: ${this.o.stop} failed: ${stopped.output}`);
+      if (after) break;
+      await this.quiet(path);
       if (taken()) return;
     }
-    await this.quiet(path, false);
-    if (taken()) return;
     // moved aside before it goes: once moved, nothing registers or leases the folder (here at once, on a host
     // `ensureHostClones` waits for it), and making the clone again makes a fresh one
     const trash = `${pathThere(path)}.removing-${Date.now()}`;
@@ -1780,14 +1778,14 @@ export class Workspaces implements CardWorkspaces {
 
   /**
    * Stops what runs from the workspace at `path` before its folder goes: the repository's stop
-   * command (`app.stop`; `withStop` false where it ran already), then every process still running
+   * command (`app.stop`), then every process still running
    * from the folder (`endProcessesIn`), which that command's own bookkeeping may not know of (an
    * app started some other way, or one whose list of process IDs went first). On Windows a process
    * holds the files it has open: one left running would keep the removal from finishing, and run on
    * with nothing to find it by. Best effort: the folder goes either way.
    */
-  private async quiet(path: string, withStop = true) {
-    if (withStop && this.o.stop) {
+  private async quiet(path: string) {
+    if (this.o.stop) {
       const stopped = await runAppCommand(path, this.o.stop);
       if (!stopped.ok) console.error(`workspace ${path}: ${this.o.stop} failed: ${stopped.output}`);
     }
