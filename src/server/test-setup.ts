@@ -1,10 +1,10 @@
 // Preloaded by `bun test` (bunfig.toml): its hooks run once around all test files.
 
-import { afterAll, setDefaultTimeout } from 'bun:test';
+import { afterAll } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PATIENCE, removeTemplates } from './testing';
+import { removeTemplates } from './testing';
 
 // Whatever the tests put in the temp directory goes into one of this run, removed after the run. A
 // run that was killed (Obeya restarting stops its workers' test runs) never got there: the next run
@@ -39,9 +39,6 @@ for (const [i, [key, value]] of [['maintenance.auto', 'false'], ['gc.auto', '0']
   process.env[`GIT_CONFIG_VALUE_${count + i}`] = value;
 }
 process.env.GIT_CONFIG_COUNT = String(count + 2);
-
-// a test and its hooks have longer on Windows (`PATIENCE`)
-setDefaultTimeout(5000 * PATIENCE);
 
 // the Arbeitsrückschau looks for transcripts there: never the machine's own. The live tests need
 // the machine's login from there, so they set it back while they run (from `OBEYA_MACHINE_CLAUDE_CONFIG_DIR`).

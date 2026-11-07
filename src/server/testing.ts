@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
+import { PATIENCE } from './patience';
 import { git } from './workspaces';
 import { KEY_HEADER, keyOf } from './owner';
 
@@ -76,13 +77,8 @@ export class FakeRuntime implements AgentRuntime {
   }
 }
 
-/**
- * How many times as long as elsewhere a test may take on Windows, where starting a process (git,
- * above all) costs ten times as much and more: a virus scanner looks at each. Tests that pass in a
- * second elsewhere took over five there with the other test files running beside them.
- * `OBEYA_TEST_PATIENCE` sets it (test-setup.ts sets Bun's timeout by it, which `--timeout` no longer changes).
- */
-export const PATIENCE = Number(process.env.OBEYA_TEST_PATIENCE) || (process.platform === 'win32' ? 5 : 1);
+/** How much longer a test may take on this machine: `patience.ts`. */
+export { PATIENCE };
 
 const templates = new Map<string, string>();
 let templateDir: string | undefined;
@@ -132,7 +128,8 @@ export function gitRepo(path: string, files: Record<string, string> = { 'README.
  */
 export function gitClone(source: string, path: string, { bare = false } = {}): string {
   const template = copies.get(resolve(source));
-  if (!template || refsOf(source) !== refsOf(template)) {
+  // refsOf reads the files backend's refs: a reftable repository's (init.defaultRefFormat) it cannot compare
+  if (!template || existsSync(join(gitDir(source), 'reftable')) || refsOf(source) !== refsOf(template)) {
     mkdirSync(dirname(path), { recursive: true });
     git(dirname(path), 'clone', '--quiet', ...(bare ? ['--bare'] : []), source, path);
     return path;
@@ -141,15 +138,20 @@ export function gitClone(source: string, path: string, { bare = false } = {}): s
   let clone = clones.get(key);
   if (!clone) {
     clone = join(templateDir!, `clone-${clones.size}${bare ? '.git' : ''}`);
-    git(templateDir!, 'clone', '--quiet', '--template=', ...(bare ? ['--bare'] : []), template, clone);
+    // with git's template, as `git clone` makes it: tests put hooks into hooks/
+    git(templateDir!, 'clone', '--quiet', ...(bare ? ['--bare'] : []), template, clone);
     trustCopies(gitDir(clone));
     clones.set(key, clone);
   }
   cpSync(clone, path, { recursive: true, preserveTimestamps: true });
-  // the clone's origin is `source`, written as git writes it (a backslash escaped)
+  // the clone's origin is `source`: its url line, however git wrote it (quoted where the path has a
+  // # or ;), becomes a quoted one. A copy whose origin stayed the template would push into it
   const config = join(gitDir(path), 'config');
-  const quoted = (p: string) => `\turl = ${p.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}\n`;
-  writeFileSync(config, readFileSync(config, 'utf8').replace(quoted(template), quoted(source)));
+  const text = readFileSync(config, 'utf8');
+  const url = /(\[remote "origin"\]\n(?:\t.*\n)*?)\turl = .*\n/;
+  if (!url.test(text)) throw new Error(`gitClone: no origin url in ${config}`);
+  const quoted = `"${source.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+  writeFileSync(config, text.replace(url, (_, section: string) => `${section}\turl = ${quoted}\n`));
   copies.set(resolve(path), clone);
   return path;
 }

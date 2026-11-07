@@ -787,7 +787,8 @@ workers are busy.
   among them, and took several seconds. Together they halved the test suite on macOS. Tests run
   without git's automatic maintenance (a process more after each commit and fetch). On Windows,
   where the suite is bound by process starts, a test, a hook and a wait for an event get five times
-  the time: with Bun's 5 s, half the suite timed out there. A repository's main branch and its commit are read with
+  the time: with Bun's 5 s, half the suite timed out there. The checks' runner sets that timeout, so a
+  `--timeout` given to it still holds. A repository's main branch and its commit are read with
   one `for-each-ref` (2026-10-15), not four to seven calls each time.
 - **Tests run a file per process** (`bun test --parallel`, Bun 1.4+, 2026-10-15): one after the other
   the suite took 165 s, mostly waiting for git; in parallel 27 s. The longest file sets the run's
