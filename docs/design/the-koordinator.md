@@ -570,7 +570,9 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   three walkthroughs voiced at once the player still waited 2–5 s now and then.
 - **The actions in an answer's head show on hover** (owner, 2026-11-07): "Make it a card" and "Show
   as walkthrough" appear as the reply button beside them does, for one look; on a screen without
-  hover they stay in view.
+  hover they stay in view. "Reply" has their look too, an outlined button with its label (owner,
+  2026-11-07), on a card's messages as in the sheet. Rejected: a filled icon in the message's corner,
+  which looked unlike the two beside it.
 - **The player is Obeya's page, the walkthrough a file of data** (2026-11-06). Rejected: a player
   page written into the thread's directory with the slides (as an HTML artifact, sandboxed): every
   walkthrough would keep the player of its day, and its words and look would live apart from the

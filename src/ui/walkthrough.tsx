@@ -445,7 +445,7 @@ export function WalkthroughButton({ talk }: { talk: number }) {
   const [busy, setBusy] = useState(false);
   return (
     <button
-      className="msg-card msg-walk"
+      className="msg-act msg-walk"
       title={t.answer.walkthroughHint}
       disabled={busy}
       onMouseDown={(e) => e.preventDefault()}

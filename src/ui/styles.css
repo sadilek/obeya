@@ -866,18 +866,9 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .msg .who .t { color: var(--muted); font-weight: 400; margin-left: 4px; }
 .talk .msg.by-owner { align-self: flex-end; background: color-mix(in srgb, var(--working) 9%, var(--card)); }
 .talk .msg.by-owner .who { color: var(--working); }
-/* replying to one message (message.tsx): a button in its corner, and the
+/* replying to one message (message.tsx): a button in its head, and the
    message replied to quoted above the reply and above the field it is written in, as chat apps do */
 .talk .msg { position: relative; }
-.talk .msg:has(> .msg-reply) > .who { padding-right: 24px; }
-.msg-reply { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; display: grid; place-items: center; padding: 0;
-  border: 0; border-radius: 3px; background: var(--chip); color: var(--muted); cursor: pointer; }
-/* at the desk the button shows while the pointer is on its message; on a touch screen always */
-@media (hover: hover) {
-  .talk .msg > .msg-reply { opacity: 0; transition: opacity .12s; }
-  .talk .msg:hover > .msg-reply, .talk .msg > .msg-reply:focus-visible { opacity: 1; }
-}
-.msg-reply:hover { color: var(--ink); background: var(--line); }
 /* the button at text marked in a conversation, which quotes it in the field (cite.tsx): above the
    end of the marking, or below its last line (on a touch screen clear of the selection handles) */
 .cite { position: fixed; z-index: 50; transform: translate(-50%, calc(-100% - 6px)); display: flex; align-items: center; gap: 5px;
@@ -892,8 +883,6 @@ textarea.p-body:focus { border-color: var(--muted); }
   border: 0; border-radius: 3px; background: transparent; color: var(--muted); cursor: pointer; }
 .msg-delete:hover { color: var(--error); background: var(--line); }
 .talk .msg:has(> .msg-delete) > .who { padding-right: 24px; }
-.talk .msg:has(> .msg-delete):has(> .msg-reply) > .who { padding-right: 52px; }
-.msg:has(> .msg-delete) > .msg-reply { right: 32px; }
 .quote { --q: var(--muted); display: flex; align-items: flex-start; min-width: 0; border-left: 3px solid var(--q); border-radius: 2px;
   background: color-mix(in srgb, var(--q) 8%, var(--card)); }
 .quote.q-by-owner { --q: var(--working); }
@@ -958,18 +947,20 @@ textarea.p-body:focus { border-color: var(--muted); }
 .turn-resume .btn-mark { margin: 0; }
 .turn-resume:hover { opacity: .85; }
 .mocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 8px 0 4px; }
-/* a looked-up answer: "Make it a card" in its head, always in view; its files under the text */
-.talk .msg .who:has(> .msg-card) { display: flow-root; }
-.msg-card { float: right; margin: -2px 0 0 8px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; background: none;
-  color: var(--muted); font: 500 11px/16px var(--cond); height: 20px; box-sizing: border-box; cursor: pointer; }
-.msg-card:hover { color: var(--ink); border-color: var(--question); }
+/* the actions in a message's head ("Reply"; on a looked-up answer "Make it a card", "Show as walkthrough"); its files under the text */
+/* they stand 2 px above the line and make it barely higher; where they wrap, 3 px apart */
+.talk .msg .who:has(> .msg-act) { display: flow-root; margin-bottom: -5px; }
+.msg-act { float: right; position: relative; top: -2px; display: inline-flex; align-items: center; gap: 4px; margin: 0 0 3px 8px; padding: 1px 6px; border: 1px solid var(--line);
+  border-radius: 3px; background: none; color: var(--muted); font: 500 11px/16px var(--cond); height: 20px; box-sizing: border-box; cursor: pointer; }
+.msg-act:hover { color: var(--ink); border-color: var(--question); }
+.msg-act svg { flex: none; }
 .msg-card.on { color: var(--question); border-color: color-mix(in srgb, var(--question) 50%, transparent); }
 .talk .moved { margin: 2px 0 8px; }
-.talk .moved .msg-card { float: none; margin: 0; }
-/* the actions in an answer's head ("Make it a card", "Show as walkthrough") appear on hover over it, as replying does; always where nothing hovers */
-.msg-card:not(.on) { opacity: 0; transition: opacity .15s; }
-.msg:hover .msg-card, .msg-card:focus-visible { opacity: 1; }
-@media (hover: none) { .msg-card:not(.on) { opacity: 1; } }
+.talk .moved .msg-card { float: none; top: 0; margin: 0; }
+/* they appear on hover over the message; always where nothing hovers */
+.msg-act:not(.on) { opacity: 0; transition: opacity .15s; }
+.msg:hover .msg-act, .msg-act:focus-visible { opacity: 1; }
+@media (hover: none) { .msg-act:not(.on) { opacity: 1; } }
 .continues { margin-top: 4px; font-size: 11.5px; color: var(--muted); }
 .answer-files { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .answer-files figure { margin: 0; min-width: 0; }
@@ -2333,7 +2324,7 @@ button.link:hover { text-decoration: underline; }
 /* a phone's browser zooms into a text field written smaller than 16 px */
 .ph-view textarea, .ph-view select, .ph-view input { font-size: 16px; }
 /* no pointer hovers on a phone: the reply button shows on every message */
-.ph-view .talk .msg > .msg-reply { opacity: .75; }
+.ph-view .talk .msg-reply { opacity: .75; }
 .ph-view ~ #ptt, .ph-view ~ #acks { left: 50%; }
 .ph-view ~ #ptt { bottom: calc(18px + env(safe-area-inset-bottom)); }
 .ph-view ~ #acks { bottom: calc(91px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
