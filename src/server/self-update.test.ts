@@ -109,7 +109,10 @@ test('a commit while git looks at what changed has not held still: the restart w
 
 test('while HEAD stands still, the watch starts no git', async () => {
   let started = 0;
+  // through spawnOutput (its threads call no Bun.spawn of this one) and through Bun.spawn itself
   const watching = onStart(() => started++);
+  const spawn = Bun.spawn;
+  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => (started++, spawn(...args))) as typeof Bun.spawn;
   const calls: string[] = [];
   let rounds = 0;
   try {
@@ -122,6 +125,7 @@ test('while HEAD stands still, the watch starts no git', async () => {
     expect(rounds).toBeGreaterThanOrEqual(from + 5);
   } finally {
     watching();
+    Bun.spawn = spawn;
   }
   expect(started).toBe(0);
   // and it still watches
