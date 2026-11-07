@@ -210,7 +210,9 @@ cache, where one downloaded before counts as installed; without Obeya the skill 
 environment holds the speech recognition it hears its sentences back with (onnx-asr); one installed
 with fewer packages than today's counts as missing, and installing it again adds the rest. A render
 refuses a voice that is not installed and says how to install it. "Listen"
-plays a sentence in the chosen voice and narration language. For Qwen3-TTS the dialog has a field
+plays a sentence in the chosen voice and narration language, also when making it takes longer than
+the 10 s or so Safari lets a page sound after a click: the click starts the
+player before the sample exists. For Qwen3-TTS the dialog has a field
 per language for the clip to clone, each saying what keeps it from working (no such file, no
 transcript beside it).
 
