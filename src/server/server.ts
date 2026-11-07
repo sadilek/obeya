@@ -401,6 +401,8 @@ export function serve(
     <T,>(x: T | undefined, fn: (x: T, req: Request) => unknown | Promise<unknown>) =>
     (req: Request): Response | Promise<Response> =>
       x ? handle(() => fn(x, req)) : notFound();
+  /** The system's folder dialog, for a browser on this machine that has one. */
+  const picker = (req: Request, srv: Bun.Server<unknown>) => !!machine?.picker && access.isLocal(req, srv);
   /** Nothing the owner said came through: Whisper understood nothing (`null`), or heard nothing. */
   const unheard = (c: CanvasRuntime, text: string | null) => ({ confirm: text === null ? c.board.t.voice.notUnderstood : c.board.t.voice.nothingHeard, unheard: true });
 
@@ -668,10 +670,13 @@ export function serve(
       '/api/setup/git-preview': { POST: needs(machine, async (m, req) => m.gitPreview(await req.json())) },
       '/api/setup/git': { POST: needs(machine, async (m, req) => m.gitSetup(await req.json())) },
       '/api/setup/canvas': { POST: needs(machine, async (m, req) => m.canvas(await req.json())) },
-      // the system's folder dialog, open as long as the owner takes
+      // the system's folder dialog, open as long as the owner takes; whether it is offered here (GET);
+      // only on this machine, as it opens on this machine's screen
       '/api/setup/pick': {
+        GET: (req, srv) => Response.json({ picker: picker(req, srv) }),
         POST: async (req, srv) => {
           if (!machine) return notFound();
+          if (!access.isLocal(req, srv)) return onlyHere();
           srv.timeout(req, 0);
           const { prompt } = ((await req.json().catch(() => ({}))) ?? {}) as { prompt?: unknown };
           return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));

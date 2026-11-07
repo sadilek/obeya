@@ -401,7 +401,7 @@ rereads `PATH` from the registry.
 #### The first canvas
 
 On the first start the page ends with "Where is your project?": two cards with a radio button each,
-"Already on this computer" (a folder: a path or the system's folder dialog) and "On GitHub / a
+"Already on this computer" (a folder: a path or, from a browser on this machine, the system's folder dialog) and "On GitHub / a
 server" (a clone: `owner/name` through `gh repo clone` where gh is logged in, else by URL; any git
 URL; into the home directory unless another is given). It shows the main branch Obeya found there. A
 folder without git gets the offer to set it up (see Setting up git in a folder), whose confirmation

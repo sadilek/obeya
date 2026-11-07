@@ -2752,8 +2752,6 @@ export interface MachineView {
   /** The Claude Code Obeya was checked with (the Agent SDK's); the machine's may be newer or older. */
   checkedClaude: string;
   job?: MachineJob;
-  /** Obeya can open the system's folder dialog here. */
-  picker: boolean;
   /** Where a clone goes by default: the owner's home directory. */
   cloneInto: string;
 }

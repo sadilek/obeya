@@ -190,6 +190,8 @@ export const api = {
   /** The token from `claude setup-token`, for the sessions that run on a token. */
   setupToken: (token: string) => call<{ saved: true }>('POST', '/api/setup/token', { token }),
   setupIdentity: (name: string, email: string) => call<MachineView>('POST', '/api/setup/identity', { name, email }),
+  /** Whether the system's folder dialog is offered to this browser: the machine has one, and the browser runs on it. */
+  setupPicker: () => call<{ picker: boolean }>('GET', '/api/setup/pick'),
   /** A folder from the system's dialog; null when cancelled. */
   setupPick: (prompt: string) => call<{ path: string | null }>('POST', '/api/setup/pick', { prompt }),
   /** The first canvas from a folder (saved at once) or a clone (the view follows it). */

@@ -13,6 +13,7 @@ import { api, reload, type SiteHow } from './api';
 import { keepConfigDraft, keptConfigDraft } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
+import { FolderPick } from './folderPick';
 import { demoState, GitSetup, platformName, RecognitionDetail, SetupList, useFolderWithoutGit, voiceState } from './setup';
 import { useFitHeight } from './fitHeight';
 import { useCopy } from './copy';
@@ -1794,18 +1795,23 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
       {leaving}
     </Field>
   );
+  // what went wrong with the system's folder dialog, under the path
+  const [pickFailed, setPickFailed] = useState('');
+  // another folder, typed or picked: whether it goes without git is chosen for it anew
+  const setPath = (path: string) => {
+    const { git: _, ...rest } = repo;
+    onChange({ ...rest, path });
+  };
   // a repository of the canvas: its path, what is wrong with it, then where its agents work and its settings, each group under a heading
   return (
     <section className="cfg-repo">
       <Field label={t.config.path} hint={home || folder ? [...(home ? [t.config.home] : []), ...(folder ? [t.config.folderMode] : [])].join(' · ') : undefined}>
         <div className="cfg-repo-path">
-          <input className="c-path" aria-label={t.config.path} value={repo.path} placeholder={t.config.path} spellCheck={false} onChange={(e) => {
-              // another folder: whether it goes without git is chosen for it anew
-              const { git: _, ...rest } = repo;
-              onChange({ ...rest, path: e.target.value });
-            }} />
+          <input className="c-path" aria-label={t.config.path} value={repo.path} placeholder={t.config.path} spellCheck={false} onChange={(e) => setPath(e.target.value)} />
+          <FolderPick prompt={t.config.pickPrompt} onPick={setPath} onOpen={() => setPickFailed('')} onError={(e) => setPickFailed(failText(e))} />
           <RemoveButton label={t.config.removeRepo} onClick={() => onChange(null)} />
         </div>
+        {pickFailed && <p className="hint c-status cfg-pick-failed">{pickFailed}</p>}
       </Field>
       {problems.map((p, k) => (
         <div key={k} className="cfg-repo-problem">
