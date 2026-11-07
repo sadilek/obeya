@@ -122,6 +122,12 @@ export function Detail(p: Props) {
   // the demo the card opened to (demoSeen.ts); closing the card forgets one that waited on it
   const [opened] = useState(() => openedWith(sessionStorage, item.id, item.demo));
   useEffect(() => () => held.clear(sessionStorage, item.id), []);
+  const demoWaits = item.state === 'waiting' && item.need === 'demo';
+  // a demo starts by itself only when the owner opens the card to it; one that arrives on the open card waits behind its play button
+  const arrived = !!item.demo && arrivedOnOpenCard(opened, item.demo);
+  useEffect(() => {
+    if (arrived && demoWaits && item.demo) held.set(sessionStorage, item.id, item.demo);
+  }, [arrived, demoWaits, item.demo?.handover, item.demo && JSON.stringify(item.demo.chapters)]);
   const all = p.all;
   const run = async (fn: () => Promise<void>, done: ActDone) => {
     setError('');
@@ -309,12 +315,6 @@ export function Detail(p: Props) {
   const heldUp = Object.entries(useUnsentDecisions(item))
     .filter(([, route]) => route === 'contributor' || route === 'self')
     .map(([id]) => Number(id));
-  const demoWaits = item.state === 'waiting' && item.need === 'demo';
-  // a demo starts by itself only when the owner opens the card to it; one that arrives on the open card waits behind its play button
-  const arrived = !!item.demo && arrivedOnOpenCard(opened, item.demo);
-  useEffect(() => {
-    if (arrived && demoWaits && item.demo) held.set(sessionStorage, item.id, item.demo);
-  }, [arrived, demoWaits, item.demo?.handover, item.demo && JSON.stringify(item.demo.chapters)]);
   // an agent is on the card and can be stopped
   const running = item.state === 'working' || item.state === 'waiting' || !!item.finishing;
   const archivable = finishedArchivable(item);
@@ -564,7 +564,6 @@ export function Detail(p: Props) {
                         item={item}
                         demo={item.demo}
                         autoplay={demoWaits && !arrived}
-                        ready={demoWaits && arrived}
                         comments={agentListens(item)}
                         top={
                           (!demoWaits || sharing) &&
@@ -1794,7 +1793,6 @@ function DemoView({
   children,
   top,
   autoplay = true,
-  ready = false,
   comments = false,
 }: {
   item: Item;
@@ -1805,8 +1803,6 @@ function DemoView({
   top?: false | ((shown: Demo, latest: boolean) => ReactNode);
   /** starts by itself when this browser has not played it yet */
   autoplay?: boolean;
-  /** arrived on the open card: it waits behind its play button with a line saying it is ready */
-  ready?: boolean;
   comments?: boolean;
 }) {
   const cardId = item.id;
@@ -1953,9 +1949,10 @@ function DemoView({
                 // a restart waits while the owner watches
                 onPlay={() => {
                   setStarted(true);
-                  if (demo === latest) markSeen(localStorage, cardId, demo);
                   holdRestart('video', 'video');
                 }}
+                // played once it runs, not while it still loads after the click: closed before that, it starts at the next opening
+                onPlaying={() => demo === latest && markSeen(localStorage, cardId, demo)}
                 onPause={() => holdRestart('video', null)}
                 onEnded={() => {
                   holdRestart('video', null);
@@ -1991,8 +1988,6 @@ function DemoView({
                       <path d="M6 4l15 8-15 8z" />
                     </svg>
                   </span>
-                  {/* a demo that arrived on the open card did not start: it says it is there, until it plays */}
-                  {ready && demo === latest && unseen(localStorage, cardId, demo) && <em className="ready">{t.demo.ready}</em>}
                 </button>
               )}
               {comments && started && (

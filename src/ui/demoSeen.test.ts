@@ -45,3 +45,10 @@ test("a reload keeps a demo that arrived on the open card waiting; closing the c
   held.clear(s, 'a');
   expect(arrivedOnOpenCard(openedWith(s, 'a', demo(12)), demo(12))).toBe(false);
 });
+
+test("a later handover's demo is unseen even where its chapters fall at the same times", () => {
+  const s = store();
+  markSeen(s, 'a', demo(12, 1));
+  expect(unseen(s, 'a', demo(12, 1))).toBe(false);
+  expect(unseen(s, 'a', demo(12, 2))).toBe(true);
+});

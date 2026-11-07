@@ -6,11 +6,10 @@ type Store = Pick<Storage, 'getItem' | 'setItem'>;
 
 const key = (cardId: string) => `obeya-demo-seen-${cardId}`;
 const heldKey = (cardId: string) => `obeya-demo-held-${cardId}`;
-/** A new render after feedback has other chapter times, so it counts as unseen again. */
-const mark = (demo: Demo) => JSON.stringify(demo.chapters);
+/** One demo, by its handover and its render: a later handover counts as new even where its chapters fall at the same times. */
+const mark = (demo: Demo) => JSON.stringify([demo.handover ?? null, demo.chapters]);
 
-/** One demo, by its handover and its render. */
-export const sameDemo = (a: Demo | undefined, b: Demo | undefined) => !!a && !!b && a.handover === b.handover && mark(a) === mark(b);
+export const sameDemo = (a: Demo | undefined, b: Demo | undefined) => !!a && !!b && mark(a) === mark(b);
 
 /** This browser has not played the demo yet (a new render counts as new). */
 export function unseen(store: Pick<Storage, 'getItem'>, cardId: string, demo: Demo): boolean {
