@@ -271,6 +271,12 @@ conflict leaves the merge to the owner. Where the contributor allows no maintain
 they can resolve it: the worker records the conflict as a finding, the approval lapses, and the
 owner decides whether it goes to them (2026-11-07: the owner got gh's advice to resolve it on the
 command line instead).
+Until the merge is through (the push of the worker's commits, their comment, the merge on the
+forge), the card is landing as any approved card is: every page shows it
+under way ("pushing …", then "merging …"), also one loaded or opened on another device meanwhile,
+it does not count as needing the owner, and a restart of Obeya waits for it (2026-11-07: a restart
+cut a merge off after the owner's click folded the card with its demo, which a restart also waits
+for; the reloaded page showed "Demo ready" until the PR watcher saw the merge on GitHub).
 Merged, the card is `live`, and where work lands on `main` the checkout pulls the merge as `git pull`
 does it there. Where neither the repository nor the global git configuration sets a way of pulling
 and the local `main` has commits of its own, it pulls with a rebase, as Obeya brings its own work

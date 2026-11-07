@@ -317,6 +317,7 @@ describe('a review card', () => {
     expect(fake.said.merges).toEqual([]);
     expect(approvals).toEqual([]);
     expect(board.item(id)).toMatchObject({ state: 'waiting', need: 'demo' });
+    expect(board.item(id)!.landing).toBeUndefined();
     expect(board.item(id)!.contribution!.held).toBeUndefined();
     // nothing held any more: only „Mergen“ is left
     await expect(workers.pushContribution(id)).rejects.toMatchObject({ code: 'notReady' });
@@ -443,6 +444,7 @@ describe('a review card', () => {
     expect(fake.said.merges).toEqual([]);
     expect(approvals).toEqual([]);
     expect(board.item(id)!.state).toBe('inPr');
+    expect(board.row(id).approved_at).toBeNull();
     const [asked, fixed] = board.item(id)!.contribution!.findings!;
     expect(asked).toMatchObject({ status: 'sent', url: `${URL_}#pullrequestreview-1` });
     expect(asked!.decided).toBeUndefined();
@@ -652,6 +654,23 @@ describe('a review card', () => {
     expect(fake.said.merges).toEqual([prHead]);
     expect(board.item(id)!.state).toBe('live');
     expect(runtime.last.inbox.at(-1)).toContain('Obeya merged the pull request');
+  });
+
+  test('while the forge merges, the card is under way on every page and a restart waits for it; merged, the approval is done', async () => {
+    const id = await reviewCard();
+    await handOver();
+    const merge = fake.forge.merge;
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    fake.forge.merge = async (...a) => (await held, merge(...a));
+    const approving = workers.approve(id);
+    await until(() => !!board.item(id)!.landing);
+    expect(needsYou(board.item(id)!)).toBe(false);
+    expect(workers.busyCards()).toContain(id);
+    release();
+    await approving;
+    expect(board.item(id)!.state).toBe('live');
+    expect(board.row(id).approved_at).toBeNull();
   });
 
   test('decisions on findings left unsent go with the approval: follow-up tasks and ignored findings with the merge', async () => {
@@ -889,6 +908,8 @@ describe('a review card', () => {
     fake.said.refuse = 'base branch policy prohibits the merge';
     await expect(workers.approve(id)).rejects.toMatchObject({ code: 'mergeRefused' });
     expect(board.item(id)!.state).toBe('waiting');
+    expect(board.item(id)!.landing).toBeUndefined();
+    expect(needsYou(board.item(id)!)).toBe(true);
     expect(board.events(id).at(-1)!.text).toContain('base branch policy prohibits the merge');
   });
 

@@ -41,7 +41,7 @@ import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk
 import { videoOf } from './spot';
 import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath, linkSpot, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
-import { failText, t } from './strings';
+import { failText, landingLabel, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 import { beingWritten, split, talkAlone } from './talk';
@@ -1969,7 +1969,7 @@ function Canvas({
                   onStart={startCard}
                   onArchive={archiveCard}
                   dep={depOf(item.id)}
-                  underway={underway[item.id] ?? (item.landing ? t.approving : undefined)}
+                  underway={underway[item.id] ?? (item.landing ? landingLabel(item) : undefined)}
                   onHover={setHoverId}
                 />
               ),

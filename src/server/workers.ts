@@ -614,7 +614,7 @@ export class Workers {
   private live = new Map<string, Live>();
   /** Cards whose approved work is landing: the server answers meanwhile, but approving again is refused, and a restart waits. */
   private landing = new Set<string>();
-  /** Cards approved while git tells what the approval does (`approve`). */
+  /** Cards approved while git tells what the approval does (`approve`), or while a review card's pull request is pushed to and merged (`mergeContribution`): a restart waits for them too. */
   private approving = new Set<string>();
   /** Review cards whose „main pushen“ waits out its undo window (`pushMainFor`), or runs. */
   private pushingMain = new Map<string, ReturnType<typeof setTimeout> | true>();
@@ -1635,6 +1635,8 @@ export class Workers {
     clearTimeout(this.holding.get(cardId));
     this.holding.delete(cardId);
     this.approving.add(cardId);
+    // under way on every page, one loaded meanwhile too, as a landing is (approved before, it is the worker's)
+    if (!kept) this.o.board.work(cardId, { approved_at: new Date().toISOString() });
     const cwd = this.forgeCwd(cardId);
     let merged: string | void;
     try {
@@ -1695,6 +1697,9 @@ export class Workers {
       throw e;
     } finally {
       this.approving.delete(cardId);
+      // not merged and not with the worker: the card waits for the owner (or the contributor) again
+      const state = !kept && this.o.board.item(cardId) ? this.o.board.row(cardId).state : undefined;
+      if (state === 'waiting' || state === 'inPr') this.o.board.work(cardId, { approved_at: null });
     }
   }
 
@@ -2560,6 +2565,7 @@ export class Workers {
       need: null,
       detail: null,
       status_line: null,
+      approved_at: null,
       landed: JSON.stringify({ ...(commit ? { commit } : {}), ...(page.waits ? { page: true } : {}) } satisfies LandedState),
       shipped: JSON.stringify(shipped),
     });
@@ -3390,10 +3396,11 @@ export class Workers {
 
   /**
    * The cards whose worker is in the middle of a turn (or whose ended turn waits for its background
-   * work), and those whose workspace is being made ready, freed or taken from them (`evict`) or whose work is landing: a restart would cut off git midway.
+   * work), and those whose workspace is being made ready, freed or taken from them (`evict`) or whose work is landing or being
+   * approved (a review card's push, comment and merge): a restart would cut off git, or the forge, midway.
    */
   busyCards(): string[] {
-    return [...new Set([...this.inTurn(), ...this.landing, ...[...this.freeing.values()].map((f) => f.card), ...this.evicting])];
+    return [...new Set([...this.inTurn(), ...this.landing, ...this.approving, ...[...this.freeing.values()].map((f) => f.card), ...this.evicting])];
   }
 
   /**
