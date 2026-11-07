@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Board } from './board';
 import { Store } from './db';
-import { gitRepo, identify, until } from './testing';
+import { namedFiles, runAppCommand } from './app-command';
+import { alive, gitRepo, identify, leftBehind, until } from './testing';
 import { addTrailer, defaultBranch, git, Workspaces } from './workspaces';
 
 let dir: string;
@@ -184,6 +185,36 @@ describe('a workspace git frees', () => {
     expect(await again.ready!).toBe(first.path);
     expect(git(again.path, 'branch', '--show-current')).toBe('obeya/a');
     expect(git(repo, 'worktree', 'list').split('\n')).toHaveLength(2);
+  });
+
+  test("a landed card's worktree goes with what still runs from it, which its stop command did not know of", async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    const store = new Store(':memory:');
+    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const log = join(dir, 'stopped.log');
+    const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: repo, dir: join(dir, 'ws'), stop: `echo stopped>> ${log}` });
+    const a = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const { path, ready } = spaces.lease(a, 'obeya/a');
+    await ready;
+    const app = await leftBehind(path);
+    try {
+      await spaces.removeLanded(a, 'obeya/a');
+      expect(readFileSync(log, 'utf8')).toContain('stopped');
+      await until(() => !alive(app), 5000);
+      expect(existsSync(path)).toBe(false);
+    } finally {
+      if (alive(app)) process.kill(app, 'SIGKILL');
+    }
+  }, 30_000);
+
+  test('a stop command whose script the branch lacks does not run, and counts as nothing to stop', async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    expect(await runAppCommand(repo, 'node .obeya/app.mjs stop')).toEqual({ ok: true, output: '', missing: '.obeya/app.mjs' });
+    expect(namedFiles('cd server && node ../x/stop.mjs')).toEqual([]);
+    expect(namedFiles('docker compose -f deploy/compose.yml down --remove-orphans')).toEqual(['deploy/compose.yml']);
+    expect(namedFiles('make stop')).toEqual([]);
+    writeFileSync(join(repo, 'stop.mjs'), '');
+    expect(await runAppCommand(repo, 'echo ok ./stop.mjs')).toMatchObject({ ok: true, output: expect.stringContaining('ok') });
   });
 
   test('a worktree given back and taken again by its card while git removes it (the card deleted and brought back) is made again once git is done', async () => {

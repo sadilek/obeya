@@ -151,6 +151,25 @@ export function asOwner(of: () => object) {
 /** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
 export const heard = () => Bun.sleep(0);
 
+/** Starts a process that runs on in `cwd` the way an app's start script leaves one behind: detached, its starter gone. Its pid. */
+export async function leftBehind(cwd: string): Promise<number> {
+  const script = `const c = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: ${JSON.stringify(cwd)}, detached: true, stdio: 'ignore' }); c.unref(); console.log(c.pid);`;
+  const starter = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe' });
+  const pid = Number((await new Response(starter.stdout).text()).trim());
+  await starter.exited;
+  return pid;
+}
+
+/** Whether the process `pid` runs. */
+export const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const until = async (done: () => unknown, ms = 3000) => {
   for (const end = Date.now() + ms; !(await done()); await Bun.sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
 };
