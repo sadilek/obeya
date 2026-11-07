@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Board } from './board';
 import { Store } from './db';
-import { gitRepo, identify, until } from './testing';
+import { gitClone, gitRepo, identify, until } from './testing';
 import { addTrailer, defaultBranch, git, Workspaces } from './workspaces';
 
 let dir: string;
@@ -15,7 +15,7 @@ describe('the main branch', () => {
   test("is origin's HEAD where the checkout knows one, whatever branch it is on", () => {
     const origin = gitRepo(join(dir, 'origin'));
     git(origin, 'branch', '-m', 'trunk');
-    git(dir, 'clone', '--quiet', origin, join(dir, 'clone'));
+    gitClone(origin, join(dir, 'clone'));
     git(join(dir, 'clone'), 'checkout', '--quiet', '-b', 'feature');
     expect(defaultBranch(join(dir, 'clone'))).toBe('trunk');
   });
@@ -223,7 +223,7 @@ describe("a follow-up's temporary worktree", () => {
     const pushed = git(origin, 'rev-parse', 'HEAD');
     git(origin, 'checkout', '--quiet', 'main');
     const checkout = join(dir, 'checkout');
-    git(dir, 'clone', '--quiet', origin, checkout);
+    gitClone(origin, checkout);
     const spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
     const { path: tree, ready } = spaces.followUpTree('card-1234567', 'obeya/pushed-abc123');
     await ready;
@@ -253,7 +253,7 @@ describe('the pull after a merge', () => {
     writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
     origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
     checkout = join(dir, 'checkout');
-    git(dir, 'clone', '--quiet', origin, checkout);
+    gitClone(origin, checkout);
     identify(checkout);
     spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
   });
@@ -340,7 +340,7 @@ describe('pushing main', () => {
     // a remote one can push to
     git(origin, 'config', 'receive.denyCurrentBranch', 'updateInstead');
     checkout = join(dir, 'checkout');
-    git(dir, 'clone', '--quiet', origin, checkout);
+    gitClone(origin, checkout);
     identify(checkout);
     spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
   });
@@ -390,7 +390,7 @@ describe('before a merge, the clash with unpushed commits', () => {
     pr = git(origin, 'rev-parse', 'HEAD');
     git(origin, 'checkout', '--quiet', 'main');
     checkout = join(dir, 'checkout');
-    git(dir, 'clone', '--quiet', origin, checkout);
+    gitClone(origin, checkout);
     identify(checkout);
     git(checkout, 'fetch', '--quiet', 'origin', 'contrib');
     spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
@@ -439,10 +439,10 @@ describe('a resolved pull lands', () => {
     writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
     origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
     checkout = join(dir, 'checkout');
-    git(dir, 'clone', '--quiet', origin, checkout);
+    gitClone(origin, checkout);
     identify(checkout);
     ws = join(dir, 'ws', 'clone');
-    git(dir, 'clone', '--quiet', origin, ws);
+    gitClone(origin, ws);
     identify(ws);
     spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
   });
@@ -522,7 +522,7 @@ describe('clones the configuration no longer names', () => {
   beforeEach(() => {
     gitRepo(join(dir, 'main'));
     origin = join(dir, 'origin.git');
-    git(dir, 'clone', '--quiet', '--bare', join(dir, 'main'), origin);
+    gitClone(join(dir, 'main'), origin, { bare: true });
     store = new Store(':memory:');
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     ws = join(dir, 'ws');
@@ -595,7 +595,7 @@ describe('clones the configuration no longer names', () => {
     commit(squashed, 'b.txt');
     // the pull request was squashed onto main, and its branch deleted
     const other = join(dir, 'other');
-    git(dir, 'clone', '--quiet', origin, other);
+    gitClone(origin, other);
     identify(other);
     for (const f of ['a.txt', 'b.txt']) writeFileSync(join(other, f), `${f}\n`);
     git(other, 'add', '.');
@@ -633,7 +633,7 @@ describe('clones the configuration no longer names', () => {
   test('a clone of another repository in its directory is not its to remove', async () => {
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, origins: [origin] });
     const stranger = gitRepo(join(dir, 'stranger'));
-    git(dir, 'clone', '--quiet', stranger, join(ws, '7'));
+    gitClone(stranger, join(ws, '7'));
     const [mine] = (await spaces.ensureClones(origin, 1)) as [string];
     spaces.keepOnly(null, []);
     spaces.sweep();
@@ -684,7 +684,7 @@ describe('clones the configuration no longer names', () => {
 
   test('a clone the owner listed only leaves the pool: Obeya never touches its folder', async () => {
     const own = join(dir, 'own');
-    git(dir, 'clone', '--quiet', origin, own);
+    gitClone(origin, own);
     const { spaces, paths } = await make(1);
     spaces.register(own, [origin], { origin });
     spaces.keepOnly(null, []);
@@ -698,7 +698,7 @@ describe('clones the configuration no longer names', () => {
 
   test('one whose folder is gone leaves at once, held or not, and its card takes another at its next start', async () => {
     const own = join(dir, 'own');
-    git(dir, 'clone', '--quiet', origin, own);
+    gitClone(origin, own);
     const { spaces, paths } = await make(3);
     const [a, b, c] = ['A', 'B', 'C'].map((title) => board.create({ title, x: 0, y: 0 }).id) as [string, string, string];
     const held = spaces.lease(a, 'obeya/a');

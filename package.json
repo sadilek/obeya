@@ -10,7 +10,7 @@
     "build": "bun scripts/build.ts",
     "build:app": "bun scripts/build-app.ts",
     "app": "bun scripts/app.ts",
-    "test": "bun test --parallel",
+    "test": "bun scripts/test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

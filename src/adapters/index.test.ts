@@ -20,7 +20,7 @@ describe('defaultsFor', () => {
     const root = join(import.meta.dir, '../..');
     const read = parseShared(readFileSync(join(root, '.obeya/settings.json'), 'utf8'));
     expect(read.problems).toEqual([]);
-    expect(read.settings).toMatchObject({ land: 'main', workspaces: 'worktrees', checks: ['bun test --parallel', 'bun run typecheck'] });
+    expect(read.settings).toMatchObject({ land: 'main', workspaces: 'worktrees', checks: ['bun run test', 'bun run typecheck'] });
   });
 
   test('lands through pull requests where origin is on GitHub, else on the main branch', () => {

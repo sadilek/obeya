@@ -14,7 +14,7 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, gitRepo, identify, syncGitCalls, until } from './testing';
+import { artifact, FakeRuntime, gitClone, gitRepo, identify, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -84,12 +84,13 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-review-'));
   origin = gitRepo(join(dir, 'acme', 'app'));
   main = join(dir, 'main');
-  git(dir, 'clone', '--quiet', origin, main);
+  gitClone(origin, main);
   prHead = '';
   push('poll.ts');
   const store = new Store(':memory:');
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
   const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
+  gitClone(main, join(dir, 'ws', '1'));
   await workspaces.ensureClones(main, 1);
   runtime = new FakeRuntime();
   // the PR's branch in the contributor's repository, where Obeya pushes the worker's own commits
