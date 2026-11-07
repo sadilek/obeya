@@ -1,17 +1,17 @@
 // The voice Obeya holds across renders, against a fake voice that speaks qwen3.py's protocol: one
 // queue for every render's clips, one start while clips keep coming, an end after the idle time.
 
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type ClipRequest, NarrationHost, parseClipRequest } from './narration';
+import { type ClipRequest, type Deadline, NarrationHost, parseClipRequest } from './narration';
 import { serve } from './server';
 import { asOwner } from './testing';
 
 /**
  * Logs its start, each clip and its end; `dies` as the speaker makes it die at the second clip,
- * `stumm` at loading, `lahm` never gets loaded. A clip whose text says „hängt“ gets no answer, as
+ * `stumm` at loading, `lahm` says it loads, then nothing more. A clip whose text says „hängt“ gets no answer, as
  * the Qwen3 voice gave none on 2026-10-21; a clip of several sentences reports each after a while.
  * Given the script as written, it says it heard the text as said.
  */
@@ -21,8 +21,9 @@ const [log, who] = process.argv.slice(2);
 // Reproduce a replacement process getting less CPU than the host's short test deadline allows.
 if (who === 'slow') await Bun.sleep(400);
 appendFileSync(log, 'start ' + who + '\\n');
-if (who === 'lahm') { console.error('waiting for the GPU'); await new Promise(() => {}); }
 console.log('loading weights ...');
+// it logs that it stalls once its diagnostic is out
+if (who === 'lahm') { console.error('waiting for the GPU'); appendFileSync(log, 'stalls lahm\\n'); await new Promise(() => {}); }
 if (who === 'stumm') { console.error('cannot load the model'); process.exit(2); }
 console.log(JSON.stringify({ ready: true }));
 let asked = 0;
@@ -52,7 +53,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const hold = (idleMs = 60_000, limits: { loadMs?: number; sentenceMs?: number } = {}) =>
+const hold = (idleMs = 60_000, limits: { loadMs?: number; sentenceMs?: number; deadline?: Deadline } = {}) =>
   (host = new NarrationHost({ argv: (voice, language) => ['bun', join(dir, 'voice.ts'), join(dir, 'log'), voice.speaker ?? voice.reference ?? '', language], idleMs, ...limits }));
 const log = () => (existsSync(join(dir, 'log')) ? readFileSync(join(dir, 'log'), 'utf8').trim().split('\n') : []);
 const clip = (text: string, speaker = 'ryan', language: ClipRequest['language'] = 'de'): ClipRequest => ({ voice: { speaker }, text, out: join(dir, `${text}.wav`), language });
@@ -147,35 +148,30 @@ describe('a voice that stops answering', () => {
     expect(log().filter((l) => !l.startsWith('end'))).toEqual(['start ryan', 'start ryan', 'en:b1', 'start ryan', 'de:Probe', 'start ryan', 'en:a2', 'en:b2']);
   });
 
-  test('loading for too long fails the clip, and the next clip starts the voice anew', async () => {
-    // Control just the loading deadline; child startup and process exit still use real time.
-    const setTimer = globalThis.setTimeout;
-    const deadlines: (() => void)[] = [];
-    const schedule = (...[callback, ms, ...args]: Parameters<typeof setTimeout>) => {
-      if (ms !== 300) return setTimer(callback, ms, ...args);
-      deadlines.push(() => callback(...args));
-      return setTimer(() => {}, 0);
+  test('loading for too long fails the clip, the time starting anew with each line of output, and the next clip starts the voice anew', async () => {
+    // The loading deadlines expire only by hand, so no real child is bound by them on a busy machine.
+    const deadlines: { ms: number; expire: () => void; cancelled: boolean }[] = [];
+    const deadline: Deadline = (ms, expire) => {
+      const d = { ms, expire, cancelled: false };
+      deadlines.push(d);
+      return () => (d.cancelled = true);
     };
-    // The DOM and Node timer overloads disagree on the handle; this delegates handles to Bun.
-    const timer = spyOn(globalThis, 'setTimeout').mockImplementation(schedule as typeof setTimeout);
-    try {
-      hold(60_000, { loadMs: 300 });
-      let settled = false;
-      const loading = host.clip(clip('eins', 'lahm')).then((reply) => { settled = true; return reply; });
-      // A busy machine must not spend the loading budget before either real child gets to run.
-      await until(() => log().includes('start lahm'));
-      expect(log()).toContain('start lahm');
-      expect(settled).toBe(false);
-      expect(deadlines).toHaveLength(1);
-      deadlines[0]!();
-      expect(await loading).toEqual({ error: expect.stringContaining('while loading and was ended: waiting for the GPU') });
-      expect(host.loaded).toBe(false);
-      expect(await host.clip(clip('zwei', 'slow'))).toEqual({ ok: true, seconds: 0.01 });
-      expect(log()).toEqual(['start lahm', 'start slow', 'de:zwei']);
-    } finally {
-      host?.stop();
-      timer.mockRestore();
-    }
+    hold(60_000, { loadMs: 300, deadline });
+    let settled = false;
+    const loading = host.clip(clip('eins', 'lahm')).then((reply) => { settled = true; return reply; });
+    // its diagnostic is out, and the host has read its line of loading output
+    await until(() => log().includes('stalls lahm') && deadlines.length === 2);
+    expect(log()).toEqual(['start lahm', 'stalls lahm']);
+    expect(settled).toBe(false);
+    expect(deadlines.map(({ ms, cancelled }) => ({ ms, cancelled }))).toEqual([{ ms: 300, cancelled: true }, { ms: 300, cancelled: false }]);
+    deadlines[1]!.expire();
+    expect(await loading).toEqual({ error: 'the voice said nothing for 0.3 s while loading and was ended: waiting for the GPU' });
+    expect(host.loaded).toBe(false);
+    expect(await host.clip(clip('zwei', 'slow'))).toEqual({ ok: true, seconds: 0.01 });
+    expect(log()).toEqual(['start lahm', 'stalls lahm', 'start slow', 'de:zwei']);
+    // every deadline of the new voice ended by an answer, none by hand
+    expect(deadlines.length).toBeGreaterThan(2);
+    expect(deadlines.every((d) => d.cancelled)).toBe(true);
   });
 
   test('is not taken for stuck while it reports each sentence of a long clip', async () => {
