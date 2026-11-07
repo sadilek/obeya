@@ -842,6 +842,9 @@ const de = {
     pushedSent: (author: string) => `Gepusht und an ${author} geschickt.`,
     pushingHeld: 'wird gepusht …',
     merged: (n: number) => `PR #${n} gemergt.`,
+    /** Approving met a conflict of the PR with main: who resolves it. */
+    conflictAgent: (n: number) => `PR #${n} hat einen Konflikt mit main. Der Agent löst ihn, dann mergt Obeya.`,
+    conflictContributor: (n: number, author: string) => `PR #${n} hat einen Konflikt mit main, den nur ${author} lösen kann. Der Agent schreibt ihn als Befund auf.`,
     merging: 'wird gemergt …',
     onApproval: 'Demo teilen und am PR verlinken',
     toContributor: 'An Beitragenden',
@@ -2973,6 +2976,8 @@ const en: Strings = {
     pushedSent: (author: string) => `Pushed and sent to ${author}.`,
     pushingHeld: 'pushing …',
     merged: (n: number) => `PR #${n} merged.`,
+    conflictAgent: (n: number) => `PR #${n} conflicts with main. The agent resolves it, then Obeya merges.`,
+    conflictContributor: (n: number, author: string) => `PR #${n} conflicts with main, which only ${author} can resolve. The agent writes it up as a finding.`,
     merging: 'merging …',
     onApproval: 'Share the demo and link it on the PR',
     toContributor: 'To contributor',

@@ -96,6 +96,16 @@ const de = {
     unreviewedHead: (head: string) => `Nicht gemergt: Der PR steht seit der Übergabe auf einem anderen Stand (${head}). Der Agent prüft ihn.`,
     /** The forge refused the merge of a review card's PR. */
     mergeRefused: (reason: string) => `Nicht gemergt: ${reason}`,
+    /** The approved PR conflicts with main: the worker resolves the conflict on its branch, and its next handover is merged without a new approval. */
+    mergeConflict: (n: number) => `Nicht gemergt: PR #${n} hat einen Konflikt mit main. Der Agent löst ihn, danach mergt Obeya ohne neue Freigabe.`,
+    /** The same, where the contributor allows no edits by maintainers: only they can resolve it. */
+    mergeConflictNoEdits: (n: number, author: string) => `Nicht gemergt: PR #${n} hat einen Konflikt mit main, und ${author} erlaubt keine Änderungen durch Maintainer. Der Agent schreibt den Konflikt als Befund für ${author} auf.`,
+    /** The worker handed over again after a conflict, without anything new for the PR: the owner decides. */
+    conflictUnresolved: (n: number) => `Nicht gemergt: PR #${n} hat weiter einen Konflikt mit main, und der Agent hat keine Lösung übergeben.`,
+    /** The worker resolved the conflict and handed over: Obeya merges on the approval given before. */
+    mergingResolved: (n: number) => `Konflikt gelöst. Obeya mergt PR #${n}.`,
+    /** The card's status line while Obeya merges a review card's PR on an approval given before. */
+    mergingPr: (n: number) => `Mergt PR #${n}`,
     /** Where work lands on the local main: the merge on the forge was pulled into it. */
     pulledMain: (commit: string) => `main aus dem Remote geholt (${commit}).`,
     pullFailed: (reason: string) => `main ließ sich nach dem Merge nicht holen: ${reason}. Bitte selbst holen (git pull).`,
@@ -620,6 +630,11 @@ const en: Messages = {
     mergedContribution: (n: number) => `PR #${n} merged. Live.`,
     unreviewedHead: (head: string) => `Not merged: the PR is at another commit than at the handover (${head}). The agent reviews it.`,
     mergeRefused: (reason: string) => `Not merged: ${reason}`,
+    mergeConflict: (n: number) => `Not merged: PR #${n} conflicts with main. The agent resolves the conflict, then Obeya merges without a new approval.`,
+    mergeConflictNoEdits: (n: number, author: string) => `Not merged: PR #${n} conflicts with main, and ${author} allows no edits by maintainers. The agent writes the conflict up as a finding for ${author}.`,
+    conflictUnresolved: (n: number) => `Not merged: PR #${n} still conflicts with main, and the agent handed over no resolution.`,
+    mergingResolved: (n: number) => `Conflict resolved. Obeya merges PR #${n}.`,
+    mergingPr: (n: number) => `Merging PR #${n}`,
     pulledMain: (commit: string) => `Pulled main from the remote (${commit}).`,
     pullFailed: (reason: string) => `Could not pull main after the merge: ${reason}. Please pull it yourself (git pull).`,
     clashFound: (n: number, subject: string, card?: string) =>

@@ -892,6 +892,73 @@ describe('a review card', () => {
     expect(board.events(id).at(-1)!.text).toContain('base branch policy prohibits the merge');
   });
 
+  test('a PR that conflicts with main goes to the worker with the approval kept: its resolution is pushed and merged without the owner', async () => {
+    const id = await reviewCard();
+    await handOver();
+    // main moved since the PR branched off, in the same file
+    identify(origin);
+    writeFileSync(join(origin, 'poll.ts'), 'poll every minute\n');
+    git(origin, 'add', '.');
+    git(origin, 'commit', '--quiet', '-m', 'Poll every minute');
+    fake.status.mergeable = 'CONFLICTING';
+    expect(await workers.approve(id, { findings: { 2: 'drop' } })).toEqual({ conflict: 'agent' });
+    expect(fake.said.merges).toEqual([]);
+    expect(board.item(id)!.state).toBe('working');
+    expect(board.events(id).at(-1)!.text).toBe(board.t.worker.mergeConflict(5));
+    const told = runtime.last.inbox.at(-1)!;
+    expect(told).toContain('it conflicts with main');
+    expect(told).toContain('The approval holds');
+    expect(told).toContain('Ignored: #2 „No shortcut“');
+    // the worker merges main into its branch and resolves the conflict
+    const ws = board.row(id).workspace!;
+    identify(ws);
+    git(ws, 'fetch', '--quiet', origin, 'main');
+    expect(() => git(ws, 'merge', '--quiet', 'FETCH_HEAD')).toThrow();
+    writeFileSync(join(ws, 'poll.ts'), 'poll.ts, every minute\n');
+    git(ws, 'add', '.');
+    git(ws, 'commit', '--quiet', '--no-edit');
+    const head = git(ws, 'rev-parse', 'HEAD').trim();
+    expect(await runtime.last.call('ready_for_review', { summary: 'Resolved.', review: results })).toContain('Give pr_draft');
+    expect(await runtime.last.call('ready_for_review', { summary: 'Resolved.', review: results, pr_draft: 'Merged main and kept both changes in poll.ts.' })).toContain('merges it');
+    expect(board.item(id)!.state).toBe('working');
+    fake.status.mergeable = 'MERGEABLE';
+    runtime.last.emit({ type: 'idle' });
+    await until(() => board.item(id)!.state === 'live');
+    expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(head);
+    expect(fake.said.comments).toEqual(['Merged main and kept both changes in poll.ts.']);
+    expect(fake.said.merges).toEqual([head]);
+    expect(board.events(id).some((e) => e.text === board.t.worker.mergingResolved(5))).toBe(true);
+  });
+
+  test('a merge the forge refuses for a conflict goes to the worker too; handed over without a resolution, it is the owner’s again', async () => {
+    const id = await reviewCard();
+    await handOver();
+    fake.status.mergeable = 'UNKNOWN';
+    fake.said.refuse = 'X Pull request acme/app#5 is not mergeable: the merge commit cannot be cleanly created.';
+    await workers.approve(id);
+    expect(board.item(id)!.state).toBe('working');
+    expect(runtime.last.inbox.at(-1)).toContain('it conflicts with main');
+    await runtime.last.call('ready_for_review', { summary: 'Nothing to resolve.', review: results });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => board.item(id)!.state === 'waiting');
+    expect(board.item(id)!.need).toBe('demo');
+    expect(board.row(id).approved_at).toBeNull();
+    expect(board.events(id).at(-1)!.text).toBe(board.t.worker.conflictUnresolved(5));
+    expect(fake.said.merges).toEqual([]);
+  });
+
+  test('a conflict where the contributor allows no maintainers’ edits goes to the worker as a finding for them, without the approval', async () => {
+    const id = await reviewCard(false);
+    await handOver();
+    fake.status.mergeable = 'CONFLICTING';
+    expect(await workers.approve(id)).toEqual({ conflict: 'contributor' });
+    expect(fake.said.merges).toEqual([]);
+    expect(board.item(id)!.state).toBe('working');
+    expect(board.row(id).approved_at).toBeNull();
+    expect(runtime.last.inbox.at(-1)).toContain('only amerlander can resolve the conflict');
+    expect(board.events(id).at(-1)!.text).toBe(board.t.worker.mergeConflictNoEdits(5, 'amerlander'));
+  });
+
   test('a PR closed without a merge asks the owner whether the card can go', async () => {
     const id = await reviewCard();
     await handOver();

@@ -160,6 +160,8 @@ export interface StoredContribution extends Contribution {
   linked?: string;
   /** The PR was closed without a merge, and the owner was asked whether the card can go. */
   closed?: true;
+  /** The PR's head at which the owner's approval last met a conflict with main, which went to the worker to resolve. */
+  conflict?: string;
 }
 
 /** A review card's pull request as the card shows it. */

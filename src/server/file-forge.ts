@@ -2,7 +2,8 @@
 // requests without a real forge: the file holds them as a forge would answer for them, Obeya's
 // comments, reviews and merges go into it, and whoever stages the demo edits it to play the people on
 // the forge (a contributor answering, pushing). A merge squashes the PR's head onto the default
-// branch of the repository the file names, as the forge would on its side.
+// branch of the repository the file names, as the forge would on its side; a PR that conflicts with
+// that branch is not mergeable, unless the file says otherwise.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
@@ -22,6 +23,7 @@ export interface FilePr {
   headRef?: string;
   checks?: PrStatus['checks'];
   comments?: PrStatus['comments'];
+  /** Unset: as `git merge-tree` finds the head against the default branch. */
   mergeable?: PrStatus['mergeable'];
   mergeCommit?: string;
   body?: string;
@@ -53,6 +55,13 @@ export function fileForge(path: string): Forge {
     await gitAsync(f.repo, 'update-ref', `refs/pull/${p.number}/head`, pushed).catch(() => {});
     return pushed;
   };
+  // whether the head merges into the branch checked out in the forge's repository without a conflict
+  const conflicts = (f: ForgeFile, head: string) =>
+    gitAsync(f.repo, 'merge-tree', '--write-tree', '--quiet', 'HEAD', head).then(
+      () => false,
+      () => true,
+    );
+  const mergeableOf = async (f: ForgeFile, p: FilePr, head: string): Promise<PrStatus['mergeable']> => p.mergeable ?? ((await conflicts(f, head)) ? 'CONFLICTING' : 'MERGEABLE');
   return {
     async status(_cwd, url) {
       const f = read();
@@ -60,8 +69,7 @@ export function fileForge(path: string): Forge {
       const head = await headOf(f, p);
       return {
         state: p.state ?? 'OPEN',
-        mergeable: p.mergeable ?? 'MERGEABLE',
-        mergeState: 'CLEAN',
+        ...(await mergeableOf(f, p, head).then((m) => ({ mergeable: m, mergeState: m === 'CONFLICTING' ? 'DIRTY' : 'CLEAN' }))),
         head,
         checks: p.checks ?? [],
         comments: p.comments ?? [],
@@ -110,6 +118,7 @@ export function fileForge(path: string): Forge {
       const p = pr(f, url);
       if ((await headOf(f, p)) !== head) throw new Error('Head branch was modified. Review and try the merge again.');
       if ((p.state ?? 'OPEN') !== 'OPEN') throw new Error('Pull request is not open');
+      if ((await mergeableOf(f, p, head)) === 'CONFLICTING') throw new Error(`Pull request #${p.number} is not mergeable: the merge commit cannot be cleanly created.`);
       await gitAsync(f.repo, 'merge', '--squash', '--quiet', head);
       await gitAsync(f.repo, '-c', `user.name=${p.author}`, '-c', `user.email=${p.author}@users.noreply`, 'commit', '--quiet', '-m', `${p.title} (#${p.number})`);
       const commit = await gitAsync(f.repo, 'rev-parse', 'HEAD');

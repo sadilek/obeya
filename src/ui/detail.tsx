@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, type ApproveResult, askable, type BackgroundTask, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
@@ -50,10 +50,11 @@ import { CodexLogin, Reauthenticate } from './reauthenticate';
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
  * With `pending`, the card folds at once, before the server has answered, and says so until it has.
  */
-export type ActDone = { close: true; ack: string; undo?: () => unknown; pending?: string } | { close: false };
+/** `ackFor`: with `pending`, the confirmation as the server's answer has it, where that differs from `ack`. */
+export type ActDone = { close: true; ack: string; ackFor?: (result: unknown) => string | undefined; undo?: () => unknown; pending?: string } | { close: false };
 
 /** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
-export type Pending = { card: string; title: string; answered: Promise<void> };
+export type Pending = { card: string; title: string; answered: Promise<unknown> };
 
 /** Words typed into a field of the card: straight to its agent where one listens, else the Koordinator reads them like spoken ones; the panel does not wait. */
 type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number) => void;
@@ -129,7 +130,7 @@ export function Detail(p: Props) {
     if (arrived && demoWaits && item.demo) held.set(sessionStorage, item.id, item.demo);
   }, [arrived, demoWaits, item.demo?.handover, item.demo && JSON.stringify(item.demo.chapters)]);
   const all = p.all;
-  const run = async (fn: () => Promise<void>, done: ActDone) => {
+  const run = async (fn: () => Promise<unknown>, done: ActDone) => {
     setError('');
     const answered = p.flush().then(fn);
     // what takes the server a while (a push onto main) does not hold the card open: the canvas shows it under way
@@ -146,9 +147,10 @@ export function Detail(p: Props) {
   const act = (a: CardAction, done: ActDone) =>
     run(async () => {
       if (a.action === 'approve' || a.action === 'pushChanges') await saveHeld(item.id);
-      await api.act(item.id, a);
+      const r = await api.act<ApproveResult | void>(item.id, a);
       // the decisions on findings that went with the approval are no longer the field's to send
       if (a.action === 'approve' && a.findings) updateDraft(cardDraft(item.id), { findings: undefined });
+      return r;
     }, done);
   // the repository the card is to be built in, before work on it begins: one of the canvas's or a new one
   const choice = useRepoChoice(item, p.onEdit);
@@ -753,7 +755,12 @@ function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: A
   const decided = useUnsentDecisions(item);
   // a follow-up task or an ignored finding goes with the merge; a decision that holds the PR up goes with Send first
   const heldUp = Object.values(decided).some((route) => route === 'contributor' || route === 'self');
-  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, pending });
+  // a PR in conflict with main is not merged: the confirmation says who resolves it
+  const ackFor = (r: unknown) => {
+    const conflict = (r as ApproveResult)?.conflict;
+    return conflict === 'agent' ? t.review.conflictAgent(c.number) : conflict === 'contributor' ? t.review.conflictContributor(c.number, c.author) : undefined;
+  };
+  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, ackFor, pending });
   if (c.held?.asks.length)
     return (
       <button className="btn primary" disabled={heldUp} title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>

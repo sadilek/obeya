@@ -268,7 +268,7 @@ export const api = {
   archived: (first?: number) => call<Item[]>('GET', at(first ? `/archive?first=${first}` : '/archive')),
   /** Archives every finished card of the owner's on the canvas. */
   archiveDone: () => call<{ ids: string[] }>('POST', at('/archive')),
-  act: (id: string, a: CardAction) => call<void>('POST', cardAt(id, '/act'), a),
+  act: <T = void>(id: string, a: CardAction) => call<T>('POST', cardAt(id, '/act'), a),
   /** "Make it a card": a looked-up thread moves onto a Question card, which comes back. */
   threadCard: (thread: number) => call<Item>('POST', at(`/threads/${thread}/card`)),
   walkthrough: (talk: number) => call<{ thread: number; file: string }>('POST', at(`/talk/${talk}/walkthrough`)),

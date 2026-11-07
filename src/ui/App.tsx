@@ -640,7 +640,7 @@ function Canvas({
     setUnderway((u) => ({ ...u, [p.card]: what }));
     showWait(`${what.charAt(0).toUpperCase()}${what.slice(1)}`);
     p.answered.then(
-      () => showAck(d.ack, d.undo),
+      (r) => showAck(d.ackFor?.(r) ?? d.ack, d.undo),
       (e) => {
         if (!(e instanceof ApiError)) console.error(e);
         setUnderway(({ [p.card]: _, ...rest }) => rest);

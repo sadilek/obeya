@@ -846,6 +846,9 @@ export interface Clash {
  */
 export type ChangeRoute = 'contributor' | 'self' | 'later' | 'drop';
 
+/** What approving a review card did instead of merging: its PR conflicts with main, which its agent resolves, or only the contributor can. */
+export type ApproveResult = { conflict: 'agent' | 'contributor' } | undefined;
+
 /** One finding of a review card's review, as its worker keeps it. */
 export interface Finding {
   /** Its number on the card, kept while the worker rewrites the list. */
