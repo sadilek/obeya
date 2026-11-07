@@ -12,9 +12,9 @@ import type { PlanDoc } from '../core/plan-doc';
 import { Board } from './board';
 import { Store } from './db';
 import { ReadTree } from './read-tree';
-import { FakeRuntime, gitRepo, identify } from './testing';
+import { FakeRuntime, gitClone, gitRepo, identify } from './testing';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { Workspaces } from './workspaces';
 
 export const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
 export const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')], markdown: '' };
@@ -48,7 +48,7 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
   main = join(dir, 'main');
   gitRepo(main);
   origin = join(dir, 'origin.git');
-  if (withOrigin) git(dir, 'clone', '--quiet', '--bare', main, origin);
+  if (withOrigin) gitClone(main, origin, { bare: true });
   store = new Store(':memory:');
   docs = [doc];
   // the checkout is the Lesestand: work lands on its main
@@ -60,6 +60,8 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
   if (adapter.workspaces === 'clones') {
+    // the clone ensureClones would make, without git's clone (`gitClone`)
+    gitClone(withOrigin ? origin : main, join(dir, 'ws', '1'));
     await workspaces.ensureClones(withOrigin ? origin : main, 1);
     for (const w of workspaces.list()) identify(w.path);
   }

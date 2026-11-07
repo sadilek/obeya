@@ -778,11 +778,23 @@ workers are busy.
   directories are polled as well).
 - **Git is called directly, and test repositories are copied**: on macOS Obeya calls the binary
   `xcrun --find git` names, not the `/usr/bin/git` shim, which looks it up on every call (10 ms instead
-  of 4, over a few thousand calls a test run); test repositories are copies of a template committed
-  once. Together they halved the test suite. A repository's main branch and its commit are read with
+  of 4, over a few thousand calls a test run); on Windows the `git.exe` in git's exec path, not Git
+  for Windows' `cmd\git.exe`, a launcher that starts it as a second process (2026-11-06). Starting a
+  process costs 50 ms to over a second there (the virus scanner looks at each, more on a loaded
+  machine), so the launcher doubled what each call costs; the real one finds its helpers (sh, ssh,
+  the credential manager) by itself. Test repositories are copies of a template committed once, and
+  the clones tests set up copies of a clone of it: a clone starts four processes on Windows, a shell
+  among them, and took several seconds. Together they halved the test suite on macOS. Tests run
+  without git's automatic maintenance (a process more after each commit and fetch). On Windows,
+  where the suite is bound by process starts, a test, a hook and a wait for an event get five times
+  the time: with Bun's 5 s, half the suite timed out there. A repository's main branch and its commit are read with
   one `for-each-ref` (2026-10-15), not four to seven calls each time.
 - **Tests run a file per process** (`bun test --parallel`, Bun 1.4+, 2026-10-15): one after the other
   the suite took 165 s, mostly waiting for git; in parallel 27 s. The longest file sets the run's
-  length, so large test files are split by theme around a shared fixture.
+  length, so large test files are split by theme around a shared fixture. On Windows a quarter of the
+  cores (2026-11-06): starting processes is what the suite waits for there, and the machine starts
+  only so many at once, however many cores it has; a process per core made each test wait so long
+  that half of them timed out, and eleven of the slowest files took 40 minutes instead of 14. The
+  checks run `bun run test`, which picks the number by platform.
 - **The first canvas is chosen with two cards and radio buttons**: pills read as buttons in a user
   test, not as a choice.

@@ -1,10 +1,10 @@
 // Preloaded by `bun test` (bunfig.toml): its hooks run once around all test files.
 
-import { afterAll } from 'bun:test';
+import { afterAll, setDefaultTimeout } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { removeTemplates } from './testing';
+import { PATIENCE, removeTemplates } from './testing';
 
 // Whatever the tests put in the temp directory goes into one of this run, removed after the run. A
 // run that was killed (Obeya restarting stops its workers' test runs) never got there: the next run
@@ -20,11 +20,28 @@ const alive = (pid: number) => {
 };
 for (const name of readdirSync(tmpdir())) {
   const pid = Number(name.startsWith(RUN) && name.slice(RUN.length).split('-')[0]);
-  if (pid && !alive(pid)) rmSync(join(tmpdir(), name), { recursive: true, force: true });
+  if (!pid || alive(pid)) continue;
+  try {
+    rmSync(join(tmpdir(), name), { recursive: true, force: true });
+  } catch {
+    // on Windows, a process the run left behind still has a file in it open: a later run removes it
+  }
 }
 const run = mkdtempSync(join(tmpdir(), `${RUN}${process.pid}-`));
 // TEMP and TMP are where Windows looks
 process.env.TMPDIR = process.env.TEMP = process.env.TMP = run;
+
+// git's automatic maintenance after each commit, fetch and merge is a git process more for nothing
+// in a test's repository, and starting one is slow on Windows (a virus scanner looks at each)
+const count = Number(process.env.GIT_CONFIG_COUNT) || 0;
+for (const [i, [key, value]] of [['maintenance.auto', 'false'], ['gc.auto', '0']].entries()) {
+  process.env[`GIT_CONFIG_KEY_${count + i}`] = key;
+  process.env[`GIT_CONFIG_VALUE_${count + i}`] = value;
+}
+process.env.GIT_CONFIG_COUNT = String(count + 2);
+
+// a test and its hooks have longer on Windows (`PATIENCE`)
+setDefaultTimeout(5000 * PATIENCE);
 
 // the Arbeitsrückschau looks for transcripts there: never the machine's own. The live tests need
 // the machine's login from there, so they set it back while they run (from `OBEYA_MACHINE_CLAUDE_CONFIG_DIR`).
@@ -34,5 +51,9 @@ const claude = (process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'obey
 afterAll(() => {
   removeTemplates();
   rmSync(claude, { recursive: true, force: true });
-  rmSync(run, { recursive: true, force: true });
+  try {
+    rmSync(run, { recursive: true, force: true });
+  } catch {
+    // a process a test left behind on Windows still has a file in it open: the next run removes it
+  }
 });
