@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { bareCommand, CodexLogins, codexRuntime, codexUsageOf, itemCalls, limitResets, modelsOf, notLoggedIn, patchCalls, WAIT_REFUSED } from './codex';
 import type { ToolCall } from './folder';
 import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
-import { until } from './testing';
+import { alive, until } from './testing';
 
 const FAKE = join(import.meta.dir, 'fixtures', 'fake-codex.ts');
 const dirs: string[] = [];
@@ -222,6 +222,16 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     const s = start({}, 'unauthorized');
     await until(() => s.idles() === 1);
     expect(s.events).toContainEqual({ type: 'error', message: notLoggedIn(null, 'unexpected status 401 Unauthorized') });
+  });
+
+  test('a thread Codex refuses to start ends the session with the error, its app server with it', async () => {
+    const pidFile = join(tmpdir(), `obeya-codex-pid-${process.pid}-${Date.now()}`);
+    const s = start({ env: { OBEYA_CODEX: FAKE, FAKE_CODEX_REFUSE_START: 'model is not supported', FAKE_CODEX_PID: pidFile } }, 'hi');
+    await s.session.done;
+    expect(s.events).toEqual([{ type: 'error', message: 'model is not supported' }]);
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    rmSync(pidFile, { force: true });
+    await until(() => !alive(pid));
   });
 
   test('closed, the session ends without an error', async () => {

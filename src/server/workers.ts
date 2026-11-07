@@ -2790,6 +2790,14 @@ export class Workers {
       return Promise.resolve();
     }
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
+    return this.planAgain(cardId, () => this.o.board.log(cardId, 'state', 'owner', card.pr ? this.o.board.t.worker.stoppedPrOpen(card.pr.number) : this.o.board.t.worker.stopped));
+  }
+
+  /**
+   * The card is planned again, its worker ended (`stop`), after `said` logged why. Its workspace
+   * stays with it where it holds work, and is given back otherwise once git has told.
+   */
+  private planAgain(cardId: string, said: () => void): Promise<void> {
     // comments held back for the worker stay in the conversation
     this.takeHeld(cardId);
     this.end(cardId);
@@ -2797,7 +2805,7 @@ export class Workers {
     const generation = this.generation.get(cardId);
     const path = this.o.board.row(cardId).workspace;
     this.o.board.work(cardId, { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null });
-    this.o.board.log(cardId, 'state', 'owner', card.pr ? this.o.board.t.worker.stoppedPrOpen(card.pr.number) : this.o.board.t.worker.stopped);
+    said();
     return this.o.workspaces.hasWork(cardId).then((keep) => {
       if (keep || this.generation.get(cardId) !== generation || this.o.board.row(cardId).workspace !== path) return;
       this.o.workspaces.release(cardId);
@@ -3411,7 +3419,32 @@ export class Workers {
       this.o.board.changed();
       // a session that ended without ending its turn takes in no answer any more
       this.answerTaken(cardId);
+      if (!this.shut) this.endedByItself(cardId, live);
     });
+  }
+
+  /**
+   * The worker's session ended without Obeya ending it (it failed to start, its harness died in a
+   * turn): no agent works on the card any more. At work, the card is planned again as if the owner
+   * had stopped it, its log ending with the error (or that the agent stopped), which the card then
+   * shows as why it does not run; after the landing, the owner hears what was left undone. A card
+   * waiting for the owner needs no session until their next words.
+   */
+  private endedByItself(cardId: string, live: Live) {
+    const card = this.o.board.item(cardId);
+    if (!card) return;
+    const landed = landedOf(this.o.board.row(cardId));
+    const t = this.o.board.t;
+    if (landed) {
+      if (card.state === 'waiting' || landed.waits || landed.page || landed.needsClone) return;
+      const reason = live.failed ? failureReason(clip(live.failed, 1200), t) : t.worker.stalled;
+      this.toOwner(cardId, { text: t.worker.remainsUndone(`${reason}${/[.!?]$/.test(reason) ? '' : '.'}`), options: [t.worker.tryAgain], stuck: true });
+      return;
+    }
+    if (card.state !== 'working') return;
+    void this.planAgain(cardId, () => {
+      if (this.o.board.events(cardId).at(-1)?.kind !== 'error') this.o.board.log(cardId, 'error', 'obeya', live.failed ?? t.worker.stalled);
+    }).catch((e) => console.error(`giving back the workspace of ${cardId}:`, e));
   }
 
   /**

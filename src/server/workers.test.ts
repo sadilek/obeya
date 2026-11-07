@@ -7,7 +7,7 @@ import { BadRequest, Board } from './board';
 import { OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { Restarter } from './self-update';
-import { artifact } from './testing';
+import { artifact, until } from './testing';
 import { Workers } from './workers';
 import { board, dir, eachTest, flush, main, manual, runtime, setConversation, setLanguage, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { git } from './workspaces';
@@ -646,6 +646,33 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toContain('nicht angemeldet');
   });
 
+  test('a session that fails to start stops the card, its log ending with the error', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const s = runtime.last;
+    s.emit({ type: 'error', message: 'the Codex app server exited with code 1' });
+    // the session ends by itself, without its turn ending
+    s.close();
+    await until(() => state(c.id) === 'planned');
+    expect(workers.inTurn()).not.toContain(c.id);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', text: 'the Codex app server exited with code 1' });
+    expect(board.events(c.id).filter((e) => e.kind === 'error')).toHaveLength(1);
+    // without work in it, its clone is free again, and the card starts afresh
+    await until(() => !board.row(c.id).workspace);
+    await workers.start(c.id);
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last).not.toBe(s);
+  });
+
+  test('a session that ends by itself without an error stops the card, saying the agent stopped', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    runtime.last.emit({ type: 'text', text: 'Ich fange an.' });
+    runtime.last.close();
+    await until(() => state(c.id) === 'planned');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', text: board.t.worker.stalled });
+  });
+
   test('an error of a session that signed in with a token says so in the conversation', async () => {
     const c = manual();
     await workers.start(c.id);
@@ -1005,6 +1032,24 @@ describe('workers', () => {
     const d = manual();
     await workers.start(d.id);
     expect(board.row(d.id).workspace).toBe(clone);
+  });
+
+  test('a session that ends by itself after the landing tells the owner what was left undone', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const clone = board.row(c.id).workspace!;
+    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Export');
+    await runtime.last.call('ready_for_review', { summary: 'CSV-Export gebaut.', demo: artifact() });
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    expect(board.item(c.id)!.finishing).toBe(true);
+    runtime.last.emit({ type: 'error', message: 'API Error: 500' });
+    runtime.last.close();
+    await until(() => state(c.id) === 'waiting:question');
+    expect(board.item(c.id)!.question!.text).toContain('API Error: 500');
+    expect(board.item(c.id)!.question!.options).toEqual([board.t.worker.tryAgain]);
   });
 
   test("a handover after feedback says what changed; the card's report keeps the first one with the replies and handovers after it", async () => {

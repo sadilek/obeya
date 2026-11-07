@@ -56,6 +56,17 @@ one of Obeya's tools refused the worker's last call of it (a handover without it
 nudge repeats that refusal: a worker on Codex may never have read it, since Codex's code mode drops
 a tool's result its script does not print (2026-11-04).
 
+A session that ends without Obeya ending it (it failed to start, e.g. Codex refused `thread/start`,
+or its harness died in a turn) has no turn left to nudge: no agent works on the card any more. A card
+at work is then planned again as if the owner had stopped it (its workspace kept where it holds
+work), and its log ends with the error, or with "The agent stopped without being done" where there
+was none; the planned card shows that above its conversation as why it does not run, with the login
+where the error is a lost one, and Start begins a new session. After the landing the owner gets
+what was left undone as a question with "Try again", as for a turn that failed there twice. A card
+waiting for the owner stays as it is: their next words resume the session. Chosen over leaving the
+card "Agent at work" until Obeya restarts, which showed a Stop button for an agent no longer there
+(2026-11-07).
+
 A turn that ends while the worker's own background work runs (a render, a test suite, a watcher) is
 not such a turn: the work wakes the worker, so Obeya waits, also after the landing, where an ended
 turn would otherwise finish the card and remove its workspace. The SDK reports each change in how
