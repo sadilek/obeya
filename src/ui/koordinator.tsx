@@ -8,7 +8,7 @@ import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuo
 import { api } from './api';
 import { Inline, plain } from './markdown';
 import { AnswerFiles, Body, Continues, Msg, Quote, Reading, ThreadCard } from './message';
-import { askedForHere, WalkthroughButton } from './walkthrough';
+import { WalkthroughButton } from './walkthrough';
 import { isWalkthrough } from '../core/walkthrough';
 import { type Reply, setReply, talkEv, talkQuote } from './reply';
 import { clock, failText, t } from './strings';
@@ -283,6 +283,8 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
   // conversation back to its end, so they can read further up in the meantime
   const onScroll = useStickToEnd(box, talk.at(-1)?.id, talk);
   if (!talk.length) return null;
+  // the newest text answer's "Show as walkthrough" stays in view until the owner has used it once
+  const hinted = talk.findLast((x) => tellable(x, items))?.id;
   return (
     <div
       className="talk conv"
@@ -340,6 +342,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 at={x.at}
                 ev={talkEv({ talk: x.id, part: 'reply' })}
                 onReply={reply('reply', 'koordinator', x.reply)}
+                head={x.thread === undefined && tellable(x, items) && <WalkthroughButton of={{ talk: x.id }} hint={x.id === hinted} />}
               >
                 <Body md={x.reply} />
                 {x.wish && !x.undone && <WishReplyLink wish={x.wish} />}
@@ -373,13 +376,13 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                       x.answer !== undefined && (
                         <>
                           <ThreadCard thread={x.thread} onOpen={onOpen} />
-                          {!x.files?.some((f) => isWalkthrough(f.name)) && <WalkthroughButton talk={x.id} />}
+                          {tellable(x, items) && <WalkthroughButton of={{ talk: x.id }} hint={x.id === hinted} />}
                         </>
                       )
                     }
                   >
                     {x.answer !== undefined ? <Body md={x.answer} /> : <div className="hint">{t.koordinator.lookingUp}</div>}
-                    {x.thread !== undefined && <AnswerFiles thread={x.thread} files={x.files} autoplay={askedForHere(x.id)} />}
+                    {x.thread !== undefined && <AnswerFiles thread={x.thread} files={x.files} />}
                   </Msg>
                 )}
               </>
@@ -391,6 +394,15 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
     </div>
   );
 }
+
+/**
+ * Whether an exchange of the sheet has a text answer "Show as walkthrough" can tell: a looked-up
+ * answer without a walkthrough (its thread not on a Question card), or a reply that only answers.
+ */
+const tellable = (x: Talk, items: Item[]) =>
+  x.thread !== undefined
+    ? x.answer !== undefined && !x.files?.some((f) => isWalkthrough(f.name)) && !(x.movedTo && items.some((i) => i.id === x.movedTo))
+    : !!x.replyOnly && !!x.reply && !x.undone && !x.heldUntil;
 
 /** Under Obeya's reply: a card it waits on, to take the step it said it would take then; „Nicht mehr warten“ drops that step. */
 function WaitLine({ talk, wait, card, onOpen }: { talk: number; wait: TalkWait; card: Item | undefined; onOpen: (i: Item) => void }) {

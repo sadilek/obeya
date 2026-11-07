@@ -517,6 +517,30 @@ describe('a thread on a Question card', () => {
     expect(board().events(card.id).filter((e) => e.kind === 'talk').map((e) => e.text).slice(-4)).toEqual(['und im Oktober?', 'und November?', 'Oktober: 12 ct.', 'November: noch nichts.']);
   });
 
+  test('"Show as walkthrough" on one of its answers asks the card\'s agent, its player in the conversation at once', async () => {
+    const { first, card } = await moved();
+    const answer = board().events(card.id).find((e) => e.text === 'Ja.')!;
+    const asked = canvas.answers.showEventAsWalkthrough(card.id, answer.id);
+    expect(asked).toEqual({ thread: first, file: 'stimmen-die-septembergutschriften.walkthrough.json' });
+    expect(voice.warmed).toEqual(['de']);
+    const words = board().events(card.id).findLast((e) => e.author === 'owner')!;
+    expect(words).toMatchObject({ kind: 'talk', text: 'Als Walkthrough zeigen', replyTo: answer.id });
+    expect(board().events(card.id).at(-1)).toMatchObject({ kind: 'talk', text: '', answer: { thread: first, live: true, files: [{ name: asked.file, caption: '' }] } });
+    // its agent, in its session, hears the answer clicked with the words it answered
+    const a = answerer();
+    expect(a.spec.resume).toBe('look-1');
+    expect(a.inbox[0]).toContain('Tell this answer of yours as a walkthrough');
+    expect(a.inbox[0]).toContain('The question: stimmen die septembergutschriften?');
+    expect(a.inbox[0]).toContain('<answer>\nJa.\n</answer>');
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Gutschriften', language: 'de', narration: 'So.' } });
+    a.call('answer_owner', { text: 'Der Walkthrough zeigt die Gutschriften.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    const told = board().events(card.id).filter((e) => e.answer && e.id > words.id);
+    expect(told.map((e) => [e.text, e.answer!.live, e.answer!.files])).toEqual([['Der Walkthrough zeigt die Gutschriften.', undefined, [{ name: asked.file, caption: 'Die Gutschriften' }]]]);
+    expect(canvas.answers.walkthrough(first, asked.file)).toMatchObject({ title: 'Die Gutschriften', done: true });
+  });
+
   test('a follow-up asked in the sheet after the move goes to the card and stands there', async () => {
     const { first, card } = await moved();
     await say('und dezember?', {}, 'look_up', { question: 'December?', follows: `A${first}`, confirm: 'Moment.' });
@@ -930,7 +954,8 @@ describe('an answer told as a walkthrough', () => {
 
   test('"Show as walkthrough" asks the agent of its thread again, in its session, its player there at once and the voice loading meanwhile', async () => {
     const first = await lookedUp('ideenkarte oder fragekarte?', 'Idea card or Question card?', 'Eine Ideenkarte, wenn …', 'look-1');
-    const asked = canvas.answers.showAsWalkthrough(first);
+    expect(canvas.answers.showAsWalkthrough(first)).toEqual({ thread: first, file: 'idea-card-or-question-card.walkthrough.json' });
+    const asked = board().talk().at(-1)!.id;
     expect(board().exchange(asked)).toMatchObject({ said: 'Als Walkthrough zeigen', reply: 'Ich erzähle die Antwort als Walkthrough.', thread: first, follows: first });
     expect(voice.warmed).toEqual(['de']);
     const a = answerer();
@@ -950,9 +975,68 @@ describe('an answer told as a walkthrough', () => {
     a.emit({ type: 'idle' });
     await settle();
     expect(board().exchange(asked)).toMatchObject({ answer: 'Der Walkthrough zeigt den Unterschied.', files: [{ name: pending, caption: 'Ideenkarte oder Fragekarte' }] });
-    // only a looked-up answer has a thread to ask
-    await say('hallo', {}, 'reply', { confirm: 'Hallo.' });
+    // a confirmation of actions is no answer to tell
+    await say('mach eine karte "Login"', {}, 'act', { actions: [{ do: 'new_card', title: 'Login', body: 'Login hängt.', start: false }], confirm: 'Neue Aufgabe „Login“.' });
     expect(() => canvas.answers.showAsWalkthrough(board().talk().at(-1)!.id)).toThrow(BadRequest);
+  });
+
+  test('"Show as walkthrough" on a direct answer starts a look-up thread for it, quoting the answer it tells', async () => {
+    await say('was ist eine fragekarte?', {}, 'reply', { confirm: 'Eine Fragekarte hält einen nachgeschlagenen Faden mit seinen Antworten und Dateien.' });
+    const direct = board().talk().at(-1)!;
+    expect(direct.replyOnly).toBe(true);
+    const asked = canvas.answers.showAsWalkthrough(direct.id);
+    const x = board().talk().at(-1)!;
+    expect(asked).toEqual({ thread: x.id, file: 'was-ist-eine-fragekarte.walkthrough.json' });
+    expect(x).toMatchObject({ said: 'Als Walkthrough zeigen', reply: 'Ich erzähle die Antwort als Walkthrough.', thread: x.id, replyTo: { talk: direct.id, part: 'reply' } });
+    expect(x.follows).toBeUndefined();
+    expect(x.files).toEqual([{ name: asked.file, caption: '' }]);
+    expect(voice.warmed).toEqual(['de']);
+    // a fresh look-up, told what Obeya answered
+    const a = answerer();
+    expect(a.spec.resume).toBeUndefined();
+    expect(a.inbox[0]).toContain('The owner said to Obeya: "was ist eine fragekarte?". Obeya answered straight away, without looking anything up:');
+    expect(a.inbox[0]).toContain('<answer>\nEine Fragekarte hält einen nachgeschlagenen Faden mit seinen Antworten und Dateien.\n</answer>');
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Fragekarte', language: 'de', narration: 'So.' } });
+    a.call('answer_owner', { text: 'Der Walkthrough zeigt die Fragekarte.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(board().exchange(x.id)).toMatchObject({ answer: 'Der Walkthrough zeigt die Fragekarte.', files: [{ name: asked.file, caption: 'Die Fragekarte' }] });
+  });
+
+  test('"Show as walkthrough" in a card\'s conversation: its words, the player and the answer stand in that card\'s log', async () => {
+    const login = board().create({ title: 'Login', body: 'Login hängt.', x: 0, y: 0 });
+    // a direct answer on the card
+    await say('was macht diese karte?', { card: login.id }, 'reply', { confirm: 'Sie behebt den hängenden Login.' });
+    const reply = board().events(login.id).findLast((e) => e.author === 'koordinator')!;
+    expect(reply).toMatchObject({ text: 'Sie behebt den hängenden Login.', reply: true });
+    const asked = canvas.answers.showEventAsWalkthrough(login.id, reply.id);
+    const x = board().talk().at(-1)!;
+    expect(board().exchange(x.id)).toMatchObject({ cardId: login.id, thread: asked.thread, about: login.id });
+    const log = () => board().events(login.id).filter((e) => e.id > reply.id);
+    expect(log().map((e) => [e.author, e.text, e.replyTo, e.answer?.live, e.answer?.files])).toEqual([
+      ['owner', 'Als Walkthrough zeigen', reply.id, undefined, undefined],
+      ['koordinator', 'Ich erzähle die Antwort als Walkthrough.', undefined, undefined, undefined],
+      ['koordinator', '', undefined, true, [{ name: asked.file, caption: '' }]],
+    ]);
+    // the look-up hears about the card, and its answer takes the player's place
+    const a = answerer();
+    expect(a.inbox[0]).toContain('It is about the task "Login"');
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Der Login', language: 'de', narration: 'So.' } });
+    a.call('answer_owner', { text: 'Der Walkthrough zeigt die Karte.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    const answer = log().at(-1)!;
+    expect(log().filter((e) => e.answer)).toHaveLength(1);
+    expect(answer).toMatchObject({ kind: 'say', text: 'Der Walkthrough zeigt die Karte.', answer: { thread: asked.thread, files: [{ name: asked.file, caption: 'Der Login' }] } });
+
+    // that looked-up answer goes on in its thread, from the card's log
+    const again = canvas.answers.showEventAsWalkthrough(login.id, answer.id);
+    expect(again.thread).toBe(asked.thread);
+    expect(board().talk().at(-1)).toMatchObject({ cardId: login.id, follows: x.id, thread: asked.thread });
+    expect(answerer().inbox[0]).toContain('<answer>\nDer Walkthrough zeigt die Karte.\n</answer>');
+    // the owner's own words are no answer
+    const own = log().find((e) => e.author === 'owner')!;
+    expect(() => canvas.answers.showEventAsWalkthrough(login.id, own.id)).toThrow(BadRequest);
   });
 
   test('"Show as walkthrough" loads the voice for the language of the answer it tells, which the title slide then names', async () => {
@@ -967,7 +1051,8 @@ describe('an answer told as a walkthrough', () => {
 
   test('asked for with the button and answered as text after all, the empty walkthrough goes', async () => {
     const first = await lookedUp('ideenkarte oder fragekarte?', 'Idea card or Question card?', 'Eine Ideenkarte, wenn …', 'look-1');
-    const asked = canvas.answers.showAsWalkthrough(first);
+    canvas.answers.showAsWalkthrough(first);
+    const asked = board().talk().at(-1)!.id;
     const a = answerer();
     a.call('answer_owner', { text: 'Das lässt sich nicht gut zeigen.' });
     a.emit({ type: 'idle' });

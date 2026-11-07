@@ -1368,9 +1368,13 @@ export class Board {
     return id;
   }
 
-  /** The Koordinator's reply to words it has read, the question it looks up for them, and what a draft for Obeya's makers would start from; `waits`: unread in the sheet until the owner sees it. */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false) {
-    this.store.replyTalk(id, reply, lookUp, wish, waits);
+  /**
+   * The Koordinator's reply to words it has read, the question it looks up for them, and what a
+   * draft for Obeya's makers would start from; `waits`: unread in the sheet until the owner sees it;
+   * `answers`: it answers them (not that it could not read them).
+   */
+  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) {
+    this.store.replyTalk(id, reply, lookUp, wish, waits, answers);
     this.changed();
   }
 
@@ -1482,6 +1486,16 @@ export class Board {
 
   exchange(id: number) {
     return this.store.exchange(id);
+  }
+
+  /** The exchange a reply of the Koordinator's in the card's log stands for. */
+  cardReply(cardId: string, reply: string) {
+    return this.store.cardReply(cardId, reply);
+  }
+
+  /** A message of the card's log, by its id. */
+  event(cardId: string, id: number) {
+    return this.store.event(cardId, id);
   }
 
   /** Questions the Koordinator is still looking up. */

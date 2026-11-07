@@ -24,7 +24,7 @@ import { ACK_MS } from './tell';
 import { Inline, plain } from './markdown';
 import { MdField } from './mdField';
 import { DictateButton, DictationLine } from './dictation';
-import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
+import { Body, Cards, goToMessage, Msg, Quote, Reading, tellable, useAnswer, useReportedHeight } from './message';
 import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, hasDraft, typeAtCursor, updateDraft, useDraft, useDrafting, useFieldOn } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { AgentPick, RunsOn } from './agentPick';
@@ -1371,6 +1371,8 @@ function Conversation({
   // (a planned card's conversation is a past one until it starts)
   const snoozedAt = item.snoozed && (!past || item.snoozed.start) ? turns.shown.findLast((x) => snoozeLine(x.e))?.e.id : undefined;
   const explained = explainedFailure(item, events)?.id;
+  // the newest text answer's "Show as walkthrough" stays in view until the owner has used it once
+  const hinted = [...turns.shown, ...turns.below].findLast((x) => !x.quiet && tellable(x.e))?.e.id;
   const line = (turn: Turn) => (
     <Fragment key={turn.e.id}>
       <Line
@@ -1382,6 +1384,7 @@ function Conversation({
         fresh={fresh.has(turn.e.id) || (!!turn.then && fresh.has(turn.then.e.id))}
         onReply={onReply}
         onDelete={held.includes(turn.e.id) ? () => takeBack(item.id, turn.e) : undefined}
+        hint={turn.e.id === hinted}
       />
       {turn.e.id === held.at(-1) && (
         <div className="held-note">
@@ -1555,7 +1558,22 @@ function Fold({ children, lines }: { children: ReactNode; lines?: number }) {
 }
 
 /** A state change or an error between the messages, or a message. */
-function Line({ turn, snoozed, explained, ...rest }: { turn: Turn; snoozed?: Item; explained?: boolean; demoQuestion?: Demo; quoted?: CardEvent; fresh?: boolean; onReply?: (e: CardEvent) => void; onDelete?: () => void }) {
+function Line({
+  turn,
+  snoozed,
+  explained,
+  ...rest
+}: {
+  turn: Turn;
+  snoozed?: Item;
+  explained?: boolean;
+  demoQuestion?: Demo;
+  quoted?: CardEvent;
+  fresh?: boolean;
+  onReply?: (e: CardEvent) => void;
+  onDelete?: () => void;
+  hint?: boolean;
+}) {
   return snoozed ? (
     <SnoozeLine item={snoozed} e={turn.e} at={time(turn.e.at)} />
   ) : turn.line ? (
@@ -1590,7 +1608,8 @@ const ownerSide = (e: CardEvent) => e.author === 'owner' || e.kind === 'answer';
  * its demo report's question, a reply with the handover that came next and says what changed; the owner's reply with the message it replies to (`quoted`) above it.
  * `onReply`: the owner can reply to it; `onDelete`: the owner can take it back (a comment not yet
  * sent, words not yet read); `unread`: the agent has not read it yet, and when it will; `fresh`: the
- * owner had not seen it when the conversation came into view.
+ * owner had not seen it when the conversation came into view; `hint`: the newest text answer, whose
+ * "Show as walkthrough" stays in view until the owner has used it once.
  */
 function Message({
   turn,
@@ -1600,6 +1619,7 @@ function Message({
   onReply,
   onDelete,
   unread,
+  hint,
 }: {
   turn: Turn;
   demoQuestion?: Demo;
@@ -1608,10 +1628,11 @@ function Message({
   onReply?: (e: CardEvent) => void;
   onDelete?: () => void;
   unread?: string;
+  hint?: boolean;
 }) {
   const { e, steps } = turn;
   const q = e.kind === 'question' ? parseQuestion(e.text) : undefined;
-  const answer = useAnswer(e);
+  const answer = useAnswer(e, hint);
   return (
     <Msg
       by={ownerSide(e) ? 'owner' : e.author}

@@ -1315,6 +1315,8 @@ export interface Talk {
   said: string;
   /** Absent while the Koordinator reads the words. */
   reply?: string;
+  /** The reply only answers the words (no actions to take back, no question looked up): a text answer "Show as walkthrough" can tell. */
+  replyOnly?: true;
   /** The card that was open. */
   cardId?: string;
   /** The owner took the actions back. */

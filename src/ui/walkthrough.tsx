@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AnswerFile } from '../core/types';
 import { INTERRUPTED, itemsOf, type Walkthrough } from '../core/walkthrough';
 import { answerFile, api, at } from './api';
+import { known, know } from './known';
 import { t } from './strings';
 
 /** How often the player reads the walkthrough while it grows or is voiced. */
@@ -18,8 +19,13 @@ const NEXT_SLIDE_MS = 600;
 /** Seconds a sentence not voiced yet is taken to last, per character, to lay out its slide. */
 const SECONDS_PER_CHAR = 0.075;
 
-/** The exchanges this page asked "Show as walkthrough" for: their walkthroughs start by themselves, the click allowed the sound. */
-const askedHere = new Set<number>();
+/** The walkthroughs this page asked for with "Show as walkthrough", by address: they start by themselves, the click allowed the sound. */
+const askedHere = new Set<string>();
+
+const walkthroughUrl = (thread: number, name: string) => at(`/threads/${thread}/walkthroughs/${encodeURIComponent(name)}`);
+
+/** That the owner has used "Show as walkthrough": the newest answer's button no longer stays in view. */
+const WALKTHROUGH_KNOWN = 'obeya.walkthroughKnown';
 
 class Playback {
   data: Walkthrough | null = null;
@@ -255,14 +261,13 @@ class Playback {
 /** The players of this page, by walkthrough: what one plays survives its message being drawn anew. */
 const sessions = new Map<string, Playback>();
 
-function usePlayback(thread: number, name: string, autoplay: boolean): Playback {
-  const url = at(`/threads/${thread}/walkthroughs/${encodeURIComponent(name)}`);
+function usePlayback(thread: number, name: string): Playback {
+  const url = walkthroughUrl(thread, name);
   let p = sessions.get(url);
   if (!p) {
-    p = new Playback(url, (dir, file) => answerFile(thread, `${dir}/${file}`), autoplay);
+    p = new Playback(url, (dir, file) => answerFile(thread, `${dir}/${file}`), askedHere.has(url));
     sessions.set(url, p);
   }
-  if (autoplay) p.autoplay = true;
   const session = p;
   useSyncExternalStore(session.subscribe, () => session.version);
   useEffect(() => session.attach(), [session]);
@@ -279,9 +284,9 @@ function usePlayback(thread: number, name: string, autoplay: boolean): Playback 
   return session;
 }
 
-/** A walkthrough an answer comes with, played under it. `autoplay`: the owner asked for it on this page, so it starts by itself. */
-export function WalkthroughPlayer({ thread, file, autoplay = false }: { thread: number; file: AnswerFile; autoplay?: boolean }) {
-  const p = usePlayback(thread, file.name, autoplay);
+/** A walkthrough an answer comes with, played under it; one the owner asked for on this page starts by itself. */
+export function WalkthroughPlayer({ thread, file }: { thread: number; file: AnswerFile }) {
+  const p = usePlayback(thread, file.name);
   const d = p.data;
   if (!d) return <div className="wt wt-loading hint">{p.missing ? t.walkthrough.missing : t.walkthrough.loading}</div>;
   const slide = d.slides[p.slide];
@@ -437,24 +442,37 @@ function CodeSlide({ p, kicker, index, item }: { p: Playback; kicker: React.Reac
   );
 }
 
+/** What "Show as walkthrough" tells: an answer of the sheet (its exchange), or a message of a card's conversation. */
+export type Tellable = { talk: number } | { card: string; ev: number };
+
 /**
- * "Show as walkthrough" in the head of a looked-up text answer, shown on hover: the thread goes on
- * with the answer told as a walkthrough, which starts by itself once its first sentence is voiced.
+ * "Show as walkthrough" in the head of a text answer, shown on hover as the head's other actions
+ * are (`hint`: the newest answer's stays in view until the owner has used it once): the answer is
+ * told again as a walkthrough, the next answer, which starts by itself once its first sentence is
+ * voiced.
  */
-export function WalkthroughButton({ talk }: { talk: number }) {
+export function WalkthroughButton({ of, hint }: { of: Tellable; hint?: boolean }) {
   const [busy, setBusy] = useState(false);
+  const [used, setUsed] = useState(() => known(WALKTHROUGH_KNOWN));
   return (
     <button
-      className="msg-act msg-walk"
+      className={`msg-act msg-walk${hint && !used ? ' shown' : ''}`}
       title={t.answer.walkthroughHint}
       disabled={busy}
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         setBusy(true);
+        know(WALKTHROUGH_KNOWN);
+        setUsed(true);
         // asked once: the walkthrough comes as the next answer
-        api
-          .walkthrough(talk)
-          .then(({ talk: asked }) => askedHere.add(asked))
+        ('talk' in of ? api.walkthrough(of.talk) : api.cardWalkthrough(of.card, of.ev))
+          .then(({ thread, file }) => {
+            const url = walkthroughUrl(thread, file);
+            askedHere.add(url);
+            // its player may show already, before the click's reply
+            const p = sessions.get(url);
+            if (p) p.autoplay = true;
+          })
           .catch(() => setBusy(false));
       }}
     >
@@ -462,6 +480,3 @@ export function WalkthroughButton({ talk }: { talk: number }) {
     </button>
   );
 }
-
-/** Whether this page asked for the walkthrough of the exchange, so that it starts by itself. */
-export const askedForHere = (talk: number) => askedHere.has(talk);

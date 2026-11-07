@@ -26,9 +26,10 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
 - *Voice* (design: Voice → Voice out): Obeya speaks walkthroughs and nothing else. One voice for the
   server voices them sentence by sentence in the voice of the demo settings, in the queue it shares
   with renders, a playing player's sentences first (design: Demos → A voice that stays loaded).
-- *"Show as walkthrough"* shows on hover in the head of a text answer in Obeya's sheet only (W2
-  brings it everywhere). It follows up in the answer's thread; a direct answer has no thread and no
-  button.
+- *"Show as walkthrough"* (design: The Koordinator → Walkthroughs; W2) shows on hover in the head
+  of every text answer: in Obeya's sheet, a card's conversation and on Question cards. It follows up
+  in the answer's thread; for a direct answer it starts a look-up thread. The newest answer shows it
+  in view until it has been used once.
 - *Demos of walkthroughs* (owner, 2026-11-07): in a demo video of this feature, the walkthrough
   inside it speaks in Kokoro (a scratch Obeya staged with `"voice": {"voice": "kokoro"}`), so the
   presentation in the video is told apart from the video's own narration in the owner's voice.
@@ -128,7 +129,7 @@ Claude Code plugin into the look-up agent:
   that code slides come only when the owner asks for code. With tests against the fake runtime;
   the chapters Voice (the decision "Obeya does not speak" rewritten), The Koordinator and
   Conversation on the card describe the walkthrough.
-- [ ] **W2:** "Show as walkthrough" everywhere. Needs W1's way of continuing a thread. The button
+- [x] **W2:** "Show as walkthrough" everywhere. Needs W1's way of continuing a thread. The button
   shows on every text answer in Obeya's sheet, on Question cards and in card conversations, built
   once in shared code: in the answer's head beside "Make it a card" on hover, always on the phone.
   A direct answer has no thread, so there the button first starts a look-up thread for it. A hint

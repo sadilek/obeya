@@ -960,10 +960,13 @@ textarea.p-body:focus { border-color: var(--muted); }
 .msg-card.on { color: var(--question); border-color: color-mix(in srgb, var(--question) 50%, transparent); }
 .talk .moved { margin: 2px 0 8px; }
 .talk .moved .msg-card { float: none; top: 0; margin: 0; }
+/* the newest answer's "Show as walkthrough" stays in view until used once, in the colour of a question to draw the eye, and the actions beside it with it */
+.msg-walk.shown { color: var(--question); border-color: color-mix(in srgb, var(--question) 50%, transparent); }
+.msg:has(> .who > .msg-walk.shown) .msg-act { opacity: 1; }
 /* they appear on hover over the message; always where nothing hovers */
-.msg-act:not(.on) { opacity: 0; transition: opacity .15s; }
+.msg-act:not(.on):not(.shown) { opacity: 0; transition: opacity .15s; }
 .msg:hover .msg-act, .msg-act:focus-visible { opacity: 1; }
-@media (hover: none) { .msg-act:not(.on) { opacity: 1; } }
+@media (hover: none) { .msg-act:not(.on):not(.shown) { opacity: 1; } }
 .continues { margin-top: 4px; font-size: 11.5px; color: var(--muted); }
 .answer-files { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .answer-files figure { margin: 0; min-width: 0; }

@@ -322,11 +322,19 @@ Where an answer explains how something works or what happens when (a flow throug
 thing after another, what a change does, how two variants differ), the look-up agent tells it as a
 short walkthrough with slides and narration instead of a block of text, and it plays while the
 agent still writes it. The agent judges which questions need one; the Koordinator's look-ups and
-the project agents alike can tell one. A text answer in Obeya's sheet has "Show as walkthrough" in
-its head, on hover (always on a screen without hover): it asks the same thread, as the owner's
-words "Show as walkthrough" following up on the answer with Obeya's reply "I'll tell the answer as a
-walkthrough.", to tell that answer as a walkthrough (quoted to it, since it need not be the thread's
-last), which comes as the next answer.
+the project agents alike can tell one. Every text answer has "Show as walkthrough" in its head,
+beside "Make it a card", on hover (always on a screen without hover): in Obeya's sheet, in the
+conversation of the card it was asked on and on a Question card, built once for all three. It counts
+as the owner's words "Show as walkthrough", replying to the answer, with Obeya's reply "I'll tell the
+answer as a walkthrough." (on a Question card the words go to its agent, which answers itself). A
+looked-up answer's thread is asked to tell that answer as a walkthrough (quoted to it, since it need
+not be the thread's last); a direct answer of the quick turn has no thread, so the button starts a
+look-up thread for it, told the owner's words and Obeya's answer, which checks what it walks through.
+The walkthrough comes as the next answer, where the answer stood. An answer that is a walkthrough
+already, a confirmation of actions and a reply that says Obeya could not read the words have none; nor
+has a looked-up answer whose thread went on onto a Question card, which asks there. Until the owner
+has used it once (per browser), the newest text answer of a conversation shows its head's actions in
+view, "Show as walkthrough" in the colour of a question, so a newcomer finds it.
 
 A walkthrough has 4 to 8 slides: a title slide first, then points (up to five), flows (three to six
 steps in a row joined by arrows, each with an optional note) and, only when the owner asks to see
@@ -576,6 +584,14 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   German, as the owner had written, was spoken in the owner's English voice clone, with a strong
   accent. The agent knows the language it writes; guessing it from the narration's words is used
   only to load the voice at the click, where a wrong guess costs a reload and nothing more.
+- **"Show as walkthrough" on every text answer** (owner, 2026-11-06/07): in the sheet, a card's
+  conversation and on Question cards alike, direct answers included: a newcomer asks Obeya where
+  they happen to be, and the answer they would want walked through is not always a looked-up one. A
+  direct answer gets a look-up thread rather than a walkthrough of the quick turn's own, which is
+  read-only and answers in seconds. Its hint keeps the newest answer's actions in view until first
+  use, unlike Reply and the pause, which a hover finds (see Communication): the walkthrough is new,
+  and an answer looks finished without it. Rejected: the button in view on every answer until first
+  use (a row of coloured buttons down the conversation).
 - **The actions in an answer's head show on hover** (owner, 2026-11-07): "Make it a card" and "Show
   as walkthrough" appear as the reply button beside them does, for one look; on a screen without
   hover they stay in view. "Reply" has their look too, an outlined button with its label (owner,

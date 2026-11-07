@@ -121,7 +121,8 @@
 // into the database:
 // state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
 // now), snoozed (`{ on, state?, why? }`: its agent snoozed it until the card with key `on` gets to `state`, done by default), scope (files), branch (a working or waiting card without one gets the branch a start would
-// have given it, which every started card has), createdAgo, changedAgo (when something last happened at it), archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
+// have given it, which every started card has), createdAgo, changedAgo (when something last happened at it), archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token?, reply? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
+// `reply`: Obeya's reply that only answers the owner's words, which stands in the conversation (with a `talk` entry on the card of the same reply, its exchange);
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
 // place in a demo video, `{ at, chapter?, demo? }`) names its demo by its place in that order; earlier demos need code that has them),
 // workspace (true: the card holds the next free clone, for a repository whose settings say clones; with
@@ -155,7 +156,8 @@
 // `question` and `answer`, `answerBy` for a question it looked up; `follows`: the index of the
 // exchange whose answer it continues, in that one's thread; `files`: the answer's files, each with
 // its name, caption and either `content` or a file to copy (`from`), written to the thread's output
-// directory; needs code that has them; `unread`: its answer waits unread; `wish`: what a draft for
+// directory; needs code that has them; `unread`: its answer waits unread; `replyOnly`: the reply only
+// answers the words, no actions (what "Show as walkthrough" tells), needs code that has it; `wish`: what a draft for
 // Obeya's makers starts from, `{ said, answer? }`, for the link under the reply; `askedIn`: the key of
 // the project whose sheet the words were written in, straight to its project agent, with an empty `reply`). `friction` is what the Arbeitsrückschau noted on a card's
 // runs (`card` a key), read by its next retrospective; `settingProposals` are values for a
@@ -215,7 +217,7 @@ interface StageCard {
   createdAgo?: string;
   changedAgo?: string;
   archivedAgo?: string;
-  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean }[];
+  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean; reply?: boolean }[];
   row?: Record<string, unknown>;
 }
 
@@ -295,6 +297,7 @@ interface Stage {
     follows?: number;
     files?: { name: string; caption: string; content?: string; from?: string }[];
     unread?: boolean;
+    replyOnly?: boolean;
     wish?: { said: string; answer?: string };
     askedIn?: string;
   }[];
@@ -746,7 +749,7 @@ for (const [i, c] of stage.cards.entries()) {
   for (const e of c.events ?? []) {
     // only code that has mocks (an error's token) has their column
     const at = ago(e.ago ?? '0s');
-    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''})`).run({
+    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}${e.reply ? ', reply' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''}${e.reply ? ', 1' : ''})`).run({
       c: id,
       at,
       kind: e.kind,
@@ -801,6 +804,7 @@ for (const [i, x] of (stage.talk ?? []).entries()) {
     answer_by: x.answerBy ?? null,
   };
   if (x.unread) row.unread = 1;
+  if (x.replyOnly) row.reply_only = 1;
   if (x.wish) row.wish = JSON.stringify(x.wish);
   if (x.askedIn) row.asked_in = row.about = ids[x.askedIn] ?? fail(`talk ${i}: project ${x.askedIn} does not exist`);
   if (x.follows !== undefined) {
