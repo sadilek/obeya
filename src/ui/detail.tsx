@@ -152,6 +152,10 @@ export function Detail(p: Props) {
     }, done);
   // the repository the card is to be built in, before work on it begins: one of the canvas's or a new one
   const choice = useRepoChoice(item, p.onEdit);
+  // on a review card, the findings decided in the field that hold the merge up until they are sent
+  const heldUp = Object.entries(useUnsentDecisions(item))
+    .filter(([, route]) => route === 'contributor' || route === 'self')
+    .map(([id]) => Number(id));
   // in a folder without git the card's change list takes the place of its branch
   const inFolder = !!p.repos.find((r) => r.id === item.repo)?.folder;
   const changes = useFolderDiff(item, inFolder && item.kind === 'task' && !!item.branch);
@@ -311,10 +315,6 @@ export function Detail(p: Props) {
 
   // work waiting for the owner's verdict, with a demo or a summary
   const review = handedOver(item);
-  // on a review card, the findings decided in the field that hold the merge up until they are sent
-  const heldUp = Object.entries(useUnsentDecisions(item))
-    .filter(([, route]) => route === 'contributor' || route === 'self')
-    .map(([id]) => Number(id));
   // an agent is on the card and can be stopped
   const running = item.state === 'working' || item.state === 'waiting' || !!item.finishing;
   const archivable = finishedArchivable(item);
