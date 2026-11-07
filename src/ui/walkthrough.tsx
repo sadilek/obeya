@@ -35,6 +35,8 @@ class Playback {
   /** Waiting for the agent's next slide. */
   writing = false;
   captions = true;
+  /** It started by itself once: it does not again. */
+  autoplayed = false;
   /** The browser refused to play without a click (no click on the page yet). */
   refused = false;
   readonly audio = new Audio();
@@ -49,7 +51,8 @@ class Playback {
   constructor(
     private url: string,
     private clipUrl: (dir: string, file: string) => string,
-    private autoplay: boolean,
+    /** To start by itself once it can; the page may learn it only after the player showed (the click's reply comes after the walkthrough). */
+    public autoplay: boolean,
   ) {
     this.audio.preload = 'auto';
     this.audio.onended = () => this.ended();
@@ -108,8 +111,8 @@ class Playback {
   private grew() {
     const d = this.data;
     if (!d?.slides.length) return;
-    if (this.autoplay && !this.started) {
-      this.autoplay = false;
+    if (this.autoplay && !this.started && !this.autoplayed) {
+      this.autoplayed = true;
       this.play();
     }
     if (this.writing && this.slide + 1 < d.slides.length) {
@@ -259,6 +262,7 @@ function usePlayback(thread: number, name: string, autoplay: boolean): Playback 
     p = new Playback(url, (dir, file) => answerFile(thread, `${dir}/${file}`), autoplay);
     sessions.set(url, p);
   }
+  if (autoplay) p.autoplay = true;
   const session = p;
   useSyncExternalStore(session.subscribe, () => session.version);
   useEffect(() => session.attach(), [session]);
