@@ -5,10 +5,11 @@
 // Obeya's conversation): the owner decides on a card with its demo, its questions and its
 // conversation in view.
 
-import type { ReactNode } from 'react';
-import { type CanvasInfo, type Item, needsYou, type Talk, type Waiting, waitingOn } from '../core/types';
+import { type ReactNode, useRef, useState } from 'react';
+import { type CanvasInfo, type Item, needsYou, snoozable, type Talk, type Waiting, waitingOn } from '../core/types';
 import { Aside, SWIPED_CARD } from './aside';
 import { plain } from './markdown';
+import { ClockMark, SnoozeFor } from './snooze';
 import { CardFace, cardClass, shownTitle } from './parts';
 import { clock, shortDay, stateLabel, t } from './strings';
 
@@ -35,9 +36,13 @@ export const forYouTotal = (canvases: CanvasInfo[], waiting: Record<string, Wait
 
 /**
  * A card in one of the phone's lists, tapped to open it. With `swipe` the owner swipes it aside (to
- * set it aside, or back from there), and the card `swipe.hint` names nudges until they have once.
+ * set it aside, or back from there), or with `swipe.snooze` to the left to snooze it, and the card
+ * `swipe.hint` names nudges until they have once. Behind the card as it moves stands what the swipe
+ * does.
  */
 export function PhoneCard({ item: i, swipe, onOpen }: { item: Item; swipe?: Swipe; onOpen: (i: Item) => void }) {
+  const [snoozing, setSnoozing] = useState(false);
+  const row = useRef<HTMLLIElement>(null);
   // a card waiting for the owner says since when, wherever it stands
   const since = needsYou(i) && i.waitingSince ? t.phone.since(when(i.waitingSince)) : undefined;
   const face: ReactNode = (
@@ -45,22 +50,48 @@ export function PhoneCard({ item: i, swipe, onOpen }: { item: Item; swipe?: Swip
       <CardFace inButton item={i} since={since} />
     </button>
   );
+  const snoozes = !!swipe?.snooze && needsYou(i) && snoozable(i);
+  const label = swipe && <span className="ph-behind-label">{swipe.label}</span>;
   return (
-    <li>
+    <li ref={row}>
       {swipe ? (
-        <Aside on className="ph-swipe" learnt={SWIPED_CARD} nudge={swipe.hint === i.id} onGone={() => swipe.onGone(i)}>
+        <Aside
+          on
+          className="ph-swipe"
+          learnt={SWIPED_CARD}
+          nudge={swipe.hint === i.id}
+          behind={{
+            right: label,
+            left: snoozes ? (
+              <span className="ph-behind-label">
+                <ClockMark /> {t.snooze.button}
+              </span>
+            ) : (
+              label
+            ),
+          }}
+          flies={(side) => side > 0 || !snoozes}
+          onGone={(side) => (side < 0 && snoozes ? setSnoozing(true) : swipe.onGone(i))}
+        >
           {face}
         </Aside>
       ) : (
         face
       )}
+      {snoozing && <SnoozeFor item={i} anchor={() => row.current!.getBoundingClientRect()} onClose={() => setSnoozing(false)} />}
     </li>
   );
 }
 
-/** What a card swiped aside in the phone's lists does: `onGone`; `hint`, the card that shows the gesture. */
+/**
+ * What a card swiped aside in the phone's lists does: `onGone`, which `label` names behind it;
+ * `snooze`, a swipe to the left of a card waiting for the owner snoozes it instead; `hint`, the card
+ * that shows the gesture.
+ */
 export interface Swipe {
   onGone: (i: Item) => void;
+  label: string;
+  snooze?: boolean;
   hint?: string;
 }
 

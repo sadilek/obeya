@@ -1,9 +1,9 @@
 // Snoozing a card until a point in time: the owner's „Später …“ with its presets and a date and time
-// of their own, on a card's action row and as „Ändern“ on the snooze line of its conversation, and
-// that line with „Jetzt zurückholen“. One component for every kind of card; a review card handed over
-// can also wait for its contributor to respond.
+// of their own, on a card's action row, as „Ändern“ on the snooze line of its conversation and after
+// a swipe on the phone's „Braucht dich“, and that line with „Jetzt zurückholen“. One component for
+// every kind of card; a review card handed over can also wait for its contributor to respond.
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
 import { awaitsContributorNext, type CardEvent, type Item, type Snooze } from '../core/types';
 import { api } from './api';
 import { useMenuClose } from './queue';
@@ -53,6 +53,105 @@ export function placeOnScreen(menu: HTMLElement, button: DOMRect) {
   menu.style.left = `${Math.max(EDGE, left)}px`;
 }
 
+/** What the menu offers besides its times: a choice that waits for something else, and one that takes the time away. */
+interface Extra {
+  label: string;
+  hint: string;
+}
+
+/**
+ * The menu's content: `heading`, the presets and a date and time to pick (`set` takes it, starting
+ * from `at`), with `also` above the times and `clear` below them. `onClose` comes before each choice.
+ */
+export function SnoozeChoices({
+  heading,
+  set,
+  at,
+  clear,
+  also,
+  onSnooze,
+  onClose,
+}: {
+  heading: string;
+  set: string;
+  at?: Date;
+  clear?: Extra & { onClear: () => void };
+  also?: Extra & { onPick: () => void };
+  onSnooze: (until: string) => void;
+  onClose: () => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [value, setValue] = useState('');
+  const now = new Date();
+  const go = (at: Date) => {
+    onClose();
+    onSnooze(at.toISOString());
+  };
+  const picked = value ? new Date(value) : null;
+  const valid = !!picked && !Number.isNaN(picked.getTime()) && picked.getTime() > Date.now();
+  return (
+    <>
+      <div className="snooze-h">{heading}</div>
+      {also && (
+        <button
+          className="snooze-opt also"
+          role="menuitem"
+          title={also.hint}
+          onClick={() => {
+            onClose();
+            also.onPick();
+          }}
+        >
+          {also.label}
+        </button>
+      )}
+      {snoozePresets(now).map((p) => (
+        <button key={p.label} className="snooze-opt" role="menuitem" onClick={() => go(p.at)}>
+          {p.label}
+        </button>
+      ))}
+      {picking ? (
+        <form
+          className="snooze-pick"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valid) go(picked);
+          }}
+        >
+          <input type="datetime-local" value={value} min={fieldValue(now)} onChange={(e) => setValue(e.target.value)} autoFocus />
+          <button className="btn primary" disabled={!valid}>
+            {set}
+          </button>
+        </form>
+      ) : (
+        <button
+          className="snooze-opt more"
+          role="menuitem"
+          onClick={() => {
+            setValue(fieldValue(at && at.getTime() > now.getTime() ? at : snoozePresets(now).at(-1)!.at));
+            setPicking(true);
+          }}
+        >
+          {t.snooze.pick}
+        </button>
+      )}
+      {clear && (
+        <button
+          className="snooze-opt more"
+          role="menuitem"
+          title={clear.hint}
+          onClick={() => {
+            onClose();
+            clear.onClear();
+          }}
+        >
+          {clear.label}
+        </button>
+      )}
+    </>
+  );
+}
+
 /**
  * The button that snoozes the card („Später …“, „Ändern“) and its menu: the presets, and a date and
  * time to pick. `inline`: the menu opens below the button where the screen has room, else above it,
@@ -84,39 +183,17 @@ export function SnoozeMenu({
   set?: string;
   /** The time set now, which the field to pick one starts from. */
   at?: Date;
-  clear?: { label: string; hint: string; onClear: () => void };
-  also?: { label: string; hint: string; onPick: () => void };
+  clear?: Extra & { onClear: () => void };
+  also?: Extra & { onPick: () => void };
   /** The clock mark on the button; none where the line beside it has one. */
   mark?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [picking, setPicking] = useState(false);
-  const [value, setValue] = useState('');
   const box = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (!inline || !open) return;
-    const place = () => menu.current && box.current && placeOnScreen(menu.current, box.current.firstElementChild!.getBoundingClientRect());
-    place();
-    addEventListener('scroll', place, true);
-    addEventListener('resize', place);
-    return () => {
-      removeEventListener('scroll', place, true);
-      removeEventListener('resize', place);
-    };
-  }, [open, picking]);
-  const close = () => {
-    setOpen(false);
-    setPicking(false);
-  };
+  usePlaced(inline && open, menu, () => box.current!.firstElementChild!.getBoundingClientRect());
+  const close = () => setOpen(false);
   useMenuClose(open, box, close);
-  const now = new Date();
-  const go = (at: Date) => {
-    close();
-    onSnooze(at.toISOString());
-  };
-  const picked = value ? new Date(value) : null;
-  const valid = !!picked && !Number.isNaN(picked.getTime()) && picked.getTime() > Date.now();
   return (
     <div className={inline ? 'snooze-box inline' : 'snooze-box'} ref={box}>
       <button className={className} title={hint} aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
@@ -124,65 +201,45 @@ export function SnoozeMenu({
       </button>
       {open && (
         <div className="snooze-menu" role="menu" ref={menu}>
-          <div className="snooze-h">{heading}</div>
-          {also && (
-            <button
-              className="snooze-opt also"
-              role="menuitem"
-              title={also.hint}
-              onClick={() => {
-                close();
-                also.onPick();
-              }}
-            >
-              {also.label}
-            </button>
-          )}
-          {snoozePresets(now).map((p) => (
-            <button key={p.label} className="snooze-opt" role="menuitem" onClick={() => go(p.at)}>
-              {p.label}
-            </button>
-          ))}
-          {picking ? (
-            <form
-              className="snooze-pick"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (valid) go(picked);
-              }}
-            >
-              <input type="datetime-local" value={value} min={fieldValue(now)} onChange={(e) => setValue(e.target.value)} autoFocus />
-              <button className="btn primary" disabled={!valid}>
-                {set}
-              </button>
-            </form>
-          ) : (
-            <button
-              className="snooze-opt more"
-              role="menuitem"
-              onClick={() => {
-                setValue(fieldValue(at && at.getTime() > now.getTime() ? at : snoozePresets(now).at(-1)!.at));
-                setPicking(true);
-              }}
-            >
-              {t.snooze.pick}
-            </button>
-          )}
-          {clear && (
-            <button
-              className="snooze-opt more"
-              role="menuitem"
-              title={clear.hint}
-              onClick={() => {
-                close();
-                clear.onClear();
-              }}
-            >
-              {clear.label}
-            </button>
-          )}
+          <SnoozeChoices heading={heading} set={set} at={at} clear={clear} also={also} onSnooze={onSnooze} onClose={close} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Keeps the fixed menu `menu` on the screen beside what `anchor` measures while `on`, as the page scrolls and resizes. */
+function usePlaced(on: boolean, menu: RefObject<HTMLElement | null>, anchor: () => DOMRect) {
+  useLayoutEffect(() => {
+    if (!on) return;
+    const place = () => menu.current && placeOnScreen(menu.current, anchor());
+    place();
+    // the field to pick a date and time makes the menu taller
+    const grown = new ResizeObserver(place);
+    if (menu.current) grown.observe(menu.current);
+    addEventListener('scroll', place, true);
+    addEventListener('resize', place);
+    return () => {
+      grown.disconnect();
+      removeEventListener('scroll', place, true);
+      removeEventListener('resize', place);
+    };
+  }, [on]);
+}
+
+/**
+ * The snooze menu of a card, opened without its button: on the phone, by swiping the card toward
+ * „Später …“. It stands beside `anchor` (the card) until a choice or a tap elsewhere closes it.
+ */
+export function SnoozeFor({ item, anchor, onClose }: { item: Item; anchor: () => DOMRect; onClose: () => void }) {
+  const menu = useRef<HTMLDivElement>(null);
+  usePlaced(true, menu, anchor);
+  useMenuClose(true, menu, onClose, true);
+  return (
+    <div className="snooze-box inline">
+      <div className="snooze-menu" role="menu" ref={menu}>
+        <SnoozeChoices heading={t.snooze.heading} set={t.snooze.set} also={contributorChoice(item)} onSnooze={(until) => snooze(item.id, until)} onClose={onClose} />
+      </div>
     </div>
   );
 }

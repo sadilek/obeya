@@ -13,7 +13,7 @@ import { enterBreaksLines } from './composer';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe, when } from './forYou';
 import { SWIPED_CARD, swipedOnce } from './aside';
 import { FoldArrow, toggleFolded, useFolded as useFoldedCanvases } from './fold';
-import { asideMark, loadAside, saveAside, type SetAside, staysAside } from './setAside';
+import { asideMark, changeAside, forgotten, loadAside, onAsideElsewhere, type SetAside, staysAside } from './setAside';
 import { CardNumber } from './cardNumber';
 import { type ActDone, Detail, type Pending, TalkElsewhere, useEvents } from './detail';
 import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
@@ -319,25 +319,21 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     setOpenState(id);
     history.replaceState(history.state, '', addressWith({ card: id, talk: talkRef.current }));
   }, [all]);
-  // the cards the owner swiped aside, out of „Braucht dich“ and „Läuft“ until they need the owner anew
+  // the cards the owner swiped aside, out of „Braucht dich“ and „Läuft“ until they need the owner anew;
+  // the same in every tab of this browser
   const [aside, setAsideState] = useState<SetAside>(loadAside);
-  const changeAside = (change: (a: SetAside) => SetAside) =>
-    setAsideState((a) => {
-      const next = change(a);
-      saveAside(next);
-      return next;
-    });
-  const putAside = (i: Item) => changeAside((a) => ({ ...a, [i.id]: asideMark(i) }));
-  const bringBack = (i: Item) => changeAside(({ [i.id]: _, ...rest }) => rest);
-  // forgotten once a card is back by itself, or gone from every canvas
+  useEffect(() => onAsideElsewhere(setAsideState), []);
+  const change = (f: (a: SetAside) => SetAside) => setAsideState(changeAside(f));
+  const putAside = (i: Item) => {
+    const on = allRef.current.find((x) => x.item.id === i.id)?.canvas.id;
+    if (on) change((a) => ({ ...a, [i.id]: asideMark(i, on) }));
+  };
+  const bringBack = (i: Item) => change(({ [i.id]: _, ...rest }) => rest);
+  // forgotten once a card is back by itself, or gone from its canvas
   useEffect(() => {
-    const known = canvases.every((c) => snaps[c.id]);
-    const gone = Object.keys(aside).filter((id) => {
-      const x = all.find((y) => y.item.id === id);
-      return x ? !staysAside(aside, x.item) : known;
-    });
-    if (gone.length) changeAside((a) => Object.fromEntries(Object.entries(a).filter(([id]) => !gone.includes(id))));
-  }, [all]);
+    const gone = forgotten(aside, Object.fromEntries(ordered.map((c) => [c.id, snaps[c.id]!.items])));
+    if (gone.length) change((a) => Object.fromEntries(Object.entries(a).filter(([id]) => !gone.includes(id))));
+  }, [all, aside]);
   // approved cards the server is still landing: they need the owner no longer
   const [underway, setUnderway] = useState<string[]>([]);
   useEffect(() => setUnderway((u) => u.filter((id) => byId(id)?.state === 'waiting')), [snaps]);
@@ -636,17 +632,23 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   // what the canvas's „Erledigte archivieren“ would take, but nothing the lists above show already
   const waitsHere = forYouTotal(ordered, snaps, leftOut);
   const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
-  // until the owner has swiped a card aside once, the first one that can be nudges, with a line saying how
-  const firstWaiting = ordered.flatMap((c) => forYouOf(snaps[c.id]!, leftOut).cards)[0];
-  const hint = swipedOnce(SWIPED_CARD) ? undefined : (firstWaiting ?? running[0]?.item)?.id;
-  const swipeAside: Swipe = { onGone: putAside, hint };
+  // until the owner has swiped a card aside once, the first one in sight nudges, with a line above it saying how
+  const folded = useFoldedCanvases(CANVASES_FOLDED);
+  const inSight = (list: string, c: CanvasInfo) => !several || !folded.includes(`${list}:${c.id}`);
+  const firstWaiting = ordered.filter((c) => inSight('forYou', c)).flatMap((c) => forYouOf(snaps[c.id]!, leftOut).cards)[0];
+  const firstRunning = ordered.filter((c) => inSight('running', c)).flatMap((c) => running.filter((x) => x.canvas.id === c.id))[0]?.item;
+  const hint = swipedOnce(SWIPED_CARD) ? undefined : (firstWaiting ?? firstRunning)?.id;
+  const hintIn = hint && (firstWaiting ? 'forYou' : 'running');
+  // to the left, a card waiting for the owner is snoozed instead
+  const swipeWaiting: Swipe = { onGone: putAside, label: t.phone.asideLabel, snooze: true, hint };
+  const swipeRunning: Swipe = { onGone: putAside, label: t.phone.asideLabel, hint };
   /** A list's cards on each canvas, swiped aside with `swipe`. */
   const cardsOf = (entries: { item: Item; canvas: CanvasInfo }[], swipe?: Swipe) => ({
     count: (c: CanvasInfo) => entries.filter((x) => x.canvas.id === c.id).length,
     cards: (c: CanvasInfo) => entries.filter((x) => x.canvas.id === c.id).map(({ item: i }) => <PhoneCard key={i.id} item={i} swipe={swipe} onOpen={openCard} />),
   });
-  const runningCards = cardsOf(running, swipeAside);
-  const asideCards = cardsOf(putAway, { onGone: bringBack });
+  const runningCards = cardsOf(running, swipeRunning);
+  const asideCards = cardsOf(putAway, { onGone: bringBack, label: t.phone.backLabel });
   const plannedCards = cardsOf(planned);
   const doneCards = cardsOf(done);
   return (
@@ -669,15 +671,15 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
             )}
           </h2>
           {/* nothing known yet (the server has not answered since the page loaded): no claim that nothing waits */}
-          {ordered.length > 0 && !waitsHere && <p className="ph-none">{putAway.length ? t.phone.nothingElseWaits : t.phone.nothingWaits}</p>}
-          {hint && <p className="ph-hint">{t.phone.swipeHint}</p>}
+          {ordered.length > 0 && !waitsHere && <p className="ph-none">{putAway.some(({ item }) => needsYou(item)) ? t.phone.nothingElseWaits : t.phone.nothingWaits}</p>}
+          {hintIn === 'forYou' && <p className="ph-hint">{t.phone.swipeHint}</p>}
           <ByCanvas list="forYou" canvases={ordered} several={several} waits count={(c) => forYouCount(snaps[c.id]!, leftOut)}>
             {(c) => (
               <ForYouRows
                 waiting={snaps[c.id]!}
                 canvas={c.id}
                 underway={leftOut}
-                swipe={swipeAside}
+                swipe={swipeWaiting}
                 onOpen={openCard}
                 onObeya={(id) => {
                   setObeyaCanvas(id);
@@ -689,7 +691,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
         </section>
         <section className="ph-section">
           <h2>{t.phone.running}</h2>
-          {ordered.length > 0 && !running.length && <p className="ph-none">{putAway.length ? t.phone.nothingElseRuns : t.phone.nothingRuns}</p>}
+          {ordered.length > 0 && !running.length && <p className="ph-none">{putAway.some(({ item }) => active(item)) ? t.phone.nothingElseRuns : t.phone.nothingRuns}</p>}
+          {hintIn === 'running' && <p className="ph-hint">{t.phone.swipeHintRunning}</p>}
           <ByCanvas list="running" canvases={ordered} several={several} count={runningCards.count}>
             {runningCards.cards}
           </ByCanvas>
