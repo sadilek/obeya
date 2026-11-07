@@ -226,6 +226,7 @@ const de = {
     prNotOpened: (reason: string) => `${reason} Der Pull Request ist noch nicht offen.`,
     remainsUndone: (reason: string) => `${reason} Was nach der Landung noch zu tun war, ist nicht erledigt; „Stoppen“ schließt die Karte ohne den Rest ab.`,
     tryAgain: 'Nochmal versuchen',
+    sessionEnded: (reason: string) => `${reason} „Nochmal versuchen“ setzt den Agenten mit seiner bisherigen Unterhaltung fort; „Stoppen“ und dann „Neu starten“ beginnt eine neue Sitzung auf dem Branch der Aufgabe.`,
     /** A tool call refused without asking anyone: what it was, who refused it, and their words when they gave any. */
     denied: (what: string, by: string, reason?: string) => `Nicht erlaubt (${by}): ${what}${reason ? ` — ${reason}` : ''}`,
     deniedBy: {
@@ -734,6 +735,7 @@ const en: Messages = {
     prNotOpened: (reason: string) => `${reason} The pull request is not open yet.`,
     remainsUndone: (reason: string) => `${reason} What was left to do after the landing is not done; “Stop” closes the card without the rest.`,
     tryAgain: 'Try again',
+    sessionEnded: (reason: string) => `${reason} “Try again” resumes the agent with its conversation so far; “Stop” and then “Start again” begin a new session on the task’s branch.`,
     denied: (what: string, by: string, reason?: string) => `Not allowed (${by}): ${what}${reason ? ` — ${reason}` : ''}`,
     deniedBy: {
       rule: 'a rule in the settings',

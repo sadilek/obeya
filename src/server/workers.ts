@@ -360,6 +360,8 @@ interface Live {
    * turn of its own, over what the previous session left (a background command the restart stopped).
    */
   acted: boolean;
+  /** Whether the session said or did anything since it started: one that ends by itself after that has a conversation worth resuming. */
+  ran?: boolean;
   nudged: boolean;
   /**
    * The last of Obeya's tools that refused the worker's call, with its words, until the same tool
@@ -3504,11 +3506,13 @@ export class Workers {
 
   /**
    * The worker's session ended without Obeya ending it (it failed to start, its harness died in a
-   * turn): no agent works on the card any more. At work, the card is planned again as if the owner
-   * had stopped it, its log ending with the error (or that the agent stopped), which the card then
-   * shows as why it does not run; after the landing, or approved with its pull request still to
-   * open, the owner hears what was left undone. A card waiting for the owner needs no session until
-   * their next words, nor one its worker snoozed until the snooze wakes it.
+   * turn): no agent works on the card any more. At work, a session that had worked is the owner's to
+   * try again, resumed with its conversation; one that never did (it failed to start, or to resume)
+   * has the card planned again as if the owner had stopped it, its log ending with the error (or
+   * that the agent stopped), which the card then shows as why it does not run. After the landing,
+   * or approved with its pull request still to open, the owner hears what was left undone. A card
+   * waiting for the owner needs no session until their next words, nor one its worker snoozed until
+   * the snooze wakes it.
    */
   private endedByItself(cardId: string, live: Live) {
     const card = this.o.board.item(cardId);
@@ -3530,6 +3534,11 @@ export class Workers {
       return;
     }
     if (card.state !== 'working') return;
+    // it had worked: the owner's "Try again" resumes its session, keeping the conversation
+    if (row.session_id && live.ran) {
+      this.toOwner(cardId, { text: t.worker.sessionEnded(ended), options: [t.worker.tryAgain], stuck: true });
+      return;
+    }
     void this.planAgain(cardId, () => {
       if (this.o.board.events(cardId).at(-1)?.kind !== 'error') this.o.board.log(cardId, 'error', 'obeya', live.failed ?? t.worker.stalled);
     }).catch((e) => console.error(`giving back the workspace of ${cardId}:`, e));
@@ -3789,6 +3798,7 @@ export class Workers {
       this.resumed(cardId, live);
       this.unlimited(cardId, live);
       live.failed = undefined;
+      live.ran = true;
     }
     if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.acted = true;
     if (e.type === 'text' || e.type === 'tool' || (e.type === 'idle' && !e.more)) live.pending = undefined;
@@ -5162,7 +5172,10 @@ export class Workers {
   private backToWork(cardId: string) {
     const row = this.o.board.row(cardId);
     const landed = landedOf(row);
-    this.o.board.work(cardId, { state: landed ? (landed.unchanged ? 'done' : 'live') : row.pr ? 'inPr' : 'working', need: null, detail: null });
+    // a review card has its pull request from the start: it waits in it only for the contributor
+    const contribution = contributionOf(row);
+    const inPr = !!row.pr && (!contribution || !!contribution.requested);
+    this.o.board.work(cardId, { state: landed ? (landed.unchanged ? 'done' : 'live') : inPr ? 'inPr' : 'working', need: null, detail: null });
   }
 
   // ---------------------------------------------------------------- prompts

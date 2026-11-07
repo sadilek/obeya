@@ -177,6 +177,17 @@ describe('a review card', () => {
     expect(board.item(id)!.contribution).toMatchObject({ number: 5, author: 'amerlander', canModify: true });
   });
 
+  test('answered, a question of its worker sends it back to work, not to wait for the contributor', async () => {
+    const id = await reviewCard();
+    runtime.last.emit({ type: 'session', id: 'review-1' });
+    runtime.last.emit({ type: 'text', text: 'Reading the diff.' });
+    runtime.last.close();
+    await until(() => board.item(id)!.state === 'waiting');
+    workers.answer(id, board.t.worker.tryAgain);
+    expect(board.item(id)!.state).toBe('working');
+    expect(runtime.last.spec.resume).toBe('review-1');
+  });
+
   test('its session reads none of the PR’s Claude Code settings, and the default branch’s CLAUDE.md', async () => {
     git(main, 'checkout', '-q', 'main');
     writeFileSync(join(main, 'CLAUDE.md'), 'Reviews bring in a second reviewer.\n');

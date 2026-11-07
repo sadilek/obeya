@@ -673,6 +673,29 @@ describe('workers', () => {
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', text: board.t.worker.stalled });
   });
 
+  test('a session that ends by itself after it worked asks the owner, and "Try again" resumes it', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const s = runtime.last;
+    s.emit({ type: 'session', id: 'run-1' });
+    s.emit({ type: 'text', text: 'Ich fange an.' });
+    s.emit({ type: 'error', message: 'the Codex app server exited with code 1' });
+    s.close();
+    await until(() => state(c.id) === 'waiting:question');
+    expect(board.item(c.id)!.question).toMatchObject({ text: expect.stringContaining('the Codex app server exited with code 1'), options: [board.t.worker.tryAgain], stuck: true });
+    expect(workers.inTurn()).not.toContain(c.id);
+    workers.answer(c.id, board.t.worker.tryAgain);
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last).not.toBe(s);
+    expect(runtime.last.spec.resume).toBe('run-1');
+    expect(runtime.last.inbox.at(-1)).toContain(board.t.worker.tryAgain);
+    // the resumed session fails before it does anything: there is nothing more to try, and the card stops
+    runtime.last.emit({ type: 'error', message: 'No conversation found with session ID: run-1' });
+    runtime.last.close();
+    await until(() => state(c.id) === 'planned');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', text: 'No conversation found with session ID: run-1' });
+  });
+
   test('an error of a session that signed in with a token says so in the conversation', async () => {
     const c = manual();
     await workers.start(c.id);
@@ -1176,6 +1199,19 @@ describe('workers', () => {
     expect(runtime.sessions.length).toBe(n + 1);
     expect(runtime.last.spec.resume).toBeUndefined();
     expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
+  });
+
+  test('approved work held for the next handover does not hide a question of its worker from the owner', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    board.work(c.id, { approved_at: new Date().toISOString() });
+    await runtime.last.call('ask', { question: 'Q?' });
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.landing).toBeUndefined();
+    expect(needsYou(board.item(c.id)!)).toBe(true);
+    workers.answer(c.id, 'A.');
+    expect(state(c.id)).toBe('working');
+    expect(board.row(c.id).approved_at).toBeTruthy();
   });
 
   test('after a restart that cut off a landing, the card waits for the owner to approve again', async () => {

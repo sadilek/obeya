@@ -3431,8 +3431,8 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(answering ? { answering: true } : {}),
     ...(detail.answered && !answering && handed ? { answered: true } : {}),
     ...(r.held ? { held: (JSON.parse(r.held) as { id: number }[]).map((h) => h.id) } : {}),
-    // approved work is held for its next handover while the card is at work; on a waiting card it is landing
-    ...(r.approved_at && r.state === 'waiting' ? { landing: true } : {}),
+    // approved work is held for its next handover while the card is at work or asks the owner; on a waiting card it is landing
+    ...(r.approved_at && r.state === 'waiting' && r.need !== 'question' ? { landing: true } : {}),
     ...(demo ? { demo } : {}),
     ...(earlier.length ? { demos: earlier } : {}),
     ...(r.files ? { files: JSON.parse(r.files) as CardFile[] } : {}),
