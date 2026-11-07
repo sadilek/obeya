@@ -3427,18 +3427,27 @@ export class Workers {
    * The worker's session ended without Obeya ending it (it failed to start, its harness died in a
    * turn): no agent works on the card any more. At work, the card is planned again as if the owner
    * had stopped it, its log ending with the error (or that the agent stopped), which the card then
-   * shows as why it does not run; after the landing, the owner hears what was left undone. A card
-   * waiting for the owner needs no session until their next words.
+   * shows as why it does not run; after the landing, or approved with its pull request still to
+   * open, the owner hears what was left undone. A card waiting for the owner needs no session until
+   * their next words, nor one its worker snoozed until the snooze wakes it.
    */
   private endedByItself(cardId: string, live: Live) {
     const card = this.o.board.item(cardId);
-    if (!card) return;
-    const landed = landedOf(this.o.board.row(cardId));
+    const row = this.o.board.row(cardId);
+    // it snoozed before its session ended: the snooze resumes it
+    if (!card || row.snoozed) return;
+    const landed = landedOf(row);
     const t = this.o.board.t;
+    const reason = live.failed ? failureReason(clip(live.failed, 1200), t) : t.worker.stalled;
+    const ended = `${reason}${/[.!?]$/.test(reason) ? '' : '.'}`;
     if (landed) {
       if (card.state === 'waiting' || landed.waits || landed.page || landed.needsClone) return;
-      const reason = live.failed ? failureReason(clip(live.failed, 1200), t) : t.worker.stalled;
-      this.toOwner(cardId, { text: t.worker.remainsUndone(`${reason}${/[.!?]$/.test(reason) ? '' : '.'}`), options: [t.worker.tryAgain], stuck: true });
+      this.toOwner(cardId, { text: t.worker.remainsUndone(ended), options: [t.worker.tryAgain], stuck: true });
+      return;
+    }
+    // approved, its pull request still to open: the owner's "Try again" has it opened, the approval standing
+    if (card.state === 'inPr' && !card.pr && !card.contribution) {
+      this.toOwner(cardId, { text: t.worker.prNotOpened(ended), options: [t.worker.tryAgain], stuck: true });
       return;
     }
     if (card.state !== 'working') return;

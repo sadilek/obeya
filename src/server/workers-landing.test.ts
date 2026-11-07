@@ -36,6 +36,24 @@ describe('landing through a pull request', () => {
     expect(board.row(c.id).branch).toBeTruthy();
   });
 
+  test('a session that ends by itself before opening the pull request asks the owner, the approval standing', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const clone = board.row(c.id).workspace!;
+    writeFileSync(join(clone, 'x.ts'), '');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'X');
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    runtime.last.emit({ type: 'error', message: 'API Error: 500' });
+    runtime.last.close();
+    await until(() => state(c.id) === 'waiting:question');
+    expect(board.item(c.id)!.question).toMatchObject({ text: expect.stringContaining('API Error: 500'), options: [board.t.worker.tryAgain] });
+    workers.answer(c.id, board.t.worker.tryAgain);
+    expect(state(c.id)).toBe('inPr');
+  });
+
   test('approving work that changed nothing makes the card done: no pull request, the worker hears so and finishes', async () => {
     const c = manual();
     await workers.start(c.id);

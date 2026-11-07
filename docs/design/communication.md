@@ -61,9 +61,11 @@ or its harness died in a turn) has no turn left to nudge: no agent works on the 
 at work is then planned again as if the owner had stopped it (its workspace kept where it holds
 work), and its log ends with the error, or with "The agent stopped without being done" where there
 was none; the planned card shows that above its conversation as why it does not run, with the login
-where the error is a lost one, and Start begins a new session. After the landing the owner gets
-what was left undone as a question with "Try again", as for a turn that failed there twice. A card
-waiting for the owner stays as it is: their next words resume the session. Chosen over leaving the
+where the error is a lost one, and Start begins a new session. After the landing, and after an
+approval whose pull request is not open yet, the owner gets what was left undone as a question with
+"Try again" (the approval stands), as for a turn that failed there twice. A card waiting for the
+owner stays as it is: their next words resume the session; so does one whose worker snoozed before
+its session ended: the snooze resumes it. Chosen over leaving the
 card "Agent at work" until Obeya restarts, which showed a Stop button for an agent no longer there
 (2026-11-07).
 
