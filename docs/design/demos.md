@@ -548,7 +548,9 @@ being played, it starts the next time the card is opened. A page reloaded by a r
 card without the owner opening it, so a demo that waited there keeps waiting (the tab remembers it
 until the card closes). Otherwise, and when the browser blocks autoplay, the demo waits behind the play
 button. Z or the magnifier zooms the playing video out of the card to as large as the window allows
-above the microphone; Z, Esc or a click beside it ends the zoom.
+above the microphone; Z, Esc or a click beside it ends the zoom. Z takes the zoomed video or
+walkthrough, else the one playing, else the one under the pointer, else the first in sight (a
+walkthrough's player zooms the same way, see The Koordinator → Walkthroughs).
 
 Space tapped plays and pauses; held, it records as everywhere (see Voice in), from the press, but
 with a video open the microphone lights up only after 200 ms, so a tap does not flicker it. ← and →

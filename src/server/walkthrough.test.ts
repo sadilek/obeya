@@ -87,11 +87,11 @@ describe('a walkthrough handed over slide by slide', () => {
     hand(w, TITLE);
     const long = 'The approved card is rebased onto main and its checks run before the merge lands';
     expect(hand(w, { type: 'points', title: 'Three steps', points: [long, long, long, long], narration: 'Each step waits for the one before it, so a failing check stops the landing.' })).toBe(
-      'Not shown: the slide is too full for the player (256 px wide where the owner usually watches): it runs about 1 line past its bottom. Shorten its points (the narration can say the rest), or spread them over two slides.',
+      'Not shown: the slide is too full: it runs about 1 line past its bottom. Shorten its points (the narration can say the rest), or spread them over two slides.',
     );
     const steps = ['Freigabe', 'Zusammenführung', 'Prüfung', 'Fertig'];
     expect(hand(w, { type: 'flow', title: 'Der Weg', steps, narration: 'Nichts davon braucht dich, bis die Karte auf main ist.' })).toBe(
-      'Not shown: "Zusammenführung" in step 2 is wider than its box in the player (256 px wide where the owner usually watches), where a flow of 4 steps gives each box room for about 6 characters: use shorter words or fewer steps, and let the narration say the rest.',
+      'Not shown: "Zusammenführung" in step 2 is wider than its box: a flow of 4 steps gives each box room for about 11 characters: use shorter words or fewer steps, and let the narration say the rest.',
     );
     const points = ['Rebase onto main', 'The checks run', 'Merge into main'];
     expect(hand(w, { type: 'points', title: 'Three steps', points, narration: ['First, it rebases onto main.', 'Next, the checks run.', 'Finally it merges into main.'] })).toBe(

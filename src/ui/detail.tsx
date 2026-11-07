@@ -32,7 +32,8 @@ import { CiteButton } from './cite';
 import { Composer } from './composer';
 import { useFitHeight } from './fitHeight';
 import { useFullscreen } from './fullscreen';
-import { type Box, onto, ZOOM_EASE, ZOOM_MS, zoomBox } from './zoomBox';
+import { plainKey, useZoom } from './zoom';
+import { zoomBox } from './zoomBox';
 import { AttachButton, imageUrl, ShotStrip, Shots, useShotInput } from './shots';
 import { useStickToEnd } from './stickToEnd';
 import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPick';
@@ -1872,7 +1873,14 @@ function DemoView({
     shownLatest.current = latest;
     if (shownN === null) setStarted(false);
   }, [latest]);
-  const zoom = useZoom(video);
+  const zoom = useZoom({
+    box: (w, h) => {
+      const v = video.current;
+      const r = v?.getBoundingClientRect();
+      return zoomBox(v?.videoWidth ? v.videoWidth / v.videoHeight : r?.height ? r.width / r.height : 16 / 9, w, h);
+    },
+    playing: () => !!video.current && !video.current.paused,
+  });
   // the phone view, which puts the conversation elsewhere, puts the video into full screen itself (fullscreen.ts)
   const fullscreen = useFullscreen(zoom.screen, video, !!elsewhere);
   const seek = useSeekKeys(video);
@@ -2139,11 +2147,7 @@ function useWatching(cardId: string, video: RefObject<HTMLVideoElement | null>, 
 }
 
 /** A key with no modifier, pressed outside a text field and with nothing over the card: one for the demo video. */
-function forTheVideo(e: KeyboardEvent) {
-  if (e.metaKey || e.ctrlKey || e.altKey) return false;
-  if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return false;
-  return !document.querySelector('#help, #config.on, .lightbox, .diff-view');
-}
+const forTheVideo = plainKey;
 
 /** The demo video the keys are for, with several on a card: the zoomed one, else the one playing, else the first. */
 function keyedVideo() {
@@ -2200,88 +2204,6 @@ function useSeekKeys(video: RefObject<HTMLVideoElement | null>) {
     hide.current = setTimeout(() => setHint(false), 4000);
   };
   return { hint, focused };
-}
-
-/** Set once the owner zoomed with Z: the magnifier stops showing the key beside it. */
-const ZOOM_KEY_KNOWN = 'obeya-zoom-key-known';
-
-/**
- * The demo video shown large over the greyed page, short of full screen: the same video element
- * (it keeps playing) grows out of its place in the card and goes back into it. Z or the button on
- * the video toggles it, Esc or a click beside it ends it. With several demos on a card, Z takes the
- * zoomed one, else the one playing, else the first. Hovering the magnifier shows the key until
- * the owner first used it.
- */
-function useZoom(video: RefObject<HTMLVideoElement | null>) {
-  const player = useRef<HTMLDivElement>(null);
-  const screen = useRef<HTMLDivElement>(null);
-  const backdrop = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<{ from: Box; to: Box; closing?: boolean } | null>(null);
-  const [keyKnown, setKeyKnown] = useState(() => known(ZOOM_KEY_KNOWN));
-  const boxRef = useRef(box);
-  boxRef.current = box;
-  const toggle = () => {
-    const cur = boxRef.current;
-    const el = screen.current;
-    if (!el || cur?.closing) return;
-    if (!cur) {
-      const from = el.getBoundingClientRect();
-      const v = video.current;
-      const aspect = v?.videoWidth ? v.videoWidth / v.videoHeight : from.width / from.height;
-      setBox({ from: { left: from.left, top: from.top, width: from.width, height: from.height }, to: zoomBox(aspect, innerWidth, innerHeight) });
-      return;
-    }
-    // back into its place in the card, wherever that is by now
-    const r = player.current!.getBoundingClientRect();
-    const back = { left: r.left, top: r.top, width: r.width, height: cur.from.height * (r.width / cur.from.width) };
-    setBox({ ...cur, closing: true });
-    el.animate([{ transform: 'none' }, { transform: onto(back, cur.to) }], { duration: ZOOM_MS, easing: ZOOM_EASE, fill: 'forwards' }).onfinish = () => setBox(null);
-  };
-  const toggleRef = useRef(toggle);
-  toggleRef.current = toggle;
-  // grows out of where it stood; back in its place, it lets go of the shrinking's last frame only
-  // once it no longer stands zoomed, so the large video does not show for a frame in between
-  const zoomed = !!box;
-  useLayoutEffect(() => {
-    const cur = boxRef.current;
-    if (!screen.current) return;
-    if (!cur) return screen.current.getAnimations().forEach((a) => a.cancel());
-    screen.current.animate([{ transform: onto(cur.from, cur.to) }, { transform: 'none' }], { duration: ZOOM_MS, easing: ZOOM_EASE });
-  }, [zoomed]);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (boxRef.current) toggleRef.current();
-        return;
-      }
-      if (e.key !== 'z' && e.key !== 'Z') return;
-      if (e.repeat || !forTheVideo(e) || keyedVideo() !== video.current) return;
-      e.preventDefault();
-      toggleRef.current();
-      setKeyKnown(true);
-      know(ZOOM_KEY_KNOWN);
-    };
-    addEventListener('keydown', key);
-    return () => removeEventListener('keydown', key);
-  }, []);
-  // a resized window resizes the zoomed video; a wheel over it does not scroll the card behind
-  useEffect(() => {
-    if (!zoomed) return;
-    const resize = () => {
-      const v = video.current;
-      const cur = boxRef.current;
-      if (cur && !cur.closing && v?.videoWidth) setBox({ ...cur, to: zoomBox(v.videoWidth / v.videoHeight, innerWidth, innerHeight) });
-    };
-    const still = (e: WheelEvent) => e.preventDefault();
-    const els = [screen.current, backdrop.current];
-    addEventListener('resize', resize);
-    els.forEach((el) => el?.addEventListener('wheel', still, { passive: false }));
-    return () => {
-      removeEventListener('resize', resize);
-      els.forEach((el) => el?.removeEventListener('wheel', still));
-    };
-  }, [zoomed]);
-  return { player, screen, backdrop, box, toggle, keyKnown };
 }
 
 /**

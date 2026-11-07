@@ -3,6 +3,13 @@
 // keeps each walkthrough as one JSON file in the thread's output directory, its clips beside it;
 // the player in the page reads it while it grows (design: The Koordinator → Walkthroughs).
 
+/**
+ * The one size a slide is laid out in, in px: the player scales it to its width, so a slide looks
+ * the same in every view, only smaller or larger, and the server can tell whether it fits.
+ */
+export const SLIDE_WIDTH = 800;
+export const SLIDE_HEIGHT = 500;
+
 /** What a slide shows, as the agent hands it over. */
 export type SlideContent =
   | { type: 'title'; title: string; subtitle?: string }

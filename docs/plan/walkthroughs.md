@@ -36,8 +36,9 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
 - *A pointer word by word* (design: The Koordinator → Walkthroughs; W3): the caption marks the word
   being spoken, from voice in's recognition hearing each sentence back; a flow's boxes build up as
   the narration names them.
-- *Checks while the agent writes* (W4): the tool refuses a slide that does not fit the player at
-  the sheet's default width and a narration that only reads its slide out, saying why. Whether a
+- *Checks while the agent writes* (W4): a slide has one layout, scaled to the player's width, and
+  the player zooms with Z or its magnifier; the tool refuses a slide that does not fit that layout
+  and a narration that only reads its slide out, saying why. Whether a
   code slide's lines say what it claims stays unchecked (owner, 2026-11-07: only the two cheap
   checks).
 - *Not yet*: the player
@@ -156,7 +157,8 @@ Claude Code plugin into the look-up agent:
   model: the slides' typography, layout and colours, in Obeya's light and dark; a progress bar cut
   into one segment per slide, which jumps to a slide on a click; the spoken sentence as a caption
   large enough to read every word along, switched on and off with one click on the player (and C),
-  the choice kept for the next walkthrough.
+  the choice kept for the next walkthrough. New fonts or sizes on the slides are measured anew for
+  the fit check (W4 lays a slide's text out with widths measured per character).
 - [ ] **W7:** The demo videos' player in the same look. After W6. The demo on the card and on the
   shared demo pages plays in a player of the walkthrough's look, from the same code where it fits:
   the progress bar in one segment per chapter, the captions to read along, switched on and off with

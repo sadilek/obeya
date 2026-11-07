@@ -5,12 +5,30 @@
 // plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
 // drawn anew (the answer's words arriving above it) and pauses only once no message shows it.
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AnswerFile } from '../core/types';
-import { estimatedStarts, INTERRUPTED, itemStarts, type Walkthrough, wordsOf } from '../core/walkthrough';
+import { estimatedStarts, INTERRUPTED, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
 import { answerFile, api, at } from './api';
 import { known, know } from './known';
 import { t } from './strings';
+import { useZoom } from './zoom';
+import { zoomBox } from './zoomBox';
+
+/** What stands under the slide in the zoomed player: its controls, and its caption, which grows with the width (styles.css `.wt-caption`). */
+const ZOOMED_CHROME = { fixed: 39 + 13, perWidth: 2 * 1.45 * 0.021 };
+
+/** Scales the slide to the stage's width, as it changes. */
+function useSlideScale(stage: RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const fit = () => el.style.setProperty('--wt-scale', String(el.clientWidth / SLIDE_WIDTH));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+}
 
 /** How often the player reads the walkthrough while it grows or is voiced. */
 const POLL_MS = 400;
@@ -308,6 +326,9 @@ function usePlayback(thread: number, name: string): Playback {
 /** A walkthrough an answer comes with, played under it; one the owner asked for on this page starts by itself. */
 export function WalkthroughPlayer({ thread, file }: { thread: number; file: AnswerFile }) {
   const p = usePlayback(thread, file.name);
+  const stage = useRef<HTMLDivElement>(null);
+  useSlideScale(stage);
+  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, ZOOMED_CHROME), playing: () => p.playing });
   const d = p.data;
   if (!d) return <div className="wt wt-loading hint">{p.missing ? t.walkthrough.missing : t.walkthrough.loading}</div>;
   const slide = d.slides[p.slide];
@@ -323,20 +344,25 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
         ? t.walkthrough.voicing(voiced, total)
         : '';
   const item = p.started ? p.item() : -1;
+  const zoomLabel = zoom.box ? t.demo.unzoom : t.demo.zoom;
   return (
-    <figure className="wt">
-      <div className="wt-stage">
-        {slide ? (
-          <SlideView key={p.slide} p={p} title={d.title} index={p.slide} item={item} />
-        ) : (
-          // asked for and not begun yet: a slide taking shape, so it is plain that one is being written
-          <div className="wt-slide wt-title wt-pending" aria-label={t.walkthrough.preparing}>
-            <div className="wt-bar" />
-            <i className="wt-ghost wide" />
-            <i className="wt-ghost" />
-            <p>{t.walkthrough.preparing}</p>
-          </div>
-        )}
+    <div className="wt-holder" ref={zoom.player} style={zoom.box ? { height: zoom.box.from.height } : undefined}>
+    {zoom.box && <div className={zoom.box.closing ? 'demo-zoom closing' : 'demo-zoom'} ref={zoom.backdrop} title={t.demo.unzoom} onClick={zoom.toggle} />}
+    <figure className={zoom.box ? 'wt zoomed' : 'wt'} ref={zoom.screen} style={zoom.box ? { left: zoom.box.to.left, top: zoom.box.to.top, width: zoom.box.to.width } : undefined}>
+      <div className={p.started && !p.refused ? 'wt-stage zoomable' : 'wt-stage'} ref={stage} onClick={() => p.started && !p.refused && zoom.toggle()}>
+        <div className="wt-canvas">
+          {slide ? (
+            <SlideView key={p.slide} p={p} title={d.title} index={p.slide} item={item} />
+          ) : (
+            // asked for and not begun yet: a slide taking shape, so it is plain that one is being written
+            <div className="wt-slide wt-title wt-pending" aria-label={t.walkthrough.preparing}>
+              <div className="wt-bar" />
+              <i className="wt-ghost wide" />
+              <i className="wt-ghost" />
+              <p>{t.walkthrough.preparing}</p>
+            </div>
+          )}
+        </div>
         {status && (
           <div className={`wt-status${d.error ? ' error' : ''}`} title={d.error && d.error !== INTERRUPTED ? d.error : undefined}>
             {status}
@@ -370,8 +396,21 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
         <button className={`btn small${p.captions ? ' on' : ''}`} aria-pressed={p.captions} title={t.walkthrough.captions} onMouseDown={(e) => e.preventDefault()} onClick={p.toggleCaptions}>
           CC
         </button>
+        <button className="btn small wt-zoom" title={zoom.keyKnown ? zoomLabel : undefined} aria-label={zoomLabel} onMouseDown={(e) => e.preventDefault()} onClick={zoom.toggle}>
+          {/* the key beside the magnifier until the owner first zoomed with it */}
+          {!zoom.keyKnown && (
+            <span className="zoom-hint">
+              {zoom.box ? t.demo.unzoomHint : t.demo.zoomHint} <kbd>Z</kbd>
+            </span>
+          )}
+          <svg viewBox="0 0 24 24">
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d={zoom.box ? 'M7.5 10.5h6M15.5 15.5L21 21' : 'M7.5 10.5h6M10.5 7.5v6M15.5 15.5L21 21'} />
+          </svg>
+        </button>
       </div>
     </figure>
+    </div>
   );
 }
 

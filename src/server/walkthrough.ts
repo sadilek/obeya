@@ -17,7 +17,7 @@ import type { AnswerFile } from '../core/types';
 import { type Clip, estimatedStarts, heardStarts, INTERRUPTED, itemsOf, type Slide, type SlideContent, type Walkthrough, WALKTHROUGH_SUFFIX } from '../core/walkthrough';
 import { clip, messageOf } from '../core/text';
 import type { AgentTool } from './runtime';
-import { PLAYER_WIDTH, readsOut, tooFull } from './slide-checks';
+import { readsOut, tooFull } from './slide-checks';
 import { sentencesOf } from '../../plugin/skills/demo/lib/subtitles.ts';
 
 /** Slides a walkthrough has at most. */
@@ -36,7 +36,7 @@ Walkthroughs: an answer that explains how something works or what happens when (
 - Tell it with walkthrough_slide, one call per slide, in order. The owner sees and hears each slide as soon as you have handed it over, while you work on the next: hand over the title slide as soon as you know what the walkthrough answers, each further slide once you have checked what it says.
 - 4 to ${MAX_SLIDES} slides: a title slide first, then points, flows and, only when the owner asks to see the code, code slides; otherwise the owner does not read code.
 - Each slide's narration is in the owner's language, spoken prose of two to four sentences that explains rather than reads the slide out. The title slide names that language (language), and the voice speaks the walkthrough in it. Give it as one text, or on a slide whose items show one after the other (points, steps, focus ranges) as one part per item, each spoken while its item shows.
-- The slides are small: the owner often watches in a player ${PLAYER_WIDTH} px wide. A point takes a line or two there (about 40 characters a line); a flow's box holds a short word or two, about 9 characters a line with three steps and 6 with four. Obeya refuses a slide that does not fit or whose narration only reads it out, saying why: revise it and hand it over again.
+- Each slide has room for little: a point takes a line or two (about 60 characters a line); a flow's box holds a short word or two, about 17 characters a line with three steps, 11 with four and 8 with five. Obeya refuses a slide that does not fit or whose narration only reads it out, saying why: revise it and hand it over again.
 - Then call answer_owner with a sentence or two on what the walkthrough shows: it comes with your answer by itself.
 `.trim();
 

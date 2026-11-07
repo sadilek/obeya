@@ -352,16 +352,16 @@ reply and the slide is not shown: a first slide that is no title slide, a second
 answer has one walkthrough), a ninth slide, a narration in parts that do not match the items, a code
 slide's file outside the repository or too large to show from, lines it lacks, more than 30 lines,
 or a range outside them, a slide that does not fit the player, and a narration that only reads its
-slide out. Whether a slide fits is judged for the player in Obeya's sheet at the sheet's default
-width, the narrowest view it commonly plays in (narrow players get a taller stage, and their fonts
-stop at minimum sizes, so what fits there fits wider players too): Obeya lays the slide's text out
-in the player's fonts, from widths measured per character, and refuses a slide whose items run past
-its bottom or that has a word wider than its line or its flow box, saying how many lines it is over
-or which word and how many characters that box holds. A narration only reads its slide out when about
-a third or fewer of its longer words are not on the slide (forms of one word, "Karte"
-and "Karten", count as one). Both are worked out at once, without a model, so a refused slide costs
-the agent one more call and the player no wait; the look-up agent's instructions say how much fits,
-so that most slides fit the first time. The walkthrough's title above each slide stays on one line.
+slide out. A slide has one layout, the same in every view: the player scales it to its width, so
+it shows whole and only smaller in the narrow sheet, and larger zoomed. Whether a slide fits is
+judged for that layout: Obeya lays the slide's text out in the slide's fonts, from widths measured
+per character, and refuses a slide whose items run past its bottom or that has a word wider than
+its line or its flow box, saying how many lines it is over or which word and how many characters
+that box holds. A narration only reads its slide out when about a third or fewer of its longer
+words are not on the slide (forms of one word, "Karte" and "Karten", count as one). Both are worked
+out at once, without a model, so a refused slide costs the agent one more call and the player no
+wait; the look-up agent's instructions say how much fits, so that most slides fit the first time.
+The walkthrough's title above each slide stays on one line.
 A file the agent passes on as a walkthrough of its own is left out.
 
 One asked for with "Show as walkthrough" shows its player at once, at full size, with the shape of a
@@ -414,7 +414,11 @@ gets a start between its neighbours' by its length. Until a sentence is heard ba
 cannot be (voice in through a cloud service, a recognition that fails or takes over a minute, a
 walkthrough voiced before a restart), its words start by their length over the clip. "Show as
 walkthrough" loads the recognition with the voice. Its progress bar has a segment per slide, which jumps there on a click; ◀ and ▶▶ go a
-slide back and on. Where the next sentence is not voiced yet it waits, showing "Voicing … 8/43";
+slide back and on. Z or the magnifier beside "CC" zooms the player out of its message to as large
+as the window allows, as a demo video zooms (see Demos), and so does a click on a slide once it
+plays; Z, Esc or a click beside it ends the zoom. Z takes the zoomed player or video, else the one
+playing, else the one under the pointer, else the first in sight. Where the next sentence is not
+voiced yet it waits, showing "Voicing … 8/43";
 where the agent is still writing the next slide, "The next slide is being written …". A walkthrough
 asked for with the button starts by itself in the page that clicked (the click allows the sound),
 as soon as its first sentence is voiced; one the agent chose shows its first slide and "Play
@@ -634,9 +638,14 @@ passed the words on through `to_obeya` hears that the owner finds the link under
 - **Checks the agent hears while it writes, not a second model** (owner, 2026-11-07): the fit and
   the read-out check are computed by Obeya at once. Rejected: a model checking that a code slide's
   lines say what the slide claims (seconds per slide while the walkthrough already plays, for code
-  slides that come only when the owner asks for code). The fit check earns its place: in the sheet
-  at its default width, the flow of the first walkthrough told on the owner's canvas spilled words
-  out of its boxes.
+  slides that come only when the owner asks for code). The fit check earns its place: told before
+  it, an agent wrote a walkthrough four of whose six slides spilled words out of their flow boxes or
+  ran past their bottom.
+- **One slide layout, scaled, with a zoom** (owner, 2026-11-07): a slide looks the same in the narrow
+  sheet as zoomed, only smaller, and the fit is judged once. Rejected: a layout per width, with
+  fonts that stopped at a minimum size and a taller stage in a narrow player, which crowded a slide
+  differently in every view and had to be judged at the narrowest, where a flow of four steps held
+  six characters a box.
 - **The player is Obeya's page, the walkthrough a file of data** (2026-11-06). Rejected: a player
   page written into the thread's directory with the slides (as an HTML artifact, sandboxed): every
   walkthrough would keep the player of its day, and its words and look would live apart from the

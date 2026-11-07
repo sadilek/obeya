@@ -974,30 +974,38 @@ textarea.p-body:focus { border-color: var(--muted); }
 .answer-files figcaption a { color: inherit; }
 .answer-page iframe { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 2px; background: #fff; display: block; }
 .answer-image img { display: block; max-width: 100%; max-height: 480px; border: 1px solid var(--line); border-radius: 2px; background: #fff; }
-/* an answer told as a walkthrough: slides scaled to the player's width, the voice's progress under them; src/server/slide-checks.ts
+/* an answer told as a walkthrough, the voice's progress under it: each slide laid out at one size (walkthrough.tsx SLIDE_WIDTH,
+   its cqw of that width) and scaled to the player's width, so it looks the same however wide the player; src/server/slide-checks.ts
    estimates how its slides lay out (sizes, widths of the fonts) and changes with it */
 .wt { margin: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--card); container-type: inline-size; }
 .wt-loading { padding: 10px 12px; }
 .wt-stage { position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
+.wt-stage.zoomable { cursor: zoom-in; }
+.wt.zoomed .wt-stage.zoomable { cursor: zoom-out; }
+.wt-canvas { position: absolute; left: 0; top: 0; width: 800px; height: 500px; /* SLIDE_WIDTH, SLIDE_HEIGHT */ container-type: inline-size; transform: scale(var(--wt-scale, 1)); transform-origin: 0 0; }
+/* zoomed (zoom.ts): fixed over the greyed window; its place keeps its height */
+.wt.zoomed { position: fixed; z-index: 4; transform-origin: 0 0; box-shadow: var(--lift); }
+/* the sheet's grip stands above the sheet, and so above a walkthrough zoomed out of it */
+body:has(.wt.zoomed) #sheet-grip { visibility: hidden; }
 .wt-slide { position: absolute; inset: 0; padding: 5.5cqw 6cqw 7cqw; display: flex; flex-direction: column; animation: wt-in .45s; }
 @keyframes wt-in { from { opacity: 0; transform: translateY(8px); } }
-.wt-kicker { font: 500 max(10px, 2.2cqw) var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.2cqw;
+.wt-kicker { font: 500 2.2cqw var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.2cqw;
   flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wt h1, .wt h2 { font-family: var(--serif); color: var(--ink); }
-.wt h2 { margin: 0 0 3cqw; font-size: max(15px, 4.2cqw); line-height: 1.2; font-weight: 600; }
+.wt h2 { margin: 0 0 3cqw; font-size: 4.2cqw; line-height: 1.2; font-weight: 600; }
 .wt-title { justify-content: center; }
-.wt-title h1 { margin: 0 0 2cqw; font-size: max(19px, 6cqw); line-height: 1.15; font-weight: 600; }
-.wt-title p { margin: 0; font-size: max(12px, 3cqw); color: var(--muted); max-width: 80%; }
+.wt-title h1 { margin: 0 0 2cqw; font-size: 6cqw; line-height: 1.15; font-weight: 600; }
+.wt-title p { margin: 0; font-size: 3cqw; color: var(--muted); max-width: 80%; }
 /* a walkthrough asked for, before its first slide: the shape of a title slide, shimmering */
 .wt-pending p { margin-top: 2.4cqw; }
-.wt-ghost { display: block; height: max(16px, 4.6cqw); width: 46%; margin-bottom: 2cqw; border-radius: .8cqw;
+.wt-ghost { display: block; height: 4.6cqw; width: 46%; margin-bottom: 2cqw; border-radius: .8cqw;
   background: linear-gradient(90deg, var(--chip) 25%, color-mix(in srgb, var(--chip) 40%, var(--card)) 50%, var(--chip) 75%) 0 0 / 300% 100%; animation: wt-shimmer 1.6s linear infinite; }
-.wt-ghost.wide { width: 72%; height: max(22px, 6cqw); }
+.wt-ghost.wide { width: 72%; height: 6cqw; }
 @keyframes wt-shimmer { to { background-position: -150% 0; } }
 @media (prefers-reduced-motion: reduce) { .wt-ghost { animation: none; } .wt-step, .wt-arrow { transform: none !important; } }
 .wt-bar { width: 9cqw; height: .8cqw; background: var(--working); border-radius: 1cqw; margin-bottom: 3cqw; }
 .wt-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2.2cqw; }
-.wt-points li { font-size: max(12.5px, 3.1cqw); line-height: 1.35; padding-left: 4cqw; position: relative; opacity: .18; transition: opacity .4s, color .4s; }
+.wt-points li { font-size: 3.1cqw; line-height: 1.35; padding-left: 4cqw; position: relative; opacity: .18; transition: opacity .4s, color .4s; }
 .wt-points li::before { content: ""; position: absolute; left: .6cqw; top: 1.4cqw; width: 1.4cqw; height: 1.4cqw; border-radius: 50%; background: var(--working); }
 .wt-points li.shown { opacity: 1; }
 .wt-points li.now { color: var(--working); }
@@ -1005,21 +1013,21 @@ textarea.p-body:focus { border-color: var(--muted); }
 .wt-step-wrap { flex: 1; min-width: 0; display: flex; align-items: center; }
 .wt-step { flex: 1; min-width: 0; border: .3cqw solid var(--line); border-radius: 1.4cqw; background: var(--panel); padding: 2.2cqw 1.6cqw; text-align: center;
   opacity: 0; transform: translateY(2cqw) scale(.94); transition: opacity .45s, border-color .4s, box-shadow .4s, transform .45s cubic-bezier(.2, .9, .3, 1.2); }
-.wt-step b { display: block; font-size: max(11px, 2.6cqw); line-height: 1.25; }
-.wt-step span { display: block; font-size: max(10px, 1.9cqw); color: var(--muted); margin-top: .8cqw; line-height: 1.3; }
+.wt-step b { display: block; font-size: 2.6cqw; line-height: 1.25; }
+.wt-step span { display: block; font-size: 1.9cqw; color: var(--muted); margin-top: .8cqw; line-height: 1.3; }
 .wt-step.shown { opacity: 1; transform: none; }
 .wt-step.now { border-color: var(--working); box-shadow: 0 0 0 .6cqw color-mix(in srgb, var(--working) 18%, transparent); transform: translateY(-.6cqw); }
-.wt-arrow { flex: 0 0 4cqw; text-align: center; font-size: max(12px, 3.4cqw); color: var(--muted); opacity: 0; transform: translateX(-1.4cqw); transition: opacity .35s, transform .35s; }
+.wt-arrow { flex: 0 0 4cqw; text-align: center; font-size: 3.4cqw; color: var(--muted); opacity: 0; transform: translateX(-1.4cqw); transition: opacity .35s, transform .35s; }
 .wt-arrow.shown { opacity: 1; transform: none; }
 .wt-code-slide h2 { margin-bottom: 1.4cqw; }
-.wt-file { font: max(10px, 1.9cqw)/1.3 var(--mono); color: var(--muted); margin-bottom: 1.2cqw; }
-.wt-code { flex: 1; min-height: 0; overflow: hidden; background: #1d2027; border-radius: 1.2cqw; padding: 1.4cqw 0; font: max(10px, 1.75cqw)/1.55 var(--mono); color: #d7dae0; }
+.wt-file { font: 1.9cqw/1.3 var(--mono); color: var(--muted); margin-bottom: 1.2cqw; }
+.wt-code { flex: 1; min-height: 0; overflow: hidden; background: #1d2027; border-radius: 1.2cqw; padding: 1.4cqw 0; font: 1.75cqw/1.55 var(--mono); color: #d7dae0; }
 .wt-code > div { display: flex; padding-right: 2cqw; transition: opacity .4s, background .4s; }
 .wt-code i { flex: 0 0 6cqw; text-align: right; padding-right: 2cqw; color: #6b7280; font-style: normal; -webkit-user-select: none; user-select: none; }
 .wt-code code { white-space: pre; font: inherit; background: none; padding: 0; border-radius: 0; }
 .wt-code.focusing > div { opacity: .38; }
 .wt-code.focusing > div.focus { opacity: 1; background: rgba(90, 140, 255, .16); box-shadow: inset .4cqw 0 0 #6d9bff; }
-.wt-note { margin-top: 1.4cqw; font-size: max(11px, 2.2cqw); color: var(--muted); }
+.wt-note { margin-top: 1.4cqw; font-size: 2.2cqw; color: var(--muted); }
 /* the sentence being spoken, under the slide rather than over it, so it hides nothing of it */
 .wt-caption { min-height: calc(2 * 1.45em + 12px); padding: 6px 12px; border-top: 1px solid var(--line); text-align: center; font-size: max(12.5px, 2.1cqw); line-height: 1.45; color: var(--ink); }
 .wt-caption span span { border-radius: 3px; transition: color .15s, background-color .15s, box-shadow .15s; }
@@ -1043,9 +1051,15 @@ textarea.p-body:focus { border-color: var(--muted); }
 .wt-seg.voiced { background: color-mix(in srgb, var(--working) 22%, var(--chip)); }
 .wt-seg i { position: absolute; inset: 0 auto 0 0; background: var(--working); }
 .wt-count { font-size: 11.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* in a narrow sheet the slides take more height, and the slide count gives way to the segments */
+.wt-controls .wt-zoom { position: relative; display: grid; place-items: center; }
+.wt-zoom svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+/* the key, shown above the magnifier while it is hovered, until the owner first zoomed with it */
+.wt-zoom .zoom-hint { position: absolute; right: 0; bottom: calc(100% + 6px); white-space: nowrap; padding: 5px 9px; border-radius: 3px;
+  background: rgba(0, 0, 0, .75); color: #fff; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 1; }
+.wt-zoom:hover .zoom-hint, .wt-zoom:focus-visible .zoom-hint { opacity: 1; }
+.wt-zoom .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
+/* in a narrow sheet the slide count gives way to the segments */
 @container (max-width: 520px) {
-  .wt-stage { aspect-ratio: 4 / 3.4; }
   .wt-controls { flex-wrap: wrap; }
   .wt-segments { flex-basis: 100%; order: -1; padding: 2px 0 4px; }
   .wt-count { display: none; }
