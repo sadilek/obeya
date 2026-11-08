@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { captionPages, pageOf } from './captionPages';
+import { captionPages, pageOf } from './caption-pages';
 
 const words = (s: string) => s.split(' ');
 /** A monospaced measure: 10 px a character. */

@@ -10,6 +10,9 @@ import { pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { languageName, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { listedTracks, trackFile } from '../../plugin/skills/demo/lib/subtitles.ts';
+import { captionPages, pageOf } from '../core/caption-pages';
+import { type PlayerWords, videoPlayer } from '../core/video-player';
+import PLAYER_STYLE from '../core/player.css' with { type: 'text' };
 
 /** The languages a page speaks: those a demo is narrated in. */
 export type PageLanguage = 'de' | 'en';
@@ -50,6 +53,8 @@ export const PAGE_WORDS: Record<
     /** A listed site's answer to an address it lacks (`404.html`): its heading and its line. */
     notFound: string;
     notFoundText: string;
+    /** The video player's controls. */
+    player: PlayerWords;
   }
 > = {
   de: {
@@ -81,6 +86,20 @@ export const PAGE_WORDS: Record<
     noMatch: 'Keine Demo passt zum Filter.',
     notFound: 'Diese Seite gibt es nicht',
     notFoundText: 'Unter dieser Adresse liegt keine Demo, oder sie wurde zurückgezogen.',
+    player: {
+      play: 'Abspielen',
+      pause: 'Anhalten',
+      previous: 'Voriges Kapitel',
+      next: 'Nächstes Kapitel',
+      captions: 'Untertitel ein oder aus (C)',
+      captionsHint: 'Untertitel mit',
+      seekHint: '5 Sekunden springen mit',
+      language: 'Sprache der Untertitel',
+      mute: 'Ton aus',
+      unmute: 'Ton an',
+      fullscreen: 'Vollbild',
+      fullscreenOff: 'Vollbild beenden',
+    },
   },
   en: {
     locale: 'en-US',
@@ -111,6 +130,20 @@ export const PAGE_WORDS: Record<
     noMatch: 'No demo matches the filter.',
     notFound: 'This page does not exist',
     notFoundText: 'There is no demo at this address, or it has been withdrawn.',
+    player: {
+      play: 'Play',
+      pause: 'Pause',
+      previous: 'Previous chapter',
+      next: 'Next chapter',
+      captions: 'Subtitles on or off (C)',
+      captionsHint: 'Subtitles with',
+      seekHint: 'Jump 5 seconds with',
+      language: 'Subtitle language',
+      mute: 'Mute',
+      unmute: 'Unmute',
+      fullscreen: 'Full screen',
+      fullscreenOff: 'Exit full screen',
+    },
   },
 };
 
@@ -285,13 +318,6 @@ export const PAGE_STYLE = `
   .text p { margin: 0 0 10px; max-width: 72ch; }
   .grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; margin-top: 22px; align-items: start; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
-  video { width: 100%; border-radius: 4px; background: #000; display: block; }
-  .player { position: relative; }
-  .start { all: unset; position: absolute; inset: 0 0 56px 0; cursor: pointer; display: grid; place-items: center; }
-  .start[hidden] { display: none; }
-  .start span { margin-top: 56px; width: 88px; height: 88px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; transition: transform 0.15s, background 0.15s; }
-  .start:hover span { background: rgba(0, 0, 0, 0.8); transform: scale(1.06); }
-  .start svg { width: 36px; height: 36px; margin-left: 6px; fill: #fff; }
   ol { list-style: none; margin: 0; padding: 6px; background: var(--chip); border-radius: 3px; }
   ol button { all: unset; cursor: pointer; display: flex; gap: 10px; width: 100%; padding: 7px 9px; border-radius: 2px; font-size: 14px; box-sizing: border-box; }
   ol button:hover, ol button.on { background: var(--card); }
@@ -315,6 +341,17 @@ export const PAGE_STYLE = `
   .tag span { color: var(--muted); }
   .credit { margin-top: 48px; font-size: 13px; color: var(--muted); }
 `;
+
+/** What a page with a video adds: its player (src/core/player.css) in the page's accent, and the big play button over it. */
+const VIDEO_STYLE = `
+  .player { position: relative; }
+  .dp { --wt-accent: var(--accent); }
+  .start { all: unset; position: absolute; inset: 0; cursor: pointer; display: grid; place-items: center; }
+  .start[hidden] { display: none; }
+  .start span { width: 88px; height: 88px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; transition: transform 0.15s, background 0.15s; }
+  .start:hover span { background: rgba(0, 0, 0, 0.8); transform: scale(1.06); }
+  .start svg { width: 36px; height: 36px; margin-left: 6px; fill: #fff; }
+${PLAYER_STYLE}`;
 
 /** A repository's theme (theme.ts) in a page's head, after Obeya's own style, so it wins; nothing in it may close its element. */
 export const themeStyle = (css?: string) => (css ? `<style>${css.replace(/<\/(style)/gi, '<\\/$1')}</style>` : '');
@@ -341,13 +378,22 @@ const CUES = `
   }
 `;
 
-// a silent video shows its captions from the start: in the viewer's language where it has a track in it, else the first
-const SILENT_CAPTIONS = `
-  for (const sv of document.querySelectorAll('video[data-silent]')) {
-    const tracks = [...sv.textTracks], pick = (${preferredTrack.toString()})(tracks.map((t) => t.language), navigator.languages);
-    for (const t of tracks) t.mode = t.language === pick ? 'showing' : 'disabled';
+// each video's player (src/core/video-player.ts), its chapters from its `data-chapters`, taking the page's keys; a
+// silent video shows its captions from the start, in the viewer's language where it has a track in it, else the first
+const PLAYERS = (words: PlayerWords) => `
+  {
+    const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, preferredTrack: ${preferredTrack} };
+    const words = ${JSON.stringify(words)};
+    for (const fig of document.querySelectorAll('figure.dp')) {
+      const pv = fig.querySelector('video');
+      (${videoPlayer})(fig, pv, { chapters: JSON.parse(fig.dataset.chapters || '[]'), words, silent: pv.hasAttribute('data-silent'), prefer: navigator.languages, keys: true, fullscreen: true }, lib);
+    }
   }
 `;
+
+/** A video in its player: the picture and the big play button over it until it first plays, the caption and the controls added by `PLAYERS`. */
+const playerTag = (chapters: [number, string][], video: string, play: string) =>
+  `<div class="player"><figure class="dp" data-chapters="${esc(JSON.stringify(chapters))}"><div class="dp-screen">${video}<button class="start" aria-label="${play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div></figure></div>`;
 
 /** A video's `<track>` elements, each named in the page's language. */
 const trackTags = (tracks: { language: string; src: string }[], language: PageLanguage) =>
@@ -460,13 +506,13 @@ export function demoPageHtml(p: DemoPageParts): string {
   const link = changeLink(p, w);
   const linked = p.tracks.flatMap((t) => ('src' in t ? [t] : []));
   const held = p.tracks.flatMap((t) => ('vtt' in t ? [t] : []));
-  return `${pageStart(p, language)}<div class="grid">
-  <div class="player"><video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}${p.silent ? ' data-silent' : ''}>${trackTags(linked, language)}</video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
+  return `${pageStart(p, language, undefined, VIDEO_STYLE)}<div class="grid">
+  ${playerTag(p.chapters, `<video preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}${p.silent ? ' data-silent' : ''}>${trackTags(linked, language)}</video>`, w.play)}
   <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
 </div>
 ${credit(language)}</main>
 ${held.map((t) => `<script type="text/vtt" class="captions" data-lang="${esc(t.language)}" data-label="${esc(languageName(t.language, language))}">${inScript(t.vtt)}</script>\n`).join('')}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>
-  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${held.length ? CUES : ''}${p.silent ? SILENT_CAPTIONS : ''}
+  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${held.length ? CUES : ''}${inScript(PLAYERS(w.player))}
   bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
   // a big play button over the video until it first plays: a click anywhere on it but its
   // controls starts it, instead of the small button in the corner
@@ -528,15 +574,19 @@ export function stackedPageHtml(p: StackedPageParts): string {
       ? `<ol>${d.chapters.map(([at, title], j) => `<li><button data-at="${at}"${j === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
       : '';
     return `<div class="grid">
-  <div class="player"><video controls preload="metadata" src="${esc(d.base)}demo.mp4"${d.poster ? ` poster="${esc(d.base)}poster.jpg"` : ''}${d.silent ? ' data-silent' : ''}>${trackTags(
-    d.tracks.map((t) => ({ language: t.language, src: d.base + t.file })),
-    language,
-  )}</video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
+  ${playerTag(
+    d.chapters,
+    `<video preload="metadata" src="${esc(d.base)}demo.mp4"${d.poster ? ` poster="${esc(d.base)}poster.jpg"` : ''}${d.silent ? ' data-silent' : ''}>${trackTags(
+      d.tracks.map((t) => ({ language: t.language, src: d.base + t.file })),
+      language,
+    )}</video>`,
+    w.play,
+  )}
   <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
 </div>`;
   };
   const artifacts = p.demos.some((d) => d.kind === 'html');
-  return `${pageStart({ ...p, title: first.title, text: first.text }, language, artifacts ? pagePolicy(ON_DISK) : undefined, STACK_STYLE, list)}<section id="v1">
+  return `${pageStart({ ...p, title: first.title, text: first.text }, language, artifacts ? pagePolicy(ON_DISK) : undefined, STACK_STYLE + (p.demos.some((d) => d.kind === 'video') ? VIDEO_STYLE : ''), list)}<section id="v1">
 ${block(first, 0)}
 </section>
 ${later
@@ -578,7 +628,7 @@ ${credit(language)}</main>
     const f = [...steps.keys()].find((f) => f.contentWindow === e.source);
     const h = f && e.data && e.data.obeyaHeight;
     if (typeof h === 'number' && h > 0 && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
-  });${p.demos.some((d) => d.kind === 'video' && d.silent) ? SILENT_CAPTIONS : ''}
+  });${p.demos.some((d) => d.kind === 'video') ? inScript(PLAYERS(w.player)) : ''}
 </script>
 </body></html>
 `;

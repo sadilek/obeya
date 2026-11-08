@@ -1,21 +1,7 @@
-// A walkthrough's caption shows its sentence a page at a time, two lines at most, so the player does
-// not grow and shrink with each sentence in a narrow sheet: the page with the word being spoken.
-
-/** Lines of a page. */
-const LINES = 2;
-
-/** How many lines words `widths` wide (`space` between them) take, broken at words into lines `line` wide. */
-function linesOf(widths: number[], space: number, line: number) {
-  let lines = 1;
-  let at = 0;
-  for (const w of widths) {
-    if (at > 0 && at + space + w > line) {
-      lines++;
-      at = w;
-    } else at += (at > 0 ? space : 0) + w;
-  }
-  return lines;
-}
+// A caption shows its sentence a page at a time, two lines at most, so the player does not grow and
+// shrink with each sentence in a narrow sheet: the page with the word being spoken. A walkthrough's
+// player and a demo video's (video-player.ts) page their captions alike; a shared demo page carries
+// these functions as their source, so each holds all it needs.
 
 /**
  * The sentence's words in pages of two lines at most, in a caption `line` px wide, each word as
@@ -24,9 +10,23 @@ function linesOf(widths: number[], space: number, line: number) {
  * reads as a phrase of its own.
  */
 export function captionPages(words: string[], widthOf: (text: string) => number, line: number): number[] {
+  /** Lines of a page. */
+  const LINES = 2;
   const widths = words.map(widthOf);
   const space = widthOf(' ');
-  const fits = (from: number, to: number) => linesOf(widths.slice(from, to), space, line) <= LINES;
+  /** How many lines the words from `from` to `to` take, broken at words into lines `line` wide. */
+  const linesOf = (from: number, to: number) => {
+    let lines = 1;
+    let at = 0;
+    for (const w of widths.slice(from, to)) {
+      if (at > 0 && at + space + w > line) {
+        lines++;
+        at = w;
+      } else at += (at > 0 ? space : 0) + w;
+    }
+    return lines;
+  };
+  const fits = (from: number, to: number) => linesOf(from, to) <= LINES;
   if (fits(0, words.length)) return [0];
   // as many pages as filling each to the brim takes, then each about an even share of the sentence
   let pages = 0;

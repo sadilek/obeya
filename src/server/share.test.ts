@@ -1440,7 +1440,7 @@ describe('exporting a demo, where the repository has no demo site', () => {
     // without a language the page is German
     expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.fr.vtt" srclang="fr" label="Französisch">');
     // a silent video shows its captions from the start
-    expect(demoPageHtml(parts)).not.toContain('data-silent');
+    expect(demoPageHtml(parts)).not.toContain(' data-silent>');
     expect(demoPageHtml({ ...parts, silent: true })).toContain(' data-silent>');
   });
 

@@ -1,3 +1,4 @@
+@import "../core/player.css";
 /* Obeya's look (docs/design/the-canvas.md, "Visual identity"): index cards pinned to a wall. Titles in Newsreader, everything
    else in IBM Plex Sans Condensed, both OFL and served from ./fonts with their licences. */
 @font-face { font-family: Newsreader; font-style: normal; font-weight: 300 800; font-display: swap;
@@ -734,36 +735,20 @@ textarea.p-body:focus { border-color: var(--muted); }
 .p-error { color: var(--error); margin: 12px 0 0; font-size: 13.5px; }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
-.demo-view video { width: 100%; border-radius: 3px; background: #000; display: block; }
-.demo-view .player, .demo-view .screen { position: relative; }
-/* zoomed (detail.tsx useZoom): fixed over the greyed window, above the panel's ✕; the player keeps its height in the card */
-.demo-view .screen.zoomed { position: fixed; z-index: 4; transform-origin: 0 0; }
-.demo-view .screen.zoomed video { height: 100%; box-shadow: var(--lift); }
+.demo-view .player { position: relative; }
+/* zoomed (detail.tsx useZoom): fixed over the greyed window, above the panel's ✕, with its caption and controls; the player keeps its height in the card */
+.demo-view .dp.zoomed { position: fixed; z-index: 4; transform-origin: 0 0; box-shadow: var(--lift); }
 .demo-zoom { position: fixed; inset: 0; z-index: 3; background: rgba(15, 12, 8, .78); cursor: zoom-out; animation: fade .38s ease-out; transition: opacity .38s; }
 .demo-zoom.closing { opacity: 0; }
-.demo-view .zoom { position: absolute; top: 10px; right: 10px; z-index: 1; width: 38px; height: 38px; border: 0; border-radius: 50%;
-  background: rgba(0, 0, 0, .55); cursor: pointer; display: grid; place-items: center; opacity: 0; transition: opacity .15s, background .15s; }
-.demo-view .screen:hover .zoom, .demo-view .zoom:focus-visible { opacity: 1; }
-.demo-view .zoom:hover { background: rgba(0, 0, 0, .8); }
-/* the key, shown beside the magnifier while it is hovered, until the owner first zoomed with it */
-.demo-view .zoom-hint { position: absolute; right: 0; top: calc(100% + 6px); white-space: nowrap;
-  padding: 5px 9px; border-radius: 3px; background: rgba(0, 0, 0, .75); color: #fff; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .15s; }
-.demo-view .zoom:hover .zoom-hint, .demo-view .zoom:focus-visible .zoom-hint { opacity: 1; }
-.demo-view .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
-.demo-view .zoom svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; }
-/* the arrow keys, over the video's controls for a moment after a click on them, until the owner first jumped with them */
-.demo-view .seek-hint { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 1; white-space: nowrap; pointer-events: none;
-  padding: 5px 9px; border-radius: 3px; background: rgba(0, 0, 0, .75); color: #fff; font-size: 13px; animation: fade .2s ease-out; }
-.demo-view .seek-hint kbd { font: inherit; font-weight: 600; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
-/* beside the magnifier and like it shown while the mouse is over the video: it pauses the video and puts the cursor into the card's field */
-.demo-view .comment-here { position: absolute; top: 10px; right: 56px; z-index: 1; height: 38px; padding: 0 14px; border: 0; border-radius: 19px;
+/* shown while the mouse is over the video: it pauses the video and puts the cursor into the card's field */
+.demo-view .comment-here { position: absolute; top: 10px; right: 10px; z-index: 1; height: 38px; padding: 0 14px; border: 0; border-radius: 19px;
   background: rgba(0, 0, 0, .55); color: #fff; font: inherit; font-size: 13.5px; cursor: pointer; opacity: 0; transition: opacity .15s, background .15s;
   display: flex; align-items: center; gap: 8px; }
 .demo-view .comment-here svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
-.demo-view .screen:hover .comment-here, .demo-view .comment-here:focus-visible { opacity: 1; }
+.demo-view .dp-screen:hover .comment-here, .demo-view .comment-here:focus-visible { opacity: 1; }
 .demo-view .comment-here:hover { background: rgba(0, 0, 0, .8); }
-.demo-view .start { all: unset; position: absolute; inset: 0 0 56px 0; cursor: pointer; display: grid; place-items: center; }
-.demo-view .start span { margin-top: 56px; width: 80px; height: 80px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; transition: transform 0.15s, background 0.15s; }
+.demo-view .start { all: unset; position: absolute; inset: 0; cursor: pointer; display: grid; place-items: center; }
+.demo-view .start span { width: 80px; height: 80px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; transition: transform 0.15s, background 0.15s; }
 .demo-view .start:hover span { background: rgba(0, 0, 0, 0.8); transform: scale(1.06); }
 .demo-view .start svg { width: 32px; height: 32px; margin-left: 5px; fill: #fff; }
 /* as high as the artifact says it is (its index.html reports it), so only the column around it scrolls;
@@ -991,12 +976,13 @@ textarea.p-body:focus { border-color: var(--muted); }
    headings, Inter text, entries on panels, a segmented progress bar, captions to read along) in Obeya's inks: each slide
    laid out at one size (walkthrough.tsx SLIDE_WIDTH, its cqw of that width) and scaled to the player's width, so it looks
    the same however wide the player; src/server/slide-checks.ts estimates how its slides lay out (sizes, widths of the
-   fonts, measured by scripts/slide-font-widths.ts) and changes with it */
-.wt { --wt-deck: color-mix(in srgb, var(--bg) 55%, var(--card)); --wt-stage: var(--card); --wt-accent: var(--working);
-  --wt-soft: color-mix(in srgb, var(--working) 20%, transparent); --wt-faint: color-mix(in srgb, var(--working) 8%, transparent);
+   fonts, measured by scripts/slide-font-widths.ts) and changes with it; its caption and controls are those of
+   src/core/player.css, which a demo video's player (`.dp`) has too */
+.wt, .dp { --wt-accent: var(--working); }
+.wt { --wt-stage: var(--card); --wt-faint: color-mix(in srgb, var(--working) 8%, transparent);
   --wt-panel: color-mix(in srgb, var(--chip) 45%, var(--card)); --wt-node: var(--inPr);
-  --wt-sans: Inter, ui-sans-serif, system-ui, sans-serif; --wt-display: "Bricolage Grotesque", Inter, ui-sans-serif, sans-serif;
-  margin: 0; border-radius: 6px; overflow: hidden; background: var(--wt-deck); container-type: inline-size; font-family: var(--wt-sans); }
+  --wt-display: "Bricolage Grotesque", Inter, ui-sans-serif, sans-serif;
+  margin: 0; border-radius: 6px; overflow: hidden; background: var(--wt-deck); font-family: var(--wt-sans); }
 .wt-loading { padding: 10px 12px; }
 /* a slide's headings and paragraphs are styled under .wt .wt-slide, above the rules of the sheet and of messages for theirs */
 /* the slide stands on the deck as a sheet of its own (WT_INSET in walkthrough.tsx) */
@@ -1082,14 +1068,6 @@ body:has(.wt.zoomed) #sheet-grip { visibility: hidden; }
 .wt-code.focusing > div { opacity: .38; }
 .wt-code.focusing > div.focus { opacity: 1; background: var(--wt-faint); box-shadow: inset .4cqw 0 0 var(--wt-accent); }
 .wt-note { margin-top: 1.4cqw; font-size: 2.2cqw; color: var(--muted); }
-/* the sentence being spoken, under the slide rather than over it, so it hides nothing of it, large enough to read along:
-   the words said in full colour, the one being said marked, those still to come faint (WT_CAPTION in walkthrough.tsx) */
-.wt-caption { min-height: calc(2 * 1.45em + 14px); box-sizing: border-box; padding: 8px 16px 6px; display: flex; align-items: center; justify-content: center; text-align: center;
-  font-size: clamp(15px, 2.3cqw, 30px); line-height: 1.45; color: var(--ink); text-wrap: balance; }
-.wt-caption span span { border-radius: 4px; transition: color .12s, background-color .12s, box-shadow .12s; }
-.wt-caption.pointing span span { color: color-mix(in srgb, var(--ink) 45%, transparent); }
-.wt-caption.pointing span span.said { color: var(--ink); }
-.wt-caption.pointing span span.now { color: var(--ink); background: var(--wt-soft); box-shadow: 0 0 0 2px var(--wt-soft); }
 .wt-start { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 5cqw 5cqw; background: none; border: 0; cursor: pointer; font: inherit; }
 .wt-start span { display: flex; align-items: center; gap: 1.6cqw; background: var(--wt-accent); color: var(--on-ink); border-radius: 99px; padding: 1.8cqw 3.4cqw 1.8cqw 2.8cqw;
   font: 600 max(12px, 2.5cqw) var(--wt-sans); box-shadow: 0 1cqw 4cqw color-mix(in srgb, var(--wt-accent) 40%, transparent); transition: transform .18s cubic-bezier(.2, .8, .2, 1); }
@@ -1099,39 +1077,6 @@ body:has(.wt.zoomed) #sheet-grip { visibility: hidden; }
   border: 1px solid var(--line); border-radius: 99px; padding: .5cqw 1.6cqw; display: flex; align-items: center; gap: 1cqw; box-shadow: 0 .6cqw 2cqw -1cqw rgba(30, 20, 5, .3); }
 .wt-status:not(.error)::before { content: ""; width: 1.4cqw; height: 1.4cqw; border-radius: 50%; border: .3cqw solid var(--line); border-top-color: var(--wt-accent); animation: spin .8s linear infinite; }
 .wt-status.error { color: var(--error); }
-/* the controls: plain icons, the progress bar in a segment per slide, CC lit in the accent while on */
-.wt-controls { display: flex; align-items: center; gap: 4px; padding: 2px 8px 6px; }
-.wt .wt-controls .btn { flex: none; min-width: 30px; height: 30px; margin: 0; padding: 0 6px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--ink);
-  font: 800 11.5px var(--wt-sans); letter-spacing: .04em; box-shadow: none; }
-.wt-controls .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
-.wt-controls .btn:disabled { opacity: .35; cursor: default; }
-.wt-controls .btn svg { width: 16px; height: 16px; fill: currentColor; }
-.wt-controls .wt-cc { color: var(--muted); }
-.wt-controls .wt-cc.on { color: var(--wt-accent); }
-.wt-segments { flex: 1; display: flex; gap: 3px; align-items: center; min-width: 40px; margin: 0 6px; }
-.wt-seg { min-width: 6px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; }
-.wt-seg > span { position: relative; flex: 1; height: 6px; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--ink) 13%, transparent); transition: height .15s; }
-.wt-segments:hover .wt-seg > span { height: 9px; }
-/* a slide whose first sentence is not voiced yet */
-.wt-seg.pending > span { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 13%, transparent) 0 5px, color-mix(in srgb, var(--ink) 5%, transparent) 5px 10px); }
-.wt-seg i { position: absolute; inset: 0 auto 0 0; background: var(--wt-accent); }
-.wt-count { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; margin-right: 2px; }
-.wt-controls .wt-key { position: relative; }
-.wt-zoom svg { width: 15px; height: 15px; fill: none !important; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
-/* the key, shown above its button while it is hovered, until the owner first used the key */
-.wt-key .zoom-hint { position: absolute; right: 0; bottom: calc(100% + 6px); white-space: nowrap; padding: 5px 9px; border-radius: 3px; letter-spacing: 0;
-  background: rgba(0, 0, 0, .75); color: #fff; font: 400 13px var(--cond); opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 1; }
-.wt-key:hover .zoom-hint, .wt-key:focus-visible .zoom-hint { opacity: 1; }
-.wt-key .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
-/* a key's hint means nothing without a keyboard, and a tap leaves the button hovered */
-@media (hover: none) { .demo-view .zoom-hint, .wt-key .zoom-hint { display: none; } }
-/* in a narrow sheet the slide count gives way to the segments, which get a row of their own */
-@container (max-width: 520px) {
-  .wt-controls { flex-wrap: wrap; padding-top: 0; }
-  .wt-segments { flex-basis: 100%; order: -1; margin: 0 4px; }
-  .wt-count { display: none; }
-  .wt-controls .wt-cc { margin-left: auto; }
-}
 
 /* a card's result files beside its conversation: the change list above the view picks the file, its line marked */
 .cl-list { margin-bottom: 12px; font-size: 13px; }
@@ -2407,21 +2352,11 @@ button.link:hover { text-decoration: underline; }
 .ph-view .cl-list td, .ph-view .cl-list .f-mark { padding-top: 10px; padding-bottom: 10px; }
 .ph-view .cl-foot { font-size: 14.5px; }
 .ph-view .cl-foot .link { padding: 8px 0; }
-/* the video plays full width, and full screen from Obeya's button over it (fullscreen.ts); zooming within the page adds nothing on a phone */
-.ph-view .demo-view .zoom, .ph-view .seek-hint { display: none; }
-.ph-view .demo-view .fullscreen { position: absolute; top: 10px; right: 10px; z-index: 1; width: 42px; height: 42px; border: 0; border-radius: 50%;
-  background: rgba(0, 0, 0, .55); display: grid; place-items: center; }
-.ph-view .demo-view .fullscreen svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-/* in full screen the player is black around the video, which fills it as far as its shape allows */
-.ph-view .demo-view .screen.full { background: #000; display: flex; align-items: center; }
-.ph-view .demo-view .screen.full video { width: 100%; height: 100%; object-fit: contain; border-radius: 0; }
-.ph-view .demo-view .screen.full .fullscreen, .ph-view .demo-view .screen.full .comment-here { top: max(10px, env(safe-area-inset-top)); }
-.ph-view .demo-view .screen.full .fullscreen { right: max(10px, env(safe-area-inset-right)); }
-/* as tall as the full screen button beside it, so the two line up */
-.ph-view .demo-view .comment-here { right: 60px; height: 42px; border-radius: 21px; }
-/* `nofullscreen` only greys out the controls' own full screen button in Chrome's newer controls: it goes, beside Obeya's */
-.ph-view .demo-view video::-webkit-media-controls-fullscreen-button { display: none; }
-.ph-view .demo-view .screen.full .comment-here { right: calc(50px + max(10px, env(safe-area-inset-right))); }
+/* the video plays full width, and full screen from Obeya's button in its controls (fullscreen.ts); zooming within the page adds nothing on a phone */
+.ph-view .demo-view .wt-zoom { display: none; }
+.ph-view .demo-view .dp.full .comment-here { top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); }
+.ph-view .demo-view .dp.full .wt-controls { padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+.ph-view .demo-view .comment-here { height: 42px; border-radius: 21px; }
 /* a phone's browser zooms into a text field written smaller than 16 px */
 .ph-view textarea, .ph-view select, .ph-view input { font-size: 16px; }
 /* no pointer hovers on a phone: the reply button shows on every message */

@@ -419,9 +419,10 @@ caption large enough to read along (15 px in the narrow sheet, growing with the 
 pointer on the word being spoken, the words before it in full colour and those still to come faint.
 A long sentence shows two lines at a time, the part with the word being spoken, so the player does
 not grow and shrink with each sentence. "CC" switches captions on and off, and so does C where a
-walkthrough is what the owner is at (one zoomed, playing or under the pointer; elsewhere C opens the
-conversation with Obeya, as before); the choice holds for every walkthrough in that browser until
-switched again. Hovering "CC" shows the key until it has been used once. The first
+walkthrough or demo video is what the owner is at (one zoomed, playing or under the pointer;
+elsewhere C opens the conversation with Obeya, as before); the choice holds for every walkthrough
+and demo video in that browser until switched again (a demo plays in this player's look, see Demos →
+Watching the demo). Hovering "CC" shows the key until it has been used once. The first
 item shows with its slide, so a slide never stands empty; after it, with a narration in parts an
 item comes with its part; with one text, at the word that first names it
 (the same word or its stem, among its words of four letters or more that the other items do not

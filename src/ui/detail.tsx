@@ -12,7 +12,7 @@ import { cardPath } from './address';
 import { Naming } from './cardLink';
 import { useCopy } from './copy';
 import { arrivedOnOpenCard, held, markSeen, openedWith, sameDemo, unseen } from './demoSeen';
-import { know, known } from './known';
+import { know } from './known';
 import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
@@ -33,8 +33,10 @@ import { CiteButton } from './cite';
 import { Composer } from './composer';
 import { useFitHeight } from './fitHeight';
 import { useFullscreen } from './fullscreen';
+import { captionPages, pageOf } from '../core/caption-pages';
+import { CAPTIONS_CHANGED, type PlayerWords, SEEK_KEYS_KNOWN, videoPlayer } from '../core/video-player';
+import { zoomedBox } from './walkthrough';
 import { plainKey, useZoom } from './zoom';
-import { zoomBox } from './zoomBox';
 import { AttachButton, imageUrl, ShotStrip, Shots, useShotInput } from './shots';
 import { useStickToEnd } from './stickToEnd';
 import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPick';
@@ -1880,17 +1882,35 @@ function DemoView({
     shownLatest.current = latest;
     if (shownN === null) setStarted(false);
   }, [latest]);
-  const zoom = useZoom({
+  const zoom = useZoom<HTMLElement>({
+    // the picture as large as fits with the caption, while it shows, and the controls under it
     box: (w, h) => {
       const v = video.current;
       const r = v?.getBoundingClientRect();
-      return zoomBox(v?.videoWidth ? v.videoWidth / v.videoHeight : r?.height ? r.width / r.height : 16 / 9, w, h);
+      return zoomedBox(v?.videoWidth ? v.videoWidth / v.videoHeight : r?.height ? r.width / r.height : 16 / 9, w, h, !!v?.closest('.dp')?.hasAttribute('data-captions'));
     },
     playing: () => !!video.current && !video.current.paused,
   });
   // the phone view, which puts the conversation elsewhere, puts the video into full screen itself (fullscreen.ts)
   const fullscreen = useFullscreen(zoom.screen, video, !!elsewhere);
-  const seek = useSeekKeys(video);
+  useSeekKeys(video);
+  // the player's caption and controls (src/core/video-player.ts), and the end of their row for the zoom and the full screen
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const root = zoom.screen.current;
+    const v = video.current;
+    if (demo.kind === 'html' || !root || !v) return;
+    const player = videoPlayer(root, v, { chapters: demo.chapters, words: playerWords(), silent: !!demo.silent, prefer: [uiLanguage()] }, { captionPages, pageOf, preferredTrack });
+    setSlot(player.slot);
+    // captions switched while zoomed: the zoomed player grows or shrinks to stay in the window, once the caption has
+    const refit = () => requestAnimationFrame(() => zoom.refit());
+    addEventListener(CAPTIONS_CHANGED, refit);
+    return () => {
+      removeEventListener(CAPTIONS_CHANGED, refit);
+      player.destroy();
+      setSlot(null);
+    };
+  }, [demo.kind, shownN, demo.handover, JSON.stringify(demo.chapters), demo.tracks?.join(), demo.silent]);
   const watching = useWatching(cardId, video, comments && demo.kind !== 'html' ? demo.chapters : null, demo.handover);
   const current = chapterAt(demo.chapters, now);
   useEffect(() => {
@@ -1970,112 +1990,110 @@ function DemoView({
         ) : (
           <div className="player" ref={zoom.player} style={zoom.box ? { height: zoom.box.from.height } : undefined}>
             {zoom.box && <div className={zoom.box.closing ? 'demo-zoom closing' : 'demo-zoom'} ref={zoom.backdrop} title={t.demo.unzoom} onClick={zoom.toggle} />}
-            <div
-              className={zoom.box ? 'screen zoomed' : fullscreen.full ? 'screen full' : 'screen'}
+            <figure
+              className={zoom.box ? 'dp zoomed' : fullscreen.full ? 'dp full' : 'dp'}
               ref={zoom.screen}
-              style={zoom.box ? { left: zoom.box.to.left, top: zoom.box.to.top, width: zoom.box.to.width, height: zoom.box.to.height } : undefined}
+              style={zoom.box ? { left: zoom.box.to.left, top: zoom.box.to.top, width: zoom.box.to.width } : undefined}
             >
-              <video
-                ref={video}
-                controls
-                controlsList={fullscreen.can ? 'nofullscreen' : undefined}
-                preload="metadata"
-                poster={demo.noPoster ? undefined : src('poster.jpg')}
-                src={src('demo.mp4')}
-                style={demo.size || shape ? { aspectRatio: demo.size ? `${demo.size[0]} / ${demo.size[1]}` : shape } : undefined}
-                onLoadedMetadata={(e) => {
-                  const v = e.currentTarget;
-                  if (v.videoWidth && v.videoHeight) setShape(`${v.videoWidth} / ${v.videoHeight}`);
-                }}
-                onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
-                onFocus={(e) => seek.focused(e.currentTarget)}
-                // a restart waits while the owner watches
-                onPlay={() => {
-                  setStarted(true);
-                  holdRestart('video', 'video');
-                }}
-                // played once it runs, not while it still loads after the click: closed before that, it starts at the next opening
-                onPlaying={() => demo === latest && markSeen(localStorage, cardId, demo)}
-                onPause={() => holdRestart('video', null)}
-                onEnded={() => {
-                  holdRestart('video', null);
-                  watching.ended();
-                }}
-              >
-                {demo.tracks ? (
-                  // a track per language, named in the interface's (none: no subtitles); a silent video shows one from the start, in the interface's language where it has a track in it, else the first
-                  demo.tracks.map((l) => (
-                    <track
-                      key={src(`captions.${l}.vtt`)}
-                      kind="captions"
-                      src={src(`captions.${l}.vtt`)}
-                      srcLang={l}
-                      label={languageName(l, uiLanguage())}
-                      default={!!demo.silent && l === preferredTrack(demo.tracks!, [uiLanguage()])}
-                    />
-                  ))
-                ) : (
-                  <track key={src('captions.vtt')} kind="captions" src={src('captions.vtt')} label={t.demo.captions} default={!!demo.silent} />
-                )}
-              </video>
-              {seek.hint && (
-                <span className="seek-hint">
-                  {t.demo.seekHint} <kbd>←</kbd> <kbd>→</kbd>
-                </span>
-              )}
-              {!started && (
-                // a click anywhere on the video but its controls starts it, like on a shared page
-                <button className="start" aria-label={t.demo.play} onClick={() => video.current?.play().catch(() => {})}>
-                  <span>
-                    <svg viewBox="0 0 24 24">
-                      <path d="M6 4l15 8-15 8z" />
-                    </svg>
-                  </span>
-                </button>
-              )}
-              {comments && started && (
-                <button
-                  className="comment-here"
-                  title={t.demo.commentHint}
-                  onClick={() => {
-                    video.current?.pause();
-                    if (zoom.box) zoom.toggle();
-                    fullscreen.leave();
-                    if (elsewhere) elsewhere.open(true);
-                    else document.querySelector<HTMLTextAreaElement>('.card-sheet .split-talk .composer textarea')?.focus();
+              <div className="dp-screen">
+                <video
+                  ref={video}
+                  preload="metadata"
+                  poster={demo.noPoster ? undefined : src('poster.jpg')}
+                  src={src('demo.mp4')}
+                  style={demo.size || shape ? { aspectRatio: demo.size ? `${demo.size[0]} / ${demo.size[1]}` : shape } : undefined}
+                  onLoadedMetadata={(e) => {
+                    const v = e.currentTarget;
+                    if (v.videoWidth && v.videoHeight) setShape(`${v.videoWidth} / ${v.videoHeight}`);
+                  }}
+                  onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
+                  // a restart waits while the owner watches
+                  onPlay={() => {
+                    setStarted(true);
+                    holdRestart('video', 'video');
+                  }}
+                  // played once it runs, not while it still loads after the click: closed before that, it starts at the next opening
+                  onPlaying={() => demo === latest && markSeen(localStorage, cardId, demo)}
+                  onPause={() => holdRestart('video', null)}
+                  onEnded={() => {
+                    holdRestart('video', null);
+                    watching.ended();
                   }}
                 >
-                  <svg viewBox="0 0 24 24">
-                    <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" />
-                  </svg>
-                  {t.demo.comment}
-                </button>
-              )}
-              {fullscreen.can && (
-                <button className="fullscreen" title={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen} aria-label={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen} onClick={fullscreen.toggle}>
-                  <svg viewBox="0 0 24 24">
-                    <path d={fullscreen.full ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'} />
-                  </svg>
-                </button>
-              )}
-              <button
-                className="zoom"
-                title={zoom.keyKnown ? (zoom.box ? t.demo.unzoom : t.demo.zoom) : undefined}
-                aria-label={zoom.box ? t.demo.unzoom : t.demo.zoom}
-                onClick={zoom.toggle}
-              >
-                {/* the key beside the magnifier until the owner first zoomed with it */}
-                {!zoom.keyKnown && (
-                  <span className="zoom-hint">
-                    {zoom.box ? t.demo.unzoomHint : t.demo.zoomHint} <kbd>Z</kbd>
-                  </span>
+                  {demo.tracks ? (
+                    // a track per language, named in the interface's (none: no subtitles); the player picks the one it shows
+                    demo.tracks.map((l) => <track key={src(`captions.${l}.vtt`)} kind="captions" src={src(`captions.${l}.vtt`)} srcLang={l} label={languageName(l, uiLanguage())} />)
+                  ) : (
+                    <track key={src('captions.vtt')} kind="captions" src={src('captions.vtt')} label={t.demo.captions} />
+                  )}
+                </video>
+                {!started && (
+                  // a click anywhere on the video starts it, like on a shared page
+                  <button className="start" aria-label={t.demo.play} onClick={() => video.current?.play().catch(() => {})}>
+                    <span>
+                      <svg viewBox="0 0 24 24">
+                        <path d="M6 4l15 8-15 8z" />
+                      </svg>
+                    </span>
+                  </button>
                 )}
-                <svg viewBox="0 0 24 24">
-                  <circle cx="10.5" cy="10.5" r="6.5" />
-                  <path d={zoom.box ? 'M7.5 10.5h6M15.5 15.5L21 21' : 'M7.5 10.5h6M10.5 7.5v6M15.5 15.5L21 21'} />
-                </svg>
-              </button>
-            </div>
+                {comments && started && (
+                  <button
+                    className="comment-here"
+                    title={t.demo.commentHint}
+                    onClick={() => {
+                      video.current?.pause();
+                      if (zoom.box) zoom.toggle();
+                      fullscreen.leave();
+                      if (elsewhere) elsewhere.open(true);
+                      else document.querySelector<HTMLTextAreaElement>('.card-sheet .split-talk .composer textarea')?.focus();
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" />
+                    </svg>
+                    {t.demo.comment}
+                  </button>
+                )}
+              </div>
+            </figure>
+            {slot &&
+              createPortal(
+                <>
+                  {fullscreen.can && (
+                    <button
+                      className="btn small wt-full"
+                      title={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen}
+                      aria-label={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={fullscreen.toggle}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path className="s" d={fullscreen.full ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'} />
+                      </svg>
+                    </button>
+                  )}
+                  <button
+                    className="btn small wt-key wt-zoom"
+                    title={zoom.keyKnown ? (zoom.box ? t.demo.unzoom : t.demo.zoom) : undefined}
+                    aria-label={zoom.box ? t.demo.unzoom : t.demo.zoom}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={zoom.toggle}
+                  >
+                    {/* the key beside the magnifier until the owner first zoomed with it */}
+                    {!zoom.keyKnown && (
+                      <span className="zoom-hint">
+                        {zoom.box ? t.demo.unzoomHint : t.demo.zoomHint} <kbd>Z</kbd>
+                      </span>
+                    )}
+                    <svg viewBox="0 0 24 24">
+                      <circle cx="10.5" cy="10.5" r="6.5" />
+                      <path d={zoom.box ? 'M7.5 10.5h6M15.5 15.5L21 21' : 'M7.5 10.5h6M10.5 7.5v6M15.5 15.5L21 21'} />
+                    </svg>
+                  </button>
+                </>,
+                slot,
+              )}
           </div>
         )}
         {demo.chapters.length > 0 && (
@@ -2105,6 +2123,22 @@ function DemoView({
     </>
   );
 }
+
+/** The demo player's words, in the interface's language. */
+const playerWords = (): PlayerWords => ({
+  play: t.demo.play,
+  pause: t.demo.pause,
+  previous: t.demo.previous,
+  next: t.demo.next,
+  captions: t.walkthrough.captions,
+  captionsHint: t.walkthrough.captionsHint,
+  seekHint: t.demo.seekHint,
+  language: t.demo.language,
+  mute: t.demo.mute,
+  unmute: t.demo.unmute,
+  fullscreen: t.demo.fullscreen,
+  fullscreenOff: t.demo.fullscreenOff,
+});
 
 /** When a demo was handed over: the time of day, with the day when it was not today. */
 const handedAt = (at: string) => (new Date(at).toDateString() === new Date().toDateString() ? time(at) : `${shortDay(at)}, ${time(at)}`);
@@ -2159,29 +2193,14 @@ const forTheVideo = plainKey;
 /** The demo video the keys are for, with several on a card: the zoomed one, else the one playing, else the first. */
 function keyedVideo() {
   const videos = [...document.querySelectorAll<HTMLVideoElement>('.card-sheet .demo-view video')];
-  return document.querySelector<HTMLVideoElement>('.screen.zoomed video') ?? videos.find((v) => !v.paused) ?? videos[0];
+  return document.querySelector<HTMLVideoElement>('.dp.zoomed video') ?? videos.find((v) => !v.paused) ?? videos[0];
 }
 
 /** How far ← and → jump in the demo video, in seconds. */
 const SEEK_S = 5;
-/** How soon after the video handed the focus back its controls take it again for their overflow menu: a press on its button, ms. */
-const MENU_FOCUS_MS = 1000;
-/** Set once the owner jumped with the arrow keys: a click on the video's controls stops showing them. */
-const SEEK_KEYS_KNOWN = 'obeya-seek-keys-known';
 
-/**
- * ← and → jump back and forward in the demo video, without a click on its progress bar first. The
- * browser's controls keep every key to themselves once clicked (Space too, which then neither paused
- * the video nor started a recording), so the video hands the focus back to the page at once; then
- * the keys reach Obeya's own handlers. Their overflow menu (⋮) takes the focus as it opens, right
- * after the press on its button gave it to them, and closes when it loses it: the focus coming back
- * that soon stays. Without a mouse (a phone, a tablet) there are no keys, and the focus stays too. A
- * click on the controls shows the keys over the video for a moment, until the owner first jumped
- * with them.
- */
+/** ← and → jump back and forward in the demo video; its progress bar shows the keys on hover until the owner first jumped with them. */
 function useSeekKeys(video: RefObject<HTMLVideoElement | null>) {
-  const [hint, setHint] = useState(false);
-  const hide = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -2190,27 +2209,11 @@ function useSeekKeys(video: RefObject<HTMLVideoElement | null>) {
       e.preventDefault();
       const to = v.currentTime + (e.key === 'ArrowLeft' ? -SEEK_S : SEEK_S);
       v.currentTime = Math.max(0, Number.isFinite(v.duration) ? Math.min(v.duration, to) : to);
-      setHint(false);
       know(SEEK_KEYS_KNOWN);
     };
     addEventListener('keydown', key);
-    return () => {
-      removeEventListener('keydown', key);
-      clearTimeout(hide.current);
-    };
+    return () => removeEventListener('keydown', key);
   }, []);
-  /** when the video last handed the focus back */
-  const gaveBack = useRef(-Infinity);
-  const focused = (v: HTMLVideoElement) => {
-    if (!matchMedia('(pointer: fine)').matches || performance.now() - gaveBack.current < MENU_FOCUS_MS) return;
-    v.blur();
-    gaveBack.current = performance.now();
-    if (known(SEEK_KEYS_KNOWN)) return;
-    setHint(true);
-    clearTimeout(hide.current);
-    hide.current = setTimeout(() => setHint(false), 4000);
-  };
-  return { hint, focused };
 }
 
 /**

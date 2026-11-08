@@ -2,8 +2,8 @@
 // while the agent still tells it: it reads the walkthrough as it grows and plays slides and voice in
 // step, items lighting up (a flow's boxes building up) as the narration reaches them, the spoken
 // sentence as a caption whose pointer marks the word being spoken, two lines at a time; "CC" or C
-// switch captions for every walkthrough of the browser. Slides and player take showntell's look
-// (styles.css `.wt-*`). What it plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
+// switch captions for every walkthrough and demo video of the browser. Slides and player take showntell's look
+// (styles.css `.wt-*`, the caption and controls src/core/player.css, which a demo video's player shares). What it plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
 // drawn anew (the answer's words arriving above it) and pauses only once no message shows it; a
 // restart's reload brings it back where it was. Without a voice (demo settings without one), each
 // sentence stands as a caption for as long as reading it takes.
@@ -12,7 +12,8 @@ import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState, 
 import type { AnswerFile } from '../core/types';
 import { estimatedStarts, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
 import { answerFile, api, at, beforeReload } from './api';
-import { captionPages, pageOf } from './captionPages';
+import { captionPages, pageOf } from '../core/caption-pages';
+import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF } from '../core/video-player';
 import { known, know } from './known';
 import { t } from './strings';
 import { plainKey, useZoom } from './zoom';
@@ -26,43 +27,47 @@ const WT_CAPTION = { padding: 14, lines: 2 * 1.45, font: (width: number) => Math
 const WT_CONTROLS = (width: number) => (width < 520 ? 62 : 38);
 
 /**
- * Where the zoomed player stands in a window `w`×`h`: the slide as large as fits with what stands
- * around it, the deck's margin (the slide is narrower than the player by both sides' margins), the
- * caption while captions are on, and the controls. Those grow with the width other than in step
- * with it, so the box is worked out again for the width it came to, until it settles.
+ * Where a zoomed player stands in a window `w`×`h`: its picture (a slide, a video) of `aspect` as
+ * large as fits with what stands around it, the deck's margin `inset` (a slide is narrower than the
+ * player by both sides' margins), the caption while captions are on, and the controls. Those grow
+ * with the width other than in step with it, so the box is worked out again for the width it came
+ * to, until it settles.
  */
-function zoomedBox(w: number, h: number, captions: boolean) {
-  const around = (width: number) =>
-    WT_INSET - (2 * WT_INSET * SLIDE_HEIGHT) / SLIDE_WIDTH + WT_CONTROLS(width) + (captions ? WT_CAPTION.padding + WT_CAPTION.lines * WT_CAPTION.font(width) : 0);
-  let box = zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, { fixed: around(w), perWidth: 0 });
-  for (let k = 0; k < 4; k++) box = zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, { fixed: around(box.width), perWidth: 0 });
+export function zoomedBox(aspect: number, w: number, h: number, captions: boolean, inset = 0) {
+  const around = (width: number) => inset - (2 * inset) / aspect + WT_CONTROLS(width) + (captions ? WT_CAPTION.padding + WT_CAPTION.lines * WT_CAPTION.font(width) : 0);
+  let box = zoomBox(aspect, w, h, { fixed: around(w), perWidth: 0 });
+  for (let k = 0; k < 4; k++) box = zoomBox(aspect, w, h, { fixed: around(box.width), perWidth: 0 });
   return box;
 }
 
-/** Whether captions show, for every walkthrough of the page and the next one: the owner's choice, kept in the browser. */
-const CAPTIONS_OFF = 'obeya.walkthroughCaptionsOff';
-/** Set once the owner switched captions with C: CC stops showing the key beside it. */
-const CAPTIONS_KEY_KNOWN = 'obeya.walkthroughCaptionsKeyKnown';
+/** Whether captions show, for every walkthrough and demo video of the page and the next one: the owner's choice, kept in the browser. */
 let captionsOn = !known(CAPTIONS_OFF);
 let captionsKeyKnown = known(CAPTIONS_KEY_KNOWN);
 
 function setCaptions(on: boolean) {
-  captionsOn = on;
   try {
     if (on) localStorage.removeItem(CAPTIONS_OFF);
     else know(CAPTIONS_OFF);
   } catch {}
-  for (const p of sessions.values()) p.notify();
+  dispatchEvent(new Event(CAPTIONS_CHANGED));
 }
 
+// switched here or on a demo video's player: every walkthrough follows
+if (typeof window !== 'undefined')
+  addEventListener(CAPTIONS_CHANGED, () => {
+    captionsOn = !known(CAPTIONS_OFF);
+    for (const p of sessions.values()) p.notify();
+  });
+
 /**
- * C switches captions on or off where a walkthrough is what the owner is at: one zoomed, playing or
- * under the pointer. Elsewhere C stays the key that opens the conversation with Obeya; `true` when
- * it took the key.
+ * C switches captions on or off where a walkthrough or a demo video is what the owner is at: one
+ * zoomed, playing or under the pointer. Elsewhere C stays the key that opens the conversation with
+ * Obeya; `true` when it took the key.
  */
 export function captionKey(e: KeyboardEvent): boolean {
   if ((e.key !== 'c' && e.key !== 'C') || !plainKey(e)) return false;
-  if (!document.querySelector('.wt.zoomed') && ![...sessions.values()].some((p) => p.playing) && !document.querySelector('.wt:hover')) return false;
+  const video = [...document.querySelectorAll<HTMLVideoElement>('.dp video')].some((v) => !v.paused && !v.ended);
+  if (!document.querySelector('.wt.zoomed, .dp.zoomed') && ![...sessions.values()].some((p) => p.playing) && !video && !document.querySelector('.wt:hover, .dp:hover')) return false;
   e.preventDefault();
   // a key held down switches once
   if (e.repeat) return true;
@@ -536,7 +541,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
   useSlideScale(stage);
   // without a voice the captions are the narration: always on
   const captions = captionsOn || p.silent;
-  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomedBox(w, h, captionsOn || p.silent), playing: () => p.playing });
+  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomedBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, captionsOn || p.silent, WT_INSET), playing: () => p.playing });
   // the caption switched on or off while zoomed: the zoomed player grows or shrinks to stay in the window
   useEffect(() => zoom.refit(), [captions]);
   const d = p.data;

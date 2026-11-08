@@ -146,9 +146,11 @@ for both.
 
 Every player (the card, the report page, a shared page online and as one file, a ZIP) offers the
 demo's tracks, none where it has none, each with its language and named in the language of the
-interface or page (French is „Französisch“ on a German one). A silent video shows its captions from
-the start: the track in the interface's language on the card, the browser's preferred languages on a
-page (by the language alone where no track has the very variant), else the narration's. Obeya
+interface or page (French is „Französisch“ on a German one). The card and a shared page show one
+track at a time (see Watching the demo): the one picked last in that browser where the video has
+it, else the narration's; for a silent video, else the track in the interface's language on the
+card, the browser's preferred languages on a page (by the language alone where no track has the very
+variant), else the narration's. A silent video's captions are always on. Obeya
 tells a silent video by its MP4's track list (no audio handler), read at the handover, and keeps the
 track languages with the demo.
 
@@ -550,18 +552,30 @@ handover or any later one) does not start: it waits behind the big play button. 
 being played, it starts the next time the card is opened. A page reloaded by a restart reopens the
 card without the owner opening it, so a demo that waited there keeps waiting (the tab remembers it
 until the card closes). Otherwise, and when the browser blocks autoplay, the demo waits behind the play
-button. Z or the magnifier zooms the playing video out of the card to as large as the window allows
-above the microphone; Z, Esc or a click beside it ends the zoom. Z takes the zoomed video or
+button.
+
+The demo plays in the walkthroughs' player (see The Koordinator → Walkthroughs), on the card and on
+a shared page alike, built by one piece of code that the page carries as its source: the picture,
+under it the sentence being spoken as a caption to read along, two lines at a time (a long cue turns
+its page as it goes, by its words' lengths, without a pointer: a demo has no word times), and under
+that the controls: back to the start of the chapter (to the one before within its first 3 s) and on
+to the next, play and pause, a progress bar of one segment per chapter, each as long as its chapter,
+where a click or a drag goes to that place, the time, sound on and off, the captions' language where
+there are several, "CC", and on the card the magnifier (on the phone full screen instead), on a
+shared page full screen. A click on the picture plays and pauses it. "CC" switches captions on and
+off, and so does C where a demo video or walkthrough is what the owner is at; the choice is one for
+walkthroughs and demos in that browser, on until switched off. Z or the magnifier zooms the playing
+video out of the card, with its caption and controls, to as large as the window allows above the
+microphone, growing or shrinking as captions are switched; Z, Esc or a click beside it ends the
+zoom. Z takes the zoomed video or
 walkthrough, else the one playing, else the one under the pointer, else the first in sight (a
 walkthrough's player zooms the same way, see The Koordinator → Walkthroughs).
 
 Space tapped plays and pauses; held, it records as everywhere (see Voice in), from the press, but
 with a video open the microphone lights up only after 200 ms, so a tap does not flicker it. ← and →
-jump 5 seconds. Browser video controls keep every key once clicked, so the video hands the focus
-back to the page at once, except when the controls take it back within a second: their overflow
-menu (⋮) takes the focus as it opens and closes when it loses it, and a press on the controls never
-reaches the page, so only the timing tells the menu apart. Without a fine pointer there are no keys,
-and the video keeps the focus. Hints for Z and the arrows show until first used.
+jump 5 seconds. The player's controls take no focus from a click, so the keys always reach the
+page. Hovering the magnifier, "CC" and the progress bar shows Z, C and the arrows until first used. A
+shared page takes Space, ← and →, and C itself, for the video playing, else the one clicked last.
 
 #### Comments at a place in the video
 
@@ -768,6 +782,12 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   nothing the button does not, and covered the controls of a small video; owner, 2026-11-07).
 - **The demo zooms within the window** (2026-10-12). Rejected: full screen, too much on a large
   monitor.
+- **Demo videos play in the walkthroughs' player** (owner, 2026-11-06; built 2026-11-08): one look
+  for what Obeya plays, chapters as segments of the progress bar and captions under the picture to
+  read along, switched with one click and kept on for both. One function builds the player on the
+  card and on the shared pages, which carry its source, so the two cannot drift apart. Rejected: the
+  browser's own controls (captions over the picture behind a menu, a bar without chapters, controls
+  that kept every key once clicked and needed the focus handed back).
 - **Space and the arrows reach the video; the microphone's 200 ms wait holds only with a video
   open** (2026-10-14). Rejected: a microphone flickering at every tap, and controls that kept the
   keys once clicked.

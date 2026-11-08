@@ -1,0 +1,69 @@
+/* The players' look, shared by a walkthrough's (src/ui/walkthrough.tsx, `.wt`) and a demo video's
+   (src/core/video-player.ts, `.dp`), on the card and on a shared demo page alike (src/server/demo-page.ts
+   puts this file into the page): the caption to read along, the controls under it. Each place sets the
+   colours: `--ink`, `--muted`, and `--wt-accent` for what is lit. */
+.wt, .dp { --wt-sans: Inter, ui-sans-serif, system-ui, sans-serif; --wt-soft: color-mix(in srgb, var(--wt-accent) 20%, transparent);
+  --wt-deck: color-mix(in srgb, var(--bg) 55%, var(--card)); container-type: inline-size; }
+
+/* the sentence being spoken, under the picture rather than over it, so it hides nothing of it, large enough to read along:
+   the words said in full colour, the one being said marked, those still to come faint (WT_CAPTION in walkthrough.tsx) */
+.wt-caption { min-height: calc(2 * 1.45em + 14px); box-sizing: border-box; padding: 8px 16px 6px; display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: clamp(15px, 2.3cqw, 30px); line-height: 1.45; color: var(--ink); text-wrap: balance; font-family: var(--wt-sans); }
+.wt-caption[hidden] { display: none; }
+.wt-caption span span { border-radius: 4px; transition: color .12s, background-color .12s, box-shadow .12s; }
+.wt-caption.pointing span span { color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.wt-caption.pointing span span.said { color: var(--ink); }
+.wt-caption.pointing span span.now { color: var(--ink); background: var(--wt-soft); box-shadow: 0 0 0 2px var(--wt-soft); }
+
+/* the controls: plain icons, the progress bar in a segment per slide or chapter, CC lit in the accent while on */
+.wt-controls { display: flex; align-items: center; gap: 4px; padding: 2px 8px 6px; font-family: var(--wt-sans); }
+:is(.wt, .dp) .wt-controls .btn { flex: none; min-width: 30px; height: 30px; margin: 0; padding: 0 6px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--ink);
+  font: 800 11.5px var(--wt-sans); letter-spacing: .04em; box-shadow: none; cursor: pointer; }
+.wt-controls .btn[hidden] { display: none; }
+.wt-controls .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.wt-controls .btn:disabled { opacity: .35; cursor: default; }
+.wt-controls .btn svg { width: 16px; height: 16px; fill: currentColor; }
+.wt-controls .btn svg .s { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.wt-controls .wt-cc { color: var(--muted); }
+.wt-controls .wt-cc.on { color: var(--wt-accent); }
+.wt-segments { flex: 1; display: flex; gap: 3px; align-items: center; min-width: 40px; margin: 0 6px; touch-action: none; }
+.wt-seg { min-width: 6px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; }
+.wt-seg > span { position: relative; flex: 1; height: 6px; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--ink) 13%, transparent); transition: height .15s; }
+.wt-segments:hover .wt-seg > span { height: 9px; }
+/* a slide whose first sentence is not voiced yet */
+.wt-seg.pending > span { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 13%, transparent) 0 5px, color-mix(in srgb, var(--ink) 5%, transparent) 5px 10px); }
+.wt-seg i { position: absolute; inset: 0 auto 0 0; background: var(--wt-accent); }
+.wt-count { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; margin-right: 2px; }
+/* the language of the captions, where a video has them in several */
+.wt-lang { flex: none; max-width: 9em; height: 26px; padding: 0 4px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: 600 12px var(--wt-sans); cursor: pointer; }
+.wt-lang:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.wt-lang[hidden] { display: none; }
+.wt-controls .wt-key { position: relative; }
+.wt-zoom svg { width: 15px; height: 15px; fill: none !important; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+/* the key, shown above its button while it is hovered, until the owner first used the key */
+.wt-key .zoom-hint { position: absolute; right: 0; bottom: calc(100% + 6px); white-space: nowrap; padding: 5px 9px; border-radius: 3px; letter-spacing: 0;
+  background: rgba(0, 0, 0, .75); color: #fff; font: 400 13px var(--cond, var(--wt-sans)); opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 1; }
+.wt-key .zoom-hint[hidden] { display: none; }
+.wt-key:hover .zoom-hint, .wt-key:focus-visible .zoom-hint { opacity: 1; }
+.wt-segments .zoom-hint { right: auto; left: 50%; transform: translateX(-50%); }
+.wt-key .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
+/* a key's hint means nothing without a keyboard, and a tap leaves the button hovered */
+@media (hover: none) { .wt-key .zoom-hint { display: none; } }
+/* in a narrow player the segments get a row of their own; a walkthrough's slide count gives way, a video's time stays */
+@container (max-width: 520px) {
+  .wt-controls { flex-wrap: wrap; padding-top: 0; }
+  .wt-segments { flex-basis: 100%; order: -1; margin: 0 4px; }
+  .wt .wt-count { display: none; }
+  .wt .wt-controls .wt-cc { margin-left: auto; }
+  .dp .wt-count { margin-right: auto; }
+}
+
+/* a demo video: the picture edge to edge, the caption and the controls under it on the deck */
+.dp { position: relative; margin: 0; border-radius: 6px; overflow: hidden; background: var(--wt-deck); }
+.dp-screen { position: relative; }
+.dp video { width: 100%; display: block; background: #000; cursor: pointer; }
+.dp-slot { display: contents; }
+/* in full screen the picture takes what the caption and the controls leave */
+.dp.full { display: flex; flex-direction: column; border-radius: 0; }
+.dp.full .dp-screen { flex: 1; min-height: 0; display: flex; background: #000; }
+.dp.full video { height: 100%; object-fit: contain; }

@@ -273,7 +273,8 @@ since Chrome loads no `<track>` from disk. The ZIP is stored uncompressed.
 
 The page is the site's, without the overview link. Its own words are in the demo's language (the one
 its `index.html` names, else the demo settings' narration language, else German). Its video waits
-under a big play button; a click anywhere on it but the controls starts it. No autoplay: browsers
+under a big play button; a click anywhere on it starts it. It plays in the player of the card (see
+Watching the demo in Demos), which takes Space, ← and →, and C on the page. No autoplay: browsers
 play sound only after a click on the page, and the owner did not want it muted.
 
 Every page and every overview ends in "Recorded with Obeya" linking
@@ -312,8 +313,9 @@ What a theme styles is the pages' markup, which is its interface and changes onl
 - the colour variables on `:root`: `--bg`, `--card`, `--ink`, `--muted`, `--line`, `--chip`,
   `--accent`, set for light and dark (`prefers-color-scheme`), which a theme may set apart too;
 - a page: `main` around everything, `.top` (the link to all demos), `h1`, `.when` (who shared it
-  when), `.tags` with `.tag` chips, `.text` with its paragraphs, `.grid` with `.player` (the `video`
-  and its `.start` button) and the chapters as `ol` of buttons, `.pr` (the link to the change),
+  when), `.tags` with `.tag` chips, `.text` with its paragraphs, `.grid` with `.player` (a `figure.dp`
+  holding `.dp-screen` with the `video` and its `.start` button, then `.wt-caption` and
+  `.wt-controls`, lit in `--wt-accent`, the page's `--accent` unless the theme sets it) and the chapters as `ol` of buttons, `.pr` (the link to the change),
   `.links`, `.artifact` (the frame), `.credit` (the closing line); several versions on one page add
   `.sections` and `section.addendum` with its `h2` and `h3`;
 - the overview: `h1`, `.when`, `.filter` with the search field and `.dim` rows of `.chip` buttons,
