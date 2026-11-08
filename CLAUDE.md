@@ -110,6 +110,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   voice); the demo settings' `references` name each under its narration language. Qwen3 is good
   enough for demos, ElevenLabs marginally better for the site, so the site stays with ElevenLabs
   (owner, 2026-10-12); `scripts/hero-video/qwen.py` renders the hero narration in Qwen3 to compare.
+- The site (obeya.si) stays quick to read and understand: it names features in a few plain words
+  and leaves out details and special cases (which forges, how a single interaction goes); those
+  belong in the docs or the README.
 - Every release also brings the README's text up to date: like the site, it names what the release
   adds that a newcomer should know (phone remote control, say).
 - A release contains everything on `main` at the moment it is tagged: right before tagging, rebase
