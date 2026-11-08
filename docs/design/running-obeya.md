@@ -674,8 +674,10 @@ workers are busy.
   and waits in one call, node's `child_process`, which starts through them) takes a lock shared by
   the server's thread and the process threads (an `Atomics` lock in shared memory); a thread that is
   ended gives it back, or every start after would wait forever. The server's thread waits for the
-  lock only when it starts a process itself, and then at most for the starts already underway; the
-  threads keep the server free of the rest. Not on macOS and Linux, whose pipes are never
+  lock only when it starts a process itself, and goes first: no thread takes the lock while it
+  waits, so it waits for the starts already underway, not for the threads' queue (a burst of twenty
+  starts next to four slow ones: a quick call on the server's thread took 8 s before, as long as the
+  slow ones, and at most about 0.4 s since). Not on macOS and Linux, whose pipes are never
   inheritable. Rejected: starting every process on one thread on Windows (the server's own starts
   would still race with it, and one slow start would hold up all); pipes created non-inheritable and
   handed over in an explicit handle list (Bun offers no such option; it would mean calling

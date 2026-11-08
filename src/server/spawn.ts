@@ -44,13 +44,30 @@ export function hidden(args: unknown[]): unknown[] {
  * call), node's `child_process` too, which starts through these. Not on macOS and Linux, where the
  * pipes are never inheritable.
  */
-const STARTS = process.platform === 'win32' ? new Int32Array(new SharedArrayBuffer(4)) : null;
-/** Who holds `STARTS` (0 when no one does): the server's thread, or a thread by its number. */
+const STARTS = process.platform === 'win32' ? new Int32Array(new SharedArrayBuffer(8)) : null;
+/**
+ * Who holds `STARTS` (its first number, 0 when no one does): the server's thread, or a thread by
+ * its number. The second is 1 while the server's thread waits for it.
+ */
 const SERVER = 1;
 
-/** Takes `lock` for `owner`, waiting while another holds it. Self-contained: threads are given its code. */
+/**
+ * Takes `lock` for `owner`, waiting while another holds it. The server's thread (owner 1) goes
+ * first: while it waits, no thread takes the lock, so the server waits at most for the start
+ * underway, not for a queue of them. Self-contained: threads are given its code.
+ */
 function acquire(lock: Int32Array, owner: number) {
-  for (let held; (held = Atomics.compareExchange(lock, 0, 0, owner)) !== 0; ) Atomics.wait(lock, 0, held);
+  if (owner === 1) Atomics.store(lock, 1, 1);
+  for (;;) {
+    if (owner !== 1) for (let first; (first = Atomics.load(lock, 1)) !== 0; ) Atomics.wait(lock, 1, first);
+    const held = Atomics.compareExchange(lock, 0, 0, owner);
+    if (held === 0) break;
+    Atomics.wait(lock, 0, held);
+  }
+  if (owner === 1) {
+    Atomics.store(lock, 1, 0);
+    Atomics.notify(lock, 1);
+  }
 }
 /** Gives `lock` back if `owner` still holds it, and wakes whoever waits for it. */
 function release(lock: Int32Array, owner: number) {
