@@ -361,7 +361,9 @@ the time, the stall's length, the few places in the code where most of it went w
 that called it, by file and line), and each process the server waited for longer than 50 ms, by its
 command line. A pause the thread did not run in at all (the machine slept) is no stall; one it
 spent waiting for a process is, also on Windows, where the profiler takes no samples while the
-thread waits and samples only about every 16 ms whatever interval it is asked for.
+thread waits and samples only about every 16 ms whatever interval it is asked for. There the wait
+itself is what tells the two apart, so a sleep during a process the server waited for counts as a
+stall on Windows alone; elsewhere the samples taken during the wait decide.
 
 What happens often or many times at once therefore never waits for a process: starting an agent and
 landing work read git without blocking, and so do starting the canvases, applying a saved

@@ -263,6 +263,28 @@ describe('artifactCopy', () => {
       expect(copy.get('index.html')).not.toContain('of the owner');
     });
 
+    // where `C:` is a folder like any other: the path the check goes by is the one Bun read
+    test.skipIf(process.platform === 'win32')('nor one in a folder named like a Windows drive, where a link of that name in the working directory leads into the artifact', async () => {
+      const drive = join(root, 'outside', 'C:');
+      mkdirSync(drive, { recursive: true });
+      writeFileSync(join(drive, 'secret.js'), "export const token = 'of the owner';");
+      const cwd = process.cwd();
+      const work = mkdtempSync(join(root, 'cwd-'));
+      try {
+        process.chdir(work);
+        const dir = join(root, `a${n}`);
+        symlinkSync(dir, join(work, 'C:'));
+        const { copy } = await copyOf({
+          'index.html': '<script type="module" src="app.js"></script>',
+          'app.js': `import { token } from '${join(drive, 'secret.js')}'; document.title = token;`,
+          'secret.js': "export const token = 'harmless';",
+        });
+        expect(copy.get('index.html')).not.toContain('of the owner');
+      } finally {
+        process.chdir(cwd);
+      }
+    });
+
     test("a package.json's paths for browsers hold inside it, and fail the bundle where they lead out", async () => {
       const { copy } = await copyOf({
         'index.html': '<script type="module" src="app.js"></script><script type="module" src="out.js"></script>',

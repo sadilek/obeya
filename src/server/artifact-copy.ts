@@ -574,7 +574,8 @@ async function bundle(dir: string, entry: string, files?: Record<string, string>
     // the modules it read, relative to the working directory; on Windows one on another drive as `../C:/…`
     const root = realpathSync(dir) + sep;
     for (const input of Object.keys(r.metafile.inputs)) {
-      const path = resolve(/(?:^|[\\/])([A-Za-z]:[\\/].*)$/.exec(input)?.[1] ?? input);
+      // (elsewhere `C:` is a folder like any other, and the module read is the one its path names)
+      const path = resolve((process.platform === 'win32' && /^(?:\.\.[\\/])+([A-Za-z]:[\\/].*)$/.exec(input)?.[1]) || input);
       if (files && path === resolve(entry)) continue;
       if (!realpathSync(path).startsWith(root)) return null;
     }
