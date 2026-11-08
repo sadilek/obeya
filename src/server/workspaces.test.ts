@@ -423,7 +423,7 @@ describe("a follow-up's temporary worktree", () => {
 });
 
 describe("a card's fork point", () => {
-  test('tells a settings change of the branch against the commit it names, where criss-cross merges left several where it parted', async () => {
+  test('tells a change of the branch to a file against the commit it names, where criss-cross merges left several where it parted', async () => {
     const SETTINGS = '.obeya/settings.json';
     const repo = gitRepo(join(dir, 'repo'), { 'README.md': 'hello\n', [SETTINGS]: '{"land":"main"}\n' });
     const store = new Store(':memory:');
@@ -450,10 +450,13 @@ describe("a card's fork point", () => {
     git(ws, 'reset', '--quiet', '--hard', commit(both, [main1, card1], 'merge'));
     git(repo, 'reset', '--quiet', '--hard', commit(git(repo, 'rev-parse', `${main1}^{tree}`), [card1, main1], 'merge'));
     expect(git(ws, 'merge-base', '--all', 'HEAD', 'main').split('\n').sort()).toEqual([card1, main1].sort());
-    // where git picks the place they parted itself, it takes the one the branch already has its settings from
-    expect(Bun.spawnSync(['git', '-C', ws, 'diff', '--quiet', 'main...HEAD', '--', SETTINGS], { stderr: 'ignore' }).exitCode).toBe(0);
-    expect(await spaces.forkPoint(card, SETTINGS)).toEqual({ ws, base: main1 });
-    expect(git(ws, 'show', `${main1}:${SETTINGS}`)).toBe('{"land":"main"}');
+    // the settings differ at one of the two and not at the other, the README the other way round: a
+    // check against another of them than the one named answers wrongly for one of the files
+    const base = git(ws, 'merge-base', 'HEAD', 'main');
+    for (const file of [SETTINGS, 'README.md']) {
+      const changed = git(ws, 'show', `${base}:${file}`) !== git(ws, 'show', `HEAD:${file}`);
+      expect(await spaces.forkPoint(card, file)).toEqual(changed ? { ws, base } : null);
+    }
   });
 });
 
