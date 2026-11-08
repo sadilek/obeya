@@ -359,7 +359,11 @@ restarts (past 1 MB it starts afresh, the one before kept as `stalls.previous.lo
 the time, the stall's length, the few places in the code where most of it went with their share
 (the runtime function the thread was in, `spawnSync` or `stringify`, then the functions of Obeya
 that called it, by file and line), and each process the server waited for longer than 50 ms, by its
-command line. A pause the thread did not run in at all (the machine slept) is no stall.
+command line. A pause the thread did not run in at all (the machine slept) is no stall; one it
+spent waiting for a process is, also on Windows, where the profiler takes no samples while the
+thread waits and samples only about every 16 ms whatever interval it is asked for. There the wait
+itself is what tells the two apart, so a sleep during a process the server waited for counts as a
+stall on Windows alone; elsewhere the samples taken during the wait decide.
 
 What happens often or many times at once therefore never waits for a process: starting an agent and
 landing work read git without blocking, and so do starting the canvases, applying a saved
@@ -659,7 +663,10 @@ workers are busy.
   given starts on the server's thread. One that fails or ends later fails what it was running, and
   nothing is started twice (a push, a landing). What a thread answers settles in a turn of the event
   loop of its own: settled straight from the thread's message, a promise `bun test` waits for with
-  `expect(…).rejects` or `.resolves` stayed pending (Bun 1.4.3) and the test file hung. Rejected:
+  `expect(…).rejects` or `.resolves` stayed pending (Bun 1.4.3) and the test file hung. Settled so,
+  a rejection that only `expect(…).rejects` waits for still counted as unhandled on the CI runner
+  once the file's tests were through, failing the run though every test passed: tests take such a
+  rejection with a handler of their own. Rejected:
   starting only a few per turn of the event loop (what it was until then: each start still held
   the thread, and four slow ones in a row were seconds); a cap on
   processes running at once (see the trust check above); fewer git calls alone (the bursts come

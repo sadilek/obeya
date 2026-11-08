@@ -41,11 +41,12 @@ import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk
 import { videoOf } from './spot';
 import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath, linkSpot, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
-import { failText, t } from './strings';
+import { failText, landingLabel, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
+import { captionKey } from './walkthrough';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -640,7 +641,7 @@ function Canvas({
     setUnderway((u) => ({ ...u, [p.card]: what }));
     showWait(`${what.charAt(0).toUpperCase()}${what.slice(1)}`);
     p.answered.then(
-      () => showAck(d.ack, d.undo),
+      (r) => showAck(d.ackFor?.(r) ?? d.ack, d.undo),
       (e) => {
         if (!(e instanceof ApiError)) console.error(e);
         setUnderway(({ [p.card]: _, ...rest }) => rest);
@@ -1792,6 +1793,8 @@ function Canvas({
       }
       return;
     }
+    // C over a walkthrough (zoomed, playing or under the pointer) switches its captions, not to the conversation with Obeya
+    if (captionKey(e)) return;
     // hold Space anywhere but in a text field to speak; the demo pauses while the owner talks, and a tap plays or pauses it
     if (e.code === 'Space' && !typing) {
       e.preventDefault();
@@ -1969,7 +1972,7 @@ function Canvas({
                   onStart={startCard}
                   onArchive={archiveCard}
                   dep={depOf(item.id)}
-                  underway={underway[item.id] ?? (item.landing ? t.approving : undefined)}
+                  underway={underway[item.id] ?? (item.landing ? landingLabel(item) : undefined)}
                   onHover={setHoverId}
                 />
               ),

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
@@ -9,7 +9,7 @@ import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
-import { artifact, FakeRuntime, gitClone, gitRepo, heard, identify, noForge, syncGitCalls, until } from './testing';
+import { artifact, FakeRuntime, gitClone, gitRepo, heard, identify, noForge, removeDir, syncGitCalls, until } from './testing';
 import { git, HERE } from './workspaces';
 import { type SkillPlace, Skills } from './skills';
 import { OBEYA_PLUGIN } from './demo';
@@ -41,9 +41,9 @@ beforeEach(async () => {
     { store: (store = new Store(':memory:')), home: dir, runtime, forge: noForge },
   );
 });
-afterEach(() => {
+afterEach(async () => {
   canvas.shutdown();
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  for (const d of dirs.splice(0)) await removeDir(d);
 });
 
 // the timers' work done, and the workers it started at work in their workspaces
@@ -1253,10 +1253,12 @@ describe('the canvases Obeya serves', () => {
     canvas.shutdown();
     const config = { name: 'Web', repos: [{ path: web, settings: { land: 'pr' as const, workspaces: 'clones' as const } }] };
     const set = await Canvases.start([config], { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 });
-    // the folder its clones go in takes none
+    // the folder its clones go in takes none; Windows ignores a folder's modes, its access list says so there
+    const windows = process.platform === 'win32';
     const clones = join(dir, 'workspaces', 'web');
     mkdirSync(clones, { recursive: true });
-    chmodSync(clones, 0o555);
+    if (windows) Bun.spawnSync(['icacls', clones, '/deny', '*S-1-1-0:(AD,WD)']);
+    else chmodSync(clones, 0o555);
     const errors = quiet();
     try {
       await set.apply([{ ...config, repos: [{ ...config.repos[0]!, clones: 1 }] }], ['web']);
@@ -1264,7 +1266,8 @@ describe('the canvases Obeya serves', () => {
       await settle();
     } finally {
       errors.restore();
-      chmodSync(clones, 0o755);
+      if (windows) Bun.spawnSync(['icacls', clones, '/remove:d', '*S-1-1-0']);
+      else chmodSync(clones, 0o755);
     }
     expect(set.failures()).toEqual([{ canvas: 'web', detail: expect.any(String) }]);
     expect(errors.lines.join('\n')).toContain('its clones cannot be made');

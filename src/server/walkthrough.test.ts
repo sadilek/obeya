@@ -2,12 +2,13 @@
 // refuses back to the agent, and the order the one voice speaks the sentences of all walkthroughs in.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Walkthrough } from '../core/walkthrough';
-import { fakeVoicing, until } from './testing';
-import { AnswerWalkthrough, readWalkthrough, writtenIn } from './walkthrough';
+import { fakeVoicing, removeDir, silentWav, until } from './testing';
+import { AnswerWalkthrough, readWalkthrough, Voicing, writtenIn } from './walkthrough';
+import { estimatedStarts } from '../core/walkthrough';
 
 let dir: string;
 let repo: string;
@@ -21,7 +22,7 @@ beforeEach(() => {
   mkdirSync(join(dir, 'answers'));
   voice = fakeVoicing();
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 const told = (shown: string[][] = []) =>
   new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, voicing: voice.voicing, onShown: (files) => shown.push(files.map((f) => f.name)) });
@@ -45,7 +46,7 @@ describe('a walkthrough handed over slide by slide', () => {
     // a sentence each, each with the item it shows with
     expect(file.slides[1]!.parts).toEqual(['First it rebases.', 'Then the checks run.', 'They must pass.', 'Then it merges.']);
     expect(file.slides[1]!.items).toEqual([0, 1, 1, 2]);
-    expect(file.clips[1]).toEqual([1, 2, 3, 4].map((n) => ({ file: `2-${n}.wav`, seconds: 1 })));
+    expect(file.clips[1]!.map((c) => c && { file: c.file, seconds: c.seconds })).toEqual([1, 2, 3, 4].map((n) => ({ file: `2-${n}.wav`, seconds: 1 })));
     expect(existsSync(join(dir, 'answers', file.clipsDir, '2-4.wav'))).toBe(true);
     expect(voice.said).toEqual(['How a card lands.', 'Approving a card starts the landing.', 'It takes three steps.', 'First it rebases.', 'Then the checks run.', 'They must pass.', 'Then it merges.'].map((s) => `en:${s}`));
     // the first slide shows once only
@@ -81,6 +82,26 @@ describe('a walkthrough handed over slide by slide', () => {
     expect(hand(w, { type: 'points', title: '9', points: ['a'], narration: 'a.' })).toBe('Not shown: a walkthrough has at most 8 slides. Call answer_owner now.');
   });
 
+  test('a slide too full for the player, or whose narration only reads it out, goes back to the agent with what to change', () => {
+    const w = told();
+    hand(w, TITLE);
+    const long = 'The approved card is rebased onto main and its checks run before the merge lands';
+    expect(hand(w, { type: 'points', title: 'Three steps', points: [long, long, long, long, 'Then it lands'], narration: 'Each step waits for the one before it, so a failing check stops the landing.' })).toBe(
+      'Not shown: the slide is too full: it runs about 3 lines past its bottom. Shorten its points (the narration can say the rest), or spread them over two slides.',
+    );
+    const steps = ['Freigabe', 'Zusammenführung', 'Prüfung', 'Fertig'];
+    expect(hand(w, { type: 'flow', title: 'Der Weg', steps, narration: 'Nichts davon braucht dich, bis die Karte auf main ist.' })).toBe(
+      'Not shown: "Zusammenführung" in step 2 is wider than its box: a flow of 4 steps gives each box room for about 11 characters: use shorter words or fewer steps, and let the narration say the rest.',
+    );
+    const points = ['Rebase onto main', 'The checks run', 'Merge into main'];
+    expect(hand(w, { type: 'points', title: 'Three steps', points, narration: ['First, it rebases onto main.', 'Next, the checks run.', 'Finally it merges into main.'] })).toBe(
+      'Not shown: its narration only reads the slide out (7 of its 10 words are on the slide). The owner sees the slide already: say what it does not show (why it is so, what follows from it, an example).',
+    );
+    expect(read('how-a-card-lands.walkthrough.json').slides).toHaveLength(1);
+    // revised: the same points, told with what the slide does not show
+    expect(hand(w, { type: 'points', title: 'Three steps', points, narration: ["Obeya replays the card's commits on the newest main, so nothing that landed meanwhile is lost.", "The repository's own tests and types decide.", 'Only then does main move forward.'] })).toStartWith('Slide 2 is shown');
+  });
+
   test("a file or a clips directory of that name the agent put there (a link elsewhere, say) is passed by", () => {
     symlinkSync(dir, join(dir, 'answers', 'how-a-card-lands.clips'));
     const w = told();
@@ -94,7 +115,7 @@ describe('a walkthrough handed over slide by slide', () => {
     const w = told();
     hand(w, TITLE);
     expect(hand(w, { type: 'code', title: 'Big', file: 'big.txt', lines: [1, 1], narration: 'Big.' })).toBe('Not shown: big.txt is too large for a code slide.');
-    hand(w, { type: 'code', title: 'Wide', file: 'wide.txt', lines: [1, 1], narration: 'Wide.' });
+    hand(w, { type: 'code', title: 'Wide', file: 'wide.txt', lines: [1, 1], narration: 'One line, cut where it gets too long.' });
     expect(read('how-a-card-lands.walkthrough.json').slides[1]).toMatchObject({ type: 'code' });
     expect((read('how-a-card-lands.walkthrough.json').slides[1] as { code: string[] }).code[0]!.length).toBeLessThanOrEqual(400);
   });
@@ -159,14 +180,65 @@ describe('the voice of walkthroughs', () => {
     expect(voice.said).not.toContain('en:Next.');
   });
 
+  test("hears each sentence back for the times of its words; one it cannot hear gets them by its words' length", async () => {
+    const w = told();
+    hand(w, { type: 'title', title: 'Heard', language: 'en', narration: 'It hears this one. Not this deaf one.' });
+    await until(() => read('heard.walkthrough.json').clips[0]!.every((c) => c?.words));
+    const [title, heard, deaf] = read('heard.walkthrough.json').clips[0]!;
+    expect(title!.words).toEqual([0]);
+    expect(heard!.words).toEqual([0, 0.1, 0.2, 0.3]);
+    expect(deaf!.words).toHaveLength(4);
+    expect(deaf!.words).not.toEqual([0, 0.1, 0.2, 0.3]);
+    // a player reads it as voiced and heard
+    expect(readWalkthrough(join(dir, 'answers'), 'heard.walkthrough.json', voice.voicing)?.error).toBeUndefined();
+  });
+
+  test('a sentence being voiced while the one before is heard back is not taken for interrupted', async () => {
+    let last = () => {};
+    const voicing = new Voicing({
+      speak: async (text, out) => {
+        if (text === 'Second.') await new Promise<void>((r) => (last = r));
+        writeFileSync(out, silentWav(1));
+      },
+      hear: async () => [[' First', 0]],
+    });
+    const w = new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, voicing });
+    w.tool().run({ slide: { type: 'title', title: 'First', language: 'en', narration: 'Second.' } });
+    w.finish();
+    await until(() => !!read('first.walkthrough.json').clips[0]![0]?.words);
+    expect(readWalkthrough(join(dir, 'answers'), 'first.walkthrough.json', voicing)?.error).toBeUndefined();
+    last();
+    await until(() => !!read('first.walkthrough.json').clips[0]![1]?.words);
+  });
+
   test('loads when asked, before the first slide', () => {
     voice.voicing.warm('de');
     expect(voice.warmed).toEqual(['de']);
   });
+
+  test('demo settings without a voice leave it unvoiced, to be read as captions', async () => {
+    const spoken: string[] = [];
+    const warmed: string[] = [];
+    const voicing = new Voicing({ speak: async (text) => void spoken.push(text), warm: (l) => void warmed.push(l), silent: (l) => l === 'en' });
+    voicing.warm('en');
+    const w = new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, voicing });
+    w.tool().run({ slide: TITLE });
+    w.tool().run({ slide: { type: 'points', title: 'Two steps', points: ['Rebase', 'Merge'], narration: 'First the branch moves onto the newest main, then both are combined.' } });
+    w.finish();
+    await Bun.sleep(5);
+    expect(spoken).toEqual([]);
+    expect(warmed).toEqual([]);
+    const file = read('how-a-card-lands.walkthrough.json');
+    expect(file).toMatchObject({ silent: true, language: 'en', done: true });
+    expect(file.error).toBeUndefined();
+    // its player reads it as it is, with nothing to wait for
+    expect(readWalkthrough(join(dir, 'answers'), 'how-a-card-lands.walkthrough.json', voicing)).toMatchObject({ silent: true });
+    expect(spoken).toEqual([]);
+  });
 });
 
 describe('a walkthrough read by its player', () => {
-  test('by its name in the thread directory only; one whose voice stopped with the server says so', async () => {
+  test('by its name in the thread directory only', async () => {
     const w = told();
     hand(w, TITLE);
     await until(() => read('how-a-card-lands.walkthrough.json').clips.flat().every(Boolean));
@@ -179,10 +251,45 @@ describe('a walkthrough read by its player', () => {
     // nor through a link to a file outside it
     symlinkSync(join(dir, 'secret.txt'), join(answers, 'linked.walkthrough.json'));
     expect(readWalkthrough(answers, 'linked.walkthrough.json', voice.voicing)).toBeUndefined();
-    // a server that starts anew voices nothing of what the last one left unvoiced
+    // a sentence voiced but not heard back by a server that stopped gets the times of its words by their length
     const file = join(answers, 'how-a-card-lands.walkthrough.json');
     const left = read('how-a-card-lands.walkthrough.json');
-    writeFileSync(file, JSON.stringify({ ...left, clips: [[left.clips[0]![0], null, null]] }));
-    expect(readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', fakeVoicing().voicing)?.error).toBe('interrupted');
+    writeFileSync(file, JSON.stringify({ ...left, clips: [[{ file: '1-1.wav', seconds: 1 }, left.clips[0]![1], left.clips[0]![2]]] }));
+    expect(readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', fakeVoicing().voicing)?.clips[0]![0]!.words).toEqual(estimatedStarts('How a card lands.', 1));
+  });
+
+  test('what a server left unvoiced when it stopped, the next one voices once a player reads it', async () => {
+    voice.hold();
+    const w = told();
+    hand(w, TITLE);
+    expect(hand(w, { type: 'points', title: 'Two steps', points: ['Rebase', 'Merge'], narration: 'First the branch moves onto the newest main, then both are combined.' })).toStartWith('Slide 2 is shown');
+    // the server stops with the title slide voiced but not heard back and the second slide unvoiced,
+    // its agent in the middle of the turn (a file from before files named their language)
+    const answers = join(dir, 'answers');
+    const { language: _, ...left } = read('how-a-card-lands.walkthrough.json');
+    const voiced = left.clips[0]!.map((_, k) => ({ file: `1-${k + 1}.wav`, seconds: 1 }));
+    writeFileSync(join(answers, 'how-a-card-lands.walkthrough.json'), JSON.stringify({ ...left, clips: [voiced, [null]] }));
+    const next = fakeVoicing();
+    const shown = readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', next.voicing, 0);
+    // no agent tells it on: it has every slide it gets
+    expect(shown).toMatchObject({ done: true, language: 'en' });
+    expect(shown?.error).toBeUndefined();
+    expect(shown?.clips[0]![0]!.words).toEqual(estimatedStarts('How a card lands.', 1));
+    await until(() => !!read('how-a-card-lands.walkthrough.json').clips[1]![0]?.words);
+    expect(next.said).toEqual(['en:First the branch moves onto the newest main, then both are combined.']);
+    // read again, nothing is voiced twice
+    readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', next.voicing, 0);
+    await Bun.sleep(5);
+    expect(next.said).toHaveLength(1);
+  });
+
+  test('a file that names clips elsewhere is not voiced on', () => {
+    const answers = join(dir, 'answers');
+    mkdirSync(join(dir, 'elsewhere'));
+    const slide = { type: 'title', title: 'X', parts: ['X.'] };
+    writeFileSync(join(answers, 'x.walkthrough.json'), JSON.stringify({ title: 'X', slides: [slide], done: true, clips: [[null]], clipsDir: '../elsewhere', language: 'en' }));
+    const next = fakeVoicing();
+    expect(readWalkthrough(answers, 'x.walkthrough.json', next.voicing)?.done).toBe(true);
+    expect(next.voicing.voicing(join(answers, 'x.walkthrough.json'))).toBe(false);
   });
 });

@@ -10,7 +10,7 @@ import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './co
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, FakeRuntime, gitClone, gitRepo, noForge, syncGitCalls, until } from './testing';
+import { asOwner, FakeRuntime, gitClone, gitRepo, noForge, removeDir, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -52,7 +52,7 @@ beforeEach(() => {
   applied = 0;
   taken = [];
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 describe("Obeya's configuration", () => {
   test('says what each canvas amounts to: its id, name, repositories and where their workers work', async () => {
@@ -720,14 +720,14 @@ describe('the configuration over HTTP', () => {
   test.skipIf(!Bun.which('uv') || !Bun.which('ffmpeg'))('plays a sentence in the voice being chosen, or says why it cannot', async () => {
     const clip = join(dir, 'clip.wav');
     writeFileSync(clip, wav(0.2));
-    const heard = await fetch(new URL('/api/demo-settings/sample', server.url), {
-      method: 'POST',
-      body: JSON.stringify({ language: 'de', voice: 'command', command: `cat > ${JSON.stringify(join(dir, 'said.txt'))}; cp ${JSON.stringify(clip)} "$DEMO_WAV"` }),
-    });
+    // the owner's command goes to the platform's shell: cmd.exe on Windows
+    const windows = process.platform === 'win32';
+    const command = windows ? `findstr "^" > "${join(dir, 'said.txt')}" & copy /y "${clip}" "%DEMO_WAV%" >nul` : `cat > ${JSON.stringify(join(dir, 'said.txt'))}; cp ${JSON.stringify(clip)} "$DEMO_WAV"`;
+    const heard = await fetch(new URL('/api/demo-settings/sample', server.url), { method: 'POST', body: JSON.stringify({ language: 'de', voice: 'command', command }) });
     expect(heard.headers.get('content-type')).toBe('audio/wav');
     expect((await heard.arrayBuffer()).byteLength).toBeGreaterThan(44);
     expect(readFileSync(join(dir, 'said.txt'), 'utf8')).toContain('So klingt diese Stimme');
-    const refused = await call('POST', '/api/demo-settings/sample', { language: 'de', voice: 'command', command: 'echo kaputt >&2; exit 3' });
+    const refused = await call('POST', '/api/demo-settings/sample', { language: 'de', voice: 'command', command: windows ? 'echo kaputt>&2 & exit 3' : 'echo kaputt >&2; exit 3' });
     expect(refused).toMatchObject({ status: 400, body: { code: 'voiceSample' } });
     expect(String(refused.body.error)).toContain('kaputt');
 

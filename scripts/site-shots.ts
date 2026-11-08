@@ -3,15 +3,21 @@
 // a Tipjar change on the card whose demo the page shows, so that the picture is of a demo and not of
 // Obeya itself. The same wall on a phone (`phone.png`, `phone-demo.png`) shows the phone view.
 //
-//   bun scripts/site-shots.ts [--demo <dir>] [--at <seconds>] [--keep | --stage-only]
+//   bun scripts/site-shots.ts [--demo <dir>] [--at <seconds>] [--review-demo <dir>] [--keep | --stage-only]
 //
 // --demo names a Tipjar demo to put on that card (a directory with demo.mp4 and poster.jpg); without
 // it the agent's first demo of splitting the bill from the newest render of the hero video is taken
 // (tipjar-split-the-bill* in the demo directory; the render leaves a second, shorter one on the owner's comments a
 // few minutes later); its chapters come from its chapters.vtt. --at names the moment of the demo the
 // pictures show, where the one picked by its chapters shows the change badly. The scratch Obeya runs on port 4740 and is stopped
-// at the end; --keep leaves it running for a look, --stage-only stages it and takes nothing. Needs
-// Google Chrome.
+// at the end; --keep leaves it running for a look, --stage-only stages it and takes nothing.
+//
+// The review card (`review.png`) is a contributor's pull request on Tipjar, on a canvas of its own
+// on port 4741 so that it stays out of the other pictures: its findings, its demo and the text for
+// the PR, with one finding left for the owner to choose. Its demo is the render's of a comma as the
+// decimal point, the hero video's comment on the first demo (the newest tipjar-*comma* in the demo
+// directory, else the newest tipjar-split-the-bill*), or the one --review-demo names. Needs Google
+// Chrome.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -24,6 +30,7 @@ import { scratchDir } from './common';
 import { writeStage } from './hero-video/stage';
 
 const PORT = 4740;
+const REVIEW_PORT = 4741;
 const ROOT = join(import.meta.dirname, '..');
 const IMG = join(ROOT, 'site', 'img');
 const arg = (name: string) => {
@@ -31,20 +38,27 @@ const arg = (name: string) => {
   return i < 0 ? undefined : process.argv[i + 1];
 };
 
-function newestDemo(): string {
+/** The demos in the demo directory whose names `match`, newest first. */
+function demosOf(match: (name: string) => boolean): string[] {
   const demos = demoDirectory();
-  const found = existsSync(demos)
+  return existsSync(demos)
     ? readdirSync(demos)
-        .filter((n) => n.startsWith('tipjar-split-the-bill') && existsSync(join(demos, n, 'demo.mp4')))
+        .filter((n) => match(n) && existsSync(join(demos, n, 'demo.mp4')) && existsSync(join(demos, n, 'chapters.vtt')))
         .map((n) => join(demos, n))
         .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
     : [];
-  if (!found[0]) throw new Error(`No Tipjar demo found in ${demos}: render the hero video first, or name one with --demo.`);
+}
+
+function newestDemo(): string {
+  const found = demosOf((n) => n.startsWith('tipjar-split-the-bill'));
+  if (!found[0]) throw new Error(`No Tipjar demo found in ${demoDirectory()}: render the hero video first, or name one with --demo.`);
   // the newest render's demos lie within minutes of each other; the first of them shows the whole change
   const newest = statSync(found[0]).mtimeMs;
   return found.filter((d) => newest - statSync(d).mtimeMs < 10 * 60_000).at(-1)!;
 }
 const demo = arg('--demo') ?? newestDemo();
+// the render's demo of the owner's comment, a comma as the decimal point, under whatever name its agent gave it
+const reviewDemo = arg('--review-demo') ?? demosOf((n) => n.startsWith('tipjar-') && n.includes('comma'))[0] ?? demosOf((n) => n.startsWith('tipjar-split-the-bill'))[0]!;
 
 /** The demo's chapters from its `chapters.vtt`, as the card has them: [start in seconds, title]. */
 function chaptersOf(dir: string): [number, string][] {
@@ -52,6 +66,7 @@ function chaptersOf(dir: string): [number, string][] {
   return [...readFileSync(join(dir, 'chapters.vtt'), 'utf8').matchAll(/^([\d:.]+) --> [\d:.]+\n(.+)$/gm)].map((m) => [Math.round(seconds(m[1]!) * 10) / 10, m[2]!.trim()]);
 }
 const chapters = chaptersOf(demo);
+const reviewChapters = chaptersOf(reviewDemo);
 
 // the hero video's repository and plan doc, with cards of our own
 const dir = mkdtempSync(join(tmpdir(), 'site-shots-'));
@@ -85,10 +100,53 @@ stage.cards = [
 stage.groups = [];
 writeFileSync(stageFile, JSON.stringify(stage, null, 1));
 
-const staged = JSON.parse(execFileSync('bun', [join(ROOT, 'scripts', 'scratch-obeya.ts'), stageFile], { encoding: 'utf8' }).trim().split('\n').at(-1)!);
+// the review card on a canvas of its own: a contributor's PR, reviewed, two findings changed by the
+// agent and held for the approval with the text for the PR, one left for the owner to choose
+const reviewFile = join(dir, 'review.json');
+const fix = 'Accept a comma as the decimal point';
+const pull = 'https://github.com/tipjar-app/tipjar/pull/14';
+const handover = 'Lena’s change works: 84,50 now gives the same tip as 84.50. I changed findings 1 and 3 myself; finding 2 is yours to decide.';
+const review = {
+  ...stage,
+  port: REVIEW_PORT,
+  dir: scratchDir(REVIEW_PORT),
+  plans: {},
+  groups: [],
+  preferences: [],
+  forgeRepo: 'tipjar-app/tipjar',
+  pulls: [{ number: 14, title: fix, author: 'lena-k', canModify: true, files: { 'calc.js': `${stage.files['calc.js']}\n// a comma as the decimal point\n` }, checks: [{ name: 'CI', state: 'success' }] }],
+  cards: [
+    { key: 'R', title: fix, body: 'Review PR #14', state: 'waiting', need: 'demo', x: 200, y: 200, branch: 'obeya/review-pr-14', workspace: true,
+      branchFiles: { 'calc.js': `${stage.files['calc.js']}\n// the bill read without a package\n` },
+      summary: handover,
+      events: [
+        { kind: 'review', author: 'worker', text: 'The comma works, and the checks are green. Before anything of it ran I read the diff: it adds the package number-parse, which runs a postinstall script. Three findings.', ago: '20m' },
+        { kind: 'talk', author: 'owner', text: 'Change 1 and 3 yourself.', ago: '15m' },
+        { kind: 'review', author: 'worker', text: handover, ago: '2m' },
+      ],
+      row: {
+        pr: { url: pull, number: 14, checks: [{ name: 'CI', state: 'success' }], conflict: false, seen: [], reported: [] },
+        contribution: { url: pull, number: 14, author: 'lena-k', title: fix, canModify: true, headRepo: 'https://github.com/lena-k/tipjar.git', headRef: 'comma',
+          results: { checks: [{ name: 'bun test', passed: true }], mergeable: true },
+          held: { commits: 2, asks: [], base: '0000000',
+            body: 'Thanks, Lena! Two changes on top of yours: calc.js reads the bill now, without the number-parse package, and calc.test.js covers bills with a comma.' },
+          findings: [
+            { id: 1, security: true, title: 'A new package for eight lines', text: 'The PR adds number-parse, which runs a postinstall script, to read the bill. calc.js does the same in eight lines.', status: 'fixed' },
+            { id: 2, title: 'A space as the thousands mark reads as zero', text: '1 234,50, as French bills write it, still gives $0.00.', status: 'open' },
+            { id: 3, title: 'No test for the comma', text: 'calc.test.js covers bills with a dot only.', status: 'fixed' },
+          ] } },
+      demo: { dir: reviewDemo, chapters: reviewChapters } },
+  ],
+};
+writeFileSync(reviewFile, JSON.stringify(review, null, 1));
+
+const scratch = (file: string) => JSON.parse(execFileSync('bun', [join(ROOT, 'scripts', 'scratch-obeya.ts'), file], { encoding: 'utf8' }).trim().split('\n').at(-1)!);
+const staged = scratch(stageFile);
+const reviewing = scratch(reviewFile);
 const base = `http://127.0.0.1:${PORT}`;
-await fetch(`${base}/api/language`, { method: 'PUT', headers: ownerHeaders(join(staged.dir, 'home')), body: JSON.stringify({ language: 'en' }) });
-console.log('staged', staged.url);
+for (const [at, home] of [[base, staged.dir], [`http://127.0.0.1:${REVIEW_PORT}`, reviewing.dir]])
+  await fetch(`${at}/api/language`, { method: 'PUT', headers: ownerHeaders(join(home, 'home')), body: JSON.stringify({ language: 'en' }) });
+console.log('staged', staged.url, reviewing.url);
 
 // the Koordinator reads the new project's plan doc for what builds on what and arranges it: until
 // then its head says "Arranging …", which a shot taken at once showed
@@ -112,9 +170,10 @@ try {
   // the phone first: the voice shot's held Space sends what the fake microphone hears to App icon's agent, and the card no longer waits
   await phoneShots(staged.url);
   await shots(page, staged.cards as Record<string, string>);
+  await reviewShot(reviewing.url, reviewing.cards.R);
 } finally {
   await browser.close();
-  if (!process.argv.includes('--keep')) execFileSync('bun', [join(ROOT, 'scripts', 'scratch-obeya.ts'), '--stop', String(PORT)]);
+  if (!process.argv.includes('--keep')) for (const port of [PORT, REVIEW_PORT]) execFileSync('bun', [join(ROOT, 'scripts', 'scratch-obeya.ts'), '--stop', String(port)]);
 }
 
 type Box = { x: number; y: number; width: number; height: number };
@@ -208,4 +267,27 @@ async function phoneShots(url: string) {
   await page.screenshot({ path: join(IMG, 'phone-demo.png') });
   console.log('phone-demo.png');
   await phone.close();
+}
+
+// a contributor's pull request reviewed: the findings, the demo of the change and the text for the PR,
+// tall enough for all of them, with the owner's choice for the finding left open
+async function reviewShot(url: string, id: string) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1640 }, deviceScaleFactor: 1 });
+  await page.goto(url);
+  await page.locator('.card').first().waitFor();
+  await page.waitForTimeout(1000);
+  await page.click(card(id));
+  await page.locator('#panel video').waitFor();
+  await page.waitForTimeout(1500);
+  // the change at work, without pausing it: a pause would start a comment on that moment
+  await page.locator('#panel video').evaluate(async (v: HTMLVideoElement, at: number) => {
+    v.currentTime = at;
+    await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
+  }, reviewChapters[1] ? reviewChapters[1][0] + ((reviewChapters[2]?.[0] ?? reviewChapters[1][0] + 4) - reviewChapters[1][0]) * 0.6 : 3);
+  await page.getByRole('button', { name: 'As a follow-up task' }).first().click();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: join(IMG, 'review.png'), clip: around([await boxOf(page, '#panel')], 0) });
+  console.log('review.png');
+  await page.close();
 }

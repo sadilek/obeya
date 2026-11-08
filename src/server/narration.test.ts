@@ -2,12 +2,12 @@
 // queue for every render's clips, one start while clips keep coming, an end after the idle time.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ClipRequest, type Deadline, NarrationHost, parseClipRequest } from './narration';
 import { serve } from './server';
-import { asOwner } from './testing';
+import { asOwner, removeDir } from './testing';
 
 /**
  * Logs its start, each clip and its end; `dies` as the speaker makes it die at the second clip,
@@ -49,9 +49,9 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-narration-'));
   writeFileSync(join(dir, 'voice.ts'), FAKE_VOICE);
 });
-afterEach(() => {
+afterEach(async () => {
   host?.stop();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 const hold = (idleMs = 60_000, limits: { loadMs?: number; sentenceMs?: number; deadline?: Deadline } = {}) =>

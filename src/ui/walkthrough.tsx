@@ -1,14 +1,89 @@
 // The player of a looked-up answer told as a walkthrough, under the question from its first slide on
 // while the agent still tells it: it reads the walkthrough as it grows and plays slides and voice in
-// step, items lighting up as the narration reaches them, the spoken sentence as a caption. What it
-// plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
-// drawn anew (the answer's words arriving above it) and pauses only once no message shows it.
+// step, items lighting up (a flow's boxes building up) as the narration reaches them, the spoken
+// sentence as a caption whose pointer marks the word being spoken, two lines at a time; "CC" or C
+// switch captions for every walkthrough of the browser. Slides and player take showntell's look
+// (styles.css `.wt-*`). What it plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
+// drawn anew (the answer's words arriving above it) and pauses only once no message shows it; a
+// restart's reload brings it back where it was. Without a voice (demo settings without one), each
+// sentence stands as a caption for as long as reading it takes.
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { AnswerFile } from '../core/types';
-import { INTERRUPTED, itemsOf, type Walkthrough } from '../core/walkthrough';
-import { answerFile, api, at } from './api';
+import { estimatedStarts, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
+import { answerFile, api, at, beforeReload } from './api';
+import { captionPages, pageOf } from './captionPages';
+import { known, know } from './known';
 import { t } from './strings';
+import { plainKey, useZoom } from './zoom';
+import { zoomBox } from './zoomBox';
+
+/** The deck's margin around the slide, on its sides and above it (styles.css `.wt-stage`). */
+const WT_INSET = 10;
+/** The caption's padding, and its two lines with a font that grows with the player's width between two sizes (styles.css `.wt-caption`). */
+const WT_CAPTION = { padding: 14, lines: 2 * 1.45, font: (width: number) => Math.min(30, Math.max(15, 0.023 * width)) };
+/** The row of controls under it; in a player narrower than 520 px the segments take a row of their own above them. */
+const WT_CONTROLS = (width: number) => (width < 520 ? 62 : 38);
+
+/**
+ * Where the zoomed player stands in a window `w`×`h`: the slide as large as fits with what stands
+ * around it, the deck's margin (the slide is narrower than the player by both sides' margins), the
+ * caption while captions are on, and the controls. Those grow with the width other than in step
+ * with it, so the box is worked out again for the width it came to, until it settles.
+ */
+function zoomedBox(w: number, h: number, captions: boolean) {
+  const around = (width: number) =>
+    WT_INSET - (2 * WT_INSET * SLIDE_HEIGHT) / SLIDE_WIDTH + WT_CONTROLS(width) + (captions ? WT_CAPTION.padding + WT_CAPTION.lines * WT_CAPTION.font(width) : 0);
+  let box = zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, { fixed: around(w), perWidth: 0 });
+  for (let k = 0; k < 4; k++) box = zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, { fixed: around(box.width), perWidth: 0 });
+  return box;
+}
+
+/** Whether captions show, for every walkthrough of the page and the next one: the owner's choice, kept in the browser. */
+const CAPTIONS_OFF = 'obeya.walkthroughCaptionsOff';
+/** Set once the owner switched captions with C: CC stops showing the key beside it. */
+const CAPTIONS_KEY_KNOWN = 'obeya.walkthroughCaptionsKeyKnown';
+let captionsOn = !known(CAPTIONS_OFF);
+let captionsKeyKnown = known(CAPTIONS_KEY_KNOWN);
+
+function setCaptions(on: boolean) {
+  captionsOn = on;
+  try {
+    if (on) localStorage.removeItem(CAPTIONS_OFF);
+    else know(CAPTIONS_OFF);
+  } catch {}
+  for (const p of sessions.values()) p.notify();
+}
+
+/**
+ * C switches captions on or off where a walkthrough is what the owner is at: one zoomed, playing or
+ * under the pointer. Elsewhere C stays the key that opens the conversation with Obeya; `true` when
+ * it took the key.
+ */
+export function captionKey(e: KeyboardEvent): boolean {
+  if ((e.key !== 'c' && e.key !== 'C') || !plainKey(e)) return false;
+  if (!document.querySelector('.wt.zoomed') && ![...sessions.values()].some((p) => p.playing) && !document.querySelector('.wt:hover')) return false;
+  e.preventDefault();
+  // a key held down switches once
+  if (e.repeat) return true;
+  know(CAPTIONS_KEY_KNOWN);
+  captionsKeyKnown = true;
+  setCaptions(!captionsOn);
+  return true;
+}
+
+/** Scales the slide to the stage's width, as it changes. */
+function useSlideScale(stage: RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const fit = () => el.style.setProperty('--wt-scale', String(el.clientWidth / SLIDE_WIDTH));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+}
 
 /** How often the player reads the walkthrough while it grows or is voiced. */
 const POLL_MS = 400;
@@ -17,9 +92,120 @@ const GAP_S = 0.15;
 const NEXT_SLIDE_MS = 600;
 /** Seconds a sentence not voiced yet is taken to last, per character, to lay out its slide. */
 const SECONDS_PER_CHAR = 0.075;
+/** Without a voice: how long a sentence stands as a caption, by its characters, read beside the slide. */
+const READING_PER_CHAR = 0.065;
+const READING_FROM_S = 0.6;
+const READING_MIN_S = 1.6;
+const readingSeconds = (sentence: string) => Math.max(READING_MIN_S, READING_FROM_S + sentence.length * READING_PER_CHAR);
 
-/** The exchanges this page asked "Show as walkthrough" for: their walkthroughs start by themselves, the click allowed the sound. */
-const askedHere = new Set<number>();
+/** The walkthroughs this page asked for with "Show as walkthrough", by address: they start by themselves, the click allowed the sound. */
+const askedHere = new Set<string>();
+
+const walkthroughUrl = (thread: number, name: string) => at(`/threads/${thread}/walkthroughs/${encodeURIComponent(name)}`);
+
+/** That the owner has used "Show as walkthrough": the newest answer's button no longer stays in view. */
+const WALKTHROUGH_KNOWN = 'obeya.walkthroughKnown';
+
+/** What plays a sentence: its voice, or without one the time it takes to read. */
+type Sound = Pick<HTMLAudioElement, 'dataset' | 'currentTime' | 'ended' | 'play' | 'pause'>;
+
+/** A sentence read rather than heard: it lasts as long as reading it takes, and ends as a clip does. */
+class Reading implements Sound {
+  dataset: DOMStringMap = {};
+  ended = false;
+  onended?: () => void;
+  private seconds = 0;
+  /** Seconds read while it does not go on. */
+  private read = 0;
+  /** When it went on, less what was read before. */
+  private since?: number;
+  private timer?: ReturnType<typeof setTimeout>;
+
+  load(seconds: number) {
+    this.pause();
+    this.seconds = seconds;
+    this.read = 0;
+    this.ended = false;
+  }
+
+  get currentTime() {
+    return this.since === undefined ? this.read : Math.min(this.seconds, (performance.now() - this.since) / 1000);
+  }
+
+  play() {
+    if (this.since !== undefined) return Promise.resolve();
+    if (this.ended) this.read = 0;
+    this.ended = false;
+    this.since = performance.now() - this.read * 1000;
+    this.timer = setTimeout(() => {
+      this.since = undefined;
+      this.read = this.seconds;
+      this.ended = true;
+      this.onended?.();
+    }, (this.seconds - this.read) * 1000);
+    return Promise.resolve();
+  }
+
+  pause() {
+    if (this.since === undefined) return;
+    this.read = this.currentTime;
+    this.since = undefined;
+    clearTimeout(this.timer);
+  }
+}
+
+/**
+ * The voice of every player of the page, one at a time as they play. One element for all, so that
+ * the first tap or click anywhere on the page allows its sound for good: a phone's browser (Safari
+ * on the iPhone) plays an element's sound only once a tap started it, and a walkthrough asked for or
+ * waiting for its voice starts playing after the tap, not in it.
+ */
+let voiceElement: HTMLAudioElement | undefined;
+const theVoice = () => {
+  if (voiceElement) return voiceElement;
+  voiceElement = new Audio();
+  voiceElement.preload = 'auto';
+  voiceElement.onended = () => speaker?.ended();
+  return voiceElement;
+};
+/** The player the voice speaks for. */
+let speaker: Playback | undefined;
+/** A WAV without a sample, played in the first tap or click. */
+const NOTHING = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=';
+const allowSound = () => {
+  if (speaker) return;
+  const voice = theVoice();
+  voice.src = NOTHING;
+  voice.play().then(
+    () => {
+      for (const e of ['click', 'touchend']) removeEventListener(e, allowSound, true);
+    },
+    () => {},
+  );
+};
+if (typeof window !== 'undefined') for (const e of ['click', 'touchend']) addEventListener(e, allowSound, true);
+
+/** Where a player stood when a restart reloaded the page, by walkthrough. */
+interface KeptPlace {
+  slide: number;
+  part: number;
+  playing: boolean;
+}
+const KEPT_KEY = 'obeya-kept-walkthroughs';
+/** How old a place may be to come back: a restart takes seconds. */
+const KEPT_FRESH_MS = 5 * 60_000;
+
+/** The places the reload before this page kept, taken once. */
+const keptPlaces: Map<string, KeptPlace> = (() => {
+  try {
+    const raw = sessionStorage.getItem(KEPT_KEY);
+    sessionStorage.removeItem(KEPT_KEY);
+    const k = raw ? (JSON.parse(raw) as { at: number; places: [string, KeptPlace][] }) : null;
+    return new Map(k && Date.now() - k.at < KEPT_FRESH_MS ? k.places : []);
+  } catch {
+    return new Map();
+  }
+})();
 
 class Playback {
   data: Walkthrough | null = null;
@@ -34,12 +220,12 @@ class Playback {
   waiting = false;
   /** Waiting for the agent's next slide. */
   writing = false;
-  captions = true;
   /** It started by itself once: it does not again. */
   autoplayed = false;
   /** The browser refused to play without a click (no click on the page yet). */
   refused = false;
-  readonly audio = new Audio();
+  /** Without a voice, what plays its sentences; for a player the voice does not speak for, what stands still. */
+  private readonly reader = new Reading();
   private next?: ReturnType<typeof setTimeout>;
   /** A read is running or due: one at a time. */
   private reading = false;
@@ -54,8 +240,29 @@ class Playback {
     /** To start by itself once it can; the page may learn it only after the player showed (the click's reply comes after the walkthrough). */
     public autoplay: boolean,
   ) {
-    this.audio.preload = 'auto';
-    this.audio.onended = () => this.ended();
+    this.reader.onended = () => this.ended();
+    // where it stood before a restart reloaded the page: it plays on from there, if it played (and the tab is in sight)
+    const kept = keptPlaces.get(url);
+    if (kept) {
+      this.slide = kept.slide;
+      this.part = kept.part;
+      if (kept.playing && !document.hidden) this.autoplay = true;
+      else this.started = true;
+    }
+  }
+
+  /** Without a voice the walkthrough is read. */
+  get silent() {
+    return !!this.data?.silent;
+  }
+
+  get audio(): Sound {
+    return !this.silent && speaker === this ? theVoice() : this.reader;
+  }
+
+  /** Where it stands, for the reload a restart brings. */
+  place(): KeptPlace | undefined {
+    return this.started || this.autoplay ? { slide: this.slide, part: this.part, playing: this.playing || (this.autoplay && !this.autoplayed) } : undefined;
   }
 
   subscribe = (fn: () => void) => {
@@ -66,6 +273,11 @@ class Playback {
   private changed() {
     this.version++;
     for (const fn of this.listeners) fn();
+  }
+
+  /** Draws its player anew: something of the page changed that it shows (captions on or off). */
+  notify() {
+    this.changed();
   }
 
   /** A message shows the player; once none does, it pauses. */
@@ -84,8 +296,8 @@ class Playback {
 
   private complete() {
     const d = this.data;
-    // with its voice failed, it still gets the slides the agent writes
-    return !!d && d.done && (!!d.error || d.clips.every((c) => c.every(Boolean)));
+    // with its voice failed, it still gets the slides the agent writes; each sentence's words come once it is heard back
+    return !!d && d.done && (!!d.error || !!d.silent || d.clips.every((c) => c.every((x) => x?.words)));
   }
 
   /** Reads the walkthrough, and again and again while it grows and a message shows it. */
@@ -113,6 +325,9 @@ class Playback {
     if (!d?.slides.length) return;
     if (this.autoplay && !this.started && !this.autoplayed) {
       this.autoplayed = true;
+      // a place kept from before a restart within what is there
+      this.slide = Math.min(this.slide, d.slides.length - 1);
+      this.part = Math.min(this.part, d.slides[this.slide]!.parts.length - 1);
       this.play();
     }
     if (this.writing && this.slide + 1 < d.slides.length) {
@@ -125,7 +340,11 @@ class Playback {
     if (this.playing && this.waiting && this.clip(this.slide, this.part)) this.playPart(this.slide, this.part);
   }
 
-  clip(slide: number, part: number) {
+  clip(slide: number, part: number): { file: string; seconds: number; words?: number[] } | null {
+    if (this.silent) {
+      const sentence = this.data?.slides[slide]?.parts[part];
+      return sentence === undefined ? null : { file: '', seconds: readingSeconds(sentence) };
+    }
     return this.data?.clips[slide]?.[part] ?? null;
   }
 
@@ -144,23 +363,43 @@ class Playback {
     return this.partStart(slide, this.data?.slides[slide]?.parts.length ?? 0);
   }
 
+  /** Where in its sentence the player is; `undefined` while that sentence does not play (it waits for its voice). */
+  private inPart() {
+    return this.audio.dataset.key === `${this.slide}-${this.part}` ? this.audio.currentTime || 0 : undefined;
+  }
+
   /** Where in its slide the player is. */
   now() {
-    const playingThis = this.audio.dataset.key === `${this.slide}-${this.part}`;
-    return this.partStart(this.slide, this.part) + (playingThis ? this.audio.currentTime || 0 : 0);
+    return this.partStart(this.slide, this.part) + (this.inPart() ?? 0);
+  }
+
+  /** The second of its sentence each word starts at: as heard back, else as its length suggests. */
+  wordStarts(slide: number, part: number) {
+    return this.clip(slide, part)?.words ?? estimatedStarts(this.data?.slides[slide]?.parts[part] ?? '', this.partSeconds(slide, part));
+  }
+
+  /** The word of the sentence being spoken, -1 before the first or while it does not play. */
+  word(): number {
+    const t = this.inPart();
+    if (t === undefined) return -1;
+    let now = -1;
+    for (const [k, start] of this.wordStarts(this.slide, this.part).entries()) if (t >= start - 0.05) now = k;
+    return now;
   }
 
   /** The item of the slide shown last by now, -1 before the first. */
   item(): number {
     const s = this.data?.slides[this.slide];
     if (!s) return -1;
-    const n = itemsOf(s);
     const time = this.now();
+    const starts = itemStarts(
+      s,
+      (part, word) => this.partStart(this.slide, part) + (this.wordStarts(this.slide, part)[word] ?? 0),
+      (part) => this.partStart(this.slide, part),
+      this.slideSeconds(this.slide),
+    );
     let shown = -1;
-    for (let k = 0; k < n; k++) {
-      const from = s.items ? this.partStart(this.slide, Math.max(0, s.items.indexOf(k))) : (k / n) * this.slideSeconds(this.slide) * 0.9;
-      if (time >= from - 0.05) shown = k;
-    }
+    for (const [k, from] of starts.entries()) if (time >= from - 0.05) shown = k;
     return shown;
   }
 
@@ -168,6 +407,11 @@ class Playback {
     if (!this.data?.slides.length) return;
     // only one walkthrough speaks at a time
     for (const p of sessions.values()) if (p !== this && p.playing) p.pause();
+    if (!this.silent && speaker !== this) {
+      theVoice().pause();
+      delete theVoice().dataset.key;
+      speaker = this;
+    }
     this.started = true;
     this.playing = true;
     this.refused = false;
@@ -208,11 +452,6 @@ class Playback {
     this.changed();
   }
 
-  toggleCaptions = () => {
-    this.captions = !this.captions;
-    this.changed();
-  };
-
   /** Plays a sentence once it is voiced; until then the player waits for it. */
   private playPart(slide: number, part: number) {
     this.slide = slide;
@@ -224,7 +463,8 @@ class Playback {
       return this.changed();
     }
     this.audio.dataset.key = `${slide}-${part}`;
-    this.audio.src = this.clipUrl(this.data!.clipsDir, c.file);
+    if (this.silent) this.reader.load(c.seconds);
+    else theVoice().src = this.clipUrl(this.data!.clipsDir, c.file);
     this.start();
     this.changed();
   }
@@ -241,7 +481,7 @@ class Playback {
     });
   }
 
-  private ended() {
+  ended() {
     const d = this.data;
     if (!d) return;
     if (this.part + 1 < d.slides[this.slide]!.parts.length) this.next = setTimeout(() => this.playPart(this.slide, this.part + 1), GAP_S * 1000);
@@ -255,14 +495,24 @@ class Playback {
 /** The players of this page, by walkthrough: what one plays survives its message being drawn anew. */
 const sessions = new Map<string, Playback>();
 
-function usePlayback(thread: number, name: string, autoplay: boolean): Playback {
-  const url = at(`/threads/${thread}/walkthroughs/${encodeURIComponent(name)}`);
+// a restart reloads the page: each player comes back where it stood
+beforeReload(() => {
+  const places = [...sessions].flatMap(([url, p]): [string, KeptPlace][] => {
+    const at = p.place();
+    return at ? [[url, at]] : [];
+  });
+  try {
+    if (places.length) sessionStorage.setItem(KEPT_KEY, JSON.stringify({ at: Date.now(), places }));
+  } catch {}
+});
+
+function usePlayback(thread: number, name: string): Playback {
+  const url = walkthroughUrl(thread, name);
   let p = sessions.get(url);
   if (!p) {
-    p = new Playback(url, (dir, file) => answerFile(thread, `${dir}/${file}`), autoplay);
+    p = new Playback(url, (dir, file) => answerFile(thread, `${dir}/${file}`), askedHere.has(url));
     sessions.set(url, p);
   }
-  if (autoplay) p.autoplay = true;
   const session = p;
   useSyncExternalStore(session.subscribe, () => session.version);
   useEffect(() => session.attach(), [session]);
@@ -279,73 +529,214 @@ function usePlayback(thread: number, name: string, autoplay: boolean): Playback 
   return session;
 }
 
-/** A walkthrough an answer comes with, played under it. `autoplay`: the owner asked for it on this page, so it starts by itself. */
-export function WalkthroughPlayer({ thread, file, autoplay = false }: { thread: number; file: AnswerFile; autoplay?: boolean }) {
-  const p = usePlayback(thread, file.name, autoplay);
+/** A walkthrough an answer comes with, played under it; one the owner asked for on this page starts by itself. */
+export function WalkthroughPlayer({ thread, file }: { thread: number; file: AnswerFile }) {
+  const p = usePlayback(thread, file.name);
+  const stage = useRef<HTMLDivElement>(null);
+  useSlideScale(stage);
+  // without a voice the captions are the narration: always on
+  const captions = captionsOn || p.silent;
+  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomedBox(w, h, captionsOn || p.silent), playing: () => p.playing });
+  // the caption switched on or off while zoomed: the zoomed player grows or shrinks to stay in the window
+  useEffect(() => zoom.refit(), [captions]);
   const d = p.data;
   if (!d) return <div className="wt wt-loading hint">{p.missing ? t.walkthrough.missing : t.walkthrough.loading}</div>;
   const slide = d.slides[p.slide];
   const voiced = d.clips.flat().filter(Boolean).length;
   const total = d.clips.flat().length;
   const status = d.error
-    ? d.error === INTERRUPTED
-      ? t.walkthrough.interrupted
-      : t.walkthrough.failed(d.error)
+    ? t.walkthrough.failed(d.error)
     : p.playing && p.writing
       ? t.walkthrough.writing
       : p.playing && p.waiting
         ? t.walkthrough.voicing(voiced, total)
         : '';
   const item = p.started ? p.item() : -1;
+  const zoomLabel = zoom.box ? t.demo.unzoom : t.demo.zoom;
   return (
-    <figure className="wt">
-      <div className="wt-stage">
-        {slide ? (
-          <SlideView key={p.slide} p={p} title={d.title} index={p.slide} item={item} />
-        ) : (
-          // asked for and not begun yet: a slide taking shape, so it is plain that one is being written
-          <div className="wt-slide wt-title wt-pending" aria-label={t.walkthrough.preparing}>
-            <div className="wt-bar" />
-            <i className="wt-ghost wide" />
-            <i className="wt-ghost" />
-            <p>{t.walkthrough.preparing}</p>
-          </div>
-        )}
+    <div className="wt-holder" ref={zoom.player} style={zoom.box ? { height: zoom.box.from.height } : undefined}>
+    {zoom.box && <div className={zoom.box.closing ? 'demo-zoom closing' : 'demo-zoom'} ref={zoom.backdrop} title={t.demo.unzoom} onClick={zoom.toggle} />}
+    <figure className={zoom.box ? 'wt zoomed' : 'wt'} ref={zoom.screen} style={zoom.box ? { left: zoom.box.to.left, top: zoom.box.to.top, width: zoom.box.to.width } : undefined}>
+      <div className={p.started && !p.refused ? 'wt-stage zoomable' : 'wt-stage'} ref={stage} onClick={() => p.started && !p.refused && zoom.toggle()}>
+        <div className="wt-canvas">
+          {slide ? (
+            <SlideView key={p.slide} p={p} title={d.title} index={p.slide} item={item} />
+          ) : (
+            // asked for and not begun yet: a slide taking shape, so it is plain that one is being written
+            <div className="wt-slide wt-title wt-pending" aria-label={t.walkthrough.preparing}>
+              <div className="wt-bar" />
+              <i className="wt-ghost wide" />
+              <i className="wt-ghost" />
+              <p>{t.walkthrough.preparing}</p>
+            </div>
+          )}
+        </div>
         {status && (
-          <div className={`wt-status${d.error ? ' error' : ''}`} title={d.error && d.error !== INTERRUPTED ? d.error : undefined}>
+          <div className={`wt-status${d.error ? ' error' : ''}`} title={d.error}>
             {status}
           </div>
         )}
         {(!p.started || p.refused) && slide && (
-          <button className="wt-start" onMouseDown={(e) => e.preventDefault()} onClick={() => p.play()}>
+          <button className="wt-start" onMouseDown={(e) => e.preventDefault()} onClick={(e) => (e.stopPropagation(), p.play())}>
             <span>{t.walkthrough.play}</span>
           </button>
         )}
       </div>
-      {p.captions && p.started && slide && <div className="wt-caption">{p.writing ? '' : slide.parts[p.part]}</div>}
+      {captions && p.started && slide && <Caption sentence={p.writing ? '' : (slide.parts[p.part] ?? '')} word={p.word()} pointer={!p.silent} />}
       <div className="wt-controls">
         <button className="btn small" aria-label={t.walkthrough.previous} title={t.walkthrough.previous} disabled={p.slide === 0} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide - 1)}>
-          ◀
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 5h2.4v14H6zM19 5.6v12.8a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.4a.8.8 0 0 1 1.2.7z" />
+          </svg>
         </button>
         <button className="btn small wt-play" disabled={!slide} aria-label={p.playing ? t.walkthrough.pause : t.walkthrough.resume} title={p.playing ? t.walkthrough.pause : t.walkthrough.resume} onMouseDown={(e) => e.preventDefault()} onClick={p.toggle}>
-          {p.playing ? '❚❚' : '▶'}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={p.playing ? 'M6.5 4.5h3.6v15H6.5zM13.9 4.5h3.6v15h-3.6z' : 'M7 4.9v14.2a.9.9 0 0 0 1.4.8l11.2-7.1a.9.9 0 0 0 0-1.6L8.4 4.1A.9.9 0 0 0 7 4.9z'} />
+          </svg>
         </button>
         <button className="btn small" aria-label={t.walkthrough.next} title={t.walkthrough.next} disabled={!slide || p.slide >= d.slides.length - 1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide + 1)}>
-          ▶▶
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15.6 5H18v14h-2.4zM5 5.6v12.8a.8.8 0 0 0 1.2.7l8.2-6.4a.8.8 0 0 0 0-1.4L6.2 4.9A.8.8 0 0 0 5 5.6z" />
+          </svg>
         </button>
+        {/* a segment per slide, as long as the slide plays */}
         <div className="wt-segments">
           {d.slides.map((_, k) => (
-            <button key={k} className={`wt-seg${d.clips[k]?.[0] ? ' voiced' : ''}`} aria-label={t.walkthrough.slide(k + 1, d.slides.length, !d.done)} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(k)}>
-              <i style={{ width: k < p.slide ? '100%' : k > p.slide ? 0 : `${Math.min(100, (p.now() / Math.max(0.1, p.slideSeconds(k))) * 100)}%` }} />
+            <button
+              key={k}
+              className={`wt-seg${d.silent || d.clips[k]?.[0] ? '' : ' pending'}`}
+              style={{ flexGrow: Math.max(1, p.slideSeconds(k)) }}
+              aria-label={t.walkthrough.slide(k + 1, d.slides.length, !d.done)}
+              title={t.walkthrough.slide(k + 1, d.slides.length, !d.done)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => p.go(k)}
+            >
+              <span>
+                <i style={{ width: k < p.slide ? '100%' : k > p.slide ? 0 : `${Math.min(100, (p.now() / Math.max(0.1, p.slideSeconds(k))) * 100)}%` }} />
+              </span>
             </button>
           ))}
         </div>
         {slide && <span className="wt-count">{t.walkthrough.slide(p.slide + 1, d.slides.length, !d.done)}</span>}
-        <button className={`btn small${p.captions ? ' on' : ''}`} aria-pressed={p.captions} title={t.walkthrough.captions} onMouseDown={(e) => e.preventDefault()} onClick={p.toggleCaptions}>
-          CC
+        {!d.silent && (
+          <button
+            className={`btn small wt-key wt-cc${captions ? ' on' : ''}`}
+            aria-pressed={captions}
+            aria-label={t.walkthrough.captions}
+            title={captionsKeyKnown ? t.walkthrough.captions : undefined}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setCaptions(!captions)}
+          >
+            {/* the key beside CC until the owner first switched captions with it */}
+            {!captionsKeyKnown && (
+              <span className="zoom-hint">
+                {t.walkthrough.captionsHint} <kbd>C</kbd>
+              </span>
+            )}
+            CC
+          </button>
+        )}
+        <button className="btn small wt-key wt-zoom" title={zoom.keyKnown ? zoomLabel : undefined} aria-label={zoomLabel} onMouseDown={(e) => e.preventDefault()} onClick={zoom.toggle}>
+          {/* the key beside the magnifier until the owner first zoomed with it */}
+          {!zoom.keyKnown && (
+            <span className="zoom-hint">
+              {zoom.box ? t.demo.unzoomHint : t.demo.zoomHint} <kbd>Z</kbd>
+            </span>
+          )}
+          <svg viewBox="0 0 24 24">
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d={zoom.box ? 'M7.5 10.5h6M15.5 15.5L21 21' : 'M7.5 10.5h6M10.5 7.5v6M15.5 15.5L21 21'} />
+          </svg>
         </button>
       </div>
     </figure>
+    </div>
+  );
+}
+
+/**
+ * The sentence being spoken, the word being spoken marked, the words said before it apart from those
+ * still to come. A sentence read (`pointer` off) marks no word, and turns its pages as reading it goes.
+ */
+function Caption({ sentence, word, pointer }: { sentence: string; word: number; pointer: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  // a page of two lines at a time: the words measured in the caption's font, against its width
+  const [measure, setMeasure] = useState<{ widthOf: (text: string) => number; line: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ctx = document.createElement('canvas').getContext('2d');
+    const fit = () => {
+      const css = getComputedStyle(el);
+      if (!ctx) return;
+      ctx.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+      // a little room kept: the browser's line breaks and the canvas's widths differ by a pixel here and there
+      setMeasure({ widthOf: (text) => ctx.measureText(text).width, line: (el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)) * 0.97 });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    // the caption's font may come after the first measure
+    void document.fonts.ready.then(fit);
+    return () => ro.disconnect();
+  }, []);
+  const words = wordsOf(sentence);
+  const starts = useMemo(() => (measure ? captionPages(words, measure.widthOf, measure.line) : [0]), [sentence, measure]);
+  const page = pageOf(starts, word);
+  const from = starts[page]!;
+  const to = starts[page + 1] ?? words.length;
+  return (
+    <div ref={box} className={`wt-caption${pointer && word >= 0 ? ' pointing' : ''}`}>
+      <div>
+        {words.slice(from, to).map((w, i) => {
+          const k = from + i;
+          return (
+            <span key={k}>
+              {i > 0 && ' '}
+              <span className={!pointer ? undefined : k < word ? 'said' : k === word ? 'now' : undefined}>{w}</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** A number for `text`, the same every time: where the title slide's rings and dots stand. */
+function hashOf(text: string) {
+  let h = 2166136261;
+  for (const c of text) h = Math.imul(h ^ c.codePointAt(0)!, 16777619);
+  return h >>> 0;
+}
+
+/** The inks a title slide's motif takes its colours from, in turn. */
+const MOTIF_INKS = ['--working', '--inPr', '--idea', '--proposal', '--approved', '--waiting'];
+
+/** Rings, an arc and a field of dots on the right of a title slide, placed and coloured by its title, as showntell's title slides have. */
+function Motif({ title }: { title: string }) {
+  const h = hashOf(title);
+  const pick = (n: number, shift: number) => (h >>> shift) % n;
+  const ink = (k: number) => `var(${MOTIF_INKS[(pick(MOTIF_INKS.length, 0) + k) % MOTIF_INKS.length]})`;
+  const cx = 640 + pick(6, 3) * 14;
+  const cy = 170 + pick(7, 6) * 26;
+  const r = 104 + pick(4, 9) * 10;
+  const from = pick(8, 12) * 45;
+  const arc = (deg: number, radius: number) => `${cx + radius * Math.cos((deg * Math.PI) / 180)} ${cy + radius * Math.sin((deg * Math.PI) / 180)}`;
+  const dx = cx - 150 + pick(3, 15) * 20;
+  const dy = cy + r - 20 - pick(3, 17) * 18;
+  return (
+    <svg className="wt-motif" viewBox={`0 0 ${SLIDE_WIDTH} ${SLIDE_HEIGHT}`} aria-hidden="true">
+      <circle className="disc" cx={cx} cy={cy} r={r * 0.62} fill={ink(1)} />
+      {[1, 1.38, 1.8, 2.3].map((f, k) => (
+        <circle key={k} className="ring" cx={cx} cy={cy} r={r * f} stroke={ink(k % 2 ? 1 : 0)} opacity={0.5 - k * 0.1} />
+      ))}
+      <path className="arc" d={`M ${arc(from, r * 0.86)} A ${r * 0.86} ${r * 0.86} 0 0 1 ${arc(from + 110, r * 0.86)}`} stroke={ink(0)} />
+      <g className="dots" fill={ink(2)}>
+        {Array.from({ length: 20 }, (_, k) => (
+          <circle key={k} cx={dx + (k % 5) * 13} cy={dy + Math.floor(k / 5) * 13} r={2.2} />
+        ))}
+      </g>
+    </svg>
   );
 }
 
@@ -356,12 +747,14 @@ function SlideView({ p, title, index, item }: { p: Playback; title: string; inde
   const state = (k: number) => [shown(k) && 'shown', p.started && k === item && 'now'].filter(Boolean).join(' ');
   const kicker = (
     <div className="wt-kicker">
-      {title} · {index + 1}
+      <span className="n">{String(index + 1).padStart(2, '0')}</span>
+      <span className="t">{title}</span>
     </div>
   );
   if (s.type === 'title')
     return (
       <div className="wt-slide wt-title">
+        <Motif title={s.title} />
         <div className="wt-bar" />
         <h1>{s.title}</h1>
         {s.subtitle && <p>{s.subtitle}</p>}
@@ -372,7 +765,7 @@ function SlideView({ p, title, index, item }: { p: Playback; title: string; inde
       <div className="wt-slide">
         {kicker}
         <h2>{s.title}</h2>
-        <ul className="wt-points">
+        <ul className={`wt-points${p.started && item >= 0 ? ' telling' : ''}`}>
           {s.points.map((x, k) => (
             <li key={k} className={state(k)}>
               {x}
@@ -387,15 +780,22 @@ function SlideView({ p, title, index, item }: { p: Playback; title: string; inde
         {kicker}
         <h2>{s.title}</h2>
         <div className="wt-flow">
-          {s.steps.map((x, k) => (
-            <div key={k} className="wt-step-wrap">
-              {k > 0 && <span className={`wt-arrow${shown(k) ? ' shown' : ''}`}>→</span>}
-              <div className={`wt-step ${state(k)}`}>
-                <b>{x.label}</b>
-                {x.note && <span>{x.note}</span>}
+          <div className="wt-flow-row">
+            {s.steps.map((x, k) => (
+              <div key={k} className="wt-step-wrap">
+                {k > 0 && (
+                  // the arrow into the box being told is drawn in the accent
+                  <svg className={`wt-arrow${shown(k) ? ' shown' : ''}${p.started && k === item ? ' lit' : ''}`} viewBox="0 0 32 16" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                    <path d="M5 8h21M20 3l6 5-6 5" />
+                  </svg>
+                )}
+                <div className={`wt-step ${state(k)}`}>
+                  <b>{x.label}</b>
+                  {x.note && <span>{x.note}</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -418,43 +818,58 @@ function CodeSlide({ p, kicker, index, item }: { p: Playback; kicker: React.Reac
     <div className="wt-slide wt-code-slide">
       {kicker}
       <h2>{s.title}</h2>
-      <div className="wt-file">
-        {s.file}:{s.lines[0]}–{s.lines[1]}
-      </div>
-      <div ref={box} className={`wt-code${focus ? ' focusing' : ''}`}>
-        {s.code.map((line, k) => {
-          const n = from + k;
-          return (
-            <div key={k} className={focus && n >= focus[0] && n <= focus[1] ? 'focus' : undefined}>
-              <i>{n}</i>
-              <code>{line}</code>
-            </div>
-          );
-        })}
+      <div className="wt-codebox">
+        <div className="wt-file">
+          {s.file}:{s.lines[0]}–{s.lines[1]}
+        </div>
+        <div ref={box} className={`wt-code${focus ? ' focusing' : ''}`}>
+          {s.code.map((line, k) => {
+            const n = from + k;
+            return (
+              <div key={k} className={focus && n >= focus[0] && n <= focus[1] ? 'focus' : undefined}>
+                <i>{n}</i>
+                <code>{line}</code>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {s.note && <div className="wt-note">{s.note}</div>}
     </div>
   );
 }
 
+/** What "Show as walkthrough" tells: an answer of the sheet (its exchange), or a message of a card's conversation. */
+export type Tellable = { talk: number } | { card: string; ev: number };
+
 /**
- * "Show as walkthrough" in the head of a looked-up text answer, shown on hover: the thread goes on
- * with the answer told as a walkthrough, which starts by itself once its first sentence is voiced.
+ * "Show as walkthrough" in the head of a text answer, shown on hover as the head's other actions
+ * are (`hint`: the newest answer's stays in view until the owner has used it once): the answer is
+ * told again as a walkthrough, the next answer, which starts by itself once its first sentence is
+ * voiced.
  */
-export function WalkthroughButton({ talk }: { talk: number }) {
+export function WalkthroughButton({ of, hint }: { of: Tellable; hint?: boolean }) {
   const [busy, setBusy] = useState(false);
+  const [used, setUsed] = useState(() => known(WALKTHROUGH_KNOWN));
   return (
     <button
-      className="msg-act msg-walk"
+      className={`msg-act msg-walk${hint && !used ? ' shown' : ''}`}
       title={t.answer.walkthroughHint}
       disabled={busy}
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         setBusy(true);
+        know(WALKTHROUGH_KNOWN);
+        setUsed(true);
         // asked once: the walkthrough comes as the next answer
-        api
-          .walkthrough(talk)
-          .then(({ talk: asked }) => askedHere.add(asked))
+        ('talk' in of ? api.walkthrough(of.talk) : api.cardWalkthrough(of.card, of.ev))
+          .then(({ thread, file }) => {
+            const url = walkthroughUrl(thread, file);
+            askedHere.add(url);
+            // its player may show already, before the click's reply
+            const p = sessions.get(url);
+            if (p) p.autoplay = true;
+          })
           .catch(() => setBusy(false));
       }}
     >
@@ -462,6 +877,3 @@ export function WalkthroughButton({ talk }: { talk: number }) {
     </button>
   );
 }
-
-/** Whether this page asked for the walkthrough of the exchange, so that it starts by itself. */
-export const askedForHere = (talk: number) => askedHere.has(talk);

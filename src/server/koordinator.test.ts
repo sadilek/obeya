@@ -9,7 +9,7 @@ import { Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
 import { cardTag } from '../core/card-number';
 import { move, queueOrder, reach } from '../core/queue';
-import { artifact, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE } from './testing';
+import { artifact, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir } from './testing';
 import { Workers } from './workers';
 import { git, HERE, parseChanges, Workspaces } from './workspaces';
 import { withLimitWait } from './runtime';
@@ -35,7 +35,7 @@ beforeEach(() => {
   workers = new Workers({ board, runtime, workspaces, adapter });
   k = new Koordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 /**
  * Lets the Koordinator go on until it waits for an estimate or has decided, and the cards it started
@@ -45,7 +45,7 @@ async function settle() {
   await Bun.sleep(5);
   const asking = () => runtime.sessions.some((s) => !s.closed && s.spec.tools.some((t) => t.name === 'scope' || t.name === 'schedule'));
   const judging = () => board.snapshot().items.some((i) => i.queue && 'checking' in i.queue) && !asking();
-  for (const end = Date.now() + 1000; judging() && Date.now() < end; ) await Bun.sleep(2);
+  for (const end = Date.now() + 1000 * PATIENCE; judging() && Date.now() < end; ) await Bun.sleep(2);
   // the workers it started at work in their workspaces
   await workers.prepared();
 }

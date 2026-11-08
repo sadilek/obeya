@@ -344,6 +344,8 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
   follows so native controls and framed pages (a worker's HTML artifact, a mock) match. The site and shared demo pages follow the system.
 - *Type*: titles and headings in Newsreader (a plan doc in the sheet too), the rest in IBM Plex
   Sans Condensed, code in the system monospace; both fonts SIL OFL and self-hosted, no Google Fonts.
+  A walkthrough's slides and captions alone take showntell's faces, Bricolage Grotesque and Inter
+  (see Walkthroughs in The Koordinator).
 - *Carried through*: menus, panel, sheets, dialogs, buttons and fields share palette, type, corners
   and hard shadow; dots, the microphone, spinners and the pin stay round. The site and shared demo
   pages use the same palette and type.

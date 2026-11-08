@@ -322,11 +322,19 @@ Where an answer explains how something works or what happens when (a flow throug
 thing after another, what a change does, how two variants differ), the look-up agent tells it as a
 short walkthrough with slides and narration instead of a block of text, and it plays while the
 agent still writes it. The agent judges which questions need one; the Koordinator's look-ups and
-the project agents alike can tell one. A text answer in Obeya's sheet has "Show as walkthrough" in
-its head, on hover (always on a screen without hover): it asks the same thread, as the owner's
-words "Show as walkthrough" following up on the answer with Obeya's reply "I'll tell the answer as a
-walkthrough.", to tell that answer as a walkthrough (quoted to it, since it need not be the thread's
-last), which comes as the next answer.
+the project agents alike can tell one. Every text answer has "Show as walkthrough" in its head,
+beside "Make it a card", on hover (always on a screen without hover): in Obeya's sheet, in the
+conversation of the card it was asked on and on a Question card, built once for all three. It counts
+as the owner's words "Show as walkthrough", replying to the answer, with Obeya's reply "I'll tell the
+answer as a walkthrough." (on a Question card the words go to its agent, which answers itself). A
+looked-up answer's thread is asked to tell that answer as a walkthrough (quoted to it, since it need
+not be the thread's last); a direct answer of the quick turn has no thread, so the button starts a
+look-up thread for it, told the owner's words and Obeya's answer, which checks what it walks through.
+The walkthrough comes as the next answer, where the answer stood. An answer that is a walkthrough
+already, a confirmation of actions and a reply that says Obeya could not read the words have none; nor
+has a looked-up answer whose thread went on onto a Question card, which asks there. Until the owner
+has used it once (per browser), the newest text answer of a conversation shows its head's actions in
+view, "Show as walkthrough" in the colour of a question, so a newcomer finds it.
 
 A walkthrough has 4 to 8 slides: a title slide first, then points (up to five), flows (three to six
 steps in a row joined by arrows, each with an optional note) and, only when the owner asks to see
@@ -343,7 +351,18 @@ sentence or two on what the walkthrough shows. What is wrong with a slide goes b
 reply and the slide is not shown: a first slide that is no title slide, a second title slide (an
 answer has one walkthrough), a ninth slide, a narration in parts that do not match the items, a code
 slide's file outside the repository or too large to show from, lines it lacks, more than 30 lines,
-or a range outside them. A file the agent passes on as a walkthrough of its own is left out.
+or a range outside them, a slide that does not fit the player, and a narration that only reads its
+slide out. A slide has one layout, the same in every view: the player scales it to its width, so
+it shows whole and only smaller in the narrow sheet, and larger zoomed. Whether a slide fits is
+judged for that layout: Obeya lays the slide's text out in the slide's fonts, from widths measured
+per character in Chrome (measured anew whenever the slides' faces, weights or spacing change), and refuses a slide whose items run past its bottom or that has a word wider than
+its line or its flow box, saying how many lines it is over or which word and how many characters
+that box holds. A narration only reads its slide out when about a third or fewer of its longer
+words are not on the slide (forms of one word, "Karte" and "Karten", count as one). Both are worked
+out at once, without a model, so a refused slide costs the agent one more call and the player no
+wait; the look-up agent's instructions say how much fits, so that most slides fit the first time.
+The walkthrough's title above each slide stays on one line.
+A file the agent passes on as a walkthrough of its own is left out.
 
 One asked for with "Show as walkthrough" shows its player at once, at full size, with the shape of a
 title slide shimmering and "The walkthrough is being written …" until its title slide comes, so it
@@ -355,7 +374,9 @@ interrupting it, and the walkthrough is the first of the answer's files. It is a
 thread's directory, `<name>.walkthrough.json` named after its title (one asked for with the button, after its question) (a later answer gets a name of
 its own), holding the slides as shown (a code slide with its lines), each slide's narration as the
 sentences it is voiced in (and for a narration in parts, the item of each), whether every slide is
-there, each sentence's clip once voiced (its file and seconds) and why voicing failed; the clips
+there, each sentence's clip once voiced (its file and seconds, and once heard back the second each
+of its words starts at), the language it is voiced in, whether it is read rather than voiced (see
+below) and why voicing failed; the clips
 are WAVs in `<name>.clips/` beside it. The player reads it from `GET
 /api/c/<canvas>/threads/<thread>/walkthroughs/<name>` while it grows, and its clips as the answer's
 files; both come through Obeya's server, as every answer file does, so a walkthrough plays wherever
@@ -371,20 +392,68 @@ first sentence it still needs from there; with none playing, the newest walkthro
 "Show as walkthrough" loads the voice at the click, while the agent writes the first slide: for the
 language the answer it tells is written in, as its most common words show (the conversation
 language where they tell none). A
-sentence the voice cannot speak ends the voicing of its walkthrough, and the player says why;
-sentences still waiting when the server stopped are not voiced afterwards, and the player says that
-the voicing stopped with the restart.
+sentence the voice cannot speak ends the voicing of its walkthrough, and the player says why.
+Sentences still waiting when the server stopped are voiced by the next server once a player reads
+the walkthrough again (the page a restart reloads does at once), from where its player stands; the
+agent's turn ended with the server, so the walkthrough has every slide it gets. Demo settings
+without a voice voice nothing: the walkthrough plays its slides with each sentence as a caption
+for as long as reading it takes (about 15 characters a second, beside the slide), the captions
+always on and without a pointer (a page of two lines turns as reading goes), so "CC" does not show.
+
+Slides and player look like showntell's (owner, 2026-11-06), in Obeya's inks for light and dark:
+the slide stands as a sheet on the player, headings in Bricolage Grotesque, set large and tight,
+the rest in Inter (both SIL OFL, self-hosted); above a slide's title its number in the accent with a
+short rule, then the walkthrough's title; a title slide's title beside rings, an arc and dots placed
+and coloured by the title; points each on a panel with a dot in an ink of its own; a flow's boxes
+in one ink, joined by drawn arrows; code in a box with its file in the head. The accent is Obeya's
+working blue. The controls are plain icons beside a progress bar of one segment per slide, each as
+long as its slide plays, striped while its slide is not voiced yet.
 
 The player plays slides and sound in step: the items of a slide light up as the narration reaches
-them (before the first play, a slide shows them all), a code slide scrolls its highlighted range
-into view, and the sentence being spoken stands under the slide as a caption, which "CC" switches
-on and off. Its progress bar has a segment per slide, which jumps there on a click; ◀ and ▶▶ go a
-slide back and on. Where the next sentence is not voiced yet it waits, showing "Voicing … 8/43";
+them and a flow's boxes build up one by one, each with its arrow (before the first play, a slide
+shows them all); the item being told lifts in the accent, those told before it fade, those still to
+come barely show, and the arrow into the box being told is drawn in the accent; a code slide
+scrolls its highlighted range into view; and the sentence being spoken stands under the slide as a
+caption large enough to read along (15 px in the narrow sheet, growing with the player), with a
+pointer on the word being spoken, the words before it in full colour and those still to come faint.
+A long sentence shows two lines at a time, the part with the word being spoken, so the player does
+not grow and shrink with each sentence. "CC" switches captions on and off, and so does C where a
+walkthrough is what the owner is at (one zoomed, playing or under the pointer; elsewhere C opens the
+conversation with Obeya, as before); the choice holds for every walkthrough in that browser until
+switched again. Hovering "CC" shows the key until it has been used once. The first
+item shows with its slide, so a slide never stands empty; after it, with a narration in parts an
+item comes with its part; with one text, at the word that first names it
+(the same word or its stem, among its words of four letters or more that the other items do not
+share, in the items' order), and one named nowhere between its neighbours.
+
+The times of the words come from hearing each sentence back once it is voiced, with the speech
+recognition of voice in on this machine (Parakeet, or Whisper where set), while the voice goes on
+with the next sentence: so the first sound comes no later. The recognition writes some words
+otherwise ("Obia" for "Obeya", a number in digits, a compound apart), so sentence and transcript are
+lined up letter by letter, and a word starts where its first letter was heard; a word heard nowhere
+gets a start between its neighbours' by its length. Until a sentence is heard back, and where it
+cannot be (voice in through a cloud service, a recognition that fails or takes over a minute, a
+walkthrough voiced before a restart), its words start by their length over the clip. "Show as
+walkthrough" loads the recognition with the voice. Its progress bar has a segment per slide, which jumps there on a click; ◀ and ▶▶ go a
+slide back and on. Z or the magnifier beside "CC" zooms the player out of its message to as large
+as the window allows, as a demo video zooms (see Demos), and so does a click on a slide once it
+plays; Z, Esc or a click beside it ends the zoom. Z takes the zoomed player or video, else the one
+playing, else the one under the pointer, else the first in sight. Where the next sentence is not
+voiced yet it waits, showing "Voicing … 8/43";
 where the agent is still writing the next slide, "The next slide is being written …". A walkthrough
 asked for with the button starts by itself in the page that clicked (the click allows the sound),
 as soon as its first sentence is voiced; one the agent chose shows its first slide and "Play
-walkthrough". One walkthrough plays at a time: starting one pauses the others. A player goes on
-while its message is drawn anew (the answer's words arriving) and pauses once no view shows it.
+walkthrough", which starts it without zooming. One walkthrough plays at a time: starting one pauses
+the others. A player goes on while its message is drawn anew (the answer's words arriving) and
+pauses once no view shows it. A restart's reload brings each player back to the sentence it stood
+at, playing on if it played in a tab in sight, as the demo video does; where the browser wants a
+click for the sound first, "Play walkthrough" shows there.
+
+On the phone the player is the same, and the key
+hints beside "CC" and the magnifier stay away (no keyboard; a tap leaves a button hovered). The players of a
+page share one voice element, which the first tap or click anywhere on the page allows to sound:
+a phone's browser (Safari on the iPhone) plays sound only from a tap, and a walkthrough asked for
+with the button, or one waiting for its next sentence, starts its sound later than the tap.
 
 #### Question cards
 
@@ -494,6 +563,13 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   came. Rejected: promising nothing it cannot take itself (the owner asks for both in one breath); a
   follow-up card whose worker does it (configuration is the Koordinator's, with check and undo);
   conditions beyond the two a worker waits for on another card.
+- **A walkthrough's word times come from hearing its sentences back** (2026-11-07), with voice in's
+  recognition, the same way for every voice. Rejected: the voices' own timestamps, which only
+  ElevenLabs and Azure give (Qwen3-TTS, Kokoro as Obeya runs it on ONNX, Piper, `say`, OpenAI and
+  Gemini give audio alone); the Parakeet inside the Qwen3 voice, which hears its sentences already
+  (only that voice, and its hearing does not come back through a single clip); times by word length
+  alone (off wherever the voice pauses or lingers). Parakeet heard a Kokoro sentence of 5.9 s in
+  0.9 s with the start of every word part, on the CPU of an M4 Pro.
 - **A card waits rather than risking a collision**; the estimate is taken once, before the start,
   and a waiting card is checked again when its blockers finish.
 - **A new card does not overtake a queued one it likely conflicts with**, even one far from done:
@@ -576,11 +652,30 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   German, as the owner had written, was spoken in the owner's English voice clone, with a strong
   accent. The agent knows the language it writes; guessing it from the narration's words is used
   only to load the voice at the click, where a wrong guess costs a reload and nothing more.
+- **"Show as walkthrough" on every text answer** (owner, 2026-11-06/07): in the sheet, a card's
+  conversation and on Question cards alike, direct answers included: a newcomer asks Obeya where
+  they happen to be, and the answer they would want walked through is not always a looked-up one. A
+  direct answer gets a look-up thread rather than a walkthrough of the quick turn's own, which is
+  read-only and answers in seconds. Its hint keeps the newest answer's actions in view until first
+  use, unlike Reply and the pause, which a hover finds (see Communication): the walkthrough is new,
+  and an answer looks finished without it. Rejected: the button in view on every answer until first
+  use (a row of coloured buttons down the conversation).
 - **The actions in an answer's head show on hover** (owner, 2026-11-07): "Make it a card" and "Show
   as walkthrough" appear as the reply button beside them does, for one look; on a screen without
   hover they stay in view. "Reply" has their look too, an outlined button with its label (owner,
   2026-11-07), on a card's messages as in the sheet. Rejected: a filled icon in the message's corner,
   which looked unlike the two beside it.
+- **Checks the agent hears while it writes, not a second model** (owner, 2026-11-07): the fit and
+  the read-out check are computed by Obeya at once. Rejected: a model checking that a code slide's
+  lines say what the slide claims (seconds per slide while the walkthrough already plays, for code
+  slides that come only when the owner asks for code). The fit check earns its place: told before
+  it, an agent wrote a walkthrough four of whose six slides spilled words out of their flow boxes or
+  ran past their bottom.
+- **One slide layout, scaled, with a zoom** (owner, 2026-11-07): a slide looks the same in the narrow
+  sheet as zoomed, only smaller, and the fit is judged once. Rejected: a layout per width, with
+  fonts that stopped at a minimum size and a taller stage in a narrow player, which crowded a slide
+  differently in every view and had to be judged at the narrowest, where a flow of four steps held
+  six characters a box.
 - **The player is Obeya's page, the walkthrough a file of data** (2026-11-06). Rejected: a player
   page written into the thread's directory with the slides (as an HTML artifact, sandboxed): every
   walkthrough would keep the player of its day, and its words and look would live apart from the

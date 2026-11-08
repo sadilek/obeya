@@ -21,6 +21,8 @@ const FRAMES = 4;
 const KEPT_BYTES = 1_000_000;
 /** Below this share of the stall covered by samples, the thread did not run: the machine slept, or the process was suspended. */
 const RAN_SHARE = 0.25;
+/** The coarsest timer a system samples by, in ms (Windows' 15.6 ms, with room). */
+const COARSEST_TIMER_MS = 20;
 /** How often the profiler samples the thread's stack, in microseconds: 250 samples in the shortest stall logged. */
 const SAMPLE_US = 2000;
 /** A page's stalls of one kind that come no further apart than this are one run, logged together. */
@@ -72,12 +74,25 @@ function command(argv: string[]): string {
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 /**
- * The lines a server stall of `ms` gets: where the samples taken meanwhile were, by share, and the
- * processes it waited for. Null where the samples cover too little of it to have run at all;
- * `traces` null where there is no profiler to ask.
+ * How many ms apart the samples were taken: the interval asked for, or longer where the system's
+ * timer is coarser (Windows: about 15.6 ms), but never longer than the coarsest timer: of a few
+ * samples around a pause the machine slept in, the gap of the pause would pass for the interval.
  */
-export function describeStall(ms: number, traces: Trace[] | null, waited: Waited[], intervalMs = 1): string[] | null {
-  if (traces && traces.length * intervalMs < ms * RAN_SHARE) return null;
+function sampledEvery(traces: Trace[], intervalMs: number): number {
+  const gaps = traces.slice(1).map((t, i) => (t.timestamp - traces[i]!.timestamp) * 1000).sort((a, b) => a - b);
+  return Math.max(intervalMs, Math.min(COARSEST_TIMER_MS, gaps[gaps.length >> 1] ?? 0));
+}
+
+/**
+ * The lines a server stall of `ms` gets: where the samples taken meanwhile were, by share, and the
+ * processes it waited for. Null where the samples cover too little of it for the server to have
+ * run at all; `traces` null where there is no profiler to ask. Where the profiler takes no samples
+ * while the thread waits for a process (`blindWhileWaiting`: Windows), the processes it waited for
+ * count as covered; elsewhere they do not, so a machine that slept while one ran logs no stall.
+ */
+export function describeStall(ms: number, traces: Trace[] | null, waited: Waited[], intervalMs = 1, blindWhileWaiting = process.platform === 'win32'): string[] | null {
+  const inProcesses = blindWhileWaiting ? waited.reduce((sum, w) => sum + w.ms, 0) : 0;
+  if (traces && traces.length * sampledEvery(traces, intervalMs) < ms * RAN_SHARE && inProcesses < ms * RAN_SHARE) return null;
   const counts = new Map<string, number>();
   for (const t of traces ?? []) {
     const p = placeOf(t);

@@ -353,6 +353,12 @@ async function rewrites(repo: string, old: string, upstream: string, tip: string
   return Object.fromEntries([[under, upstream], ...before.map(([c], i) => [c, after[i]![0]])]);
 }
 
+/** Whether this machine's git merges trees only as commits (`git merge-tree` takes trees from 2.45 on); found out by the first replay that tried. */
+let mergesTreesAsCommits = false;
+
+/** A commit of the tree of `treeish`, without parents or refs: in git's object store alone, for a `git merge-tree` that takes no trees. */
+const asCommit = (repo: string, treeish: string) => gitAsync(repo, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', 'commit-tree', `${treeish}^{tree}`, '-m', 'merge-tree');
+
 /**
  * Where a pull into the checkout's `base` would stop on a conflict: its commits that `upstream`
  * lacks (those nobody pushed yet) replayed one by one onto the tree `onto` as a rebase does, or
@@ -364,15 +370,21 @@ async function replayClash(repo: string, base: string, upstream: string, onto: s
   // as the rebase does, without the commits whose change is upstream already (cherry-picked there)
   const own = (await gitAsync(repo, 'rev-list', '--reverse', '--no-merges', '--cherry-pick', '--right-only', `${upstream}...${local}`)).split('\n').filter(Boolean);
   if (!own.length) return null;
-  const merge = async (args: string[]) => {
-    const r = await gitRun(repo, ['merge-tree', '--write-tree', '--name-only', '--no-messages', ...args]);
-    if (r.code > 1) throw new WorkspaceError(`git merge-tree in ${repo}: ${r.stderr.trim()}`);
+  const merge = async (base: string, a: string, b: string) => {
+    const run = (x: string, y: string) => gitRun(repo, ['merge-tree', '--write-tree', '--name-only', '--no-messages', `--merge-base=${base}`, x, y]);
+    let r = mergesTreesAsCommits ? await run(await asCommit(repo, a), await asCommit(repo, b)) : await run(a, b);
+    // git before 2.45 merges commits only: it fails (exit 1, as on a conflict) on a tree
+    if (r.code === 1 && /expected commit type/.test(r.stderr)) {
+      mergesTreesAsCommits = true;
+      r = await run(await asCommit(repo, a), await asCommit(repo, b));
+    }
+    if (r.code > 1 || (r.code === 1 && !r.stdout.trim())) throw new WorkspaceError(`git merge-tree in ${repo}: ${r.stderr.trim()}`);
     const [tree, ...files] = r.stdout.trim().split('\n');
     return { tree: tree!, files: r.code === 1 ? files.filter(Boolean) : null };
   };
   const clash = async (commit: string, files: string[]): Promise<PullClash> => ({ commit, subject: await gitAsync(repo, 'log', '-1', '--format=%s', commit), files, unpushed: own.length });
   if ((await pullSet(repo, base)) === 'merge') {
-    const { files } = await merge([`--merge-base=${await gitAsync(repo, 'merge-base', local, upstream)}`, local, onto]);
+    const { files } = await merge(await gitAsync(repo, 'merge-base', local, upstream), local, onto);
     if (!files) return null;
     // the first of them to touch what conflicts
     const first = (await gitAsync(repo, 'log', '--reverse', '--no-merges', '--cherry-pick', '--right-only', '--format=%H', `${upstream}...${local}`, '--', ...files)).split('\n')[0];
@@ -380,7 +392,7 @@ async function replayClash(repo: string, base: string, upstream: string, onto: s
   }
   let tree = onto;
   for (const commit of own) {
-    const r = await merge([`--merge-base=${commit}^`, tree, commit]);
+    const r = await merge(`${commit}^`, tree, commit);
     if (r.files) return clash(commit, r.files);
     tree = r.tree;
   }
@@ -1752,7 +1764,9 @@ export class Workspaces implements CardWorkspaces {
           this.free(path);
           this.looks.set(path, { ...seen, at: Date.now() });
           const next = this.place(overSlots, from);
-          if ('short' in next) throw new WorkspaceError(SHORT_TEXT[next.short], SHORT_CODE[next.short]);
+          // what the last clone was found with goes along: changed files, or why git failed there
+          const why = seen.files?.length ? `${path}: ${seen.files.join(', ')}` : seen.error ? `${path}: ${seen.error}` : '';
+          if ('short' in next) throw new WorkspaceError(`${SHORT_TEXT[next.short]}${why ? ` (${why})` : ''}`, SHORT_CODE[next.short]);
           this.take(next.path, cardId);
           path = next.path;
         }

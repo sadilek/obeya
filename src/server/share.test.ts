@@ -12,7 +12,7 @@ import { DEMO_MARKER, SHARE_CWD, Sharing, withDemoLink } from './share';
 import { siteKey } from './site';
 import { missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import type { Theme } from './theme';
-import { FakeRuntime, gitRepo, noContributions, PATIENCE } from './testing';
+import { FakeRuntime, gitRepo, noContributions, PATIENCE, removeDir } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -98,8 +98,8 @@ beforeEach(() => {
   board.showVocabulary(() => vocabulary);
   board.showThemes(() => theme?.hash ?? null);
 });
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+afterEach(async () => {
+  await removeDir(dir);
 });
 
 function make(repo = dir) {

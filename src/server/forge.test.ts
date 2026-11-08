@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, routedForge, waitsOf, type PrStatus } from './forge';
 import { onGitHub } from './repo';
-import { fakeGh, noContributions } from './testing';
+import { fakeGh, noContributions, removeDir } from './testing';
 
 test('landedUrl: the commit, or the comparison over several, on the forge of any remote but a path', () => {
   expect(landedUrl('git@github.com:example-org/app.git', 'b2')).toBe('https://github.com/example-org/app/commit/b2');
@@ -138,7 +138,7 @@ test('gh is sent to the pull request\'s host, with the token of the owner\'s log
     ]);
   } finally {
     for (const [n, v] of saved) if (v !== undefined) process.env[n] = v;
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
   }
 });
 

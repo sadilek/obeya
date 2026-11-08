@@ -3,7 +3,7 @@
 // on it, set up afresh for each test. Tests read the bindings below; they replace one with its setter.
 
 import { afterEach, beforeEach } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -12,7 +12,7 @@ import type { PlanDoc } from '../core/plan-doc';
 import { Board } from './board';
 import { Store } from './db';
 import { ReadTree } from './read-tree';
-import { FakeRuntime, gitClone, gitRepo, identify } from './testing';
+import { FakeRuntime, gitClone, gitRepo, identify, removeDir } from './testing';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
 
@@ -96,7 +96,7 @@ export function eachTest() {
   afterEach(async () => {
     // git freeing a workspace in the background is done before its repository goes
     await workers?.freed();
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
   });
 }
 

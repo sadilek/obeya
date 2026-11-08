@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { BadRequest, Board } from './board';
-import { artifact, until } from './testing';
+import { artifact, removeDir, until } from './testing';
 import { Workers } from './workers';
 import { board, dir, doc, eachTest, flush, main, manual, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
 import { GIT, git, gitOrNull } from './workspaces';
@@ -13,7 +13,7 @@ eachTest();
 describe('a worktree per card', () => {
   beforeEach(async () => {
     await workers?.freed();
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'worktrees' });
   });
 
@@ -334,7 +334,7 @@ describe('a worktree per card', () => {
   });
 
   test('an approval that could not land holds: the worker brings the branch up to date and it lands', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'worktrees', app: { run: 'bun start' } });
     const demo = join(dir, 'demo');
     mkdirSync(demo);
@@ -570,7 +570,7 @@ describe('a worktree per card', () => {
 
   /** A card whose work landed from the only clone, which another card holds now. */
   async function landedWithoutClone() {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     const c = manual();
     await workers.start(c.id);
@@ -667,7 +667,7 @@ describe('a worktree per card', () => {
   });
 
   test('a worker whose remaining work needs the new code waits for the restart and goes on after it', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'worktrees' });
     const restarting = (b: Board) =>
       new Workers({ board: b, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, restartsFor: () => 'obeya' });

@@ -451,7 +451,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     setUnderway((u) => [...u, card]);
     showWait(`${d.pending.charAt(0).toUpperCase()}${d.pending.slice(1)}`);
     p.answered.then(
-      () => showAck(d.ack, d.undo),
+      (r) => showAck(d.ackFor?.(r) ?? d.ack, d.undo),
       (e) => {
         setUnderway((u) => u.filter((id) => id !== card));
         showAck(t.cardError(p.title, failText(e)));

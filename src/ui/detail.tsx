@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, type ApproveResult, askable, type BackgroundTask, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
@@ -24,7 +24,7 @@ import { ACK_MS } from './tell';
 import { Inline, plain } from './markdown';
 import { MdField } from './mdField';
 import { DictateButton, DictationLine } from './dictation';
-import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
+import { Body, Cards, goToMessage, Msg, Quote, Reading, tellable, useAnswer, useReportedHeight } from './message';
 import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, hasDraft, typeAtCursor, updateDraft, useDraft, useDrafting, useFieldOn } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { AgentPick, RunsOn } from './agentPick';
@@ -32,7 +32,8 @@ import { CiteButton } from './cite';
 import { Composer } from './composer';
 import { useFitHeight } from './fitHeight';
 import { useFullscreen } from './fullscreen';
-import { type Box, onto, ZOOM_EASE, ZOOM_MS, zoomBox } from './zoomBox';
+import { plainKey, useZoom } from './zoom';
+import { zoomBox } from './zoomBox';
 import { AttachButton, imageUrl, ShotStrip, Shots, useShotInput } from './shots';
 import { useStickToEnd } from './stickToEnd';
 import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPick';
@@ -50,10 +51,11 @@ import { CodexLogin, Reauthenticate } from './reauthenticate';
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
  * With `pending`, the card folds at once, before the server has answered, and says so until it has.
  */
-export type ActDone = { close: true; ack: string; undo?: () => unknown; pending?: string } | { close: false };
+/** `ackFor`: with `pending`, the confirmation as the server's answer has it, where that differs from `ack`. */
+export type ActDone = { close: true; ack: string; ackFor?: (result: unknown) => string | undefined; undo?: () => unknown; pending?: string } | { close: false };
 
 /** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
-export type Pending = { card: string; title: string; answered: Promise<void> };
+export type Pending = { card: string; title: string; answered: Promise<unknown> };
 
 /** Words typed into a field of the card: straight to its agent where one listens, else the Koordinator reads them like spoken ones; the panel does not wait. */
 type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number) => void;
@@ -129,7 +131,7 @@ export function Detail(p: Props) {
     if (arrived && demoWaits && item.demo) held.set(sessionStorage, item.id, item.demo);
   }, [arrived, demoWaits, item.demo?.handover, item.demo && JSON.stringify(item.demo.chapters)]);
   const all = p.all;
-  const run = async (fn: () => Promise<void>, done: ActDone) => {
+  const run = async (fn: () => Promise<unknown>, done: ActDone) => {
     setError('');
     const answered = p.flush().then(fn);
     // what takes the server a while (a push onto main) does not hold the card open: the canvas shows it under way
@@ -146,12 +148,17 @@ export function Detail(p: Props) {
   const act = (a: CardAction, done: ActDone) =>
     run(async () => {
       if (a.action === 'approve' || a.action === 'pushChanges') await saveHeld(item.id);
-      await api.act(item.id, a);
+      const r = await api.act<ApproveResult | void>(item.id, a);
       // the decisions on findings that went with the approval are no longer the field's to send
       if (a.action === 'approve' && a.findings) updateDraft(cardDraft(item.id), { findings: undefined });
+      return r;
     }, done);
   // the repository the card is to be built in, before work on it begins: one of the canvas's or a new one
   const choice = useRepoChoice(item, p.onEdit);
+  // on a review card, the findings decided in the field that hold the merge up until they are sent
+  const heldUp = Object.entries(useUnsentDecisions(item))
+    .filter(([, route]) => route === 'contributor' || route === 'self')
+    .map(([id]) => Number(id));
   // in a folder without git the card's change list takes the place of its branch
   const inFolder = !!p.repos.find((r) => r.id === item.repo)?.folder;
   const changes = useFolderDiff(item, inFolder && item.kind === 'task' && !!item.branch);
@@ -311,10 +318,6 @@ export function Detail(p: Props) {
 
   // work waiting for the owner's verdict, with a demo or a summary
   const review = handedOver(item);
-  // on a review card, the findings decided in the field that hold the merge up until they are sent
-  const heldUp = Object.entries(useUnsentDecisions(item))
-    .filter(([, route]) => route === 'contributor' || route === 'self')
-    .map(([id]) => Number(id));
   // an agent is on the card and can be stopped
   const running = item.state === 'working' || item.state === 'waiting' || !!item.finishing;
   const archivable = finishedArchivable(item);
@@ -753,7 +756,12 @@ function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: A
   const decided = useUnsentDecisions(item);
   // a follow-up task or an ignored finding goes with the merge; a decision that holds the PR up goes with Send first
   const heldUp = Object.values(decided).some((route) => route === 'contributor' || route === 'self');
-  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, pending });
+  // a PR in conflict with main is not merged: the confirmation says who resolves it
+  const ackFor = (r: unknown) => {
+    const conflict = (r as ApproveResult)?.conflict;
+    return conflict === 'agent' ? t.review.conflictAgent(c.number) : conflict === 'contributor' ? t.review.conflictContributor(c.number, c.author) : undefined;
+  };
+  const go = (ack: string, pending: string) => act({ action: 'approve', ...(Object.keys(decided).length ? { findings: decided } : {}) }, { close: true, ack, ackFor, pending });
   if (c.held?.asks.length)
     return (
       <button className="btn primary" disabled={heldUp} title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
@@ -1371,6 +1379,8 @@ function Conversation({
   // (a planned card's conversation is a past one until it starts)
   const snoozedAt = item.snoozed && (!past || item.snoozed.start) ? turns.shown.findLast((x) => snoozeLine(x.e))?.e.id : undefined;
   const explained = explainedFailure(item, events)?.id;
+  // the newest text answer's "Show as walkthrough" stays in view until the owner has used it once
+  const hinted = [...turns.shown, ...turns.below].findLast((x) => !x.quiet && tellable(x.e))?.e.id;
   const line = (turn: Turn) => (
     <Fragment key={turn.e.id}>
       <Line
@@ -1382,6 +1392,7 @@ function Conversation({
         fresh={fresh.has(turn.e.id) || (!!turn.then && fresh.has(turn.then.e.id))}
         onReply={onReply}
         onDelete={held.includes(turn.e.id) ? () => takeBack(item.id, turn.e) : undefined}
+        hint={turn.e.id === hinted}
       />
       {turn.e.id === held.at(-1) && (
         <div className="held-note">
@@ -1555,7 +1566,22 @@ function Fold({ children, lines }: { children: ReactNode; lines?: number }) {
 }
 
 /** A state change or an error between the messages, or a message. */
-function Line({ turn, snoozed, explained, ...rest }: { turn: Turn; snoozed?: Item; explained?: boolean; demoQuestion?: Demo; quoted?: CardEvent; fresh?: boolean; onReply?: (e: CardEvent) => void; onDelete?: () => void }) {
+function Line({
+  turn,
+  snoozed,
+  explained,
+  ...rest
+}: {
+  turn: Turn;
+  snoozed?: Item;
+  explained?: boolean;
+  demoQuestion?: Demo;
+  quoted?: CardEvent;
+  fresh?: boolean;
+  onReply?: (e: CardEvent) => void;
+  onDelete?: () => void;
+  hint?: boolean;
+}) {
   return snoozed ? (
     <SnoozeLine item={snoozed} e={turn.e} at={time(turn.e.at)} />
   ) : turn.line ? (
@@ -1590,7 +1616,8 @@ const ownerSide = (e: CardEvent) => e.author === 'owner' || e.kind === 'answer';
  * its demo report's question, a reply with the handover that came next and says what changed; the owner's reply with the message it replies to (`quoted`) above it.
  * `onReply`: the owner can reply to it; `onDelete`: the owner can take it back (a comment not yet
  * sent, words not yet read); `unread`: the agent has not read it yet, and when it will; `fresh`: the
- * owner had not seen it when the conversation came into view.
+ * owner had not seen it when the conversation came into view; `hint`: the newest text answer, whose
+ * "Show as walkthrough" stays in view until the owner has used it once.
  */
 function Message({
   turn,
@@ -1600,6 +1627,7 @@ function Message({
   onReply,
   onDelete,
   unread,
+  hint,
 }: {
   turn: Turn;
   demoQuestion?: Demo;
@@ -1608,10 +1636,11 @@ function Message({
   onReply?: (e: CardEvent) => void;
   onDelete?: () => void;
   unread?: string;
+  hint?: boolean;
 }) {
   const { e, steps } = turn;
   const q = e.kind === 'question' ? parseQuestion(e.text) : undefined;
-  const answer = useAnswer(e);
+  const answer = useAnswer(e, hint);
   return (
     <Msg
       by={ownerSide(e) ? 'owner' : e.author}
@@ -1844,7 +1873,14 @@ function DemoView({
     shownLatest.current = latest;
     if (shownN === null) setStarted(false);
   }, [latest]);
-  const zoom = useZoom(video);
+  const zoom = useZoom({
+    box: (w, h) => {
+      const v = video.current;
+      const r = v?.getBoundingClientRect();
+      return zoomBox(v?.videoWidth ? v.videoWidth / v.videoHeight : r?.height ? r.width / r.height : 16 / 9, w, h);
+    },
+    playing: () => !!video.current && !video.current.paused,
+  });
   // the phone view, which puts the conversation elsewhere, puts the video into full screen itself (fullscreen.ts)
   const fullscreen = useFullscreen(zoom.screen, video, !!elsewhere);
   const seek = useSeekKeys(video);
@@ -2111,11 +2147,7 @@ function useWatching(cardId: string, video: RefObject<HTMLVideoElement | null>, 
 }
 
 /** A key with no modifier, pressed outside a text field and with nothing over the card: one for the demo video. */
-function forTheVideo(e: KeyboardEvent) {
-  if (e.metaKey || e.ctrlKey || e.altKey) return false;
-  if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return false;
-  return !document.querySelector('#help, #config.on, .lightbox, .diff-view');
-}
+const forTheVideo = plainKey;
 
 /** The demo video the keys are for, with several on a card: the zoomed one, else the one playing, else the first. */
 function keyedVideo() {
@@ -2172,88 +2204,6 @@ function useSeekKeys(video: RefObject<HTMLVideoElement | null>) {
     hide.current = setTimeout(() => setHint(false), 4000);
   };
   return { hint, focused };
-}
-
-/** Set once the owner zoomed with Z: the magnifier stops showing the key beside it. */
-const ZOOM_KEY_KNOWN = 'obeya-zoom-key-known';
-
-/**
- * The demo video shown large over the greyed page, short of full screen: the same video element
- * (it keeps playing) grows out of its place in the card and goes back into it. Z or the button on
- * the video toggles it, Esc or a click beside it ends it. With several demos on a card, Z takes the
- * zoomed one, else the one playing, else the first. Hovering the magnifier shows the key until
- * the owner first used it.
- */
-function useZoom(video: RefObject<HTMLVideoElement | null>) {
-  const player = useRef<HTMLDivElement>(null);
-  const screen = useRef<HTMLDivElement>(null);
-  const backdrop = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<{ from: Box; to: Box; closing?: boolean } | null>(null);
-  const [keyKnown, setKeyKnown] = useState(() => known(ZOOM_KEY_KNOWN));
-  const boxRef = useRef(box);
-  boxRef.current = box;
-  const toggle = () => {
-    const cur = boxRef.current;
-    const el = screen.current;
-    if (!el || cur?.closing) return;
-    if (!cur) {
-      const from = el.getBoundingClientRect();
-      const v = video.current;
-      const aspect = v?.videoWidth ? v.videoWidth / v.videoHeight : from.width / from.height;
-      setBox({ from: { left: from.left, top: from.top, width: from.width, height: from.height }, to: zoomBox(aspect, innerWidth, innerHeight) });
-      return;
-    }
-    // back into its place in the card, wherever that is by now
-    const r = player.current!.getBoundingClientRect();
-    const back = { left: r.left, top: r.top, width: r.width, height: cur.from.height * (r.width / cur.from.width) };
-    setBox({ ...cur, closing: true });
-    el.animate([{ transform: 'none' }, { transform: onto(back, cur.to) }], { duration: ZOOM_MS, easing: ZOOM_EASE, fill: 'forwards' }).onfinish = () => setBox(null);
-  };
-  const toggleRef = useRef(toggle);
-  toggleRef.current = toggle;
-  // grows out of where it stood; back in its place, it lets go of the shrinking's last frame only
-  // once it no longer stands zoomed, so the large video does not show for a frame in between
-  const zoomed = !!box;
-  useLayoutEffect(() => {
-    const cur = boxRef.current;
-    if (!screen.current) return;
-    if (!cur) return screen.current.getAnimations().forEach((a) => a.cancel());
-    screen.current.animate([{ transform: onto(cur.from, cur.to) }, { transform: 'none' }], { duration: ZOOM_MS, easing: ZOOM_EASE });
-  }, [zoomed]);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (boxRef.current) toggleRef.current();
-        return;
-      }
-      if (e.key !== 'z' && e.key !== 'Z') return;
-      if (e.repeat || !forTheVideo(e) || keyedVideo() !== video.current) return;
-      e.preventDefault();
-      toggleRef.current();
-      setKeyKnown(true);
-      know(ZOOM_KEY_KNOWN);
-    };
-    addEventListener('keydown', key);
-    return () => removeEventListener('keydown', key);
-  }, []);
-  // a resized window resizes the zoomed video; a wheel over it does not scroll the card behind
-  useEffect(() => {
-    if (!zoomed) return;
-    const resize = () => {
-      const v = video.current;
-      const cur = boxRef.current;
-      if (cur && !cur.closing && v?.videoWidth) setBox({ ...cur, to: zoomBox(v.videoWidth / v.videoHeight, innerWidth, innerHeight) });
-    };
-    const still = (e: WheelEvent) => e.preventDefault();
-    const els = [screen.current, backdrop.current];
-    addEventListener('resize', resize);
-    els.forEach((el) => el?.addEventListener('wheel', still, { passive: false }));
-    return () => {
-      removeEventListener('resize', resize);
-      els.forEach((el) => el?.removeEventListener('wheel', still));
-    };
-  }, [zoomed]);
-  return { player, screen, backdrop, box, toggle, keyKnown };
 }
 
 /**

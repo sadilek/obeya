@@ -934,7 +934,8 @@ function DemoBlock({ on }: { on: boolean }) {
   const [sampling, setSampling] = useState(false);
   // the subtitle languages as typed, separators and all, while the field has them; the draft holds their codes
   const [subtitlesText, setSubtitlesText] = useState<string | null>(null);
-  const audio = useRef<HTMLAudioElement | null>(null);
+  // one element for every sample: played once in the click, it may play later too (`listen`)
+  const [audio] = useState(() => new Audio());
   useEffect(() => {
     if (!on) return;
     api.demoSettings().then((v) => {
@@ -964,7 +965,7 @@ function DemoBlock({ on }: { on: boolean }) {
     const timer = setInterval(() => api.demoSettings().then(setView, console.error), 1500);
     return () => clearInterval(timer);
   }, [on, installing, counting]);
-  useEffect(() => () => audio.current?.pause(), []);
+  useEffect(() => () => audio.pause(), [audio]);
   if (!view || !draft) return null;
   const d = t.config.demo;
   const changed = JSON.stringify(draft) !== JSON.stringify(view.settings);
@@ -997,11 +998,18 @@ function DemoBlock({ on }: { on: boolean }) {
   const listen = async () => {
     setSampling(true);
     setStatus('');
+    // Safari (WebKit) lets a page sound for about 10 s after a click, and a first sample
+    // takes longer: started in the click, without a sample yet, the element may play when it comes
+    const before = audio.src;
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    if (before) URL.revokeObjectURL(before);
+    audio.play().catch(() => {});
     try {
       const wav = await api.demoVoiceSample(draft);
-      audio.current?.pause();
-      audio.current = new Audio(URL.createObjectURL(wav));
-      await audio.current.play();
+      audio.src = URL.createObjectURL(wav);
+      await audio.play();
     } catch (e) {
       failed(e);
     }

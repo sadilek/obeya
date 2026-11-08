@@ -1,10 +1,11 @@
 import { afterAll, expect, spyOn, test } from 'bun:test';
 import * as fs from 'node:fs';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MESSAGES } from '../core/messages';
 import { MANIFEST, siteKey, siteTarget } from './site';
+import { removeDir } from './testing';
 
 // Sharing a page on a site of some hundred pages holds the server up no longer than a page of its
 // own needs: the pages already there are neither read nor checked one by one, the files are read
@@ -15,9 +16,9 @@ const PAGES = 400;
 const LONGEST_MS = 150;
 
 const dir = mkdtempSync(join(tmpdir(), 'obeya-site-stalls-'));
-afterAll(() => {
+afterAll(async () => {
   server.stop(true);
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 // the host: serves what the deploy line copied to `deployed/`, without a synchronous call of its own

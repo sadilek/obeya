@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_GITIGNORE, previewGitSetup, setUpGit, withoutGit } from './git-setup';
-import { gitRepo } from './testing';
+import { gitRepo, removeDir } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -33,10 +33,10 @@ beforeEach(() => {
   }
   writeFileSync(join(folder, 'data.bin'), Buffer.alloc(2_000_000));
 });
-afterEach(() => {
+afterEach(async () => {
   if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
   else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 describe('setting up git in a folder', () => {

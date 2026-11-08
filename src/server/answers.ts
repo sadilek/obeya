@@ -55,9 +55,17 @@ const LOG_LINES = 25;
 type Exchange = Talk & { about?: string; session?: string };
 type By = 'koordinator' | 'project';
 
+/** What "Show as walkthrough" asked for: the walkthrough's thread and file, which the page that clicked plays once it can. */
+export interface Asked {
+  thread: number;
+  file: string;
+}
+
 export class Answers {
   /** "Show as walkthrough": the walkthrough each exchange asked for, shown before its first slide. */
   private prepared = new Map<number, Told>();
+  /** The same on a Question card: by the owner's words that asked for it. */
+  private preparedOn = new Map<number, Told>();
   /** Exchanges being looked up, so a resume does not ask twice. */
   private busy = new Set<number>();
   /** The turns of each thread, one after the other: two never run in one session at once. */
@@ -163,14 +171,21 @@ export class Answers {
    * The owner's words to the agent of a Question card, maybe with screenshots and in reply to a
    * message of its conversation; `talk`: asked in Obeya's sheet as a follow-up of its thread, whose
    * exchange gets the answer too. Words that come while it reads go in with the next turn; while it
-   * waits for its background work, they go in at once.
+   * waits for its background work, they go in at once. `walkthrough`: the words are "Show as
+   * walkthrough" on one of its answers: what the agent hears instead, and the walkthrough prepared.
    */
-  ask(cardId: string, text: string, images: string[], spoken: boolean, replyTo?: number, talk?: number) {
+  ask(cardId: string, text: string, images: string[], spoken: boolean, replyTo?: number, talk?: number, walkthrough?: { heard: string; prepared: Told; files: AnswerFile[] }) {
     const card = this.questionCard(cardId);
     const e = this.o.board.log(cardId, 'talk', 'owner', text, { images, replyTo, unread: this.reading.has(cardId) && !this.waiting.has(cardId) && !talk });
     const quoted = replyTo ? this.o.board.quoted(cardId, replyTo) : undefined;
-    const said = `${replyNote(quoted, 'koordinator')}${text}${imageNote(images)}`;
+    // "Show as walkthrough": the agent hears what the button asks, and the walkthrough's player shows
+    // at once, unless its agent is in a turn, which may be telling a walkthrough of its own
+    const said = walkthrough?.heard ?? `${replyNote(quoted, 'koordinator')}${text}${imageNote(images)}`;
     const thread = this.o.board.thread(cardId);
+    if (walkthrough) {
+      this.preparedOn.set(e.id, walkthrough.prepared);
+      if (!this.reading.has(cardId)) this.showLive(cardId, 'talk', this.agentFor(this.o.board.exchange(thread.talk)!).by, thread.talk, walkthrough.files);
+    }
     const pending = [...(thread.pending ?? []), { text: spoken ? `(${SPOKEN}:) ${said}` : said, images, said: [e.id], ...(talk ? { talk } : {}) }];
     // the owner's words let a paused agent go on, with what it had not answered yet, and one about to pause read on
     if (card.paused) this.goOn(cardId);
@@ -267,24 +282,81 @@ export class Answers {
   }
 
   /**
-   * "Show as walkthrough" on a looked-up answer: a follow-up in its thread that asks for the answer
-   * told as a walkthrough, which comes as the next answer. The voice loads meanwhile, so the
-   * walkthrough sounds soon after its first slide.
+   * "Show as walkthrough" on an answer of the sheet, or of a card's log (`on`: its card and message):
+   * a looked-up answer's thread is asked to tell it as a walkthrough, as a follow-up; a direct
+   * answer of the Koordinator's has no thread, so a look-up thread starts for it. Either comes as
+   * the next answer, its player there at once. The voice loads meanwhile, so the walkthrough sounds
+   * soon after its first slide.
    */
-  showAsWalkthrough(talkId: number): number {
+  showAsWalkthrough(talkId: number, on?: { card: string; ev: number }): Asked {
     const t = this.o.board.exchange(talkId);
-    if (!t?.thread || t.answer === undefined || !this.o.voicing) throw new BadRequest('invalid', 'no looked-up answer to tell as a walkthrough');
-    const talk = this.o.board.addTalk(this.o.board.t.answer.walkthroughAsked, this.o.board.t.answer.walkthroughReply, null, { question: asWalkthrough(t.question ?? t.said, t.answer), about: t.about ?? null });
-    this.o.board.followTalk(talk, talkId);
-    // most likely the language of the answer it tells, which the title slide then names
-    const language = writtenIn(t.answer) ?? this.o.board.conversation();
-    this.o.voicing.warm(language);
+    const follow = !!t?.thread && t.answer !== undefined;
+    const direct = !!t && !t.question && !!t.replyOnly && !!t.reply && !t.undone;
+    if (!t || !(follow || direct) || !this.o.voicing) throw new BadRequest('invalid', 'no text answer to tell as a walkthrough');
+    // a thread on a Question card goes on there: its answers are asked for there
+    if (follow && this.o.board.exchange(t.thread!)?.movedTo) throw new BadRequest('invalid', 'the thread goes on on its Question card');
+    const words = this.o.board.t.answer;
+    const told = follow ? t.answer! : t.reply!;
+    const question = follow ? asWalkthrough(t.question ?? t.said, told) : asWalkthroughOf(t.said, told);
+    const about = follow ? (t.about ?? null) : (t.about ?? t.cardId ?? null);
+    // in the sheet, quoting the direct answer it tells; a follow-up shows the answer it continues
+    const quote = !on && direct ? { talk: talkId, part: 'reply' as const } : undefined;
+    const talk = this.o.board.addTalk(words.walkthroughAsked, words.walkthroughReply, on?.card ?? null, { question, about }, [], quote);
+    if (follow) this.o.board.followTalk(talk, talkId);
+    if (on) {
+      this.o.board.log(on.card, 'say', 'owner', words.walkthroughAsked, { replyTo: on.ev });
+      this.o.board.log(on.card, 'say', 'koordinator', words.walkthroughReply);
+    }
+    const thread = follow ? t.thread! : talk;
+    const { by } = this.agentFor(this.o.board.exchange(thread)!);
     // its player stands there at once, at full size, until the first slide comes
-    const prepared = prepareWalkthrough(this.o.dirOf(t.thread), t.question ?? t.said, language);
+    const { prepared, files } = this.prepare(thread, follow ? (t.question ?? t.said) : t.said || told, told);
     this.prepared.set(talk, prepared);
-    this.o.board.talkFiles(talk, [{ name: prepared.file.slice(this.o.dirOf(t.thread).length + 1), caption: '' }]);
+    this.o.board.talkFiles(talk, files);
+    if (on) this.showLive(on.card, 'say', by, thread, files);
     this.lookUp(talk);
-    return talk;
+    return { thread, file: files[0]!.name };
+  }
+
+  /**
+   * "Show as walkthrough" on a message of a card's conversation: a Question card's answer is asked
+   * of the card's agent, any other answer as in the sheet (`showAsWalkthrough`), the exchange found
+   * by the answer's words.
+   */
+  showEventAsWalkthrough(cardId: string, ev: number): Asked {
+    const card = this.o.board.item(cardId);
+    const e = card ? this.o.board.event(cardId, ev) : undefined;
+    if (!card || !e || e.author === 'owner' || !e.text || e.answer?.live) throw new BadRequest('invalid', 'no text answer to tell as a walkthrough');
+    if (card.kind === 'question' && e.answer && e.answer.thread === card.thread?.talk) return this.showOnQuestionCard(card, e);
+    const talk = e.answer
+      ? this.o.board.threadTalk(e.answer.thread).findLast((r) => r.answer === e.text)?.id
+      : e.author === 'koordinator' && e.reply
+        ? this.o.board.cardReply(cardId, e.text)
+        : undefined;
+    if (talk === undefined) throw new BadRequest('invalid', 'no text answer to tell as a walkthrough');
+    return this.showAsWalkthrough(talk, { card: cardId, ev });
+  }
+
+  /** "Show as walkthrough" on an answer of a Question card: the owner's words to its agent, its player there at once. */
+  private showOnQuestionCard(card: Item, e: CardEvent): Asked {
+    if (!this.o.voicing) throw new BadRequest('invalid', 'no voice to tell a walkthrough');
+    const thread = this.o.board.thread(card.id);
+    // the words it answered: the owner's last before it, else the thread's question
+    const question = this.o.board.events(card.id).findLast((x) => x.id < e.id && x.author === 'owner' && x.kind === 'talk')?.text ?? this.o.board.exchange(thread.talk)?.question ?? card.title;
+    const { prepared, files } = this.prepare(thread.talk, question, e.text);
+    this.ask(card.id, this.o.board.t.answer.walkthroughAsked, [], false, e.id, undefined, { heard: asWalkthrough(question, e.text), prepared, files });
+    return { thread: thread.talk, file: files[0]!.name };
+  }
+
+  /** The walkthrough "Show as walkthrough" asked for in the thread, named after `question`; the voice loads for the language `told` is written in. */
+  private prepare(thread: number, question: string, told: string): { prepared: Told; files: AnswerFile[] } {
+    // most likely the language of the answer it tells, which the title slide then names
+    const language = writtenIn(told) ?? this.o.board.conversation();
+    this.o.voicing!.warm(language);
+    const dir = this.o.dirOf(thread);
+    mkdirSync(dir, { recursive: true });
+    const prepared = prepareWalkthrough(dir, question, language);
+    return { prepared, files: [{ name: prepared.file.slice(dir.length + 1), caption: '' }] };
   }
 
   /**
@@ -367,6 +439,9 @@ export class Answers {
     const heard = (p: { said: number[] }) => p.said.some((id) => taken.some((t) => t.said.includes(id)));
     const intro = this.message(root.said, root.question, about, project);
     const resumed = this.resumed.delete(cardId) ? `${RESUMED}\n\n` : '';
+    // "Show as walkthrough" among the words: its player shows already
+    const asked = taken.flatMap((p) => p.said).filter((id) => this.preparedOn.has(id));
+    const prepared = asked.length ? this.preparedOn.get(asked.at(-1)!) : undefined;
     this.o.board.readNow(cardId, taken.flatMap((p) => p.said));
     this.reading.add(cardId);
     const end = new AbortController();
@@ -386,6 +461,7 @@ export class Answers {
         onSession: (id, model) => this.o.board.work(cardId, { session_id: id, model: model ?? null }),
         onLimit: (until) => this.o.board.waitsForLimit({ card: cardId }, until),
         onShown: (files) => this.showLive(cardId, 'talk', by, stored.talk, files),
+        ...(prepared ? { prepared } : {}),
         resume: this.o.board.row(cardId).session_id ?? undefined,
         message: `${resumed}${followUp(words, undefined, true)}`,
         // with the words passed in meanwhile, which the session that failed had heard
@@ -413,6 +489,7 @@ export class Answers {
       if (e instanceof Interrupted) return this.dropLive(cardId, stored.talk);
       a = { text: this.o.board.t.answer.failed(messageOf(e)) };
     } finally {
+      for (const id of asked) this.preparedOn.delete(id);
       this.reading.delete(cardId);
       this.waiting.delete(cardId);
       if (this.turnEnds.get(cardId) === end) this.turnEnds.delete(cardId);
@@ -655,6 +732,13 @@ const filesNote = (dir: string) =>
  */
 const asWalkthrough = (question: string, answer: string) =>
   `Tell this answer of yours as a walkthrough, as your instructions describe, rather than as text: the same content, walked through.\n\nThe question: ${question}\n\nYour answer:\n<answer>\n${clip(answer, 6000)}\n</answer>`;
+
+/**
+ * The same for an answer Obeya gave straight away, without looking anything up: the look-up that
+ * tells it starts afresh, and checks what it walks through.
+ */
+const asWalkthroughOf = (said: string, answer: string) =>
+  `${said ? `The owner said to Obeya: "${clip(said, 2000)}". Obeya answered straight away, without looking anything up:` : 'Obeya told the owner, without being asked:'}\n<answer>\n${clip(answer, 6000)}\n</answer>\n\nTell that answer as a walkthrough, as your instructions describe, rather than as text: the same content, walked through. Check what it says where you walk through how something works, and correct it where it is wrong.`;
 
 const answerRef = (thread: number, files?: AnswerFile[], continues?: string): AnswerRef => ({
   thread,

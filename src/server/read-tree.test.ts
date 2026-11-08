@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ReadTree, refsSeal } from './read-tree';
-import { artifact, FakeRuntime, gitClone, gitRepo, identify, noForge, syncGitCalls, until } from './testing';
+import { artifact, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 const doc = (title: string, ticked = '') =>
@@ -30,10 +30,10 @@ beforeEach(() => {
     identify(c);
   }
 });
-afterEach(() => {
+afterEach(async () => {
   canvas?.shutdown();
   canvas = undefined;
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 /** A commit pushed to `origin`'s main from the other clone. */
@@ -361,7 +361,10 @@ describe("a repository's settings for everyone", () => {
     const c = await openWatched(repo, runtime);
     const land = async (title: string, files: Record<string, string>) => {
       const card = c.board.create({ title, x: 0, y: 0 });
+      const before = runtime.sessions.length;
       await c.repos[0]!.workers.start(card.id);
+      // its session starts once its workspace is ready
+      await until(() => runtime.sessions.length > before);
       runtime.last.emit({ type: 'session', id: `session-${title}` });
       const ws = c.board.row(card.id).workspace!;
       for (const [f, text] of Object.entries(files)) {

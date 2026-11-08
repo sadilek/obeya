@@ -6,20 +6,26 @@
 // the voice of the demo settings for the language the title slide names, so the player starts with the first sentence while the agent still
 // writes the slides after it. One voice speaks for every walkthrough of the server, a sentence at a
 // time, in the queue it shares with the renders (narration.ts): what a playing player needs next
-// goes first.
+// goes first. Each sentence voiced is heard back with the speech recognition of voice in, for the
+// times of its words, which the caption's pointer follows. Demo settings without a voice leave it
+// unvoiced: the player shows each sentence as a caption for as long as reading it takes. What a
+// server left unvoiced when it stopped, the next one voices once a player reads the walkthrough.
 
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { LANGUAGES, type Language } from '../core/locale';
 import type { AnswerFile } from '../core/types';
-import { type Clip, INTERRUPTED, itemsOf, type Slide, type SlideContent, type Walkthrough, WALKTHROUGH_SUFFIX } from '../core/walkthrough';
+import { type Clip, estimatedStarts, heardStarts, itemsOf, type Slide, type SlideContent, type Walkthrough, WALKTHROUGH_SUFFIX } from '../core/walkthrough';
 import { clip, messageOf } from '../core/text';
 import type { AgentTool } from './runtime';
+import { readsOut, tooFull } from './slide-checks';
 import { sentencesOf } from '../../plugin/skills/demo/lib/subtitles.ts';
 
 /** Slides a walkthrough has at most. */
 export const MAX_SLIDES = 8;
+/** How long hearing a sentence back may take: a cold start of the recognition loads its model, about 1 GB. */
+export const HEAR_MS = 60_000;
 /** Lines a code slide shows at most. */
 export const MAX_CODE_LINES = 30;
 /** The largest file a code slide is read from, and the longest line it shows. */
@@ -32,6 +38,7 @@ Walkthroughs: an answer that explains how something works or what happens when (
 - Tell it with walkthrough_slide, one call per slide, in order. The owner sees and hears each slide as soon as you have handed it over, while you work on the next: hand over the title slide as soon as you know what the walkthrough answers, each further slide once you have checked what it says.
 - 4 to ${MAX_SLIDES} slides: a title slide first, then points, flows and, only when the owner asks to see the code, code slides; otherwise the owner does not read code.
 - Each slide's narration is in the owner's language, spoken prose of two to four sentences that explains rather than reads the slide out. The title slide names that language (language), and the voice speaks the walkthrough in it. Give it as one text, or on a slide whose items show one after the other (points, steps, focus ranges) as one part per item, each spoken while its item shows.
+- Each slide has room for little: a point takes a line or two (about 60 characters a line); a flow's box holds a short word or two, about 17 characters a line with three steps, 11 with four and 8 with five. Obeya refuses a slide that does not fit or whose narration only reads it out, saying why: revise it and hand it over again.
 - Then call answer_owner with a sentence or two on what the walkthrough shows: it comes with your answer by itself.
 `.trim();
 
@@ -57,6 +64,15 @@ export interface VoicingOptions {
   speak: (text: string, out: string, language: Language) => Promise<void>;
   /** Loads the voice before its first sentence, where it can stay loaded: the owner just asked for a walkthrough. */
   warm?: (language: Language) => void;
+  /** The demo settings have no voice for `language`: its walkthroughs play as captions. */
+  silent?: (language: Language) => boolean;
+  /**
+   * Hears a voiced sentence back: what was heard in pieces (words or parts of them), each with the
+   * second it starts at. Without it, or where it fails, a sentence's words get starts by their length.
+   */
+  hear?: (wav: string, language: Language) => Promise<[string, number][]>;
+  /** How long hearing a sentence may take before its words get starts by their length: the recognition may be loading. */
+  hearMs?: number;
   /** How long a player's word on the slide it plays counts: it says so again while it plays. */
   playingMs?: number;
   log?: (line: string) => void;
@@ -79,12 +95,17 @@ export class Voicing {
   private busy = false;
   /** The walkthroughs a player plays, by their file: the slide it is on, and when it said so. */
   private playing = new Map<string, { slide: number; at: number }>();
-  /** The walkthroughs being voiced, by their file, for the players' word. */
+  /** The walkthroughs being voiced or heard back, by their file, for the players' word. */
   private told = new Map<string, Told>();
+  /** The sentences being heard back, per walkthrough. */
+  private hearing = new Map<Told, number>();
+  /** The walkthrough of the sentence the voice is speaking. */
+  private speaking?: Told;
 
   constructor(private o: VoicingOptions) {}
 
   warm(language: Language) {
+    if (this.o.silent?.(language)) return;
     try {
       this.o.warm?.(language);
     } catch (e) {
@@ -98,7 +119,7 @@ export class Voicing {
     else this.playing.set(file, { slide, at: Date.now() });
   }
 
-  /** Whether sentences of the walkthrough in `file` still wait for the voice. */
+  /** Whether sentences of the walkthrough in `file` still wait for the voice, or to be heard back. */
   voicing(file: string) {
     return this.told.has(file);
   }
@@ -107,16 +128,41 @@ export class Voicing {
   add(w: Told, slide: number) {
     // its voice failed: the rest would fail the same way
     if (w.data.error) return;
+    // no voice: none for the rest either, so it does not fall silent halfway
+    if (w.data.silent || this.o.silent?.(w.language)) return w.silence();
     this.told.set(w.file, w);
     for (const part of w.data.slides[slide]!.parts.keys()) this.jobs.push({ w, slide, part });
     void this.work();
+  }
+
+  /**
+   * A walkthrough the server before this one left with sentences unvoiced: voiced on from where it
+   * stopped, as it is now. Its agent's turn ended with that server, so it has every slide it gets.
+   */
+  resume(file: string, data: Walkthrough): Walkthrough {
+    const w = Told.again(file, { ...data, done: true, language: data.language ?? writtenIn(data.slides.flatMap((s) => s.parts).join(' ')) ?? 'en' });
+    // sentences voiced but not heard back by that server: their words start by their length
+    for (const [k, c] of w.data.clips.entries()) for (const [p, x] of c.entries()) if (x && !x.words) w.timed(k, p, estimatedStarts(w.data.slides[k]!.parts[p] ?? '', x.seconds));
+    w.finish();
+    if (this.o.silent?.(w.language)) w.silence();
+    else {
+      this.told.set(file, w);
+      for (const [slide, c] of w.data.clips.entries()) for (const [part, x] of c.entries()) if (!x) this.jobs.push({ w, slide, part });
+      this.o.log?.(`Obeya: voicing on the walkthrough ${file}, left unvoiced by the server before`);
+      void this.work();
+    }
+    return w.data;
   }
 
   private async work() {
     if (this.busy) return;
     this.busy = true;
     try {
-      for (let job = this.next(); job; job = this.next()) await this.voice(job);
+      for (let job = this.next(); job; job = this.next()) {
+        this.speaking = job.w;
+        await this.voice(job).finally(() => (this.speaking = undefined));
+        this.settle(job.w);
+      }
     } finally {
       this.busy = false;
     }
@@ -142,45 +188,92 @@ export class Voicing {
     try {
       await this.o.speak(w.data.slides[slide]!.parts[part]!, `${out}.part.wav`, w.language);
       renameSync(`${out}.part.wav`, out);
-      w.voiced(slide, part, { file, seconds: wavSeconds(out) });
+      const seconds = wavSeconds(out);
+      w.voiced(slide, part, { file, seconds });
+      void this.listen(w, slide, part, out, seconds);
     } catch (e) {
       // the rest of it would fail the same way
       this.jobs = this.jobs.filter((j) => j.w !== w);
       w.failed(messageOf(e).trim().split('\n').at(-1) || 'the voice failed');
       this.o.log?.(`Obeya: voicing the walkthrough ${w.file} failed: ${messageOf(e)}`);
     }
-    if (!this.jobs.some((j) => j.w === w)) {
-      this.told.delete(w.file);
-      this.playing.delete(w.file);
+  }
+
+  /** Hears a sentence back for the times of its words, while the voice goes on with the next. */
+  private async listen(w: Told, slide: number, part: number, wav: string, seconds: number) {
+    this.hearing.set(w, (this.hearing.get(w) ?? 0) + 1);
+    const sentence = w.data.slides[slide]!.parts[part]!;
+    let words = estimatedStarts(sentence, seconds);
+    if (this.o.hear) {
+      let expire = () => {};
+      const late = new Promise<undefined>((resolve) => {
+        const timer = setTimeout(() => resolve(undefined), this.o.hearMs ?? HEAR_MS);
+        expire = () => clearTimeout(timer);
+      });
+      try {
+        const heard = await Promise.race([this.o.hear(wav, w.language), late]);
+        if (heard?.length) words = heardStarts(sentence, heard, seconds);
+        else if (!heard) this.o.log?.(`Obeya: hearing a sentence of the walkthrough ${w.file} back took too long; its words start by their length`);
+      } catch (e) {
+        this.o.log?.(`Obeya: hearing a sentence of the walkthrough ${w.file} back failed: ${messageOf(e)}`);
+      } finally {
+        expire();
+      }
     }
+    w.timed(slide, part, words);
+    this.hearing.set(w, this.hearing.get(w)! - 1);
+    this.settle(w);
+  }
+
+  /** Done with a walkthrough once nothing of it waits for the voice or to be heard back. */
+  private settle(w: Told) {
+    if (this.speaking === w || this.jobs.some((j) => j.w === w) || this.hearing.get(w)) return;
+    this.hearing.delete(w);
+    this.told.delete(w.file);
+    this.playing.delete(w.file);
   }
 }
 
 /** One walkthrough as it is told: its file, written anew with every slide and every clip. */
 export class Told {
-  readonly data: Walkthrough;
   readonly started = Date.now();
   readonly clipsPath: string;
 
-  constructor(
+  private constructor(
     /** Its file, absolute. */
     readonly file: string,
-    /** The language its narration is voiced in: the title slide's, a guess before that (`prepareWalkthrough`). */
-    public language: Language,
-    title: string,
+    readonly data: Walkthrough & { language: Language },
   ) {
+    this.clipsPath = join(file, '..', data.clipsDir);
+  }
+
+  /**
+   * A walkthrough begun, in a file of its own. `language`: the one its narration is voiced in, a
+   * guess until the title slide names it (`prepareWalkthrough`).
+   */
+  static begin(file: string, language: Language, title: string): Told {
     const clipsDir = `${file.slice(file.lastIndexOf(sep) + 1, -WALKTHROUGH_SUFFIX.length)}.clips`;
-    this.clipsPath = join(file, '..', clipsDir);
+    const w = new Told(file, { title, slides: [], done: false, clips: [], clipsDir, language });
     // a directory of its own, made here: one that is there already is not the server's
-    mkdirSync(this.clipsPath);
-    this.data = { title, slides: [], done: false, clips: [], clipsDir };
-    this.write();
+    mkdirSync(w.clipsPath);
+    w.write();
+    return w;
+  }
+
+  /** A walkthrough a server before this one began, as its file has it. */
+  static again(file: string, data: Walkthrough & { language: Language }): Told {
+    return new Told(file, data);
+  }
+
+  /** The language its narration is voiced in. */
+  get language(): Language {
+    return this.data.language;
   }
 
   /** Its title and language, once the title slide gives them (a walkthrough shown before its first slide has none yet). */
   titled(title: string, language: Language) {
     this.data.title = title;
-    this.language = language;
+    this.data.language = language;
   }
 
   push(slide: Slide) {
@@ -194,8 +287,23 @@ export class Told {
     this.write();
   }
 
+  /** The second each word of a sentence voiced starts at. */
+  timed(slide: number, part: number, words: number[]) {
+    const c = this.data.clips[slide]![part];
+    if (!c) return;
+    c.words = words;
+    this.write();
+  }
+
   failed(why: string) {
     this.data.error = why;
+    this.write();
+  }
+
+  /** The demo settings have no voice: it plays as captions. */
+  silence() {
+    if (this.data.silent) return;
+    this.data.silent = true;
     this.write();
   }
 
@@ -265,7 +373,7 @@ export class AnswerWalkthrough {
     const language = given.type === 'title' ? given.language : this.told!.language;
     const slide = this.slideOf(given, language);
     if (typeof slide === 'string') return `Not shown: ${slide}`;
-    const told = this.told ?? (this.told = new Told(walkthroughFile(this.o.dir, given.title), language, given.title.trim()));
+    const told = this.told ?? (this.told = Told.begin(walkthroughFile(this.o.dir, given.title), language, given.title.trim()));
     if (!begun) told.titled(given.title.trim(), language);
     told.push(slide);
     const n = told.data.slides.length;
@@ -286,7 +394,9 @@ export class AnswerWalkthrough {
       content = { type: 'code', title: given.title, file: given.file, lines: given.lines, focus: given.focus ?? [], ...(given.note ? { note: given.note } : {}), code };
     }
     const parts = this.partsOf(content, given.narration, language);
-    return typeof parts === 'string' ? parts : { ...content, ...parts };
+    if (typeof parts === 'string') return parts;
+    const wrong = tooFull(content) ?? readsOut(content, [given.narration ?? ''].flat());
+    return wrong ?? { ...content, ...parts };
   }
 
   /**
@@ -359,7 +469,7 @@ export function walkthroughFile(dir: string, title: string): string {
  * agent hands over the title slide, named after the question it answers. `language`: the one its
  * narration will most likely be in, until the title slide says.
  */
-export const prepareWalkthrough = (dir: string, question: string, language: Language) => new Told(walkthroughFile(dir, question), language, '');
+export const prepareWalkthrough = (dir: string, question: string, language: Language) => Told.begin(walkthroughFile(dir, question), language, '');
 
 /** Words frequent in prose of one language and rare in the other's. */
 const COMMON: Record<Language, Set<string>> = {
@@ -378,6 +488,16 @@ export function writtenIn(text: string): Language | undefined {
   const best = Math.max(...hits);
   return best && hits.filter((h) => h === best).length === 1 ? LANGUAGES[hits.indexOf(best)] : undefined;
 }
+
+/** Whether `clipsDir` is the directory Obeya made beside the walkthrough `name` for its clips. */
+const ownClips = (dir: string, name: string, clipsDir: string) => {
+  if (clipsDir !== `${name.slice(0, -WALKTHROUGH_SUFFIX.length)}.clips`) return false;
+  try {
+    return lstatSync(join(dir, clipsDir)).isDirectory();
+  } catch {
+    return false;
+  }
+};
 
 const lexists = (path: string) => {
   try {
@@ -423,9 +543,11 @@ const KEPT = z.object({
       .and(z.object({ parts: z.array(z.string()), items: z.array(z.number()).optional() })),
   ),
   done: z.boolean(),
-  clips: z.array(z.array(z.object({ file: z.string(), seconds: z.number() }).nullable())),
+  clips: z.array(z.array(z.object({ file: z.string(), seconds: z.number(), words: z.array(z.number()).optional() }).nullable())),
   clipsDir: z.string(),
   error: z.string().optional(),
+  language: z.enum(LANGUAGES).optional(),
+  silent: z.boolean().optional(),
 });
 
 /**
@@ -443,8 +565,13 @@ export function readWalkthrough(dir: string, name: string, voicing: Voicing | un
     // a file of that name that is no walkthrough as Obeya writes them
     if (!read.success) return;
     const w = read.data as Walkthrough;
-    // sentences that will never come: their voice stopped with the server that voiced them
-    if (!w.error && voicing && !voicing.voicing(file) && w.clips.some((c) => c.some((x) => !x))) return { ...w, error: INTERRUPTED };
+    if (voicing && !voicing.voicing(file)) {
+      // sentences whose voice stopped with the server that voiced them: this one voices them now
+      // (into the clips' directory Obeya made for it, never one the file names elsewhere)
+      if (!w.error && !w.silent && w.clips.some((c) => c.some((x) => !x)) && ownClips(dir, name, w.clipsDir)) return voicing.resume(file, w);
+      // sentences not heard back by the server that voiced them: their words start by their length
+      for (const [k, c] of w.clips.entries()) for (const [p, x] of c.entries()) if (x && !x.words) x.words = estimatedStarts(w.slides[k]!.parts[p] ?? '', x.seconds);
+    }
     return w;
   } catch {
     return;

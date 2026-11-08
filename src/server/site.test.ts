@@ -13,7 +13,7 @@ import type { SharePage, ShareTarget } from './share';
 import { Sharing } from './share';
 import { MANIFEST, NOT_FOUND, parseEnv, repoMark, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
 import { PAGES_HASH } from '../core/page-changes';
-import { FakeRuntime, gitRepo, noForge } from './testing';
+import { FakeRuntime, gitRepo, noForge, removeDir } from './testing';
 
 let dir: string;
 let home: string;
@@ -102,8 +102,8 @@ beforeEach(() => {
   writeFileSync(join(demo, 'report.html'), 'not for colleagues');
   target = make(SITE());
 });
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+afterEach(async () => {
+  await removeDir(dir);
   delete host.down;
   delete host.token;
   delete host.onManifest;
