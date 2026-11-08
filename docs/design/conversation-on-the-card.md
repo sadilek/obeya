@@ -118,7 +118,11 @@ the block's text and copies the selection; where even that fails, the text stays
 button reads "Selected: press and hold to copy".
 
 A conversation scrolled to its end follows it as it grows; scrolled up, it stays put, and only the
-owner's own words or actions take it to the end. Obeya's sheet does the same.
+owner's own words or actions take it to the end. Obeya's sheet does the same. Only the owner's own
+scrolling takes it off the end: Safari's engine (the Mac app's) shifts the box by itself as a message
+is replaced, before the box is put back at the end, and a move like that, with the content's height
+changed and no wheel, touch or key of the owner's in the box, is followed instead of read as
+scrolling up.
 
 ### Reading order
 
