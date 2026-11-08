@@ -160,7 +160,7 @@ Koordinator always gets the quote whole; in the sheet a looked-up answer by its 
 ### Quoting marked text
 
 To answer a part of a message, the owner marks it in the conversation, in anyone's message, their
-own included; on a card with a field and in Obeya's sheet a small button with a quotation-mark icon
+own included, and in an open question the card waits on; on a card with a field and in Obeya's sheet a small button with a quotation-mark icon
 appears beside the marking (named "Quote" beside the icon until used once). The same holds for
 what such a card shows beside its conversation (an idea's brief and mocks, a task's text, an HTML
 artifact, a file the card shows, formatted or as a page) and for a page an answer in the sheet comes

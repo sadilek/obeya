@@ -1,5 +1,5 @@
 // Answering a part of what the card shows: text the owner marks in a conversation (an agent's message
-// or their own), in what the card is about beside it (an idea's brief, a task's text, a file) or in a
+// or their own, an open question), in what the card is about beside it (an idea's brief, a task's text, a file) or in a
 // page framed there (an HTML artifact, a page among the files, an idea's mock) gets a small button
 // beside it, which puts it into the card's field in quotation marks, followed by " - ", with the
 // cursor behind it (`cite` in `draft.ts` says where). Until the owner has used it once the button
@@ -109,7 +109,8 @@ function hearFrames() {
 }
 
 /**
- * The button at text marked in `box`, for the field of draft `draft`: in its messages (`.msg`), or
+ * The button at text marked in `box`, for the field of draft `draft`: in its messages (`.msg`) and
+ * the open questions below them (`.question.ask`), or
  * `anywhere` in it but a field to type in; also in a page framed in it.
  */
 export function CiteButton({ box, draft, anywhere, onCite }: { box: RefObject<HTMLElement | null>; draft: string; anywhere?: boolean; onCite?: () => void }) {
@@ -145,7 +146,7 @@ export function CiteButton({ box, draft, anywhere, onCite }: { box: RefObject<HT
       const inside = (n: Node) => {
         const el = n instanceof Element ? n : n.parentElement;
         if (anywhere) return !!el && b.contains(el) && !el.closest('[contenteditable]');
-        const m = el?.closest('.msg');
+        const m = el?.closest('.msg, .question.ask');
         return !!m && b.contains(m);
       };
       if (!inside(r.startContainer) || !inside(r.endContainer)) return setMarked(null);
