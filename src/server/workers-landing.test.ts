@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
 import { needsYou, stopped } from '../core/types';
-import { artifact, gitClone, identify, until } from './testing';
+import { artifact, gitClone, identify, removeDir, until } from './testing';
 import { Board } from './board';
 import { Workers } from './workers';
 import { board, dir, doc, eachTest, flush, main, manual, merged, origin, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
@@ -14,7 +14,7 @@ eachTest();
 
 describe('landing through a pull request', () => {
   beforeEach(async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', workspaces: 'clones' });
   });
 
@@ -151,7 +151,7 @@ describe('a card whose own branch changes how work lands', () => {
   };
 
   test('lands as the branch says: on main where the repository still has pull requests, which the owner sees before approving', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const c = await settingUp({ land: 'main' });
     expect(board.item(c.id)!.lands).toEqual({ land: 'main' });
@@ -170,7 +170,7 @@ describe('a card whose own branch changes how work lands', () => {
   });
 
   test('the settings of this machine go first', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' }, machineSettings: () => ({ land: 'pr' }) }));
     const c = await settingUp({ land: 'main', checks: ['bun test'] });
@@ -182,7 +182,7 @@ describe('a card whose own branch changes how work lands', () => {
 
 describe('landing on main from a clone of the remote', () => {
   beforeEach(async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     // the clone's origin is the remote, as one listed in the settings or made while work went out as pull requests
     await setup({ ...generic, land: 'main', workspaces: 'clones' }, true);
   });
@@ -207,7 +207,7 @@ describe('landing on main from a clone of the remote', () => {
 
 describe('approving directly onto main where work goes out as a pull request', () => {
   beforeEach(async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', direct: true, workspaces: 'clones' }, true);
   });
 
@@ -325,7 +325,7 @@ describe('approving directly onto main where work goes out as a pull request', (
     expect(state(c.id)).toBe('waiting:demo');
     expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
 
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     const d = await handedOver('Logo');
     commitIn(d.clone, 'logo.svg', 'Logo');
@@ -351,7 +351,7 @@ describe('the landed commit names the demo’s page', () => {
   /** The cards whose work landed without a pull request, with what they shipped then, as the demo site heard of them. */
   let landings: [string, string | null][];
   async function withSite(adapter: Parameters<typeof setup>[0], withOrigin = false) {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup(adapter, withOrigin);
     approvals = [];
     landings = [];
@@ -430,7 +430,7 @@ describe('the landing message names the demo’s page', () => {
   let site: boolean;
   let onApproval: (id: string) => void;
   async function withSite(adapter: Parameters<typeof setup>[0] = { ...generic, land: 'main', workspaces: 'clones' }) {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup(adapter);
     site = true;
     onApproval = (id) => board.work(id, { share: JSON.stringify({ slug: 's', state: 'publishing', next: [{ dir: demoDir(id) }] }) });
@@ -562,7 +562,7 @@ describe('the landing message names the demo’s page', () => {
 describe('the worker hears what became of its demo’s page', () => {
   const URL_ = 'https://demos.example.dev/zahlerstande-exportieren-1/';
   beforeEach(async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, shares: () => true, onApproval: () => null }));
   });
@@ -789,7 +789,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
 
 describe('a workstream merged as a pull request, its box still empty', () => {
   beforeEach(async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', workspaces: 'clones' });
   });
 
@@ -997,7 +997,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
   });
 
   test('a workstream in its pull request that the doc on the default branch ticks off counts as merged', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const w = w1();
     await workers.start(w.id);
@@ -1036,7 +1036,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
   };
 
   test('a workstream the doc on the default branch ticks off counts as merged though its worker never reported the pull request', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const w = w1();
     await approvedIntoPr(w.id);
@@ -1048,7 +1048,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
   });
 
   test('a box ticked in a plan folder outside the repository does not count as the pull request merged', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const outside: PlanDoc = { ...doc, file: '/plans/a.md' };
     setDocs([outside]);

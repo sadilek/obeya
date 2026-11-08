@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -10,7 +10,7 @@ import { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, fakeGh, gitClone, gitRepo, noContributions, until } from './testing';
+import { artifact, fakeGh, FakeRuntime, gitClone, gitRepo, noContributions, PATIENCE, removeDir, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -70,7 +70,7 @@ beforeEach(async () => {
   };
   watcher = new PrWatcher(board, workers, forge, () => main, () => settings);
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 const state = (id: string) => {
   const i = board.item(id)!;
@@ -689,14 +689,16 @@ describe('gh slow to answer', () => {
     fast.call('pr_opened', { url: 'https://github.com/acme/app/pull/43' });
     fast.emit({ type: 'idle' });
     const t = performance.now();
-    const round = throughGh({ 42: 30_000 }, 1000).poll();
-    await until(() => fast.inbox.at(-1)?.includes('Rename it.'));
-    expect(performance.now() - t).toBeLessThan(1000);
+    // gh's calls of the other card, each a process to start, take seconds on Windows: as does the timeout
+    const timeout = PATIENCE === 1 ? 1000 : 10_000;
+    const round = throughGh({ 42: 30_000 }, timeout).poll();
+    await until(() => fast.inbox.at(-1)?.includes('Rename it.'), timeout);
+    expect(performance.now() - t).toBeLessThan(timeout);
     await round;
-    expect(performance.now() - t).toBeLessThan(5000);
+    expect(performance.now() - t).toBeLessThan(timeout + 4000 * PATIENCE);
     // reading it failed: the card says so if it goes on failing
     expect(JSON.parse(board.row(slow).pr!).readError).toBeDefined();
-  });
+  }, 30_000 * PATIENCE);
 });
 
 describe('pull requests in several repositories', () => {

@@ -131,9 +131,9 @@ export const sameRepo = (remote: string, owner: string, repo: string) =>
   remote
     .trim()
     .toLowerCase()
-    .replace(/\/+$/, '')
+    .replace(/[/\\]+$/, '')
     .replace(/\.git$/, '')
-    .split(/[/:]/)
+    .split(/[/\\:]/)
     .slice(-2)
     .join('/') === `${owner}/${repo}`.toLowerCase();
 

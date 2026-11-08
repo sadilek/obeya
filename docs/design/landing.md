@@ -334,7 +334,8 @@ while others build on the remote's. Obeya tells, without touching the checkout, 
 after the merge would stop on a conflict with them: it fetches the remote's `main`, merges the
 reviewed head onto it and replays the unpushed commits onto the result one by one as the rebase
 would (as a whole where the owner's git configuration pulls by a merge), all in git's object store
-(`git merge-tree`). It does so when the review is handed over, whenever the local `main` moves
+(`git merge-tree`; a git older than 2.45, which merges only commits there, gets each tree as a
+commit of its own without parents or refs). It does so when the review is handed over, whenever the local `main` moves
 while the card waits for the owner, at each round of the watcher (the remote's `main` moves with
 others' pushes) and once more on "Merge". Commits the remote has already (cherry-picked there) are
 skipped, as the rebase skips them. Where the PR conflicts with the

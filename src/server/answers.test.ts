@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
@@ -10,7 +10,7 @@ import { CanvasRuntime } from './canvas';
 import { serveAnswerFile } from './demo';
 import type { Focus } from './commands';
 import { Store } from './db';
-import { FakeRuntime, fakeVoicing, noForge, type FakeSession, gitRepo, until } from './testing';
+import { FakeRuntime, type FakeSession, fakeVoicing, gitRepo, noForge, removeDir, until } from './testing';
 import { BadRequest } from './board';
 
 let dir: string;
@@ -37,9 +37,9 @@ beforeEach(async () => {
   voice = fakeVoicing();
   canvas = await open();
 });
-afterEach(() => {
+afterEach(async () => {
   canvas.shutdown();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));

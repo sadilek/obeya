@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { type ChildProcess, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { removeDir } from '../../../../src/server/testing';
 import { alive } from './browser.ts';
 
 // Real browsers, run with plain Node as the skill's commands are; each start takes about a second.
@@ -14,9 +15,10 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-browser-test-'));
   sessions = [];
 });
-afterEach(() => {
+afterEach(async () => {
   for (const s of sessions) s.kill();
-  rmSync(dir, { recursive: true, force: true });
+  // the browser lets go of its profile there a moment after its session ends
+  await removeDir(dir);
 });
 
 /** A stand-in for a Claude Code session's process: the browser lives as long as it does. */
@@ -55,6 +57,11 @@ const answers = (port: number) =>
 
 /** The pid and command line of the browser the process `holder` launched (POSIX `ps`; chrome://version is empty in Playwright's headless shell). */
 function browserProcess(holder: number): { pid: number; command: string } {
+  if (process.platform === 'win32') {
+    const query = `Get-CimInstance Win32_Process -Filter 'ParentProcessId=${holder}' | Where-Object { $_.CommandLine -like '*--remote-debugging-port*' } | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }`;
+    const [pid, ...command] = (Bun.spawnSync(['powershell', '-NoProfile', '-Command', query]).stdout.toString().trim().split(/\r?\n/)[0] ?? '').split(' ');
+    return { pid: Number(pid), command: command.join(' ') };
+  }
   const ps = Bun.spawnSync(['ps', '-A', '-o', 'pid=,ppid=,args=']).stdout.toString();
   const [pid, , ...command] = ps.split('\n').find((line) => line.trim().split(/\s+/)[1] === String(holder) && line.includes('--remote-debugging-port'))?.trim().split(/\s+/) ?? [];
   return { pid: Number(pid), command: command.join(' ') };
@@ -94,7 +101,10 @@ describe('browser skill', () => {
 
     const tab = await browser(pid, 'open', PAGE);
     expect(await browser(pid, 'tabs')).toContain(tab);
-    expect(await browser(pid, 'eval', 'innerWidth')).toBe('1000');
+    // on Windows the window's size holds its frame, whose width varies with the machine's settings
+    const width = Number(await browser(pid, 'eval', 'innerWidth'));
+    if (process.platform === 'win32') expect(width).toBeWithin(960, 1001);
+    else expect(width).toBe(1000);
     // a key held with down: stays down until up:, across steps of one input
     const shot = join(dir, 'shot.png');
     const steps = await browser(pid, 'input', 'click:@#b', 'down:Space', 'wait:100', 'eval:document.title', 'up:Space', 'eval:document.title', `shot:${shot}`, '--tab', tab.slice(0, 6));

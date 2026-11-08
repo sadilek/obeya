@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { FolderWorkspaces } from './folder';
-import { artifact, FakeRuntime, noForge } from './testing';
+import { artifact, FakeRuntime, noForge, removeDir } from './testing';
 
 let dir: string;
 let docs: string;
@@ -26,9 +26,9 @@ beforeEach(async () => {
   canvas = await CanvasRuntime.start({ repos: [{ path: docs, git: false }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
   await (canvas.repos[0]!.workspaces as FolderWorkspaces).read;
 });
-afterEach(() => {
+afterEach(async () => {
   canvas.shutdown();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 const item = (id: string) => canvas.board.item(id)!;
@@ -150,7 +150,7 @@ describe('a canvas over a folder without git', () => {
     expect(item(plan.id).files).toEqual([{ path: 'Estate/Plan.md', caption: 'The plan' }]);
 
     const file = (path: string) => canvas.cardFile(plan.id, path);
-    expect(await file('Estate/Plan.md')).toMatchObject({ path: expect.stringMatching(/Estate\/Plan\.md$/) });
+    expect(await file('Estate/Plan.md')).toMatchObject({ path: expect.stringMatching(/Estate[\\/]Plan\.md$/) });
     expect(await file('Estate/__pycache__/model.pyc')).not.toBeNull();
     // in the folder, but not the card's: neither a file it did not change nor one its Markdown links to that is no image
     expect(await file('Estate/Inventory.md')).toBeNull();

@@ -32,6 +32,17 @@ test('a stall names where its samples were, by share, and the processes it waite
 
 test('a pause the thread did not run in is no stall: the machine slept', () => {
   expect(describeStall(30_000, times(5, trace(native('spawnSync'))), [], 2)).toBeNull();
+  // a few samples on either side of the pause: its gap is no interval they were taken at
+  const around = [0, 0.002, 30].map((timestamp) => ({ ...trace(native('spawnSync')), timestamp }));
+  expect(describeStall(30_000, around, [], 2)).toBeNull();
+  // a process that ran while the machine slept: where the profiler samples meanwhile, its samples say whether the server ran
+  const sleptThrough = [{ argv: ['git', 'fetch'], ms: 30_000 }];
+  expect(describeStall(30_000, around, sleptThrough, 2, false)).toBeNull();
+  // where it takes none while the thread waits (Windows), the wait is all there is to go by
+  expect(describeStall(30_000, around, sleptThrough, 2, true)).not.toBeNull();
+  // and samples only as often as Windows' timer allows still cover the time they were taken in
+  const coarse = Array.from({ length: 60 }, (_, i) => ({ ...trace(native('stringify')), timestamp: i * 0.0156 }));
+  expect(describeStall(900, coarse, [], 2)).not.toBeNull();
   // without a profiler to ask, the length is all there is
   expect(describeStall(800, null, [])).toEqual(['Obeya: the server stalled for 0.8 s; meanwhile it answered no page and heard no agent']);
 });

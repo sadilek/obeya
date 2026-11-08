@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { needsYou } from '../core/types';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession, gitRepo, noForge, until } from './testing';
+import { FakeRuntime, type FakeSession, gitRepo, noForge, removeDir, until } from './testing';
 
 let dir: string;
 let main: string;
@@ -24,9 +24,9 @@ beforeEach(async () => {
   runtime = new FakeRuntime();
   canvas = await open();
 });
-afterEach(() => {
+afterEach(async () => {
   canvas.shutdown();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 const board = () => canvas.board;

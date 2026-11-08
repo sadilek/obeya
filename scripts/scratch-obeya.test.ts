@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanvasSnapshot } from '../src/core/types';
 import { ownerHeaders } from '../src/server/owner';
+import { PATIENCE, removeDir } from '../src/server/testing';
 import { worked } from '../src/ui/talk';
 import { scratchBase } from './common';
 
@@ -123,7 +124,8 @@ test('without a port, stagings at the same time each pick a free one, and stagin
     return f;
   });
   const stageAt = async (f: string) => {
-    const p = Bun.spawn([process.execPath, script, f], { stdout: 'pipe', stderr: 'pipe' });
+    // with the run's temp directory (`test-setup.ts`), which a process started without `env` lacks on Windows
+    const p = Bun.spawn([process.execPath, script, f], { stdout: 'pipe', stderr: 'pipe', env: process.env });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
     expect(err).toBe('');
     return JSON.parse(out) as { url: string; port: number; dir: string; pid: number };
@@ -141,10 +143,10 @@ test('without a port, stagings at the same time each pick a free one, and stagin
     expect(again.pid).not.toBe(one!.pid);
     expect(() => process.kill(one!.pid, 0)).toThrow();
   } finally {
-    for (const s of [one!, two!]) Bun.spawnSync([process.execPath, script, '--stop', String(s.port)]);
-    for (const s of [one!, two!]) rmSync(s.dir, { recursive: true, force: true });
+    for (const s of [one!, two!]) Bun.spawnSync([process.execPath, script, '--stop', String(s.port)], { env: process.env });
+    for (const s of [one!, two!]) await removeDir(s.dir);
   }
-}, 30_000);
+}, 30_000 * PATIENCE);
 
 test('--stop ends the server it staged, but not another process that has its number by now', async () => {
   const staged = JSON.parse(readFileSync(join(dir, 'staged.json'), 'utf8')) as { pid: number };

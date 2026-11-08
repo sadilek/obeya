@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceUpdates } from './source-update';
-import { gitClone, gitRepo } from './testing';
+import { gitClone, gitRepo, removeDir } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -26,7 +26,7 @@ beforeEach(() => {
   gitClone(up, clone);
 });
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 test('a clone up to date with its upstream has nothing to pull', async () => {
   const s = new SourceUpdates(clone);

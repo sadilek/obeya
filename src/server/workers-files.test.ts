@@ -89,7 +89,7 @@ describe('the files a card names as its result', () => {
     expect(at && 'data' in at && new TextDecoder().decode(at.data)).toBe('png');
     expect(await spaces.fileOf('gone', 'docs/none.png', 'main')).toBeNull();
     // to open it, the checkout's copy
-    expect(await spaces.fileOf('gone', 'docs/chart.png', 'main', true)).toMatchObject({ path: expect.stringMatching(/docs\/chart\.png$/) });
+    expect(await spaces.fileOf('gone', 'docs/chart.png', 'main', true)).toMatchObject({ path: expect.stringMatching(/docs[\\/]chart\.png$/) });
   });
 
   test('a PDF comes as it is, for the browser\'s viewer; anything else sandboxed as an HTML artifact\'s files', async () => {

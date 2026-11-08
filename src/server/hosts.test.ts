@@ -15,7 +15,7 @@ import { githubToken, HostError, hostName, onHost, registerHost, remote, session
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
 import { type AgentEvent, sdkRuntime } from './runtime';
-import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, syncGitCalls, until } from './testing';
+import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
 import { git, gitAsync, HERE, RECHECK_MS, Workspaces } from './workspaces';
 
@@ -23,6 +23,11 @@ let dir: string;
 let ssh: string;
 let host: SshHost;
 let name: string;
+/**
+ * A host is a macOS or Linux machine, and the stand-in for `ssh` runs the host's shell commands
+ * on this one: on Windows, which is no host, the tests that go over the connection are skipped.
+ */
+const overSsh = process.platform === 'win32' ? test.skip : test;
 const log = () => (existsSync(join(dir, 'net', 'log')) ? readFileSync(join(dir, 'net', 'log'), 'utf8') : '');
 
 beforeEach(() => {
@@ -33,7 +38,7 @@ beforeEach(() => {
   name = `box${Math.random().toString(36).slice(2, 8)}`;
   host = registerHost({ name, ssh: 'me@box', home: join(dir, 'home'), program: ssh, claudeToken: () => 'sk-claude' });
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 describe('a workspace on a host', () => {
   test('is named by its host, and found again by that name', () => {
@@ -46,7 +51,7 @@ describe('a workspace on a host', () => {
     expect(hostName('ssh://gone/x')).toBe('gone');
   });
 
-  test('runs git there, with the GitHub login on stdin rather than on the command line', async () => {
+  overSsh('runs git there, with the GitHub login on stdin rather than on the command line', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     host.tokenFor(repo, () => 'ghp_secret');
     const path = onHost(name, repo);
@@ -59,7 +64,7 @@ describe('a workspace on a host', () => {
     expect(log()).not.toContain('ghp_secret');
   });
 
-  test("reads the repository's GitHub login in the background, a command there waiting for it the first time", async () => {
+  overSsh("reads the repository's GitHub login in the background, a command there waiting for it the first time", async () => {
     const repo = gitRepo(join(dir, 'repo'));
     // git's credential helper as a stand-in: each read gives a new login, and is counted
     const fakeGit = join(dir, 'fake-git');
@@ -85,7 +90,7 @@ describe('a workspace on a host', () => {
     expect(reads()).toBe(2);
   });
 
-  test("runs the stack commands of the settings there", async () => {
+  overSsh("runs the stack commands of the settings there", async () => {
     mkdirSync(join(dir, 'ws'));
     const r = await runAppCommand(onHost(name, join(dir, 'ws')), 'pwd -P && echo stopped > stack.log');
     expect(r.ok).toBe(true);
@@ -94,7 +99,7 @@ describe('a workspace on a host', () => {
     expect((await runAppCommand(onHost(name, join(dir, 'ws')), 'true')).ok).toBe(false);
   });
 
-  test('copies directories there and back', async () => {
+  overSsh('copies directories there and back', async () => {
     mkdirSync(join(dir, 'demo', 'sub'), { recursive: true });
     writeFileSync(join(dir, 'demo', 'demo.mp4'), 'video');
     writeFileSync(join(dir, 'demo', 'sub', "it's.txt"), 'quote');
@@ -129,7 +134,7 @@ describe('a session on a host', () => {
     mkdirSync(join(dir, 'ws'));
   });
 
-  test('starts Claude Code there once the host has the plugin, with its environment and the logins from stdin', async () => {
+  overSsh('starts Claude Code there once the host has the plugin, with its environment and the logins from stdin', async () => {
     const s = spawnSession({
       command: 'sh',
       args: ['-c', 'echo "$PWD|$FOO|$OBEYA_HOME|$CLAUDE_CODE_OAUTH_TOKEN|$OBEYA_URL|$1|$OBEYA_HOLDS_VOICE"; cat "$1/skills/SKILL.md"; echo; read line; echo "got $line"', 'x', join(dir, 'plugin')],
@@ -156,7 +161,7 @@ describe('a session on a host', () => {
     expect(log()).not.toContain('sk-claude');
   });
 
-  test("ends as a lost connection when the host cannot be made ready", async () => {
+  overSsh("ends as a lost connection when the host cannot be made ready", async () => {
     writeFileSync(join(dir, 'net', 'down'), '');
     let heard: number | null | undefined;
     const s = spawnSession({ command: 'true', args: [], env: {} }, undefined, (code) => (heard = code));
@@ -165,7 +170,7 @@ describe('a session on a host', () => {
     expect(heard).toBe(255);
   });
 
-  test("a host unreachable before Claude Code starts there loses the connection rather than failing the session", async () => {
+  overSsh("a host unreachable before Claude Code starts there loses the connection rather than failing the session", async () => {
     writeFileSync(join(dir, 'net', 'down'), '');
     const events: AgentEvent[] = [];
     const session = sdkRuntime.start({ cwd: onHost(name, join(dir, 'ws')), system: '', tools: [], plugins: [join(dir, 'plugin')], onEvent: (e) => events.push(e) }, 'hello');
@@ -173,7 +178,7 @@ describe('a session on a host', () => {
     expect(events).toEqual([{ type: 'lost', message: `the connection to ${name} was lost` }]);
   });
 
-  test('ends the session a dropped connection left running there, but never itself', async () => {
+  overSsh('ends the session a dropped connection left running there, but never itself', async () => {
     const pids = join(dir, 'net', 'home', '.obeya', 'remote', 'sessions');
     const pidFile = join(pids, `${join(dir, 'ws').replace(/[^\w.-]+/g, '-')}.pid`);
     mkdirSync(pids, { recursive: true });
@@ -195,7 +200,7 @@ describe('a session on a host', () => {
     expect(out).toContain('claude here');
   });
 
-  test('copies the plugin once, until it changes', async () => {
+  overSsh('copies the plugin once, until it changes', async () => {
     await host.prepare({ dirs: { plugin: join(dir, 'plugin') } });
     const again = registerHost({ name: `${name}-2`, ssh: 'me@box', home: join(dir, 'home'), program: ssh });
     const copies = () => log().split('\n').filter((l) => l.includes('tar -xf')).length;
@@ -208,7 +213,7 @@ describe('a session on a host', () => {
     mkdirSync(join(dir, 'home'), { recursive: true });
     writeFileSync(join(dir, 'home', 'demo.json'), JSON.stringify({ language: 'de', voice: 'qwen3', references: { de: '~/voice/me.wav', en: '/voice/me-en.wav' }, keyFile: '~/.voice/key', directory: '/opt/work/demos' }));
     const settings = JSON.parse(sessionFiles(join(dir, 'home'), []).files!['demo.json']!()!);
-    expect(settings.references).toEqual({ de: join(homedir(), 'voice', 'me.wav'), en: '/voice/me-en.wav' });
+    expect(settings.references).toEqual({ de: `${homedir()}/voice/me.wav`, en: '/voice/me-en.wav' });
     expect(settings.keyFile).toBeUndefined();
     // a path of this machine: demos on the host go into its own ~/demos
     expect(settings.directory).toBeUndefined();
@@ -230,7 +235,7 @@ describe('clones on a host', () => {
     spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
   });
 
-  test('are made there, leased after those here, and land through the remote', async () => {
+  overSsh('are made there, leased after those here, and land through the remote', async () => {
     await spaces.ensureClones(origin, 1);
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 2, () => 'ghp_x')).toBeNull();
     // made once: a second call finds them
@@ -263,7 +268,7 @@ describe('clones on a host', () => {
     // many git calls, each through the stand-in for ssh
   }, 30_000);
 
-  test('take a new card on the first machine with a free slot, here first', async () => {
+  overSsh('take a new card on the first machine with a free slot, here first', async () => {
     let workers!: Workers;
     spaces = new Workspaces(store, 'c', {
       mode: 'clones',
@@ -303,7 +308,7 @@ describe('clones on a host', () => {
     workers.shutdown();
   }, 30_000);
 
-  test('of a host that stops answering are looked at in the background, and again only a while later', async () => {
+  overSsh('of a host that stops answering are looked at in the background, and again only a while later', async () => {
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 2, () => undefined)).toBeNull();
     let back = 0;
     const stop = host.onBack(() => back++);
@@ -336,7 +341,7 @@ describe('clones on a host', () => {
     stop();
   });
 
-  test('fewer of them in the configuration: the others leave the pool once a card no longer holds them, and their folders go', async () => {
+  overSsh('fewer of them in the configuration: the others leave the pool once a card no longer holds them, and their folders go', async () => {
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 3, () => undefined)).toBeNull();
     const a = board.create({ title: 'A', x: 0, y: 0 }).id;
     await spaces.lease(a, 'obeya/a').ready;
@@ -358,7 +363,7 @@ describe('clones on a host', () => {
     await until(() => !existsSync(join(dir, 'far', '1')) && !existsSync(join(dir, 'far', '3')) && !spaces.pool([]).some((h) => h.kept));
   }, 20_000);
 
-  test('wait for a host that cannot be reached, and say why', async () => {
+  overSsh('wait for a host that cannot be reached, and say why', async () => {
     writeFileSync(join(dir, 'net', 'down'), '');
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toContain('Connection refused');
     expect(spaces.list()).toEqual([]);
@@ -375,7 +380,7 @@ describe('a Codex session on a host', () => {
     mkdirSync(join(dir, 'plugin', 'skills'), { recursive: true });
   });
 
-  test("runs Codex's app server there, with the plugin's skills as copied there, its hooks reaching Obeya here, and no Claude login", async () => {
+  overSsh("runs Codex's app server there, with the plugin's skills as copied there, its hooks reaching Obeya here, and no Claude login", async () => {
     const events: AgentEvent[] = [];
     const requests = join(dir, 'requests.jsonl');
     const session = codexRuntime.start({ cwd: onHost(name, join(dir, 'ws')), system: '', tools: [], plugins: [join(dir, 'plugin')], env: { FAKE_CODEX_LOG: requests }, onEvent: (e) => events.push(e) }, 'run echo $CLAUDE_CODE_OAUTH_TOKEN there');
@@ -400,7 +405,7 @@ describe('a Codex session on a host', () => {
     await session.done;
   }, 20_000);
 
-  test('a host unreachable before Codex starts there loses the connection rather than failing the session', async () => {
+  overSsh('a host unreachable before Codex starts there loses the connection rather than failing the session', async () => {
     writeFileSync(join(dir, 'net', 'down'), '');
     const events: AgentEvent[] = [];
     const session = codexRuntime.start({ cwd: onHost(name, join(dir, 'ws')), system: '', tools: [], onEvent: (e) => events.push(e) }, 'hello');
@@ -408,7 +413,7 @@ describe('a Codex session on a host', () => {
     expect(events).toEqual([{ type: 'lost', message: `the connection to ${name} was lost` }]);
   });
 
-  test("a Codex thread's transcript there is found by its id for the Arbeitsrückschau", async () => {
+  overSsh("a Codex thread's transcript there is found by its id for the Arbeitsrückschau", async () => {
     const id = '01a1a634-1526-77c0-b3ba-30c136b024f5';
     const day = join(dir, 'net', 'home', '.codex', 'sessions', '2026', '11', '04');
     mkdirSync(day, { recursive: true });
@@ -420,7 +425,7 @@ describe('a Codex session on a host', () => {
 });
 
 describe('a worker on a host', () => {
-  test('whose connection drops resumes its session once the host answers, with the message it had not taken', async () => {
+  overSsh('whose connection drops resumes its session once the host answers, with the message it had not taken', async () => {
     gitRepo(join(dir, 'main'));
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
@@ -480,7 +485,7 @@ describe('a worker on a host', () => {
     workers.shutdown();
   }, 20_000);
 
-  test('that could not start there, as the host did not answer, starts once it does, with its task', async () => {
+  overSsh('that could not start there, as the host did not answer, starts once it does, with its task', async () => {
     gitRepo(join(dir, 'main'));
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
@@ -540,7 +545,7 @@ describe('the app of a card on a host', () => {
     for (const a of apps) a.stop(true);
   });
 
-  test('opens through a forward of its port, which ends once the card no longer offers it', async () => {
+  overSsh('opens through a forward of its port, which ends once the card no longer offers it', async () => {
     const card = board.create({ title: 'Weit weg', x: 0, y: 0 });
     await workers.start(card.id);
     expect(runtime.last.inbox[0]).toContain("Obeya forwards that address's port, and only that one");
@@ -573,7 +578,7 @@ describe('the app of a card on a host', () => {
     expect(forwards()).toHaveLength(3);
   }, 20_000);
 
-  test('is forwarded again after its connection dropped, on the same port, and not while the host does not answer', async () => {
+  overSsh('is forwarded again after its connection dropped, on the same port, and not while the host does not answer', async () => {
     const card = board.create({ title: 'Weit weg', x: 0, y: 0 });
     await workers.start(card.id);
     runtime.last.call('app_running', { url: app('da') });
@@ -595,7 +600,7 @@ describe('the app of a card on a host', () => {
     await closed(opened);
   }, 20_000);
 
-  test('ends when the card is parked', async () => {
+  overSsh('ends when the card is parked', async () => {
     workers.shutdown();
     workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, workspaces: 'clones', land: 'pr', app: { run: 'true', stop: 'true' } }, parkGrace: 10, tryGrace: 0 });
     const card = board.create({ title: 'Weit weg', x: 0, y: 0 });

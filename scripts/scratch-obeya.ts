@@ -892,7 +892,7 @@ async function pickPort(givenDir: string | undefined): Promise<number> {
   if (earlier && !stop(earlier)) console.error(`scratch-obeya: the server of ${earlier} (process ${pidIn(earlier)}) still runs after the stop`);
   for (const p of [...(was ? [was] : []), ...Array.from({ length: 500 }, (_, i) => 4480 + i)]) {
     if (p === 4417 || serverIn(scratchDir(p)) || !claim(p)) continue;
-    if (await free(p)) {
+    if (await (p === was ? freed(p) : free(p))) {
       // one whose port went to another meanwhile leaves no dir behind
       if (earlier && !givenDir && earlier !== scratchDir(p)) rmSync(earlier, { recursive: true, force: true });
       return p;
@@ -994,6 +994,14 @@ function claim(p: number): boolean {
     return false;
   } finally {
     rmSync(mine, { force: true });
+  }
+}
+
+/** Whether port `p` of a server just stopped is free within a few seconds: Windows lets go of it a moment after the process is gone, later on a busy machine. */
+async function freed(p: number) {
+  for (const end = Date.now() + 5000; ; await Bun.sleep(100)) {
+    if (await free(p)) return true;
+    if (Date.now() > end) return false;
   }
 }
 

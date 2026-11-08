@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { endProcessesIn, interactive, listing, parsePosix, type Running, runsFrom, toEnd } from './folder-processes';
-import { alive, leftBehind } from './testing';
+import { alive, leftBehind, removeDir } from './testing';
 
 const proc = (o: Partial<Running>): Running => ({ pid: 1, ppid: 0, exe: '', cmd: '', cwd: '', ...o });
 
@@ -127,6 +127,6 @@ test('ends what runs from the folder, and nothing outside it', async () => {
     for (const pid of [inside, outside]) if (alive(pid)) process.kill(pid, 'SIGKILL');
     for (let i = 0; i < 50 && (alive(inside) || alive(outside)); i++) await Bun.sleep(100);
     // Windows lets go of a dead process's working directory a moment later
-    rmSync(root, { recursive: true, force: true, maxRetries: 20 });
+    await removeDir(root);
   }
 }, 30_000);

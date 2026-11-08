@@ -6,11 +6,12 @@ import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
 import { artifactFiles, captionTracks, silentVideo, videoSize } from './demo-page';
 import { checkPlugin, DEMO_SKILL, DEMO_SKILL_FILE, demoFiles, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, serveDemoFile, serveMockFrame, videoFacts } from './demo';
+import { removeDir } from './testing';
 
 const dir = mkdtempSync(join(tmpdir(), 'obeya-demo-'));
 writeFileSync(join(dir, 'demo.mp4'), '0123456789');
 writeFileSync(join(dir, 'captions.vtt'), 'WEBVTT\n\n00:00:00.351 --> 00:00:16.271\nEins.\n\n00:01:17.225 --> 00:01:30.025\nZwei.\n');
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => removeDir(dir));
 
 describe('readChapters', () => {
   test('takes scene starts from the captions, before the narration lead', () => {

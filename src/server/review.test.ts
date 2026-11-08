@@ -3,7 +3,7 @@
 // Obeya on approval, pinned to the head the worker reviewed.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -14,7 +14,7 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, gitClone, gitRepo, identify, syncGitCalls, until } from './testing';
+import { artifact, FakeRuntime, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -102,9 +102,9 @@ beforeEach(async () => {
   workers = makeWorkers();
   watcher = new PrWatcher(board, workers, fake.forge, () => main, () => settings);
 });
-afterEach(() => {
+afterEach(async () => {
   workers.shutdown();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 /** A review card for PR #5, as „Review PR #5“ makes it, started and on the PR's head. */

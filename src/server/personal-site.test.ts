@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -13,7 +13,7 @@ import { MANIFEST, siteKey, siteTarget } from './site';
 import { cloudflareAccounts, type Exec, exec, githubPagesDeploy, setupCloudflare, setupGithub, SetupRefused } from './site-hosts';
 import { SiteSetup } from './site-setup';
 import { CanvasRuntime } from './canvas';
-import { FakeRuntime, gitRepo, identify, noForge, until } from './testing';
+import { FakeRuntime, gitRepo, identify, noForge, removeDir, until } from './testing';
 
 let dir: string;
 let home: string;
@@ -63,7 +63,7 @@ beforeEach(() => {
   writeFileSync(join(demo, 'demo.mp4'), 'video');
   writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n');
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 const A = 'k7f3q9w2m4xa8b1c';
 const B = 'z9y8x7w6v5u4t3s2';
@@ -381,7 +381,7 @@ test('the deploy to GitHub Pages pushes one commit without history, with gh’s 
     }
     return exec(argv, { ...o, env: { ...o?.env, GIT_CONFIG_GLOBAL: join(dir, 'gitconfig') } });
   };
-  writeFileSync(join(dir, 'gitconfig'), `[core]\n\texcludesFile = ${join(dir, 'ignore')}\n[commit]\n\tgpgsign = true\n`);
+  writeFileSync(join(dir, 'gitconfig'), `[core]\n\texcludesFile = ${JSON.stringify(join(dir, 'ignore'))}\n[commit]\n\tgpgsign = true\n`);
   const said = await githubPagesDeploy(site, 'ada/obeya-demos', join(dir, 'git'), x);
   expect(said).toContain('a/b/demo.mp4');
   expect(said).toContain('.nojekyll');
