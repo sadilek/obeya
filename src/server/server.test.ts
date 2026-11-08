@@ -1384,6 +1384,8 @@ describe('starting a card', () => {
     const clones = await CanvasRuntime.start({ name: 'Clones', repos: [{ path: cloned, clones: 1, settings: { workspaces: 'clones' } }] }, deps('home-clones'));
     const [clone] = clones.repos[0]!.workspaces.list();
     git(clone!.path, 'config', 'remote.origin.uploadpack', uploadPack);
+    // a tag made since the clone was: the start has something to fetch
+    git(cloned, 'tag', 'v1');
     server.stop(true);
     server = serve([canvas, worktrees, clones], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
 

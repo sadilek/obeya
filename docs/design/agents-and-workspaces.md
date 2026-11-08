@@ -565,15 +565,16 @@ for its hooks), and what the repository's work needs.
   comes back (a moved home never does).
 - **Each step asks git as few times as it can** (2026-11-07): on Windows every process start costs
   50 ms to over 2 s (the virus scanner looks at each, other workers add load), and the machine starts
-  only 20 to 40 a second. One `for-each-ref` tells a clone's main branch, whether the card's branch
-  exists and what a fetch would bring; `status --porcelain=v2 --branch` tells uncommitted changes and
-  the commits beyond the branch the card's branch tracks; a `diff --quiet` from where the branch left
-  the main branch tells whether it changes `.obeya/settings.json` before either version is read.
-  A fetch from a path on this machine runs `git-upload-pack` through a shell (msys on Windows,
-  seconds under load), so it runs only where the other repository has something the clone lacks,
-  told by the other repository's own refs. Same calls asked side by side are one. Rejected: keeping
-  git's answers between steps (the main branch per clone), since an agent working in the clone can
-  change them unseen.
+  only 20 to 40 a second. One answer of git serves every question it holds (a clone's branches tell
+  its main branch and whether the card's branch exists), and the same question asked side by side
+  is asked once. A fetch from a path on this machine runs `git-upload-pack` through a shell (msys on
+  Windows, seconds under load), so a start skips it where the other repository has nothing the
+  clone lacks, told by that repository's own branches and tags. Whether a fetch goes there, and
+  what it would write or delete, is git's configuration as git reads it (includes, the global one,
+  rewritten URLs, pruning); where it may write more than the remote's branches, the card's branch
+  is looked for after it. Rejected: reading the clone's configuration file without git, which
+  missed what git takes from elsewhere; keeping git's answers between steps (the main branch per
+  clone), since an agent working in the clone can change them unseen.
 - **A lease is given back from the card's state** (2026-10-21), whatever brought it there. Rejected:
   freeing only on a card's normal path, which left stopped, ticked-off workstreams holding clones.
 - **An unreachable host fails fast** (2026-10-12): asking it on every look for a free clone (almost a

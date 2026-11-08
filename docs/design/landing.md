@@ -19,7 +19,8 @@ once the worker reports it.
 The branch goes onto `main` as the local checkout has it, also from a clone whose `origin` is the
 remote (one listed in the settings, or made while work went out as pull requests): what other cards
 landed there and nobody pushed yet is under it, so the fast-forward cannot fail for a diverged
-`main`. The clone fetches that commit from the checkout only where none of its branches stands on it. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
+`main`; the clone fetches that commit from the checkout only where none of its branches stands on
+it. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
 once more. Commits that conflict one by one but not as a whole land squashed. The last commit landed for a card
 with a shared demo carries the trailer `Demo-Video: <url>` (see Publishing on approval). Uncommitted
 work or a real conflict sends the card back to its worker with the approval kept: its next handover

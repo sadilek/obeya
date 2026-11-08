@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,7 +7,7 @@ import { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { alive, gitClone, gitRepo, identify, leftBehind, until } from './testing';
-import { addTrailer, defaultBranch, git, localOrigin, Workspaces } from './workspaces';
+import { addTrailer, defaultBranch, git, originFetch, Workspaces } from './workspaces';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
@@ -109,31 +109,66 @@ describe('a clone made ready for a card', () => {
     expect(await start('e')).toBe(false);
   }, 30_000);
 
-  test("its origin, read without git, is the path or file URL the clone's config names; none where git might read it otherwise", () => {
+  test('a fetch rule that also writes branches of its own, and pruning, count as git has them', async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    const store = new Store(':memory:');
+    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
+    const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
+    // a branch deleted in the origin goes from the clone where its fetch prunes
+    git(repo, 'branch', 'old');
+    const a = board.create({ title: 'a', x: 0, y: 0 }).id;
+    await spaces.lease(a, 'obeya/a').ready;
+    expect(git(clone, 'branch', '--remotes', '--list', 'origin/old')).not.toBe('');
+    spaces.release(a);
+    git(clone, 'checkout', '--quiet', 'main');
+    git(repo, 'branch', '-D', 'old');
+    git(clone, 'config', 'fetch.prune', 'true');
+    const b = board.create({ title: 'b', x: 0, y: 0 }).id;
+    await spaces.lease(b, 'obeya/b').ready;
+    expect(git(clone, 'branch', '--remotes', '--list', 'origin/old')).toBe('');
+    spaces.release(b);
+    git(clone, 'checkout', '--quiet', 'main');
+    // the card's branch the fetch itself makes in the clone is checked out, not made anew
+    git(clone, 'config', '--add', 'remote.origin.fetch', '+refs/heads/obeya/*:refs/heads/obeya/*');
+    git(repo, 'branch', 'obeya/c');
+    const c = board.create({ title: 'c', x: 0, y: 0 }).id;
+    expect(await spaces.lease(c, 'obeya/c').ready).toBe(clone);
+    expect(git(clone, 'branch', '--show-current')).toBe('obeya/c');
+  }, 30_000);
+
+  test("its origin is the repository on this machine git fetches from, as git's configuration has it", async () => {
+    const repo = gitRepo(join(dir, 'repo'));
     const clone = join(dir, 'clone');
-    const repo = join(dir, 'repo');
-    mkdirSync(join(clone, '.git'), { recursive: true });
-    mkdirSync(repo);
-    // git writes a backslash as two
-    const escaped = (p: string) => p.replaceAll('\\', '\\\\');
-    const path = escaped(repo);
-    const config = (origin: string, fetch = '+refs/heads/*:refs/remotes/origin/*', more = '') =>
-      writeFileSync(join(clone, '.git', 'config'), `[core]\n\tbare = false\n[remote "origin"]\n${origin}\n\tfetch = ${fetch}\n[branch "main"]\n\tremote = origin\n${more}`);
-    config(`\turl = ${path} ; a comment`);
-    expect(localOrigin(clone)).toBe(repo);
-    config(`\turl = "${pathToFileURL(repo).href}"`);
-    expect(localOrigin(clone)).toBe(repo);
-    for (const [origin, fetch, more] of [
-      ['\turl = git@github.com:a/b.git'],
-      [`\turl = ${escaped(join(dir, 'gone'))}`],
-      [`\turl = ${path}\n\turl = ${path}`],
-      [`\turl = ${path}`, '+refs/heads/main:refs/remotes/origin/main'],
-      [`\turl = ${path}`, undefined, '[include]\n\tpath = more.config\n'],
-      [`\turl = ${path}`, undefined, '[url "git@github.com:"]\n\tinsteadOf = https://github.com/\n'],
-    ] as [string, string?, string?][]) {
-      config(origin, fetch, more);
-      expect(localOrigin(clone)).toBeNull();
+    git(dir, 'clone', '--quiet', repo, clone);
+    expect(await originFetch(clone)).toEqual({ local: repo, plain: true, prune: false, pruneTags: false, tagOpt: false });
+    git(clone, 'remote', 'set-url', 'origin', pathToFileURL(repo).href);
+    expect((await originFetch(clone))?.local).toBe(repo);
+    // a rewrite for other URLs changes nothing; one for this path, from a file the configuration includes, sends the fetch elsewhere
+    git(clone, 'remote', 'set-url', 'origin', repo);
+    git(clone, 'config', 'url.git@github.com:.insteadOf', 'https://github.com/');
+    expect((await originFetch(clone))?.local).toBe(repo);
+    writeFileSync(join(dir, 'more.config'), `[url "${join(dir, 'other').replaceAll('\\', '\\\\')}"]\n\tinsteadOf = ${repo.replaceAll('\\', '\\\\')}\n`);
+    git(clone, 'config', 'include.path', join(dir, 'more.config'));
+    expect((await originFetch(clone))?.local).toBeNull();
+    git(clone, 'config', '--unset', 'include.path');
+    for (const url of ['git@github.com:a/b.git', join(dir, 'gone')]) {
+      git(clone, 'remote', 'set-url', 'origin', url);
+      expect((await originFetch(clone))?.local).toBeNull();
     }
+    git(clone, 'remote', 'set-url', 'origin', repo);
+    git(clone, 'config', '--add', 'remote.origin.url', repo);
+    expect((await originFetch(clone))?.local).toBeNull();
+    git(clone, 'config', '--unset-all', 'remote.origin.url');
+    git(clone, 'config', 'remote.origin.url', repo);
+    git(clone, 'config', '--add', 'remote.origin.fetch', '+refs/heads/obeya/*:refs/heads/obeya/*');
+    git(clone, 'config', 'fetch.prune', 'true');
+    git(clone, 'config', 'fetch.pruneTags', 'true');
+    git(clone, 'config', 'remote.origin.tagOpt', '--tags');
+    expect(await originFetch(clone)).toEqual({ local: repo, plain: false, prune: true, pruneTags: true, tagOpt: true });
+    // the remote's own setting over the one for all
+    git(clone, 'config', 'remote.origin.prune', 'false');
+    expect((await originFetch(clone))?.prune).toBe(false);
   });
 });
 

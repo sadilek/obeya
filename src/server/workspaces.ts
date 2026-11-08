@@ -6,7 +6,7 @@
 // created on start, as many in parallel as there are cards unless the repository has slots; kept
 // across stop and restart until the card's work has landed.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -1757,16 +1757,19 @@ export class Workspaces implements CardWorkspaces {
           path = next.path;
         }
         const refs = await gitSteps(path, readingBranches(true));
-        const base = await this.mainAsync(path, refs);
-        if (!(await nothingToFetch(path, refs))) await gitAsync(path, 'fetch', '--quiet', 'origin');
+        const [base, how] = await Promise.all([this.mainAsync(path, refs), originFetch(path)]);
+        const fetched = !(await nothingToFetch(refs, how));
+        if (fetched) await gitAsync(path, 'fetch', '--quiet', 'origin');
         // the branch as the clone it was kept in holds it, which may be newer than a copy here
         const kept = !!from && from !== path;
         if (kept) {
           await gitAsync(path, 'checkout', '--quiet', '--detach');
           await gitAsync(path, 'fetch', '--quiet', pathThere(from), `+refs/heads/${branch}:refs/heads/${branch}`);
         }
-        // a branch that already exists holds work: check it out, never reset it
-        if (kept || refs?.local.has(branch)) await gitAsync(path, 'checkout', '--quiet', branch);
+        // a branch that already exists holds work: check it out, never reset it; a fetch that writes
+        // more than `origin`'s remote-tracking branches may have made it
+        const exists = kept || (fetched && !how?.plain ? !!(await gitAsync(path, 'branch', '--list', branch)) : !!refs?.local.has(branch));
+        if (exists) await gitAsync(path, 'checkout', '--quiet', branch);
         else await gitAsync(path, 'checkout', '--quiet', '-b', branch, `origin/${base}`);
         // the work it had not committed when its workspace was taken is uncommitted again, unless the
         // card was stopped meanwhile: then the clone goes back clean and the one that kept the branch keeps it
@@ -2192,76 +2195,95 @@ export function* readingBranches(tags = false): GitSteps<Branches | null> {
 }
 
 /**
- * Whether `git fetch origin` in the clone at `path` would bring nothing: its origin a repository on
+ * Whether `git fetch origin` in a clone would bring nothing: it fetches (`how`) from a repository on
  * this machine whose branches the clone has (`refs`, read with tags) as they are there, and its tags
- * too. Asking that takes one quick git call in the origin; a fetch from a path starts
- * `git-upload-pack` through a shell, on Windows seconds under load.
+ * too; where the fetch prunes, the clone has no branch or tag the origin no longer has. Asking that
+ * takes one quick git call in the origin; a fetch from a path starts `git-upload-pack` through a
+ * shell, on Windows seconds under load.
  */
-async function nothingToFetch(path: string, refs: Branches | null): Promise<boolean> {
-  if (!refs?.tags || hostName(path) !== null) return false;
-  const origin = localOrigin(path);
-  if (!origin) return false;
-  const r = await gitRun(origin, ['for-each-ref', '--format=%(refname)%00%(objectname)', 'refs/heads/', 'refs/tags/']).catch(() => null);
+async function nothingToFetch(refs: Branches | null, how: OriginFetch | null): Promise<boolean> {
+  if (!refs?.tags || !how?.local || !how.plain || how.tagOpt) return false;
+  const r = await gitRun(how.local, ['for-each-ref', '--format=%(refname)%00%(objectname)', 'refs/heads/', 'refs/tags/']).catch(() => null);
   if (r?.code !== 0) return false;
+  const heads = new Set<string>();
+  const tags = new Set<string>();
   for (const line of r.stdout.split('\n')) {
     if (!line) continue;
     const [ref = '', commit = ''] = line.split('\0');
-    if (ref.startsWith('refs/heads/') ? refs.remote.get(ref.slice('refs/heads/'.length)) !== commit : !refs.tags.has(ref.slice('refs/tags/'.length))) return false;
+    if (ref.startsWith('refs/heads/')) {
+      const name = ref.slice('refs/heads/'.length);
+      if (refs.remote.get(name) !== commit) return false;
+      heads.add(name);
+    } else {
+      const name = ref.slice('refs/tags/'.length);
+      if (!refs.tags.has(name)) return false;
+      tags.add(name);
+    }
   }
-  return true;
+  if (how.prune && [...refs.remote.keys()].some((b) => !heads.has(b))) return false;
+  return !(how.prune && how.pruneTags && [...refs.tags].some((t) => !tags.has(t)));
+}
+
+/** How a clone fetches from its `origin`, as git's configuration has it. */
+export interface OriginFetch {
+  /** The repository on this machine it fetches from; null where it fetches from elsewhere (a forge, another machine) or a rule rewrites the URL. */
+  local: string | null;
+  /** Whether a fetch writes `origin`'s remote-tracking branches alone, as `git clone` set it up, and none of the clone's own. */
+  plain: boolean;
+  /** Whether a fetch deletes the remote-tracking branches `origin` no longer has (and with `pruneTags`, the tags). */
+  prune: boolean;
+  pruneTags: boolean;
+  /** Whether `remote.origin.tagOpt` changes which tags a fetch brings. */
+  tagOpt: boolean;
 }
 
 /**
- * The repository on this machine that the clone at `path` names as its `origin`, fetched from as
- * `git clone` set it up, as its `.git/config` has it, read without git; null where it names another
- * kind of remote, fetches other refs, or where the file holds anything that could make git read it
- * otherwise (includes, rewritten URLs, two URLs).
+ * How the clone at `path` fetches from `origin`, as git reads its configuration (the clone's own,
+ * what it includes, the global and the system one) with one call; null for a clone on another
+ * machine or where git does not answer.
  */
-export function localOrigin(path: string): string | null {
-  let text: string;
-  try {
-    text = readFileSync(join(path, '.git', 'config'), 'utf8');
-  } catch {
-    return null;
-  }
-  if (/^\s*\[\s*(include|includeIf|url)\b/im.test(text)) return null;
-  const urls: string[] = [];
-  const fetches: string[] = [];
-  let origin = false;
-  for (const line of text.split(/\r?\n/)) {
-    const section = line.match(/^\s*\[([^\]]*)\]/);
-    if (section) origin = /^\s*remote\s+"origin"\s*$/i.test(section[1]!);
-    else if (origin) {
-      const m = line.match(/^\s*(url|fetch)\s*=\s*(.*)$/i);
-      if (m) (m[1]!.toLowerCase() === 'url' ? urls : fetches).push(configValue(m[2]!));
+export async function originFetch(path: string): Promise<OriginFetch | null> {
+  if (hostName(path) !== null) return null;
+  const r = await gitRun(path, ['config', '--list', '-z']).catch(() => null);
+  if (r?.code !== 0) return null;
+  // `key\nvalue` each, ended by NUL; a key without a value (true) has no newline
+  const entries = r.stdout
+    .split('\0')
+    .filter(Boolean)
+    .map((e): [string, string | null] => {
+      const at = e.indexOf('\n');
+      return at < 0 ? [e, null] : [e.slice(0, at), e.slice(at + 1)];
+    });
+  const values = (key: string) => entries.filter(([k]) => k.toLowerCase() === key).map(([, v]) => v);
+  const on = (v: string | null | undefined) => v === null || (v !== undefined && /^(true|yes|on|1)$/i.test(v.trim()));
+  // the remote's own setting over the one for every remote, the last one given counting
+  const flag = (own: string, all: string) => {
+    const set = values(own);
+    return on(set.length ? set.at(-1) : values(all).at(-1));
+  };
+  const urls = values('remote.origin.url');
+  const fetches = values('remote.origin.fetch');
+  const rules = entries.filter(([k]) => /^url\..*\.insteadof$/i.test(k)).map(([, v]) => v ?? '');
+  let local: string | null = null;
+  const url = urls.length === 1 ? urls[0] : null;
+  if (url && !rules.some((rule) => url.startsWith(rule))) {
+    let at: string | null = url;
+    if (url.startsWith('file://')) {
+      try {
+        at = fileURLToPath(url);
+      } catch {
+        at = null;
+      }
     }
+    if (at && isAbsolute(at) && existsSync(at)) local = at;
   }
-  if (urls.length !== 1 || fetches.join(' ') !== '+refs/heads/*:refs/remotes/origin/*') return null;
-  let url = urls[0]!;
-  if (url.startsWith('file://')) {
-    try {
-      url = fileURLToPath(url);
-    } catch {
-      return null;
-    }
-  }
-  return isAbsolute(url) && existsSync(url) ? url : null;
-}
-
-/** A value of a git config file as git reads it: quotes taken off, escapes resolved, a comment after it dropped. */
-function configValue(raw: string): string {
-  let out = '';
-  let quoted = false;
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw[i]!;
-    if (c === '"') quoted = !quoted;
-    else if (c === '\\') {
-      const n = raw[++i];
-      out += n === 'n' ? '\n' : n === 't' ? '\t' : n === 'b' ? '\b' : (n ?? '');
-    } else if (!quoted && (c === '#' || c === ';')) break;
-    else out += c;
-  }
-  return out.trim();
+  return {
+    local,
+    plain: fetches.length === 1 && fetches[0] === '+refs/heads/*:refs/remotes/origin/*',
+    prune: flag('remote.origin.prune', 'fetch.prune'),
+    pruneTags: flag('remote.origin.prunetags', 'fetch.prunetags'),
+    tagOpt: values('remote.origin.tagopt').length > 0,
+  };
 }
 
 /**
