@@ -1093,7 +1093,7 @@ body:has(.wt.zoomed) #sheet-grip { visibility: hidden; }
 .wt-status.error { color: var(--error); }
 /* the controls: plain icons, the progress bar in a segment per slide, CC lit in the accent while on */
 .wt-controls { display: flex; align-items: center; gap: 4px; padding: 2px 8px 6px; }
-.wt-controls .btn { flex: none; min-width: 30px; height: 30px; padding: 0 6px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--ink);
+.wt .wt-controls .btn { flex: none; min-width: 30px; height: 30px; margin: 0; padding: 0 6px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--ink);
   font: 800 11.5px var(--wt-sans); letter-spacing: .04em; box-shadow: none; }
 .wt-controls .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .wt-controls .btn:disabled { opacity: .35; cursor: default; }

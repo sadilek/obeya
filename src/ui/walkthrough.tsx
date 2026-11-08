@@ -21,7 +21,7 @@ const WT_INSET = 10;
 /** The caption's padding, and its two lines with a font that grows with the player's width between two sizes (styles.css `.wt-caption`). */
 const WT_CAPTION = { padding: 14, lines: 2 * 1.45, font: (width: number) => Math.min(30, Math.max(15, 0.023 * width)) };
 /** The row of controls under it; in a player narrower than 520 px the segments take a row of their own above them. */
-const WT_CONTROLS = (width: number) => (width < 520 ? 70 : 38);
+const WT_CONTROLS = (width: number) => (width < 520 ? 62 : 38);
 
 /**
  * Where the zoomed player stands in a window `w`×`h`: the slide as large as fits with what stands
