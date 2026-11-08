@@ -3,7 +3,8 @@
 // system's voice and spoke out loud on the machine. Here it speaks nothing and goes on as if it
 // had: utterances queue, each fires `start` and, after about as long as it would have taken to say,
 // `end`; `pause`, `resume` and `cancel` fire the events of the spec. Voices, rates and the rest
-// stay as the browser has them.
+// stay as the browser has them. They go on the prototype: WebKit drops the page's `speechSynthesis`
+// object once nothing holds it and hands out a fresh one, without what was set on the old.
 (() => {
   const synth = window.speechSynthesis;
   if (!synth || synth.__silent) return;
@@ -38,7 +39,7 @@
     run();
     fire(current, 'start');
   }
-  Object.defineProperties(synth, {
+  Object.defineProperties(Object.getPrototypeOf(synth), {
     __silent: { value: true },
     speaking: { get: () => current !== null },
     pending: { get: () => queue.length > 0 },
@@ -48,7 +49,7 @@
         // not instanceof: an utterance from another frame of the page is one too
         if (Object.prototype.toString.call(utterance) !== '[object SpeechSynthesisUtterance]') throw new TypeError('speak needs a SpeechSynthesisUtterance');
         // as Chrome does: a page the user has not interacted with yet may not speak
-        if (!navigator.userActivation.hasBeenActive) return void setTimeout(() => fire(utterance, 'error', { error: 'not-allowed' }));
+        if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return void setTimeout(() => fire(utterance, 'error', { error: 'not-allowed' }));
         queue.push(utterance);
         setTimeout(next);
       },

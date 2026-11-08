@@ -212,7 +212,7 @@ describe('browser skill', () => {
 
   test("playwright names the import of the Playwright it launches with, which a script anywhere runs, and Playwright's WebKit and Firefox", async () => {
     const out = (await browser(null, 'playwright')).split('\n');
-    expect(out[0]).toMatch(/^import \{ chromium, firefox, webkit \} from "file:\/\/.+playwright-core\/index\.mjs";$/);
+    expect(out[0]).toMatch(/^import \{ chromium, firefox, webkit \} from "file:\/\/.+plugin\/lib\/playwright\.mjs";$/);
     expect(out.slice(1).map((l) => l.split(':')[0])).toEqual(['webkit', 'firefox']);
     // a script outside any project with node_modules (the test's temp directory)
     const script = join(dir, 'probe.mjs');

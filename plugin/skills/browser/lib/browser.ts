@@ -23,8 +23,8 @@
 //                                     ArrowUp/Down/Left/Right)
 //     type:TEXT  wait:MS  shot:FILE.png  eval:JS
 //     X,Y may be @<css selector> instead: the centre of the first matching element
-//   playwright                       print the import of the Playwright it is launched with, for a
-//                                    script of one's own, and whether Playwright's WebKit and Firefox are installed
+//   playwright                       print the import of the Playwright it is launched with, muted, for
+//                                    a script of one's own, and whether Playwright's WebKit and Firefox are installed
 //   playwright install <browser>…    install Playwright's own webkit or firefox (--with-deps: with the
 //                                    system libraries they need on Linux)
 //
@@ -505,12 +505,13 @@ async function stop() {
 }
 
 /**
- * The module a script imports Playwright from: the `playwright-core` this browser is launched with,
- * found up the tree from here (a checkout's node_modules, or the one beside the plugin among
- * Obeya's resources and on a host). A file URL, which an import takes on Windows too.
+ * The module a script imports Playwright from: `plugin/lib/playwright.mjs`, the `playwright-core`
+ * this browser is launched with (found up the tree from there: a checkout's node_modules, or the one
+ * beside the plugin among Obeya's resources and on a host), whose browsers play no sound. A file
+ * URL, which an import takes on Windows too.
  */
 export function playwrightModule(): string {
-  return import.meta.resolve('playwright-core');
+  return new URL('../../../lib/playwright.mjs', import.meta.url).href;
 }
 
 /**
@@ -519,12 +520,12 @@ export function playwrightModule(): string {
  * `playwright install …` installs them.
  */
 async function playwright(args: string[]) {
-  const url = playwrightModule();
   if (args[0] === 'install') {
-    const cli = path.join(path.dirname(fileURLToPath(url)), 'cli.js');
+    const cli = path.join(path.dirname(fileURLToPath(import.meta.resolve('playwright-core'))), 'cli.js');
     const r = spawnSync(process.execPath, [cli, 'install', ...args.slice(1)], { stdio: 'inherit' });
     process.exit(r.status ?? 1);
   }
+  const url = playwrightModule();
   const pw = (await import(url)) as typeof import('playwright-core');
   console.log(`import { chromium, firefox, webkit } from ${JSON.stringify(url)};`);
   for (const name of ['webkit', 'firefox'] as const) {

@@ -97,11 +97,13 @@ it, from anywhere, and whether Playwright's own WebKit and Firefox are on the ma
 
 ```bash
 node $B playwright
-# import { chromium, firefox, webkit } from "file:///…/node_modules/playwright-core/index.mjs";
+# import { chromium, firefox, webkit } from "file:///…/plugin/lib/playwright.mjs";
 # webkit: installed
 # firefox: not installed (playwright install firefox)
 ```
 
+It is Playwright's own API, and every browser launched or connected to through it is muted like
+this skill's: no page's audio, video, Web Audio or `speechSynthesis` reaches the machine's speakers.
 Put that line at the top of the script (`probe.mjs`, say, anywhere) and run it with `node` or `bun`:
 
 ```js

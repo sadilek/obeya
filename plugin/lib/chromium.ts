@@ -46,7 +46,7 @@ export const CLOSE_GRACE_MS = 2000;
  * temporary and nothing in it is kept, so after a short grace the browser's process tree is
  * killed: Playwright sees it exit, removes the profile and `close` returns.
  */
-async function closingQuickly(browser: Browser): Promise<Browser> {
+export async function closingQuickly(browser: Browser): Promise<Browser> {
   const cdp = await browser.newBrowserCDPSession();
   const { processInfo } = (await cdp.send('SystemInfo.getProcessInfo')) as { processInfo: { type: string; id: number }[] };
   await cdp.detach();

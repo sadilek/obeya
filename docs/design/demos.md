@@ -11,7 +11,10 @@ through Playwright on the local Chrome, else Edge, else Playwright's own Chromiu
 no Chrome), cuts with ffmpeg and runs under plain Node on macOS, Linux and Windows (checked
 2026-10-05).
 
-Every page of the demo's browser, and of the browser skill's, gets a silent `speechSynthesis`:
+No browser a worker starts plays sound through the machine's speakers: the owner heard a
+walkthrough's narration that a worker's own WebKit script had started. The demo's browser and the
+browser skill's are Chromium started with `--mute-audio` (a demo's sound is its narration alone; a
+page's sound is never recorded), and every page of them gets a silent `speechSynthesis`:
 Chrome's `--mute-audio` leaves the Web Speech API alone, so pages spoke through the system's voice.
 The replacement keeps the API and speaks nothing: utterances queue, fire `start` and, after about as
 long as saying them takes, `end`; `pause`, `resume` and `cancel` fire the spec's events, and a page
@@ -618,7 +621,16 @@ The commands drive Chromium only. For WebKit (Safari's engine, and the macOS app
 or a script in Playwright's API, the skill's `playwright` prints the import line of the
 `playwright-core` it launches its browser with, as a file URL that a script anywhere can import
 (a bare `playwright-core` resolves only inside Obeya's tree), and whether Playwright's own WebKit
-and Firefox are installed; `playwright install` installs them.
+and Firefox are installed; `playwright install` installs them. The module it names is Playwright's
+API with every browser silenced, launched or connected to: Chromium with `--mute-audio` (also
+when a script drops Playwright's default arguments), Firefox with its volume scale at zero. WebKit has no such switch, so every page of every engine also gets
+init scripts: the silent `speechSynthesis`, media elements that play natively muted while `muted`
+reads back what the page set (so a page's own mute button behaves as for a user), and Web Audio
+that reaches the speakers through a gain of zero (its clock runs on). The `speechSynthesis`
+replacement sits on the prototype: WebKit drops a page's `speechSynthesis` object once nothing
+holds it and hands out a fresh one. Rejected: muting by suspending an AudioContext (its clock would
+stop) or leaving WebKit unmuted with a warning in the skill (an agent's own script is exactly
+where the narration played).
 
 What headless Chromium can't reproduce (the on-screen keyboard and `visualViewport`, video
 fullscreen, rotation) workers check in Obeya's repository with `scripts/android-phone.ts`: Chrome in
