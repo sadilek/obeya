@@ -481,7 +481,14 @@ start) stay on the canvas marked "Repository not running", with why in their pan
 their agents meanwhile: starting, messages, approving and the like are refused with that reason, a
 card set to start later or snoozed waits past its time, and a card the Koordinator was deciding on
 goes back to planned. Only what changes the board alone (moving it in the queue, dismissing,
-parking) still goes. Once the repository runs again, the cards work as before, in its workspaces.
+parking) still goes, and so does "Stop" on a card at work or waiting for the owner, which the panel
+suggests for a repository that is not coming back: it plans the card again as any stop does
+(finishing after a landing, it is done), and the stopped card can be archived or deleted. Its
+workspace stays recorded for the repository's return, but no longer keeps it out of the archive,
+since nothing could show the work in it while the repository does not run (decided 2026-11-08: a
+repository removed, renamed or moved to another owner left cards nobody could get rid of; rejected:
+having the owner add the repository back to stop them). Once the repository runs again, the cards
+work as before, in its workspaces.
 Decided 2026-10-21: no other repository's agents take such a card, the home repository's included,
 since its worker would work in the wrong repository's workspace. Question cards are exempt: their
 agent only reads, and looks a question about such a card up in the home repository.

@@ -619,6 +619,7 @@ const de = {
     short: 'Repository läuft nicht',
     long: (repo: string) =>
       `Das Repository ${repo} läuft gerade nicht auf dieser Leinwand: Es ließ sich nicht starten oder steht nicht mehr in der Konfiguration. Bis es zurück ist, arbeitet kein Agent an dieser Karte; dann geht es hier weiter.`,
+    stopHint: 'Kommt es nicht zurück, stoppe die Karte: Danach kannst du sie archivieren oder löschen.',
   },
   /** Why the server refused an action; `invalid` is also the text for anything unknown. */
   error: {
@@ -2767,6 +2768,7 @@ const en: Strings = {
     short: 'Repository not running',
     long: (repo: string) =>
       `The repository ${repo} does not run on this canvas right now: it did not start, or it is no longer in the configuration. Until it is back, no agent works on this card; then it goes on here.`,
+    stopHint: 'If it is not coming back, stop the card: then you can archive or delete it.',
   },
   error: {
     unknownCard: 'That no longer exists.',

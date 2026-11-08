@@ -47,7 +47,7 @@ import { Sharing, siteIncomplete } from './share';
 import { siteMissing, siteName } from './site';
 import { allowedHere, approvedHere, personalDemoSite, readPersonal } from './personal-site';
 import { dimensions } from '../core/page-tags';
-import { type DueRestart, Workers } from './workers';
+import { type DueRestart, landedOf, Workers } from './workers';
 import { branchSetting, type CardWorkspaces, type FileAt, detectingBranch, gitCalls, type GitSteps, gitSteps, isFolder, type Landed, markFolder, readingBranches, together, useBranchSetting, Workspaces } from './workspaces';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, readTheme, type Theme } from './theme';
@@ -196,10 +196,10 @@ const HOST_RETRY_MS = 2 * 60_000;
 /** How often Obeya looks for snoozed cards whose time has come. */
 const WAKE_EVERY_MS = 15_000;
 
-/** The owner's actions on a card that change only the board: they go also while its repository does not run on the canvas. */
 /** What waits while a card's new repository is about to be made (`NewRepo.due`): every other way on. */
 const DUE_REFUSES: CardAction['action'][] = ['start', 'force', 'build', 'planDoc', 'splitOff', 'prototype', 'snooze', 'startAt', 'accept'];
 
+/** The owner's actions on a card that change only the board: they go also while its repository does not run on the canvas. */
 const BOARD_ONLY: CardAction['action'][] = ['agent', 'name', 'dequeue', 'reorder', 'startAt', 'dismiss', 'keep', 'park', 'drop'];
 
 /** The card's repository does not run on the canvas: nothing goes to its agents (`Item.repoDown`). */
@@ -1791,7 +1791,7 @@ export class CanvasRuntime {
     this.written(cardId);
     // the card's agents work in its repository: while that does not run, only the board changes
     const card = this.board.item(cardId);
-    if (card?.repoDown && !BOARD_ONLY.includes(a.action)) throw repoDown(card);
+    if (card?.repoDown && !BOARD_ONLY.includes(a.action) && a.action !== 'stop') throw repoDown(card);
     // while its new repository is about to be made, the card is not decided otherwise
     if (card?.newRepo?.due && DUE_REFUSES.includes(a.action)) throw new BadRequest('newRepoDue', 'the card is about to be built in its new repository; take that back first');
     const text = 'text' in a ? (a.text ?? '') : '';
@@ -1828,7 +1828,7 @@ export class CanvasRuntime {
       case 'reorder':
         return this.koordinator.reorder(cardId, !!a.earlier, a.places ?? 1);
       case 'stop':
-        return this.repoOf(cardId).workers.stop(cardId);
+        return card?.repoDown ? this.stopWithoutRepo(card) : this.repoOf(cardId).workers.stop(cardId);
       case 'pause':
         return a.safePoint ? this.agentOf(cardId).pauseAtSafePoint(cardId) : this.agentOf(cardId).pause(cardId);
       case 'resume':
@@ -1987,6 +1987,26 @@ export class CanvasRuntime {
     // work thrown away ended too (finished work counted when it landed); the retrospective reads in its repository
     else if ((!state || !finished(state)) && this.runs(cardId)) this.workRetro.ended(cardId, workspace);
     this.board.remove(cardId);
+  }
+
+  /**
+   * "Stop" on a card whose repository does not run on the canvas (removed from the configuration,
+   * moved, or failed to start): no agent of it can be reached, so only the board changes, as
+   * `Workers.stop` and `Workers.finish` change it. The card is planned again (stopped), to be started
+   * again, archived or deleted; one that finished after landing is done. Its workspace stays recorded,
+   * for the repository's return.
+   */
+  private stopWithoutRepo(card: Item) {
+    const t = this.board.t.worker;
+    if (card.finishing) {
+      const row = this.board.row(card.id);
+      this.board.log(card.id, 'state', 'owner', t.stopped);
+      this.board.work(card.id, { landed: null, workspace: null, status_line: null, parked: null, paused: null, pausing: null, snoozed: null, app: null, ...(row.state === 'waiting' ? { state: landedOf(row)?.unchanged ? 'done' : 'live', need: null, detail: null } : {}) });
+      return this.board.workDone(card.id);
+    }
+    if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
+    this.board.work(card.id, { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null, held: null });
+    this.board.log(card.id, 'state', 'owner', card.pr ? t.stoppedPrOpen(card.pr.number) : t.stopped);
   }
 
   /** Brings a deleted card back (the owner's undo), with the workspace it had where that is still free. */

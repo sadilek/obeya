@@ -36,10 +36,10 @@ export const stopped = (i: Pick<Item, 'state' | 'branch' | 'unstarted'>) => i.st
 /**
  * A stopped card of the owner's the archive may take: nothing waits to start it, and its workspace
  * holds no work (a branch with commits or changes keeps it, and archiving would leave that work
- * unseen in a clone).
+ * unseen in a clone), or its repository does not run on the canvas, where nothing shows that work anyway.
  */
-export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'unstarted' | 'source' | 'queue' | 'workspace' | 'keptIn' | 'prototypeOf' | 'kind'>) =>
-  stopped(i) && i.source === 'manual' && i.kind === 'task' && !i.prototypeOf && !i.queue && !i.workspace && !i.keptIn;
+export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'unstarted' | 'source' | 'queue' | 'workspace' | 'keptIn' | 'prototypeOf' | 'kind' | 'repoDown'>) =>
+  stopped(i) && i.source === 'manual' && i.kind === 'task' && !i.prototypeOf && !i.queue && ((!i.workspace && !i.keptIn) || !!i.repoDown);
 /** A finished card of the owner's whose agent is done: the archive may take it. */
 export const finishedArchivable = (i: Pick<Item, 'state' | 'source' | 'finishing'>) => finished(i.state) && i.source === 'manual' && !i.finishing;
 /**

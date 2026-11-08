@@ -1079,6 +1079,31 @@ describe('the configuration changed while the canvas runs', async () => {
     expect(canvas.board.item(a.card.id)).toBeDefined();
   });
 
+  test('a card at work in a repository that left the canvas can be stopped, then archived or deleted', async () => {
+    await open([
+      { path: web, settings: { land: 'pr' } },
+      { path: api, settings: { land: 'pr' } },
+    ]);
+    const a = await atWork('api', 'A');
+    const b = await atWork('api', 'B');
+    await canvas.apply({ name: 'Produkt', repos: [{ path: web, settings: { land: 'pr' } }] });
+    a.session.emit({ type: 'idle' });
+    b.session.emit({ type: 'idle' });
+    await until(() => canvas.repos.length === 1);
+    expect(item(a.card.id).repoDown).toBe(true);
+    canvas.act(a.card.id, { action: 'stop' });
+    canvas.act(b.card.id, { action: 'stop' });
+    expect(item(a.card.id)).toMatchObject({ state: 'planned', branch: expect.any(String) });
+    expect(canvas.board.events(a.card.id).at(-1)?.text).toBe(canvas.board.t.worker.stopped);
+    // its workspace stays recorded for the repository's return, and nothing could show the work in it here
+    expect(canvas.board.row(a.card.id).workspace).toBeTruthy();
+    canvas.board.archive([a.card.id]);
+    expect(canvas.board.row(a.card.id).archived_at).toBeTruthy();
+    canvas.remove(b.card.id);
+    expect(canvas.board.item(b.card.id)).toBeUndefined();
+    expect(workers.sessions.filter((s) => !s.closed)).toHaveLength(0);
+  });
+
   test("a card of a repository that left the canvas goes to no other repository's agents; it starts in its own once that is back", async () => {
     const both: RepoConfig[] = [
       { path: web, settings: { land: 'pr' } },

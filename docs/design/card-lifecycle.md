@@ -170,7 +170,8 @@ finished ones at once in the archive); a prototype goes there when it ends (see 
 stopped task ("Stopped") can be archived one at a time, for the owner to come back to, beside "Start
 again" and "Delete"; not while it waits to start, nor while its workspace holds work that has not
 landed or a clone keeps its branch since its workspace was taken, which would lie unseen in a clone
-(the button is greyed and says why). A stopped card opens like a card an agent worked on, the task
+(the button is greyed and says why), unless its repository does not run on the canvas (see
+Repositories and configuration). A stopped card opens like a card an agent worked on, the task
 as its conversation's first message.
 
 The archive (its button in the bar, or `A`) drops down like the queue: archived cards on a timeline

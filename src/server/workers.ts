@@ -195,7 +195,7 @@ interface Resolving {
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;
 
 /** What the card's row stores while landed work's worker finishes; null while nothing has landed. */
-const landedOf = (row: { landed: string | null }): LandedState | null => (row.landed ? (JSON.parse(row.landed) as LandedState) : null);
+export const landedOf = (row: { landed: string | null }): LandedState | null => (row.landed ? (JSON.parse(row.landed) as LandedState) : null);
 
 /** What `f` returns; a workspace it cannot have is the request's error. */
 /** A path with its links resolved, or as it is where it cannot be (gone). */

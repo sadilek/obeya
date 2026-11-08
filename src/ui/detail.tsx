@@ -835,7 +835,10 @@ function RepoDownBox({ item }: { item: Item }) {
   if (!item.repoDown) return null;
   return (
     <div className="question repo-down">
-      <div className="q-text">{t.repoDown.long(item.repo)}</div>
+      <div className="q-text">
+        {t.repoDown.long(item.repo)}
+        {(item.state === 'working' || item.state === 'waiting' || item.finishing) && ` ${t.repoDown.stopHint}`}
+      </div>
     </div>
   );
 }

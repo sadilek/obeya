@@ -1664,10 +1664,11 @@ export class Board {
         if (this.items().some((i) => i.prototypeOf === id)) throw new BadRequest('prototypeRunning', 'a prototype for this idea is still running');
         continue;
       }
-      // a stopped task goes with its conversation, for the owner to come back to; work its workspace holds would be left unseen
+      // a stopped task goes with its conversation, for the owner to come back to; work its workspace holds would be left unseen,
+      // unless its repository does not run on the canvas, where nothing could show it anyway
       if (row.state === 'planned' && row.branch && row.kind === 'task' && !row.prototype_of) {
         if (row.queue) throw new BadRequest('notDone', 'the card waits to be started');
-        if (row.workspace || row.kept_in) throw new BadRequest('holdsWork', 'its workspace holds work that has not landed');
+        if ((row.workspace || row.kept_in) && !this.item(id)?.repoDown) throw new BadRequest('holdsWork', 'its workspace holds work that has not landed');
         continue;
       }
       if (!row.state || !finished(row.state)) throw new BadRequest('notDone', 'only a finished or stopped card can be archived');
