@@ -672,15 +672,24 @@ workers are busy.
   once that one ended, and a `Bun.spawnSync` on the server's thread would have stalled the server as
   long. So every start (`Bun.spawn` until it returns, the whole of a `Bun.spawnSync`, which starts
   and waits in one call, node's `child_process`, which starts through them) takes a lock shared by
-  the server's thread and the process threads (an `Atomics` lock in shared memory); a thread that is
-  ended gives it back, or every start after would wait forever. The server's thread waits for the
-  lock only when it starts a process itself, and goes first: no thread takes the lock while it
-  waits, so it waits for the starts already underway, not for the threads' queue (a burst of twenty
-  starts next to four slow ones: a quick call on the server's thread took 8 s before, as long as the
-  slow ones, and at most about 0.4 s since). Not on macOS and Linux, whose pipes are never
-  inheritable. Rejected: starting every process on one thread on Windows (the server's own starts
-  would still race with it, and one slow start would hold up all); pipes created non-inheritable and
-  handed over in an explicit handle list (Bun offers no such option; it would mean calling
+  the server's thread and the process threads (an `Atomics` lock in shared memory); a thread that
+  ends gives it back once it has ended. The server's thread waits for the lock only when it starts a
+  process itself, and goes first: no thread starts waiting for the lock while it waits, so it waits
+  for the start underway and at most one a thread had already headed for, not for the threads'
+  queue (a burst of twenty starts next to four slow ones: a quick call on the server's thread took
+  8 s before, as long as the slow ones, and at most about 0.4 s since). The price: the starts take
+  turns, so a slow one holds up the others (a quick call on a thread waited up to about a second in
+  that burst), and while the server's thread runs a `Bun.spawnSync` (a git call on a remote host,
+  over ssh: seconds), the threads start nothing. Whoever waits takes the lock over from a holder
+  that has kept it 10 s: a start does not take that long, so the holder hung in one, ended without
+  giving it back, or runs a `Bun.spawnSync` whose process has long been created; waiting on would
+  leave every start, and on the server's thread the whole server, stuck for good; taking it over
+  risks only what the lock is for, a process started meanwhile inheriting a hung start's pipes. It
+  counts on the monotonic clock, and a holder that gave the lock back and took it anew holds it
+  afresh. Not on macOS and Linux, whose pipes are never inheritable.
+  Rejected: starting every process on one thread on Windows (the server's own starts would still
+  race with it); pipes created non-inheritable and handed over in an explicit handle list (Bun
+  offers no such option; it would mean calling
   `CreateProcess` ourselves).
 - **Programs run without a window on Windows by default, not by an option at each call**
   (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
