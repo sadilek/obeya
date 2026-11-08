@@ -6,11 +6,11 @@
 // (styles.css `.wt-*`). What it plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
 // drawn anew (the answer's words arriving above it) and pauses only once no message shows it.
 
-import { type RefObject, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { AnswerFile } from '../core/types';
 import { estimatedStarts, INTERRUPTED, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
 import { answerFile, api, at } from './api';
-import { captionPages, pageBudget, pageOf } from './captionPages';
+import { captionPages, pageOf } from './captionPages';
 import { known, know } from './known';
 import { t } from './strings';
 import { plainKey, useZoom } from './zoom';
@@ -18,20 +18,24 @@ import { zoomBox } from './zoomBox';
 
 /** The deck's margin around the slide, on its sides and above it (styles.css `.wt-stage`). */
 const WT_INSET = 10;
-/** The caption: its padding, and its two lines, as high as its font grows with the width (styles.css `.wt-caption`). */
-const WT_CAPTION = { fixed: 14, perWidth: 2 * 1.45 * 0.023 };
-/** The row of controls under it. */
-const WT_CONTROLS = 30 + 8;
+/** The caption's padding, and its two lines with a font that grows with the player's width between two sizes (styles.css `.wt-caption`). */
+const WT_CAPTION = { padding: 14, lines: 2 * 1.45, font: (width: number) => Math.min(30, Math.max(15, 0.023 * width)) };
+/** The row of controls under it; in a player narrower than 520 px the segments take a row of their own above them. */
+const WT_CONTROLS = (width: number) => (width < 520 ? 70 : 38);
 
 /**
- * What stands around the slide in the zoomed player, as high as `fixed` plus `perWidth` times its
- * width: the deck's margin (the slide is narrower than the player by both sides' margins), the
- * caption while captions are on, and the controls.
+ * Where the zoomed player stands in a window `w`×`h`: the slide as large as fits with what stands
+ * around it, the deck's margin (the slide is narrower than the player by both sides' margins), the
+ * caption while captions are on, and the controls. Those grow with the width other than in step
+ * with it, so the box is worked out again for the width it came to, until it settles.
  */
-const zoomedChrome = (captions: boolean) => ({
-  fixed: WT_INSET - (2 * WT_INSET * SLIDE_HEIGHT) / SLIDE_WIDTH + WT_CONTROLS + (captions ? WT_CAPTION.fixed : 0),
-  perWidth: captions ? WT_CAPTION.perWidth : 0,
-});
+function zoomedBox(w: number, h: number, captions: boolean) {
+  const around = (width: number) =>
+    WT_INSET - (2 * WT_INSET * SLIDE_HEIGHT) / SLIDE_WIDTH + WT_CONTROLS(width) + (captions ? WT_CAPTION.padding + WT_CAPTION.lines * WT_CAPTION.font(width) : 0);
+  let box = zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, { fixed: around(w), perWidth: 0 });
+  for (let k = 0; k < 4; k++) box = zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, { fixed: around(box.width), perWidth: 0 });
+  return box;
+}
 
 /** Whether captions show, for every walkthrough of the page and the next one: the owner's choice, kept in the browser. */
 const CAPTIONS_OFF = 'obeya.walkthroughCaptionsOff';
@@ -55,9 +59,11 @@ function setCaptions(on: boolean) {
  * it took the key.
  */
 export function captionKey(e: KeyboardEvent): boolean {
-  if ((e.key !== 'c' && e.key !== 'C') || e.repeat || !plainKey(e)) return false;
+  if ((e.key !== 'c' && e.key !== 'C') || !plainKey(e)) return false;
   if (!document.querySelector('.wt.zoomed') && ![...sessions.values()].some((p) => p.playing) && !document.querySelector('.wt:hover')) return false;
   e.preventDefault();
+  // a key held down switches once
+  if (e.repeat) return true;
   know(CAPTIONS_KEY_KNOWN);
   captionsKeyKnown = true;
   setCaptions(!captionsOn);
@@ -374,7 +380,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
   const p = usePlayback(thread, file.name);
   const stage = useRef<HTMLDivElement>(null);
   useSlideScale(stage);
-  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, zoomedChrome(captionsOn)), playing: () => p.playing });
+  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomedBox(w, h, captionsOn), playing: () => p.playing });
   const captions = captionsOn;
   // the caption switched on or off while zoomed: the zoomed player grows or shrinks to stay in the window
   useEffect(() => zoom.refit(), [captions]);
@@ -418,7 +424,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
           </div>
         )}
         {(!p.started || p.refused) && slide && (
-          <button className="wt-start" onMouseDown={(e) => e.preventDefault()} onClick={() => p.play()}>
+          <button className="wt-start" onMouseDown={(e) => e.preventDefault()} onClick={(e) => (e.stopPropagation(), p.play())}>
             <span>{t.walkthrough.play}</span>
           </button>
         )}
@@ -496,22 +502,28 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
 /** The sentence being spoken, the word being spoken marked, the words said before it apart from those still to come. */
 function Caption({ sentence, word }: { sentence: string; word: number }) {
   const box = useRef<HTMLDivElement>(null);
-  // a page of two lines at a time, as many characters as the caption's width holds at its size
-  const [budget, setBudget] = useState(0);
+  // a page of two lines at a time: the words measured in the caption's font, against its width
+  const [measure, setMeasure] = useState<{ widthOf: (text: string) => number; line: number } | null>(null);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
+    const ctx = document.createElement('canvas').getContext('2d');
     const fit = () => {
       const css = getComputedStyle(el);
-      setBudget(pageBudget(el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight), parseFloat(css.fontSize)));
+      if (!ctx) return;
+      ctx.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+      // a little room kept: the browser's line breaks and the canvas's widths differ by a pixel here and there
+      setMeasure({ widthOf: (text) => ctx.measureText(text).width, line: (el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)) * 0.97 });
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
+    // the caption's font may come after the first measure
+    void document.fonts.ready.then(fit);
     return () => ro.disconnect();
   }, []);
   const words = wordsOf(sentence);
-  const starts = budget ? captionPages(words, budget) : [0];
+  const starts = useMemo(() => (measure ? captionPages(words, measure.widthOf, measure.line) : [0]), [sentence, measure]);
   const page = pageOf(starts, word);
   const from = starts[page]!;
   const to = starts[page + 1] ?? words.length;
