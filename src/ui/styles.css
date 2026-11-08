@@ -956,18 +956,19 @@ textarea.p-body:focus { border-color: var(--muted); }
 .turn-resume:hover { opacity: .85; }
 .mocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 8px 0 4px; }
 /* the actions in a message's head ("Reply"; on a looked-up answer "Make it a card", "Show as walkthrough"); its files under the text */
-/* they stand 2 px above the line and make it barely higher; where they wrap, 3 px apart */
-.talk .msg .who:has(> .msg-act) { display: flow-root; margin-bottom: -5px; }
-.msg-act { float: right; position: relative; top: -2px; display: inline-flex; align-items: center; gap: 4px; margin: 0 0 3px 8px; padding: 1px 6px; border: 1px solid var(--line);
+/* they stand 2 px above the line and make it barely higher; where they wrap, right-aligned, 3 px apart */
+.talk .msg .who:has(> .msg-acts) { display: flex; align-items: flex-start; margin-bottom: -2px; }
+.msg-acts { flex: 1 1 0; display: flex; flex-direction: row-reverse; flex-wrap: wrap; gap: 3px 8px; margin-left: 8px; }
+.msg-act { position: relative; top: -2px; display: inline-flex; align-items: center; gap: 4px; margin: 0; padding: 1px 6px; border: 1px solid var(--line);
   border-radius: 3px; background: none; color: var(--muted); font: 500 11px/16px var(--cond); height: 20px; box-sizing: border-box; cursor: pointer; }
 .msg-act:hover { color: var(--ink); border-color: var(--question); }
 .msg-act svg { flex: none; }
 .msg-card.on { color: var(--question); border-color: color-mix(in srgb, var(--question) 50%, transparent); }
 .talk .moved { margin: 2px 0 8px; }
-.talk .moved .msg-card { float: none; top: 0; margin: 0; }
+.talk .moved .msg-card { top: 0; }
 /* the newest answer's "Show as walkthrough" stays in view until used once, in the colour of a question to draw the eye, and the actions beside it with it */
 .msg-walk.shown { color: var(--question); border-color: color-mix(in srgb, var(--question) 50%, transparent); }
-.msg:has(> .who > .msg-walk.shown) .msg-act { opacity: 1; }
+.msg:has(> .who .msg-walk.shown) .msg-act { opacity: 1; }
 /* they appear on hover over the message; always where nothing hovers */
 .msg-act:not(.on):not(.shown) { opacity: 0; transition: opacity .15s; }
 .msg:hover .msg-act, .msg-act:focus-visible { opacity: 1; }

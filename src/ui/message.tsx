@@ -49,16 +49,20 @@ export function Msg({
       <div className="who">
         {who}
         {at && <span className="t">{time(at)}</span>}
-        {/* first of the head's buttons, so it stands rightmost */}
-        {onReply && (
-          <button className="msg-act msg-reply" onMouseDown={(e) => e.preventDefault()} onClick={onReply}>
-            <svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true">
-              <path d="M8 5 3 10l5 5M3.5 10H11a6 6 0 0 1 6 6v.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            {t.talk.reply}
-          </button>
+        {(onReply || head) && (
+          <span className="msg-acts">
+            {/* first of the head's buttons, so it stands rightmost */}
+            {onReply && (
+              <button className="msg-act msg-reply" onMouseDown={(e) => e.preventDefault()} onClick={onReply}>
+                <svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true">
+                  <path d="M8 5 3 10l5 5M3.5 10H11a6 6 0 0 1 6 6v.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {t.talk.reply}
+              </button>
+            )}
+            {head}
+          </span>
         )}
-        {head}
       </div>
       {onDelete && (
         <button className="msg-delete" title={deleteLabel} aria-label={deleteLabel} onMouseDown={(e) => e.preventDefault()} onClick={onDelete}>
