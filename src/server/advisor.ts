@@ -24,6 +24,8 @@ export interface Briefing {
   resume?: string;
   /** The session's id and the model it runs on (`AgentEvent` `session`). */
   onSession?: (id: string, model?: string) => void;
+  /** The card the agent answers for (a project's agent), whose cost it counts to (`AgentSpec.spendOn`). */
+  spendOn?: string;
   /** What the agent reads, as it reads it. */
   onTool?: (name: string, input: Record<string, unknown>) => void;
   /** The owner's conversation language: the answer's, unless the owner's words are in another (`ownersLanguage`). */
@@ -100,6 +102,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
         role: 'koordinator',
         ...(b.permissionMode ? { permissionMode: b.permissionMode } : {}),
         ...(b.resume ? { resume: b.resume } : {}),
+        ...(b.spendOn ? { spendOn: b.spendOn } : {}),
         ...(b.dir ? { dirs: [b.dir] } : {}),
         system: `${b.system}\n\n${ownersLanguage(b.language)}`,
         onLimit: b.onLimit,

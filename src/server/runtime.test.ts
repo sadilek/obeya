@@ -3,7 +3,7 @@ import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, chromeAvailable, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withStderr } from './runtime';
+import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, chromeAvailable, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withSpend, withStderr } from './runtime';
 import { FakeRuntime } from './testing';
 import { MESSAGES } from '../core/messages';
 
@@ -301,4 +301,21 @@ test("an agent whose repository's trust takes git to tell starts once it is told
   tell(false);
   await closed.done;
   expect(fake.sessions).toHaveLength(1);
+});
+
+test("an agent's cost goes to the card it works for, else to the canvas, and never to the agent's own handler", () => {
+  const fake = new FakeRuntime();
+  const spent: [string | undefined, string, number][] = [];
+  const runtime = withSpend(fake, (card, session, usd) => spent.push([card, session, usd]));
+  const events: AgentEvent[] = [];
+  runtime.start({ cwd: '/r', system: '', tools: [], spendOn: 'card-1', onEvent: (e) => events.push(e) }, 'Los.');
+  fake.last.emit({ type: 'spend', session: 's1', usd: 0.5 });
+  fake.last.emit({ type: 'idle' });
+  runtime.start({ cwd: '/r', system: '', tools: [], onEvent: (e) => events.push(e) }, 'Los.');
+  fake.last.emit({ type: 'spend', session: 's2', usd: 0.25 });
+  expect(spent).toEqual([
+    ['card-1', 's1', 0.5],
+    [undefined, 's2', 0.25],
+  ]);
+  expect(events).toEqual([{ type: 'idle' }]);
 });

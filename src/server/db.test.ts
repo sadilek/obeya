@@ -71,6 +71,8 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('DROP TRIGGER archive_rev_gone');
     s.db.run('DROP TABLE archive_revs');
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
+    s.db.run('DROP TABLE spend');
+    s.db.run('ALTER TABLE cards DROP COLUMN spent');
     s.db.run('ALTER TABLE talk DROP COLUMN reply_to');
     s.db.run('ALTER TABLE cards DROP COLUMN app');
     s.db.run('DROP TABLE devices');
@@ -172,7 +174,9 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('DROP TRIGGER archive_rev_gone');
     s.db.run('DROP TABLE archive_revs');
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 13}`);
+    s.db.run('DROP TABLE spend');
+    s.db.run('ALTER TABLE cards DROP COLUMN spent');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 14}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -218,7 +222,9 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('DROP TRIGGER archive_rev_gone');
     s.db.run('DROP TABLE archive_revs');
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 11}`);
+    s.db.run('DROP TABLE spend');
+    s.db.run('ALTER TABLE cards DROP COLUMN spent');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 12}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);
@@ -298,3 +304,32 @@ test('the archive’s mark moves with every write to a row its items are made of
     expect(moves(() => s.update(idea!.id, { title: 'An idea on the canvas' }))).toBe(false);
     s.db.close();
   }));
+
+test("a session's cost counts as its latest running total; one that starts counting afresh keeps what it counted before", () => {
+  const s = new Store(':memory:');
+  s.ensureCanvas('c', 'C');
+  const [card, project, workstream] = s.insert([
+    { canvas_id: 'c', kind: 'task', x: 0, y: 0 },
+    { canvas_id: 'c', kind: 'project', x: 0, y: 0 },
+    { canvas_id: 'c', kind: 'task', x: 0, y: 0 },
+  ]);
+  s.db.query('UPDATE cards SET parent_id = $p WHERE id = $id').run({ p: project!.id, id: workstream!.id });
+  expect(s.spend('c', card!.id, 'a', 0.5)).toBe(true);
+  expect(s.spend('c', card!.id, 'a', 1.25)).toBe(true);
+  // the same total again changes nothing
+  expect(s.spend('c', card!.id, 'a', 1.25)).toBe(false);
+  expect(s.card(card!.id)!.spent).toBe(1.25);
+  // a lower total: the harness counts afresh, the 1.25 before it stays
+  s.spend('c', card!.id, 'a', 0.25);
+  expect(s.card(card!.id)!.spent).toBe(1.5);
+  // a second session of the card adds to it
+  s.spend('c', card!.id, 'b', 1);
+  expect(s.card(card!.id)!.spent).toBe(2.5);
+  // the canvas's own agents count to the canvas alone; a project's workstreams to the project
+  s.spend('c', null, 'k', 0.3);
+  s.spend('c', workstream!.id, 'w', 2);
+  expect(s.card(project!.id)!.spent).toBeNull();
+  expect(s.spentUnder('c')).toEqual(new Map([[project!.id, 2]]));
+  expect(s.spentOn('c')).toBeCloseTo(4.8, 9);
+  expect(s.spentOn('other')).toBe(0);
+});

@@ -70,6 +70,15 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     expect(s.texts()).toEqual(['tool said: shown: Half done\n\nThe owner wrote meanwhile: go on.']);
   });
 
+  test("what the thread's tokens cost at the model's list price, at the end of the turn", async () => {
+    const s = start({}, 'costly');
+    await until(() => s.idles() === 1);
+    const spend = s.events.find((e) => e.type === 'spend');
+    // on gpt-6.1-sol: 500K uncached at $2, 400K cached at $0.10, 100K written to the cache at $2.50, 200K out at $10, per million
+    expect(spend).toEqual({ type: 'spend', session: 'codex:thread-1', usd: expect.closeTo(3.29, 6) });
+    expect(s.events.indexOf(spend!)).toBeLessThan(s.events.findIndex((e) => e.type === 'idle'));
+  });
+
   test('a message during a turn steers it; one after it starts the next turn, with the effort chosen', async () => {
     const s = start({ effort: 'high', model: 'gpt-#-sol' }, 'wait');
     await until(() => s.requests().some((r) => r.method === 'turn/start'));

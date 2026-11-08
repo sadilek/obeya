@@ -6,6 +6,7 @@ import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
 import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
 import { ProjectTalk } from './koordinator';
+import { costLabel, ProjectSpent, useCostsShown } from './costs';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';
@@ -1300,6 +1301,7 @@ export function Sheet({
   const markEl = useRef<HTMLElement | null>(null);
   const shown = reading && doc?.id === project?.id ? doc : null;
   const startable = startableIn(kids);
+  const costsShown = useCostsShown();
   // once Obeya has read what builds on what, the workstreams in the order they stand arranged in
   const inOrder = kids.some((k) => k.buildsOn) ? dependencyOrder(kids).map((id) => kids.find((k) => k.id === id)!) : kids;
   // the doc opens at its top, or at the workstream it was opened for
@@ -1341,6 +1343,7 @@ export function Sheet({
             <Inline md={project.plan.goal} />
           </div>
           <div className="src">{project.plan.file}</div>
+          <ProjectSpent item={project} />
           {!project.archivedAt && (
             <button className="btn read" onClick={() => onRead({})}>
               {t.plan.read}
@@ -1404,7 +1407,7 @@ export function Sheet({
                   <span className="hint">
                     {k.queue && 'behind' in k.queue
                       ? t.queue.behind(waitedOn(k.queue.behind, all, (id) => sibling(id, kids, all)))
-                      : [stateLabel(k), !finished(k.state) && k.buildsOn?.length && t.plan.buildsOn(k.buildsOn.map((id) => sibling(id, kids, all)))].filter(Boolean).join(' · ')}
+                      : [stateLabel(k), !finished(k.state) && k.buildsOn?.length && t.plan.buildsOn(k.buildsOn.map((id) => sibling(id, kids, all))), costsShown && k.spent && costLabel(k.spent)].filter(Boolean).join(' · ')}
                   </span>
                 </span>
               </li>

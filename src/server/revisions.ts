@@ -130,6 +130,7 @@ export class Revisions {
     const error = await readSession(this.o.runtime, {
       cwd: this.o.pathFor(card),
       role: 'koordinator',
+      spendOn: card.id,
       // the proposal waits on, and shows until when
       onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),
       system: [SYSTEM, this.o.toObeya ? TO_OBEYA : '', this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),

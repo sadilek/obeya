@@ -59,6 +59,12 @@ export type AgentEvent =
    */
   | { type: 'idle'; background?: number; more?: boolean }
   /**
+   * What the session cost so far in US dollars, as its harness estimates it at API list prices
+   * (Claude Code's own estimate; Codex's tokens at `codexCost`'s), after each of its turns: a running
+   * total, which a resumed session goes on from where its harness kept it. `withSpend` takes it.
+   */
+  | { type: 'spend'; session: string; usd: number }
+  /**
    * The agent's background tasks still running changed, in a turn or between turns: a deploy
    * watcher that ends, say, which then wakes the session. `tasks`: all that run now, by the SDK's id.
    */
@@ -119,6 +125,8 @@ export interface AgentSpec {
   role?: AgentRole;
   /** The harness, model and effort the owner chose for this one agent (a card's), over its group's where it names them. */
   agent?: CardAgent;
+  /** The card the agent works for (a worker's, an idea's, a project's): its cost counts to that card; without one, to the canvas alone (`withSpend`). */
+  spendOn?: string;
   /** The harness it runs on (`byHarness`): Claude Code where none is named. */
   harness?: Harness;
   /**
@@ -187,6 +195,17 @@ export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRol
       const given = storedModel(harness, model);
       return runtime.start({ ...rest, harness, effort, ...(given === 'default' ? {} : { model: given }) }, firstMessage, images);
     },
+  };
+}
+
+/**
+ * A runtime whose agents' costs go to `record` (`spend` events, which the agent's own handler never
+ * hears): by the card each works for (`AgentSpec.spendOn`), else as the canvas's own.
+ */
+export function withSpend(runtime: AgentRuntime, record: (card: string | undefined, session: string, usd: number) => void): AgentRuntime {
+  return {
+    start: (spec, firstMessage, images) =>
+      runtime.start({ ...spec, onEvent: (e) => (e.type === 'spend' ? record(spec.spendOn, e.session, e.usd) : spec.onEvent(e)) }, firstMessage, images),
   };
 }
 
@@ -472,6 +491,8 @@ export const sdkRuntime: AgentRuntime = {
             const failed = resultFailure(m);
             const limit = failed ? usageLimit(failed, limited, limits) : undefined;
             limited = false;
+            // a result of a crash or a failed start may carry no cost: nothing to count
+            if (m.total_cost_usd > 0) spec.onEvent({ type: 'spend', session: m.session_id, usd: m.total_cost_usd });
             if (failed) spec.onEvent({ type: 'error', message: failed, ...(limit ? { limit } : {}), ...token });
             spec.onEvent({ type: 'idle', background: background.length, ...(inbox.taken(m) ? {} : { more: true }) });
           }

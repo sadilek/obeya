@@ -1727,7 +1727,7 @@ export class Board {
     const kids = this.store.children(projects.map((r) => r.id));
     // a project whose work is done may come back to the canvas
     const done = new Set(projects.flatMap((r, n) => (workDone(docs[n]!, kids) ? [r.id] : [])));
-    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked, this.themeNow)).map((i) => (done.has(i.id) ? { ...i, state: 'done' as const } : i));
+    const items = this.withProjectSpend(this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked, this.themeNow))).map((i) => (done.has(i.id) ? { ...i, state: 'done' as const } : i));
     const byId = new Map(items.map((i) => [i.id, i]));
     const kidsOf = Map.groupBy(items.filter((i) => i.parent), (i) => i.parent!);
     return rows.flatMap((r) => {
@@ -1890,6 +1890,7 @@ export class Board {
     const reshare = this.reshare();
     const pools = this.clonePools();
     const planDirs = this.planDirs(this.docs!, this.rows!);
+    const spent = this.store.spentOn(this.canvas.id);
     const settingProposals = this.settingProposals()
       .filter((p) => p.state === 'proposed')
       .map(({ state: _, ...p }) => {
@@ -1907,6 +1908,7 @@ export class Board {
       ...(reshare ? { reshare } : {}),
       ...(planDirs.length ? { planDirs } : {}),
       archive: this.store.archiveRev(this.canvas.id),
+      ...(spent ? { spent } : {}),
     };
     return this.cache;
   }
@@ -1964,6 +1966,7 @@ export class Board {
       });
     }
     items = this.withPrototypes(items);
+    items = this.withProjectSpend(items);
     items = this.withElsewhere(items, rows);
     const inTurn = new Map([...this.turns].flatMap((f) => [...f()]));
     if (inTurn.size) items = items.map((i) => {
@@ -1985,6 +1988,23 @@ export class Board {
     this.itemsCache = items;
     this.rows = rows;
     return items;
+  }
+
+  /** A project's cost is its project agent's and its workstreams', archived ones too. */
+  private withProjectSpend(items: Item[]): Item[] {
+    if (!items.some((i) => i.kind === 'project')) return items;
+    const under = this.store.spentUnder(this.canvas.id);
+    if (!under.size) return items;
+    return items.map((i) => (i.kind === 'project' && under.has(i.id) ? { ...i, spent: (i.spent ?? 0) + under.get(i.id)! } : i));
+  }
+
+  /**
+   * An agent session's cost so far (`Store.spend`): a card's agent's counts to that card (`cardId`),
+   * any other to the canvas alone. Counted whether or not the owner has costs shown.
+   */
+  spend(cardId: string | undefined, session: string, usd: number) {
+    const card = cardId && this.store.card(cardId) ? cardId : null;
+    if (this.store.spend(this.canvas.id, card, session, usd)) this.changedRows();
   }
 
   /** Until when the usage limit holds back what goes by this key (`card:<id>`, `talk:<id>`). */
@@ -3290,6 +3310,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.collapsed ? { collapsed: true } : {}),
         ...(r.from_id ? { origin: r.from_id } : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
+        ...(r.spent ? { spent: r.spent } : {}),
       });
       continue;
     }
@@ -3468,6 +3489,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(r.app && r.workspace && !r.parked ? { app: r.app } : {}),
     ...(r.session_id && r.model ? { runsOn: { harness: sessionHarness(r.session_id), model: r.model, ...(r.effort ? { effort: r.effort as AgentEffort } : {}) } } : {}),
     ...(r.agent ? { agent: cardAgentOf(r.agent) } : {}),
+    ...(r.spent ? { spent: r.spent } : {}),
   };
 }
 

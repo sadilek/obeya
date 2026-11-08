@@ -446,8 +446,9 @@ a git repository). The dialog says so under its title, with "Ask Obeya", which c
 and opens Obeya's conversation (Space for voice does not reach Obeya while the dialog is open).
 The other sections save on their own, restarting nothing: the demo settings into `demo.json` (see
 The demo settings and voices), the personal demo site below them into `personal-site.json` (see The
-personal site in Sharing demos), languages, theme, models and whether the bar shows the usage limits
-(`usageMeter: false` when not) into `settings.json` in Obeya's home.
+personal site in Sharing demos), languages, theme, models, whether the bar shows the usage limits
+(`usageMeter: false` when not) and whether the page shows what agents cost (`costs: true` when it
+does) into `settings.json` in Obeya's home.
 
 ### Live configuration
 

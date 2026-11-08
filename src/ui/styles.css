@@ -366,10 +366,10 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
   .agents-turn { display: grid; }
   .canvas-agents::before { display: none; }
 }
-.pill:is(.workspaces, .usage) { position: relative; padding: 0; }
-#bar .pill:is(.workspaces, .usage) { padding: 0; }
-.pill:is(.workspaces, .usage) .face { display: flex; align-items: center; gap: 8px; height: 100%; padding: 7px 14px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-radius: inherit; }
-.pill:is(.workspaces, .usage):hover, .pill:is(.workspaces, .usage).open { box-shadow: var(--lift); }
+.pill:is(.workspaces, .usage, .costs) { position: relative; padding: 0; }
+#bar .pill:is(.workspaces, .usage, .costs) { padding: 0; }
+.pill:is(.workspaces, .usage, .costs) .face { display: flex; align-items: center; gap: 8px; height: 100%; padding: 7px 14px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-radius: inherit; }
+.pill:is(.workspaces, .usage, .costs):hover, .pill:is(.workspaces, .usage, .costs).open { box-shadow: var(--lift); }
 .pill.workspaces .pool { display: flex; align-items: center; gap: 6px; }
 .pill.workspaces .slots { display: flex; gap: 3px; }
 .pill.workspaces :is(.slots i, .ws-list i) { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--planned); }
@@ -379,15 +379,21 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.workspaces.full .face b, .pill.workspaces b.warn { color: var(--waiting); }
 .pill.workspaces :is(.slots i.blocked, .ws-list .blocked i) { background: var(--waiting); box-shadow: none; }
 .pill.workspaces .tip :is(p.warn, span.warn) { color: var(--warn); overflow-wrap: anywhere; }
-.pill:is(.workspaces, .usage) .tip { display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 440px; max-height: calc(100vh - 90px); overflow-y: auto;
+.pill:is(.workspaces, .usage, .costs) .tip { display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 440px; max-height: calc(100vh - 90px); overflow-y: auto;
   padding: 10px 14px; border-radius: 3px; box-sizing: border-box;
   background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: normal; font-size: 13px; font-weight: 400; line-height: 1.45;
   text-align: left; z-index: 30; cursor: default; }
-.pill:is(.workspaces, .usage) .tip p { margin: 0 0 6px; }
-.pill:is(.workspaces, .usage) .tip > :last-child, .pill.workspaces .tip > div:last-child > :last-child,
+.pill:is(.workspaces, .usage, .costs) .tip p { margin: 0 0 6px; }
+.pill:is(.workspaces, .usage, .costs) .tip > :last-child, .pill.workspaces .tip > div:last-child > :last-child,
   .pill.workspaces .tip > div:last-child > div:last-child > :last-child { margin-bottom: 0; }
-.pill:is(.workspaces, .usage).open .tip { display: block; }
+.pill:is(.workspaces, .usage, .costs).open .tip { display: block; }
 /* the plan's usage limits: a thin meter per limit, stacked in the list's order, in the usage endpoint's grade */
+/* what the canvas's agents cost: the cards that cost the most, each a link to its card, its figure on the right */
+.pill.costs .tip { width: 360px; }
+.pill.costs .costs-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.pill.costs .costs-list li { display: flex; align-items: baseline; gap: 12px; padding: 3px 0; }
+.pill.costs .costs-list .link { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill.costs .costs-list b { font-variant-numeric: tabular-nums; }
 .pill.usage .tip { width: 380px; }
 .pill.usage .face { gap: 12px; }
 /* on the phone at the bar's right end; the list as wide as the screen allows */
@@ -448,7 +454,7 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
   #bar[data-fit~="4"] .queue .lbl { display: none; }
 #bar[data-fit~="2"] .config .bar-icon, #bar[data-fit~="3"] .archive .bar-icon, #bar[data-fit~="4"] .queue .bar-icon { display: block; }
 #bar[data-fit~="2"] .config, #bar[data-fit~="3"] :is(.archive .kpill, .new-card), #bar[data-fit~="4"] .queue .kpill { padding-inline: 10px; }
-#bar[data-fit~="3"] .search-hint, #bar[data-fit~="5"] :is(#workspaces, #usage), #bar[data-fit~="5"] .help { display: none; }
+#bar[data-fit~="3"] .search-hint, #bar[data-fit~="5"] :is(#workspaces, #usage, .pill.costs), #bar[data-fit~="5"] .help { display: none; }
 #bar[data-fit~="6"] .nav-pill .switch b, #bar[data-fit~="6"] .bar-canvas, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
 /* the bar's buttons are one height, whatever they hold: text, an icon, a count */
 #bar .pill, .pill.talk-pill { height: 34px; box-sizing: border-box; padding-block: 0; }
@@ -723,7 +729,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 .p-status { color: var(--muted); font-weight: 500; }
 .p-h { margin: 22px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 /* beside the conversation's heading: what its agent runs on, in the heading's colour but not shouted */
-.p-h .runs-on { margin-left: 12px; text-transform: none; letter-spacing: normal; font-weight: 400; font-size: 12px; }
+.p-h :is(.runs-on, .spent) { margin-left: 12px; text-transform: none; letter-spacing: normal; font-weight: 400; font-size: 12px; }
+.p-h .spent { font-variant-numeric: tabular-nums; cursor: default; }
 .p-error { color: var(--error); margin: 12px 0 0; font-size: 13.5px; }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
@@ -1551,6 +1558,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .sheet > .p-kind:first-child, .sheet > .p-kind:first-child + h2, .sheet > h2:first-child { margin-right: 40px; }
 .sheet .goal { font-size: 13.5px; opacity: .9; }
 .sheet .src { font: 12px var(--mono); color: var(--muted); margin-top: 8px; }
+.sheet .p-spent { margin: 6px 0 0; font-variant-numeric: tabular-nums; cursor: default; }
 .sheet > ol { list-style: none; padding: 0; margin: 16px 0 0; }
 .sheet > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 3px; cursor: pointer; font-size: 13px; }
 .sheet > ol > li:hover { background: var(--chip); }

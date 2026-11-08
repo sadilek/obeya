@@ -56,6 +56,7 @@ export class ProjectAgents {
         runtime: this.runtime,
         cwd: this.repoPath(),
         resume: this.board.row(project.id).session_id ?? undefined,
+        spendOn: project.id,
         onSession: (id, model) => this.board.work(project.id, { session_id: id, model: model ?? null }),
         ...(onTool ? { onTool } : {}),
         ...(dir ? { dir } : {}),

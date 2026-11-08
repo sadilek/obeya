@@ -1415,6 +1415,8 @@ export function readSession(
     role: AgentRole;
     images?: string[];
     onLimit?: (until: number | undefined) => void;
+    /** The card it reads for, whose cost it counts to (`AgentSpec.spendOn`). */
+    spendOn?: string;
   },
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
@@ -1437,6 +1439,7 @@ export function readSession(
         system: o.system,
         tools: o.tools(finish),
         ...(o.onLimit ? { onLimit: o.onLimit } : {}),
+        ...(o.spendOn ? { spendOn: o.spendOn } : {}),
         onEvent: (e) => {
           if (e.type === 'idle' || e.type === 'error') {
             session.close();

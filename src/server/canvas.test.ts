@@ -891,6 +891,28 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     expect(workers.last.spec.resume).toBe('sess-a');
     expect(workers.last.inbox[0]).toContain("Obeya restarted this repository's agents");
   });
+
+  test("what a worker's session costs counts to its card and its canvas; the worker hears nothing of it", async () => {
+    fresh();
+    const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', '.obeya/settings.json': '{ "land": "main" }\n' });
+    identify(shop);
+    const workers = new FakeRuntime();
+    canvas.shutdown();
+    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
+    const card = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    await canvas.repos[0]!.workers.start(card.id);
+    const session = workers.last;
+    expect(session.spec.spendOn).toBe(card.id);
+    session.emit({ type: 'session', id: 'sess-a' });
+    session.emit({ type: 'text', text: 'Working on it.' });
+    // the turn's end reports the session's running total, before the end itself
+    session.emit({ type: 'spend', session: 'sess-a', usd: 0.4 });
+    expect(canvas.board.item(card.id)!.spent).toBe(0.4);
+    expect(canvas.board.item(card.id)!.inTurn).toBe(true);
+    session.emit({ type: 'spend', session: 'sess-a', usd: 1.1 });
+    expect(canvas.board.item(card.id)!.spent).toBe(1.1);
+    expect(canvas.board.snapshot().spent).toBe(1.1);
+  });
 });
 
 describe('the configuration changed while the canvas runs', async () => {

@@ -26,6 +26,7 @@ import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
 import { BOUNDED_WAITS, carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, FOREGROUND_SLEEP_LIMIT, foregroundSleep, trackHere, withStderr } from './runtime';
+import { codexCost, type CodexTokens } from './prices';
 import { OWN_GROUP } from './spawn';
 import type { PlanLimits, UsageSource } from './usage';
 import { z } from 'zod';
@@ -467,6 +468,10 @@ class CodexSession implements AgentSession {
   private hooked = new Set<string>();
   /** The effort the turns run with: the one chosen, or the nearest the model takes (`model`). */
   private effort: AgentEffort | undefined;
+  /** The model the thread runs on, as Codex named it at its start, which its tokens are priced at. */
+  private modelId = '';
+  /** The thread's tokens so far as Codex last reported them, until the turn's end reports their cost. */
+  private tokens: CodexTokens | undefined;
 
   constructor(
     private spec: AgentSpec,
@@ -628,6 +633,7 @@ class CodexSession implements AgentSession {
       throw e;
     }
     this.thread = opened.thread.id;
+    this.modelId = opened.model ?? model;
     this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}`, ...(opened.model ? { model: opened.model } : {}), ...(this.effort ? { effort: this.effort } : {}) });
     this.pump();
     const code = await exited;
@@ -711,6 +717,9 @@ class CodexSession implements AgentSession {
       case 'account/rateLimits/updated':
         this.limits = p.rateLimits as RateSnapshot;
         return;
+      case 'thread/tokenUsage/updated':
+        this.tokens = (p.tokenUsage as { total?: CodexTokens } | undefined)?.total ?? this.tokens;
+        return;
       case 'error': {
         const e = p as { error: { message: string; codexErrorInfo?: unknown }; willRetry: boolean };
         if (!e.willRetry) this.failure = { message: e.error.message, info: e.error.codexErrorInfo };
@@ -757,6 +766,8 @@ class CodexSession implements AgentSession {
         void (this.steering ?? Promise.resolve()).then(() => {
           this.finishing = false;
           if (this.closed) return;
+          const usd = this.tokens ? codexCost(this.modelId, this.tokens) : 0;
+          if (usd > 0) this.emit({ type: 'spend', session: `${CODEX_SESSION}${this.thread}`, usd });
           if (failed) {
             const limited = failed.info === 'usageLimitExceeded';
             const resetsAt = limited ? limitResets(this.limits) : undefined;

@@ -28,6 +28,7 @@ import { Body, Cards, goToMessage, Msg, Quote, Reading, tellable, useAnswer, use
 import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, hasDraft, typeAtCursor, updateDraft, useDraft, useDrafting, useFieldOn } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { AgentPick, RunsOn } from './agentPick';
+import { Spent } from './costs';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
 import { useFitHeight } from './fitHeight';
@@ -1469,6 +1470,7 @@ function Conversation({
       <h4 className="p-h">
         {t.talk.heading}
         <RunsOn item={item} />
+        <Spent item={item} />
       </h4>
       <div className="talk conv" ref={box} onScroll={onScroll}>
         {turns.shown.length === 0 && !turns.unread.length && !working && !turns.asked.length && !seed && <div className="hint">{idea ? t.idea.talkEmpty : question ? t.question.empty : proposal ? t.reviseHint : t.talk.empty}</div>}

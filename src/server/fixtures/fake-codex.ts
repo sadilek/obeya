@@ -126,6 +126,12 @@ async function play(turn: string, text: string) {
   } else if (word === 'limit') {
     notify('account/rateLimits/updated', { rateLimits: { limitId: 'codex', limitName: null, primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1_900_000_000 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1_900_500_000 } } });
     complete(turn, { message: "You've hit your usage limit.", codexErrorInfo: 'usageLimitExceeded' });
+  } else if (word === 'costly') {
+    // the thread's tokens so far, which Codex reports after each request of the turn
+    const total = { totalTokens: 1_200_000, inputTokens: 1_000_000, cachedInputTokens: 400_000, cacheWriteInputTokens: 100_000, outputTokens: 200_000, reasoningOutputTokens: 50_000 };
+    notify('thread/tokenUsage/updated', { turnId: turn, tokenUsage: { total, last: total, modelContextWindow: null } });
+    say(turn, 'done');
+    complete(turn);
   } else if (word === 'wait' || word === 'late') {
     waiting = turn;
     late = word === 'late';

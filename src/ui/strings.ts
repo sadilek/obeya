@@ -2022,6 +2022,26 @@ const de = {
       hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code und Codex auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen. Gilt sofort.',
     },
   },
+  /** What the agents cost (src/ui/costs.tsx), and the setting that shows it. */
+  costs: {
+    about: (amount: string) => `≈ ${amount}`,
+    under: (amount: string) => `< ${amount}`,
+    /** The bar's button, on hover. */
+    title: 'Kosten der Agenten auf diesem Canvas',
+    canvas: (amount: string) => `Agenten auf diesem Canvas: ${amount}`,
+    /** In a project's sheet. */
+    project: (amount: string) => `Kosten der Agenten dieses Projekts: ${amount}`,
+    most: 'Die teuersten Karten:',
+    canvasHint:
+      'Alle Agenten dieses Canvas zusammen, auch die archivierter Karten und Obeyas eigene. Geschätzt zu API-Listenpreisen: bei Claude Code dessen eigene Schätzung, bei Codex die Tokens zu OpenAIs Preisen. Mit einem Abo ist das, was dieselbe Arbeit über die API gekostet hätte, nicht was abgerechnet wird.',
+    cardHint: 'Was die Agenten dieser Karte bisher gekostet haben, geschätzt zu API-Listenpreisen. Mit einem Abo ist das, was dieselbe Arbeit über die API gekostet hätte, nicht was abgerechnet wird.',
+    projectHint: 'Was der Projekt-Agent und die Workstreams dieses Projekts bisher gekostet haben, geschätzt zu API-Listenpreisen. Mit einem Abo ist das, was dieselbe Arbeit über die API gekostet hätte, nicht was abgerechnet wird.',
+    setting: {
+      title: 'Kosten',
+      label: 'Anzeigen',
+      hint: 'Zeigt, was die Agenten gekostet haben: an jeder Karte neben dem Gespräch und für den ganzen Canvas in der Menüzeile, geschätzt zu API-Listenpreisen. Mit einem Abo ist das, was dieselbe Arbeit über die API gekostet hätte. Obeya zählt die Kosten auch, solange sie nicht angezeigt werden. Gilt sofort.',
+    },
+  },
   workspaces: {
     label: 'Workspaces',
     free: (n: number, total: number, blocked = 0) => (total === 0 ? 'keine eingerichtet' : n > 0 ? `${n} frei` : blocked ? 'keiner frei' : 'alle belegt'),
@@ -4108,6 +4128,23 @@ const en: Strings = {
       hint: 'How much of the session and the weekly limit is used of the plans that Claude Code and Codex on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show. Applies at once.',
     },
   },
+  costs: {
+    about: (amount: string) => `≈ ${amount}`,
+    under: (amount: string) => `< ${amount}`,
+    title: 'What the agents on this canvas cost',
+    canvas: (amount: string) => `Agents on this canvas: ${amount}`,
+    project: (amount: string) => `What this project's agents cost: ${amount}`,
+    most: 'The cards that cost the most:',
+    canvasHint:
+      "All agents of this canvas together, those of archived cards and Obeya's own included. Estimated at API list prices: Claude Code's own estimate, and for Codex its tokens at OpenAI's prices. On a subscription this is what the same work would have cost through the API, not what you are billed.",
+    cardHint: "What this card's agents have cost so far, estimated at API list prices. On a subscription this is what the same work would have cost through the API, not what you are billed.",
+    projectHint: "What this project's agent and its workstreams have cost so far, estimated at API list prices. On a subscription this is what the same work would have cost through the API, not what you are billed.",
+    setting: {
+      title: 'Costs',
+      label: 'Show',
+      hint: "Shows what the agents have cost: on each card beside its conversation, and for the whole canvas in the bar, estimated at API list prices. On a subscription this is what the same work would have cost through the API. Obeya counts the costs while they are not shown too. Applies at once.",
+    },
+  },
   workspaces: {
     label: 'Workspaces',
     free: (n: number, total: number, blocked = 0) => (total === 0 ? 'none set up' : n > 0 ? `${n} free` : blocked ? 'none free' : 'all taken'),
@@ -4355,6 +4392,9 @@ const longDay = (d: Date, today: Date) =>
   d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }) });
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+
+/** An amount in US dollars, with cents. */
+export const money = (usd: number) => usd.toLocaleString(locale, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** What an approved card says while Obeya lands it: a review card's agent's commits being pushed onto its PR, its merge, any other's landing. */
 export const landingLabel = (i: { contribution?: { held?: unknown } }) => (i.contribution ? (i.contribution.held ? t.review.pushingHeld : t.review.merging) : t.approving);

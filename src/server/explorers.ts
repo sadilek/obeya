@@ -288,6 +288,7 @@ export class Explorers {
       {
         cwd,
         role: 'explorer',
+        spendOn: card.id,
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         system: system(this.o.board.conversation(), this.o.board.language(), this.o.repoLanguage?.(card) ?? 'en', !!this.o.toObeya) + (preferences ? `\n\n${preferences}` : ''),
         tools: this.tools(card.id, live),

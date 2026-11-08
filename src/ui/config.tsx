@@ -4,7 +4,7 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, modelChoices, type ModelChoice, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, modelChoices, type ModelChoice, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type CostsView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
@@ -463,6 +463,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
             <LanguageBlock on={on} />
             <ThemeBlock on={on} />
             <UsageBlock on={on} />
+            <CostsBlock on={on} />
             {view && <ServerBlock server={view.server} />}
           </section>
         </div>
@@ -826,6 +827,37 @@ function UsageBlock({ on }: { on: boolean }) {
     setStatus('');
     try {
       setView(await api.saveUsageMeter(shown));
+    } catch (e) {
+      setStatus(failText(e));
+    }
+  };
+  return (
+    <>
+      <Head sub title={l.title} hint={l.hint} file={view.file} />
+      <Field label={l.title}>
+        <label className="c-check">
+          <input type="checkbox" checked={view.on} onChange={(e) => choose(e.target.checked)} />
+          {l.label}
+        </label>
+      </Field>
+      {status && <p className="hint c-status">{status}</p>}
+    </>
+  );
+}
+
+/** Whether the page shows what the agents cost: saved on its own, and every open page follows at once. */
+function CostsBlock({ on }: { on: boolean }) {
+  const [view, setView] = useState<CostsView | null>(null);
+  const [status, setStatus] = useState('');
+  useEffect(() => {
+    if (on) api.costs().then(setView, console.error);
+  }, [on]);
+  if (!view) return null;
+  const l = t.costs.setting;
+  const choose = async (shown: boolean) => {
+    setStatus('');
+    try {
+      setView(await api.saveCosts(shown));
     } catch (e) {
       setStatus(failText(e));
     }

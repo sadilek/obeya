@@ -64,13 +64,18 @@ in the bar from its first frame, and a switch to another canvas keeps the bar as
 too old to answer, or numbers that could not be fetched again for five minutes. The workers on other
 machines may use other logins; the bar shows this machine's.
 
+Right of the usage limits, while "Costs" is on (see What agents cost in Agents and workspaces):
+what all agents on the canvas cost so far ("≈ $5.52"), its archived cards' and Obeya's own agents'
+included. A click lists the cards that cost the most (five at most, projects left out, since their
+figure holds their workstreams'), each opening its card, and what the figure is.
+
 The bar has no hint line. `?` (or the round `?` button) shows the legend of mouse and keys, ending
 with the link "Report a wish or a bug" (see Wishes for Obeya's makers). The button only teaches
 the key: the legend says so, and once the key has been used the button is gone for good (per
 browser).
 
 The buttons always fit: when the contents outgrow the bar (a wide sheet, a narrow window), it gives
-up in steps the wordmark and branch, then labels a few at a time, then the workspace pool, the usage limits and `?`,
+up in steps the wordmark and branch, then labels a few at a time, then the workspace pool, the usage limits, the costs and `?`,
 then all but the sheets' buttons and the navigation's, which keeps its count and loses the canvas's name. The step is measured from the actual contents, since the same
 width may hold a short or a long branch, one clone or three.
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
+import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
+import { setCostsShown } from './costs';
 import type { Wish } from '../core/wish';
 import { INPUT, noteMessage, watchPageStalls } from './stalls';
 
@@ -175,6 +176,8 @@ export const api = {
   /** Whether the bar shows the plan's usage limits. */
   usageMeter: () => call<UsageMeterView>('GET', '/api/usage-meter'),
   saveUsageMeter: (on: boolean) => call<UsageMeterView>('PUT', '/api/usage-meter', { on }),
+  costs: () => call<CostsView>('GET', '/api/costs'),
+  saveCosts: (on: boolean) => call<CostsView>('PUT', '/api/costs', { on }),
   /** The model and effort of each group of agents. */
   agents: () => call<AgentsView>('GET', '/api/agents'),
   /** Saves the model or the effort of one group. */
@@ -704,6 +707,7 @@ export function useCanvas(id = canvasId, start?: Partial<CanvasFeed>): CanvasFee
           else if (msg.type === 'update') setUpdate(msg.update);
           else if (msg.type === 'source') setSource(msg.source);
           else if (msg.type === 'usage') setUsage(msg.usage);
+          else if (msg.type === 'costs') setCostsShown(msg.shown);
           else if (msg.type === 'waiting') setWaiting(msg.waiting);
           else if (msg.type === 'canvases') setCanvases(msg.canvases);
         },
@@ -744,6 +748,7 @@ export function everyCanvasHeard(
     const on = msg.canvas;
     if (msg.type === 'snapshot' && on) set.snapshots((s) => ({ ...s, [on]: msg.snapshot }));
     else if (msg.type === 'usage') set.usage(msg.usage);
+    else if (msg.type === 'costs') setCostsShown(msg.shown);
     else if (msg.type === 'canvases' && !msg.canvases.length) leave();
     else if (msg.type === 'canvases') {
       set.canvases(msg.canvases);

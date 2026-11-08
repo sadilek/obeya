@@ -119,6 +119,34 @@ instructions that differ by harness (how a worker waits); what it leaves out is 
 changes only while the card waits to start (planned, proposed, in the queue); once it is at work the
 choice stays as it began.
 
+### What agents cost
+
+Obeya counts what every agent on a canvas costs, whether or not the owner has costs shown: after
+each turn its harness reports the session's estimated cost in US dollars so far, a running total
+(Claude Code's `total_cost_usd` on each result, its own estimate at API list prices; for Codex the
+thread's tokens from `thread/tokenUsage/updated`, priced at OpenAI's list prices in a table Obeya
+keeps, `src/server/prices.ts`). A session's cost is its latest total; a total below the one before
+means the harness started counting afresh (a resume without the earlier total, a cleared context),
+and what it had counted stays. The cost of an agent working for a card (its worker, an idea's
+exploration agent, a project's agent, the rewrite of its proposal) counts to that card, any other
+agent's (the Koordinator's, the small jobs') to the canvas alone. Kept per session, by canvas and
+card, in Obeya's database, with each card's sum on its row.
+
+Codex prices input uncached, cached or written to the cache, and output with its reasoning, at the
+standard tier for prompts up to 272K tokens; the surcharge for longer prompts, which applies per
+request, is left out (the thread's total does not tell the requests apart). A model the table lacks
+takes the price of the newest of its family the table has, else of the Sol family's, as Claude Code
+prices a model it does not know at its default's. A thread priced at the model it runs on now, all of
+its tokens are, also those of a resume on an older version of its family.
+
+"Costs" under Configuration → General shows them (off until then; `costs: true` in `settings.json`
+in Obeya's home), on every open page at once: a card's beside its conversation heading, after what
+it runs on ("≈ $2.47"; below a cent "< $0.01"), a project's in its sheet under the plan doc (its
+project agent's and its workstreams', archived ones included) with each workstream's in its line,
+and the canvas's in the bar (see The bar). Each says on hover that it is an estimate at API list
+prices, which on a subscription is what the same work would have cost through the API, not what is
+billed. The phone view shows a card's figure as the desktop does; its bar has none.
+
 ### Workspaces
 
 A card works in a worktree of its own, unless the repository's settings say clones or its
@@ -448,6 +476,15 @@ for its hooks), and what the repository's work needs.
 
 ### Decisions
 
+- **Costs are opt-in, and counted while hidden** (owner, 2026-11-08, GitHub issue #66): the figures
+  make the interface busier for something most owners never need, so a setting shows them; counting
+  them all along means turning it on later shows what the cards cost from the start.
+- **Codex's costs from a price table Obeya keeps** (owner, 2026-11-08): Codex reports tokens only.
+  Rejected: showing token counts for Codex (no figure to add to Claude Code's dollars), and showing
+  nothing for Codex. The table needs keeping up as OpenAI changes its prices.
+- **A session's cost is its harness's running total, not a sum of turns** (2026-11-08): Claude Code
+  reports the total so far after each turn, and a resumed session goes on from it, so adding the
+  turns would count the earlier ones again.
 - **Claude in Chrome for every session here that may act, without a setting** (2026-11-05): a card
   can then read what only the owner's login shows (a dashboard, a console). Claude Code turns it on
   in a session started from a program only with `--chrome`, whatever its own settings say. The flag

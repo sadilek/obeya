@@ -121,7 +121,7 @@
 // into the database:
 // state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
 // now), snoozed (`{ on, state?, why? }`: its agent snoozed it until the card with key `on` gets to `state`, done by default), scope (files), branch (a working or waiting card without one gets the branch a start would
-// have given it, which every started card has), createdAgo, changedAgo (when something last happened at it), archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token?, reply? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
+// have given it, which every started card has), createdAgo, changedAgo (when something last happened at it), archivedAgo, spent (what its agents cost so far, US dollars; the stage's own `spent` is what the canvas's own agents did; both need code that counts costs), events ([{ kind, author, text, ago?, mocks?, spot?, token?, reply? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
 // `reply`: Obeya's reply that only answers the owner's words, which stands in the conversation (with a `talk` entry on the card of the same reply, its exchange);
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
 // place in a demo video, `{ at, chapter?, demo? }`) names its demo by its place in that order; earlier demos need code that has them),
@@ -215,6 +215,8 @@ interface StageCard {
   /** A prototype of the idea with this key. */
   prototypeOf?: string;
   createdAgo?: string;
+  /** What its agents cost so far, in US dollars, as one session of theirs. */
+  spent?: number;
   changedAgo?: string;
   archivedAgo?: string;
   events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean; reply?: boolean }[];
@@ -222,6 +224,8 @@ interface StageCard {
 }
 
 interface Stage {
+  /** What the canvas's own agents (the Koordinator's) cost so far, in US dollars. */
+  spent?: number;
   /** No canvas: Obeya's first start, with the setup assistant. */
   setup?: boolean;
   /** Keeps Obeya's proposal to fill in the settings of a repository that has none. */
@@ -744,6 +748,11 @@ for (const [i, c] of stage.cards.entries()) {
       id,
       ...Object.fromEntries(keys.map((k) => [k, typeof row[k] === 'object' && row[k] !== null ? JSON.stringify(row[k]) : (row[k] as string | number | null)])),
     } as Record<string, string | number | null>);
+  if (c.spent !== undefined) {
+    if (!columns.has('spent')) fail(`card ${c.key ?? i}: this code's database has no costs`);
+    db.query("INSERT INTO spend (canvas_id, card_id, session, usd) SELECT canvas_id, id, 'staged:' || id, $usd FROM cards WHERE id = $id").run({ id, usd: c.spent });
+    db.query('UPDATE cards SET spent = $usd WHERE id = $id').run({ id, usd: c.spent });
+  }
   const reviews: { id: number; at: string }[] = [];
   const spots: [number, NonNullable<StageEvent['spot']>][] = [];
   for (const e of c.events ?? []) {
@@ -773,6 +782,7 @@ for (const [i, c] of stage.cards.entries()) {
   for (const [event, { demo, ...spot }] of spots)
     db.query('UPDATE events SET spot = $spot WHERE id = $id').run({ id: event, spot: JSON.stringify({ ...spot, ...(demo !== undefined && reviews[demo] ? { demo: reviews[demo].id } : {}) }) });
 }
+if (stage.spent !== undefined) db.query("INSERT INTO spend (canvas_id, session, usd) VALUES ($c, 'staged', $usd)").run({ c: canvas, usd: stage.spent });
 const prefIds: Record<string, number> = {};
 for (const [i, p] of (stage.preferences ?? []).entries()) {
   const row: Record<string, string | number | null> = {

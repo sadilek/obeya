@@ -523,6 +523,12 @@ export interface Item {
   app?: string;
   /** The harness, model and effort the card's agent session runs on, the model as the harness named it when the session started (`claude-opus-5-5`). */
   runsOn?: { harness: Harness; model: string; effort?: AgentEffort };
+  /**
+   * What the card's agents cost so far in US dollars, estimated at API list prices (a project's: its
+   * project agent's and its workstreams'); none before any reported a cost. Counted whether or not
+   * the owner has costs shown (`CostsView`).
+   */
+  spent?: number;
   /** The harness, model and effort the owner chose for this card's agent, over its group's (`CardAgent`); absent: the group's. */
   agent?: CardAgent;
   /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
@@ -1265,6 +1271,8 @@ export interface CanvasSnapshot {
   planDirs?: PlanDir[];
   /** A mark of the archive that changes with anything it lists: the page reads the archive again only then. */
   archive?: string;
+  /** What all agents on the canvas cost so far in US dollars (its cards', archived ones too, and its own agents', the Koordinator's); none before any reported a cost. */
+  spent?: number;
 }
 
 /**
@@ -2502,6 +2510,13 @@ export interface UsageMeterView {
   on: boolean;
 }
 
+/** Whether the page shows what the agents cost (`Item.spent`, `CanvasSnapshot.spent`; `src/server/settings.ts`); off until the owner turns it on. */
+export interface CostsView {
+  /** The file it is saved in, under Obeya's home. */
+  file: string;
+  on: boolean;
+}
+
 /**
  * How other devices reach Obeya, when the owner lets them (`src/server/remote.ts`): through
  * `tailscale serve`, which gives an HTTPS address in the tailnet, or on an address of this machine
@@ -3034,6 +3049,8 @@ export type ServerMessage =
   | { type: 'source'; source: SourceUpdate | null }
   /** On connect and whenever it changes: how much of its usage limits the account Claude Code runs with here has used, while the bar shows it. */
   | { type: 'usage'; usage: Usage | null }
+  /** On connect and whenever the owner changes it: whether the page shows what the agents cost (`CostsView`). */
+  | { type: 'costs'; shown: boolean }
   /** On connect and whenever it changes: what waits for the owner on each canvas, by canvas id. */
   | { type: 'waiting'; waiting: Record<string, Waiting> }
   /** Whenever a canvas starts, stops, or changes its name or repositories while Obeya runs. */

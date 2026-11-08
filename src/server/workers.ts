@@ -3539,6 +3539,7 @@ export class Workers {
     const spec: AgentSpec = {
       cwd: row.workspace,
       role: 'worker',
+      spendOn: cardId,
       ...(agent ? { agent } : {}),
       ...(plans ? { dirs: [plans] } : {}),
       ...(review ? { untrusted: true } : {}),

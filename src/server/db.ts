@@ -36,6 +36,8 @@ export interface CardRow {
   change_size: string | null;
   /** The effort that session runs with, as Obeya started it (`high`). */
   effort: string | null;
+  /** What its agents' sessions cost so far in US dollars, as their harnesses estimated it (`Store.spend`); null before any reported a cost. */
+  spent: number | null;
   /** JSON: the harness, model and effort the owner chose for the card's agent (`CardAgent`), over its group's. */
   agent: string | null;
   /** Leased clone and branch while a worker has the card. */
@@ -550,6 +552,17 @@ export const MIGRATIONS = [
   END;`,
   // the Koordinator's reply only answers the owner's words (no actions, no question looked up): "Show as walkthrough" can tell it
   'ALTER TABLE talk ADD COLUMN reply_only INTEGER;',
+  // what each agent session on a canvas cost as its harness estimated it (`Store.spend`), and each
+  // card's sum of its sessions', which its row carries so that the card shows it with its other fields
+  `CREATE TABLE spend (
+    canvas_id TEXT NOT NULL REFERENCES canvases(id),
+    card_id TEXT REFERENCES cards(id),
+    session TEXT NOT NULL,
+    usd REAL NOT NULL,
+    settled REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (canvas_id, session)
+  );
+  ALTER TABLE cards ADD COLUMN spent REAL;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -697,6 +710,39 @@ export class Store {
    * archived card, a workstream of an archived project, a prototype of an archived idea; one leaving
    * the archive (taken back, deleted) too. Kept by the database as the rows are written.
    */
+  /**
+   * An agent session's estimated cost so far (`usd`, US dollars), as its harness reports it after each
+   * turn: cumulative over the session, a resumed one going on from its earlier total. A total below
+   * the last one means the harness started counting afresh (a resume without the earlier total, a
+   * cleared context): what it had counted before stays (`settled`). A session of a card's agent
+   * (`cardId`) counts to that card, any other to the canvas alone. Says whether anything changed.
+   */
+  spend(canvasId: string, cardId: string | null, session: string, usd: number): boolean {
+    return this.db.transaction(() => {
+      const had = this.db.query('SELECT usd, settled FROM spend WHERE canvas_id = $c AND session = $s').get({ c: canvasId, s: session }) as { usd: number; settled: number } | null;
+      if (had && had.usd === usd) return false;
+      const settled = had ? had.settled + (usd < had.usd ? had.usd : 0) : 0;
+      this.db
+        .query('INSERT INTO spend (canvas_id, card_id, session, usd, settled) VALUES ($c, $card, $s, $u, $settled) ON CONFLICT(canvas_id, session) DO UPDATE SET card_id = $card, usd = $u, settled = $settled')
+        .run({ c: canvasId, card: cardId, s: session, u: usd, settled });
+      if (cardId) this.db.query('UPDATE cards SET spent = (SELECT sum(usd + settled) FROM spend WHERE card_id = $card) WHERE id = $card').run({ card: cardId });
+      return true;
+    })();
+  }
+
+  /** What the agents on a canvas cost so far in US dollars: its cards' (archived ones too) and its own agents' (the Koordinator's); 0 before any reported a cost. */
+  spentOn(canvasId: string): number {
+    return (this.db.query('SELECT sum(usd + settled) AS usd FROM spend WHERE canvas_id = $c').get({ c: canvasId }) as { usd: number | null }).usd ?? 0;
+  }
+
+  /** What the workstreams of each of the canvas's projects cost so far (archived ones too), by project; projects whose workstreams cost nothing are left out. */
+  spentUnder(canvasId: string): Map<string, number> {
+    const rows = this.db
+      .query('SELECT parent_id AS project, sum(spent) AS usd FROM cards WHERE canvas_id = $c AND parent_id IS NOT NULL AND deleted_at IS NULL AND spent IS NOT NULL GROUP BY parent_id')
+      .all({ c: canvasId }) as { project: string; usd: number }[];
+    return new Map(rows.map((r) => [r.project, r.usd]));
+  }
+
   archiveRev(canvasId: string): string {
     return String((this.db.query('SELECT rev FROM archive_revs WHERE canvas_id = $c').get({ c: canvasId }) as { rev: number } | null)?.rev ?? 0);
   }
