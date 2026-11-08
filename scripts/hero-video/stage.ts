@@ -4,7 +4,7 @@
 // sits under the microphone or the minimap.
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { scratchDir } from '../common';
+import { scratchDir } from '../common.ts';
 
 export const PORT = 4730;
 const APP = join(import.meta.dirname, 'tipjar');

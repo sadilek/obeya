@@ -59,7 +59,8 @@ a card per workstream and a project agent to ask about the plan. Each product yo
 several, and one Obeya runs them all. A card's agent, or all of a canvas's from the canvas list,
 can be paused and resumed: each finishes its step first. Typing "/" in a card's field offers the
 skills its agent knows. The bar shows how much of your plans' session and week is used: Claude's,
-ChatGPT's for Codex, or both. Which group of agents runs on which harness and model you choose in
+ChatGPT's for Codex, or both; switched on in Configuration, it also shows what the agents cost, per
+card and per canvas. Which group of agents runs on which harness and model you choose in
 "Agents and models", and a single card's in the menu beside its start button.
 
 ![An Obeya canvas: a project with its workstreams, one at work and one in the queue; beside it a demo and a question waiting for you, a task at work, an approved and a live one, and an idea](site/img/canvas.png)
