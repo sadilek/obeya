@@ -2039,7 +2039,7 @@ const de = {
     setting: {
       title: 'Kosten',
       label: 'Anzeigen',
-      hint: 'Zeigt, was die Agenten gekostet haben: an jeder Karte neben dem Gespräch und für den ganzen Canvas in der Menüzeile, geschätzt zu API-Listenpreisen. Mit einem Abo ist das, was dieselbe Arbeit über die API gekostet hätte. Obeya zählt die Kosten auch, solange sie nicht angezeigt werden. Gilt sofort.',
+      hint: 'Zeigt, was die Agenten gekostet haben: an jeder Karte neben dem Gespräch und für den ganzen Canvas in der Menüzeile, geschätzt zu API-Listenpreisen. Mit einem Abo ist das, was dieselbe Arbeit über die API gekostet hätte. Obeya zählt die Kosten auch, solange sie nicht angezeigt werden.',
     },
   },
   workspaces: {
@@ -4142,7 +4142,7 @@ const en: Strings = {
     setting: {
       title: 'Costs',
       label: 'Show',
-      hint: "Shows what the agents have cost: on each card beside its conversation, and for the whole canvas in the bar, estimated at API list prices. On a subscription this is what the same work would have cost through the API. Obeya counts the costs while they are not shown too. Applies at once.",
+      hint: "Shows what the agents have cost: on each card beside its conversation, and for the whole canvas in the bar, estimated at API list prices. On a subscription this is what the same work would have cost through the API. Obeya counts the costs while they are not shown too.",
     },
   },
   workspaces: {
