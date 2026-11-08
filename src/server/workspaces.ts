@@ -1207,9 +1207,15 @@ export class Workspaces implements CardWorkspaces {
     if (!ws) return null;
     try {
       const up = await this.upstreamAsync(ws);
-      // `a...b`: from where they parted to b
-      if (changing && (await gitRun(ws, ['diff', '--quiet', '--no-ext-diff', '--no-textconv', `${up}...HEAD`, '--', changing])).code === 0) return null;
-      return { ws, base: await gitAsync(ws, 'merge-base', 'HEAD', up) };
+      const diff = (...since: string[]) => gitRun(ws, ['diff', '--quiet', '--no-ext-diff', '--no-textconv', ...since, 'HEAD', '--', changing!]);
+      // `--merge-base`: from the one commit where they parted; where criss-cross merges left several,
+      // git refuses (`a...b` would pick one of its own, not always the one `merge-base` names), and
+      // the diff from the one named tells
+      const quick = changing ? (await diff('--merge-base', up)).code : null;
+      if (quick === 0) return null;
+      const base = await gitAsync(ws, 'merge-base', 'HEAD', up);
+      if (quick !== null && quick !== 1 && (await diff(base)).code === 0) return null;
+      return { ws, base };
     } catch {
       return null;
     }

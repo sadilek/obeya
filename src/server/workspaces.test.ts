@@ -422,6 +422,41 @@ describe("a follow-up's temporary worktree", () => {
   });
 });
 
+describe("a card's fork point", () => {
+  test('tells a settings change of the branch against the commit it names, where criss-cross merges left several where it parted', async () => {
+    const SETTINGS = '.obeya/settings.json';
+    const repo = gitRepo(join(dir, 'repo'), { 'README.md': 'hello\n', [SETTINGS]: '{"land":"main"}\n' });
+    const store = new Store(':memory:');
+    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: repo, dir: join(dir, 'ws') });
+    const card = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const { path: ws, ready } = spaces.lease(card, 'obeya/a');
+    await ready;
+    expect(await spaces.forkPoint(card, SETTINGS)).toBeNull();
+    // at the same second, so git ranks the two places they parted at by the merges' parents alone
+    const commit = (tree: string, parents: string[], message: string) =>
+      Bun.spawnSync(['git', '-C', repo, 'commit-tree', tree, ...parents.flatMap((p) => ['-p', p]), '-m', message], {
+        env: { ...process.env, GIT_AUTHOR_DATE: '1700000000 +0000', GIT_COMMITTER_DATE: '1700000000 +0000' },
+      }).stdout.toString().trim();
+    const root = git(repo, 'rev-parse', 'HEAD');
+    writeFileSync(join(ws, SETTINGS), '{"land":"pr"}\n');
+    git(ws, 'commit', '--quiet', '-am', 'land by pull request');
+    const card1 = commit(git(ws, 'rev-parse', 'HEAD^{tree}'), [root], 'land by pull request');
+    writeFileSync(join(repo, 'README.md'), 'hello again\n');
+    git(repo, 'commit', '--quiet', '-am', 'readme');
+    const main1 = commit(git(repo, 'rev-parse', 'HEAD^{tree}'), [root], 'readme');
+    // each merges the other: the branch from main's side, main keeping its own settings
+    const both = git(repo, 'merge-tree', '--write-tree', card1, main1);
+    git(ws, 'reset', '--quiet', '--hard', commit(both, [main1, card1], 'merge'));
+    git(repo, 'reset', '--quiet', '--hard', commit(git(repo, 'rev-parse', `${main1}^{tree}`), [card1, main1], 'merge'));
+    expect(git(ws, 'merge-base', '--all', 'HEAD', 'main').split('\n').sort()).toEqual([card1, main1].sort());
+    // where git picks the place they parted itself, it takes the one the branch already has its settings from
+    expect(Bun.spawnSync(['git', '-C', ws, 'diff', '--quiet', 'main...HEAD', '--', SETTINGS], { stderr: 'ignore' }).exitCode).toBe(0);
+    expect(await spaces.forkPoint(card, SETTINGS)).toEqual({ ws, base: main1 });
+    expect(git(ws, 'show', `${main1}:${SETTINGS}`)).toBe('{"land":"main"}');
+  });
+});
+
 describe('the pull after a merge', () => {
   // the machine's own git configuration may set a way of pulling: none is set unless a test sets one
   let globalConfig: string | undefined;
