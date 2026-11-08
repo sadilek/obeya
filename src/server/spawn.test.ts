@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { endThreads, hidden, hideConsoleWindows, onStart, spawnOutput } from './spawn';
-import { removeDir } from './testing';
+import { endThreads, forTests, hidden, hideConsoleWindows, onStart, spawnOutput } from './spawn';
+import { PATIENCE, removeDir } from './testing';
 
 // first in the file: after other tests have run, Bun no longer shows the wait this test is about
 test('what a thread answers settles for expect(…).rejects and .resolves too, not only for await', async () => {
@@ -54,6 +54,57 @@ test('a process on a thread of its own gets what the server gives it: directory,
   expect(slow.signal).not.toBeNull();
   expect(await spawnOutput(['obeya-no-such-program']).then(() => null, (e: unknown) => e)).toBeInstanceOf(Error);
 }, 30_000);
+
+// Windows alone: elsewhere no process inherits another's pipes, and there is no lock to test
+test.skipIf(process.platform !== 'win32')('a process started next to slow ones, on a thread or the server’s, ends as quickly as it would alone', async () => {
+  // a start takes turns with 24 others, each slow on a busy machine; the slow ones run twice as
+  // long, and the test waits for them
+  const quick = 3000 * PATIENCE;
+  const slow: Promise<unknown>[] = [];
+  const quicks: Promise<number>[] = [];
+  const timed = async (p: () => Promise<unknown> | unknown) => {
+    const t = performance.now();
+    await p();
+    return performance.now() - t;
+  };
+  for (let i = 0; i < 8; i++) {
+    slow.push(spawnOutput([process.execPath, '-e', `await Bun.sleep(${2 * quick})`], { timeout: 2 * quick }));
+    quicks.push(timed(() => spawnOutput([process.execPath, '--version'])));
+    // while the threads start theirs: the slow ones would hold its output open until they end
+    quicks.push(timed(() => Bun.spawnSync([process.execPath, '--version'], { stdout: 'pipe' })));
+    await Bun.sleep(1);
+  }
+  expect(Math.max(...(await Promise.all(quicks)))).toBeLessThan(quick);
+  await Promise.all(slow);
+}, 4 * 3000 * PATIENCE + 10_000);
+
+test('a start waiting for the lock takes it over from a holder that has kept it too long, and only then', () => {
+  const { acquire, release } = forTests;
+  const lock = new Int32Array(new SharedArrayBuffer(12));
+  const holder = () => lock[0]! & 0xff;
+  expect(acquire(lock, 2, 100)).toBe(0);
+  // given back only by whoever holds it
+  release(lock, 3);
+  expect(holder()).toBe(2);
+  let t = performance.now();
+  expect(acquire(lock, 3, 100)).toBe(2);
+  expect(performance.now() - t).toBeGreaterThanOrEqual(90);
+  expect(holder()).toBe(3);
+  // the server's thread too, and it lets the threads wait again afterwards
+  expect(acquire(lock, 1, 50)).toBe(3);
+  expect([holder(), lock[1]]).toEqual([1, 0]);
+  release(lock, 1);
+  expect(lock[0]).toBe(0);
+  // a holder that gave it back and took it anew holds it afresh: the wait starts over
+  acquire(lock, 2, 100);
+  const first = lock[0];
+  release(lock, 2);
+  acquire(lock, 2, 100);
+  expect(lock[0]).not.toBe(first);
+  t = performance.now();
+  expect(acquire(lock, 3, 100)).toBe(2);
+  expect(performance.now() - t).toBeGreaterThanOrEqual(90);
+});
 
 test('a thread that dies while its process runs fails that call without starting it again; the next call gets a thread anew', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-spawn-'));

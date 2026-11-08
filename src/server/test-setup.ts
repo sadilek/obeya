@@ -4,7 +4,11 @@ import { afterAll } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { oneStartAtATime } from './spawn';
 import { removeTemplates } from './testing';
+
+// as the server does: a test's process started next to a slow one does not wait for it (Windows)
+oneStartAtATime();
 
 // Whatever the tests put in the temp directory goes into one of this run, removed after the run. A
 // run that was killed (Obeya restarting stops its workers' test runs) never got there: the next run
