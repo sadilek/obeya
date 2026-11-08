@@ -4,12 +4,14 @@
 // sentence as a caption whose pointer marks the word being spoken, two lines at a time; "CC" or C
 // switch captions for every walkthrough of the browser. Slides and player take showntell's look
 // (styles.css `.wt-*`). What it plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
-// drawn anew (the answer's words arriving above it) and pauses only once no message shows it.
+// drawn anew (the answer's words arriving above it) and pauses only once no message shows it; a
+// restart's reload brings it back where it was. Without a voice (demo settings without one), each
+// sentence stands as a caption for as long as reading it takes.
 
 import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { AnswerFile } from '../core/types';
-import { estimatedStarts, INTERRUPTED, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
-import { answerFile, api, at } from './api';
+import { estimatedStarts, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
+import { answerFile, api, at, beforeReload } from './api';
 import { captionPages, pageOf } from './captionPages';
 import { known, know } from './known';
 import { t } from './strings';
@@ -90,6 +92,11 @@ const GAP_S = 0.15;
 const NEXT_SLIDE_MS = 600;
 /** Seconds a sentence not voiced yet is taken to last, per character, to lay out its slide. */
 const SECONDS_PER_CHAR = 0.075;
+/** Without a voice: how long a sentence stands as a caption, by its characters, read beside the slide. */
+const READING_PER_CHAR = 0.065;
+const READING_FROM_S = 0.6;
+const READING_MIN_S = 1.6;
+const readingSeconds = (sentence: string) => Math.max(READING_MIN_S, READING_FROM_S + sentence.length * READING_PER_CHAR);
 
 /** The walkthroughs this page asked for with "Show as walkthrough", by address: they start by themselves, the click allowed the sound. */
 const askedHere = new Set<string>();
@@ -98,6 +105,107 @@ const walkthroughUrl = (thread: number, name: string) => at(`/threads/${thread}/
 
 /** That the owner has used "Show as walkthrough": the newest answer's button no longer stays in view. */
 const WALKTHROUGH_KNOWN = 'obeya.walkthroughKnown';
+
+/** What plays a sentence: its voice, or without one the time it takes to read. */
+type Sound = Pick<HTMLAudioElement, 'dataset' | 'currentTime' | 'ended' | 'play' | 'pause'>;
+
+/** A sentence read rather than heard: it lasts as long as reading it takes, and ends as a clip does. */
+class Reading implements Sound {
+  dataset: DOMStringMap = {};
+  ended = false;
+  onended?: () => void;
+  private seconds = 0;
+  /** Seconds read while it does not go on. */
+  private read = 0;
+  /** When it went on, less what was read before. */
+  private since?: number;
+  private timer?: ReturnType<typeof setTimeout>;
+
+  load(seconds: number) {
+    this.pause();
+    this.seconds = seconds;
+    this.read = 0;
+    this.ended = false;
+  }
+
+  get currentTime() {
+    return this.since === undefined ? this.read : Math.min(this.seconds, (performance.now() - this.since) / 1000);
+  }
+
+  play() {
+    if (this.since !== undefined) return Promise.resolve();
+    if (this.ended) this.read = 0;
+    this.ended = false;
+    this.since = performance.now() - this.read * 1000;
+    this.timer = setTimeout(() => {
+      this.since = undefined;
+      this.read = this.seconds;
+      this.ended = true;
+      this.onended?.();
+    }, (this.seconds - this.read) * 1000);
+    return Promise.resolve();
+  }
+
+  pause() {
+    if (this.since === undefined) return;
+    this.read = this.currentTime;
+    this.since = undefined;
+    clearTimeout(this.timer);
+  }
+}
+
+/**
+ * The voice of every player of the page, one at a time as they play. One element for all, so that
+ * the first tap or click anywhere on the page allows its sound for good: a phone's browser (Safari
+ * on the iPhone) plays an element's sound only once a tap started it, and a walkthrough asked for or
+ * waiting for its voice starts playing after the tap, not in it.
+ */
+let voiceElement: HTMLAudioElement | undefined;
+const theVoice = () => {
+  if (voiceElement) return voiceElement;
+  voiceElement = new Audio();
+  voiceElement.preload = 'auto';
+  voiceElement.onended = () => speaker?.ended();
+  return voiceElement;
+};
+/** The player the voice speaks for. */
+let speaker: Playback | undefined;
+/** A WAV without a sample, played in the first tap or click. */
+const NOTHING = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=';
+const allowSound = () => {
+  if (speaker) return;
+  const voice = theVoice();
+  voice.src = NOTHING;
+  voice.play().then(
+    () => {
+      for (const e of ['click', 'touchend']) removeEventListener(e, allowSound, true);
+    },
+    () => {},
+  );
+};
+if (typeof window !== 'undefined') for (const e of ['click', 'touchend']) addEventListener(e, allowSound, true);
+
+/** Where a player stood when a restart reloaded the page, by walkthrough. */
+interface KeptPlace {
+  slide: number;
+  part: number;
+  playing: boolean;
+}
+const KEPT_KEY = 'obeya-kept-walkthroughs';
+/** How old a place may be to come back: a restart takes seconds. */
+const KEPT_FRESH_MS = 5 * 60_000;
+
+/** The places the reload before this page kept, taken once. */
+const keptPlaces: Map<string, KeptPlace> = (() => {
+  try {
+    const raw = sessionStorage.getItem(KEPT_KEY);
+    sessionStorage.removeItem(KEPT_KEY);
+    const k = raw ? (JSON.parse(raw) as { at: number; places: [string, KeptPlace][] }) : null;
+    return new Map(k && Date.now() - k.at < KEPT_FRESH_MS ? k.places : []);
+  } catch {
+    return new Map();
+  }
+})();
 
 class Playback {
   data: Walkthrough | null = null;
@@ -116,7 +224,8 @@ class Playback {
   autoplayed = false;
   /** The browser refused to play without a click (no click on the page yet). */
   refused = false;
-  readonly audio = new Audio();
+  /** Without a voice, what plays its sentences; for a player the voice does not speak for, what stands still. */
+  private readonly reader = new Reading();
   private next?: ReturnType<typeof setTimeout>;
   /** A read is running or due: one at a time. */
   private reading = false;
@@ -131,8 +240,29 @@ class Playback {
     /** To start by itself once it can; the page may learn it only after the player showed (the click's reply comes after the walkthrough). */
     public autoplay: boolean,
   ) {
-    this.audio.preload = 'auto';
-    this.audio.onended = () => this.ended();
+    this.reader.onended = () => this.ended();
+    // where it stood before a restart reloaded the page: it plays on from there, if it played (and the tab is in sight)
+    const kept = keptPlaces.get(url);
+    if (kept) {
+      this.slide = kept.slide;
+      this.part = kept.part;
+      if (kept.playing && !document.hidden) this.autoplay = true;
+      else this.started = true;
+    }
+  }
+
+  /** Without a voice the walkthrough is read. */
+  get silent() {
+    return !!this.data?.silent;
+  }
+
+  get audio(): Sound {
+    return !this.silent && speaker === this ? theVoice() : this.reader;
+  }
+
+  /** Where it stands, for the reload a restart brings. */
+  place(): KeptPlace | undefined {
+    return this.started || this.autoplay ? { slide: this.slide, part: this.part, playing: this.playing || (this.autoplay && !this.autoplayed) } : undefined;
   }
 
   subscribe = (fn: () => void) => {
@@ -167,7 +297,7 @@ class Playback {
   private complete() {
     const d = this.data;
     // with its voice failed, it still gets the slides the agent writes; each sentence's words come once it is heard back
-    return !!d && d.done && (!!d.error || d.clips.every((c) => c.every((x) => x?.words)));
+    return !!d && d.done && (!!d.error || !!d.silent || d.clips.every((c) => c.every((x) => x?.words)));
   }
 
   /** Reads the walkthrough, and again and again while it grows and a message shows it. */
@@ -195,6 +325,9 @@ class Playback {
     if (!d?.slides.length) return;
     if (this.autoplay && !this.started && !this.autoplayed) {
       this.autoplayed = true;
+      // a place kept from before a restart within what is there
+      this.slide = Math.min(this.slide, d.slides.length - 1);
+      this.part = Math.min(this.part, d.slides[this.slide]!.parts.length - 1);
       this.play();
     }
     if (this.writing && this.slide + 1 < d.slides.length) {
@@ -207,7 +340,11 @@ class Playback {
     if (this.playing && this.waiting && this.clip(this.slide, this.part)) this.playPart(this.slide, this.part);
   }
 
-  clip(slide: number, part: number) {
+  clip(slide: number, part: number): { file: string; seconds: number; words?: number[] } | null {
+    if (this.silent) {
+      const sentence = this.data?.slides[slide]?.parts[part];
+      return sentence === undefined ? null : { file: '', seconds: readingSeconds(sentence) };
+    }
     return this.data?.clips[slide]?.[part] ?? null;
   }
 
@@ -243,7 +380,8 @@ class Playback {
 
   /** The word of the sentence being spoken, -1 before the first or while it does not play. */
   word(): number {
-    const t = this.inPart();
+    // none in a sentence read
+    const t = this.silent ? undefined : this.inPart();
     if (t === undefined) return -1;
     let now = -1;
     for (const [k, start] of this.wordStarts(this.slide, this.part).entries()) if (t >= start - 0.05) now = k;
@@ -270,6 +408,11 @@ class Playback {
     if (!this.data?.slides.length) return;
     // only one walkthrough speaks at a time
     for (const p of sessions.values()) if (p !== this && p.playing) p.pause();
+    if (!this.silent && speaker !== this) {
+      theVoice().pause();
+      delete theVoice().dataset.key;
+      speaker = this;
+    }
     this.started = true;
     this.playing = true;
     this.refused = false;
@@ -321,7 +464,8 @@ class Playback {
       return this.changed();
     }
     this.audio.dataset.key = `${slide}-${part}`;
-    this.audio.src = this.clipUrl(this.data!.clipsDir, c.file);
+    if (this.silent) this.reader.load(c.seconds);
+    else theVoice().src = this.clipUrl(this.data!.clipsDir, c.file);
     this.start();
     this.changed();
   }
@@ -338,7 +482,7 @@ class Playback {
     });
   }
 
-  private ended() {
+  ended() {
     const d = this.data;
     if (!d) return;
     if (this.part + 1 < d.slides[this.slide]!.parts.length) this.next = setTimeout(() => this.playPart(this.slide, this.part + 1), GAP_S * 1000);
@@ -351,6 +495,17 @@ class Playback {
 
 /** The players of this page, by walkthrough: what one plays survives its message being drawn anew. */
 const sessions = new Map<string, Playback>();
+
+// a restart reloads the page: each player comes back where it stood
+beforeReload(() => {
+  const places = [...sessions].flatMap(([url, p]): [string, KeptPlace][] => {
+    const at = p.place();
+    return at ? [[url, at]] : [];
+  });
+  try {
+    if (places.length) sessionStorage.setItem(KEPT_KEY, JSON.stringify({ at: Date.now(), places }));
+  } catch {}
+});
 
 function usePlayback(thread: number, name: string): Playback {
   const url = walkthroughUrl(thread, name);
@@ -380,8 +535,9 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
   const p = usePlayback(thread, file.name);
   const stage = useRef<HTMLDivElement>(null);
   useSlideScale(stage);
-  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomedBox(w, h, captionsOn), playing: () => p.playing });
-  const captions = captionsOn;
+  // without a voice the captions are the narration: always on
+  const captions = captionsOn || p.silent;
+  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomedBox(w, h, captionsOn || p.silent), playing: () => p.playing });
   // the caption switched on or off while zoomed: the zoomed player grows or shrinks to stay in the window
   useEffect(() => zoom.refit(), [captions]);
   const d = p.data;
@@ -390,9 +546,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
   const voiced = d.clips.flat().filter(Boolean).length;
   const total = d.clips.flat().length;
   const status = d.error
-    ? d.error === INTERRUPTED
-      ? t.walkthrough.interrupted
-      : t.walkthrough.failed(d.error)
+    ? t.walkthrough.failed(d.error)
     : p.playing && p.writing
       ? t.walkthrough.writing
       : p.playing && p.waiting
@@ -419,7 +573,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
           )}
         </div>
         {status && (
-          <div className={`wt-status${d.error ? ' error' : ''}`} title={d.error && d.error !== INTERRUPTED ? d.error : undefined}>
+          <div className={`wt-status${d.error ? ' error' : ''}`} title={d.error}>
             {status}
           </div>
         )}
@@ -451,7 +605,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
           {d.slides.map((_, k) => (
             <button
               key={k}
-              className={`wt-seg${d.clips[k]?.[0] ? '' : ' pending'}`}
+              className={`wt-seg${d.silent || d.clips[k]?.[0] ? '' : ' pending'}`}
               style={{ flexGrow: Math.max(1, p.slideSeconds(k)) }}
               aria-label={t.walkthrough.slide(k + 1, d.slides.length, !d.done)}
               title={t.walkthrough.slide(k + 1, d.slides.length, !d.done)}
@@ -465,22 +619,24 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
           ))}
         </div>
         {slide && <span className="wt-count">{t.walkthrough.slide(p.slide + 1, d.slides.length, !d.done)}</span>}
-        <button
-          className={`btn small wt-key wt-cc${captions ? ' on' : ''}`}
-          aria-pressed={captions}
-          aria-label={t.walkthrough.captions}
-          title={captionsKeyKnown ? t.walkthrough.captions : undefined}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setCaptions(!captions)}
-        >
-          {/* the key beside CC until the owner first switched captions with it */}
-          {!captionsKeyKnown && (
-            <span className="zoom-hint">
-              {t.walkthrough.captionsHint} <kbd>C</kbd>
-            </span>
-          )}
-          CC
-        </button>
+        {!d.silent && (
+          <button
+            className={`btn small wt-key wt-cc${captions ? ' on' : ''}`}
+            aria-pressed={captions}
+            aria-label={t.walkthrough.captions}
+            title={captionsKeyKnown ? t.walkthrough.captions : undefined}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setCaptions(!captions)}
+          >
+            {/* the key beside CC until the owner first switched captions with it */}
+            {!captionsKeyKnown && (
+              <span className="zoom-hint">
+                {t.walkthrough.captionsHint} <kbd>C</kbd>
+              </span>
+            )}
+            CC
+          </button>
+        )}
         <button className="btn small wt-key wt-zoom" title={zoom.keyKnown ? zoomLabel : undefined} aria-label={zoomLabel} onMouseDown={(e) => e.preventDefault()} onClick={zoom.toggle}>
           {/* the key beside the magnifier until the owner first zoomed with it */}
           {!zoom.keyKnown && (

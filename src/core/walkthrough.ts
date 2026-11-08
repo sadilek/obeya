@@ -3,6 +3,8 @@
 // keeps each walkthrough as one JSON file in the thread's output directory, its clips beside it;
 // the player in the page reads it while it grows (design: The Koordinator → Walkthroughs).
 
+import type { Language } from './locale';
+
 /**
  * The one size a slide is laid out in, in px: the player scales it to its width, so a slide looks
  * the same in every view, only smaller or larger, and the server can tell whether it fits.
@@ -34,9 +36,6 @@ export interface Clip {
   words?: number[];
 }
 
-/** The error of a walkthrough whose voicing stopped with the server that voiced it. */
-export const INTERRUPTED = 'interrupted';
-
 /** The file a walkthrough is kept in (`<name>.walkthrough.json`). */
 export interface Walkthrough {
   title: string;
@@ -49,6 +48,10 @@ export interface Walkthrough {
   clipsDir: string;
   /** Why the voice could not speak it. */
   error?: string;
+  /** The language its narration is in, which the voice speaks (files before 2026-11-08 lack it). */
+  language?: Language;
+  /** The demo settings have no voice: the player shows each sentence as a caption for as long as reading it takes. */
+  silent?: boolean;
 }
 
 /** How a walkthrough's file is named in the thread's output directory, and so among its answer's files. */

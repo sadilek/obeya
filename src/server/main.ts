@@ -257,6 +257,8 @@ const narrationUrl = `http://127.0.0.1:${narrationServer.port}`;
 const narrator = (language: Language) => inLanguage(readDemoSettings(home), language);
 const voicing = new Voicing({
   speak: (text, out, language) => speak(narrator(language), text, out, home, narrationUrl),
+  // demo settings without a voice: the walkthrough plays as captions
+  silent: (language) => narrator(language).voice === 'none',
   warm: (language) => {
     const spec = voiceSpec(narrator(language), home);
     if (spec.kind === 'command' && spec.host) narration.load(spec.host, language);

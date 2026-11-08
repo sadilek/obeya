@@ -215,10 +215,30 @@ describe('the voice of walkthroughs', () => {
     voice.voicing.warm('de');
     expect(voice.warmed).toEqual(['de']);
   });
+
+  test('demo settings without a voice leave it unvoiced, to be read as captions', async () => {
+    const spoken: string[] = [];
+    const warmed: string[] = [];
+    const voicing = new Voicing({ speak: async (text) => void spoken.push(text), warm: (l) => void warmed.push(l), silent: (l) => l === 'en' });
+    voicing.warm('en');
+    const w = new AnswerWalkthrough({ dir: join(dir, 'answers'), checkout: repo, voicing });
+    w.tool().run({ slide: TITLE });
+    w.tool().run({ slide: { type: 'points', title: 'Two steps', points: ['Rebase', 'Merge'], narration: 'First the branch moves onto the newest main, then both are combined.' } });
+    w.finish();
+    await Bun.sleep(5);
+    expect(spoken).toEqual([]);
+    expect(warmed).toEqual([]);
+    const file = read('how-a-card-lands.walkthrough.json');
+    expect(file).toMatchObject({ silent: true, language: 'en', done: true });
+    expect(file.error).toBeUndefined();
+    // its player reads it as it is, with nothing to wait for
+    expect(readWalkthrough(join(dir, 'answers'), 'how-a-card-lands.walkthrough.json', voicing)).toMatchObject({ silent: true });
+    expect(spoken).toEqual([]);
+  });
 });
 
 describe('a walkthrough read by its player', () => {
-  test('by its name in the thread directory only; one whose voice stopped with the server says so', async () => {
+  test('by its name in the thread directory only', async () => {
     const w = told();
     hand(w, TITLE);
     await until(() => read('how-a-card-lands.walkthrough.json').clips.flat().every(Boolean));
@@ -231,13 +251,45 @@ describe('a walkthrough read by its player', () => {
     // nor through a link to a file outside it
     symlinkSync(join(dir, 'secret.txt'), join(answers, 'linked.walkthrough.json'));
     expect(readWalkthrough(answers, 'linked.walkthrough.json', voice.voicing)).toBeUndefined();
-    // a server that starts anew voices nothing of what the last one left unvoiced
+    // a sentence voiced but not heard back by a server that stopped gets the times of its words by their length
     const file = join(answers, 'how-a-card-lands.walkthrough.json');
     const left = read('how-a-card-lands.walkthrough.json');
-    writeFileSync(file, JSON.stringify({ ...left, clips: [[left.clips[0]![0], null, null]] }));
-    expect(readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', fakeVoicing().voicing)?.error).toBe('interrupted');
-    // and a sentence it voiced but did not hear back gets the times of its words by their length
-    writeFileSync(file, JSON.stringify({ ...left, clips: [[{ file: '1-1.wav', seconds: 1 }, null, null]] }));
+    writeFileSync(file, JSON.stringify({ ...left, clips: [[{ file: '1-1.wav', seconds: 1 }, left.clips[0]![1], left.clips[0]![2]]] }));
     expect(readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', fakeVoicing().voicing)?.clips[0]![0]!.words).toEqual(estimatedStarts('How a card lands.', 1));
+  });
+
+  test('what a server left unvoiced when it stopped, the next one voices once a player reads it', async () => {
+    voice.hold();
+    const w = told();
+    hand(w, TITLE);
+    expect(hand(w, { type: 'points', title: 'Two steps', points: ['Rebase', 'Merge'], narration: 'First the branch moves onto the newest main, then both are combined.' })).toStartWith('Slide 2 is shown');
+    // the server stops with the title slide voiced but not heard back and the second slide unvoiced,
+    // its agent in the middle of the turn (a file from before files named their language)
+    const answers = join(dir, 'answers');
+    const { language: _, ...left } = read('how-a-card-lands.walkthrough.json');
+    const voiced = left.clips[0]!.map((_, k) => ({ file: `1-${k + 1}.wav`, seconds: 1 }));
+    writeFileSync(join(answers, 'how-a-card-lands.walkthrough.json'), JSON.stringify({ ...left, clips: [voiced, [null]] }));
+    const next = fakeVoicing();
+    const shown = readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', next.voicing, 0);
+    // no agent tells it on: it has every slide it gets
+    expect(shown).toMatchObject({ done: true, language: 'en' });
+    expect(shown?.error).toBeUndefined();
+    expect(shown?.clips[0]![0]!.words).toEqual(estimatedStarts('How a card lands.', 1));
+    await until(() => !!read('how-a-card-lands.walkthrough.json').clips[1]![0]?.words);
+    expect(next.said).toEqual(['en:First the branch moves onto the newest main, then both are combined.']);
+    // read again, nothing is voiced twice
+    readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', next.voicing, 0);
+    await Bun.sleep(5);
+    expect(next.said).toHaveLength(1);
+  });
+
+  test('a file that names clips elsewhere is not voiced on', () => {
+    const answers = join(dir, 'answers');
+    mkdirSync(join(dir, 'elsewhere'));
+    const slide = { type: 'title', title: 'X', parts: ['X.'] };
+    writeFileSync(join(answers, 'x.walkthrough.json'), JSON.stringify({ title: 'X', slides: [slide], done: true, clips: [[null]], clipsDir: '../elsewhere', language: 'en' }));
+    const next = fakeVoicing();
+    expect(readWalkthrough(answers, 'x.walkthrough.json', next.voicing)?.done).toBe(true);
+    expect(next.voicing.voicing(join(answers, 'x.walkthrough.json'))).toBe(false);
   });
 });
