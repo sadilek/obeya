@@ -472,20 +472,35 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   );
 }
 
-/** A section's title, what it is about, and the file it is saved in; `sub` for a part of a section. */
+/** A section's title, what it is about, and the file it is saved in behind an info icon at the title; `sub` for a part of a section. */
 export function Head({ title, hint, file, sub }: { title: string; hint?: ReactNode; file?: string; sub?: boolean }) {
+  const heading = (
+    <>
+      {title}
+      {file && <FileInfo file={file} />}
+    </>
+  );
   return (
-    <header className={sub ? 'cfg-head sub' : 'cfg-head'}>
-      {sub ? <h4>{title}</h4> : <h3>{title}</h3>}
+    <header className={['cfg-head', sub && 'sub', file && 'cfg-has-info'].filter(Boolean).join(' ')}>
+      {sub ? <h4>{heading}</h4> : <h3>{heading}</h3>}
       {hint && <p className="hint">{hint}</p>}
-      {file && (
-        <p className="hint cfg-file">
-          {t.config.fromFile} <code>{file}</code>
-        </p>
-      )}
     </header>
   );
 }
+
+/** The file a section is saved in, behind an info icon at its title: there for whoever looks for it, without the same path under every heading. */
+const FileInfo = ({ file }: { file: string }) => (
+  <Info
+    head
+    text={
+      <>
+        {t.config.fromFile}
+        <br />
+        <code>{file}</code>
+      </>
+    }
+  />
+);
 
 /** One setting: what it is on the left (an info icon there shows while the pointer is on the row), the control with what to know about it on the right. */
 export function Field({ label, hint, className, children }: { label: ReactNode; hint?: ReactNode; className?: string; children: ReactNode }) {
@@ -505,7 +520,7 @@ export function Field({ label, hint, className, children }: { label: ReactNode; 
  * label (the nearest `.cfg-has-info` around it) or the field has the focus, so the page stays calm; the text
  * shows on the icon at once, kept inside the window.
  */
-function Info({ text }: { text: string }) {
+function Info({ text, head }: { text: ReactNode; head?: boolean }) {
   const id = useId();
   const icon = useRef<HTMLButtonElement>(null);
   const [at, setAt] = useState<CSSProperties | null>(null);
@@ -526,7 +541,7 @@ function Info({ text }: { text: string }) {
       <button
         type="button"
         ref={icon}
-        className={at ? 'cfg-info on' : 'cfg-info'}
+        className={['cfg-info', head && 'head', at && 'on'].filter(Boolean).join(' ')}
         aria-label={t.config.info}
         aria-describedby={id}
         onPointerEnter={show}
@@ -541,7 +556,7 @@ function Info({ text }: { text: string }) {
           <path d="M8 7.3v4.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
-      <span id={id} className="cfg-tip" role="tooltip" hidden={!at} style={at ?? undefined}>
+      <span id={id} className={head ? 'cfg-tip fit' : 'cfg-tip'} role="tooltip" hidden={!at} style={at ?? undefined}>
         {text}
       </span>
     </>
@@ -587,14 +602,8 @@ function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, f
   // a canvas with a problem has no id yet: which running canvas goes is only known once all resolve
   const resolved = checked?.resolved ?? [];
   const gone = resolved.every(Boolean) ? view.running.filter((id) => !resolved.some((r) => r?.id === id)) : [];
-  const file =
-    view.source === 'file' ? (
-      <>
-        {c.fromFile} <code>{view.file}</code>
-      </>
-    ) : (
-      c.fromArgs(view.file)
-    );
+  // from the command line, saving creates the file: that is worth saying out loud
+  const file = view.source === 'file' ? { file: view.file } : { notice: c.fromArgs(view.file) };
   const x = draft[n];
   return (
     <>
@@ -604,7 +613,7 @@ function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, f
           n={n}
           {...(draft.length > 1 ? { onMove: (earlier: boolean) => onMove(n, earlier ? n - 1 : n + 1), last: n === draft.length - 1 } : {})}
           canvas={x}
-          file={file}
+          {...file}
           checking={!checked}
           resolved={checked?.resolved[n] ?? null}
           running={view.running}
@@ -619,7 +628,7 @@ function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, f
           onChange={(y) => onCanvas(n, y)}
         />
       ) : (
-        <Head title={c.sections.canvases} hint={file} />
+        <Head title={c.sections.canvases} {...(file.file ? { file: file.file } : { hint: file.notice })} />
       )}
       {problems
         .filter((p) => p.canvas === undefined)
@@ -1609,8 +1618,10 @@ function VoiceBlock({ on }: { on: boolean }) {
 interface CanvasProps {
   n: number;
   canvas: CanvasConfig;
-  /** Where the canvases are saved, under its title. */
-  file: ReactNode;
+  /** Where the canvases are saved, behind an info icon at its title. */
+  file?: string;
+  /** What to know about where they are saved, under its title: Obeya runs from the command line. */
+  notice?: string;
   /** The repositories are being checked: their ids and settings are still to come. */
   checking: boolean;
   resolved: ConfigChecked['resolved'][number];
@@ -1635,7 +1646,7 @@ interface CanvasProps {
 }
 
 /** A canvas as its own page: its title with id, order and removal, its name, then each repository with its settings. */
-function CanvasBlock({ n, canvas, file, checking, resolved, running, pin, saved, problems, focus, ask, onRecheck, onReload, prepare, onChange, onMove, last }: CanvasProps) {
+function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin, saved, problems, focus, ask, onRecheck, onReload, prepare, onChange, onMove, last }: CanvasProps) {
   const fresh = resolved && !running.includes(resolved.id);
   // the Koordinator of the canvas with the problem, where it runs: a card for it goes there
   const askHere = ask && ((text: string) => ask(text, resolved && running.includes(resolved.id) ? resolved.id : undefined));
@@ -1651,9 +1662,12 @@ function CanvasBlock({ n, canvas, file, checking, resolved, running, pin, saved,
   const repo = canvas.repos[at];
   return (
     <div className="cfg-canvas">
-      <header className="cfg-head">
+      <header className={file ? 'cfg-head cfg-has-info' : 'cfg-head'}>
         <div className="cfg-canvas-head">
-          <h3>{canvas.name?.trim() || resolved?.name || here}</h3>
+          <h3>
+            {canvas.name?.trim() || resolved?.name || here}
+            {file && <FileInfo file={file} />}
+          </h3>
           {resolved && (
             <span className={fresh ? 'c-id fresh' : 'c-id'}>
               {canvasPath(resolved.id)} · {fresh ? t.config.fresh : t.config.runs}
@@ -1673,7 +1687,7 @@ function CanvasBlock({ n, canvas, file, checking, resolved, running, pin, saved,
           )}
           <RemoveButton label={t.config.removeCanvas} onClick={() => onChange(null)} />
         </div>
-        <p className="hint cfg-file">{file}</p>
+        {notice && <p className="hint">{notice}</p>}
         <p className="hint">{t.config.settings.hint}</p>
       </header>
       {checking && <p className="hint">{t.config.checking}</p>}

@@ -1707,7 +1707,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .cfg-head.sub { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--line); }
 .cfg-head h4 { margin: 0 0 4px; font-size: 15px; }
 .cfg-head .hint { max-width: 76ch; margin: 0 0 4px; font-size: 13px; line-height: 1.5; }
-.cfg-head .cfg-file { font-size: 12px; }
 .cfg-head:not(.sub) + .cfg-head.sub { margin-top: 0; padding-top: 4px; border-top: 0; }
 /* a setting: its name on the left, the control and what to know about it on the right */
 .cfg-field { display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 24px; align-items: baseline; padding: 7px 0; font-size: 13.5px; }
@@ -1734,9 +1733,13 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .cfg-has-info:is(:hover, :focus-within) .cfg-has-info:not(:hover, :focus-within) .cfg-info { opacity: 0; }
 .cfg-info:hover, .cfg-info.on, #config .cfg-info:focus-visible { opacity: 1; color: var(--ink); }
 .cfg-info:focus-visible { outline: 1px solid var(--muted); outline-offset: 1px; border-radius: 50%; }
+/* at a heading: centred on its text; where nothing hovers (touch) always shown, so a tap finds it */
+.cfg-info.head { vertical-align: middle; margin-left: 6px; position: relative; top: -.08em; }
+@media (hover: none) { .cfg-info.head { opacity: 1; } }
 .cfg-tip { position: fixed; z-index: 60; width: 340px; padding: 10px 14px; border-radius: 3px; background: var(--card); color: var(--ink);
   box-shadow: var(--lift); font-size: 13px; font-weight: 400; line-height: 1.45; white-space: normal; pointer-events: none; }
 .cfg-tip[hidden] { display: none; }
+.cfg-tip.fit { width: max-content; max-width: 340px; }
 /* a canvas: its name as a heading line, its repositories as a table below it */
 /* a canvas as its own page: its title line, then each repository under a heading of its own, its
    settings in groups under small headings */

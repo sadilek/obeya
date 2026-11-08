@@ -349,7 +349,11 @@ Canvases, a heading with each canvas indented under it as a section of its own a
 last (see Canvases), Agents and models, Voice input, Demos, Other devices (see Other devices) and General
 (languages, light or dark, the usage limits in the bar, the costs, the server); below them "Check setup" and "Report a wish or
 a bug" (see Wishes for Obeya's makers). Each canvas in the list marks its unsaved changes and
-counts its problems in red; the heading counts the problems of no one canvas (none at all, say). Each section names the file it is saved in; settings are rows of label and control, no boxes in
+counts its problems in red; the heading counts the problems of no one canvas (none at all, say). The file a
+section or block is saved in sits behind an info icon at its heading ("Saved in" and the path), shown
+while the pointer or focus is on the heading and always where nothing hovers (touch), where a tap
+opens it; only a notice that matters stays visible (Obeya running with repositories from the command
+line, where saving creates the file). Settings are rows of label and control, no boxes in
 boxes. What to know about a field sits behind an info icon at its label, shown only while the pointer
 or focus is on the field, its text appearing at once.
 
@@ -572,6 +576,10 @@ its status lines in German).
   categories many apps lack and were read as prose anyway; Obeya managing the app (starting it,
   finding its address), since nothing in Obeya needs the address (the owner); the card's "Open
   app" takes the address the worker reports (see Trying the app by hand).
+- **Where a section is saved shows only behind an info icon at its heading** (2026-11-08): a visible
+  "Saved in" line under every block named the same `settings.json` four times in a row under General,
+  cluttering the dialog with what the owner rarely needs; behind the icon it stays findable.
+  Rejected: dropping the path altogether.
 - **A repository's settings are checked against a schema** (2026-10-08): a misspelt field was
   otherwise ignored silently.
 - **A repository's commands and Claude Code configuration count only as last trusted** (2026-10-16),
