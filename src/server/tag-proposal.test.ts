@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TagProposalJob } from '../core/types';
@@ -7,7 +7,7 @@ import { CanvasRuntime } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
 import { serve } from './server';
-import { asOwner, FakeRuntime, gitRepo, noForge, until } from './testing';
+import { asOwner, FakeRuntime, gitRepo, noForge, removeDir, until } from './testing';
 
 let dir: string;
 let repo: string;
@@ -52,10 +52,10 @@ beforeEach(async () => {
   canvas.board.changed();
 });
 
-afterEach(() => {
+afterEach(async () => {
   server.stop(true);
   canvas.shutdown();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 const { fetch } = asOwner(() => server);

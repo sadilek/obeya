@@ -260,7 +260,23 @@ is, its own commits not pushed yet put on top of the new head. Otherwise the
 demo goes on its page as with any approval ("Share the demo and link it on the PR", see Publishing on
 approval), its link goes into a comment on the PR once the page is online (the description stays the
 contributor's), and Obeya merges with the repository's allowed method, squash first, pinned to the
-reviewed head. A merge the forge refuses leaves the card waiting for the owner, with the reason.
+reviewed head. A merge the forge refuses leaves the card waiting for the owner, with the reason,
+unless the PR conflicts with `main` (as the forge reads the PR before the merge, or after it refused
+one). Then the conflict goes to the worker with the approval kept, as a conflict on landing does:
+it merges `main` into its branch on top of the PR's head (never rewriting the contributor's
+commits), resolves it, runs the checks and hands over with a note for the contributor on what it
+resolved; Obeya then pushes that onto the PR's branch, posts the note and merges, without a new
+approval and with the demo already on the card. A handover that brings nothing new for a PR still in
+conflict leaves the merge to the owner. Where the contributor allows no maintainers' edits, only
+they can resolve it: the worker records the conflict as a finding, the approval lapses, and the
+owner decides whether it goes to them (2026-11-07: the owner got gh's advice to resolve it on the
+command line instead).
+Until the merge is through (the push of the worker's commits, their comment, the merge on the
+forge), the card is landing as any approved card is: every page shows it
+under way ("pushing …", then "merging …"), also one loaded or opened on another device meanwhile,
+it does not count as needing the owner, and a restart of Obeya waits for it (2026-11-07: a restart
+cut a merge off after the owner's click folded the card with its demo, which a restart also waits
+for; the reloaded page showed "Demo ready" until the PR watcher saw the merge on GitHub).
 Merged, the card is `live`, and where work lands on `main` the checkout pulls the merge as `git pull`
 does it there. Where neither the repository nor the global git configuration sets a way of pulling
 and the local `main` has commits of its own, it pulls with a rebase, as Obeya brings its own work
@@ -318,7 +334,8 @@ while others build on the remote's. Obeya tells, without touching the checkout, 
 after the merge would stop on a conflict with them: it fetches the remote's `main`, merges the
 reviewed head onto it and replays the unpushed commits onto the result one by one as the rebase
 would (as a whole where the owner's git configuration pulls by a merge), all in git's object store
-(`git merge-tree`). It does so when the review is handed over, whenever the local `main` moves
+(`git merge-tree`; a git older than 2.45, which merges only commits there, gets each tree as a
+commit of its own without parents or refs). It does so when the review is handed over, whenever the local `main` moves
 while the card waits for the owner, at each round of the watcher (the remote's `main` moves with
 others' pushes) and once more on "Merge". Commits the remote has already (cherry-picked there) are
 skipped, as the rebase skips them. Where the PR conflicts with the

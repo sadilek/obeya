@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { needsYou } from '../core/types';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession, gitRepo, noForge, until } from './testing';
+import { FakeRuntime, type FakeSession, gitRepo, noForge, removeDir, until } from './testing';
 
 let dir: string;
 let main: string;
@@ -24,9 +24,9 @@ beforeEach(async () => {
   runtime = new FakeRuntime();
   canvas = await open();
 });
-afterEach(() => {
+afterEach(async () => {
   canvas.shutdown();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 const board = () => canvas.board;
@@ -77,6 +77,17 @@ describe('the agent snoozes itself', () => {
     expect(item(id).snoozed).toBeUndefined();
     expect(last(id)).toMatchObject({ kind: 'state', author: 'obeya', text: 'Wieder da: Zeitpunkt erreicht' });
     expect(workers().busyCards()).toEqual([id]);
+  });
+
+  test('a session that ends by itself after it snoozed leaves the card snoozed', async () => {
+    const { id, s } = await atWork();
+    s.call('snooze', { until: later(10 * HOUR), why: 'Prüfen' });
+    s.emit({ type: 'error', message: 'the Codex app server exited with code 1' });
+    s.close();
+    await until(() => !workers().inTurn().includes(id));
+    await Bun.sleep(0);
+    expect(item(id)).toMatchObject({ state: 'working', snoozed: { by: 'agent' } });
+    expect(item(id).question).toBeUndefined();
   });
 
   test('a note from the owner wakes it early, and so does what Obeya has for it', async () => {

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { Explorers } from './explorers';
-import { FakeRuntime, noForge, type FakeSession, gitRepo, heard, identify, until } from './testing';
+import { FakeRuntime, type FakeSession, gitRepo, heard, identify, noForge, removeDir, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -30,7 +30,7 @@ afterEach(async () => {
   // git freeing a workspace in the background is done before its repository goes
   await Promise.all(canvas.repos.map((r) => r.workers.freed()));
   canvas.shutdown();
-  rmSync(dir, { recursive: true, force: true });
+  await removeDir(dir);
 });
 
 // the timers' work done, and the workers it started at work in their workspaces

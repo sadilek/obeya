@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { placeWorkstreams } from '../core/layout';
@@ -7,7 +7,7 @@ import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
 import { Board, LEAVE_AFTER_MS } from './board';
 import { Store } from './db';
 import { planHistory } from './repo';
-import { gitRepo } from './testing';
+import { gitRepo, removeDir } from './testing';
 import { branchName, git } from './workspaces';
 
 const FILE = 'docs/plan/audit.md';
@@ -281,7 +281,7 @@ describe('cards of a doc read by an older Obeya, as workers left it', () => {
 
 describe('planHistory', () => {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-plan-history-'));
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  afterAll(() => removeDir(dir));
 
   test('reads every workstream a doc was given, the newest first', () => {
     const repo = gitRepo(join(dir, 'r'), { [FILE]: md(OLD) });

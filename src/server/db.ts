@@ -548,6 +548,8 @@ export const MIGRATIONS = [
   BEGIN
     INSERT INTO archive_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
   END;`,
+  // the Koordinator's reply only answers the owner's words (no actions, no question looked up): "Show as walkthrough" can tell it
+  'ALTER TABLE talk ADD COLUMN reply_only INTEGER;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -1148,10 +1150,10 @@ export class Store {
    * for Obeya's makers would start from; with `waits`, one for the sheet waits there unread, as an
    * answer that was looked up does.
    */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false) {
+  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) {
     this.db
-      .query('UPDATE talk SET reply = $reply, question = $question, about = $about, wish = $wish, unread = $waits AND card_id IS NULL AND card IS NULL WHERE id = $id')
-      .run({ id, reply, question: lookUp?.question ?? null, about: lookUp?.about ?? null, wish: wish ? JSON.stringify(wish) : null, waits: waits ? 1 : 0 });
+      .query('UPDATE talk SET reply = $reply, question = $question, about = $about, wish = $wish, unread = $waits AND card_id IS NULL AND card IS NULL, reply_only = $only WHERE id = $id')
+      .run({ id, reply, question: lookUp?.question ?? null, about: lookUp?.about ?? null, wish: wish ? JSON.stringify(wish) : null, waits: waits ? 1 : 0, only: answers && !lookUp && !wish ? 1 : null });
   }
 
   /**
@@ -1289,6 +1291,11 @@ export class Store {
   sheetQuote(canvasId: string, ref: TalkRef): TalkQuote | undefined {
     const sheet = this.db.query('SELECT 1 FROM talk WHERE id = $id AND canvas_id = $c AND card_id IS NULL').get({ id: ref.talk, c: canvasId });
     return sheet ? quotedTalk(this.db, ref) : undefined;
+  }
+
+  /** The latest exchange on the card whose reply is `reply`: the one a reply in the card's log stands for. */
+  cardReply(cardId: string, reply: string): number | undefined {
+    return (this.db.query('SELECT id FROM talk WHERE card_id = $c AND reply = $reply ORDER BY id DESC LIMIT 1').get({ c: cardId, reply }) as { id: number } | null)?.id;
   }
 
   /** One exchange, with the card its question is about. */
@@ -1578,6 +1585,7 @@ interface TalkRow {
   then_step: string | null;
   after_answer: number | null;
   then_place: string | null;
+  reply_only: number | null;
 }
 
 const toTalk = (r: TalkRow): Talk => ({
@@ -1606,6 +1614,7 @@ const toTalk = (r: TalkRow): Talk => ({
   ...(r.moved ? { moved: JSON.parse(r.moved) as TalkMoved } : {}),
   ...(r.then_step ? { then: r.then_step } : {}),
   ...(r.after_answer ? { answered: r.after_answer } : {}),
+  ...(r.reply_only ? { replyOnly: true } : {}),
 });
 
 /**

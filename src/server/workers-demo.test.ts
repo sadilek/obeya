@@ -8,7 +8,7 @@ import { needsYou } from '../core/types';
 import { BadRequest } from './board';
 import { DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
-import { artifact, until } from './testing';
+import { artifact, removeDir, until } from './testing';
 import { Workers } from './workers';
 import { board, dir, eachTest, manual, runtime, setup, setWorkers, spaces, state, workers } from './workers-fixture';
 
@@ -124,7 +124,8 @@ describe('parking: the app of a card that waits for the owner', () => {
   });
 
   test('a stop that fails is an error on the card, and the worker is not told of a stopped app', async () => {
-    parking({ stop: 'echo "no pid file" >&2; exit 3' });
+    // as sh and cmd.exe (Windows) both read it
+    parking({ stop: 'echo no pid file>&2 && exit 3' });
     const c = await handOver();
     await until(() => board.events(c.id).at(-1)!.kind === 'error');
     expect(board.events(c.id).at(-1)!.text).toBe(board.t.worker.parkFailed('no pid file'));
@@ -143,7 +144,8 @@ describe('parking: the app of a card that waits for the owner', () => {
   });
 
   test('a message while the stop runs reaches the worker once the app is stopped', async () => {
-    parking({ stop: 'sleep 0.3; echo stopped >> parked.log' });
+    // as sh and cmd.exe (Windows) both read it
+    parking({ stop: `"${process.execPath}" -e "setTimeout(() => {}, 300)" && echo stopped>> parked.log` });
     const c = await handOver();
     await Bun.sleep(80);
     const before = runtime.last.inbox.length;
@@ -233,7 +235,7 @@ describe('handing over with a demo', () => {
   const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, question: { text: 'Semikolon oder Komma?' } });
 
   test('the worker gets the demo skill from the plugin that comes with Obeya, its brief names it, and it knows where Obeya is', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const c = manual();
     await workers.start(c.id);
@@ -246,7 +248,7 @@ describe('handing over with a demo', () => {
   });
 
   test("a repository that names the language of its demos gives it to the worker's demo skill", async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', demo: { language: 'en' } });
     await workers.start(manual().id);
     expect(runtime.last.spec.env).toEqual({ OBEYA_URL: 'http://127.0.0.1:4417', DEMO_LANGUAGE: 'en' });
@@ -256,11 +258,11 @@ describe('handing over with a demo', () => {
   });
 
   test("a repository that names no language for its demos has its worker demo in the demo settings' narration language, else the conversation's", async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     await workers.start(manual().id);
     expect(runtime.last.spec.system).toContain("A demo (its narration, report, or an HTML artifact's words) is in German, whatever language the owner talks in.");
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, demoLanguage: () => 'en' }));
     await workers.start(manual().id);
@@ -270,7 +272,7 @@ describe('handing over with a demo', () => {
   test('the brief names the demo directory of the demo settings, else ~/demos', async () => {
     await workers.start(manual().id);
     expect(runtime.last.inbox[0]).toContain('an index.html in a new directory under ~/demos (never in git)');
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, demoDirectory: () => '/opt/work/demos' }));
     await workers.start(manual().id);
@@ -597,7 +599,7 @@ describe('handing over with a demo', () => {
   });
 
   test('after feedback, the worker may hand over again without a new demo: the one on the card stands', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const c = manual();
     await workers.start(c.id);
@@ -698,7 +700,7 @@ describe('handing over with a demo', () => {
   });
 
   test('where demos are shared, a video or an artifact comes with its page for colleagues, kept with the demo', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
     const c = manual();
     await workers.start(c.id);
@@ -737,7 +739,7 @@ describe('handing over with a demo', () => {
   });
 
   test("where the site names tags, the page comes with them, each dimension's from its values alone", async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     const tags = { Area: ['Billing', 'Reports'], Audience: ['Admins', 'Customers'] };
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}', tags } } });
     const c = manual();
@@ -762,7 +764,7 @@ describe('handing over with a demo', () => {
     await workers.start(c.id);
     expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir(), ['Nur eins']) })).toContain('Not handed over');
     expect(state(c.id)).toBe('working');
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const d = manual();
     await workers.start(d.id);
@@ -788,7 +790,7 @@ describe('handing over with a demo', () => {
   });
 
   test('every handover brings a demo: one without is refused; without a recipe the worker finds out how to run the app', async () => {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     const c = manual();
     await workers.start(c.id);

@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { endThreads, forTests, hidden, hideConsoleWindows, onStart, spawnOutput } from './spawn';
-import { PATIENCE } from './testing';
+import { PATIENCE, removeDir } from './testing';
 
 // first in the file: after other tests have run, Bun no longer shows the wait this test is about
 test('what a thread answers settles for expect(…).rejects and .resolves too, not only for await', async () => {
@@ -131,7 +131,7 @@ test('a thread that dies while its process runs fails that call without starting
     }
     expect(here).toBe(0);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    await removeDir(dir);
   }
 }, 15_000);
 

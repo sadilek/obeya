@@ -1,6 +1,6 @@
 // Test doubles, and git repositories for tests.
 
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { Forge } from './forge';
@@ -186,6 +186,86 @@ export function removeTemplates() {
   clones.clear();
 }
 
+/**
+ * Removes `path` with all in it, as a test's cleanup does. On Windows a file a process still has
+ * open cannot go (EBUSY): git freeing a workspace, a program the test started and stopped, may
+ * hold one for a moment after the test is through. So it tries again for a while; Bun ignores
+ * `rmSync`'s own `maxRetries`.
+ */
+export async function removeDir(path: string) {
+  for (const end = Date.now() + 10_000; ; await Bun.sleep(50)) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+      return;
+    } catch (e) {
+      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes((e as NodeJS.ErrnoException).code ?? '') || Date.now() > end) throw e;
+    }
+  }
+}
+
+let launcher: string | undefined;
+
+/**
+ * A program `name` in `dir` that runs the TypeScript `script` with Bun, for a stand-in of a CLI
+ * (gh, tailscale). Elsewhere it is a shell script; Windows starts only an `.exe` that way (a
+ * `.cmd` refuses arguments with `&` or `|`), so there it is a small program compiled once per
+ * test process that imports the script beside it of its own name.
+ */
+function bunProgram(dir: string, name: string, script: string): string {
+  const source = join(dir, `${name}.ts`);
+  writeFileSync(source, script);
+  if (process.platform !== 'win32') {
+    const program = join(dir, name);
+    writeFileSync(program, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(source)} "$@"\n`, { mode: 0o755 });
+    return program;
+  }
+  if (!launcher || !existsSync(launcher)) {
+    templateDir ??= mkdtempSync(join(tmpdir(), 'obeya-template-'));
+    const main = join(templateDir, 'launcher.ts');
+    writeFileSync(main, "await import(process.execPath.replace(/\\.exe$/i, '.ts'));\n");
+    launcher = join(templateDir, 'launcher.exe');
+    const r = Bun.spawnSync([process.execPath, 'build', '--compile', main, '--outfile', launcher], { stdout: 'pipe', stderr: 'pipe' });
+    if (r.exitCode !== 0) throw new Error(`compiling the launcher failed: ${r.stderr.toString()}`);
+  }
+  const program = join(dir, `${name}.exe`);
+  if (existsSync(program)) return program;
+  try {
+    linkSync(launcher, program);
+  } catch {
+    copyFileSync(launcher, program);
+  }
+  return program;
+}
+
+let sh: string | undefined;
+
+/** Git for Windows' sh: git's exec path is `<root>/mingw64/libexec/git-core`, sh is in `<root>/usr/bin`. */
+function gitSh(): string {
+  if (sh) return sh;
+  const exec = Bun.spawnSync(['git', '--exec-path'], { stdout: 'pipe' }).stdout.toString().trim();
+  const root = resolve(exec, '..', '..', '..');
+  sh = [join(root, 'usr', 'bin', 'sh.exe'), join(root, 'bin', 'sh.exe')].find((p) => existsSync(p)) ?? Bun.which('sh') ?? undefined;
+  if (!sh) throw new Error(`no sh beside git (${exec})`);
+  return sh;
+}
+
+/**
+ * A program `name` in `dir` whose behaviour is the shell script `body`, as tests make a machine's
+ * programs (claude, git, a folder dialog) answer: on Windows it runs in Git for Windows' sh. Its path.
+ */
+export function fakeProgram(dir: string, name: string, body: string): string {
+  mkdirSync(dir, { recursive: true });
+  if (process.platform !== 'win32') {
+    const program = join(dir, name);
+    writeFileSync(program, `#!/bin/sh\n${body}\n`);
+    chmodSync(program, 0o755);
+    return program;
+  }
+  const script = join(dir, `${name}.sh`);
+  writeFileSync(script, `${body}\n`);
+  return bunProgram(dir, name, `const r = Bun.spawnSync([${JSON.stringify(gitSh())}, ${JSON.stringify(script)}, ...process.argv.slice(2)], { stdio: ['inherit', 'inherit', 'inherit'] });\nprocess.exit(r.exitCode ?? 1);\n`);
+}
+
 /** Lets tests commit in `repo`, a repository or a clone of one, as T. */
 export function identify(repo: string) {
   appendFileSync(join(repo, '.git/config'), '[user]\n\temail = t@example.com\n\tname = T\n');
@@ -336,10 +416,9 @@ export function artifact(): { kind: 'html'; dir: string } {
  */
 export function fakeGh(dir: string, delays: Record<number, number>): string {
   mkdirSync(dir, { recursive: true });
-  const program = join(dir, 'gh');
-  const script = join(dir, 'gh.ts');
-  writeFileSync(
-    script,
+  return bunProgram(
+    dir,
+    'gh',
     `import { appendFileSync } from 'node:fs';
 const args = process.argv.slice(2);
 const env = ['GH_HOST', 'GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'].map((k, i) => (process.env[k] || !i ? k + '=' + (process.env[k] ?? '') : '')).filter(Boolean);
@@ -353,8 +432,6 @@ else if (args[1] === 'graphql') console.log('{}');
 else console.log('[]');
 `,
   );
-  writeFileSync(program, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`, { mode: 0o755 });
-  return program;
 }
 
 /**
@@ -366,10 +443,9 @@ else console.log('[]');
  */
 export function fakeTailscale(dir: string, status: TailscaleStatus = { state: 'Running', name: 'mac.tail1234.ts.net', https: true }): string {
   mkdirSync(dir, { recursive: true });
-  const program = join(dir, 'tailscale');
-  const script = join(dir, 'tailscale.ts');
-  writeFileSync(
-    script,
+  const program = bunProgram(
+    dir,
+    'tailscale',
     `import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 const dir = ${JSON.stringify(dir)};
 const args = process.argv.slice(2);
@@ -394,7 +470,6 @@ else if (args[0] === 'serve') {
 }
 `,
   );
-  writeFileSync(program, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`, { mode: 0o755 });
   tailscaleStatus(dir, status);
   return program;
 }
@@ -453,14 +528,23 @@ export function fakeVoicing() {
   const said: string[] = [];
   const warmed: Language[] = [];
   let gate: { promise: Promise<void>; open: () => void } | undefined;
+  /** What each clip says, by its file: what hearing it back hears. */
+  const spoken = new Map<string, string>();
   const voicing = new Voicing({
     speak: async (text, out, language) => {
       if (gate) await gate.promise;
       if (/\bmute\b/i.test(text)) throw new Error('the voice failed\nno model');
       said.push(`${language}:${text}`);
       writeFileSync(out, silentWav(1));
+      spoken.set(out.replace(/\.part\.wav$/, ''), text);
     },
     warm: (language) => void warmed.push(language),
+    // hears each word a tenth of a second after the one before; a sentence with "deaf" in it not at all
+    hear: async (wav) => {
+      const text = spoken.get(wav) ?? '';
+      if (/\bdeaf\b/i.test(text)) throw new Error('no recognition');
+      return text.split(/\s+/).map((w, k): [string, number] => [` ${w}`, k / 10]);
+    },
   });
   return {
     voicing,

@@ -49,7 +49,7 @@ const de = {
     notLoggedIn: 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.',
     /** Codex lost its login on `host` (null: this machine); the card's error line offers to log in again. */
     codexNotLoggedIn: (host: string | null) => `Codex ist ${host ? `auf ${host}` : 'auf diesem Rechner'} nicht mehr angemeldet: „Bei Codex anmelden“ in der Meldung auf der Karte.`,
-    session: (message: string) => `Die Claude-Sitzung brach mit einem Fehler ab: ${message}`,
+    session: (message: string) => `Die Sitzung des Agenten brach mit einem Fehler ab: ${message}`,
   },
   answer: {
     failed: (why: string) => `Ich konnte die Frage nicht beantworten (${why}).`,
@@ -96,6 +96,16 @@ const de = {
     unreviewedHead: (head: string) => `Nicht gemergt: Der PR steht seit der Übergabe auf einem anderen Stand (${head}). Der Agent prüft ihn.`,
     /** The forge refused the merge of a review card's PR. */
     mergeRefused: (reason: string) => `Nicht gemergt: ${reason}`,
+    /** The approved PR conflicts with main: the worker resolves the conflict on its branch, and its next handover is merged without a new approval. */
+    mergeConflict: (n: number) => `Nicht gemergt: PR #${n} hat einen Konflikt mit main. Der Agent löst ihn, danach mergt Obeya ohne neue Freigabe.`,
+    /** The same, where the contributor allows no edits by maintainers: only they can resolve it. */
+    mergeConflictNoEdits: (n: number, author: string) => `Nicht gemergt: PR #${n} hat einen Konflikt mit main, und ${author} erlaubt keine Änderungen durch Maintainer. Der Agent schreibt den Konflikt als Befund für ${author} auf.`,
+    /** The worker handed over again after a conflict, without anything new for the PR: the owner decides. */
+    conflictUnresolved: (n: number) => `Nicht gemergt: PR #${n} hat weiter einen Konflikt mit main, und der Agent hat keine Lösung übergeben.`,
+    /** The worker resolved the conflict and handed over: Obeya merges on the approval given before. */
+    mergingResolved: (n: number) => `Konflikt gelöst. Obeya mergt PR #${n}.`,
+    /** The card's status line while Obeya merges a review card's PR on an approval given before. */
+    mergingPr: (n: number) => `Mergt PR #${n}`,
     /** Where work lands on the local main: the merge on the forge was pulled into it. */
     pulledMain: (commit: string) => `main aus dem Remote geholt (${commit}).`,
     pullFailed: (reason: string) => `main ließ sich nach dem Merge nicht holen: ${reason}. Bitte selbst holen (git pull).`,
@@ -213,8 +223,10 @@ const de = {
     hostBack: (host: string) => `${host} ist wieder erreichbar; der Agent macht weiter.`,
     stalled: 'Der Agent hat angehalten, ohne fertig zu sein.',
     unanswered: 'Der Agent hat aufgehört, ohne auf deine Nachricht zu antworten. Schreib noch einmal, dann macht er weiter.',
+    prNotOpened: (reason: string) => `${reason} Der Pull Request ist noch nicht offen.`,
     remainsUndone: (reason: string) => `${reason} Was nach der Landung noch zu tun war, ist nicht erledigt; „Stoppen“ schließt die Karte ohne den Rest ab.`,
     tryAgain: 'Nochmal versuchen',
+    sessionEnded: (reason: string) => `${reason} „Nochmal versuchen“ setzt den Agenten mit seiner bisherigen Unterhaltung fort; „Stoppen“ und dann „Neu starten“ beginnt eine neue Sitzung auf dem Branch der Aufgabe.`,
     /** A tool call refused without asking anyone: what it was, who refused it, and their words when they gave any. */
     denied: (what: string, by: string, reason?: string) => `Nicht erlaubt (${by}): ${what}${reason ? ` — ${reason}` : ''}`,
     deniedBy: {
@@ -584,7 +596,7 @@ const en: Messages = {
   failure: {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',
     codexNotLoggedIn: (host: string | null) => `Codex is no longer logged in ${host ? `on ${host}` : 'on this machine'}: “Log in to Codex” in the card’s message.`,
-    session: (message: string) => `The Claude session failed with an error: ${message}`,
+    session: (message: string) => `The agent's session failed with an error: ${message}`,
   },
   answer: {
     failed: (why: string) => `I could not answer the question (${why}).`,
@@ -619,6 +631,11 @@ const en: Messages = {
     mergedContribution: (n: number) => `PR #${n} merged. Live.`,
     unreviewedHead: (head: string) => `Not merged: the PR is at another commit than at the handover (${head}). The agent reviews it.`,
     mergeRefused: (reason: string) => `Not merged: ${reason}`,
+    mergeConflict: (n: number) => `Not merged: PR #${n} conflicts with main. The agent resolves the conflict, then Obeya merges without a new approval.`,
+    mergeConflictNoEdits: (n: number, author: string) => `Not merged: PR #${n} conflicts with main, and ${author} allows no edits by maintainers. The agent writes the conflict up as a finding for ${author}.`,
+    conflictUnresolved: (n: number) => `Not merged: PR #${n} still conflicts with main, and the agent handed over no resolution.`,
+    mergingResolved: (n: number) => `Conflict resolved. Obeya merges PR #${n}.`,
+    mergingPr: (n: number) => `Merging PR #${n}`,
     pulledMain: (commit: string) => `Pulled main from the remote (${commit}).`,
     pullFailed: (reason: string) => `Could not pull main after the merge: ${reason}. Please pull it yourself (git pull).`,
     clashFound: (n: number, subject: string, card?: string) =>
@@ -715,8 +732,10 @@ const en: Messages = {
     hostBack: (host: string) => `${host} can be reached again; the agent goes on.`,
     stalled: 'The agent stopped without being done.',
     unanswered: 'The agent stopped without answering your message. Write again and it goes on.',
+    prNotOpened: (reason: string) => `${reason} The pull request is not open yet.`,
     remainsUndone: (reason: string) => `${reason} What was left to do after the landing is not done; “Stop” closes the card without the rest.`,
     tryAgain: 'Try again',
+    sessionEnded: (reason: string) => `${reason} “Try again” resumes the agent with its conversation so far; “Stop” and then “Start again” begin a new session on the task’s branch.`,
     denied: (what: string, by: string, reason?: string) => `Not allowed (${by}): ${what}${reason ? ` — ${reason}` : ''}`,
     deniedBy: {
       rule: 'a rule in the settings',

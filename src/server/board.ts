@@ -160,6 +160,8 @@ export interface StoredContribution extends Contribution {
   linked?: string;
   /** The PR was closed without a merge, and the owner was asked whether the card can go. */
   closed?: true;
+  /** The PR's head at which the owner's approval last met a conflict with main, which went to the worker to resolve. */
+  conflict?: string;
 }
 
 /** A review card's pull request as the card shows it. */
@@ -1368,9 +1370,13 @@ export class Board {
     return id;
   }
 
-  /** The Koordinator's reply to words it has read, the question it looks up for them, and what a draft for Obeya's makers would start from; `waits`: unread in the sheet until the owner sees it. */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false) {
-    this.store.replyTalk(id, reply, lookUp, wish, waits);
+  /**
+   * The Koordinator's reply to words it has read, the question it looks up for them, and what a
+   * draft for Obeya's makers would start from; `waits`: unread in the sheet until the owner sees it;
+   * `answers`: it answers them (not that it could not read them).
+   */
+  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) {
+    this.store.replyTalk(id, reply, lookUp, wish, waits, answers);
     this.changed();
   }
 
@@ -1482,6 +1488,16 @@ export class Board {
 
   exchange(id: number) {
     return this.store.exchange(id);
+  }
+
+  /** The exchange a reply of the Koordinator's in the card's log stands for. */
+  cardReply(cardId: string, reply: string) {
+    return this.store.cardReply(cardId, reply);
+  }
+
+  /** A message of the card's log, by its id. */
+  event(cardId: string, id: number) {
+    return this.store.event(cardId, id);
   }
 
   /** Questions the Koordinator is still looking up. */
@@ -3415,8 +3431,8 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(answering ? { answering: true } : {}),
     ...(detail.answered && !answering && handed ? { answered: true } : {}),
     ...(r.held ? { held: (JSON.parse(r.held) as { id: number }[]).map((h) => h.id) } : {}),
-    // approved work is held for its next handover while the card is at work; on a waiting card it is landing
-    ...(r.approved_at && r.state === 'waiting' ? { landing: true } : {}),
+    // approved work is held for its next handover while the card is at work or asks the owner; on a waiting card it is landing
+    ...(r.approved_at && r.state === 'waiting' && r.need !== 'question' ? { landing: true } : {}),
     ...(demo ? { demo } : {}),
     ...(earlier.length ? { demos: earlier } : {}),
     ...(r.files ? { files: JSON.parse(r.files) as CardFile[] } : {}),

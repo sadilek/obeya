@@ -374,8 +374,8 @@ export class Commander {
     // a reply that only answers (no actions to take back, no answer to look up) waits in the sheet
     // until the owner sees it, as a looked-up answer does: it may come once the sheet is closed; on a
     // card it stands in the conversation, where a confirmation folds away
-    const reply = (confirm: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false) => {
-      this.o.board.replyTalk(talk, confirm, lookUp, wish, waits);
+    const reply = (confirm: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) => {
+      this.o.board.replyTalk(talk, confirm, lookUp, wish, waits, answers);
       if (card) this.o.board.log(card, 'say', 'koordinator', confirm, { ...(wish ? { wish } : {}), ...(waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
     };
     let decision: Decision;
@@ -389,7 +389,7 @@ export class Commander {
       // the Koordinator's session failed (not logged in, say): the owner hears why, not that they went unheard
       const t = this.o.board.t;
       const confirm = t.voice.couldNotRead(failureReason(messageOf(e), t));
-      reply(confirm, undefined, undefined, true);
+      reply(confirm, undefined, undefined, true, false);
       return { confirm };
     }
     const { confirm, lookUp } = decision;

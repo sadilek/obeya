@@ -846,6 +846,9 @@ export interface Clash {
  */
 export type ChangeRoute = 'contributor' | 'self' | 'later' | 'drop';
 
+/** What approving a review card did instead of merging: its PR conflicts with main, which its agent resolves, or only the contributor can. */
+export type ApproveResult = { conflict: 'agent' | 'contributor' } | undefined;
+
 /** One finding of a review card's review, as its worker keeps it. */
 export interface Finding {
   /** Its number on the card, kept while the worker rewrites the list. */
@@ -1315,6 +1318,8 @@ export interface Talk {
   said: string;
   /** Absent while the Koordinator reads the words. */
   reply?: string;
+  /** The reply only answers the words (no actions to take back, no question looked up): a text answer "Show as walkthrough" can tell. */
+  replyOnly?: true;
   /** The card that was open. */
   cardId?: string;
   /** The owner took the actions back. */

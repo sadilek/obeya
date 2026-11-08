@@ -253,6 +253,64 @@ test("a worker's commits go into the workspace at its next call; rewritten ones 
   expect(readFileSync(join(b, 'ws', 'one.txt'), 'utf8')).toBe('First step, amended\n');
 });
 
+test("a handover with a merge of main into a pull request's head plays back as that merge, onto the head and main of today", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'replay-'));
+  const rec = join(root, 'rec');
+  const worker = (dir: string, seen: string[], events: AgentEvent[] = []): AgentSpec => ({
+    cwd: join(dir, 'ws'),
+    role: 'worker',
+    system: 'You review the pull request.',
+    tools: [{ name: 'ready_for_review', description: 'Hand over.', schema: { summary: z.string() }, run: () => (seen.push(git(join(dir, 'ws'), 'log', '-1', '--format=%s, after %p')), 'Handed over.') }],
+    onEvent: (e) => events.push(e),
+  });
+  /** A forge whose main moved on after a pull request branched off it, in its lines too, and a workspace cloned before: each commit of `date`, so two stagings differ in every hash. */
+  const stage = (dir: string, date: string) => {
+    const forge = join(dir, 'forge');
+    gitRepo(forge, { 'sync.ts': 'send(notes);\n' });
+    git(forge, 'commit', '-q', '--amend', '--no-edit', `--date=${date}`);
+    git(join(dir), 'clone', '-q', forge, 'ws');
+    identify(join(dir, 'ws'));
+    git(forge, 'checkout', '-q', '-b', 'pr-12');
+    writeFileSync(join(forge, 'sync.ts'), 'send(notes.filter(filled));\n');
+    git(forge, 'commit', '-qam', 'Skip empty notes', `--date=${date}`, '--author=Mara <mara@example.com>');
+    git(forge, 'update-ref', 'refs/pull/12/head', 'HEAD');
+    git(forge, 'checkout', '-q', 'main');
+    writeFileSync(join(forge, 'sync.ts'), 'retry(() => send(notes));\n');
+    git(forge, 'commit', '-qam', 'Retry a failed send', `--date=${date}`);
+    return forge;
+  };
+  const a = join(root, 'a');
+  stage(a, '2001-01-01T00:00:00');
+  const ws = join(a, 'ws');
+  const fake = new FakeRuntime();
+  const started = headRead();
+  recordingRuntime(fake, rec, join(a, 'home')).start(worker(a, []), 'Review PR #12.');
+  await started;
+  // recorded: the reviewer takes the pull request's head and merges main into it, resolving the conflict
+  git(ws, 'fetch', '-q', 'origin');
+  git(ws, 'fetch', '-q', 'origin', 'refs/pull/12/head');
+  git(ws, 'merge', '-q', '--ff-only', 'FETCH_HEAD');
+  expect(() => git(ws, 'merge', '-q', '--no-ff', 'origin/main', '-m', 'Merge main into pr-12')).toThrow();
+  writeFileSync(join(ws, 'sync.ts'), 'retry(() => send(notes.filter(filled)));\n');
+  git(ws, 'commit', '-qam', 'Merge main into pr-12');
+  await fake.last.call('ready_for_review', { summary: 'Merged main in.' });
+  fake.last.emit({ type: 'idle' });
+
+  // played back: the same stage of another date, the workspace without the head or main of today
+  const b = join(root, 'b');
+  const forge = stage(b, '2002-02-02T00:00:00');
+  const seen: string[] = [];
+  const events: AgentEvent[] = [];
+  replayRuntime(rec, { home: join(b, 'home'), log: () => {} }).start(worker(b, seen, events), 'Review PR #12.');
+  await until(() => events.some((e) => e.type === 'idle'));
+  expect(events.filter((e) => e.type === 'error')).toEqual([]);
+  const now = join(b, 'ws');
+  // the merge's parents are the pull request's head and main as staged today, which the workspace had not fetched
+  expect(seen).toEqual([`Merge main into pr-12, after ${git(forge, 'rev-parse', '--short', 'refs/pull/12/head')} ${git(forge, 'rev-parse', '--short', 'main')}`]);
+  expect(readFileSync(join(now, 'sync.ts'), 'utf8')).toBe('retry(() => send(notes.filter(filled)));\n');
+  expect(git(now, 'status', '--porcelain')).toBe('');
+});
+
 test('of two recorded agents of a kind, each gets its own, whichever starts first; a changed set of tools refuses', async () => {
   const root = mkdtempSync(join(tmpdir(), 'replay-'));
   const rec = join(root, 'rec');

@@ -12,7 +12,7 @@ import { clip } from '../core/text';
 import { CopyIcon } from './cardNumber';
 import { copyOrSelect } from './copy';
 import { isWalkthrough } from '../core/walkthrough';
-import { WalkthroughPlayer } from './walkthrough';
+import { WalkthroughButton, WalkthroughPlayer } from './walkthrough';
 
 /**
  * A message's frame: `by` places and colours it (the owner's on the right), `who` heads it with its
@@ -49,16 +49,20 @@ export function Msg({
       <div className="who">
         {who}
         {at && <span className="t">{time(at)}</span>}
-        {/* first of the head's buttons, so it stands rightmost */}
-        {onReply && (
-          <button className="msg-act msg-reply" onMouseDown={(e) => e.preventDefault()} onClick={onReply}>
-            <svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true">
-              <path d="M8 5 3 10l5 5M3.5 10H11a6 6 0 0 1 6 6v.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            {t.talk.reply}
-          </button>
+        {(onReply || head) && (
+          <span className="msg-acts">
+            {/* first of the head's buttons, so it stands rightmost */}
+            {onReply && (
+              <button className="msg-act msg-reply" onMouseDown={(e) => e.preventDefault()} onClick={onReply}>
+                <svg viewBox="0 0 20 20" width="11" height="11" aria-hidden="true">
+                  <path d="M8 5 3 10l5 5M3.5 10H11a6 6 0 0 1 6 6v.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {t.talk.reply}
+              </button>
+            )}
+            {head}
+          </span>
         )}
-        {head}
       </div>
       {onDelete && (
         <button className="msg-delete" title={deleteLabel} aria-label={deleteLabel} onMouseDown={(e) => e.preventDefault()} onClick={onDelete}>
@@ -243,12 +247,12 @@ function fileMark(name: string) {
 
 /**
  * The files a looked-up answer comes with, under its text, in the sheet, a card's log and a
- * Question card alike: its walkthrough in its player (`autoplay`: it starts by itself), a page in
+ * Question card alike: its walkthrough in its player, a page in
  * the sandboxed frame of an HTML artifact, an image inline, any other file as a chip that opens it
  * with the system's app (or downloads it, where that cannot be), and "Show in folder" for the
  * thread's directory.
  */
-export function AnswerFiles({ thread, files, autoplay }: { thread: number; files?: AnswerFile[]; autoplay?: boolean }) {
+export function AnswerFiles({ thread, files }: { thread: number; files?: AnswerFile[] }) {
   if (!files?.length) return null;
   const others = files.filter((f) => !isPage(f.name) && !isImage(f.name) && !isWalkthrough(f.name));
   const open = (file?: string) =>
@@ -259,7 +263,7 @@ export function AnswerFiles({ thread, files, autoplay }: { thread: number; files
   return (
     <div className="answer-files">
       {files.filter((f) => isWalkthrough(f.name)).map((f) => (
-        <WalkthroughPlayer key={f.name} thread={thread} file={f} autoplay={autoplay} />
+        <WalkthroughPlayer key={f.name} thread={thread} file={f} />
       ))}
       {files.filter((f) => isPage(f.name)).map((f) => (
         <AnswerPage key={f.name} thread={thread} file={f} />
@@ -347,19 +351,35 @@ export function ThreadCard({ thread, card, onOpen }: { thread: number; card?: It
 export const Cards = createContext<{ items: Item[]; open: (i: Item) => void }>({ items: [], open: () => {} });
 
 /**
- * What a looked-up answer in a card's conversation adds to it: "Make it a card" in its head (on a
- * card that is not the thread's own), and its files under the text.
+ * Whether a message of a card's conversation is a text answer "Show as walkthrough" can tell: a
+ * looked-up answer without a walkthrough, or a reply of Obeya's that only answers.
  */
-export function useAnswer(e: CardEvent): { head?: ReactNode; files?: ReactNode; continues?: ReactNode } {
+export const tellable = (e: CardEvent) =>
+  !!e.text && !e.answer?.live && (e.answer ? !e.answer.files?.some((f) => isWalkthrough(f.name)) : e.author === 'koordinator' && !!e.reply && !e.wish);
+
+/**
+ * What an answer in a card's conversation adds to it: in its head "Make it a card" (a looked-up one,
+ * on a card that is not the thread's own) and "Show as walkthrough" (`hint`: it stays in view, the
+ * newest answer's, until the owner has used it once), and a looked-up one's files under the text.
+ */
+export function useAnswer(e: CardEvent, hint?: boolean): { head?: ReactNode; files?: ReactNode; continues?: ReactNode } {
   const { items, open } = useContext(Cards);
-  if (!e.answer) return {};
+  const walk = tellable(e) && <WalkthroughButton of={{ card: e.cardId, ev: e.id }} hint={hint} />;
+  if (!e.answer) return walk ? { head: walk } : {};
   const { thread, files, continues, live } = e.answer;
   // its walkthrough plays while its agent tells on: the answer's words, and with them its head, come later
   if (live) return { files: <AnswerFiles thread={thread} files={files} /> };
   const host = items.find((i) => i.id === e.cardId);
   const own = host?.thread?.talk === thread;
+  // a thread on a Question card goes on there: its answers are told as walkthroughs there
+  const moved = own ? undefined : items.find((i) => i.kind === 'question' && i.thread?.talk === thread);
   return {
-    ...(own ? {} : { head: <ThreadCard thread={thread} card={items.find((i) => i.kind === 'question' && i.thread?.talk === thread)} onOpen={open} /> }),
+    head: (
+      <>
+        {!own && <ThreadCard thread={thread} card={moved} onOpen={open} />}
+        {!moved && walk}
+      </>
+    ),
     files: <AnswerFiles thread={thread} files={files} />,
     ...(continues ? { continues: <Continues question={continues} /> } : {}),
   };

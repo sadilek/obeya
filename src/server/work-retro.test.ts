@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { cardTag } from '../core/card-number';
 import { Board } from './board';
 import { Store } from './db';
-import { artifact, FakeRuntime, type FakeSession, gitRepo } from './testing';
+import { artifact, FakeRuntime, type FakeSession, gitRepo, removeDir } from './testing';
 import { WorkRetro } from './work-retro';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
@@ -33,7 +33,7 @@ beforeEach(() => {
   const workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, onWorkEnded: (id, ws) => retro.ended(id, ws) });
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => removeDir(dir));
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
 /** The number a card goes by, as the retrospective names it. */

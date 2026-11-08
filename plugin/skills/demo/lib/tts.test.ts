@@ -69,7 +69,8 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const narrate = (env: Record<string, string> = {}) =>
   python([join(LIB, 'tts.py'), join(dir, 'spec.json'), 'de', join(dir, 'jobs.json'), join(dir, 'out')], { FAKE_LOG: join(dir, 'log'), ...env });
-const log = () => readFileSync(join(dir, 'log'), 'utf8').trim().split('\n');
+// Python writes its lines with \r\n on Windows
+const log = () => readFileSync(join(dir, 'log'), 'utf8').trim().split(/\r?\n/);
 /** tts.py's render with its time limits for a voice's answers cut to a fraction of a second. */
 const impatient = (env: Record<string, string>) =>
   python(

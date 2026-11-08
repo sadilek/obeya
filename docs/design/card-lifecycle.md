@@ -141,7 +141,7 @@ the head its worker reviewed, and the card is `live`; while a change request wai
 contributor it is `in PR`, "Waiting for the contributor".
 
 An approve click folds the card at once without waiting for the server: the canvas card says what is
-under way ("being approved …", "being pushed straight to main …"), no longer counts as needing the
+under way ("being approved …", "being pushed straight to main …"; a review card "merging …"), no longer counts as needing the
 owner and is skipped by Tab, which goes on from the place of the card it opened last. A message with
 a spinner stands above the microphone, which the answer turns into the confirmation or, when the
 landing is refused, into the reason, with the card waiting for review again; a restart that cut the

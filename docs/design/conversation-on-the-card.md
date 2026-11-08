@@ -142,7 +142,7 @@ starts. Words said between turns start the next turn.
 ### Replying to a message
 
 On a card and in Obeya's sheet the owner can reply to one message, as in chat apps: "Reply" at the
-right of its head, beside "Make it a card" and "Show as walkthrough" of a looked-up answer and in
+right of its head, beside "Make it a card" of a looked-up answer and "Show as walkthrough" of a text answer and in
 their look (at the desk while the pointer is on the message, for newcomers too; on a touch screen
 always), puts it as a quote above the field, removable with × or Escape (before Escape closes the card or the sidebar); typed or spoken words go out with
 it. The quote is part of the field's draft, so it survives closing the card and reloads. The sent

@@ -429,7 +429,7 @@ def serve(args) -> None:
             reply |= {"error": f"{type(failed).__name__}: {failed}"[:600]}
         try:
             answer(reply)
-        except BrokenPipeError:
+        except OSError:  # BrokenPipeError; on Windows an OSError of its own (EINVAL)
             # whoever asked went away before the clip was done (Obeya stopped or restarted): nobody
             # is left to tell, and closing the protocol at exit would fail on the closed pipe once more
             os._exit(0)

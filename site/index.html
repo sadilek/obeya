@@ -133,7 +133,8 @@
         <h2>Watch the demo instead of testing it yourself.</h2>
         <p>Lean back, as in a launch review. Every change comes back with a short report and something to look at:
           a narrated screen recording with chapters, or a page when the result is a layout or variants side by side.
-          No clicking through the app to see whether it works. Approve it or say what to change. Obeya lands the work on main.</p>
+          No clicking through the app to see whether it works. Approve it or say what to change, also about one moment of the video:
+          pause it there, and the agent gets that frame with your words.</p>
         <p class="aside">Obeya is built with Obeya: <a href="https://demos.obeya.si">see the latest demos from its own development</a>.</p>
       </div>
       <img class="shot" src="img/demo.png" width="1360" height="950" loading="lazy" alt="A card unfolded with the demo video of a tip calculator, its chapters and the approve button">
@@ -152,6 +153,19 @@
 
     <article class="pillar">
       <div class="text">
+        <span class="tag purple">Review</span>
+        <h2>Pull requests from others, reviewed like your own work.</h2>
+        <p>Say “Review PR #14”, and a pull request someone else opened gets a card. Its agent reads the diff before anything of it runs on your machine,
+          reviews it and records a demo before and after. For each finding you choose: to the contributor, changed by the agent,
+          a follow-up task, or ignore it. You edit the text that goes onto the pull request, then “Push and merge” or “Push and comment only”.</p>
+        <p class="aside">When the next step is the contributor’s, the card waits until they respond:
+          their comment or push brings it back, reviewed again.</p>
+      </div>
+      <img class="shot" src="img/review.png" width="1360" height="1488" loading="lazy" alt="A contributor’s pull request on a card: three findings, one of them still to decide, the demo, and the text that goes onto the pull request">
+    </article>
+
+    <article class="pillar flip">
+      <div class="text">
         <span class="tag pink">Phone</span>
         <h2>The wall in your pocket.</h2>
         <p>Away from the desk, your phone shows what waits for you across all your canvases, and what is running.
@@ -166,6 +180,33 @@
         <img class="shot phone" src="img/phone-demo.png" width="393" height="852" loading="lazy" alt="The card Split the bill opened on a phone, with its demo video, chapters and the approve button">
       </div>
     </article>
+  </section>
+
+  <section class="setup">
+    <div class="head">
+      <h2>Fits your setup</h2>
+    </div>
+    <ul class="fits">
+      <li>
+        <h3>Workers on other machines</h3>
+        <p>A repository’s agents can also run on other computers, reached over SSH. Obeya clones the repository there itself,
+          and a new card goes there once this machine has no free slot.</p>
+      </li>
+      <li>
+        <h3>Folders without git</h3>
+        <p>A document archive in a cloud drive works too. Cards work in the folder itself, each lists what it changed,
+          and “Discard changes” puts it back.</p>
+      </li>
+      <li>
+        <h3>GitHub, Forgejo and Gitea</h3>
+        <p>Approved work lands on main, or goes out as a pull request on GitHub (Enterprise too), Forgejo or Gitea, Codeberg say,
+          which Obeya carries to the merge.</p>
+      </li>
+      <li>
+        <h3>English and German</h3>
+        <p>The interface speaks English and German, and so does the voice input. Agents answer in the language you use.</p>
+      </li>
+    </ul>
   </section>
 
   <section class="how" id="how">

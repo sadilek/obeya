@@ -1,4 +1,4 @@
-// Where a demo video or a screenshot stands when zoomed (detail.tsx useZoom, shots.tsx Lightbox),
+// Where a demo video, a walkthrough or a screenshot stands when zoomed (zoom.ts, shots.tsx Lightbox),
 // and where it grows out of: the video as large as the window allows, short of full screen, with
 // the microphone below it still in view.
 
@@ -12,10 +12,14 @@ export const ZOOM_BELOW = 112;
 
 export type Box = { left: number; top: number; width: number; height: number };
 
-/** The largest box of the video's shape in a window of `w`×`h`, centred above the microphone. */
-export function zoomBox(aspect: number, w: number, h: number): Box {
-  const width = Math.max(0, Math.min(w - 2 * ZOOM_MARGIN, (h - ZOOM_MARGIN - ZOOM_BELOW) * aspect));
-  const height = width / aspect;
+/**
+ * The largest box of the video's shape in a window of `w`×`h`, centred above the microphone.
+ * `chrome`: what stands under the picture in the same box (a walkthrough's caption and controls),
+ * as high as `fixed` plus `perWidth` times the box's width.
+ */
+export function zoomBox(aspect: number, w: number, h: number, chrome = { fixed: 0, perWidth: 0 }): Box {
+  const width = Math.max(0, Math.min(w - 2 * ZOOM_MARGIN, (h - ZOOM_MARGIN - ZOOM_BELOW - chrome.fixed) / (1 / aspect + chrome.perWidth)));
+  const height = width / aspect + chrome.fixed + chrome.perWidth * width;
   return { left: (w - width) / 2, top: ZOOM_MARGIN + (h - ZOOM_MARGIN - ZOOM_BELOW - height) / 2, width, height };
 }
 

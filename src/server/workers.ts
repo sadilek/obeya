@@ -29,7 +29,7 @@ import { readingShared } from '../adapters';
 import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
-import { cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
+import { type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, type GitSteps, isFolder } from './workspaces';
 import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
@@ -276,6 +276,9 @@ const heldEdited = (body: string) =>
 const FINDINGS_IGNORED = 'The owner ignored findings of your review, on the card:';
 
 /** How the worker hears that its approved work could not land for something that is not its own to fix. */
+/** How gh words a merge GitHub refused for a conflict with the base branch. */
+const CONFLICT = /cannot be cleanly created|merge conflict/i;
+
 const NOT_LANDED = 'Since you handed over, the owner approved your work, but Obeya could not land it on main:';
 
 /**
@@ -357,6 +360,8 @@ interface Live {
    * turn of its own, over what the previous session left (a background command the restart stopped).
    */
   acted: boolean;
+  /** Whether the session said or did anything since it started: one that ends by itself after that has a conversation worth resuming. */
+  ran?: boolean;
   nudged: boolean;
   /**
    * The last of Obeya's tools that refused the worker's call, with its words, until the same tool
@@ -611,7 +616,7 @@ export class Workers {
   private live = new Map<string, Live>();
   /** Cards whose approved work is landing: the server answers meanwhile, but approving again is refused, and a restart waits. */
   private landing = new Set<string>();
-  /** Cards approved while git tells what the approval does (`approve`). */
+  /** Cards approved while git tells what the approval does (`approve`), or while a review card's pull request is pushed to and merged (`mergeContribution`): a restart waits for them too. */
   private approving = new Set<string>();
   /** Review cards whose „main pushen“ waits out its undo window (`pushMainFor`), or runs. */
   private pushingMain = new Map<string, ReturnType<typeof setTimeout> | true>();
@@ -1597,8 +1602,10 @@ export class Workers {
    * `merge: false` („Nur pushen“) stops after the post too. Before the merge the demo goes on its
    * page where the site publishes on approval, and the page's link goes into a comment on the PR
    * once it is online (`onApproval`; the description stays the contributor's). A refused merge
-   * leaves the card waiting for the owner, with the reason. Merged, the card is live and, where work
-   * lands on the local main, the checkout pulls the merge.
+   * leaves the card waiting for the owner, with the reason, but a conflict with main, which goes to
+   * the worker with the approval kept (`conflicted`): its next handover is merged without the owner
+   * (`kept`). Merged, the card is live and, where work lands on the local main, the checkout pulls the
+   * merge.
    *
    * `findings`: decisions on findings the owner made and did not send before approving. Those that
    * fit a merge (a follow-up task, ignored) go with it: decided where the approval goes through
@@ -1606,7 +1613,7 @@ export class Workers {
    * nothing is merged; the others (to the contributor, the worker's own change) hold the merge up
    * and are refused.
    */
-  private async mergeContribution(cardId: string, { merge = true, findings }: { merge?: boolean; findings?: Record<number, ChangeRoute> } = {}) {
+  private async mergeContribution(cardId: string, { merge = true, findings, kept = false }: { merge?: boolean; findings?: Record<number, ChangeRoute>; kept?: boolean } = {}): Promise<ApproveResult | void> {
     const forge = this.o.forge;
     const c = contributionOf(this.o.board.row(cardId));
     if (!forge || !c) throw new BadRequest('notReview', 'the card reviews no pull request');
@@ -1630,13 +1637,17 @@ export class Workers {
     clearTimeout(this.holding.get(cardId));
     this.holding.delete(cardId);
     this.approving.add(cardId);
+    // under way on every page, one loaded meanwhile too, as a landing is (approved before, it is the worker's)
+    if (!kept) this.o.board.work(cardId, { approved_at: new Date().toISOString() });
     const cwd = this.forgeCwd(cardId);
     let merged: string | void;
     try {
       const now = await forge.status(cwd, c.url).catch((e: unknown) => {
         throw new BadRequest('mergeRefused', messageOf(e));
       });
-      if (!handedOver(this.card(cardId)) || this.generation.get(cardId) !== generation) throw new BadRequest('notReady', 'the card is not ready for review');
+      // approved before, the worker's handover after a conflict is merged while the card is still with Obeya
+      const ready = kept ? this.card(cardId).state === 'working' && !!this.o.board.row(cardId).approved_at : handedOver(this.card(cardId));
+      if (!ready || this.generation.get(cardId) !== generation) throw new BadRequest('notReady', 'the card is not ready for review');
       if (now.state === 'MERGED') return this.merged(cardId, now.mergeCommit, t.mergedContribution(c.number), decide());
       if (now.state === 'CLOSED') throw new BadRequest('prClosed', 'the pull request was closed');
       // the worker's own commits go on top of the head they were made on; already there, only their text is still to post
@@ -1651,6 +1662,8 @@ export class Workers {
           this.o.board.log(cardId, 'state', 'obeya', t.clashFound(c.number, clash.subject, clash.card?.title));
           throw new BadRequest('pullClash', `the pull request collides with unpushed commits on the local main (${clash.commit.slice(0, 7)} ${clash.subject})`);
         }
+        // a conflict with main the worker resolves; commits of its own not pushed yet may resolve it already
+        if (now.mergeable === 'CONFLICTING' && now.head === c.reviewed) return this.conflicted(cardId, c, now.head, along(decide(), this.approvalComments(cardId)), kept);
       }
       if (c.held) {
         if (now.head !== c.reviewed) await this.pushHeld(cardId, c);
@@ -1665,12 +1678,16 @@ export class Workers {
       // the decisions the owner had not sent, and the comments held back while they watched, go with the approval
       const comments = along(decide(), this.approvalComments(cardId));
       this.o.board.work(cardId, { contribution: JSON.stringify({ ...(contributionOf(this.o.board.row(cardId)) ?? c), approved: true } satisfies StoredContribution) });
-      this.o.board.log(cardId, 'state', 'owner', t.approvedMerge(c.number));
+      if (!kept) this.o.board.log(cardId, 'state', 'owner', t.approvedMerge(c.number));
       this.o.onApproval?.(cardId);
       try {
         merged = await forge.merge(cwd, c.url, c.reviewed);
       } catch (e) {
         const reason = messageOf(e).replace(/^gh pr merge \S+: /, '');
+        // the forge read the PR's mergeability before the push, or not at all yet: it says now whether main is in the way
+        const after = await forge.status(cwd, c.url).catch(() => undefined);
+        if (this.generation.get(cardId) !== generation || !this.o.board.item(cardId)) return;
+        if (after?.mergeable === 'CONFLICTING' || (after?.mergeable !== 'MERGEABLE' && CONFLICT.test(reason))) return this.conflicted(cardId, c, after?.head || c.reviewed, comments, kept);
         this.o.board.log(cardId, 'error', 'obeya', t.mergeRefused(reason));
         if (comments) this.deliver(cardId, comments.text, comments.images, true);
         throw new BadRequest('mergeRefused', reason);
@@ -1682,6 +1699,9 @@ export class Workers {
       throw e;
     } finally {
       this.approving.delete(cardId);
+      // not merged and not with the worker: the card waits for the owner (or the contributor) again
+      const state = !kept && this.o.board.item(cardId) ? this.o.board.row(cardId).state : undefined;
+      if (state === 'waiting' || state === 'inPr') this.o.board.work(cardId, { approved_at: null });
     }
   }
 
@@ -1714,6 +1734,64 @@ export class Workers {
   }
 
   /**
+   * The approval of a review card met a conflict of its pull request with main, at `head`. Where the
+   * contributor allows maintainers' edits, the worker resolves it on its branch with the approval
+   * kept: its next handover is pushed and merged without the owner (`landApproved`), unless it brings
+   * nothing new, which leaves the merge to the owner. Otherwise only the contributor can resolve it:
+   * the worker writes it up as a finding, and the owner decides whether it goes to them.
+   */
+  private conflicted(cardId: string, c: StoredContribution, head: string, comments: Comments | undefined, kept: boolean): ApproveResult {
+    const t = this.o.board.t.worker;
+    const row = this.o.board.row(cardId);
+    const now = contributionOf(row) ?? c;
+    const also = comments?.text ?? '';
+    if (!c.canModify) {
+      this.o.board.log(cardId, 'error', 'obeya', t.mergeConflictNoEdits(c.number, c.author));
+      this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null, approved_at: null });
+      this.deliver(
+        cardId,
+        [
+          `The owner approved your handover, but the pull request cannot be merged: it conflicts with main. ${c.author} does not allow maintainers' edits, so nothing of yours can go onto its branch, and only ${c.author} can resolve the conflict. Find out what conflicts (merge main into the PR's head in your workspace, then abort that merge), record it as a finding (findings) that names the files and the change on main they conflict with, and hand over again: the owner decides whether it goes to ${c.author}.`,
+          also,
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+        comments?.images,
+        !kept,
+      );
+      return { conflict: 'contributor' };
+    }
+    if (kept && now.conflict === head) {
+      // handed over without a resolution: the merge is the owner's again
+      this.o.board.log(cardId, 'error', 'obeya', t.conflictUnresolved(c.number));
+      this.o.board.work(cardId, { state: 'waiting', need: row.demo ? 'demo' : 'review', status_line: null, approved_at: null });
+      return undefined;
+    }
+    this.o.board.log(cardId, 'error', 'obeya', t.mergeConflict(c.number));
+    this.o.board.work(cardId, {
+      contribution: JSON.stringify({ ...now, conflict: head } satisfies StoredContribution),
+      state: 'working',
+      need: null,
+      detail: null,
+      status_line: null,
+      approved_at: row.approved_at ?? new Date().toISOString(),
+    });
+    this.deliver(
+      cardId,
+      [
+        `The owner approved your handover, but the pull request cannot be merged: it conflicts with main, which moved since the PR branched off. Resolve the conflict on your branch, which stands on the PR's head ${head.slice(0, 7)}: fetch main from origin and merge it in (do not rebase or rewrite the PR's commits), resolve the conflicts so that both the PR's change and what main brought keep working, run the checks and commit the merge.`,
+        `The approval holds for that resolution: once you hand over again (ready_for_review with the checks and the merge probe in review, and in pr_draft a short note for ${c.author}, in the PR's language, on what conflicted and how you resolved it), Obeya pushes your commits onto the PR's branch, posts the note and merges, without asking the owner again and with the demo already on the card. A resolution that changes what the owner approved, or needs a product call, is theirs: ask.`,
+        also,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      comments?.images,
+      !kept,
+    );
+    return { conflict: 'agent' };
+  }
+
+  /**
    * The approval of a review card met a pull request at another head than the one handed over (the
    * contributor pushed since): Obeya pushes, posts and merges nothing, and the worker reviews the PR
    * as it is now, its own commits not pushed yet put on top. Returns the refusal to throw.
@@ -1722,7 +1800,8 @@ export class Workers {
     const t = this.o.board.t.worker;
     const comments = this.approvalComments(cardId);
     this.o.board.log(cardId, 'state', 'obeya', c.held ? t.heldMoved(head.slice(0, 7)) : t.unreviewedHead(head.slice(0, 7)));
-    this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null });
+    // the approval was for what the worker reviewed, not for the contributor's push
+    this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null, approved_at: null });
     this.deliver(
       cardId,
       [
@@ -2454,7 +2533,8 @@ export class Workers {
     const outside: string[] = [];
     for (const f of files) {
       let given = String(f.path).trim();
-      const root = roots.find((r) => given.startsWith(`${r}/`));
+      // a path of the workspace, with backslashes where it is one of Windows
+      const root = roots.find((r) => given.startsWith(r) && /^[\\/]/.test(given.slice(r.length)));
       if (root) given = given.slice(root.length + 1);
       const path = isAbsolute(given) ? null : normalPath(given);
       if (!path || !changed.includes(path)) outside.push(String(f.path));
@@ -2488,6 +2568,7 @@ export class Workers {
       need: null,
       detail: null,
       status_line: null,
+      approved_at: null,
       landed: JSON.stringify({ ...(commit ? { commit } : {}), ...(page.waits ? { page: true } : {}) } satisfies LandedState),
       shipped: JSON.stringify(shipped),
     });
@@ -2790,6 +2871,14 @@ export class Workers {
       return Promise.resolve();
     }
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
+    return this.planAgain(cardId, () => this.o.board.log(cardId, 'state', 'owner', card.pr ? this.o.board.t.worker.stoppedPrOpen(card.pr.number) : this.o.board.t.worker.stopped));
+  }
+
+  /**
+   * The card is planned again, its worker ended (`stop`), after `said` logged why. Its workspace
+   * stays with it where it holds work, and is given back otherwise once git has told.
+   */
+  private planAgain(cardId: string, said: () => void): Promise<void> {
     // comments held back for the worker stay in the conversation
     this.takeHeld(cardId);
     this.end(cardId);
@@ -2797,7 +2886,7 @@ export class Workers {
     const generation = this.generation.get(cardId);
     const path = this.o.board.row(cardId).workspace;
     this.o.board.work(cardId, { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null });
-    this.o.board.log(cardId, 'state', 'owner', card.pr ? this.o.board.t.worker.stoppedPrOpen(card.pr.number) : this.o.board.t.worker.stopped);
+    said();
     return this.o.workspaces.hasWork(cardId).then((keep) => {
       if (keep || this.generation.get(cardId) !== generation || this.o.board.row(cardId).workspace !== path) return;
       this.o.workspaces.release(cardId);
@@ -3310,10 +3399,11 @@ export class Workers {
 
   /**
    * The cards whose worker is in the middle of a turn (or whose ended turn waits for its background
-   * work), and those whose workspace is being made ready, freed or taken from them (`evict`) or whose work is landing: a restart would cut off git midway.
+   * work), and those whose workspace is being made ready, freed or taken from them (`evict`) or whose work is landing or being
+   * approved (a review card's push, comment and merge): a restart would cut off git, or the forge, midway.
    */
   busyCards(): string[] {
-    return [...new Set([...this.inTurn(), ...this.landing, ...[...this.freeing.values()].map((f) => f.card), ...this.evicting])];
+    return [...new Set([...this.inTurn(), ...this.landing, ...this.approving, ...[...this.freeing.values()].map((f) => f.card), ...this.evicting])];
   }
 
   /**
@@ -3411,7 +3501,48 @@ export class Workers {
       this.o.board.changed();
       // a session that ended without ending its turn takes in no answer any more
       this.answerTaken(cardId);
+      if (!this.shut) this.endedByItself(cardId, live);
     });
+  }
+
+  /**
+   * The worker's session ended without Obeya ending it (it failed to start, its harness died in a
+   * turn): no agent works on the card any more. At work, a session that had worked is the owner's to
+   * try again, resumed with its conversation; one that never did (it failed to start, or to resume)
+   * has the card planned again as if the owner had stopped it, its log ending with the error (or
+   * that the agent stopped), which the card then shows as why it does not run. After the landing,
+   * or approved with its pull request still to open, the owner hears what was left undone. A card
+   * waiting for the owner needs no session until their next words, nor one its worker snoozed until
+   * the snooze wakes it.
+   */
+  private endedByItself(cardId: string, live: Live) {
+    const card = this.o.board.item(cardId);
+    const row = this.o.board.row(cardId);
+    // it snoozed before its session ended: the snooze resumes it
+    if (!card || row.snoozed) return;
+    const landed = landedOf(row);
+    const t = this.o.board.t;
+    const reason = live.failed ? failureReason(clip(live.failed, 1200), t) : t.worker.stalled;
+    const ended = `${reason}${/[.!?]$/.test(reason) ? '' : '.'}`;
+    if (landed) {
+      if (card.state === 'waiting' || landed.waits || landed.page || landed.needsClone) return;
+      this.toOwner(cardId, { text: t.worker.remainsUndone(ended), options: [t.worker.tryAgain], stuck: true });
+      return;
+    }
+    // approved, its pull request still to open: the owner's "Try again" has it opened, the approval standing
+    if (card.state === 'inPr' && !card.pr && !card.contribution) {
+      this.toOwner(cardId, { text: t.worker.prNotOpened(ended), options: [t.worker.tryAgain], stuck: true });
+      return;
+    }
+    if (card.state !== 'working') return;
+    // it had worked: the owner's "Try again" resumes its session, keeping the conversation
+    if (row.session_id && live.ran) {
+      this.toOwner(cardId, { text: t.worker.sessionEnded(ended), options: [t.worker.tryAgain], stuck: true });
+      return;
+    }
+    void this.planAgain(cardId, () => {
+      if (this.o.board.events(cardId).at(-1)?.kind !== 'error') this.o.board.log(cardId, 'error', 'obeya', live.failed ?? t.worker.stalled);
+    }).catch((e) => console.error(`giving back the workspace of ${cardId}:`, e));
   }
 
   /**
@@ -3668,6 +3799,7 @@ export class Workers {
       this.resumed(cardId, live);
       this.unlimited(cardId, live);
       live.failed = undefined;
+      live.ran = true;
     }
     if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.acted = true;
     if (e.type === 'text' || e.type === 'tool' || (e.type === 'idle' && !e.more)) live.pending = undefined;
@@ -3723,6 +3855,7 @@ export class Workers {
   }
 
   private async landApproved(cardId: string) {
+    if (this.o.board.row(cardId).contribution) return this.mergeApproved(cardId);
     try {
       await this.land(cardId, 'obeya');
     } catch (e) {
@@ -3730,6 +3863,28 @@ export class Workers {
       if (!(e instanceof BadRequest)) return this.o.board.log(cardId, 'error', 'obeya', messageOf(e));
       this.o.board.work(cardId, { state: 'waiting', need: this.o.board.row(cardId).demo ? 'demo' : 'review', status_line: null });
       this.o.board.log(cardId, 'error', 'obeya', e.message, { code: e.code });
+    }
+  }
+
+  /**
+   * A review card's worker handed over the resolution of a conflict with main the owner's approval
+   * met: Obeya pushes and merges it on that approval. What stops it but a new conflict or a push of
+   * the contributor's (both of which go back to the worker) leaves the card waiting for the owner,
+   * who approves again.
+   */
+  private async mergeApproved(cardId: string) {
+    const c = contributionOf(this.o.board.row(cardId));
+    if (c) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.mergingResolved(c.number));
+    try {
+      await this.mergeContribution(cardId, { kept: true });
+    } catch (e) {
+      if (e instanceof BadRequest && e.code === 'prMoved') return;
+      const row = this.o.board.row(cardId);
+      if (!this.o.board.item(cardId)) return;
+      if (row.state === 'working' && row.approved_at) this.o.board.work(cardId, { state: 'waiting', need: row.demo ? 'demo' : 'review', status_line: null, approved_at: null });
+      // most refusals are in the card's log already
+      const said = messageOf(e);
+      if (!this.o.board.events(cardId).at(-1)?.text.includes(said)) this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.mergeRefused(said));
     }
   }
 
@@ -4703,7 +4858,7 @@ export class Workers {
             // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
             this.o.board.work(cardId, {
               // the worker's last status line is about the work it hands over: it would show again once the card is at work
-              ...(approved ? { status_line: this.o.board.t.worker.landing } : { state: 'waiting', need: d || kept ? 'demo' : 'review', status_line: null }),
+              ...(approved ? { status_line: review ? this.o.board.t.worker.mergingPr(review.number) : this.o.board.t.worker.landing } : { state: 'waiting', need: d || kept ? 'demo' : 'review', status_line: null }),
               // approving work that changes nothing makes the card done, which the owner sees before approving; where work
               // lands that its own branch decides, likewise
               detail: JSON.stringify({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(answered && !approved ? { answered: true } : {}) }),
@@ -4724,11 +4879,17 @@ export class Workers {
             const card = this.o.board.item(cardId);
             if (card?.prototypeOf) this.o.onPrototype?.(card, report, demoJson);
             if (approved)
-              return ending(
-                'Recorded. End your turn now; once it has ended, Obeya lands your work on main.',
-                'Recorded: once your turn has ended, Obeya lands your work on main.',
-                'a change to the work is to be committed by then',
-              );
+              return review
+                ? ending(
+                    'Recorded. End your turn now; once it has ended, Obeya pushes your commits onto the pull request and merges it.',
+                    'Recorded: once your turn has ended, Obeya pushes your commits onto the pull request and merges it.',
+                    'a change to the work is to be committed by then',
+                  )
+                : ending(
+                    'Recorded. End your turn now; once it has ended, Obeya lands your work on main.',
+                    'Recorded: once your turn has ended, Obeya lands your work on main.',
+                    'a change to the work is to be committed by then',
+                  );
             // what the owner's button does, as Obeya sees the branch: the worker may know of no commit on it but its own
             const lands =
               review || this.folder
@@ -5012,7 +5173,10 @@ export class Workers {
   private backToWork(cardId: string) {
     const row = this.o.board.row(cardId);
     const landed = landedOf(row);
-    this.o.board.work(cardId, { state: landed ? (landed.unchanged ? 'done' : 'live') : row.pr ? 'inPr' : 'working', need: null, detail: null });
+    // a review card has its pull request from the start: it waits in it only for the contributor
+    const contribution = contributionOf(row);
+    const inPr = !!row.pr && (!contribution || !!contribution.requested);
+    this.o.board.work(cardId, { state: landed ? (landed.unchanged ? 'done' : 'live') : inPr ? 'inPr' : 'working', need: null, detail: null });
   }
 
   // ---------------------------------------------------------------- prompts

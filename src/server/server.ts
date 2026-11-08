@@ -876,8 +876,9 @@ export function serve(
       },
       // "Make it a card": a looked-up thread moves onto a Question card
       '/api/c/:canvas/threads/:thread/card': { POST: on((c, req) => c.answers.toCard(Number(req.params.thread))) },
-      // "Show as walkthrough": the answer told again, as the thread's next answer
-      '/api/c/:canvas/talk/:talk/walkthrough': { POST: on((c, req) => ({ talk: c.answers.showAsWalkthrough(Number(req.params.talk)) })) },
+      // "Show as walkthrough": the answer told again, as the next answer, in the sheet or in a card's conversation
+      '/api/c/:canvas/talk/:talk/walkthrough': { POST: on((c, req) => c.answers.showAsWalkthrough(Number(req.params.talk))) },
+      '/api/c/:canvas/cards/:id/events/:ev/walkthrough': { POST: on((c, req) => c.answers.showEventAsWalkthrough(req.params.id!, Number(req.params.ev))) },
       // a walkthrough as its player reads it while it grows; `?playing=<slide>` while it plays, so the voice speaks that first
       '/api/c/:canvas/threads/:thread/walkthroughs/:name': {
         GET: (req) => {
