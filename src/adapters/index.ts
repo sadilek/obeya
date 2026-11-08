@@ -177,6 +177,12 @@ export function* readingShared(commit: string): GitSteps<SharedRead> {
   return { ...read, claude };
 }
 
+/** The `.obeya/settings.json` alone at `commit` as git steps, read as `readingShared` reads it. */
+export function* readingSettings(commit: string): GitSteps<SharedRead> {
+  const [text] = yield [['cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`]];
+  return text != null ? parseShared(text) : { problems: [] };
+}
+
 /**
  * Whether the repository's main branch still has a `.obeya/adapter/index.ts`: a module that said
  * what its settings say now, which Obeya no longer reads (problem `adapterGone`).

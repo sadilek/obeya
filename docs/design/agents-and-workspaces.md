@@ -134,7 +134,9 @@ its worker finished what remains.
 
 Starting a card does not block the server: the workspace is taken at once (so slots and the queue
 see it taken), and git makes it ready in the background: `git worktree add` (a minute in a large
-repository on Windows), or a clone's fetch and checkout of the card's branch (over SSH on a host),
+repository on Windows), or a clone's fetch and checkout of the card's branch (over SSH on a host;
+no fetch where the clone's `origin` is a repository on this machine whose branches and tags the clone
+has already),
 the temporary worktree of a finished card's question likewise. Meanwhile the card is at work, its
 status line "Preparing the workspace …"; it holds a slot, a restart waits for it, and the
 owner's words wait unread until the worker starts with its task. A card stopped meanwhile gives
@@ -150,7 +152,8 @@ clone is given back, and again when a look is older than a minute (half a minute
 clone not clean, so a waiting card takes a clone within a minute of it being put right) as Obeya
 looks for a free clone (at every change of the board while cards wait for one, and every minute). A clean clone goes first, then one not
 looked at yet; a look that changes the answer changes the board, so a waiting card takes a clone
-turned clean. The clone a card takes is looked at again before it works there: one no longer clean
+turned clean. The clone a card takes is looked at again before it works there (a look that began as
+it was chosen is that look): one no longer clean
 is given back and the next one taken, and where none is left the card goes back to planned and waits
 in the queue as when none is free at once. What else Obeya asks git about a card's workspace runs in
 the background as well: whether it holds work (uncommitted changes, commits beyond the main branch),
@@ -560,6 +563,18 @@ for its hooks), and what the repository's work needs.
   waiting for the card to give it back never ends, since nothing (git, `app.stop`) runs in a missing
   folder, and the canvas showed every moved repository twice. Rejected: keeping it until the folder
   comes back (a moved home never does).
+- **Each step asks git as few times as it can** (2026-11-07): on Windows every process start costs
+  50 ms to over 2 s (the virus scanner looks at each, other workers add load), and the machine starts
+  only 20 to 40 a second. One answer of git serves every question it holds (a clone's branches tell
+  its main branch and whether the card's branch exists), and the same question asked side by side
+  is asked once. A fetch from a path on this machine runs `git-upload-pack` through a shell (msys on
+  Windows, seconds under load), so a start skips it where the other repository has nothing the
+  clone lacks, told by that repository's own branches and tags. Whether a fetch goes there, and
+  what it would write or delete, is git's configuration as git reads it (includes, the global one,
+  rewritten URLs, pruning); where it may write more than the remote's branches, the card's branch
+  is looked for after it. Rejected: reading the clone's configuration file without git, which
+  missed what git takes from elsewhere; keeping git's answers between steps (the main branch per
+  clone), since an agent working in the clone can change them unseen.
 - **A lease is given back from the card's state** (2026-10-21), whatever brought it there. Rejected:
   freeing only on a card's normal path, which left stopped, ticked-off workstreams holding clones.
 - **An unreachable host fails fast** (2026-10-12): asking it on every look for a free clone (almost a
