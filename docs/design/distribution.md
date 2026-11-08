@@ -146,8 +146,8 @@ is packed again. `bun scripts/check-app.ts <program>` checks an installed app in
 
 `.github/workflows/build.yml` builds the app on GitHub's runners, each platform on its own (the
 AppImage on Ubuntu 22.04 for its glibc), checks the compiled server there with
-`scripts/check-binary.ts`, and runs typecheck and tests on Linux (with uv and ffmpeg for the demo
-voice's tests). `scripts/check-voice.ts` installs the local demo voices (Kokoro, Piper) afresh on
+`scripts/check-binary.ts`, and runs typecheck and tests on Linux, Windows and macOS (with uv and
+ffmpeg for the demo voice's tests). `scripts/check-voice.ts` installs the local demo voices (Kokoro, Piper) afresh on
 Linux, Windows and macOS and has each speak a sentence: Kokoro's espeak-ng refused a data path of
 over 150 characters, which only a deep home (a temporary directory) showed (2026-11-06). A run takes about ten minutes. Tauri's DMG script now and then fails on the Intel
 Mac runner where the same commit builds on the next try (2026-11-05 and -06), so a DMG is bundled up

@@ -107,13 +107,22 @@ function freePort(): Promise<number> {
   });
 }
 
-async function isAlive(port: number): Promise<boolean> {
+async function isAlive(port: number, ms = 1000): Promise<boolean> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1000) });
+    const res = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(ms) });
     return res.ok;
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether the session's browser still runs. One that does not answer within a second is given ten
+ * while its holder lives: on a busy machine (a Mac runner with the test suite beside it) Chrome took
+ * longer to answer, and its state was cleaned up as stale while it ran.
+ */
+async function stillRunning(state: State): Promise<boolean> {
+  return (await isAlive(state.port)) || (alive(state.pid) && (await isAlive(state.port, 10_000)));
 }
 
 async function http(port: number, path: string, method = 'GET'): Promise<any> {
@@ -135,7 +144,7 @@ async function loadState(): Promise<State> {
   const file = stateFile();
   const state = readState(file);
   if (!state) return fail('No browser running in this session — run `start` first.');
-  if (!(await isAlive(state.port))) {
+  if (!(await stillRunning(state))) {
     fs.rmSync(file, { force: true });
     fail('The browser is no longer running (stale state cleaned up) — run `start` again.');
   }
@@ -443,7 +452,7 @@ async function start(args: string[]) {
   const file = stateFile();
   const running = readState(file);
   if (running) {
-    if (await isAlive(running.port)) {
+    if (await stillRunning(running)) {
       console.log(`Already running on CDP port ${running.port} (pid ${running.pid}).`);
       return;
     }

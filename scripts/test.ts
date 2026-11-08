@@ -15,10 +15,14 @@
 // the environment the test processes start with, since what a test or the preload sets in
 // `process.env` reaches no process they start. Nor does git read the machine's system-wide
 // configuration: Git for Windows' installer writes `pull.rebase=false` there, which tests of how
-// Obeya pulls where git sets no way of pulling would take for the owner's. The args, the output and
-// the exit code pass through.
+// Obeya pulls where git sets no way of pulling would take for the owner's. On Windows the temp
+// folder goes by its long name: a user name longer than eight letters (`runneradmin` on GitHub's
+// runners) gives `TEMP` its short one (`C:\Users\RUNNER~1\…`), which git spells out in full where
+// it names a path back, so a test comparing the two took the same folder for another. The args,
+// the output and the exit code pass through.
 import { spawnSync } from 'node:child_process';
-import { availableParallelism } from 'node:os';
+import { realpathSync } from 'node:fs';
+import { availableParallelism, tmpdir } from 'node:os';
 import { PATIENCE } from '../src/server/patience';
 
 const args = process.argv.slice(2);
@@ -32,5 +36,6 @@ for (const [i, [key, value]] of [['maintenance.auto', 'false'], ['gc.auto', '0']
 }
 env.GIT_CONFIG_COUNT = String(count + 2);
 env.GIT_CONFIG_NOSYSTEM = '1';
+if (process.platform === 'win32') env.TEMP = env.TMP = realpathSync.native(tmpdir());
 const r = spawnSync(process.execPath, ['test', parallel, ...timeout, ...args], { stdio: 'inherit', env });
 process.exit(r.status ?? 1);

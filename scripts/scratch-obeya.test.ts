@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -77,8 +78,10 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
   for (const key of ['A', 'C', 'H', 'W1']) expect(worked(card(key))).toBe(true);
   expect(card('B').branch).toBeUndefined();
   expect(card('D').from).toBe(staged.cards.C!);
-  const created = Bun.spawnSync(['sqlite3', join(dir, 'home/obeya.db'), `SELECT created_at FROM cards WHERE id = '${staged.cards.A}'`]).stdout.toString();
-  expect(Date.now() - Date.parse(created.trim())).toBeGreaterThan(7000_000);
+  const db = new Database(join(dir, 'home/obeya.db'), { readonly: true });
+  const created = db.query<{ created_at: string }, [string]>('SELECT created_at FROM cards WHERE id = ?').get(staged.cards.A!)!.created_at;
+  db.close();
+  expect(Date.now() - Date.parse(created)).toBeGreaterThan(7000_000);
   const events = (await (await fetch(`http://127.0.0.1:${port}/api/c/${staged.canvas}/cards/${staged.cards.B}/events`, { headers })).json()) as { text: string }[];
   expect(events.map((e) => e.text)).toContain('wartet');
 }, 20_000);

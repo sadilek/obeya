@@ -39,12 +39,13 @@ afterEach(() => removeDir(dir));
 
 /**
  * Lets the Koordinator go on until it waits for an estimate or has decided, and the cards it started
- * have their workspace: before an estimate, git reads the branches of the cards in progress, which takes a moment.
+ * have their workspace: before an estimate, git reads the branches of the cards in progress, which
+ * takes a moment, a few seconds on a busy Windows machine.
  */
 async function settle() {
   await Bun.sleep(5);
   const asking = () => runtime.sessions.some((s) => !s.closed && s.spec.tools.some((t) => t.name === 'scope' || t.name === 'schedule'));
-  const judging = () => board.snapshot().items.some((i) => i.queue && 'checking' in i.queue) && !asking();
+  const judging = () => (k.deciding || board.snapshot().items.some((i) => i.queue && 'checking' in i.queue)) && !asking();
   for (const end = Date.now() + 1000 * PATIENCE; judging() && Date.now() < end; ) await Bun.sleep(2);
   // the workers it started at work in their workspaces
   await workers.prepared();

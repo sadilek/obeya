@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
@@ -1374,12 +1374,11 @@ describe('the canvases Obeya serves', () => {
     canvas.shutdown();
     const config = { name: 'Web', repos: [{ path: web, settings: { land: 'pr' as const, workspaces: 'clones' as const } }] };
     const set = await Canvases.start([config], { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 });
-    // the folder its clones go in takes none; Windows ignores a folder's modes, its access list says so there
-    const windows = process.platform === 'win32';
+    // where its clone goes, a link to nowhere: git makes no folder there. A folder's modes or access
+    // list did not stop git for the administrator GitHub's Windows runners run as, nor would they root
     const clones = join(dir, 'workspaces', 'web');
     mkdirSync(clones, { recursive: true });
-    if (windows) Bun.spawnSync(['icacls', clones, '/deny', '*S-1-1-0:(AD,WD)']);
-    else chmodSync(clones, 0o555);
+    symlinkSync(join(dir, 'nowhere'), join(clones, '1'), 'junction');
     const errors = quiet();
     try {
       await set.apply([{ ...config, repos: [{ ...config.repos[0]!, clones: 1 }] }], ['web']);
@@ -1387,8 +1386,6 @@ describe('the canvases Obeya serves', () => {
       await settle();
     } finally {
       errors.restore();
-      if (windows) Bun.spawnSync(['icacls', clones, '/remove:d', '*S-1-1-0']);
-      else chmodSync(clones, 0o755);
     }
     expect(set.failures()).toEqual([{ canvas: 'web', detail: expect.any(String) }]);
     expect(errors.lines.join('\n')).toContain('its clones cannot be made');

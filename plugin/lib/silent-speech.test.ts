@@ -61,7 +61,10 @@ describe('silent speech', () => {
   test('pause holds the utterance and resume goes on with it; cancel ends them all', async () => {
     const paused = await events(`say('Lena'); setTimeout(() => speechSynthesis.pause(), 50); setTimeout(() => speechSynthesis.resume(), 450)`);
     expect(paused.map(([, type]) => type)).toEqual(['start', 'pause', 'resume', 'end']);
-    expect(paused[3]![3]).toBeGreaterThanOrEqual(270 + 390);
+    // "Lena" takes its 280 ms of speaking, the pause not counted, however late a busy machine ran
+    // the timers that paused and resumed it (each time rounded to 10 ms)
+    const [start, pause, resume, end] = paused.map(([, , , ms]) => ms);
+    expect(end! - start! - (resume! - pause!)).toBeGreaterThanOrEqual(260);
 
     const canceled = await events(`say('eins'); say('zwei'); setTimeout(() => speechSynthesis.cancel(), 50)`);
     expect(canceled.map(([text, type, detail]) => [text, type, detail])).toEqual([

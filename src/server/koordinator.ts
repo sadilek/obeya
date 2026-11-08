@@ -88,6 +88,8 @@ export class Koordinator {
 
   /** Decisions to start are taken one at a time, so two colliding cards cannot both slip through. */
   private chain: Promise<unknown> = Promise.resolve();
+  /** How many of those are still to come or under way. */
+  private queued = 0;
   private learning: Promise<unknown> = Promise.resolve();
   private draining = false;
   /** A look again at cards waiting for a workspace, which can free up without a change of the board (a dirty clone cleaned up). */
@@ -1180,7 +1182,16 @@ export class Koordinator {
 
   /** What it decides goes one after the other; what was still to come when its canvas stopped does not run. */
   private serial(fn: () => unknown) {
-    this.chain = this.chain.then(() => (this.ended ? undefined : fn())).catch((e) => console.error('Koordinator:', e));
+    this.queued++;
+    this.chain = this.chain
+      .then(() => (this.ended ? undefined : fn()))
+      .catch((e) => console.error('Koordinator:', e))
+      .finally(() => this.queued--);
+  }
+
+  /** Whether it has a decision still to come or under way, a look at the queue after a change of the board included: for tests, which wait for it. */
+  get deciding(): boolean {
+    return this.draining || this.queued > 0;
   }
 
   /** The repository of a card it was deciding on stopped running on the canvas: the card is planned again, for the owner to start once it is back. */

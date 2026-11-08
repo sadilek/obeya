@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
+import { dlopen, FFIType, ptr } from 'bun:ffi';
 import * as fs from 'node:fs';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -71,6 +72,20 @@ beforeAll(async () => {
   // over a thousand cards and their demo folders take more than the default 5 s on a busy machine
 }, 30_000);
 
+/**
+ * Windows counts a thread's CPU time in ticks of about 15.6 ms, coarser than a read of the cards;
+ * the clock's time counted the waits for a core with it, which a busy runner made the larger part
+ * of a run's cost or a rebuild's, by turns. The CPU cycles the thread ran are exact there, and
+ * only their ratios count.
+ */
+const cycles = (() => {
+  if (process.platform !== 'win32') return null;
+  const { symbols } = dlopen('kernel32.dll', { QueryThreadCycleTime: { args: [FFIType.i64, FFIType.ptr], returns: FFIType.i32 } });
+  const out = new BigUint64Array(1);
+  // GetCurrentThread's handle, which stands for the calling thread
+  return () => (symbols.QueryThreadCycleTime(-2n, ptr(out)), Number(out[0]));
+})();
+
 // What a run costs is measured against a rebuild of the canvas view on the same machine, in the
 // CPU time of the thread that runs the server's code: on a CI runner the same run counts four to
 // eight times the CPU time it counts on a laptop, more with other test files beside it
@@ -78,11 +93,10 @@ beforeAll(async () => {
 // only makes a run cost more, so the fastest of three rounds counts.
 async function cpuTime(run: () => Promise<void>): Promise<number> {
   await heard();
-  // Windows counts a thread's CPU time in ticks of about 15.6 ms, coarser than a read of the cards: the clock's time there
-  if (process.platform === 'win32') {
-    const start = performance.now();
+  if (cycles) {
+    const start = cycles();
     await run();
-    return performance.now() - start;
+    return cycles() - start;
   }
   const start = process.threadCpuUsage();
   await run();

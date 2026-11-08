@@ -203,11 +203,14 @@ let lastOwner = SERVER;
 let noThreads = false;
 
 /**
- * Runs `fn` in a turn of the event loop of its own. A promise settled straight from a thread's
- * message stays pending for `expect(…).rejects` and `.resolves` of `bun test` (Bun 1.4.3), which
- * then waits until the test times out; settled from a turn of its own, it is not.
+ * Runs `fn` in a turn of the event loop of its own, from a timer. A promise settled straight from
+ * a thread's message stays pending for `expect(…).rejects` and `.resolves` of `bun test` (Bun
+ * 1.4.3), which wait for it in an event loop of their own, until the test times out. From
+ * `setImmediate` it settled on macOS and Linux, but on Windows that loop ran the immediate only
+ * once something else woke it, and under load a review test waited past its 25 s for git calls of
+ * a few seconds. A timer wakes that loop on every platform.
  */
-const settle = (fn: () => void) => setImmediate(fn);
+const settle = (fn: () => void) => setTimeout(fn, 0);
 
 /** The thread with the fewest processes waiting, a new one while there are fewer than `THREADS`. */
 function thread(): Thread | null {
