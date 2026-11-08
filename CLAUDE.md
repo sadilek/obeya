@@ -30,6 +30,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   the unfold never finish there. For what headless Chromium can't reproduce (on-screen keyboard,
   fullscreen, rotation), use `bun scripts/android-phone.ts`: Chrome in the Android emulator, with
   real taps (its header describes the commands).
+- Tests, live checks and demo renders run without disturbing the owner's machine: no sound through
+  its speakers (TTS such as Kokoro renders to files) and no windows popping up on its screen; run
+  headless whenever possible.
 - Reviews of the code (security, code quality and the like) always bring in Codex (`codex exec`)
   as a second reviewer.
 - Voice on this machine: Parakeet through uv, the default, needs nothing set. For Whisper instead:
