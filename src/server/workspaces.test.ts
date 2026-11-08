@@ -12,6 +12,19 @@ let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+/**
+ * What `p` rejects with, through a handler `p` has from the start. `expect(p).rejects` waits for `p`
+ * without one: the rejection of a lease whose git ran on `spawnOutput`'s threads counted as unhandled
+ * on the CI runner once the file's tests were through (Bun 1.4.3), failing the run though every test passed.
+ */
+const rejection = (p: Promise<unknown>) =>
+  p.then(
+    () => {
+      throw new Error('resolved, not rejected');
+    },
+    (e: unknown) => e,
+  );
+
 describe('the main branch', () => {
   test("is origin's HEAD where the checkout knows one, whatever branch it is on", () => {
     const origin = gitRepo(join(dir, 'origin'));
@@ -65,7 +78,7 @@ describe('a leased clone', () => {
     // taken at once, while git fetches
     expect(spaces.leasedBy(a)).toBe(clone!);
     expect(spaces.leasable()).toBe(false);
-    await expect(lease.ready!).rejects.toThrow('fetch');
+    expect(await rejection(lease.ready!)).toMatchObject({ message: expect.stringContaining('fetch') });
     expect(spaces.leasedBy(a)).toBeNull();
     expect(spaces.leasable()).toBe(false);
     expect(() => spaces.lease(b, 'obeya/b')).toThrow(expect.objectContaining({ code: 'noWorkspace' }));
@@ -139,7 +152,7 @@ describe('free clones', () => {
     const { board, spaces, clones } = await setup();
     for (const c of clones) writeFileSync(join(c, 'stray.txt'), 'x');
     const lease = spaces.lease(board.create({ title: 'A', x: 0, y: 0 }).id, 'obeya/a');
-    await expect(lease.ready!).rejects.toMatchObject({ code: 'dirtyWorkspaces' });
+    expect(await rejection(lease.ready!)).toMatchObject({ code: 'dirtyWorkspaces' });
     expect(spaces.list().every((w) => !w.card_id)).toBe(true);
     expect(spaces.leasable()).toBe(false);
   });
@@ -259,7 +272,7 @@ describe('a workspace git frees', () => {
     await ready;
     const handed = spaces.transfer(a, b, 'obeya/a', 'obeya/b');
     const discarded = spaces.discard(a, 'obeya/a');
-    await expect(handed).rejects.toMatchObject({ message: expect.stringContaining('gave its workspace up meanwhile') });
+    expect(await rejection(handed)).toMatchObject({ message: expect.stringContaining('gave its workspace up meanwhile') });
     await discarded;
     expect(spaces.leasedBy(b)).toBeNull();
     expect(existsSync(path)).toBe(false);

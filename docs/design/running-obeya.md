@@ -659,7 +659,10 @@ workers are busy.
   given starts on the server's thread. One that fails or ends later fails what it was running, and
   nothing is started twice (a push, a landing). What a thread answers settles in a turn of the event
   loop of its own: settled straight from the thread's message, a promise `bun test` waits for with
-  `expect(…).rejects` or `.resolves` stayed pending (Bun 1.4.3) and the test file hung. Rejected:
+  `expect(…).rejects` or `.resolves` stayed pending (Bun 1.4.3) and the test file hung. Settled so,
+  a rejection that only `expect(…).rejects` waits for still counted as unhandled on the CI runner
+  once the file's tests were through, failing the run though every test passed: tests take such a
+  rejection with a handler of their own. Rejected:
   starting only a few per turn of the event loop (what it was until then: each start still held
   the thread, and four slow ones in a row were seconds); a cap on
   processes running at once (see the trust check above); fewer git calls alone (the bursts come
