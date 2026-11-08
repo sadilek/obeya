@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -169,6 +169,15 @@ describe('a clone made ready for a card', () => {
     // the remote's own setting over the one for all
     git(clone, 'config', 'remote.origin.prune', 'false');
     expect((await originFetch(clone))?.prune).toBe(false);
+    // another remote's setting, whatever its case, is not origin's; a value git reads as true is true
+    git(clone, 'config', '--unset', 'remote.origin.prune');
+    git(clone, 'config', 'remote.Origin.prune', 'false');
+    git(clone, 'config', 'fetch.prune', '2');
+    expect((await originFetch(clone))?.prune).toBe(true);
+    // git reads `#` in a file URL as part of the path
+    mkdirSync(`${repo}#copy`);
+    git(clone, 'config', 'remote.origin.url', `file://${repo}#copy`);
+    expect((await originFetch(clone))?.local).toBeNull();
   });
 });
 

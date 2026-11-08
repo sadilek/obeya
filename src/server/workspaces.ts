@@ -2202,11 +2202,11 @@ export function* readingBranches(tags = false): GitSteps<Branches | null> {
  * shell, on Windows seconds under load.
  */
 async function nothingToFetch(refs: Branches | null, how: OriginFetch | null): Promise<boolean> {
-  if (!refs?.tags || !how?.local || !how.plain || how.tagOpt) return false;
+  // pruning tags fetches every tag over the clone's own, which a moved tag makes fail
+  if (!refs?.tags || !how?.local || !how.plain || how.tagOpt || (how.prune && how.pruneTags)) return false;
   const r = await gitRun(how.local, ['for-each-ref', '--format=%(refname)%00%(objectname)', 'refs/heads/', 'refs/tags/']).catch(() => null);
   if (r?.code !== 0) return false;
   const heads = new Set<string>();
-  const tags = new Set<string>();
   for (const line of r.stdout.split('\n')) {
     if (!line) continue;
     const [ref = '', commit = ''] = line.split('\0');
@@ -2214,14 +2214,9 @@ async function nothingToFetch(refs: Branches | null, how: OriginFetch | null): P
       const name = ref.slice('refs/heads/'.length);
       if (refs.remote.get(name) !== commit) return false;
       heads.add(name);
-    } else {
-      const name = ref.slice('refs/tags/'.length);
-      if (!refs.tags.has(name)) return false;
-      tags.add(name);
-    }
+    } else if (!refs.tags.has(ref.slice('refs/tags/'.length))) return false;
   }
-  if (how.prune && [...refs.remote.keys()].some((b) => !heads.has(b))) return false;
-  return !(how.prune && how.pruneTags && [...refs.tags].some((t) => !tags.has(t)));
+  return !(how.prune && [...refs.remote.keys()].some((b) => !heads.has(b)));
 }
 
 /** How a clone fetches from its `origin`, as git's configuration has it. */
@@ -2254,8 +2249,10 @@ export async function originFetch(path: string): Promise<OriginFetch | null> {
       const at = e.indexOf('\n');
       return at < 0 ? [e, null] : [e.slice(0, at), e.slice(at + 1)];
     });
-  const values = (key: string) => entries.filter(([k]) => k.toLowerCase() === key).map(([, v]) => v);
-  const on = (v: string | null | undefined) => v === null || (v !== undefined && /^(true|yes|on|1)$/i.test(v.trim()));
+  // git writes section and name in lower case, the remote's name as it is
+  const values = (key: string) => entries.filter(([k]) => k === key).map(([, v]) => v);
+  // set unless git would read it as false: any other value counts as set, which only costs a fetch
+  const on = (v: string | null | undefined) => v !== undefined && !(v !== null && /^\s*(false|no|off|[-+]?0*|)\s*$/i.test(v));
   // the remote's own setting over the one for every remote, the last one given counting
   const flag = (own: string, all: string) => {
     const set = values(own);
@@ -2263,14 +2260,15 @@ export async function originFetch(path: string): Promise<OriginFetch | null> {
   };
   const urls = values('remote.origin.url');
   const fetches = values('remote.origin.fetch');
-  const rules = entries.filter(([k]) => /^url\..*\.insteadof$/i.test(k)).map(([, v]) => v ?? '');
+  const rules = entries.filter(([k]) => /^url\..*\.insteadof$/.test(k)).map(([, v]) => v ?? '');
   let local: string | null = null;
   const url = urls.length === 1 ? urls[0] : null;
   if (url && !rules.some((rule) => url.startsWith(rule))) {
     let at: string | null = url;
     if (url.startsWith('file://')) {
       try {
-        at = fileURLToPath(url);
+        // git reads `#`, `?` and `%` as part of the path, a URL parser does not
+        at = /[#?%]/.test(url) ? null : fileURLToPath(url);
       } catch {
         at = null;
       }
