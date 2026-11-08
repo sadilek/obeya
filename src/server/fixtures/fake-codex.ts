@@ -15,6 +15,8 @@
 // - `wait`: the turn goes on until a message steers it.
 // - `late`: the turn goes on until a message comes, then ends before it could take it.
 // - anything else: says `echo: <text>`.
+//
+// With `FAKE_CODEX_REFUSE_START` set, `thread/start` fails with its text.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -169,6 +171,10 @@ process.stdin.setEncoding('utf8').on('data', (d: string) => {
         send({ id: m.id, result: { data: [{ cwd: process.cwd(), hooks: hooks.map((h) => ({ key: h.key, source: 'sessionFlags', currentHash: h.hash, trustStatus: 'untrusted' })), warnings: [], errors: [] }] } });
         break;
       case 'thread/start':
+        if (process.env.FAKE_CODEX_REFUSE_START) {
+          send({ id: m.id, error: { code: -32600, message: process.env.FAKE_CODEX_REFUSE_START } });
+          break;
+        }
         trusted = m.params.config?.['hooks.state'] ?? {};
         send({ id: m.id, result: { thread: { id: thread }, model: m.params.model ?? 'gpt-5.5' } });
         break;

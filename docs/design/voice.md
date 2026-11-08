@@ -316,9 +316,11 @@ the undo window starts with the confirmation.
 ### Voice out
 
 Obeya speaks its walkthroughs, the answers it tells with slides and narration, in the voice of the
-demo settings (see Walkthroughs in The Koordinator), and nothing else: confirmations and answers in
+demo settings (see Walkthroughs in The Koordinator; with demo settings without a voice, a
+walkthrough is read as captions), and nothing else: confirmations and answers in
 text are written, in the card's conversation, the Koordinator's sheet and the line above the mic.
-Demo narration is separate (see Demos).
+The recognition of voice in on this machine hears each sentence of a walkthrough back, for the
+times of its words, which the caption's pointer follows. Demo narration is separate (see Demos).
 
 ### Decisions
 

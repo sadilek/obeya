@@ -26,17 +26,31 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
 - *Voice* (design: Voice → Voice out): Obeya speaks walkthroughs and nothing else. One voice for the
   server voices them sentence by sentence in the voice of the demo settings, in the queue it shares
   with renders, a playing player's sentences first (design: Demos → A voice that stays loaded).
-- *"Show as walkthrough"* shows on hover in the head of a text answer in Obeya's sheet only (W2
-  brings it everywhere). It follows up in the answer's thread; a direct answer has no thread and no
-  button.
+- *"Show as walkthrough"* (design: The Koordinator → Walkthroughs; W2) shows on hover in the head
+  of every text answer: in Obeya's sheet, a card's conversation and on Question cards. It follows up
+  in the answer's thread; for a direct answer it starts a look-up thread. The newest answer shows it
+  in view until it has been used once.
 - *Demos of walkthroughs* (owner, 2026-11-07): in a demo video of this feature, the walkthrough
   inside it speaks in Kokoro (a scratch Obeya staged with `"voice": {"voice": "kokoro"}`), so the
   presentation in the video is told apart from the video's own narration in the owner's voice.
-- *Not yet*: the caption is the whole sentence, without a pointer (W3); the tool checks a slide's
-  form, not whether its lines say what it claims or its narration only reads it out (W4); the player
-  is not tuned for the phone, demo settings without a voice end in "Voicing failed", and sentences
-  left unvoiced by a restart stay so, the player saying the voicing stopped (W5); the look is the
-  prototype's, in Obeya's colours (W6).
+- *A pointer word by word* (design: The Koordinator → Walkthroughs; W3): the caption marks the word
+  being spoken, from voice in's recognition hearing each sentence back; a flow's boxes build up as
+  the narration names them.
+- *Checks while the agent writes* (W4): a slide has one layout, scaled to the player's width, and
+  the player zooms with Z or its magnifier; the tool refuses a slide that does not fit that layout
+  and a narration that only reads its slide out, saying why. Whether a
+  code slide's lines say what it claims stays unchecked (owner, 2026-11-07: only the two cheap
+  checks).
+- *The look* (design: The Koordinator → Walkthroughs; W6): slides and player follow showntell's,
+  in Obeya's inks for light and dark: Bricolage Grotesque and Inter, numbered kickers, a title
+  slide's motif, points on panels, flow boxes with drawn arrows, a progress bar of one segment per
+  slide as long as it plays, captions two lines at a time, switched with "CC" or C and kept per
+  browser. The fit check lays slides out in the new faces, measured anew.
+- *Phone, no voice, restart* (design: The Koordinator → Walkthroughs; W5): the player plays on the
+  phone as on the desktop, its sound allowed by the first tap on the page; demo settings without a
+  voice play the slides with each sentence as a caption at a reading pace; what a restart left
+  unvoiced is voiced by the next server, and the reloaded page plays on where it stood.
+- *Not yet*: the demo videos' player in the walkthrough's look (W7).
 
 ### What the prototypes showed
 
@@ -128,27 +142,29 @@ Claude Code plugin into the look-up agent:
   that code slides come only when the owner asks for code. With tests against the fake runtime;
   the chapters Voice (the decision "Obeya does not speak" rewritten), The Koordinator and
   Conversation on the card describe the walkthrough.
-- [ ] **W2:** "Show as walkthrough" everywhere. Needs W1's way of continuing a thread. The button
+- [x] **W2:** "Show as walkthrough" everywhere. Needs W1's way of continuing a thread. The button
   shows on every text answer in Obeya's sheet, on Question cards and in card conversations, built
   once in shared code: in the answer's head beside "Make it a card" on hover, always on the phone.
   A direct answer has no thread, so there the button first starts a look-up thread for it. A hint
   shows first-time users the button until they have used it once.
-- [ ] **W3:** A pointer word by word. Needs W1. The caption marks the word being spoken, with the
+- [x] **W3:** A pointer word by word. Needs W1. The caption marks the word being spoken, with the
   times from Parakeet hearing each sentence back; diagram boxes build up as the narration reaches
   them.
-- [ ] **W4:** Checks while the agent writes. Needs W1. A slide handed over is checked at once (the
-  code lines exist and say what the slide claims, the slide is not too full, the narration does more
-  than read the slide out), and what fails goes back to the agent in the tool's reply, so it revises
-  the slide before going on.
-- [ ] **W5:** Phone, no voice, restart. Needs W1. The player on the phone works as on the desktop;
+- [x] **W4:** Checks while the agent writes. Needs W1. A slide handed over is checked at once (the
+  slide is not too full, the narration does more than read the slide out), and what fails goes back
+  to the agent in the tool's reply, so it revises the slide before going on. Whether code lines say
+  what the slide claims is left out (owner, 2026-11-07): it would need a model and seconds per slide
+  while the walkthrough plays, for code slides that come only when the owner asks for code.
+- [x] **W5:** Phone, no voice, restart. Needs W1. The player on the phone works as on the desktop;
   demo settings without a voice play the slides with captions at a reading pace; a walkthrough
   being voiced when Obeya restarts is voiced on afterwards and plays on.
 
-- [ ] **W6:** The walkthrough's look. Needs W1. Slides and player take showntell's design as their
+- [x] **W6:** The walkthrough's look. Needs W1. Slides and player take showntell's design as their
   model: the slides' typography, layout and colours, in Obeya's light and dark; a progress bar cut
   into one segment per slide, which jumps to a slide on a click; the spoken sentence as a caption
   large enough to read every word along, switched on and off with one click on the player (and C),
-  the choice kept for the next walkthrough.
+  the choice kept for the next walkthrough. New fonts or sizes on the slides are measured anew for
+  the fit check (W4 lays a slide's text out with widths measured per character).
 - [ ] **W7:** The demo videos' player in the same look. After W6. The demo on the card and on the
   shared demo pages plays in a player of the walkthrough's look, from the same code where it fits:
   the progress bar in one segment per chapter, the captions to read along, switched on and off with

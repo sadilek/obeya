@@ -32,3 +32,11 @@ test('a screenshot whole in its thumbnail stands right on it', () => {
   expect(box).toEqual({ left: 10, top: 20, width: 100, height: 64 });
   expect(inset).toEqual({ x: 0, y: 0 });
 });
+
+test('a walkthrough zoomed keeps room under its slide for its caption and controls', () => {
+  const chrome = { fixed: 52, perWidth: 0.06 };
+  const b = zoomBox(16 / 10, 2560, 1400, chrome);
+  expect(b.height).toBeCloseTo(1400 - ZOOM_MARGIN - ZOOM_BELOW);
+  expect(b.height).toBeCloseTo(b.width / 1.6 + 52 + 0.06 * b.width);
+  expect(b.top).toBeCloseTo(ZOOM_MARGIN);
+});

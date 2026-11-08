@@ -842,6 +842,9 @@ const de = {
     pushedSent: (author: string) => `Gepusht und an ${author} geschickt.`,
     pushingHeld: 'wird gepusht …',
     merged: (n: number) => `PR #${n} gemergt.`,
+    /** Approving met a conflict of the PR with main: who resolves it. */
+    conflictAgent: (n: number) => `PR #${n} hat einen Konflikt mit main. Der Agent löst ihn, dann mergt Obeya.`,
+    conflictContributor: (n: number, author: string) => `PR #${n} hat einen Konflikt mit main, den nur ${author} lösen kann. Der Agent schreibt ihn als Befund auf.`,
     merging: 'wird gemergt …',
     onApproval: 'Demo teilen und am PR verlinken',
     toContributor: 'An Beitragenden',
@@ -1059,8 +1062,8 @@ const de = {
     writing: 'Die nächste Folie entsteht …',
     preparing: 'Der Walkthrough entsteht …',
     failed: (why: string) => `Vertonung fehlgeschlagen: ${why}`,
-    interrupted: 'Die Vertonung brach mit Obeyas Neustart ab',
-    captions: 'Untertitel ein oder aus',
+    captions: 'Untertitel ein oder aus (C)',
+    captionsHint: 'Untertitel mit',
     loading: 'Walkthrough lädt …',
     missing: 'Dieser Walkthrough ist nicht mehr da.',
   },
@@ -2973,6 +2976,8 @@ const en: Strings = {
     pushedSent: (author: string) => `Pushed and sent to ${author}.`,
     pushingHeld: 'pushing …',
     merged: (n: number) => `PR #${n} merged.`,
+    conflictAgent: (n: number) => `PR #${n} conflicts with main. The agent resolves it, then Obeya merges.`,
+    conflictContributor: (n: number, author: string) => `PR #${n} conflicts with main, which only ${author} can resolve. The agent writes it up as a finding.`,
     merging: 'merging …',
     onApproval: 'Share the demo and link it on the PR',
     toContributor: 'To contributor',
@@ -3180,8 +3185,8 @@ const en: Strings = {
     writing: 'The next slide is being written …',
     preparing: 'The walkthrough is being written …',
     failed: (why: string) => `Voicing failed: ${why}`,
-    interrupted: 'Voicing stopped when Obeya restarted',
-    captions: 'Captions on or off',
+    captions: 'Captions on or off (C)',
+    captionsHint: 'Captions with',
     loading: 'Loading the walkthrough …',
     missing: 'This walkthrough is gone.',
   },
@@ -4349,7 +4354,10 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: unknown; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
+/** What an approved card says while Obeya lands it: a review card's agent's commits being pushed onto its PR, its merge, any other's landing. */
+export const landingLabel = (i: { contribution?: { held?: unknown } }) => (i.contribution ? (i.contribution.held ? t.review.pushingHeld : t.review.merging) : t.approving);
+
+export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: { held?: unknown }; landing?: true; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
   i.snoozed
     ? i.snoozed.on
       ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))
@@ -4399,7 +4407,9 @@ export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; 
           : t.queue.workspace
         : t.queue.waiting
     : i.state === 'waiting' && i.need
-      ? i.answering
+      ? i.landing
+        ? landingLabel(i)
+        : i.answering
         ? t.answering
         : i.need === 'demo' && i.question
           ? t.demoWithQuestion

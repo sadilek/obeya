@@ -528,14 +528,23 @@ export function fakeVoicing() {
   const said: string[] = [];
   const warmed: Language[] = [];
   let gate: { promise: Promise<void>; open: () => void } | undefined;
+  /** What each clip says, by its file: what hearing it back hears. */
+  const spoken = new Map<string, string>();
   const voicing = new Voicing({
     speak: async (text, out, language) => {
       if (gate) await gate.promise;
       if (/\bmute\b/i.test(text)) throw new Error('the voice failed\nno model');
       said.push(`${language}:${text}`);
       writeFileSync(out, silentWav(1));
+      spoken.set(out.replace(/\.part\.wav$/, ''), text);
     },
     warm: (language) => void warmed.push(language),
+    // hears each word a tenth of a second after the one before; a sentence with "deaf" in it not at all
+    hear: async (wav) => {
+      const text = spoken.get(wav) ?? '';
+      if (/\bdeaf\b/i.test(text)) throw new Error('no recognition');
+      return text.split(/\s+/).map((w, k): [string, number] => [` ${w}`, k / 10]);
+    },
   });
   return {
     voicing,

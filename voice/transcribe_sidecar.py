@@ -12,6 +12,10 @@ translates into it, badly and unsure of its words (German speech, told English: 
 of a bit of a doubt“), and the longer the recording, the likelier one of its parts fails the test below.
 faster-whisper decodes the first window from the encoder pass that heard the language (see Faster.languages).
 Writes JSON lines on stdout: {"id": ..., "text": "...", "doubtful": bool} or {"id": ..., "error": "..."}.
+A job with `"timed": true` (a walkthrough's sentence, heard back for the times of its words) gets
+`"timed": [[text, start], ...]` as well: what was heard in pieces, each with the second it starts
+at; Parakeet's pieces are parts of words (one that starts a word begins with a space), Whisper's
+are words.
 Ends with its stdin, after the recording it is on; when Obeya is gone by then, quietly.
 Audio is decoded by ffmpeg (for every backend: faster-whisper's own decoder, PyAV, broke with
 newer PyAV releases), so any format the browser records (webm/opus, mp4, wav) works. The model is
@@ -66,10 +70,18 @@ class Parakeet:
         options.intra_op_num_threads = min(THREADS, os.cpu_count() or THREADS)
         options.inter_op_num_threads = 1
         self._model = onnx_asr.load_model(model, quantization="int8", sess_options=options, providers=["CPUExecutionProvider"])
+        self._timed = self._model.with_timestamps()
         print(f"voice: Parakeet {model} on the CPU, {options.intra_op_num_threads} threads", file=sys.stderr, flush=True)
 
-    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
-        return [{"text": self._model.recognize(part, sample_rate=SAMPLE_RATE)} for part in parts(audio)]
+    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de", timed: bool = False) -> list[dict]:
+        if not timed:
+            return [{"text": self._model.recognize(part, sample_rate=SAMPLE_RATE)} for part in parts(audio)]
+        out, offset = [], 0.0
+        for part in parts(audio):
+            heard = self._timed.recognize(part, sample_rate=SAMPLE_RATE)
+            out.append({"text": heard.text, "timed": [[token, offset + start] for token, start in zip(heard.tokens or [], heard.timestamps or [])]})
+            offset += len(part) / SAMPLE_RATE
+        return out
 
 
 def parts(audio: np.ndarray) -> list[np.ndarray]:
@@ -102,7 +114,7 @@ class Mlx:
         _, probs = model.detect_language(pad_or_trim(mel, N_FRAMES, axis=-2).astype(mx.float16))
         return probs
 
-    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
+    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de", timed: bool = False) -> list[dict]:
         result = self._whisper.transcribe(
             audio,
             path_or_hf_repo=self._model,
@@ -110,8 +122,11 @@ class Mlx:
             initial_prompt=prompt,
             condition_on_previous_text=False,
             temperature=0.0,
+            word_timestamps=timed,
         )
         segments = result.get("segments", [])
+        if timed:
+            segments = [{**s, "timed": [[w["word"], w["start"]] for w in s.get("words", [])]} for s in segments]
         return segments or [{"text": result.get("text", "")}]
 
 
@@ -144,7 +159,7 @@ class Faster:
         self._encoded = (audio, encoded)
         return {token[2:-2]: p for token, p in model.model.detect_language(encoded)[0]}
 
-    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
+    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de", timed: bool = False) -> list[dict]:
         encoded = self._encoded[1] if self._encoded and self._encoded[0] is audio else None
         self._encoded = None
         model = self._model
@@ -161,14 +176,18 @@ class Faster:
                 condition_on_previous_text=False,
                 temperature=0.0,
                 beam_size=1,
+                word_timestamps=timed,
             )
-            return [{"text": s.text, "avg_logprob": s.avg_logprob, "compression_ratio": s.compression_ratio} for s in segments]
+            return [
+                {"text": s.text, "avg_logprob": s.avg_logprob, "compression_ratio": s.compression_ratio, **({"timed": [[w.word, w.start] for w in s.words or []]} if timed else {})}
+                for s in segments
+            ]
         except Exception:
             # a GPU without the CUDA libraries faster-whisper needs: the CPU hears as well, slower
             if self.device != "cuda":
                 raise
             self._load("cpu")
-            return self.transcribe(audio, prompt, language)
+            return self.transcribe(audio, prompt, language, timed)
         finally:
             model.__dict__.pop("generate_segments", None)
 
@@ -205,18 +224,19 @@ def main() -> None:
             level = f"voice: {len(audio) / SAMPLE_RATE:.1f} s, peak {dbfs(peak)}, rms {dbfs(np.sqrt(np.mean(audio ** 2)) if len(audio) else 0)}"
             if quiet:
                 print(f"{level}; too quiet to transcribe", file=sys.stderr, flush=True)
-                answer({"id": job["id"], "text": "", "doubtful": False})
+                answer({"id": job["id"], "text": "", "doubtful": False, **({"timed": []} if job.get("timed") else {})})
                 continue
             if isinstance(ear, Parakeet):
                 print(level, file=sys.stderr, flush=True)
-                segments = ear.transcribe(audio, None)
+                segments = ear.transcribe(audio, None, timed=bool(job.get("timed")))
             else:
                 languages = job.get("languages") or ["de"]
                 language, sure = spoken(ear, audio, languages)
                 print(f"{level}, {language}{f' ({sure:.0%})' if len(languages) > 1 else ''}", file=sys.stderr, flush=True)
-                segments = ear.transcribe(audio, job.get("prompt") or None, language)
+                segments = ear.transcribe(audio, job.get("prompt") or None, language, timed=bool(job.get("timed")))
             text = " ".join(s["text"].strip() for s in segments)
-            answer({"id": job["id"], "text": text.strip(), "doubtful": any(map(doubtful, segments))})
+            timed = {"timed": [piece for s in segments for piece in s.get("timed", [])]} if job.get("timed") else {}
+            answer({"id": job["id"], "text": text.strip(), "doubtful": any(map(doubtful, segments)), **timed})
         except BrokenPipeError:
             raise
         except Exception as e:  # one bad recording must not take the sidecar down

@@ -210,7 +210,9 @@ cache, where one downloaded before counts as installed; without Obeya the skill 
 environment holds the speech recognition it hears its sentences back with (onnx-asr); one installed
 with fewer packages than today's counts as missing, and installing it again adds the rest. A render
 refuses a voice that is not installed and says how to install it. "Listen"
-plays a sentence in the chosen voice and narration language. For Qwen3-TTS the dialog has a field
+plays a sentence in the chosen voice and narration language, also when making it takes longer than
+the 10 s or so Safari lets a page sound after a click: the click starts the
+player before the sample exists. For Qwen3-TTS the dialog has a field
 per language for the clip to clone, each saying what keeps it from working (no such file, no
 transcript beside it).
 
@@ -353,8 +355,12 @@ tools, the one with the same first message where several are left (so that two w
 another order each get their own). Its events go out again, its calls run Obeya's tools of the code
 being run with the recorded arguments, a step recorded after a message waits until that message
 comes, and one that read a context update (the owner's words in the middle of a turn) until there
-is one. Before a worker's call its recorded commits go onto the card's workspace, picked one by one;
-rewritten ones (an amend, a rebase) go as one commit of what they changed, or not at all where the
+is one. Before a worker's call its recorded commits go onto the card's workspace as recorded,
+merges too: each stands for the commit of today with its tree, author, message and parents (the
+staged main, a pull request's head, also where only the workspace's remote has them yet), and one
+without such a commit is written anew onto the commits of today, with its change carried over where
+its parent of today holds other files; the branch then moves forward to the recorded head. Rewritten
+ones (an amend, a rebase) go as one commit of what they changed, or not at all where the
 workspace holds that already (a rebase the landing of today did too). Before a handover the demo
 goes back where it was. Everything else is Obeya's own code as it stands: card states, layout, held
 comments, the handover, the landing; the page is always live, so a change to the UI never breaks a
@@ -542,7 +548,9 @@ being played, it starts the next time the card is opened. A page reloaded by a r
 card without the owner opening it, so a demo that waited there keeps waiting (the tab remembers it
 until the card closes). Otherwise, and when the browser blocks autoplay, the demo waits behind the play
 button. Z or the magnifier zooms the playing video out of the card to as large as the window allows
-above the microphone; Z, Esc or a click beside it ends the zoom.
+above the microphone; Z, Esc or a click beside it ends the zoom. Z takes the zoomed video or
+walkthrough, else the one playing, else the one under the pointer, else the first in sight (a
+walkthrough's player zooms the same way, see The Koordinator → Walkthroughs).
 
 Space tapped plays and pauses; held, it records as everywhere (see Voice in), from the press, but
 with a video open the microphone lights up only after 200 ms, so a tap does not flicker it. ← and →
@@ -677,6 +685,14 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 - **A playback keeps the recorded pace except across the take's cuts** (2026-10-22): the scenes then
   find the agents where the recorded take found them (the worker still at work when the video looks
   in), and what was cut costs no time.
+- **Recorded commits are rebuilt as a graph, not cherry-picked** (2026-11-07): a review card's
+  worker that merged main into a pull request's head handed over a merge commit, and picking the
+  range linearised it (main's commit first, then the pull request's, which conflicted with it), so
+  the playback refused. The recorded commits are matched to today's by everything but their dates
+  (the staging's commits get new dates and so new hashes each time), so the merge's parents are
+  today's pull request head and main, and a push of the branch onto the pull request stays a
+  fast-forward. Rejected: resetting the branch to the recorded head (its history would be the
+  recorded staging's, unrelated to today's main and pull request).
 - **The demo directory is a demo setting of the machine** (2026-10-26), in `demo.json` beside the
   voice: it is a local path of one computer (`/opt/work/demos` on one, nothing on another), and the
   skill already reads those settings without Obeya. Rejected: a repository setting (a path of the

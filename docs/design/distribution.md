@@ -241,17 +241,21 @@ The page on obeya.si (`site/`), in English whatever the interface speaks: plain 
 framework or build, JavaScript only for the video's play button and chapter list, so it opens from
 the file too. Paths are relative, so it also works under sadilek.github.io/obeya. It opens with one
 sentence, "Direct coding agents like an engineering director" (the one who decides and directs spoke
-to a test reader more than "like a team"), and the hero video; then five pillars with screenshots;
-"From idea to main"; "The big room", what the name means and the one wall as the way out of many
+to a test reader more than "like a team"), and the hero video; then six pillars with screenshots;
+"Fits your setup", four index cards on what a newcomer asks before trying it (workers on other
+machines over SSH, folders without git, GitHub, Forgejo and Gitea, English and German); "From idea
+to main"; "The big room", what the name means and the one wall as the way out of many
 parallel chats (no Toyota, as in the README); "Obeya is built with Obeya."; and getting started
 (downloads, `bun start`, GitHub; not the design doc, which is written for the agents working on
 Obeya).
 
 The pillars: the canvas, a canvas per product side by side in one Obeya; voice; the demo, set
 against testing the change by hand, not against code review, since the audience reads no code
-anyway, with a pointer to `demos.obeya.si`, the demos of Obeya's own development; the order cards
-run in, parallel where they can, one after the other where they must; the phone, what waits across
-all canvases and a demo opened from there, reaching Obeya over the owner's own private network,
+anyway, commented at one moment of the video, with a pointer to `demos.obeya.si`, the demos of
+Obeya's own development; the order cards run in, parallel where they can, one after the other
+where they must; the review of a contributor's pull request, read before anything of it runs, its
+findings decided one by one, the text for the PR edited before "Push and merge"; the phone, what
+waits across all canvases and a demo opened from there, reaching Obeya over the owner's own private network,
 through no service of Obeya's. "From idea to main" switches (radios and CSS) between the three steps
 most cards take, shown first so the page reads simple at first sight (say the task, watch the demo,
 approve), and a card's longer way along a wall (an idea and its prototypes, the work, the demo with
@@ -273,8 +277,9 @@ share the stylesheet.
 The site has Obeya's palette and type (see Visual identity); its fonts, including the three
 characters of 大部屋, are served from `site/fonts/` with their OFL licences, not from Google Fonts. The
 screenshots show the English interface on the hero video's Tipjar app (the demo pillar a demo of a
-Tipjar change, so the picture is of a demo, not of Obeya); `bun scripts/site-shots.ts` retakes them
-from a scratch Obeya.
+Tipjar change, so the picture is of a demo, not of Obeya; the review pillar a contributor's PR on
+Tipjar with the hero video's other Tipjar demo, on a canvas of its own so that it stays out of the
+other pictures); `bun scripts/site-shots.ts` retakes them from a scratch Obeya.
 
 `.github/workflows/pages.yml` publishes `site/` to GitHub Pages on every push to `main` touching
 `site/` or the workflow, and on demand; Pages serves a branch only from `/` or `/docs`, hence the

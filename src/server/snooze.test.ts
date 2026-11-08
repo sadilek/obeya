@@ -79,6 +79,17 @@ describe('the agent snoozes itself', () => {
     expect(workers().busyCards()).toEqual([id]);
   });
 
+  test('a session that ends by itself after it snoozed leaves the card snoozed', async () => {
+    const { id, s } = await atWork();
+    s.call('snooze', { until: later(10 * HOUR), why: 'Prüfen' });
+    s.emit({ type: 'error', message: 'the Codex app server exited with code 1' });
+    s.close();
+    await until(() => !workers().inTurn().includes(id));
+    await Bun.sleep(0);
+    expect(item(id)).toMatchObject({ state: 'working', snoozed: { by: 'agent' } });
+    expect(item(id).question).toBeUndefined();
+  });
+
   test('a note from the owner wakes it early, and so does what Obeya has for it', async () => {
     const { id, s } = await atWork();
     s.call('snooze', { until: later(10 * HOUR), why: 'Prüfen' });

@@ -4,7 +4,7 @@
 
 import type { Subprocess } from 'bun';
 import { join } from 'node:path';
-import { LANGUAGES } from '../core/locale';
+import { LANGUAGES, type Language } from '../core/locale';
 import type { ListenBackend } from '../core/types';
 import { resource } from './resources';
 import { OWN_GROUP } from './spawn';
@@ -200,6 +200,15 @@ export class LocalTranscriber implements Transcriber {
   async transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
     const { text, doubtful } = await this.sidecar.request({ path: audioPath, prompt: vocabulary, languages: LANGUAGES });
     return { text: typeof text === 'string' ? text : '', doubtful: doubtful === true, ...(this.backend === 'parakeet' || !vocabulary ? { unprompted: true as const } : {}) };
+  }
+
+  /**
+   * A clip heard back for the times of its words (a walkthrough's sentence, walkthrough.ts): what was
+   * heard in pieces, each with the second it starts at.
+   */
+  async timed(audioPath: string, language: Language): Promise<[string, number][]> {
+    const { timed } = await this.sidecar.request({ path: audioPath, languages: [language], timed: true });
+    return Array.isArray(timed) ? timed.filter((x): x is [string, number] => Array.isArray(x) && typeof x[0] === 'string' && typeof x[1] === 'number') : [];
   }
 
   stop() {
