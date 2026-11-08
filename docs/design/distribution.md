@@ -249,13 +249,15 @@ parallel chats (no Toyota, as in the README); "Obeya is built with Obeya."; and 
 (downloads, `bun start`, GitHub; not the design doc, which is written for the agents working on
 Obeya).
 
-The pillars: the canvas, a canvas per product side by side in one Obeya; voice; the demo, set
+The pillars: the canvas, a canvas per product side by side in one Obeya; voice, with answers told
+as walkthroughs; the demo, set
 against testing the change by hand, not against code review, since the audience reads no code
 anyway, commented at one moment of the video, with a pointer to `demos.obeya.si`, the demos of
 Obeya's own development; the order cards run in, parallel where they can, one after the other
 where they must; the review of a contributor's pull request, read before anything of it runs, its
 findings decided one by one, the text for the PR edited before "Push and merge"; the phone, what
-waits across all canvases and a demo opened from there, reaching Obeya over the owner's own private network,
+waits across all canvases grouped by canvas, a card swiped aside until it needs the owner again and
+a demo opened from there, reaching Obeya over the owner's own private network,
 through no service of Obeya's. "From idea to main" switches (radios and CSS) between the three steps
 most cards take, shown first so the page reads simple at first sight (say the task, watch the demo,
 approve), and a card's longer way along a wall (an idea and its prototypes, the work, the demo with

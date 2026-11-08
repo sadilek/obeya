@@ -36,12 +36,20 @@ click shows the diff. A report or another file the agent made for you shows besi
 conversation. "Share" puts a demo on a page of its own on your repository's demo
 site, for colleagues to watch; the site can also take every approved demo by itself. A repository
 without a site of its own shares on a personal one of yours, which Obeya sets up on GitHub Pages
-or Cloudflare with one button. A pull request someone else opened gets a card on your word:
-its agent reads the diff before anything of it runs, reviews it, records a demo before and after,
-and your approval merges it.
+or Cloudflare with one button.
+
+A pull request someone else opened gets a card on your word ("Review PR #14"). Its agent reads the
+diff before anything of it runs on your machine, reviews it and records a demo before and after.
+On each finding you decide: to the contributor, changed by the agent itself, a follow-up task, or
+ignored. The text that goes onto the pull request is yours to edit before "Push and merge" or "Push
+and comment only". When the next step is the contributor's, the card waits until they comment or
+push, and is reviewed again.
 
 You talk to Obeya itself, spoken or typed: it takes your instructions, queues cards whose changes
-would collide (an arrow you draw from one card to another makes the second wait for the first), cuts large ones into parallel packages and learns your preferences. An idea is
+would collide (an arrow you draw from one card to another makes the second wait for the first), cuts large ones into parallel packages and learns your preferences. Ask it how something works or
+what a change does, and the answer can come as a short walkthrough with slides and narration, which
+starts to play while it is still being written; "Show as walkthrough" turns any of its text
+answers into one. An idea is
 thought through on its card with an agent of its own, which keeps a brief of variants and open
 questions and can have throwaway prototypes built; deciding builds it, in your repository or in a
 new one Obeya creates for it, or plans it as a project,
@@ -58,9 +66,10 @@ ChatGPT's for Codex, or both. Which group of agents runs on which harness and mo
 
 ## On your phone
 
-Away from the desk, your phone shows what waits for you across all your canvases, and what is
-running. Watch a demo and approve it, answer a question, or hold the microphone and say a new
-task. A notification tells you when a card needs you.
+Away from the desk, your phone shows what waits for you across all your canvases, grouped by
+canvas, and what is running. Watch a demo and approve it, answer a question, or hold the microphone
+and say a new task. A card you would rather handle at your desk you swipe aside: it stays out of
+the way until it needs you again. A notification tells you when a card needs you.
 
 <p>
   <img src="site/img/phone.png" alt="The phone view: three cards for you (a demo, a question, an idea), and below them the cards that are running" width="280">
