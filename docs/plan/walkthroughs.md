@@ -46,9 +46,11 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
   slide's motif, points on panels, flow boxes with drawn arrows, a progress bar of one segment per
   slide as long as it plays, captions two lines at a time, switched with "CC" or C and kept per
   browser. The fit check lays slides out in the new faces, measured anew.
-- *Not yet*: the player
-  is not tuned for the phone, demo settings without a voice end in "Voicing failed", and sentences
-  left unvoiced by a restart stay so, the player saying the voicing stopped (W5).
+- *Phone, no voice, restart* (design: The Koordinator → Walkthroughs; W5): the player plays on the
+  phone as on the desktop, its sound allowed by the first tap on the page; demo settings without a
+  voice play the slides with each sentence as a caption at a reading pace; what a restart left
+  unvoiced is voiced by the next server, and the reloaded page plays on where it stood.
+- *Not yet*: the demo videos' player in the walkthrough's look (W7).
 
 ### What the prototypes showed
 
@@ -153,7 +155,7 @@ Claude Code plugin into the look-up agent:
   to the agent in the tool's reply, so it revises the slide before going on. Whether code lines say
   what the slide claims is left out (owner, 2026-11-07): it would need a model and seconds per slide
   while the walkthrough plays, for code slides that come only when the owner asks for code.
-- [ ] **W5:** Phone, no voice, restart. Needs W1. The player on the phone works as on the desktop;
+- [x] **W5:** Phone, no voice, restart. Needs W1. The player on the phone works as on the desktop;
   demo settings without a voice play the slides with captions at a reading pace; a walkthrough
   being voiced when Obeya restarts is voiced on afterwards and plays on.
 

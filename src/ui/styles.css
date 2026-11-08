@@ -1115,6 +1115,8 @@ body:has(.wt.zoomed) #sheet-grip { visibility: hidden; }
   background: rgba(0, 0, 0, .75); color: #fff; font: 400 13px var(--cond); opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 1; }
 .wt-key:hover .zoom-hint, .wt-key:focus-visible .zoom-hint { opacity: 1; }
 .wt-key .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
+/* a key's hint means nothing without a keyboard, and a tap leaves the button hovered */
+@media (hover: none) { .demo-view .zoom-hint, .wt-key .zoom-hint { display: none; } }
 /* in a narrow sheet the slide count gives way to the segments, which get a row of their own */
 @container (max-width: 520px) {
   .wt-controls { flex-wrap: wrap; padding-top: 0; }

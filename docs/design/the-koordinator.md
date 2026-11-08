@@ -375,7 +375,8 @@ thread's directory, `<name>.walkthrough.json` named after its title (one asked f
 its own), holding the slides as shown (a code slide with its lines), each slide's narration as the
 sentences it is voiced in (and for a narration in parts, the item of each), whether every slide is
 there, each sentence's clip once voiced (its file and seconds, and once heard back the second each
-of its words starts at) and why voicing failed; the clips
+of its words starts at), the language it is voiced in, whether it is read rather than voiced (see
+below) and why voicing failed; the clips
 are WAVs in `<name>.clips/` beside it. The player reads it from `GET
 /api/c/<canvas>/threads/<thread>/walkthroughs/<name>` while it grows, and its clips as the answer's
 files; both come through Obeya's server, as every answer file does, so a walkthrough plays wherever
@@ -391,9 +392,13 @@ first sentence it still needs from there; with none playing, the newest walkthro
 "Show as walkthrough" loads the voice at the click, while the agent writes the first slide: for the
 language the answer it tells is written in, as its most common words show (the conversation
 language where they tell none). A
-sentence the voice cannot speak ends the voicing of its walkthrough, and the player says why;
-sentences still waiting when the server stopped are not voiced afterwards, and the player says that
-the voicing stopped with the restart.
+sentence the voice cannot speak ends the voicing of its walkthrough, and the player says why.
+Sentences still waiting when the server stopped are voiced by the next server once a player reads
+the walkthrough again (the page a restart reloads does at once), from where its player stands; the
+agent's turn ended with the server, so the walkthrough has every slide it gets. Demo settings
+without a voice voice nothing: the walkthrough plays its slides with each sentence as a caption
+for as long as reading it takes (about 15 characters a second, beside the slide), the captions
+always on and without a pointer, so "CC" does not show.
 
 Slides and player look like showntell's (owner, 2026-11-06), in Obeya's inks for light and dark:
 the slide stands as a sheet on the player, headings in Bricolage Grotesque, set large and tight,
@@ -438,8 +443,17 @@ voiced yet it waits, showing "Voicing … 8/43";
 where the agent is still writing the next slide, "The next slide is being written …". A walkthrough
 asked for with the button starts by itself in the page that clicked (the click allows the sound),
 as soon as its first sentence is voiced; one the agent chose shows its first slide and "Play
-walkthrough". One walkthrough plays at a time: starting one pauses the others. A player goes on
-while its message is drawn anew (the answer's words arriving) and pauses once no view shows it.
+walkthrough", which starts it without zooming. One walkthrough plays at a time: starting one pauses
+the others. A player goes on while its message is drawn anew (the answer's words arriving) and
+pauses once no view shows it. A restart's reload brings each player back to the sentence it stood
+at, playing on if it played in a tab in sight, as the demo video does; where the browser wants a
+click for the sound first, "Play walkthrough" shows there.
+
+On the phone the player is the same, and the key
+hints beside "CC" and the magnifier stay away (no keyboard; a tap leaves a button hovered). The players of a
+page share one voice element, which the first tap or click anywhere on the page allows to sound:
+a phone's browser (Safari on the iPhone) plays sound only from a tap, and a walkthrough asked for
+with the button, or one waiting for its next sentence, starts its sound later than the tap.
 
 #### Question cards
 
