@@ -6,6 +6,7 @@ import * as jsc from 'bun:jsc';
 import { appendFileSync, renameSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { PageStall } from '../core/types';
+import { ONE_AT_A_TIME } from './spawn';
 
 /** A stall from this long on is logged: a pause of half a second is one the owner notices. */
 export const STALL_MS = 500;
@@ -54,8 +55,8 @@ function frame(f: Trace['frames'][number]): string {
 export function placeOf(t: Trace): string {
   if (!t.frames.length) return '(no JavaScript: garbage collection or the runtime itself)';
   const native = t.frames[0]!.sourceURL ? null : t.frames[0]!.name;
-  // the timing of synchronous processes (`Stalls.start`) is not where the time went
-  const sourced = t.frames.filter((f) => f.sourceURL && f.name !== 'timedSpawnSync');
+  // the timing of synchronous processes (`Stalls.start`) and the lock on starting them (Windows) are not where the time went
+  const sourced = t.frames.filter((f) => f.sourceURL && f.name !== 'timedSpawnSync' && !ONE_AT_A_TIME.includes(f.name));
   // Obeya's own code says more than a library's; a stall entirely inside one names the library's
   const own = sourced.filter((f) => !f.sourceURL!.includes('/node_modules/'));
   const shown = (own.length ? own : sourced).slice(0, FRAMES).map(frame);

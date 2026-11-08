@@ -132,6 +132,7 @@ test('a run that goes on all night is logged once an hour', () => {
 test('a synchronous process that holds the server up goes into the log and stalls.log, by its command and the code that ran it', async () => {
   home = mkdtempSync(join(tmpdir(), 'obeya-stalls-'));
   const lines: string[] = [];
+  const found = Bun.spawnSync;
   stalls = new Stalls({ home, log: (line) => lines.push(line) }).start();
   await Bun.sleep(150);
   function landOnMain() {
@@ -145,9 +146,9 @@ test('a synchronous process that holds the server up goes into the log and stall
   const file = readFileSync(join(home, STALLS_FILE), 'utf8');
   expect(file).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z\nObeya: the server stalled/);
   expect(file).toContain('for: sleep 0.7');
-  // stopped, it leaves Bun's own spawnSync behind
+  // stopped, it leaves the spawnSync it found behind (Bun's own, or one that starts one process at a time on Windows)
   stalls.stop();
-  expect(Bun.spawnSync.name).toBe('spawnSync');
+  expect(Bun.spawnSync).toBe(found);
   // the profiler runs on, and a watcher started anew gets the samples of its own stalls
   lines.length = 0;
   stalls = new Stalls({ home, log: (line) => lines.push(line) }).start();

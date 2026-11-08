@@ -63,18 +63,28 @@ export function oneStartAtATime() {
   if (!STARTS || oneAtATime) return;
   oneAtATime = true;
   const { spawn, spawnSync } = Bun;
-  const held = <T>(fn: () => T): T => {
-    acquire(STARTS, SERVER);
+  const lock = STARTS;
+  // by these names the stall log leaves them out of where the server waited
+  Bun.spawn = function oneAtATimeSpawn(...args: unknown[]) {
+    acquire(lock, SERVER);
     try {
-      return fn();
+      return (spawn as (...a: unknown[]) => unknown)(...args);
     } finally {
-      release(STARTS, SERVER);
+      release(lock, SERVER);
     }
-  };
-  Bun.spawn = ((...args: unknown[]) => held(() => (spawn as (...a: unknown[]) => unknown)(...args))) as typeof Bun.spawn;
-  Bun.spawnSync = ((...args: unknown[]) => held(() => (spawnSync as (...a: unknown[]) => unknown)(...args))) as typeof Bun.spawnSync;
+  } as typeof Bun.spawn;
+  Bun.spawnSync = function oneAtATimeSpawnSync(...args: unknown[]) {
+    acquire(lock, SERVER);
+    try {
+      return (spawnSync as (...a: unknown[]) => unknown)(...args);
+    } finally {
+      release(lock, SERVER);
+    }
+  } as typeof Bun.spawnSync;
 }
 let oneAtATime = false;
+/** The functions `oneStartAtATime` puts in front of Bun's, by name. */
+export const ONE_AT_A_TIME = ['oneAtATimeSpawn', 'oneAtATimeSpawnSync'];
 
 type Options = Omit<Bun.SpawnOptions.SpawnOptions<Bun.SpawnOptions.Writable, 'pipe', 'pipe'>, 'stdout' | 'stderr'>;
 type Output = { code: number; stdout: string; stderr: string; signal: string | null };
