@@ -380,8 +380,7 @@ class Playback {
 
   /** The word of the sentence being spoken, -1 before the first or while it does not play. */
   word(): number {
-    // none in a sentence read
-    const t = this.silent ? undefined : this.inPart();
+    const t = this.inPart();
     if (t === undefined) return -1;
     let now = -1;
     for (const [k, start] of this.wordStarts(this.slide, this.part).entries()) if (t >= start - 0.05) now = k;
@@ -583,7 +582,7 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
           </button>
         )}
       </div>
-      {captions && p.started && slide && <Caption sentence={p.writing ? '' : (slide.parts[p.part] ?? '')} word={p.word()} />}
+      {captions && p.started && slide && <Caption sentence={p.writing ? '' : (slide.parts[p.part] ?? '')} word={p.word()} pointer={!p.silent} />}
       <div className="wt-controls">
         <button className="btn small" aria-label={t.walkthrough.previous} title={t.walkthrough.previous} disabled={p.slide === 0} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide - 1)}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -655,8 +654,11 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
   );
 }
 
-/** The sentence being spoken, the word being spoken marked, the words said before it apart from those still to come. */
-function Caption({ sentence, word }: { sentence: string; word: number }) {
+/**
+ * The sentence being spoken, the word being spoken marked, the words said before it apart from those
+ * still to come. A sentence read (`pointer` off) marks no word, and turns its pages as reading it goes.
+ */
+function Caption({ sentence, word, pointer }: { sentence: string; word: number; pointer: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   // a page of two lines at a time: the words measured in the caption's font, against its width
   const [measure, setMeasure] = useState<{ widthOf: (text: string) => number; line: number } | null>(null);
@@ -684,14 +686,14 @@ function Caption({ sentence, word }: { sentence: string; word: number }) {
   const from = starts[page]!;
   const to = starts[page + 1] ?? words.length;
   return (
-    <div ref={box} className={`wt-caption${word >= 0 ? ' pointing' : ''}`}>
+    <div ref={box} className={`wt-caption${pointer && word >= 0 ? ' pointing' : ''}`}>
       <div>
         {words.slice(from, to).map((w, i) => {
           const k = from + i;
           return (
             <span key={k}>
               {i > 0 && ' '}
-              <span className={k < word ? 'said' : k === word ? 'now' : undefined}>{w}</span>
+              <span className={!pointer ? undefined : k < word ? 'said' : k === word ? 'now' : undefined}>{w}</span>
             </span>
           );
         })}

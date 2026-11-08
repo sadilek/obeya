@@ -398,7 +398,7 @@ the walkthrough again (the page a restart reloads does at once), from where its 
 agent's turn ended with the server, so the walkthrough has every slide it gets. Demo settings
 without a voice voice nothing: the walkthrough plays its slides with each sentence as a caption
 for as long as reading it takes (about 15 characters a second, beside the slide), the captions
-always on and without a pointer, so "CC" does not show.
+always on and without a pointer (a page of two lines turns as reading goes), so "CC" does not show.
 
 Slides and player look like showntell's (owner, 2026-11-06), in Obeya's inks for light and dark:
 the slide stands as a sheet on the player, headings in Bricolage Grotesque, set large and tight,
