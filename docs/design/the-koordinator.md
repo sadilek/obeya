@@ -313,8 +313,9 @@ a caption; a path outside it is refused. Under the answer they show: a page in t
 of an HTML artifact, an image inline, any other file as a chip that opens it with the system's app
 (only from a page on the machine Obeya runs on; elsewhere, or where that fails, it downloads). A
 file that would run when opened (a `.command`, a `.bat`) is shown selected in its folder instead.
-Each has ↓ to download, and "Show in folder" opens the directory. Follow-ups build on the files
-already there.
+Each has ↓ to download, and "Show in folder" opens the directory; an answer whose only file is a
+walkthrough has none, since its script and audio are nothing anyone opens or shares as they are.
+Follow-ups build on the files already there.
 
 #### Walkthroughs
 

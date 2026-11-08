@@ -250,11 +250,12 @@ function fileMark(name: string) {
  * Question card alike: its walkthrough in its player, a page in
  * the sandboxed frame of an HTML artifact, an image inline, any other file as a chip that opens it
  * with the system's app (or downloads it, where that cannot be), and "Show in folder" for the
- * thread's directory.
+ * thread's directory where it holds more than walkthroughs (whose script and audio no one opens).
  */
 export function AnswerFiles({ thread, files }: { thread: number; files?: AnswerFile[] }) {
   if (!files?.length) return null;
   const others = files.filter((f) => !isPage(f.name) && !isImage(f.name) && !isWalkthrough(f.name));
+  const folder = files.some((f) => !isWalkthrough(f.name));
   const open = (file?: string) =>
     api.openAnswer(thread, file).catch(() => {
       // the system has no app for it here (or Obeya runs elsewhere): the browser saves it instead
@@ -279,21 +280,23 @@ export function AnswerFiles({ thread, files }: { thread: number; files?: AnswerF
           </figcaption>
         </figure>
       ))}
-      <div className="file-chips">
-        {others.map((f) => (
-          <span key={f.name} className="file-chip">
-            <button className="file-open" title={t.answer.open(f.caption)} onMouseDown={(e) => e.preventDefault()} onClick={() => void open(f.name)}>
-              <span className="file-mark">{fileMark(f.name)}</span> {f.name}
-            </button>
-            <a className="file-down" href={answerFile(thread, f.name, true)} title={t.answer.download} aria-label={t.answer.download}>
-              ↓
-            </a>
-          </span>
-        ))}
-        <button className="link file-folder" title={t.answer.showFolderHint} onMouseDown={(e) => e.preventDefault()} onClick={() => void open()}>
-          {t.answer.showFolder}
-        </button>
-      </div>
+      {folder && (
+        <div className="file-chips">
+          {others.map((f) => (
+            <span key={f.name} className="file-chip">
+              <button className="file-open" title={t.answer.open(f.caption)} onMouseDown={(e) => e.preventDefault()} onClick={() => void open(f.name)}>
+                <span className="file-mark">{fileMark(f.name)}</span> {f.name}
+              </button>
+              <a className="file-down" href={answerFile(thread, f.name, true)} title={t.answer.download} aria-label={t.answer.download}>
+                ↓
+              </a>
+            </span>
+          ))}
+          <button className="link file-folder" title={t.answer.showFolderHint} onMouseDown={(e) => e.preventDefault()} onClick={() => void open()}>
+            {t.answer.showFolder}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
