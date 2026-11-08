@@ -2573,7 +2573,7 @@ export class CanvasRuntime {
   private prototypeAnswered(prototype: Item, question: string, answer: string) {
     this.explorers.tell(
       prototype.prototypeOf!,
-      `On the prototype “${prototype.title}”, its worker asked: „${question}“\n\nThe owner answered: ${answer}\n\nTake what this settles into the brief (decisions, open questions), so it is not asked again. Do not reply to the owner for it; end your turn without a reply unless it raises something they must decide now.`,
+      `On the prototype “${prototype.title}”, its worker asked: “${question}”\n\nThe owner answered: ${answer}\n\nTake what this settles into the brief (decisions, open questions), so it is not asked again. Do not reply to the owner for it; end your turn without a reply unless it raises something they must decide now.`,
       true,
     );
   }

@@ -40,8 +40,8 @@ function brief(w: WishInput, shots: number): string {
   const parts: string[] = [];
   if (w.title?.trim() || w.body?.trim())
     parts.push(`The draft so far, which the user may have edited (keep it, and rework it only where the new words change or add something):\nTitle: ${w.title?.trim() ?? ''}\n\n${withoutFooter(w.body ?? '')}`);
-  if (w.answer) parts.push(`The user asked Obeya: „${w.said}“\nObeya answered that it cannot do this: „${w.answer}“\nThe issue is the user's wish for what they asked; Obeya's answer only shows that Obeya lacks it.`);
-  else parts.push(`${parts.length ? 'The user adds' : 'The user wrote'}: „${w.said}“`);
+  if (w.answer) parts.push(`The user asked Obeya: “${w.said}”\nObeya answered that it cannot do this: “${w.answer}”\nThe issue is the user's wish for what they asked; Obeya's answer only shows that Obeya lacks it.`);
+  else parts.push(`${parts.length ? 'The user adds' : 'The user wrote'}: “${w.said}”`);
   if (shots) parts.push(`The user attached ${shots === 1 ? 'a screenshot' : `${shots} screenshots`} (below); they paste ${shots === 1 ? 'it' : 'them'} into the issue themselves, so describe only what the text needs.`);
   return parts.join('\n\n');
 }

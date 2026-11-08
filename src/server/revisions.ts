@@ -189,7 +189,7 @@ export class Revisions {
     return [
       `The proposal as it stands${p.idea ? ' (proposed as an idea)' : ''}:\n\n<title>${card.title}</title>\n\n<task>\n${card.body}\n</task>`,
       p.reason ? `Why it was proposed (for the owner only): ${p.reason}` : '',
-      card.retro ? `The Arbeitsrückschau proposed it, resting on: ${card.retro}` : '',
+      card.retro ? `The work retrospective proposed it, resting on: ${card.retro}` : '',
       p.questions.length
         ? `Its questions to the owner:\n${p.questions.map((q) => `- ${q.text}${q.options.length ? ` (options: ${q.options.join(' / ')}${q.multiple ? '; several may be chosen' : ''})` : ''}`).join('\n')}`
         : 'It has no questions to the owner.',
@@ -227,7 +227,7 @@ function changed(card: Item, p: { title: string; task: string; reason?: string; 
 }
 
 const TO_OBEYA =
-  "Some of the owner's words ask Obeya rather than you: accept the proposal (and start it), dismiss it, a new card, a rule to remember („Merk dir …“), an action on another card, a question about the canvas or another card. Pass those on with to_obeya: Obeya does them as the owner meant, with a confirmation the owner can take back. When that is all they said, revise_proposal is not needed.";
+  "Some of the owner's words ask Obeya rather than you: accept the proposal (and start it), dismiss it, a new card, a rule to remember, an action on another card, a question about the canvas or another card. Pass those on with to_obeya: Obeya does them as the owner meant, with a confirmation the owner can take back. When that is all they said, revise_proposal is not needed.";
 
 const SYSTEM = `
 You rework a card an agent proposed on Obeya, a canvas on which the owner directs coding agents. The owner read the proposal and spoke to you about it: what to add, drop, decide or put differently, or a question. Rewrite the proposal by their words: what they did not touch stays as it was, in its wording; what they said goes in, as they meant it, in the card's text and not as a quote of them. What they only asked (which option you would take, what something means) you answer in your reply; the decision stays theirs, so the proposal stays as it was there. Spoken words may be misheard: read them for what they most likely meant.

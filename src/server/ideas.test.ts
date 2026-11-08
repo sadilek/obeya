@@ -203,7 +203,7 @@ describe('an idea', () => {
     first.emit({ type: 'idle' });
     const said = board().events(i.id).findLast((e) => e.kind === 'talk' && e.author === 'explorer')!;
     canvas.act(i.id, { action: 'discuss', text: 'Nimm A.', replyTo: said.id });
-    expect(explorer().inbox.at(-1)).toEndWith('The owner says:\n\n[In reply to your message: „Zu erstens: zwei Wege, A und B.“]\n\nNimm A.');
+    expect(explorer().inbox.at(-1)).toEndWith('The owner says:\n\n[In reply to your message: “Zu erstens: zwei Wege, A und B.”]\n\nNimm A.');
     expect(board().events(i.id).findLast((e) => e.author === 'owner')).toMatchObject({ kind: 'talk', text: 'Nimm A.', replyTo: said.id });
   });
 
@@ -1173,7 +1173,7 @@ describe('a prototype', () => {
     worker().call('ask', { question: 'Welche Farbe?', options: ['Blau', 'Grün'] });
     canvas.act(prototype!.id, { action: 'answer', text: 'Blau' });
     const s = explorer();
-    expect(s.inbox.at(-1)).toContain('„Welche Farbe?“');
+    expect(s.inbox.at(-1)).toContain('“Welche Farbe?”');
     expect(s.inbox.at(-1)).toContain('The owner answered: Blau');
     // what it says on the way is no reply: the owner is not asked again
     s.call('update_brief', { brief: '**Entscheidungen:** Blau.' });

@@ -258,7 +258,7 @@ describe('a review card', () => {
     await handOver();
     workers.message(id, 'Keep it short.', [], false, undefined, undefined, { 1: 'contributor' });
     const told = runtime.last.inbox.at(-1)!;
-    expect(told).toContain('To amerlander: #1 „Path in the file name“');
+    expect(told).toContain('To amerlander: #1 “Path in the file name”');
     expect(told).toContain('request_changes');
     expect(told).toContain('Keep it short.');
     expect(board.events(id).at(-1)!.text).toContain('Befund 1 „Path in the file name“: an amerlander');
@@ -289,7 +289,7 @@ describe('a review card', () => {
     await handOver();
     workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
     const told = runtime.last.inbox.at(-1)!;
-    expect(told).toContain('Yourself: #2 „No shortcut“');
+    expect(told).toContain('Yourself: #2 “No shortcut”');
     expect(told).toContain('commit it on your branch');
     expect(told).not.toContain('push it onto');
     runtime.last.emit({ type: 'idle' });
@@ -436,7 +436,7 @@ describe('a review card', () => {
     await handOver();
     workers.message(id, '', [], false, undefined, undefined, { 1: 'contributor', 2: 'self' });
     const told = runtime.last.inbox.at(-1)!;
-    expect(told).toContain('To amerlander: #1 „Path in the file name“. They go with your own changes below');
+    expect(told).toContain('To amerlander: #1 “Path in the file name”. They go with your own changes below');
     expect(board.item(id)!.contribution!.findings![0]).toMatchObject({ decided: 'contributor', withChanges: true });
     runtime.last.emit({ type: 'idle' });
     // the request does not go out on its own
@@ -485,7 +485,7 @@ describe('a review card', () => {
     expect(board.item(id)!.contribution!.findings![1]!.status).toBe('dropped');
     workers.message(id, 'Is the first one serious?', [], false);
     const told = runtime.last.inbox.at(-1)!;
-    expect(told).toContain('Ignored: #2 „No shortcut“');
+    expect(told).toContain('Ignored: #2 “No shortcut”');
     expect(told).toContain('Is the first one serious?');
     // heard: the worker may take it up again, on the owner's word
     runtime.last.call('findings', { findings: [{ id: 1, title: 'Path in the file name', text: 'T', security: true }, { id: 2, title: 'No shortcut', text: 'T', status: 'open' }] });
@@ -497,8 +497,8 @@ describe('a review card', () => {
     await handOver();
     workers.message(id, '', [], false, undefined, undefined, { 1: 'contributor', 2: 'drop' });
     const told = runtime.last.inbox.at(-1)!;
-    expect(told).toContain('To amerlander: #1 „Path in the file name“');
-    expect(told).toContain('Ignored: #2 „No shortcut“');
+    expect(told).toContain('To amerlander: #1 “Path in the file name”');
+    expect(told).toContain('Ignored: #2 “No shortcut”');
     expect(board.item(id)!.contribution!.findings!.map((f) => [f.status, f.decided])).toEqual([
       ['open', 'contributor'],
       ['dropped', undefined],
@@ -574,7 +574,7 @@ describe('a review card', () => {
       [4, 'open', 'later'],
     ]);
     const told = runtime.last.inbox.at(-1)!;
-    expect(told).toContain('As follow-up tasks: #1 „Re-login does not help remotely“, #2 „Detection misses messages“, #4 „Two buttons for one error“');
+    expect(told).toContain('As follow-up tasks: #1 “Re-login does not help remotely”, #2 “Detection misses messages”, #4 “Two buttons for one error”');
     expect(told).toContain('as you bundled them (findings 2 + 4)');
     expect(told).toContain('Combine them as you see fit.');
     expect(board.events(id).at(-1)!.text).toContain('Befund 2 „Detection misses messages“: als Folgeaufgabe');
@@ -703,8 +703,8 @@ describe('a review card', () => {
     // the worker hears them with the merge and makes the task, which starts at once: the PR is merged
     const told = runtime.last.inbox.at(-1)!;
     expect(told).toContain('Obeya merged the pull request');
-    expect(told).toContain('As follow-up tasks: #1 „Path in the file name“');
-    expect(told).toContain('Ignored: #2 „No shortcut“');
+    expect(told).toContain('As follow-up tasks: #1 “Path in the file name”');
+    expect(told).toContain('Ignored: #2 “No shortcut”');
     runtime.last.call('follow_up_task', { findings: [1], title: 'Check the file name', task: 'The title goes into the file name unchecked.' });
     expect(board.item(id)!.contribution!.findings![0]!.status).toBe('later');
     expect(followed.map(([, review]) => review)).toEqual([id]);
@@ -730,7 +730,7 @@ describe('a review card', () => {
     await expect(workers.approve(id, { findings: { 1: 'later' } })).rejects.toMatchObject({ code: 'mergeRefused' });
     expect(board.item(id)!.state).toBe('waiting');
     expect(board.item(id)!.contribution!.findings![0]!.decided).toBe('later');
-    expect(runtime.last.inbox.at(-1)).toContain('As follow-up tasks: #1 „Path in the file name“');
+    expect(runtime.last.inbox.at(-1)).toContain('As follow-up tasks: #1 “Path in the file name”');
   });
 
   test('where the PR collides with unpushed commits on the local main, the card says so before the merge, naming the card that landed them', async () => {
@@ -940,7 +940,7 @@ describe('a review card', () => {
     const told = runtime.last.inbox.at(-1)!;
     expect(told).toContain('it conflicts with main');
     expect(told).toContain('The approval holds');
-    expect(told).toContain('Ignored: #2 „No shortcut“');
+    expect(told).toContain('Ignored: #2 “No shortcut”');
     // the worker merges main into its branch and resolves the conflict
     const ws = board.row(id).workspace!;
     identify(ws);

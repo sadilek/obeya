@@ -529,7 +529,12 @@ voices). Obeya's own repository says English, since its demos go public. A worke
 that language outright, not where to look it up (2026-10-21: a worker writing an HTML artifact, which
 needs no skill, read the demo settings' German and missed the repository's English).
 
-Prompts only agents read stay English, with German examples of what the owner may say.
+Prompts only agents read stay English. Only the Koordinator's carry German examples of what the
+owner may say, since it has to understand German commands. The prompts of agents that write to the
+owner (workers, idea agents, the proposal reviser) carry no German at all, neither examples, labels
+nor German quotation marks: taken together, they outweighed the one sentence naming the owner's
+language (2026-11-08: a worker on an English task, with English interface and conversation, wrote
+its status lines in German).
 
 ### Decisions
 

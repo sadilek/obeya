@@ -41,6 +41,16 @@ describe('workers', () => {
     expect(board.events(c.id).at(-1)!.text).toBe('Stopped.');
   });
 
+  test('with English interface and conversation, nothing German in the worker\'s instructions or tools suggests the owner speaks German', async () => {
+    setLanguage('en');
+    setConversation('en');
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, toObeya: async () => '' }));
+    await workers.start(manual().id);
+    const { system, tools } = runtime.last.spec;
+    expect(tools.map((t) => t.name)).toContain('to_obeya');
+    for (const text of [system, ...tools.map((t) => t.description)]) expect(text).not.toMatch(/[„äöüÄÖÜß]|Merk dir|Rückgängig/);
+  });
+
   test("a repository that names German for what lands in it has its worker commit in German, whatever the owner's language", async () => {
     setConversation('en');
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones', language: 'de' } }));
@@ -215,14 +225,14 @@ describe('workers', () => {
     runtime.last.emit({ type: 'idle' });
     // an option the question does not offer is dropped
     workers.answer(c.id, 'Und mit Kopfzeile.', [], false, undefined, ['CSV', 'PDF']);
-    expect(runtime.last.inbox.at(-1)).toContain('Answer to your question (from the owner):\n\nThey picked „CSV“.\n\nThey added in their own words:\n\nUnd mit Kopfzeile.');
+    expect(runtime.last.inbox.at(-1)).toContain('Answer to your question (from the owner):\n\nThey picked “CSV”.\n\nThey added in their own words:\n\nUnd mit Kopfzeile.');
     // the log holds the answer as one text, and which options it picked
     expect(board.events(c.id).findLast((e) => e.kind === 'answer')).toMatchObject({ text: 'CSV\n\nUnd mit Kopfzeile.', picks: ['CSV'] });
     runtime.last.emit({ type: 'idle' });
     runtime.last.call('ask', { question: 'Auch PDF?', options: ['Ja', 'Nein'] });
     runtime.last.emit({ type: 'idle' });
     workers.answer(c.id, '', [], false, undefined, ['Nein']);
-    expect(runtime.last.inbox.at(-1)).toEndWith('They picked „Nein“.');
+    expect(runtime.last.inbox.at(-1)).toEndWith('They picked “Nein”.');
   });
 
   test('a turn that starts while a restart is due hears of it with its message', async () => {
@@ -320,7 +330,7 @@ describe('workers', () => {
     workers.message(c.id, 'Exportier erst mal gar nichts, ich kläre das.');
     expect(state(c.id)).toBe('working');
     expect(board.item(c.id)!.question).toBeUndefined();
-    expect(runtime.last.inbox.at(-1)).toContain('withdraws your question („CSV oder Excel?“)');
+    expect(runtime.last.inbox.at(-1)).toContain('withdraws your question (“CSV oder Excel?”)');
     expect(runtime.last.inbox.at(-1)).toContain('Exportier erst mal gar nichts');
     // a remark is not a decision
     expect(board.decisionsOn(c.id)).toEqual([]);
@@ -482,18 +492,18 @@ describe('workers', () => {
     const replied = board.events(c.id).at(-1)!;
     workers.message(c.id, 'Lieber Komma.', [], false, replied.id);
     // the worker has the whole message in its session: the start of it says which one
-    expect(runtime.last.toolStep()).toContain('[In reply to your message: „Ich exportiere die Zählerstände als CSV mit Semikolon als Trenner, wie Excel es in Deutschland erwartet. Mehr dazu. Mehr dazu. Mehr dazu. Mehr dazu. Mehr dazu. …“]\n\nLieber Komma.');
+    expect(runtime.last.toolStep()).toContain('[In reply to your message: “Ich exportiere die Zählerstände als CSV mit Semikolon als Trenner, wie Excel es in Deutschland erwartet. Mehr dazu. Mehr dazu. Mehr dazu. Mehr dazu. Mehr dazu. …”]\n\nLieber Komma.');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Lieber Komma.', replyTo: replied.id });
     // Obeya's words in the conversation the worker never had: it reads them whole
     const aside = board.log(c.id, 'say', 'koordinator', 'Die Karte „Import“ liegt auf einer anderen Leinwand.');
     workers.message(c.id, 'Dann lass es.', [], false, aside.id);
-    expect(runtime.last.toolStep()).toContain("[In reply to Obeya's message in the card's conversation: „Die Karte „Import“ liegt auf einer anderen Leinwand.“]\n\nDann lass es.");
+    expect(runtime.last.toolStep()).toContain("[In reply to Obeya's message in the card's conversation: “Die Karte „Import“ liegt auf einer anderen Leinwand.”]\n\nDann lass es.");
     // a question answered in reply to it says so too
     runtime.last.call('ask', { question: 'CSV oder Excel?', options: ['CSV', 'Excel'] });
     const asked = board.events(c.id).findLast((e) => e.kind === 'question')!;
     workers.answer(c.id, 'CSV', [], false, asked.id);
     runtime.last.emit({ type: 'idle' });
-    expect(runtime.last.inbox.at(-1)).toContain('[In reply to your question: „CSV oder Excel?');
+    expect(runtime.last.inbox.at(-1)).toContain('[In reply to your question: “CSV oder Excel?');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'answer', replyTo: asked.id });
   });
 
@@ -1279,7 +1289,7 @@ describe('workers', () => {
     await workers.start(c.id);
     // with one repository of its own the worker sees those of the other canvases, by canvas
     expect(runtime.last.spec.tools.find((t) => t.name === 'propose_card')!.description).toContain(
-      `by its id: home (${main}, yours); on other canvases, where the proposal then waits for the owner: on „Tools“ tool (/r/tool), docs (/r/docs); on „Shop“ docs (/r/shop-docs); yours when left out.`,
+      `by its id: home (${main}, yours); on other canvases, where the proposal then waits for the owner: on “Tools” tool (/r/tool), docs (/r/docs); on “Shop” docs (/r/shop-docs); yours when left out.`,
     );
     expect(runtime.last.call('propose_card', { title: 'Ursache im Tool', task: 'T', reason: 'Die Ursache liegt im Tool.', repo: 'tool' })).toContain('Proposed');
     const p = tools.snapshot().items.find((i) => i.title === 'Ursache im Tool')!;
@@ -1347,7 +1357,7 @@ describe('workers', () => {
     await workers.start(c.id);
     runtime.last.call('propose_card', { title: 'Lange Schnitte', task: 'T', reason: 'R' });
     const p = board.snapshot().items.find((i) => i.state === 'proposal')!;
-    expect(runtime.last.call('withdraw_proposal', { title: 'Kurze Schnitte', why: 'W' })).toBe('No proposal of yours is called so; nothing was withdrawn. Yours: „Lange Schnitte“ (proposal).');
+    expect(runtime.last.call('withdraw_proposal', { title: 'Kurze Schnitte', why: 'W' })).toBe('No proposal of yours is called so; nothing was withdrawn. Yours: “Lange Schnitte” (proposal).');
     expect(runtime.last.call('withdraw_proposal', { title: 'Lange Schnitte', why: 'W', replaced_by: 'Gibt es nicht' })).toContain('Nothing was withdrawn');
     expect(board.item(p.id)).toBeDefined();
     board.accept(p.id);

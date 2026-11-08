@@ -133,7 +133,7 @@ field waits there for the agent that takes the card on (see Card layout).
 #### Passing a request on to Obeya
 
 Words that ask Obeya rather than the agent (approve, pause, stop, start, a follow-up or new card,
-"Merk dir", grouping, an action on another card, a question about the canvas or another card) the
+a rule to remember, grouping, an action on another card, a question about the canvas or another card) the
 agent passes on with `to_obeya(request)`, one tool shared by workers, prototypes' workers and
 exploration agents. The Koordinator reads the request with the owner's own words beside it (the
 newest on the card after a restart) and the card in focus, as any command. Where the owner has said

@@ -426,7 +426,7 @@ export function replyNote(quoted: CardEvent | undefined, to: 'worker' | 'explore
         : `Obeya's ${what} in the card's conversation`;
   const heard = own || (quoted.author === 'owner' && quoted.kind !== 'say');
   const text = quoted.text.replace(/\s+/g, ' ').trim();
-  return `[In reply to ${whose}: „${excerpt(text, heard && to !== 'koordinator' ? 160 : 2000)}“]\n\n`;
+  return `[In reply to ${whose}: “${excerpt(text, heard && to !== 'koordinator' ? 160 : 2000)}”]\n\n`;
 }
 
 /** The start of a text, cut at a word, to point at it. */

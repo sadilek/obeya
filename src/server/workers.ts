@@ -154,7 +154,7 @@ interface HeldComment {
 
 /** Where in the demo video the owner's words are, as the worker reads it above them. */
 export const spotNote = (spot: Spot) => {
-  return `[${spot.earlier ? 'Earlier demo video, one a later handover of yours replaced,' : 'Demo video'} at ${mmss(spot.at)}${spot.chapter ? `, chapter „${spot.chapter}“` : ''}${spot.narration ? `, narration: „${spot.narration}“` : ''}]`;
+  return `[${spot.earlier ? 'Earlier demo video, one a later handover of yours replaced,' : 'Demo video'} at ${mmss(spot.at)}${spot.chapter ? `, chapter “${spot.chapter}”` : ''}${spot.narration ? `, narration: “${spot.narration}”` : ''}]`;
 };
 
 /** What is stored while landed work's worker finishes (`CardRow.landed`). */
@@ -236,8 +236,8 @@ export const proposalQuestions = (questions: z.infer<typeof PROPOSAL_QUESTIONS> 
 /** What became of a proposal the worker took back (`replaced`: by a new one), as it reads it. */
 const retractedText = (r: Retracted, replaced: boolean): string => {
   if (r.kind === 'unknown')
-    return `No proposal of yours is called so${replaced ? ', so nothing was replaced' : '; nothing was withdrawn'}. Yours: ${r.mine.length ? r.mine.map((m) => `„${m.title}“ (${m.gone ? 'removed' : m.state})`).join(', ') : 'none'}.`;
-  const it = `„${r.title}“`;
+    return `No proposal of yours is called so${replaced ? ', so nothing was replaced' : '; nothing was withdrawn'}. Yours: ${r.mine.length ? r.mine.map((m) => `“${m.title}” (${m.gone ? 'removed' : m.state})`).join(', ') : 'none'}.`;
+  const it = `“${r.title}”`;
   switch (r.kind) {
     case 'gone':
       return `${it} was still open and is gone from the canvas.`;
@@ -257,7 +257,7 @@ const retractedText = (r: Retracted, replaced: boolean): string => {
 /** What a worker hears of a card's task someone else than the owner wrote: its language tells nothing of the owner's (`ownersLanguage`). */
 const TASK_BY: Record<Exclude<TaskAuthor, 'owner'>, string> = {
   plan: "The card's task comes from the project's plan doc, not from the owner: its language tells nothing about theirs.",
-  koordinator: "Obeya's Arbeitsrückschau wrote the card's task, not the owner: its language tells nothing about theirs.",
+  koordinator: "Obeya's work retrospective wrote the card's task, not the owner: its language tells nothing about theirs.",
   idea: "The idea's agent wrote the card's task, not the owner: its language tells nothing about theirs.",
   proposal: "A worker proposed the card's task and the owner took it on: its language tells nothing about theirs.",
 };
@@ -445,7 +445,7 @@ export const SPOKEN = 'spoken, so speech recognition may have misheard words';
 export function answerNote(picks: string[], text: string): string {
   if (!picks.length) return text;
   const words = ownWords({ text, picks });
-  return `They picked ${picks.map((o) => `„${o}“`).join(', ')}.${words ? `\n\nThey added in their own words:\n\n${words}` : ''}`;
+  return `They picked ${picks.map((o) => `“${o}”`).join(', ')}.${words ? `\n\nThey added in their own words:\n\n${words}` : ''}`;
 }
 
 /** The question of a demo report as the demo keeps it: its text, options and the worker's pick, as `ask` takes them. */
@@ -891,7 +891,7 @@ export class Workers {
       return { ...f, decided: p.route, ...(p.route === 'contributor' && withChanges ? { withChanges: true as const } : {}) };
     });
     this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings, ...(changing ? { changing: true as const } : {}) } satisfies StoredContribution) });
-    const name = (f: Finding) => `#${f.id} „${f.title}“`;
+    const name = (f: Finding) => `#${f.id} “${f.title}”`;
     const what = (p: (typeof picked)[number]) => (p.route === 'self' ? t.findingSelf : p.route === 'later' ? t.findingLater : p.route === 'drop' ? t.findingDrop : t.findingTo(c.author));
     const later = of('later');
     const ids = new Set(later.map((p) => p.f.id));
@@ -916,7 +916,7 @@ export class Workers {
           ? `- Yourself: ${of('self').map((p) => name(p.f)).join(', ')}. Make the change and commit it on your branch, mark them fixed (findings), and hand over again with a new demo and pr_draft. Obeya pushes your commits onto the PR's branch and posts pr_draft once the owner approves.`
           : '',
         later.length
-          ? `- As follow-up tasks: ${later.map((p) => name(p.f)).join(', ')}. Make them tasks of their own with follow_up_task, outside this PR, before anything else ends your turn. Findings that belong together become one task: as the owner's words below say first („2 and 3 together“, „combine them as you see fit“, „all separate“); without a word on it, ${bundles.length ? `as you bundled them (${bundles.map((b) => `findings ${b}`).join('; ')}), the others one each` : 'one task each'}. Write each task from what your review knows (the files concerned, the cause, the PR's link). They go neither to ${c.author} nor into your changes.`
+          ? `- As follow-up tasks: ${later.map((p) => name(p.f)).join(', ')}. Make them tasks of their own with follow_up_task, outside this PR, before anything else ends your turn. Findings that belong together become one task: as the owner's words below say first (“2 and 3 together”, “combine them as you see fit”, “all separate”); without a word on it, ${bundles.length ? `as you bundled them (${bundles.map((b) => `findings ${b}`).join('; ')}), the others one each` : 'one task each'}. Write each task from what your review knows (the files concerned, the cause, the PR's link). They go neither to ${c.author} nor into your changes.`
           : '',
         of('drop').length
           ? `- Ignored: ${of('drop').map((p) => name(p.f)).join(', ')}. The owner does not pursue ${of('drop').length === 1 ? 'it' : 'them'}, and Obeya marked ${of('drop').length === 1 ? 'it' : 'them'} dropped: nothing to do for ${of('drop').length === 1 ? 'it' : 'them'}, neither for ${c.author} nor in your changes.`
@@ -958,13 +958,13 @@ export class Workers {
     this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings } satisfies StoredContribution) });
     this.o.onFollowUpTask?.(card.id, cardId);
     const owed = this.owedTasks(cardId);
-    return `Made: „${card.title}“, beside your card and queued behind it until the PR is merged, linked from ${named.length === 1 ? `finding ${named[0]}` : `findings ${named.join(', ')}`}.${owed ? ` Still to make: ${owed}.` : ''}`;
+    return `Made: “${card.title}”, beside your card and queued behind it until the PR is merged, linked from ${named.length === 1 ? `finding ${named[0]}` : `findings ${named.join(', ')}`}.${owed ? ` Still to make: ${owed}.` : ''}`;
   }
 
   /** The findings of a review card the owner chose as follow-up tasks that have none yet, as the worker reads them; none: undefined. */
   private owedTasks(cardId: string): string | undefined {
     const owed = contributionOf(this.o.board.row(cardId))?.findings?.filter((f) => f.status === 'open' && f.decided === 'later') ?? [];
-    return owed.length ? `${owed.length === 1 ? 'finding' : 'findings'} ${owed.map((f) => `#${f.id} „${f.title}“`).join(', ')} (follow_up_task)` : undefined;
+    return owed.length ? `${owed.length === 1 ? 'finding' : 'findings'} ${owed.map((f) => `#${f.id} “${f.title}”`).join(', ')} (follow_up_task)` : undefined;
   }
 
   /**
@@ -1076,7 +1076,7 @@ export class Workers {
       if (text) this.o.onOwnerInput?.(card, 'note', text);
       this.deliver(
         cardId,
-        `A note from the owner instead of an answer${spoken ? ` (${SPOKEN})` : ''}. It withdraws your question („${card.question?.text ?? ''}“): if the note settles it, go on; if not, ask again.\n\n${held ? `${held.text}\n\nThen they wrote:\n\n` : ''}${words}`,
+        `A note from the owner instead of an answer${spoken ? ` (${SPOKEN})` : ''}. It withdraws your question (“${card.question?.text ?? ''}”): if the note settles it, go on; if not, ask again.\n\n${held ? `${held.text}\n\nThen they wrote:\n\n` : ''}${words}`,
         [...(held?.images ?? []), ...images],
         true,
         said,
@@ -1164,7 +1164,7 @@ export class Workers {
       () => {
         // a card that never reported a session: a new one needs the card first
         if (row.session_id) this.launch(card.id, text, row.session_id, images);
-        else this.launch(card.id, `You worked on the card „${card.title}“:\n\n${card.body}\n\n${text}`, undefined, [...this.taskImages(card), ...images]);
+        else this.launch(card.id, `You worked on the card “${card.title}”:\n\n${card.body}\n\n${text}`, undefined, [...this.taskImages(card), ...images]);
       },
       // the question stands in the conversation, without a workspace to answer it in
       () => {
@@ -1315,7 +1315,7 @@ export class Workers {
     this.recordAnswer(card, q, text, images, replyTo, picks);
     this.deliver(
       card.id,
-      `The owner answered the question in your demo report („${q}“)${spoken ? ` (${SPOKEN})` : ''}. The card still waits for their approval of what you handed over; a change their words call for goes into a new handover:\n\n${held ? `${held.text}\n\nThen they answered:\n\n` : ''}${this.words(card.id, answerNote(picks, text), images, replyTo)}`,
+      `The owner answered the question in your demo report (“${q}”)${spoken ? ` (${SPOKEN})` : ''}. The card still waits for their approval of what you handed over; a change their words call for goes into a new handover:\n\n${held ? `${held.text}\n\nThen they answered:\n\n` : ''}${this.words(card.id, answerNote(picks, text), images, replyTo)}`,
       [...(held?.images ?? []), ...images],
       true,
     );
@@ -4534,7 +4534,7 @@ export class Workers {
               `start_at: when the card is to start, ISO 8601 with your timezone's offset (2026-11-04T08:00:00+01:00), for a task that can only be done later (whether a bank has registered a form two weeks on, say): accepted, it waits until then and starts by itself. Its agent then checks what it can and asks the owner for what only they can see.`,
               ...(anotherRepo
                 ? [
-                    `repo: the repository the change is to be made in, by its id: ${repos.map((r) => `${r.id} (${r.path}${r.id === ownRepo ? ', yours' : ''})`).join(', ')}${others.length ? `; on other canvases, where the proposal then waits for the owner: ${others.map((b) => `on „${b.canvas.name}“ ${b.canvas.repos.map((r) => `${r.id} (${r.path})`).join(', ')}`).join('; ')}` : ''}; yours when left out.`,
+                    `repo: the repository the change is to be made in, by its id: ${repos.map((r) => `${r.id} (${r.path}${r.id === ownRepo ? ', yours' : ''})`).join(', ')}${others.length ? `; on other canvases, where the proposal then waits for the owner: ${others.map((b) => `on “${b.canvas.name}” ${b.canvas.repos.map((r) => `${r.id} (${r.path})`).join(', ')}`).join('; ')}` : ''}; yours when left out.`,
                   ]
                 : []),
               `Everything in ${language}.`,
@@ -4594,7 +4594,7 @@ export class Workers {
                       .map((b) => b.items().findLast((i) => i.from === cardId && (!!i.proposal || !!i.proposed) && titleKey(i.title) === titleKey(replaced_by)))
                       .find(Boolean)
                   : undefined;
-                if (replaced_by?.trim() && !by) return `No card you proposed is called „${replaced_by.trim()}“. Nothing was withdrawn.`;
+                if (replaced_by?.trim() && !by) return `No card you proposed is called “${replaced_by.trim()}”. Nothing was withdrawn.`;
                 return this.retract(cardId, String(title).trim(), { ...(by ? { by: by.id, title: by.title } : {}), ...(why?.trim() ? { why: clip(why.trim(), 1000) } : {}) });
               },
             },
@@ -5359,7 +5359,7 @@ ${idea.idea.brief}` : '',
       ].join('\n'),
       [
         `Record your findings with findings (an empty list where the review found nothing), most severe first: the card shows them beside the demo, and the owner decides on each there. Then hand over with ready_for_review: the demo, recorded with ${this.demoSkill(card.id)} as its instructions say, and review: each check with whether it passed, and whether the PR merges without conflicts. The summary says what the owner needs to know beyond the findings.${this.shares ? " The demo's page is for colleagues: it shows what the PR changes for the user, not your findings." : ''}`,
-        'Your findings are for the owner: nothing of them goes to the contributor unless the owner sends it. Keep the list current as the review goes on, from the owner\'s words („finding 2 does not matter“) as from a push.',
+        'Your findings are for the owner: nothing of them goes to the contributor unless the owner sends it. Keep the list current as the review goes on, from the owner\'s words (“finding 2 does not matter”) as from a push.',
       ].join(' '),
       [
         'The owner decides on each finding on the card, and their decision comes with their next message:',
@@ -5369,7 +5369,7 @@ ${idea.idea.brief}` : '',
           : `- ${c.author} does not allow maintainers' edits, so findings go to them or become follow-up tasks.`,
         '- As a follow-up task: you make it a task of its own beside your card, outside this PR (follow_up_task), which marks it later in your findings. Findings that belong together become one task: as the owner\'s words say first, else as you bundled them in your findings (with), so bundle there only what one worker would sensibly do in one go.',
         '- Ignored: Obeya marks it dropped in your findings; nothing is to be done for it.',
-        'Words of the owner\'s that ask the same in so many words („send them finding 1“, „fix that yourself“) count the same. Anything else they say (a question, more to look at) you answer or do on the card, and nothing goes to the PR.',
+        'Words of the owner\'s that ask the same in so many words (“send them finding 1”, “fix that yourself”) count the same. Anything else they say (a question, more to look at) you answer or do on the card, and nothing goes to the PR.',
       ].join('\n'),
     ];
     return parts.filter(Boolean).join('\n\n');

@@ -1,6 +1,6 @@
 ---
 name: demo
-description: Present finished work to the owner as a narrated screen recording with a one-page report (what it does, what the owner needs to know beyond the video, an open question when there is one), so they can approve or give feedback without reading code or clicking through the app. Typically at the end of an implementation session, for the uncommitted and/or unpushed changes; also for any named commit or branch. Use when they ask for a demo, a walkthrough, "führ mir das vor", or /demo.
+description: Present finished work to the owner as a narrated screen recording with a one-page report (what it does, what the owner needs to know beyond the video, an open question when there is one), so they can approve or give feedback without reading code or clicking through the app. Typically at the end of an implementation session, for the uncommitted and/or unpushed changes; also for any named commit or branch. Use when they ask for a demo, a walkthrough, or /demo.
 ---
 
 # /demo — present a change like a team lead presents to a director
@@ -277,8 +277,8 @@ The first run writes the words to translate (`.work/revoice/source.json`) and sa
 translation goes (`.work/revoice/en.json`, same shape). Translate them yourself: each `say` as it
 should sound, in the same person, its audio tags where they stand, as many sentences as the
 source's (each is a caption, timed with the other languages' tracks); a label on screen quoted as it
-appears with its meaning after it, in a `say` as an aside („Teilen“, share, …: a voice drops
-parentheses at times), elsewhere „Teilen“ (Share); read the labels from `review/`. The next run
+appears with its meaning after it, in a `say` as an aside ("Teilen", share, …: a voice drops
+parentheses at times), elsewhere "Teilen" (Share); read the labels from `review/`. The next run
 synthesises the clips, stretches each scene's narrated stretch to its new clip so actions stay on
 their words, and rebuilds the video, captions, chapters, stills and report page in place; the demo
 as recorded stays in `.work/revoice/original/`. Its other subtitle tracks stay, on the new times.

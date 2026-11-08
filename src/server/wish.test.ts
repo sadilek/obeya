@@ -12,7 +12,7 @@ test('a small job writes the issue in English from the owner’s words; the foot
   const s = runtime.last;
   expect(s.spec).toMatchObject({ readOnly: true, role: 'chores' });
   expect(s.spec.system).toContain('in English');
-  expect(s.inbox[0]).toContain('„Die Karten sollen sich nach Datum sortieren lassen.“');
+  expect(s.inbox[0]).toContain('“Die Karten sollen sich nach Datum sortieren lassen.”');
   expect(s.inbox[0]).toContain('a screenshot');
   expect(s.images[0]).toEqual(['/i/1.png']);
   s.call('issue', { title: 'Sort cards by date', body: 'Cards should sort by date.' });
@@ -24,13 +24,13 @@ test('a "can’t" answer is written as a wish; new words rework the draft so far
   const runtime = new FakeRuntime();
   void writeWish(runtime, { said: 'sortier nach Datum', answer: 'Das kann ich nicht.' }, 'F');
   await settle();
-  expect(runtime.last.inbox[0]).toContain('Obeya answered that it cannot do this: „Das kann ich nicht.“');
+  expect(runtime.last.inbox[0]).toContain('Obeya answered that it cannot do this: “Das kann ich nicht.”');
   void writeWish(runtime, { said: 'nur auf dem Mac', title: 'Sort cards', body: 'Sort them.\n\nObeya 0.3.0 · macOS · app' }, 'F');
   await settle();
   const brief = runtime.last.inbox[0]!;
   expect(brief).toContain('Title: Sort cards\n\nSort them.');
   expect(brief).not.toContain('Obeya 0.3.0');
-  expect(brief).toContain('The user adds: „nur auf dem Mac“');
+  expect(brief).toContain('The user adds: “nur auf dem Mac”');
 });
 
 test('without a written issue, the owner’s own words stand in the draft', async () => {

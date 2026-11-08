@@ -338,7 +338,7 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.question).toBeUndefined();
     expect(board.item(c.id)!.demo).toMatchObject({ options: ['Semikolon', 'Komma'], answer: 'Semikolon\n\nUnd mit Kopfzeile.' });
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'answer', picks: ['Semikolon'] });
-    expect(runtime.last.inbox.at(-1)).toContain('They picked „Semikolon“.\n\nThey added in their own words:\n\nUnd mit Kopfzeile.');
+    expect(runtime.last.inbox.at(-1)).toContain('They picked “Semikolon”.\n\nThey added in their own words:\n\nUnd mit Kopfzeile.');
     expect(board.decisions(null).at(-1)).toMatchObject({ question: 'Semikolon oder Komma?', answer: 'Semikolon\n\nUnd mit Kopfzeile.' });
   });
 
@@ -350,7 +350,7 @@ describe('handing over with a demo', () => {
     runtime.last.emit({ type: 'idle' });
     expect(board.item(c.id)!.question).toMatchObject({ multiple: true, pick: { options: ['Datum', 'Betrag'] } });
     workers.answer(c.id, '', [], false, undefined, ['Notiz', 'Datum']);
-    expect(runtime.last.inbox.at(-1)).toContain('They picked „Datum“, „Notiz“.');
+    expect(runtime.last.inbox.at(-1)).toContain('They picked “Datum”, “Notiz”.');
   });
 
   test('a stand-in that replies to the answer and ends the turn gives the card back to the owner', async () => {
@@ -852,8 +852,8 @@ describe('comments on places in the demo video', () => {
       [
         'The owner watched your demo video and commented on places in it. The card still waits for their approval of what you handed over; a change their words call for goes into a new handover:',
         '2 comments on places in your demo video (their frames and screenshots are shown below, in this order):',
-        `[Demo video at 0:07, chapter „Export“, narration: „Jetzt der Export.“]\nHier fehlt die Kopfzeile.\n(frame: ${images.path(frame)})`,
-        '[Demo video at 0:14, chapter „Export“, narration: „Die Datei hat eine Kopfzeile.“] (spoken, so speech recognition may have misheard words)\nZu schnell.',
+        `[Demo video at 0:07, chapter “Export”, narration: “Jetzt der Export.”]\nHier fehlt die Kopfzeile.\n(frame: ${images.path(frame)})`,
+        '[Demo video at 0:14, chapter “Export”, narration: “Die Datei hat eine Kopfzeile.”] (spoken, so speech recognition may have misheard words)\nZu schnell.',
       ].join('\n\n'),
     );
     expect(runtime.last.images.at(-1)).toEqual([images.path(frame)!]);
@@ -881,7 +881,7 @@ describe('comments on places in the demo video', () => {
     expect(() => workers.unsay(c.id, first!.id)).toThrow(BadRequest);
     workers.released(c.id, true);
     expect(runtime.last.inbox).toHaveLength(n + 1);
-    expect(runtime.last.inbox.at(-1)).toContain('A comment on places in your demo video:\n\n[Demo video at 0:07, chapter „Export“, narration: „Jetzt der Export.“]\nHier fehlt die Kopfzeile.');
+    expect(runtime.last.inbox.at(-1)).toContain('A comment on places in your demo video:\n\n[Demo video at 0:07, chapter “Export”, narration: “Jetzt der Export.”]\nHier fehlt die Kopfzeile.');
     expect(runtime.last.inbox.at(-1)).not.toContain('Das stimmt nicht.');
     expect(board.item(c.id)!.held).toBeUndefined();
     expect(() => workers.unsay(c.id, second!.id)).toThrow(BadRequest);
@@ -919,7 +919,7 @@ describe('comments on places in the demo video', () => {
     expect(runtime.last.inbox).toHaveLength(n);
     workers.message(c.id, 'Semikolon.');
     expect(runtime.last.inbox).toHaveLength(n + 1);
-    expect(runtime.last.inbox.at(-1)).toContain('A comment on places in your demo video:\n\n[Demo video at 0:02, chapter „Liste“, narration: „Die Liste.“]\nHier ruckelt es.\n\nThen they answered:\n\nSemikolon.');
+    expect(runtime.last.inbox.at(-1)).toContain('A comment on places in your demo video:\n\n[Demo video at 0:02, chapter “Liste”, narration: “Die Liste.”]\nHier ruckelt es.\n\nThen they answered:\n\nSemikolon.');
     expect(board.item(c.id)!.demo!.answer).toBe('Semikolon.');
     expect(board.item(c.id)!.held).toBeUndefined();
   });
@@ -952,7 +952,7 @@ describe('comments on places in the demo video', () => {
     expect(board.item(c.id)!.held).toHaveLength(1);
     workers.answer(c.id, 'Die erste.');
     expect(runtime.last.inbox).toHaveLength(n + 1);
-    expect(runtime.last.inbox.at(-1)).toContain('A comment on places in your demo video:\n\n[Demo video at 0:02, chapter „Liste“, narration: „Die Liste.“]\nUnd hier ist es zu schnell.\n\nThen they answered:\n\nDie erste.');
+    expect(runtime.last.inbox.at(-1)).toContain('A comment on places in your demo video:\n\n[Demo video at 0:02, chapter “Liste”, narration: “Die Liste.”]\nUnd hier ist es zu schnell.\n\nThen they answered:\n\nDie erste.');
     expect(board.item(c.id)!.held).toBeUndefined();
     // it stands where it went: above the answer
     const owner = board.events(c.id).filter((e) => e.author === 'owner');
@@ -988,7 +988,7 @@ describe('comments on places in the demo video', () => {
     const told = runtime.sessions.flatMap((s) => s.inbox);
     expect(told.filter((m) => m.includes('Etwas kleiner.'))).toHaveLength(1);
     expect(told.at(-1)).toContain('The owner approved your work.');
-    expect(told.at(-1)).toContain('Before approving, the owner watched your demo video. A comment on places in your demo video:\n\n[Demo video at 0:01, chapter „Liste“, narration: „Die Liste.“]\nEtwas kleiner.\n\nThey approved the work as it is all the same');
+    expect(told.at(-1)).toContain('Before approving, the owner watched your demo video. A comment on places in your demo video:\n\n[Demo video at 0:01, chapter “Liste”, narration: “Die Liste.”]\nEtwas kleiner.\n\nThey approved the work as it is all the same');
   });
 
   test('one on a demo a later handover replaced is placed in that demo, and the worker hears which', async () => {
@@ -1003,13 +1003,13 @@ describe('comments on places in the demo video', () => {
     board.work(c.id, { state: 'working', need: null });
     workers.message(c.id, 'Hier war es noch falsch.', [], false, undefined, { at: 7, demo: first });
     expect(board.events(c.id).at(-1)!.spot).toEqual({ at: 7, chapter: 'Export', narration: 'Jetzt der Export.', demo: first, earlier: true });
-    expect(runtime.last.inbox.at(-1)).toContain('[Earlier demo video, one a later handover of yours replaced, at 0:07, chapter „Export“, narration: „Jetzt der Export.“]\nHier war es noch falsch.');
+    expect(runtime.last.inbox.at(-1)).toContain('[Earlier demo video, one a later handover of yours replaced, at 0:07, chapter “Export”, narration: “Jetzt der Export.”]\nHier war es noch falsch.');
     // one on the card's demo names it too, for a click on it once a later handover replaced that one as well
     runtime.last.emit({ type: 'idle' });
     board.work(c.id, { state: 'working', need: null });
     workers.message(c.id, 'Gut so.', [], false, undefined, { at: 1 });
     expect(board.events(c.id).at(-1)!.spot).toEqual({ at: 1, chapter: 'Zeile', narration: 'Nur die Zeile.', demo: second });
-    expect(runtime.last.inbox.at(-1)).toContain('[Demo video at 0:01, chapter „Zeile“');
+    expect(runtime.last.inbox.at(-1)).toContain('[Demo video at 0:01, chapter “Zeile”');
   });
 
   test("an answer to a question given at a place in the video is about that place, with its frame", async () => {
@@ -1018,7 +1018,7 @@ describe('comments on places in the demo video', () => {
     await runtime.last.call('ask', { question: 'Welcher Schnitt?' });
     const frame = still();
     workers.answer(c.id, 'Dieser hier.', [], false, undefined, [], { at: 6.5, still: frame });
-    expect(runtime.last.inbox.at(-1)).toContain(`[Demo video at 0:06, chapter „Export“, narration: „Jetzt der Export.“]\nDieser hier.\n\nThe frame at that place in the video is shown below (file: ${images.path(frame)}).`);
+    expect(runtime.last.inbox.at(-1)).toContain(`[Demo video at 0:06, chapter “Export”, narration: “Jetzt der Export.”]\nDieser hier.\n\nThe frame at that place in the video is shown below (file: ${images.path(frame)}).`);
     expect(runtime.last.images.at(-1)).toEqual([images.path(frame)!]);
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'answer', text: 'Dieser hier.', spot: { at: 6.5, still: frame } });
   });
@@ -1029,7 +1029,7 @@ describe('comments on places in the demo video', () => {
     board.work(c.id, { state: 'working', need: null });
     const frame = still();
     workers.message(c.id, 'Und hier.', [], false, undefined, { at: 6.5, still: frame });
-    expect(runtime.last.inbox.at(-1)).toContain(`[Demo video at 0:06, chapter „Export“, narration: „Jetzt der Export.“]\nUnd hier.\n\nThe frame at that place in the video is shown below (file: ${images.path(frame)}).`);
+    expect(runtime.last.inbox.at(-1)).toContain(`[Demo video at 0:06, chapter “Export”, narration: “Jetzt der Export.”]\nUnd hier.\n\nThe frame at that place in the video is shown below (file: ${images.path(frame)}).`);
     expect(runtime.last.images.at(-1)).toEqual([images.path(frame)!]);
     expect(board.events(c.id).at(-1)).toMatchObject({ text: 'Und hier.', spot: { at: 6.5, still: frame } });
     expect(board.item(c.id)!.held).toBeUndefined();
