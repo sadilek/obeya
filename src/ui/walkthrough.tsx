@@ -1,21 +1,68 @@
 // The player of a looked-up answer told as a walkthrough, under the question from its first slide on
 // while the agent still tells it: it reads the walkthrough as it grows and plays slides and voice in
 // step, items lighting up (a flow's boxes building up) as the narration reaches them, the spoken
-// sentence as a caption whose pointer marks the word being spoken. What it
-// plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
+// sentence as a caption whose pointer marks the word being spoken, two lines at a time; "CC" or C
+// switch captions for every walkthrough of the browser. Slides and player take showntell's look
+// (styles.css `.wt-*`). What it plays lives outside React, by walkthrough, so the player goes on unbroken when its message is
 // drawn anew (the answer's words arriving above it) and pauses only once no message shows it.
 
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AnswerFile } from '../core/types';
 import { estimatedStarts, INTERRUPTED, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
 import { answerFile, api, at } from './api';
+import { captionPages, pageBudget, pageOf } from './captionPages';
 import { known, know } from './known';
 import { t } from './strings';
-import { useZoom } from './zoom';
+import { plainKey, useZoom } from './zoom';
 import { zoomBox } from './zoomBox';
 
-/** What stands under the slide in the zoomed player: its controls, and its caption, which grows with the width (styles.css `.wt-caption`). */
-const ZOOMED_CHROME = { fixed: 39 + 13, perWidth: 2 * 1.45 * 0.021 };
+/** The deck's margin around the slide, on its sides and above it (styles.css `.wt-stage`). */
+const WT_INSET = 10;
+/** The caption: its padding, and its two lines, as high as its font grows with the width (styles.css `.wt-caption`). */
+const WT_CAPTION = { fixed: 14, perWidth: 2 * 1.45 * 0.023 };
+/** The row of controls under it. */
+const WT_CONTROLS = 30 + 8;
+
+/**
+ * What stands around the slide in the zoomed player, as high as `fixed` plus `perWidth` times its
+ * width: the deck's margin (the slide is narrower than the player by both sides' margins), the
+ * caption while captions are on, and the controls.
+ */
+const zoomedChrome = (captions: boolean) => ({
+  fixed: WT_INSET - (2 * WT_INSET * SLIDE_HEIGHT) / SLIDE_WIDTH + WT_CONTROLS + (captions ? WT_CAPTION.fixed : 0),
+  perWidth: captions ? WT_CAPTION.perWidth : 0,
+});
+
+/** Whether captions show, for every walkthrough of the page and the next one: the owner's choice, kept in the browser. */
+const CAPTIONS_OFF = 'obeya.walkthroughCaptionsOff';
+/** Set once the owner switched captions with C: CC stops showing the key beside it. */
+const CAPTIONS_KEY_KNOWN = 'obeya.walkthroughCaptionsKeyKnown';
+let captionsOn = !known(CAPTIONS_OFF);
+let captionsKeyKnown = known(CAPTIONS_KEY_KNOWN);
+
+function setCaptions(on: boolean) {
+  captionsOn = on;
+  try {
+    if (on) localStorage.removeItem(CAPTIONS_OFF);
+    else know(CAPTIONS_OFF);
+  } catch {}
+  for (const p of sessions.values()) p.notify();
+}
+
+/**
+ * C switches captions on or off where a walkthrough is what the owner is at: one zoomed, playing or
+ * under the pointer. Elsewhere C stays the key that opens the conversation with Obeya; `true` when
+ * it took the key.
+ */
+export function captionKey(e: KeyboardEvent): boolean {
+  if ((e.key !== 'c' && e.key !== 'C') || e.repeat || !plainKey(e)) return false;
+  if (!document.querySelector('.wt.zoomed') && ![...sessions.values()].some((p) => p.playing) && !document.querySelector('.wt:hover')) return false;
+  e.preventDefault();
+  know(CAPTIONS_KEY_KNOWN);
+  captionsKeyKnown = true;
+  setCaptions(!captionsOn);
+  return true;
+}
 
 /** Scales the slide to the stage's width, as it changes. */
 function useSlideScale(stage: RefObject<HTMLDivElement | null>) {
@@ -59,7 +106,6 @@ class Playback {
   waiting = false;
   /** Waiting for the agent's next slide. */
   writing = false;
-  captions = true;
   /** It started by itself once: it does not again. */
   autoplayed = false;
   /** The browser refused to play without a click (no click on the page yet). */
@@ -91,6 +137,11 @@ class Playback {
   private changed() {
     this.version++;
     for (const fn of this.listeners) fn();
+  }
+
+  /** Draws its player anew: something of the page changed that it shows (captions on or off). */
+  notify() {
+    this.changed();
   }
 
   /** A message shows the player; once none does, it pauses. */
@@ -253,11 +304,6 @@ class Playback {
     this.changed();
   }
 
-  toggleCaptions = () => {
-    this.captions = !this.captions;
-    this.changed();
-  };
-
   /** Plays a sentence once it is voiced; until then the player waits for it. */
   private playPart(slide: number, part: number) {
     this.slide = slide;
@@ -328,7 +374,10 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
   const p = usePlayback(thread, file.name);
   const stage = useRef<HTMLDivElement>(null);
   useSlideScale(stage);
-  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, ZOOMED_CHROME), playing: () => p.playing });
+  const zoom = useZoom<HTMLElement>({ box: (w, h) => zoomBox(SLIDE_WIDTH / SLIDE_HEIGHT, w, h, zoomedChrome(captionsOn)), playing: () => p.playing });
+  const captions = captionsOn;
+  // the caption switched on or off while zoomed: the zoomed player grows or shrinks to stay in the window
+  useEffect(() => zoom.refit(), [captions]);
   const d = p.data;
   if (!d) return <div className="wt wt-loading hint">{p.missing ? t.walkthrough.missing : t.walkthrough.loading}</div>;
   const slide = d.slides[p.slide];
@@ -374,29 +423,59 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
           </button>
         )}
       </div>
-      {p.captions && p.started && slide && <Caption sentence={p.writing ? '' : (slide.parts[p.part] ?? '')} word={p.word()} />}
+      {captions && p.started && slide && <Caption sentence={p.writing ? '' : (slide.parts[p.part] ?? '')} word={p.word()} />}
       <div className="wt-controls">
         <button className="btn small" aria-label={t.walkthrough.previous} title={t.walkthrough.previous} disabled={p.slide === 0} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide - 1)}>
-          ◀
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 5h2.4v14H6zM19 5.6v12.8a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.4a.8.8 0 0 1 1.2.7z" />
+          </svg>
         </button>
         <button className="btn small wt-play" disabled={!slide} aria-label={p.playing ? t.walkthrough.pause : t.walkthrough.resume} title={p.playing ? t.walkthrough.pause : t.walkthrough.resume} onMouseDown={(e) => e.preventDefault()} onClick={p.toggle}>
-          {p.playing ? '❚❚' : '▶'}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={p.playing ? 'M6.5 4.5h3.6v15H6.5zM13.9 4.5h3.6v15h-3.6z' : 'M7 4.9v14.2a.9.9 0 0 0 1.4.8l11.2-7.1a.9.9 0 0 0 0-1.6L8.4 4.1A.9.9 0 0 0 7 4.9z'} />
+          </svg>
         </button>
         <button className="btn small" aria-label={t.walkthrough.next} title={t.walkthrough.next} disabled={!slide || p.slide >= d.slides.length - 1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide + 1)}>
-          ▶▶
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15.6 5H18v14h-2.4zM5 5.6v12.8a.8.8 0 0 0 1.2.7l8.2-6.4a.8.8 0 0 0 0-1.4L6.2 4.9A.8.8 0 0 0 5 5.6z" />
+          </svg>
         </button>
+        {/* a segment per slide, as long as the slide plays */}
         <div className="wt-segments">
           {d.slides.map((_, k) => (
-            <button key={k} className={`wt-seg${d.clips[k]?.[0] ? ' voiced' : ''}`} aria-label={t.walkthrough.slide(k + 1, d.slides.length, !d.done)} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(k)}>
-              <i style={{ width: k < p.slide ? '100%' : k > p.slide ? 0 : `${Math.min(100, (p.now() / Math.max(0.1, p.slideSeconds(k))) * 100)}%` }} />
+            <button
+              key={k}
+              className={`wt-seg${d.clips[k]?.[0] ? '' : ' pending'}`}
+              style={{ flexGrow: Math.max(1, p.slideSeconds(k)) }}
+              aria-label={t.walkthrough.slide(k + 1, d.slides.length, !d.done)}
+              title={t.walkthrough.slide(k + 1, d.slides.length, !d.done)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => p.go(k)}
+            >
+              <span>
+                <i style={{ width: k < p.slide ? '100%' : k > p.slide ? 0 : `${Math.min(100, (p.now() / Math.max(0.1, p.slideSeconds(k))) * 100)}%` }} />
+              </span>
             </button>
           ))}
         </div>
         {slide && <span className="wt-count">{t.walkthrough.slide(p.slide + 1, d.slides.length, !d.done)}</span>}
-        <button className={`btn small${p.captions ? ' on' : ''}`} aria-pressed={p.captions} title={t.walkthrough.captions} onMouseDown={(e) => e.preventDefault()} onClick={p.toggleCaptions}>
+        <button
+          className={`btn small wt-key wt-cc${captions ? ' on' : ''}`}
+          aria-pressed={captions}
+          aria-label={t.walkthrough.captions}
+          title={captionsKeyKnown ? t.walkthrough.captions : undefined}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setCaptions(!captions)}
+        >
+          {/* the key beside CC until the owner first switched captions with it */}
+          {!captionsKeyKnown && (
+            <span className="zoom-hint">
+              {t.walkthrough.captionsHint} <kbd>C</kbd>
+            </span>
+          )}
           CC
         </button>
-        <button className="btn small wt-zoom" title={zoom.keyKnown ? zoomLabel : undefined} aria-label={zoomLabel} onMouseDown={(e) => e.preventDefault()} onClick={zoom.toggle}>
+        <button className="btn small wt-key wt-zoom" title={zoom.keyKnown ? zoomLabel : undefined} aria-label={zoomLabel} onMouseDown={(e) => e.preventDefault()} onClick={zoom.toggle}>
           {/* the key beside the magnifier until the owner first zoomed with it */}
           {!zoom.keyKnown && (
             <span className="zoom-hint">
@@ -416,15 +495,78 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
 
 /** The sentence being spoken, the word being spoken marked, the words said before it apart from those still to come. */
 function Caption({ sentence, word }: { sentence: string; word: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  // a page of two lines at a time, as many characters as the caption's width holds at its size
+  const [budget, setBudget] = useState(0);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => {
+      const css = getComputedStyle(el);
+      setBudget(pageBudget(el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight), parseFloat(css.fontSize)));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const words = wordsOf(sentence);
+  const starts = budget ? captionPages(words, budget) : [0];
+  const page = pageOf(starts, word);
+  const from = starts[page]!;
+  const to = starts[page + 1] ?? words.length;
   return (
-    <div className={`wt-caption${word >= 0 ? ' pointing' : ''}`}>
-      {wordsOf(sentence).map((w, k) => (
-        <span key={k}>
-          {k > 0 && ' '}
-          <span className={k < word ? 'said' : k === word ? 'now' : undefined}>{w}</span>
-        </span>
-      ))}
+    <div ref={box} className={`wt-caption${word >= 0 ? ' pointing' : ''}`}>
+      <div>
+        {words.slice(from, to).map((w, i) => {
+          const k = from + i;
+          return (
+            <span key={k}>
+              {i > 0 && ' '}
+              <span className={k < word ? 'said' : k === word ? 'now' : undefined}>{w}</span>
+            </span>
+          );
+        })}
+      </div>
     </div>
+  );
+}
+
+/** A number for `text`, the same every time: where the title slide's rings and dots stand. */
+function hashOf(text: string) {
+  let h = 2166136261;
+  for (const c of text) h = Math.imul(h ^ c.codePointAt(0)!, 16777619);
+  return h >>> 0;
+}
+
+/** The inks a title slide's motif takes its colours from, in turn. */
+const MOTIF_INKS = ['--working', '--inPr', '--idea', '--proposal', '--approved', '--waiting'];
+
+/** Rings, an arc and a field of dots on the right of a title slide, placed and coloured by its title, as showntell's title slides have. */
+function Motif({ title }: { title: string }) {
+  const h = hashOf(title);
+  const pick = (n: number, shift: number) => (h >>> shift) % n;
+  const ink = (k: number) => `var(${MOTIF_INKS[(pick(MOTIF_INKS.length, 0) + k) % MOTIF_INKS.length]})`;
+  const cx = 640 + pick(6, 3) * 14;
+  const cy = 170 + pick(7, 6) * 26;
+  const r = 104 + pick(4, 9) * 10;
+  const from = pick(8, 12) * 45;
+  const arc = (deg: number, radius: number) => `${cx + radius * Math.cos((deg * Math.PI) / 180)} ${cy + radius * Math.sin((deg * Math.PI) / 180)}`;
+  const dx = cx - 150 + pick(3, 15) * 20;
+  const dy = cy + r - 20 - pick(3, 17) * 18;
+  return (
+    <svg className="wt-motif" viewBox={`0 0 ${SLIDE_WIDTH} ${SLIDE_HEIGHT}`} aria-hidden="true">
+      <circle className="disc" cx={cx} cy={cy} r={r * 0.62} fill={ink(1)} />
+      {[1, 1.38, 1.8, 2.3].map((f, k) => (
+        <circle key={k} className="ring" cx={cx} cy={cy} r={r * f} stroke={ink(k % 2 ? 1 : 0)} opacity={0.5 - k * 0.1} />
+      ))}
+      <path className="arc" d={`M ${arc(from, r * 0.86)} A ${r * 0.86} ${r * 0.86} 0 0 1 ${arc(from + 110, r * 0.86)}`} stroke={ink(0)} />
+      <g className="dots" fill={ink(2)}>
+        {Array.from({ length: 20 }, (_, k) => (
+          <circle key={k} cx={dx + (k % 5) * 13} cy={dy + Math.floor(k / 5) * 13} r={2.2} />
+        ))}
+      </g>
+    </svg>
   );
 }
 
@@ -435,12 +577,14 @@ function SlideView({ p, title, index, item }: { p: Playback; title: string; inde
   const state = (k: number) => [shown(k) && 'shown', p.started && k === item && 'now'].filter(Boolean).join(' ');
   const kicker = (
     <div className="wt-kicker">
-      {title} · {index + 1}
+      <span className="n">{String(index + 1).padStart(2, '0')}</span>
+      <span className="t">{title}</span>
     </div>
   );
   if (s.type === 'title')
     return (
       <div className="wt-slide wt-title">
+        <Motif title={s.title} />
         <div className="wt-bar" />
         <h1>{s.title}</h1>
         {s.subtitle && <p>{s.subtitle}</p>}
@@ -451,7 +595,7 @@ function SlideView({ p, title, index, item }: { p: Playback; title: string; inde
       <div className="wt-slide">
         {kicker}
         <h2>{s.title}</h2>
-        <ul className="wt-points">
+        <ul className={`wt-points${p.started && item >= 0 ? ' telling' : ''}`}>
           {s.points.map((x, k) => (
             <li key={k} className={state(k)}>
               {x}
@@ -466,15 +610,22 @@ function SlideView({ p, title, index, item }: { p: Playback; title: string; inde
         {kicker}
         <h2>{s.title}</h2>
         <div className="wt-flow">
-          {s.steps.map((x, k) => (
-            <div key={k} className="wt-step-wrap">
-              {k > 0 && <span className={`wt-arrow${shown(k) ? ' shown' : ''}`}>→</span>}
-              <div className={`wt-step ${state(k)}`}>
-                <b>{x.label}</b>
-                {x.note && <span>{x.note}</span>}
+          <div className="wt-flow-row">
+            {s.steps.map((x, k) => (
+              <div key={k} className="wt-step-wrap">
+                {k > 0 && (
+                  // the arrow into the box being told is drawn in the accent
+                  <svg className={`wt-arrow${shown(k) ? ' shown' : ''}${p.started && k === item ? ' lit' : ''}`} viewBox="0 0 32 16" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                    <path d="M5 8h21M20 3l6 5-6 5" />
+                  </svg>
+                )}
+                <div className={`wt-step ${state(k)}`}>
+                  <b>{x.label}</b>
+                  {x.note && <span>{x.note}</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -497,19 +648,21 @@ function CodeSlide({ p, kicker, index, item }: { p: Playback; kicker: React.Reac
     <div className="wt-slide wt-code-slide">
       {kicker}
       <h2>{s.title}</h2>
-      <div className="wt-file">
-        {s.file}:{s.lines[0]}–{s.lines[1]}
-      </div>
-      <div ref={box} className={`wt-code${focus ? ' focusing' : ''}`}>
-        {s.code.map((line, k) => {
-          const n = from + k;
-          return (
-            <div key={k} className={focus && n >= focus[0] && n <= focus[1] ? 'focus' : undefined}>
-              <i>{n}</i>
-              <code>{line}</code>
-            </div>
-          );
-        })}
+      <div className="wt-codebox">
+        <div className="wt-file">
+          {s.file}:{s.lines[0]}–{s.lines[1]}
+        </div>
+        <div ref={box} className={`wt-code${focus ? ' focusing' : ''}`}>
+          {s.code.map((line, k) => {
+            const n = from + k;
+            return (
+              <div key={k} className={focus && n >= focus[0] && n <= focus[1] ? 'focus' : undefined}>
+                <i>{n}</i>
+                <code>{line}</code>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {s.note && <div className="wt-note">{s.note}</div>}
     </div>

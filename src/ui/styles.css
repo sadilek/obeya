@@ -14,6 +14,11 @@
   src: url(./fonts/ibm-plex-sans-condensed-latin-600-normal.woff2) format("woff2"); }
 @font-face { font-family: "Plex Condensed"; font-style: normal; font-weight: 700; font-display: swap;
   src: url(./fonts/ibm-plex-sans-condensed-latin-700-normal.woff2) format("woff2"); }
+/* a walkthrough's slides and captions, in the faces of showntell's player (both OFL) */
+@font-face { font-family: Inter; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(./fonts/inter-latin-wght-normal.woff2) format("woff2"); }
+@font-face { font-family: "Bricolage Grotesque"; font-style: normal; font-weight: 200 800; font-display: swap;
+  src: url(./fonts/bricolage-grotesque-latin-wght-normal.woff2) format("woff2"); }
 /* card stock on a warm board; the states are inks (pen, stamp pad, pencil), not UI hues. --on-ink is what is
    written on a fill of ink (a badge, the play button); --error and --warn are for failures and cautions. */
 :root {
@@ -974,96 +979,148 @@ textarea.p-body:focus { border-color: var(--muted); }
 .answer-files figcaption a { color: inherit; }
 .answer-page iframe { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 2px; background: #fff; display: block; }
 .answer-image img { display: block; max-width: 100%; max-height: 480px; border: 1px solid var(--line); border-radius: 2px; background: #fff; }
-/* an answer told as a walkthrough, the voice's progress under it: each slide laid out at one size (walkthrough.tsx SLIDE_WIDTH,
-   its cqw of that width) and scaled to the player's width, so it looks the same however wide the player; src/server/slide-checks.ts
-   estimates how its slides lay out (sizes, widths of the fonts) and changes with it */
-.wt { margin: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--card); container-type: inline-size; }
+/* an answer told as a walkthrough, the voice's progress under it, in the look of showntell's player (Bricolage Grotesque
+   headings, Inter text, entries on panels, a segmented progress bar, captions to read along) in Obeya's inks: each slide
+   laid out at one size (walkthrough.tsx SLIDE_WIDTH, its cqw of that width) and scaled to the player's width, so it looks
+   the same however wide the player; src/server/slide-checks.ts estimates how its slides lay out (sizes, widths of the
+   fonts, measured by scripts/slide-font-widths.ts) and changes with it */
+.wt { --wt-deck: color-mix(in srgb, var(--bg) 55%, var(--card)); --wt-stage: var(--card); --wt-accent: var(--working);
+  --wt-soft: color-mix(in srgb, var(--working) 20%, transparent); --wt-faint: color-mix(in srgb, var(--working) 8%, transparent);
+  --wt-panel: color-mix(in srgb, var(--chip) 45%, var(--card)); --wt-node: var(--inPr);
+  --wt-sans: Inter, ui-sans-serif, system-ui, sans-serif; --wt-display: "Bricolage Grotesque", Inter, ui-sans-serif, sans-serif;
+  margin: 0; border-radius: 6px; overflow: hidden; background: var(--wt-deck); container-type: inline-size; font-family: var(--wt-sans); }
 .wt-loading { padding: 10px 12px; }
-.wt-stage { position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
+/* a slide's headings and paragraphs are styled under .wt .wt-slide, above the rules of the sheet and of messages for theirs */
+/* the slide stands on the deck as a sheet of its own (WT_INSET in walkthrough.tsx) */
+.wt-stage { position: relative; aspect-ratio: 16 / 10; margin: 10px 10px 0; overflow: hidden; border-radius: 8px; background: var(--wt-stage);
+  box-shadow: 0 6px 22px -8px rgba(40, 30, 10, .28), 0 0 0 1px color-mix(in srgb, var(--ink) 6%, transparent); }
 .wt-stage.zoomable { cursor: zoom-in; }
 .wt.zoomed .wt-stage.zoomable { cursor: zoom-out; }
-.wt-canvas { position: absolute; left: 0; top: 0; width: 800px; height: 500px; /* SLIDE_WIDTH, SLIDE_HEIGHT */ container-type: inline-size; transform: scale(var(--wt-scale, 1)); transform-origin: 0 0; }
+.wt-canvas { position: absolute; left: 0; top: 0; width: 800px; height: 500px; /* SLIDE_WIDTH, SLIDE_HEIGHT */ container-type: inline-size; transform: scale(var(--wt-scale, 1)); transform-origin: 0 0;
+  background: radial-gradient(70cqw 44cqw at 0 0, color-mix(in srgb, var(--working) 7%, transparent), transparent 62%),
+    radial-gradient(56cqw 36cqw at 100% 100%, color-mix(in srgb, var(--idea) 5%, transparent), transparent 62%),
+    radial-gradient(circle, color-mix(in srgb, var(--dot) 55%, transparent) .14cqw, transparent .18cqw) 0 0 / 4cqw 4cqw; }
 /* zoomed (zoom.ts): fixed over the greyed window; its place keeps its height */
 .wt.zoomed { position: fixed; z-index: 4; transform-origin: 0 0; box-shadow: var(--lift); }
 /* the sheet's grip stands above the sheet, and so above a walkthrough zoomed out of it */
 body:has(.wt.zoomed) #sheet-grip { visibility: hidden; }
-.wt-slide { position: absolute; inset: 0; padding: 5.5cqw 6cqw 7cqw; display: flex; flex-direction: column; animation: wt-in .45s; }
+.wt-slide { position: absolute; inset: 0; padding: 4.5cqw 6cqw 5cqw; display: flex; flex-direction: column; color: var(--ink); animation: wt-in .45s cubic-bezier(.2, .8, .2, 1); }
 @keyframes wt-in { from { opacity: 0; transform: translateY(8px); } }
-.wt-kicker { font: 500 2.2cqw var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.2cqw;
-  flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wt h1, .wt h2 { font-family: var(--serif); color: var(--ink); }
-.wt h2 { margin: 0 0 3cqw; font-size: 4.2cqw; line-height: 1.2; font-weight: 600; }
-.wt-title { justify-content: center; }
-.wt-title h1 { margin: 0 0 2cqw; font-size: 6cqw; line-height: 1.15; font-weight: 600; }
-.wt-title p { margin: 0; font-size: 3cqw; color: var(--muted); max-width: 80%; }
+/* the slide's number in the accent with a short rule after it, then the walkthrough's title */
+.wt-kicker { display: flex; align-items: center; gap: 1.4cqw; margin-bottom: 1.2cqw; font: 700 1.5cqw/1.3 var(--wt-sans); letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap; }
+.wt-kicker .n { flex: none; color: var(--wt-accent); font-variant-numeric: tabular-nums; }
+.wt-kicker .n::after { content: ""; display: inline-block; width: 3cqw; height: .25cqw; margin-left: 1.4cqw; vertical-align: .35cqw; background: var(--wt-accent); opacity: .6; }
+.wt-kicker .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wt .wt-slide h1, .wt .wt-slide h2 { font-family: var(--wt-display); color: var(--ink); text-wrap: balance; }
+.wt .wt-slide h2 { margin: 0 0 2.6cqw; font-size: 4.2cqw; line-height: 1.08; font-weight: 700; letter-spacing: -.025em; }
+/* the title slide: a rule in the accent, the title large, rings and dots in the inks on its right */
+.wt-title { justify-content: center; padding: 7cqw; }
+.wt .wt-title h1 { position: relative; margin: 0; max-width: 60cqw; font-size: 6.2cqw; line-height: 1.02; font-weight: 750; letter-spacing: -.035em; }
+.wt .wt-title p { position: relative; margin: 2.4cqw 0 0; max-width: 56cqw; font-size: 2.6cqw; line-height: 1.4; color: var(--muted); }
+.wt-bar { position: relative; width: 6cqw; height: .6cqw; background: var(--wt-accent); border-radius: .4cqw; margin-bottom: 3cqw; }
+.wt-motif { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.wt-motif .ring { fill: none; stroke-width: .25cqw; }
+.wt-motif .disc { opacity: .14; }
+.wt-motif .arc { fill: none; stroke-width: 2.4cqw; stroke-linecap: round; opacity: .85; }
+.wt-motif .dots circle { opacity: .5; }
 /* a walkthrough asked for, before its first slide: the shape of a title slide, shimmering */
-.wt-pending p { margin-top: 2.4cqw; }
+.wt .wt-pending p { margin-top: 2.4cqw; }
 .wt-ghost { display: block; height: 4.6cqw; width: 46%; margin-bottom: 2cqw; border-radius: .8cqw;
   background: linear-gradient(90deg, var(--chip) 25%, color-mix(in srgb, var(--chip) 40%, var(--card)) 50%, var(--chip) 75%) 0 0 / 300% 100%; animation: wt-shimmer 1.6s linear infinite; }
-.wt-ghost.wide { width: 72%; height: 6cqw; }
+.wt-ghost.wide { width: 60%; height: 6cqw; }
 @keyframes wt-shimmer { to { background-position: -150% 0; } }
-@media (prefers-reduced-motion: reduce) { .wt-ghost { animation: none; } .wt-step, .wt-arrow { transform: none !important; } }
-.wt-bar { width: 9cqw; height: .8cqw; background: var(--working); border-radius: 1cqw; margin-bottom: 3cqw; }
-.wt-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2.2cqw; }
-.wt-points li { font-size: 3.1cqw; line-height: 1.35; padding-left: 4cqw; position: relative; opacity: .18; transition: opacity .4s, color .4s; }
-.wt-points li::before { content: ""; position: absolute; left: .6cqw; top: 1.4cqw; width: 1.4cqw; height: 1.4cqw; border-radius: 50%; background: var(--working); }
-.wt-points li.shown { opacity: 1; }
-.wt-points li.now { color: var(--working); }
+@media (prefers-reduced-motion: reduce) { .wt-ghost { animation: none; } .wt-step, .wt-arrow, .wt-points li { transform: none !important; } }
+/* points: each on a panel with a dot in an ink of its own; the one being told lifts in the accent, the others fade, those still to come barely show */
+.wt-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1.2cqw; }
+.wt-points li { display: flex; gap: 1.6cqw; align-items: flex-start; padding: 1.2cqw 2cqw; border: .25cqw solid var(--line); border-radius: 1.4cqw; background: var(--wt-panel);
+  font-size: 2.6cqw; line-height: 1.3; opacity: .14; transform: translateY(1cqw);
+  transition: opacity .4s, transform .45s cubic-bezier(.2, .8, .2, 1), border-color .3s, box-shadow .3s; }
+.wt-points li::before { content: ""; flex: none; width: 1.1cqw; height: 1.1cqw; margin-top: 1.14cqw; border-radius: 50%; background: var(--c, var(--wt-accent)); }
+.wt-points li.shown { opacity: 1; transform: none; }
+.wt-points.telling li.shown:not(.now) { opacity: .5; }
+.wt-points li.now { border-color: var(--wt-accent); box-shadow: 0 0 0 .6cqw var(--wt-soft); transform: translateY(-.25cqw); }
+.wt-points li:nth-child(6n+1) { --c: var(--working); }
+.wt-points li:nth-child(6n+2) { --c: var(--inPr); }
+.wt-points li:nth-child(6n+3) { --c: var(--approved); }
+.wt-points li:nth-child(6n+4) { --c: var(--idea); }
+.wt-points li:nth-child(6n+5) { --c: var(--proposal); }
+.wt-points li:nth-child(6n+6) { --c: var(--waiting); }
+/* a flow: boxes in one ink joined by drawn arrows, building up as the narration names them */
 .wt-flow { flex: 1; display: flex; align-items: center; }
-.wt-step-wrap { flex: 1; min-width: 0; display: flex; align-items: center; }
-.wt-step { flex: 1; min-width: 0; border: .3cqw solid var(--line); border-radius: 1.4cqw; background: var(--panel); padding: 2.2cqw 1.6cqw; text-align: center;
+/* the boxes of a row as high as its highest */
+.wt-flow-row { flex: 1; display: flex; }
+.wt-step-wrap { flex: 1; min-width: 0; display: flex; }
+.wt-step { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; border: .25cqw solid color-mix(in srgb, var(--wt-node) 60%, transparent); border-radius: 1.4cqw; padding: 2cqw 1.4cqw; text-align: center;
+  background: color-mix(in srgb, var(--wt-node) 11%, var(--wt-stage));
   opacity: 0; transform: translateY(2cqw) scale(.94); transition: opacity .45s, border-color .4s, box-shadow .4s, transform .45s cubic-bezier(.2, .9, .3, 1.2); }
-.wt-step b { display: block; font-size: 2.6cqw; line-height: 1.25; }
-.wt-step span { display: block; font-size: 1.9cqw; color: var(--muted); margin-top: .8cqw; line-height: 1.3; }
+.wt-step b { display: block; font-size: 2.4cqw; line-height: 1.25; font-weight: 600; }
+.wt-step span { display: block; font-size: 1.8cqw; color: var(--muted); margin-top: .7cqw; line-height: 1.3; }
 .wt-step.shown { opacity: 1; transform: none; }
-.wt-step.now { border-color: var(--working); box-shadow: 0 0 0 .6cqw color-mix(in srgb, var(--working) 18%, transparent); transform: translateY(-.6cqw); }
-.wt-arrow { flex: 0 0 4cqw; text-align: center; font-size: 3.4cqw; color: var(--muted); opacity: 0; transform: translateX(-1.4cqw); transition: opacity .35s, transform .35s; }
+.wt-step.now { border-color: var(--wt-accent); box-shadow: 0 0 0 .6cqw var(--wt-soft), 0 0 2.4cqw var(--wt-soft); transform: translateY(-.6cqw); }
+.wt-arrow { flex: 0 0 4cqw; height: 2cqw; align-self: center; opacity: 0; transform: translateX(-1.4cqw); transition: opacity .35s, transform .35s; }
+.wt-arrow path { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: stroke .3s; }
 .wt-arrow.shown { opacity: 1; transform: none; }
-.wt-code-slide h2 { margin-bottom: 1.4cqw; }
-.wt-file { font: 1.9cqw/1.3 var(--mono); color: var(--muted); margin-bottom: 1.2cqw; }
-.wt-code { flex: 1; min-height: 0; overflow: hidden; background: #1d2027; border-radius: 1.2cqw; padding: 1.4cqw 0; font: 1.75cqw/1.55 var(--mono); color: #d7dae0; }
-.wt-code > div { display: flex; padding-right: 2cqw; transition: opacity .4s, background .4s; }
-.wt-code i { flex: 0 0 6cqw; text-align: right; padding-right: 2cqw; color: #6b7280; font-style: normal; -webkit-user-select: none; user-select: none; }
+.wt-arrow.lit path { stroke: var(--wt-accent); }
+/* code: a box with the file in its head, the range being told marked in the accent */
+.wt .wt-code-slide h2 { margin-bottom: 1.6cqw; }
+.wt-codebox { flex: 1; min-height: 0; display: flex; flex-direction: column; border: .15cqw solid var(--line); border-radius: 1.4cqw; overflow: hidden;
+  background: color-mix(in srgb, var(--ink) 4%, var(--wt-stage)); box-shadow: 0 1.6cqw 4cqw -1.6cqw rgba(30, 20, 5, .3); }
+.wt-file { flex: none; padding: .9cqw 1.8cqw; border-bottom: .15cqw solid var(--line); font: 1.6cqw/1.3 var(--mono); color: var(--muted); background: color-mix(in srgb, var(--ink) 6%, var(--wt-stage)); }
+.wt-code { position: relative; flex: 1; min-height: 0; overflow: hidden; padding: 1.2cqw 0; font: 1.75cqw/1.55 var(--mono); color: var(--ink); }
+.wt-code > div { display: flex; padding-right: 2cqw; transition: opacity .35s, background .3s; }
+.wt-code i { flex: 0 0 6cqw; text-align: right; padding-right: 2cqw; color: var(--muted); font-style: normal; -webkit-user-select: none; user-select: none; }
 .wt-code code { white-space: pre; font: inherit; background: none; padding: 0; border-radius: 0; }
 .wt-code.focusing > div { opacity: .38; }
-.wt-code.focusing > div.focus { opacity: 1; background: rgba(90, 140, 255, .16); box-shadow: inset .4cqw 0 0 #6d9bff; }
+.wt-code.focusing > div.focus { opacity: 1; background: var(--wt-faint); box-shadow: inset .4cqw 0 0 var(--wt-accent); }
 .wt-note { margin-top: 1.4cqw; font-size: 2.2cqw; color: var(--muted); }
-/* the sentence being spoken, under the slide rather than over it, so it hides nothing of it */
-.wt-caption { min-height: calc(2 * 1.45em + 12px); padding: 6px 12px; border-top: 1px solid var(--line); text-align: center; font-size: max(12.5px, 2.1cqw); line-height: 1.45; color: var(--ink); }
-.wt-caption span span { border-radius: 3px; transition: color .15s, background-color .15s, box-shadow .15s; }
+/* the sentence being spoken, under the slide rather than over it, so it hides nothing of it, large enough to read along:
+   the words said in full colour, the one being said marked, those still to come faint (WT_CAPTION in walkthrough.tsx) */
+.wt-caption { min-height: calc(2 * 1.45em + 14px); box-sizing: border-box; padding: 8px 16px 6px; display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: clamp(15px, 2.3cqw, 30px); line-height: 1.45; color: var(--ink); text-wrap: balance; }
+.wt-caption span span { border-radius: 4px; transition: color .12s, background-color .12s, box-shadow .12s; }
 .wt-caption.pointing span span { color: color-mix(in srgb, var(--ink) 45%, transparent); }
 .wt-caption.pointing span span.said { color: var(--ink); }
-.wt-caption.pointing span span.now { color: var(--ink); background: color-mix(in srgb, var(--working) 22%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--working) 22%, transparent); }
-.wt-start { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: 0 6cqw 6cqw; background: none; border: 0; cursor: pointer; font: inherit; }
-.wt-start span { display: flex; align-items: center; gap: 1.6cqw; background: var(--working); color: #fff; border-radius: 99px; padding: 1.8cqw 3.4cqw 1.8cqw 2.8cqw;
-  font: 600 max(12px, 2.7cqw) var(--cond); box-shadow: 0 1cqw 3cqw color-mix(in srgb, var(--working) 35%, transparent); }
-.wt-start span::before { content: ""; border-left: 2.4cqw solid #fff; border-top: 1.5cqw solid transparent; border-bottom: 1.5cqw solid transparent; }
-.wt-status { position: absolute; top: 2cqw; right: 2.4cqw; font-size: max(11px, 1.9cqw); color: var(--muted); background: var(--panel); border: 1px solid var(--line);
-  border-radius: 99px; padding: .4cqw 1.4cqw; display: flex; align-items: center; gap: 1cqw; }
-.wt-status:not(.error)::before { content: ""; width: 1.4cqw; height: 1.4cqw; border-radius: 50%; border: .3cqw solid var(--line); border-top-color: var(--working); animation: spin .8s linear infinite; }
+.wt-caption.pointing span span.now { color: var(--ink); background: var(--wt-soft); box-shadow: 0 0 0 2px var(--wt-soft); }
+.wt-start { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 5cqw 5cqw; background: none; border: 0; cursor: pointer; font: inherit; }
+.wt-start span { display: flex; align-items: center; gap: 1.6cqw; background: var(--wt-accent); color: var(--on-ink); border-radius: 99px; padding: 1.8cqw 3.4cqw 1.8cqw 2.8cqw;
+  font: 600 max(12px, 2.5cqw) var(--wt-sans); box-shadow: 0 1cqw 4cqw color-mix(in srgb, var(--wt-accent) 40%, transparent); transition: transform .18s cubic-bezier(.2, .8, .2, 1); }
+.wt-start:hover span { transform: scale(1.04); }
+.wt-start span::before { content: ""; border-left: 2.2cqw solid currentColor; border-top: 1.4cqw solid transparent; border-bottom: 1.4cqw solid transparent; }
+.wt-status { position: absolute; top: 2cqw; right: 2.4cqw; font-size: max(11px, 1.8cqw); color: var(--muted); background: color-mix(in srgb, var(--wt-stage) 94%, transparent);
+  border: 1px solid var(--line); border-radius: 99px; padding: .5cqw 1.6cqw; display: flex; align-items: center; gap: 1cqw; box-shadow: 0 .6cqw 2cqw -1cqw rgba(30, 20, 5, .3); }
+.wt-status:not(.error)::before { content: ""; width: 1.4cqw; height: 1.4cqw; border-radius: 50%; border: .3cqw solid var(--line); border-top-color: var(--wt-accent); animation: spin .8s linear infinite; }
 .wt-status.error { color: var(--error); }
-.wt-controls { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--line); }
-.wt-controls .btn { min-width: 28px; height: 26px; padding: 0 7px; font: 500 12px var(--cond); color: var(--ink); background: var(--card); border: 1px solid var(--line); }
-.wt-controls .btn:disabled { opacity: .4; cursor: default; }
-.wt-controls .btn.on { color: var(--working); border-color: color-mix(in srgb, var(--working) 50%, transparent); }
-.wt-segments { flex: 1; display: flex; gap: 4px; align-items: center; min-width: 40px; }
-.wt-seg { flex: 1; height: 6px; padding: 0; border: 0; border-radius: 3px; background: var(--chip); position: relative; overflow: hidden; cursor: pointer; }
-.wt-seg.voiced { background: color-mix(in srgb, var(--working) 22%, var(--chip)); }
-.wt-seg i { position: absolute; inset: 0 auto 0 0; background: var(--working); }
-.wt-count { font-size: 11.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.wt-controls .wt-zoom { position: relative; display: grid; place-items: center; }
-.wt-zoom svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
-/* the key, shown above the magnifier while it is hovered, until the owner first zoomed with it */
-.wt-zoom .zoom-hint { position: absolute; right: 0; bottom: calc(100% + 6px); white-space: nowrap; padding: 5px 9px; border-radius: 3px;
-  background: rgba(0, 0, 0, .75); color: #fff; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 1; }
-.wt-zoom:hover .zoom-hint, .wt-zoom:focus-visible .zoom-hint { opacity: 1; }
-.wt-zoom .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
-/* in a narrow sheet the slide count gives way to the segments */
+/* the controls: plain icons, the progress bar in a segment per slide, CC lit in the accent while on */
+.wt-controls { display: flex; align-items: center; gap: 4px; padding: 2px 8px 6px; }
+.wt-controls .btn { flex: none; min-width: 30px; height: 30px; padding: 0 6px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--ink);
+  font: 800 11.5px var(--wt-sans); letter-spacing: .04em; box-shadow: none; }
+.wt-controls .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.wt-controls .btn:disabled { opacity: .35; cursor: default; }
+.wt-controls .btn svg { width: 16px; height: 16px; fill: currentColor; }
+.wt-controls .wt-cc { color: var(--muted); }
+.wt-controls .wt-cc.on { color: var(--wt-accent); }
+.wt-segments { flex: 1; display: flex; gap: 3px; align-items: center; min-width: 40px; margin: 0 6px; }
+.wt-seg { min-width: 6px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; }
+.wt-seg > span { position: relative; flex: 1; height: 6px; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--ink) 13%, transparent); transition: height .15s; }
+.wt-segments:hover .wt-seg > span { height: 9px; }
+/* a slide whose first sentence is not voiced yet */
+.wt-seg.pending > span { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 13%, transparent) 0 5px, color-mix(in srgb, var(--ink) 5%, transparent) 5px 10px); }
+.wt-seg i { position: absolute; inset: 0 auto 0 0; background: var(--wt-accent); }
+.wt-count { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; margin-right: 2px; }
+.wt-controls .wt-key { position: relative; }
+.wt-zoom svg { width: 15px; height: 15px; fill: none !important; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+/* the key, shown above its button while it is hovered, until the owner first used the key */
+.wt-key .zoom-hint { position: absolute; right: 0; bottom: calc(100% + 6px); white-space: nowrap; padding: 5px 9px; border-radius: 3px; letter-spacing: 0;
+  background: rgba(0, 0, 0, .75); color: #fff; font: 400 13px var(--cond); opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 1; }
+.wt-key:hover .zoom-hint, .wt-key:focus-visible .zoom-hint { opacity: 1; }
+.wt-key .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
+/* in a narrow sheet the slide count gives way to the segments, which get a row of their own */
 @container (max-width: 520px) {
-  .wt-controls { flex-wrap: wrap; }
-  .wt-segments { flex-basis: 100%; order: -1; padding: 2px 0 4px; }
+  .wt-controls { flex-wrap: wrap; padding-top: 0; }
+  .wt-segments { flex-basis: 100%; order: -1; margin: 0 4px; }
   .wt-count { display: none; }
-  .wt-controls .btn[aria-pressed] { margin-left: auto; }
+  .wt-controls .wt-cc { margin-left: auto; }
 }
 
 /* a card's result files beside its conversation: the change list above the view picks the file, its line marked */

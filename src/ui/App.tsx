@@ -46,6 +46,7 @@ import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from
 import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
+import { captionKey } from './walkthrough';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -1792,6 +1793,8 @@ function Canvas({
       }
       return;
     }
+    // C over a walkthrough (zoomed, playing or under the pointer) switches its captions, not to the conversation with Obeya
+    if (captionKey(e)) return;
     // hold Space anywhere but in a text field to speak; the demo pauses while the owner talks, and a tap plays or pauses it
     if (e.code === 'Space' && !typing) {
       e.preventDefault();

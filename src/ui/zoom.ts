@@ -121,13 +121,17 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
     if (!cur) return screen.current.getAnimations().forEach((a) => a.cancel());
     screen.current.animate([{ transform: onto(cur.from, cur.to) }, { transform: 'none' }], { duration: ZOOM_MS, easing: ZOOM_EASE });
   }, [zoomed]);
+  /** Where the zoomed one stands anew, once the window or what stands in it (a caption) changed. */
+  const refit = () => {
+    const cur = boxRef.current;
+    if (cur && !cur.closing) setBox({ ...cur, to: opts.current.box(innerWidth, innerHeight) });
+  };
+  const refitRef = useRef(refit);
+  refitRef.current = refit;
   // a resized window resizes the zoomed one; a wheel over it does not scroll what is behind
   useEffect(() => {
     if (!zoomed) return;
-    const resize = () => {
-      const cur = boxRef.current;
-      if (cur && !cur.closing) setBox({ ...cur, to: opts.current.box(innerWidth, innerHeight) });
-    };
+    const resize = () => refitRef.current();
     const still = (e: Event) => e.preventDefault();
     const els = [screen.current, backdrop.current];
     addEventListener('resize', resize);
@@ -137,5 +141,5 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
       els.forEach((el) => el?.removeEventListener('wheel', still));
     };
   }, [zoomed]);
-  return { player, screen, backdrop, box, toggle, keyKnown };
+  return { player, screen, backdrop, box, toggle, refit, keyKnown };
 }

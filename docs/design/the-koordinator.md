@@ -355,7 +355,7 @@ or a range outside them, a slide that does not fit the player, and a narration t
 slide out. A slide has one layout, the same in every view: the player scales it to its width, so
 it shows whole and only smaller in the narrow sheet, and larger zoomed. Whether a slide fits is
 judged for that layout: Obeya lays the slide's text out in the slide's fonts, from widths measured
-per character, and refuses a slide whose items run past its bottom or that has a word wider than
+per character in Chrome (measured anew whenever the slides' faces, weights or spacing change), and refuses a slide whose items run past its bottom or that has a word wider than
 its line or its flow box, saying how many lines it is over or which word and how many characters
 that box holds. A narration only reads its slide out when about a third or fewer of its longer
 words are not on the slide (forms of one word, "Karte" and "Karten", count as one). Both are worked
@@ -395,11 +395,27 @@ sentence the voice cannot speak ends the voicing of its walkthrough, and the pla
 sentences still waiting when the server stopped are not voiced afterwards, and the player says that
 the voicing stopped with the restart.
 
+Slides and player look like showntell's (owner, 2026-11-06), in Obeya's inks for light and dark:
+the slide stands as a sheet on the player, headings in Bricolage Grotesque, set large and tight,
+the rest in Inter (both SIL OFL, self-hosted); above a slide's title its number in the accent with a
+short rule, then the walkthrough's title; a title slide's title beside rings, an arc and dots placed
+and coloured by the title; points each on a panel with a dot in an ink of its own; a flow's boxes
+in one ink, joined by drawn arrows; code in a box with its file in the head. The accent is Obeya's
+working blue. The controls are plain icons beside a progress bar of one segment per slide, each as
+long as its slide plays, striped while its slide is not voiced yet.
+
 The player plays slides and sound in step: the items of a slide light up as the narration reaches
 them and a flow's boxes build up one by one, each with its arrow (before the first play, a slide
-shows them all); a code slide scrolls its highlighted range into view; and the sentence being
-spoken stands under the slide as a caption, which "CC" switches on and off, with a pointer on the
-word being spoken, the words before it in full colour and those still to come faint. The first
+shows them all); the item being told lifts in the accent, those told before it fade, those still to
+come barely show, and the arrow into the box being told is drawn in the accent; a code slide
+scrolls its highlighted range into view; and the sentence being spoken stands under the slide as a
+caption large enough to read along (15 px in the narrow sheet, growing with the player), with a
+pointer on the word being spoken, the words before it in full colour and those still to come faint.
+A long sentence shows two lines at a time, the part with the word being spoken, so the player does
+not grow and shrink with each sentence. "CC" switches captions on and off, and so does C where a
+walkthrough is what the owner is at (one zoomed, playing or under the pointer; elsewhere C opens the
+conversation with Obeya, as before); the choice holds for every walkthrough in that browser until
+switched again. Hovering "CC" shows the key until it has been used once. The first
 item shows with its slide, so a slide never stands empty; after it, with a narration in parts an
 item comes with its part; with one text, at the word that first names it
 (the same word or its stem, among its words of four letters or more that the other items do not

@@ -8,26 +8,36 @@ import { SLIDE_HEIGHT, SLIDE_WIDTH, type SlideContent } from '../core/walkthroug
 // The slide's layout at its one size (src/ui/styles.css, `.wt-*`, in cqw of SLIDE_WIDTH), in px.
 const CQ = SLIDE_WIDTH / 100;
 const CONTENT_WIDTH = SLIDE_WIDTH - 12 * CQ;
-const CONTENT_HEIGHT = SLIDE_HEIGHT - 12.5 * CQ;
-const KICKER = 2.2 * CQ * 1.3 + 1.2 * CQ;
-const H2 = { size: 4.2 * CQ, line: 4.2 * CQ * 1.2, after: 3 * CQ };
-const POINT = { size: 3.1 * CQ, line: 3.1 * CQ * 1.35, indent: 4 * CQ, gap: 2.2 * CQ };
-const STEP = { label: 2.6 * CQ, labelLine: 2.6 * CQ * 1.25, note: 1.9 * CQ, noteLine: 1.9 * CQ * 1.3, noteGap: 0.8 * CQ, padX: 1.6 * CQ, padY: 2.2 * CQ, border: 0.3 * CQ, arrow: 4 * CQ, spill: 0.6 * 1.6 * CQ };
-const TITLE = { bar: 3.8 * CQ, size: 6 * CQ, line: 6 * CQ * 1.15, after: 2 * CQ, sub: 3 * CQ, subLine: 3 * CQ * 1.45, subWidth: 0.8 * CONTENT_WIDTH };
+const CONTENT_HEIGHT = SLIDE_HEIGHT - 9.5 * CQ;
+const KICKER = 1.5 * CQ * 1.3 + 1.2 * CQ;
+const H2 = { size: 4.2 * CQ, line: 4.2 * CQ * 1.08, after: 2.6 * CQ };
+/** A point stands on a panel: its padding and border around it, a dot and a gap before its text. */
+const POINT = { size: 2.6 * CQ, line: 2.6 * CQ * 1.3, padX: 2 * CQ, padY: 1.2 * CQ, border: 0.25 * CQ, dot: 1.1 * CQ + 1.6 * CQ, gap: 1.2 * CQ };
+const STEP = { label: 2.4 * CQ, labelLine: 2.4 * CQ * 1.25, note: 1.8 * CQ, noteLine: 1.8 * CQ * 1.3, noteGap: 0.7 * CQ, padX: 1.4 * CQ, padY: 2 * CQ, border: 0.25 * CQ, arrow: 4 * CQ, spill: 0.6 * 1.4 * CQ };
+/** A title slide has a padding of its own, its title and subtitle narrower than the slide (the motif stands on its right). */
+const TITLE = { pad: 7 * CQ, bar: 0.6 * CQ + 3 * CQ, size: 6.2 * CQ, line: 6.2 * CQ * 1.02, width: 60 * CQ, sub: 2.6 * CQ, subLine: 2.6 * CQ * 1.4, subGap: 2.4 * CQ, subWidth: 56 * CQ };
 
 /**
- * Advance widths in hundredths of an em, measured in Chromium at the sizes a slide sets them in:
- * Plex Condensed regular (points, notes) and bold (steps), Newsreader semibold for slide titles and
- * title slides, whose optical size makes it narrower the larger it is.
+ * The faces a slide is set in, as styles.css sets them: Inter regular (points, notes, subtitles)
+ * and semibold (steps), Bricolage Grotesque bold for slide titles and heavier for title slides,
+ * both drawn tighter. scripts/slide-font-widths.ts measures them.
  */
-const CHARS = 'abcdefghijklmnopqrstuvwxyzäöüßABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ0123456789 .,:;-–—!?()/„“”"\'’→#&+=%*<>[]{}@_';
-const WIDTHS = {
-  regular: '48,52,45,52,50,29,48,51,23,23,48,24,79,51,50,52,52,33,43,31,51,45,70,46,45,42,48,50,51,58,59,59,55,61,53,51,63,64,36,46,57,45,73,64,64,55,64,58,52,54,61,55,81,56,54,52,59,64,61,54,54,54,54,54,54,54,54,54,54,21,25,25,26,26,36,53,70,26,43,30,30,23,43,43,43,38,22,25,100,64,63,54,54,84,41,54,54,29,29,31,31,80,51',
-  bold: '52,55,47,55,51,34,52,54,26,27,52,27,81,54,51,55,55,37,45,34,54,49,76,50,50,47,52,51,54,63,63,60,58,63,55,53,65,65,40,50,63,48,74,65,64,60,64,61,55,54,63,60,89,61,58,55,63,64,63,54,54,54,54,54,54,54,54,54,54,21,28,28,30,30,36,53,70,29,45,30,30,24,50,50,50,45,24,28,100,56,65,54,54,88,56,54,54,30,30,34,34,81,50',
-  heading: '48,56,45,57,47,37,51,57,29,26,56,28,85,58,53,57,56,42,39,37,56,54,77,52,54,45,48,53,56,64,73,67,70,76,66,61,76,82,36,41,76,62,101,76,78,63,78,69,57,69,77,71,101,74,71,64,73,78,77,60,60,60,60,60,60,60,60,60,60,21,24,24,26,27,34,49,65,27,46,25,25,25,44,44,44,37,20,24,99,60,73,52,52,81,41,52,52,30,30,30,30,88,40',
-  display: '50,58,46,59,48,38,52,59,29,27,58,29,88,60,55,59,57,43,41,38,58,56,79,54,55,47,50,55,58,65,75,68,71,77,68,62,77,84,37,42,78,63,103,77,79,65,79,71,58,72,78,73,104,75,72,66,75,79,78,62,62,62,62,62,62,62,62,62,62,21,24,24,27,27,33,48,65,27,47,25,25,24,44,44,44,38,20,24,100,62,75,54,54,81,40,54,54,30,30,29,29,89,41',
+export const FACES = {
+  regular: { family: 'Inter', weight: 400, tracking: 0 },
+  bold: { family: 'Inter', weight: 600, tracking: 0 },
+  heading: { family: 'Bricolage Grotesque', weight: 700, tracking: -0.025 },
+  display: { family: 'Bricolage Grotesque', weight: 750, tracking: -0.035 },
 };
-type Face = keyof typeof WIDTHS;
+type Face = keyof typeof FACES;
+
+/** The characters measured; the advance widths of each face in hundredths of an em, letter-spacing included, in this order. */
+export const CHARS = 'abcdefghijklmnopqrstuvwxyzäöüßABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ0123456789 .,:;-–—!?()/„“”"\'’→#&+=%*<>[]{}@_';
+const WIDTHS = {
+  regular: '56,61,57,61,58,37,61,59,24,24,55,24,88,59,60,61,61,38,53,33,59,56,82,55,56,55,56,60,59,62,69,65,73,72,60,59,75,74,27,57,67,57,90,75,76,64,76,64,64,65,74,69,99,68,68,63,69,76,74,63,41,61,62,65,59,62,57,62,62,28,29,29,29,30,46,50,100,29,51,36,36,36,42,44,44,47,30,26,100,63,64,66,66,98,50,66,66,36,36,43,43,97,46',
+  bold: '57,62,58,62,59,39,63,61,26,26,57,26,90,61,61,62,62,40,55,35,61,59,84,57,59,57,57,61,61,64,73,66,74,72,61,59,75,75,28,58,70,57,92,76,77,65,77,65,65,66,74,73,102,72,71,65,73,77,74,66,42,62,64,67,61,64,58,64,64,25,32,32,32,33,47,50,100,32,54,37,37,38,48,51,50,52,33,29,100,64,66,67,67,100,54,67,67,37,37,45,45,100,47',
+  heading: '56,61,54,61,56,37,58,61,25,26,57,25,92,61,58,61,61,41,52,37,60,55,84,54,58,50,56,58,60,66,67,66,66,68,60,57,70,70,27,35,66,48,91,75,70,62,70,65,63,55,70,65,96,67,62,55,67,70,70,64,32,58,58,60,58,63,48,63,63,21,21,17,22,20,33,51,78,27,40,30,29,34,37,37,37,33,15,18,98,60,73,50,50,95,41,50,50,30,29,32,32,96,53',
+  display: '56,61,53,61,55,37,57,60,25,25,56,24,92,60,58,61,61,41,51,37,59,54,84,54,57,50,56,58,59,65,67,65,65,67,59,56,69,69,26,34,66,47,91,75,69,61,69,65,62,54,70,64,96,67,62,54,67,69,70,63,32,57,57,60,58,62,48,62,62,19,21,17,22,19,32,51,78,26,39,29,29,33,37,38,38,34,15,18,97,59,72,50,50,95,41,50,50,29,29,31,31,96,51',
+};
 const EM = Object.fromEntries(
   Object.entries(WIDTHS).map(([face, list]) => {
     const w = list.split(',').map(Number);
@@ -37,6 +47,12 @@ const EM = Object.fromEntries(
 
 /** How wide `text` is set in `face` at `size` px; a character not measured counts as a wide one. */
 const widthOf = (text: string, face: Face, size: number) => [...text].reduce((w, c) => w + (EM[face].get(c) ?? 0.75), 0) * size;
+
+/** About how many characters of `face` at `size` px a line `width` px wide holds, by the mean width of its lower-case letters. */
+export function charsIn(width: number, face: Face, size: number) {
+  const letters = [...'abcdefghijklmnopqrstuvwxyz'];
+  return Math.floor(width / ((letters.reduce((w, c) => w + EM[face].get(c)!, 0) / letters.length) * size));
+}
 
 /**
  * `text` broken into lines `width` px wide as the browser breaks it, at spaces and after hyphens
@@ -72,16 +88,17 @@ export function tooFull(s: SlideContent): string | undefined {
   const over = (height: number, room: number, line: number, fix: string) =>
     height > room + 0.5 ? `the slide is too full: it runs about ${Math.ceil((height - room) / line)} line${Math.ceil((height - room) / line) === 1 ? '' : 's'} past its bottom. ${fix}` : undefined;
   if (s.type === 'title') {
-    const title = lay(s.title, 'display', TITLE.size, CONTENT_WIDTH);
+    const title = lay(s.title, 'display', TITLE.size, TITLE.width);
+    if (title.tooWide) return `"${title.tooWide}" in the title is wider than the title's line: use a shorter word.`;
     const sub = s.subtitle ? lay(s.subtitle, 'regular', TITLE.sub, TITLE.subWidth).lines : 0;
-    const height = TITLE.bar + title.lines * TITLE.line + TITLE.after + sub * TITLE.subLine;
-    return over(height, CONTENT_HEIGHT, TITLE.line, 'Shorten its title or subtitle.');
+    const height = TITLE.bar + title.lines * TITLE.line + (sub ? TITLE.subGap + sub * TITLE.subLine : 0);
+    return over(height, SLIDE_HEIGHT - 2 * TITLE.pad, TITLE.line, 'Shorten its title or subtitle.');
   }
   if (s.type === 'points') {
-    const laid = s.points.map((p) => lay(p, 'regular', POINT.size, CONTENT_WIDTH - POINT.indent));
+    const laid = s.points.map((p) => lay(p, 'regular', POINT.size, CONTENT_WIDTH - 2 * (POINT.padX + POINT.border) - POINT.dot));
     const wide = laid.findIndex((l) => l.tooWide);
     if (wide >= 0) return `"${laid[wide]!.tooWide}" in point ${wide + 1} is wider than the slide: break it up.`;
-    const height = header(s.title) + laid.reduce((h, l) => h + l.lines * POINT.line, 0) + (s.points.length - 1) * POINT.gap;
+    const height = header(s.title) + laid.reduce((h, l) => h + l.lines * POINT.line + 2 * (POINT.padY + POINT.border), 0) + (s.points.length - 1) * POINT.gap;
     return over(height, CONTENT_HEIGHT, POINT.line, 'Shorten its points (the narration can say the rest), or spread them over two slides.');
   }
   if (s.type === 'flow') {
@@ -94,7 +111,7 @@ export function tooFull(s: SlideContent): string | undefined {
       const note = step.note ? lay(step.note, 'regular', STEP.note, inner, STEP.spill) : undefined;
       const wide = label.tooWide ?? note?.tooWide;
       if (wide)
-        return `"${wide}" in step ${k + 1} is wider than its box: a flow of ${n} steps gives each box room for about ${Math.floor((inner + STEP.spill) / (0.5 * STEP.label))} characters: use shorter words${n > 3 ? ' or fewer steps' : ''}, and let the narration say the rest.`;
+        return `"${wide}" in step ${k + 1} is wider than its box: a flow of ${n} steps gives each box room for about ${charsIn(inner + STEP.spill, 'bold', STEP.label)} characters: use shorter words${n > 3 ? ' or fewer steps' : ''}, and let the narration say the rest.`;
       tallest = Math.max(tallest, 2 * (STEP.padY + STEP.border) + label.lines * STEP.labelLine + (note ? STEP.noteGap + note.lines * STEP.noteLine : 0));
     }
     return over(header(s.title) + tallest, CONTENT_HEIGHT, STEP.labelLine, `Shorten the labels and notes of its steps${n > 3 ? ', or use fewer steps' : ''}.`);

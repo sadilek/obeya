@@ -86,8 +86,8 @@ describe('a walkthrough handed over slide by slide', () => {
     const w = told();
     hand(w, TITLE);
     const long = 'The approved card is rebased onto main and its checks run before the merge lands';
-    expect(hand(w, { type: 'points', title: 'Three steps', points: [long, long, long, long], narration: 'Each step waits for the one before it, so a failing check stops the landing.' })).toBe(
-      'Not shown: the slide is too full: it runs about 1 line past its bottom. Shorten its points (the narration can say the rest), or spread them over two slides.',
+    expect(hand(w, { type: 'points', title: 'Three steps', points: [long, long, long, long, 'Then it lands'], narration: 'Each step waits for the one before it, so a failing check stops the landing.' })).toBe(
+      'Not shown: the slide is too full: it runs about 3 lines past its bottom. Shorten its points (the narration can say the rest), or spread them over two slides.',
     );
     const steps = ['Freigabe', 'Zusammenführung', 'Prüfung', 'Fertig'];
     expect(hand(w, { type: 'flow', title: 'Der Weg', steps, narration: 'Nichts davon braucht dich, bis die Karte auf main ist.' })).toBe(

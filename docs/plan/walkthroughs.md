@@ -41,10 +41,14 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
   and a narration that only reads its slide out, saying why. Whether a
   code slide's lines say what it claims stays unchecked (owner, 2026-11-07: only the two cheap
   checks).
+- *The look* (design: The Koordinator → Walkthroughs; W6): slides and player follow showntell's,
+  in Obeya's inks for light and dark: Bricolage Grotesque and Inter, numbered kickers, a title
+  slide's motif, points on panels, flow boxes with drawn arrows, a progress bar of one segment per
+  slide as long as it plays, captions two lines at a time, switched with "CC" or C and kept per
+  browser. The fit check lays slides out in the new faces, measured anew.
 - *Not yet*: the player
   is not tuned for the phone, demo settings without a voice end in "Voicing failed", and sentences
-  left unvoiced by a restart stay so, the player saying the voicing stopped (W5); the look is the
-  prototype's, in Obeya's colours (W6).
+  left unvoiced by a restart stay so, the player saying the voicing stopped (W5).
 
 ### What the prototypes showed
 
@@ -153,7 +157,7 @@ Claude Code plugin into the look-up agent:
   demo settings without a voice play the slides with captions at a reading pace; a walkthrough
   being voiced when Obeya restarts is voiced on afterwards and plays on.
 
-- [ ] **W6:** The walkthrough's look. Needs W1. Slides and player take showntell's design as their
+- [x] **W6:** The walkthrough's look. Needs W1. Slides and player take showntell's design as their
   model: the slides' typography, layout and colours, in Obeya's light and dark; a progress bar cut
   into one segment per slide, which jumps to a slide on a click; the spoken sentence as a caption
   large enough to read every word along, switched on and off with one click on the player (and C),
