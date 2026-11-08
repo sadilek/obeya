@@ -81,10 +81,11 @@ import type { Language } from '../core/locale';
 import { agentSetting, conversationLanguage, ownerLanguage, usageMeterView } from './settings';
 import { loginLink } from './owner';
 import { Stalls } from './stalls';
-import { hideConsoleWindows } from './spawn';
+import { hideConsoleWindows, oneStartAtATime } from './spawn';
 
-// before anything starts a program: git and the rest flash no window on Windows
+// before anything starts a program: git and the rest flash no window on Windows, and start one at a time there
 hideConsoleWindows();
+oneStartAtATime();
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),

@@ -34,6 +34,48 @@ export function hidden(args: unknown[]): unknown[] {
   return Array.isArray(first) ? [first, hide(rest[0]), ...rest.slice(1)] : [hide(first), ...rest];
 }
 
+/**
+ * On Windows, one process starts at a time, across the server's thread and the threads
+ * `spawnOutput` starts processes on. Bun starts a process through libuv, which makes the child's
+ * ends of its pipes inheritable until the process is created; a process another thread creates in
+ * that moment inherits them too and holds them open as long as it runs. A quick git call next to a
+ * fetch then reached the end of its output only once the fetch ended. What holds a start: the call
+ * of `Bun.spawn` until it returns, the whole of a `Bun.spawnSync` (which starts and waits in one
+ * call), node's `child_process` too, which starts through these. Not on macOS and Linux, where the
+ * pipes are never inheritable.
+ */
+const STARTS = process.platform === 'win32' ? new Int32Array(new SharedArrayBuffer(4)) : null;
+/** Who holds `STARTS` (0 when no one does): the server's thread, or a thread by its number. */
+const SERVER = 1;
+
+/** Takes `lock` for `owner`, waiting while another holds it. Self-contained: threads are given its code. */
+function acquire(lock: Int32Array, owner: number) {
+  for (let held; (held = Atomics.compareExchange(lock, 0, 0, owner)) !== 0; ) Atomics.wait(lock, 0, held);
+}
+/** Gives `lock` back if `owner` still holds it, and wakes whoever waits for it. */
+function release(lock: Int32Array, owner: number) {
+  Atomics.compareExchange(lock, 0, owner, 0);
+  Atomics.notify(lock, 0);
+}
+
+/** Makes `Bun.spawn` and `Bun.spawnSync` on the server's thread start one process at a time with the threads (see `STARTS`). */
+export function oneStartAtATime() {
+  if (!STARTS || oneAtATime) return;
+  oneAtATime = true;
+  const { spawn, spawnSync } = Bun;
+  const held = <T>(fn: () => T): T => {
+    acquire(STARTS, SERVER);
+    try {
+      return fn();
+    } finally {
+      release(STARTS, SERVER);
+    }
+  };
+  Bun.spawn = ((...args: unknown[]) => held(() => (spawn as (...a: unknown[]) => unknown)(...args))) as typeof Bun.spawn;
+  Bun.spawnSync = ((...args: unknown[]) => held(() => (spawnSync as (...a: unknown[]) => unknown)(...args))) as typeof Bun.spawnSync;
+}
+let oneAtATime = false;
+
 type Options = Omit<Bun.SpawnOptions.SpawnOptions<Bun.SpawnOptions.Writable, 'pipe', 'pipe'>, 'stdout' | 'stderr'>;
 type Output = { code: number; stdout: string; stderr: string; signal: string | null };
 
@@ -52,9 +94,20 @@ const THREADS = 2;
 const THREAD_CODE = `
 // first, before any process: a thread that fails without having said so started none
 postMessage({ ready: true });
-self.onmessage = async ({ data: { id, argv, o } }) => {
+const acquire = ${acquire};
+const release = ${release};
+let starts = null, owner = 0;
+self.onmessage = async ({ data: { id, argv, o, lock } }) => {
+  // first, before any process: the lock on starting them (Windows), and who this thread is
+  if (lock) return void ({ starts, owner } = lock);
   try {
-    const p = Bun.spawn(argv, { ...o, stdout: 'pipe', stderr: 'pipe' });
+    if (starts) acquire(starts, owner);
+    let p;
+    try {
+      p = Bun.spawn(argv, { ...o, stdout: 'pipe', stderr: 'pipe' });
+    } finally {
+      if (starts) release(starts, owner);
+    }
     const [stdout, stderr, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     postMessage({ id, out: { code, stdout, stderr, signal: p.signalCode } });
   } catch (e) {
@@ -75,9 +128,20 @@ interface Thread {
   ready: boolean;
   /** Set once it failed or ended: it takes no more processes. */
   lost: boolean;
+  /** Its number, as it holds `STARTS`. */
+  owner: number;
 }
 const threads: Thread[] = [];
 let lastId = 0;
+let lastOwner = SERVER;
+/**
+ * Ends a thread, and gives back `STARTS` if it holds it: ended in the middle of `Bun.spawn`, it
+ * never gets to, and every start after would wait forever.
+ */
+function end(t: Thread) {
+  t.worker.terminate();
+  if (STARTS) release(STARTS, t.owner);
+}
 /** Set once a thread could not be started: the processes start on the server's thread then. */
 let noThreads = false;
 
@@ -103,7 +167,8 @@ function thread(): Thread | null {
   }
   // it keeps the server running only while a process it started is waited for
   worker.unref();
-  const t: Thread = { worker, waiting: new Map(), ready: false, lost: false };
+  const t: Thread = { worker, waiting: new Map(), ready: false, lost: false, owner: ++lastOwner };
+  if (STARTS) worker.postMessage({ lock: { starts: STARTS, owner: t.owner } });
   worker.onmessage = ({ data }: MessageEvent<{ ready?: true; id: number; out?: Output; error?: Error & Record<string, unknown> }>) => {
     if (data.ready) return void (t.ready = true);
     const w = t.waiting.get(data.id);
@@ -124,7 +189,7 @@ function lose(t: Thread, why: string) {
   if (t.lost) return;
   t.lost = true;
   threads.splice(threads.indexOf(t), 1);
-  t.worker.terminate();
+  end(t);
   if (!t.ready) {
     noThreads = true;
     console.error(`Obeya: processes start on the server's thread, a thread of their own failed to start: ${why}`);
@@ -146,7 +211,7 @@ export function endThreads(): Promise<void> {
   return Promise.all(
     threads.map((t) => {
       const ended = new Promise((go) => t.worker.addEventListener('close', go));
-      t.worker.terminate();
+      end(t);
       return ended;
     }),
   ).then(() => new Promise((go) => setImmediate(go)));

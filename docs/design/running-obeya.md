@@ -373,7 +373,8 @@ commands on a host), start on two threads of their own, not the server's: starti
 the thread that starts it until the system has created it, on Windows tens of milliseconds on an
 idle machine and seconds each under load. A few such ones (Tailscale's commands, the reads for a
 theme, Codex), and those it talks to while they run or reads as their output comes (an agent, a
-voice sidecar, a stream of git objects), still start on the server's thread. Which skill name a worker's session knows the demo skill by is known
+voice sidecar, a stream of git objects), still start on the server's thread. On Windows one process
+starts at a time across all of these, so none inherits another's pipes. Which skill name a worker's session knows the demo skill by is known
 while the user's skills directory holds the same skills. Sharing on a demo site Obeya keeps reads and writes
 its files without blocking, and touches only the page it changes: what it has read of the site's
 directory (each page's `meta.json`, which pages hold their files) it keeps while it runs, since only
@@ -664,6 +665,21 @@ workers are busy.
   the thread, and four slow ones in a row were seconds); a cap on
   processes running at once (see the trust check above); fewer git calls alone (the bursts come
   from many clones and canvases, each call needed).
+- **On Windows, one process starts at a time across all threads** (2026-11-08): Bun starts a
+  process through libuv, which makes the child's ends of its pipes inheritable until the system has
+  created it. A process another thread creates in that moment inherits them and holds them open
+  while it runs: a quick git call started next to a fetch or push reached the end of its output only
+  once that one ended, and a `Bun.spawnSync` on the server's thread would have stalled the server as
+  long. So every start (`Bun.spawn` until it returns, the whole of a `Bun.spawnSync`, which starts
+  and waits in one call, node's `child_process`, which starts through them) takes a lock shared by
+  the server's thread and the process threads (an `Atomics` lock in shared memory); a thread that is
+  ended gives it back, or every start after would wait forever. The server's thread waits for the
+  lock only when it starts a process itself, and then at most for the starts already underway; the
+  threads keep the server free of the rest. Not on macOS and Linux, whose pipes are never
+  inheritable. Rejected: starting every process on one thread on Windows (the server's own starts
+  would still race with it, and one slow start would hold up all); pipes created non-inheritable and
+  handed over in an explicit handle list (Bun offers no such option; it would mean calling
+  `CreateProcess` ourselves).
 - **Programs run without a window on Windows by default, not by an option at each call**
   (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
   for its window.

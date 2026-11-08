@@ -54,6 +54,25 @@ test('a process on a thread of its own gets what the server gives it: directory,
   expect(await spawnOutput(['obeya-no-such-program']).then(() => null, (e: unknown) => e)).toBeInstanceOf(Error);
 }, 30_000);
 
+test('a process started next to slow ones, on a thread or the server’s, ends as quickly as it would alone', async () => {
+  const slow: Promise<unknown>[] = [];
+  const quick: Promise<number>[] = [];
+  const timed = async (p: () => Promise<unknown> | unknown) => {
+    const t = performance.now();
+    await p();
+    return performance.now() - t;
+  };
+  for (let i = 0; i < 8; i++) {
+    slow.push(spawnOutput([process.execPath, '-e', 'await Bun.sleep(6000)'], { timeout: 6000 }));
+    quick.push(timed(() => spawnOutput([process.execPath, '--version'])));
+    // while the threads start theirs: the slow ones would hold its output open until they end
+    quick.push(timed(() => Bun.spawnSync([process.execPath, '--version'], { stdout: 'pipe' })));
+    await Bun.sleep(1);
+  }
+  expect(Math.max(...(await Promise.all(quick)))).toBeLessThan(3000);
+  await Promise.all(slow);
+}, 20_000);
+
 test('a thread that dies while its process runs fails that call without starting it again; the next call gets a thread anew', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-spawn-'));
   try {
