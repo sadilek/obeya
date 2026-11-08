@@ -347,7 +347,7 @@ always where nothing hovers (touch). An unsaved draft survives per tab, also a r
 restart. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
 Canvases, a heading with each canvas indented under it as a section of its own and "+ Canvas"
 last (see Canvases), Agents and models, Voice input, Demos, Other devices (see Other devices) and General
-(languages, light or dark, the usage limits in the bar, the server); below them "Check setup" and "Report a wish or
+(languages, light or dark, the usage limits in the bar, the costs, the server); below them "Check setup" and "Report a wish or
 a bug" (see Wishes for Obeya's makers). Each canvas in the list marks its unsaved changes and
 counts its problems in red; the heading counts the problems of no one canvas (none at all, say). Each section names the file it is saved in; settings are rows of label and control, no boxes in
 boxes. What to know about a field sits behind an info icon at its label, shown only while the pointer

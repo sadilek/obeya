@@ -2019,7 +2019,7 @@ const de = {
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
       label: 'Anzeigen',
-      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code und Codex auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen. Gilt sofort.',
+      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code und Codex auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen.',
     },
   },
   /** What the agents cost (src/ui/costs.tsx), and the setting that shows it. */
@@ -4125,7 +4125,7 @@ const en: Strings = {
     setting: {
       title: 'Usage limits in the bar',
       label: 'Show',
-      hint: 'How much of the session and the weekly limit is used of the plans that Claude Code and Codex on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show. Applies at once.',
+      hint: 'How much of the session and the weekly limit is used of the plans that Claude Code and Codex on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show.',
     },
   },
   costs: {
