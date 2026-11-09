@@ -307,14 +307,24 @@ test("a resumed session's first message waits for its MCP servers to connect, at
   await Bun.sleep(0);
   expect((got as { message: { content: string } }).message.content).toBe('Feedback.');
 
+  // the claude.ai connectors are listed only after a moment, before Obeya's own server, then connect
   let asked = 0;
-  const pending = (n: number) => ({ mcpServerStatus: async () => [{ status: ++asked > n ? 'connected' : 'pending' }, { status: 'failed' }] });
-  await mcpSettled(pending(2), 5000);
-  expect(asked).toBe(3);
+  const listed = (n: number) => ({
+    mcpServerStatus: async () => {
+      asked++;
+      const chrome = { name: 'claude-in-chrome', status: 'connected' };
+      if (asked === 1) return [chrome];
+      if (asked === 2) return [chrome, { name: 'claude.ai Docs', status: 'pending' }];
+      return [chrome, { name: 'claude.ai Docs', status: asked > n ? 'connected' : 'pending' }, { name: 'claude.ai Mail', status: 'failed' }, { name: 'obeya', status: 'connected' }];
+    },
+  });
+  await mcpSettled(listed(3), 'obeya', 5000);
+  expect(asked).toBe(4);
   // one that never connects, or a CLI that never answers, holds the message no longer than the bound
   const started = Date.now();
-  await mcpSettled(pending(Infinity), 300);
-  await mcpSettled({ mcpServerStatus: () => new Promise(() => {}) }, 100);
+  asked = 0;
+  await mcpSettled(listed(Infinity), 'obeya', 300);
+  await mcpSettled({ mcpServerStatus: () => new Promise(() => {}) }, 'obeya', 100);
   expect(Date.now() - started).toBeLessThan(1500);
 });
 

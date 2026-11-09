@@ -52,8 +52,8 @@ touches, and keep those current in the same change.
   identity, groups on the canvas, refusals.
 - [Agents and workspaces](design/agents-and-workspaces.md) — how agents run and where: agents
   (Claude Code, Codex), harnesses, models and effort, workspaces (taking a card's workspace, slots,
-  the pool in the bar), folders without git, parking, hosts (running there, logins and files, a
-  dropped connection).
+  the pool in the bar), folders without git, parking, resting agents (an idle agent's process goes
+  once its prompt cache has expired), hosts (running there, logins and files, a dropped connection).
 - [Landing](design/landing.md) — how approved work reaches `main`: how work lands, the PR loop
   (watching the PR, ready to merge, the PR on the card), review cards for a contributor's pull
   request (own changes wait for the approval, unpushed commits it collides with), after landing

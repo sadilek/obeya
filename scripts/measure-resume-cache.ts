@@ -8,11 +8,12 @@
 // which then writes its whole prefix anew as well. Runs on the machine's own logins, through
 // Obeya's own runtimes.
 //
-//   bun scripts/measure-resume-cache.ts [--claude] [--codex] [--pauses 2,65] [--modes live,rested] [--out <file.json>]
+//   bun scripts/measure-resume-cache.ts [--claude] [--codex] [--pauses 2,65] [--modes live,rested] [--repeat <n>] [--out <file.json>]
 //
 // Pauses are in minutes, counted from the end of the first turn; the run lasts as long as the
-// longest. Without --claude or --codex both run. Prints a table and writes every request's usage
-// to --out (default: resume-cache-<time>.json in the system temp folder).
+// longest. --repeat runs each arm that many times. Without --claude or --codex both run. Prints a
+// table and writes every request's usage to --out (default: resume-cache-<time>.json in the system
+// temp folder).
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -169,10 +170,11 @@ function summary(a: Arm) {
   };
 }
 
+const repeat = Number(arg('--repeat') ?? 1);
 const arms: Promise<Arm | { failed: string }>[] = [];
 for (const harness of runs)
   for (const pause of pauses)
-    for (const mode of modes) arms.push(arm(harness, mode, pause).catch((e) => ({ failed: `${harness} ${mode} ${pause} min: ${e instanceof Error ? e.message : e}` })));
+    for (const mode of modes) for (let n = 0; n < repeat; n++) arms.push(arm(harness, mode, pause).catch((e) => ({ failed: `${harness} ${mode} ${pause} min: ${e instanceof Error ? e.message : e}` })));
 const results = await Promise.all(arms);
 writeFileSync(out, JSON.stringify(results, null, 2));
 for (const r of results) if ('failed' in r) console.log(`✗ ${r.failed}`);

@@ -371,11 +371,17 @@ export function withLimitWait(runtime: AgentRuntime, margin = 10_000): AgentRunt
 }
 
 /**
- * How long an agent waits before its process goes (`withRest`): past the longest prompt-cache
- * lifetime its harness uses, an hour for both (Claude Code's on a subscription; Codex's, measured),
- * with a margin for the time between the turn's last request and its end.
+ * How long a Claude Code agent waits before its process goes (`withRest`): past the longest
+ * prompt-cache lifetime Claude Code uses (an hour, on a subscription; measured 2026-11-09), with a
+ * margin for the time between the turn's last request and its end.
  */
 export const REST_AFTER_MS = 65 * 60_000;
+
+/**
+ * The same for Codex: past the longest retention OpenAI offers (24 hours), since how long Codex's
+ * cache lives was not measured beyond 20 minutes (the usage limit stopped the measurement).
+ */
+export const CODEX_REST_AFTER_MS = 24 * 60 * 60_000;
 
 /**
  * A runtime whose sessions give up their process once they have waited `after` with nothing running
@@ -606,18 +612,22 @@ export const sdkRuntime: AgentRuntime = {
 const MCP_WAIT_MS = 15_000;
 
 /**
- * Settles once none of the session's MCP servers is still connecting, or after `ms`. claude.ai's
- * connectors take a few seconds after the start; a resumed session that takes a message before has
- * Claude Code tell the agent their tools are gone and, once connected, back again: about 2,500
- * tokens more than the process kept would have paid (measured 2026-11-09, `measure-resume-cache.ts`).
+ * Settles once the session's MCP servers are all listed, Obeya's own (`own`) among them, and none
+ * is still connecting, or after `ms`. claude.ai's connectors take a second or two after the start,
+ * and are listed only after a moment, before Obeya's own; a resumed session that takes a message
+ * before they connected has Claude Code tell the agent their tools are gone and, once connected,
+ * back again: about 2,300 tokens more than the process kept would have paid (measured 2026-11-09,
+ * `measure-resume-cache.ts`).
  */
-export async function mcpSettled(q: { mcpServerStatus(): Promise<{ status: string }[]> }, ms = MCP_WAIT_MS): Promise<void> {
+export async function mcpSettled(q: { mcpServerStatus(): Promise<{ name: string; status: string }[]> }, own = 'obeya', ms = MCP_WAIT_MS): Promise<void> {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), deadline - Date.now())));
-    const servers = await Promise.race([q.mcpServerStatus().catch(() => []), late]).finally(() => clearTimeout(timer));
-    if (!servers?.some((s) => s.status === 'pending')) return;
+    const servers = await Promise.race([q.mcpServerStatus().catch(() => null), late]).finally(() => clearTimeout(timer));
+    // a CLI that does not answer holds the message no longer
+    if (!servers) return;
+    if (servers.some((s) => s.name === own) && !servers.some((s) => s.status === 'pending')) return;
     await new Promise((r) => setTimeout(r, 250));
   }
 }
