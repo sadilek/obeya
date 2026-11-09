@@ -32,6 +32,9 @@ export class WorkspaceError extends Error {
   }
 }
 
+/** A restored card's branch is no longer in the clone it takes back (`retake`). */
+export class BranchGone extends WorkspaceError {}
+
 export interface LandProblem {
   code: 'landDirty' | 'landConflict' | 'landEmpty' | 'landCheckout' | 'landMerge' | 'landPush' | 'land';
   /** Whether the worker can fix it; otherwise it is the owner's (local changes in the Obeya checkout in the way, a push turned away). */
@@ -520,7 +523,7 @@ export interface CardWorkspaces {
   release(cardId: string): void;
   evict(cardId: string): Promise<string | null>;
   abandon(path: string): Promise<boolean>;
-  retake(cardId: string, path: string): boolean;
+  retake(cardId: string, path: string, branch: string): Lease | null;
   forkPoint(cardId: string, changing?: string): Promise<{ ws: string; base: string } | null>;
   addedFiles(cardId: string, dir: string): Promise<string[]>;
   landOnMain(cardId: string, branch: string, trailer?: string): Promise<LandProblem | Landed>;
@@ -582,6 +585,8 @@ export class Workspaces implements CardWorkspaces {
   private hostDirs = new Map<string, string>();
   /** The workspaces git is making ready, by the card they are leased to (`Lease.ready`). */
   private preparing = new Map<string, Promise<string>>();
+  /** Restored cards whose clone git is putting back on their branch (`retake`): it holds their work. */
+  private retaking = new Set<string>();
   /** Cards that gave back their workspace while git was still making it ready: it is free once git is done. */
   private releasing = new Set<string>();
   /** Free clones git failed to make ready for a card, when and why: not taken again before RECHECK_MS (a fetch that fails would fail again at once). */
@@ -1065,8 +1070,11 @@ export class Workspaces implements CardWorkspaces {
    */
   async hasWork(cardId: string): Promise<boolean> {
     const ws = this.leasedBy(cardId);
+    const making = this.preparing.get(cardId);
+    // a restored card's clone git is putting back on its branch holds its work: told once git is done
+    if (making && this.retaking.has(cardId)) return making.then(() => this.hasWork(cardId), () => this.hasWork(cardId));
     // one git is still making ready holds nothing of the card's yet
-    if (!ws || this.preparing.has(cardId)) return false;
+    if (!ws || making) return false;
     try {
       if (!(await existsAsync(ws))) return false;
       // `# branch.…` headers, then a line per change; the main branch beside it, which a `forkPoint` asked at the same time shares
@@ -1106,7 +1114,10 @@ export class Workspaces implements CardWorkspaces {
   evict(cardId: string): Promise<string | null> {
     const path = this.leasedBy(cardId);
     if (!path || !this.cloned(path)) return Promise.resolve(null);
-    if (this.preparing.has(cardId)) {
+    const making = this.preparing.get(cardId);
+    // a restored card's clone git is putting back on its branch holds its work: taken once git is done
+    if (making && this.retaking.has(cardId)) return making.then(() => this.evict(cardId), () => this.evict(cardId));
+    if (making) {
       this.release(cardId);
       return Promise.resolve(null);
     }
@@ -1189,12 +1200,35 @@ export class Workspaces implements CardWorkspaces {
     return oneAtATime(this.clears, path, fn);
   }
 
-  /** A deleted card restored takes back the clone it had, while that one is still free; a worktree is made again on its branch. */
-  retake(cardId: string, path: string): boolean {
-    if (this.leasedBy(cardId)) return true;
-    if (this.o.mode !== 'clones' || !this.list().some((w) => w.path === path && !w.card_id)) return false;
-    this.store.setLease(path, cardId);
-    return true;
+  /**
+   * A deleted card restored takes back the clone it had, while that one is still free, and git puts
+   * it back on the card's `branch` in the background: another card may have worked there meanwhile.
+   * Where git cannot, the clone is freed again and `ready` fails: with `BranchGone` where the
+   * branch is no longer there, else with the card's branch staying there (`dirtyWorkspaces` where
+   * another card left uncommitted changes). Null where it takes none: a worktree is made again on its branch.
+   */
+  retake(cardId: string, path: string, branch: string): Lease | null {
+    const own = this.leasedBy(cardId);
+    if (own) return { path: own, ready: this.preparing.get(cardId) ?? null };
+    if (this.o.mode !== 'clones' || !this.list().some((w) => w.path === path && !w.card_id)) return null;
+    this.take(path, cardId);
+    this.retaking.add(cardId);
+    const lease = this.prepare(
+      cardId,
+      path,
+      async () => {
+        // what git still does there for the card that held it last is through first
+        await this.clears.get(path)?.catch(() => {});
+        if ((await gitAsync(path, 'branch', '--show-current')) === branch) return path;
+        if (!(await gitAsync(path, 'branch', '--list', branch))) throw new BranchGone(`${path}: the branch ${branch} is no longer there`);
+        if (await gitAsync(path, 'status', '--porcelain')) throw new WorkspaceError(`${path}: another card left uncommitted changes there`, SHORT_CODE.dirty);
+        await gitAsync(path, 'checkout', '--quiet', branch);
+        return path;
+      },
+      (at) => this.free(at),
+    );
+    void lease.ready!.catch(() => {}).finally(() => this.retaking.delete(cardId));
+    return lease;
   }
 
   /**

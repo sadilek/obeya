@@ -212,7 +212,11 @@ at start: deleted; a workstream no worker is on once the plan doc on the default
 or no longer has it; or a lease that outlived its card's work (finished and its worker done, or the
 card names another workspace). A clone keeps the card's branch and the rest and is free for others
 once clean; a worktree goes once nothing in it is uncommitted, its branch kept. A deleted card
-brought back with the undo takes its clone back if still free, else another at its next start.
+brought back with the undo takes its clone back if still free, and git puts it back on the card's
+own branch, since another card may have worked there meanwhile. Where git cannot (that card left
+uncommitted changes there, say), or the clone is taken, the card holds none and its next start
+takes a clone as after a taken workspace (below), with its branch from that one where it still
+holds it; it never works on another card's branch.
 
 #### Taking a card's workspace
 

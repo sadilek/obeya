@@ -548,8 +548,9 @@ export class FolderWorkspaces implements CardWorkspaces {
     return false;
   }
 
-  retake(cardId: string): boolean {
-    return !!this.leasedBy(cardId);
+  retake(cardId: string): Lease | null {
+    const own = this.leasedBy(cardId);
+    return own ? { path: own, ready: null } : null;
   }
 
   async forkPoint(): Promise<null> {

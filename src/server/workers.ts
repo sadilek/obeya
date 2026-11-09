@@ -26,7 +26,7 @@ import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readingSettings, REPO_SETTINGS_FILE } from '../adapters';
-import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
+import { BranchGone, branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
 import { type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
@@ -3373,8 +3373,9 @@ export class Workers {
   }
 
   /**
-   * Git frees the card's workspace at `path` in the background (`freeing`): the board changes once
-   * it is done, the pool having a workspace more. What goes wrong is logged under `what`.
+   * Git frees the card's workspace at `path` in the background (`freeing`), or puts it back on the
+   * branch of a restored card: the board changes once it is done, the pool having a workspace more
+   * where it was freed. What goes wrong is logged under `what`.
    */
   private whileFreeing(cardId: string, path: string, done: Promise<unknown>, what: string) {
     const freeing: { card: string; done: Promise<void> } = { card: cardId, done: Promise.resolve() };
@@ -3393,13 +3394,35 @@ export class Workers {
     while (this.freeing.size) await Promise.all([...this.freeing.values()].map((f) => f.done));
   }
 
-  /** A deleted card is restored: it takes back the workspace it had, where it can; else its next start takes another. */
+  /**
+   * A deleted card is restored: it takes back the workspace it had, where it can, on its own branch;
+   * else its next start takes another, with its branch from that clone where it is still there.
+   */
   restored(cardId: string) {
     const row = this.o.board.row(cardId);
-    if (!row.workspace) return;
-    this.kept.delete(row.workspace);
-    if (this.o.workspaces.retake(cardId, row.workspace)) this.o.board.changed();
-    else this.o.board.work(cardId, { workspace: null, app: null, parked: null });
+    const path = row.workspace;
+    if (!path) return;
+    this.kept.delete(path);
+    const retaken = row.branch ? this.o.workspaces.retake(cardId, path, row.branch) : null;
+    if (!retaken) {
+      // another card works in that clone now: the card's branch stays there, for its next start to take from it
+      const taken = this.o.workspaces.mode === 'clones' && this.o.workspaces.list().some((w) => w.path === path && w.card_id);
+      return void this.o.board.work(cardId, { workspace: null, app: null, parked: null, ...(taken ? { kept_in: path } : {}) });
+    }
+    this.o.board.changed();
+    if (!retaken.ready) return;
+    const back = retaken.ready.then(
+      () => {},
+      (e: unknown) => {
+        if (this.o.board.row(cardId).workspace !== path) return;
+        // the card's branch stays in that clone, unless it is gone, for the next start to take from it
+        const kept = e instanceof BranchGone ? {} : { kept_in: path };
+        // a start waiting for it puts the card back itself
+        this.o.board.work(cardId, this.preparing.has(cardId) ? kept : { workspace: null, app: null, parked: null, ...kept });
+      },
+    );
+    // deleted again meanwhile, the card gives it back once git is done
+    this.whileFreeing(cardId, path, back, 'taking back the workspace of a restored card');
   }
 
   /** After a restart, a paused worker stays paused: a restart it waited for has happened, which it hears once it goes on. */

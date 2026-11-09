@@ -917,9 +917,23 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     expect(git(clone, 'log', '--format=%s', '-1')).toBe('Config');
   });
 
-  test('restored after another card took its clone, it starts in the next free one', async () => {
+  test('deleted again while git puts its clone back on its branch, it frees the clone once git is done', async () => {
     const c = manual();
     await stoppedWithWork(c.id);
+    board.remove(c.id);
+    await flush();
+    board.restore(c.id);
+    workers.restored(c.id);
+    board.remove(c.id);
+    await flush();
+    await workers.freed();
+    await until(() => spaces.leasedBy(c.id) === null);
+    expect(spaces.leasable()).toBe(true);
+  });
+
+  test('restored after another card took its clone, it starts in the next free one, with its branch from that clone', async () => {
+    const c = manual();
+    const clone = await stoppedWithWork(c.id);
     board.remove(c.id);
     await flush();
     const other = manual();
@@ -927,6 +941,150 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     board.restore(c.id);
     workers.restored(c.id);
     expect(board.row(c.id).workspace).toBeNull();
+    expect(board.row(c.id).kept_in).toBe(clone);
+    const second = join(dir, 'ws', '2');
+    gitClone(main, second);
+    await spaces.ensureClones(main, 2);
+    identify(second);
+    await workers.start(c.id);
+    expect(board.row(c.id).workspace).toBe(second);
+    expect(git(second, 'log', '--format=%s', '-1')).toBe('Config');
+    // the other card's clone stays on its own branch
+    expect(git(clone, 'branch', '--show-current')).toBe(board.row(other.id).branch!);
+  });
+
+  test('restored after another card worked in its clone and gave it back, it works on its own branch there', async () => {
+    const c = manual();
+    const clone = await stoppedWithWork(c.id);
+    const branch = board.row(c.id).branch!;
+    board.remove(c.id);
+    await flush();
+    const other = board.create({ title: 'Export readings', x: 0, y: 0 });
+    await workers.start(other.id);
+    expect(board.row(other.id).workspace).toBe(clone);
+    writeFileSync(join(clone, 'other.ts'), 'export {}\n');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Other');
+    await workers.stop(other.id);
+    board.remove(other.id);
+    await flush();
+    await workers.freed();
+    expect(spaces.leasedBy(other.id)).toBeNull();
+    board.restore(c.id);
+    workers.restored(c.id);
+    await workers.start(c.id);
+    expect(board.row(c.id).workspace).toBe(clone);
+    expect(git(clone, 'branch', '--show-current')).toBe(branch);
+    expect(git(clone, 'log', '--format=%s', '-1')).toBe('Config');
+  });
+
+  /** Deletes the card, whose clone another card then takes, commits its own work in and is deleted too. */
+  const workedInByAnother = async (id: string) => {
+    const clone = await stoppedWithWork(id);
+    board.remove(id);
+    await flush();
+    const other = board.create({ title: 'Export readings', x: 0, y: 0 });
+    await workers.start(other.id);
+    writeFileSync(join(clone, 'other.ts'), 'export {}\n');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Other');
+    await workers.stop(other.id);
+    board.remove(other.id);
+    await flush();
+    await workers.freed();
+    return clone;
+  };
+
+  test('started and stopped right after its restore, before git put its clone back on its branch, it keeps the clone', async () => {
+    const c = manual();
+    const clone = await workedInByAnother(c.id);
+    board.restore(c.id);
+    workers.restored(c.id);
+    const started = workers.start(c.id);
+    await workers.stop(c.id);
+    await started;
+    await workers.freed();
+    expect(spaces.leasedBy(c.id)).toBe(clone);
+    expect(board.row(c.id).workspace).toBe(clone);
+    expect(git(clone, 'branch', '--show-current')).toBe(board.row(c.id).branch!);
+  });
+
+  test('its clone taken for another card right after its restore, before git put it back on its branch, it keeps its branch there', async () => {
+    const c = manual();
+    const clone = await workedInByAnother(c.id);
+    board.restore(c.id);
+    workers.restored(c.id);
+    await workers.evict(c.id);
+    await workers.freed();
+    expect(spaces.leasedBy(c.id)).toBeNull();
+    expect(board.row(c.id).kept_in).toBe(clone);
+    expect(git(clone, 'branch', '--show-current')).toBe(board.row(c.id).branch!);
+  });
+
+  test('where git fails to put its clone back on its branch, its next start takes the branch from there', async () => {
+    const c = manual();
+    const clone = await workedInByAnother(c.id);
+    // another git process at work there
+    writeFileSync(join(clone, '.git', 'index.lock'), '');
+    board.restore(c.id);
+    workers.restored(c.id);
+    await workers.freed();
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(board.row(c.id).kept_in).toBe(clone);
+    rmSync(join(clone, '.git', 'index.lock'));
+    await workers.start(c.id);
+    expect(board.row(c.id).workspace).toBe(clone);
+    expect(git(clone, 'branch', '--show-current')).toBe(board.row(c.id).branch!);
+    expect(git(clone, 'log', '--format=%s', '-1')).toBe('Config');
+  });
+
+  /** Deletes the card, whose clone another card then takes, leaves uncommitted changes in and is deleted too; a second clone is free. */
+  const leftDirtyByAnother = async (id: string) => {
+    const clone = await stoppedWithWork(id);
+    board.remove(id);
+    await flush();
+    const other = board.create({ title: 'Export readings', x: 0, y: 0 });
+    await workers.start(other.id);
+    expect(board.row(other.id).workspace).toBe(clone);
+    writeFileSync(join(clone, 'other.ts'), 'export {}\n');
+    await workers.stop(other.id);
+    board.remove(other.id);
+    await flush();
+    await workers.freed();
+    const second = join(dir, 'ws', '2');
+    gitClone(main, second);
+    await spaces.ensureClones(main, 2);
+    identify(second);
+    return { clone, second };
+  };
+
+  test('restored after another card left uncommitted changes in its clone, it starts in another, with its branch from there', async () => {
+    const c = manual();
+    const { clone, second } = await leftDirtyByAnother(c.id);
+    board.restore(c.id);
+    workers.restored(c.id);
+    await until(() => board.row(c.id).kept_in === clone);
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(spaces.leasedBy(c.id)).toBeNull();
+    // the other card's work stays as it was
+    expect(git(clone, 'status', '--porcelain')).toBe('?? other.ts');
+    await workers.start(c.id);
+    expect(board.row(c.id).workspace).toBe(second);
+    expect(git(second, 'log', '--format=%s', '-1')).toBe('Config');
+  });
+
+  test('started right after its restore, before git found its clone taken by another card’s changes, it is queued and starts in another', async () => {
+    const c = manual();
+    const { clone, second } = await leftDirtyByAnother(c.id);
+    board.restore(c.id);
+    workers.restored(c.id);
+    await expect(workers.start(c.id)).rejects.toMatchObject({ code: 'dirtyWorkspaces' });
+    expect(state(c.id)).toBe('planned');
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(board.row(c.id).kept_in).toBe(clone);
+    await workers.start(c.id);
+    expect(board.row(c.id).workspace).toBe(second);
+    expect(git(second, 'log', '--format=%s', '-1')).toBe('Config');
   });
 
   test('a stopped workstream its plan doc no longer has frees its clone; its branch stays there', async () => {

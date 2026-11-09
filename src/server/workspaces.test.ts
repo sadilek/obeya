@@ -909,7 +909,7 @@ describe('clones the configuration no longer names', () => {
     // the card's branch holds nothing that is not on origin
     await until(() => !existsSync(paths[0]!));
     // a deleted card brought back does not take it back
-    expect(spaces.retake(a, paths[0]!)).toBe(false);
+    expect(spaces.retake(a, paths[0]!, 'obeya/a')).toBeNull();
   });
 
   test('clones made after their pool no longer wants them stay out of it', async () => {
