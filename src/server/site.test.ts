@@ -584,7 +584,9 @@ describe('a site Obeya keeps', () => {
     const later = join(dir, 'later');
     mkdirSync(later);
     writeFileSync(join(later, 'demo.mp4'), 'later video');
-    writeFileSync(join(later, 'captions.vtt'), 'WEBVTT\n');
+    // its narration names a track the version has, and one it lacks
+    writeFileSync(join(later, 'captions.vtt'), 'WEBVTT - subtitles: de fr\n');
+    writeFileSync(join(later, 'captions.de.vtt'), 'WEBVTT\n');
     const more = [
       { title: 'Die Tabelle', text: 'Ein Detail.', kind: 'html' as const, chapters: [], dir: art, at: '2026-10-16T11:37:00.000Z' },
       { title: 'Der Reset', text: 'Leert auch die Daten.', kind: 'video' as const, chapters: [[0, 'Reset']] as [number, string][], dir: later, at: '2026-10-16T12:00:00.000Z' },
@@ -602,6 +604,8 @@ describe('a site Obeya keeps', () => {
     expect(html).toContain('<iframe src="2/artifact/index.html" sandbox="allow-scripts"');
     expect(html).toContain('<a href="?alone=2" target="_blank"');
     expect(html).toContain('src="3/demo.mp4"');
+    expect(html).toContain('3/captions.de.vtt');
+    expect(html).not.toContain('captions.fr.vtt');
     expect(html).toContain('poster="poster.jpg"');
     expect(html).not.toContain('poster="3/poster.jpg"');
     expect(html).toContain(`${CREDIT_DE}</main>`);

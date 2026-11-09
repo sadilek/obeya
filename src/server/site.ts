@@ -56,7 +56,7 @@ import type { Messages } from '../core/messages';
 import { dimensions } from '../core/page-tags';
 import type { PageTags } from '../core/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type CaptionTrack, captionTracks, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, silentVideo, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
+import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type CaptionTrack, captionTracksAsync, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, silentVideoAsync, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
 import { artifactCopy } from './artifact-copy';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { demoFiles, OWN_CONNECTIONS } from './demo';
@@ -800,7 +800,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             };
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             if (p.theme) await writeFile(join(target, PAGE_THEME), p.theme.css);
-            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, p.theme?.css));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), undefined, unlisted, p.theme?.css));
             return { ...(await entryOf(slug)), rev };
           },
           log,
@@ -855,7 +855,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             // the page around its files in today's template, with the theme it went out with
             const theme = await readFile(join(target, PAGE_THEME), 'utf8').catch(() => undefined);
-            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, theme));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), undefined, unlisted, theme));
             return { ...(await entryOf(slug)), rev };
           },
           log,
@@ -1030,9 +1030,16 @@ interface VersionFiles {
   silent?: boolean;
 }
 
-function versionFiles(dir: string): VersionFiles {
-  const video = join(dir, 'demo.mp4');
-  return { poster: existsSync(join(dir, 'poster.jpg')), tracks: captionTracks(dir), silent: existsSync(video) && silentVideo(video) };
+async function versionFiles(dir: string): Promise<VersionFiles> {
+  const [poster, tracks, silent] = await Promise.all([exists(join(dir, 'poster.jpg')), captionTracksAsync(dir), silentVideoAsync(join(dir, 'demo.mp4'))]);
+  return { poster, tracks, silent };
+}
+
+/** What each version's directory of the page at `target` holds (`VersionFiles`), as `pageHtml` asks for it, read beforehand without blocking the server. */
+async function versionsFiles(target: string, m: Meta): Promise<(dir: string) => VersionFiles> {
+  const dirs = ['', ...(m.more ?? []).map((x) => x.dir)];
+  const read = await Promise.all(dirs.map((d) => versionFiles(join(target, d))));
+  return (dir) => read[dirs.indexOf(dir)] ?? { poster: false, tracks: [] };
 }
 
 /**

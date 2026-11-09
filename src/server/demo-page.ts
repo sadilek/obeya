@@ -5,6 +5,7 @@
 // one HTML file with everything inside.
 
 import { closeSync, type Dirent, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
+import { open, readFile, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { languageName, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
@@ -226,9 +227,29 @@ export function captionTracks(dir: string): CaptionTrack[] {
   } catch {
     return [];
   }
-  const listed = listedTracks(narration);
+  const listed = namedTracks(narration);
   if (!listed) return [{ file: 'captions.vtt' }];
-  return listed.flatMap((language) => (/^[A-Za-z0-9-]+$/.test(language) && existsSync(join(dir, trackFile(language))) ? [{ file: trackFile(language), language }] : []));
+  return listed.filter((t) => existsSync(join(dir, t.file)));
+}
+
+/** `captionTracks` without blocking the server. */
+export async function captionTracksAsync(dir: string): Promise<CaptionTrack[]> {
+  let narration: string;
+  try {
+    narration = await readFile(join(dir, 'captions.vtt'), 'utf8');
+  } catch {
+    return [];
+  }
+  const listed = namedTracks(narration);
+  if (!listed) return [{ file: 'captions.vtt' }];
+  const there = await Promise.all(listed.map((t) => stat(join(dir, t.file)).then(() => true, () => false)));
+  return listed.filter((_, i) => there[i]);
+}
+
+/** The tracks a `captions.vtt` names (`listedTracks`), each by its file, whether there or not; null where it names none. */
+function namedTracks(narration: string): Required<CaptionTrack>[] | null {
+  const listed = listedTracks(narration);
+  return listed ? listed.flatMap((language) => (/^[A-Za-z0-9-]+$/.test(language) ? [{ file: trackFile(language), language }] : [])) : null;
 }
 
 /** How much of an MP4's start is searched for its tracks: the director writes them there (`+faststart`). */
@@ -253,8 +274,26 @@ function mp4Head(file: string): Buffer | null {
  * Whether a demo video has no sound: an MP4 whose track list, at its start, holds no audio
  * track (a handler of type `soun`). One whose list is not at its start counts as having sound.
  */
-export function silentVideo(file: string): boolean {
-  const text = mp4Head(file)?.toString('latin1');
+export const silentVideo = (file: string): boolean => silentHead(mp4Head(file));
+
+/** `silentVideo` without blocking the server. */
+export async function silentVideoAsync(file: string): Promise<boolean> {
+  let head: Buffer | null = null;
+  try {
+    const f = await open(file, 'r');
+    try {
+      const buffer = Buffer.alloc(MP4_HEAD);
+      head = buffer.subarray(0, (await f.read(buffer, 0, MP4_HEAD, 0)).bytesRead);
+    } finally {
+      await f.close();
+    }
+  } catch {}
+  return silentHead(head);
+}
+
+/** `silentVideo` of an MP4's start (`mp4Head`). */
+function silentHead(head: Buffer | null): boolean {
+  const text = head?.toString('latin1');
   if (!text?.includes('moov')) return false;
   // a `hdlr` box: its type, four bytes of version and flags, four predefined, then the handler's type
   return !/hdlr[\s\S]{8}soun/.test(text);

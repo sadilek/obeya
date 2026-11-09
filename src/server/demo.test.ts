@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
-import { artifactFiles, captionTracks, silentVideo, videoSize } from './demo-page';
+import { artifactFiles, captionTracks, captionTracksAsync, silentVideo, silentVideoAsync, videoSize } from './demo-page';
 import { checkPlugin, DEMO_SKILL, DEMO_SKILL_FILE, demoFiles, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, serveDemoFile, serveMockFrame, videoFacts } from './demo';
 import { removeDir } from './testing';
 
@@ -53,6 +53,10 @@ describe('a demo with a caption track per language', () => {
   test('the tracks its captions.vtt names, in their order, are served, and the player learns whether it is silent', async () => {
     expect(captionTracks(tracked).map((t) => t.language)).toEqual(['pt-BR', 'de']);
     expect(captionTracks(dir)).toEqual([{ file: 'captions.vtt' }]);
+    // read without blocking the server, the same
+    expect(await captionTracksAsync(tracked)).toEqual(captionTracks(tracked));
+    expect(await captionTracksAsync(dir)).toEqual([{ file: 'captions.vtt' }]);
+    expect(await captionTracksAsync(join(tracked, 'none'))).toEqual([]);
     expect(videoFacts(tracked)).toEqual({ tracks: ['pt-BR', 'de'], silent: true });
     expect(videoFacts(dir)).toEqual({});
     expect(demoFiles(tracked).sort()).toEqual(['captions.de.vtt', 'captions.pt-BR.vtt', 'captions.vtt', 'demo.mp4']);
@@ -61,11 +65,12 @@ describe('a demo with a caption track per language', () => {
     expect(serveDemoFile({ dir: tracked, kind: 'video' }, 'chapters.vtt', new Request('http://x/')).status).toBe(404);
   });
 
-  test('one whose captions.vtt names no tracks offers none, though it keeps the narration for placing comments', () => {
+  test('one whose captions.vtt names no tracks offers none, though it keeps the narration for placing comments', async () => {
     const bare = mkdtempSync(join(tmpdir(), 'obeya-demo-bare-'));
     try {
       writeFileSync(join(bare, 'captions.vtt'), en.replace('WEBVTT', 'WEBVTT - subtitles: none'));
       expect(captionTracks(bare)).toEqual([]);
+      expect(await captionTracksAsync(bare)).toEqual([]);
       expect(videoFacts(bare)).toEqual({ tracks: [] });
       expect(placeIn(bare, [[0, 'Before']], 1).narration).toBe('One.');
     } finally {
@@ -73,14 +78,19 @@ describe('a demo with a caption track per language', () => {
     }
   });
 
-  test('a video is silent without an audio handler in its track list; one whose list comes after the media counts as sounding', () => {
+  test('a video is silent without an audio handler in its track list; one whose list comes after the media counts as sounding', async () => {
     const file = join(tracked, 'probe.mp4');
     writeFileSync(file, mp4(true));
     expect(silentVideo(file)).toBe(false);
+    expect(await silentVideoAsync(file)).toBe(false);
     writeFileSync(file, mp4(false));
     expect(silentVideo(file)).toBe(true);
+    expect(await silentVideoAsync(file)).toBe(true);
     writeFileSync(file, Buffer.from('\0\0\0 ftypisom\0\0\0\0mdat', 'latin1'));
     expect(silentVideo(file)).toBe(false);
+    expect(await silentVideoAsync(file)).toBe(false);
+    // one that is not there has sound, as far as anyone can tell
+    expect(await silentVideoAsync(join(tracked, 'none.mp4'))).toBe(false);
   });
 
   test("a video's width and height come from the first track in its list with a picture, for the player's shape before it loads", () => {
