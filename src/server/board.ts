@@ -3219,6 +3219,8 @@ export class Board {
     throw new HistoryUnread();
   }
 
+  /** The docs whose projects' repair waits for their history: they stand as last read until it is there (`follow`). */
+  private heldBack = new Set<string>();
   /** Cards whose workstream left its doc, by when that was seen, that wait to leave their project (`follow`). */
   private missing = new Map<string, number>();
   /** Looks at the waiting cards again once the first of them may leave. */
@@ -3243,13 +3245,14 @@ export class Board {
     // the doc as last read, with its whole text: only parsed where a card needs it
     const lastOf = new Map<string, PlanDoc | null>();
     const last = (p: CardRow) => (lastOf.has(p.id) ? lastOf.get(p.id)! : lastOf.set(p.id, p.plan ? (JSON.parse(p.plan) as PlanDoc) : null).get(p.id)!);
-    // a project whose repair waits for its doc's history keeps the doc as last read until it is there
-    const unread = new Set(read ? projects.filter((p) => last(p) && !this.rekey(p, last(p)!, byFile.get(p.plan_ref!)!)) : []);
+    // a project whose repair waits for its doc's history keeps the doc as last read until it is there,
+    // also for the passes between reads, whose docs are the ones this pass returns
+    if (read) this.heldBack = new Set(projects.filter((p) => last(p) && !this.rekey(p, last(p)!, byFile.get(p.plan_ref!)!)).map((p) => p.plan_ref!));
     const kidsOf = Map.groupBy(this.store.children(projects.map((p) => p.id)), (k) => k.parent_id!);
     const waiting = new Set<string>();
     const now = Date.now();
     for (const p of projects) {
-      if (unread.has(p)) continue;
+      if (this.heldBack.has(p.plan_ref!)) continue;
       const doc = byFile.get(p.plan_ref!)!;
       const kids = kidsOf.get(p.id) ?? [];
       const keys = new Set(doc.workstreams.map((w) => w.key));
@@ -3299,8 +3302,8 @@ export class Board {
       this.waking = setTimeout(() => this.changed(), next + 50);
       this.waking.unref?.();
     }
-    if (!unread.size) return all;
-    const kept = new Map([...unread].map((p) => [p.plan_ref!, last(p)!]));
+    if (!read || !this.heldBack.size) return all;
+    const kept = new Map(projects.flatMap((p) => (this.heldBack.has(p.plan_ref!) ? [[p.plan_ref!, last(p)!] as const] : [])));
     return all.map((d) => kept.get(d.file) ?? d);
   }
 
