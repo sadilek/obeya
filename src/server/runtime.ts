@@ -370,6 +370,93 @@ export function withLimitWait(runtime: AgentRuntime, margin = 10_000): AgentRunt
   };
 }
 
+/**
+ * How long an agent waits before its process goes (`withRest`): past the longest prompt-cache
+ * lifetime its harness uses, an hour for both (Claude Code's on a subscription; Codex's, measured),
+ * with a margin for the time between the turn's last request and its end.
+ */
+export const REST_AFTER_MS = 65 * 60_000;
+
+/**
+ * A runtime whose sessions give up their process once they have waited `after` with nothing running
+ * (their turn over, no background work), so a session waiting for the owner holds no memory. The
+ * next message resumes the session by its id, as after a restart: its callers see one session
+ * throughout. `after` lies past the harness's prompt-cache lifetime, so the resumed session pays
+ * for its conversation what the process kept would have paid then: the cache is gone either way.
+ */
+export function withRest(runtime: AgentRuntime, after = REST_AFTER_MS): AgentRuntime {
+  return {
+    start(spec, firstMessage, images) {
+      let id = spec.resume;
+      let session: AgentSession | undefined;
+      // which process's events count: one given up says nothing more
+      let generation = 0;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let closed = false;
+      // the process given up last, which a resumed one waits for, so two never run on one session
+      let gone: Promise<void> = Promise.resolve();
+      // its turn is over, and no other follows by itself
+      let waiting = false;
+      let ended!: () => void;
+      const done = new Promise<void>((r) => (ended = r));
+      const rest = () => {
+        timer = undefined;
+        if (!session || !id || closed) return;
+        const resting = session;
+        session = undefined;
+        generation++;
+        resting.close();
+        gone = resting.done;
+      };
+      const begin = (text?: string, given?: string[]) => {
+        const mine = ++generation;
+        const resumed: AgentSpec = {
+            ...spec,
+            ...(id ? { resume: id } : {}),
+            onEvent: (e) => {
+              if (mine !== generation) return;
+              clearTimeout(timer);
+              timer = undefined;
+              if (e.type === 'session') id = e.id;
+              if (e.type === 'idle') waiting = !e.more;
+              else if (e.type !== 'background') waiting = false;
+              // waiting with nothing of its own running: the next message may be long in coming
+              if (waiting && (e.type === 'idle' ? !e.background : e.type === 'background' && !e.tasks.length)) timer = setTimeout(rest, after);
+              spec.onEvent(e);
+            },
+        };
+        const s = mine === 1 ? runtime.start(resumed, text, given) : startingLater(gone.then(() => () => runtime.start(resumed, text, given)), resumed);
+        session = s;
+        void s.done.then(() => {
+          // a process given up for rest has not ended the session
+          if (mine !== generation) return;
+          clearTimeout(timer);
+          session = undefined;
+          ended();
+        });
+      };
+      begin(firstMessage, images);
+      return {
+        send(text, given) {
+          if (closed) return;
+          clearTimeout(timer);
+          timer = undefined;
+          waiting = false;
+          if (session) session.send(text, given);
+          else begin(text, given);
+        },
+        close() {
+          closed = true;
+          clearTimeout(timer);
+          if (session) session.close();
+          else ended();
+        },
+        done,
+      };
+    },
+  };
+}
+
 /** Runs agents through the Claude Agent SDK, on the Claude Code login of the machine. */
 export const sdkRuntime: AgentRuntime = {
   start(spec, firstMessage, images) {
@@ -461,6 +548,8 @@ export const sdkRuntime: AgentRuntime = {
         },
       },
     });
+    // the conversation names the MCP servers it had, and a message taken before they connect has Claude Code tell the agent they are gone, then back
+    if (spec.resume) inbox.held = mcpSettled(q);
     let background: { id: string; description: string }[] = [];
     // what the agent's tool calls were called with, by id: a denial names only the call
     const inputs = new Map<string, Record<string, unknown>>();
@@ -512,6 +601,26 @@ export const sdkRuntime: AgentRuntime = {
     };
   },
 };
+
+/** How long a resumed session's first message waits at most for its MCP servers to connect. */
+const MCP_WAIT_MS = 15_000;
+
+/**
+ * Settles once none of the session's MCP servers is still connecting, or after `ms`. claude.ai's
+ * connectors take a few seconds after the start; a resumed session that takes a message before has
+ * Claude Code tell the agent their tools are gone and, once connected, back again: about 2,500
+ * tokens more than the process kept would have paid (measured 2026-11-09, `measure-resume-cache.ts`).
+ */
+export async function mcpSettled(q: { mcpServerStatus(): Promise<{ status: string }[]> }, ms = MCP_WAIT_MS): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), deadline - Date.now())));
+    const servers = await Promise.race([q.mcpServerStatus().catch(() => []), late]).finally(() => clearTimeout(timer));
+    if (!servers?.some((s) => s.status === 'pending')) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
 
 /** Claude Code and Codex processes started on this machine that still run. */
 const here = new Set<ChildProcess>();
@@ -987,6 +1096,8 @@ export class Inbox implements AsyncIterable<SDKUserMessage> {
   private untaken = new Set<string>();
   private wake: (() => void) | null = null;
   private ended = false;
+  /** What the first message waits for: a resumed session's MCP servers connecting (`mcpSettled`). */
+  held: Promise<void> = Promise.resolve();
   /** For a session on another machine: copies the images and the files the text names there and returns the text with their paths there. */
   carry?: (text: string, images: string[]) => Promise<string>;
 
@@ -1018,6 +1129,7 @@ export class Inbox implements AsyncIterable<SDKUserMessage> {
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+    await this.held;
     while (true) {
       while (this.queue.length) {
         const { uuid, content } = this.queue.shift()!;

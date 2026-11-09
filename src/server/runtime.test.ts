@@ -3,7 +3,7 @@ import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, chromeAvailable, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withSpend, withStderr } from './runtime';
+import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, mcpSettled, deniedBy, chromeAvailable, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withRest, withSpend, withStderr } from './runtime';
 import { FakeRuntime } from './testing';
 import { MESSAGES } from '../core/messages';
 
@@ -229,6 +229,93 @@ test("a call that needs permission goes to the owner with Claude Code's reason; 
   const q = await askOwner(ask, 'AskUserQuestion', {}, { signal });
   expect(q.behavior === 'deny' && q.message).toContain('mcp__obeya__ask');
   expect(asked).toHaveLength(1);
+});
+
+test('a session waiting past the prompt cache gives up its process, and the next message resumes it by its id', async () => {
+  const fake = new FakeRuntime();
+  const runtime = withRest(fake, 30);
+  const events: AgentEvent[] = [];
+  let ended = false;
+  const session = runtime.start({ cwd: '/r', system: 'You work on a card.', tools: [], onEvent: (e) => events.push(e) }, 'Go.');
+  void session.done.then(() => (ended = true));
+  const first = fake.last;
+  first.emit({ type: 'session', id: 's1' });
+  // in a turn, and waiting for its background work, it keeps its process
+  await Bun.sleep(60);
+  first.emit({ type: 'idle', background: 1 });
+  await Bun.sleep(60);
+  expect(first.closed).toBe(false);
+  // the work ends without a turn after it: now it only waits
+  first.emit({ type: 'background', tasks: [] });
+  await Bun.sleep(60);
+  expect(first.closed).toBe(true);
+  expect(fake.sessions).toHaveLength(1);
+  expect(ended).toBe(false);
+  // what the process given up still says counts for nothing
+  first.emit({ type: 'text', text: 'late' });
+  expect(events.map((e) => e.type)).toEqual(['session', 'idle', 'background']);
+  session.send('Feedback.');
+  await Bun.sleep(0);
+  const second = fake.last;
+  expect(fake.sessions).toHaveLength(2);
+  expect(second.spec.resume).toBe('s1');
+  expect(second.spec.system).toBe('You work on a card.');
+  expect(second.inbox).toEqual(['Feedback.']);
+  second.emit({ type: 'text', text: 'On it.' });
+  expect(events.at(-1)).toEqual({ type: 'text', text: 'On it.' });
+  // a message after the turn's end keeps it awake; the turn's end with another to follow too
+  second.emit({ type: 'idle', more: true });
+  await Bun.sleep(60);
+  expect(second.closed).toBe(false);
+  second.emit({ type: 'idle' });
+  await Bun.sleep(10);
+  session.send('More.');
+  await Bun.sleep(60);
+  expect(second.closed).toBe(false);
+  expect(second.inbox).toEqual(['Feedback.', 'More.']);
+  // closed, the session ends; and one closed while resting ends at once
+  session.close();
+  await session.done;
+  expect(second.closed).toBe(true);
+  const other = runtime.start({ cwd: '/r', system: '', tools: [], onEvent: () => {} }, 'Go.');
+  fake.last.emit({ type: 'session', id: 's2' });
+  fake.last.emit({ type: 'idle' });
+  await Bun.sleep(60);
+  other.close();
+  await other.done;
+  expect(fake.sessions).toHaveLength(3);
+});
+
+test('a session that never said its id keeps its process: it could not be resumed', async () => {
+  const fake = new FakeRuntime();
+  withRest(fake, 10).start({ cwd: '/r', system: '', tools: [], onEvent: () => {} }, 'Go.');
+  fake.last.emit({ type: 'idle' });
+  await Bun.sleep(40);
+  expect(fake.last.closed).toBe(false);
+});
+
+test("a resumed session's first message waits for its MCP servers to connect, at most a while", async () => {
+  const inbox = new Inbox();
+  let connect!: () => void;
+  inbox.held = new Promise((r) => (connect = r));
+  inbox.push('Feedback.');
+  let got: unknown;
+  void inbox[Symbol.asyncIterator]().next().then((m) => (got = m.value));
+  await Bun.sleep(10);
+  expect(got).toBeUndefined();
+  connect();
+  await Bun.sleep(0);
+  expect((got as { message: { content: string } }).message.content).toBe('Feedback.');
+
+  let asked = 0;
+  const pending = (n: number) => ({ mcpServerStatus: async () => [{ status: ++asked > n ? 'connected' : 'pending' }, { status: 'failed' }] });
+  await mcpSettled(pending(2), 5000);
+  expect(asked).toBe(3);
+  // one that never connects, or a CLI that never answers, holds the message no longer than the bound
+  const started = Date.now();
+  await mcpSettled(pending(Infinity), 300);
+  await mcpSettled({ mcpServerStatus: () => new Promise(() => {}) }, 100);
+  expect(Date.now() - started).toBeLessThan(1500);
 });
 
 test('a message sent while a turn ends is still to come; one the turn took mid-way is not', async () => {

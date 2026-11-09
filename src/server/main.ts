@@ -52,7 +52,7 @@ import { ghForge, routedForge } from './forge';
 import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
-import { byHarness, claudeExecutable, endAgentsHere, sdkRuntime } from './runtime';
+import { byHarness, claudeExecutable, endAgentsHere, sdkRuntime, withRest } from './runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
 import { findClaude, MachineSetup, welcome } from './machine';
@@ -340,7 +340,10 @@ canvases = await Canvases.start(
 );
 /** The agents' runtime: Claude Code's through the Agent SDK or Codex's app server, recorded (`--record`), or a recording played back (`--replay`). */
 function agentRuntime() {
-  const live = byHarness({ claude: sdkRuntime, codex: codexRuntime });
+  // a session waiting longer than its prompt cache lives gives up its process, and its next message resumes it
+  // (`OBEYA_REST_AFTER`, in seconds, for demos and live checks)
+  const rest = process.env.OBEYA_REST_AFTER ? Number(process.env.OBEYA_REST_AFTER) * 1000 : undefined;
+  const live = byHarness({ claude: withRest(sdkRuntime, rest), codex: withRest(codexRuntime, rest) });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;
   const refusedFile = join(home, 'replay-refused.txt');
