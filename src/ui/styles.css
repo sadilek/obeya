@@ -888,7 +888,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .quote.q-by-owner { --q: var(--working); }
 .quote.q-by-worker { --q: var(--inPr); }
 .quote.q-by-explorer { --q: var(--idea); }
-.quote:is(.q-by-koordinator, .q-by-obeya, .q-by-project) { --q: var(--proposal); }
+.quote:is(.q-by-coordinator, .q-by-obeya, .q-by-project) { --q: var(--proposal); }
 .quote-go { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 5px 9px 6px; border: 0; background: none;
   text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .quote-who { font-size: 11.5px; font-weight: 600; color: var(--q); }
@@ -1208,8 +1208,8 @@ span.cl-name { color: inherit; cursor: default; }
 /* a task's conversation: under the card's demo and pull request, scrolled to its end */
 .talk.conv { max-height: min(520px, 60vh); max-width: 100ch; }
 .talk .msg.by-worker .who { color: var(--ink); }
-.talk .msg.by-koordinator .who, .talk .msg.by-project .who { color: var(--muted); }
-.talk .msg.by-koordinator.thinking .who::after { background: linear-gradient(90deg, transparent, var(--proposal), transparent); background-size: 200% 100%; }
+.talk .msg.by-coordinator .who, .talk .msg.by-project .who { color: var(--muted); }
+.talk .msg.by-coordinator.thinking .who::after { background: linear-gradient(90deg, transparent, var(--proposal), transparent); background-size: 200% 100%; }
 .talk .msg.by-worker.thinking .who::after { background: linear-gradient(90deg, transparent, var(--working), transparent); background-size: 200% 100%; }
 /* a question in the conversation is answered, taken back or asked anew (the one the card waits on
    stands at the end): no edge, its label stays orange, a turn where the owner had something to do */
@@ -1913,7 +1913,7 @@ button.link:hover { text-decoration: underline; }
 #ptt.dropping #mic { outline: 2px dashed var(--working); outline-offset: 5px; }
 .ptt-error { font-size: 12px; color: var(--error); background: var(--card); box-shadow: var(--shadow); border-radius: 2px; padding: 4px 10px; max-width: calc((100vw - var(--left, 0px) - var(--side, 0px)) * .6); }
 .tell { margin: 4px 0 6px; }
-/* the Koordinator's sheet is a column: the conversation takes the height the sheet has, the field to
+/* the Coordinator's sheet is a column: the conversation takes the height the sheet has, the field to
    write in under it, then the sections that open and close; an open section takes from the
    conversation down to 200px, below that the sheet scrolls */
 #ksheet { display: flex; flex-direction: column; }
@@ -1935,7 +1935,7 @@ button.link:hover { text-decoration: underline; }
 .fold-body { padding: 0 0 10px 18px; }
 .fold-body > .hint:first-child { margin-top: 0; }
 
-/* confirmations, and each command while the Koordinator reads it, stacked above the microphone, newest last */
+/* confirmations, and each command while the Coordinator reads it, stacked above the microphone, newest last */
 #acks { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
 .ack { background: var(--ink); color: var(--bg); border-radius: 3px; padding: 12px 16px; max-width: min(560px, calc(100vw - var(--left, 0px) - var(--side, 0px) - 32px)); font-size: 14px;
   display: flex; gap: 14px; align-items: center; pointer-events: auto; animation: ack-in .25s; }

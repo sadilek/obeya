@@ -48,7 +48,7 @@ ElevenLabs once it stands.
 
 The render that goes out with a release is a real run, recorded (`--record`). Corrections after it
 (a scene, the layout, the narration's timing) play that recording back (`--replay`): every agent,
-the Koordinator's included, does what it did in the recorded run, through the Obeya of the checkout,
+the Coordinator's included, does what it did in the recorded run, through the Obeya of the checkout,
 whose cards, layout, held comments and landing are live. The playback takes a few minutes, costs no
 Claude usage and comes out the same each time, so a recorded run can also be chosen for how its
 agents did (one whose first demo leaves the bold line to the comment, say). It refuses, and the

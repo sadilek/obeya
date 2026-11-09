@@ -20,7 +20,7 @@ import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, keepDemo, OB
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
-import type { InputContext } from './koordinator';
+import type { InputContext } from './coordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
@@ -69,7 +69,7 @@ export interface WorkerOptions {
   onApproval?: (cardId: string) => string | null;
   /** The default branch has moved: the card's pull request was merged, or its work pushed there directly. */
   onMerged?: (cardId: string) => void;
-  /** A review card's worker made a follow-up task (`followUpTask`): it goes to the Koordinator, to wait for the PR's merge. */
+  /** A review card's worker made a follow-up task (`followUpTask`): it goes to the Coordinator, to wait for the PR's merge. */
   onFollowUpTask?: (taskId: string, reviewId: string) => void;
   /** The card's work landed on the default branch without a pull request (`shipped` says where): its shared page links the commit. */
   onLanded?: (cardId: string) => void;
@@ -116,7 +116,7 @@ export interface WorkerOptions {
   demoDirectory?: () => string;
   /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
   onWorkEnded?: (cardId: string, workspace: string | null) => void;
-  /** Passes on to the Koordinator what the owner's words to a card's worker ask of Obeya (`to_obeya`); without it the worker has no such tool. */
+  /** Passes on to the Coordinator what the owner's words to a card's worker ask of Obeya (`to_obeya`); without it the worker has no such tool. */
   toObeya?: (cardId: string, request: string) => Promise<string>;
   /** Where pull requests live: a review card's is read, commented on and merged through it. */
   forge?: Forge;
@@ -286,7 +286,7 @@ const retractedText = (r: Retracted, replaced: boolean): string => {
 /** What a worker hears of a card's task someone else than the owner wrote: its language tells nothing of the owner's (`ownersLanguage`). */
 const TASK_BY: Record<Exclude<TaskAuthor, 'owner'>, string> = {
   plan: "The card's task comes from the project's plan doc, not from the owner: its language tells nothing about theirs.",
-  koordinator: "Obeya's work retrospective wrote the card's task, not the owner: its language tells nothing about theirs.",
+  coordinator: "Obeya's work retrospective wrote the card's task, not the owner: its language tells nothing about theirs.",
   idea: "The idea's agent wrote the card's task, not the owner: its language tells nothing about theirs.",
   proposal: "A worker proposed the card's task and the owner took it on: its language tells nothing about theirs.",
 };
@@ -768,7 +768,7 @@ export class Workers {
    * meanwhile; until then its status line says that its workspace is being prepared. Where git
    * fails, `undo` puts the card back as it was, whatever came meanwhile, as long as the card still
    * names the workspace, and its conversation says why. `queues`: where no clean clone was left, the
-   * promise rejects with the shortage instead, for the Koordinator to queue the card as when there is
+   * promise rejects with the shortage instead, for the Coordinator to queue the card as when there is
    * none at once.
    */
   private whenReady(cardId: string, ready: Promise<string> | null, go: () => void, undo: () => void, queues = false): Promise<void> {
@@ -1227,7 +1227,7 @@ export class Workers {
 
   /**
    * A follow-up waiting for a full clone takes the next clean free one, on any machine whatever its
-   * slots, and its worker goes on there. Returns whether it did; the Koordinator asks again as the board changes.
+   * slots, and its worker goes on there. Returns whether it did; the Coordinator asks again as the board changes.
    */
   takeClone(cardId: string): boolean {
     if (!this.waitsForClone(cardId)) return false;
@@ -2944,7 +2944,7 @@ export class Workers {
    * card works there next), and its uncommitted work goes into a commit on its branch, which stays in
    * that clone (`kept_in`) until the card's next start takes it to the clone it gets then, the work
    * uncommitted again (`Workspaces.evict`). Settles once the clone is free, with whether the card's
-   * worker was on it (the Koordinator queues it again then); where git fails, the card keeps the
+   * worker was on it (the Coordinator queues it again then); where git fails, the card keeps the
    * clone, as a stopped card with work does.
    */
   async evict(cardId: string): Promise<boolean> {
@@ -3443,7 +3443,7 @@ export class Workers {
     this.launch(card.id, l.restarts ? `${repo ? 'Obeya runs' : 'Obeya has started again and runs'} main with your change now. ${restarted}` : restarted, session);
   }
 
-  /** Settles once the workspaces git is making ready now are ready (or failed), their workers started: for a start begun elsewhere (the Koordinator, the owner's question). */
+  /** Settles once the workspaces git is making ready now are ready (or failed), their workers started: for a start begun elsewhere (the Coordinator, the owner's question). */
   async prepared(): Promise<void> {
     while (this.preparing.size) await Promise.all([...this.preparing.values()].map((p) => p.done));
   }
@@ -5130,7 +5130,7 @@ export class Workers {
 
   /**
    * The card's report for whoever reads it beyond its conversation (a follow-up's worker, the
-   * Koordinator, a shared page): a later handover holds only what changed, so the first one since
+   * Coordinator, a shared page): a later handover holds only what changed, so the first one since
    * the worker started comes with what it said in the conversation after it, its replies and later
    * handovers, `latest` last.
    */

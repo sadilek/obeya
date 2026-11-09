@@ -495,7 +495,7 @@ describe('workers', () => {
     expect(runtime.last.toolStep()).toContain('[In reply to your message: “Ich exportiere die Zählerstände als CSV mit Semikolon als Trenner, wie Excel es in Deutschland erwartet. Mehr dazu. Mehr dazu. Mehr dazu. Mehr dazu. Mehr dazu. …”]\n\nLieber Komma.');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Lieber Komma.', replyTo: replied.id });
     // Obeya's words in the conversation the worker never had: it reads them whole
-    const aside = board.log(c.id, 'say', 'koordinator', 'Die Karte „Import“ liegt auf einer anderen Leinwand.');
+    const aside = board.log(c.id, 'say', 'coordinator', 'Die Karte „Import“ liegt auf einer anderen Leinwand.');
     workers.message(c.id, 'Dann lass es.', [], false, aside.id);
     expect(runtime.last.toolStep()).toContain("[In reply to Obeya's message in the card's conversation: “Die Karte „Import“ liegt auf einer anderen Leinwand.”]\n\nDann lass es.");
     // a question answered in reply to it says so too
@@ -512,7 +512,7 @@ describe('workers', () => {
     const other = manual();
     await workers.start(c.id);
     const line = board.events(c.id).findLast((e) => e.kind === 'state')!;
-    const elsewhere = board.log(other.id, 'say', 'koordinator', 'Anderswo.');
+    const elsewhere = board.log(other.id, 'say', 'coordinator', 'Anderswo.');
     for (const id of [line.id, elsewhere.id, 99999]) {
       expect(board.quoted(c.id, id)).toBeUndefined();
       workers.message(c.id, 'Weiter.', [], false, board.quoted(c.id, id)?.id);

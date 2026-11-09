@@ -392,7 +392,7 @@ export function serve(
 
   /** A click the Rückschau counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
   const click = <T>(c: CanvasRuntime, out: T): T => {
-    c.koordinator.noticed();
+    c.coordinator.noticed();
     return out;
   };
 
@@ -484,11 +484,11 @@ export function serve(
     }
   };
   // a planned card takes what is typed into its field for the agent that will take it on; spoken
-  // words go to the Koordinator, which starts it, snoozes it or takes it out of the queue
+  // words go to the Coordinator, which starts it, snoozes it or takes it out of the queue
   const listens = (card: Item, input: Input) => agentListens(card) || (input.field === 'note' && holdsNotes(card));
   /**
    * What the owner said or typed: with an agent on the open card, straight to that agent (which
-   * passes on what asks Obeya for something); else the Koordinator reads it. `null`: Whisper heard
+   * passes on what asks Obeya for something); else the Coordinator reads it. `null`: Whisper heard
    * nothing it could write down, which nobody should guess from.
    */
   const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = [], input: Input = {}) => {
@@ -1003,7 +1003,7 @@ export function serve(
           return new Response(f.data, { headers: { 'content-type': f.type, 'content-disposition': `attachment; filename="${f.name}"`, 'cache-control': 'no-store' } });
         }),
       },
-      // what the owner said (audio), for the open card's agent or the Koordinator; the body is the
+      // what the owner said (audio), for the open card's agent or the Coordinator; the body is the
       // recording, or a form with it (`audio`) and the words typed in the field before it (`text`)
       '/api/c/:canvas/voice': {
         POST: on(holdingRestart(async (c, req) => {
@@ -1044,7 +1044,7 @@ export function serve(
           return heard(c, words, focusOf(req, c), images, { ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) });
         })),
       },
-      // the owner started speaking: transcription and the Koordinator get ready meanwhile
+      // the owner started speaking: transcription and the Coordinator get ready meanwhile
       // whether the recording the page named `?sent=<id>` arrived, for a page that lost the answer
       '/api/c/:canvas/voice/arrived/:id': { GET: on((_c, req) => ({ arrived: arrived.has(req.params.id!) })) },
       '/api/c/:canvas/voice/warm': {
@@ -1055,7 +1055,7 @@ export function serve(
       },
       '/api/c/:canvas/command': {
         POST: on(async (c, req) => {
-          // `field`: typed into that field of the open card rather than into the Koordinator's sheet
+          // `field`: typed into that field of the open card rather than into the Coordinator's sheet
           // `replyTo`: typed in reply to that message of the open card's conversation, or with no card open of the sheet (`TalkRef`)
           // `spot`: typed about that place in the open card's demo video
           const { text, images, field, replyTo, spot } = (await req.json()) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput };
@@ -1125,7 +1125,7 @@ export function serve(
       '/api/c/:canvas/reshare/stop': { POST: on((c) => c.sharing.stopResharing()) },
       // the card's latest demo was narrated anew in its directory (the demo skill's `--revoice`)
       '/api/c/:canvas/cards/:id/demo-rebuilt': { POST: on((c, req) => c.sharing.rebuilt(req.params.id!)) },
-      // the owner has the Koordinator's sheet in view: the answers waiting there are read; with `ids`, those a project's sheet shows
+      // the owner has the Coordinator's sheet in view: the answers waiting there are read; with `ids`, those a project's sheet shows
       '/api/c/:canvas/talk/read': {
         POST: on(async (c, req) => {
           const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
@@ -1133,7 +1133,7 @@ export function serve(
           c.board.readTalk(ids as number[] | undefined);
         }),
       },
-      // the owner no longer wants the step the Koordinator waits on a card for („Nicht mehr warten“)
+      // the owner no longer wants the step the Coordinator waits on a card for („Nicht mehr warten“)
       '/api/c/:canvas/talk/:id/unwait': {
         POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String(((await req.json().catch(() => ({}))) as { card?: unknown }).card ?? '')) })),
       },

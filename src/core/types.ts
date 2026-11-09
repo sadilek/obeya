@@ -105,12 +105,12 @@ export function openPerGroup(items: Item[]): Map<string, number> {
   return open;
 }
 
-/** A workstream a prototype can be built for: nobody has worked on it yet, and the Koordinator does not hold it. */
+/** A workstream a prototype can be built for: nobody has worked on it yet, and the Coordinator does not hold it. */
 export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i.queue;
 
 /**
- * A planned task nobody has worked on yet, which the Koordinator may merge with others or delete:
- * no branch, no workspace, not with the Koordinator unless it waits there behind other cards (a
+ * A planned task nobody has worked on yet, which the Coordinator may merge with others or delete:
+ * no branch, no workspace, not with the Coordinator unless it waits there behind other cards (a
  * review's follow-up task waiting for the PR's merge, say), and no prototype nor becoming a project.
  */
 export const untouched = (i: Item) =>
@@ -118,7 +118,7 @@ export const untouched = (i: Item) =>
 
 /**
  * A task of the owner's that can still be planned as a project, as an idea can: planned, nobody has
- * worked on it, the Koordinator does not hold it, and it is no prototype nor decided as a project already.
+ * worked on it, the Coordinator does not hold it, and it is no prototype nor decided as a project already.
  */
 export const plannableAsProject = (i: Item) =>
   i.source === 'manual' && i.kind === 'task' && buildableOn(i) && !i.prototypeOf && !i.becomesProject;
@@ -193,14 +193,14 @@ export const answering = (i: Pick<Item, 'state' | 'need' | 'answering'>) => hand
  * work, waiting, in a pull request, finishing after the landing, or one a question resumes on a
  * finished card), an idea's exploration agent, or the agent that reworks a proposal (while it
  * does, the words wait for the rework after it). The words then go straight to it; on any other
- * card they go to the Koordinator.
+ * card they go to the Coordinator.
  */
 export const agentListens = (i: Pick<Item, 'kind' | 'state' | 'branch' | 'prototypeOf' | 'archivedAt' | 'finishing'>) =>
   !i.archivedAt && (i.kind === 'question' || i.state === 'idea' || i.state === 'proposal' || i.state === 'working' || i.state === 'waiting' || i.state === 'inPr' || !!i.finishing || askable(i));
 
 /**
  * A card the owner left without a title but with a task (text or screenshots): Obeya names it from
- * that (`Koordinator.name`). Without either it is an empty card, dropped when closed.
+ * that (`Coordinator.name`). Without either it is an empty card, dropped when closed.
  */
 export const nameless = (i: Pick<Item, 'kind' | 'title' | 'body' | 'images'>) => i.kind !== 'project' && !i.title.trim() && (!!i.body.trim() || !!i.images?.length);
 
@@ -217,7 +217,7 @@ export function titleFrom(body: string): string {
  * and the agent is not at work on a reply (which may settle them), its proposal's while it is not
  * reworked, its worker's, its demo report's. The one place where each kind of card says which of its
  * questions are open: its conversation shows them at its end with the field under it set to answer
- * them, the canvas card and the phone's count show them, the Koordinator hears of them.
+ * them, the canvas card and the phone's count show them, the Coordinator hears of them.
  */
 export function openQuestions(i: Pick<Item, 'archivedAt' | 'state' | 'need' | 'question' | 'idea' | 'proposal'>): Question[] {
   if (i.archivedAt) return [];
@@ -266,7 +266,7 @@ export function awaited(card: Item | undefined, state: AwaitedState): Awaited | 
 /** A worker on the card is at work (whether or not in a turn right now): it has started on the card, opens or follows its pull request, finishes after the landing, or takes in the owner's words on its handover. */
 const workerAtWork = (i: Item) => i.kind === 'task' && (i.state === 'working' || i.state === 'inPr' || !!i.finishing || answering(i));
 
-/** A task planned and not with the Koordinator: snoozed, it starts at the time instead of now. */
+/** A task planned and not with the Coordinator: snoozed, it starts at the time instead of now. */
 export const plannedToStart = (i: Pick<Item, 'kind' | 'state' | 'queue' | 'archivedAt'>) => i.kind === 'task' && i.state === 'planned' && !i.queue && !i.archivedAt;
 
 /**
@@ -283,7 +283,7 @@ export const snoozable = (i: Item) => !i.archivedAt && (!!i.snoozed || needsYou(
  */
 export const awaitsContributorNext = (i: Item) => !!i.contribution && !i.archivedAt && handedOver(i) && !answering(i) && !i.landing && !i.snoozed?.contributor && (!i.snoozed || !!i.snoozed.waiting);
 
-/** Answers in the Koordinator's sheet the owner has not seen yet. */
+/** Answers in the Coordinator's sheet the owner has not seen yet. */
 export const unreadAnswers = (talk: Talk[]) => talk.filter((x) => x.unread).length;
 
 /** Per project, its agent's answers to what the owner asked in its sheet that wait unread: its card shows them. */
@@ -293,12 +293,12 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
   return m;
 }
 
-/** What on a canvas waits for the owner: the cards that need them, and the Koordinator while an answer waits unread. */
+/** What on a canvas waits for the owner: the cards that need them, and the Coordinator while an answer waits unread. */
 export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
 /**
  * What of a canvas „Braucht dich“ lists (the phone's, and the navigation on every other canvas's page):
- * the cards that need the owner (none snoozed, which are put off), and the Koordinator's answers that
+ * the cards that need the owner (none snoozed, which are put off), and the Coordinator's answers that
  * wait unread.
  */
 export type Waiting = Pick<CanvasSnapshot, 'items' | 'talk'>;
@@ -309,14 +309,14 @@ export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting =>
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**
- * Who wrote a card's task: the owner (also through the Koordinator, from their words), the plan doc
+ * Who wrote a card's task: the owner (also through the Coordinator, from their words), the plan doc
  * of its workstream, Obeya (the Arbeitsrückschau), the idea a prototype is for, or a worker whose
  * proposal the owner accepted. A decided idea's task is its brief, the idea's agent's.
  */
-export type TaskAuthor = 'owner' | 'plan' | 'koordinator' | 'idea' | 'proposal';
+export type TaskAuthor = 'owner' | 'plan' | 'coordinator' | 'idea' | 'proposal';
 
 export const taskAuthor = (item: Pick<Item, 'source' | 'prototypeOf' | 'retro' | 'proposed' | 'brief'>): TaskAuthor =>
-  item.source === 'plan' ? 'plan' : item.prototypeOf || item.brief !== undefined ? 'idea' : item.retro ? 'koordinator' : item.proposed ? 'proposal' : 'owner';
+  item.source === 'plan' ? 'plan' : item.prototypeOf || item.brief !== undefined ? 'idea' : item.retro ? 'coordinator' : item.proposed ? 'proposal' : 'owner';
 
 export interface Item {
   id: string;
@@ -342,9 +342,9 @@ export interface Item {
   plan?: { file: string; goal: string };
   /** Projects only: the idea their plan doc was written from. */
   origin?: string;
-  /** Projects only: the Koordinator reads from the plan doc which workstream builds on which, to arrange them. */
+  /** Projects only: the Coordinator reads from the plan doc which workstream builds on which, to arrange them. */
   arranging?: true;
-  /** Workstreams only: the workstreams of its project it builds on, as the Koordinator read them from the plan doc. */
+  /** Workstreams only: the workstreams of its project it builds on, as the Coordinator read them from the plan doc. */
   buildsOn?: string[];
   /** Cards connected by the owner that must finish before this card starts. */
   manualDependsOn?: string[];
@@ -437,9 +437,9 @@ export interface Item {
   workspace?: string;
   /** The clone that keeps its branch since its workspace was taken from it, until it works again (the same form as `workspace`). */
   keptIn?: string;
-  /** Files the Koordinator expects the card to change. */
+  /** Files the Coordinator expects the card to change. */
   scope?: string[];
-  /** A planned card the Koordinator is deciding on, or that waits for cards in progress. */
+  /** A planned card the Coordinator is deciding on, or that waits for cards in progress. */
   queue?: Queue;
   /** The pull request, once the worker opened it after approval; on a review card, the one it reviews. */
   pr?: PullRequest;
@@ -497,7 +497,7 @@ export interface Item {
   background?: BackgroundTask[];
   /**
    * The card's agent other than its worker (an idea's, a Question card's, the reviser of a proposal,
-   * the Koordinator naming or checking it) waits for the account's usage limit: it goes on by itself then (ISO time).
+   * the Coordinator naming or checking it) waits for the account's usage limit: it goes on by itself then (ISO time).
    */
   limitedUntil?: string;
   /** Since when it waits for the owner (`needsYou`), for the phone view's „Braucht dich“. */
@@ -577,7 +577,7 @@ export interface Snooze {
   waiting?: true;
   /** The owner changed the time its agent snoozed until: the agent hears so when it wakes. */
   moved?: true;
-  /** It is planned: it starts at the time, through the Koordinator, as if started then. */
+  /** It is planned: it starts at the time, through the Coordinator, as if started then. */
   start?: true;
   /**
    * A review card the owner set aside until its contributor (`author`) writes on the pull request or
@@ -662,7 +662,7 @@ export interface Decision {
   cardId: string;
   question: string;
   answer: string;
-  by: 'owner' | 'project' | 'koordinator';
+  by: 'owner' | 'project' | 'coordinator';
   at: string;
 }
 
@@ -912,7 +912,7 @@ export interface PrThread extends PrComment {
 export type PrReviewEntry = { author: string; mine?: boolean; at: string; threads: PrThread[] } | PrComment;
 
 /**
- * How long a project's workstreams, started together, wait before the Koordinator plans them: the
+ * How long a project's workstreams, started together, wait before the Coordinator plans them: the
  * owner can take the start back until then (a button on the project card is easily hit).
  */
 export const START_ALL_HOLD_MS = 8000;
@@ -924,15 +924,15 @@ export const EVICT_HOLD_MS = 8000;
 export const PUSH_HOLD_MS = 8000;
 
 /**
- * `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting
- * longest goes first. `together`: the project whose workstreams the Koordinator judges all at once.
- * `workspace`: the Koordinator let the card start, but no workspace was free for it (`none`: all
+ * `since`: when the card came to the Coordinator; of the cards whose turn comes, the one waiting
+ * longest goes first. `together`: the project whose workstreams the Coordinator judges all at once.
+ * `workspace`: the Coordinator let the card start, but no workspace was free for it (`none`: all
  * leased or none set up; `dirty`: every free one has uncommitted changes); it starts once one is.
  * `behind`: the cards it waits for; `buildsOn`: those of them it builds on (workstreams of its
  * project), which hold it until they have landed, also while not started or stopped.
  * `manualWait`: those of `behind` that only an arrow the owner drew holds it for, not a wait the
- * Koordinator inferred; `buildsOn` names inferred waits alone.
- * `paused`: the Koordinator let it start, but the owner paused its canvas's agents; it starts once they resume them.
+ * Coordinator inferred; `buildsOn` names inferred waits alone.
+ * `paused`: the Coordinator let it start, but the owner paused its canvas's agents; it starts once they resume them.
  * `begun`, on a card waiting for a workspace or a paused canvas: the owner started it anyway, or it
  * was at work before (its workspace taken from it); the owner's arrows no longer hold it.
  */
@@ -1070,7 +1070,7 @@ export interface CardEvent {
    * with who refused it and why.
    */
   kind: 'report' | 'activity' | 'say' | 'closing' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error' | 'talk' | 'denied';
-  author: 'worker' | 'owner' | 'project' | 'koordinator' | 'obeya' | 'explorer';
+  author: 'worker' | 'owner' | 'project' | 'coordinator' | 'obeya' | 'explorer';
   text: string;
   /** Set on an error the UI words itself; `text` then holds the server's technical detail. */
   code?: ErrorCode;
@@ -1148,7 +1148,7 @@ export interface CanvasInfo {
   repos: RepoRef[];
   /** How many times which of its repositories do not run as the configuration has them changed: the page reads the configuration's problems again when it changes. */
   configRev?: number;
-  /** The owner paused the canvas's agents: cards the Koordinator lets start wait in the queue until they resume them. */
+  /** The owner paused the canvas's agents: cards the Coordinator lets start wait in the queue until they resume them. */
   paused?: true;
   /** Its agents at work now (`pausable`) and those the owner paused or that are about to pause (`halted`), for the canvas switcher; absent while none is either. */
   agents?: { running: number; paused: number };
@@ -1261,7 +1261,7 @@ export interface CanvasSnapshot {
   preferences: Preference[];
   /** The settings the Arbeitsrückschau proposes for the canvas's repositories, waiting for the owner; none when none waits. */
   settingProposals?: SettingProposal[];
-  /** The owner's latest exchanges with the Koordinator without an open card (those with one are in its log). */
+  /** The owner's latest exchanges with the Coordinator without an open card (those with one are in its log). */
   talk: Talk[];
   /** The clone pools of the repositories that use clones; none when no repository does. */
   workspaces?: ClonePool[];
@@ -1271,7 +1271,7 @@ export interface CanvasSnapshot {
   planDirs?: PlanDir[];
   /** A mark of the archive that changes with anything it lists: the page reads the archive again only then. */
   archive?: string;
-  /** What all agents on the canvas cost so far in US dollars (its cards', archived ones too, and its own agents', the Koordinator's); none before any reported a cost. */
+  /** What all agents on the canvas cost so far in US dollars (its cards', archived ones too, and its own agents', the Coordinator's); none before any reported a cost. */
   spent?: number;
 }
 
@@ -1291,7 +1291,7 @@ export interface PlanDir {
 }
 
 /**
- * Shared demo pages to bring up to date at once, from the Koordinator's sheet: how many are
+ * Shared demo pages to bring up to date at once, from the Coordinator's sheet: how many are
  * outdated, and the run that shares them again one after the other.
  */
 export interface Reshare {
@@ -1318,13 +1318,13 @@ export interface Reshare {
   };
 }
 
-/** One exchange between the owner and the Koordinator. */
+/** One exchange between the owner and the Coordinator. */
 export interface Talk {
   id: number;
   at: string;
   /** What the owner said or typed. */
   said: string;
-  /** Absent while the Koordinator reads the words. */
+  /** Absent while the Coordinator reads the words. */
   reply?: string;
   /** The reply only answers the words (no actions to take back, no question looked up): a text answer "Show as walkthrough" can tell. */
   replyOnly?: true;
@@ -1334,11 +1334,11 @@ export interface Talk {
   undone?: boolean;
   /** Screenshots that came with the command; they went to the cards it created or concerned. */
   images?: string[];
-  /** A question the Koordinator looks up; its answer comes later. */
+  /** A question the Coordinator looks up; its answer comes later. */
   question?: string;
   answer?: string;
-  /** Who answered: the Koordinator, or the project agent of the workstream asked about. */
-  answerBy?: 'koordinator' | 'project';
+  /** Who answered: the Coordinator, or the project agent of the workstream asked about. */
+  answerBy?: 'coordinator' | 'project';
   /** The answer came for the sheet, and the owner has not had the sheet in view since. */
   unread?: true;
   /** A looked-up question: the thread it belongs to (the id of the exchange that started it). */
@@ -1357,17 +1357,17 @@ export interface Talk {
    * something: what a draft for them starts from, under a link on the reply.
    */
   wish?: Wish;
-  /** The usage limit keeps the Koordinator from reading the words: it reads them by itself then (ISO time), the reply follows. */
+  /** The usage limit keeps the Coordinator from reading the words: it reads them by itself then (ISO time), the reply follows. */
   heldUntil?: string;
   /** The usage limit stopped the agent that looks the question up: it goes on by itself then (ISO time), the answer follows. */
   limitedUntil?: string;
-  /** Cards the Koordinator waits on, as its reply said, to take a step once each gets there (`wait_for`). */
+  /** Cards the Coordinator waits on, as its reply said, to take a step once each gets there (`wait_for`). */
   waits?: TalkWait[];
-  /** Words of no one: the Koordinator took them up by itself, since a card it waited on got there (or no longer can). */
+  /** Words of no one: the Coordinator took them up by itself, since a card it waited on got there (or no longer can). */
   after?: TalkAfter;
-  /** A question looked up for an action that needs its answer: the step the Koordinator takes once the answer is in, until it has decided it. */
+  /** A question looked up for an action that needs its answer: the step the Coordinator takes once the answer is in, until it has decided it. */
   then?: string;
-  /** Words of no one: the Koordinator took up the step it said it would take once the answer of that exchange was in. */
+  /** Words of no one: the Coordinator took up the step it said it would take once the answer of that exchange was in. */
   answered?: number;
   /** Words of no one: a card left this canvas for another, built there in a new repository. */
   moved?: TalkMoved;
@@ -1386,14 +1386,14 @@ export interface TalkMoved {
   canvasName: string;
 }
 
-/** A card the Koordinator waits on: until it is done or waits for the owner. */
+/** A card the Coordinator waits on: until it is done or waits for the owner. */
 export interface TalkWait {
   card: string;
   title: string;
   state: AwaitedState;
 }
 
-/** What became of the card the Koordinator waited on, which it took up again with: the exchange it said so in. */
+/** What became of the card the Coordinator waited on, which it took up again with: the exchange it said so in. */
 export interface TalkAfter {
   title: string;
   state: AwaitedState;
@@ -1401,7 +1401,7 @@ export interface TalkAfter {
   from: number;
 }
 
-/** A message of Obeya's sheet: one part of an exchange, what the owner said, the Koordinator's reply or the looked-up answer. */
+/** A message of Obeya's sheet: one part of an exchange, what the owner said, the Coordinator's reply or the looked-up answer. */
 export interface TalkRef {
   talk: number;
   part: 'said' | 'reply' | 'answer';
@@ -1409,7 +1409,7 @@ export interface TalkRef {
 
 /** A message of the sheet as a reply quotes it: who said it and what. */
 export interface TalkQuote extends TalkRef {
-  by: 'owner' | 'koordinator' | 'project';
+  by: 'owner' | 'coordinator' | 'project';
   text: string;
 }
 
@@ -1417,7 +1417,7 @@ export const isTalkRef = (r: unknown): r is TalkRef =>
   !!r && typeof r === 'object' && Number.isInteger((r as TalkRef).talk) && ['said', 'reply', 'answer'].includes((r as TalkRef).part);
 
 /**
- * A lasting preference of the owner, learned by the Koordinator or written by the owner. A learned
+ * A lasting preference of the owner, learned by the Coordinator or written by the owner. A learned
  * one is a proposal until the owner accepts it; agents follow active ones only.
  */
 export interface Preference {
@@ -1534,7 +1534,7 @@ export interface CardPatch {
 
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
 export type CardAction =
-  /** On a project: all its planned workstreams go to the Koordinator, which orders them. */
+  /** On a project: all its planned workstreams go to the Coordinator, which orders them. */
   | { action: 'start' }
   /** A card the owner closed without a title (`nameless`): Obeya names it from its text. */
   | { action: 'name' }
@@ -1603,10 +1603,10 @@ export type CardAction =
    */
   | { action: 'takeWorkspace' }
   | { action: 'keepWorkspace' }
-  /** On a project: takes back a start of all its workstreams while the Koordinator has not planned them yet. */
+  /** On a project: takes back a start of all its workstreams while the Coordinator has not planned them yet. */
   | { action: 'dequeue' }
   /**
-   * On a project: its workstreams in columns by what builds on what, which the Koordinator reads
+   * On a project: its workstreams in columns by what builds on what, which the Coordinator reads
    * from the plan doc unless it has for the doc as it stands. Answers once they stand there.
    */
   | { action: 'arrange' }
@@ -1786,7 +1786,7 @@ export type ErrorCode =
   | 'holdsWork'
   | 'notArchived'
   | 'notIdea'
-  /** Merging or deleting by the Koordinator: the card is no planned task nobody has worked on (any more). */
+  /** Merging or deleting by the Coordinator: the card is no planned task nobody has worked on (any more). */
   | 'notUntouched'
   /** Merging tasks of different repositories. */
   | 'otherRepos'
@@ -1805,9 +1805,9 @@ export type ErrorCode =
   | 'ideaGone'
   /** Every variant the idea's agent planned has its prototype on the canvas already. */
   | 'variantsRunning'
-  /** A project has no planned workstream left that is not already with the Koordinator. */
+  /** A project has no planned workstream left that is not already with the Coordinator. */
   | 'nothingToStart'
-  /** The Koordinator could not read from a project's plan doc which workstream builds on which, so it arranged nothing. */
+  /** The Coordinator could not read from a project's plan doc which workstream builds on which, so it arranged nothing. */
   | 'arrangeFailed'
   /** The action is for a prototype on the canvas, and the card is none. */
   | 'notPrototype'
@@ -2276,7 +2276,7 @@ export interface ConfigProblem {
   code: ConfigProblemCode;
   canvas?: number;
   repo?: number;
-  /** In English, for developers and the Koordinator. */
+  /** In English, for developers and the Coordinator. */
   detail: string;
 }
 
@@ -2599,7 +2599,7 @@ export interface AccessView {
 }
 
 /** The agents Obeya runs, grouped as the owner sets their harness, model and effort (`src/server/settings.ts`). */
-export const AGENT_ROLES = ['koordinator', 'worker', 'explorer', 'chores'] as const;
+export const AGENT_ROLES = ['coordinator', 'worker', 'explorer', 'chores'] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 /** The coding agents Obeya runs its agents on, each on the machine's own installation and login. */
 export const HARNESSES = ['claude', 'codex'] as const;
@@ -2690,7 +2690,7 @@ export const modelFits = (harness: Harness, model: string): boolean =>
   harness === 'claude' ? AGENT_MODELS.some((m) => m === model) : CODEX_MODEL.test(model) && (model === 'default' || !AGENT_MODELS.some((m) => m === model));
 /** What applies until the owner chooses otherwise: Opus throughout, high effort for workers and exploration agents. */
 export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
-  koordinator: { harness: 'claude', model: 'opus', effort: 'medium' },
+  coordinator: { harness: 'claude', model: 'opus', effort: 'medium' },
   worker: { harness: 'claude', model: 'opus', effort: 'high' },
   explorer: { harness: 'claude', model: 'opus', effort: 'high' },
   chores: { harness: 'claude', model: 'opus', effort: 'medium' },
@@ -3060,7 +3060,7 @@ export type ServerMessage =
 
 /**
  * What Obeya tells the owner above the microphone without a command of theirs to answer: an answer
- * the Koordinator looked up, or what it did with a request a card's agent passed on from the
+ * the Coordinator looked up, or what it did with a request a card's agent passed on from the
  * owner's words (`to_obeya`), with `token` while those actions wait for "Rückgängig".
  */
 export interface Notice {

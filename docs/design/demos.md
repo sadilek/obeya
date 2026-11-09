@@ -143,7 +143,7 @@ hears its own sentences already (see A voice that stays loaded) and says what it
 clip in pieces (parts of words), each with the second it starts at; a clip of any other voice, or
 one cached from before, goes to Obeya (`POST /api/narration/hear`, the WAV inline as base64, with
 the narration's language), which hears it with the recognition of voice in on its machine, as it
-hears a walkthrough's sentences (see The Koordinator → Walkthroughs). The scene's sentences and what
+hears a walkthrough's sentences (see The Coordinator → Walkthroughs). The scene's sentences and what
 was heard are lined up letter by letter, so a word starts where its first letter was heard and one
 heard nowhere gets a start between its neighbours' by its length. Each sentence's cue starts with
 its first word and lasts until the next sentence's first word (the scene's first from its narration's
@@ -241,7 +241,7 @@ transcript beside it).
 
 A voice that can stay loaded (so far Qwen3-TTS) is started on the first uncached clip of a render
 (or an "Listen", or a walkthrough's first sentence; "Show as walkthrough" starts it at the click,
-see Walkthroughs in The Koordinator) and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
+see Walkthroughs in The Coordinator) and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
 once the model is loaded, a line per sentence done, then `ok` or `error` per clip. So the model and
 the reference load once (a warm load costs about 2 s, a cold one 17 s, a clip 2–4 s). The libraries
 print on stdout too, so the voice moves its stdout to stderr and keeps a duplicate for the protocol;
@@ -365,7 +365,7 @@ clock) in its work directory, for a playback of its agents.
 
 A take whose agents are real can be recorded and played back, so that a retake (a scene, the
 layout, the narration's timing) needs no new run: `scripts/scratch-obeya.ts --record <dir>` records
-every agent session of the scratch Obeya (the Koordinator's, the workers', any other), and
+every agent session of the scratch Obeya (the Coordinator's, the workers', any other), and
 `--replay <dir>` plays the recording back instead of running agents. A recording holds for each
 session what the agent got (role, instructions, its tools with descriptions and schemas, the first
 message) and then, in the order they happened and with their times, its events, its calls of
@@ -575,7 +575,7 @@ card without the owner opening it, so a demo that waited there keeps waiting (th
 until the card closes). Otherwise, and when the browser blocks autoplay, the demo waits behind the play
 button.
 
-The demo plays in the walkthroughs' player (see The Koordinator → Walkthroughs), on the card and on
+The demo plays in the walkthroughs' player (see The Coordinator → Walkthroughs), on the card and on
 a shared page alike, built by one piece of code that the page carries as its source: the picture,
 under it the sentence being spoken as a caption to read along, two lines at a time, with a pointer
 on the word being spoken as in a walkthrough: the last word whose timestamp in the cue has come
@@ -594,7 +594,7 @@ video out of the card, with its caption and controls, to as large as the window 
 microphone, growing or shrinking as captions are switched; Z, Esc or a click beside it ends the
 zoom. Z takes the zoomed video or
 walkthrough, else the one playing, else the one under the pointer, else the first in sight (a
-walkthrough's player zooms the same way, see The Koordinator → Walkthroughs).
+walkthrough's player zooms the same way, see The Coordinator → Walkthroughs).
 
 Space tapped plays and pauses; held, it records as everywhere (see Voice in), from the press, but
 with a video open the microphone lights up only after 200 ms, so a tap does not flicker it. ← and →
@@ -722,7 +722,7 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 - **A demo's scratch Obeya is staged by a script from a stage file** (2026-10-01): staging by hand
   took longer than the change, with the same mistakes each time (the wrong API path, a server that
   restarted on the worker's commit, a staged working card a real agent resumed, agents the
-  Koordinator started mid-take). The script writes cards straight into the database, so any state is
+  Coordinator started mid-take). The script writes cards straight into the database, so any state is
   a line in the stage file.
 - **Retakes of a demo with real agents play a recording back** (owner, 2026-10-22): a hero render
   with a new run took about 13 minutes, cost Claude usage, and came out different each time (the

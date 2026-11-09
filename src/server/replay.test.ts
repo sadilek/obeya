@@ -16,7 +16,7 @@ const NOW = 'b81c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e';
 function agent(dir: string, id: string, heard: { calls: Record<string, unknown>[]; events: AgentEvent[] }, o: { system?: string; schema?: AgentTool['schema']; refuse?: boolean } = {}): AgentSpec {
   return {
     cwd: join(dir, 'home', 'workspaces', 'tipjar', id.slice(0, 8)),
-    role: 'koordinator',
+    role: 'coordinator',
     system: o.system ?? `You work on the card ${id}, on the branch obeya/split-the-bill-${id.slice(0, 6)}.`,
     tools: [
       {
@@ -97,8 +97,8 @@ test('changed instructions or a changed tool refuse the playback, with why', asy
   const rec = join(root, 'rec');
   await recordTwoTurns(root, rec);
   const cases: [Parameters<typeof agent>[3], RegExp][] = [
-    [{ system: `You work carefully on the card ${NOW}, on the branch obeya/split-the-bill-${NOW.slice(0, 6)}.` }, /instructions of the koordinator changed .*line 1/],
-    [{ schema: { status: z.string(), at: z.number() } }, /schema of the koordinator's tool report changed/],
+    [{ system: `You work carefully on the card ${NOW}, on the branch obeya/split-the-bill-${NOW.slice(0, 6)}.` }, /instructions of the coordinator changed .*line 1/],
+    [{ schema: { status: z.string(), at: z.number() } }, /schema of the coordinator's tool report changed/],
     // the recording no longer fits what the tool takes now
     [{ refuse: true }, /report refuses now what it took in the recording: Not shown/],
   ];

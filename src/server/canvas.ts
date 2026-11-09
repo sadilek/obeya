@@ -1,5 +1,5 @@
 // One canvas and everything that works on it: its repositories (each with adapter, workspaces,
-// workers, project agents and PR watcher), the board, the Koordinator and the voice commands.
+// workers, project agents and PR watcher), the board, the Coordinator and the voice commands.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
@@ -26,7 +26,7 @@ import { Files } from './files';
 import { Images, MAX_IMAGES } from './images';
 import { makeRepo, newRepoPath, realPath } from './new-repo';
 import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge';
-import { Koordinator } from './koordinator';
+import { Coordinator } from './coordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
 import { branchCommit, prepareLesestand, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
@@ -83,7 +83,7 @@ export interface CanvasDeps {
   newRepoHoldMs?: number;
   /** The checkout this Obeya runs from, when it starts again for new code there (self-update.ts). */
   ownCheckout?: string | null;
-  /** Obeya's configuration, which the Koordinator reads and changes on the owner's word. */
+  /** Obeya's configuration, which the Coordinator reads and changes on the owner's word. */
   config?: Config;
   /** How long the owner stops typing in a card before what they wrote counts as written. */
   writingPauseMs?: number;
@@ -213,7 +213,7 @@ const SETTLE_TRIES = 3;
 
 export class CanvasRuntime {
   readonly board: Board;
-  readonly koordinator: Koordinator;
+  readonly coordinator: Coordinator;
   /** The Arbeitsrückschau: friction in the workers' runs, made into proposals. */
   readonly workRetro: WorkRetro;
   readonly commander: Commander;
@@ -250,12 +250,12 @@ export class CanvasRuntime {
   private failed = new Map<string, { detail: string; before?: true }>();
   /** The restart of all of Obeya that waits, if one does: it covers the repositories' too. */
   private obeyaDue: DueRestart | null = null;
-  /** The owner paused the canvas's agents (kept across restarts, `paused` of its stored settings): cards the Koordinator lets start wait until they resume them. */
+  /** The owner paused the canvas's agents (kept across restarts, `paused` of its stored settings): cards the Coordinator lets start wait until they resume them. */
   private paused = false;
   private pendingListeners = new Set<() => void>();
   /** Set while the canvas leaves the configuration: called once its agents paused and it stopped. */
   private retiring: (() => void) | null = null;
-  /** What the owner last said or typed to each card's agent, for the Koordinator to read beside a request the agent passes on. */
+  /** What the owner last said or typed to each card's agent, for the Coordinator to read beside a request the agent passes on. */
   private said = new Map<string, { text: string; spoken: boolean }>();
   /** Cards the owner is writing in, with their text before; a pause in typing hands it to the learner. */
   private writing = new Map<string, { before: string; timer: ReturnType<typeof setTimeout> }>();
@@ -334,7 +334,7 @@ export class CanvasRuntime {
       // a plan folder outside the repository has no history in git
       return repo && !outsidePlanDir(path) ? planHistory(repo.read.path, path) : [];
     });
-    // the Koordinator needs the workers, and the workers ask it: it is set right after them
+    // the Coordinator needs the workers, and the workers ask it: it is set right after them
     repos.forEach((x, i) => {
       try {
         this.addRepo(this.startRepo(resolved, i, reads.workspaces));
@@ -354,13 +354,13 @@ export class CanvasRuntime {
             ...h,
             // what the owner may take from its card for a card waiting for one, and what goes once the undo window is through
             workspaces: h.workspaces.map((w) =>
-              !w.card ? w : this.koordinator?.evicting(w.card) ? { ...w, leaving: true as const } : r.workers.evictable(w.card) ? { ...w, takeable: true as const } : w,
+              !w.card ? w : this.coordinator?.evicting(w.card) ? { ...w, leaving: true as const } : r.workers.evictable(w.card) ? { ...w, takeable: true as const } : w,
             ),
           })),
         })),
     );
     for (const r of this.repos) r.workers.resumeAll();
-    const koordinator = (this.koordinator = new Koordinator({
+    const coordinator = (this.coordinator = new Coordinator({
       board,
       runtime: deps.runtime,
       home: () => this.repos[0]!.read.path,
@@ -371,16 +371,16 @@ export class CanvasRuntime {
       },
       imageFiles: this.imageFiles,
     }));
-    koordinator.resume();
+    coordinator.resume();
     // a card whose page closed before Obeya named it
-    for (const i of board.items()) if (i.state === 'planned' && !i.queue && nameless(i)) void koordinator.name(i.id);
+    for (const i of board.items()) if (i.state === 'planned' && !i.queue && nameless(i)) void coordinator.name(i.id);
     this.explorers = new Explorers({
       board,
       runtime: deps.runtime,
       preferences: this.preferences,
       pathFor: (card) => this.repoOf(card).read.path,
       repoLanguage: (card) => this.repoOf(card).adapter.language,
-      onOwnerInput: (card, text) => koordinator.learn(card, 'idea', text),
+      onOwnerInput: (card, text) => coordinator.learn(card, 'idea', text),
       imageFiles: this.imageFiles,
       onReplied: (cardId, replied) => this.replied(cardId, replied),
       toObeya: this.toObeya,
@@ -401,7 +401,7 @@ export class CanvasRuntime {
       toObeya: this.toObeya,
       ...(deps.voicing ? { voicing: deps.voicing } : {}),
       onAnswer: (talk, question, answer) => {
-        // looked up for an action: the Koordinator takes it now, hearing the answer with it
+        // looked up for an action: the Coordinator takes it now, hearing the answer with it
         if (this.commander.answerIn(talk)) return;
         // asked in a project's sheet, the question went to its project agent without Obeya reading it
         const sheet = board.exchange(talk)?.askedIn;
@@ -420,10 +420,10 @@ export class CanvasRuntime {
       execute: (c) => this.run(c),
       imageFiles: this.imageFiles,
       lookUp: (talk) => this.answers.lookUp(talk),
-      onOwnerInput: (card, kind, text, reply) => this.koordinator.learn((card && board.item(card)) || null, kind, text, { reply }),
+      onOwnerInput: (card, kind, text, reply) => this.coordinator.learn((card && board.item(card)) || null, kind, text, { reply }),
       ...(deps.config ? { config: deps.config } : {}),
       canvases: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => ({ id: c.id, name: c.board.canvas.name })),
-      agentSetting: () => agents('koordinator'),
+      agentSetting: () => agents('coordinator'),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
     board.interruptTalk();
@@ -463,7 +463,7 @@ export class CanvasRuntime {
       },
     });
     this.sharing.resume();
-    // the pages without tags the Koordinator's sheet offers to tag, by each repository's site
+    // the pages without tags the Coordinator's sheet offers to tag, by each repository's site
     board.showVocabulary((repo) => {
       const site = this.repos.find((r) => r.ref.id === repo)?.site;
       return site && dimensions(site.tags).length ? site.tags : undefined;
@@ -523,10 +523,10 @@ export class CanvasRuntime {
   private settleTries = new Map<string, number>();
   private unwatch: () => void;
 
-  /** Wakes the snoozed cards whose time has come by `now`, and those whose card they wait on got there (or no longer can); so too the steps the Koordinator waits on cards for. */
+  /** Wakes the snoozed cards whose time has come by `now`, and those whose card they wait on got there (or no longer can); so too the steps the Coordinator waits on cards for. */
   wakeDue(now = Date.now()) {
     const items = this.board.items();
-    // and the Koordinator takes up the steps it waited on cards for
+    // and the Coordinator takes up the steps it waited on cards for
     this.commander.due(items);
     for (const i of items) {
       // one whose repository does not run wakes once it is back
@@ -578,7 +578,7 @@ export class CanvasRuntime {
   /**
    * A snoozed card wakes: at its time (`timeUp`), as the card it waits on got there or no longer can
    * (`met`), or as the owner wakes it now. One that waited for the owner waits for them again; a
-   * worker goes on; a planned one goes to the Koordinator as if started now.
+   * worker goes on; a planned one goes to the Coordinator as if started now.
    */
   private wake(cardId: string, timeUp: boolean, met?: Awaited) {
     const card = this.board.item(cardId);
@@ -588,7 +588,7 @@ export class CanvasRuntime {
       this.repoOf(cardId).workers.startsNow(cardId, timeUp);
       // one to be started in a new repository makes it first
       if (card.newRepo) return this.intoNewRepo(cardId);
-      return this.koordinator.request(cardId);
+      return this.coordinator.request(cardId);
     }
     this.repoOf(cardId).workers.wake(cardId, timeUp, met);
   }
@@ -887,7 +887,7 @@ export class CanvasRuntime {
       repo: ref.id,
       otherBoards: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => c.board),
       preferences: this.preferences,
-      onOwnerInput: (card, kind, text, context) => this.koordinator.learn(card, kind, text, context),
+      onOwnerInput: (card, kind, text, context) => this.coordinator.learn(card, kind, text, context),
       onPrOpened: (cardId) => {
         // a card whose own branch has its work go out as a pull request, where the repository's does not yet
         this.watchPrs(repo);
@@ -896,7 +896,7 @@ export class CanvasRuntime {
       onApproval: (cardId) => this.sharing.approved(cardId),
       onLanded: (cardId) => void this.sharing.landed(cardId),
       onMerged: () => void read.refresh(),
-      onFollowUpTask: (taskId, reviewId) => this.koordinator.followUp(taskId, reviewId),
+      onFollowUpTask: (taskId, reviewId) => this.coordinator.followUp(taskId, reviewId),
       onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
       onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
       // where work lands on the local main, the Lesestand is the checkout and moves with the landing;
@@ -1286,7 +1286,7 @@ export class CanvasRuntime {
   /**
    * The owner pauses the canvas's agents (design: Pausing a canvas's agents): each one at work now
    * pauses at a safe point as its card's own pause has it, and until they resume them, the cards the
-   * Koordinator lets start wait in the queue. With none at work, nothing changes.
+   * Coordinator lets start wait in the queue. With none at work, nothing changes.
    */
   pauseAgents() {
     let paused = 0;
@@ -1612,7 +1612,7 @@ export class CanvasRuntime {
     // an idea's agent starts from the card's text and the notes left on it for a worker, and opens the discussion with them
     if (p.state === 'idea' && state !== 'idea') {
       this.written(cardId);
-      void this.koordinator.name(cardId);
+      void this.coordinator.name(cardId);
       this.explorers.open(cardId, undefined, this.repoOf(cardId).workers.takeNotes(cardId));
     }
   }
@@ -1625,7 +1625,7 @@ export class CanvasRuntime {
     this.writing.delete(cardId);
     const card = this.board.item(cardId);
     const [text, before] = [card?.body.trim() ?? '', w.before.trim()];
-    if (card && text && text !== before) this.koordinator.learn(card, 'card', text, before ? { before } : {});
+    if (card && text && text !== before) this.coordinator.learn(card, 'card', text, before ? { before } : {});
   }
 
   /** The owner accepts a rule proposal, maybe in their words or for another place (a repository's CLAUDE.md, or none). */
@@ -1685,7 +1685,7 @@ export class CanvasRuntime {
     if (this.board.preferences('proposed').length) return;
     for (const r of this.board.canvas.repos) {
       const card = this.board.collecting(r.id);
-      if (card) this.koordinator.request(card.id);
+      if (card) this.coordinator.request(card.id);
     }
   }
 
@@ -1704,12 +1704,12 @@ export class CanvasRuntime {
     // a planned card holds the words for the agent that takes it on
     if (!agentListens(card) && !holdsNotes(card)) throw new BadRequest('noAgent', 'no agent works on this card');
     const said = { text, spoken, ...(images.length ? { images } : {}), ...(replyTo ? { replyTo } : {}) };
-    // the agent passes a request on in its words; the Koordinator reads the owner's own beside them
+    // the agent passes a request on in its words; the Coordinator reads the owner's own beside them
     this.said.set(cardId, { text, spoken });
     if (card.kind === 'question') return this.act(cardId, { action: 'ask', ...said });
     if (card.state === 'idea') return this.act(cardId, { action: 'discuss', ...said });
     if (card.state === 'proposal') {
-      this.koordinator.learn(card, 'note', text.trim());
+      this.coordinator.learn(card, 'note', text.trim());
       return this.act(cardId, { action: 'revise', ...said }, true);
     }
     if (card.state === 'waiting' && card.need === 'question') return this.act(cardId, { action: 'answer', ...said, ...(spot ? { spot } : {}) });
@@ -1717,7 +1717,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * A request a card's agent passes on from the owner's words (`to_obeya`): the Koordinator reads it
+   * A request a card's agent passes on from the owner's words (`to_obeya`): the Coordinator reads it
    * with those words and the card in focus, as a command, and its confirmation (or reply, or that it
    * looks the question up) is the agent's answer. Actions wait for "Rückgängig" as usual; the owner
    * sees the confirmation above the microphone and in the card's conversation.
@@ -1728,7 +1728,7 @@ export class CanvasRuntime {
     const before = this.said.has(cardId) ? undefined : this.board.events(cardId).findLast((e) => e.author === 'owner' && e.kind !== 'state' && e.text.trim());
     // a step Obeya waits to take on this card itself, which its agent read in its task
     const steps = this.commander.waitsOn(cardId);
-    // without them, the card's task once the owner gave it (typed it, the Koordinator wrote it from
+    // without them, the card's task once the owner gave it (typed it, the Coordinator wrote it from
     // their words, or they accepted an agent's proposal), not while it is a proposal; a step of the
     // task Obeya waits to take is Obeya's
     const card = this.board.item(cardId);
@@ -1758,10 +1758,10 @@ export class CanvasRuntime {
   }
 
   press(cardId: string, a: CardAction) {
-    // the options picked on a proposal go to its reviser without the Koordinator, which would have logged them
+    // the options picked on a proposal go to its reviser without the Coordinator, which would have logged them
     const r = this.act(cardId, a, true);
     // the end of watching a demo is no click of the owner's
-    if (a.action !== 'release' && a.action !== 'unsay' && a.action !== 'name' && !(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.koordinator.noticed();
+    if (a.action !== 'release' && a.action !== 'unsay' && a.action !== 'name' && !(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.coordinator.noticed();
     return r;
   }
 
@@ -1810,25 +1810,25 @@ export class CanvasRuntime {
         if (card?.newRepo) return this.intoNewRepo(cardId);
         // one snoozed to start later starts now
         if (this.board.item(cardId)?.snoozed?.start) return this.wake(cardId, false);
-        return this.koordinator.request(cardId);
+        return this.coordinator.request(cardId);
       case 'stayHere':
         return this.stayHere(cardId);
       case 'name':
-        return void this.koordinator.name(cardId);
+        return void this.coordinator.name(cardId);
       case 'force':
-        return this.koordinator.force(cardId);
+        return this.coordinator.force(cardId);
       case 'agent':
         return this.board.chooseAgent(cardId, a.agent);
       case 'dequeue':
-        return this.koordinator.dequeue(cardId);
+        return this.coordinator.dequeue(cardId);
       case 'takeWorkspace':
-        return this.koordinator.evict(cardId);
+        return this.coordinator.evict(cardId);
       case 'keepWorkspace':
-        return this.koordinator.keep(cardId);
+        return this.coordinator.keep(cardId);
       case 'arrange':
-        return this.koordinator.arrange(cardId);
+        return this.coordinator.arrange(cardId);
       case 'reorder':
-        return this.koordinator.reorder(cardId, !!a.earlier, a.places ?? 1);
+        return this.coordinator.reorder(cardId, !!a.earlier, a.places ?? 1);
       case 'stop':
         return card?.repoDown ? this.stopWithoutRepo(card) : this.repoOf(cardId).workers.stop(cardId);
       case 'pause':
@@ -1886,7 +1886,7 @@ export class CanvasRuntime {
         // said while it is reworked, they wait for the next rework, unread until then
         const later = !!this.board.item(cardId)?.proposal?.revising;
         const said = log ? this.board.log(cardId, 'say', 'owner', text.trim(), { images, replyTo, unread: later }).id : undefined;
-        return this.revisions.revise(cardId, `${replyNote(this.board.quoted(cardId, replyTo), 'koordinator')}${text.trim()}`, !!a.spoken, said, images);
+        return this.revisions.revise(cardId, `${replyNote(this.board.quoted(cardId, replyTo), 'coordinator')}${text.trim()}`, !!a.spoken, said, images);
       }
       case 'discuss':
         return this.explorers.discuss(cardId, text.trim(), !!a.spoken, images, replyTo);
@@ -1912,7 +1912,7 @@ export class CanvasRuntime {
       case 'ask':
         return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
       case 'consult': {
-        // the agent passes a request on in its words; the Koordinator reads the owner's own beside them
+        // the agent passes a request on in its words; the Coordinator reads the owner's own beside them
         this.said.set(cardId, { text: text.trim(), spoken: !!a.spoken });
         const ids = Array.isArray(a.images) ? a.images.filter((i): i is string => typeof i === 'string') : [];
         return void this.answers.askProject(cardId, text.trim(), ids, a.replyTo);
@@ -2070,7 +2070,7 @@ export class CanvasRuntime {
     const { items, planDirs = [] } = this.board.snapshot();
     const box = unionBounds([...items.filter((i) => !i.parent).map((i) => boundsOf(i, items)), ...planDirs.flatMap((d) => planDirNoteBox(d) ?? [])]);
     const card = this.board.create({ title: title(file), body: body(file), repo, ...(box ? { x: box.x + box.w + 2 * GAP, y: box.y } : { x: 0, y: 0 }) });
-    this.koordinator.request(card.id);
+    this.coordinator.request(card.id);
     return this.board.card(card.id)!;
   }
 
@@ -2078,7 +2078,7 @@ export class CanvasRuntime {
 
   /**
    * Accepting a proposal is the owner's go unless they keep it to edit first (`start` false): the
-   * card goes to the Koordinator like a started one, a proposed idea, or a task the owner takes as
+   * card goes to the Coordinator like a started one, a proposed idea, or a task the owner takes as
    * one (`asIdea`), to its exploration agent. Clicked while the proposal is reworked, it is accepted
    * once the new text is there, unless that asks questions.
    */
@@ -2101,7 +2101,7 @@ export class CanvasRuntime {
       this.board.snooze(cardId, { until: proposal.startAt, by: 'agent', start: true, ...(proposal.reason ? { why: clip(oneLine(proposal.reason), 200) } : {}) });
     else if (start) {
       if (proposal.startAt) this.repoOf(cardId).workers.startsAt(cardId, proposal.startAt, 'agent', true);
-      this.koordinator.request(cardId);
+      this.coordinator.request(cardId);
     }
   }
 
@@ -2127,7 +2127,7 @@ export class CanvasRuntime {
 
   /**
    * The idea is built as it stands: its brief becomes the card's task, and the card goes to the
-   * Koordinator to start. A prototype still running for it is discarded: what is built now is the brief.
+   * Coordinator to start. A prototype still running for it is discarded: what is built now is the brief.
    */
   private build(cardId: string) {
     const card = this.ideaCard(cardId);
@@ -2140,7 +2140,7 @@ export class CanvasRuntime {
     }
     if (card.newRepo) return this.intoNewRepo(cardId);
     this.decided(card, { answer: this.board.t.idea.buildAnswer, log: this.board.t.idea.buildLog });
-    this.koordinator.request(cardId);
+    this.coordinator.request(cardId);
   }
 
   // ---------------------------------------------------------------- a new repository
@@ -2264,7 +2264,7 @@ export class CanvasRuntime {
     this.board.setNewRepo(cardId, { path: target.path, canvas: false, by: target.by, made: true });
     this.board.log(cardId, 'state', 'obeya', this.board.t.newRepo.joined(target.path.trim(), made));
     if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(target.path.trim()), log: this.board.t.idea.buildLog });
-    this.koordinator.request(cardId);
+    this.coordinator.request(cardId);
   }
 
   /**
@@ -2294,7 +2294,7 @@ export class CanvasRuntime {
     this.commander.tell(`The card "${card.title}" moved to the canvas "${there.board.canvas.name}", in its new repository ${shown}, and is built there.`);
     this.board.notify({ cardId, text: this.board.t.newRepo.movedAway(card.title, there.board.canvas.name), movedTo: there.id });
     there.board.changed();
-    there.koordinator.request(cardId);
+    there.coordinator.request(cardId);
   }
 
   /**
@@ -2315,7 +2315,7 @@ export class CanvasRuntime {
     this.board.setIdea(cardId, { split: undefined });
     this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(idea.title), answer: t.splitOffAnswer(split.title), by: 'owner' });
     this.board.log(cardId, 'state', 'owner', t.splitOffLog(split.title));
-    this.koordinator.request(task.id);
+    this.coordinator.request(task.id);
     this.explorers.tell(
       cardId,
       `The owner clicked "${t.splitOffButton}": the part you marked as settled is now the task “${split.title}”, on a card of its own beside this idea, and a worker starts on it. Obeya has cleared the split. This idea stays open, with this conversation and its prototypes, planned and running, for what is still open. Trim the brief to what is open (the built part a line under decisions, as the task “${split.title}”), then reply to the owner in a sentence or two.`,
@@ -2359,7 +2359,7 @@ export class CanvasRuntime {
     const { workers } = this.repoOf(prototype);
     return workers.buildOn(prototype.id, idea).then(() => {
       this.decided(idea, { answer: this.board.t.idea.buildOnAnswer(prototype.title), log: this.board.t.idea.buildOnLog(prototype.title) });
-      this.koordinator.request(idea.id);
+      this.coordinator.request(idea.id);
     });
   }
 
@@ -2475,7 +2475,7 @@ export class CanvasRuntime {
     });
     this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(card.title), answer: t.planDocAnswer, by: 'owner' });
     this.board.log(cardId, 'state', 'owner', t.planDocLog);
-    this.koordinator.request(cardId);
+    this.coordinator.request(cardId);
   }
 
   /**
@@ -2491,7 +2491,7 @@ export class CanvasRuntime {
     this.board.work(card.id, { becomes_project: 1, ...outside?.row, body: [t.planDocTask(dir, true, outside?.file), t.planDocCard(card.title), card.body.trim()].filter(Boolean).join('\n\n') });
     this.board.decide({ project_id: null, card_id: card.id, question: t.howOnTask(card.title), answer: t.planDocAnswer, by: 'owner' });
     this.board.log(card.id, 'state', 'owner', t.planDocTaskLog);
-    this.koordinator.request(card.id);
+    this.coordinator.request(card.id);
   }
 
   /**
@@ -2631,12 +2631,12 @@ export class CanvasRuntime {
     return from ? there.followUp(card, from) : there.run(card);
   }
 
-  /** A card the Koordinator of another canvas makes here for the owner, following up on a card of its own. */
+  /** A card the Coordinator of another canvas makes here for the owner, following up on a card of its own. */
   followUp(c: Extract<Command, { do: 'newCard' }>, from: string): string {
     const card = this.board.create({ title: c.title, body: c.body, ...(c.images?.length ? { images: c.images } : {}), ...this.board.freeSpot(this.inView) }, from);
     this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
     if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
-    else if (c.start || c.until) this.koordinator.request(card.id);
+    else if (c.start || c.until) this.coordinator.request(card.id);
     return card.id;
   }
 
@@ -2674,7 +2674,7 @@ export class CanvasRuntime {
         this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
         // one for later waits until then; a time that passed in the undo window starts it now
         if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
-        else if (c.start || c.until) this.koordinator.request(card.id);
+        else if (c.start || c.until) this.coordinator.request(card.id);
         return card.id;
       }
       case 'reviewPr':
@@ -2747,7 +2747,7 @@ export class CanvasRuntime {
     }
   }
 
-  /** A planned task nobody has worked on yet, still as when the Koordinator chose it; else why not. */
+  /** A planned task nobody has worked on yet, still as when the Coordinator chose it; else why not. */
   private untouched(cardId: string): Item {
     const card = this.board.item(cardId);
     if (!card) throw new BadRequest('unknownCard', 'unknown card');
@@ -2817,7 +2817,7 @@ export class CanvasRuntime {
     this.board.work(card.id, { contribution: JSON.stringify(stored) });
     this.board.log(card.id, 'state', 'owner', t.voice.created);
     this.watchPrs(repo);
-    this.koordinator.request(card.id);
+    this.coordinator.request(card.id);
     // the card opens, so the owner sees its review begin
     this.board.notify({ text: t.review.started(ref.number, info.author), cardId: card.id, open: true });
     return card.id;
@@ -2878,7 +2878,7 @@ export class CanvasRuntime {
     for (const [, w] of this.writing) clearTimeout(w.timer);
     for (const stop of this.branchSettings.values()) stop();
     for (const r of this.repos) this.stopRepo(r);
-    this.koordinator.shutdown();
+    this.coordinator.shutdown();
     this.explorers.shutdown();
   }
 }

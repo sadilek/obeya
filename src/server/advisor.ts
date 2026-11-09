@@ -1,4 +1,4 @@
-// What the agents that answer the owner's questions (the Koordinator, a project agent) share, and
+// What the agents that answer the owner's questions (the Coordinator, a project agent) share, and
 // how an agent's question to the owner is put together.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
@@ -99,7 +99,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
     const session = b.runtime.start(
       {
         cwd: b.cwd,
-        role: 'koordinator',
+        role: 'coordinator',
         ...(b.permissionMode ? { permissionMode: b.permissionMode } : {}),
         ...(b.resume ? { resume: b.resume } : {}),
         ...(b.spendOn ? { spendOn: b.spendOn } : {}),

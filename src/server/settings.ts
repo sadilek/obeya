@@ -124,7 +124,9 @@ type Chosen = Partial<AgentSetting>;
  * (a model id or `default` written before reads as one).
  */
 function agentsOf(input: unknown): Partial<Record<AgentRole, Chosen>> {
-  const o = (input && typeof input === 'object' ? input : {}) as Record<string, { harness?: unknown; model?: unknown; effort?: unknown } | undefined>;
+  const o = { ...((input && typeof input === 'object' ? input : {}) as Record<string, { harness?: unknown; model?: unknown; effort?: unknown } | undefined>) };
+  // the Coordinator's choice, written as `koordinator` (its German name) before it was renamed
+  o.coordinator ??= o.koordinator;
   const agents: Partial<Record<AgentRole, Chosen>> = {};
   for (const role of AGENT_ROLES) {
     // a harness chosen stays, Claude Code too: otherwise the fallback would take its place on a machine with only Codex ready

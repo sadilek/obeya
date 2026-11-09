@@ -165,7 +165,7 @@ const DIFF = ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff
 /** How many new files not yet added a branch's diff shows; a worker's stray build output should not flood it. */
 const NEW_FILES_SHOWN = 200;
 
-/** How many of a branch's changed files the Koordinator learns the changed lines of (`changes`). */
+/** How many of a branch's changed files the Coordinator learns the changed lines of (`changes`). */
 const CHANGES_LISTED = 200;
 
 /**
@@ -506,7 +506,7 @@ export const shortageOf = (code: string) => (Object.keys(SHORT_CODE) as Workspac
 const SHORT_TEXT = { none: 'no workspace registered or all are leased', dirty: 'every free workspace has uncommitted changes', slots: 'every machine with a free workspace has as many busy workers as it has slots' };
 
 /**
- * Where a repository's cards work, as the workers, the Koordinator and the canvas use it: clones or
+ * Where a repository's cards work, as the workers, the Coordinator and the canvas use it: clones or
  * worktrees of a git repository (`Workspaces`), or the folder itself where it has no git
  * (`FolderWorkspaces` in `folder.ts`, which has no branches and lands nothing).
  */

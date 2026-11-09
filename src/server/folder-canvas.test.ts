@@ -59,7 +59,7 @@ describe('a canvas over a folder without git', () => {
     const listOf = async (id: string) => (await canvas.diff(id, false))!.folder!.changes.map((c) => `${c.kind} ${c.from ? `${c.from} → ` : ''}${c.path}`);
     expect(await listOf(sort.id)).toEqual(['moved Scans/scan-1.pdf → Tax/2025/scan-1.pdf', 'added Tax', 'added Tax/2025']);
     expect(await listOf(letter.id)).toEqual(['added Estate/Reply.md', 'modified Estate/Inventory.md']);
-    // the Koordinator sees what each changed
+    // the Coordinator sees what each changed
     expect((await canvas.repos[0]!.workspaces.changes(letter.id)).map((c) => c.file)).toEqual(['Estate/Reply.md', 'Estate/Inventory.md']);
 
     // a handover without a demo: the change list shows what changed
@@ -85,11 +85,11 @@ describe('a canvas over a folder without git', () => {
     expect(() => canvas.act(letter.id, { action: 'undo' })).toThrow();
   });
 
-  test('the Koordinator holds a card that would touch what one in progress changed, until the owner starts it anyway', async () => {
+  test('the Coordinator holds a card that would touch what one in progress changed, until the owner starts it anyway', async () => {
     const settle = () => new Promise((r) => setTimeout(r, 10));
     const estimates = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'scope'));
     const sort = canvas.board.create({ title: 'Sort the scans', x: 0, y: 0 });
-    canvas.koordinator.request(sort.id);
+    canvas.coordinator.request(sort.id);
     await settle();
     expect(item(sort.id).state).toBe('working');
     // its scope, estimated once it runs
@@ -99,7 +99,7 @@ describe('a canvas over a folder without git', () => {
     const worker = runtime.sessions.find((s) => s.spec.cwd === docs && s.spec.role === 'worker')!;
     await worker.use('Bash', { command: 'mv' }, () => renameSync(join(docs, 'Scans', 'scan-1.pdf'), join(docs, 'Scans', '2026-10-02 Bill.pdf')));
     const rename = canvas.board.create({ title: 'Rename the scans', x: 400, y: 0 });
-    canvas.koordinator.request(rename.id);
+    canvas.coordinator.request(rename.id);
     await settle();
     const judge = estimates().at(-1)!;
     expect(judge.spec.system).toContain('all directly in one folder that is not a git repository');

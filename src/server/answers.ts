@@ -1,8 +1,8 @@
-// Questions the Koordinator looks up: what it cannot answer in its quick reading of a command (what
+// Questions the Coordinator looks up: what it cannot answer in its quick reading of a command (what
 // an agent would do on a card, what the plan says, what a release holds) goes to an agent with a
 // worker's tools that takes the time to read and check.
-// A workstream's question goes to its project agent, any other to a thorough Koordinator turn. The
-// answer comes later: in full in the log of the card that was open (else in the Koordinator's
+// A workstream's question goes to its project agent, any other to a thorough Coordinator turn. The
+// answer comes later: in full in the log of the card that was open (else in the Coordinator's
 // sheet), and summed up aloud.
 // A look-up starts a thread: a follow-up on its answer resumes the same agent, which still has all
 // it read and computed, and the thread's output directory holds the files its answers come with.
@@ -39,9 +39,9 @@ export interface AnswerOptions {
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
   imageFiles?: (ids?: string[]) => string[];
   preferences?: () => string;
-  /** The workers' permission mode, which the answering Koordinator turn runs in too. */
+  /** The workers' permission mode, which the answering Coordinator turn runs in too. */
   permissionMode?: PermissionMode;
-  /** The answer to an exchange is in: the Koordinator hears it with the owner's next command. */
+  /** The answer to an exchange is in: the Coordinator hears it with the owner's next command. */
   onAnswer?: (talk: number, question: string, answer: string) => void;
   /** Passes on what the owner's words on a Question card ask of Obeya (`to_obeya`). */
   toObeya?: (cardId: string, request: string) => Promise<string>;
@@ -53,7 +53,7 @@ export interface AnswerOptions {
 const LOG_LINES = 25;
 
 type Exchange = Talk & { about?: string; session?: string };
-type By = 'koordinator' | 'project';
+type By = 'coordinator' | 'project';
 
 /** What "Show as walkthrough" asked for: the walkthrough's thread and file, which the page that clicked plays once it can. */
 export interface Asked {
@@ -84,7 +84,7 @@ export class Answers {
 
   constructor(private o: AnswerOptions) {}
 
-  /** Looks up the question of an exchange with the Koordinator; a follow-up goes on in its thread. */
+  /** Looks up the question of an exchange with the Coordinator; a follow-up goes on in its thread. */
   lookUp(talkId: number) {
     if (this.busy.has(talkId)) return;
     const t = this.o.board.exchange(talkId);
@@ -180,7 +180,7 @@ export class Answers {
     const quoted = replyTo ? this.o.board.quoted(cardId, replyTo) : undefined;
     // "Show as walkthrough": the agent hears what the button asks, and the walkthrough's player shows
     // at once, unless its agent is in a turn, which may be telling a walkthrough of its own
-    const said = walkthrough?.heard ?? `${replyNote(quoted, 'koordinator')}${text}${imageNote(images)}`;
+    const said = walkthrough?.heard ?? `${replyNote(quoted, 'coordinator')}${text}${imageNote(images)}`;
     const thread = this.o.board.thread(cardId);
     if (walkthrough) {
       this.preparedOn.set(e.id, walkthrough.prepared);
@@ -284,7 +284,7 @@ export class Answers {
   /**
    * "Show as walkthrough" on an answer of the sheet, or of a card's log (`on`: its card and message):
    * a looked-up answer's thread is asked to tell it as a walkthrough, as a follow-up; a direct
-   * answer of the Koordinator's has no thread, so a look-up thread starts for it. Either comes as
+   * answer of the Coordinator's has no thread, so a look-up thread starts for it. Either comes as
    * the next answer, its player there at once. The voice loads meanwhile, so the walkthrough sounds
    * soon after its first slide.
    */
@@ -305,7 +305,7 @@ export class Answers {
     if (follow) this.o.board.followTalk(talk, talkId);
     if (on) {
       this.o.board.log(on.card, 'say', 'owner', words.walkthroughAsked, { replyTo: on.ev });
-      this.o.board.log(on.card, 'say', 'koordinator', words.walkthroughReply);
+      this.o.board.log(on.card, 'say', 'coordinator', words.walkthroughReply);
     }
     const thread = follow ? t.thread! : talk;
     const { by } = this.agentFor(this.o.board.exchange(thread)!);
@@ -330,7 +330,7 @@ export class Answers {
     if (card.kind === 'question' && e.answer && e.answer.thread === card.thread?.talk) return this.showOnQuestionCard(card, e);
     const talk = e.answer
       ? this.o.board.threadTalk(e.answer.thread).findLast((r) => r.answer === e.text)?.id
-      : e.author === 'koordinator' && e.reply
+      : e.author === 'coordinator' && e.reply
         ? this.o.board.cardReply(cardId, e.text)
         : undefined;
     if (talk === undefined) throw new BadRequest('invalid', 'no text answer to tell as a walkthrough');
@@ -573,7 +573,7 @@ export class Answers {
       inform({
         runtime: this.o.runtime,
         cwd: this.o.pathFor(c.about),
-        system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.\n\n${INFORM_RULES}${rules}${toObeya ? `\n\n${TO_OBEYA}` : ''}`,
+        system: `You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.\n\n${INFORM_RULES}${rules}${toObeya ? `\n\n${TO_OBEYA}` : ''}`,
         message: [message, filesNote(dir), this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
         dir,
         onTool: c.onTool,
@@ -598,11 +598,11 @@ export class Answers {
     });
   }
 
-  /** Who answers a thread: the project agent for a project or one of its workstreams, else a Koordinator turn. */
+  /** Who answers a thread: the project agent for a project or one of its workstreams, else a Coordinator turn. */
   private agentFor(root: Exchange): { by: By; about: Item | undefined; project: Item | undefined } {
     const about = root.about ? this.o.board.item(root.about) : undefined;
     const project = about?.kind === 'project' ? about : about?.parent ? this.o.board.item(about.parent) : undefined;
-    return { by: project?.plan ? 'project' : 'koordinator', about, project };
+    return { by: project?.plan ? 'project' : 'coordinator', about, project };
   }
 
   /** The session of the Question card a thread moved onto, archived or deleted since. */
@@ -754,7 +754,7 @@ const inConversation = (e: CardEvent) => e.kind === 'talk' || (e.kind === 'say' 
 /** A message of a Question card's conversation, as an agent that starts afresh reads it. */
 const said = (e: CardEvent) => (e.author === 'owner' ? `The owner: "${e.text}"` : `You: ${e.text}${fileList(e.answer?.files)}`);
 
-/** How the Koordinator names an answer it looked up, to say which one the owner's words follow up on. */
+/** How the Coordinator names an answer it looked up, to say which one the owner's words follow up on. */
 export const answerTag = (talk: number) => `A${talk}`;
 export const fromAnswerTag = (tag: string): number | undefined => {
   const m = /^A?(\d+)$/i.exec(tag.trim());

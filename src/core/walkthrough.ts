@@ -1,7 +1,7 @@
 // A looked-up answer told as a walkthrough: slides and their narration, which the answering agent
 // hands over one at a time and Obeya voices sentence by sentence while it writes on. The server
 // keeps each walkthrough as one JSON file in the thread's output directory, its clips beside it;
-// the player in the page reads it while it grows (design: The Koordinator → Walkthroughs).
+// the player in the page reads it while it grows (design: The Coordinator → Walkthroughs).
 
 import type { Language } from './locale';
 import { lettersOf, wordsOf } from '../../plugin/skills/demo/lib/word-times.ts';

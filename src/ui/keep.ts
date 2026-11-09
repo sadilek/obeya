@@ -3,7 +3,7 @@
 // reload (sessionStorage, per tab), and taken once by the page that loads.
 
 /** A sheet on the right that is not a project's, or the archive's list under its button. */
-export type SideSheet = 'koordinator' | 'archive';
+export type SideSheet = 'coordinator' | 'archive';
 
 export interface Kept {
   at: number;

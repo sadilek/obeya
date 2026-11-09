@@ -1,4 +1,4 @@
-// The Koordinator's prompt against the real model: requests the agent of an open card passes on from
+// The Coordinator's prompt against the real model: requests the agent of an open card passes on from
 // the owner's words, in each state an agent is on; sentences said or typed with a card open that no
 // agent works on; new tasks that start, wait, or start at a time the owner names; questions with no card open (an opinion becomes
 // an idea, a fact stays in the conversation, work on the machine such as a new repository is a task);
@@ -27,7 +27,7 @@ const setConfig = (dir: string | undefined) => (dir === undefined ? delete proce
 beforeAll(() => void (process.env.OBEYA_LIVE && setConfig(machine)));
 afterAll(() => void setConfig(scratch));
 
-// each Koordinator works in a directory of its own, removed once all have run
+// each Coordinator works in a directory of its own, removed once all have run
 const cwds: string[] = [];
 const cwd = () => cwds[cwds.push(mkdtempSync(join(tmpdir(), 'obeya-live-'))) - 1]!;
 afterAll(() => cwds.forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -48,7 +48,7 @@ const STATES: Record<string, Record<string, string>> = {
 
 /**
  * State of the open card, what the owner says (or types), the request its agent passes on (`to_obeya`;
- * none: the card has no agent, and the words reach the Koordinator themselves), whether typed, and
+ * none: the card has no agent, and the words reach the Coordinator themselves), whether typed, and
  * the actions expected. What the owner says to an agent never comes back to it as a note, an answer or feedback.
  */
 const CASES: [string, string, string | null, boolean, Command['do'][]][] = [
@@ -76,7 +76,7 @@ const CASES: [string, string, string | null, boolean, Command['do'][]][] = [
   ['proposal', 'das brauchen wir nicht, weg damit', null, false, ['dismiss']],
 ];
 
-/** What the Koordinator makes of one sentence, or of a request passed on with it: the actions as they run. */
+/** What the Coordinator makes of one sentence, or of a request passed on with it: the actions as they run. */
 async function hear(state: string, text: string, request: string | null, typed: boolean) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
   const login = board.create({ title: 'Login', x: 0, y: 0 });
@@ -95,7 +95,7 @@ async function hear(state: string, text: string, request: string | null, typed: 
 }
 
 test.skipIf(!process.env.OBEYA_LIVE)(
-  'the Koordinator does what an agent passes on, and knows Obeya’s commands on a card without one',
+  'the Coordinator does what an agent passes on, and knows Obeya’s commands on a card without one',
   async () => {
     const results = await Promise.all(CASES.map(async ([state, text, request, typed, want]) => ({ state, text, request, typed, want, got: await hear(state, text, request, typed) })));
     const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(r.want));
@@ -125,7 +125,7 @@ async function newTask(text: string, language: 'de' | 'en') {
   board.work(board.create({ title: 'Run the tests on every push', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Round the total up', x: 0, y: 0 });
   const executed: Command[] = [];
-  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
   const k = new Commander({ board, runtime, cwd: cwd(), execute: (c) => void executed.push(c), delayMs: 1 });
   const heard = await k.hear(text, {});
   if (heard.token) k.arm(heard.token);
@@ -158,14 +158,14 @@ const NO_CARD: [string, boolean, Command['do'][]][] = [
   ['Installier mir ffmpeg auf dem Rechner', false, ['newCard']],
 ];
 
-/** What the Koordinator makes of one sentence with no card open. */
+/** What the Coordinator makes of one sentence with no card open. */
 async function noCard(text: string, typed: boolean) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'live' });
   board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Zählerstände nachtragen', x: 0, y: 0 });
   const executed: Command[] = [];
-  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
   // the configuration as Obeya serves it, one canvas on a repository that exists
   const home = cwd();
   const started = [{ name: 'C', repos: [{ path: gitRepo(join(home, 'home')) }] }];
@@ -210,7 +210,7 @@ test.skipIf(!process.env.OBEYA_LIVE)(
         board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
         const executed: Command[] = [];
         const asked: number[] = [];
-        const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+        const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
         const k = new Commander({ board, runtime, cwd: cwd(), execute: (c) => void executed.push(c), lookUp: (t) => void asked.push(t), delayMs: 1 });
         const heard = await k.hear(text, {}, [], { typed: true });
         if (heard.token) k.arm(heard.token);
@@ -243,12 +243,12 @@ const WISHES: [string, 'cannot' | 'wish' | null][] = [
   ['Starte Login', null],
 ];
 
-/** What the Koordinator makes of one sentence with no card open: whether it says Obeya cannot do it, or opens a draft for the makers. */
+/** What the Coordinator makes of one sentence with no card open: whether it says Obeya cannot do it, or opens a draft for the makers. */
 async function wishOf(text: string) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'live' });
   board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
-  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
   const k = new Commander({ board, runtime, cwd: cwd(), execute: () => {}, delayMs: 1 });
   const heard = await k.hear(text, {}, [], { typed: true });
   return { got: heard.wish ? ('wish' as const) : heard.cannot ? ('cannot' as const) : null, confirm: heard.confirm };
@@ -273,13 +273,13 @@ const LATER: [string, Command['do'][], string | null][] = [
 
 /**
  * The owner's request from the conversation before (a repository and a canvas for it), which only a
- * card's agent can begin: the Koordinator waits on that card, and takes the step once it is done.
+ * card's agent can begin: the Coordinator waits on that card, and takes the step once it is done.
  */
 async function later(text: string) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => 'en');
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Login', x: 0, y: 0 });
-  // a folder no repository is in yet, as on the owner's machine then: the Koordinator may look
+  // a folder no repository is in yet, as on the owner's machine then: the Coordinator may look
   const place = join(cwd(), 'recipes');
   board.addTalk(
     `Kannst du mir ein neues Repo in ${place} und einen entsprechenden Obeya canvas anlegen? Privater Account, erstmal nicht nach GitHub.`,
@@ -288,7 +288,7 @@ async function later(text: string) {
   const view = { file: '/h/canvases.json', source: 'file', canvases: [{ name: 'Obeya', repos: [{ path: '/r' }] }], running: ['obeya'] } as unknown as ConfigView;
   const config = { view: () => view, check: async (canvases: unknown) => ({ canvases: canvases as CanvasConfig[], resolved: [], problems: [] }), checkSaved: async () => ({ canvases: view.canvases, resolved: [], problems: [] }) };
   const executed: Command[] = [];
-  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
   const k = new Commander({
     board,
     runtime,
@@ -303,12 +303,12 @@ async function later(text: string) {
   const heard = await k.hear(text, {}, [], { typed: true });
   if (heard.token) k.arm(heard.token);
   await new Promise((r) => setTimeout(r, 20));
-  // a wait is the Koordinator's own: it stands on the exchange rather than running
+  // a wait is the Coordinator's own: it stands on the exchange rather than running
   const wait = board.waitingTalk()[0]?.waiting[0];
   const made = executed.length;
   const now = [...executed.map((c) => c.do), ...(wait ? ['waitFor' as const] : [])];
   if (!wait) return { now, confirm: heard.confirm };
-  // the card gets done, with the repository its agent made: the Koordinator takes the step by itself
+  // the card gets done, with the repository its agent made: the Coordinator takes the step by itself
   gitRepo(place);
   board.work(wait.card, { state: 'done' });
   const notices: string[] = [];
@@ -348,7 +348,7 @@ const REVIEWS: [string, number][] = [
   ['Mach eine Reviewkarte für die neuen Pull-Requests.', 3],
 ];
 
-/** What the Koordinator makes of one request for reviews: the actions as they run. */
+/** What the Coordinator makes of one request for reviews: the actions as they run. */
 async function reviews(text: string) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'Shop', repos: [{ id: 'shop', name: 'Shop', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
   board.work(board.create({ title: 'Checkout button looks disabled', x: 0, y: 0 }).id, { state: 'live' });
@@ -362,14 +362,14 @@ async function reviews(text: string) {
   board.addPreference('When a request of mine contains several separate tasks (e.g. a release and a website update), create a separate card for each instead of one card for all.');
   board.addPreference("When I ask for a review of a pull request, the review checks the changes (including anything hidden that doesn't belong there) and records no demo video if the PR already contains one.");
   const executed: Command[] = [];
-  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
   const asked: number[] = [];
   const k = new Commander({ board, runtime, cwd: cwd(), execute: (c) => void executed.push(c), lookUp: (t) => void asked.push(t), delayMs: 1 });
   const heard = await k.hear(text, {}, [], { typed: true });
   if (heard.token) k.arm(heard.token);
-  // the open pull requests, looked up: the Koordinator takes the step it looked them up for
+  // the open pull requests, looked up: the Coordinator takes the step it looked them up for
   if (asked.length) {
-    board.answerTalk(asked[0]!, 'Three open pull requests are newer than PR #4:\n- #5 "Empty cart shows a hint" by bob: https://github.com/acme/shop/pull/5\n- #6 "Discount codes" by carol: https://github.com/acme/shop/pull/6\n- #7 "Currency symbol per locale" by dave: https://github.com/acme/shop/pull/7', 'koordinator');
+    board.answerTalk(asked[0]!, 'Three open pull requests are newer than PR #4:\n- #5 "Empty cart shows a hint" by bob: https://github.com/acme/shop/pull/5\n- #6 "Discount codes" by carol: https://github.com/acme/shop/pull/6\n- #7 "Currency symbol per locale" by dave: https://github.com/acme/shop/pull/7', 'coordinator');
     k.answerIn(asked[0]!);
     for (const end = Date.now() + 120_000; !executed.length && Date.now() < end; ) await new Promise((r) => setTimeout(r, 100));
   }

@@ -2,7 +2,7 @@
 // words are written into it, for the owner to add to and send. Otherwise the recording goes to
 // Obeya with what stands in the field of the card or sidebar in view (its words first, its
 // screenshots, the message it quotes): with an agent on the open card straight to that agent, else
-// to the Koordinator, which answers with a confirmation to show. Where no field is in view,
+// to the Coordinator, which answers with a confirmation to show. Where no field is in view,
 // screenshots picked or pasted beside the microphone, and the paths of other files dropped on it,
 // go with the next recording. The microphone is
 // free again at once: each spoken command has its own line above it while it is read, which becomes
@@ -256,7 +256,7 @@ export function usePushToTalk(
   return { phase: shown ? phase : 'idle', level, flat, start, stop };
 }
 
-/** A command on its way: while it is transcribed or the Koordinator reads it, then its confirmation. */
+/** A command on its way: while it is transcribed or the Coordinator reads it, then its confirmation. */
 export interface Told {
   id: number;
   /** What the line says meanwhile: the card in view, and what happens to the words; null for typed words, which the conversation shows at once. */

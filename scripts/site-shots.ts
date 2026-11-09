@@ -148,7 +148,7 @@ for (const [at, home] of [[base, staged.dir], [`http://127.0.0.1:${REVIEW_PORT}`
   await fetch(`${at}/api/language`, { method: 'PUT', headers: ownerHeaders(join(home, 'home')), body: JSON.stringify({ language: 'en' }) });
 console.log('staged', staged.url, reviewing.url);
 
-// the Koordinator reads the new project's plan doc for what builds on what and arranges it: until
+// the Coordinator reads the new project's plan doc for what builds on what and arranges it: until
 // then its head says "Arranging …", which a shot taken at once showed
 const settled = Date.now() + 3 * 60_000;
 while (Date.now() < settled) {

@@ -616,7 +616,7 @@ export class FolderWorkspaces implements CardWorkspaces {
     return this.rec(cardId) ? ownFile(this.root, path) : null;
   }
 
-  /** What the card changed, for the Koordinator: each path with what happened to it. */
+  /** What the card changed, for the Coordinator: each path with what happened to it. */
   async changes(cardId: string): Promise<Change[]> {
     return this.changed(cardId);
   }

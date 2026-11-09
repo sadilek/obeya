@@ -17,7 +17,7 @@ import { asideMark, changeAside, forgotten, loadAside, onAsideElsewhere, type Se
 import { CardNumber } from './cardNumber';
 import { type ActDone, Detail, type Pending, TalkElsewhere, useEvents } from './detail';
 import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
-import { KoordinatorTalk } from './koordinator';
+import { CoordinatorTalk } from './coordinator';
 import { Sign } from './logo';
 import { Notify, registerWorker } from './notify';
 import { plain } from './markdown';
@@ -27,7 +27,7 @@ import { shownState, TalkIcon } from './parts';
 import { videoOf } from './spot';
 import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
-import { agentWorks, cardTalk, koordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
+import { agentWorks, cardTalk, coordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
 import { seenOf } from './seen';
 import { noticeLine, tellers, useAck } from './tell';
 import { HoldToTalk, PushToTalk, ToldList, usePushToTalk, useTold } from './voice';
@@ -723,10 +723,10 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
         )}
       </div>
       {talk && (
-        <TalkPanel title={t.koordinator.title} label={t.phone.talkTitle} banner={banner} onClose={closeTalk} leave={leaveTalk} onLeave={() => setClosing(true)}>
+        <TalkPanel title={t.coordinator.title} label={t.phone.talkTitle} banner={banner} onClose={closeTalk} leave={leaveTalk} onLeave={() => setClosing(true)}>
           {obeyaSnap && (
             <div className="ph-talk" key={obeyaId}>
-              <KoordinatorTalk
+              <CoordinatorTalk
                 on
                 talk={obeyaSnap.talk}
                 items={obeyaSnap.items}
@@ -739,7 +739,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           )}
         </TalkPanel>
       )}
-      <TalkButton label={t.phone.talkTitle} shown={shown} n={unread} count={t.koordinator.unreadCount(unread)} working={ordered.some((c) => obeyaWorks(snaps[c.id]!.talk))} onClick={() => (talk ? leaveTalk.current?.() : openTalkNewest())} />
+      <TalkButton label={t.phone.talkTitle} shown={shown} n={unread} count={t.coordinator.unreadCount(unread)} working={ordered.some((c) => obeyaWorks(snaps[c.id]!.talk))} onClick={() => (talk ? leaveTalk.current?.() : openTalkNewest())} />
       {/* right of the microphone, with several canvases: whose Obeya the microphone and the panel speak to */}
       {several && (
         <label className="pill ph-canvas-pick">
@@ -876,7 +876,7 @@ function CardTalkButton({ item, open, shown, onClick }: { item: Item; open: bool
   // the conversation marks what it holds seen while it is open
   const messages = events && !open ? unseen(cardTalk(item, events), events, seenOf(item.id)) : 0;
   const questions = openQuestions(item).length;
-  const working = agentWorks(item) || (!!events && koordinatorReads(events));
+  const working = agentWorks(item) || (!!events && coordinatorReads(events));
   return <TalkButton label={t.phone.cardTalk} shown={shown} n={messages + (questions ? 1 : 0)} count={t.phone.cardWaiting(messages, questions)} working={working} onClick={onClick} />;
 }
 

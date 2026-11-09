@@ -9,7 +9,7 @@ Every kind of card shows its exchanges as one conversation ("Conversation"), bui
 agent got them); the agent's questions with their options and the owner's pick marked on them; its
 replies; its handovers (the one a demo came with carries the report's question, with its options
 and the owner's pick marked, muted once answered; a handover in the same turn as a reply stands
-under it after a dashed line as "Handover"); and what the Koordinator looked up. Small lines between
+under it after a dashed line as "Handover"); and what the Coordinator looked up. Small lines between
 them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, the demo's link put on the pull
 request, stopped, errors, usage limit); an address in them is a link (the comment on the pull
 request, say). Everything else (tool calls, thoughts, status
@@ -24,7 +24,7 @@ looks, under its reply that it does, where that reply stands. On a Question card
 the card's own, so its reading is the card's agent at work. An answer told as a walkthrough stands
 in the conversation from its first slide on, as a message with the player and no words, which
 cannot be replied to yet; the answer's words take its place once they come, the player playing on
-under them (see Walkthroughs in The Koordinator). A note the worker
+under them (see Walkthroughs in The Coordinator). A note the worker
 answered without `reply` counts as answered by its next words, unless a reply follows before the
 owner says more. Once no agent works on the card and no question is open, steps after the last
 message stand where they happened, the agent's last words among them as its message. A card that was
@@ -36,7 +36,7 @@ resumed (Claude's model ids by family and version, "Claude Code · Opus 5.5"; Co
 Codex lists them with, "Codex · GPT-6-Sol", as the menu beside the start button does; the id itself
 in the tooltip), and the effort Obeya started it with ("effort high"). It stays after the work is
 done, and a new session (the card started afresh) names its own. From the start until that session
-is there (the Koordinator checks the card, it waits in the queue, its workspace is made ready), the
+is there (the Coordinator checks the card, it waits in the queue, its workspace is made ready), the
 same place names what the agent will run on: the card's own choice over the workers' setting (see
 Harnesses, models and effort in Agents and workspaces), with the aliases as "Agents and models"
 names them ("Claude Code · Opus"). The phone, whose conversation panel has no
@@ -102,7 +102,7 @@ after it asked (said while it worked, they reached it after the question) go alo
 the question, as everywhere in reading order: above it they would read as words the question took
 into account, and once it is answered and back in place they would jump below it. Anything of an
 agent's after the question leaves them where they were. The canvas card, the phone's count and
-the Koordinator name the same questions. How agents ask: see Questions go to the owner.
+the Coordinator name the same questions. How agents ask: see Questions go to the owner.
 
 Messages new to the owner (after the last event they had in view and their own last words) have an
 orange edge until the conversation closes; the phone's button counts them. One that arrives while
@@ -155,7 +155,7 @@ not steps or state lines.
 
 The agent reads `[In reply to your message: „…“]` above the words: about 160 characters of what it
 already has in its session, else the whole message (Obeya's words, which the worker never got). The
-Koordinator always gets the quote whole; in the sheet a looked-up answer by its tag (`A12`).
+Coordinator always gets the quote whole; in the sheet a looked-up answer by its tag (`A12`).
 
 ### Quoting marked text
 
@@ -215,7 +215,7 @@ once the agent starts", with a bin to take them back) and go to the worker with 
 when it starts, by the owner's click, at the time it was snoozed to, or out of the queue; a stopped
 card's worker gets them with the message it resumes with. Planned as a project, the card's worker
 gets them with its task; discussed as an idea, its exploration agent opens the discussion with them.
-Spoken words go to the Koordinator, which passes a note on the same way.
+Spoken words go to the Coordinator, which passes a note on the same way.
 
 The field is the same on every card and in Obeya's sheet: one frame, the text growing up to 30 % of
 the window (no scrollbar below that), the screenshot button, the microphone (see Voice in) and Send
@@ -324,7 +324,7 @@ Win+Shift+S), across sends and reloads, until "Got it" or the first paste; never
 without mouse or trackpad.
 
 A planned card's description takes screenshots too; its worker (or idea agent) gets them with the
-task, and building an idea adds those from its discussion. A command in the Koordinator's sheet may
+task, and building an idea adds those from its discussion. A command in the Coordinator's sheet may
 carry screenshots; they go with each action that creates or concerns a card, and join the task of a
 card it starts. A spoken command takes the screenshots of the field it speaks to (see Drafts);
 dropped on the microphone or pasted outside a text field, they land there. Only with no card open
@@ -382,7 +382,7 @@ file"), on devices with a mouse or trackpad; the legend of keys lists it too.
 ### Skills by `/`
 
 In the field where a card's agent hears the owner's words (a task's, an idea's, a review card's; not
-where the Koordinator reads them, nor on a Question card), `/` at the start of the text or of a word
+where the Coordinator reads them, nor on a Question card), `/` at the start of the text or of a word
 opens a menu of the skills the agent can be asked for, as in Claude Code: the repository's, the
 user's, those of the plugins the agent loads (Obeya's own for a worker) and Claude Code's own skills
 (`/code-review`), in that order, each with its argument hint and the first line of its description;
@@ -428,7 +428,7 @@ image.
   offered only to start it or to snooze it, so what the owner thought of meanwhile (what to watch
   out for) had to go into the task's text or wait for the agent. Rejected: notes only on queued
   cards; a field on a card just created, which offered two places for the
-  task. Spoken words still go to the Koordinator, since „starte das“ and „stell das zurück“ are
+  task. Spoken words still go to the Coordinator, since „starte das“ and „stell das zurück“ are
   what is said to a planned card, and no agent is there yet to pass them on.
 - **One layout for every card with a conversation** (2026-10-07). Rejected: a task stacking demo,
   buttons, feedback and conversation in one column, with the demo's question its own field and Send.
@@ -480,7 +480,7 @@ image.
 - **The conversation stays where the owner scrolled** (2026-10-20). Rejected: every agent step
   jumping to the end.
 - **One rule for ended and for open questions on every card kind** (2026-10-21). Rejected: per-kind
-  logic, which disagreed between field, phone, canvas and Koordinator.
+  logic, which disagreed between field, phone, canvas and Coordinator.
 - **Screenshots as images in the message**, so the agent sees them without a step. Rejected: files
   to read (only where tool results carry no images).
 - **Other files go in by their own path** (owner, 2026-10-26), so the agent can also move or change

@@ -154,7 +154,7 @@ export function ForYouRows({
         <li key={`obeya:${canvas}`}>
           <button className="card s-waiting ph-card" onClick={() => onObeya(canvas)}>
             <div className="kind">
-              <span>{t.koordinator.title}</span>
+              <span>{t.coordinator.title}</span>
             </div>
             <div className="ttl">{plain(obeya.question ?? obeya.said)}</div>
             <div className="state">

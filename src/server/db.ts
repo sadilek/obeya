@@ -49,9 +49,9 @@ export interface CardRow {
   detail: string | null;
   /** A proposal's source card. */
   from_id: string | null;
-  /** JSON: the Koordinator's estimate of the files the card changes (`{ files, reason }`). */
+  /** JSON: the Coordinator's estimate of the files the card changes (`{ files, reason }`). */
   scope: string | null;
-  /** JSON: set while the Koordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`), with `since`. */
+  /** JSON: set while the Coordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`), with `since`. */
   queue: string | null;
   /** JSON: the card's pull request once approval opened the PR phase (`PrState`); on a review card, the one it reviews from the start. */
   pr: string | null;
@@ -122,7 +122,7 @@ export interface CardRow {
   snoozed: string | null;
   /** JSON: the files its worker named as the result at its latest handover that named any (`CardFile[]`). */
   files: string | null;
-  /** JSON, projects only: which workstream builds on which, as the Koordinator read it from the plan doc (`StoredDeps` in board.ts). */
+  /** JSON, projects only: which workstream builds on which, as the Coordinator read it from the plan doc (`StoredDeps` in board.ts). */
   deps: string | null;
   /** 1 while the owner has a project folded to its head: its workstreams are not shown on the canvas. */
   collapsed: number;
@@ -145,13 +145,13 @@ export interface CardRow {
   number: number;
 }
 
-/** Words the usage limit keeps the Koordinator from reading (`talk.held`): until when, and how it reads them then (`Commander`'s). */
+/** Words the usage limit keeps the Coordinator from reading (`talk.held`): until when, and how it reads them then (`Commander`'s). */
 export interface HeldTalk {
   until: string;
   reading: unknown;
 }
 
-/** A card the Koordinator waits on (`talk.waits`), and the step it said it takes once the card gets there. */
+/** A card the Coordinator waits on (`talk.waits`), and the step it said it takes once the card gets there. */
 export interface TalkWaitRow extends TalkWait {
   then: string;
 }
@@ -175,7 +175,7 @@ export interface Mark {
   card: number;
 }
 
-/** A step in a card's history, as the Koordinator reads it; `created` marks a card of the owner's or a proposal. */
+/** A step in a card's history, as the Coordinator reads it; `created` marks a card of the owner's or a proposal. */
 export interface Moment {
   at: string;
   cardId: string;
@@ -184,7 +184,7 @@ export interface Moment {
   text: string;
 }
 
-/** Something the owner said: to an agent (`hint` a note or feedback, `answer`), in an idea (`talk`), to the Koordinator (`say`). */
+/** Something the owner said: to an agent (`hint` a note or feedback, `answer`), in an idea (`talk`), to the Coordinator (`say`). */
 export interface Utterance {
   at: string;
   kind: 'hint' | 'answer' | 'talk' | 'say';
@@ -200,7 +200,7 @@ export interface DecisionRow {
   card_id: string;
   question: string;
   answer: string;
-  by: 'owner' | 'project' | 'koordinator';
+  by: 'owner' | 'project' | 'coordinator';
   at: string;
 }
 
@@ -321,7 +321,7 @@ const SCHEMA = `
     decided_at TEXT,
     target TEXT
   );
-  -- what the owner said to the Koordinator and what it answered: its memory across sessions
+  -- what the owner said to the Coordinator and what it answered: its memory across sessions
   CREATE TABLE talk (
     id INTEGER PRIMARY KEY,
     canvas_id TEXT NOT NULL REFERENCES canvases(id),
@@ -434,11 +434,11 @@ export const MIGRATIONS = [
   );`,
   // a paired device's push subscription (JSON `Subscription`), where it turned notifications on
   'ALTER TABLE devices ADD COLUMN push TEXT;',
-  // words the usage limit kept the Koordinator from reading, until it lifts (JSON `HeldTalk`)
+  // words the usage limit kept the Coordinator from reading, until it lifts (JSON `HeldTalk`)
   'ALTER TABLE talk ADD COLUMN held TEXT;',
   // a card set aside until a point in time, by its worker or the owner (JSON `Snooze`)
   'ALTER TABLE cards ADD COLUMN snoozed TEXT;',
-  // cards the Koordinator waits on to take a step then (JSON `TalkWaitRow[]`), and the exchange it took that step up in (JSON `TalkAfter`)
+  // cards the Coordinator waits on to take a step then (JSON `TalkWaitRow[]`), and the exchange it took that step up in (JSON `TalkAfter`)
   'ALTER TABLE talk ADD COLUMN waits TEXT; ALTER TABLE talk ADD COLUMN after_wait TEXT;',
   // what a card changed in a folder without git, and the undo it has there (JSON `FolderCard`, folder.ts)
   `CREATE TABLE folder_cards (
@@ -469,7 +469,7 @@ export const MIGRATIONS = [
   'ALTER TABLE events ADD COLUMN forwarded INTEGER;',
   // since when the owner asked the card's agent to pause at a safe point, until it has (ISO)
   'ALTER TABLE cards ADD COLUMN pausing TEXT;',
-  // a question looked up for an action that needs its answer: the step the Koordinator takes then, and
+  // a question looked up for an action that needs its answer: the step the Coordinator takes then, and
   // the exchange of no one's it took that step up in (the id of the exchange whose answer came in)
   'ALTER TABLE talk ADD COLUMN then_step TEXT; ALTER TABLE talk ADD COLUMN after_answer INTEGER;',
   // an error of a session that signed in with a token rather than this machine's account
@@ -488,7 +488,7 @@ export const MIGRATIONS = [
   // where the owner was on the canvas when they asked for a step that needed looking up first (JSON `Place`): its new cards go there
   'ALTER TABLE talk ADD COLUMN then_place TEXT;',
   // a card's number (`K42`), across all canvases, in the order the cards were made; and since when
-  // each canvas has them, as its Koordinator's memory of earlier sessions names cards by tags of its own
+  // each canvas has them, as its Coordinator's memory of earlier sessions names cards by tags of its own
   `ALTER TABLE cards ADD COLUMN number INTEGER;
    UPDATE cards SET number = (SELECT n FROM (SELECT id, row_number() OVER (ORDER BY created_at, rowid) AS n FROM cards) o WHERE o.id = cards.id);
    CREATE UNIQUE INDEX cards_number ON cards (number);
@@ -550,7 +550,7 @@ export const MIGRATIONS = [
   BEGIN
     INSERT INTO archive_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
   END;`,
-  // the Koordinator's reply only answers the owner's words (no actions, no question looked up): "Show as walkthrough" can tell it
+  // the Coordinator's reply only answers the owner's words (no actions, no question looked up): "Show as walkthrough" can tell it
   'ALTER TABLE talk ADD COLUMN reply_only INTEGER;',
   // what each agent session on a canvas cost as its harness estimated it (`Store.spend`), and each
   // card's sum of its sessions', which its row carries so that the card shows it with its other fields
@@ -563,7 +563,7 @@ export const MIGRATIONS = [
     PRIMARY KEY (canvas_id, session)
   );
   ALTER TABLE cards ADD COLUMN spent REAL;`,
-  // what the Koordinator reads with each command and each of the owner's inputs, found by time rather
+  // what the Coordinator reads with each command and each of the owner's inputs, found by time rather
   // than by going through every event of the canvas: the milestones of the cards' logs (`timeline`),
   // what the owner said (`utterances`), the cards made, the exchanges of the sheet; the exchanges
   // whose reply waits on a card, and the workstreams of the projects shown, read on every change of
@@ -595,6 +595,10 @@ export const MIGRATIONS = [
   BEGIN
     INSERT INTO shared_changes (canvas_id, card_id) VALUES (OLD.canvas_id, OLD.id);
   END;`,
+  // what the Coordinator said, looked up and decided, stored as by `koordinator` (its German name) before it was renamed
+  `UPDATE events SET author = 'coordinator' WHERE author = 'koordinator';
+   UPDATE talk SET answer_by = 'coordinator' WHERE answer_by = 'koordinator';
+   UPDATE decisions SET by = 'coordinator' WHERE by = 'koordinator';`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -790,7 +794,7 @@ export class Store {
     })();
   }
 
-  /** What the agents on a canvas cost so far in US dollars: its cards' (archived ones too) and its own agents' (the Koordinator's); 0 before any reported a cost. */
+  /** What the agents on a canvas cost so far in US dollars: its cards' (archived ones too) and its own agents' (the Coordinator's); 0 before any reported a cost. */
   spentOn(canvasId: string): number {
     return (this.db.query('SELECT sum(usd + settled) AS usd FROM spend WHERE canvas_id = $c').get({ c: canvasId }) as { usd: number | null }).usd ?? 0;
   }
@@ -1221,7 +1225,7 @@ export class Store {
     );
   }
 
-  // ---------------------------------------------------------------- the Koordinator's memory
+  // ---------------------------------------------------------------- the Coordinator's memory
 
   /** An exchange of no one's in the canvas's sheet, `reply` saying the card moved to another canvas. */
   addMoved(canvasId: string, moved: TalkMoved, reply: string): number {
@@ -1252,7 +1256,7 @@ export class Store {
   }
 
   /**
-   * The Koordinator's reply to words it has read, the question it looks up for them, and what a draft
+   * The Coordinator's reply to words it has read, the question it looks up for them, and what a draft
    * for Obeya's makers would start from; with `waits`, one for the sheet waits there unread, as an
    * answer that was looked up does.
    */
@@ -1263,8 +1267,8 @@ export class Store {
   }
 
   /**
-   * Words the Koordinator was reading when Obeya stopped: they get `reply`; returns them. Words the
-   * usage limit holds wait on; words asked in a project's sheet the Koordinator never reads.
+   * Words the Coordinator was reading when Obeya stopped: they get `reply`; returns them. Words the
+   * usage limit holds wait on; words asked in a project's sheet the Coordinator never reads.
    */
   interruptTalk(canvasId: string, reply: string): Talk[] {
     const rows = this.db.query("SELECT * FROM talk WHERE canvas_id = $c AND reply = '' AND held IS NULL AND asked_in IS NULL ORDER BY id").all({ c: canvasId }) as TalkRow[];
@@ -1272,7 +1276,7 @@ export class Store {
     return rows.map(toTalk);
   }
 
-  /** Words the usage limit keeps the Koordinator from reading until `held.until`; `null` once it reads them. */
+  /** Words the usage limit keeps the Coordinator from reading until `held.until`; `null` once it reads them. */
   holdTalk(id: number, held: HeldTalk | null) {
     this.db.query('UPDATE talk SET held = $held WHERE id = $id').run({ id, held: held ? JSON.stringify(held) : null });
   }
@@ -1282,25 +1286,25 @@ export class Store {
     return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND held IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map((r) => ({ ...toTalk(r), held: JSON.parse(r.held!) as HeldTalk }));
   }
 
-  /** The cards the Koordinator waits on after the exchange's reply; none once it no longer waits on any. */
+  /** The cards the Coordinator waits on after the exchange's reply; none once it no longer waits on any. */
   waitTalk(id: number, waits: TalkWaitRow[]) {
     this.db.query('UPDATE talk SET waits = $waits WHERE id = $id').run({ id, waits: waits.length ? JSON.stringify(waits) : null });
   }
 
-  /** The exchanges whose reply said the Koordinator waits on a card, oldest first. */
+  /** The exchanges whose reply said the Coordinator waits on a card, oldest first. */
   waitingTalk(canvasId: string): (Talk & { waiting: TalkWaitRow[] })[] {
     return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND waits IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map((r) => ({ ...toTalk(r), waiting: JSON.parse(r.waits!) as TalkWaitRow[] }));
   }
 
   /**
-   * The step the Koordinator takes once the exchange's looked-up answer is in, and where the owner
+   * The step the Coordinator takes once the exchange's looked-up answer is in, and where the owner
    * was on the canvas when they asked for it; `null` once it has decided it.
    */
   thenTalk(id: number, then: string | null, place?: Place) {
     this.db.query('UPDATE talk SET then_step = $then, then_place = $place WHERE id = $id').run({ id, then, place: then !== null && place ? JSON.stringify(place) : null });
   }
 
-  /** Looked-up answers that are in, oldest first, whose step the Koordinator has not decided yet. */
+  /** Looked-up answers that are in, oldest first, whose step the Coordinator has not decided yet. */
   answeredSteps(canvasId: string): Talk[] {
     return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND then_step IS NOT NULL AND answer IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map(toTalk);
   }
@@ -1327,7 +1331,7 @@ export class Store {
    * The answer to a looked-up question, with its files; one for the sheet (no card was open, and its
    * thread is on no Question card) waits there unread.
    */
-  answerTalk(id: number, answer: string, by: 'koordinator' | 'project', files: AnswerFile[] = []) {
+  answerTalk(id: number, answer: string, by: 'coordinator' | 'project', files: AnswerFile[] = []) {
     this.db
       .query('UPDATE talk SET answer = $answer, answer_by = $by, files = $files, unread = card_id IS NULL AND card IS NULL WHERE id = $id')
       .run({ id, answer, by, files: files.length ? JSON.stringify(files) : null });
@@ -1459,7 +1463,7 @@ export class Store {
 
   /**
    * What the owner said after `since` (ISO time), oldest first, at most the latest `limit`: notes,
-   * feedback and answers to agents, an idea's discussion, and what they said to the Koordinator
+   * feedback and answers to agents, an idea's discussion, and what they said to the Coordinator
    * (unless taken back).
    */
   utterances(canvasId: string, since: string, limit: number): Utterance[] {
@@ -1682,7 +1686,7 @@ interface TalkRow {
   question: string | null;
   about: string | null;
   answer: string | null;
-  answer_by: 'koordinator' | 'project' | null;
+  answer_by: 'coordinator' | 'project' | null;
   images: string | null;
   unread: number;
   session_id: string | null;
@@ -1707,7 +1711,7 @@ const toTalk = (r: TalkRow): Talk => ({
   id: r.id,
   at: r.at,
   said: r.said,
-  // empty while the Koordinator reads the words
+  // empty while the Coordinator reads the words
   ...(r.reply ? { reply: r.reply } : {}),
   ...(r.card_id ? { cardId: r.card_id } : {}),
   ...(r.undone ? { undone: true } : {}),
@@ -1747,5 +1751,5 @@ function quotedTalk(db: Database, ref: TalkRef): TalkQuote | undefined {
   const r = db.query('SELECT said, reply, answer, answer_by FROM talk WHERE id = $id').get({ id: ref.talk }) as Pick<TalkRow, 'said' | 'reply' | 'answer' | 'answer_by'> | null;
   const text = r?.[ref.part];
   if (!r || !text) return;
-  return { talk: ref.talk, part: ref.part, by: ref.part === 'said' ? 'owner' : ref.part === 'answer' ? (r.answer_by ?? 'koordinator') : 'koordinator', text };
+  return { talk: ref.talk, part: ref.part, by: ref.part === 'said' ? 'owner' : ref.part === 'answer' ? (r.answer_by ?? 'coordinator') : 'coordinator', text };
 }

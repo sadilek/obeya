@@ -184,7 +184,7 @@ export interface Shipped {
 }
 
 /**
- * Which workstream of a project builds on which (`CardRow.deps`), as the Koordinator read it from
+ * Which workstream of a project builds on which (`CardRow.deps`), as the Coordinator read it from
  * the plan doc: `on` by workstream key, for the doc's workstreams as they stood then (`sig`,
  * `depsSig`). `reading` while it reads them: `auto` for a project just come, which it arranges by
  * them unless the owner moved one of its cards first; `owner` when they asked to arrange it.
@@ -372,7 +372,7 @@ export function cardDemos(r: CardRow): StoredDemo[] {
 /** States a worker or the owner's decision is still part of. */
 export const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
 
-/** Exchanges with the Koordinator its sheet shows. */
+/** Exchanges with the Coordinator its sheet shows. */
 const SHEET_TALK = 30;
 
 /** The setting that names the card collecting accepted rules for a repository's CLAUDE.md, per repository. */
@@ -410,10 +410,10 @@ const QUOTABLE: CardEvent['kind'][] = ['say', 'closing', 'question', 'answer', '
 /**
  * What an agent reads above the owner's words that reply to a message: which one, by its start
  * where the agent has the whole in its session (its own words, the owner's words to it), else whole
- * (Obeya's words in the card's conversation, an idea's agent's to a card's worker; the Koordinator,
+ * (Obeya's words in the card's conversation, an idea's agent's to a card's worker; the Coordinator,
  * which reads each command afresh, gets them all whole).
  */
-export function replyNote(quoted: CardEvent | undefined, to: 'worker' | 'explorer' | 'koordinator'): string {
+export function replyNote(quoted: CardEvent | undefined, to: 'worker' | 'explorer' | 'coordinator'): string {
   if (!quoted) return '';
   const own = quoted.author === to;
   const what = quoted.kind === 'question' ? 'question' : quoted.kind === 'review' ? 'handover' : 'message';
@@ -426,7 +426,7 @@ export function replyNote(quoted: CardEvent | undefined, to: 'worker' | 'explore
         : `Obeya's ${what} in the card's conversation`;
   const heard = own || (quoted.author === 'owner' && quoted.kind !== 'say');
   const text = quoted.text.replace(/\s+/g, ' ').trim();
-  return `[In reply to ${whose}: “${excerpt(text, heard && to !== 'koordinator' ? 160 : 2000)}”]\n\n`;
+  return `[In reply to ${whose}: “${excerpt(text, heard && to !== 'coordinator' ? 160 : 2000)}”]\n\n`;
 }
 
 /** The start of a text, cut at a word, to point at it. */
@@ -1040,7 +1040,7 @@ export class Board {
     if (was.state === 'proposal') this.store.update(row.id, { proposal: superseded, deleted_at: new Date().toISOString() });
     else {
       this.store.update(row.id, { proposal: superseded });
-      this.log(row.id, 'state', 'koordinator', this.t.worker.superseded(s.title, s.why));
+      this.log(row.id, 'state', 'coordinator', this.t.worker.superseded(s.title, s.why));
     }
     this.changed();
     return { kind: was.state === 'proposal' ? 'gone' : 'marked', ...was };
@@ -1241,7 +1241,7 @@ export class Board {
   }
 
   /**
-   * The outdated pages the Koordinator's sheet offers to share again, archived cards' included,
+   * The outdated pages the Coordinator's sheet offers to share again, archived cards' included,
    * with the changes each lacks: after the owner put the notice away, only those a newer change
    * left outdated.
    */
@@ -1354,7 +1354,7 @@ export class Board {
   }
 
   /**
-   * The shared pages the Koordinator's sheet offers to tag („N Seiten ohne Tags“), archived cards'
+   * The shared pages the Coordinator's sheet offers to tag („N Seiten ohne Tags“), archived cards'
    * included: at rest, on their repository's site with a vocabulary, and lacking tags in one of its
    * dimensions. Their demos need not be at hand: the site's copy of a page is tagged in place.
    */
@@ -1465,10 +1465,10 @@ export class Board {
     this.work(id, { prototype: JSON.stringify({ ...kept, end, ...(into ? { into } : {}) } satisfies StoredPrototype), archived_at: new Date().toISOString(), need: null, status_line: null, workspace: null, queue: null });
   }
 
-  // ---------------------------------------------------------------- the Koordinator's memory
+  // ---------------------------------------------------------------- the Coordinator's memory
 
   /**
-   * Records an exchange with the Koordinator, without its reply (`''`) while it reads the words;
+   * Records an exchange with the Coordinator, without its reply (`''`) while it reads the words;
    * returns its id. `replyTo`: the message of the sheet the words reply to.
    */
   addTalk(said: string, reply: string, cardId: string | null = null, lookUp?: { question: string; about: string | null }, images: string[] = [], replyTo?: TalkRef, after?: TalkAfter, askedIn?: string, answered?: number): number {
@@ -1478,7 +1478,7 @@ export class Board {
   }
 
   /**
-   * The Koordinator's reply to words it has read, the question it looks up for them, and what a
+   * The Coordinator's reply to words it has read, the question it looks up for them, and what a
    * draft for Obeya's makers would start from; `waits`: unread in the sheet until the owner sees it;
    * `answers`: it answers them (not that it could not read them).
    */
@@ -1488,43 +1488,43 @@ export class Board {
   }
 
   /**
-   * After a restart: words the Koordinator was reading when Obeya stopped are not read any more;
+   * After a restart: words the Coordinator was reading when Obeya stopped are not read any more;
    * they get a reply that says so, in the sheet or on the card that was open.
    */
   interruptTalk() {
     const lost = this.store.interruptTalk(this.canvas.id, this.t.voice.interrupted);
-    for (const x of lost) if (x.cardId && this.item(x.cardId)) this.log(x.cardId, 'say', 'koordinator', this.t.voice.interrupted, { reply: true });
+    for (const x of lost) if (x.cardId && this.item(x.cardId)) this.log(x.cardId, 'say', 'coordinator', this.t.voice.interrupted, { reply: true });
     if (lost.length) this.changed();
   }
 
-  /** Words the usage limit keeps the Koordinator from reading, until it lifts; `null` once it reads them. */
+  /** Words the usage limit keeps the Coordinator from reading, until it lifts; `null` once it reads them. */
   holdTalk(id: number, held: HeldTalk | null) {
     this.store.holdTalk(id, held);
     this.changed();
   }
 
-  /** The words the usage limit holds, oldest first: after a restart, the Koordinator reads them once it lifts. */
+  /** The words the usage limit holds, oldest first: after a restart, the Coordinator reads them once it lifts. */
   heldTalk() {
     return this.store.heldTalk(this.canvas.id);
   }
 
-  /** The cards the Koordinator waits on after the exchange's reply, to take a step once each gets there. */
+  /** The cards the Coordinator waits on after the exchange's reply, to take a step once each gets there. */
   waitTalk(id: number, waits: TalkWaitRow[]) {
     this.store.waitTalk(id, waits);
     this.changed();
   }
 
-  /** The exchanges whose reply said the Koordinator waits on a card. */
+  /** The exchanges whose reply said the Coordinator waits on a card. */
   waitingTalk() {
     return this.store.waitingTalk(this.canvas.id);
   }
 
-  /** The step the Koordinator takes once the exchange's looked-up answer is in, and where the owner was then; `null` once it has decided it. */
+  /** The step the Coordinator takes once the exchange's looked-up answer is in, and where the owner was then; `null` once it has decided it. */
   thenTalk(id: number, then: string | null, place?: Place) {
     this.store.thenTalk(id, then, place);
   }
 
-  /** Looked-up answers that are in whose step the Koordinator has not decided yet: after a restart, it takes them up. */
+  /** Looked-up answers that are in whose step the Coordinator has not decided yet: after a restart, it takes them up. */
   answeredSteps() {
     return this.store.answeredSteps(this.canvas.id);
   }
@@ -1551,8 +1551,8 @@ export class Board {
     return this.store.talk(this.canvas.id, limit);
   }
 
-  /** The answer to a question the Koordinator looked up, with the files it comes with. */
-  answerTalk(id: number, answer: string, by: 'koordinator' | 'project', files: AnswerFile[] = []) {
+  /** The answer to a question the Coordinator looked up, with the files it comes with. */
+  answerTalk(id: number, answer: string, by: 'coordinator' | 'project', files: AnswerFile[] = []) {
     this.store.answerTalk(id, answer, by, files);
     this.changed();
   }
@@ -1587,7 +1587,7 @@ export class Board {
     this.changed();
   }
 
-  /** The owner has the Koordinator's sheet in view: its answers are read. */
+  /** The owner has the Coordinator's sheet in view: its answers are read. */
   /** The owner has Obeya's sheet in view, or (`ids`) those exchanges in a project's sheet. */
   readTalk(ids?: number[]) {
     if (this.store.readTalk(this.canvas.id, ids)) this.changed();
@@ -1597,7 +1597,7 @@ export class Board {
     return this.store.exchange(id);
   }
 
-  /** The exchange a reply of the Koordinator's in the card's log stands for. */
+  /** The exchange a reply of the Coordinator's in the card's log stands for. */
   cardReply(cardId: string, reply: string) {
     return this.store.cardReply(cardId, reply);
   }
@@ -1607,7 +1607,7 @@ export class Board {
     return this.store.event(cardId, id);
   }
 
-  /** Questions the Koordinator is still looking up. */
+  /** Questions the Coordinator is still looking up. */
   lookingUp(): number[] {
     return this.store.lookingUp(this.canvas.id);
   }
@@ -2057,7 +2057,7 @@ export class Board {
     if (this.placeNew(docs, items, all, rows)) {
       // projects seen for the first time keep their doc too
       this.keepDocs(all, docs);
-      // what reacts to changes hears of them too (the Koordinator reads what builds on what in a project just come)
+      // what reacts to changes hears of them too (the Coordinator reads what builds on what in a project just come)
       this.tell();
       rows = this.store.cards(this.canvas.id);
       items = toItems(rows, docs, this.home, this.worked, this.themeNow);
@@ -2577,18 +2577,18 @@ export class Board {
 
   /**
    * Adds an accepted rule to the repository's open card „CLAUDE.md ergänzen“: planned and not yet
-   * with the Koordinator. Without one, a new card collects it.
+   * with the Coordinator. Without one, a new card collects it.
    */
   private collect(repo: string, rule: string) {
     const open = this.collecting(repo);
     if (open) {
       this.store.update(open.id, { body: `${open.body.trimEnd()}\n- ${rule}` });
-      this.log(open.id, 'state', 'koordinator', this.t.koordinator.ruleTaken(rule));
+      this.log(open.id, 'state', 'coordinator', this.t.coordinator.ruleTaken(rule));
       return;
     }
     const card = this.create({ title: this.t.claudeMd.title, body: `${this.t.claudeMd.task}\n\n- ${rule}`, repo, ...this.freeSpot() });
     this.setSetting(`${CLAUDE_MD_SETTING}${repo}`, card.id);
-    this.log(card.id, 'state', 'koordinator', this.t.koordinator.ruleTaken(rule));
+    this.log(card.id, 'state', 'coordinator', this.t.coordinator.ruleTaken(rule));
   }
 
   /** The repository's card „CLAUDE.md ergänzen“ while it still collects rules, if there is one. */
@@ -2906,7 +2906,7 @@ export class Board {
     })();
   }
 
-  /** What the Koordinator read of a project's plan doc about which workstream builds on which, and whether it is reading it now. */
+  /** What the Coordinator read of a project's plan doc about which workstream builds on which, and whether it is reading it now. */
   deps(projectId: string): StoredDeps & { current: boolean } {
     // the project keeps its doc as the canvas last read it
     this.items();
@@ -2917,14 +2917,14 @@ export class Board {
   }
 
   /**
-   * The projects whose plan doc the Koordinator is to read for which workstream builds on which
+   * The projects whose plan doc the Coordinator is to read for which workstream builds on which
    * (`arranging` on the canvas), from their rows: asked on every change, this builds no snapshot.
    */
   arranging(): string[] {
     return this.store.projectDeps(this.canvas.id).flatMap((r) => (r.deps && (JSON.parse(r.deps) as StoredDeps).reading ? [r.id] : []));
   }
 
-  /** The Koordinator starts reading which workstream builds on which (`reading`), or has read it (`on`, for the doc as it stands now). */
+  /** The Coordinator starts reading which workstream builds on which (`reading`), or has read it (`on`, for the doc as it stands now). */
   setDeps(projectId: string, d: { reading: NonNullable<StoredDeps['reading']> } | { on: Record<string, string[]> } | { failed: true }) {
     const row = this.own(projectId);
     const was = row.deps ? (JSON.parse(row.deps) as StoredDeps) : {};
@@ -3131,7 +3131,7 @@ export class Board {
           else this.store.insert([{ canvas_id: this.canvas.id, kind: 'task', parent_id: project.id, plan_ref: ref(w.key), ...at[i]! }]);
         });
       }
-      // what the Koordinator read of which workstream builds on which goes with the cards
+      // what the Coordinator read of which workstream builds on which goes with the cards
       const deps = project.deps ? (JSON.parse(project.deps) as StoredDeps) : null;
       if (deps?.on) {
         const keyOf = new Map(moving.flatMap((k) => (to.has(k.id) ? [[keyOfRef(k.plan_ref)!, to.get(k.id)!] as const] : [])));
@@ -3261,7 +3261,7 @@ export class Board {
     const at = placeProjects(unionBounds([...top.map((i) => boundsOf(i, items)), ...notes]), layouts.map((l) => l.size));
     layouts.forEach(({ doc, pos }, n) => {
       const [project] = this.store.insert([{ canvas_id: c, kind: 'project', plan_ref: doc.file, ...at[n]! }]);
-      // a project just come stands arranged by what builds on what, once the Koordinator has read that
+      // a project just come stands arranged by what builds on what, once the Coordinator has read that
       if (docs.includes(doc) && doc.workstreams.filter((w) => !w.done).length > 1) this.store.update(project!.id, { deps: JSON.stringify({ reading: 'auto' } satisfies StoredDeps) });
       this.store.insert(
         doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'task' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),

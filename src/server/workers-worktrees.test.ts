@@ -212,7 +212,7 @@ describe('a worktree per card', () => {
     expect((await spaces.changes(b.id)).map((c) => c.file)).toEqual(['a.ts', 'b.ts']);
   });
 
-  test('a branch that changes thousands of files gives the Koordinator the changed lines of the first 200', async () => {
+  test('a branch that changes thousands of files gives the Coordinator the changed lines of the first 200', async () => {
     const a = manual();
     await workers.start(a.id);
     const wa = board.row(a.id).workspace!;

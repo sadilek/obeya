@@ -230,7 +230,7 @@ describe('building an idea in a new repository', () => {
   });
 });
 
-describe('the Koordinator across canvases', () => {
+describe('the Coordinator across canvases', () => {
   test('a new card goes onto another canvas the owner names, and starts there; a follow-up names its card on this one', async () => {
     const other = gitRepo(join(dir, 'shop'));
     await config.save([...config.current(), { name: 'Shop', repos: [{ path: other }] }]);

@@ -60,7 +60,7 @@ const turn = (s: FakeSession, reply: string, extra?: () => void) => {
 };
 
 describe('an idea', () => {
-  test('starts as an idea: no worker, no workspace, nothing with the Koordinator', () => {
+  test('starts as an idea: no worker, no workspace, nothing with the Coordinator', () => {
     const i = idea();
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { status: 'open', brief: '', thinking: false, yourTurn: false, questions: [] } });
     expect(runtime.sessions).toHaveLength(0);
@@ -972,8 +972,8 @@ describe('a prototype', () => {
     expect(w.inbox[0]).toContain('**Ziel:** CSV-Export.');
     expect(w.inbox[0]).toContain('<button>Export</button>');
     expect(w.inbox[0]).not.toContain('Before ready_for_review, run');
-    // a prototype never lands, so it holds no files for the Koordinator
-    expect(canvas.koordinator.inProgress()).toEqual([]);
+    // a prototype never lands, so it holds no files for the Coordinator
+    expect(canvas.coordinator.inProgress()).toEqual([]);
 
     const ws = board().row(prototype!.id).workspace!;
     const branch = board().row(prototype!.id).branch!;
@@ -1461,7 +1461,7 @@ describe('by voice', () => {
     turn(explorer(), 'Für welche Vermieter?');
   });
 
-  test('what the owner says on the open idea goes straight to its agent, without the Koordinator', () => {
+  test('what the owner says on the open idea goes straight to its agent, without the Coordinator', () => {
     const i = idea();
     canvas.tell(i.id, 'eher als PDF', [], true);
     expect(talk(i.id)).toEqual([['owner', 'eher als PDF']]);
@@ -1470,7 +1470,7 @@ describe('by voice', () => {
     expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
   });
 
-  test("its agent passes on what asks Obeya for something; the Koordinator reads it with the owner's words", async () => {
+  test("its agent passes on what asks Obeya for something; the Coordinator reads it with the owner's words", async () => {
     const i = idea();
     canvas.tell(i.id, 'Mach daraus ein Projekt', [], true);
     const s = explorer();
@@ -1486,9 +1486,9 @@ describe('by voice', () => {
     expect(k.call('act', { actions: [{ do: 'plan_doc', card: 'K1' }], confirm: 'Ok.' })).toContain("waits for the reply the idea's agent is working on");
     k.call('reply', { confirm: 'Planen geht per Klick, sobald deine Antwort da ist.' });
     expect(await result).toBe('Obeya: Planen geht per Klick, sobald deine Antwort da ist.');
-    // the owner's words are on the card once, the Koordinator's answer under them
+    // the owner's words are on the card once, the Coordinator's answer under them
     expect(board().events(i.id).filter((e) => e.author === 'owner').map((e) => e.text)).toEqual(['Mach daraus ein Projekt']);
-    expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: 'Planen geht per Klick, sobald deine Antwort da ist.' });
+    expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator', text: 'Planen geht per Klick, sobald deine Antwort da ist.' });
   });
 
   test('"nimm noch X auf und bau es dann" passes X on and builds once the reply is there, unless it asks questions', async () => {
@@ -1508,7 +1508,7 @@ describe('by voice', () => {
     canvas.commander.arm(h.token!);
     await settle(30);
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
-    // the Koordinator sees what waits
+    // the Coordinator sees what waits
     const again = canvas.commander.hear('was ist mit der Idee', { card: i.id });
     await settle();
     expect(reader().inbox.at(-1)).toContain('[idea, its agent is working on its reply; built once the reply is there, unless it asks questions]');

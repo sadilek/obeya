@@ -1,7 +1,7 @@
 import { type RefObject, type UIEvent, useEffect, useRef } from 'react';
 
 /**
- * Keeps a conversation's newest message in view, on a card and in the Koordinator's sheet alike.
+ * Keeps a conversation's newest message in view, on a card and in the Coordinator's sheet alike.
  * While the box stands at its end it stays there as the conversation grows (a new message, an
  * agent's next step, a question, a comment's video frame loading, text wrapping anew once the font
  * is in) or as the box shrinks; scrolled up to read further back, the owner stays where they are.

@@ -10,7 +10,7 @@ import type { Field } from './api';
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
 export interface Turn {
   e: CardEvent;
-  /** What led to the message: tool calls, thoughts, status lines, the Koordinator's confirmations. */
+  /** What led to the message: tool calls, thoughts, status lines, the Coordinator's confirmations. */
   steps: CardEvent[];
   /** A state change or an error between the messages. */
   line?: true;
@@ -63,7 +63,7 @@ const MILESTONE =
 const agentAuthor = (e: CardEvent) => e.author === 'worker' || e.author === 'explorer';
 
 /** The agent Obeya looks the owner's questions up with (`answers.ts`): on a card whose own agent it is not, its steps are not that agent's. */
-const lookUpAuthor = (e: CardEvent) => e.author === 'koordinator' || e.author === 'project';
+const lookUpAuthor = (e: CardEvent) => e.author === 'coordinator' || e.author === 'project';
 
 /** What the owner says to the card's agent. */
 const toAgent = (e: CardEvent) => (e.kind === 'hint' || e.kind === 'answer' || e.kind === 'talk') && (e.author === 'owner' || e.kind === 'answer');
@@ -78,12 +78,12 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
     case 'review':
       return 'agent';
     case 'say':
-      // the Koordinator's confirmation of what the owner just said folds away; what it looked up for
+      // the Coordinator's confirmation of what the owner just said folds away; what it looked up for
       // them stands, and so does a reply that answers them without acting (a question of theirs, why
       // it could not read them), and its answer that Obeya cannot do what they asked, with its link to report that
       if (e.author === 'owner') return 'owner';
       if (e.wish || e.reply) return 'aside';
-      return (e.author === 'koordinator' || e.author === 'project') && !(prev?.kind === 'say' && prev.author === 'owner') ? 'aside' : 'step';
+      return (e.author === 'coordinator' || e.author === 'project') && !(prev?.kind === 'say' && prev.author === 'owner') ? 'aside' : 'step';
     case 'error':
     case 'denied':
       return 'line';
@@ -283,7 +283,7 @@ const wokeLine = (e: CardEvent) => e.kind === 'state' && LANGUAGES.some((l) => e
 const unansweredLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text === MESSAGES[l].worker.unanswered);
 
 /** Obeya's line that the card waits for others before it starts, and why. */
-const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].koordinator.waitsFor('\0', '').split('\0')[0]!));
+const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].coordinator.waitsFor('\0', '').split('\0')[0]!));
 
 /** Obeya's line that the usage limit stopped the agent's turn, and when it goes on. */
 const limitLine = (e: CardEvent) =>
@@ -313,7 +313,7 @@ function asRead(events: CardEvent[]): CardEvent[] {
 
 /**
  * The agent's steps before it read the owner's words, closed above them: its last words in them as
- * its message, or, without words, as its steps. Steps only Obeya and the Koordinator noted go on to
+ * its message, or, without words, as its steps. Steps only Obeya and the Coordinator noted go on to
  * the next message.
  */
 function closed(steps: CardEvent[]): Turn | undefined {
@@ -351,7 +351,7 @@ function afterAsking(shown: Turn[], asked: Turn[]): Turn[] {
  * Steps no message came after, in a conversation nobody works on any more, go where they happened,
  * before what came later. Each run of them between two turns ends with the agent's last words in
  * it, as its message; a run without words stands as the agent's steps; what only Obeya and the
- * Koordinator noted there goes.
+ * Coordinator noted there goes.
  */
 function settle(shown: Turn[], pending: CardEvent[], events: CardEvent[]) {
   const at = new Map(events.map((e, i) => [e, i]));
@@ -461,7 +461,7 @@ export function parseQuestion(text: string): { text: string; options: string[] }
 /**
  * The one field a card has for the owner's words, by its state: the answer to its agent's question,
  * a note while the agent works, feedback on work waiting for review; under a demo whose report asks
- * a question, the answer and feedback together, sorted out by the Koordinator as spoken words are.
+ * a question, the answer and feedback together, sorted out by the Coordinator as spoken words are.
  * Null where no agent hears it. Ideas and proposals have fields of their own.
  */
 export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'finishing' | 'branch' | 'prototypeOf' | 'archivedAt' | 'queue'>): Field | null {
@@ -515,11 +515,11 @@ export const agentWorks = (i: Pick<Item, 'kind' | 'state' | 'idea' | 'thread' | 
   pausableNow(i) || (i.state === 'proposal' && !!i.proposal?.revising);
 
 /**
- * Whether the Koordinator still reads what the owner said on the card: their words stand in the log
+ * Whether the Coordinator still reads what the owner said on the card: their words stand in the log
  * at once, its confirmation follows them. (Options picked on a proposal go to its reviser, which
  * notes when it is done.)
  */
-export const koordinatorReads = (events: CardEvent[]) => {
+export const coordinatorReads = (events: CardEvent[]) => {
   const last = events.at(-1);
   return last?.kind === 'say' && last.author === 'owner';
 };

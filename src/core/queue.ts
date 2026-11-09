@@ -1,4 +1,4 @@
-// The queue's order: the cards waiting to start, in the order they came to the Koordinator
+// The queue's order: the cards waiting to start, in the order they came to the Coordinator
 // (`since`). The owner moves a waiting card earlier or later, one place or several at once, past
 // cards it has no wait with: the waits fix the order between the cards they join, the owner the rest.
 
@@ -7,7 +7,7 @@ import { finished, type Item } from './types';
 /** Waiting to start: being judged, behind others, or for a workspace. */
 export const inQueue = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !!i.queue;
 
-/** A card the Koordinator has decided on and that waits: the owner may move it. One being judged stays where it is. */
+/** A card the Coordinator has decided on and that waits: the owner may move it. One being judged stays where it is. */
 export const movable = (i: Item) => inQueue(i) && !('checking' in i.queue!);
 
 /** The waiting cards, first in turn first. */

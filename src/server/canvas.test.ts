@@ -330,7 +330,7 @@ describe('a canvas with several repositories', () => {
     expect(collect.body).toEndWith('- Tests auf Deutsch.\n- Logs auf Englisch.\n- Keine any-Typen.');
     expect(collect.queue).toBeFalsy();
     expect(b.collecting('api')).toBeUndefined();
-    // the last open proposal is decided: the card goes to the Koordinator like a started one
+    // the last open proposal is decided: the card goes to the Coordinator like a started one
     canvas.rejectRule(obeya);
     expect(item(collect.id).queue).toMatchObject({ checking: true });
     await settle();
@@ -1481,7 +1481,7 @@ test('a single repository keeps its canvas id and bare plan references', async (
   canvas = c;
 });
 
-test('what the owner writes in a card, or says to the Koordinator without one, reaches the learner', async () => {
+test('what the owner writes in a card, or says to the Coordinator without one, reaches the learner', async () => {
   fresh();
   const web = repo('web', 'Web');
   canvas.shutdown();
@@ -1523,7 +1523,7 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   await new Promise((r) => setTimeout(r, 50));
   expect(learners()).toHaveLength(2);
 
-  // the conversation with the Koordinator, without a card open
+  // the conversation with the Coordinator, without a card open
   const heard = canvas.commander.hear('Warum fragen die Agenten so viel?', {});
   await settle();
   runtime.last.call('reply', { confirm: 'Weil die Karten offen lassen, wie weit sie gehen sollen.' });
@@ -1648,7 +1648,7 @@ describe('merging and deleting planned tasks by voice', () => {
 });
 
 describe("the owner's words on a card with an agent", () => {
-  test('go straight to its worker, which passes on to the Koordinator what asks Obeya for something', async () => {
+  test('go straight to its worker, which passes on to the Coordinator what asks Obeya for something', async () => {
     const c = canvas.board.create({ title: 'Export', x: 0, y: 0, repo: 'web' });
     await canvas.repoOf(c.id).workers.start(c.id);
     const worker = runtime.last;
@@ -1674,7 +1674,7 @@ describe("the owner's words on a card with an agent", () => {
     expect(await result).toBe('Obeya: Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.');
     // the owner sees it above the microphone, with „Rückgängig“ while it waits, and in the card's conversation
     expect(notices).toEqual([{ cardId: c.id, text: 'Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.', token: expect.any(String), undoMs: 5000 }]);
-    expect(canvas.board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator' });
+    expect(canvas.board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator' });
     expect(canvas.commander.undo((notices[0] as { token: string }).token)).toBe(true);
   });
 
@@ -1775,7 +1775,7 @@ test("pausing a canvas's agents pauses each at work, holds the cards let start m
     expect(worker.closed).toBe(true);
     expect(c.board.item(a.id)!.paused).toBe(true);
     expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
-    // a card started meanwhile: the Koordinator judges it as ever, and it waits in the queue
+    // a card started meanwhile: the Coordinator judges it as ever, and it waits in the queue
     const workers = () => runtime.sessions.filter((s) => s.spec.role === 'worker').length;
     const before = workers();
     const b = c.board.create({ title: 'B', x: 0, y: 0 });
@@ -1934,7 +1934,7 @@ test('a manual dependency holds a requested card until removed', async () => {
   canvas.board.connect(a.id, b.id);
   canvas.act(b.id, { action: 'start' });
   await until(() => !!item(b.id).queue && 'behind' in item(b.id).queue!);
-  const t = canvas.board.t.koordinator;
+  const t = canvas.board.t.coordinator;
   expect(item(b.id).queue).toMatchObject({ behind: [a.id], reason: t.drawn });
   expect(item(b.id).state).toBe('planned');
   // the card says why it waits: the owner connected it, not a wait Obeya inferred
@@ -1991,7 +1991,7 @@ describe('owner-drawn dependencies in the queue', () => {
     expect(item(a.id).queue).toMatchObject({ behind: [b.id] });
   });
 
-  test('an arrow drawn over a wait the Koordinator inferred leaves that wait as it was once removed', async () => {
+  test('an arrow drawn over a wait the Coordinator inferred leaves that wait as it was once removed', async () => {
     const a = await atWork('A');
     const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
     canvas.act(b.id, { action: 'start' });
@@ -2003,7 +2003,7 @@ describe('owner-drawn dependencies in the queue', () => {
     await settle();
     expect(item(b.id).queue).toMatchObject({ behind: [a.id, p.id], manualWait: [p.id] });
     // the arrow drawn while it waited is said once; the one over the inferred wait adds nothing to say
-    const t = canvas.board.t.koordinator;
+    const t = canvas.board.t.coordinator;
     expect(canvas.board.events(b.id).filter((e) => e.author === 'obeya' && e.text.includes(t.drawn)).map((e) => e.text)).toEqual([t.waitsFor(t.notStarted('„Prerequisite“'), t.drawn)]);
     canvas.board.connect(a.id, b.id, true);
     await settle();
@@ -2016,7 +2016,7 @@ describe('owner-drawn dependencies in the queue', () => {
     await until(() => item(b.id).state === 'working');
   });
 
-  test('an arrow holds on where the wait the Koordinator inferred ended, and its removal frees the card', async () => {
+  test('an arrow holds on where the wait the Coordinator inferred ended, and its removal frees the card', async () => {
     const a = await atWork('A');
     const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
     canvas.act(b.id, { action: 'start' });

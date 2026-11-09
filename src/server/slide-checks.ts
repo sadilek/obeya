@@ -1,7 +1,7 @@
 // What Obeya checks of a walkthrough's slide beyond its form, before it shows it: that it fits the
 // player, and that its narration does more than read it out. Both are estimates computed here, at
 // once, without asking a model: a slide refused goes back to the agent in the tool's reply, and the
-// walkthrough plays while the agent writes it (design: The Koordinator → Walkthroughs).
+// walkthrough plays while the agent writes it (design: The Coordinator → Walkthroughs).
 
 import { SLIDE_HEIGHT, SLIDE_WIDTH, type SlideContent } from '../core/walkthrough';
 

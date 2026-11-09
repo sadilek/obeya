@@ -35,7 +35,7 @@ export interface ExplorerOptions {
   imageFiles?: (ids?: string[]) => string[];
   /** The agent answered all it was told and its session ended (`replied`), or its turn ended without (an error, a restart). */
   onReplied?: (cardId: string, replied: boolean) => void;
-  /** Passes on to the Koordinator what the owner's words to the idea's agent ask of Obeya (`to_obeya`); without it the agent has no such tool. */
+  /** Passes on to the Coordinator what the owner's words to the idea's agent ask of Obeya (`to_obeya`); without it the agent has no such tool. */
   toObeya?: (cardId: string, request: string) => Promise<string>;
   /** How long an ended turn waits for a sign of the agent once none of its background work runs (any more). */
   backgroundGrace?: number;

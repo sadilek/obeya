@@ -12,7 +12,7 @@ agent that will take the card on, as the owner would write a card (no "I", other
 their title). Apart from it come a reason, for the owner only, beside the card that proposed it, and
 what the owner has to decide, as questions with options. The owner can edit the proposal and pick
 options on it. "Accept and start" starts it like a started planned card, through the
-Koordinator; "Accept" only plans it. Accepting writes the questions into the text, picked ones
+Coordinator; "Accept" only plans it. Accepting writes the questions into the text, picked ones
 under "Decided:", the rest under "Open questions:", so the new worker reads what is settled and
 asks the rest.
 
@@ -53,12 +53,12 @@ owner accepted already is only marked until it is finished: its card reads "Repl
 
 Instead of editing a proposal by hand, the owner may say or type what should change (its field "What
 should change?"). With the proposal open, the words go straight to a read-only agent of its own
-in the card's repository, the reviser, without the Koordinator or an undo window. It rewrites title,
+in the card's repository, the reviser, without the Coordinator or an undo window. It rewrites title,
 text, reason and questions by those words and keeps the rest; a question the words settle goes, its
 decision into the text. What the words ask of Obeya (accept or dismiss it, a rule, another card) it
 passes on with `to_obeya` (an accept passed on that way waits for the rework, as the button does);
 what they only ask („Was würdest du nehmen?“) it answers, leaving the
-proposal as it was. Words about a proposal that is not open go to the Koordinator.
+proposal as it was. Words about a proposal that is not open go to the Coordinator.
 
 Screenshots with the words (see Screenshots) reach the reviser along with those already on the
 proposal and those shown earlier in its conversation (at most twelve, newest first); it names those
@@ -80,7 +80,7 @@ like "Build it like this" on an idea: clicked during one, the proposal is accept
 is there, unless it still has questions, in which case it stays a proposal and the conversation says
 why. Meanwhile the button reads "Starts after the rework …" with "Don't accept after all", and the
 canvas card's state line adds "then accepted". Accepting by voice during a rework is refused (see
-Commands to the Koordinator).
+Commands to the Coordinator).
 
 ### At work
 
@@ -121,7 +121,7 @@ The worker's summary is its handover in the card's conversation, not repeated un
 first says what changed for the user and what the owner needs to know, in a few short paragraphs at
 most; a later one only what the conversation has not said yet, often a sentence. A reply to a note
 that changes nothing ends the turn by itself, without a new handover. Whoever reads the card's report
-outside its conversation (a follow-up's worker, the Koordinator, a prototype's idea, a shared page)
+outside its conversation (a follow-up's worker, the Coordinator, a prototype's idea, a shared page)
 gets the whole of it: the first handover, then "Later in the conversation:" with the replies and later
 handovers in order. A problem beyond the task is a proposal, not a line in the report.
 
@@ -134,7 +134,7 @@ forge (see PR loop).
 
 Where the settings allow it (`direct`), "Straight to main" beside it pushes the work onto the
 default branch without a pull request, review or the PR's CI (see How work lands); only the button
-does, never words to the Koordinator. Where work lands on `main`, approval lands it at once.
+does, never words to the Coordinator. Where work lands on `main`, approval lands it at once.
 
 A review card, a contributor's pull request (see Review cards), reads "Merge (PR #5)": Obeya merges
 the head its worker reviewed, and the card is `live`; while a change request waits for the
@@ -216,10 +216,10 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
   first-person text with the questions buried in it, which went to the next worker as if the owner
   had written it.
 - **A proposal the owner talks about is rewritten by an agent of its own** (2026-10-06). Rejected:
-  the proposing worker (may be gone or busy) and the Koordinator's quick turn (a whole card text
+  the proposing worker (may be gone or busy) and the Coordinator's quick turn (a whole card text
   would slow every confirmation).
 - **On an open proposal, the owner's words go straight to its reviser** (2026-10-14), as on any card
-  with an agent. Rejected: the Koordinator reading them first, which delayed the rework by the undo
+  with an agent. Rejected: the Coordinator reading them first, which delayed the rework by the undo
   window.
 - **The reviser replies, and a settled question stays where it was asked** (2026-10-14). Rejected:
   a silent reviser, after which the owner who asked about a question saw neither it nor an answer.

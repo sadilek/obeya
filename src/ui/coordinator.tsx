@@ -1,4 +1,4 @@
-// The Koordinator's sheet: the conversation, with the height the sheet has, and below it sections
+// The Coordinator's sheet: the conversation, with the height the sheet has, and below it sections
 // that open and close: the rules it learned and proposes, with the values for repositories'
 // settings the Arbeitsrückschau proposes, and the owner's preferences; shared demos to bring
 // up to date at once.
@@ -47,7 +47,7 @@ interface Props {
   onConfig: (repo: string, setting: string) => void;
 }
 
-export function KoordinatorSheet({ on, canvas, items, preferences, settings, repos, talk, reshare, onOpen, onTell, onConfig }: Props) {
+export function CoordinatorSheet({ on, canvas, items, preferences, settings, repos, talk, reshare, onOpen, onTell, onConfig }: Props) {
   const proposals = preferences.filter((p) => p.state === 'proposed');
   const rules = preferences.filter((p) => p.state === 'active');
   const [folds, setFolds] = useStoredState<Folds>(`obeya-ksheet-${canvas}`, {});
@@ -56,20 +56,20 @@ export function KoordinatorSheet({ on, canvas, items, preferences, settings, rep
   const proposalsOpen = !folds.proposalsClosed || ids.some((id) => !folds.proposalsClosed!.includes(id));
   return (
     <aside id="ksheet" className={on ? 'sheet on' : 'sheet'}>
-      <h2>{t.koordinator.title}</h2>
-      <KoordinatorTalk on={on} talk={talk} items={items} repos={repos} onOpen={onOpen} onTell={onTell} />
+      <h2>{t.coordinator.title}</h2>
+      <CoordinatorTalk on={on} talk={talk} items={items} repos={repos} onOpen={onOpen} onTell={onTell} />
 
       <div className="k-rest">
         {ids.length > 0 && (
           <Fold
             kind="proposals"
-            head={t.koordinator.proposalsHead(ids.length)}
+            head={t.coordinator.proposalsHead(ids.length)}
             open={proposalsOpen}
             onToggle={() => setFolds({ ...folds, proposalsClosed: proposalsOpen ? ids : undefined })}
           >
             {proposals.length > 0 && (
               <>
-                <p className="hint">{t.koordinator.proposalsHint}</p>
+                <p className="hint">{t.coordinator.proposalsHint}</p>
                 <ul className="prefs proposals">
                   {proposals.map((p) => (
                     <ProposalRow key={p.id} p={p} items={items} rules={rules} repos={repos} onOpen={onOpen} />
@@ -79,7 +79,7 @@ export function KoordinatorSheet({ on, canvas, items, preferences, settings, rep
             )}
             {settings.length > 0 && (
               <>
-                <p className="hint">{t.koordinator.settingsHint}</p>
+                <p className="hint">{t.coordinator.settingsHint}</p>
                 <ul className="prefs proposals">
                   {settings.map((p) => (
                     <SettingRow key={p.id} p={p} items={items} repo={repos.find((r) => r.id === p.repo)} onOpen={onOpen} onConfig={() => onConfig(p.repo, p.field)} />
@@ -92,8 +92,8 @@ export function KoordinatorSheet({ on, canvas, items, preferences, settings, rep
 
         {reshare && <ReshareBox r={reshare} items={items} onOpen={onOpen} />}
 
-        <Fold head={t.koordinator.preferencesHead(rules.length)} open={!!folds.preferences} onToggle={() => setFolds({ ...folds, preferences: !folds.preferences })}>
-          <p className="hint">{t.koordinator.preferencesHint}</p>
+        <Fold head={t.coordinator.preferencesHead(rules.length)} open={!!folds.preferences} onToggle={() => setFolds({ ...folds, preferences: !folds.preferences })}>
+          <p className="hint">{t.coordinator.preferencesHint}</p>
           <ul className="prefs">
             {rules.map((p) => (
               <PreferenceRow key={p.id} p={p} />
@@ -112,7 +112,7 @@ export function KoordinatorSheet({ on, canvas, items, preferences, settings, rep
  * field's (the sidebar's, or the phone view's for this canvas). `on`: the conversation is in view,
  * so the answers waiting in it are read.
  */
-export function KoordinatorTalk({ on, talk, items, repos, onOpen, onTell, draft = OBEYA_DRAFT }: Pick<Props, 'on' | 'talk' | 'items' | 'repos' | 'onOpen' | 'onTell'> & { draft?: string }) {
+export function CoordinatorTalk({ on, talk, items, repos, onOpen, onTell, draft = OBEYA_DRAFT }: Pick<Props, 'on' | 'talk' | 'items' | 'repos' | 'onOpen' | 'onTell'> & { draft?: string }) {
   const fresh = useRead(on, talk, () => api.readTalk());
   return (
     <>
@@ -272,7 +272,7 @@ function Fold({ kind, head, open, onToggle, children }: { kind?: string; head: s
 }
 
 /**
- * What the owner said to the Koordinator with no card open, and its replies; newest last. The owner
+ * What the owner said to the Coordinator with no card open, and its replies; newest last. The owner
  * can reply to each message, as on a card: it stands quoted above the field, and above the words
  * that reply to it. Words written in a project's sheet went straight to its project agent, with no
  * reply of Obeya's; outside that sheet (`sheetOf`) a line names the project.
@@ -305,7 +305,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
         if (x.moved)
           return (
             <div key={x.id} className="note ev-state">
-              {clock(x.at)} · {t.koordinator.moved(plain(x.moved.title), x.moved.canvasName)}{' '}
+              {clock(x.at)} · {t.coordinator.moved(plain(x.moved.title), x.moved.canvasName)}{' '}
               <a className="link" href={cardPath(x.moved.canvas, x.moved.card)}>
                 {t.openThere}
               </a>
@@ -316,7 +316,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
             {/* Obeya took a step up by itself, once a card it waited on got there or the answer it looked up for it came in: no words of the owner's */}
             {x.after ? (
               <div className="note ev-state">
-                {clock(x.at)} · {t.koordinator.after(x.after.title, x.after.met, x.after.state)}
+                {clock(x.at)} · {t.coordinator.after(x.after.title, x.after.met, x.after.state)}
               </div>
             ) : x.answered ? null : (
               <Msg by="owner" who={t.author.owner} at={x.at} ev={talkEv({ talk: x.id, part: 'said' })} onReply={reply('said', 'owner', x.said)}>
@@ -324,29 +324,29 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 <Body md={x.said} />
                 <Shots ids={x.images} />
                 {x.continues && <Continues question={x.continues} reading={x.answer === undefined && !card} />}
-                {asked && <div className="hint">{t.koordinator.askedIn(plain(asked.title))}</div>}
+                {asked && <div className="hint">{t.coordinator.askedIn(plain(asked.title))}</div>}
               </Msg>
             )}
             {x.askedIn ? null : x.heldUntil ? (
-              <Msg by="koordinator" className="thinking" who={t.author.koordinator}>
-                <div className="hint">{t.koordinator.held(clock(x.heldUntil))}</div>
+              <Msg by="coordinator" className="thinking" who={t.author.coordinator}>
+                <div className="hint">{t.coordinator.held(clock(x.heldUntil))}</div>
               </Msg>
             ) : x.reply === undefined ? (
               <Reading />
             ) : (
               <Msg
-                by="koordinator"
+                by="coordinator"
                 // what waited unread: the reply, unless an answer to look up follows it
                 className={x.undone ? 'undone' : fresh.includes(x.id) && !x.question ? 'fresh' : undefined}
-                who={t.author.koordinator}
+                who={t.author.coordinator}
                 at={x.at}
                 ev={talkEv({ talk: x.id, part: 'reply' })}
-                onReply={reply('reply', 'koordinator', x.reply)}
+                onReply={reply('reply', 'coordinator', x.reply)}
                 head={x.thread === undefined && tellable(x, items) && <WalkthroughButton of={{ talk: x.id }} hint={x.id === hinted} />}
               >
                 <Body md={x.reply} />
                 {x.wish && !x.undone && <WishReplyLink wish={x.wish} />}
-                {x.undone && <div className="hint">{t.koordinator.undone}</div>}
+                {x.undone && <div className="hint">{t.coordinator.undone}</div>}
                 {x.waits?.map((w) => <WaitLine key={w.card} talk={x.id} wait={w} card={items.find((i) => i.id === w.card)} onOpen={onOpen} />)}
               </Msg>
             )}
@@ -359,18 +359,18 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
               <>
                 {/* a question it looked up: the answer follows the acknowledgement */}
                 {x.question && x.answer === undefined && !x.files?.length && (
-                  <Msg by={x.askedIn ? 'project' : 'koordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'koordinator']}>
-                    <div className="hint">{x.limitedUntil ? t.koordinator.lookUpLimited(clock(x.limitedUntil)) : t.koordinator.lookingUp}</div>
+                  <Msg by={x.askedIn ? 'project' : 'coordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'coordinator']}>
+                    <div className="hint">{x.limitedUntil ? t.coordinator.lookUpLimited(clock(x.limitedUntil)) : t.coordinator.lookingUp}</div>
                   </Msg>
                 )}
                 {/* its walkthrough plays here from its first slide on, and plays on as the answer's words come in above it */}
                 {(x.answer !== undefined || (x.question && !!x.files?.length)) && (
                   <Msg
-                    by={x.answerBy ?? 'koordinator'}
+                    by={x.answerBy ?? 'coordinator'}
                     className={fresh.includes(x.id) ? 'fresh' : undefined}
-                    who={t.author[x.answerBy ?? 'koordinator']}
+                    who={t.author[x.answerBy ?? 'coordinator']}
                     ev={talkEv({ talk: x.id, part: 'answer' })}
-                    onReply={x.answer !== undefined ? reply('answer', x.answerBy ?? 'koordinator', x.answer) : undefined}
+                    onReply={x.answer !== undefined ? reply('answer', x.answerBy ?? 'coordinator', x.answer) : undefined}
                     head={
                       x.thread !== undefined &&
                       x.answer !== undefined && (
@@ -381,7 +381,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                       )
                     }
                   >
-                    {x.answer !== undefined ? <Body md={x.answer} /> : <div className="hint">{t.koordinator.lookingUp}</div>}
+                    {x.answer !== undefined ? <Body md={x.answer} /> : <div className="hint">{t.coordinator.lookingUp}</div>}
                     {x.thread !== undefined && <AnswerFiles thread={x.thread} files={x.files} />}
                   </Msg>
                 )}
@@ -409,10 +409,10 @@ function WaitLine({ talk, wait, card, onOpen }: { talk: number; wait: TalkWait; 
   return (
     <div className="hint wait-line">
       <span>
-        <ClockMark /> <Naming text={(title) => t.koordinator.waits(title, wait.state)} cards={[{ card, title: wait.title }]} onOpen={onOpen} />
+        <ClockMark /> <Naming text={(title) => t.coordinator.waits(title, wait.state)} cards={[{ card, title: wait.title }]} onOpen={onOpen} />
       </span>
-      <button className="btn small" title={t.koordinator.unwaitHint} onClick={() => void api.unwait(talk, wait.card).catch(() => {})}>
-        {t.koordinator.unwait}
+      <button className="btn small" title={t.coordinator.unwaitHint} onClick={() => void api.unwait(talk, wait.card).catch(() => {})}>
+        {t.coordinator.unwait}
       </button>
     </div>
   );
@@ -436,12 +436,12 @@ function useAct(fail?: Parameters<typeof failText>[1]): [string, (fn: () => Prom
 function TargetPick({ value, repos, onChange }: { value: string; repos: RepoRef[]; onChange: (target: string) => void }) {
   return (
     <label className="target">
-      {t.koordinator.target}
+      {t.coordinator.target}
       <select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{t.koordinator.targetPreferences}</option>
+        <option value="">{t.coordinator.targetPreferences}</option>
         {repos.map((r) => (
           <option key={r.id} value={r.id}>
-            {t.koordinator.targetClaudeMd(r.name)}
+            {t.coordinator.targetClaudeMd(r.name)}
           </option>
         ))}
       </select>
@@ -485,7 +485,7 @@ function RuleEdit({ draft, setDraft, onEnter, onBlur }: { draft: string; setDraf
 }
 
 /**
- * A rule the Koordinator learned, with where it came from and where it goes (the preferences, or a
+ * A rule the Coordinator learned, with where it came from and where it goes (the preferences, or a
  * repository's CLAUDE.md): the owner accepts it, in their own words and for another place if they
  * like, or rejects it.
  */
@@ -505,11 +505,11 @@ function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items:
       ) : (
         <RuleEdit draft={draft} setDraft={setDraft} onEnter={() => draft.trim() && accept()} />
       )}
-      {replaced && <span className="occasion">{t.koordinator.changes(replaced.text)}</span>}
+      {replaced && <span className="occasion">{t.coordinator.changes(replaced.text)}</span>}
       <span className="occasion">
         {p.review ? (
           <>
-            {t.koordinator.fromReview}
+            {t.coordinator.fromReview}
             {quote && `: ${quote}`}
           </>
         ) : (
@@ -523,19 +523,19 @@ function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items:
       <TargetPick value={target} repos={repos} onChange={setTarget} />
       <span className="pref-actions">
         <button className="btn primary" disabled={draft !== null && !draft.trim()} onClick={accept}>
-          {t.koordinator.accept}
+          {t.coordinator.accept}
         </button>
         {draft === null ? (
           <button className="btn" onClick={() => setDraft(p.text)}>
-            {t.koordinator.change}
+            {t.coordinator.change}
           </button>
         ) : (
           <button className="btn" onClick={() => setDraft(null)}>
-            {t.koordinator.cancel}
+            {t.coordinator.cancel}
           </button>
         )}
         <button className="btn danger" onClick={() => decide(() => api.rejectProposal(p.id))}>
-          {t.koordinator.reject}
+          {t.coordinator.reject}
         </button>
       </span>
       {error && <span className="p-error">{error}</span>}
@@ -586,7 +586,7 @@ function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; 
   useFitHeight(field, draft);
   const [busy, setBusy] = useState(false);
   const [error, act] = useAct({ detail: ['settingsShare'] });
-  const k = t.koordinator;
+  const k = t.coordinator;
   const list = Array.isArray(p.value);
   const decide = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -684,7 +684,7 @@ function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (
   const chosen = pick === 'all' ? null : pick !== undefined && counts.includes(pick) ? pick : (counts.find((n) => n >= 20) ?? null);
   const run = r.run;
   const going = !!run && run.left > 0;
-  const s = t.koordinator.reshare;
+  const s = t.coordinator.reshare;
   const out = run ? run.done + run.failed.length : 0;
   return (
     <div className="reshare">
@@ -792,13 +792,13 @@ function PreferenceRow({ p }: { p: Preference }) {
   return (
     <li>
       {draft === null ? (
-        <span className="pref-text" title={t.koordinator.edit} onClick={() => setDraft(p.text)}>
+        <span className="pref-text" title={t.coordinator.edit} onClick={() => setDraft(p.text)}>
           {p.text}
         </span>
       ) : (
         <RuleEdit draft={draft} setDraft={setDraft} onEnter={save} onBlur={save} />
       )}
-      <button className="pref-del" title={t.koordinator.remove} onClick={() => api.setPreference(p.id, null).catch(() => {})}>
+      <button className="pref-del" title={t.coordinator.remove} onClick={() => api.setPreference(p.id, null).catch(() => {})}>
         ✕
       </button>
       {error && <span className="p-error">{error}</span>}
@@ -821,7 +821,7 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
     act(async () => {
       await api.addPreference(text.trim(), target || undefined);
       setText('');
-      setFiled(target ? t.koordinator.filed(repos.find((r) => r.id === target)?.name ?? target) : '');
+      setFiled(target ? t.coordinator.filed(repos.find((r) => r.id === target)?.name ?? target) : '');
     });
   return (
     <div className="composer pref-new">
@@ -830,7 +830,7 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
         className={talk.dictating ? 'dictating' : undefined}
         value={text}
         rows={1}
-        placeholder={t.koordinator.addPlaceholder}
+        placeholder={t.coordinator.addPlaceholder}
         onChange={(e) => {
           setText(e.target.value);
           setFiled('');
@@ -846,7 +846,7 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
         }}
       />
       <button className="btn" disabled={!text.trim()} onClick={add}>
-        {t.koordinator.add}
+        {t.coordinator.add}
       </button>
       <DictationLine draft={talk.key} />
       <TargetPick value={target} repos={repos} onChange={setTarget} />

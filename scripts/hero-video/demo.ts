@@ -421,7 +421,7 @@ const scenes: Scene[] = [
       await d.wait(400);
       await d.click(d.page.locator('.composer.tell .c-send'));
       // Obeya answers in the sidebar: a second message of its own
-      await d.skip(() => d.page.locator('.talk.conv .msg.by-koordinator:not(.thinking)').nth(1).waitFor({ timeout: 120_000 }), { quiet: true });
+      await d.skip(() => d.page.locator('.talk.conv .msg.by-coordinator:not(.thinking)').nth(1).waitFor({ timeout: 120_000 }), { quiet: true });
       await d.wait(1800);
     },
   },
@@ -698,7 +698,7 @@ await runDemo(
       await d.page.addStyleTag({ content: 'bun-hmr { display: none !important; }' });
       for (const name of Object.keys(clips)) await d.page.evaluate((n) => (window as unknown as Mic).__load(n, `/__demo/${n}.wav`), name);
       await card(d, 'App icon').waitFor();
-      // a step back from the wall, with the room the groups' territories take, once the Koordinator
+      // a step back from the wall, with the room the groups' territories take, once the Coordinator
       // has arranged the project: the camera as saved, zoomed around the middle and a little up, so
       // that the idea at the bottom stays clear of the microphone, and the page again
       await d.page.getByText('Arranging …').waitFor({ state: 'detached', timeout: 120_000 });

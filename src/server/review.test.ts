@@ -65,7 +65,7 @@ let makeWorkers: () => Workers;
 let watcher: PrWatcher;
 let fake: ReturnType<typeof fakeForge>;
 let approvals: string[];
-/** The follow-up tasks made, each with its review card, as the Koordinator hears of them. */
+/** The follow-up tasks made, each with its review card, as the Coordinator hears of them. */
 let followed: [string, string][];
 let prHead: string;
 
@@ -592,7 +592,7 @@ describe('a review card', () => {
     expect(task).toMatchObject({ title: 'Re-login button: when and where', state: 'planned', from: id });
     expect(task.body).toBe(`The button shows on the wrong messages, and twice on a failed start. See src/ui/login.tsx.\n\nAus dem Review von PR #5: ${URL_}`);
     expect(board.events(task.id).at(-1)!.text).toBe('Als Folgeaufgabe aus dem Review von PR #5 angelegt.');
-    // it goes to the Koordinator at once, to wait in the queue for the PR's merge
+    // it goes to the Coordinator at once, to wait in the queue for the PR's merge
     expect(followed).toEqual([[task.id, id]]);
     // a finding settled already makes none
     expect(runtime.last.call('follow_up_task', { findings: [1, 2], title: 'X', task: 'Y' })).toContain('finding 2 is later (a follow-up task already)');

@@ -17,7 +17,7 @@ export interface PageChange {
   kinds: readonly DemoKind[];
   /**
    * It shows only on a page with tags, which no page published before it had: those get it with
-   * their tags (the Koordinator's „N Seiten ohne Tags“), so it leaves no page outdated.
+   * their tags (the Coordinator's „N Seiten ohne Tags“), so it leaves no page outdated.
    */
   tagged?: true;
 }
@@ -44,7 +44,7 @@ export type PageChangeId = KnownChange['id'];
 /**
  * A page is outdated by its repository's theme too (`.obeya/theme.css`, src/server/theme.ts): once the
  * theme differs from the one it was published with. That is no change of Obeya's pages, so it has
- * no day, and the card and the Koordinator name it beside them.
+ * no day, and the card and the Coordinator name it beside them.
  */
 export const THEME_CHANGED = 'theme';
 /** What leaves a page outdated: a change of Obeya's pages, or its repository's theme. */

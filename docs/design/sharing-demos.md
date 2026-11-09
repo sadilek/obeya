@@ -65,7 +65,7 @@ taken off stays in its place for a few seconds, struck through, with "Undo", whi
 back. On a touch screen the first tap on × only turns it into "Remove" (for a few seconds, or
 until a tap elsewhere); the second takes the tag off. A mouse click or a key takes it off at once.
 
-Pages without tags are tagged from the Koordinator's sheet: while pages on a site with a vocabulary
+Pages without tags are tagged from the Coordinator's sheet: while pages on a site with a vocabulary
 lack tags in a dimension (archived cards' included, also where their demo files are gone), an entry
 says how many ("N pages without tags"), and "Tag and share all N" tags them in one run through
 the queue that shares outdated pages again (one run at a time, with its progress, "Stop" and the
@@ -155,22 +155,22 @@ add an entry where a viewer sees it and to take the new hash. A change that show
 tags (the chips under the title) marks no page: none published before it had tags, and those get it
 with their tags (see Tags). A new site title shows with the next
 publish without marking pages. A page whose demo files are gone (demos get deleted to free space) is
-neither offered nor counted; the Koordinator's count follows within a minute of the files going, as
+neither offered nor counted; the Coordinator's count follows within a minute of the files going, as
 Obeya looks at them again (see Running Obeya).
 
-Many at once go from the Koordinator's sheet: while pages are outdated, an entry says how many
+Many at once go from the Coordinator's sheet: while pages are outdated, an entry says how many
 ("N shared demos are outdated", archived cards' included), lists the changes with their days and
 how many pages lack each, and shares again the newest 20 (or 10, 50, 100, all). They go through the
 same queue as the share kept them (a newer demo on the card still waits for the owner), a share the
 owner starts slipping in between. The entry shows progress and the failed ones with their cards;
 "Stop" stops after the current page; "Hide" hides the entry until a newer change outdates
 pages. The run survives a restart; a page shared again on its own, withdrawn or deleted meanwhile
-drops out of it. It is not counted on the Koordinator button: each card offers "Share again", and
+drops out of it. It is not counted on the Coordinator button: each card offers "Share again", and
 nothing is lost by leaving them.
 
 A page is outdated by its repository's theme too (see A repository's theme): the share keeps the
 theme's hash, and once the repository's current one differs (a new theme, a changed one, one taken
-away), the card lists "Theme changed" without a day beside the page changes, and the Koordinator's
+away), the card lists "Theme changed" without a day beside the page changes, and the Coordinator's
 entry counts its pages with them. "Hide" hides each of them until its repository's theme
 changes again or the page is shared again. The theme is read with the repository's settings, when
 its default branch moves (in a folder without git, when Obeya next reads the settings), not each

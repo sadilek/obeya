@@ -2,7 +2,7 @@
 // static site Obeya keeps itself (`demo.site` of the repository's settings, site.ts). Obeya writes
 // the page's text when the worker did not. A page keeps the newest page change (page-changes.ts) it
 // was published after: one that lacks a change since is offered to share again ("Erneut teilen"),
-// with what that brings, on its card, or many at once from the Koordinator's sheet.
+// with what that brings, on its card, or many at once from the Coordinator's sheet.
 // Once the card has a pull request, its description links the page and the page links it; work that
 // lands without one links the page in its commit's trailer, and the page links the commit. A
 // repository without a site (or with a site whose credentials are not on this machine) exports
@@ -29,7 +29,7 @@ import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, captionTracks, type Demo
 import type { Theme } from './theme';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
-import { readSession } from './koordinator';
+import { readSession } from './coordinator';
 import type { CardRow } from './db';
 import { branchName, gitAsync } from './workspaces';
 import { originOf } from './forgejo';
@@ -428,7 +428,7 @@ export class Sharing {
   }
 
   /**
-   * "Erneut teilen" for many pages at once, from the Koordinator's sheet: the outdated pages, the
+   * "Erneut teilen" for many pages at once, from the Coordinator's sheet: the outdated pages, the
    * newest demos first, `count` of them or all. They go out one after the other, each as it shows
    * now, so a newer demo on a card still waits for its "Neu teilen"; a share the owner starts
    * meanwhile goes out between two of them. With `tags`, the pages without tags instead, tagged

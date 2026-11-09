@@ -1,7 +1,7 @@
 // What a card waits for, and what waits for a card: each direct wait shows as a faint line at all
 // times, and over every step while the pointer is on a card. A card in the queue waits for the cards
-// the Koordinator holds it behind; a workstream not delivered yet also waits for the open workstreams
-// it builds on, as the Koordinator read them from the plan doc, started or not; a card snoozed until
+// the Coordinator holds it behind; a workstream not delivered yet also waits for the open workstreams
+// it builds on, as the Coordinator read them from the plan doc, started or not; a card snoozed until
 // another card gets somewhere waits for that card; and a card waits for those the owner drew an arrow
 // from. A wait ends once the card waited for is finished.
 

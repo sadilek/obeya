@@ -97,7 +97,7 @@ words on its handover is still at them: the card does not wait for the owner. On
 work runs on stays busy and goes on at the reset without waiting for that work.
 
 Every other agent waits the same way: look-ups, project agents, Question cards' and ideas' agents,
-the reviser of a proposal, and the Koordinator's small jobs (naming and checking cards, the learner,
+the reviser of a proposal, and the Coordinator's small jobs (naming and checking cards, the learner,
 the retrospective, the work retrospective). The stopped turn is neither an error nor over; the owner's
 words meanwhile wait for its next turn. Where the agent waits says until when: under a looked-up
 question "Usage limit · looks this up by itself at 19:20", on a card's face and in its bubble
@@ -164,7 +164,7 @@ for the desktop.
 
 Pausing pauses each agent at work there as the pause on its card does, at a safe point; those about
 to pause count as paused already. As long as one of them is still paused (or about to be), the cards
-the Koordinator lets start on that canvas wait in the queue ("Waiting: canvas paused") instead of
+the Coordinator lets start on that canvas wait in the queue ("Waiting: canvas paused") instead of
 taking the slots that pausing freed. Resuming resumes every paused agent there, as "Resume" does,
 and the waiting cards start. Once none on the canvas is paused any more (the owner resumed each on
 its card, or their cards went), the queue runs again by itself; one that could not go on (its
@@ -199,7 +199,7 @@ The owner snoozes with "Later …" (a visible button with a clock in the action 
 das bis morgen früh zurück“): this evening 18:00 (while more than half an hour off), tomorrow 08:00,
 next Monday 08:00, or a date and time. One menu serves every kind of card; on the phone, a card in
 "Needs you" swiped to the left opens it too (see The phone view in Running Obeya). It is offered on cards at
-work, cards waiting for the owner, and planned tasks not yet with the Koordinator:
+work, cards waiting for the owner, and planned tasks not yet with the Coordinator:
 
 - A card at work stops as on a pause and goes on where it stopped at the time.
 - A card waiting for the owner leaves the count of what waits, "Needs you" and Tab, and comes back
@@ -207,7 +207,7 @@ work, cards waiting for the owner, and planned tasks not yet with the Koordinato
   work runs on. Answering it anyway (or parking the idea, reworking the proposal) ends the snooze. A
   review card handed over can instead wait until its contributor responds (see Review
   cards in Landing).
-- A planned card starts at the time as if the owner had started it, through the Koordinator's queue;
+- A planned card starts at the time as if the owner had started it, through the Coordinator's queue;
   its worker hears that the card was set to start then. "Start agent", "Wake now" or "Start
   all" on its project start it at once. An accepted proposal with a start time is such a card
   (see A proposal that starts later). A card no longer planned to start (made an idea or project,
@@ -306,8 +306,8 @@ as a learned preference does. Older answers agents gave in the owner's name stay
 - **Picks travel apart from the owner's words** (2026-10-15), so the worker can tell them apart.
   Rejected: the pick as the first line of the owner's words.
 - **A worker's question goes straight to the owner, with the worker's own pick** (2026-10-07).
-  Rejected: a project agent or the Koordinator answering and escalating only what it could not
-  settle; the Koordinator then decided against building a feature, the owner's call, and an advisor
+  Rejected: a project agent or the Coordinator answering and escalating only what it could not
+  settle; the Coordinator then decided against building a feature, the owner's call, and an advisor
   knew barely more than the worker. Also rejected: narrower advisor rules, or an advisor that only
   suggests; the worker's pick gives the owner what a suggestion would.
 - **Workers are told what happened, not what to do next**: they are full agents. Protocol stays where

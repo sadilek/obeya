@@ -1,5 +1,5 @@
 // What changed on shared demo pages since some of them were shared (src/core/page-changes.ts):
-// on a card's shared page (or that its repository's theme changed), and in the Koordinator's notice of outdated pages, with how many lack each.
+// on a card's shared page (or that its repository's theme changed), and in the Coordinator's notice of outdated pages, with how many lack each.
 
 import { type OutdatedBy, PAGE_CHANGES, THEME_CHANGED } from '../core/page-changes';
 import { shortDay, t } from './strings';

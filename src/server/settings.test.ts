@@ -57,28 +57,36 @@ test('the conversation language follows the interface until chosen, each saved o
 test("the harness, model and effort per group of agents: preset, chosen one group at a time beside the language, the file keeping only what differs", () => {
   const home = scratchHome();
   expect(agentsView(home).agents).toEqual({
-    koordinator: { harness: 'claude', model: 'opus', effort: 'medium' },
+    coordinator: { harness: 'claude', model: 'opus', effort: 'medium' },
     worker: { harness: 'claude', model: 'opus', effort: 'high' },
     explorer: { harness: 'claude', model: 'opus', effort: 'high' },
     chores: { harness: 'claude', model: 'opus', effort: 'medium' },
   });
   saveLanguage(home, { language: 'en' });
   saveAgents(home, { worker: { model: 'fable', effort: 'xhigh' } });
-  saveAgents(home, { koordinator: { model: 'haiku' }, chores: { model: 'default' } });
+  saveAgents(home, { coordinator: { model: 'haiku' }, chores: { model: 'default' } });
   expect(agentSetting(home, 'worker')).toEqual({ harness: 'claude', model: 'fable', effort: 'xhigh' });
-  expect(agentSetting(home, 'koordinator')).toEqual({ harness: 'claude', model: 'haiku', effort: 'medium' });
+  expect(agentSetting(home, 'coordinator')).toEqual({ harness: 'claude', model: 'haiku', effort: 'medium' });
   expect(agentSetting(home, 'chores')).toEqual({ harness: 'claude', model: 'default', effort: 'medium' });
   saveAgents(home, { worker: { model: 'opus' } });
   saveLanguage(home, { language: 'de' });
-  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'de', agents: { koordinator: { model: 'haiku' }, worker: { effort: 'xhigh' }, chores: { model: 'default' } } });
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'de', agents: { coordinator: { model: 'haiku' }, worker: { effort: 'xhigh' }, chores: { model: 'default' } } });
   // back to the presets: the file keeps no list
-  saveAgents(home, { koordinator: { model: 'opus' }, worker: { effort: 'high' }, chores: { model: 'opus' } });
+  saveAgents(home, { coordinator: { model: 'opus' }, worker: { effort: 'high' }, chores: { model: 'opus' } });
   expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'de' });
   for (const bad of [{ boss: {} }, { worker: { model: 'gpt' } }, { worker: { effort: null } }, { worker: { effort: 'huge' } }, { worker: { model: 'opus', fast: true } }, { worker: { harness: 'pi' } }, { worker: { harness: 'codex', model: 'gpt 6 sol' } }])
     expect(() => saveAgents(home, bad)).toThrow();
   // what the file holds beyond the known choices is left out
   writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ agents: { worker: { model: 'gpt', effort: 'low' }, boss: { model: 'opus' } } }));
   expect(agentSetting(home, 'worker')).toEqual({ harness: 'claude', model: 'opus', effort: 'low' });
+});
+
+test("the Coordinator's choice written under its German name `koordinator` still holds, and goes under `coordinator` with the next save", () => {
+  const home = scratchHome();
+  writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ agents: { koordinator: { model: 'haiku' } } }));
+  expect(agentSetting(home, 'coordinator')).toEqual({ harness: 'claude', model: 'haiku', effort: 'medium' });
+  saveAgents(home, { worker: { effort: 'xhigh' } });
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8')).agents).toEqual({ coordinator: { model: 'haiku' }, worker: { effort: 'xhigh' } });
 });
 
 test("a group on Codex: another harness starts from its preset family (Sol), keeps the effort, and stores a family, a model id as its family", () => {
@@ -114,8 +122,8 @@ test('a settings file from before families: a Codex model id reads as its family
 
 test('a group the owner chose no harness for runs on the fallback (Codex on a machine with only Codex), without a Claude model it would not take', () => {
   const home = scratchHome();
-  saveAgents(home, { koordinator: { model: 'haiku' } });
-  expect(agentSetting(home, 'koordinator', 'codex')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'medium' });
+  saveAgents(home, { coordinator: { model: 'haiku' } });
+  expect(agentSetting(home, 'coordinator', 'codex')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'medium' });
   expect(agentSetting(home, 'worker', 'codex')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
   expect(agentsView(home, [], 'codex').agents.chores.harness).toBe('codex');
   // the Konfiguration names that preset

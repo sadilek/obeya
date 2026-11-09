@@ -1,6 +1,6 @@
 // What the owner says or types reaches its target, and what they are told back, the same on the
 // canvas and in the phone view: the confirmation with „Rückgängig“ above the microphone, words
-// handed on to the agent of the open card or to the Koordinator, and what the microphone says it
+// handed on to the agent of the open card or to the Coordinator, and what the microphone says it
 // speaks to.
 
 import { useRef, useState } from 'react';
@@ -96,17 +96,17 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
   };
   /**
    * Hands a spoken command for `target` on, with its line above the microphone: while Whisper writes
-   * it down for the open card's agent, or while the Koordinator reads it.
+   * it down for the open card's agent, or while the Coordinator reads it.
    */
   const tellAbout = (target: Where, request: () => Promise<Heard>) => {
     const i = target ? byId('card' in target ? target.card : target.project) : undefined;
-    const what = i ? t.quote(plain(i.title)) : t.voice.koordinator;
+    const what = i ? t.quote(plain(i.title)) : t.voice.coordinator;
     return told.tell(listening(target) ? t.voice.transcribing(what) : t.voice.reading(what), toldCard(target), request);
   };
   /**
-   * Words typed on a card, in its idea or in the Koordinator's conversation: on a card an agent listens on
-   * they go straight to it, else the Koordinator reads them like spoken ones. The conversation shows
-   * them at once either way; above the mic only the Koordinator's confirmation shows, with „Rückgängig“.
+   * Words typed on a card, in its idea or in the Coordinator's conversation: on a card an agent listens on
+   * they go straight to it, else the Coordinator reads them like spoken ones. The conversation shows
+   * them at once either way; above the mic only the Coordinator's confirmation shows, with „Rückgängig“.
    */
   const tellTyped = async (text: string, images: string[] | undefined, target: Where, field?: Field, replyTo?: number | TalkRef) => {
     if (listening(target))
@@ -126,12 +126,12 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
   return { listening, tellAbout, tellTyped };
 }
 
-/** Whom the microphone speaks to: the open card (its agent, where one listens), the open project, or the Koordinator. */
+/** Whom the microphone speaks to: the open card (its agent, where one listens), the open project, or the Coordinator. */
 export function voiceTarget(open: { type: 'card' | 'project'; item?: Item } | null): string {
   const i = open?.item;
   const title = plain(i?.title ?? '');
   if (open?.type === 'project') return t.voice.project(title);
-  if (open?.type !== 'card') return t.voice.koordinator;
+  if (open?.type !== 'card') return t.voice.coordinator;
   if (!i || !agentListens(i)) return t.voice.card(title);
   return (i.kind === 'question' ? t.voice.question : i.state === 'idea' ? t.voice.idea : i.state === 'proposal' ? t.voice.proposal : t.voice.agent)(title);
 }

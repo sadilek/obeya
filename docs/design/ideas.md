@@ -50,7 +50,7 @@ it was made for the idea before they ran. The agent's instructions say what each
 (building ends the conversation and drops its prototypes, planned and running; splitting off keeps
 the idea, conversation and prototypes; planning hands the prototype the plan builds on to its
 workstream and drops the others), so it never recommends a click for what the click does not do. „Mach, was du
-vorschlägst“, to the Koordinator or the agent, takes that step.
+vorschlägst“, to the Coordinator or the agent, takes that step.
 
 Once the agent has replied, the open idea needs the owner like a waiting card ("Idea · your
 turn", counted in the navigation) until they answer, park, drop or decide it.
@@ -98,7 +98,7 @@ until the idea becomes a project: then its plan doc decides.
 
 ### Deciding
 
-"Build it like this" makes the brief the card's task and starts it through the Koordinator like
+"Build it like this" makes the brief the card's task and starts it through the Coordinator like
 "Start agent" (see Scheduling).
 
 Beside it stands the repository picker of a card before work begins (see Canvases and repositories),
@@ -153,11 +153,11 @@ remaining idea.
 dropped idea can be archived (in it, or its archive button on the canvas; not while a prototype of
 it is on the canvas, and then the button is not shown): in the archive it shows its brief and
 conversation read-only and can go back to its place. Decisions from the conversation go into the
-decision log; lasting preferences are learned by the Koordinator (see Learning the owner's rules).
+decision log; lasting preferences are learned by the Coordinator (see Learning the owner's rules).
 
 ### Building in a new repository
 
-"Build it like this" or "Start agent" on a card whose target is a new repository (or the Koordinator,
+"Build it like this" or "Start agent" on a card whose target is a new repository (or the Coordinator,
 „bau das in einem neuen Repo unter ~/dev/super59“) waits a few seconds in which "Undo", in
 the button's place ("Creating super59 …"), leaves everything as it was; the window does not outlive
 a restart of Obeya. What can be told at once is refused at once: no folder, a relative one, one that
@@ -177,7 +177,7 @@ Obeya, one step after the other:
    says where it went with a link there; a card that follows from it, or it from one, names the
    other with its canvas and "Open it there". A page that has the card open follows it to the new
    canvas.
-4. starts it there through the Koordinator. Its worker hears that the repository is new and sets it
+4. starts it there through the Coordinator. Its worker hears that the repository is new and sets it
    up beside the task: a CLAUDE.md with what the task says about working in it, and its settings with
    the `settings` skill (see Writing the settings).
 
@@ -199,7 +199,7 @@ button reads "Builds after the reply …" with "Don't build after all" beside it
 says "builds after the reply". The agent hears of the click, as its brief becomes the task. A turn
 that ends without a reply (an error, a restart), parking or dropping call the building off.
 
-Asked meanwhile to plan or split off, the Koordinator says that goes by a click after the reply;
+Asked meanwhile to plan or split off, the Coordinator says that goes by a click after the reply;
 asked to build („nimm noch X auf und bau es dann“), it builds after the reply, like the click.
 
 Parking and dropping act at once and end the turn but lose nothing: the messages the agent has not
@@ -209,16 +209,16 @@ when Obeya stopped.
 
 ### Decisions
 
-- **A discussion lives on a card, not in the conversation with the Koordinator** (2026-10-09): an
-  exploration parked on the canvas is found there again with its brief, and the Koordinator only
+- **A discussion lives on a card, not in the conversation with the Coordinator** (2026-10-09): an
+  exploration parked on the canvas is found there again with its brief, and the Coordinator only
   passes the owner's words on. A question to Obeya asking for an opinion or a way forward becomes an
-  idea card when no agent on the open card takes it (see Commands to the Koordinator); a wrong
+  idea card when no agent on the open card takes it (see Commands to the Coordinator); a wrong
   guess costs one card, undone with "Undo". Questions of fact stay in the conversation.
 - **A big idea becomes a project through a worker writing its plan doc on the idea's own card**
   (2026-10-02), not through the exploration agent, which discusses and does not build. Rejected: a
   separate planned "Plan doc" card in between, which had to be started by hand and left the idea
   standing beside its project.
-- **One way to break work up: the plan doc** (2026-10-12). Rejected: "Split", the Koordinator
+- **One way to break work up: the plan doc** (2026-10-12). Rejected: "Split", the Coordinator
   cutting a card into packages that replaced it, a second way beside the plan doc; "Start all" on
   a project already plans which workstreams run in parallel.
 - **Prototypes are cards of their own, several per idea** (2026-10-02), so parallel approaches are

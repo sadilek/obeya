@@ -1,5 +1,5 @@
 // A card's number (`K42`), on its face and in its sheet: a click puts it on the clipboard, so the
-// owner can name the card by it to the Koordinator and the agents.
+// owner can name the card by it to the Coordinator and the agents.
 
 import { useEffect, useRef, useState } from 'react';
 import { cardTag } from '../core/card-number';

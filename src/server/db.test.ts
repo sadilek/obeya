@@ -185,7 +185,7 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
     s.db.run('DROP TABLE spend');
     s.db.run('ALTER TABLE cards DROP COLUMN spent');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 16}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 17}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -234,7 +234,7 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
     s.db.run('DROP TABLE spend');
     s.db.run('ALTER TABLE cards DROP COLUMN spent');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 14}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 15}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);
@@ -343,3 +343,24 @@ test("a session's cost counts as its latest running total; one that starts count
   expect(s.spentOn('c')).toBeCloseTo(4.8, 9);
   expect(s.spentOn('other')).toBe(0);
 });
+
+test('the migration gives what the Coordinator said, looked up and decided as `koordinator` to the Coordinator', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    const [card] = s.insert([{ canvas_id: 'c', kind: 'task', x: 0, y: 0 }]);
+    const said = s.addEvent({ cardId: card!.id, kind: 'say', author: 'coordinator', text: '„Export“ startet.' });
+    const asked = s.addTalk('c', 'Was steht?', 'Ich schaue nach.', null, { question: 'Was steht?', about: null });
+    s.answerTalk(asked, 'Der Export.', 'coordinator');
+    s.addDecision({ canvas_id: 'c', project_id: null, card_id: card!.id, question: 'CSV?', answer: 'Ja.', by: 'coordinator' });
+    s.db.run("UPDATE events SET author = 'koordinator'");
+    s.db.run("UPDATE talk SET answer_by = 'koordinator'");
+    s.db.run("UPDATE decisions SET by = 'koordinator'");
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 1}`);
+    s.db.close();
+    const after = new Store(path);
+    expect(after.event(card!.id, said.id)!.author).toBe('coordinator');
+    expect(after.talk('c').find((t) => t.id === asked)!.answerBy).toBe('coordinator');
+    expect(after.cardDecisions('c', card!.id).map((d) => d.by)).toEqual(['coordinator']);
+    after.db.close();
+  }));

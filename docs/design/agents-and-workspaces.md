@@ -19,7 +19,7 @@ A worker is one session per card with streaming input, permission mode `auto`, a
 Claude Code settings and CLAUDE.md (only once the owner trusted them, see Trusting a repository's
 commands); after a restart it resumes by session id. A project agent is one session per project in
 the Lesestand, resumed for each of the owner's questions about the project, one at a time. Project agents, ideas'
-exploration agents and the Koordinator's look-ups have a worker's tools and mode (see Looked-up
+exploration agents and the Coordinator's look-ups have a worker's tools and mode (see Looked-up
 questions); agents that only judge from text (reading commands, estimates, the learner) are
 read-only: Read, Grep, Glob, mode `dontAsk`.
 
@@ -81,7 +81,7 @@ of the change as Codex reports it, which may be after it began.
 
 ### Harnesses, models and effort
 
-Every agent belongs to one of four groups: the Koordinator (voice commands, estimates and schedules,
+Every agent belongs to one of four groups: the Coordinator (voice commands, estimates and schedules,
 look-ups, project agents, learner, retrospective, proposal rewrites), workers, ideas' exploration agents,
 and small jobs (the work retrospective's notes and proposals, a shared demo page's text, a card's
 title). The Configuration dialog's "Agents and models" sets for each group, in this order, the
@@ -105,7 +105,7 @@ beside it, Claude Code's where none is. A Codex model id stored there (or with a
 family and `default` as Sol; the next save writes the family. The API takes a model id as well and
 stores its family. Saving restarts nothing; agents starting afterwards take it, a
 running session keeps its own, except the voice commands' session, which reopens when the
-Koordinator's setting changes (as for another language).
+Coordinator's setting changes (as for another language).
 
 A card may run on another harness, model or effort than its group. Joined to each button that
 starts a card (and "Accept and start" on a proposed task, "Start anyway" in the queue) is a narrow
@@ -129,7 +129,7 @@ keeps, `src/server/prices.ts`). A session's cost is its latest total; a total be
 means the harness started counting afresh (a resume without the earlier total, a cleared context),
 and what it had counted stays. The cost of an agent working for a card (its worker, an idea's
 exploration agent, a project's agent, the rewrite of its proposal) counts to that card, any other
-agent's (the Koordinator's, the small jobs') to the canvas alone. Kept per session, by canvas and
+agent's (the Coordinator's, the small jobs') to the canvas alone. Kept per session, by canvas and
 card, in Obeya's database, with each card's sum on its row.
 
 Codex prices input uncached, cached or written to the cache, and output with its reasoning, at the
@@ -341,7 +341,7 @@ folder (0.3 s for 4,615 files). Background work keeps a window open; the end of 
 left open. A file only in the cloud (dataless) is never read, hashed or copied, which would download
 it. Per path, a card's change runs from before its first change to after its last (added, changed,
 moved, deleted; a moved directory is one move), with a hash of what it wrote, kept after the card is
-done. Agents that only read (the Koordinator, project agents) are not followed. A Codex worker's calls are
+done. Agents that only read (the Coordinator, project agents) are not followed. A Codex worker's calls are
 followed through its hooks the same way (see Codex).
 
 The card shows the list in the place of its branch ("Changed in the folder: 4 files +12 −1 ·
@@ -417,7 +417,7 @@ be thorough (a fault in one leaves its apps running).
 
 Other machines a repository's workers run on, over SSH. The configuration lists them per repository
 (`hosts`: name, SSH target, directory for the clones, number of clones and of slots); the
-Configuration dialog edits them as table rows under the clones, as the Koordinator's `configure` does
+Configuration dialog edits them as table rows under the clones, as the Coordinator's `configure` does
 by voice. Only a repository in clones that lands through its remote can have them; a name means one
 machine across the configuration. Obeya clones the repository there in the background (retrying an
 unreachable host every two minutes, logging a failure once until it changes) and registers each clone
@@ -586,7 +586,7 @@ for its hooks), and what the repository's work needs.
   (other agents read there at the same time).
 - **A folder may stay without git** (2026-10-20): a cloud-drive archive (8.1 GB, 4,615 files, mostly
   PDFs) cannot take a `.git` without sync conflicts and copies of every scan. Cards work in place, in
-  parallel with the Koordinator's overlap check on files; changes are told apart by ctime; undo is
+  parallel with the Coordinator's overlap check on files; changes are told apart by ctime; undo is
   full where the file system clones. Rejected: a shadow git outside the folder (copies every file
   into git and the folder into each worktree); a copy per card applied on approval (cheap only where
   cloning works).

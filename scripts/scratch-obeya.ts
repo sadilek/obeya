@@ -30,7 +30,7 @@
 // as from a real agent. --say adds a line of the kind a stage file's `events` give: `say` (the
 // agent's words between its steps), `report` (its status line), `talk` (a reply), `question` (it
 // asks, and the card waits for the owner), `review` (a handover that keeps the card's demo); besides
-// those, `to_obeya` (it passes the owner's words on to Obeya, whose Koordinator is real and answers
+// those, `to_obeya` (it passes the owner's words on to Obeya, whose Coordinator is real and answers
 // on the card), `tool` (any other tool of the agent's, the text a JSON object `{ "tool", "args" }`)
 // and `end` (the agent's turn ends, which an idle worker's never does by itself).
 // --artifact copies the file into the card's HTML artifact (<dir>/artifacts/<key>, where staging
@@ -39,7 +39,7 @@
 // prints what the agent would have read back, and fails on a refusal ("Not handed over: …").
 //
 // --record <dir> runs real workers, as --real-workers, and records every agent's session (the
-// Koordinator's, the workers', any other) into <dir>, emptied first (it must be empty, new, or a
+// Coordinator's, the workers', any other) into <dir>, emptied first (it must be empty, new, or a
 // recording). --replay <dir> plays such a recording back instead of running agents: each agent does
 // what it did in the recorded take, through Obeya's own tools of this code, and its handovers bring
 // the recorded commits and demo; card ids, branches and paths of the recording stand for those of
@@ -58,7 +58,7 @@
 // supervised like a real Obeya and restarts once the configuration is saved, PUT /api/config, and
 // for commits on this checkout when it runs this checkout's code) and, unless
 // --real-workers, with --idle-workers: a started card is in progress without an agent. The
-// Koordinator and voice are real. --code <commit> runs that commit's code (`git archive`, with
+// Coordinator and voice are real. --code <commit> runs that commit's code (`git archive`, with
 // this checkout's node_modules) in <dir>/code; that starts cold and on a busy machine takes well
 // over half a minute, so the script waits up to 5 minutes for the server while its process lives.
 // --binary <obeya> runs a compiled Obeya instead (`bun run build`), with the resources beside it.
@@ -152,7 +152,7 @@
 // `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
 // What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
 // Groups are created through the API with their cards (keys; a workstream stands for its project),
-// in their colours by order. `talk` is the conversation with the Koordinator, oldest first (`card` a key;
+// in their colours by order. `talk` is the conversation with the Coordinator, oldest first (`card` a key;
 // `question` and `answer`, `answerBy` for a question it looked up; `follows`: the index of the
 // exchange whose answer it continues, in that one's thread; `files`: the answer's files, each with
 // its name, caption and either `content` or a file to copy (`from`), written to the thread's output
@@ -224,7 +224,7 @@ interface StageCard {
 }
 
 interface Stage {
-  /** What the canvas's own agents (the Koordinator's) cost so far, in US dollars. */
+  /** What the canvas's own agents (the Coordinator's) cost so far, in US dollars. */
   spent?: number;
   /** No canvas: Obeya's first start, with the setup assistant. */
   setup?: boolean;

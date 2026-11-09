@@ -1,5 +1,5 @@
 // A wish or a bug for Obeya's makers: a dialog over the page, opened from the foot of Obeya's
-// sidebar, from the `?` legend, by the Koordinator when the owner asks it to tell the makers
+// sidebar, from the `?` legend, by the Coordinator when the owner asks it to tell the makers
 // something, and from the link under a reply that says Obeya cannot do what they asked. What the
 // owner writes or says in its field a small job writes up as a GitHub issue in English; title and
 // body stand editable as they go out, and „Auf GitHub öffnen“ opens the prefilled issue for the

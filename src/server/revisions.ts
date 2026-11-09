@@ -11,7 +11,7 @@ import { formatQuestion, type Item, type Question, type Revising } from '../core
 import { BadRequest, type Board } from './board';
 import { imageNote, MAX_IMAGES } from './images';
 import type { AgentRuntime } from './runtime';
-import { readSession } from './koordinator';
+import { readSession } from './coordinator';
 import { toObeyaTool } from './to-obeya';
 import { messageOf } from '../core/text';
 import { PROPOSAL_QUESTIONS, proposalQuestions, proposalTask } from './workers';
@@ -89,7 +89,7 @@ export class Revisions {
           if (!this.o.board.revised(cardId, p)) return;
           const reply = r.reply?.trim();
           if (reply) this.o.board.log(cardId, 'talk', 'worker', reply.slice(0, 4000));
-          if (changed(card, p)) this.o.board.log(cardId, 'state', 'koordinator', this.o.board.t.koordinator.revised);
+          if (changed(card, p)) this.o.board.log(cardId, 'state', 'coordinator', this.o.board.t.coordinator.revised);
           // a question asked anew stands in the conversation from now on; one it kept stands where it was asked
           const asked = new Set(card.proposal!.questions.map(key));
           for (const q of questions) if (!asked.has(key(q))) this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
@@ -97,7 +97,7 @@ export class Revisions {
         },
         (e) => {
           if (!this.o.board.revised(cardId)) return;
-          this.o.board.log(cardId, 'error', 'koordinator', this.o.board.t.koordinator.reviseFailed(messageOf(e)));
+          this.o.board.log(cardId, 'error', 'coordinator', this.o.board.t.coordinator.reviseFailed(messageOf(e)));
           return false;
         },
       )
@@ -129,7 +129,7 @@ export class Revisions {
     const toObeya = this.o.toObeya;
     const error = await readSession(this.o.runtime, {
       cwd: this.o.pathFor(card),
-      role: 'koordinator',
+      role: 'coordinator',
       spendOn: card.id,
       // the proposal waits on, and shows until when
       onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),

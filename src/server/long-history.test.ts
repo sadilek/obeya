@@ -9,10 +9,10 @@ import { type History, writeHistory } from './fixtures/history';
 import { cpuTime, FakeRuntime, gitRepo, heard, noForge, removeDir } from './testing';
 
 // The server's rounds that ran into its history: with every change of the canvas, every command to
-// the Koordinator and every pass over the shared pages, they read whole tables, and the history
+// the Coordinator and every pass over the shared pages, they read whole tables, and the history
 // grows with each day Obeya is used. Over a history ten times as long as the owner's Obeya had on
 // 9 November 2026 (1.6 million events over 400 days, 9,000 archived cards on the canvas, 4,500 of
-// them with a shared page, 10,000 exchanges with the Koordinator), each round costs about what it
+// them with a shared page, 10,000 exchanges with the Coordinator), each round costs about what it
 // costs on a canvas with the same cards on it and no history at all: a rebuild of that canvas's
 // view after a change to one card is the unit each round's budget is given in. Before the rounds
 // read by index and kept what they read, the history cost the brief and the learner over a second
@@ -44,7 +44,7 @@ async function setup(scale: number): Promise<Setup> {
   const canvas = await CanvasRuntime.start({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
   const history = writeHistory(store, canvas.board.canvas.id, dir, scale);
   const board = canvas.board;
-  // the Koordinator waits on a card for a step, and a card is snoozed until another one is done
+  // the Coordinator waits on a card for a step, and a card is snoozed until another one is done
   const talk = store.addTalk(board.canvas.id, 'Tell me once it is done.', 'I will.', null);
   store.waitTalk(talk, [{ card: history.onCanvas[0]!, title: 'Card', state: 'done', then: 'tell the owner' }]);
   board.work(history.onCanvas[1]!, { snoozed: JSON.stringify({ by: 'owner', on: { card: history.onCanvas[2]!, state: 'done' } }) });
@@ -121,11 +121,11 @@ test('asking the sites which shared pages are gone, after a change', async () =>
   ).toBeLessThan(10);
 });
 
-test('the snoozed cards and the steps the Koordinator waits to take are looked at (every change, and each minute)', async () => {
+test('the snoozed cards and the steps the Coordinator waits to take are looked at (every change, and each minute)', async () => {
   expect(await inUnits(() => long.canvas.wakeDue())).toBeLessThan(0.25);
 });
 
-test('the Koordinator’s brief for a command: its first in a session, with the history of the last days, and one later', async () => {
+test('the Coordinator’s brief for a command: its first in a session, with the history of the last days, and one later', async () => {
   const brief = (s: Pick<Session, 'read' | 'since' | 'rules'>) => long.canvas.commander['brief'](s as Session, 'What happened today?', {}, { typed: true });
   const first = brief({ read: 0, rules: [] });
   expect(first).toContain('What happened on the canvas in the last');
@@ -137,7 +137,7 @@ test('the Koordinator’s brief for a command: its first in a session, with the 
 });
 
 test('what the learner reads around an input of the owner’s: what they said in the last days', async () => {
-  const around = () => long.canvas.koordinator['around'](null, 'talk', 'Start it.', {});
+  const around = () => long.canvas.coordinator['around'](null, 'talk', 'Start it.', {});
   expect(around().join('\n')).toContain('What the owner said in the last');
   expect(await inUnits(around)).toBeLessThan(1);
 });

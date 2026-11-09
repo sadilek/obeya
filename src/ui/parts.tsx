@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
 import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
-import { ProjectTalk } from './koordinator';
+import { ProjectTalk } from './coordinator';
 import { costLabel, ProjectSpent, useCostsShown } from './costs';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
@@ -248,7 +248,7 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
 export const CardView = memo(
   function CardView({ item, b, lifted, dragging, pop, lit, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
     const shape = shapeOf(item);
-    // a card the Koordinator is checking has nothing to start yet
+    // a card the Coordinator is checking has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
     // as "Archivieren" in the unfolded card: a finished card of the owner's whose agent is done, a
     // stopped task, or a parked or dropped idea without a prototype on the canvas
@@ -1254,7 +1254,7 @@ export function Sheet({
   onOpen: (i: Item) => void;
   /** Reads the plan doc (`{}`), or goes back to the workstreams (`null`). */
   onRead: (r: { mark?: string } | null) => void;
-  /** Hands all planned workstreams to the Koordinator, which orders them. */
+  /** Hands all planned workstreams to the Coordinator, which orders them. */
   onStartAll: (project: Item, count: number) => void;
   /** Puts the workstreams in columns by what builds on what. */
   onArrange: (project: Item) => void;

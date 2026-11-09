@@ -45,21 +45,21 @@ afterEach(async () => {
 const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 const board = () => canvas.board;
 const workstream = () => board().snapshot().items.find((i) => i.label === 'W4')!;
-const isKoordinator = (s: FakeSession) => s.spec.tools.some((t) => t.name === 'look_up');
+const isCoordinator = (s: FakeSession) => s.spec.tools.some((t) => t.name === 'look_up');
 const answerer = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'answer_owner')).at(-1)!;
 
-/** Says `text` with `focus`; the Koordinator reads it with `tool`. */
+/** Says `text` with `focus`; the Coordinator reads it with `tool`. */
 async function say(text: string, focus: Focus, tool: string, args: Record<string, unknown>) {
   const heard = canvas.commander.hear(text, focus);
   await settle();
-  const s = runtime.sessions.filter(isKoordinator).at(-1)!;
+  const s = runtime.sessions.filter(isCoordinator).at(-1)!;
   s.call(tool, args);
   s.emit({ type: 'idle' });
   return { heard: await heard, brief: s.inbox.at(-1)! };
 }
 
-describe('a question the Koordinator looks up', () => {
-  test('looked up for an action: the answer brings what the step needs, and the Koordinator takes the step with it', async () => {
+describe('a question the Coordinator looks up', () => {
+  test('looked up for an action: the answer brings what the step needs, and the Coordinator takes the step with it', async () => {
     await say('Es gibt drei offene Issues bei GitHub, erstelle für jedes eine eigene Karte.', {}, 'look_up', {
       question: 'Welche Issues sind auf GitHub offen, mit Nummer, Titel und Link?',
       then: 'Create a task for each open issue.',
@@ -69,8 +69,8 @@ describe('a question the Koordinator looks up', () => {
     expect(a.inbox[0]).toContain('Obeya takes this step itself once your answer is in: Create a task for each open issue.');
     a.call('answer_owner', { text: '- #27 Skills (https://github.com/o/r/issues/27)' });
     a.emit({ type: 'idle' });
-    // the Koordinator hears the answer with the step it takes now, not as news for the next command
-    const k = runtime.sessions.filter(isKoordinator).at(-1)!;
+    // the Coordinator hears the answer with the step it takes now, not as news for the next command
+    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
     await until(() => k.inbox.length === 2);
     expect(k.inbox[1]).toContain("No words of the owner's this time");
     expect(k.inbox[1]).toContain('is in (the owner sees it too): - #27 Skills');
@@ -115,7 +115,7 @@ describe('a question the Koordinator looks up', () => {
 
     expect(board().events(w4.id).map((e) => [e.kind, e.author, e.text])).toEqual([
       ['say', 'owner', 'Was würde der Agent hier machen, wenn ich starte?'],
-      ['say', 'koordinator', 'Ich schaue im Plan nach.'],
+      ['say', 'coordinator', 'Ich schaue im Plan nach.'],
       ['activity', 'project', 'Liest plan/pr-loop.md'],
       ['say', 'project', '1. Liest das Plan-Doc.\n2. Fragt nach dem Go.'],
     ]);
@@ -127,19 +127,19 @@ describe('a question the Koordinator looks up', () => {
     // it is read on the card, so the sheet does not wait with it
     expect(board().talk().at(-1)!.unread).toBeUndefined();
 
-    // the Koordinator hears the answer with the next command
+    // the Coordinator hears the answer with the next command
     const next = await say('und dann?', { card: w4.id }, 'reply', { confirm: 'Dann wartet er.' });
     expect(next.brief).toContain('The answer A1 you looked up for the owner\'s question „What would the worker do on W4');
   });
 
-  test('about a card without a project: a thorough Koordinator turn answers, in the sheet when no card is open', async () => {
+  test('about a card without a project: a thorough Coordinator turn answers, in the sheet when no card is open', async () => {
     board().create({ title: 'Login', body: 'Login hängt.', x: 0, y: 0 });
     const first = await say('was steht im plan zu login?', {}, 'reply', { confirm: 'Welche Karte?' });
     const tag = /(K\d+) \[planned\] "Login"/.exec(first.brief)![1];
     await say('was würde der agent bei login machen?', {}, 'look_up', { question: 'What would the worker do on Login?', card: tag, confirm: 'Moment, ich lese nach.' });
     const a = answerer();
-    expect(a.spec.system).toContain('You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.');
-    expect(a.spec.role).toBe('koordinator');
+    expect(a.spec.system).toContain('You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.');
+    expect(a.spec.role).toBe('coordinator');
     expect(a.spec.readOnly).toBeUndefined();
     expect(a.spec.permissionMode).toBe('acceptEdits');
     expect(a.spec.system).toContain('You have the tools a worker has');
@@ -150,7 +150,7 @@ describe('a question the Koordinator looks up', () => {
     a.call('answer_owner', { text: 'Er sucht den Hänger.' });
     a.emit({ type: 'idle' });
     await settle();
-    expect(board().snapshot().talk.at(-1)).toMatchObject({ answer: 'Er sucht den Hänger.', answerBy: 'koordinator', unread: true });
+    expect(board().snapshot().talk.at(-1)).toMatchObject({ answer: 'Er sucht den Hänger.', answerBy: 'coordinator', unread: true });
     // the sheet shows it in full: a page with the sheet open needs no line above the microphone for it
     expect(notices).toEqual([{ text: 'Er sucht den Hänger.', talk: board().snapshot().talk.at(-1)!.id }]);
     // Obeya waits for the owner with it, like a card that needs them, until they see the sheet
@@ -160,18 +160,18 @@ describe('a question the Koordinator looks up', () => {
     expect(waitingOn(board().snapshot())).toBe(0);
   });
 
-  test('an unknown card tag goes back to the Koordinator', async () => {
+  test('an unknown card tag goes back to the Coordinator', async () => {
     const heard = canvas.commander.hear('was macht X?', {});
     await settle();
-    const s = runtime.sessions.find(isKoordinator)!;
+    const s = runtime.sessions.find(isCoordinator)!;
     expect(s.call('look_up', { question: 'X?', card: 'K9', confirm: 'Moment.' })).toContain('No card K9 on this canvas');
     s.call('reply', { confirm: 'Welche Karte meinst du?' });
     s.emit({ type: 'idle' });
     expect((await heard).confirm).toBe('Welche Karte meinst du?');
   });
 
-  test('the Koordinator hears a long answer to its end, in its running session and in a fresh one', async () => {
-    const asked = (said: string, answer: string) => board().answerTalk(board().addTalk(said, 'Moment.', null, { question: `${said}?`, about: null }), answer, 'koordinator');
+  test('the Coordinator hears a long answer to its end, in its running session and in a fresh one', async () => {
+    const asked = (said: string, answer: string) => board().answerTalk(board().addTalk(said, 'Moment.', null, { question: `${said}?`, about: null }), answer, 'coordinator');
     asked('alte frage', `${'Alt. '.repeat(200)}ENDE-ALT`);
     const answer = `${'Die Datenbankregel gilt für jeden Zugriff. '.repeat(80)}Soll ich eine Karte für Tool-Verwendungen anlegen?`;
     await say('wie ist die datenbankregel?', {}, 'look_up', { question: 'What is the database rule?', confirm: 'Ich lese nach.' });
@@ -232,7 +232,7 @@ describe('a question the Koordinator looks up', () => {
     // its words so far are no answer, and its session runs on with the download
     expect(a.closed).toBe(false);
     expect(board().talk().at(-1)!.answer).toBeUndefined();
-    expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: 'Moment.' });
+    expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator', text: 'Moment.' });
     // the download ends and wakes the agent for a turn of its own
     a.emit({ type: 'background', tasks: [] });
     a.emit({ type: 'tool', name: 'Bash', input: { command: 'grep -c timeout logs/*.log' } });
@@ -352,10 +352,10 @@ describe('a looked-up answer goes on', () => {
     expect(board().talk().at(-1)).toMatchObject({ answer: 'Oktober bisher auch.', unread: true });
   });
 
-  test('an unknown answer tag goes back to the Koordinator', async () => {
+  test('an unknown answer tag goes back to the Coordinator', async () => {
     canvas.commander.hear('und weiter?', {});
     await settle();
-    const s = runtime.sessions.filter(isKoordinator).at(-1)!;
+    const s = runtime.sessions.filter(isCoordinator).at(-1)!;
     expect(s.call('look_up', { question: 'More?', follows: 'A99', confirm: 'Moment.' })).toContain('Unknown answer A99');
   });
 
@@ -365,7 +365,7 @@ describe('a looked-up answer goes on', () => {
     const second = answerer();
     const before = runtime.sessions.length;
     await say('und jenes?', {}, 'look_up', { question: 'Q3?', follows: `A${first}`, confirm: 'Moment.' });
-    // the Koordinator read it, but its agent waits for the turn before
+    // the Coordinator read it, but its agent waits for the turn before
     expect(runtime.sessions.length).toBe(before);
     second.emit({ type: 'session', id: 'look-2' });
     second.call('answer_owner', { text: 'Zwei.' });
@@ -445,7 +445,7 @@ describe('a looked-up answer goes on', () => {
     a.call('answer_owner', { text: 'Ein Timeout.' });
     a.emit({ type: 'idle' });
     await settle();
-    expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: 'Ein Timeout.', answer: { thread } });
+    expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator', text: 'Ein Timeout.', answer: { thread } });
     await say('welcher?', { card: login.id }, 'look_up', { question: 'Which timeout?', follows: `A${thread}`, confirm: 'Moment.' });
     a = answerer();
     expect(a.spec.resume).toBe('login-1');
@@ -477,9 +477,9 @@ describe('a thread on a Question card', () => {
     expect(board().row(card.id).session_id).toBe('look-1');
     expect(board().events(card.id).map((e) => [e.author, e.text, e.answer?.files?.length ?? 0])).toEqual([
       ['owner', 'stimmen die septembergutschriften?', 0],
-      ['koordinator', 'Ja.', 0],
+      ['coordinator', 'Ja.', 0],
       ['owner', 'mach ein excel', 0],
-      ['koordinator', 'Hier die Tabelle.', 1],
+      ['coordinator', 'Hier die Tabelle.', 1],
     ]);
     // the sheet points to the card instead
     expect(board().talk().filter((x) => x.thread === first).every((x) => x.movedTo === card.id)).toBe(true);
@@ -552,7 +552,7 @@ describe('a thread on a Question card', () => {
     a.emit({ type: 'idle' });
     await settle();
     expect(board().events(card.id).filter((e) => e.kind === 'talk').map((e) => e.text).slice(-2)).toEqual(['und dezember?', 'Dezember: offen.']);
-    // the Koordinator hears it, and the sheet does not wait with it
+    // the Coordinator hears it, and the sheet does not wait with it
     expect(board().talk().at(-1)).toMatchObject({ answer: 'Dezember: offen.' });
     expect(board().talk().at(-1)!.unread).toBeUndefined();
   });
@@ -794,7 +794,7 @@ describe('a thread on a Question card', () => {
     let a = answerer();
     a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Tabelle', language: 'de', narration: 'So entsteht sie.' } });
     const live = board().events(card.id).at(-1)!;
-    expect(live).toMatchObject({ kind: 'talk', author: 'koordinator', text: '', answer: { thread: first, live: true, files: [{ name: 'die-tabelle.walkthrough.json' }] } });
+    expect(live).toMatchObject({ kind: 'talk', author: 'coordinator', text: '', answer: { thread: first, live: true, files: [{ name: 'die-tabelle.walkthrough.json' }] } });
     a.call('answer_owner', { text: 'Der Walkthrough zeigt, wie die Tabelle entsteht.' });
     a.emit({ type: 'idle' });
     await settle();
@@ -831,8 +831,8 @@ describe("a question asked in a project's sheet", () => {
   test('goes straight to its project agent, with its screenshots, and stands in the sheet with the answer', async () => {
     const shot = canvas.images.save(new Uint8Array([1, 2, 3]), 'image/png');
     const { a, talk } = await asked('Warum wartet W4 auf das Go?', 'Weil der Shop live geht.', 'project-1', { images: [shot] });
-    // no Koordinator read the words first
-    expect(runtime.sessions.some(isKoordinator)).toBe(false);
+    // no Coordinator read the words first
+    expect(runtime.sessions.some(isCoordinator)).toBe(false);
     expect(a.spec.system).toContain('project agent of the project "PR-Loop"');
     expect(a.spec.tools.map((t) => t.name)).toContain('to_obeya');
     expect(a.inbox[0]).toContain("The owner wrote to you in the project's sheet in Obeya");
@@ -873,7 +873,7 @@ describe("a question asked in a project's sheet", () => {
     const a = answerer();
     const passed = a.call('to_obeya', { request: 'Start W4.' });
     await settle();
-    const k = runtime.sessions.filter(isKoordinator).at(-1)!;
+    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
     expect(k.inbox.at(-1)).toContain('Starte bitte W4.');
     k.call('reply', { confirm: 'Mache ich gleich.' });
     k.emit({ type: 'idle' });
@@ -944,7 +944,7 @@ describe('an answer told as a walkthrough', () => {
     const thread = board().talk().at(-1)!.id;
     const a = answerer();
     a.call('walkthrough_slide', { slide: { type: 'title', title: 'Der Login', language: 'de', narration: 'Er geht so.' } });
-    expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: '', answer: { thread, live: true } });
+    expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator', text: '', answer: { thread, live: true } });
     a.call('answer_owner', { text: 'So läuft er ab.' });
     a.emit({ type: 'idle' });
     await settle();
@@ -1007,7 +1007,7 @@ describe('an answer told as a walkthrough', () => {
     const login = board().create({ title: 'Login', body: 'Login hängt.', x: 0, y: 0 });
     // a direct answer on the card
     await say('was macht diese karte?', { card: login.id }, 'reply', { confirm: 'Sie behebt den hängenden Login.' });
-    const reply = board().events(login.id).findLast((e) => e.author === 'koordinator')!;
+    const reply = board().events(login.id).findLast((e) => e.author === 'coordinator')!;
     expect(reply).toMatchObject({ text: 'Sie behebt den hängenden Login.', reply: true });
     const asked = canvas.answers.showEventAsWalkthrough(login.id, reply.id);
     const x = board().talk().at(-1)!;
@@ -1015,8 +1015,8 @@ describe('an answer told as a walkthrough', () => {
     const log = () => board().events(login.id).filter((e) => e.id > reply.id);
     expect(log().map((e) => [e.author, e.text, e.replyTo, e.answer?.live, e.answer?.files])).toEqual([
       ['owner', 'Als Walkthrough zeigen', reply.id, undefined, undefined],
-      ['koordinator', 'Ich erzähle die Antwort als Walkthrough.', undefined, undefined, undefined],
-      ['koordinator', '', undefined, true, [{ name: asked.file, caption: '' }]],
+      ['coordinator', 'Ich erzähle die Antwort als Walkthrough.', undefined, undefined, undefined],
+      ['coordinator', '', undefined, true, [{ name: asked.file, caption: '' }]],
     ]);
     // the look-up hears about the card, and its answer takes the player's place
     const a = answerer();

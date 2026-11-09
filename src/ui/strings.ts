@@ -227,7 +227,7 @@ const de = {
   fromIdea: 'Entstanden aus der Idee',
   decisions: 'Entscheidungen',
   noDecisions: 'Noch keine Entscheidungen.',
-  decidedBy: { owner: 'du', project: 'Projekt-Agent für dich', koordinator: 'Obeya für dich' },
+  decidedBy: { owner: 'du', project: 'Projekt-Agent für dich', coordinator: 'Obeya für dich' },
   titlePlaceholder: 'Worum geht es?',
   titleOptional: 'Titel (optional: sonst wählt Obeya einen)',
   bodyPlaceholder: 'Beschreibung',
@@ -434,7 +434,7 @@ const de = {
     startsOn: (what: string) => `Der Agent dieser Karte wird darauf laufen: ${what}`,
     empty: 'Noch nichts passiert.',
     working: 'arbeitet …',
-    /** After „Obeya“, under the owner's words while the Koordinator reads them. */
+    /** After „Obeya“, under the owner's words while the Coordinator reads them. */
     reading: 'liest …',
     steps: (n: number) => `Verlauf: ${n} ${n === 1 ? 'Schritt' : 'Schritte'}`,
     // in the bubble of the agent at work: what it runs in the background, and for how long already
@@ -451,7 +451,7 @@ const de = {
     withdraw: 'Zurücknehmen: Der Agent bekommt es nicht; ist dein Feld leer, steht der Text wieder darin',
     demoQuestion: 'Frage im Demo-Bericht:',
     // who the task an agent started on comes from, at the top of its conversation
-    opening: { owner: 'Du', plan: 'Plan-Doc', koordinator: 'Obeya', idea: 'Idee', proposal: 'Vorschlag' },
+    opening: { owner: 'Du', plan: 'Plan-Doc', coordinator: 'Obeya', idea: 'Idee', proposal: 'Vorschlag' },
     more: 'mehr',
     less: 'weniger',
     // replying to one message of the conversation, shown as a quote above the words
@@ -469,7 +469,7 @@ const de = {
     selected: 'Markiert: zum Kopieren lange drücken',
   },
   lastFailure: (at: string) => `Zuletzt gescheitert (${at})`,
-  author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', koordinator: 'Obeya', obeya: 'Obeya', explorer: 'Explorations-Agent' },
+  author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', coordinator: 'Obeya', obeya: 'Obeya', explorer: 'Explorations-Agent' },
   branch: 'Branch',
   // the size of a card's change beside its branch, the whole diff on a click, and where the branch is checked out
   diff: {
@@ -733,7 +733,7 @@ const de = {
   quote: MESSAGES.de.quote,
   voice: {
     hold: 'Halten zum Sprechen (Leertaste)',
-    koordinator: 'Obeya',
+    coordinator: 'Obeya',
     card: (title: string) => `Obeya · Aufgabe: ${title}`,
     /** A card an agent works on: what the owner says goes straight to it, and it passes requests to Obeya on. */
     agent: (title: string) => `Agent · Aufgabe: ${title}`,
@@ -749,7 +749,7 @@ const de = {
     answerLost: 'Obeya hat es; nur die Antwort kam nicht an.',
     typePlaceholder: 'Obeya schreiben, z. B. „Neue Aufgabe: …“',
     tooLate: 'Zu spät: das ist schon passiert.',
-    /** A spoken command while the Koordinator reads it: the card it was said to. */
+    /** A spoken command while the Coordinator reads it: the card it was said to. */
     reading: (what: string) => `${what} · wird verstanden …`,
     /** A recording for the open card's agent while Whisper writes it down. */
     transcribing: (what: string) => `${what} · wird aufgeschrieben …`,
@@ -1113,7 +1113,7 @@ const de = {
     done: 'Erledigt',
     doneHint: 'Legt die Karte ins Archiv; von dort kommt sie zurück.',
   },
-  koordinator: {
+  coordinator: {
     button: 'Obeya',
     /** The top-right button is an icon; this is its tooltip. */
     buttonTitle: 'Obeya (C)',
@@ -1328,7 +1328,7 @@ const de = {
     fromFile: 'Gespeichert in',
     fromArgs: (file: string) =>
       `Obeya läuft gerade mit den Repositories von der Kommandozeile. Speichern legt ${file} an; Obeya startet dann daraus, auch künftig, wenn es ohne Repositories gestartet wird.`,
-    koordinator: 'Du kannst Obeya auch nach der Konfiguration fragen oder ihm sagen, was sich ändern soll.',
+    coordinator: 'Du kannst Obeya auch nach der Konfiguration fragen oder ihm sagen, was sich ändern soll.',
     askObeya: 'Obeya fragen',
     sections: { canvases: 'Leinwände', agents: 'Agenten und Modelle', voice: 'Spracheingabe', demos: 'Demos', devices: 'Von anderen Geräten', general: 'Allgemein' },
     unsaved: 'Nicht gespeichert',
@@ -1363,7 +1363,7 @@ const de = {
       /** Where a harness is not set up: what makes it one to choose. */
       setUp: 'Einrichten unter Einrichtung → Agenten.',
       roles: {
-        koordinator: { name: 'Obeya', hint: 'Befehle, Planung, Nachschlagen, Projekt-Agenten, Lernen' },
+        coordinator: { name: 'Obeya', hint: 'Befehle, Planung, Nachschlagen, Projekt-Agenten, Lernen' },
         worker: { name: 'Agenten an Aufgaben', hint: 'bauen die Aufgaben' },
         explorer: { name: 'Explorations-Agenten', hint: 'denken Ideen mit dir durch' },
         chores: { name: 'Kleine Aufgaben', hint: 'Arbeitsrückschau, Text geteilter Demos, Titel von Aufgaben ohne einen' },
@@ -2463,7 +2463,7 @@ const en: Strings = {
   fromIdea: 'Came from the idea',
   decisions: 'Decisions',
   noDecisions: 'No decisions yet.',
-  decidedBy: { owner: 'you', project: 'project agent for you', koordinator: 'Obeya for you' },
+  decidedBy: { owner: 'you', project: 'project agent for you', coordinator: 'Obeya for you' },
   titlePlaceholder: 'What is it about?',
   titleOptional: 'Title (optional: otherwise Obeya picks one)',
   bodyPlaceholder: 'Description',
@@ -2650,7 +2650,7 @@ const en: Strings = {
     unread: (when: 'step' | 'start' | 'reply') => `Not read yet · ${{ step: 'at its next step', start: 'once the agent starts', reply: 'after its current reply' }[when]}`,
     withdraw: 'Take back: the agent does not get it; if your field is empty, the text goes back into it',
     demoQuestion: 'Question in the demo report:',
-    opening: { owner: 'You', plan: 'Plan doc', koordinator: 'Obeya', idea: 'Idea', proposal: 'Proposal' },
+    opening: { owner: 'You', plan: 'Plan doc', coordinator: 'Obeya', idea: 'Idea', proposal: 'Proposal' },
     more: 'more',
     less: 'less',
     reply: 'Reply',
@@ -2664,7 +2664,7 @@ const en: Strings = {
     selected: 'Selected: press and hold to copy',
   },
   lastFailure: (at: string) => `Last failed (${at})`,
-  author: { worker: 'Agent', owner: 'You', project: 'Project agent', koordinator: 'Obeya', obeya: 'Obeya', explorer: 'Exploration agent' },
+  author: { worker: 'Agent', owner: 'You', project: 'Project agent', coordinator: 'Obeya', obeya: 'Obeya', explorer: 'Exploration agent' },
   branch: 'Branch',
   diff: {
     size: (files: number) => (files === 1 ? 'in 1 file' : `in ${files} files`),
@@ -2910,7 +2910,7 @@ const en: Strings = {
   quote: MESSAGES.en.quote,
   voice: {
     hold: 'Hold to speak (space)',
-    koordinator: 'Obeya',
+    coordinator: 'Obeya',
     card: (title: string) => `Obeya · Task: ${title}`,
     agent: (title: string) => `Agent · Task: ${title}`,
     proposal: (title: string) => `Agent · Proposal: ${title}`,
@@ -3266,7 +3266,7 @@ const en: Strings = {
     done: 'Done',
     doneHint: 'Puts the card into the archive; it can come back from there.',
   },
-  koordinator: {
+  coordinator: {
     button: 'Obeya',
     buttonTitle: 'Obeya (C)',
     title: 'Obeya',
@@ -3459,7 +3459,7 @@ const en: Strings = {
     fromFile: 'Saved in',
     fromArgs: (file: string) =>
       `Obeya is running with the repositories from the command line. Saving creates ${file}; Obeya then starts from it, also in future when it is started without repositories.`,
-    koordinator: 'You can also ask Obeya about the configuration or tell it what should change.',
+    coordinator: 'You can also ask Obeya about the configuration or tell it what should change.',
     askObeya: 'Ask Obeya',
     sections: { canvases: 'Canvases', agents: 'Agents and models', voice: 'Voice input', demos: 'Demos', devices: 'Other devices', general: 'General' },
     unsaved: 'Not saved',
@@ -3490,7 +3490,7 @@ const en: Strings = {
       notReady: (name: string) => `${name} (not set up)`,
       setUp: 'Set it up under Setup → Agents.',
       roles: {
-        koordinator: { name: 'Obeya', hint: 'commands, planning, look-ups, project agents, learning' },
+        coordinator: { name: 'Obeya', hint: 'commands, planning, look-ups, project agents, learning' },
         worker: { name: 'Agents on tasks', hint: 'build the tasks' },
         explorer: { name: 'Exploration agents', hint: 'think ideas through with you' },
         chores: { name: 'Small jobs', hint: 'work retrospective, text of shared demos, titles of tasks without one' },

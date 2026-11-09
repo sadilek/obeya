@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { type CardEvent, PROPOSED_SETTINGS, type ProposedSetting } from '../core/types';
 import type { Board } from './board';
 import type { FrictionNote } from './db';
-import { readSession } from './koordinator';
+import { readSession } from './coordinator';
 import { type AgentRuntime, type AgentTool, waitQuietly } from './runtime';
 import { remote } from './hosts';
 import { type Excerpt, excerptOf, excerptText, findTranscript } from './transcript';
@@ -152,7 +152,7 @@ export class WorkRetro {
     this.o.board.addFriction(card.repo, card.id, notes);
     // the owner sees on the card what was noted; a card deleted meanwhile has no log to show it
     if (notes.length && this.o.board.item(card.id))
-      this.o.board.log(card.id, 'state', 'koordinator', this.o.board.t.retro.friction(notes.map((n) => this.o.board.t.retro.note(n.what, n.cost, n.fix)).join('\n')));
+      this.o.board.log(card.id, 'state', 'coordinator', this.o.board.t.retro.friction(notes.map((n) => this.o.board.t.retro.note(n.what, n.cost, n.fix)).join('\n')));
   }
 
   /**
@@ -228,7 +228,7 @@ export class WorkRetro {
               if (typeof on === 'string') return on;
               const why = clip(String(basis).trim(), 600);
               const p = b.proposeRetro(repo, { title: t, body: `${String(body).trim()}\n\n${b.t.retro.occasion(why)}`, basis: why });
-              b.log(p.id, 'state', 'koordinator', b.t.retro.from(name, why, on.ids.map((id) => b.t.quote(titles.get(id) ?? '')).join(', ')));
+              b.log(p.id, 'state', 'coordinator', b.t.retro.from(name, why, on.ids.map((id) => b.t.quote(titles.get(id) ?? '')).join(', ')));
               made++;
               return after();
             },
@@ -332,7 +332,7 @@ function settingValue(field: ProposedSetting, value: unknown): string | string[]
 }
 
 const NOTES_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Each worker works on one card in its own workspace of a repository. You look back at how a worker worked, so that future runs in this repository go faster.
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Each worker works on one card in its own workspace of a repository. You look back at how a worker worked, so that future runs in this repository go faster.
 
 You get an excerpt of one card's run from its transcript: tool calls that failed, with their errors; similar calls in a row (a failed one followed by its correction, or one command again and again); files written whole more than once; the worker's words around them; and how many tool calls the run took, and after how many it first changed a file.
 
@@ -348,7 +348,7 @@ Note 0 to 3, the costliest first; most runs have one or none. Call note for each
 `.trim();
 
 const RETRO_SYSTEM = (language: Language, ui: Language, repository: Language) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Each worker works on one card in its own workspace of a repository. This is the Arbeitsrückschau for the repository you are in (you cannot change it): you get the friction noted on its workers' runs since the last one, card by card, and propose what would make future runs cheaper.
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Each worker works on one card in its own workspace of a repository. This is the Arbeitsrückschau for the repository you are in (you cannot change it): you get the friction noted on its workers' runs since the last one, card by card, and propose what would make future runs cheaper.
 
 Look for friction that recurs on at least two different cards, the same detour taken again and again, and that a change to the repository would prevent:
 - a script (scripts/…) for what workers keep putting together by hand or keep getting wrong;

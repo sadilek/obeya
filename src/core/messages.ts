@@ -1,6 +1,6 @@
 // What the server says to the owner, in German and English (two tables of one shape, like the UI's
 // strings in src/ui/strings.ts): the lines it writes into a card's log, the questions it puts to
-// the owner, the Koordinator's own confirmations and what it speaks. A line goes into the log in
+// the owner, the Coordinator's own confirmations and what it speaks. A line goes into the log in
 // the language that applies when it is written and stays so.
 
 import type { Language } from './locale';
@@ -38,7 +38,7 @@ const de = {
     couldNotRead: (why: string) => `Ich konnte das nicht lesen. ${why}`,
     cloudFailed: (service: string, why: string) => `${service} hat die Aufnahme nicht erkannt (${why}).`,
     interrupted: 'Obeya startete neu, bevor ich das gelesen hatte. Bitte noch einmal.',
-    /** The usage limit keeps the Koordinator from reading the words: it reads them by itself once it lifts. */
+    /** The usage limit keeps the Coordinator from reading the words: it reads them by itself once it lifts. */
     held: (when: string) => `Das Nutzungslimit ist erreicht. Ich lese das ${when} von selbst.`,
     undone: 'Zurückgenommen.',
     created: 'Per Sprache angelegt.',
@@ -379,7 +379,7 @@ const de = {
     notAcceptedQuestions: 'Nicht übernommen: Der Vorschlag hat noch Fragen.',
     notAcceptedQuestion: 'Nicht übernommen: Der Vorschlag hat noch eine Frage.',
   },
-  koordinator: {
+  coordinator: {
     allStarted: (names: string) => `Alle Workstreams gestartet: ${names}. Obeya legt die Reihenfolge fest.`,
     startedDespite: 'Trotzdem gestartet, ohne zu warten.',
     startTakenBack: (names: string) => `Start zurückgenommen: ${names}.`,
@@ -875,7 +875,7 @@ const en: Messages = {
     notAcceptedQuestions: 'Not accepted: the proposal still has questions.',
     notAcceptedQuestion: 'Not accepted: the proposal still has a question.',
   },
-  koordinator: {
+  coordinator: {
     allStarted: (names: string) => `All workstreams started: ${names}. Obeya decides their order.`,
     startedDespite: 'Started anyway, without waiting.',
     startTakenBack: (names: string) => `Start taken back: ${names}.`,

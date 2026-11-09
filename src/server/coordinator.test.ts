@@ -6,7 +6,7 @@ import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, type StoredContribution } from './board';
 import { Store } from './db';
-import { Koordinator, overlaps } from './koordinator';
+import { Coordinator, overlaps } from './coordinator';
 import { cardTag } from '../core/card-number';
 import { move, queueOrder, reach } from '../core/queue';
 import { artifact, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir } from './testing';
@@ -19,7 +19,7 @@ let board: Board;
 let runtime: FakeRuntime;
 let workers: Workers;
 let workspaces: Workspaces;
-let k: Koordinator;
+let k: Coordinator;
 let docs: PlanDoc[];
 
 beforeEach(() => {
@@ -33,12 +33,12 @@ beforeEach(() => {
   workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
   workers = new Workers({ board, runtime, workspaces, adapter });
-  k = new Koordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
+  k = new Coordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
 });
 afterEach(() => removeDir(dir));
 
 /**
- * Lets the Koordinator go on until it waits for an estimate or has decided, and the cards it started
+ * Lets the Coordinator go on until it waits for an estimate or has decided, and the cards it started
  * have their workspace: before an estimate, git reads the branches of the cards in progress, which
  * takes a moment, a few seconds on a busy Windows machine.
  */
@@ -52,7 +52,7 @@ async function settle() {
 }
 const card = (title: string) => board.create({ title, x: 0, y: 0 });
 const item = (id: string) => board.item(id)!;
-/** The number a card goes by, as the Koordinator's sessions name it. */
+/** The number a card goes by, as the Coordinator's sessions name it. */
 const tag = (c: { number: number }) => cardTag(c.number);
 const estimates = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'scope'));
 const workerOf = (id: string) => runtime.sessions.find((s) => s.spec.cwd === board.row(id).workspace)!;
@@ -78,7 +78,7 @@ async function schedule(entries: [string, string[], string[], string[], string][
   return r;
 }
 
-describe('Koordinator', () => {
+describe('Coordinator', () => {
   test('a card with nothing in progress starts at once; its scope is estimated afterwards', async () => {
     const a = card('A');
     k.request(a.id);
@@ -435,7 +435,7 @@ describe('Koordinator', () => {
   });
 
   test('an estimate the usage limit stops waits on the card, and the card is judged once the limit lifts', async () => {
-    k = new Koordinator({ board, runtime: withLimitWait(runtime, 10), home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 0 });
+    k = new Coordinator({ board, runtime: withLimitWait(runtime, 10), home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 0 });
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -446,7 +446,7 @@ describe('Koordinator', () => {
     s.emit({ type: 'error', message: "You've hit your session limit · resets 2:40pm (Europe/Berlin)", limit: { resetsAt: Date.now() + 20 } });
     s.emit({ type: 'idle' });
     await settle();
-    // it does not start without an estimate: it waits with the Koordinator, and says until when
+    // it does not start without an estimate: it waits with the Coordinator, and says until when
     expect(item(b.id)).toMatchObject({ state: 'planned', queue: { checking: true } });
     expect(item(b.id).limitedUntil).toBeDefined();
     expect(board.events(b.id).some((e) => e.kind === 'error')).toBe(false);
@@ -471,7 +471,7 @@ describe('Koordinator', () => {
   });
 });
 
-describe("Koordinator queues a review's follow-up tasks", () => {
+describe("Coordinator queues a review's follow-up tasks", () => {
   /** A review card of PR #34 that is under way, without an agent of its own. */
   function review(state: 'working' | 'waiting' | 'live' = 'working') {
     const r = card('PR #34: Manual dependencies');
@@ -540,7 +540,7 @@ describe("Koordinator queues a review's follow-up tasks", () => {
   });
 });
 
-describe('Koordinator names a card the owner left without a title', () => {
+describe('Coordinator names a card the owner left without a title', () => {
   const namings = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'title'));
   const task = (body: string) => board.create({ title: '', body, x: 0, y: 0 });
 
@@ -574,7 +574,7 @@ describe('Koordinator names a card the owner left without a title', () => {
   });
 
   test('a naming the usage limit stops waits on the card, and names it once the limit lifts', async () => {
-    k = new Koordinator({ board, runtime: withLimitWait(runtime, 10), home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 0 });
+    k = new Coordinator({ board, runtime: withLimitWait(runtime, 10), home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 0 });
     const a = task('Erste Zeile\nmehr');
     const naming = k.name(a.id);
     const s = namings()[0]!;
@@ -609,7 +609,7 @@ describe('Koordinator names a card the owner left without a title', () => {
   });
 });
 
-describe('Koordinator waits for a free workspace', () => {
+describe('Coordinator waits for a free workspace', () => {
   let clones: string[];
 
   /** A pool of `n` clones instead of worktrees: cards wait when all are leased, or with `slots` when that many workers are busy. */
@@ -628,10 +628,10 @@ describe('Koordinator waits for a free workspace', () => {
     await workspaces.ensureClones(main, n);
     clones = workspaces.list().map((w) => w.path);
     workers = new Workers({ board, runtime, workspaces, adapter });
-    k = new Koordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
+    k = new Coordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
   }
 
-  test('a card the Koordinator lets start waits for a workspace, and starts once one is free', async () => {
+  test('a card the Coordinator lets start waits for a workspace, and starts once one is free', async () => {
     await pool(1);
     const a = card('A');
     k.request(a.id);
@@ -713,7 +713,7 @@ describe('Koordinator waits for a free workspace', () => {
     workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws'), machines: [{ host: null, slots: 1 }], busy: () => workers.busyOn(null) });
     const adapter = { ...generic, land: 'main' as const, workspaces: 'worktrees' as const };
     workers = new Workers({ board, runtime, workspaces, adapter });
-    k = new Koordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
+    k = new Coordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
     expect(workspaces.pooled).toBe(true);
     const a = card('A');
     k.request(a.id);
@@ -860,7 +860,7 @@ describe('Koordinator waits for a free workspace', () => {
 
   test("taking a card's clone waits a few seconds, in which the owner takes it back", async () => {
     await pool(1);
-    k = new Koordinator({ board, runtime, home: () => join(dir, 'main'), repoFor: () => ({ workers, workspaces, adapter: generic, path: join(dir, 'main') }), holdMs: 40 });
+    k = new Coordinator({ board, runtime, home: () => join(dir, 'main'), repoFor: () => ({ workers, workspaces, adapter: generic, path: join(dir, 'main') }), holdMs: 40 });
     const a = card('A');
     await workers.start(a.id);
     await workers.prepared();
@@ -875,7 +875,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 });
 
-describe('Koordinator starts all workstreams of a project', () => {
+describe('Coordinator starts all workstreams of a project', () => {
   const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: `Text ${key}`, done, inReview: false });
   /** A project with W1 live and W2 to W4 planned. */
   function project() {
@@ -891,7 +891,7 @@ describe('Koordinator starts all workstreams of a project', () => {
     await scope(['src/a.ts']);
     const { p, w2, w3, w4 } = project();
     k.request(p.id);
-    // in the plan's order until the Koordinator has decided
+    // in the plan's order until the Coordinator has decided
     expect([w2, w3, w4].map((w) => item(w.id).queue)).toEqual([0, 1, 2].map(() => expect.objectContaining({ checking: true, together: p.id })));
     await settle();
     expect(schedules()).toHaveLength(1);
@@ -911,7 +911,7 @@ describe('Koordinator starts all workstreams of a project', () => {
     expect(item(w3.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id] } });
     expect(item(w3.id).queue).not.toHaveProperty('buildsOn');
     expect(board.events(w2.id).at(-1)!.text).toBe('Obeya: wartet auf W4 „Titel W4“. W2 baut auf der API aus W4 auf.');
-    // the Koordinator's order is the queue's
+    // the Coordinator's order is the queue's
     expect(k.ahead(item(w3.id)).map((i) => i.id)).toEqual([w2.id]);
     expect(board.events(p.id).at(-1)!.text).toContain('1 von 3 Workstreams starten jetzt');
 
@@ -1084,7 +1084,7 @@ describe('Koordinator starts all workstreams of a project', () => {
   });
 
   test('the start waits a few seconds, in which the owner can take it back', async () => {
-    k = new Koordinator({ board, runtime, home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 40 });
+    k = new Coordinator({ board, runtime, home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 40 });
     const { p, w2, w3, w4 } = project();
     k.request(p.id);
     await Bun.sleep(5);
@@ -1096,7 +1096,7 @@ describe('Koordinator starts all workstreams of a project', () => {
     expect(schedules()).toHaveLength(0);
     expect(() => k.dequeue(p.id)).toThrow(expect.objectContaining({ code: 'notQueued' }));
 
-    // once the Koordinator has planned them, it is too late
+    // once the Coordinator has planned them, it is too late
     k.request(p.id);
     await new Promise((r) => setTimeout(r, 60));
     await schedule([
@@ -1308,10 +1308,10 @@ describe('preference memory', () => {
 describe('Rückschau', () => {
   const texts = (state: 'proposed' | 'active') => board.preferences(state).map((p) => p.text);
   const reviews = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'done'));
-  const koordinator = () => new Koordinator({ board, runtime, home: () => board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });
+  const coordinator = () => new Coordinator({ board, runtime, home: () => board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });
 
   test('after enough inputs, counted across a restart, it reads the history since the last one and proposes rules from it', async () => {
-    let k1 = koordinator();
+    let k1 = coordinator();
     k1.noticed();
     // what the owner said and clicked meanwhile
     const a = card('Export');
@@ -1325,7 +1325,7 @@ describe('Rückschau', () => {
     expect(board.setting('review_inputs')).toBe('2');
 
     // Obeya starts again: the count goes on
-    k1 = koordinator();
+    k1 = coordinator();
     k1.noticed();
     expect(reviews()).toHaveLength(0);
     // the input that completes the count is read on its own first
@@ -1374,7 +1374,7 @@ describe('Rückschau', () => {
   });
 
   test('it proposes at most three rules, and nothing when nothing happened', async () => {
-    const k1 = koordinator();
+    const k1 = coordinator();
     for (let n = 0; n < 4; n++) k1.noticed();
     await settle();
     // nothing on the canvas since: no session
@@ -1388,7 +1388,7 @@ describe('Rückschau', () => {
   });
 
   test('it proposes a rule about a repository for its CLAUDE.md, and reads an accepted one as such', async () => {
-    const k1 = koordinator();
+    const k1 = coordinator();
     const a = card('A');
     board.acceptProposal(board.proposePreference('Tests auf Deutsch.', { cardId: a.id }, undefined, 'home'));
     for (let n = 0; n < 4; n++) k1.noticed();
@@ -1430,7 +1430,7 @@ test('overlaps', () => {
   expect(overlaps('src', 'src/a.ts')).toBe(false);
 });
 
-describe('Koordinator arranges a project by what builds on what', () => {
+describe('Coordinator arranges a project by what builds on what', () => {
   const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: `Text ${key}`, done, inReview: false });
   const readings = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'dependencies'));
   /** A project with W1 live and W2 to W4 planned, just come. */

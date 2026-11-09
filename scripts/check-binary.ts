@@ -13,7 +13,7 @@
 // canvas with the skill's director from the resources (Node, a browser, ffmpeg and uv needed).
 // --worker starts a card with a real agent on the Claude Code `OBEYA_CLAUDE` names, else the
 // machine's own, which commits a file and hands over an HTML artifact that is then shared on the
-// repository's demo site (served from the scratch directory). The Koordinator's answer to the voice command needs a Claude
+// repository's demo site (served from the scratch directory). The Coordinator's answer to the voice command needs a Claude
 // login as well; without --worker it is not waited for. Prints one line per check; exits 1 when
 // one failed. --keep leaves the scratch directory and the server running. With CHECK_ARTIFACTS set,
 // a failed render leaves its screenshot and the server's log in that directory.

@@ -43,7 +43,7 @@ beforeAll(async () => {
     store.update(r.id, {
       demo: JSON.stringify({ dir: demo, ...shown }),
       ...(n < 800 ? { archived_at: new Date(Date.now() - n * 60_000).toISOString() } : {}),
-      // a page published before the newest page changes: the Koordinator's sheet offers to share it again
+      // a page published before the newest page changes: the Coordinator's sheet offers to share it again
       ...(n % 3 === 0 ? { share: JSON.stringify({ slug: `card-${n}`, url: `http://127.0.0.1:9/card-${n}/`, demos: [{ dir: demo, shown }], version: '' }) } : {}),
     });
   });

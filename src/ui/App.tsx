@@ -24,7 +24,7 @@ import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showDevic
 import { PhoneDialog } from './access';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
-import { KoordinatorSheet } from './koordinator';
+import { CoordinatorSheet } from './coordinator';
 import { forcedText, QueuePill } from './queue';
 import { SearchPill } from './search';
 import { depsOf, handleAt, holdsAmong, loopsAmong, nearestHandle, type Side, SIDES, waitKinds, waitsAmong } from './deps';
@@ -414,13 +414,13 @@ function Canvas({
     return { left: !narrow && pinnedRef.current && innerWidth - NAV_W - right >= NAV_CANVAS_MIN ? NAV_W : 0, right };
   };
   /** Opens Obeya's sheet or closes it; an open project closes. */
-  const toggleKoordinator = () => {
+  const toggleCoordinator = () => {
     setKOn(!kOn);
     if (!kOn && focusRef.current?.type === 'project') closeProject(false);
   };
   /** The sheet as the owner opens it to talk (its button, `C`): the field under the conversation takes the cursor. */
-  const talkKoordinator = () => {
-    toggleKoordinator();
+  const talkCoordinator = () => {
+    toggleCoordinator();
     if (!kOn) requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#ksheet .tell textarea')?.focus({ preventScroll: true }));
   };
   // the archive and the search drop down from the bar one at a time
@@ -431,7 +431,7 @@ function Canvas({
   // asking Obeya about the configuration: its conversation in place of the dialog, ready to type into
   const talkFromConfig = () => {
     setCOn(false);
-    if (!kOn) talkKoordinator();
+    if (!kOn) talkCoordinator();
   };
   const [helpOn, setHelpOn] = useState(false);
   // „Telefon verbinden“, from the section „Von anderen Geräten“ of the configuration
@@ -771,7 +771,7 @@ function Canvas({
     flushEdit().catch(console.error);
     const f = focusRef.current;
     const project = f?.type === 'project' ? f.id : f?.type === 'card' ? f.project?.id : undefined;
-    const sheet: SideSheet | undefined = kOn ? 'koordinator' : aOn ? 'archive' : undefined;
+    const sheet: SideSheet | undefined = kOn ? 'coordinator' : aOn ? 'archive' : undefined;
     keep(sessionStorage, snapshot.canvas.id, {
       at: Date.now(),
       ...(f?.type === 'card' ? { card: f.id } : {}),
@@ -820,7 +820,7 @@ function Canvas({
   async function reopen(k: Kept) {
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
     quickSide.current = Date.now() + 2000;
-    if (k.sheet === 'koordinator') setKOn(true);
+    if (k.sheet === 'coordinator') setKOn(true);
     else if (k.sheet === 'archive') setAOn(true);
     if (k.config) setCOn(true);
     await openAgain(k, true);
@@ -992,7 +992,7 @@ function Canvas({
 
   /**
    * The project's button, on its card and in its sheet: all planned workstreams go to the
-   * Koordinator together, which waits a few seconds before it plans them, so the start can be taken back.
+   * Coordinator together, which waits a few seconds before it plans them, so the start can be taken back.
    */
   const startAll = useCallback(async (p: Item, n: number) => {
     try {
@@ -1371,7 +1371,7 @@ function Canvas({
     // each card by its number too, which tells Obeya the card where titles are alike
     const named = (id: string) => t.deps.loopCard(cardTag(byId(id)!.number), titleOf(id));
     const waits = loop.edges.map(([from, to]) => t.deps.loopWait(named(to), named(from), byId(to) ? waitKinds(byId(to)!, from, items) : []));
-    if (!kOn) toggleKoordinator();
+    if (!kOn) toggleCoordinator();
     void tellTyped(t.deps.loopAsk(loop.cards.map(named), waits), undefined, null);
   }
   /** The trash button on an owner-drawn arrow: it goes at once, with „Rückgängig“. */
@@ -1721,7 +1721,7 @@ function Canvas({
     pinnable: !matchMedia(NARROW).matches && innerWidth - NAV_W - side.right >= NAV_CANVAS_MIN,
     onPin: pin,
     onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : goTo(cardPath(c, i))),
-    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : goTo(`${canvasPath(c)}?talk`)),
+    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleCoordinator() : goTo(`${canvasPath(c)}?talk`)),
   };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
   const doneCount = items.filter(archivedWithDone).length;
@@ -1732,9 +1732,9 @@ function Canvas({
   const attnLast = useRef<string | null>(null);
   /** The next card that needs the owner, in turn, and Obeya's sheet among them while an answer waits there. */
   function nextAttention() {
-    const koordinator = !kOnRef.current && unreadAnswers(snapshotRef.current.talk) > 0;
+    const coordinator = !kOnRef.current && unreadAnswers(snapshotRef.current.talk) > 0;
     const all = itemsRef.current;
-    const list: (Item | 'k')[] = [...all.filter(yours), ...(koordinator ? ['k' as const] : [])];
+    const list: (Item | 'k')[] = [...all.filter(yours), ...(coordinator ? ['k' as const] : [])];
     if (!list.length || focusRef.current?.type === 'card') return;
     // the one after the card Tab opened last, by its place on the canvas: that card may need the owner no longer
     const key = (x: Item | 'k') => (x === 'k' ? 'k' : x.id);
@@ -1742,7 +1742,7 @@ function Canvas({
     const last = at(attnLast.current);
     const next = list.find((x) => at(key(x)) > last) ?? list[0]!;
     attnLast.current = key(next);
-    if (next === 'k') toggleKoordinator();
+    if (next === 'k') toggleCoordinator();
     else open(next);
   }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -1833,7 +1833,7 @@ function Canvas({
       // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter, the search)
       e.preventDefault();
       if (e.key === 'n') createAtCentre();
-      else if (e.key === 'c') talkKoordinator();
+      else if (e.key === 'c') talkCoordinator();
       else if (e.key === '/') {
         toggleSearch();
         if (!searchKnown) {
@@ -1878,15 +1878,15 @@ function Canvas({
   // another parent, so opening and closing the sidebar only changes its colour; in the bar a hidden
   // copy keeps its room
   const talkButton = (
-    <button className={kOn ? 'pill kpill talk-pill on' : 'pill kpill talk-pill'} title={t.koordinator.buttonTitle} aria-label={t.koordinator.button} onClick={talkKoordinator}>
+    <button className={kOn ? 'pill kpill talk-pill on' : 'pill kpill talk-pill'} title={t.coordinator.buttonTitle} aria-label={t.coordinator.button} onClick={talkCoordinator}>
       <TalkIcon />
       {unread > 0 && (
-        <span className="n unread" title={t.koordinator.unreadCount(unread)}>
+        <span className="n unread" title={t.coordinator.unreadCount(unread)}>
           {unread}
         </span>
       )}
       {proposalCount > 0 && (
-        <span className="n prop" title={t.koordinator.proposalsCount(proposalCount)}>
+        <span className="n prop" title={t.coordinator.proposalsCount(proposalCount)}>
           {proposalCount}
         </span>
       )}
@@ -2180,7 +2180,7 @@ function Canvas({
           onProblems={setConfigProblems}
           revs={configRevs}
           onConnect={() => (setCOn(false), setPhoneOn(true))}
-          onAsk={(text, canvas) => void told.tell(t.voice.reading(t.voice.koordinator), undefined, () => (canvas ? api.commandOn(canvas, text) : api.command(text, null, { place: placeNow() })))}
+          onAsk={(text, canvas) => void told.tell(t.voice.reading(t.voice.coordinator), undefined, () => (canvas ? api.commandOn(canvas, text) : api.command(text, null, { place: placeNow() })))}
         />
         {setupOn && <Setup onClose={() => setSetupOn(false)} />}
         {phoneOn && (
@@ -2193,7 +2193,7 @@ function Canvas({
             }}
           />
         )}
-        <KoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo) => tellTyped(text, images, null, undefined, replyTo)} onConfig={(repo, setting) => {
+        <CoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} settings={snapshot.settingProposals ?? []} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={(i) => void openFresh(i)} onTell={(text, images, replyTo) => tellTyped(text, images, null, undefined, replyTo)} onConfig={(repo, setting) => {
             showRepoClones({ canvas: snapshot.canvas.id, repo, field: 'settings', setting });
             setCOn(true);
           }} />

@@ -1,15 +1,15 @@
-## The Koordinator
+## The Coordinator
 
 A chapter of the [design doc](../design.md), whose header says how it is written.
 
-The Koordinator is read-only agent turns on the Lesestand of the card's repository (the home
+The Coordinator is read-only agent turns on the Lesestand of the card's repository (the home
 repository's without a card), one decision at a time (look-ups excepted, see Looked-up questions).
-It schedules the cards, reads the owner's commands (see Commands to the Koordinator), looks things
+It schedules the cards, reads the owner's commands (see Commands to the Coordinator), looks things
 up, and learns the owner's rules.
 
 ### Scheduling
 
-Before a card starts, the Koordinator estimates the files it will change and judges whether running
+Before a card starts, the Coordinator estimates the files it will change and judges whether running
 it beside the cards in progress likely ends in merge conflicts. For each card in progress it sees
 the estimated files and what the branch has changed so far (each file with its changed line ranges
 and git's function context). Sharing a file is fine (additions in different places merge cleanly);
@@ -47,7 +47,7 @@ asks for another, and says which start now and which wait for which, so the firs
 does not start blind to one after it that it should build on or would collide with; a card alone
 starts at once where nothing runs. "Start anyway" starts it at the owner's own risk. While it waits
 it keeps its full card and takes notes for its worker (see Card layout); spoken words there go to
-the Koordinator.
+the Coordinator.
 
 A workstream started on its own also waits for the workstreams of its project it builds on (code, an
 API, data or a decision one of them introduces, or the plan says it comes after), judged from the
@@ -67,7 +67,7 @@ would close a cycle with other arrows or waits are refused. An arrow holds a car
 starts: one running or stopped by the owner afterwards (planned again, held anew once started
 again), one the owner started anyway ("Start anyway") and one whose workspace was taken from it
 go on once a workspace is free, whatever arrows are drawn. An arrow is kept apart from the waits the
-Koordinator inferred: removing it leaves exactly those (a likely conflict still holds only while
+Coordinator inferred: removing it leaves exactly those (a likely conflict still holds only while
 the other card is in progress), and where both name the same card, the arrow holds on once the
 inferred wait has ended. The card says that it waits because the owner connected the cards, in its
 waiting box, on its face and with a line in its conversation once the arrow holds it, with the
@@ -85,7 +85,7 @@ follow-up tasks of the PR, where it is not alone or other work runs. A PR
 closed without a merge (the review card closed as done) leaves nothing to build on: its follow-up
 tasks go back to planned, saying why, for the owner to start or delete. One made when the review
 card is finished already is judged as any card. While it waits it is a task nobody has worked on:
-the Koordinator may merge it with others (the merged task waits for what any of them waited for, in
+the Coordinator may merge it with others (the merged task waits for what any of them waited for, in
 the place of the first queued) or delete it.
 
 #### Waiting for a workspace
@@ -121,7 +121,7 @@ Each wait shows on the canvas, under the pointer over every step (see Cards on t
 
 "Start all N workstreams" (the project card's head, its sheet, or by voice) queues all planned
 workstreams in the plan's order, with 8 seconds for "Undo" (the button is easily hit). Then one
-Koordinator turn sees them with the plan doc, the cards in progress and those queued ahead, puts
+Coordinator turn sees them with the plan doc, the cards in progress and those queued ahead, puts
 them in an order and says for each what it waits for: a workstream it builds on (until that has
 landed) or one it would likely conflict with; the rest start at once. A workstream waits only for
 what comes before it, and that order becomes the queue's. The project's sheet names what each waits
@@ -130,7 +130,7 @@ the joint turn runs again.
 
 ### Learning the owner's rules
 
-After whatever the owner says, the Koordinator decides whether a lasting preference was stated and
+After whatever the owner says, the Coordinator decides whether a lasting preference was stated and
 proposes it as a rule (the card's log says "Proposes: …"): for the preferences, which hold only
 how agents work with the owner through Obeya, or, when it is about a repository (taste in code
 included), for that repository's CLAUDE.md, one proposal per repository when it holds in all of
@@ -142,7 +142,7 @@ Obeya is active at once; one about a repository („Merk dir: im Shop immer …�
 which. It may name a rule it changes, which takes the new text or, moved into a CLAUDE.md, goes.
 
 The learner reads answers, notes and feedback to workers, an idea's discussion, the conversation
-with the Koordinator (a command once its undo window has passed), and text the owner writes in a
+with the Coordinator (a command once its undo window has passed), and text the owner writes in a
 card once they pause for a minute or act on it. It sees each input with the card's text, the owner's
 words of the last three days, the agent's last message before the input, the canvas's repositories,
 the active rules and the open and rejected proposals. Its signals: general phrasing („immer“, „nie“,
@@ -153,17 +153,17 @@ the active rules and the open and rejected proposals. Its signals: general phras
 The retrospective counts the owner's inputs (what the learner reads, wordless clicks on a card, a
 deleted card, a command taken back, a proposal decided on); the count survives a restart. At 20, one
 read-only session in the home repository reads what happened since the last retrospective (the cards'
-milestones, the owner's words in ideas and to the Koordinator, taken back or not, deleted or
+milestones, the owner's words in ideas and to the Coordinator, taken back or not, deleted or
 dismissed cards, decided proposals), looks for patterns seen at least twice on different cards, and
 proposes up to three rules, each with what it rests on ("From the retrospective: …").
 
 #### Proposals and rules in the sheet
 
-Open proposals stand in the Koordinator's sheet with their occasion, the rule a change would
+Open proposals stand in the Coordinator's sheet with their occasion, the rule a change would
 replace, and where it goes ("Belongs in": the preferences or a repository's CLAUDE.md), which the
 owner may switch. The owner accepts, edits before accepting, or rejects; rejected ones are kept so
 the learner sees them. Obeya's button counts open proposals apart from what needs the owner; they do
-not show on cards. The Koordinator gets the rules, numbered, with every command, and follows them
+not show on cards. The Coordinator gets the rules, numbered, with every command, and follows them
 itself too.
 
 #### Rules for a CLAUDE.md
@@ -174,9 +174,9 @@ waits any more (a waiting one might yet be switched to its repository), so sever
 It lands like any card; until then the rule applies to no agent, afterwards through the CLAUDE.md
 alone.
 
-### The Koordinator's sheet
+### The Coordinator's sheet
 
-The sheet (Obeya's button or `C`) gives the conversation with the Koordinator all its height, with
+The sheet (Obeya's button or `C`) gives the conversation with the Coordinator all its height, with
 the field every card has under it (see Card layout).
 
 Opened with its button or `C`, the sheet focuses the field (the owner, 2026-10-19); opened with Tab,
@@ -263,7 +263,7 @@ it went. "Dismiss" keeps it as rejected, and the next review hears what became o
 
 A question that needs reading (what the agent would do, what the plan says, how something works) the
 quick turn acknowledges ("Let me look at the plan.") and passes on: about a project or its
-workstreams to the project agent, in the project's session; else to a thorough Koordinator turn on
+workstreams to the project agent, in the project's session; else to a thorough Coordinator turn on
 the card's repository. Both have a worker's tools and permission mode (shell, gh, the web, files
 outside the repository), so they check what the text alone does not say (which render is newest, a
 CI run) instead of saying they cannot see it. A call the settings want confirmed is refused, as
@@ -276,7 +276,7 @@ start task, from which it derives the worker's steps.
 
 The answer comes 10–30 s later: its start above the microphone (as plain text on one line, its
 Markdown stripped), in full in the open card's log, else
-in the Koordinator's sheet; meanwhile the open card shows what the agent reads. An answer told as a
+in the Coordinator's sheet; meanwhile the open card shows what the agent reads. An answer told as a
 walkthrough shows its first slide there before its words (see Walkthroughs). An answer in the
 sheet stays unread until the owner has the sheet in view (open, the page not hidden): until then
 Obeya's button counts it in orange, it counts once in the navigation and stands in its "Needs you" as one entry, and Tab
@@ -286,14 +286,14 @@ arrives. The quick turn's own reply waits the same way when it only answers, sin
 20 s and more and the owner may have moved on (2026-10-19). A confirmation of actions does not wait:
 the canvas shows what it did, with "Undo" above the microphone.
 
-The Koordinator hears each answer in full with the next command (so „ja“ to a card it offered
+The Coordinator hears each answer in full with the next command (so „ja“ to a card it offered
 works), and it is part of its memory. A question still open at a restart is looked up again. A
-look-up for an action the owner asked for brings its answer to the Koordinator at once instead,
+look-up for an action the owner asked for brings its answer to the Coordinator at once instead,
 which takes the action then (see A step once something is looked up).
 
 ### Looked-up threads
 
-A look-up starts a thread. The Koordinator knows each answer by a tag (`A12`); when the owner's
+A look-up starts a thread. The Coordinator knows each answer by a tag (`A12`); when the owner's
 words follow up on one („und im Oktober?“, „mach mir ein Excel daraus“), the follow-up resumes the
 session that found it (in doubt the newest), which still has all it read and computed. Turns of one
 thread queue. A session that cannot be resumed is replaced by a fresh agent given the thread so far.
@@ -322,7 +322,7 @@ Follow-ups build on the files already there.
 Where an answer explains how something works or what happens when (a flow through the code, one
 thing after another, what a change does, how two variants differ), the look-up agent tells it as a
 short walkthrough with slides and narration instead of a block of text, and it plays while the
-agent still writes it. The agent judges which questions need one; the Koordinator's look-ups and
+agent still writes it. The agent judges which questions need one; the Coordinator's look-ups and
 the project agents alike can tell one. Every text answer has "Show as walkthrough" in its head,
 beside "Make it a card", on hover (always on a screen without hover): in Obeya's sheet, in the
 conversation of the card it was asked on and on a Question card, built once for all three. It counts
@@ -470,13 +470,13 @@ On the card the owner talks straight to that agent through the shared conversati
 on the card); words sent while it reads join its next turn (unread until then, and the owner can
 take them back), except while its turn waits for background work: then they reach it at once, so
 "take 2023 instead" arrives while the download runs (a session that fails after hearing them hands
-them to the fresh one). Its agent passes on with `to_obeya` what asks Obeya; a note the Koordinator
+them to the fresh one). Its agent passes on with `to_obeya` what asks Obeya; a note the Coordinator
 passes to the card goes to it too.
 
 It holds answers, not work: a look of its own ("QUESTION"), the number of answers and files, not
 archived with all finished cards at once (see Archive), no build, plan, prototype or park buttons.
 It has two: "Discuss as idea" (not while its agent reads) makes it an idea whose agent starts from
-the thread and its directory, and "Done" archives it. The Koordinator lists Question cards among
+the thread and its directory, and "Done" archives it. The Coordinator lists Question cards among
 the cards it sees.
 
 #### Asking in a project's sheet
@@ -495,13 +495,13 @@ owner and unlike it; a click opens the sheet. The sheet then opens at the first 
 answers that waited are in Obeya's sheet. The conversation grows in the sheet, without a scrollbar
 of its own.
 
-### Koordinator memory
+### Coordinator memory
 
 The owner's commands go to one ongoing session per canvas, so it understands „die andere auch“. It
 sees a card's open question, also one in a demo report, so „ja“ is an answer, not an approval. An
 approval by word ("deploy it", „raus damit“) lands the way the repository sets; words that ask to
 bypass the pull request („ohne PR“, „direkt auf main“) approve nothing in a repository whose work
-goes out as one, and the Koordinator replies that only the card's button "Straight to main" does that,
+goes out as one, and the Coordinator replies that only the card's button "Straight to main" does that,
 where the settings allow it. It
 knows each card by its number (see Card numbers in The canvas), in its actions too; a card the
 owner's words name by number that is not on the canvas (finished, archived, on another canvas,
@@ -543,7 +543,7 @@ replace a draft with content: the dialog offers to discard it for the new one, a
 draft on GitHub writes the new one too; a draft with only a title gives way at once. The draft
 remembers the wish it came from, so that reply's link reopens it as it stands.
 
-The Koordinator flags a reply when Obeya lacks the feature, not when the request is unclear,
+The Coordinator flags a reply when Obeya lacks the feature, not when the request is unclear,
 something just failed, it does not fit a card's state, or for questions of fact. What an agent can
 work out or make on the machine (a chart of each task's tokens from the agents' session logs, say)
 is a look-up or a task, also where Obeya itself shows nothing of it. On a card such a
@@ -560,10 +560,10 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   short) or collecting them under "Proposals" (late, without context). No icon in the bar (always
   there for something rare) and no line in Obeya's sheet (the owner, 2026-10-17). The action is
   `wish`, since `feedback` is feedback on a card's work.
-- **The Koordinator waits on a card for a step it announced** (2026-10-18, see A step once a card
+- **The Coordinator waits on a card for a step it announced** (2026-10-18, see A step once a card
   gets somewhere), since no turn of its runs without the owner's words and promised steps never
   came. Rejected: promising nothing it cannot take itself (the owner asks for both in one breath); a
-  follow-up card whose worker does it (configuration is the Koordinator's, with check and undo);
+  follow-up card whose worker does it (configuration is the Coordinator's, with check and undo);
   conditions beyond the two a worker waits for on another card.
 - **A walkthrough's word times come from hearing its sentences back** (2026-11-07), with voice in's
   recognition, the same way for every voice. Rejected: the voices' own timestamps, which only
@@ -579,7 +579,7 @@ passed the words on through `to_obeya` hears that the owner finds the link under
 - **A card waiting to start stays full size and takes notes** (2026-10-16; every planned card
   since 2026-10-30, see Card layout). Rejected: shrinking it to a planned card's panel while Obeya
   checks it, which left the owner's thoughts waiting until the agent ran. Spoken words still go to
-  the Koordinator, since no agent is there to pass on „trotzdem starten“.
+  the Coordinator, since no agent is there to pass on „trotzdem starten“.
 - **A card's change list is its own work, read without blocking** (2026-10-21, GitHub issue #2).
   Rejected: diffing each card in full against the main branch, one after the other on the server's
   thread: cards on a feature branch 766 commits ahead each counted the whole branch (30–70 s per
@@ -609,7 +609,7 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   code included, go into its CLAUDE.md (2026-10-02), versioned and seen by colleagues and by Claude
   Code outside Obeya. Rejected: not learning repository rules (lost), preferences scoped to a
   repository in the database (unversioned, invisible outside Obeya), committing to the CLAUDE.md on
-  accept (the Koordinator only reads, and PR-landing repositories take nothing on `main` directly).
+  accept (the Coordinator only reads, and PR-landing repositories take nothing on `main` directly).
 - **The work retrospective learns from transcripts in two stages** (2026-10-05): a model-free excerpt
   per card made into friction notes, and a review of about ten cards' notes. Rejected: building it
   into the retrospective of the owner's inputs (the log's tool lines lack results, and source, beat,
@@ -690,7 +690,7 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   the owner asked in the sheet is looked for where it was asked, not only on Obeya's button. A
   speech bubble rather than a second number, so it is not taken for workstreams that need the owner.
   Answers asked of Obeya about the project stay on Obeya's button alone: they were asked there.
-- **The Koordinator's memory lives in the store, not the session**: a session is never resumed, and
+- **The Coordinator's memory lives in the store, not the session**: a session is never resumed, and
   a new one starts from the stored conversation and the cards' history. That keeps the context short
   over weeks and makes restart and renewal one path; the history is in it because the owner asks
   about progress over time („was ist seit gestern passiert?“) and refers to cards by what happened.

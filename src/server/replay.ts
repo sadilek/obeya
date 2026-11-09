@@ -79,7 +79,7 @@ const HANDOVER = 'ready_for_review';
 export const GAP_MS = 2000;
 /** What a gap inside a cut of the take lasts when played back. */
 export const CUT_MS = 100;
-/** A tool's refusal, as Obeya's tools word it ("Not handed over: …", the Koordinator's "Nothing recorded: …"). */
+/** A tool's refusal, as Obeya's tools word it ("Not handed over: …", the Coordinator's "Nothing recorded: …"). */
 const REFUSAL = /^(?:Not [a-z ]+|Nothing recorded):/;
 /** How long a step that took a context update waits for it to be there now. */
 const CONTEXT_WAIT_MS = 120_000;

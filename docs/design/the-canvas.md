@@ -215,7 +215,7 @@ workstreams stay in rows of chips above. Within a column cards follow what they 
 cross little, else the plan's order; a column holds four cards and overflows into one beside it.
 
 Plan docs state dependencies in prose ("Needs W1", "after W2", or only implicitly), so the
-Koordinator reads them in a turn of its own: for each open workstream the ones it builds on
+Coordinator reads them in a turn of its own: for each open workstream the ones it builds on
 directly. The reading is kept for the doc as it stood; under the pointer a workstream shows the open
 ones it builds on as waits (see Cards on the canvas), and the project's sheet lists the
 workstreams in this order with what each builds on.
@@ -294,7 +294,7 @@ says "Copied" for a moment; under the pointer it shows a copy icon, on a touch s
 form is the same in every language.
 
 The owner names cards by it, to Obeya and to the agents, typed or spoken (speech recognition may
-write `K 42` or `Ka 42`, which count too). The Koordinator knows every card by it (see Koordinator
+write `K 42` or `Ka 42`, which count too). The Coordinator knows every card by it (see Coordinator
 memory); an agent that reads the owner's words (a note, an answer, feedback, the task) is told which
 card each number in them names, with its title and where it is (another canvas, the archive,
 deleted, the agent's own card).
@@ -350,7 +350,7 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
 - *Type*: titles and headings in Newsreader (a plan doc in the sheet too), the rest in IBM Plex
   Sans Condensed, code in the system monospace; both fonts SIL OFL and self-hosted, no Google Fonts.
   A walkthrough's slides and captions alone take showntell's faces, Bricolage Grotesque and Inter
-  (see Walkthroughs in The Koordinator).
+  (see Walkthroughs in The Coordinator).
 - *Carried through*: menus, panel, sheets, dialogs, buttons and fields share palette, type, corners
   and hard shadow; dots, the microphone, spinners and the pin stay round. The site and shared demo
   pages use the same palette and type.
@@ -372,7 +372,7 @@ facets. Only fields that something moved near are recomputed, and a slow computa
 next, so a dragged card keeps the frame rate and its territory follows a little later; at rest
 nothing is computed.
 
-When cards change group, from wherever (the colour ring, the Koordinator, another page), a wave
+When cards change group, from wherever (the colour ring, the Coordinator, another page), a wave
 runs out from where it was assigned, the territory overshoots and settles, and a light runs once
 along the new edge, all in under a second (see the decision on large animations).
 
@@ -390,7 +390,7 @@ pale, a candidate for deleting. Behind the ring the canvas steps back under a fr
 still. Moving towards a ball picks it, a click takes it, Esc closes the ring. The picked group's ×
 deletes it (its cards, archived ones too, belong to none), with "Undo".
 
-The Koordinator has the tools `group` (by name; a new name creates the group), `ungroup` and
+The Coordinator has the tools `group` (by name; a new name creates the group), `ungroup` and
 `rename_group`, and sees each card's group.
 
 ### Refusals
@@ -423,7 +423,7 @@ code, a generic one otherwise.
   which GitHub turns into a link to the issue or pull request of that number in commit messages and
   comments; the hex short code of the address, which is hard to dictate and to recognise; a number
   per canvas, which a card moving to another canvas would lose and which would name two cards where
-  the Koordinator or a worker speaks of another canvas's card.
+  the Coordinator or a worker speaks of another canvas's card.
 - **One navigation on the left for canvases and what waits** (owner, 2026-11-02): what waits for the
   owner was split between "need you" (this canvas), the switcher's counts (the others) and the
   cards themselves; an inbox would have been a fourth place. Its list is the phone's "Needs you", so
@@ -494,7 +494,7 @@ code, a generic one otherwise.
 - **A card's title is optional** (2026-10-15). Rejected: a required title, which dropped untitled
   cards with their text.
 - **Archive, queue and "New task" sit left in the bar** (2026-10-09). Rejected: the queue inside
-  the Koordinator's sheet.
+  the Coordinator's sheet.
 - **The usage limits come from Claude Code's `/usage` data** (2026-10-28), asked through the
   Agent SDK of an idle session. Rejected: calling the plan's usage endpoint directly with the OAuth
   token read from the keychain or Claude Code's credentials file, which ties Obeya to where and how

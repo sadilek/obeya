@@ -1,6 +1,6 @@
 // How wide the sheets on the right are: the owner drags their left edge, and this browser remembers it.
 
-/** The sheets' own width: Koordinator, archive, configuration and a project's workstreams share it. */
+/** The sheets' own width: Coordinator, archive, configuration and a project's workstreams share it. */
 export const SHEET_W = 380;
 /** Room the canvas keeps beside a sheet, however wide it is dragged. */
 const CANVAS_MIN = 240;

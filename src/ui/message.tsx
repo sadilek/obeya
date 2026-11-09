@@ -1,4 +1,4 @@
-// One message of a conversation, as cards and the Koordinator's sheet show it alike: who said it
+// One message of a conversation, as cards and the Coordinator's sheet show it alike: who said it
 // and when above, the text below as paragraphs and lists; a reply quotes the message it answers
 // above its words, as chat apps do.
 
@@ -76,8 +76,8 @@ export function Msg({
   );
 }
 
-/** Under the owner's words while the Koordinator reads them, in the sheet and on a card alike. */
-export const Reading = () => <Msg by="koordinator" className="thinking" who={`${t.author.koordinator} ${t.talk.reading}`} />;
+/** Under the owner's words while the Coordinator reads them, in the sheet and on a card alike. */
+export const Reading = () => <Msg by="coordinator" className="thinking" who={`${t.author.coordinator} ${t.talk.reading}`} />;
 
 /**
  * Scrolls the conversation to a message (`ev` in `Msg`), which lights up once, so the eye finds it;
@@ -358,7 +358,7 @@ export const Cards = createContext<{ items: Item[]; open: (i: Item) => void }>({
  * looked-up answer without a walkthrough, or a reply of Obeya's that only answers.
  */
 export const tellable = (e: CardEvent) =>
-  !!e.text && !e.answer?.live && (e.answer ? !e.answer.files?.some((f) => isWalkthrough(f.name)) : e.author === 'koordinator' && !!e.reply && !e.wish);
+  !!e.text && !e.answer?.live && (e.answer ? !e.answer.files?.some((f) => isWalkthrough(f.name)) : e.author === 'coordinator' && !!e.reply && !e.wish);
 
 /**
  * What an answer in a card's conversation adds to it: in its head "Make it a card" (a looked-up one,

@@ -428,7 +428,7 @@ describe('edges a review found', () => {
   });
 });
 
-describe('the Koordinator waits on a card', () => {
+describe('the Coordinator waits on a card', () => {
   test('a new card of the command is waited on by its id, and its getting done takes the step up by itself', async () => {
     const heard = canvas.commander.hear('leg eine Aufgabe fürs Repo an, und danach noch eine für die Leinwand', {});
     await until(() => runtime.sessions.length === 1);
@@ -448,7 +448,7 @@ describe('the Koordinator waits on a card', () => {
 
     // its agent, asking Obeya for the step itself, hears that Obeya takes it
     expect(await canvas.forward(repo.id, 'Lege die Leinwand an.')).toContain('Obeya itself takes these steps once your card is done: New card „Leinwand anlegen“, not started. If you asked for one of them, it is not missing');
-    // done: the board's change wakes the Koordinator, without the owner saying anything
+    // done: the board's change wakes the Coordinator, without the owner saying anything
     board().work(repo.id, { state: 'done' });
     await until(() => k.inbox.length === 2);
     expect(k.inbox[1]).toContain('the card "Repository anlegen" is done');
@@ -471,7 +471,7 @@ describe('a card that starts later', () => {
   const DAY = 24 * HOUR;
   const worker = () => runtime.sessions.findLast((x) => x.spec.role === 'worker')!;
 
-  test('proposed with a start time: accepted, it is planned and snoozed until then, survives a restart, and starts at the time through the Koordinator', async () => {
+  test('proposed with a start time: accepted, it is planned and snoozed until then, survives a restart, and starts at the time through the Coordinator', async () => {
     const { id: src, s } = await atWork();
     const at = later(14 * DAY);
     expect(s.call('propose_card', { title: 'NV prüfen', task: 'Prüfen, ob die Bank die NV erfasst hat.', reason: 'Erst in zwei Wochen sichtbar.', start_at: at })).toContain('Proposed');

@@ -16,7 +16,7 @@ export function cardNumbersIn(text: string): number[] {
 }
 
 /**
- * The setting (per canvas) since when its cards have numbers: the Koordinator's memory of earlier
+ * The setting (per canvas) since when its cards have numbers: the Coordinator's memory of earlier
  * exchanges names cards by tags that held for one session only.
  */
 export const NUMBERS_SINCE = 'card_numbers_since';

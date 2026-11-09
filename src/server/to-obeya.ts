@@ -1,13 +1,13 @@
 // `to_obeya`: what the owner says or types on a card an agent listens on goes straight to that
 // agent, and the agent passes on what asks Obeya for something rather than itself. One tool for
-// workers (prototypes included) and exploration agents; the Koordinator reads the request with the
+// workers (prototypes included) and exploration agents; the Coordinator reads the request with the
 // owner's own words, as a command, and its confirmation or reply is the tool's result.
 
 import { z } from 'zod';
 import type { AgentTool } from './runtime';
 import { messageOf } from '../core/text';
 
-/** Passes `request` on from the agent's card; settles with what the Koordinator did or replied. */
+/** Passes `request` on from the agent's card; settles with what the Coordinator did or replied. */
 export type Forward = (request: string) => Promise<string>;
 
 /** What the agent's instructions say about it, in one paragraph. */

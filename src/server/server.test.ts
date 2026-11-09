@@ -96,7 +96,7 @@ describe('refused requests', () => {
     expect(await codeOf(post(api('/cards'), JSON.stringify({ title: 'x', x: 'links', y: 0 })))).toBe('invalid');
   });
 
-  test('a card already with the Koordinator cannot be started again', async () => {
+  test('a card already with the Coordinator cannot be started again', async () => {
     const c = card();
     board.work(c.id, { queue: JSON.stringify({ checking: true }) });
     expect(await codeOf(act(c.id, { action: 'start' }))).toBe('queued');
@@ -497,7 +497,7 @@ describe('plan docs', () => {
 
 describe('voice', () => {
   const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1)!;
-  /** The Koordinator's session once the command has reached it. */
+  /** The Coordinator's session once the command has reached it. */
   const briefed = async () => {
     await until(() => interpretation()?.inbox.length);
     return interpretation();
@@ -587,7 +587,7 @@ describe('voice', () => {
     ['writes its words for silence on without the card titles is nothing heard', 'lächpt '.repeat(30), 'Vielen Dank.', 'Ich habe nichts gehört.'],
     ['writes its words for silence on at once is nothing heard', 'Untertitelung des ZDF, 2020', 'Unused', 'Ich habe nichts gehört.'],
   ] as [string, string | Transcript, string | Transcript, string][]) {
-    test(`a recording Whisper ${what}, and the Koordinator does not guess`, async () => {
+    test(`a recording Whisper ${what}, and the Coordinator does not guess`, async () => {
       whisper = (vocabulary) => (vocabulary ? first : again);
       const body = (await (await fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { confirm: string; token?: string; audio?: string };
       expect(body.confirm).toBe(confirm);
@@ -621,7 +621,7 @@ describe('voice', () => {
     ws.close();
   });
 
-  test('pressing Space starts the Koordinator ahead; commands then only send it the brief', async () => {
+  test('pressing Space starts the Coordinator ahead; commands then only send it the brief', async () => {
     const c = card();
     expect((await post(api('/voice/warm'), '')).status).toBe(204);
     await post(api('/voice/warm'), '');
@@ -665,10 +665,10 @@ describe('voice', () => {
     const { confirm } = await heard;
     expect(confirm).toStartWith('Ich konnte das nicht lesen.');
     expect(confirm).toContain('/login');
-    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: confirm });
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator', text: confirm });
   });
 
-  test("on a card an agent listens on, typed and spoken words go straight to it, without the Koordinator", async () => {
+  test("on a card an agent listens on, typed and spoken words go straight to it, without the Coordinator", async () => {
     const told: [string, string, string[], boolean][] = [];
     canvas.tell = (cardId, text, images, spoken) => void told.push([cardId, text, images, spoken]);
     const c = card();
@@ -682,7 +682,7 @@ describe('voice', () => {
       [c.id, 'gib das frei', [], false],
       [c.id, 'Mach den Knopf größer', [], true],
     ]);
-    // an idea's exploration agent listens too; a planned card has nobody but the Koordinator
+    // an idea's exploration agent listens too; a planned card has nobody but the Coordinator
     const idea = board.create({ title: 'Export', x: 0, y: 0, idea: true });
     await post(api(`/command?card=${idea.id}`), JSON.stringify({ text: 'Was kostet das?' }));
     expect(told.at(-1)).toEqual([idea.id, 'Was kostet das?', [], false]);
@@ -707,7 +707,7 @@ describe('voice', () => {
     expect(told).toEqual([7, 8, undefined]);
   });
 
-  test('words typed or spoken in reply to a message of the sheet go to the Koordinator with it', async () => {
+  test('words typed or spoken in reply to a message of the sheet go to the Coordinator with it', async () => {
     const heard: unknown[] = [];
     canvas.commander.hear = async (_text, _focus, _images, input = {}) => {
       heard.push(input.replyTo);
@@ -808,14 +808,14 @@ describe('screenshots', () => {
     expect(await codeOf(post(api('/cards'), JSON.stringify({ title: 'x', x: 0, y: 0, images: 'a.png' })))).toBe('invalid');
   });
 
-  test("a typed command's screenshots go to the Koordinator and to the cards it creates or concerns", async () => {
+  test("a typed command's screenshots go to the Coordinator and to the cards it creates or concerns", async () => {
     const { id } = (await (await upload(png)).json()) as { id: string };
     const c = card();
     board.work(c.id, { state: 'working', workspace: dir, session_id: 'sess-1' });
     const res = post(api('/command'), JSON.stringify({ text: 'Neue Karte: diese Seite bricht um, und sag A, dass es so aussieht', images: [id] }));
-    const koordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
-    await until(() => koordinator()?.inbox.length);
-    const k = koordinator()!;
+    const coordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    await until(() => coordinator()?.inbox.length);
+    const k = coordinator()!;
     expect(k.images[0]).toEqual([canvas.images.path(id)!]);
     expect(k.inbox[0]).toContain('The owner attached a screenshot');
     k.call('act', {
@@ -837,15 +837,15 @@ describe('screenshots', () => {
     expect(await codeOf(post(api('/command'), JSON.stringify({ text: 'x', images: ['0000.png'] })))).toBe('invalid');
   });
 
-  test("a recording's screenshots go to the Koordinator and its actions; nothing heard leaves them unused", async () => {
+  test("a recording's screenshots go to the Coordinator and its actions; nothing heard leaves them unused", async () => {
     const { id } = (await (await upload(png)).json()) as { id: string };
     const voice = (q = '') => fetch(new URL(api(`/voice${q}`), server.url), { method: 'POST', body: 'AUDIO' });
     expect(await codeOf(voice('?image=0000.png'))).toBe('invalid');
     expect(heardAudio).toEqual([]);
     const res = voice(`?image=${id}`);
-    const koordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
-    await until(() => koordinator()?.inbox.length);
-    const k = koordinator()!;
+    const coordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    await until(() => coordinator()?.inbox.length);
+    const k = coordinator()!;
     expect(k.images[0]).toEqual([canvas.images.path(id)!]);
     k.call('act', { actions: [{ do: 'new_card', title: 'Export', body: 'bricht um' }], confirm: 'Neue Karte „Export“.' });
     expect(await (await res).json()).not.toHaveProperty('unheard');

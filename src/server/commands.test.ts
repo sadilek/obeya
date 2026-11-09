@@ -12,12 +12,12 @@ let runtime: FakeRuntime;
 let executed: Command[];
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
-/** The number a card goes by, as the Koordinator names it. */
+/** The number a card goes by, as the Coordinator names it. */
 const tag = (c: { number: number }) => cardTag(c.number);
 const commander = (sessionCommands?: number) =>
   new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, ...(sessionCommands ? { sessionCommands } : {}) });
 
-/** Says `text`, lets the Koordinator answer with `tool`, and ends its turn. */
+/** Says `text`, lets the Coordinator answer with `tool`, and ends its turn. */
 async function say(k: Commander, text: string, tool: string, args: Record<string, unknown>) {
   const heard = k.hear(text, {});
   await settle();
@@ -35,7 +35,7 @@ beforeEach(() => {
 });
 
 describe("the owner's language", () => {
-  test("the Koordinator confirms in the language of the owner's words, else the conversation language; Obeya's own words follow the interface; either changed takes a new session", async () => {
+  test("the Coordinator confirms in the language of the owner's words, else the conversation language; Obeya's own words follow the interface; either changed takes a new session", async () => {
     let language: 'de' | 'en' = 'en';
     let conversation: 'de' | 'en' = 'en';
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => language, () => conversation);
@@ -71,7 +71,7 @@ describe("the owner's language", () => {
 });
 
 describe("the owner's choice of model and effort", () => {
-  test('the Koordinator reads the next command in a new session once the owner chose another model or effort for it', async () => {
+  test('the Coordinator reads the next command in a new session once the owner chose another model or effort for it', async () => {
     let choice: AgentSetting = { harness: 'claude', model: 'default', effort: 'medium' };
     board.create({ title: 'Export', x: 0, y: 0 });
     const k = new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, agentSetting: () => choice });
@@ -82,11 +82,11 @@ describe("the owner's choice of model and effort", () => {
     const second = await say(k, 'und jetzt?', 'reply', { confirm: 'Läuft.' });
     expect(second.session).not.toBe(first.session);
     expect(first.session.closed).toBe(true);
-    expect(second.session.spec.role).toBe('koordinator');
+    expect(second.session.spec.role).toBe('coordinator');
   });
 });
 
-describe('the Koordinator remembers', () => {
+describe('the Coordinator remembers', () => {
   test('the conversation goes on in one session; card tags stay, and each command brings what happened since', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander();
@@ -223,7 +223,7 @@ describe('the Koordinator remembers', () => {
       actions: [{ do: 'new_card', title: 'Rechnung aufteilen', body: 'Tipjar soll die Rechnung aufteilen.', start: true }],
       confirm: 'Neue Aufgabe „Rechnung aufteilen“, der Agent fängt an.',
     });
-    // the field says what the Koordinator would otherwise decide either way
+    // the field says what the Coordinator would otherwise decide either way
     expect(session.spec.tools.find((t) => t.name === 'act')!.description).toContain('start false only when the owner says it should wait („nur notieren“, „für später“, „noch nicht starten“), else true');
     k.arm(heard.token!);
     // left out, it starts too
@@ -347,7 +347,7 @@ describe('the Koordinator remembers', () => {
     expect(executed[1]).toEqual({ do: 'newCard', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id });
   });
 
-  test('an action that does not fit the card is refused in the turn, so the Koordinator can answer instead', async () => {
+  test('an action that does not fit the card is refused in the turn, so the Coordinator can answer instead', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'live' });
     const k = commander();
@@ -480,7 +480,7 @@ describe('the Koordinator remembers', () => {
     expect(executed).toEqual([{ do: 'dequeue', card: behind.id }]);
   });
 
-  test('starting a project hands its planned workstreams to the Koordinator together', async () => {
+  test('starting a project hands its planned workstreams to the Coordinator together', async () => {
     const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: '', done, inReview: false });
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({
       docs: [
@@ -515,7 +515,7 @@ describe('the Koordinator remembers', () => {
     k.undo((await heard).token!);
     expect(board.events(a.id).map((e) => [e.kind, e.author, e.text])).toEqual([
       ['say', 'owner', 'halt ihn an'],
-      ['say', 'koordinator', '„Export“ wird angehalten.'],
+      ['say', 'coordinator', '„Export“ wird angehalten.'],
       ['state', 'owner', 'Zurückgenommen.'],
     ]);
     expect(board.snapshot().talk).toEqual([]);
@@ -545,7 +545,7 @@ describe('the Koordinator remembers', () => {
     runtime.last.emit({ type: 'idle' });
     await forwarded;
     // the reply to what the card's agent passed on is marked, to stand under the agent's message
-    expect(board.events(a.id).filter((e) => e.author === 'koordinator').map((e) => [e.text, !!e.reply, !!e.forwarded])).toEqual([
+    expect(board.events(a.id).filter((e) => e.author === 'coordinator').map((e) => [e.text, !!e.reply, !!e.forwarded])).toEqual([
       ['Nein, Login ändert nur die Anmeldung.', true, false],
       ['„Export“ startet.', false, false],
       ['Nein.', true, true],
@@ -585,7 +585,7 @@ describe('the Koordinator remembers', () => {
     expect(board.talk().at(-1)!.unread).toBeUndefined();
   });
 
-  test('words in reply to a message of the sheet stand with its quote, and the Koordinator reads the message whole', async () => {
+  test('words in reply to a message of the sheet stand with its quote, and the Coordinator reads the message whole', async () => {
     const k = commander();
     await say(k, 'wie viele Karten laufen?', 'reply', { confirm: 'Zwei: „Export“ und „Login“.' });
     const [first] = board.snapshot().talk;
@@ -601,7 +601,7 @@ describe('the Koordinator remembers', () => {
     expect(await reply('und welche davon wartet?', { talk: first!.id, part: 'reply' })).toContain(
       'The owner typed (as written, no recognition errors): "und welche davon wartet?"\n\n[In reply to your reply: „Zwei: „Export“ und „Login“.“]',
     );
-    expect(board.snapshot().talk.at(-1)!.replyTo).toEqual({ talk: first!.id, part: 'reply', by: 'koordinator', text: 'Zwei: „Export“ und „Login“.' });
+    expect(board.snapshot().talk.at(-1)!.replyTo).toEqual({ talk: first!.id, part: 'reply', by: 'coordinator', text: 'Zwei: „Export“ und „Login“.' });
     expect(await reply('nochmal', { talk: first!.id, part: 'said' })).toContain('[In reply to their own earlier message: „wie viele Karten laufen?“]');
     // a looked-up answer goes by its tag, to follow up on it
     store.answerTalk(first!.id, 'Export wartet auf dich.', 'project');
@@ -616,7 +616,7 @@ describe('the Koordinator remembers', () => {
     }
   });
 
-  test("the owner's words stand in the conversation at once; the reply follows once the Koordinator has read them", async () => {
+  test("the owner's words stand in the conversation at once; the reply follows once the Coordinator has read them", async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander();
     const heard = k.hear('hallo nochmal', {});
@@ -625,7 +625,7 @@ describe('the Koordinator remembers', () => {
     // both wait: the first is being read, the second waits for its turn
     expect(board.snapshot().talk.map((t) => [t.said, t.reply])).toEqual([['hallo nochmal', undefined]]);
     expect(board.events(a.id).map((e) => [e.kind, e.author, e.text])).toEqual([['say', 'owner', 'starte ihn']]);
-    // the words being read are not part of what the Koordinator remembers
+    // the words being read are not part of what the Coordinator remembers
     expect(runtime.last.inbox.at(-1)).toContain('You have not talked with the owner before.');
     runtime.last.call('reply', { confirm: 'Hallo!' });
     runtime.last.emit({ type: 'idle' });
@@ -637,7 +637,7 @@ describe('the Koordinator remembers', () => {
     await onCard;
     expect(board.events(a.id).map((e) => [e.kind, e.author, e.text])).toEqual([
       ['say', 'owner', 'starte ihn'],
-      ['say', 'koordinator', '„Export“ startet.'],
+      ['say', 'coordinator', '„Export“ startet.'],
     ]);
   });
 
@@ -648,7 +648,7 @@ describe('the Koordinator remembers', () => {
     board.log(a.id, 'say', 'owner', 'starte ihn');
     board.interruptTalk();
     expect(board.snapshot().talk.map((t) => t.reply)).toEqual(['Obeya startete neu, bevor ich das gelesen hatte. Bitte noch einmal.']);
-    expect(board.events(a.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: 'Obeya startete neu, bevor ich das gelesen hatte. Bitte noch einmal.' });
+    expect(board.events(a.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator', text: 'Obeya startete neu, bevor ich das gelesen hatte. Bitte noch einmal.' });
   });
 
   test('a new session, after a restart, starts from the stored conversation and the canvas history', async () => {
@@ -664,7 +664,7 @@ describe('the Koordinator remembers', () => {
     expect(brief).toContain('the owner: "starte Export" → you: "„Export“ startet."');
     expect(brief).toContain(`${tag(a)} "Export": new card`);
     expect(brief).toContain(`${tag(a)} "Export": Agent gestartet auf obeya/export.`);
-    // the worker's steps are no history the Koordinator needs
+    // the worker's steps are no history the Coordinator needs
     expect(brief).not.toContain('Read src/app.ts');
   });
 
@@ -719,7 +719,7 @@ describe('the usage limit', () => {
   const limited = () => new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, limitMargin: 10 });
   const lifts = (ms: number) => runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() + ms } });
 
-  test('words the limit kept the Koordinator from reading wait and are read by themselves once it lifts; the reply comes with „Rückgängig“', async () => {
+  test('words the limit kept the Coordinator from reading wait and are read by themselves once it lifts; the reply comes with „Rückgängig“', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const notices: Notice[] = [];
     board.onNotice((n) => void notices.push(n));
@@ -770,7 +770,7 @@ describe('the usage limit', () => {
     expect(store.heldTalk('c').map((t) => t.said)).toEqual(['hallo', 'starte ihn']);
     expect(board.events(a.id).map((e) => [e.author, e.text.slice(0, 30)])).toEqual([
       ['owner', 'starte ihn'],
-      ['koordinator', 'Das Nutzungslimit ist erreicht'],
+      ['coordinator', 'Das Nutzungslimit ist erreicht'],
     ]);
 
     // it lifts: read in the order they were said
@@ -783,7 +783,7 @@ describe('the usage limit', () => {
     runtime.last.call('act', { actions: [{ do: 'start', card: tag(a) }], confirm: '„Export“ startet.' });
     runtime.last.emit({ type: 'idle' });
     await until(() => board.events(a.id).length === 3);
-    expect(board.events(a.id).at(-1)).toMatchObject({ author: 'koordinator', text: '„Export“ startet.' });
+    expect(board.events(a.id).at(-1)).toMatchObject({ author: 'coordinator', text: '„Export“ startet.' });
     expect(store.heldTalk('c')).toEqual([]);
   });
 
@@ -858,8 +858,8 @@ describe('what the agent of a card passes on from the owner\'s words', () => {
           expect(executed).toEqual([command]);
           executed = [];
         }
-        // the owner's words stand on the card as the agent got them; here only the Koordinator's confirmations
-        expect(said(a.id)).toEqual(commands.map(() => ['koordinator', 'Bestätigt.']));
+        // the owner's words stand on the card as the agent got them; here only the Coordinator's confirmations
+        expect(said(a.id)).toEqual(commands.map(() => ['coordinator', 'Bestätigt.']));
       });
 
   test("a reply is the agent's answer, and a question about the card itself is not refused as one for its agent", async () => {
@@ -887,14 +887,14 @@ describe('what the agent of a card passes on from the owner\'s words', () => {
   });
 });
 
-describe('what the owner says or types to the Koordinator about a card with an agent', () => {
+describe('what the owner says or types to the Coordinator about a card with an agent', () => {
   const open = (state: Record<string, string>) => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, state);
     return a;
   };
 
-  test('the Koordinator learns whether the words were spoken or typed, and in which field', async () => {
+  test('the Coordinator learns whether the words were spoken or typed, and in which field', async () => {
     const source = board.create({ title: 'Login', x: 0, y: 0 });
     const p = board.propose(source.id, { title: 'Export', task: 'CSV', reason: 'Fehlt.', idea: false, questions: [] });
     const k = commander();
@@ -936,7 +936,7 @@ describe('what the owner says or types to the Koordinator about a card with an a
     expect(executed).toEqual([]);
     k.arm(token!);
     await new Promise((r) => setTimeout(r, 40));
-    // said about a card, the Koordinator's words stand
+    // said about a card, the Coordinator's words stand
     expect(executed).toEqual([{ do: 'approve', card: a.id }, { do: 'note', card: a.id, text: 'Danke.', spoken: true }]);
   });
 });
@@ -984,7 +984,7 @@ describe('„Merk dir“', () => {
     expect(executed).toEqual([{ do: 'remember', text: 'Demos mit Ton.', replaces: ton }]);
   });
 
-  test('a rule about a repository is filed for its CLAUDE.md; the Koordinator knows the repositories', async () => {
+  test('a rule about a repository is filed for its CLAUDE.md; the Coordinator knows the repositories', async () => {
     const k = commander();
     const heard = k.hear('merk dir: in Home Tests immer auf Deutsch', {});
     await settle();
@@ -1002,7 +1002,7 @@ describe('„Merk dir“', () => {
   });
 });
 
-describe('what the owner says to the Koordinator is offered for learning', () => {
+describe('what the owner says to the Coordinator is offered for learning', () => {
   test('a reply and a look-up at once; a command once it runs, not when taken back; words that reach the learner another way not again', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'working' });
@@ -1041,7 +1041,7 @@ describe('what the owner says to the Koordinator is offered for learning', () =>
   });
 });
 
-describe("the Koordinator and Obeya's configuration", () => {
+describe("the Coordinator and Obeya's configuration", () => {
   const view = { file: '/h/canvases.json', source: 'file', canvases: [{ name: 'Obeya', repos: [{ path: '/r' }] }], running: ['obeya'] } as unknown as ConfigView;
   const config = {
     view: () => view,
@@ -1084,7 +1084,7 @@ describe("the Koordinator and Obeya's configuration", () => {
     expect(executed).toEqual([{ do: 'configure', canvases: good }]);
   });
 
-  test('without it, the Koordinator has no such tools', async () => {
+  test('without it, the Coordinator has no such tools', async () => {
     commander().warm();
     expect(runtime.last.spec.tools.map((t) => t.name)).not.toContain('configure');
   });
@@ -1111,7 +1111,7 @@ describe('Arbeitsrückschau on request', () => {
 });
 
 describe('groups by voice', () => {
-  test('the Koordinator sees the groups and puts cards into one, takes them out and renames one', async () => {
+  test('the Coordinator sees the groups and puts cards into one, takes them out and renames one', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const b = board.create({ title: 'Rabatt', x: 400, y: 0 });
     const g = board.createGroup('Abrechnung', [a.id]);
@@ -1147,7 +1147,7 @@ describe('groups by voice', () => {
 });
 
 describe('merging and deleting planned tasks by voice', () => {
-  test('the Koordinator merges planned tasks of one repository nobody has worked on, the first staying, and deletes one; it is refused for others', async () => {
+  test('the Coordinator merges planned tasks of one repository nobody has worked on, the first staying, and deletes one; it is refused for others', async () => {
     const a = board.create({ title: 'Login error', x: 0, y: 0 });
     const b = board.create({ title: 'Sign in again', x: 400, y: 0 });
     const c = board.create({ title: 'Same again', x: 800, y: 0 });
@@ -1256,7 +1256,7 @@ describe("wishes for Obeya's makers", () => {
     runtime.last.call('reply', { confirm: 'Das kann Obeya nicht.', wish: true });
     runtime.last.emit({ type: 'idle' });
     expect(await heard).toEqual({ confirm: 'Das kann Obeya nicht.', cannot: true });
-    const answer = board.events(a.id).find((e) => e.author === 'koordinator')!;
+    const answer = board.events(a.id).find((e) => e.author === 'coordinator')!;
     expect(answer.wish).toEqual({ said: 'sortier die Karten nach Datum', answer: 'Das kann Obeya nicht.' });
   });
 });
@@ -1322,7 +1322,7 @@ describe('snoozing by voice', () => {
   });
 });
 
-describe('a step the Koordinator takes once a card gets somewhere', () => {
+describe('a step the Coordinator takes once a card gets somewhere', () => {
   /** Runs commands as the canvas does: a new card is created, and its id comes back for a wait on it. */
   const making = () =>
     new Commander({
@@ -1340,7 +1340,7 @@ describe('a step the Koordinator takes once a card gets somewhere', () => {
     const other = board.create({ title: 'Recipes einrichten', x: 0, y: 0 });
     const notices: Notice[] = [];
     board.onNotice((n) => void notices.push(n));
-    // the step names cards by their numbers, which stay theirs: it stands as the Koordinator wrote it
+    // the step names cards by their numbers, which stay theirs: it stands as the Coordinator wrote it
     const then = `Start ${tag(other)}, then tell ${tag(other)} “Recipes einrichten” and „Recipes einrichten“ (${tag(other)}).`;
     const k = making();
     const { heard, session } = await say(k, 'Leg eine Aufgabe an, die das Repo erstellt, und dann die Leinwand', 'act', {
@@ -1512,7 +1512,7 @@ describe('a step the Koordinator takes once a card gets somewhere', () => {
   });
 });
 
-describe('a step the Koordinator takes once it has looked something up', () => {
+describe('a step the Coordinator takes once it has looked something up', () => {
   /** Runs commands as the canvas does; a question it looks up is answered when the test says. */
   const looking = (asked: number[] = []) =>
     new Commander({
@@ -1544,7 +1544,7 @@ describe('a step the Koordinator takes once it has looked something up', () => {
     // no answer yet: nothing to take up
     expect(k.answerIn(asking!.id)).toBe(false);
 
-    board.answerTalk(asking!.id, '- #27 Skills per „/“ (https://github.com/o/r/issues/27)\n- #25 Freigabe scheitert (https://github.com/o/r/issues/25)', 'koordinator');
+    board.answerTalk(asking!.id, '- #27 Skills per „/“ (https://github.com/o/r/issues/27)\n- #25 Freigabe scheitert (https://github.com/o/r/issues/25)', 'coordinator');
     expect(k.answerIn(asking!.id)).toBe(true);
     // a second call while it is taken up takes it up once
     expect(k.answerIn(asking!.id)).toBe(false);
@@ -1589,7 +1589,7 @@ describe('a step the Koordinator takes once it has looked something up', () => {
     runtime.last.emit({ type: 'idle' });
     await heard;
     const [asking] = board.snapshot().talk;
-    board.answerTalk(asking!.id, '#3 Login\n#4 Logout', 'koordinator');
+    board.answerTalk(asking!.id, '#3 Login\n#4 Logout', 'coordinator');
     // the server stops before it takes the step up; the next one takes it up where the owner was
     looking().resume();
     await until(() => runtime.last.inbox.length === 1);
@@ -1609,7 +1609,7 @@ describe('a step the Koordinator takes once it has looked something up', () => {
     await say(k, 'welche Issues sind offen?', 'look_up', { question: 'Welche Issues sind offen?', confirm: 'Ich schaue nach.' });
     const [asking] = board.snapshot().talk;
     expect(asking!.then).toBeUndefined();
-    board.answerTalk(asking!.id, 'Zwei.', 'koordinator');
+    board.answerTalk(asking!.id, 'Zwei.', 'coordinator');
     expect(k.answerIn(asking!.id)).toBe(false);
   });
 
@@ -1617,7 +1617,7 @@ describe('a step the Koordinator takes once it has looked something up', () => {
     const k = looking();
     await say(k, 'leg für jedes offene Issue eine Aufgabe an', 'look_up', { question: 'Welche Issues sind offen?', then: 'Create a task for each.', confirm: 'Ich lese nach und lege sie dann an.' });
     const [asking] = board.snapshot().talk;
-    board.answerTalk(asking!.id, '#3 Login', 'koordinator');
+    board.answerTalk(asking!.id, '#3 Login', 'coordinator');
     expect(board.answeredSteps().map((x) => x.id)).toEqual([asking!.id]);
     // the server stops before it takes the step up; the next one does
     looking().resume();

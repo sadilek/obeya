@@ -44,7 +44,7 @@ import { dismissPlace, type Place, seekTo, showsVersions, usePlace, videoOf, wat
 import { cameInView, useSeen } from './seen';
 import { ClockMark, contributorChoice, SnoozeLine, SnoozeMenu, snoozeWho } from './snooze';
 import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen, stateLabel, t, uiLanguage } from './strings';
-import { agentWorks, cardTalk, demoHandover, talkState, koordinatorReads, ownerField, parseQuestion, snoozeLine, talkAlone, type Turn, unseenTurns, waitsFirstStart, worked as isWorked } from './talk';
+import { agentWorks, cardTalk, demoHandover, talkState, coordinatorReads, ownerField, parseQuestion, snoozeLine, talkAlone, type Turn, unseenTurns, waitsFirstStart, worked as isWorked } from './talk';
 import { PageChangeList } from './page-changes';
 import { WishReplyLink } from './wish';
 import { claudeLoginFailed, codexLoginLost } from '../core/login';
@@ -60,7 +60,7 @@ export type ActDone = { close: true; ack: string; ackFor?: (result: unknown) => 
 /** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
 export type Pending = { card: string; title: string; answered: Promise<unknown> };
 
-/** Words typed into a field of the card: straight to its agent where one listens, else the Koordinator reads them like spoken ones; the panel does not wait. */
+/** Words typed into a field of the card: straight to its agent where one listens, else the Coordinator reads them like spoken ones; the panel does not wait. */
 type Tell = (text: string, images: string[] | undefined, field: Field, replyTo?: number) => void;
 
 interface Props {
@@ -618,7 +618,7 @@ export function Detail(p: Props) {
               <Shots ids={item.images} />
             </>
           )}
-          {/* a card nobody worked on shows its conversation once there is something, such as a talk with the Koordinator */}
+          {/* a card nobody worked on shows its conversation once there is something, such as a talk with the Coordinator */}
           {item.state !== 'proposal' && (
             <TalkColumn bare>
               <Conversation item={item} past hideEmpty />
@@ -1362,7 +1362,7 @@ function Conversation({
   );
   if (!events || !turns) return null;
   if (hideEmpty && !turns.shown.length && !turns.pending.length) return null;
-  const by = idea ? 'explorer' : question ? 'koordinator' : 'worker';
+  const by = idea ? 'explorer' : question ? 'coordinator' : 'worker';
   const agent = t.author[by];
   // no agent's message ever closes a proposal's rounds: its rework shows only what came after the owner's latest words
   const since = proposal && turns.shown.length ? events.indexOf(turns.shown.at(-1)!.e) : -1;
@@ -1509,7 +1509,7 @@ function Conversation({
             <Message key={e.id} turn={{ e, steps: [] }} unread={t.talk.unread(idea || question || proposal ? 'reply' : holdsNotes(item) ? 'start' : 'step')} onDelete={() => takeBack(item.id, e)} />
           ),
         )}
-        {!working && !past && koordinatorReads(events) && <Reading />}
+        {!working && !past && coordinatorReads(events) && <Reading />}
         {!working && questions}
         {!working && turns.below.map(line)}
       </div>
@@ -3070,7 +3070,7 @@ interface TalkField {
    * them; the conversation marks them on the question.
    */
   quote?: boolean;
-  /** Words alone go to the card's agent, or to the Koordinator that `listener` names; `replyTo`: the message they reply to. */
+  /** Words alone go to the card's agent, or to the Coordinator that `listener` names; `replyTo`: the message they reply to. */
   onWords: (text: string, images?: string[], replyTo?: number) => Promise<void>;
   /** Picked options go to the agent with the words: `picks` holds them for each question, and with `quote` the text names them too. */
   onPicked: (text: string, picks: string[][], images?: string[], replyTo?: number) => Promise<void>;
@@ -3304,7 +3304,7 @@ const explainedFailure = (item: Item, events: CardEvent[] | null | undefined) =>
 };
 
 /**
- * Why a planned card is not running: a start through the Koordinator that failed afterwards drops
+ * Why a planned card is not running: a start through the Coordinator that failed afterwards drops
  * the card back to planned, and the reason is the last entry of its log.
  */
 function LastFailure({ item }: { item: Item }) {

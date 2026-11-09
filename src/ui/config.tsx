@@ -36,7 +36,7 @@ declare global {
 
 type Checked = Pick<ConfigChecked, 'resolved' | 'problems'>;
 
-/** Hands the Koordinator a request; to the one of `canvas` where given, else to this page's. */
+/** Hands the Coordinator a request; to the one of `canvas` where given, else to this page's. */
 type Ask = (text: string, canvas?: string) => void;
 
 /** The dialog's sections, in the order its list shows them. */
@@ -217,7 +217,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   useEffect(() => {
     if (view) keepConfigDraft<KeptCanvases>(sessionStorage, 'canvases', { draft, origin }, view.canvases, ofKept);
   }, [draft, origin, view]);
-  // read afresh whenever the dialog opens: the Koordinator or the file may have changed it; a draft not saved yet stays, after a reload too
+  // read afresh whenever the dialog opens: the Coordinator or the file may have changed it; a draft not saved yet stays, after a reload too
   useEffect(() => {
     if (!on) return;
     sharedDone.clear();
@@ -324,7 +324,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
           <div className="p-kind">{c.kind}</div>
           <h2>{c.title}</h2>
           <div className="cfg-ask">
-            <p className="hint">{c.koordinator}</p>
+            <p className="hint">{c.coordinator}</p>
             <button className="btn small" onClick={onTalk}>
               {c.askObeya}
             </button>
@@ -1632,7 +1632,7 @@ interface CanvasProps {
   saved: boolean;
   problems: ConfigProblem[];
   focus: ConfigFocus | null;
-  /** Has the Koordinator create a task that fixes a problem; only for the configuration as saved, which is what it reads. */
+  /** Has the Coordinator create a task that fixes a problem; only for the configuration as saved, which is what it reads. */
   ask?: Ask;
   onRecheck: () => void;
   onReload: () => Promise<void>;
@@ -1648,7 +1648,7 @@ interface CanvasProps {
 /** A canvas as its own page: its title with id, order and removal, its name, then each repository with its settings. */
 function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin, saved, problems, focus, ask, onRecheck, onReload, prepare, onChange, onMove, last }: CanvasProps) {
   const fresh = resolved && !running.includes(resolved.id);
-  // the Koordinator of the canvas with the problem, where it runs: a card for it goes there
+  // the Coordinator of the canvas with the problem, where it runs: a card for it goes there
   const askHere = ask && ((text: string) => ask(text, resolved && running.includes(resolved.id) ? resolved.id : undefined));
   const here = t.config.canvas(n + 1);
   const setRepo = (i: number, r: RepoConfig | null) => onChange({ ...canvas, repos: r ? canvas.repos.map((x, j) => (j === i ? r : x)) : canvas.repos.filter((_, j) => j !== i) });
@@ -1766,7 +1766,7 @@ interface RepoProps {
   problems: ConfigProblem[];
   /** Its clone count or slots to scroll to and focus: the dialog was opened from a card waiting for a free clone or slot. */
   focus?: ConfigFocus;
-  /** Where it is, for a request to the Koordinator. */
+  /** Where it is, for a request to the Coordinator. */
   where: string;
   ask?: (text: string) => void;
   /** Checks the configuration again: git was set up in the repository's folder. */
@@ -2600,7 +2600,7 @@ const DETAILED: ConfigProblem['code'][] = ['demoSite', 'adapterGone', 'repoSetti
 
 /**
  * A problem of the configuration: what is wrong, the technical detail folded away where it says
- * what to fix, and a button that has the Koordinator create a task that fixes it (with the detail, which it reads).
+ * what to fix, and a button that has the Coordinator create a task that fixes it (with the detail, which it reads).
  * What did not start as saved tries again with „Erneut versuchen“, where `retried` is given (called after it).
  */
 export function Problem({ problem, where, ask, retried }: { problem: ConfigProblem; where: string; ask?: (text: string) => void; retried?: () => void }) {

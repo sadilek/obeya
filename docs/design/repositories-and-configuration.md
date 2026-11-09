@@ -5,7 +5,7 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 ### Canvases and repositories
 
 Each repository on a canvas has its own settings, workspaces, workers, project agents and PR watcher;
-the canvas has one board and one Koordinator, whose collision checks stay within a repository. The
+the canvas has one board and one Coordinator, whose collision checks stay within a repository. The
 first repository is the canvas's home; the others' plan docs are referenced as `<repo>:<path>`. The
 owner's cards carry their repository, chosen in the panel before work begins (home by default); on a
 canvas with several repositories every card names its own. The picker (on a planned task, and on an
@@ -15,7 +15,7 @@ repository joins this canvas). Picked, it reads "super59 (new)", and starting or
 creates that repository first (see Building in a new repository); it is saved as it is picked,
 like anything entered on a card. It shows on a canvas with several repositories, and on a card
 whose new repository is picked already (by the idea's agent from the conversation, or by the
-Koordinator from the owner's words); on a canvas with one repository a card without one shows no
+Coordinator from the owner's words); on a canvas with one repository a card without one shows no
 picker. A proposal's picker
 offers only the canvas's repositories. A card leaves its canvas only built in a new repository with
 a canvas of its own; it then refers across canvases to the cards it came from or that come from it.
@@ -58,7 +58,7 @@ does not become the main branch; landing on the local main refuses while the che
 Every git repository of a canvas has a directory on its main branch, the Lesestand. Plan docs are
 read from it (unless outside the repository, see A plan folder outside the repository), and the
 agents that answer or judge rather than work on a card run in it: project agents, ideas' exploration
-agents, the Koordinator (with its look-ups, learner and retrospective), the work retrospective and the
+agents, the Coordinator (with its look-ups, learner and retrospective), the work retrospective and the
 voice commands' session. A folder without git is its own Lesestand (see Folders without git).
 
 Where work lands on the local main, the Lesestand is the configured checkout itself, which is always
@@ -412,7 +412,7 @@ left out, an empty path) show at the field and block saving (an empty path is ne
 would show the server's own working directory and its commands for a new canvas); a folder without git offers to set it
 up (see Setting up git in a folder). A repository's own settings problems (see Problems in the
 settings) show at it and block nothing. Technical detail folds under "Details"; each saved problem
-offers "Create a task to fix this", which asks the Koordinator of its canvas to create a task fixing
+offers "Create a task to fix this", which asks the Coordinator of its canvas to create a task fixing
 it. The "Configuration" button in the bar counts the saved configuration's problems in red, kept
 current also when a repository's settings change on its main branch.
 
@@ -441,7 +441,7 @@ repositories on the command line, Obeya saves with "Save and restart": the file 
 configuration it restarts with once no worker is mid-turn, and the page reloads.
 
 The server's own settings (port, data directory, the agents' permission mode) come from the command
-line and environment (`OBEYA_PORT`, `OBEYA_HOME`) and show read-only. The Koordinator reads the
+line and environment (`OBEYA_PORT`, `OBEYA_HOME`) and show read-only. The Coordinator reads the
 configuration (`config`) and changes it on the owner's word (`configure`, checked like the dialog's,
 see Confirmation and undo). `configure` takes the whole list in the shape of the file, every field of
 it, so what the owner did not ask to change passes through as it was: a field it left out would
@@ -484,7 +484,7 @@ with the problems and that button instead of the setup assistant.
 The kept cards of a repository not running on its canvas (it left the configuration, or did not
 start) stay on the canvas marked "Repository not running", with why in their panel. Nothing reaches
 their agents meanwhile: starting, messages, approving and the like are refused with that reason, a
-card set to start later or snoozed waits past its time, and a card the Koordinator was deciding on
+card set to start later or snoozed waits past its time, and a card the Coordinator was deciding on
 goes back to planned. Only what changes the board alone (moving it in the queue, dismissing,
 parking) still goes, and so does "Stop" on a card at work or waiting for the owner: it plans the
 card again as any stop does (finishing after a landing, it is done), and the owner's stopped task
@@ -517,20 +517,20 @@ its own pages; a log line stays in the language it was written in). The owner ch
 dialog ("Interface language"); until then the system's applies (on a Mac `AppleLanguages`,
 elsewhere `LC_ALL`, `LC_MESSAGES`, `LANG`, then the runtime's), English for any other. A change takes
 effect at once: the page reloads, keeping what was open. The strings are two tables of one shape, so
-a missing English text is a type error; both call the Koordinator "Obeya". Dates and numbers use the
+a missing English text is a type error; both call the Coordinator "Obeya". Dates and numbers use the
 browser's variant of the language; a variant `Intl` refuses (`en-US@posix`) gives the usual one.
 
 **The conversation language** is what agents write the owner in: reports, questions, replies,
 handovers, idea briefs, card titles, Question-card answers, proposals, work retrospective notes, the
-Koordinator's replies and confirmations. Each agent answers in the language of the owner's most
+Coordinator's replies and confirmations. Each agent answers in the language of the owner's most
 recent words to it, typed or spoken, even where its work is in English; words that tell no language
 (an option's letter, "ok") change nothing. Before that it uses "Conversation language", which follows
 the interface language until chosen. It is an instruction in the prompts, not detection code. A task
-the owner wrote (or the Koordinator put in from their words) counts as their first words; one from a
+the owner wrote (or the Coordinator put in from their words) counts as their first words; one from a
 plan doc, a proposal, an idea's brief or the work retrospective does not, nor do the docs a worker reads
 or the owner's standing preferences (the owner, 2026-10-20: an English task answered in German looked
 wrong; 2026-10-21: a worker took German from German preferences). Agents without the owner's words (conflict reasons, proposed rules) use the
-conversation language; the card namer uses the task's. The Koordinator knows the owner's words for
+conversation language; the card namer uses the task's. The Coordinator knows the owner's words for
 its cards in both languages, takes examples in the conversation language, names Obeya's own cards
 ("Add to CLAUDE.md") in the interface language, and starts its session afresh when either language changes. An analysis
 on a card is in the conversation language; a committed one is repository content.
@@ -546,7 +546,7 @@ voices). Obeya's own repository says English, since its demos go public. A worke
 that language outright, not where to look it up (2026-10-21: a worker writing an HTML artifact, which
 needs no skill, read the demo settings' German and missed the repository's English).
 
-Prompts only agents read stay English. Only the Koordinator's carry German examples of what the
+Prompts only agents read stay English. Only the Coordinator's carry German examples of what the
 owner may say, since it has to understand German commands. The prompts of agents that write to the
 owner (workers, idea agents, the proposal reviser) carry no German at all, neither examples, labels
 nor German quotation marks: taken together, they outweighed the one sentence naming the owner's
@@ -624,7 +624,7 @@ its status lines in German).
   plans kept in a repository stay on the canvas forever; the owner archives it (see Projects end).
 - **A plan doc that disappears ends its project automatically** (2026-10-01); an explicit
   "Finish" may sit on top later. Rejected: reading old content from git history (fragile).
-- **The configuration is the file `canvases.json`**, edited in the UI or by the Koordinator
+- **The configuration is the file `canvases.json`**, edited in the UI or by the Coordinator
   (2026-10-01); saving a command-line configuration switches Obeya to the file. Building a card in a
   new repository adds to it as well (2026-10-28), with the repository's canvas named after its
   folder.

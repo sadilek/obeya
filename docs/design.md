@@ -58,13 +58,13 @@ touches, and keep those current in the same change.
   (watching the PR, ready to merge, the PR on the card), review cards for a contributor's pull
   request (own changes wait for the approval, unpushed commits it collides with), after landing
   (restarts for landed code, finishing, questions after the work).
-- [The Koordinator](design/the-koordinator.md) — the per-canvas agent the UI calls Obeya:
+- [The Coordinator](design/the-coordinator.md) — the per-canvas agent the UI calls Obeya:
   scheduling and the queue, learning the owner's rules (retrospective, rules for a CLAUDE.md), its
   sheet, work retrospective, looked-up questions and threads, walkthroughs, Question cards, its memory, wishes for
   Obeya's makers.
 - [Voice](design/voice.md) — voice in (dictating or sending, drafts, the microphone), speech
   recognition (Parakeet, Whisper, a cloud service, the settings), who hears the words, commands to
-  the Koordinator with confirmation and undo, voice latency, voice out (walkthroughs only).
+  the Coordinator with confirmation and undo, voice latency, voice out (walkthroughs only).
 - [Demos](design/demos.md) — making and showing demos: the demo skill, the demo settings and
   voices, what a render needs, recording a demo (cutting waits, re-voicing, frames, highlights),
   the demo on the card (watching it, comments in the video, earlier demos), UI checks in a
@@ -112,7 +112,7 @@ on the walls and decisions are made in front of the wall.
 - **Voice first, mouse welcome.** Push-to-talk in Obeya's window; buttons for the obvious actions.
   No live transcript: what the owner says to an open card's agent shows in its conversation, a
   command to Obeya gets a short written confirmation with undo. What was said and answered stays in
-  the conversation of the open card, or in the Koordinator's sheet. Obeya does not speak.
+  the conversation of the open card, or in the Coordinator's sheet. Obeya does not speak.
 - **Repo-agnostic core.** Project specifics live in the repository's settings: in the repository
   itself (`.obeya/settings.json`), or set for this machine in the configuration.
 
@@ -124,7 +124,7 @@ on the walls and decisions are made in front of the wall.
   whose workstreams are its child cards. Tasks have no further kind: fixing a bug or adding
   something is worked on the same way, so the owner picks none and a task's card names none; the
   other cards say what they are (idea, prototype, workstream number, project). The UI and the
-  Koordinator call a task *Aufgabe* and a follow-up *Folgeaufgabe*, never *Karte* (in English:
+  Coordinator call a task *Aufgabe* and a follow-up *Folgeaufgabe*, never *Karte* (in English:
   *task*, *follow-up*, never *card*); *Karte* is only a card on the canvas as such (moving,
   grouping, „Karte, Projekt oder Obeya-Chat schließen“).
 - **Groups** — besides by place, the owner sorts the canvas by group: a group has a name and a
@@ -147,7 +147,7 @@ on the walls and decisions are made in front of the wall.
     on.
   - *Exploration agent*, one per idea, long-lived, with a worker's tools: discusses the idea with
     the owner and keeps its brief.
-  - *Koordinator* (Chief of Staff), one per canvas: takes voice input on the open canvas, creates
+  - *Coordinator* (Chief of Staff), one per canvas: takes voice input on the open canvas, creates
     and assigns cards, runs the workspace pool, keeps the preference memory, and schedules the work
     so that cards likely to conflict on merge are queued rather than run together (see Scheduling).
     The UI calls it *Obeya* in both languages: its replies, its sheet, the line under the microphone
@@ -155,7 +155,7 @@ on the walls and decisions are made in front of the wall.
     tooltip "Obeya (C)". Prompts tell the agents the owner knows it as Obeya.
 - **Preference memory** — rules distilled from the owner's answers and corrections ("questions to me
   with at most three options", "solve rebase conflicts yourself") or said outright ("Merk dir: …"),
-  shared by all agents and kept by the Koordinator. A learned rule is a proposal until the owner
+  shared by all agents and kept by the Coordinator. A learned rule is a proposal until the owner
   accepts it; one said or written outright is active at once. It holds only rules about how agents
   work with the owner through Obeya; whatever is about a repository, its taste in code included,
   goes into that repository's CLAUDE.md through a card (see Learning the owner's rules).
@@ -163,8 +163,11 @@ on the walls and decisions are made in front of the wall.
 ### Decisions
 
 - **Name**: Obeya.
-- **The Koordinator is called Obeya in the UI** (2026-10-09): the owner has one counterpart, not a
+- **The Coordinator is called Obeya in the UI** (2026-10-09): the owner has one counterpart, not a
   product plus a component in it.
+- **Code and docs call it the Coordinator** (2026-11-09), so that English-speaking contributors can
+  follow them; it was the German *Koordinator* before. A database or settings file from then still
+  reads: what was stored as by `koordinator` counts as the Coordinator's.
 - **Persistent local store**, not ephemeral.
 - **Agents may propose cards.**
 - **Open source** under the MIT licence, copyright Daniel Sadilek, in a public repository on GitHub

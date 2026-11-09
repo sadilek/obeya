@@ -99,7 +99,7 @@ export const cardFile = (id: string, path: string, download = false) =>
 
 /** What a command is said about: the open card, the open project, or neither. */
 export type Where = { card: string } | { project: string } | null;
-/** The field on a card words were typed into, which tells the Koordinator what they were meant as. */
+/** The field on a card words were typed into, which tells the Coordinator what they were meant as. */
 export type Field = 'note' | 'answer' | 'feedback' | 'demo' | 'discuss' | 'revise';
 
 /** What Obeya made of a command. */
@@ -236,7 +236,7 @@ export const api = {
   restartNow: () => call<{ restarting: boolean }>('POST', '/api/restart'),
   /** Has the restart of this canvas's repositories' agents that waits for them go ahead at once. */
   restartReposNow: () => call<{ restarting: boolean }>('POST', at('/restart')),
-  /** Pauses the agents at work on a canvas; cards the Koordinator lets start there wait until they resume. */
+  /** Pauses the agents at work on a canvas; cards the Coordinator lets start there wait until they resume. */
   pauseAgents: (canvas: string) => call<void>('POST', `/api/c/${encodeURIComponent(canvas)}/pause`),
   /** Resumes a canvas's paused agents, and the cards waiting for that start. */
   resumeAgents: (canvas: string) => call<void>('POST', `/api/c/${encodeURIComponent(canvas)}/resume`),
@@ -357,7 +357,7 @@ export const api = {
   /** The same, typed; `field`: the field of the open card it was typed into. */
   command: (text: string, where: Where, { images, field, replyTo, spot, place }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place } = {}) =>
     call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) }),
-  /** A typed request to the Koordinator of another canvas, about nothing in view there. */
+  /** A typed request to the Coordinator of another canvas, about nothing in view there. */
   commandOn: (canvas: string, text: string) => call<Heard>('POST', `/api/c/${encodeURIComponent(canvas)}/command`, { text }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
   /** The issue for Obeya's makers as a small job writes it from the owner's words, reworking the draft so far; `app`: Obeya runs in its app. */
@@ -380,7 +380,7 @@ export const api = {
   stopReshare: () => call<void>('POST', at('/reshare/stop')),
   /** "Ausblenden": puts away what the finished run says, and the notice of outdated pages until a newer change. */
   dismissReshare: () => call<void>('DELETE', at('/reshare')),
-  /** The owner has the Koordinator's sheet in view: the answers waiting there are read. */
+  /** The owner has the Coordinator's sheet in view: the answers waiting there are read. */
   /** Obeya's sheet is in view, or (`ids`) these exchanges in a project's sheet. */
   readTalk: (ids?: number[]) => call<void>('POST', at('/talk/read'), ids ? { ids } : undefined),
   /** Obeya no longer waits on the card after that exchange, to take the step it said it would. */

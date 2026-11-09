@@ -6,11 +6,11 @@ import type { Store } from '../db';
  * A history like the one of a long-used Obeya, written straight into a store's database: cards on
  * the canvas and many more in the archive (half of those with a page shared on the repository's
  * site), deleted ones, other canvases beside it, the cards' logs and what the owner said to the
- * Koordinator, spread over the days the history spans with the newest now. At `scale` 0, only the
+ * Coordinator, spread over the days the history spans with the newest now. At `scale` 0, only the
  * `open` cards on the canvas, with no history at all.
  *
  * At `scale` 1 it has the shape of the owner's database of 9 November 2026 (55 MB: 158,000 events
- * over 40 days, 1,700 cards, 1,000 exchanges with the Koordinator, 10 canvases); a larger scale
+ * over 40 days, 1,700 cards, 1,000 exchanges with the Coordinator, 10 canvases); a larger scale
  * stands for a longer history at the same pace (10: 400 days), with as many cards on the canvas as
  * before: what grows with time is the archive, the logs and the sheet, not the canvas.
  *
@@ -99,7 +99,7 @@ export function writeHistory(store: Store, canvas: string, dir: string, scale: n
          kind, author, substr($text, 1 + h % 50, CASE kind WHEN 'review' THEN 1000 WHEN 'closing' THEN 700 ELSE 60 + h % 140 END)
        FROM c`,
     ).run({ events, archived, open, deleted, elsewhere, first, start, span, text: 'The agent read the files, ran the tests and wrote down what it found along the way. '.repeat(14) });
-    // what the owner said to the Koordinator and what it answered: 1,000 exchanges per 40 days
+    // what the owner said to the Coordinator and what it answered: 1,000 exchanges per 40 days
     if (scale) db.query(
       `WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i + 1 < $talk)
        INSERT INTO talk (canvas_id, at, said, reply, card_id)

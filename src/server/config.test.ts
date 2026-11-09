@@ -801,14 +801,14 @@ describe('the configuration over HTTP', () => {
     }
   });
 
-  test('a configuration command of the Koordinator saves it after the undo window', async () => {
+  test('a configuration command of the Coordinator saves it after the undo window', async () => {
     await canvas.run({ do: 'configure', canvases: [{ name: 'Neu', repos: [{ path: web }] }] });
     expect(readConfigFile(file)).toEqual([{ name: 'Neu', repos: [{ path: web }] }]);
     expect(restarts).toBe(1);
   });
 });
 
-describe('a change the Koordinator makes', () => {
+describe('a change the Coordinator makes', () => {
   test('keeps a canvas over a folder without git as it is while it adds a repository to another canvas', async () => {
     const docs = join(dir, 'Dokumente');
     mkdirSync(docs);
@@ -821,7 +821,7 @@ describe('a change the Koordinator makes', () => {
       const heard = canvas.commander.hear('Nimm api auf die Leinwand web.', {});
       await until(() => runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'configure')));
       const k = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'configure'))!;
-      // the configuration as the Koordinator reads it, with api added, through the tool's schema as its SDK hands the arguments on
+      // the configuration as the Coordinator reads it, with api added, through the tool's schema as its SDK hands the arguments on
       const { canvases } = JSON.parse(await k.call('config', {})) as ConfigView;
       const tool = k.spec.tools.find((t) => t.name === 'configure')!;
       const args = z.object(tool.schema).parse({ canvases: [{ repos: [...canvases[0]!.repos, { path: api }] }, canvases[1]], confirm: 'api kommt auf die Leinwand web.' });

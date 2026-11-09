@@ -30,7 +30,7 @@ afterEach(async () => {
 
 const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 const board = () => canvas.board;
-const isKoordinator = (s: FakeSession) => s.spec.tools.some((t) => t.name === 'look_up');
+const isCoordinator = (s: FakeSession) => s.spec.tools.some((t) => t.name === 'look_up');
 const reviser = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'revise_proposal')).at(-1);
 
 /** A proposal from the agent of "Export", with one question. */
@@ -44,11 +44,11 @@ function proposal(): Item {
   });
 }
 
-/** Says `text` with the proposal open; the Koordinator acts with `actions` (its tags looked up by title). */
+/** Says `text` with the proposal open; the Coordinator acts with `actions` (its tags looked up by title). */
 async function say(text: string, card: Item, actions: (tag: string) => Record<string, unknown>[], typed = false, images: string[] = []) {
   const heard = canvas.commander.hear(text, { card: card.id }, images, typed ? { typed: true, field: 'revise' } : {});
   await settle();
-  const s = runtime.sessions.filter(isKoordinator).at(-1)!;
+  const s = runtime.sessions.filter(isCoordinator).at(-1)!;
   const brief = s.inbox.at(-1)!;
   const tag = brief.match(new RegExp(`(K\\d+) \\[proposal\\] "${card.title}"`))![1]!;
   const result = s.call('act', { actions: actions(tag), confirm: 'Ich überarbeite den Vorschlag.' });
@@ -90,20 +90,20 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().events(p.id).map((e) => [e.kind, e.author, e.text])).toEqual([
       ['question', 'worker', 'Welche Kodierung?\n– UTF-8\n– Latin-1'],
       ['say', 'owner', 'Nimm auch Excel mit, und UTF-8 ist gesetzt.'],
-      ['say', 'koordinator', 'Ich überarbeite den Vorschlag.'],
+      ['say', 'coordinator', 'Ich überarbeite den Vorschlag.'],
       ['talk', 'worker', 'Excel ist dabei, UTF-8 steht im Text.'],
-      ['state', 'koordinator', 'Vorschlag überarbeitet.'],
+      ['state', 'coordinator', 'Vorschlag überarbeitet.'],
     ]);
   });
 
-  test('words on the open proposal go straight to its reviser, without the Koordinator or an undo window', () => {
+  test('words on the open proposal go straight to its reviser, without the Coordinator or an undo window', () => {
     const p = proposal();
     expect(agentListens(board().item(p.id)!)).toBe(true);
     canvas.tell(p.id, 'Was würdest du nehmen?', [], false);
     expect(board().item(p.id)!.proposal?.revising).toMatchObject({ words: 'Was würdest du nehmen?' });
     expect(reviser()!.inbox[0]).toContain('Was würdest du nehmen?');
     expect(reviser()!.spec.tools.map((t) => t.name)).toContain('to_obeya');
-    expect(runtime.sessions.some(isKoordinator)).toBe(false);
+    expect(runtime.sessions.some(isCoordinator)).toBe(false);
     // the question stays above the owner's words
     expect(board().events(p.id).map((e) => [e.kind, e.author])).toEqual([
       ['question', 'worker'],
@@ -146,7 +146,7 @@ describe('a proposal reworked by what the owner says', () => {
     const r = reviser()!;
     const result = r.call('to_obeya', { request: 'Accept the proposal and start it' }) as Promise<string>;
     await settle();
-    const k = runtime.sessions.filter(isKoordinator).at(-1)!;
+    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
     const tag = k.inbox.at(-1)!.match(/(K\d+) \[proposal\] "CSV-Export prüfen"/)![1]!;
     expect(k.call('act', { actions: [{ do: 'accept', card: tag }], confirm: 'Ich übernehme den Vorschlag und starte ihn.' })).not.toContain('goes by a click');
     k.emit({ type: 'idle' });
@@ -186,7 +186,7 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().events(p.id).map((e) => [e.kind, e.author, e.text]).slice(1)).toEqual([
       ['say', 'owner', '**Welche Kodierung?** UTF-8. Und Excel?'],
       ['talk', 'worker', 'UTF-8 steht im Text; ob Excel dazukommt, entscheidest du.'],
-      ['state', 'koordinator', 'Vorschlag überarbeitet.'],
+      ['state', 'coordinator', 'Vorschlag überarbeitet.'],
       ['question', 'worker', 'Excel auch?\n– Ja\n– Nein'],
     ]);
   });
@@ -295,12 +295,12 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().item(p.id)).toMatchObject({ state: 'idea', body: 'PDF- und Excel-Export bauen.' });
   });
 
-  test('said to the Koordinator, a proposed task is taken as an idea', async () => {
+  test('said to the Coordinator, a proposed task is taken as an idea', async () => {
     const from = board().create({ title: 'Export', x: 0, y: 0 });
     const p = board().propose(from.id, { title: 'Exportformate', task: 'PDF-Export bauen.' });
     const heard = canvas.commander.hear('Das will ich erst als Idee besprechen', {});
     await settle();
-    const k = runtime.sessions.filter(isKoordinator).at(-1)!;
+    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
     const tag = k.inbox.at(-1)!.match(/(K\d+) \[proposal\] "Exportformate"/)![1]!;
     k.call('act', { actions: [{ do: 'accept', card: tag, idea: true }], confirm: 'Ich übernehme ihn als Idee.' });
     k.emit({ type: 'idle' });
@@ -430,7 +430,7 @@ describe("screenshots in a proposal's conversation", () => {
     expect(next.inbox[0]).toContain(`files: ${a}`);
   });
 
-  test('said to the Koordinator, they go with the revise action to the reviser', async () => {
+  test('said to the Coordinator, they go with the revise action to the reviser', async () => {
     const p = proposal();
     const a = shot(1);
     const { heard } = await say('Schau, so sieht es aus', p, (tag) => [{ do: 'revise', card: tag, text: 'So sieht es aus' }], false, [a]);
@@ -459,10 +459,10 @@ describe('a proposal its agent takes back', () => {
     const q = board().propose(p.from!, { title: 'CSV-Kodierung festlegen', task: 'T' });
     expect(board().retract(p.from!, 'CSV-Export prüfen', { by: q.id, title: q.title }).kind).toBe('marked');
 
-    // the Koordinator sees the mark, and keep takes it off
+    // the Coordinator sees the mark, and keep takes it off
     const heard = canvas.commander.hear('Behalte die alte Karte', { card: p.id }, []);
     await settle();
-    const s = runtime.sessions.filter(isKoordinator).at(-1)!;
+    const s = runtime.sessions.filter(isCoordinator).at(-1)!;
     expect(s.inbox.at(-1)).toContain('replaced it by "CSV-Kodierung festlegen"; the owner removes it (dismiss) or keeps it (keep)');
     const tag = s.inbox.at(-1)!.match(/(K\d+) \[planned\] "CSV-Export prüfen"/)![1]!;
     s.call('act', { actions: [{ do: 'keep', card: tag }], confirm: 'Sie bleibt.' });

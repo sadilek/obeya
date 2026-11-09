@@ -1,4 +1,4 @@
-// The Koordinator decides when a card may start: not while its changes are likely to conflict on
+// The Coordinator decides when a card may start: not while its changes are likely to conflict on
 // merge with work in progress. It judges that from what each card will change (estimated before
 // the start) and has changed so far (files and the places in them); sharing a file is not enough.
 
@@ -16,7 +16,7 @@ import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './work
 import { LANGUAGE_NAMES } from '../core/locale';
 import { clip, messageOf } from '../core/text';
 
-/** A workstream as the Koordinator scheduled it, in its turn's order. */
+/** A workstream as the Coordinator scheduled it, in its turn's order. */
 interface Planned {
   card: string;
   files: string[];
@@ -28,7 +28,7 @@ interface Planned {
 
 /**
  * What the owner said that may hold a lasting preference: to a worker (answer, note, feedback), in
- * an idea's discussion, to the Koordinator in conversation (a command it carried out, or a question
+ * an idea's discussion, to the Coordinator in conversation (a command it carried out, or a question
  * or remark it replied to), or in the text of a card they wrote.
  */
 export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea' | 'command' | 'talk' | 'card';
@@ -37,7 +37,7 @@ export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea' | 'command' | '
 export interface InputContext {
   /** The question the owner answered. */
   question?: string;
-  /** The Koordinator's reply to what the owner said to it. */
+  /** The Coordinator's reply to what the owner said to it. */
   reply?: string;
   /** The card's text before the owner wrote in it: a proposal's, a follow-up's. */
   before?: string;
@@ -45,32 +45,32 @@ export interface InputContext {
 
 export interface Scope {
   files: string[];
-  /** Cards in progress or queued ahead whose changes the Koordinator expects to conflict with this card's on merge. */
+  /** Cards in progress or queued ahead whose changes the Coordinator expects to conflict with this card's on merge. */
   conflictsWith: string[];
   /** Workstreams of its project it builds on: they hold it until they have landed, also while not started. */
   buildsOn: string[];
   reason: string;
 }
 
-/** What the Koordinator needs of the repository a card belongs to. */
+/** What the Coordinator needs of the repository a card belongs to. */
 export interface RepoHands {
   workers: Workers;
   workspaces: CardWorkspaces;
   adapter: RepoAdapter;
-  /** Where the Koordinator reads (scopes, questions): the repository's Lesestand. */
+  /** Where the Coordinator reads (scopes, questions): the repository's Lesestand. */
   path: string;
   /** A folder without git: its cards all work in the folder itself, with no branches to merge. */
   folder?: boolean;
 }
 
-export interface KoordinatorOptions {
+export interface CoordinatorOptions {
   board: Board;
   runtime: AgentRuntime;
   /** The repository of a card; a canvas may span several. */
   repoFor: (card: Item) => RepoHands;
-  /** Where the Koordinator reads for what the owner says without a card: the home repository's Lesestand. */
+  /** Where the Coordinator reads for what the owner says without a card: the home repository's Lesestand. */
   home: () => string;
-  /** Whether the owner paused the canvas's agents: a card the Koordinator lets start waits until they resume them (`{ paused }` in its queue). */
+  /** Whether the owner paused the canvas's agents: a card the Coordinator lets start waits until they resume them (`{ paused }` in its queue). */
   paused?: () => boolean;
   /** How long a project's start, or taking a card's workspace, waits for the owner to take it back; START_ALL_HOLD_MS and EVICT_HOLD_MS by default. */
   holdMs?: number;
@@ -80,7 +80,7 @@ export interface KoordinatorOptions {
   imageFiles?: (ids?: string[]) => string[];
 }
 
-export class Koordinator {
+export class Coordinator {
   /** The language its agents write the owner in: the owner's conversation language, since no words of the owner's go to them. */
   private get language() {
     return LANGUAGE_NAMES[this.o.board.conversation()];
@@ -109,14 +109,14 @@ export class Koordinator {
   private ended = false;
   private unwatch: () => void;
 
-  constructor(private o: KoordinatorOptions) {
+  constructor(private o: CoordinatorOptions) {
     this.unwatch = o.board.onChange(() => {
       this.scheduleDrain();
       this.readPendingDeps();
     });
   }
 
-  /** After a restart: decide again on cards the Koordinator was checking, and start what is free. */
+  /** After a restart: decide again on cards the Coordinator was checking, and start what is free. */
   resume() {
     const together = new Set<string>();
     for (const i of this.o.board.items()) {
@@ -162,7 +162,7 @@ export class Koordinator {
       const active = now.state !== 'planned';
       if (active && !now.queue) {
         this.setQueue(cardId, { workspace: 'none', begun: true });
-        this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.requeued);
+        this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.coordinator.requeued);
       }
       this.giving.add(cardId);
       workers
@@ -211,14 +211,14 @@ export class Koordinator {
   followUp(taskId: string, reviewId: string): void {
     const review = this.o.board.item(reviewId);
     if (!review || !unlanded(review)) return this.request(taskId);
-    const t = this.o.board.t.koordinator;
+    const t = this.o.board.t.coordinator;
     const reason = t.followsReview(contributionOf(this.o.board.row(reviewId))?.number ?? 0);
     this.setQueue(taskId, { behind: [reviewId], reason, buildsOn: [reviewId] });
     this.o.board.log(taskId, 'state', 'obeya', t.waitsFor(this.o.board.t.quote(review.title), reason));
   }
 
   /**
-   * All planned workstreams of the project go to the Koordinator together (those snoozed to start later too: the owner starts them now): one turn sees them all
+   * All planned workstreams of the project go to the Coordinator together (those snoozed to start later too: the owner starts them now): one turn sees them all
    * with the plan doc and decides which start now and which wait, for a dependency or a likely
    * conflict, and in which order. They queue in the plan's order until it has, and the turn waits a
    * few seconds, so the owner can take the start back (`dequeue` on the project).
@@ -230,7 +230,7 @@ export class Koordinator {
     for (const w of open) if (w.snoozed?.start) this.o.board.unsnooze(w.id, 'owner');
     const now = Date.now();
     open.forEach((w, n) => this.o.board.work(w.id, { queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
-    this.o.board.log(project.id, 'state', 'owner', this.o.board.t.koordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
+    this.o.board.log(project.id, 'state', 'owner', this.o.board.t.coordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
     setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? START_ALL_HOLD_MS);
   }
 
@@ -267,7 +267,7 @@ export class Koordinator {
       try {
         on = await this.dependencies(project, kids);
       } catch (e) {
-        this.o.board.log(projectId, 'error', 'obeya', this.o.board.t.koordinator.arrangeFailed(messageOf(e)));
+        this.o.board.log(projectId, 'error', 'obeya', this.o.board.t.coordinator.arrangeFailed(messageOf(e)));
         this.o.board.setDeps(projectId, { failed: true });
         throw e;
       }
@@ -287,7 +287,7 @@ export class Koordinator {
     let on: Record<string, string[]> | undefined;
     const error = await readSession(this.o.runtime, {
       cwd: this.o.repoFor(project).path,
-      role: 'koordinator',
+      role: 'coordinator',
       system: DEPS_SYSTEM,
       tools: (finish) => [
         {
@@ -326,7 +326,7 @@ export class Koordinator {
     return on;
   }
 
-  /** The cards to be judged together under `key` (a project's start, or cards freed at once) that the Koordinator has not planned yet. */
+  /** The cards to be judged together under `key` (a project's start, or cards freed at once) that the Coordinator has not planned yet. */
   private unplanned(key: string): Item[] {
     return this.o.board
       .snapshot()
@@ -340,7 +340,7 @@ export class Koordinator {
     if (!card.queue || !('behind' in card.queue)) throw new BadRequest('notQueued', 'the card is not waiting');
     const since = card.queue.since;
     this.setQueue(cardId, null);
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.startedDespite);
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.coordinator.startedDespite);
     this.launch(cardId, since, true);
   }
 
@@ -370,26 +370,26 @@ export class Koordinator {
       if (times[k] !== i.queue!.since) this.setQueue(i.id, i.queue!, times[k]);
     });
     const t = this.o.board.t;
-    this.o.board.log(cardId, 'state', 'owner', (earlier ? t.koordinator.movedBefore : t.koordinator.movedAfter)(past.title));
+    this.o.board.log(cardId, 'state', 'owner', (earlier ? t.coordinator.movedBefore : t.coordinator.movedAfter)(past.title));
   }
 
   dequeue(cardId: string) {
     const card = this.card(cardId);
     if (card.kind === 'project') {
-      // the start of all its workstreams, taken back before the Koordinator planned them
+      // the start of all its workstreams, taken back before the Coordinator planned them
       const back = this.unplanned(cardId);
       if (!back.length) throw new BadRequest('notQueued', 'no workstream of the project waits to be planned');
       for (const w of back) this.setQueue(w.id, null);
-      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.startTakenBack(back.map((w) => w.label ?? w.title).join(', ')));
+      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.coordinator.startTakenBack(back.map((w) => w.label ?? w.title).join(', ')));
       return;
     }
     if (!card.queue) throw new BadRequest('notQueued', 'the card is not waiting');
     this.setQueue(cardId, null);
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.dequeued);
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.coordinator.dequeued);
   }
 
   /**
-   * The owner said something (to a worker, in an idea, to the Koordinator, in a card's text): if it
+   * The owner said something (to a worker, in an idea, to the Coordinator, in a card's text): if it
    * states a lasting preference, propose it as a rule for every agent; the owner accepts it in the
    * sheet. `card` is the card it concerns, or the one open; none in a conversation without one.
    * Runs in the background, one at a time.
@@ -397,7 +397,7 @@ export class Koordinator {
   learn(card: Item | null, kind: OwnerInput, text: string, context: InputContext = {}) {
     // what surrounded the input is read now: by its turn, the agent may have answered it
     const around = this.around(card, kind, text, context);
-    this.learning = this.learning.then(() => this.distill(card, kind, text, context, around)).catch((e) => console.error('Koordinator (learning):', e));
+    this.learning = this.learning.then(() => this.distill(card, kind, text, context, around)).catch((e) => console.error('Coordinator (learning):', e));
     this.noticed();
   }
 
@@ -416,7 +416,7 @@ export class Koordinator {
     const since = b.setting(REVIEW_SINCE)!;
     b.setSetting(REVIEW_COUNT, '0');
     b.setSetting(REVIEW_SINCE, new Date().toISOString());
-    this.learning = this.learning.then(() => this.review(since)).catch((e) => console.error('Koordinator (Rückschau):', e));
+    this.learning = this.learning.then(() => this.review(since)).catch((e) => console.error('Coordinator (Rückschau):', e));
   }
 
   /** The Rückschau: one session reads what happened since `since` and proposes rules for patterns across cards. */
@@ -427,7 +427,7 @@ export class Koordinator {
     let proposed = 0;
     await readSession(this.o.runtime, {
       cwd: this.o.home(),
-      role: 'koordinator',
+      role: 'coordinator',
       onLimit: waitQuietly,
       system: REVIEW_SYSTEM(this.language),
       tools: (finish): AgentTool[] => [
@@ -458,7 +458,7 @@ export class Koordinator {
   /**
    * What the Rückschau reads, oldest first, at most the latest REVIEW_HISTORY lines: the cards'
    * milestones (the owner's notes, answers and clicks, the agents' questions and hand-overs, answers
-   * given in the owner's name), the owner's words in ideas and to the Koordinator (taken back or
+   * given in the owner's name), the owner's words in ideas and to the Coordinator (taken back or
    * not), the cards they deleted or dismissed, and the rule proposals they decided on.
    */
   private history(since: string): string[] {
@@ -560,7 +560,7 @@ export class Koordinator {
     let proposed = false;
     await readSession(this.o.runtime, {
       cwd: card && !card.repoDown ? this.o.repoFor(card).path : this.o.home(),
-      role: 'koordinator',
+      role: 'coordinator',
       onLimit: waitQuietly,
       system: LEARN_SYSTEM(this.language),
       tools: (finish): AgentTool[] => [
@@ -579,7 +579,7 @@ export class Koordinator {
             const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
             for (const t of fresh) this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id, t);
             proposed = true;
-            if (card) this.o.board.log(card.id, 'state', 'koordinator', this.o.board.t.koordinator.proposes(r));
+            if (card) this.o.board.log(card.id, 'state', 'coordinator', this.o.board.t.coordinator.proposes(r));
             return finish('Proposed. End your turn now.');
           },
         },
@@ -640,7 +640,7 @@ export class Koordinator {
   private nameOf(i: Item): string {
     const t = this.o.board.t;
     const name = i.parent && i.label ? `${i.label} ${t.quote(i.title)}` : t.quote(i.title);
-    return notStarted(i) ? t.koordinator.notStarted(name) : name;
+    return notStarted(i) ? t.coordinator.notStarted(name) : name;
   }
 
   private async decide(cardId: string) {
@@ -657,7 +657,7 @@ export class Koordinator {
       // held by the owner's arrows alone, it is judged once they let it go
       if (drawnWaits(card, this.o.board.items()).length) return void this.queueOrStart(cardId, [], [], '', '');
       // nothing it could collide with or build on: start at once, and estimate the scope for the cards after it
-      this.startNow(cardId, this.o.board.t.koordinator.nothingRuns);
+      this.startNow(cardId, this.o.board.t.coordinator.nothingRuns);
       if (this.o.board.item(cardId)?.state !== 'working') return;
       try {
         const scope = await this.estimate(card, [], [], [], waitQuietly);
@@ -669,18 +669,18 @@ export class Koordinator {
     try {
       scope = await this.estimate(card, active, ahead, pending, (until) => this.o.board.waitsForLimit({ card: cardId }, until));
     } catch (e) {
-      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.koordinator.estimateFailed(messageOf(e)));
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.coordinator.estimateFailed(messageOf(e)));
       scope = { files: [], conflictsWith: [], buildsOn: [], reason: '' };
     }
     const now = this.o.board.item(cardId);
     if (!now?.queue) return;
-    // its repository stopped running while the Koordinator read
+    // its repository stopped running while the Coordinator read
     if (now.repoDown) return this.repoGone(now);
     this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
     // the workstreams it builds on, and the cards in progress or queued ahead whose changes it
     // expects to conflict with the card's
     const behind = [...active, ...ahead, ...pending].filter((a) => scope.buildsOn.includes(a.id) || scope.conflictsWith.includes(a.id)).map((a) => a.id);
-    const t = this.o.board.t.koordinator;
+    const t = this.o.board.t.coordinator;
     const buildsOn = behind.filter((id) => scope.buildsOn.includes(id));
     const reason = scope.reason || (buildsOn.length ? t.buildsOn : t.likelyConflict);
     void this.queueOrStart(cardId, behind, buildsOn, reason, `${t.noConflict}${scope.reason ? ` ${scope.reason}` : ''}`, (id) => {
@@ -690,7 +690,7 @@ export class Koordinator {
   }
 
   /**
-   * Queues the card behind the cards the Koordinator found it waits for (`inferred`, `buildsOn`
+   * Queues the card behind the cards the Coordinator found it waits for (`inferred`, `buildsOn`
    * among them, for `reason`) and those the owner's arrows hold it for, or starts it (`why`) when
    * there are none, which it says. `name` names a card in the log where it knows better than `nameOf`.
    */
@@ -707,28 +707,28 @@ export class Koordinator {
       this.startNow(cardId, why);
       return true;
     }
-    this.setQueue(cardId, { behind: [...inferred, ...drawn], reason: inferred.length ? reason : this.o.board.t.koordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(drawn.length && { manualWait: drawn }) });
+    this.setQueue(cardId, { behind: [...inferred, ...drawn], reason: inferred.length ? reason : this.o.board.t.coordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(drawn.length && { manualWait: drawn }) });
     this.logWait(cardId, inferred, reason, drawn, (id) => name?.(id) ?? this.nameOf(items.find((i) => i.id === id)!));
     return false;
   }
 
   /** The card's line on what it waits for: the waits inferred with their `reason`, and those the owner's arrows hold it for (`drawn`). */
   private logWait(cardId: string, inferred: string[], reason: string, drawn: string[], name: (id: string) => string) {
-    const t = this.o.board.t.koordinator;
+    const t = this.o.board.t.coordinator;
     const names = (ids: string[]) => ids.map(name).join(', ');
     const line = inferred.length ? `${t.waitsFor(names(inferred), reason)}${drawn.length ? ` ${t.drawnToo(names(drawn))}` : ''}` : t.waitsFor(names(drawn), t.drawn);
     this.o.board.log(cardId, 'state', 'obeya', line);
   }
 
   /**
-   * Decides on the cards that came to the Koordinator together under `key`: the workstreams of a
+   * Decides on the cards that came to the Coordinator together under `key`: the workstreams of a
    * project started at once (`key` its id), or cards whose waits ended at once (`freed:…`).
    */
   private async decideAll(key: string) {
     const items = this.o.board.items();
     const batch = this.unplanned(key);
     const project = this.o.board.item(key);
-    const t = this.o.board.t.koordinator;
+    const t = this.o.board.t.coordinator;
     if (!batch.length) return;
     if (batch[0]!.repoDown) return batch.forEach((w) => this.repoGone(w));
     if (batch.length === 1) {
@@ -780,7 +780,7 @@ export class Koordinator {
       const reason = p.reason || (buildsOn.length ? t.buildsOn : t.likelyConflict);
       if (this.queueOrStart(id, behind, buildsOn, reason, `${project ? t.togetherStarts : t.freedStarts}${p.reason ? ` ${p.reason}` : ''}`, (b) => names.get(b))) started++;
     });
-    if (project) this.o.board.log(key, 'state', 'koordinator', t.planned(started, plan.length));
+    if (project) this.o.board.log(key, 'state', 'coordinator', t.planned(started, plan.length));
   }
 
   /** Whether a card still holds others back: in progress, or waiting itself. */
@@ -793,7 +793,7 @@ export class Koordinator {
   private startNow(cardId: string, why: string, begun?: boolean) {
     const since = this.o.board.item(cardId)?.queue?.since;
     this.setQueue(cardId, null);
-    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.says(why));
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.coordinator.says(why));
     this.launch(cardId, since, begun);
   }
 
@@ -807,14 +807,14 @@ export class Koordinator {
     const unheld = begun ? { begun: true as const } : {};
     if (this.o.paused?.()) {
       this.setQueue(cardId, { paused: true, ...unheld }, since);
-      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.canvasPaused);
+      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.coordinator.canvasPaused);
       return;
     }
     const refused = (e: unknown) => {
       const shortage = e instanceof BadRequest ? shortageOf(e.code) : undefined;
       if (!shortage) return this.o.board.log(cardId, 'error', 'obeya', messageOf(e), { code: e instanceof BadRequest ? e.code : undefined });
       this.setQueue(cardId, { workspace: shortage, ...unheld }, since);
-      this.o.board.log(cardId, 'state', 'obeya', { none: this.o.board.t.koordinator.noWorkspace, dirty: this.o.board.t.koordinator.dirtyWorkspaces, slots: this.o.board.t.koordinator.noSlot }[shortage]);
+      this.o.board.log(cardId, 'state', 'obeya', { none: this.o.board.t.coordinator.noWorkspace, dirty: this.o.board.t.coordinator.dirtyWorkspaces, slots: this.o.board.t.coordinator.noSlot }[shortage]);
     };
     try {
       // git makes its workspace ready in the background; what goes wrong there its card says itself, but that the clone
@@ -863,20 +863,20 @@ export class Koordinator {
         // an arrow the owner drew since it was let start holds it as one drawn before
         const drawn = drawnWaits(w, items);
         if (drawn.length) {
-          this.setQueue(w.id, { behind: drawn, reason: this.o.board.t.koordinator.drawn, manualWait: drawn });
+          this.setQueue(w.id, { behind: drawn, reason: this.o.board.t.coordinator.drawn, manualWait: drawn });
           this.logWait(w.id, [], '', drawn, (id) => this.nameOf(items.find((i) => i.id === id)!));
           continue;
         }
       }
       if ('paused' in w.queue!) {
-        if (!paused) this.startNow(w.id, this.o.board.t.koordinator.canvasPlays, begun);
+        if (!paused) this.startNow(w.id, this.o.board.t.coordinator.canvasPlays, begun);
         continue;
       }
       if ('workspace' in w.queue!) {
         // the slots the paused agents freed are not for it: it waits for them to resume
         if (paused) {
           this.setQueue(w.id, { paused: true, ...(begun && { begun }) }, w.queue!.since);
-          this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.canvasPaused);
+          this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.coordinator.canvasPaused);
           continue;
         }
         // a card whose branch a clone keeps takes one on that clone's machine: none there leaves the others to the cards behind it
@@ -886,7 +886,7 @@ export class Koordinator {
           else full.add(w.repo);
           continue;
         }
-        this.startNow(w.id, w.queue!.workspace === 'slots' ? this.o.board.t.koordinator.slotFree : this.o.board.t.koordinator.workspaceFree, begun);
+        this.startNow(w.id, w.queue!.workspace === 'slots' ? this.o.board.t.coordinator.slotFree : this.o.board.t.coordinator.workspaceFree, begun);
         if (this.o.board.item(w.id)?.queue) full.add(w.repo);
         continue;
       }
@@ -896,10 +896,10 @@ export class Koordinator {
       const unmerged = items.find((i) => q.buildsOn?.includes(i.id) && i.state === 'done' && contributionOf(this.o.board.row(i.id))?.closed);
       if (unmerged) {
         this.setQueue(w.id, null);
-        this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.reviewClosed(this.o.board.t.quote(unmerged.title)));
+        this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.coordinator.reviewClosed(this.o.board.t.quote(unmerged.title)));
         continue;
       }
-      // the waits the Koordinator inferred hold while what they wait for is in progress or queued, or
+      // the waits the Coordinator inferred hold while what they wait for is in progress or queued, or
       // has not landed where it builds on it; the owner's arrows hold beside them while drawn, so
       // removing one leaves exactly the waits inferred
       const inferred = q.behind.filter((id) => !q.manualWait?.includes(id) && (active.has(id) || (q.buildsOn?.includes(id) && unlanded(items.find((i) => i.id === id)))));
@@ -908,7 +908,7 @@ export class Koordinator {
       const still = [...inferred, ...manualWait];
       if (same(still, q.behind) && same(manualWait, q.manualWait ?? []) && same(buildsOn, q.buildsOn ?? [])) continue;
       if (still.length) {
-        this.setQueue(w.id, { behind: still, reason: inferred.length ? q.reason : this.o.board.t.koordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }) });
+        this.setQueue(w.id, { behind: still, reason: inferred.length ? q.reason : this.o.board.t.coordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }) });
         // an arrow the owner drew to it while it waited holds it too, which it says
         const drawnNow = manualWait.filter((id) => !q.behind.includes(id));
         if (drawnNow.length) this.logWait(w.id, [], '', drawnNow, (id) => this.nameOf(items.find((i) => i.id === id)!));
@@ -926,17 +926,17 @@ export class Koordinator {
         const key = `freed:${randomUUID()}`;
         for (const w of group) {
           this.setQueue(w.id, { checking: true, together: key });
-          this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.waitedDoneTogether);
+          this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.coordinator.waitedDoneTogether);
         }
         this.serial(() => this.decideAll(key));
         continue;
       }
       const w = group[0]!;
       if (!this.inProgress(w.repo).length) {
-        this.startNow(w.id, this.o.board.t.koordinator.waitedDone);
+        this.startNow(w.id, this.o.board.t.coordinator.waitedDone);
       } else {
         this.setQueue(w.id, { checking: true });
-        this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.waitedDoneRecheck);
+        this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.coordinator.waitedDoneRecheck);
         this.serial(() => this.decide(w.id));
       }
     }
@@ -1011,7 +1011,7 @@ export class Koordinator {
       (Array.isArray(list) ? list : []).map((t) => tags.get(String(t))).filter((x): x is string => !!x && among.has(x));
     const error = await readSession(this.o.runtime, {
       cwd: this.o.repoFor(card).path,
-      role: 'koordinator',
+      role: 'coordinator',
       onLimit,
       system: this.o.repoFor(card).folder ? FOLDER_SYSTEM(this.language) : SYSTEM(this.language),
       tools: (finish) => [
@@ -1048,7 +1048,7 @@ export class Koordinator {
     const noun = project ? 'workstream' : 'card';
     const error = await readSession(this.o.runtime, {
       cwd: hands.path,
-      role: 'koordinator',
+      role: 'coordinator',
       // the cards the owner started wait with it
       onLimit: (until) => {
         for (const w of batch) this.o.board.waitsForLimit({ card: w.id }, until);
@@ -1137,7 +1137,7 @@ export class Koordinator {
     return lines.filter(Boolean).join('\n\n');
   }
 
-  /** The cards in progress and queued ahead, as a turn of the Koordinator reads them. */
+  /** The cards in progress and queued ahead, as a turn of the Coordinator reads them. */
   private async others(card: Item, active: Item[], ahead: Item[], tags: Map<string, string>): Promise<string[]> {
     const folder = !!this.o.repoFor(card).folder;
     // in a folder nothing is merged later: every path counts
@@ -1185,7 +1185,7 @@ export class Koordinator {
     this.queued++;
     this.chain = this.chain
       .then(() => (this.ended ? undefined : fn()))
-      .catch((e) => console.error('Koordinator:', e))
+      .catch((e) => console.error('Coordinator:', e))
       .finally(() => this.queued--);
   }
 
@@ -1197,10 +1197,10 @@ export class Koordinator {
   /** The repository of a card it was deciding on stopped running on the canvas: the card is planned again, for the owner to start once it is back. */
   private repoGone(card: Item) {
     this.setQueue(card.id, null);
-    this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.koordinator.repoDown(card.repo));
+    this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.coordinator.repoDown(card.repo));
   }
 
-  /** A card keeps the time it came to the Koordinator for as long as it stays queued. */
+  /** A card keeps the time it came to the Coordinator for as long as it stays queued. */
   private setQueue(cardId: string, q: Wait | null, keep?: string) {
     const since = keep ?? this.o.board.item(cardId)?.queue?.since ?? new Date().toISOString();
     this.o.board.work(cardId, { queue: q ? JSON.stringify({ ...q, since }) : null });
@@ -1216,7 +1216,7 @@ export class Koordinator {
 const NAME_SYSTEM = (language: string) => `You name a card on Obeya, a canvas on which the owner directs coding agents. The owner wrote the card's task (below) without a title. Give it one with the tool title: in the language the task is written in (${language} where it tells none), short and precise like a ticket title (at most about 70 characters), saying what the task changes or achieves; no quotes, no full stop at the end. Then end your turn.`;
 
 const SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting, and for a workstream of a project what it builds on; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to conflict with one of them waits behind it rather than overtaking it.
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting, and for a workstream of a project what it builds on; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to conflict with one of them waits behind it rather than overtaking it.
 
 A workstream of a project builds on another workstream of it when it needs code, an API, data or a decision that the other one introduces, or the plan says it comes after it. It then waits until that one has landed, also when the owner has not started that one yet: the owner may start workstreams one by one, and starting this one now would build on what is not there. Read the plan doc for that.
 
@@ -1231,7 +1231,7 @@ Keep it quick: this runs every time a card starts.
 `.trim();
 
 const FOLDER_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs agents; the owner knows you simply as Obeya. Several workers work at the same time, all directly in one folder that is not a git repository: what one changes is there at once for the others, and nothing is merged afterwards. Your job here: before a card starts, estimate which files and directories it will touch, and judge whether running it next to the cards in progress is likely to get in their way. Only those keep it waiting, and for a workstream of a project what it builds on; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to collide with one of them waits behind it rather than overtaking it.
+You are the Coordinator of Obeya, a canvas on which the owner directs agents; the owner knows you simply as Obeya. Several workers work at the same time, all directly in one folder that is not a git repository: what one changes is there at once for the others, and nothing is merged afterwards. Your job here: before a card starts, estimate which files and directories it will touch, and judge whether running it next to the cards in progress is likely to get in their way. Only those keep it waiting, and for a workstream of a project what it builds on; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to collide with one of them waits behind it rather than overtaking it.
 
 A workstream of a project builds on another workstream of it when it needs files, an overview, data or a decision that the other one makes, or the plan says it comes after it. It then waits until that one is done, also when the owner has not started that one yet: the owner may start workstreams one by one, and starting this one now would build on what is not there. Read the plan doc for that.
 
@@ -1246,7 +1246,7 @@ Keep it quick: this runs every time a card starts.
 `.trim();
 
 const DEPS_SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. The owner wants the workstreams of a project arranged by what builds on what: what can start at once on the left, what builds on it to the right of it. Read the plan doc (and the repository only where the doc leaves it open; you cannot change files) and say for each open workstream which workstreams it builds on.
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents. The owner wants the workstreams of a project arranged by what builds on what: what can start at once on the left, what builds on it to the right of it. Read the plan doc (and the repository only where the doc leaves it open; you cannot change files) and say for each open workstream which workstreams it builds on.
 
 A workstream builds on another when it needs code, an API, data, a document or a decision that the other one introduces, or when the plan says it comes after it, needs it or waits for it. Name only direct dependencies: when C builds on B and B on A, C names B, not A. Two workstreams that merely touch the same files, or that the plan lists one after the other without saying one needs the other, do not build on each other. A workstream may build on a delivered one.
 
@@ -1275,7 +1275,7 @@ const batchOf = (freed: boolean, folder: boolean) =>
 const FOLDER_SCHEDULE_SYSTEM = (language: string, freed: boolean) => {
   const b = batchOf(freed, true);
   return `
-You are the Koordinator of Obeya, a canvas on which the owner directs agents; the owner knows you simply as Obeya. Several workers work at the same time, all directly in one folder that is not a git repository: what one changes is there at once for the others, and nothing is merged afterwards. ${b.situation}
+You are the Coordinator of Obeya, a canvas on which the owner directs agents; the owner knows you simply as Obeya. Several workers work at the same time, all directly in one folder that is not a git repository: what one changes is there at once for the others, and nothing is merged afterwards. ${b.situation}
 
 A ${b.noun} waits for another when:
 - it depends on it: ${b.dependsOn}. It then waits until that one is done.
@@ -1295,7 +1295,7 @@ Both empty: it starts now. A ${b.noun} that waits starts by itself once what it 
 const SCHEDULE_SYSTEM = (language: string, freed: boolean) => {
   const b = batchOf(freed, false);
   return `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. ${b.situation}
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. ${b.situation}
 
 A ${b.noun} waits for another when:
 - it depends on it: ${b.dependsOn}. It then waits until that one has landed.
@@ -1326,7 +1326,7 @@ const REPOS_PARAM =
   "repos: the ids of the repositories whose CLAUDE.md the rule belongs in (one proposal each); leave it out for a rule on how agents work with the owner through Obeya.";
 
 const LEARN_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
 
 You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the canvas's repositories, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting rule that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
 
@@ -1350,7 +1350,7 @@ const REVIEW_COUNT = 'review_inputs';
 const REVIEW_SINCE = 'review_since';
 
 const REVIEW_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
 
 ${WHERE_RULES_GO}
 
@@ -1371,7 +1371,7 @@ const WHO: Record<CardEvent['author'], string> = {
   worker: 'the agent',
   explorer: 'the idea agent',
   project: 'the project agent',
-  koordinator: 'you',
+  coordinator: 'you',
   obeya: 'Obeya',
 };
 const STEPS: Partial<Record<CardEvent['kind'], string>> = {
@@ -1468,7 +1468,7 @@ export function readSession(
 const describe = (c: Change) =>
   `${c.file} (${c.regions.length ? (c.regions[0] === 'deleted' ? 'deleted' : `lines ${c.regions.slice(0, 8).join('; ')}${c.regions.length > 8 ? '; …' : ''}`) : 'new'})`;
 
-/** The tag a turn of the Koordinator knows a card by. */
+/** The tag a turn of the Coordinator knows a card by. */
 /** A card waited on that still holds back what builds on it: there, and its work not on the main branch yet. */
 const unlanded = (i?: Item) => !!i && !finished(i.state) && !i.archivedAt;
 /** Whether two lists hold the same cards. */

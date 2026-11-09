@@ -433,7 +433,7 @@ A card no agent worked on, a prototype or an archived card has no field.
   PRs where no remote existed.
 - **Direct push is chosen per card at approval** (2026-10-06), allowed by `direct`, off by default;
   Obeya pushes, fast-forward only. Rejected: rules by path.
-  Only by the card's button, never by word (2026-10-28): the Koordinator read "deploy it" as "straight
+  Only by the card's button, never by word (2026-10-28): the Coordinator read "deploy it" as "straight
   to main" and pushed past a repository's pull requests. An approval by word goes the way the
   repository sets; words that explicitly ask to bypass the pull request get a reply pointing at the
   button instead of a pull request someone would have to close again. Rejected: direct by word after
@@ -552,7 +552,7 @@ A card no agent worked on, a prototype or an archived card has no field.
   whether Obeya would see that they build on the PR). Choosing "As a follow-up task" is the decision to
   do it; what it waits for is known for certain, so Obeya sets it rather than estimating it.
   Rejected: planned tasks the owner starts after the merge (a second decision, and a wait the owner
-  has to remember); starting them through the Koordinator's estimate (it may miss that a task builds
+  has to remember); starting them through the Coordinator's estimate (it may miss that a task builds
   on a PR not merged yet).
 - **The worker bundles findings in its list and makes the follow-up tasks after the Send**
   (2026-10-31, the review of PR #33: four findings chosen as follow-ups became four tasks at once,
@@ -561,7 +561,7 @@ A card no agent worked on, a prototype or an archived card has no field.
   review better than a finding's two sentences. The tasks are still made, not proposed (the
   decision above). Rejected: Obeya making a task per finding on the Send (the words came too late);
   a bundle choosing for its other findings (the choice stays per finding). What goes wrong anyway
-  Obeya mends by merging or deleting planned tasks (see Commands to the Koordinator).
+  Obeya mends by merging or deleting planned tasks (see Commands to the Coordinator).
 - **The pull after a merge rebases where git sets no way of pulling** (2026-10-29): without one,
   git refuses to pull diverged branches. A way the owner set (`pull.rebase`, `pull.ff`,
   `branch.<name>.rebase`) still decides. Rejected: rebasing whatever is set (overrides the owner's

@@ -27,7 +27,7 @@ Persistent (SQLite):
   (see Card numbers in The canvas);
 - card events (the conversation log, with the owner's screenshots and agents' mocks), workspaces
   and their leases, what a card changed in a folder without git and its undo there;
-- the Koordinator's conversation with the owner and the threads of looked-up questions (the
+- the Coordinator's conversation with the owner and the threads of looked-up questions (the
   question, its answer and files, the card it moved onto, the step to take once the answer is in),
   and the cards that left the canvas for another;
 - confirmed commands waiting out their undo window;

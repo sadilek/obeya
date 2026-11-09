@@ -5,7 +5,7 @@ const store = () => {
   const m = new Map<string, string>();
   return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
 };
-const kept = (at: number): Kept => ({ at, card: 'c1', sheet: 'koordinator', scroll: [['["panel"]', 400]], drafts: [], video: { time: 23.5, playing: false } });
+const kept = (at: number): Kept => ({ at, card: 'c1', sheet: 'coordinator', scroll: [['["panel"]', 400]], drafts: [], video: { time: 23.5, playing: false } });
 
 test('what a reload kept comes back once, on its canvas', () => {
   const s = store();
