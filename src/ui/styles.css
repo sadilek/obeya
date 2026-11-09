@@ -943,7 +943,10 @@ textarea.p-body:focus { border-color: var(--muted); }
    pointer is on the bubble, on a touch screen always; paused, it stands still in pencil grey with Resume */
 .talk .msg:is(.thinking, .paused) .who { display: flex; align-items: center; column-gap: 8px; min-height: 20px; }
 .talk .msg.thinking .who::after { order: 0; margin-left: 0; }
-.turn-pause, .turn-resume { order: 1; margin-left: auto; flex: none; }
+/* the head's actions hold the pause: they follow the bar, centred on the line with it */
+.talk .msg:is(.thinking, .paused) .who:has(> .msg-acts) { align-items: center; margin-bottom: 0; }
+.talk .msg:is(.thinking, .paused) .who > .msg-acts { order: 1; }
+.turn-pause, .turn-resume { margin-left: auto; flex: none; }
 .turn-pause { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0;
   border: 1px solid color-mix(in srgb, var(--line) 55%, transparent); border-radius: 3px; background: none;
   color: color-mix(in srgb, var(--muted) 55%, transparent); cursor: pointer; transition: color .12s, border-color .12s; }
