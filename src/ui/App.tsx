@@ -1503,6 +1503,9 @@ function Canvas({
       return;
     }
     stopFlight();
+    // a text selection left from before would make this press drag the selected text instead of the card
+    const sel = getSelection();
+    if (sel && !sel.isCollapsed) sel.removeAllRanges();
     const el = (e.target as Element).closest<HTMLElement>('.item');
     const note = (e.target as Element).closest<HTMLElement>('.plan-dir');
     if (note) {

@@ -227,6 +227,10 @@ into other cards moves to the nearest clear spot.
 
 ### Moving around
 
+A press on the canvas drags or pans and never selects text: none of the canvas's text (a project's
+title, say) is selectable, and a press first clears any selection left elsewhere on the page, which
+would otherwise turn the drag into the browser's own drag of that text and leave the card in place.
+
 A card dragged to an edge of the view scrolls it, faster nearer the edge, but only as far as the
 canvas reaches plus room to drop the card; a card picked up at an edge scrolls only once the pointer
 moves towards it.
