@@ -71,7 +71,7 @@ export function NavPill(p: ListProps) {
         <b>{p.canvas.name}</b>
         <span className="hint lbl">{p.canvas.repos.length > 1 ? t.repos(p.canvas.repos.length) : home?.branch}</span>
         <span className="hint">▾</span>
-        {n > 0 && <span className={open ? 'waits' : 'waits pulse'}>{n}</span>}
+        {n > 0 && <span className="waits">{n}</span>}
       </button>
       {open && (
         <div className="nav-menu">

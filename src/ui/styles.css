@@ -293,8 +293,6 @@ button.pill:hover { box-shadow: var(--lift); }
 .waits { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.4), transparent 50%), var(--waiting); color: var(--on-ink); font-size: 12px; font-weight: 700;
   display: grid; place-items: center; box-sizing: border-box; }
-.nav-pill .switch .waits.pulse { animation: pulse-in 1.8s ease-out infinite; }
-@keyframes pulse-in { 0% { box-shadow: 0 0 0 0 rgba(var(--waiting-rgb),.55); } 70%, 100% { box-shadow: 0 0 0 10px rgba(var(--waiting-rgb),0); } }
 .nav-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(360px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; box-sizing: border-box;
   padding: 14px 14px 16px; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); z-index: 30; }
 /* pinned: a sidebar docked to the window's left edge, from top to bottom, as the sheets are on the right;

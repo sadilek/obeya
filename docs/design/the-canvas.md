@@ -90,7 +90,8 @@ place of a canvas switcher, a count of this canvas's cards that need the owner, 
 button names the canvas and its home branch (or its count of repositories) and counts, in the
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
 them, and per canvas one for Obeya's answers waiting unread; the app's icon carries the same number
-(see App). A click lists under it "Needs you", the phone's list (see The phone view), built once
+(see App). The count stands still: it always sits in the same place, so the eye finds it without a
+pulse. A click lists under it "Needs you", the phone's list (see The phone view), built once
 for both: the same entries in the same order. Its head counts what waits on every canvas, as the
 button does; a snoozed card is neither listed nor counted until it comes back (see Snoozing a
 card). Each entry is a light row, its title and what it waits for since when, without the waiting
@@ -438,6 +439,13 @@ code, a generic one otherwise.
   one the agent should not have asked for; an inbox as a sheet on the right, which competes
   with Obeya's sheet for the same edge; and the phone's card faces in the list, whose orange frames
   say nothing where every entry waits for the owner and make the list loud.
+- **The navigation's count does not pulse** (owner, 2026-11-09): it pulsed to draw the eye, but
+  it always sits in the same place, so it is found without. The pulse made every recording of the
+  canvas jerk: together with the bar's backdrop blur and the demo overlay's clock strip, which
+  changes every frame, Chrome's screencast sent no frame for 0.27 s once per pulse (every 1.8 s);
+  as a compositor-only scaled layer it did the same. Rejected: dropping the bar's blur or changing
+  the overlay instead, which either also ends the gaps; the bar keeps its look and the overlay its
+  clock.
 - **A snoozed card leaves "Needs you"** (issue #50, 2026-11-03): the owner put it off, so it
   waits for nobody until it comes back, and listing it under what needs them (uncounted, at the
   end) only made the list longer. On the canvas it still stands, greyed; on the phone it moves to
