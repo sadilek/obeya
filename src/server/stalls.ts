@@ -45,10 +45,11 @@ export interface Trace {
   frames: { name: string; sourceURL?: string | null; line: number; column: number }[];
 }
 
-/** A process run synchronously, and how long the server waited for it. */
+/** A process run synchronously, how long the server waited for it, and how long its thread computed meanwhile (starting it, taking in its output). */
 export interface Waited {
   argv: string[];
   ms: number;
+  cpuMs?: number;
 }
 
 /** A frame of code, as a place names it: the function and where it is. */
@@ -95,6 +96,16 @@ export interface Held {
 type Usage = Pick<NodeJS.ResourceUsage, 'majorPageFault' | 'involuntaryContextSwitches'>;
 type ThreadCpu = () => { user: number; system: number };
 
+/** The ms the calling thread has computed so far; undefined for a runtime that does not tell. */
+function threadCpuMs(threadCpu: ThreadCpu | null = process.threadCpuUsage ?? null): number | undefined {
+  try {
+    const t = threadCpu?.();
+    return t ? (t.user + t.system) / 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The counts so far. Windows counts every page fault, the soft ones of memory already there too,
  * and no context switches; macOS counts every context switch of every thread as involuntary, the
@@ -104,11 +115,7 @@ type ThreadCpu = () => { user: number; system: number };
  * where no process can read it; the thread's CPU time tells of those.
  */
 export function heldSoFar(platform = process.platform, usage: () => Usage = process.resourceUsage, threadCpu: ThreadCpu | null = process.threadCpuUsage ?? null): Held {
-  let cpuMs: number | undefined;
-  try {
-    const t = threadCpu?.();
-    if (t) cpuMs = (t.user + t.system) / 1000;
-  } catch {}
+  const cpuMs = threadCpuMs(threadCpu);
   const cpu = cpuMs === undefined ? {} : { cpuMs };
   if (platform === 'win32') return cpu;
   const u = usage();
@@ -129,7 +136,9 @@ function heldBetween(before: Held, after: Held): Held {
 function heldUp(ms: number, waited: Waited[], held: Held): { words: string; figures: string[] } {
   const { cpuMs, pageIns = 0, preempted = 0 } = held;
   const inProcesses = waited.reduce((sum, w) => sum + w.ms, 0);
-  const waitedThrough = cpuMs !== undefined && ms - inProcesses - cpuMs >= ms * WAITED_SHARE;
+  // what it computed while it waited for a process is in that wait already
+  const computed = cpuMs === undefined ? undefined : Math.max(0, cpuMs - waited.reduce((sum, w) => sum + (w.cpuMs ?? 0), 0));
+  const waitedThrough = computed !== undefined && ms - inProcesses - computed >= ms * WAITED_SHARE;
   const words =
     pageIns >= MANY_PAGE_INS
       ? `; it waited for ${count(pageIns)} pages from disk or swap`
@@ -156,7 +165,7 @@ function sampledEvery(traces: Trace[], intervalMs: number): number {
 
 /**
  * The lines a server stall of `ms` gets: where the samples taken meanwhile were, by share, and the
- * processes it waited for. Null where the samples cover too little of it for the server to have
+ * processes it waited for (`waited`: every one; those of 50 ms or more are named). Null where the samples cover too little of it for the server to have
  * run at all; `traces` null where there is no profiler to ask. Where the profiler takes no samples
  * while the thread waits for a process (`blindWhileWaiting`: Windows), the processes it waited for
  * count as covered; elsewhere they do not, so a machine that slept while one ran logs no stall.
@@ -174,7 +183,7 @@ export function describeStall(ms: number, traces: Trace[] | null, waited: Waited
   return [
     `Obeya: the server stalled for ${seconds(ms)}; meanwhile it answered no page and heard no agent${words}`,
     ...places.map(([p, n]) => `  ${String(Math.round((100 * n) / traces!.length)).padStart(3)}% ${p}`),
-    ...waited.map((w) => `  waited ${seconds(w.ms)} for: ${command(w.argv)}`),
+    ...waited.filter((w) => w.ms >= SLOW_PROCESS_MS).map((w) => `  waited ${seconds(w.ms)} for: ${command(w.argv)}`),
     ...(figures.length ? [`  meanwhile: ${figures.join(', ')}`] : []),
   ];
 }
@@ -308,12 +317,16 @@ export class Stalls {
     // by its name, the stall's places leave this frame out: the time went to the process
     Bun.spawnSync = function timedSpawnSync(...args: Parameters<typeof Bun.spawnSync>) {
       const start = performance.now();
+      const cpuStart = threadCpuMs();
       try {
         return spawnSync(...args);
       } finally {
         const end = performance.now();
+        const cpuEnd = threadCpuMs();
         const first = args[0] as string[] | { cmd: string[] };
-        if (end - start >= SLOW_PROCESS_MS) waited.push({ argv: Array.isArray(first) ? first : first.cmd, ms: end - start, end });
+        // every one, short ones too: a stall of many is none the machine held up
+        const cpuMs = cpuStart === undefined || cpuEnd === undefined ? {} : { cpuMs: cpuEnd - cpuStart };
+        waited.push({ argv: Array.isArray(first) ? first : first.cmd, ms: end - start, end, ...cpuMs });
       }
     } as typeof Bun.spawnSync;
     return this;

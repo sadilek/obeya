@@ -128,6 +128,14 @@ test('a stall that waited for a process is not called one the machine held up', 
   const git = trace(native('spawnSync'), at('git', 'workspaces.ts', 77));
   const lines = describeStall(1000, times(500, git), [{ argv: ['git', 'status'], ms: 900 }], 2, false, { cpuMs: 10, pageIns: 0 })!;
   expect(lines).toEqual(['Obeya: the server stalled for 1.0 s; meanwhile it answered no page and heard no agent', '  100% spawnSync ← git (workspaces.ts:77)', '  waited 0.9 s for: git status']);
+  // many short ones, each too short to be named, are waits for processes all the same
+  const short = Array.from({ length: 25 }, () => ({ argv: ['git', 'rev-parse', 'HEAD'], ms: 30, cpuMs: 1 }));
+  expect(describeStall(1000, times(500, git), short, 2, false, { cpuMs: 60 })).toEqual(['Obeya: the server stalled for 1.0 s; meanwhile it answered no page and heard no agent', '  100% spawnSync ← git (workspaces.ts:77)']);
+  // what the thread computed during a wait for a process counts once: the rest of the stall it waited through
+  const busyStart = [{ argv: ['git', 'status'], ms: 400, cpuMs: 200 }];
+  expect(describeStall(1000, times(500, git), busyStart, 2, false, { cpuMs: 200 })![0]).toBe(
+    'Obeya: the server stalled for 1.0 s; meanwhile it answered no page and heard no agent; its thread computed for 0.20 s of it and waited the rest (for the disk, swap, the system or a busy machine)',
+  );
 });
 
 test('the counts are taken where the platform counts them as such', () => {

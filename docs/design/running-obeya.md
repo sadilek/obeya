@@ -648,8 +648,11 @@ workers are busy.
 - **A server stall says whether the machine held it up** (2026-11-09, from `stalls.log`): stalls of
   0.5–1.5 s had their time in SQLite reads that take a few milliseconds when warm; they came with
   restarts and a 4 GB voice model loading while the machine had 11.6 GB in swap, and read like a
-  fault of the code. The counts are read at each tick (under a microsecond), and their difference
-  over the stall goes into its entry. Page faults alone would miss most of such stalls on macOS
+  fault of the code. The counts are read at each tick (under a microsecond); an entry gets their
+  difference between the ticks before and after the stall, which span up to a tick more than the
+  stall, so the share waited through errs low. Every process the server waited for counts as such,
+  the ones too short to be named too, less what the thread computed meanwhile (a burst of short git
+  calls is no machine holding the server up). Page faults alone would miss most of such stalls on macOS
   (memory from the compressor or swap file is no page-in there, nor is a file read by `read()`
   anywhere, as SQLite reads), so the thread's own CPU time comes with them: a thread that neither
   computed nor waited for a process it ran was held up. Its own, not the process's, which the
