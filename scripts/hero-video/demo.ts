@@ -128,7 +128,7 @@ async function created() {
   const refused = path.join(staged.dir, 'home', 'replay-refused.txt');
   if (fs.existsSync(refused)) throw new Error(`the recording ${REPLAY} no longer fits: ${fs.readFileSync(refused, 'utf8').trim()}; record anew`);
   const snap = (await (await fetch(`${base}/api/c/tipjar/canvas`, { headers: owner() })).json()) as {
-    items: { title: string; state: string; statusLine?: string; answering?: true; held?: number[] }[];
+    items: { title: string; state: string; statusLine?: string; answering?: true; finishing?: true; held?: number[] }[];
   };
   return snap.items.find((x) => /split the bill/i.test(x.title));
 }
@@ -558,6 +558,9 @@ const scenes: Scene[] = [
       await d.skip(
         async () => {
           await until(['live'], 'land');
+          // the agent's turn after the landing: until it ends, the card offers no Archive button
+          const end = Date.now() + 10 * 60_000;
+          while (Date.now() < end && (await created())?.finishing) await new Promise((r) => setTimeout(r, 2000));
           // Obeya's proposal from its retrospective, which the stage kept back so far
           await fetch(`${base}/api/c/tipjar/cards/${staged.cards.R}/unarchive`, { method: 'POST', headers: owner() });
           await d.wait(1200);
