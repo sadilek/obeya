@@ -50,7 +50,7 @@ import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { branchSetting, type CardWorkspaces, type FileAt, detectingBranch, gitCalls, type GitSteps, gitSteps, isFolder, type Landed, markFolder, readingBranches, together, useBranchSetting, Workspaces } from './workspaces';
 import { FolderWorkspaces } from './folder';
-import { readingTheme, readTheme, type Theme } from './theme';
+import { readingTheme, type Theme } from './theme';
 import { claudeToken, githubToken, hostName, registerHost } from './hosts';
 import { clip, messageOf, oneLine } from '../core/text';
 import { type WishDraft, type WishInput, writeWish } from './wish';
@@ -626,11 +626,13 @@ export class CanvasRuntime {
   /**
    * The repository's theme for its shared pages, as its default branch had it when last read
    * (theme.ts, `movedTo`); null without one. For a page about to go out: one not read yet is read
-   * now, the server waiting.
+   * now, the page waiting for it, not the server.
    */
-  private themeOf(path: string): Theme | null {
-    if (!this.themes.has(path)) this.setTheme(path, readTheme(path, this.shared.get(path)?.obeyaTree));
-    return this.themes.get(path)!;
+  private themeOf(path: string): Theme | null | Promise<Theme | null> {
+    if (this.themes.has(path)) return this.themes.get(path)!;
+    if (!this.themeReads.has(path)) this.readThemeOf(path, this.shared.get(path)?.obeyaTree);
+    // a read begun meanwhile wins; one that failed leaves the page without a theme
+    return this.themeReads.get(path)!.then(() => (this.themes.has(path) ? this.themes.get(path)! : this.themeReads.has(path) ? this.themeOf(path) : null));
   }
 
   /** `themeOf` for the canvas, which does not wait for it: undefined while it is read. */
@@ -3156,7 +3158,7 @@ interface DefaultRead {
   adapterModule: boolean;
   /** The main branch it was read on (`defaultBranch`). */
   branch: string;
-  /** The repository's theme (theme.ts), where it was read with the rest; a read the server waited for leaves it to `readTheme`. */
+  /** The repository's theme (theme.ts), where it was read with the rest. */
   theme?: Theme | null;
 }
 

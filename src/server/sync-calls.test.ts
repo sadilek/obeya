@@ -117,10 +117,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { appendFileSync: 1, renameSync: 1, spawnSync: 1, statSync: 1 },
   },
   'tailscale.ts': { why: 'tailscale serve taken back as the server stops; the binary found by a stat', calls: { existsSync: 1, spawnSync: 1 } },
-  'theme.ts': {
-    why: "server path, rare: readTheme reads with git while the server waits only for a page about to go out whose theme the canvas has not read yet (canvas.ts themeOf, for share.ts, which asks for it without waiting); the canvas reads themes with readingTheme otherwise. A folder's theme is read from its files",
-    calls: { readFileSync: 1, spawnSync: 2 },
-  },
+  'theme.ts': { why: "a folder's theme, read from the folder's few files (a repository's is read from git without waiting)", calls: { readFileSync: 1 } },
   'transcript.ts': {
     why: "server path, in the background: the work retrospective finds a session's transcript by listing Claude's and Codex's session directories and reads it whole; a candidate for fs/promises",
     calls: { existsSync: 2, readFileSync: 1, readdirSync: 3, statSync: 1 },

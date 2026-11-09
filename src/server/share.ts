@@ -84,7 +84,7 @@ export interface ShareSource {
   repo: string;
   isPublic?: boolean;
   /** Its theme for the pages (`.obeya/theme.css`, theme.ts), asked for once a page goes out; none where it has none. */
-  theme?: () => Theme | null;
+  theme?: () => Theme | null | Promise<Theme | null>;
 }
 
 /**
@@ -711,7 +711,7 @@ export class Sharing {
     const tags = tagsOf(pageTagsOf(this.o.board.row(cardId)), vocabulary);
     const pr = this.prOf(cardId);
     const commit = pr ? null : await this.commitOf(card);
-    const theme = this.o.sourceFor(card)?.theme?.();
+    const theme = await this.o.sourceFor(card)?.theme?.();
     const input: SharePage = {
       slug: pathOf(s),
       ...first.shown,
@@ -836,7 +836,7 @@ export class Sharing {
       when: PAGE_WORDS[language].demoOf(day(statSync(video).mtime, language)),
       tabTitle: page.title,
       language,
-      ...this.themeOf(card),
+      ...(await this.themeOf(card)),
       // a page opened from disk may not load a caption file
       tracks: tracks.map((t) => ({ language: t.language, vtt: new TextDecoder().decode(t.data) })),
       ...(silentVideo(video) ? { silent: true } : {}),
@@ -873,7 +873,7 @@ export class Sharing {
     const index = readFileSync(join(demo.dir, 'index.html'), 'utf8');
     const language = this.languageOf(demo.dir, card);
     const when = PAGE_WORDS[language].demoOf(day(statSync(join(demo.dir, 'index.html')).mtime, language));
-    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), commit: await this.commitOf(card), when, tabTitle: page.title, language, ...this.themeOf(card) };
+    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), commit: await this.commitOf(card), when, tabTitle: page.title, language, ...(await this.themeOf(card)) };
     let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
     if (as === 'html') {
       out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { html: index } })) };
@@ -893,8 +893,8 @@ export class Sharing {
   }
 
   /** The theme of the card's repository for an exported page, as the page's parts take it. */
-  private themeOf(card: Item): { theme?: string } {
-    const theme = this.o.sourceFor(card)?.theme?.();
+  private async themeOf(card: Item): Promise<{ theme?: string }> {
+    const theme = await this.o.sourceFor(card)?.theme?.();
     return theme ? { theme: theme.css } : {};
   }
 

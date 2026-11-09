@@ -28,22 +28,13 @@ const read = new Map<string, Theme | null>();
 /**
  * The theme of the repository at `repo`: from the git tree of `.obeya/` on its default branch
  * (`tree`, as `readShared` notes it; none where it has none), or from a folder without git as the
- * folder has it. Null without a `theme.css`. The server waits for git here; `readingTheme` does not.
- */
-export function readTheme(repo: string, tree: string | undefined): Theme | null {
-  if (isFolder(repo)) return themeOf(folderFiles(join(repo, THEME_DIR)));
-  if (!tree) return null;
-  const key = `${repo}\0${tree}`;
-  if (!read.has(key)) read.set(key, themeOf(treeFiles(repo, tree)));
-  return read.get(key)!;
-}
-
-/**
- * `readTheme` without the server waiting for git: the theme is put together again with each batch
- * of the files it names read, until it names none it lacks (a stylesheet it imports names more).
+ * folder has it. Null without a `theme.css`. Without the server waiting for git: the theme is put
+ * together again with each batch of the files it names read, until it names none it lacks (a
+ * stylesheet it imports names more).
  */
 export async function readingTheme(repo: string, tree: string | undefined): Promise<Theme | null> {
-  if (isFolder(repo) || !tree) return readTheme(repo, tree);
+  if (isFolder(repo)) return themeOf(folderFiles(join(repo, THEME_DIR)));
+  if (!tree) return null;
   const key = `${repo}\0${tree}`;
   if (read.has(key)) return read.get(key)!;
   const blobs = blobsOf(await output([GIT, '-C', repo, 'ls-tree', '-r', '-z', tree]));
@@ -75,18 +66,6 @@ function themeOf(file: (path: string) => Buffer | null): Theme | null {
   // a directory to resolve its references in; nothing is read from it but through `file`
   const css = themeData(text.toString('utf8'), join('/', THEME_DIR), file);
   return { css, hash: createHash('sha256').update(css).digest('hex').slice(0, 16) };
-}
-
-/** The regular files of a git tree, by their paths in it; a link (mode 120000) or a submodule is none. */
-function treeFiles(repo: string, tree: string): (path: string) => Buffer | null {
-  const r = Bun.spawnSync([GIT, '-C', repo, 'ls-tree', '-r', '-z', tree], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
-  const blobs = blobsOf(r.exitCode === 0 ? r.stdout.toString() : '');
-  return (path) => {
-    const id = blobs.get(path);
-    if (!id) return null;
-    const b = Bun.spawnSync([GIT, '-C', repo, 'cat-file', 'blob', id], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
-    return b.exitCode === 0 ? Buffer.from(b.stdout) : null;
-  };
 }
 
 /** The blobs of `ls-tree -r -z` output by their paths, regular files only. */
