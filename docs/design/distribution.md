@@ -245,9 +245,9 @@ passes on macOS arm64, Windows x64 and Linux x64 (2026-10-09).
 ### Site
 
 The page on obeya.si (`site/`), in English whatever the interface speaks: plain HTML and CSS without
-framework or build, JavaScript only for the video's play button and chapter list, so it opens from
-the file too. Paths are relative, so it also works under sadilek.github.io/obeya. It opens with one
-sentence, "Direct coding agents like an engineering director" (the one who decides and directs spoke
+framework or build, JavaScript only for the video's play button and chapter list and the visit
+counter, so it opens from the file too. Paths are relative, so it also works under
+sadilek.github.io/obeya. It opens with one sentence, "Direct coding agents like an engineering director" (the one who decides and directs spoke
 to a test reader more than "like a team"), and the hero video; then six pillars with screenshots;
 "Fits your setup", four index cards on what a newcomer asks before trying it (workers on other
 machines over SSH, folders without git, GitHub, Forgejo and Gitea, English and German); "From idea
@@ -302,6 +302,17 @@ listing every directory of `site/` with an `index.html`, each dated by the last 
 that file, so a page added by hand is in it with nothing to keep in step. It names obeya.si only;
 `demos.obeya.si` has its own (see Sharing demos).
 
+To see where visitors come from, every page counts its visit with GoatCounter (account
+`obeya`, obeya.goatcounter.com): path, title, referrer with its full address (which thread linked
+the site, not just the forum) and screen width, no cookies and nothing else stored in the browser,
+so the site needs no cookie banner. The counting script is GoatCounter's own `count.js`, copied into
+`site/goatcounter.js` and served by obeya.si, so the site loads no script from a third party; only
+the count itself goes to GoatCounter. Opened from the file or from a local address, a page counts
+nothing. A check fails when a page lacks the counter, so a page added by hand is not missed.
+`demos.obeya.si` is counted by Cloudflare Web Analytics, switched on in its Pages project: Cloudflare
+puts its script into every page of each deployment, so Obeya's demo pages carry nothing for it.
+Ad blockers stop both counters, so the numbers are lower than the real visits.
+
 ### Hero video
 
 The site's film is a real run recorded with Obeya's own demo pipeline (`scripts/hero-video/`, whose
@@ -316,9 +327,8 @@ change only what was corrected.
 
 The video is not in git: it, its captions, its chapters and the README's loop are assets of the
 GitHub release `site-media`, a pre-release so that it never becomes the latest release. The Pages
-workflow fetches them into `site/media/`, so obeya.si serves them itself, with no third party and no
-tracking. Publishing replaces them and reruns the workflow; the chapters come from the render's
-scenes, so they always match the video that is out. The loop is cut from the video at each publish
+workflow fetches them into `site/media/`, so obeya.si serves them itself, with no third party.
+Publishing replaces them and reruns the workflow; the chapters come from the render's scenes, so they always match the video that is out. The loop is cut from the video at each publish
 by scene titles ("Your wall" to "The agent starts"), 1.5 times as fast, about 18 s and 3 MB.
 
 On the page it is a `<video>` with English captions and a poster (the first frame, in git), loading
@@ -403,5 +413,13 @@ no list.
 - **obeya.si's sitemap is written at deploy, from git** (2026-11-05): Google knew only the
   homepage, though it links the other pages. Rejected: a sitemap in git kept in step by hand or by
   a check, whose dates go stale the moment a page changes without them.
+- **Visits are counted without cookies: GoatCounter on obeya.si, Cloudflare Web Analytics on
+  demos.obeya.si** (owner, 2026-11-09): the question is where visitors come from, and GitHub's
+  traffic statistics name referrers for 14 days only, while Pages keeps no access logs. Cookieless
+  counting needs no cookie banner. GoatCounter shows a referrer's full address; Cloudflare's dashboard
+  only its domain, which was enough for the demo pages, whose Pages project switches it on without
+  code. Rejected: Cloudflare for obeya.si too (one dashboard, but referrers by domain only), Plausible
+  (full referrers as well, but paid), any counter with cookies (a banner on a site that wants to be
+  read at a glance).
 - **The hero video is a release asset** (2026-10-07). Rejected: git, which holds no video, and a
-  video host, since the site loads nothing from a third party.
+  video host, since the site loads nothing from a third party (only its visit count goes to one).
