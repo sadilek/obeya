@@ -1,12 +1,12 @@
 // Other devices reaching Obeya: the owner's phone over the owner's own private network. Obeya keeps
-// listening on 127.0.0.1; with the setting „Von anderen Geräten erreichbar“ on, `tailscale serve`
+// listening on 127.0.0.1; with the setting "Reachable from other devices" on, `tailscale serve`
 // proxies HTTPS at the machine's tailnet name to it (tailscale.ts), or Obeya also listens on an
 // address of this machine the owner picked (another VPN's interface), in plain HTTP.
 //
 // A request is local when it comes from loopback under one of this machine's names and no proxy
 // forwarded it; through `tailscale serve` requests come from 127.0.0.1 too, but under the tailnet
 // name and with `X-Forwarded-For`, and count as remote. A remote request needs a paired device:
-// the page „Telefon verbinden“ shows a one-time code (in a QR code with the address), the device
+// the page "Connect a phone" shows a one-time code (in a QR code with the address), the device
 // opens it, and gets a cookie that Obeya keeps only the hash of. Without one it gets a page that
 // says how to connect, and no API. Pairing, the devices and the setting are managed only on this
 // machine itself. A device stays paired until it is removed or goes unused for `UNUSED_MS`.
@@ -32,7 +32,7 @@ export const PAIRING_MS = 5 * 60_000;
 const PAIRING_TRIES = 5;
 /** A device unused this long is no longer paired: a phone given away or lost and forgotten. */
 export const UNUSED_MS = 90 * 24 * 3600_000;
-/** How often a device's „zuletzt gesehen“ is written. */
+/** How often a device's "last seen" is written. */
 const SEEN_EVERY_MS = 60_000;
 /** The cookie's own lifetime, the longest browsers keep one (400 days); Obeya's `UNUSED_MS` decides. */
 const COOKIE_MAX_AGE = 400 * 24 * 3600;
@@ -47,7 +47,7 @@ const FORWARDED = ['x-forwarded-for', 'x-forwarded-host', 'forwarded'];
 
 const sha256 = (text: string) => new Bun.CryptoHasher('sha256').update(text).digest('hex');
 
-/** A device's name from its browser's user agent: „iPhone · Safari“. */
+/** A device's name from its browser's user agent: "iPhone · Safari". */
 export function deviceName(ua: string): string {
   const device = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux|X11/.test(ua) ? 'Linux' : '';
   const browser = /EdgiOS|EdgA|Edg\//.test(ua) ? 'Edge' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
@@ -253,7 +253,7 @@ export class Access implements Gate {
     return [...LOCAL_HOSTS, ...(this.served && this.setting?.via === 'tailscale' ? [this.served.name] : []), ...(this.listening ? [inUrl(this.listening).toLowerCase()] : [])];
   }
 
-  /** The section „Von anderen Geräten“, with what Tailscale says now (and the network made anew if that changed). */
+  /** The section "Other devices", with what Tailscale says now (and the network made anew if that changed). */
   async view(): Promise<AccessView> {
     if (this.setting?.via === 'tailscale') {
       const before = JSON.stringify(this.ts);

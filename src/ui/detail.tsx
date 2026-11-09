@@ -632,7 +632,7 @@ export function Detail(p: Props) {
       {/* the decisions of a card nobody worked on yet, below what it shows, as on every card */}
       {item.state === 'planned' && !worked && !item.queue && (
         <div className="actions">
-          {/* one snoozed to start later starts now with „Jetzt zurückholen“ on its line in the conversation */}
+          {/* one snoozed to start later starts now with "Wake now" on its line in the conversation */}
           {item.newRepo?.due ? (
             <Armed label={t.repoPick.making(choice.name)} undo={t.undo} onUndo={() => act({ action: 'stayHere' }, { close: false })} />
           ) : (
@@ -734,7 +734,7 @@ const Limited = ({ item }: { item: Item }) => (item.limitedUntil ? <span classNa
 const archivedOn = (i: Item) => i.archivedAt && <span className="p-status"> · {t.archive.when(new Date(i.archivedAt))}</span>;
 
 /**
- * „Später …“ in a card's action row, on any card the owner can snooze that is not snoozed yet (a
+ * "Later …" in a card's action row, on any card the owner can snooze that is not snoozed yet (a
  * snoozed one changes its time on its line in the conversation).
  */
 function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
@@ -749,9 +749,9 @@ function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) 
 }
 
 /**
- * Approving a review card: „Mergen (PR #5)“, or where its agent's own changes wait for the approval,
- * „Pushen und mergen“ with „Nur pushen und kommentieren“ beside it (the merge later), and with
- * requests to the contributor beside them „Pushen und an … schicken“, which merges nothing and
+ * Approving a review card: "Merge (PR #5)", or where its agent's own changes wait for the approval,
+ * "Push and merge" with "Push and comment only" beside it (the merge later), and with
+ * requests to the contributor beside them "Push and send to …", which merges nothing and
  * leaves the card waiting for them.
  */
 function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
@@ -794,7 +794,7 @@ function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: A
  */
 /**
  * On an accepted proposal its agent withdrew or replaced since: who did, why, and the choice to
- * remove the card (as „Löschen“ does, its worker stopped, with an undo) or keep it.
+ * remove the card (as "Delete" does, its worker stopped, with an undo) or keep it.
  */
 function SupersededBox({ item, all, act, onDelete }: { item: Item; all: Item[]; act: (a: CardAction, done: ActDone) => Promise<void>; onDelete: () => void }) {
   const s = item.superseded;
@@ -896,7 +896,7 @@ function IdeaView({
               {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
               <Mocks mocks={idea.mocks} />
             </div>
-            {/* what "Teilaufgabe abtrennen" would build, as its worker's task */}
+            {/* what "Split off a task" would build, as its worker's task */}
             {idea.split && !item.archivedAt && (
               // opened at the bottom of the column, it scrolls into view rather than opening out of sight
               <details className="question brief settled" onToggle={(e) => e.currentTarget.open && e.currentTarget.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}>
@@ -964,7 +964,7 @@ function IdeaView({
               <Armed label={t.idea.buildWaits} undo={t.idea.unbuild} onUndo={() => act({ action: 'unbuild' }, { close: false })} />
             ) : (
               // while the agent works, the click waits for its reply in view; else the panel closes on the built card;
-              // built in a new repository, it stays open for „Rückgängig“ and then follows the card to its canvas
+              // built in a new repository, it stays open for "Undo" and then follows the card to its canvas
               <button
                 className={btn('build')}
                 disabled={!!fresh && !fresh.ready}
@@ -1178,7 +1178,7 @@ function StartOn({ item, act, on = true, primary, children }: { item: Item; act:
   );
 }
 
-/** When a proposed task starts once accepted, with „Ändern“: another time, or none, so it starts at once. */
+/** When a proposed task starts once accepted, with "Change": another time, or none, so it starts at once. */
 function StartAt({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
   const at = item.proposal?.startAt;
   if (!at) return null;
@@ -1201,7 +1201,7 @@ function StartAt({ item, act }: { item: Item; act: (a: CardAction, done: ActDone
   );
 }
 
-/** A go clicked while an agent works on the card ("So bauen", "Übernehmen und starten"): it waits armed until the agent is done, its take-back beside it. */
+/** A go clicked while an agent works on the card ("Build it like this", "Accept and start"): it waits armed until the agent is done, its take-back beside it. */
 function Armed({ label, undo, onUndo }: { label: string; undo: string; onUndo: () => void }) {
   return (
     <>
@@ -1216,7 +1216,7 @@ function Armed({ label, undo, onUndo }: { label: string; undo: string; onUndo: (
 }
 
 /**
- * "Prototyp bauen lassen": the variants the idea's agent planned, each chosen unless its prototype
+ * "Have a prototype built": the variants the idea's agent planned, each chosen unless its prototype
  * runs already, and an approach of the owner's own; one prototype each starts at once.
  */
 function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
@@ -1532,7 +1532,7 @@ const takeBack = (cardId: string, e: CardEvent) =>
     .then(() => giveBack(cardDraft(cardId), e.text, e.images))
     .catch(() => {});
 
-/** Who wrote the task an agent started on: the owner, a plan doc, the Arbeitsrückschau, an agent's proposal, or a prototype's idea. */
+/** Who wrote the task an agent started on: the owner, a plan doc, the work retrospective, an agent's proposal, or a prototype's idea. */
 
 /** Where a conversation starts, as its first message: what was said to an idea, the task an agent started on; long ones folded. */
 function Seed({ item, by, who }: { item: Item; by: string; who: string }) {
@@ -2220,10 +2220,10 @@ function useSeekKeys(video: RefObject<HTMLVideoElement | null>) {
  * What a review card's agent found, beside its demo: the checks on the PR's head and the merge probe
  * on one line, then each finding of the review, which its agent keeps as the conversation goes on.
  * Findings its agent would make one follow-up task stand together in a bracket that says so, while
- * they are open or made one. On an open finding the owner decides („An Beitragenden“, „Selbst
- * ändern“, „Als Folgeaufgabe“, „Ignorieren“, a second click takes it back; a bracket picks nothing for its others)
+ * they are open or made one. On an open finding the owner decides ("To contributor", "Change
+ * it myself", "As a follow-up task", "Ignore", a second click takes it back; a bracket picks nothing for its others)
  * while their words reach its agent (`decides`); the decisions stand in the card's draft and go out
- * with the field's one Send. „Selbst ändern“ is greyed with its reason where the contributor allows
+ * with the field's one Send. "Change it myself" is greyed with its reason where the contributor allows
  * no edits by maintainers. A finding something came of says what; one made a follow-up task links
  * that task.
  */
@@ -2517,13 +2517,13 @@ function HeldText({ card, body, save }: { card: string; body: string; save: (bod
 }
 
 /**
- * Sharing the demo shown with colleagues: "Teilen" publishes it right away, then the page's link with
- * "Nicht mehr teilen" for this demo. A demo not on the page yet goes onto it beside the versions
- * there („Zur Seite dazunehmen“; an earlier demo in its place by handover) or, the latest, in their place
- * („Auf der Seite ersetzen“), the worker's word on it first; "Erneut teilen" once the site writes pages
+ * Sharing the demo shown with colleagues: "Share" publishes it right away, then the page's link with
+ * "Stop sharing" for this demo. A demo not on the page yet goes onto it beside the versions
+ * there ("Add to the page"; an earlier demo in its place by handover) or, the latest, in their place
+ * ("Replace on the page"), the worker's word on it first; "Share again" once the site writes pages
  * differently than when it published this one. Where the site publishes on approval (`onApproval`),
- * the latest demo not on the page has „Mit der Freigabe teilen“ until the card is approved, and
- * "Teilen" reads „Jetzt teilen“: the owner may share it before approving, or not on approving.
+ * the latest demo not on the page has "Share on approval" until the card is approved, and
+ * "Share" reads "Share now": the owner may share it before approving, or not on approving.
  */
 function ShareBox({ item, demo, act, onApproval, approveAll, vocabulary, unlisted }: { item: Item; demo: Demo; act: (a: CardAction, done: ActDone) => Promise<void>; onApproval: boolean; approveAll?: (() => Promise<void>) | undefined; vocabulary?: PageTags | undefined; unlisted: boolean }) {
   const [copied, copy] = useCopy(2000);
@@ -2618,7 +2618,7 @@ function ShareBox({ item, demo, act, onApproval, approveAll, vocabulary, unliste
                 </>
               )}
             </p>
-            {/* the worker's word comes first; without it „Auf der Seite ersetzen“, as the latest demo always went out before */}
+            {/* the worker's word comes first; without it "Replace on the page", as the latest demo always went out before */}
             {!latest ? add(false) : demo.follows === 'supplements' ? [add(true), replace(false)] : [replace(true), add(false)]}
           </div>
           {approval && <div className="share-row">{approval}</div>}
@@ -2629,21 +2629,21 @@ function ShareBox({ item, demo, act, onApproval, approveAll, vocabulary, unliste
   );
 }
 
-/** How long a tapped × asks „Entfernen“ before it is an × again. */
+/** How long a tapped × asks "Remove" before it is an × again. */
 const ARMED_MS = 4000;
 
 /**
- * The page's tags as chips, before sharing and after: × takes one off, „+“ offers the values of the
+ * The page's tags as chips, before sharing and after: × takes one off, "+" offers the values of the
  * site's vocabulary the page lacks. A change takes effect at once (a shared page goes out again), and
  * stays: neither a later worker nor Obeya's reading session changes what the owner set. A tag taken
- * off stays in its place for a while, struck through, with „Rückgängig“. A tap on × first asks
- * „Entfernen“: on a phone the card's layout may still move under the finger as it opens.
+ * off stays in its place for a while, struck through, with "Undo". A tap on × first asks
+ * "Remove": on a phone the card's layout may still move under the finger as it opens.
  */
 function ShareTags({ tags, vocabulary, set }: { tags: PageTags | undefined; vocabulary: PageTags; set: (dimension: string, values: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(open, box, () => setOpen(false), true);
-  // the chip whose × was tapped, asking „Entfernen“; how the last press on an × came (touch asks first)
+  // the chip whose × was tapped, asking "Remove"; how the last press on an × came (touch asks first)
   const [armed, setArmed] = useState<string | null>(null);
   const touch = useRef(false);
   useEffect(() => {
@@ -2656,7 +2656,7 @@ function ShareTags({ tags, vocabulary, set }: { tags: PageTags | undefined; voca
       document.removeEventListener('pointerdown', off, true);
     };
   }, [armed]);
-  // the tags taken off a moment ago, each with „Rückgängig“ until its time is up
+  // the tags taken off a moment ago, each with "Undo" until its time is up
   const [gone, setGone] = useState<{ key: string; d: string; v: string }[]>([]);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -2721,7 +2721,7 @@ function ShareTags({ tags, vocabulary, set }: { tags: PageTags | undefined; voca
                 aria-label={t.share.removeTag(d, v)}
                 onPointerDown={(e) => (touch.current = e.pointerType !== 'mouse')}
                 onClick={() => {
-                  // a mouse or a key takes it off at once; a finger first gets „Entfernen“ to tap
+                  // a mouse or a key takes it off at once; a finger first gets "Remove" to tap
                   if (sure || !touch.current) remove(d, v);
                   else setArmed(key);
                   touch.current = false;
@@ -2784,7 +2784,7 @@ function ShareIcon() {
 }
 
 /**
- * "Teilen" where the repository has no share target: the demo as a file to pass on, a ZIP of its
+ * "Share" where the repository has no share target: the demo as a file to pass on, a ZIP of its
  * page with the video or the HTML artifact beside it, or one HTML file that holds everything
  * (short videos, artifacts that are their index.html alone). Where its site lacks its credentials
  * on this machine, a line under the buttons names the file.

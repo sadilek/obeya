@@ -126,7 +126,7 @@ export class SourceUpdates {
     return files.length ? { why: 'local', files } : undefined;
   }
 
-  /** Fetches the branch the upstream is (`refs/remotes/<remote>/<branch>`) and nothing else, without FETCH_HEAD, as the Lesestand does. */
+  /** Fetches the branch the upstream is (`refs/remotes/<remote>/<branch>`) and nothing else, without FETCH_HEAD, as the read tree does. */
   private async fetch() {
     const branch = (await this.git('symbolic-ref', '--quiet', '--short', 'HEAD')).out;
     const remote = (await this.git('config', `branch.${branch}.remote`)).out;

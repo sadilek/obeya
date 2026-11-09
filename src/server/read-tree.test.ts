@@ -64,7 +64,7 @@ const projects = (c: CanvasRuntime) =>
     .map((p) => p.title)
     .sort();
 
-describe('the Lesestand', () => {
+describe('the read tree', () => {
   test("is a worktree on the default branch: a card's branch in the checkout without the plan doc leaves the project on the canvas", async () => {
     git(checkout, 'checkout', '--quiet', '-b', 'obeya/card');
     git(checkout, 'rm', '--quiet', 'docs/plan/export.md');

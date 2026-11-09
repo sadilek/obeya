@@ -366,7 +366,7 @@ test('canvases start, take a new configuration and restart a repository without 
   canvas.shutdown();
   fresh();
   const web = repo('web', 'Web');
-  // a repository with an origin on a server (named after it), its Lesestand a worktree, clones to make and one listed
+  // a repository with an origin on a server (named after it), its read tree a worktree, clones to make and one listed
   const upstream = repo('shop.git', 'Shop');
   const shop = join(dir, 'shop');
   gitClone(upstream, shop);
@@ -412,7 +412,7 @@ test('a canvas starting with a workstream whose work landed while its box stays 
   const web = join(dir, 'web');
   const w1 = canvas.board.snapshot().items.find((i) => i.label === 'W1' && i.repo === 'web')!;
   canvas.shutdown();
-  // its work on main, which the Lesestand (a worktree, for work that goes out as pull requests) is on
+  // its work on main, which the read tree (a worktree, for work that goes out as pull requests) is on
   identify(web);
   writeFileSync(join(web, 'export.ts'), 'export {}\n');
   git(web, 'add', '.');
@@ -605,7 +605,7 @@ describe("a repository's settings for this machine", () => {
     settings = { land: 'main' };
     await canvas.settingsChanged();
     expect(canvas.board.snapshot().canvas.repos[0]!.pullRequests).toBeUndefined();
-    // the Lesestand is the checkout now, which the landing moves
+    // the read tree is the checkout now, which the landing moves
     expect(canvas.repos[0]!.read.path).toBe(shop);
     await canvas.repos[0]!.workers.approve(card.id);
     expect(item(card.id).state).toBe('live');
@@ -1074,7 +1074,7 @@ describe('the configuration changed while the canvas runs', async () => {
     await until(() => !existsSync(made));
   });
 
-  test('"Jetzt übernehmen" restarts them at once, cutting off the worker in its turn', async () => {
+  test('"Apply now" restarts them at once, cutting off the worker in its turn', async () => {
     await open([{ path: web, settings: { land: 'pr' }, clones: 1 }]);
     const w = await atWork('web', 'W');
     await canvas.apply({ name: 'Produkt', repos: [{ path: web, settings: { land: 'pr' }, clones: 1, slots: 1 }] });
@@ -1302,7 +1302,7 @@ describe('the configuration changed while the canvas runs', async () => {
     const sessions = workers.sessions.length;
     expect(refused(a.card.id, { action: 'message', text: 'Weiter' })).toBe('repoDown');
     expect(workers.sessions).toHaveLength(sessions);
-    // the cause fixed, the configuration taken over again (a save, „Erneut versuchen“) starts it at once
+    // the cause fixed, the configuration taken over again (a save, "Try again") starts it at once
     git(own, 'remote', 'set-url', 'origin', api);
     await canvas.apply({ name: 'Produkt', repos: [{ path: web, settings: { land: 'pr' } }, { path: api, settings: { land: 'pr' }, workspaces: [own], clones: 1 }] });
     expect(canvas.board.canvas.repos.map((r) => r.id)).toEqual(['web', 'api']);
@@ -1343,7 +1343,7 @@ describe('the canvases Obeya serves', () => {
       { canvas: 'web', detail: expect.stringContaining(`${forWeb} is not a clone of`) },
       { canvas: 'api', repo: 'shop', detail: expect.stringContaining(`${forShop} is not a clone of`) },
     ]);
-    // the causes fixed, the configuration taken over again (a save, „Erneut versuchen“): both start
+    // the causes fixed, the configuration taken over again (a save, "Try again"): both start
     git(forWeb, 'remote', 'set-url', 'origin', web);
     git(forShop, 'remote', 'set-url', 'origin', shop);
     await set.apply(configs, ['web', 'api']);
@@ -1531,12 +1531,12 @@ test('what the owner writes in a card, or says to the Coordinator without one, r
   await heard;
   await settle();
   expect(learners()).toHaveLength(3);
-  // it reads the home repository's Lesestand, the default branch, not the checkout a card may have leased
+  // it reads the home repository's read tree, the default branch, not the checkout a card may have leased
   expect(learners()[2]!.spec.cwd).toBe(join(dir, 'read', 'web', 'web'));
   expect(learners()[2]!.inbox[0]).toContain('You replied: Weil die Karten offen lassen');
 });
 
-test('clicks in a card count towards the Rückschau, and words the learner reads count once', async () => {
+test('clicks in a card count towards the retrospective, and words the learner reads count once', async () => {
   const count = () => canvas.board.setting('review_inputs');
   const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
   canvas.press(a.id, { action: 'start' });
@@ -1672,7 +1672,7 @@ describe("the owner's words on a card with an agent", () => {
     k.call('act', { actions: [{ do: 'new_card', card: 'K1', title: 'Excel-Export', body: 'Auch als Excel.' }], confirm: 'Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.' });
     k.emit({ type: 'idle' });
     expect(await result).toBe('Obeya: Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.');
-    // the owner sees it above the microphone, with „Rückgängig“ while it waits, and in the card's conversation
+    // the owner sees it above the microphone, with "Undo" while it waits, and in the card's conversation
     expect(notices).toEqual([{ cardId: c.id, text: 'Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.', token: expect.any(String), undoMs: 5000 }]);
     expect(canvas.board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'coordinator' });
     expect(canvas.commander.undo((notices[0] as { token: string }).token)).toBe(true);
@@ -1836,7 +1836,7 @@ test("a card the owner snoozed counts as no paused agent: resuming the canvas le
     };
     const later = await atWork('Later', 's-later');
     const now = await atWork('Now', 's-now');
-    // „Später …“: its worker stops until then, holding what comes for it as a paused one does
+    // "Later …": its worker stops until then, holding what comes for it as a paused one does
     c.act(later.id, { action: 'snooze', until: new Date(Date.now() + 3_600_000).toISOString() });
     await heard();
     expect(c.board.canvas.agents).toEqual({ running: 1, paused: 0 });

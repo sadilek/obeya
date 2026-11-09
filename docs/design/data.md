@@ -48,7 +48,7 @@ the Claude token the owner gave Obeya (`claude-token`), where the running Obeya 
 pushes with (`vapid.json`), the app's server log (`app.log`) and its shell's failed rebuilds
 (`app-build.log`), the stalls of the server and its pages (`stalls.log`, see Running Obeya), voices
 and models (`voices/`), the workers' clones and worktrees (`workspaces/`), copies of demos and
-transcripts from SSH hosts (`hosts/<host>/`), the Lesestand's worktrees (`read/`), the cards' undo
+transcripts from SSH hosts (`hosts/<host>/`), the read tree's worktrees (`read/`), the cards' undo
 in folders without git (`undo/`), the files of looked-up answers (`answers/<canvas>/<thread>/`), the
 static sites Obeya keeps (`sites/<key>/`), the env files their repositories' settings name (relative
 to the home, `sites/demos/deploy.env`, say), and `share/`, the directory deploys run in.

@@ -180,7 +180,7 @@ export class Push {
   /** Whether the owner uses Obeya, at the machine or on a device; the server's log says why a phone got nothing. */
   private inUse(cards: Waits[]): boolean {
     const where = this.atDesk() ? 'at the machine' : this.onADevice() && 'on a device';
-    if (where) console.log(`Obeya: not pushed, the owner is ${where}: ${cards.map((w) => `„${plainTitle(w.title)}“`).join(', ')}`);
+    if (where) console.log(`Obeya: not pushed, the owner is ${where}: ${cards.map((w) => `"${plainTitle(w.title)}"`).join(', ')}`);
     return !!where;
   }
 
@@ -231,7 +231,7 @@ export class Push {
         this.subscriptions().map(async ({ id, name, push }) => {
           try {
             const status = await send(JSON.parse(push) as Subscription, message, vapid, this.post);
-            console.log(`Obeya: pushed „${message.title}“ to ${name}: ${status === 201 ? 'taken' : status}`);
+            console.log(`Obeya: pushed "${message.title}" to ${name}: ${status === 201 ? 'taken' : status}`);
             if (status === 404 || status === 410) this.store.setPush(id, null);
           } catch (e) {
             console.warn(`Obeya: push to ${name} failed: ${(e as Error).message}`);

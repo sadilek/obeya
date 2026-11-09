@@ -270,7 +270,7 @@ export function labelOf(i: Item) {
   return i.idea || i.prototypeEnd || stopped(i) ? stateLabel(i) : i.becomesProject ? becomesLabel(i) : i.kind === 'task' ? '' : t.kind[i.kind];
 }
 
-/** Lower case without accents, so „uber“ finds „Über“. */
+/** Lower case without accents, so "uber" finds "Über". */
 export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
 /** The words of a search in the archive, folded. */

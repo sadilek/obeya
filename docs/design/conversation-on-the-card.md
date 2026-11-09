@@ -153,7 +153,7 @@ it. The quote is part of the field's draft, so it survives closing the card and 
 message shows the quote's first lines; a click scrolls to the original. Only messages can be quoted,
 not steps or state lines.
 
-The agent reads `[In reply to your message: „…“]` above the words: about 160 characters of what it
+The agent reads `[In reply to your message: “…”]` above the words: about 160 characters of what it
 already has in its session, else the whole message (Obeya's words, which the worker never got). The
 Coordinator always gets the quote whole; in the sheet a looked-up answer by its tag (`A12`).
 
@@ -395,7 +395,7 @@ agent as they are: Claude Code's skill tool takes `/name` in a message as the ow
 skill, at the start or in the middle of a sentence. Until the owner has used the menu once (moved
 through it with the arrow keys or picked a skill), a hint under the field says so while it has the cursor ("“/” asks the agent for one of its skills.").
 
-Claude Code says which skills there are: Obeya starts it in the repository's Lesestand with the
+Claude Code says which skills there are: Obeya starts it in the repository's read tree with the
 agent's plugins and settings, asks for its commands and skills, and ends it without a message (no
 tokens; a few seconds). A repository whose Claude Code configuration waits for the owner's trust
 (see Trusting a repository's commands) offers the user's skills alone, as its agents get them; so does a review
@@ -464,8 +464,8 @@ image.
   into the session; Obeya learned only at turn end what it took, and the SDK takes one back only by
   a control request.
 - **Obeya's reply to a passed-on request under the agent's message** (owner, 2026-10-29): the agent
-  passes the owner's words on and then says so; standing where it was logged, Obeya's „Moment, ich
-  sehe nach“ came above the agent's message that triggered it. The passing-on step folds under that
+  passes the owner's words on and then says so; standing where it was logged, Obeya's "One moment, I'll
+  check" came above the agent's message that triggered it. The passing-on step folds under that
   message, so the reply follows it. Rejected: holding the reply back in the server until the
   agent's message (it would be lost in a restart, and each kind of agent would need it).
 - **Obeya's look-up apart from the agent's work** (2026-10-29): Obeya logs what it reads for a

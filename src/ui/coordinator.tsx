@@ -1,6 +1,6 @@
 // The Coordinator's sheet: the conversation, with the height the sheet has, and below it sections
 // that open and close: the rules it learned and proposes, with the values for repositories'
-// settings the Arbeitsrückschau proposes, and the owner's preferences; shared demos to bring
+// settings the work retrospective proposes, and the owner's preferences; shared demos to bring
 // up to date at once.
 
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
@@ -36,7 +36,7 @@ interface Props {
   onTell: (text: string, images?: string[], replyTo?: Reply['to']) => void;
   items: Item[];
   preferences: Preference[];
-  /** Values for repositories' settings the Arbeitsrückschau proposes. */
+  /** Values for repositories' settings the work retrospective proposes. */
   settings: SettingProposal[];
   /** The canvas's repositories, whose CLAUDE.md a proposal may go into. */
   repos: RepoRef[];
@@ -124,7 +124,7 @@ export function CoordinatorTalk({ on, talk, items, repos, onOpen, onTell, draft 
   );
 }
 
-/** Where the canvas has seen a review card: the hint on „Review PR #5“ is no longer shown. */
+/** Where the canvas has seen a review card: the hint on "Review PR #5" is no longer shown. */
 const REVIEW_KNOWN = 'obeya-review-pr-known';
 
 /**
@@ -404,7 +404,7 @@ const tellable = (x: Talk, items: Item[]) =>
     ? x.answer !== undefined && !x.files?.some((f) => isWalkthrough(f.name)) && !(x.movedTo && items.some((i) => i.id === x.movedTo))
     : !!x.replyOnly && !!x.reply && !x.undone && !x.heldUntil;
 
-/** Under Obeya's reply: a card it waits on, to take the step it said it would take then; „Nicht mehr warten“ drops that step. */
+/** Under Obeya's reply: a card it waits on, to take the step it said it would take then; "Stop waiting" drops that step. */
 function WaitLine({ talk, wait, card, onOpen }: { talk: number; wait: TalkWait; card: Item | undefined; onOpen: (i: Item) => void }) {
   return (
     <div className="hint wait-line">
@@ -576,7 +576,7 @@ function useSettingDraft(id: number, proposed: string): [string, (v: string) => 
 const asText = (v: string | string[]) => (Array.isArray(v) ? v.join('\n') : v);
 
 /**
- * A value for a repository's setting the Arbeitsrückschau proposes, with the cards it rests on and
+ * A value for a repository's setting the work retrospective proposes, with the cards it rests on and
  * the value it would replace: the owner takes it, as it is or changed, on this machine or into the
  * repository for everyone (neither is the default: they choose each time), or rejects it.
  */
@@ -721,7 +721,7 @@ function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (
                 })}
               </span>
             )}
-            {/* beside the notice of outdated pages, its "Ausblenden" puts both away; a run tagging pages goes alone */}
+            {/* beside the notice of outdated pages, its "Hide" puts both away; a run tagging pages goes alone */}
             {(going || run.tags || !r.outdated) && (
               <span className="pref-actions">
                 {going ? (
@@ -806,7 +806,7 @@ function PreferenceRow({ p }: { p: Preference }) {
   );
 }
 
-/** A rule the owner writes: one of theirs, active at once, or for a repository's CLAUDE.md, which goes into its card „CLAUDE.md ergänzen“. */
+/** A rule the owner writes: one of theirs, active at once, or for a repository's CLAUDE.md, which goes into its card "Add to CLAUDE.md". */
 function NewPreference({ repos }: { repos: RepoRef[] }) {
   const [text, setText] = useState('');
   const [target, setTarget] = useState('');

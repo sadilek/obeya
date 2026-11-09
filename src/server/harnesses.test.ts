@@ -17,7 +17,7 @@ test('a group without a harness of its own runs on Claude Code, unless only Code
   expect(changes).toBe(2);
 });
 
-test("the Konfiguration's harnesses: Claude Code's aliases, Codex's models without a default of their own, none while Codex is not ready", async () => {
+test("the configuration's harnesses: Claude Code's aliases, Codex's models without a default of their own, none while Codex is not ready", async () => {
   let asked = 0;
   const h = new Harnesses({
     cwd: '/tmp',

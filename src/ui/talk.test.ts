@@ -744,7 +744,7 @@ test('the phone opens a card at work, or one with a question open, with its conv
   expect(opensWithTalk({ state: 'done' } as Item)).toBe(false);
 });
 
-test("the phone's „Läuft“ holds a handed-over card while its worker takes in the owner's note, and „Braucht dich“ holds it again after", () => {
+test(`the phone's "Running" holds a handed-over card while its worker takes in the owner's note, and "Needs you" holds it again after`, () => {
   const demo = { kind: 'task', state: 'waiting', need: 'demo' } as Item;
   expect(needsYou(demo)).toBe(true);
   expect(runs(demo)).toBe(false);

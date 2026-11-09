@@ -130,7 +130,7 @@ export interface WorkerOptions {
    * the pull, and where that stops, the landing of the rebase a worker resolved.
    */
   pulls?: Pick<Workspaces, 'pullMain' | 'pushMain' | 'clashBeforeMerge' | 'landResolution' | 'landingOf'>;
-  /** How long pushing main for a review card waits for the owner's „Rückgängig“; PUSH_HOLD_MS when left out. */
+  /** How long pushing main for a review card waits for the owner's "Undo"; PUSH_HOLD_MS when left out. */
   pushHold?: number;
   /** How long Obeya waits between looks at whether the forge shows a review card's pushed commits as the PR's head; a second when left out. */
   pushSettle?: number;
@@ -457,7 +457,7 @@ const pauseOf = (due: DueRestart): Pause => (due.reason === 'stop' ? 'stop' : du
 
 /** The owner may pause the demo video for a while; a browser gone away leaves no other sign. */
 const HOLD_GRACE = 10 * 60_000;
-/** Closing the card with „Freigeben“ also ends the watching: the approval takes the comments then. */
+/** Closing the card with "Approve" also ends the watching: the approval takes the comments then. */
 const RELEASE_DELAY = 1500;
 /** A quick reply from the owner should not pay for starting the stack again. */
 const PARK_GRACE = 5 * 60_000;
@@ -647,7 +647,7 @@ export class Workers {
   private landing = new Set<string>();
   /** Cards approved while git tells what the approval does (`approve`), or while a review card's pull request is pushed to and merged (`mergeContribution`): a restart waits for them too. */
   private approving = new Set<string>();
-  /** Review cards whose „main pushen“ waits out its undo window (`pushMainFor`), or runs. */
+  /** Review cards whose "Push main" waits out its undo window (`pushMainFor`), or runs. */
   private pushingMain = new Map<string, ReturnType<typeof setTimeout> | true>();
   /** Merged cards whose branch git reads the added plan docs of: their workspace goes once it has (`finish`). */
   private reading = new Map<string, Promise<void>>();
@@ -736,7 +736,7 @@ export class Workers {
     const branch = row.branch ?? `${branchName(card.title, card.id)}${shipped ? `-${shipped.commit?.slice(0, 7) ?? 'rest'}` : ''}`;
     const { path, ready } = asBadRequest(() => this.o.workspaces.lease(card.id, branch, { from: row.kept_in }));
     this.bump(card.id);
-    // the run before is not resumed, but the Arbeitsrückschau still reads it
+    // the run before is not resumed, but the work retrospective still reads it
     if (row.session_id) this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.worker.restarted(this.o.board.t.worker.earlierRun(row.session_id)));
     // a review card's pull request is watched from the start, afresh
     const contribution = contributionOf(row);
@@ -1446,7 +1446,7 @@ export class Workers {
   released(cardId: string, now = false) {
     this.card(cardId);
     if (!this.held(cardId).length) return;
-    // sent by the owner ("Jetzt senden"): no approval is on its way to take them instead
+    // sent by the owner ("Send now"): no approval is on its way to take them instead
     if (now) this.release(cardId);
     else this.releaseLater(cardId, this.o.releaseDelay ?? RELEASE_DELAY);
   }
@@ -1619,13 +1619,13 @@ export class Workers {
   }
 
   /**
-   * „Mergen (PR #5)“: the owner approved a review card's demo. Obeya merges the pull request on the
+   * "Merge (PR #5)": the owner approved a review card's demo. Obeya merges the pull request on the
    * forge (the repository's allowed method, squash first), pinned to the head the worker reviewed:
    * a PR that moved since the handover is not merged, and its worker reviews it anew. Where the
    * worker's own commits are held (`HeldChanges`), Obeya first pushes them onto the PR's branch,
    * fast-forward only, and posts their text: as a comment, or with requests to the contributor as
    * one review asking for changes, after which the card waits for them and nothing is merged;
-   * `merge: false` („Nur pushen“) stops after the post too. Before the merge the demo goes on its
+   * `merge: false` ("Push only") stops after the post too. Before the merge the demo goes on its
    * page where the site publishes on approval, and the page's link goes into a comment on the PR
    * once it is online (`onApproval`; the description stays the contributor's). A refused merge
    * leaves the card waiting for the owner, with the reason, but a conflict with main, which goes to
@@ -1731,7 +1731,7 @@ export class Workers {
     }
   }
 
-  /** „Nur pushen“: the worker's own commits held on a review card go onto the PR with their text, and the card waits for the owner's „Mergen“ again. */
+  /** "Push only": the worker's own commits held on a review card go onto the PR with their text, and the card waits for the owner's "Merge" again. */
   pushContribution(cardId: string) {
     const card = this.card(cardId);
     if (!card.contribution || !handedOver(card) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
@@ -1920,7 +1920,7 @@ export class Workers {
         ...(findings ? { findings } : {}),
         ...(sent ? { requested: { ...(url ? { url } : {}), at: new Date().toISOString() } } : {}),
       } satisfies StoredContribution),
-      // the state says it: „Wartet auf Beitragenden“
+      // the state says it: "Waiting for the contributor"
       ...(sent ? { state: 'inPr', need: null, detail: null, status_line: null } : {}),
     });
     if (failed) {
@@ -1967,7 +1967,7 @@ export class Workers {
 
   /**
    * The owner's change request, as the worker wrote it, goes to the contributor as a review asking
-   * for changes; the card waits for them (`inPr`, „Wartet auf Beitragenden“) with the review linked
+   * for changes; the card waits for them (`inPr`, "Waiting for the contributor") with the review linked
    * in its log. Returns why it was not sent, or nothing.
    */
   private async requestChanges(cardId: string, body: string, ids: number[] = []): Promise<string | undefined> {
@@ -1996,7 +1996,7 @@ export class Workers {
       state: 'inPr',
       need: null,
       detail: null,
-      // the state says it: „Wartet auf Beitragenden“
+      // the state says it: "Waiting for the contributor"
       status_line: null,
       contribution: JSON.stringify({
         ...now,
@@ -2079,7 +2079,7 @@ export class Workers {
   }
 
   /**
-   * „Änderungen verwerfen“ in a folder without git, on a card waiting for approval: what its worker
+   * "Discard changes" in a folder without git, on a card waiting for approval: what its worker
    * changed there is put back as it was (`FolderWorkspaces.undo`), but what someone changed since
    * and what no copy was kept of. The card goes on waiting for the owner, its log says what was put
    * back and what not, and its worker hears it with its next message.
@@ -2390,7 +2390,7 @@ export class Workers {
     const landed = landedOf(row);
     this.o.board.work(cardId, finishedRow(row));
     this.o.board.workDone(cardId);
-    // the Arbeitsrückschau read the card's runs when its work ended
+    // the work retrospective read the card's runs when its work ended
     if (!landed?.followUp) this.o.onWorkEnded?.(cardId, row.workspace);
   }
 
@@ -2630,7 +2630,7 @@ export class Workers {
     else this.pulled(cardId, r.to);
   }
 
-  /** The local main has a review card's merge now: its log says so, the Lesestand reads it, and the other review cards look again at what the move means for them. */
+  /** The local main has a review card's merge now: its log says so, the read tree reads it, and the other review cards look again at what the move means for them. */
   private pulled(cardId: string, commit: string) {
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.pulledMain(commit.slice(0, 7)));
     this.o.onMerged?.(cardId);
@@ -2665,7 +2665,7 @@ export class Workers {
   }
 
   /**
-   * „main pushen und PR anpassen“ on a review card whose PR collides with unpushed commits on the
+   * "Push main, adapt the PR" on a review card whose PR collides with unpushed commits on the
    * local main: once the undo window is through (`keepMainFor` takes it back), the local main goes
    * to `origin` (`Workspaces.pushMain`), so the PR now conflicts there, and the card's worker brings
    * the PR up to date with it, itself where the contributor allows maintainers' edits, else by a
@@ -2685,7 +2685,7 @@ export class Workers {
     );
   }
 
-  /** The owner takes back „main pushen“ within its undo window: nothing happened. */
+  /** The owner takes back "Push main" within its undo window: nothing happened. */
   keepMainFor(cardId: string) {
     const held = this.pushingMain.get(cardId);
     if (!held || held === true) throw new BadRequest('noClash', 'main is not waiting to be pushed for this card');
@@ -3179,7 +3179,7 @@ export class Workers {
   /**
    * A planned card snoozed to start later starts now: at its time (`timeUp`), or because the owner
    * starts it earlier. Its worker hears with its task when the card was to start, so a task that
-   * says „in two weeks“ is read as due now.
+   * says "in two weeks" is read as due now.
    */
   startsNow(cardId: string, timeUp: boolean) {
     const s = this.o.board.unsnooze(cardId, timeUp ? 'time' : 'owner');
@@ -3892,7 +3892,7 @@ export class Workers {
     if (e.type === 'text' || e.type === 'tool' || (e.type === 'idle' && !e.more)) live.pending = undefined;
     switch (e.type) {
       case 'session': {
-        // a session that replaces another (none resumed, say) keeps the one before for the Arbeitsrückschau
+        // a session that replaces another (none resumed, say) keeps the one before for the work retrospective
         const before = this.o.board.row(cardId).session_id;
         if (before && before !== e.id) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.newSession(this.o.board.t.worker.earlierRun(before)));
         this.o.board.work(cardId, { session_id: e.id, model: e.model ?? null, effort: e.effort ?? null });

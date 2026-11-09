@@ -16,7 +16,7 @@ import { t } from './strings';
 let last: AgentsView | null = null;
 const agentsView = () => api.agents().then((v) => (last = v));
 
-/** A harness and model as the owner knows them: „Claude Code · Opus“, „Codex · Sol“ (a Codex family by its name, without a version). */
+/** A harness and model as the owner knows them: "Claude Code · Opus", "Codex · Sol" (a Codex family by its name, without a version). */
 export function agentLabel(view: AgentsView | null, harness: Harness, model: string): string {
   const a = t.config.agents;
   if (harness === 'claude') return model === 'default' ? a.models.default : `${t.harnesses.claude} · ${a.models[model as AgentModel] ?? model}`;
@@ -66,7 +66,7 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const listed = (h: Harness) => view.harnesses.find((x) => x.id === h);
   const harness = own.harness && own.model ? own.harness : group.harness;
   const model = own.harness && own.model ? own.model : group.model;
-  // each harness's models as the Konfiguration lists them, the one checked among them even where no longer listed
+  // each harness's models as the Configuration lists them, the one checked among them even where no longer listed
   const choices = (h: Harness) => modelChoices(listed(h), harness === h ? model : undefined);
   // the efforts the model takes (Codex lists them), the one chosen among them
   const takes = choices(harness).find((m) => m.value === model)?.efforts ?? AGENT_EFFORTS;

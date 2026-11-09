@@ -1,4 +1,4 @@
-// Cards the owner swiped aside on the phone: out of „Braucht dich“ and „Läuft“ until they need the
+// Cards the owner swiped aside on the phone: out of "Needs you" and "Running" until they need the
 // owner anew, in a list of their own meanwhile. Kept in the phone's browser, not on the server: it is
 // how the owner sorts the phone's lists, and the canvas at the desk shows every card as before.
 

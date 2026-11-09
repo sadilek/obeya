@@ -153,7 +153,7 @@ function detached(cmd: string, args: string[], o: { env?: Env; windowsVerbatimAr
 /**
  * Opens a file (or a directory) with the system's app for it, on the machine Obeya runs on, which
  * the owner sits at: Finder or Explorer for a directory. A file that is no document (`DOCUMENT`),
- * or any file with `show` („Im Ordner zeigen“), is shown in its folder, selected, where the
+ * or any file with `show` ("Show in folder"), is shown in its folder, selected, where the
  * platform can (Linux opens the folder).
  */
 export function openWithSystem(path: string, file = false, show = false): Promise<boolean> {

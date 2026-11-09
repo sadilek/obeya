@@ -413,7 +413,7 @@ describe('a Codex session on a host', () => {
     expect(events).toEqual([{ type: 'lost', message: `the connection to ${name} was lost` }]);
   });
 
-  overSsh("a Codex thread's transcript there is found by its id for the Arbeitsrückschau", async () => {
+  overSsh("a Codex thread's transcript there is found by its id for the work retrospective", async () => {
     const id = '01a1a634-1526-77c0-b3ba-30c136b024f5';
     const day = join(dir, 'net', 'home', '.codex', 'sessions', '2026', '11', '04');
     mkdirSync(day, { recursive: true });

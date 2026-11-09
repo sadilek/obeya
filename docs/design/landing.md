@@ -41,7 +41,7 @@ card's clone or worktree Obeya fetches, rebases onto `origin/<default>` and runs
 HEAD:<default>`, never forced. A push refused because the branch moved is rebased and pushed once
 more; any other refusal (protection, rights) goes to the owner, the card back in review. Conflicts
 go back to the worker as above, and its next handover is pushed directly too. A card already in its
-PR does not switch. The local checkout is left alone; the Lesestand is refreshed at once, so plan docs
+PR does not switch. The local checkout is left alone; the read tree is refreshed at once, so plan docs
 the card adds show as projects, and the worker hears its work is on main. Obeya does not watch the CI
 on the default branch.
 
@@ -395,7 +395,7 @@ When the landing changed Obeya's own code, or `workspaces` in a repository's set
 configuration), the worker is told Obeya, or that repository's agents, restart with it; other
 settings changes apply at once. What needs the new code waits through `after_restart`: the worker
 ends its turn, the restart happens, and the resumed worker hears its change now runs. Work pushed
-straight to the remote's main applies once the Lesestand fetches it. A worker that ends its turn
+straight to the remote's main applies once the read tree fetches it. A worker that ends its turn
 while a restart is due pauses for it and is resumed after it.
 
 #### Failed turns while finishing
@@ -519,8 +519,8 @@ A card no agent worked on, a prototype or an archived card has no field.
   into a stranger's fork); a click on a choice acting at once, or a button of its own under the list
   (two Sends where every card has one).
 - **What to do about the findings is decided on each finding, not in the demo report's question**
-  (2026-11-02, the review of PR #37: the report asked „Wie soll es mit den offenen Befunden
-  weitergehen?“ with options for all open findings at once, beside each finding's own choice, and
+  (2026-11-02, the review of PR #37: the report asked "How should the open findings
+  go on?" with options for all open findings at once, beside each finding's own choice, and
   too coarse to answer with them). The worker's instructions name the findings as the place where
   the owner decides on a defect in the PR, so its question is left for what lies beyond them.
   Rejected: Obeya refusing any question at a review card's handover (one beyond the findings, such

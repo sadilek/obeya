@@ -500,7 +500,7 @@ code, a generic one otherwise.
   groups whose last cards sit in the archive, out of the ring's reach.
 - **A project the owner does not work on collapses** (2026-10-21): it stays in sight and needs no
   second list. Rejected: hiding projects into a list beside the archive, filtered by the plan doc's
-  git author („Nur meine Projekte“).
+  git author ("Only my projects").
 - **`?` and "New task" only teach** (2026-10-15). Rejected: a permanent `?` button, and "New
   task" creating a card mid-view.
 - **A card's title is optional** (2026-10-15). Rejected: a required title, which dropped untitled

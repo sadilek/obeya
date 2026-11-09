@@ -769,7 +769,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     expect(state(w.id)).toBe('live');
     runtime.last.emit({ type: 'idle' });
     const commit = git(main, 'rev-parse', 'HEAD');
-    // git tells in the background that the Lesestand holds it
+    // git tells in the background that the read tree holds it
     await until(() => state(w.id) === 'planned');
     expect(w1().landedPart).toEqual({ commit });
     expect(board.events(w.id).at(-1)).toMatchObject({ author: 'obeya', text: 'Teil gelandet, im Plan-Doc weiter offen.' });
@@ -809,9 +809,9 @@ describe('a workstream merged as a pull request, its box still empty', () => {
     return w;
   };
 
-  test('stays live while the Lesestand lacks the merge commit, and is planned again once it holds it', async () => {
+  test('stays live while the read tree lacks the merge commit, and is planned again once it holds it', async () => {
     const w = await inPr();
-    // the merge as GitHub made it, not yet on the Lesestand's main
+    // the merge as GitHub made it, not yet on the read tree's main
     git(main, 'checkout', '--quiet', '-b', 'merged');
     writeFileSync(join(main, 'config.ts'), 'export {}\n');
     git(main, 'add', '.');
@@ -833,13 +833,13 @@ describe('a workstream merged as a pull request, its box still empty', () => {
     expect(runtime.last.inbox[0]).toContain('pull request #821 (https://github.com/acme/app/pull/821)');
   });
 
-  test('without the merge commit, the Lesestand after the next fetch stands in for it', async () => {
+  test('without the merge commit, the read tree after the next fetch stands in for it', async () => {
     const w = await inPr();
     workers.merged(w.id);
     runtime.last.emit({ type: 'idle' });
     board.docsChanged();
     expect(state(w.id)).toBe('live');
-    board.lesestandMoved('home', git(main, 'rev-parse', 'HEAD'));
+    board.readTreeMoved('home', git(main, 'rev-parse', 'HEAD'));
     await until(() => state(w.id) === 'planned');
     expect(w1().landedPart).toEqual({ commit: git(main, 'rev-parse', 'HEAD'), pr: { url: 'https://github.com/acme/app/pull/821', number: 821 } });
   });

@@ -41,7 +41,7 @@ const STATES: Record<string, Record<string, string>> = {
   inPr: { state: 'inPr' },
   finishing: { state: 'live', workspace: '/w', landed: '{}' },
   planned: { state: 'planned' },
-  // LOGIN: the card „Login“, which it waits for
+  // LOGIN: the card "Login", which it waits for
   queued: { state: 'planned', queue: JSON.stringify({ behind: ['LOGIN'], reason: 'Beide ändern die Sitzungsverwaltung.' }) },
   proposal: { state: 'proposal', proposal: JSON.stringify({ reason: 'Beim Login aufgefallen.', questions: [{ text: 'Welche Kodierung?', options: ['UTF-8', 'Latin-1'] }] }) },
 };

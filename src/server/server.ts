@@ -164,7 +164,7 @@ export function serve(
   usage?: UsageMeters,
   /** Where the stalls of the pages go, beside the server's own. */
   stalls?: Stalls,
-  /** Claude Code and Codex on this machine, for the Konfiguration's harnesses and models. */
+  /** Claude Code and Codex on this machine, for the Configuration's harnesses and models. */
   harnesses?: Harnesses,
 ) {
   const canvases = Array.isArray(served) ? { all: () => served } : served;
@@ -300,7 +300,7 @@ export function serve(
     send({ type: 'restart', restart: pending(c.id) });
     send({ type: 'snapshot', snapshot: c.board.snapshot() });
     if (ws.data.canvas !== EVERY) put(ws, waitingMessage());
-    // a page that reloads within a command's undo window offers "Rückgängig" again
+    // a page that reloads within a command's undo window offers "Undo" again
     for (const n of c.commander.undoable()) send({ type: 'notice', ...n });
   };
   restarter?.onChange(() => {
@@ -390,7 +390,7 @@ export function serve(
     relist();
   });
 
-  /** A click the Rückschau counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
+  /** A click the retrospective counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
   const click = <T>(c: CanvasRuntime, out: T): T => {
     c.coordinator.noticed();
     return out;
@@ -530,7 +530,7 @@ export function serve(
       },
       // another device pairing: the address in the QR code (`?code=`), or the code typed into the page it got
       '/pair': { GET: (req, srv) => access.pairRoute(req, srv), POST: (req, srv) => access.pairRoute(req, srv) },
-      // „Von anderen Geräten“: the setting, what the network allows, the devices; only on this machine
+      // "Other devices": the setting, what the network allows, the devices; only on this machine
       '/api/access': {
         GET: (req, srv) => (access.isLocal(req, srv) ? handle(() => access.view()) : Response.json({ local: false })),
         PUT: async (req, srv) => (access.isLocal(req, srv) ? handle(async () => access.save(await req.json())) : onlyHere()),
@@ -657,13 +657,13 @@ export function serve(
       '/api/personal-site/code': { GET: needs(sites, (x) => x.code()) },
       '/api/personal-site/private': { POST: needs(sites, async (x, req) => x.allow(await req.json())) },
       '/api/personal-site/approved': { POST: needs(sites, async (x, req) => x.approved(await req.json())) },
-      // „Demo-Seite einrichten“ for a repository: started, followed, and taken into its settings
+      // "Set up a demo site" for a repository: started, followed, and taken into its settings
       '/api/site-setup': {
         GET: needs(sites, (x, req) => ({ job: x.repoJob(new URL(req.url).searchParams.get('path') ?? '') })),
         POST: needs(sites, async (x, req) => ({ job: x.setupRepo(await req.json()) })),
         DELETE: needs(sites, (x, req) => (x.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
       },
-      // „Vorschlagen lassen“ at a demo site's tags: started, followed, and taken into the field
+      // "Have an agent propose the tags" at a demo site's tags: started, followed, and taken into the field
       '/api/tag-proposal': {
         GET: needs(config, (_, req) => {
           const path = new URL(req.url).searchParams.get('path') ?? '';
@@ -733,12 +733,12 @@ export function serve(
       '/api/narration/clip': { POST: narration ? clipRoute(narration) : notFound },
       // and heard back for the times of its words
       '/api/narration/hear': { POST: narration ? hearRoute(narration) : notFound },
-      // „Für alle ins Repository übernehmen“: a repository's settings for this machine into its .obeya/settings.json
+      // "Take over into the repository for everyone": a repository's settings for this machine into its .obeya/settings.json
       '/api/config/share-settings': { POST: needs(config, async (c, req) => c.shareSettings(await req.json())) },
       // a repository's commands, new or changed on its default branch, confirmed by the owner: they count from now on
       '/api/config/trust': { POST: needs(config, async (c, req) => (await c.trust(await req.json()), {})) },
       // what the configuration amounts to and what is wrong with it: as saved, or a draft as the owner edits it
-      // „Erneut versuchen“: what did not start as the configuration has it tries again
+      // "Try again": what did not start as the configuration has it tries again
       '/api/config/retry': { POST: needs(config, (c) => c.retry()) },
       '/api/config/check': {
         GET: needs(config, (c) => c.checkSaved()),
@@ -746,7 +746,7 @@ export function serve(
       },
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
       '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },
-      // from "Konfiguration", for a repository without settings of its own: the card that writes them
+      // from "Configuration", for a repository without settings of its own: the card that writes them
       '/api/c/:canvas/adapter-setup': { POST: on(async (c, req) => c.adapterSetupCard(String(((await req.json()) as { repo?: unknown }).repo))) },
       // from the note on a plan directory: the card that prepares one of its docs as a project, started
       '/api/c/:canvas/prepare-plan-doc': {
@@ -1103,7 +1103,7 @@ export function serve(
         }),
       },
       '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => click(c, c.rejectRule(Number(req.params.id)))) },
-      // a value for a repository's setting the Arbeitsrückschau proposed: taken on this machine or for everyone (`where`), or rejected
+      // a value for a repository's setting the work retrospective proposed: taken on this machine or for everyone (`where`), or rejected
       '/api/c/:canvas/setting-proposals/:id/take': {
         POST: on(async (c, req) => {
           const { where, value } = (await req.json().catch(() => ({}))) as { where?: unknown; value?: unknown };
@@ -1111,15 +1111,15 @@ export function serve(
         }),
       },
       '/api/c/:canvas/setting-proposals/:id/reject': { POST: on((c, req) => click(c, c.rejectSetting(Number(req.params.id)))) },
-      // "Erneut teilen" for many outdated pages at once (or, with `tags`, the pages without tags): `count` of them, the newest demos first, or all (null)
+      // "Share again" for many outdated pages at once (or, with `tags`, the pages without tags): `count` of them, the newest demos first, or all (null)
       '/api/c/:canvas/reshare': {
         POST: on(async (c, req) => {
           const { count, tags } = (await req.json().catch(() => ({}))) as { count?: number | null; tags?: unknown };
           if (count != null && !(Number.isInteger(count) && count > 0)) throw new BadRequest('invalid', 'count must be a positive integer or null');
-          // `tags`: the pages without tags, tagged and shared again („N Seiten ohne Tags“)
+          // `tags`: the pages without tags, tagged and shared again ("N pages without tags")
           c.sharing.reshareMany(count ?? null, tags === true);
         }),
-        // "Ausblenden": puts away what the finished run says, and the notice of outdated pages until a newer change
+        // "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change
         DELETE: on((c) => c.sharing.dismissResharing()),
       },
       '/api/c/:canvas/reshare/stop': { POST: on((c) => c.sharing.stopResharing()) },
@@ -1133,7 +1133,7 @@ export function serve(
           c.board.readTalk(ids as number[] | undefined);
         }),
       },
-      // the owner no longer wants the step the Coordinator waits on a card for („Nicht mehr warten“)
+      // the owner no longer wants the step the Coordinator waits on a card for ("Stop waiting")
       '/api/c/:canvas/talk/:id/unwait': {
         POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String(((await req.json().catch(() => ({}))) as { card?: unknown }).card ?? '')) })),
       },

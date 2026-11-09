@@ -1,5 +1,5 @@
-// Other devices reaching Obeya (src/server/remote.ts): the dialog „Telefon verbinden“ the phone icon
-// in the bar opens, with the QR code that pairs a phone, and the section „Von anderen Geräten“ of the
+// Other devices reaching Obeya (src/server/remote.ts): the dialog "Connect a phone" the phone icon
+// in the bar opens, with the QR code that pairs a phone, and the section "Other devices" of the
 // configuration, with the setting, what the network lacks, the address and the paired devices. Both
 // show the setting and the network the same way (`Reach`), and only on this machine itself.
 
@@ -42,7 +42,7 @@ const moved = (view: AccessView): DeviceView[] => (view.address ? view.devices.f
 /** A moment as the device list says it: the time today, else the day. */
 const when = (iso: string) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
 
-/** The setting „Von anderen Geräten erreichbar“ and what the network needs for it, with one step each. */
+/** The setting "Reachable from other devices" and what the network needs for it, with one step each. */
 function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => void }) {
   const a = t.access;
   const [status, setStatus] = useState('');
@@ -177,7 +177,7 @@ function Qr({ text, size = 220 }: { text: string; size?: number }) {
   );
 }
 
-/** The section „Von anderen Geräten“ of the configuration. */
+/** The section "Other devices" of the configuration. */
 export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () => void }) {
   const a = t.access;
   const [view, setView] = useAccess(on);
@@ -246,7 +246,7 @@ function Moved({ devices }: { devices: DeviceView[] }) {
 }
 
 /**
- * „Telefon verbinden“: with other devices reaching Obeya, a QR code of the address with a one-time
+ * "Connect a phone": with other devices reaching Obeya, a QR code of the address with a one-time
  * code (a new one once it expires) until a phone paired with it; else what is still missing, to set
  * right here.
  */

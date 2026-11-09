@@ -55,7 +55,7 @@ interface Live {
   quiet?: boolean;
   /** The owner's preferences as the agent last heard them: in its instructions, or since then. */
   preferences: string;
-  /** The agent heard that the owner clicked "So bauen" during its turn. */
+  /** The agent heard that the owner clicked "Build it like this" during its turn. */
   toldBuild?: boolean;
   /** The agent's background work, and a turn that ended without a reply waiting for it to wake the agent. */
   work: BackgroundWait;
@@ -303,7 +303,7 @@ export class Explorers {
     );
   }
 
-  /** The owner clicked "So bauen" while the agent works: it hears so once, as the brief it leaves becomes the task. */
+  /** The owner clicked "Build it like this" while the agent works: it hears so once, as the brief it leaves becomes the task. */
   private buildNote(cardId: string, live: Live): string | undefined {
     if (live.toldBuild || !this.o.board.item(cardId)?.idea?.buildAfterReply) return;
     live.toldBuild = true;
@@ -657,9 +657,9 @@ const OPENING_PROPOSED_TASK =
 const RESUMED =
   'The owner paused you after your reply and has now let you go on. Pausing ended your session at once: whatever you had running was stopped with it (a command still running shows exit code 137). Go on where you stopped.';
 
-/** The owner clicked "So bauen" during the agent's turn. */
+/** The owner clicked "Build it like this" during the agent's turn. */
 const BUILD_AFTER_REPLY =
-  'The owner clicked "So bauen" while you worked on this reply: once it is there, a worker builds the idea from the brief as you leave it, unless your reply asks questions; then nothing is built, and the owner decides again after answering them.';
+  'The owner clicked "Build it like this" while you worked on this reply: once it is there, a worker builds the idea from the brief as you leave it, unless your reply asks questions; then nothing is built, and the owner decides again after answering them.';
 
 /** How the agent hears the messages an interrupted turn left unanswered. */
 const UNREAD_NOTE: Record<Unread['why'], string> = {

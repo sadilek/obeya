@@ -57,7 +57,7 @@ export interface RepoHands {
   workers: Workers;
   workspaces: CardWorkspaces;
   adapter: RepoAdapter;
-  /** Where the Coordinator reads (scopes, questions): the repository's Lesestand. */
+  /** Where the Coordinator reads (scopes, questions): the repository's read tree. */
   path: string;
   /** A folder without git: its cards all work in the folder itself, with no branches to merge. */
   folder?: boolean;
@@ -68,13 +68,13 @@ export interface CoordinatorOptions {
   runtime: AgentRuntime;
   /** The repository of a card; a canvas may span several. */
   repoFor: (card: Item) => RepoHands;
-  /** Where the Coordinator reads for what the owner says without a card: the home repository's Lesestand. */
+  /** Where the Coordinator reads for what the owner says without a card: the home repository's read tree. */
   home: () => string;
   /** Whether the owner paused the canvas's agents: a card the Coordinator lets start waits until they resume them (`{ paused }` in its queue). */
   paused?: () => boolean;
   /** How long a project's start, or taking a card's workspace, waits for the owner to take it back; START_ALL_HOLD_MS and EVICT_HOLD_MS by default. */
   holdMs?: number;
-  /** After how many of the owner's inputs the Rückschau runs; REVIEW_EVERY by default. */
+  /** After how many of the owner's inputs the retrospective runs; REVIEW_EVERY by default. */
   reviewEvery?: number;
   /** The files of screenshots by their ids. */
   imageFiles?: (ids?: string[]) => string[];
@@ -403,7 +403,7 @@ export class Coordinator {
 
   /**
    * The owner said something, or clicked without words (a start, an approval, a dismissed
-   * proposal): every `reviewEvery` of these, the Rückschau reads the history since the last one,
+   * proposal): every `reviewEvery` of these, the retrospective reads the history since the last one,
    * after the learner has read the input that completed the count. The count is a setting of the
    * canvas, so it survives a restart.
    */
@@ -416,10 +416,10 @@ export class Coordinator {
     const since = b.setting(REVIEW_SINCE)!;
     b.setSetting(REVIEW_COUNT, '0');
     b.setSetting(REVIEW_SINCE, new Date().toISOString());
-    this.learning = this.learning.then(() => this.review(since)).catch((e) => console.error('Coordinator (Rückschau):', e));
+    this.learning = this.learning.then(() => this.review(since)).catch((e) => console.error('Coordinator (retrospective):', e));
   }
 
-  /** The Rückschau: one session reads what happened since `since` and proposes rules for patterns across cards. */
+  /** The retrospective: one session reads what happened since `since` and proposes rules for patterns across cards. */
   private async review(since: string): Promise<void> {
     const history = this.history(since);
     if (!history.length) return;
@@ -451,12 +451,12 @@ export class Coordinator {
         },
         { name: 'done', description: 'Nothing (more) to propose.', schema: {}, run: () => finish('Fine. End your turn now.') },
       ],
-      brief: [`What happened on the canvas since the last Rückschau, oldest first:\n${history.join('\n')}`, ...this.rules(null)].filter(Boolean).join('\n\n'),
+      brief: [`What happened on the canvas since the last retrospective, oldest first:\n${history.join('\n')}`, ...this.rules(null)].filter(Boolean).join('\n\n'),
     });
   }
 
   /**
-   * What the Rückschau reads, oldest first, at most the latest REVIEW_HISTORY lines: the cards'
+   * What the retrospective reads, oldest first, at most the latest REVIEW_HISTORY lines: the cards'
    * milestones (the owner's notes, answers and clicks, the agents' questions and hand-overs, answers
    * given in the owner's name), the owner's words in ideas and to the Coordinator (taken back or
    * not), the cards they deleted or dismissed, and the rule proposals they decided on.
@@ -502,7 +502,7 @@ export class Coordinator {
   }
 
   /**
-   * What the learner and the Rückschau read about the rules: the canvas's repositories, the active
+   * What the learner and the retrospective read about the rules: the canvas's repositories, the active
    * rules (numbered, for `replaces`), the rules on their way into a CLAUDE.md, and the proposals
    * waiting or rejected.
    */
@@ -1314,7 +1314,7 @@ Both empty: it starts now. A ${b.noun} that waits starts by itself once what it 
 
 /**
  * Where a rule goes: the preference memory, for how agents work with the owner through Obeya, or a
- * repository's CLAUDE.md, for anything about the repository. Shared by the learner and the Rückschau.
+ * repository's CLAUDE.md, for anything about the repository. Shared by the learner and the retrospective.
  */
 const WHERE_RULES_GO = `
 A rule goes to one of two places:
@@ -1341,11 +1341,11 @@ Not a preference: deciding the case at hand (an option, a name, a date, what thi
 Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in ${language}, in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
 `.trim();
 
-/** After how many of the owner's inputs the Rückschau runs, at most how many rules it proposes, and how much history it reads. */
+/** After how many of the owner's inputs the retrospective runs, at most how many rules it proposes, and how much history it reads. */
 export const REVIEW_EVERY = 20;
 const REVIEW_PROPOSALS = 3;
 const REVIEW_HISTORY = 300;
-/** The settings that keep the Rückschau's count across restarts, and when its history begins. */
+/** The settings that keep the retrospective's count across restarts, and when its history begins. */
 const REVIEW_COUNT = 'review_inputs';
 const REVIEW_SINCE = 'review_since';
 
@@ -1354,7 +1354,7 @@ You are the Coordinator of Obeya, a canvas on which the owner directs coding age
 
 ${WHERE_RULES_GO}
 
-This is the Rückschau. You get what happened on the canvas since the last one, oldest first: what the owner said and clicked (notes, answers, feedback, approvals, starts against your advice, cards and proposals they deleted or dismissed, commands they took back, rule proposals they accepted or rejected), and what the agents asked and handed over. Each thing the owner said was already read on its own; look for what only shows across several moments and cards:
+This is the retrospective. You get what happened on the canvas since the last one, oldest first: what the owner said and clicked (notes, answers, feedback, approvals, starts against your advice, cards and proposals they deleted or dismissed, commands they took back, rule proposals they accepted or rejected), and what the agents asked and handed over. Each thing the owner said was already read on its own; look for what only shows across several moments and cards:
 - the same correction or feedback on different cards;
 - the same kind of question, answered the same way each time;
 - proposals of one kind the owner always dismisses, or always takes;
@@ -1365,7 +1365,7 @@ Clicks without words count here: what the owner does again and again says what t
 Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in ${language} in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); why, one short sentence in ${language} for the owner (under 150 characters) naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
 `.trim();
 
-/** How the Rückschau names who did something on a card, and what. */
+/** How the retrospective names who did something on a card, and what. */
 const WHO: Record<CardEvent['author'], string> = {
   owner: 'the owner',
   worker: 'the agent',

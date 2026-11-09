@@ -1,4 +1,4 @@
-// „Auswählen …“ beside a folder's path: the system's folder dialog on the machine Obeya runs on,
+// "Choose …" beside a folder's path: the system's folder dialog on the machine Obeya runs on,
 // offered only where it has one and the browser runs there too (the dialog opens on its screen).
 // One control for the setup assistant's first canvas and a repository's path in the configuration.
 

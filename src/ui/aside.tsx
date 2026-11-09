@@ -135,7 +135,7 @@ export function Aside({
       }}
       onPointerUp={letGo}
       onPointerCancel={letGo}
-      // a line pulled aside and let go is no tap on its „Rückgängig“, a card no tap that opens it
+      // a line pulled aside and let go is no tap on its "Undo", a card no tap that opens it
       onClickCapture={(e) => {
         if (!dragged.current) return;
         dragged.current = false;

@@ -137,7 +137,7 @@ describe('the Coordinator remembers', () => {
     const { heard } = await say(k, 'stopp Export', 'act', { actions: [{ do: 'stop', card: tag(a) }], confirm: '„Export“ angehalten.' });
     expect(k.undo(heard.token!)).toBe(true);
     const next = await say(k, 'was ist los?', 'reply', { confirm: 'Nichts.' });
-    expect(next.brief).toContain('The owner took back what you confirmed with „„Export“ angehalten.“');
+    expect(next.brief).toContain('The owner took back what you confirmed with “„Export“ angehalten.”');
     expect(board.snapshot().talk.map((t) => [t.said, t.reply, !!t.undone])).toEqual([
       ['stopp Export', '„Export“ angehalten.', true],
       ['was ist los?', 'Nichts.', false],
@@ -172,7 +172,7 @@ describe('the Coordinator remembers', () => {
     });
     expect(k.holding()).toBe(false);
     k.arm(heard.token!);
-    // a restart waits for it, and a page that opens offers "Rückgängig" again for what is left of the window
+    // a restart waits for it, and a page that opens offers "Undo" again for what is left of the window
     expect(k.holding()).toBe(true);
     expect(k.undoable()).toEqual([{ text: heard.confirm, token: heard.token!, undoMs: expect.any(Number) }]);
     expect(k.undoable()[0]!.undoMs).toBeGreaterThan(1000);
@@ -217,7 +217,7 @@ describe('the Coordinator remembers', () => {
     expect(slow.holding()).toBe(false);
   });
 
-  test('a new task starts at once, like "Agent starten", unless the owner says it should wait', async () => {
+  test('a new task starts at once, like "Start agent", unless the owner says it should wait', async () => {
     const k = commander();
     const { heard, session } = await say(k, 'Tipjar soll die Rechnung aufteilen', 'act', {
       actions: [{ do: 'new_card', title: 'Rechnung aufteilen', body: 'Tipjar soll die Rechnung aufteilen.', start: true }],
@@ -599,13 +599,13 @@ describe('the Coordinator remembers', () => {
       return brief;
     };
     expect(await reply('und welche davon wartet?', { talk: first!.id, part: 'reply' })).toContain(
-      'The owner typed (as written, no recognition errors): "und welche davon wartet?"\n\n[In reply to your reply: „Zwei: „Export“ und „Login“.“]',
+      'The owner typed (as written, no recognition errors): "und welche davon wartet?"\n\n[In reply to your reply: “Zwei: „Export“ und „Login“.”]',
     );
     expect(board.snapshot().talk.at(-1)!.replyTo).toEqual({ talk: first!.id, part: 'reply', by: 'coordinator', text: 'Zwei: „Export“ und „Login“.' });
-    expect(await reply('nochmal', { talk: first!.id, part: 'said' })).toContain('[In reply to their own earlier message: „wie viele Karten laufen?“]');
+    expect(await reply('nochmal', { talk: first!.id, part: 'said' })).toContain('[In reply to their own earlier message: “wie viele Karten laufen?”]');
     // a looked-up answer goes by its tag, to follow up on it
     store.answerTalk(first!.id, 'Export wartet auf dich.', 'project');
-    expect(await reply('warum?', { talk: first!.id, part: 'answer' })).toContain(`[In reply to the answer A${first!.id} the project's agent looked up: „Export wartet auf dich.“]`);
+    expect(await reply('warum?', { talk: first!.id, part: 'answer' })).toContain(`[In reply to the answer A${first!.id} the project's agent looked up: “Export wartet auf dich.”]`);
     // what is no message of the sheet is dropped, and the words go alone
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     await say(k, 'hallo', 'reply', { confirm: 'Hallo.' });
@@ -719,7 +719,7 @@ describe('the usage limit', () => {
   const limited = () => new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, limitMargin: 10 });
   const lifts = (ms: number) => runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() + ms } });
 
-  test('words the limit kept the Coordinator from reading wait and are read by themselves once it lifts; the reply comes with „Rückgängig“', async () => {
+  test('words the limit kept the Coordinator from reading wait and are read by themselves once it lifts; the reply comes with "Undo"', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const notices: Notice[] = [];
     board.onNotice((n) => void notices.push(n));
@@ -737,7 +737,7 @@ describe('the usage limit', () => {
     expect(runtime.sessions).toHaveLength(1);
 
     await until(() => runtime.sessions.length === 2);
-    // read now: „liest …“ under them again
+    // read now: "is reading …" under them again
     expect(board.snapshot().talk[0]!.heldUntil).toBeUndefined();
     expect(runtime.last.inbox.at(-1)).toContain("the account's usage limit kept you from reading it until now");
     runtime.last.call('act', { actions: [{ do: 'start', card: tag(a) }], confirm: '„Export“ startet.' });
@@ -1090,7 +1090,7 @@ describe("the Coordinator and Obeya's configuration", () => {
   });
 });
 
-describe('Arbeitsrückschau on request', () => {
+describe('work retrospective on request', () => {
   test('runs for the repository the owner names, else the first; an unknown one is refused', async () => {
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }, { id: 'app', name: 'App', path: '/o', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     const k = commander();
@@ -1336,7 +1336,7 @@ describe('a step the Coordinator takes once a card gets somewhere', () => {
       },
     });
 
-  test('it waits on the new card of the same command, and once that is done takes the step up by itself, with „Rückgängig“', async () => {
+  test('it waits on the new card of the same command, and once that is done takes the step up by itself, with "Undo"', async () => {
     const other = board.create({ title: 'Recipes einrichten', x: 0, y: 0 });
     const notices: Notice[] = [];
     board.onNotice((n) => void notices.push(n));
@@ -1473,7 +1473,7 @@ describe('a step the Coordinator takes once a card gets somewhere', () => {
     expect(b.id).toBeString();
   });
 
-  test('a card there already is refused, and so is a wait that names two cards; stop_waiting and „Nicht mehr warten“ drop the step, and it hears of the latter', async () => {
+  test('a card there already is refused, and so is a wait that names two cards; stop_waiting and "Stop waiting" drop the step, and it hears of the latter', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const b = board.create({ title: 'Login', x: 0, y: 0 });
     board.work(a.id, { state: 'live' });
@@ -1503,7 +1503,7 @@ describe('a step the Coordinator takes once a card gets somewhere', () => {
     expect(k.unwait(talk, b.id)).toBe(true);
     expect(board.snapshot().talk[2]!.waits).toBeUndefined();
     const next = await say(k, 'und?', 'reply', { confirm: 'Nichts.' });
-    expect(next.brief).toContain('The owner told you to stop waiting on „Login“');
+    expect(next.brief).toContain('The owner told you to stop waiting on “Login”');
     expect(next.brief).not.toContain('Cards you wait on');
     board.work(b.id, { state: 'live' });
     k.due(board.snapshot().items);
@@ -1527,7 +1527,7 @@ describe('a step the Coordinator takes once it has looked something up', () => {
       },
     });
 
-  test('a task for each open issue: it looks them up, then creates the tasks itself, with „Rückgängig“', async () => {
+  test('a task for each open issue: it looks them up, then creates the tasks itself, with "Undo"', async () => {
     const notices: Notice[] = [];
     board.onNotice((n) => void notices.push(n));
     const asked: number[] = [];

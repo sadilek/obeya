@@ -575,7 +575,7 @@ export function resultFailure(m: SDKResultMessage): string | undefined {
 /**
  * Whether a failed turn hit the account's usage limit, and when that lifts: the request was refused
  * for it, the limits last reported say so, or (from a CLI that reports neither) the message does
- * („You've hit your session limit · resets 2:40pm“).
+ * ("You've hit your session limit · resets 2:40pm").
  */
 export function usageLimit(failure: string, refused: boolean, limits: SDKRateLimitInfo | undefined, now = Date.now()): { resetsAt?: number } | undefined {
   const rejected = limits?.status === 'rejected';
@@ -587,7 +587,7 @@ export function usageLimit(failure: string, refused: boolean, limits: SDKRateLim
 }
 
 /**
- * When the message says the limit resets, as the CLI words it („resets 7:20pm (Europe/Berlin)“):
+ * When the message says the limit resets, as the CLI words it ("resets 7:20pm (Europe/Berlin)"):
  * the next such time in that zone, or one that passed within the hour. Nothing for a message that
  * names no time, or a day as well (a weekly limit).
  */

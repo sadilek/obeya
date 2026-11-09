@@ -53,7 +53,7 @@ const hearing = (text: string, ms = 0, loaded = () => {}) => ({
   transcribe: async () => (await Bun.sleep(ms), { text, doubtful: false }),
 });
 
-test('the voice check names what is missing, how to install it here, and what "Installieren" fetches', async () => {
+test('the voice check names what is missing, how to install it here, and what "Install" fetches', async () => {
   const home = mkdtempSync(join(tmpdir(), 'obeya-voice-setup-'));
   try {
     const setup = new VoiceSetup({ home, local: hearing(''), env: { PATH: join(home, 'none') } });
@@ -65,7 +65,7 @@ test('the voice check names what is missing, how to install it here, and what "I
     expect(by.ffmpeg!.install?.commands.length || by.ffmpeg!.install?.url).toBeTruthy();
     expect(by.uv).toMatchObject({ state: 'missing' });
     expect(by.uv!.install?.url).toContain('astral');
-    // without uv the package is not in its cache: fetched by "Installieren" or the first command, once uv is there
+    // without uv the package is not in its cache: fetched by "Install" or the first command, once uv is there
     expect(by.recognition).toMatchObject({ state: 'later', found: 'Parakeet', waits: 'uv' });
     await expect(setup.install()).rejects.toThrow('uv');
     expect(view.fetch.mb).toBe(by.recognition!.mb!);
@@ -80,7 +80,7 @@ test('the voice check names what is missing, how to install it here, and what "I
   }
 });
 
-test('"Installieren" loads the recognition and times it on a short sentence, and says why when it fails', async () => {
+test('"Install" loads the recognition and times it on a short sentence, and says why when it fails', async () => {
   const home = mkdtempSync(join(tmpdir(), 'obeya-voice-setup-'));
   try {
     let loaded = 0;

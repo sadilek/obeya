@@ -314,7 +314,7 @@ describe('a review card', () => {
     expect(board.events(id).some((e) => e.text.startsWith(board.t.worker.pushedHeld(5, 1)))).toBe(true);
   });
 
-  test('„Nur pushen“ pushes and comments, and the card waits for „Mergen“ again', async () => {
+  test('"Push and comment only" pushes and comments, and the card waits for "Merge" again', async () => {
     const id = await reviewCard();
     await handOver();
     workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
@@ -330,7 +330,7 @@ describe('a review card', () => {
     expect(board.item(id)).toMatchObject({ state: 'waiting', need: 'demo' });
     expect(board.item(id)!.landing).toBeUndefined();
     expect(board.item(id)!.contribution!.held).toBeUndefined();
-    // nothing held any more: only „Mergen“ is left
+    // nothing held any more: only "Merge" is left
     await expect(workers.pushContribution(id)).rejects.toMatchObject({ code: 'notReady' });
     await workers.approve(id);
     expect(fake.said.merges).toEqual([head]);
@@ -625,7 +625,7 @@ describe('a review card', () => {
     expect(await runtime.last.call('request_changes', { body: 'Please keep the file in its folder.', findings: [1] })).toContain('waits for amerlander');
   });
 
-  test('„Selbst ändern“ only where the contributor allows maintainers’ edits', async () => {
+  test('"Change it myself" only where the contributor allows maintainers’ edits', async () => {
     const id = await reviewCard(false);
     await handOver();
     expect(() => workers.message(id, '', [], false, undefined, undefined, { 1: 'self' })).toThrow();
@@ -797,7 +797,7 @@ describe('a review card', () => {
     await until(() => !board.row(x).workspace && !existsSync(ws));
   });
 
-  test('„main pushen“ puts the unpushed commits on the remote after its undo window, and the agent brings the PR up to date', async () => {
+  test('"Push main" puts the unpushed commits on the remote after its undo window, and the agent brings the PR up to date', async () => {
     landedLocally('poll.ts', 'Polls every minute');
     const id = await reviewCard();
     const review = runtime.last;
@@ -1019,7 +1019,7 @@ describe('a review card', () => {
   });
 });
 
-describe('„Review PR #5“ on a canvas', () => {
+describe('"Review PR #5" on a canvas', () => {
   let canvas: CanvasRuntime;
   beforeEach(async () => {
     const store = new Store(':memory:');

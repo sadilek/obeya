@@ -88,7 +88,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'remote.ts': { why: 'the remote access setting: a small file, and tailscale serve taken back as the server stops', calls: { existsSync: 1, readFileSync: 1, rmSync: 1, unserveSync: 1, writeFileSync: 1 } },
   'replay.ts': { why: 'CLI for recording and replaying demos, not the server', calls: { appendFileSync: 1, cpSync: 2, existsSync: 7, mkdirSync: 3, mkdtempSync: 2, readFileSync: 4, readdirSync: 3, rmSync: 2, writeFileSync: 4 } },
   'repo.ts': {
-    why: "server path: the plan docs read from the Lesestand when they change (a directory of small files, read where the canvas needs them at once), the plan directory watched and polled by stats; gh's hosts file read for a remote's host",
+    why: "server path: the plan docs read from the read tree when they change (a directory of small files, read where the canvas needs them at once), the plan directory watched and polled by stats; gh's hosts file read for a remote's host",
     calls: { existsSync: 5, readFileSync: 2, readdirSync: 3, statSync: 3 },
   },
   'resources.ts': { why: 'startup: where the bundled resources are', calls: { existsSync: 2 } },

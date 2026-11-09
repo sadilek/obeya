@@ -58,7 +58,7 @@ export type Command = (
    * repositories' CLAUDE.md; `replaces`: the rule (id) it changes, `card`: the card open when the owner said it.
    */
   | { do: 'remember'; text: string; replaces?: number; card?: string; repos?: string[] }
-  /** Runs the Arbeitsrückschau of a repository now. */
+  /** Runs the work retrospective of a repository now. */
   | { do: 'workRetro'; repo: string }
   /** Puts the cards into the group of that name, a new one when the canvas has none of that name. */
   | { do: 'group'; cards: string[]; name: string }
@@ -194,7 +194,7 @@ export interface CommanderOptions {
   cwd: string;
   /** Runs a command; what it throws is logged on the card. */
   execute: (c: Command) => unknown | Promise<unknown>;
-  /** How long a command waits for "Rückgängig". */
+  /** How long a command waits for "Undo". */
   delayMs?: number;
   /** Commands one session reads; the next one starts from the stored memory. */
   sessionCommands?: number;
@@ -290,7 +290,7 @@ const HISTORY_STEPS = 60;
 const NEWS_STEPS = 40;
 
 /**
- * Commands understood from the owner's words, as they wait for "Rückgängig". `said`: the owner's
+ * Commands understood from the owner's words, as they wait for "Undo". `said`: the owner's
  * words, to learn from once they run, unless they reach the learner another way.
  */
 interface Waiting {
@@ -459,14 +459,14 @@ export class Commander {
 
   /**
    * Reads what the usage limit held, in order, until it holds again; each reply reaches the owner as
-   * a notice, with „Rückgängig“ where it has actions. One drain at a time.
+   * a notice, with "Undo" where it has actions. One drain at a time.
    */
   private drain(): Promise<void> {
     if (!this.held.size) return Promise.resolve();
     return (this.draining ??= (async () => {
       clearTimeout(this.heldTimer);
       for (const [talk, h] of [...this.held]) {
-        // read now: „liest …“ under the words
+        // read now: "is reading …" under the words
         this.o.board.holdTalk(talk, null);
         const heard = await this.answer(talk, { ...h, input: { ...h.input, heldSince: h.at } });
         if (!heard) {
@@ -545,12 +545,12 @@ export class Commander {
     }, Math.max(0, due - Date.now()));
   }
 
-  /** Whether commands the owner has the confirmation of wait for "Rückgängig" or run: a restart waits for them. */
+  /** Whether commands the owner has the confirmation of wait for "Undo" or run: a restart waits for them. */
   holding(): boolean {
     return [...this.waiting.values()].some((w) => w.timer);
   }
 
-  /** The commands that still wait for "Rückgängig", for a page that opens (a reload) to offer it again. */
+  /** The commands that still wait for "Undo", for a page that opens (a reload) to offer it again. */
   undoable(): Notice[] {
     const now = Date.now();
     return [...this.waiting.entries()]
@@ -585,7 +585,7 @@ export class Commander {
     this.o.board.dropCommand(token);
     this.o.board.undoTalk(w.talk);
     if (w.card && this.o.board.item(w.card)) this.o.board.log(w.card, 'state', 'owner', this.o.board.t.voice.undone);
-    this.news.push(`The owner took back what you confirmed with „${w.confirm}“; it did not happen.`);
+    this.news.push(`The owner took back what you confirmed with “${w.confirm}”; it did not happen.`);
     return true;
   }
 
@@ -619,13 +619,13 @@ export class Commander {
     for (const x of this.o.board.waitingTalk()) if (x.waiting.some((w) => w.card === card)) this.o.board.waitTalk(x.id, x.waiting.filter((w) => w.card !== card));
   }
 
-  /** The owner no longer wants the step the Coordinator waits on the card for, after exchange `talk` („Nicht mehr warten“); false when it no longer waits. */
+  /** The owner no longer wants the step the Coordinator waits on the card for, after exchange `talk` ("Stop waiting"); false when it no longer waits. */
   unwait(talk: number, card: string): boolean {
     const x = this.o.board.waitingTalk().find((t) => t.id === talk);
     const dropped = x?.waiting.filter((y) => y.card === card) ?? [];
     if (!x || !dropped.length) return false;
     this.o.board.waitTalk(talk, x.waiting.filter((y) => y.card !== card));
-    this.news.push(`The owner told you to stop waiting on „${dropped[0]!.title}“: you do not take the step you would have taken then (${dropped.map((w) => w.then).join('; ')}).`);
+    this.news.push(`The owner told you to stop waiting on “${dropped[0]!.title}”: you do not take the step you would have taken then (${dropped.map((w) => w.then).join('; ')}).`);
     return true;
   }
 
@@ -653,7 +653,7 @@ export class Commander {
    * the owner's, takes the step up where the waiting one was (the sheet, or the card open then). The
    * wait stands until the step is decided (or held by the usage limit, which keeps it), so a restart
    * meanwhile takes it up again, and the owner can still drop it: then what was decided is taken
-   * back. Its reply reaches the owner as a notice, with „Rückgängig“ where it has actions.
+   * back. Its reply reaches the owner as a notice, with "Undo" where it has actions.
    */
   private async follow(x: Talk, w: TalkWaitRow, met: Awaited) {
     const card = x.cardId && this.o.board.item(x.cardId) ? x.cardId : undefined;
@@ -699,7 +699,7 @@ export class Commander {
    * a new exchange, with no words of the owner's, takes that step up where the asking one was (the
    * sheet, or the card open then). The step stands until it is decided (or held by the usage limit,
    * which keeps it), so a restart meanwhile takes it up again. Its reply reaches the owner as a
-   * notice, with „Rückgängig“ where it has actions. Returns whether a step was taken up.
+   * notice, with "Undo" where it has actions. Returns whether a step was taken up.
    */
   answerIn(id: number): boolean {
     const x = this.o.board.exchange(id);
@@ -782,7 +782,7 @@ export class Commander {
           description: [
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
             'Actions (card: the number of the card, K42; new_card and new_idea take none, except a follow-up):',
-            `- new_card: a new card. title short and precise, body what the owner asked for in their words, start false only when the owner says it should wait („nur notieren“, „für später“, „noch nicht starten“), else true: work on it begins right away, as with a click on "Agent starten" (checked for conflicts with work in progress, queued if need be); until when the owner names a time for the work („Anfang Dezember“, „erst am Montag“, „in zwei Wochen“): it is planned now and starts by itself then, as with snooze on a planned card (the local time as for snooze, 08:00 on a day without an hour, the first of a month for its beginning)${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}; canvas: where the owner wants it on another canvas of this Obeya („leg auf Super 59 eine Aufgabe an“), that canvas's name from the list, and it goes into that canvas's first repository. A follow-up of a card (for one of its findings, or something from its summary): card the number of that card, and body the finding or passage in full, then what the owner added.`,
+            `- new_card: a new card. title short and precise, body what the owner asked for in their words, start false only when the owner says it should wait („nur notieren“, „für später“, „noch nicht starten“), else true: work on it begins right away, as with a click on "Start agent" (checked for conflicts with work in progress, queued if need be); until when the owner names a time for the work („Anfang Dezember“, „erst am Montag“, „in zwei Wochen“): it is planned now and starts by itself then, as with snooze on a planned card (the local time as for snooze, 08:00 on a day without an hour, the first of a month for its beginning)${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}; canvas: where the owner wants it on another canvas of this Obeya („leg auf Super 59 eine Aufgabe an“), that canvas's name from the list, and it goes into that canvas's first repository. A follow-up of a card (for one of its findings, or something from its summary): card the number of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card; path and own_canvas as for build on an idea, where the owner wants a planned task of theirs nobody has worked on yet started in a repository that does not exist yet. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card Obeya is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to Obeya together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
             '- dequeue: take a card out of the queue (waiting behind other cards, for a free workspace, or still being checked by Obeya); it goes back to planned and does not start until started again („nimm … aus der Warteschlange“, „lass … doch noch nicht starten“).',
             "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing), or for the agent that will take on a planned card (in the queue or not, stopped too), which gets it with the task once it starts; it doesn't stop it. Whatever the owner says to the agent: an instruction, a remark on its work, a question to it; never a question the owner asks you about the canvas.",
@@ -795,7 +795,7 @@ export class Commander {
             `- review_pr: a review card for a pull request someone outside opened, whenever the owner asks for a pull request to be reviewed („Review PR #5“, „schau dir den PR an“ with its link), one review_pr for each pull request („Reviews für 5, 6 und 7“: three; a list you looked up: one for each in it). pr: its number or URL (it takes no card number); text: what the owner adds for this review in their words („schau besonders auf Security“, „die Demo nur auf dem Handy“), else empty${repos.length > 1 ? ', repo the repository whose pull request it is (an id from the list)' : ''}. Its agent reviews the code, records a demo before and after, runs the checks and records its findings one by one on the card, where the owner decides on each and merges the PR; a task from new_card has none of that. A PR that has a review card already opens that one, and the text goes to its agent. confirm e.g. ${say.reviewPr}`,
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}; canvas as for new_card.`,
             `- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in the owner's language; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card ${t.quote(t.claudeMd.title)}, whose worker writes it into the CLAUDE.md. confirm says where it goes (${say.remember}).`,
-            `- work_retro (no card): the Arbeitsrückschau of a repository, now („Mach eine Arbeitsrückschau für den Shop“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill), CLAUDE.md lines or values for the repository's settings (checks, setup, soft paths, how to run the app for a demo) for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself: in a new repository after its first finished card, then after 2 more and 4 more, then every 10. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. ${say.retro}`,
+            `- work_retro (no card): the work retrospective of a repository, now („Mach eine Arbeitsrückschau für den Shop“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill), CLAUDE.md lines or values for the repository's settings (checks, setup, soft paths, how to run the app for a demo) for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself: in a new repository after its first finished card, then after 2 more and 4 more, then every 10. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. ${say.retro}`,
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once; while its agent works on a reply, or starts on one with a discuss in the same command, once that reply is there, unless the reply asks questions; it ends the discussion, and the idea's prototypes, planned and running, are thrown away; path: where the owner wants it built in a repository that does not exist yet („bau das in einem neuen Repo unter ~/dev/super59“), its folder, absolute or from ~: Obeya creates the folder and a local git repository (no remote), a canvas of its own named after it, moves the idea there with its brief, conversation and decisions, and builds it there, after a few seconds in which the owner can take it back on the card; own_canvas: false where the owner wants the new repository on this canvas instead; the list says where the idea's agent or the owner chose a new repository already, and build without path builds it there), split_off (only where the list says its agent marked a part as settled: that part becomes a task of its own beside the idea, which a worker starts on at once, and the idea stays open with its discussion and its prototypes for what is still open), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place; the workstream the doc builds on one of the idea's prototypes gets that prototype's branch, and the other prototypes are thrown away), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words; empty: one prototype for each variant its agent planned that has none running yet, all at once, or without planned variants one of the idea as it stands), park (for later), drop (it stays on the canvas with its brief). Planning an idea, or splitting a task off it, waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that it goes by a click once the reply is there.",
             "- plan_doc also on a planned task of the owner's that nobody has worked on yet (not with Obeya, no branch): an agent starts at once on a plan doc with workstreams from the task, and the project then takes the task's place („plane das als Projekt“).",
             `- group: put cards into a group, shown on the canvas as a coloured territory behind them. cards: their numbers; text: the group's name (group is only for rename_group), one the canvas has (see the list) or a new one, which is then created. A card is in one group at most, so this takes it out of its group. A workstream stands for its project: the whole project goes into the group. ungroup: take cards (cards) out of their group. rename_group: group the group's current name, text its new name. A group no card belongs to any more goes. confirm e.g. ${say.group}`,
@@ -1291,7 +1291,7 @@ export class Commander {
                 ? `${i.state}, its agent's session has ended; a note resumes it to answer`
                 : i.state;
       const paused = i.snoozed
-        ? `; snoozed by ${i.snoozed.by === 'agent' ? 'its agent' : 'the owner'} until ${i.snoozed.on ? `the card „${i.snoozed.on.title}“ ${i.snoozed.on.state === 'done' ? 'is done' : 'waits for the owner'}${i.snoozed.until ? `, ${when(i.snoozed.until)} at the latest` : ''}` : i.snoozed.contributor ? `${i.snoozed.contributor.author}, the author of the pull request, responds${i.snoozed.until ? `, ${when(i.snoozed.until)} at the latest` : ''}` : when(i.snoozed.until!)}${i.snoozed.why ? ` (then: ${clip(oneLine(i.snoozed.why), 120)})` : ''}${i.snoozed.waiting ? ': it waits for the owner again then, and is not on their list until then' : i.snoozed.start ? ': it starts then; start or wake starts it now' : ': nothing of its agent runs until then; a note or wake wakes it earlier'}`
+        ? `; snoozed by ${i.snoozed.by === 'agent' ? 'its agent' : 'the owner'} until ${i.snoozed.on ? `the card “${i.snoozed.on.title}” ${i.snoozed.on.state === 'done' ? 'is done' : 'waits for the owner'}${i.snoozed.until ? `, ${when(i.snoozed.until)} at the latest` : ''}` : i.snoozed.contributor ? `${i.snoozed.contributor.author}, the author of the pull request, responds${i.snoozed.until ? `, ${when(i.snoozed.until)} at the latest` : ''}` : when(i.snoozed.until!)}${i.snoozed.why ? ` (then: ${clip(oneLine(i.snoozed.why), 120)})` : ''}${i.snoozed.waiting ? ': it waits for the owner again then, and is not on their list until then' : i.snoozed.start ? ': it starts then; start or wake starts it now' : ': nothing of its agent runs until then; a note or wake wakes it earlier'}`
         : i.paused
         ? '; its agent is paused by the owner: nothing of it runs until resume or what the owner says to it, which it goes on with'
         : i.pausing
@@ -1468,7 +1468,7 @@ export function talkReplyNote(quoted: TalkQuote | undefined): string {
       : quoted.part === 'reply'
         ? 'your reply'
         : `the answer ${answerTag(quoted.talk)}${quoted.by === 'project' ? " the project's agent" : ' you'} looked up`;
-  return `[In reply to ${whose}: „${excerpt(quoted.text.replace(/\s+/g, ' ').trim(), 2000)}“]\n\n`;
+  return `[In reply to ${whose}: “${excerpt(quoted.text.replace(/\s+/g, ' ').trim(), 2000)}”]\n\n`;
 }
 
 /** A queued card's state as the Coordinator reads it. */

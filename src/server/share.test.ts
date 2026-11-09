@@ -74,7 +74,7 @@ const server = Bun.serve({
 });
 afterAll(() => server.stop(true));
 const SITE_URL = `http://localhost:${server.port}/`;
-/** When the site's demos go out: on approval (`approved`), or only on "Teilen". */
+/** When the site's demos go out: on approval (`approved`), or only on "Share". */
 let publish: DemoSite['publish'];
 /** The site's vocabulary of tags (`demo.site.tags`); none without. */
 let vocabulary: DemoSite['tags'];
@@ -222,7 +222,7 @@ describe('sharing a demo', () => {
     expect(existsSync(join(dir, 'home', SHARE_CWD, '.wrangler/cache/pages.json'))).toBe(true);
   });
 
-  test('a newer demo is not shared on its own: the card says so, and "Neu teilen" replaces the page', async () => {
+  test('a newer demo is not shared on its own: the card says so, and "Replace on the page" replaces the page', async () => {
     const c = card();
     sharing.share(c.id);
     await until(() => share(c.id)?.state === 'shared');
@@ -560,7 +560,7 @@ describe('several demo versions on one page', () => {
     await until(() => share(id)?.state === 'shared');
   }
 
-  test('"Zur Seite dazunehmen" puts a later demo below the shared one, under the same link', async () => {
+  test('"Add to the page" puts a later demo below the shared one, under the same link', async () => {
     const c = first();
     await shared(c.id, () => sharing.share(c.id));
     expect(share(c.id)).toMatchObject({ on: [1] });
@@ -610,7 +610,7 @@ describe('several demo versions on one page', () => {
     expect(stored(c.id).demos!.map((d) => d.handover)).toEqual([1, 3]);
   });
 
-  test('"Teilen" on a supplement with no page yet puts the demo it supplements above it', async () => {
+  test('"Share" on a supplement with no page yet puts the demo it supplements above it', async () => {
     const c = first();
     later(c.id, 2, { follows: 'supplements' });
     await shared(c.id, () => sharing.share(c.id));
@@ -618,7 +618,7 @@ describe('several demo versions on one page', () => {
     expect(meta(c.id)).toMatchObject({ title: 'CSV-Export', more: [{ title: 'Ergänzung 2' }] });
   });
 
-  test('"Auf der Seite ersetzen" takes the shared ones off the page', async () => {
+  test('"Replace on the page" takes the shared ones off the page', async () => {
     const c = first();
     await shared(c.id, () => sharing.share(c.id));
     later(c.id, 2);
@@ -690,7 +690,7 @@ const backdate = (id: string, version = '') => board.work(id, { share: JSON.stri
 describe('a page published before a change to the pages', () => {
   const stored = (id: string) => JSON.parse(board.row(id).share!) as { version?: string; outdated?: true };
 
-  test('is offered to share again with what changed since, and "Erneut teilen" brings it up to date', async () => {
+  test('is offered to share again with what changed since, and "Share again" brings it up to date', async () => {
     const c = card();
     sharing.share(c.id);
     await until(() => share(c.id)?.state === 'shared');
@@ -811,7 +811,7 @@ describe('sharing many outdated pages again at once', () => {
     expect(() => sharing.reshareMany(null)).toThrow(BadRequest);
   });
 
-  test('"Ausblenden" puts the notice and the run away until a newer change leaves pages outdated', async () => {
+  test('"Hide" puts the notice and the run away until a newer change leaves pages outdated', async () => {
     const [, video] = await outdated(1, 2);
     const html = card('Auswertung', { kind: 'html', chapters: [] });
     writeFileSync(join(dir, `demo-${html.id}`, 'index.html'), '<!doctype html>');
@@ -877,7 +877,7 @@ describe('sharing many outdated pages again at once', () => {
     expect(calls()).toHaveLength(before);
   });
 
-  test('a card with a newer demo gets its page as it shows, the newer demo still waits for "Neu teilen"', async () => {
+  test('a card with a newer demo gets its page as it shows, the newer demo still waits for "Replace on the page"', async () => {
     const [c] = await outdated(1);
     board.work(c!.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], page: { title: 'Neu', text: 'Neu.' } }) });
     expect(reshare()).toEqual({ outdated: 1, changes: changes(1) });
@@ -982,7 +982,7 @@ describe('publishing on approval', () => {
     sharing.approved(c.id);
     await until(() => share(c.id)?.state === 'shared' && on(c.id)[0] === 3);
     expect(on(c.id)).toEqual([3]);
-    // without the worker's word, the latest replaces the page, as "Teilen" offers first
+    // without the worker's word, the latest replaces the page, as "Share" offers first
     later(c.id, 4);
     sharing.approved(c.id);
     await until(() => share(c.id)?.state === 'shared' && on(c.id)[0] === 4);
@@ -1093,7 +1093,7 @@ describe('publishing on approval', () => {
     await until(() => share(c.id)?.state === 'shared');
   });
 
-  test('unticked „Mit der Freigabe teilen“ keeps the approval from sharing, through sharing now and withdrawing', async () => {
+  test('unticked "Share on approval" keeps the approval from sharing, through sharing now and withdrawing', async () => {
     const c = card('Filter bleiben', { handover: 1 });
     sharing.onApproval(c.id, false);
     expect(board.card(c.id)?.notOnApproval).toBe(true);
@@ -1119,7 +1119,7 @@ describe('publishing on approval', () => {
     expect(on(c.id)).toEqual([2]);
   });
 
-  test('a site that publishes only on "Teilen" puts nothing out; a page shared before still goes into the trailer', async () => {
+  test('a site that publishes only on "Share" puts nothing out; a page shared before still goes into the trailer', async () => {
     publish = undefined;
     const c = card();
     expect(sharing.approved(c.id)).toBeNull();
@@ -1532,7 +1532,7 @@ describe('a repository’s theme', () => {
     board.changed();
     expect(share(c.id)!.outdated).toEqual(['theme']);
     expect(board.snapshot().reshare).toEqual({ outdated: 1, changes: [{ id: 'theme', pages: 1 }] });
-    // "Ausblenden" until the theme changes anew; the card still offers it
+    // "Hide" until the theme changes anew; the card still offers it
     sharing.dismissResharing();
     expect(board.snapshot().reshare).toBeUndefined();
     expect(share(c.id)!.outdated).toEqual(['theme']);
@@ -1555,7 +1555,7 @@ describe('a repository’s theme', () => {
     expect(pageOf(c.id)).not.toContain('Content-Security-Policy');
   });
 
-  test('"Ausblenden" hides a page until its theme or its repository’s changes: a theme gone back to the hidden one leaves a page shared since outdated', async () => {
+  test('"Hide" hides a page until its theme or its repository’s changes: a theme gone back to the hidden one leaves a page shared since outdated', async () => {
     const A = THEME;
     const B = { css: ':root { --accent: #b91c1c; }', hash: 'bbbbbbbbbbbbbbbb' };
     const C = { css: ':root { --accent: #15803d; }', hash: 'cccccccccccccccc' };

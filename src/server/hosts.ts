@@ -296,7 +296,7 @@ export class SshHost {
 
   /**
    * A session's transcript there (Claude Code's, under the directory it ran in; a Codex thread's,
-   * under Codex's sessions or archived ones), copied here for the Arbeitsrückschau; null when there
+   * under Codex's sessions or archived ones), copied here for the work retrospective; null when there
    * is none or the host does not answer.
    */
   async transcript(sessionId: string, cwd: string): Promise<string | null> {

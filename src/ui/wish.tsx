@@ -2,7 +2,7 @@
 // sidebar, from the `?` legend, by the Coordinator when the owner asks it to tell the makers
 // something, and from the link under a reply that says Obeya cannot do what they asked. What the
 // owner writes or says in its field a small job writes up as a GitHub issue in English; title and
-// body stand editable as they go out, and „Auf GitHub öffnen“ opens the prefilled issue for the
+// body stand editable as they go out, and "Open on GitHub" opens the prefilled issue for the
 // owner to submit under their own account. The draft is kept per tab and canvas, like every input.
 
 import { useEffect, useRef, useSyncExternalStore } from 'react';
@@ -302,7 +302,7 @@ function IssueFields({ issue, disabled }: { issue: Issue; disabled: boolean }) {
   );
 }
 
-/** The quiet link that opens the dialog: under „Einrichtung prüfen“ in the Konfiguration dialog, and in the legend (`onOpen` closes either). */
+/** The quiet link that opens the dialog: under "Check setup" in the Configuration dialog, and in the legend (`onOpen` closes either). */
 export function WishLink({ className, onOpen }: { className?: string; onOpen?: () => void }) {
   const draft = useWishDraft();
   return (

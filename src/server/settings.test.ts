@@ -126,7 +126,7 @@ test('a group the owner chose no harness for runs on the fallback (Codex on a ma
   expect(agentSetting(home, 'coordinator', 'codex')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'medium' });
   expect(agentSetting(home, 'worker', 'codex')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
   expect(agentsView(home, [], 'codex').agents.chores.harness).toBe('codex');
-  // the Konfiguration names that preset
+  // the configuration names that preset
   expect(agentsView(home, [], 'codex').preset).toBe('codex');
   expect(agentsView(home).preset).toBe('claude');
   // Claude Code chosen outright stays, whatever the fallback

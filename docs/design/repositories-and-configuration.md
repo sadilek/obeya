@@ -53,17 +53,17 @@ never in `.obeya/settings.json`, since that file is read from it. Without one it
 The usual names come before the checked-out branch so that a branch the owner checks out for a while
 does not become the main branch; landing on the local main refuses while the checkout is not on it.
 
-### Lesestand
+### Read tree
 
-Every git repository of a canvas has a directory on its main branch, the Lesestand. Plan docs are
+Every git repository of a canvas has a directory on its main branch, the read tree. Plan docs are
 read from it (unless outside the repository, see A plan folder outside the repository), and the
 agents that answer or judge rather than work on a card run in it: project agents, ideas' exploration
 agents, the Coordinator (with its look-ups, learner and retrospective), the work retrospective and the
-voice commands' session. A folder without git is its own Lesestand (see Folders without git).
+voice commands' session. A folder without git is its own read tree (see Folders without git).
 
-Where work lands on the local main, the Lesestand is the configured checkout itself, which is always
+Where work lands on the local main, the read tree is the configured checkout itself, which is always
 on main, uncommitted plan docs included. Otherwise the configured checkout is often a pool clone on a
-card's branch, so the Lesestand is a detached worktree of it under Obeya's home
+card's branch, so the read tree is a detached worktree of it under Obeya's home
 (`read/<canvas>/<repo>`), at the local main where that has everything `origin`'s has, else at
 `origin`'s; the clone's `git status` stays clean, so leasing is unaffected. Where no worktree can be
 made, or an old one cannot be removed (on Windows, while an agent works in it), the checkout is read
@@ -77,8 +77,8 @@ round. So a doc committed only in another clone, or only edited, does not show. 
 run without blocking the server (in a repository of thousands of files a checkout takes a while);
 while git writes the files, the canvas keeps the plan docs it read before, since a doc missing for a
 moment would take its project off the canvas and give back its workstreams' workspaces. Moving the
-Lesestand to the worktree when work now lands elsewhere runs the same way, the checkout read until
-the worktree is there; so does a repository's restart. When a canvas starts, its Lesestands are made
+read tree to the worktree when work now lands elsewhere runs the same way, the checkout read until
+the worktree is there; so does a repository's restart. When a canvas starts, its read trees are made
 or moved before it reads from them, since the checkout, the only thing to read meanwhile, may be on a
 card's branch; the server answers meanwhile.
 
@@ -170,9 +170,9 @@ card (planned with its branch): its worker ticked the box there before the work 
 ticked workstream is `live`; otherwise the stored state counts (`done`, `planned`), and without one
 the doc's. `done` (finished without a change) stays: the doc has nothing to say about it.
 
-A stored `live` holds only until the Lesestand has what landed. A card keeps the commit it landed
-with (on main after a direct landing, the merge commit for a pull request, else the Lesestand's
-commit after the next fetch). When the Lesestand has it and the workstream is still unchecked, only
+A stored `live` holds only until the read tree has what landed. A card keeps the commit it landed
+with (on main after a direct landing, the merge commit for a pull request, else the read tree's
+commit after the next fetch). When the read tree has it and the workstream is still unchecked, only
 part is done: the card goes back to `planned`, logs "Part landed; the plan doc keeps it open." and
 shows "Part landed · PR #821" (or the commit) until the rest lands. Its log and handover stay, its
 branch goes, so a new run starts fresh from main and hears what landed. Unfolded, it shows what the
@@ -248,7 +248,7 @@ value of its own (no checks); an empty main branch or plan directory is none. A 
 repository has neither locally nor on `origin` keeps the configuration from being saved.
 
 Settings are read where they are used, so saving them restarts nothing (see Live configuration); the
-canvases follow: the Lesestand moves when work now lands elsewhere, the plan directory is watched
+canvases follow: the read tree moves when work now lands elsewhere, the plan directory is watched
 afresh, a repository now landing through pull requests gets its PR watcher (one leaving them keeps it for the
 pull requests still open), and the page shows the
 main branch and how work lands. `workspaces` is the exception: changing it restarts that repository's
@@ -259,7 +259,7 @@ agents, as the dialog says at the field, the first of the repository's page (see
 `.obeya/settings.json` (like `.vscode/settings.json`) is what a fresh clone brings: every value but
 the main branch, versioned and reviewed with the code it describes. It is read from the main branch,
 not the checkout, since clones are on cards' branches, perhaps from before the file changed: when a
-canvas starts, whenever the Lesestand moves, and on save, by git without the server waiting for it;
+canvas starts, whenever the read tree moves, and on save, by git without the server waiting for it;
 a save while the branches have not moved keeps the last read. A new version takes effect without a
 restart; one that changes `workspaces` restarts the repository's agents once they paused (see
 Restarts for landed code).
@@ -275,7 +275,7 @@ the commit goes to a branch `obeya-settings-<time>` and a pull request, linked i
 `direct`, the dialog also offers to push it onto `origin`'s main (never forced, so a protected
 branch refuses). Where the file there holds every value already (in whatever order of fields),
 nothing is committed, pushed or opened, and the dialog says so: an empty commit would only clutter
-the history. Once the file holds the values (at once, or when the merge reaches the Lesestand), they
+the history. Once the file holds the values (at once, or when the merge reaches the read tree), they
 go from this machine's settings and show as from the repository. The work retrospective proposes
 single values too (see Setting proposals).
 
@@ -588,7 +588,7 @@ its status lines in German).
 - **The main branch prefers the usual names to the checked-out branch** (2026-10-14). Rejected:
   `origin/HEAD` else `main`, which on a `master` repository without a remote landed on a branch that
   did not exist.
-- **Plan docs come from the Lesestand on the main branch** (2026-10-06), and the read-only agents run
+- **Plan docs come from the read tree on the main branch** (2026-10-06), and the read-only agents run
   there too: the configured checkout is often a pool clone on a card's branch, where docs pushed from
   elsewhere never showed and projects went to the archive and back. The fetch rides on the PR
   watcher, without its own timer. Rejected: `git cat-file` for the docs alone (agents would read
@@ -614,7 +614,7 @@ its status lines in German).
   card the repair moves (they would have to know every card's history); a button to take a card
   out of its project by hand (not wanted, and it read as a copy of the card); for a plan folder
   outside the repository, leaving at once (a doc saved in two edits would take a card out for good).
-- **A stored `live` holds only until the Lesestand has what landed** (2026-10-06), so a workstream the
+- **A stored `live` holds only until the read tree has what landed** (2026-10-06), so a workstream the
   doc keeps open on purpose reopens. Rejected: the worker reporting "only a part" (a second source
   against the doc); a "Reopen" button (the problem shows only when someone asks).
 - **A partly landed workstream lays out as worked on, and its doc text stays in view on its card**

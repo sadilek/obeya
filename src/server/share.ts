@@ -1,7 +1,7 @@
 // Sharing a card's demo with colleagues, a video or an HTML artifact: a page outside Obeya, on the
 // static site Obeya keeps itself (`demo.site` of the repository's settings, site.ts). Obeya writes
 // the page's text when the worker did not. A page keeps the newest page change (page-changes.ts) it
-// was published after: one that lacks a change since is offered to share again ("Erneut teilen"),
+// was published after: one that lacks a change since is offered to share again ("Share again"),
 // with what that brings, on its card, or many at once from the Coordinator's sheet.
 // Once the card has a pull request, its description links the page and the page links it; work that
 // lands without one links the page in its commit's trailer, and the page links the commit. A
@@ -178,11 +178,11 @@ export class Sharing {
   constructor(private o: SharingOptions) {}
 
   /**
-   * "Teilen", "Auf der Seite ersetzen" or "Zur Seite dazunehmen": one of the card's demos (by its handover; the latest
+   * "Share", "Replace on the page" or "Add to the page": one of the card's demos (by its handover; the latest
    * without) is published right away, on the card's page in place of the versions there, or beside
    * them in its place by handover (`add`). A supplement on a new page or added takes along the demos
    * it supplements. A demo on the page already goes out again with the rest.
-   * There is no hold to take it back: "Nicht mehr teilen" withdraws it just as easily.
+   * There is no hold to take it back: "Stop sharing" withdraws it just as easily.
    */
   share(cardId: string, { demo: handover, add = false }: { demo?: number | undefined; add?: boolean } = {}) {
     const card = this.card(cardId);
@@ -264,7 +264,7 @@ export class Sharing {
   }
 
   /**
-   * „Mit der Freigabe teilen“, where approving shares (see `approved`): whether approving the
+   * "Share on approval", where approving shares (see `approved`): whether approving the
    * card puts its latest demo on its page. It stays with the card across handovers.
    */
   onApproval(cardId: string, on: boolean) {
@@ -294,7 +294,7 @@ export class Sharing {
     if (s.url && !s.state) this.refresh(cardId, true);
   }
 
-  /** The approval of a card whose owner unticked „Mit der Freigabe teilen“: the log says so where it would have shared. */
+  /** The approval of a card whose owner unticked "Share on approval": the log says so where it would have shared. */
   private notOnPage(cardId: string) {
     const demo = this.demo(cardId);
     const s = this.stored(cardId);
@@ -428,9 +428,9 @@ export class Sharing {
   }
 
   /**
-   * "Erneut teilen" for many pages at once, from the Coordinator's sheet: the outdated pages, the
+   * "Share again" for many pages at once, from the Coordinator's sheet: the outdated pages, the
    * newest demos first, `count` of them or all. They go out one after the other, each as it shows
-   * now, so a newer demo on a card still waits for its "Neu teilen"; a share the owner starts
+   * now, so a newer demo on a card still waits for its "Replace on the page"; a share the owner starts
    * meanwhile goes out between two of them. With `tags`, the pages without tags instead, tagged
    * in place a batch at a time (`tagSome`).
    */
@@ -462,7 +462,7 @@ export class Sharing {
     this.o.board.setReshareRun({ ...run, queue: going, stopped: true });
   }
 
-  /** "Ausblenden": puts away what the finished run says, and the notice of outdated pages until a newer change. */
+  /** "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change. */
   dismissResharing() {
     const run = this.o.board.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again');
@@ -673,7 +673,7 @@ export class Sharing {
     if (s.personal && !this.personalAllowed(card)) return back(t.privateNotAllowed);
     let demos: SharedDemo[];
     if (s.refresh) {
-      // the page as it is: a newer demo on the card waits for "Auf der Seite ersetzen" or "Zur Seite dazunehmen"
+      // the page as it is: a newer demo on the card waits for "Replace on the page" or "Add to the page"
       demos = sharedDemos(s).map((d) => this.filesOf(cardId, d));
       if (!demos.length || !target) {
         if (s.again) return back(t.demoGone);

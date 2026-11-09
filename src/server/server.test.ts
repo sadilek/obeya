@@ -482,7 +482,7 @@ describe('groups', () => {
 describe('plan docs', () => {
   test("a project's plan doc is read as written; other cards have none", async () => {
     const md = '# Export\n\n## Goal\n\nCSV for landlords.\n\n## Workstreams\n\n- [ ] **W1:** CSV. Columns as in `docs/x.md`.\n\n## Notes\n\nMore.\n';
-    // where plan docs are read: the Lesestand of the repository (a worktree on its default branch)
+    // where plan docs are read: the read tree of the repository (a worktree on its default branch)
     const read = canvas.repos[0]!.read.path;
     mkdirSync(join(read, 'docs', 'plan'), { recursive: true });
     writeFileSync(join(read, 'docs', 'plan', 'export.md'), md);
@@ -610,7 +610,7 @@ describe('voice', () => {
     expect(executed).toEqual([]);
   });
 
-  test('a page that opens while a command waits for undo (a reload) offers "Rückgängig" again', async () => {
+  test('a page that opens while a command waits for undo (a reload) offers "Undo" again', async () => {
     const c = card();
     canvas.commander.undoable = () => [{ text: '„A“ startet.', token: 'tok', undoMs: 3000, cardId: c.id }];
     const messages: ServerMessage[] = [];
@@ -934,7 +934,7 @@ describe('„Merk dir“', () => {
     expect(board.preferences('active').map((p) => p.text)).toEqual(['Demos leise.']);
   });
 
-  test('a rule about a repository goes straight into its card „CLAUDE.md ergänzen“, which starts once no proposal waits', async () => {
+  test('a rule about a repository goes straight into its card "Add to CLAUDE.md", which starts once no proposal waits', async () => {
     const run = CanvasRuntime.prototype.run.bind(canvas);
     const repo = board.canvas.repos[0]!.id;
     const c = card();
@@ -1424,22 +1424,22 @@ describe('starting a card', () => {
   }, 15_000);
 });
 
-describe('the Lesestand and the free clones', () => {
-  test('while git moves the Lesestand or looks at a free clone, slowly, the server answers', async () => {
+describe('the read tree and the free clones', () => {
+  test('while git moves the read tree or looks at a free clone, slowly, the server answers', async () => {
     const marks = join(dir, 'marks');
     mkdirSync(marks);
     const doc = (title: string) => `# ${title}\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Eins.\n`;
     const origin = gitRepo(join(dir, 'shop'), { 'docs/plan/export.md': doc('Export'), '.gitattributes': '*.md filter=slow\n' });
     const checkout = join(dir, 'checkout');
     gitClone(origin, checkout);
-    // work goes out as pull requests: the Lesestand is a worktree of the checkout, apart from the pool's clone
+    // work goes out as pull requests: the read tree is a worktree of the checkout, apart from the pool's clone
     const shop = await CanvasRuntime.start(
       { name: 'Shop', repos: [{ path: checkout, clones: 1, settings: { land: 'pr', workspaces: 'clones' } }] },
       { store: new Store(':memory:'), home: join(dir, 'home-shop'), runtime, forge: noForge },
     );
     const projects = () => shop.board.snapshot().items.filter((i) => i.kind === 'project').map((p) => p.title).sort();
     expect(projects()).toEqual(['Export']);
-    // git that takes its time: a checkout writing the plan docs into the Lesestand (a repository of thousands of files),
+    // git that takes its time: a checkout writing the plan docs into the read tree (a repository of thousands of files),
     // `git status` in a free clone (a large repository, or one on another machine); each goes on once the test lets it
     const slow = (mark: string, then: string) => {
       const script = join(dir, `slow-${mark}`);
@@ -1461,7 +1461,7 @@ describe('the Lesestand and the free clones', () => {
       }
     };
 
-    // main moves: the Lesestand follows in the background, the plan docs read before standing meanwhile
+    // main moves: the read tree follows in the background, the plan docs read before standing meanwhile
     writeFileSync(join(origin, 'docs/plan/import.md'), doc('Import'));
     git(origin, 'add', '.');
     git(origin, 'commit', '--quiet', '-m', 'import');

@@ -17,7 +17,7 @@ export class ProjectAgents {
   constructor(
     private board: Board,
     private runtime: AgentRuntime,
-    /** The repository's Lesestand, which the plan docs are read from (read-tree.ts). */
+    /** The repository's read tree, which the plan docs are read from (read-tree.ts). */
     private repoPath: () => string,
     private preferences: () => string = () => '',
     /** The workers' permission mode, which the project agent runs in too. */

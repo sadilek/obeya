@@ -78,7 +78,7 @@ export interface Forge {
   contribution(cwd: string, url: string): Promise<ContributionInfo>;
   /** Writes `body` as a comment in the PR's conversation; returns the comment's URL where the forge says. */
   comment(cwd: string, url: string, body: string): Promise<string | void>;
-  /** A review of the PR that asks for changes (on GitHub „Request changes“), with `body`; returns its URL where the forge says. */
+  /** A review of the PR that asks for changes (on GitHub "Request changes"), with `body`; returns its URL where the forge says. */
   requestChanges(cwd: string, url: string, body: string): Promise<string | void>;
   /** Whether the repository at `cwd`'s origin is public, as its forge says; null where it cannot tell. */
   visibility?(cwd: string): Promise<'public' | 'private' | null>;
@@ -647,7 +647,7 @@ export const passing = (c: PrStatus['comments'][number]) => {
 };
 
 /**
- * The reviewers whose request for changes (GitHub's „Request changes“) stands: their latest review
+ * The reviewers whose request for changes (GitHub's "Request changes") stands: their latest review
  * with a verdict asks for changes, not approved or dismissed since.
  */
 export function changesRequested(s: PrStatus, skip: string[] = []): string[] {

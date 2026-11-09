@@ -22,7 +22,7 @@ has landed the project takes the task's place and the task goes to the archive (
 ### The discussion
 
 The unfolded idea is a conversation with its exploration agent: a session on the repository's
-Lesestand (code, plan docs, decision log, preferences), resumed for every message, days later too.
+read tree (code, plan docs, decision log, preferences), resumed for every message, days later too.
 If the session is gone (Claude prunes old ones), a new one starts with where the idea stands
 (brief, mocks, prototypes, the part marked to split off, the latest messages) and goes on from there.
 It has a worker's tools and permission mode, so it checks what the discussion depends on (git

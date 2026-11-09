@@ -1,8 +1,8 @@
 // What Obeya's voice in needs on this machine, checked for the settings sheet like a demo's setup
 // (`plugin/skills/demo/lib/setup.ts`): the speech recognition (the package in uv's cache or in
 // `OBEYA_WHISPER_PYTHON`, the model in the Hugging Face cache), ffmpeg (it decodes the recordings)
-// and uv (it brings the recognition, so it comes first, and "Installieren" waits for it).
-// "Installieren" loads the recognition, which fetches it the first time, so the first command does
+// and uv (it brings the recognition, so it comes first, and "Install" waits for it).
+// "Install" loads the recognition, which fetches it the first time, so the first command does
 // not wait minutes for it, and then measures it: the recognition hears a short sentence Obeya ships
 // with (`voice/check-de.ogg`, spoken by Piper), and where it takes longer than the sentence lasts,
 // the sheet offers a cloud service instead (voice-cloud.ts), tested with the same sentence. With a

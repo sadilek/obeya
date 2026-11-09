@@ -38,7 +38,7 @@ export class PrWatcher {
     private settings: () => Pick<RepoAdapter, 'prNoise' | 'autoMerge'> = () => ({}),
     /** On a canvas with several repositories: the one whose pull requests this watches. */
     private repo?: string,
-    /** Called at the end of every round (the Lesestand fetches then). */
+    /** Called at the end of every round (the read tree fetches then). */
     private onRound?: () => void,
   ) {}
 

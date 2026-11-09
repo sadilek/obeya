@@ -2,7 +2,7 @@
 
 A chapter of the [design doc](../design.md), whose header says how it is written.
 
-The Coordinator is read-only agent turns on the Lesestand of the card's repository (the home
+The Coordinator is read-only agent turns on the read tree of the card's repository (the home
 repository's without a card), one decision at a time (look-ups excepted, see Looked-up questions).
 It schedules the cards, reads the owner's commands (see Commands to the Coordinator), looks things
 up, and learns the owner's rules.
@@ -204,7 +204,7 @@ friction) and result (feature cards and setting values, not only rules). It runs
 
 When a card's work ends (landed, closed without a change, a prototype discarded or built, or deleted
 unfinished), Obeya draws an excerpt from its runs' transcripts without a model. The Agent SDK keeps
-them at `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<cwd, non-alphanumerics as „-“>/<session
+them at `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<cwd, non-alphanumerics as "-">/<session
 id>.jsonl`, also after the workspace is gone; Obeya looks there first, then in every directory, as
 the naming may change. Codex keeps a thread at `<CODEX_HOME or ~/.codex>/sessions/<yyyy>/<mm>/<dd>/
 rollout-<time>-<thread id>.jsonl` (or under `archived_sessions`); its day is in the thread id (a
@@ -227,7 +227,7 @@ becomes a note naming that setting and the value that worked.
 
 Every 10 finished cards of a repository (a card that never ran does not count), the work
 retrospective reviews the notes; a new repository's first reviews come after 1, then 2 more and 4
-more cards, so the first improvements come soon. It is one read-only session in that repository's Lesestand (so it sees its
+more cards, so the first improvements come soon. It is one read-only session in that repository's read tree (so it sees its
 CLAUDE.md, scripts and skills). It reads the notes since the last review, with earlier reviews'
 proposals (dismissed ones so it does not repeat them), and proposes at most three things, each
 resting on friction on at least two cards:
@@ -270,7 +270,7 @@ CI run) instead of saying they cannot see it. A call the settings want confirmed
 there is no card to ask on. The quick turn stays read-only, so it answers in seconds.
 
 A question about the work of an agent on a card („Ist sichergestellt, dass …?“) goes to that agent
-as a note or feedback instead: its work is on its branch, not in the Lesestand, and the card shows
+as a note or feedback instead: its work is on its branch, not in the read tree, and the card shows
 the agent at work while it answers. A look-up about a card gets its state, log and the worker's
 start task, from which it derives the worker's steps.
 
@@ -627,7 +627,7 @@ passed the words on through `to_obeya` hears that the owner finds the link under
 - **The sheet's conversation looks like a card's** (2026-10-09): one look and one field for every
   conversation.
 - **A look-up is a thread with files** (2026-10-14). Rejected: one-shot look-ups whose follow-ups
-  started over, and markdown-only answers written in the Lesestand, where files would be left as
+  started over, and markdown-only answers written in the read tree, where files would be left as
   uncommitted changes.
 - **Obeya's own walkthrough, played live** (owner, 2026-11-06). Rejected: showntell's Claude Code
   plugin as it is (English only, a dependency on a young project with one author, its player loaded

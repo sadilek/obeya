@@ -1,4 +1,4 @@
-// „Braucht dich“: what waits for the owner on a canvas, as the phone view lists it and the canvas's
+// "Needs you": what waits for the owner on a canvas, as the phone view lists it and the canvas's
 // navigation does on every page. Built once for both: the same entries, in the same order; the phone
 // shows them as the canvas's cards, the navigation as light rows (everything in it waits for the
 // owner, so a waiting card's orange frame would say nothing there). An entry only opens its card (or
@@ -30,7 +30,7 @@ export function forYouOf(w: Waiting, underway: (id: string) => boolean): { cards
 /** How much of a canvas's entries waits for the owner: the cards listed, and one for Obeya's answers waiting unread. */
 export const forYouCount = (w: Waiting, underway: (id: string) => boolean) => waitingOn({ items: w.items.filter((i) => !underway(i.id)), talk: w.talk });
 
-/** The same on every canvas: what the bar's button and the head of „Braucht dich“ count. */
+/** The same on every canvas: what the bar's button and the head of "Needs you" count. */
 export const forYouTotal = (canvases: CanvasInfo[], waiting: Record<string, Waiting | undefined>, underway: (id: string) => boolean) =>
   canvases.reduce((n, c) => n + (waiting[c.id] ? forYouCount(waiting[c.id]!, underway) : 0), 0);
 

@@ -17,7 +17,7 @@ export interface PageChange {
   kinds: readonly DemoKind[];
   /**
    * It shows only on a page with tags, which no page published before it had: those get it with
-   * their tags (the Coordinator's „N Seiten ohne Tags“), so it leaves no page outdated.
+   * their tags (the Coordinator's "N pages without tags"), so it leaves no page outdated.
    */
   tagged?: true;
 }

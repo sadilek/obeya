@@ -177,8 +177,8 @@ if (args.includes('--voice')) {
     const wav = await (await api('/api/demo-settings/sample', { json: { language: 'en', voice: 'piper' } })).arrayBuffer();
     const res = await json(`/api/c/${canvas}/voice`, { method: 'POST', body: wav, headers: { 'content-type': 'audio/wav' } });
     const heard = /heard on check: (.*)/.exec(logText())?.[1] ?? '';
-    expect(/voice sounds/i.test(heard), `heard „${heard}“`);
-    return `heard „${heard}“; Obeya answered „${res.confirm}“`;
+    expect(/voice sounds/i.test(heard), `heard "${heard}"`);
+    return `heard "${heard}"; Obeya answered "${res.confirm}"`;
   });
 }
 

@@ -1,4 +1,4 @@
-// „Vorschlagen lassen“ at a demo site's tags: a read-only session reads the repository (how the app
+// "Have an agent propose the tags" at a demo site's tags: a read-only session reads the repository (how the app
 // is built: its areas, its users) and the cards of the canvases it is on (finished and open,
 // archived ones too, with what their demos show), and proposes a vocabulary of tags, which the
 // dialog puts into the field for the owner to change and save. It runs in the background, so the

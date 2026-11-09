@@ -1,5 +1,5 @@
-// Setting up demo sites from the configuration: the owner's personal site (Konfiguration → Demos),
-// and a repository's own site („Demo-Seite einrichten“ at its settings). Each setup runs in the
+// Setting up demo sites from the configuration: the owner's personal site (Configuration → Demos),
+// and a repository's own site ("Set up a demo site" at its settings). Each setup runs in the
 // background, since a login in the browser may take minutes; the dialog follows its lines.
 
 import { basename, resolve } from 'node:path';
@@ -88,7 +88,7 @@ export class SiteSetup {
     return cloudflareAccounts(this.o.home).map((a) => a.site);
   }
 
-  /** „Einrichten“: the personal site at the host, unlisted. */
+  /** "Set up": the personal site at the host, unlisted. */
   setupPersonal(input: unknown): PersonalSiteView {
     const host = hostOf(input);
     const account = accountOf(input);
@@ -116,7 +116,7 @@ export class SiteSetup {
     return this.view();
   }
 
-  /** „Mit vorhandener Seite verbinden“: the personal site another machine of the owner's set up, by its code. */
+  /** "Connect to an existing site": the personal site another machine of the owner's set up, by its code. */
   connect(input: unknown): PersonalSiteView {
     const code = (input as { code?: unknown } | null)?.code;
     if (typeof code !== 'string' || !code.trim()) throw new BadRequest('invalid', 'expected { code }');
@@ -137,7 +137,7 @@ export class SiteSetup {
     return { code: connectionCode(this.o.home, p) };
   }
 
-  /** „Von diesem Rechner entfernen“: this machine no longer shares there; the pages online stay, as does the project at the host. */
+  /** "Remove from this machine": this machine no longer shares there; the pages online stay, as does the project at the host. */
   remove(): PersonalSiteView {
     writePersonal(this.o.home, null);
     this.jobs.delete(PERSONAL);
@@ -171,7 +171,7 @@ export class SiteSetup {
     return this.view();
   }
 
-  /** „Demo-Seite einrichten“ at a repository's settings: a listed site at the host, its `demo.site` for the dialog to take in. */
+  /** "Set up a demo site" at a repository's settings: a listed site at the host, its `demo.site` for the dialog to take in. */
   setupRepo(input: unknown): SiteSetupJob | null {
     const { path, host: h, name } = (input ?? {}) as { path?: unknown; host?: unknown; name?: unknown };
     if (typeof path !== 'string' || !path) throw new BadRequest('invalid', 'expected { path, host }');

@@ -106,7 +106,7 @@ export type Field = 'note' | 'answer' | 'feedback' | 'demo' | 'discuss' | 'revis
 export interface Heard {
   confirm: string;
   token?: string;
-  /** How long the command still waits for "Rückgängig". */
+  /** How long the command still waits for "Undo". */
   undoMs?: number;
   /** Said to the open card's agent: the card shows it, so there is nothing to confirm. */
   quiet?: boolean;
@@ -123,7 +123,7 @@ export interface Heard {
   /** The card whose conversation shows the reply in full. */
   inCard?: string;
 }
-/** How long "Rückgängig" shows: until shortly before the command stops waiting. */
+/** How long "Undo" shows: until shortly before the command stops waiting. */
 export const undoShownMs = (undoMs: number) => Math.max(0, undoMs - 400);
 /** How long a confirmation stays above the microphone: 7 s, unless its undo window is longer. */
 export const confirmShownMs = (undoMs = 0) => Math.max(7000, undoMs + 1500);
@@ -152,7 +152,7 @@ export const api = {
   retryStart: () => call<{}>('POST', '/api/config/retry'),
   /** Saves it; Obeya then starts again with it where something restarts it. */
   saveConfig: (canvases: CanvasConfig[]) => call<ConfigSaved>('PUT', '/api/config', canvases),
-  /** „Für alle ins Repository übernehmen“: the repository's settings for this machine into its `.obeya/settings.json`. */
+  /** "Take over into the repository for everyone": the repository's settings for this machine into its `.obeya/settings.json`. */
   shareSettings: (path: string, direct = false) => call<SettingsShared>('POST', '/api/config/share-settings', { path, direct }),
   /** The owner confirms the repository's commands the dialog showed them (the groups `held` of `now`): they count from now on. */
   trustCommands: (path: string, trust: RepoTrust) => call<object>('POST', '/api/config/trust', { path, seen: trust.now, held: trust.held }),
@@ -164,7 +164,7 @@ export const api = {
   saveConversationLanguage: (conversation: Language | null) => call<LanguageView>('PUT', '/api/language', { conversation }),
   /** Light or dark as the owner chose, or `null` for the system's. */
   theme: () => call<ThemeView>('GET', '/api/theme'),
-  // other devices reaching Obeya: the section „Von anderen Geräten“ and „Telefon verbinden“
+  // other devices reaching Obeya: the section "Other devices" and "Connect a phone"
   access: () => call<AccessView | { local: false }>('GET', '/api/access'),
   saveAccess: (remote: RemoteSetting | null) => call<AccessView>('PUT', '/api/access', { remote }),
   pair: () => call<Pairing>('POST', '/api/access/pair'),
@@ -217,7 +217,7 @@ export const api = {
   allowPrivateRepo: (path: string, on: boolean) => call<PersonalSiteView>('POST', '/api/personal-site/private', { path, on }),
   /** Ticks or unticks a repository whose approved cards put their latest demo on the personal site by themselves. */
   shareApprovedRepo: (path: string, on: boolean) => call<PersonalSiteView>('POST', '/api/personal-site/approved', { path, on }),
-  /** „Demo-Seite einrichten“ for a repository: started, followed, and taken into its settings. */
+  /** "Set up a demo site …" for a repository: started, followed, and taken into its settings. */
   setUpRepoSite: (path: string, host: 'cloudflare' | 'github', name: string, how: SiteHow = {}) => call<{ job: SiteSetupJob | null }>('POST', '/api/site-setup', { path, host, name, ...how }),
   repoSiteSetup: (path: string) => call<{ job: SiteSetupJob | null }>('GET', `/api/site-setup?path=${encodeURIComponent(path)}`),
   repoSiteTaken: (path: string) => call<object>('DELETE', `/api/site-setup?path=${encodeURIComponent(path)}`),
@@ -372,13 +372,13 @@ export const api = {
   acceptProposal: (id: number, text?: string, target?: string | null) =>
     call<void>('POST', at(`/preferences/${id}/accept`), { ...(text === undefined ? {} : { text }), ...(target === undefined ? {} : { target }) }),
   rejectProposal: (id: number) => call<void>('POST', at(`/preferences/${id}/reject`)),
-  /** Takes a setting the Arbeitsrückschau proposed, as it is or with the owner's `value`: on this machine, or into the repository for everyone. */
+  /** Takes a setting the work retrospective proposed, as it is or with the owner's `value`: on this machine, or into the repository for everyone. */
   takeSetting: (id: number, where: 'machine' | 'repository', value?: string | string[]) => call<unknown>('POST', at(`/setting-proposals/${id}/take`), { where, ...(value === undefined ? {} : { value }) }),
   rejectSetting: (id: number) => call<void>('POST', at(`/setting-proposals/${id}/reject`)),
   /** Shares outdated pages again, the newest demos first: `count` of them, or all with null. */
   reshare: (count: number | null, tags = false) => call<void>('POST', at('/reshare'), { count, ...(tags ? { tags } : {}) }),
   stopReshare: () => call<void>('POST', at('/reshare/stop')),
-  /** "Ausblenden": puts away what the finished run says, and the notice of outdated pages until a newer change. */
+  /** "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change. */
   dismissReshare: () => call<void>('DELETE', at('/reshare')),
   /** The owner has the Coordinator's sheet in view: the answers waiting there are read. */
   /** Obeya's sheet is in view, or (`ids`) these exchanges in a project's sheet. */
@@ -410,7 +410,7 @@ export function onCardEventGone(fn: (cardId: string, id: number) => void): () =>
 }
 
 // What Obeya tells the owner without a command of theirs to answer (an answer looked up, what a
-// request an agent passed on came to): it shows above the microphone, with "Rückgängig" while actions wait.
+// request an agent passed on came to): it shows above the microphone, with "Undo" while actions wait.
 const noticeListeners = new Set<(n: Notice) => void>();
 /** Notices that came before anything showed them: those a page gets as it opens, before the canvas is drawn. */
 let heldNotices: { n: Notice; at: number }[] = [];

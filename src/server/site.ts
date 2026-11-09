@@ -1110,7 +1110,7 @@ export const FEED = 'feed.xml';
 /** The first sentence of a page's text, as the overview shows it. */
 const firstSentence = (t: string) => (t.match(/^.+?[.!?](?=\s|$)/)?.[0] ?? t).slice(0, 240);
 
-/** The style the overview adds: its filter (search, a row of chips per dimension), the count and „Links kopieren“, each page's copy icon. */
+/** The style the overview adds: its filter (search, a row of chips per dimension), the count and "Copy links", each page's copy icon. */
 const OVERVIEW_STYLE = `
   .filter { display: grid; gap: 10px; margin: 0 0 16px; }
   .filter input { font: inherit; font-size: 15px; width: 100%; padding: 7px 11px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); }
@@ -1144,7 +1144,7 @@ const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9"
  * filter: a search over title and text, and a row of chips per dimension of the site's vocabulary
  * (its values that some page has), any of a dimension's and all dimensions; it stands in the URL
  * (`?Area=Billing&q=pdf`), so a filtered list can be passed on. Each page's link is copied by its
- * icon, those shown all at once by „Links kopieren“: as HTML links and as a Markdown list. It all
+ * icon, those shown all at once by "Copy links": as HTML links and as a Markdown list. It all
  * runs in the browser; the site stays static.
  */
 export function overviewHtml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage, theme?: string): string {

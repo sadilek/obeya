@@ -1,6 +1,6 @@
-// Snoozing a card until a point in time: the owner's „Später …“ with its presets and a date and time
-// of their own, on a card's action row, as „Ändern“ on the snooze line of its conversation and after
-// a swipe on the phone's „Braucht dich“, and that line with „Jetzt zurückholen“. One component for
+// Snoozing a card until a point in time: the owner's "Later …" with its presets and a date and time
+// of their own, on a card's action row, as "Change" on the snooze line of its conversation and after
+// a swipe on the phone's "Needs you", and that line with "Wake now". One component for
 // every kind of card; a review card handed over can also wait for its contributor to respond.
 
 import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
@@ -153,7 +153,7 @@ export function SnoozeChoices({
 }
 
 /**
- * The button that snoozes the card („Später …“, „Ändern“) and its menu: the presets, and a date and
+ * The button that snoozes the card ("Later …", "Change") and its menu: the presets, and a date and
  * time to pick. `inline`: the menu opens below the button where the screen has room, else above it,
  * over the conversation rather than in it (on the phone the conversation is often lower than the
  * menu, which it cut off); else above the button. A proposal's start time is set with the same
@@ -229,7 +229,7 @@ function usePlaced(on: boolean, menu: RefObject<HTMLElement | null>, anchor: () 
 
 /**
  * The snooze menu of a card, opened without its button: on the phone, by swiping the card toward
- * „Später …“. It stands beside `anchor` (the card) until a choice or a tap elsewhere closes it.
+ * "Later …". It stands beside `anchor` (the card) until a choice or a tap elsewhere closes it.
  */
 export function SnoozeFor({ item, anchor, onClose }: { item: Item; anchor: () => DOMRect; onClose: () => void }) {
   const menu = useRef<HTMLDivElement>(null);
@@ -248,12 +248,12 @@ export function SnoozeFor({ item, anchor, onClose }: { item: Item; anchor: () =>
 const snooze = (cardId: string, until: string) => void api.act(cardId, { action: 'snooze', until }).catch(() => {});
 const awaitContributor = (cardId: string) => void api.act(cardId, { action: 'awaitContributor' }).catch(() => {});
 
-/** „Bis amerlander sich meldet“ in the menu of a review card handed over that does not wait for its contributor yet. */
+/** "Until amerlander responds" in the menu of a review card handed over that does not wait for its contributor yet. */
 export const contributorChoice = (item: Item, pick: () => void = () => awaitContributor(item.id)) =>
   item.contribution && awaitsContributorNext(item) ? { label: t.snooze.untilContributor(item.contribution.author), hint: t.snooze.untilContributorHint(item.contribution.author), onPick: pick } : undefined;
 const wake = (cardId: string) => void api.act(cardId, { action: 'wake' }).catch(() => {});
 
-/** The line in the conversation where the card was snoozed, while it still is: with „Jetzt zurückholen“ and „Ändern“. */
+/** The line in the conversation where the card was snoozed, while it still is: with "Wake now" and "Change". */
 export function SnoozeLine({ item, e, at }: { item: Item; e: CardEvent; at: string }) {
   return (
     <div className="note ev-state snooze-line">

@@ -142,8 +142,8 @@ export function App() {
 
 /**
  * No canvas runs: on the first start, with none configured yet, the setup assistant fills the page
- * and creates one; where the configured ones did not start, the page says why, and „Erneut
- * versuchen“ opens the canvases once one runs.
+ * and creates one; where the configured ones did not start, the page says why, and "Try
+ * again" opens the canvases once one runs.
  */
 function NoCanvas() {
   const [down, setDown] = useState<ConfigProblem[] | null>(null);
@@ -434,7 +434,7 @@ function Canvas({
     if (!kOn) talkCoordinator();
   };
   const [helpOn, setHelpOn] = useState(false);
-  // „Telefon verbinden“, from the section „Von anderen Geräten“ of the configuration
+  // "Connect a phone", from the section "Other devices" of the configuration
   const [phoneOn, setPhoneOn] = useState(false);
   const wishOn = useWish().open;
   // the bar's `?` button stays until the owner opened the legend with the key; the legend's foot says so
@@ -1015,8 +1015,8 @@ function Canvas({
   }, []);
 
   /**
-   * „Entziehen“ in the Workspaces list: the card's clone goes to the card waiting longest once the
-   * undo window is through; „Rückgängig“ (here or in its row) takes that back meanwhile.
+   * "Give to the waiting card" in the Workspaces list: the card's clone goes to the card waiting longest once the
+   * undo window is through; "Undo" (here or in its row) takes that back meanwhile.
    */
   const keepWorkspace = useCallback(async (i: Item) => {
     try {
@@ -1036,8 +1036,8 @@ function Canvas({
   }, []);
 
   /**
-   * The project's „Anordnen“, on its card and in its sheet: its workstreams in columns by what builds
-   * on what, once Obeya has read that from the plan doc. It takes effect at once; „Rückgängig“ puts
+   * The project's "Arrange", on its card and in its sheet: its workstreams in columns by what builds
+   * on what, once Obeya has read that from the plan doc. It takes effect at once; "Undo" puts
    * the cards (and the project, which may have made room for itself) back where they stood.
    */
   const arrange = useCallback(async (p: Item) => {
@@ -1072,7 +1072,7 @@ function Canvas({
   openRef.current = open;
   const openCard = useCallback((i: Item) => void openRef.current(i).catch(console.error), []);
 
-  /** "Als Projekt aufbereiten" on the note on a plan directory: a card whose agent prepares the doc, started at once. */
+  /** "Prepare as a project" on the note on a plan directory: a card whose agent prepares the doc, started at once. */
   const preparePlanDoc = useCallback(async (dir: PlanDir, file: string) => {
     try {
       const card = await api.preparePlanDoc(snapshot.canvas.id, dir.repo, file);
@@ -1159,7 +1159,7 @@ function Canvas({
     } else if (!shows(camRef.current, viewNow(), boundsOf(made, itemsRef.current))) fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8), sideNow()), 700);
   }, [snapshot]);
   // what Obeya tells the owner without a command to answer: an answer looked up, what a request a
-  // card's agent passed on came to (with "Rückgängig" while its actions wait)
+  // card's agent passed on came to (with "Undo" while its actions wait)
   useEffect(
     () =>
       onNotice((n) => {
@@ -1291,11 +1291,11 @@ function Canvas({
   // what an arrow does shows while the owner draws one, until they have drawn their first
   const [depKnown, setDepKnown] = useState(() => known(DEP_KNOWN));
   // arrows the owner removed that the server may still have: one holding a queued card goes there only
-  // once „Rückgängig“ has run out (`sent` from then on), so that taking it back never leaves the card started
+  // once "Undo" has run out (`sent` from then on), so that taking it back never leaves the card started
   const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
-  // those removals while „Rückgängig“ runs, each with its timer and what sends it
+  // those removals while "Undo" runs, each with its timer and what sends it
   const pendingRemovals = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; send: (keepalive?: boolean) => void }>());
-  // what the owner removed goes to the server even when the page goes before „Rückgängig“ has run out
+  // what the owner removed goes to the server even when the page goes before "Undo" has run out
   useEffect(() => {
     const away = () => {
       for (const p of pendingRemovals.current.values()) {
@@ -1310,7 +1310,7 @@ function Canvas({
       away();
     };
   }, []);
-  /** A removal still waiting for „Rückgängig“ to run out is taken back: the arrow stays. */
+  /** A removal still waiting for "Undo" to run out is taken back: the arrow stays. */
   function keepDependency(key: string) {
     const p = pendingRemovals.current.get(key);
     if (!p) return;
@@ -1374,7 +1374,7 @@ function Canvas({
     if (!kOn) toggleCoordinator();
     void tellTyped(t.deps.loopAsk(loop.cards.map(named), waits), undefined, null);
   }
-  /** The trash button on an owner-drawn arrow: it goes at once, with „Rückgängig“. */
+  /** The trash button on an owner-drawn arrow: it goes at once, with "Undo". */
   function removeDependency(from: string, to: Item) {
     const key = `${from}:${to.id}`;
     if (!(to.queue && 'behind' in to.queue && to.queue.behind.includes(from))) {
@@ -1488,7 +1488,7 @@ function Canvas({
     if (connection) {
       e.stopPropagation();
       if (connection.target) {
-        // the arrow drawn again while its removal waits for „Rückgängig“ to run out: it simply stays
+        // the arrow drawn again while its removal waits for "Undo" to run out: it simply stays
         if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
         else {
           const { from, target } = connection;
@@ -1762,7 +1762,7 @@ function Canvas({
       }
       return;
     }
-    // so does „Telefon verbinden“
+    // so does "Connect a phone"
     if (phoneOn) {
       if (e.key === 'Escape') setPhoneOn(false);
       return;

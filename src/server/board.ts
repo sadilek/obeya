@@ -147,7 +147,7 @@ const waitOf = (r: Pick<CardRow, 'queue'>) => {
 export interface StoredContribution extends Contribution {
   /** `base`: the PR's head the held commits go on top of, as it stood at the handover. */
   held?: HeldChanges & { base: string };
-  /** The owner chose „Selbst ändern“, and the worker's changes have not gone out yet: requests to the contributor wait for them. */
+  /** The owner chose "Change it myself", and the worker's changes have not gone out yet: requests to the contributor wait for them. */
   changing?: true;
   /** The PR's head commit the worker reviewed at its latest handover: only that one is merged. */
   reviewed?: string;
@@ -179,7 +179,7 @@ export interface Shipped {
   base?: string;
   /** Merged as a pull request: that one. */
   pr?: { url: string; number: number };
-  /** The merge commit is not known: the Lesestand's commit after the next fetch stands in for it. */
+  /** The merge commit is not known: the read tree's commit after the next fetch stands in for it. */
   fetch?: true;
 }
 
@@ -246,7 +246,7 @@ export interface StoredShare {
   again?: true;
   /** While `publishing` (with `refresh`): the page goes out again as it is, with the tags the owner set. */
   retag?: true;
-  /** The owner unticked „Mit der Freigabe teilen“: where the site publishes on approval, approving the card shares nothing. */
+  /** The owner unticked "Share on approval": where the site publishes on approval, approving the card shares nothing. */
   notOnApproval?: true;
   /** The page's tags the owner set by hand, by dimension: neither a worker nor the reading session changes them. */
   tags?: PageTags;
@@ -378,7 +378,7 @@ const SHEET_TALK = 30;
 /** The setting that names the card collecting accepted rules for a repository's CLAUDE.md, per repository. */
 const CLAUDE_MD_SETTING = 'claude_md_card:';
 
-/** The setting that names the card filling in a repository's settings, proposed by Obeya or made in the Konfiguration dialog, per repository: Obeya proposes it once. */
+/** The setting that names the card filling in a repository's settings, proposed by Obeya or made in the Configuration dialog, per repository: Obeya proposes it once. */
 const SETUP_CARD_SETTING = 'setup_card:';
 
 /** The setting that names the card Obeya proposed to give a repository's shared pages a theme, per repository: Obeya proposes it once. */
@@ -508,7 +508,7 @@ export class Board {
     /** The owner's screenshots, which a card's images must be among. */
     private images?: Pick<Images, 'resolve'>,
     /**
-     * Whether the Lesestand of the repository holds the commit, as known now: without the server
+     * Whether the read tree of the repository holds the commit, as known now: without the server
      * waiting for git, which reads the plan docs again (`docsChanged`) once it does. Without it, every
      * commit counts as held.
      */
@@ -640,10 +640,10 @@ export class Board {
   }
 
   /**
-   * The repository's Lesestand moved to `commit` after a fetch: pull requests merged before it,
+   * The repository's read tree moved to `commit` after a fetch: pull requests merged before it,
    * whose merge commit GitHub did not say, count as landed with it. Then the plan docs are read again.
    */
-  lesestandMoved(repo: string, commit: string) {
+  readTreeMoved(repo: string, commit: string) {
     for (const r of this.store.cards(this.canvas.id)) {
       const s = r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
       if (!commit || !s?.fetch || (r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home)) !== repo) continue;
@@ -655,7 +655,7 @@ export class Board {
 
   /**
    * The plan doc decides a workstream's state. Stored `live` means its work landed; once the
-   * Lesestand holds what landed and the doc still leaves the workstream open, only a part of it is
+   * read tree holds what landed and the doc still leaves the workstream open, only a part of it is
    * done: the card is planned again, to be started for the rest. Its log, PR and handover stay.
    */
   private reopen(docs: PlanDoc[]) {
@@ -1056,7 +1056,7 @@ export class Board {
   }
 
   /**
-   * A card the Arbeitsrückschau proposes for a repository: it waits as a proposal like an agent's,
+   * A card the work retrospective proposes for a repository: it waits as a proposal like an agent's,
    * in a free spot, with what it rests on (`basis`).
    */
   proposeRetro(repo: string, p: { title: string; body: string; basis: string }): Item {
@@ -1166,12 +1166,12 @@ export class Board {
     this.changed();
   }
 
-  /** The cards the Arbeitsrückschau proposed for a repository, with what became of them. */
+  /** The cards the work retrospective proposed for a repository, with what became of them. */
   retroProposals(repo: string) {
     return this.store.retroProposals(this.canvas.id, this.repoColumn(repo));
   }
 
-  /** A value for a repository's setting the Arbeitsrückschau proposes: it waits in Obeya's sheet beside the rules. */
+  /** A value for a repository's setting the work retrospective proposes: it waits in Obeya's sheet beside the rules. */
   proposeSetting(p: { repo: string; field: ProposedSetting; value: string | string[]; basis: string; cards: string[] }): number {
     this.checkRepo(p.repo);
     const id = this.store.addSettingProposal(this.canvas.id, { ...p, basis: p.basis.slice(0, 2000) });
@@ -1179,7 +1179,7 @@ export class Board {
     return id;
   }
 
-  /** The settings the Arbeitsrückschau proposed, with what became of them: those of a repository, or all. */
+  /** The settings the work retrospective proposed, with what became of them: those of a repository, or all. */
   settingProposals(repo?: string) {
     return this.store.settingProposals(this.canvas.id, repo);
   }
@@ -1354,7 +1354,7 @@ export class Board {
   }
 
   /**
-   * The shared pages the Coordinator's sheet offers to tag („N Seiten ohne Tags“), archived cards'
+   * The shared pages the Coordinator's sheet offers to tag ("N pages without tags"), archived cards'
    * included: at rest, on their repository's site with a vocabulary, and lacking tags in one of its
    * dimensions. Their demos need not be at hand: the site's copy of a page is tagged in place.
    */
@@ -1377,7 +1377,7 @@ export class Board {
     this.changed();
   }
 
-  /** "Ausblenden": the notice of outdated pages goes until a newer change, and the result of a run that finished with it. */
+  /** "Hide": the notice of outdated pages goes until a newer change, and the result of a run that finished with it. */
   dismissOutdated() {
     this.setSetting(RESHARE_DISMISSED, pagesVersion());
     // the pages outdated by a theme now; one no longer is needs no entry
@@ -1534,7 +1534,7 @@ export class Board {
     this.changed();
   }
 
-  /** A command waiting for "Rückgängig" until `due`, kept across a restart (`Commander`). */
+  /** A command waiting for "Undo" until `due`, kept across a restart (`Commander`). */
   holdCommand(token: string, due: number, body: unknown) {
     this.store.holdCommand(this.canvas.id, token, new Date(due).toISOString(), JSON.stringify(body));
   }
@@ -1721,7 +1721,7 @@ export class Board {
     this.changed();
   }
 
-  /** "Übernehmen und starten" during a revision (`on`; `idea`: "Als Idee besprechen"), or taken back; false when that was so already. */
+  /** "Accept and start" during a revision (`on`; `idea`: "Discuss as an idea"), or taken back; false when that was so already. */
   acceptAfterRevision(id: string, on: boolean | 'idea'): boolean {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
@@ -2538,8 +2538,8 @@ export class Board {
   /**
    * The owner accepts a proposal, as it is or in their own words; a change takes the place of the
    * rule it changes. `target` sets where it goes when the owner changed that: a repository, or
-   * `null` for the preference memory. A rule for a repository goes into its card „CLAUDE.md
-   * ergänzen“, which a worker writes it from into the CLAUDE.md; until then it applies to no agent.
+   * `null` for the preference memory. A rule for a repository goes into its card "Add to
+   * CLAUDE.md", which a worker writes it from into the CLAUDE.md; until then it applies to no agent.
    */
   acceptProposal(id: number, text?: string, target?: string | null) {
     const p = this.preferences('proposed').find((x) => x.id === id);
@@ -2558,7 +2558,7 @@ export class Board {
 
   /**
    * A rule the owner gives outright for the CLAUDE.md of each of `repos`, said („Merk dir: …“) or
-   * written in the sheet: it goes into the repository's card „CLAUDE.md ergänzen“ at once, without
+   * written in the sheet: it goes into the repository's card "Add to CLAUDE.md" at once, without
    * a proposal. `replaces`: an active rule of the owner's it takes the place of.
    */
   fileRule(text: string, repos: string[], cardId: string | null = null, replaces?: number) {
@@ -2576,7 +2576,7 @@ export class Board {
   }
 
   /**
-   * Adds an accepted rule to the repository's open card „CLAUDE.md ergänzen“: planned and not yet
+   * Adds an accepted rule to the repository's open card "Add to CLAUDE.md": planned and not yet
    * with the Coordinator. Without one, a new card collects it.
    */
   private collect(repo: string, rule: string) {
@@ -2591,7 +2591,7 @@ export class Board {
     this.log(card.id, 'state', 'coordinator', this.t.coordinator.ruleTaken(rule));
   }
 
-  /** The repository's card „CLAUDE.md ergänzen“ while it still collects rules, if there is one. */
+  /** The repository's card "Add to CLAUDE.md" while it still collects rules, if there is one. */
   collecting(repo: string): Item | undefined {
     const id = this.setting(`${CLAUDE_MD_SETTING}${repo}`);
     const card = id ? this.item(id) : undefined;
@@ -3647,7 +3647,7 @@ function shareOf(r: CardRow, themeNow?: ThemeNow): Item['share'] {
     ...(s.url ? { url: s.url } : {}),
     ...(on.length ? { on } : {}),
     ...(stale ? { stale: true } : {}),
-    // shown with each version on the page; the latest, not on it, brings the changes with „Auf der Seite ersetzen“ or „Zur Seite dazunehmen“
+    // shown with each version on the page; the latest, not on it, brings the changes with "Replace on the page" or "Add to the page"
     ...(outdated.length ? { outdated } : {}),
     ...(s.personal && s.token ? { unlisted: true as const } : {}),
   };
@@ -3690,7 +3690,7 @@ export interface StoredIdea {
   status: Idea['status'];
   brief: string;
   thinking?: boolean;
-  /** "So bauen" waits for the reply its agent works on; questions in it call the building off. */
+  /** "Build it like this" waits for the reply its agent works on; questions in it call the building off. */
   buildAfterReply?: boolean;
   yourTurn?: boolean;
   questions?: Question[];
@@ -3699,7 +3699,7 @@ export interface StoredIdea {
   variants?: PlannedPrototype[];
   /** The brief's mocks, as the agent last set them. */
   mocks?: Mock[];
-  /** The settled part "Teilaufgabe abtrennen" builds, as the agent last marked it. */
+  /** The settled part "Split off a task" builds, as the agent last marked it. */
   split?: SettledPart;
   /** Messages a turn ended before answering (the idea parked or dropped, an error, a restart); they go to the agent first next time. */
   unread?: Unread;

@@ -285,7 +285,7 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.restart .tip.risk { border-left: 3px solid var(--waiting); }
 .pill.restart:hover:not(:has(button:hover)) > .tip.why, .pill.restart button:hover > .tip.risk { display: block; }
 /* the navigation at the bar's left (src/ui/nav.tsx): the canvas's name, and under it the canvases
-   with what waits for the owner on each, as the phone's „Braucht dich“ shows it */
+   with what waits for the owner on each, as the phone's "Needs you" shows it */
 .nav-pill { position: relative; }
 .nav-pill .switch { cursor: pointer; }
 .nav-pill .switch.on { background: var(--chip); }
@@ -428,7 +428,7 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.workspaces .ws-card .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .pill.workspaces .ws-card .from:hover { text-decoration-color: currentColor; }
 .pill.workspaces .btn.ws-take { margin-left: 8px; padding: 2px 9px; font-size: 12px; font-weight: 500; vertical-align: 1px; }
-/* the rare action of giving a card's clone away sits behind a faint „⋯“ */
+/* the rare action of giving a card's clone away sits behind a faint "⋯" */
 .pill.workspaces .ws-more { margin-left: 6px; padding: 0 5px; border: 0; border-radius: 3px; background: none; color: var(--muted); opacity: .55; cursor: pointer; font-size: 13px; line-height: 1.2; }
 .pill.workspaces .ws-more:hover, .pill.workspaces .ws-more[aria-expanded="true"] { opacity: 1; background: var(--chip); }
 .pill.workspaces .ws-menu { grid-column: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 4px 0 2px; padding: 8px 10px; border-radius: 3px; background: var(--chip); }
@@ -720,7 +720,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .next-step .next-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--idea); }
 .next-step + .actions { margin-top: 12px; }
 .btn.suggested { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--idea); }
-/* "So bauen" or "Übernehmen und starten" clicked while an agent works on the card: armed, with a bar running under its label until it is done */
+/* "Build it like this" or "Accept and start" clicked while an agent works on the card: armed, with a bar running under its label until it is done */
 .btn.armed:disabled { opacity: 1; position: relative; overflow: hidden; }
 .btn.armed::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
   background: linear-gradient(90deg, transparent, var(--idea), transparent); background-size: 200% 100%; animation: flow 1.4s linear infinite; }
@@ -793,7 +793,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .share-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--approved); font-weight: 600; }
 .share-link { flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .share-busy { color: var(--muted); }
-/* the page's tags: chips with their ×, and „+“ with the vocabulary's other values in a list under it. Every
+/* the page's tags: chips with their ×, and "+" with the vocabulary's other values in a list under it. Every
    part is 24px high and centred on its capitals (text-box trims the line to them), × and + are drawn, not glyphs */
 .share-tags { gap: 6px; }
 .share-tags > .share-label { color: var(--muted); }
@@ -842,7 +842,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .proposal-grid textarea.p-body { min-height: min(360px, calc(100vh - 440px)); max-height: calc(100vh - 440px); resize: none; }
 .proposal-grid .p-body-shown { min-height: min(360px, calc(100vh - 440px)); max-height: calc(100vh - 440px); overflow-y: auto; }
 .question.brief { border-color: var(--idea); background: color-mix(in srgb, var(--idea) 6%, transparent); }
-/* the settled part "Teilaufgabe abtrennen" builds, folded under the brief */
+/* the settled part "Split off a task" builds, folded under the brief */
 .question.brief.settled { margin-top: 10px; }
 .question.brief.settled > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .prototype-demo { margin-top: 10px; }
@@ -1163,14 +1163,14 @@ span.cl-name { color: inherit; cursor: default; }
 .reauthenticate-token input:focus { border-color: var(--muted); }
 .reauthenticate-token .btn.small { margin-top: 0; color: var(--ink); background: var(--card); border: 1px solid var(--line); }
 .talk .note.ev-denied { color: var(--warn); font-style: normal; }
-/* the line where the card was snoozed, while it is: with „Jetzt zurückholen“ and „Ändern“ under it */
+/* the line where the card was snoozed, while it is: with "Wake now" and "Change" under it */
 .talk .note.snooze-line { display: flex; flex-direction: column; align-items: center; gap: 2px; border-top: 1px dashed var(--line); padding-top: 8px; font-style: normal; }
 .talk .note.snooze-line .clock-mark { vertical-align: -1px; }
 .talk .wait-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; }
 .talk .wait-line .clock-mark { vertical-align: -1px; }
 .snooze-acts { display: flex; gap: 8px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
 .snooze-acts .btn.small { margin-top: 4px; background: var(--card); border: 1px solid var(--line); color: var(--ink); }
-/* „Später …“ and its menu of times, above the button in a card's action row; on the snooze line over the conversation, placed by script */
+/* "Later …" and its menu of times, above the button in a card's action row; on the snooze line over the conversation, placed by script */
 .snooze-box { position: relative; display: inline-flex; flex-direction: column; align-items: center; }
 .snooze-box > .btn .clock-mark { margin-right: 4px; vertical-align: -1px; }
 .snooze-menu { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 30; min-width: 220px; display: flex; flex-direction: column;
@@ -1202,7 +1202,7 @@ span.cl-name { color: inherit; cursor: default; }
 .agent-effort { border: 1px solid var(--line); background: none; border-radius: 3px; padding: 4px 9px; font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
 .agent-effort:hover { background: var(--chip); }
 .agent-effort.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-/* a proposal its agent wants started later: when, with „Ändern“ */
+/* a proposal its agent wants started later: when, with "Change" */
 .start-at { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; margin: 10px 0 2px; font-size: 13px; color: var(--ink); }
 .start-at .clock-mark { vertical-align: -1px; color: var(--muted); }
 /* a task's conversation: under the card's demo and pull request, scrolled to its end */
@@ -1603,7 +1603,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .cfg-nav .n { margin-left: auto; border-radius: 3px; padding: 0 7px; font-weight: 700; font-size: 12px; color: var(--on-ink); background: var(--planned); }
 .cfg-nav .n.err { background: var(--error); }
 .cfg-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--waiting); }
-/* Leinwände: a heading over the canvases, each indented under it, and „+ Leinwand“ last */
+/* Canvases: a heading over the canvases, each indented under it, and "+ Canvas" last */
 .cfg-nav-title { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px; font-size: 14px; color: var(--muted); }
 .cfg-nav-group > ul { margin-bottom: 6px; }
 .cfg-nav-group > ul > li > button { padding-left: 24px; }
@@ -1708,7 +1708,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .cfg-repo-path { display: flex; align-items: center; gap: 12px; max-width: 664px; }
 .cfg-repo-path > .c-path { flex: 1; }
 .cfg-repo-path > .c-del { margin-left: 0; }
-/* „Auswählen …“ beside a folder's path (setup assistant, configuration): on the field's line, never squeezing it */
+/* "Choose …" beside a folder's path (setup assistant, configuration): on the field's line, never squeezing it */
 .folder-pick { margin-top: 0 !important; flex: none; white-space: nowrap; }
 .cfg-repo-problem { margin: 2px 0 8px; }
 .cfg-pick-failed { margin: 6px 0 0; }
@@ -1734,7 +1734,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .cfg-reset { padding: 0; border: 0; background: none; color: var(--muted); font-size: 11.5px; text-decoration: underline; cursor: pointer; }
 .cfg-reset:hover { color: var(--ink); }
 .cfg-setting textarea { max-width: 640px; }
-/* „Für alle ins Repository übernehmen“: the file as it would be, where it goes, and what came of it */
+/* "Take over into the repository for everyone": the file as it would be, where it goes, and what came of it */
 .cfg-share-settings { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
 .cfg-share-settings .hint { max-width: 76ch; margin: 4px 0 0; }
 .cfg-share-settings .hint.ok { color: var(--ink); }
@@ -2143,7 +2143,7 @@ button.link:hover { text-decoration: underline; }
 .setup-identity input { width: 170px; }
 .setup-first { border-width: 2px; }
 .setup-first .warn { color: var(--warn); }
-/* "Wo liegt dein Projekt?": two cards with a radio button each, the fields for the one chosen below */
+/* "Where is your project?": two cards with a radio button each, the fields for the one chosen below */
 .setup-where { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 10px; }
 .setup-where > b { grid-column: 1 / -1; }
 .setup-first label.setup-choice { display: grid; grid-template-columns: auto 1fr; align-content: start; align-items: center; column-gap: 10px; row-gap: 2px; margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
@@ -2176,7 +2176,7 @@ button.link:hover { text-decoration: underline; }
 .setup code { font: 12px var(--mono); }
 .setup .c-how code { padding: 2px 6px; border-radius: 2px; background: var(--card); border: 1px solid var(--line); -webkit-user-select: all; user-select: all; }
 
-/* „Telefon verbinden“ (access.tsx): the QR code beside the address and the code to type */
+/* "Connect a phone" (access.tsx): the QR code beside the address and the code to type */
 #phone { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
 #phone .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 20px; width: 680px; max-width: 100%; max-height: 100%; overflow: auto; font-size: 14px; }
 #phone h2 { margin: 0 0 16px; font-size: 23px; }
@@ -2244,10 +2244,10 @@ button.link:hover { text-decoration: underline; }
 /* the state line wraps here instead of being cut to one line as on the canvas, the clock beside its first line; nothing clipped, so the landed badge keeps its frame */
 .ph-card .state .state-text { flex: 0 1 auto; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .ph-card .state .since { color: var(--muted); font-weight: 500; white-space: pre; }
-/* everything in „Braucht dich“ waits for the owner: the heading says so, no pin on each card */
+/* everything in "Needs you" waits for the owner: the heading says so, no pin on each card */
 .ph-card .badge { display: none; }
 .ph-none { margin: 0; color: var(--muted); font-size: 14.5px; }
-/* „Geplant“ and „Erledigt“ below the lists, closed until their head is tapped; opened, the head stands under the bar */
+/* "Planned" and "Done" below the lists, closed until their head is tapped; opened, the head stands under the bar */
 .ph-fold { scroll-margin-top: 60px; }
 .ph-fold h2 button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: -6px 0; padding: 0; border: 0; background: none;
   font: inherit; color: var(--muted); text-align: left; cursor: pointer; }
@@ -2259,7 +2259,7 @@ button.link:hover { text-decoration: underline; }
 .ph-fold .n { font: 600 13px/1 var(--cond); padding: 6px 8px; border-radius: 3px; background: var(--chip); color: var(--muted); text-box: trim-both cap alphabetic; }
 /* the cards snoozed while they waited stand under it, as far off as the cards from each other */
 .ph-none + .ph-list { margin-top: 14px; }
-/* how to swipe a card aside, until the owner has; in „Beiseitegelegt“ how the cards come back */
+/* how to swipe a card aside, until the owner has; in "Set aside" how the cards come back */
 .ph-hint { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; line-height: 1.35; }
 .ph-none + .ph-hint, .ph-none + .ph-group { margin-top: 12px; }
 /* each canvas's cards in a list under a shaded head as the navigation's, its arrow at its left; tapped
@@ -2449,7 +2449,7 @@ button.link:hover { text-decoration: underline; }
 .tell-hint-x { flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 3px; background: none; color: var(--muted); cursor: pointer; }
 .tell-hint-x:hover { color: var(--ink); background: var(--chip); }
 
-/* the personal demo site (Konfiguration → Demos), and setting up a repository's site */
+/* the personal demo site (Configuration → Demos), and setting up a repository's site */
 .personal-site { margin-top: 32px; }
 .cfg-narrow { max-width: 620px; }
 .cfg-narrow > .seg { margin-top: 4px; }

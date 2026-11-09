@@ -1,7 +1,7 @@
 // The phone view: on a phone the page shows, instead of the canvas, what waits for the owner across
-// every canvas („Braucht dich“), what runs („Läuft“) and, folded away until opened, what the owner
-// swiped aside („Beiseitegelegt“), what is planned („Geplant“) and what is done but not archived yet
-// („Erledigt“), each canvas's cards under a head that folds them; Obeya's conversation is a panel of its own that
+// every canvas ("Needs you"), what runs ("Running") and, folded away until opened, what the owner
+// swiped aside ("Set aside"), what is planned ("Planned") and what is done but not archived yet
+// ("Done"), each canvas's cards under a head that folds them; Obeya's conversation is a panel of its own that
 // comes up from below. A card opens full screen with the canvas's own detail view (answer options,
 // demo, approve buttons), its conversation in the same panel, and Back returns to the list. The microphone is held by touch; Enter breaks the line, only Send sends;
 // what was typed but not sent survives a reload. It holds one WebSocket for every canvas.
@@ -48,7 +48,7 @@ export function phoneView(): boolean {
 const DRAFTS = '@phone';
 /** The canvas whose Obeya the conversation at the bottom is with, as the owner last picked it. */
 const OBEYA_CANVAS = 'obeya-phone-canvas';
-/** Whether the owner opened „Beiseitegelegt“, „Geplant“ or „Erledigt“ in this tab; each starts closed. */
+/** Whether the owner opened "Set aside", "Planned" or "Done" in this tab; each starts closed. */
 const ASIDE_OPEN = 'obeya-phone-aside-open';
 const PLANNED_OPEN = 'obeya-phone-planned';
 const DONE_OPEN = 'obeya-phone-done';
@@ -266,7 +266,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     setOpenState(null);
     setTalk(false);
   };
-  // a tapped push: its card (or „Braucht dich“ for several) in the app that is open already
+  // a tapped push: its card (or "Needs you" for several) in the app that is open already
   useEffect(() => {
     registerWorker();
     const sw = navigator.serviceWorker;
@@ -294,7 +294,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     addEventListener('popstate', pop);
     return () => removeEventListener('popstate', pop);
   }, []);
-  // „Beiseitegelegt“, „Geplant“ and „Erledigt“ start closed, and stay as the owner left them while a card is open and over a reload
+  // "Set aside", "Planned" and "Done" start closed, and stay as the owner left them while a card is open and over a reload
   const [asideOpen, toggleAsideOpen] = useFolded(ASIDE_OPEN);
   const [plannedOpen, togglePlanned] = useFolded(PLANNED_OPEN);
   const [doneOpen, toggleDone] = useFolded(DONE_OPEN);
@@ -319,7 +319,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     setOpenState(id);
     history.replaceState(history.state, '', addressWith({ card: id, talk: talkRef.current }));
   }, [all]);
-  // the cards the owner swiped aside, out of „Braucht dich“ and „Läuft“ until they need the owner anew;
+  // the cards the owner swiped aside, out of "Needs you" and "Running" until they need the owner anew;
   // the same in every tab of this browser
   const [aside, setAsideState] = useState<SetAside>(loadAside);
   useEffect(() => onAsideElsewhere(setAsideState), []);
@@ -623,16 +623,16 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   };
   const shown = talk && !closing;
   const setAside = new Set(all.filter(({ item }) => staysAside(aside, item)).map(({ item }) => item.id));
-  // what „Braucht dich“ leaves out: the cards the owner acted on, and those set aside
+  // what "Needs you" leaves out: the cards the owner acted on, and those set aside
   const leftOut = (id: string) => isUnderway(id) || setAside.has(id);
   const active = (i: Item) => runs(i) || !!i.snoozed?.waiting || isUnderway(i.id);
   // a snoozed card at the end, after those at work now; one the owner snoozed while it waited for them among them
   const running = all.filter(({ item }) => active(item) && !setAside.has(item.id)).sort((a, b) => Number(!!a.item.snoozed) - Number(!!b.item.snoozed));
-  // what would stand in „Braucht dich“ or „Läuft“ but for being set aside
+  // what would stand in "Needs you" or "Running" but for being set aside
   const putAway = all.filter(({ item }) => setAside.has(item.id) && (needsYou(item) || active(item)));
   // the tasks nobody has started yet (stopped ones and those set to start at a time among them), but nothing the lists above show already
   const planned = all.filter(({ item }) => plannedLater(item) && !runs(item) && !isUnderway(item.id));
-  // what the canvas's „Erledigte archivieren“ would take, but nothing the lists above show already
+  // what the canvas's "Archive finished cards" would take, but nothing the lists above show already
   const waitsHere = forYouTotal(ordered, snaps, leftOut);
   const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
   // until the owner has swiped a card aside once, the first one in sight nudges, with a line above it saying how
@@ -801,7 +801,7 @@ function ByCanvas({ list, canvases, several, waits, count, children }: { list: s
   );
 }
 
-/** A task planned and not archived that neither waits for the owner nor got snoozed while it did: the phone's „Geplant“. */
+/** A task planned and not archived that neither waits for the owner nor got snoozed while it did: the phone's "Planned". */
 const plannedLater = (i: Item) => i.kind === 'task' && i.state === 'planned' && !i.archivedAt && !needsYou(i) && !i.snoozed?.waiting;
 
 /** Whether a folded list is open, kept in this tab under `key`, and the toggle that opens and closes it. */

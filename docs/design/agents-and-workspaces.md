@@ -18,7 +18,7 @@ newest token the owner gave Obeya, which the variable Obeya was started with may
 A worker is one session per card with streaming input, permission mode `auto`, and the repository's
 Claude Code settings and CLAUDE.md (only once the owner trusted them, see Trusting a repository's
 commands); after a restart it resumes by session id. A project agent is one session per project in
-the Lesestand, resumed for each of the owner's questions about the project, one at a time. Project agents, ideas'
+the read tree, resumed for each of the owner's questions about the project, one at a time. Project agents, ideas'
 exploration agents and the Coordinator's look-ups have a worker's tools and mode (see Looked-up
 questions); agents that only judge from text (reading commands, estimates, the learner) are
 read-only: Read, Grep, Glob, mode `dontAsk`.
@@ -310,7 +310,7 @@ A repository may be a folder that is to stay without git: a family archive in a 
 false`; the first canvas and "+ Repository" offer it beside setting up git (see Setting up git in a
 folder). It has no branch, landing, pull requests, prototypes, hosts or clones, and the UI offers
 none of them (nor "Take over into the repository for everyone": `.obeya/settings.json` is written
-into the folder like any file). The folder is its own Lesestand, its plan docs, settings and Claude
+into the folder like any file). The folder is its own read tree, its plan docs, settings and Claude
 Code configuration read as they are; a plan doc "Plan as a project" writes is named at the start, as
 in a plan folder outside the repository, since nothing of it lands.
 
@@ -554,8 +554,8 @@ for its hooks), and what the repository's work needs.
   catalog later drops; Codex's whole list, or its versions side by side (only noise); "Claude Code
   default" and "Codex default (GPT-6.1-Sol)" as entries beside the models (the default named twice).
 - **The harness column is called "Runs on"** (owner, 2026-11-03), under the title "Agents and
-  models", which names the rows. Rejected: "Harness", jargon beside that title; „Werkzeug“ or
-  „Tool“, which agents' commands are called already, and which undersells a coding agent.
+  models", which names the rows. Rejected: "Harness", jargon beside that title; "Tool",
+  which agents' commands are called already, and which undersells a coding agent.
 - **Codex in its sandbox with its automatic reviewer** (2026-11-03): the counterpart of Claude Code's
   auto mode, and what Codex's own users get by default. Rejected: full access without approvals,
   which drops every check; the owner answering every escalation, which would ask about each
@@ -577,12 +577,12 @@ for its hooks), and what the repository's work needs.
   clones as the only cap; stacks running until stopped by hand.
 - **Worktrees by default** (2026-10-14); a canvas whose configuration names clones keeps them.
 - **The checkout where work lands is never a workspace** (2026-10-30, a tester's report): work lands
-  there and the Lesestand is read there, and a card's branch checked out in it stopped every
+  there and the read tree is read there, and a card's branch checked out in it stopped every
   landing.
 - **A host's forwarded port reaches a server that answers only narration clips** (2026-10-16).
   Rejected: forwarding to Obeya itself, which let anyone on that machine run commands here.
 - **A finished card's question takes a temporary worktree when no clone is free** (2026-10-15).
-  Rejected: failing; queuing it (clones are often held for days by cards in review); the Lesestand
+  Rejected: failing; queuing it (clones are often held for days by cards in review); the read tree
   (other agents read there at the same time).
 - **A folder may stay without git** (2026-10-20): a cloud-drive archive (8.1 GB, 4,615 files, mostly
   PDFs) cannot take a `.git` without sync conflicts and copies of every scan. Cards work in place, in

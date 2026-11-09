@@ -17,7 +17,7 @@ visible on a card.
   side by side), shown on the card as a handover's demo is (see The demo on the card in Demos). The
   owner picks one option (several when `multiple`), writes their own answer, or both.
   `pick`/`pick_why` are what the worker would choose and why, marked "I would take this" on the
-  card. Picks travel apart from the owner's words: the worker reads `They picked „…“.` and below it
+  card. Picks travel apart from the owner's words: the worker reads `They picked “…”.` and below it
   what they `added in their own words`; the log keeps both as one text, picks first. An answer
   stands in the conversation at once and leaves the card open.
 - `propose_card(title, task, reason, idea?, questions?, replaces?, start_at?, repo?)` and

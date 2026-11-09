@@ -1,5 +1,5 @@
 // The demo video's full screen on the phone. Chrome on Android gives a video in full screen from its
-// own controls a landscape lock, and once the phone is turned to match it turns the lock into „any“
+// own controls a landscape lock, and once the phone is turned to match it turns the lock into "any"
 // and ends full screen when the screen turns back to portrait. Right after that change the screen
 // can still report the orientation it had before the lock, so turning the phone into landscape
 // sometimes ended full screen, and turning it back sometimes started it (Chromium's

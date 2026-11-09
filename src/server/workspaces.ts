@@ -1849,7 +1849,7 @@ export class Workspaces implements CardWorkspaces {
    * A temporary worktree for the owner's question to a finished card while no clone is free and
    * clean: detached at the head of the card's branch, made from the
    * clone on this machine that holds the branch (else from the configured checkout, at `origin`'s
-   * copy of the branch or the default branch), as the Lesestand is made. It takes no clone and is
+   * copy of the branch or the default branch), as the read tree is made. It takes no clone and is
    * not in the pool; `removeFollowUpTree` removes it once the follow-up ends.
    */
   followUpTree(cardId: string, branch: string): Lease {

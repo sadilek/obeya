@@ -227,7 +227,7 @@ describe('a proposal reworked by what the owner says', () => {
   test('accepted and started while it is reworked, it starts once the new text is there', async () => {
     const p = proposal();
     canvas.press(p.id, { action: 'revise', text: '**Welche Kodierung?** UTF-8' });
-    // the second click and the plain "Übernehmen" change nothing
+    // the second click and the plain "Accept" change nothing
     canvas.act(p.id, { action: 'accept', picks: [['Latin-1']] });
     canvas.act(p.id, { action: 'accept' });
     expect(() => canvas.act(p.id, { action: 'accept', start: false })).toThrow('being reworked');

@@ -1,4 +1,4 @@
-// „Für alle ins Repository übernehmen“: a repository's settings for this machine go into its
+// "Take over into the repository for everyone": a repository's settings for this machine go into its
 // `.obeya/settings.json`, which a fresh clone brings with it. Where work lands on the main branch
 // they are committed there; where it goes through pull requests, the commit goes out as one, or,
 // where work may go straight to main as well, is pushed there. None of them touches what the

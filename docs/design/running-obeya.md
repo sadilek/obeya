@@ -642,7 +642,7 @@ workers are busy.
   past the field to make room for the microphone); a grip that only closes or springs back. Cards
   whose conversation is the point (working, asking) open with it up (2026-10-19).
 - **Real full screen for phone demo videos, with Chrome's notice** (2026-10-17, the owner): Chrome on
-  Android shows „… zum Beenden des Vollbildmodus: von oben ziehen“ each time, and no page can turn it
+  Android shows "… to exit full screen: drag from the top" each time, and no page can turn it
   off. Rejected: a player covering the page without full screen (Chrome's bars stay, and Chrome locks
   the orientation only in full screen).
 - **Pushes by Web Push to the web app on the home screen** (2026-10-16, plan "Obeya from the phone").
@@ -717,10 +717,10 @@ workers are busy.
   for up to 0.7 s. What a configuration needs of git (each repository, each listed workspace) is read
   for all of them at once first, then applied in one go; configurations saved meanwhile apply one
   after the other. The save answers once its canvases took it over. Rejected: reading lazily where a
-  value is used (a canvas would start on half-read repositories, its ids and Lesestand unsettled).
+  value is used (a canvas would start on half-read repositories, its ids and read tree unsettled).
   Two reads that came at each reading of the plan docs and at each review card's agent start go the
-  same way: whether the Lesestand holds what a live workstream landed is asked in the background
-  (not held meanwhile; the card is planned again once git says it is) and known while the Lesestand
+  same way: whether the read tree holds what a live workstream landed is asked in the background
+  (not held meanwhile; the card is planned again once git says it is) and known while the read tree
   stands where it was (its own moves, the checkout's HEAD and branch by `stat`); the default
   branch's CLAUDE.md for a review card's session is read while the session waits to start, and
   stands while the refs do.

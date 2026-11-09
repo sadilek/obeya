@@ -74,7 +74,7 @@ touches, and keep those current in the same change.
   pull request, publishing on approval, export without a site, a repository's theme, static sites,
   the personal site, several machines on one site.
 - [Repositories and configuration](design/repositories-and-configuration.md) — canvases and
-  repositories, main branch, Lesestand, plan docs (and how Obeya reads them), repository settings
+  repositories, main branch, read tree, plan docs (and how Obeya reads them), repository settings
   (`.obeya/settings.json`, problems, trusting commands, writing them), the Configuration dialog,
   live configuration, language.
 - [Running Obeya](design/running-obeya.md) — the server (who may talk to it, other devices, the
@@ -126,7 +126,7 @@ on the walls and decisions are made in front of the wall.
   other cards say what they are (idea, prototype, workstream number, project). The UI and the
   Coordinator call a task *Aufgabe* and a follow-up *Folgeaufgabe*, never *Karte* (in English:
   *task*, *follow-up*, never *card*); *Karte* is only a card on the canvas as such (moving,
-  grouping, „Karte, Projekt oder Obeya-Chat schließen“).
+  grouping, "Close the card, project or Obeya chat").
 - **Groups** — besides by place, the owner sorts the canvas by group: a group has a name and a
   colour, and a card belongs to none or one; a project belongs as a whole, with its workstreams. A
   proposal, a follow-up and a prototype come into the group of the card they come from, a project

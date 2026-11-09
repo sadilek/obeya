@@ -5,7 +5,7 @@
 // (`/login?token=…`), as Jupyter's: Obeya prints it when it starts, and gives it to whoever holds
 // the key (`POST /api/login-link`: the app's shell, a second start of Obeya,
 // scripts/scratch-obeya.ts). It signs in any number of browsers until the server stops; a link
-// that goes through the system's `open` (the app's „Im Browser öffnen“), where other accounts see
+// that goes through the system's `open` (the app's "Open in browser"), where other accounts see
 // it in the process list, has a token of its own that signs in one browser.
 // Another program or account on the machine reaches the port but holds neither.
 

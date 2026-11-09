@@ -43,7 +43,7 @@ export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'unstarted'
 /** A finished card of the owner's whose agent is done: the archive may take it. */
 export const finishedArchivable = (i: Pick<Item, 'state' | 'source' | 'finishing'>) => finished(i.state) && i.source === 'manual' && !i.finishing;
 /**
- * A card the canvas's „Erledigte archivieren“ takes, and so counts on its button: a finished one the
+ * A card the canvas's "Archive finished cards" takes, and so counts on its button: a finished one the
  * archive may take, but no Question card, which is done when the owner says so, not with the work;
  * and a project whose work is done.
  */
@@ -71,7 +71,7 @@ export interface WorkerTurn {
   restart?: true;
 }
 
-/** The card's agent is snoozed (by itself or the owner, „Später …“): it stops until its time, and neither pauses nor resumes meanwhile. */
+/** The card's agent is snoozed (by itself or the owner, "Later …"): it stops until its time, and neither pauses nor resumes meanwhile. */
 const snoozedAway = (i: Pick<Item, 'snoozed'>) => !!i.snoozed && !i.snoozed.waiting;
 
 /** The card's agent runs a turn the owner can pause at once (the pause on the bubble of its turn), also while it is about to pause at a safe point. */
@@ -270,7 +270,7 @@ const workerAtWork = (i: Item) => i.kind === 'task' && (i.state === 'working' ||
 export const plannedToStart = (i: Pick<Item, 'kind' | 'state' | 'queue' | 'archivedAt'>) => i.kind === 'task' && i.state === 'planned' && !i.queue && !i.archivedAt;
 
 /**
- * A card the owner can snooze until a point in time („Später …“): one at work (its worker stops
+ * A card the owner can snooze until a point in time ("Later …"): one at work (its worker stops
  * until then, as on a pause), one that waits for them (it leaves them until then), or one planned
  * (it starts then); a snoozed card's time can be changed.
  */
@@ -278,7 +278,7 @@ export const snoozable = (i: Item) => !i.archivedAt && (!!i.snoozed || needsYou(
 
 /**
  * A review card the owner can set aside until its contributor writes on the pull request or pushes
- * („Bis amerlander sich meldet“ in „Später …“): it is handed over (whether snoozed until a time
+ * ("Until amerlander responds" in "Later …"): it is handed over (whether snoozed until a time
  * meanwhile or not), and not snoozed so already.
  */
 export const awaitsContributorNext = (i: Item) => !!i.contribution && !i.archivedAt && handedOver(i) && !answering(i) && !i.landing && !i.snoozed?.contributor && (!i.snoozed || !!i.snoozed.waiting);
@@ -297,7 +297,7 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
 export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
 /**
- * What of a canvas „Braucht dich“ lists (the phone's, and the navigation on every other canvas's page):
+ * What of a canvas "Needs you" lists (the phone's, and the navigation on every other canvas's page):
  * the cards that need the owner (none snoozed, which are put off), and the Coordinator's answers that
  * wait unread.
  */
@@ -310,7 +310,7 @@ export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting =>
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**
  * Who wrote a card's task: the owner (also through the Coordinator, from their words), the plan doc
- * of its workstream, Obeya (the Arbeitsrückschau), the idea a prototype is for, or a worker whose
+ * of its workstream, Obeya (the work retrospective), the idea a prototype is for, or a worker whose
  * proposal the owner accepted. A decided idea's task is its brief, the idea's agent's.
  */
 export type TaskAuthor = 'owner' | 'plan' | 'coordinator' | 'idea' | 'proposal';
@@ -396,7 +396,7 @@ export interface Item {
   changeSize?: ChangeSize;
   /** The demo's page for colleagues, once the owner shared it (or is about to). */
   share?: Share;
-  /** Where the repository's site publishes on approval: the owner unticked „Mit der Freigabe teilen“, so approving shares nothing. */
+  /** Where the repository's site publishes on approval: the owner unticked "Share on approval", so approving shares nothing. */
   notOnApproval?: true;
   /**
    * The tags of the card's page (`pageTags` in src/core/page-tags.ts), by dimension, as they stand
@@ -410,7 +410,7 @@ export interface Item {
   from?: string;
   /** With `from` on another canvas (a card moved there, or one made there by Obeya): that card's title and canvas. */
   fromElsewhere?: Elsewhere;
-  /** A card the Arbeitsrückschau proposed: the cards and the friction on them it rests on. */
+  /** A card the work retrospective proposed: the cards and the friction on them it rests on. */
   retro?: string;
   /** A worker's proposal, while it waits: an idea or a task, why, and what the owner has to decide. */
   proposal?: Proposal;
@@ -467,7 +467,7 @@ export interface Item {
   variant?: string;
   /** A prototype in the archive: discarded (its code thrown away), or built (its idea was built on its branch). */
   prototypeEnd?: 'discarded' | 'built';
-  /** A prototype built for a workstream of the project its idea became: that workstream ("W6 „Seite bauen“"). */
+  /** A prototype built for a workstream of the project its idea became: that workstream (W6 "Build the page"). */
   builtInto?: string;
   /** A prototype: its idea's title, wherever the idea is (on the canvas, or in the archive once it became a project). */
   ideaTitle?: string;
@@ -500,11 +500,11 @@ export interface Item {
    * the Coordinator naming or checking it) waits for the account's usage limit: it goes on by itself then (ISO time).
    */
   limitedUntil?: string;
-  /** Since when it waits for the owner (`needsYou`), for the phone view's „Braucht dich“. */
+  /** Since when it waits for the owner (`needsYou`), for the phone view's "Needs you". */
   waitingSince?: string;
   /**
    * The owner paused the card's agent (its worker, the idea's agent, the Question card's agent):
-   * nothing of it runs, its session stays, and it goes on where it stopped with „Weitermachen“ or
+   * nothing of it runs, its session stays, and it goes on where it stopped with "Resume" or
    * the owner's next words to it.
    */
   paused?: true;
@@ -562,7 +562,7 @@ export const SNOOZE_LIMIT = 366 * 24 * 60 * 60_000;
  * A card set aside until a point in time (`CardRow.snoozed`): by its worker, which has nothing to do
  * until then (a test that runs for days, a check at midnight), or by the owner; or by its worker
  * until another card reaches a state (`on`). Obeya holds the time and the card and wakes it then;
- * the owner's words, „Jetzt zurückholen“, or what Obeya has for an agent that snoozed itself wake it
+ * the owner's words, "Wake now", or what Obeya has for an agent that snoozed itself wake it
  * earlier.
  */
 export interface Snooze {
@@ -616,7 +616,7 @@ export interface Proposal {
    */
   revising?: Revising & { next?: Revising[] };
   /**
-   * "Übernehmen und starten" was clicked while it was reworked (`idea`: "Als Idee besprechen"): it
+   * "Accept and start" was clicked while it was reworked (`idea`: "Discuss as an idea"): it
    * is accepted once the new text is there, unless that asks questions.
    */
   acceptAfterRevision?: true | 'idea';
@@ -631,7 +631,7 @@ export interface Proposal {
    * Obeya's own proposal of a card that sets up a repository: the one that fills in its settings,
    * while Obeya knows them not yet (design: Repositories and configuration), or the one that gives
    * its shared pages a theme (design: Sharing demos). Accepted, it is the owner's card like the one
-   * the Konfiguration dialog makes.
+   * the Configuration dialog makes.
    */
   setup?: true;
 }
@@ -686,7 +686,7 @@ export interface Idea {
   brief: string;
   /** The exploration agent is working on a reply. */
   thinking: boolean;
-  /** "So bauen" was clicked while the agent worked on a reply: the idea is built once the reply is there, unless it asks questions. */
+  /** "Build it like this" was clicked while the agent worked on a reply: the idea is built once the reply is there, unless it asks questions. */
   buildAfterReply?: true;
   /** The agent replied and the owner has not answered yet: an open idea then needs the owner. */
   yourTurn: boolean;
@@ -694,11 +694,11 @@ export interface Idea {
   questions: Question[];
   /** What the agent would do next in the owner's place, from its latest reply, until the owner says something. */
   next?: NextStep;
-  /** The prototypes the brief plans, one per variant: "Prototyp bauen lassen" offers them, to start at once. */
+  /** The prototypes the brief plans, one per variant: "Have a prototype built" offers them, to start at once. */
   variants: PlannedPrototype[];
   /** How the brief's variants look, one mock each, shown beside it. */
   mocks: Mock[];
-  /** The part that is settled while the rest is open: "Teilaufgabe abtrennen" builds it as a task of its own. */
+  /** The part that is settled while the rest is open: "Split off a task" builds it as a task of its own. */
   split?: SettledPart;
 }
 
@@ -744,7 +744,7 @@ export interface PlannedPrototype {
 
 /**
  * The part of an idea that is settled while the rest is still open, as its agent marks it: what
- * "Teilaufgabe abtrennen" makes a task of its own, the idea staying with what is open.
+ * "Split off a task" makes a task of its own, the idea staying with what is open.
  */
 export interface SettledPart {
   title: string;
@@ -806,7 +806,7 @@ export interface Contribution {
   /** The contributor's account on the forge. */
   author: string;
   title: string;
-  /** The contributor allows maintainers to push to the PR's branch (GitHub's „Allow edits by maintainers“). */
+  /** The contributor allows maintainers to push to the PR's branch (GitHub's "Allow edits by maintainers"). */
   canModify: boolean;
   /** What the worker found at its latest handover: the checks on the PR's head, whether it merges into the current main without conflicts. */
   results?: ReviewResults;
@@ -917,10 +917,10 @@ export type PrReviewEntry = { author: string; mine?: boolean; at: string; thread
  */
 export const START_ALL_HOLD_MS = 8000;
 
-/** How long taking a card's workspace from it (the Workspaces list) waits for the owner's „Rückgängig“. */
+/** How long taking a card's workspace from it (the Workspaces list) waits for the owner's "Undo". */
 export const EVICT_HOLD_MS = 8000;
 
-/** How long pushing main for a review card whose PR collides with unpushed commits waits for the owner's „Rückgängig“. */
+/** How long pushing main for a review card whose PR collides with unpushed commits waits for the owner's "Undo". */
 export const PUSH_HOLD_MS = 8000;
 
 /**
@@ -1046,7 +1046,7 @@ export interface Share {
   on?: number[];
   /** The card's latest demo is not on the page. */
   stale?: boolean;
-  /** The page shows the card's demo, but pages changed since it was published ("Erneut teilen"): those changes, oldest first. */
+  /** The page shows the card's demo, but pages changed since it was published ("Share again"): those changes, oldest first. */
   outdated?: OutdatedBy[];  /** The page is on the owner’s personal demo site, unlisted (behind a random part of its address). */
   unlisted?: true;
 }
@@ -1181,7 +1181,7 @@ export interface RepoRef {
   sharePersonal?: 'none' | 'private';
   /** Its approved work goes out as a pull request (else it lands on the default branch of the Obeya checkout). */
   pullRequests?: boolean;
-  /** Its `origin` is on a server, where others may open pull requests („Review PR #5“). */
+  /** Its `origin` is on a server, where others may open pull requests ("Review PR #5"). */
   forge?: true;
   /** With `pullRequests`: the owner may have approved work pushed directly onto the default branch instead (`direct` of its settings). */
   direct?: boolean;
@@ -1230,9 +1230,9 @@ export interface PoolWorkspace {
   title?: string;
   /** The canvas of a holding card that lies on another canvas than the pool's. */
   canvas?: string;
-  /** Its card may give it up for a card waiting for one („Entziehen“: its worker stops, its work is kept on its branch). */
+  /** Its card may give it up for a card waiting for one ("Give to the waiting card": its worker stops, its work is kept on its branch). */
   takeable?: true;
-  /** Its card gives it up once the undo window of „Entziehen“ is through. */
+  /** Its card gives it up once the undo window of "Give to the waiting card" is through. */
   leaving?: true;
 }
 
@@ -1259,7 +1259,7 @@ export interface CanvasSnapshot {
   /** The canvas's groups, the oldest first. */
   groups: Group[];
   preferences: Preference[];
-  /** The settings the Arbeitsrückschau proposes for the canvas's repositories, waiting for the owner; none when none waits. */
+  /** The settings the work retrospective proposes for the canvas's repositories, waiting for the owner; none when none waits. */
   settingProposals?: SettingProposal[];
   /** The owner's latest exchanges with the Coordinator without an open card (those with one are in its log). */
   talk: Talk[];
@@ -1295,7 +1295,7 @@ export interface PlanDir {
  * outdated, and the run that shares them again one after the other.
  */
 export interface Reshare {
-  /** Pages that could be shared again and are not queued (after "Ausblenden", those a newer change left outdated). */
+  /** Pages that could be shared again and are not queued (after "Hide", those a newer change left outdated). */
   outdated: number;
   /** Shared pages on a site with a vocabulary that lack tags in a dimension (none chosen, or a value the vocabulary no longer has), not queued. */
   untagged?: number;
@@ -1313,7 +1313,7 @@ export interface Reshare {
     current?: string;
     /** The owner stopped it: the pages not yet out stay as they were. */
     stopped?: boolean;
-    /** It tags the pages without tags and shares them again („N Seiten ohne Tags“), rather than sharing outdated ones again. */
+    /** It tags the pages without tags and shares them again ("N pages without tags"), rather than sharing outdated ones again. */
     tags?: boolean;
   };
 }
@@ -1428,24 +1428,24 @@ export interface Preference {
   cardId?: string;
   /** What the owner said there that it was learned from. */
   quote?: string;
-  /** Proposed by the Rückschau over many exchanges, not from one. */
+  /** Proposed by the retrospective over many exchanges, not from one. */
   review?: boolean;
   /** The active rule a proposal would change. */
   replaces?: number;
   /**
    * A repository: the rule is about it and belongs in its CLAUDE.md, not in the preference memory.
-   * Accepted, it is `filed` there through a card „CLAUDE.md ergänzen“ and applies to no agent until it is.
+   * Accepted, it is `filed` there through a card "Add to CLAUDE.md" and applies to no agent until it is.
    */
   target?: string;
 }
 
 export type PreferenceState = 'proposed' | 'active' | 'rejected' | 'filed';
 
-/** The settings of a repository the Arbeitsrückschau may propose a value for, in the dialog's order: what friction on workers' runs shows missing. */
+/** The settings of a repository the work retrospective may propose a value for, in the dialog's order: what friction on workers' runs shows missing. */
 export const PROPOSED_SETTINGS = ['checks', 'setup', 'softPaths', 'run'] as const;
 export type ProposedSetting = (typeof PROPOSED_SETTINGS)[number];
 
-/** A value for a setting of a repository (`RepoSettings`) that the Arbeitsrückschau proposes, with the cards it rests on. */
+/** A value for a setting of a repository (`RepoSettings`) that the work retrospective proposes, with the cards it rests on. */
 export interface SettingProposal {
   id: number;
   /** The repository's id. */
@@ -1566,7 +1566,7 @@ export type CardAction =
   | { action: 'answer'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; picks?: string[]; spot?: SpotInput }
   /**
    * The owner has finished watching the demo video: the comments on places in it that Obeya held back
-   * go to the worker. `now`: they sent them themselves ("Jetzt senden"), so they go without a moment's wait.
+   * go to the worker. `now`: they sent them themselves ("Send now"), so they go without a moment's wait.
    */
   | { action: 'release'; now?: boolean }
   /** Deletes a comment on a place in the demo video that Obeya still holds back (`Item.held`). */
@@ -1578,7 +1578,7 @@ export type CardAction =
    */
   | { action: 'pushMain' }
   | { action: 'keepMain' }
-  /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging („Nur pushen“). */
+  /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging ("Push only"). */
   | { action: 'pushChanges' }
   /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
   | { action: 'editHeld'; body: string }
@@ -1587,7 +1587,7 @@ export type CardAction =
    * `findings`: on a review card, the decisions on its findings that stood unsent, which go with the merge (a follow-up task, ignored).
    */
   | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute> }
-  /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */
+  /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before ("Discard changes"). */
   | { action: 'undo' }
   /** Start a queued card although it may collide. */
   | { action: 'force' }
@@ -1671,7 +1671,7 @@ export type CardAction =
   | { action: 'share'; demo?: number; add?: boolean }
   /** Takes the demo with handover `demo` off the page, the page down with its last one; without `demo`, the whole page. */
   | { action: 'unshare'; demo?: number }
-  /** „Mit der Freigabe teilen“, where the repository's site publishes on approval: whether approving the card shares its latest demo. */
+  /** "Share on approval", where the repository's site publishes on approval: whether approving the card shares its latest demo. */
   | { action: 'shareOnApproval'; on: boolean }
   /** The owner sets the values of one dimension of the page's tags by hand; a shared page goes out again at once. */
   | { action: 'pageTags'; dimension: string; values: string[] }
@@ -1725,22 +1725,22 @@ export type ErrorCode =
   | 'notReady'
   /** A review card's action on a card that reviews no pull request. */
   | 'notReview'
-  /** „Selbst ändern“ on a review card whose contributor does not allow maintainers' edits, or a decision on a finding it does not have open. */
+  /** "Change it myself" on a review card whose contributor does not allow maintainers' edits, or a decision on a finding it does not have open. */
   | 'noEdits'
   | 'noFinding'
-  /** „Mergen“ with a decision on a finding standing unsent that holds the PR up (to the contributor, the agent's own change). */
+  /** "Merge" with a decision on a finding standing unsent that holds the PR up (to the contributor, the agent's own change). */
   | 'decideFirst'
   /** Approving a review card: its PR moved since the handover, was closed, or the forge refused the merge (the detail says why). */
   | 'prMoved'
-  /** „main pushen“ on a review card whose PR collides with nothing unpushed (any more), or taking back a push that is not waiting. */
+  /** "Push main, adapt the PR" on a review card whose PR collides with nothing unpushed (any more), or taking back a push that is not waiting. */
   | 'noClash'
-  /** „Mergen“ on a review card whose PR collides with unpushed commits on the local main, which the card had not shown yet: it shows them now. */
+  /** "Merge" on a review card whose PR collides with unpushed commits on the local main, which the card had not shown yet: it shows them now. */
   | 'pullClash'
   | 'prClosed'
   | 'mergeRefused'
   /** Approving a review card: the worker's own commits could not go onto the PR's branch (the detail says why). */
   | 'pushRefused'
-  /** „Review PR #5“: no such pull request, or none Obeya can read. */
+  /** "Review PR #5": no such pull request, or none Obeya can read. */
   | 'noPr'
   /** Deleting a comment on the demo video: it is no longer held back, the worker has it. */
   | 'notHeld'
@@ -1833,13 +1833,13 @@ export type ErrorCode =
   | 'setupBusy'
   /** Sharing many pages again: no page is outdated. */
   | 'nothingOutdated'
-  /** „Für alle ins Repository übernehmen“: this machine sets nothing to take over. */
+  /** "Take over into the repository for everyone": this machine sets nothing to take over. */
   | 'noSettings'
-  /** „Für alle ins Repository übernehmen“: the checkout on the main branch has changes of its own in `.obeya/settings.json`. */
+  /** "Take over into the repository for everyone": the checkout on the main branch has changes of its own in `.obeya/settings.json`. */
   | 'settingsDirty'
   /** The commands to confirm changed on the default branch since the dialog showed them. */
   | 'trustChanged'
-  /** „Für alle ins Repository übernehmen“: the commit, the push or the pull request failed; why comes with it. */
+  /** "Take over into the repository for everyone": the commit, the push or the pull request failed; why comes with it. */
   | 'settingsShare'
   /** Export: the video is too large for one HTML file. */
   | 'exportTooLarge'
@@ -1930,7 +1930,7 @@ export interface TagProposalJob {
   error?: string;
 }
 
-/** The owner's personal demo site on this machine, as Konfiguration → Demos shows it. */
+/** The owner's personal demo site on this machine, as Configuration → Demos shows it. */
 export interface PersonalSiteView {
   site: {
     host: 'cloudflare' | 'github';
@@ -1978,7 +1978,7 @@ export interface DemoSite {
   maxFile?: number;
   /**
    * When a demo goes on the site: `approved`, the card's latest demo as the owner approves its work
-   * (before it lands); without it, only when the owner clicks "Teilen".
+   * (before it lands); without it, only when the owner clicks "Share".
    */
   publish?: 'approved';
   /**
@@ -2038,7 +2038,7 @@ export interface RepoSettings {
   app?: AppSettings;
   /**
    * `site`: the static site Obeya keeps and deploys itself to share demos on (`src/server/site.ts`);
-   * without one, "Teilen" exports a demo as a file. `language`: the language of the repository's
+   * without one, "Share" exports a demo as a file. `language`: the language of the repository's
    * demos (narration, captions, report, shared pages) and of its site's overview, over the one of
    * the demo settings (`demo.json`), which applies without it.
    */
@@ -2095,7 +2095,7 @@ export interface SettingValue<T> {
 export interface RepoCommands {
   /** `app.stop` and `app.keep` of `.obeya/settings.json`, which park a waiting card: one without the other could stop what `keep` keeps. */
   app?: { stop?: string; keep?: string };
-  /** What of `demo.site` the deploy runs with and the live site is read from, and whether it deploys without a click on "Teilen". */
+  /** What of `demo.site` the deploy runs with and the live site is read from, and whether it deploys without a click on "Share". */
   site?: Pick<DemoSite, 'url' | 'deploy' | 'env' | 'headers' | 'publish'>;
   /** The repository's own Claude Code configuration by file (everything under `.claude/`, `.mcp.json`): hooks, MCP servers, helpers. */
   claude?: Record<string, ClaudeFile>;
@@ -2247,7 +2247,7 @@ export interface ResolvedCanvas {
     /** Its commands that wait for the owner to confirm them (problem `untrusted`). */
     trust?: RepoTrust;
     /**
-     * Where „Für alle ins Repository übernehmen“ puts `.obeya/settings.json`: a commit on the main
+     * Where "Take over into the repository for everyone" puts `.obeya/settings.json`: a commit on the main
      * branch where work lands there, else a pull request.
      */
     shareTo: 'main' | 'pr';
@@ -2281,7 +2281,7 @@ export interface ConfigProblem {
 }
 
 /** Whether a problem keeps the configuration from being saved: not one in the repository, which is fixed there. */
-/** Problems of the running canvases, not of the configuration: a canvas or repository that did not start as it has them (`StartFailure`). Saving the configuration, or „Erneut versuchen“, has them try again. */
+/** Problems of the running canvases, not of the configuration: a canvas or repository that did not start as it has them (`StartFailure`). Saving the configuration, or "Try again", has them try again. */
 export const START_FAILED: ConfigProblemCode[] = ['canvasDown', 'repoDown', 'repoBefore'];
 
 export const blocksSaving = (p: ConfigProblem) => !['demoSite', 'adapterGone', 'repoSettings', 'untrusted', ...START_FAILED].includes(p.code);
@@ -2360,7 +2360,7 @@ export interface ConfigChecked {
   problems: ConfigProblem[];
 }
 
-/** What „Für alle ins Repository übernehmen“ did with a repository's settings for this machine. */
+/** What "Take over into the repository for everyone" did with a repository's settings for this machine. */
 export type SettingsShared =
   /** Committed `.obeya/settings.json` on the main branch (pushed onto `origin`'s, where it went there directly): the settings now come from the repository. */
   | { committed: string; branch: string }
@@ -2554,7 +2554,7 @@ export type RemoteProblem =
 /** A device paired with Obeya: its cookie lets it in from another machine. */
 export interface DeviceView {
   id: string;
-  /** From its browser's user agent: „iPhone · Safari“. */
+  /** From its browser's user agent: "iPhone · Safari". */
   name: string;
   pairedAt: string;
   lastSeen: string;
@@ -2579,7 +2579,7 @@ export interface Pairing {
   replaced?: string;
 }
 
-/** The section „Von anderen Geräten“ and „Telefon verbinden“ (`/api/access`), for a page on this machine. */
+/** The section "Other devices" and "Connect a phone" (`/api/access`), for a page on this machine. */
 export interface AccessView {
   local: true;
   /** The file the setting is saved in. */
@@ -2712,7 +2712,7 @@ export function modelName(model: string): string {
   return `${m[3]![0]!.toUpperCase()}${m[3]!.slice(1)} ${major}${minor ? `.${minor}` : ''}`;
 }
 
-/** A model a harness offers, as the Konfiguration lists it. */
+/** A model a harness offers, as the Configuration lists it. */
 export interface HarnessModel {
   id: string;
   /** Its name as the harness gives it; absent for Claude Code's aliases, which the page names itself. */
@@ -2724,7 +2724,7 @@ export interface HarnessModel {
 }
 
 /**
- * A model as the pickers offer it (the Konfiguration's and a card's): `value` is what a setting stores
+ * A model as the pickers offer it (the Configuration's and a card's): `value` is what a setting stores
  * (Claude Code's alias, a Codex family), `name` the Codex family's name (`codexFamilyName`; absent
  * for Claude Code, whose aliases the page names itself), the efforts its newest model here takes.
  */
@@ -2819,7 +2819,7 @@ export interface VoiceSpeed {
 export type VoiceSetupId = 'recognition' | 'ffmpeg' | 'uv';
 export type VoiceSetupItem = Omit<SetupItem, 'id'> & {
   id: VoiceSetupId;
-  /** The recognition, which uv fetches: "Installieren" waits until uv is there. */
+  /** The recognition, which uv fetches: "Install" waits until uv is there. */
   waits?: 'uv';
 } & VoiceRecognitionParts;
 
@@ -2835,7 +2835,7 @@ export interface VoiceSetupView {
   arch: string;
   listen: ListenBackend;
   items: VoiceSetupItem[];
-  /** About how much "Installieren" fetches (the recognition and its model); 0: nothing to fetch. */
+  /** About how much "Install" fetches (the recognition and its model); 0: nothing to fetch. */
   fetch: { mb: number };
   /** The installation or measurement running or last run. */
   job?: { running: boolean; step: 'fetch' | 'measure'; error?: string };
@@ -3015,9 +3015,9 @@ export type ClientMessage =
 
 /**
  * A page that froze for `ms`: where the time went as far as the browser tells (the scripts of its
- * long frames, longest first, e.g. „WebSocket.onmessage (index.js:1204)“), what the page did
- * shortly before (the server's messages it took in), and what it ran in: the browser („Safari 26“,
- * „Obeya app on macOS“), whether its window was the one in use (had the focus as the stall began or
+ * long frames, longest first, e.g. "WebSocket.onmessage (index.js:1204)"), what the page did
+ * shortly before (the server's messages it took in), and what it ran in: the browser ("Safari 26",
+ * "Obeya app on macOS"), whether its window was the one in use (had the focus as the stall began or
  * ended), and how long before it the owner last moved, typed or scrolled in it (absent where they
  * have not since it loaded).
  */
@@ -3061,7 +3061,7 @@ export type ServerMessage =
 /**
  * What Obeya tells the owner above the microphone without a command of theirs to answer: an answer
  * the Coordinator looked up, or what it did with a request a card's agent passed on from the
- * owner's words (`to_obeya`), with `token` while those actions wait for "Rückgängig".
+ * owner's words (`to_obeya`), with `token` while those actions wait for "Undo".
  */
 export interface Notice {
   /** The card it is about, named when another one is open. */

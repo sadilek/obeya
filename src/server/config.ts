@@ -231,7 +231,7 @@ export interface ConfigOptions {
   failures?: () => StartFailure[];
   /** Repositories' settings for everyone were committed: the running canvases read them again. */
   onSettings?: () => void;
-  /** Where „Für alle ins Repository übernehmen“ opens its pull request. */
+  /** Where "Take over into the repository for everyone" opens its pull request. */
   forge?: Forge;
   /** The demo directory's space and the deletion of old frames; none in tests. */
   space?: DemoSpace;
@@ -395,9 +395,9 @@ export class Config {
   }
 
   /**
-   * A value for a repository's setting that the Arbeitsrückschau proposed, taken by the owner for
+   * A value for a repository's setting that the work retrospective proposed, taken by the owner for
    * the repository at `path` (absolute): on this machine, or into its `.obeya/settings.json` for
-   * everyone, the way „Für alle ins Repository übernehmen“ goes, with this value alone. Committed
+   * everyone, the way "Take over into the repository for everyone" goes, with this value alone. Committed
    * on the main branch, this machine's own value for it goes, so the repository's applies here
    * too; as a pull request, it is set on this machine as well until the pull request is merged
    * (`takenOver` then removes it). Says where it went for everyone; nothing for this machine.
@@ -433,7 +433,7 @@ export class Config {
   }
 
   /**
-   * „Für alle ins Repository übernehmen“: the settings saved for the repository at `path` (as the
+   * "Take over into the repository for everyone": the settings saved for the repository at `path` (as the
    * configuration names it) on this machine, but its main branch, go into its
    * `.obeya/settings.json`: committed on the main branch where work lands there (they then come
    * from the repository, here too), else as a pull request (once it is merged), or with `direct`,
@@ -762,7 +762,7 @@ export class Config {
    * something restarts it.
    */
   /**
-   * „Erneut versuchen“: the running canvases take the saved configuration over again, as after a
+   * "Try again": the running canvases take the saved configuration over again, as after a
    * save, so what did not start as it has them tries again.
    */
   async retry(): Promise<{}> {

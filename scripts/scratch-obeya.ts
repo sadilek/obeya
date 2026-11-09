@@ -76,24 +76,24 @@
 //     "files": { "src/cli.ts": "…" },
 //     "pulls": [{ "number": 5, "title": "…", "author": "…", "files": { "src/x.ts": "…" }, "canModify": true }],
 //     "forgeClone": true,
-//     "plans": { "docs/plan/werkzeug.md": "# Werkzeug\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n" },
+//     "plans": { "docs/plan/tooling.md": "# Tooling\n\n## Workstreams\n\n- [ ] **W1:** Configuration.\n" },
 //     "cards": [
 //       { "key": "A", "title": "…", "body": "…", "x": 40, "y": 300,
-//         "state": "working", "statusLine": "Tests laufen", "createdAgo": "2h" },
-//       { "key": "B", "title": "…", "queue": { "behind": ["A"], "reason": "Beide ändern src/cli.ts." },
+//         "state": "working", "statusLine": "Running tests", "createdAgo": "2h" },
+//       { "key": "B", "title": "…", "queue": { "behind": ["A"], "reason": "Both change src/cli.ts." },
 //         "scope": ["src/cli.ts"] },
 //       { "key": "C", "title": "…", "state": "waiting", "need": "demo", "summary": "…",
-//         "demo": { "dir": "/abs/demo", "chapters": [[0, "Ausgangslage"]] } },
+//         "demo": { "dir": "/abs/demo", "chapters": [[0, "Starting point"]] } },
 //       { "key": "H", "title": "…", "state": "waiting", "need": "demo", "summary": "…",
 //         "demo": { "kind": "html", "dir": "/abs/artifact", "chapters": [] } },
 //       { "key": "N", "title": "…", "state": "waiting", "need": "review", "summary": "…" },
-//       { "key": "D", "title": "…", "state": "waiting", "need": "question", "question": { "text": "…", "options": ["Ja", "Nein"] } },
+//       { "key": "D", "title": "…", "state": "waiting", "need": "question", "question": { "text": "…", "options": ["Yes", "No"] } },
 //       { "key": "E", "title": "…", "from": "C" },
-//       { "key": "P", "project": "docs/plan/werkzeug.md", "x": 0, "y": 0 },
+//       { "key": "P", "project": "docs/plan/tooling.md", "x": 0, "y": 0 },
 //       { "key": "W1", "workstream": "W1", "state": "working", "statusLine": "…" }
 //     ],
 //     "preferences": [
-//       { "key": "R", "text": "Beschriftungen: präzise vor kurz." },
+//       { "key": "R", "text": "Labels: precise over short." },
 //       { "text": "…", "state": "proposed", "card": "A", "quote": "…", "replaces": "R" },
 //       { "text": "…", "state": "proposed", "review": true },
 //       { "text": "…", "state": "proposed", "target": "<repo id>" }
@@ -109,7 +109,7 @@
 // screen a demo records matches its narration. Card titles and conversations are not translated:
 // write them in that language. `language` is the interface's; `conversation`, the language agents
 // write the owner in before the owner's words say otherwise, follows it where left out. `agents` is
-// what „Agenten und Modelle“ sets per group (`settings.json`'s `agents`: Codex for workers, say).
+// what "Agents and models" sets per group (`settings.json`'s `agents`: Codex for workers, say).
 // `"voice": true` gives the scratch Obeya the voice of the machine's Obeya (OBEYA_HOME where the
 // script runs, else ~/.obeya): a copy of its demo settings and a link to its installed voices, for
 // what Obeya itself speaks (a walkthrough); an object instead is demo settings over the machine's
@@ -159,12 +159,12 @@
 // directory; needs code that has them; `unread`: its answer waits unread; `replyOnly`: the reply only
 // answers the words, no actions (what "Show as walkthrough" tells), needs code that has it; `wish`: what a draft for
 // Obeya's makers starts from, `{ said, answer? }`, for the link under the reply; `askedIn`: the key of
-// the project whose sheet the words were written in, straight to its project agent, with an empty `reply`). `friction` is what the Arbeitsrückschau noted on a card's
+// the project whose sheet the words were written in, straight to its project agent, with an empty `reply`). `friction` is what the work retrospective noted on a card's
 // runs (`card` a key), read by its next retrospective; `settingProposals` are values for a
 // repository's settings it proposed (`field`: checks, setup, softPaths or run; `cards` keys;
 // `repo` defaults to the canvas's home repository); both need code that has them.
-// Obeya proposes a card that fills in the settings of a repository without any („Obeya für …
-// einrichten“); staging dismisses it on every canvas, unless `"setupProposals": true` keeps it.
+// Obeya proposes a card that fills in the settings of a repository without any ("Set up Obeya for
+// …"); staging dismisses it on every canvas, unless `"setupProposals": true` keeps it.
 
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
@@ -238,7 +238,7 @@ interface Stage {
   conversation?: Language;
   /** Speaks in the voice of the machine's Obeya, or in the demo settings given over its. */
   voice?: boolean | Record<string, unknown>;
-  /** What „Agenten und Modelle“ sets per group, as `settings.json` keeps it under `agents`. */
+  /** What "Agents and models" sets per group, as `settings.json` keeps it under `agents`. */
   agents?: Record<string, unknown>;
   /** The directory of the canvas's repository under the scratch directory, and so its id (default `repo`). */
   repoName?: string;

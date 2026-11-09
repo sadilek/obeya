@@ -89,7 +89,7 @@ export async function codexVersion(bin: string, env: Env): Promise<string | null
   return r?.ok ? (r.out.match(/(\d+\.\d+\.\d+\S*)/)?.[1] ?? null) : null;
 }
 
-/** Whether the CLI is logged in, and how it says so („Logged in using ChatGPT“). */
+/** Whether the CLI is logged in, and how it says so ("Logged in using ChatGPT"). */
 export async function codexLogin(bin: string, env: Env): Promise<{ loggedIn: boolean; how?: string }> {
   const r = await runCodex(bin, ['login', 'status'], env);
   if (!r?.ok) return { loggedIn: false };

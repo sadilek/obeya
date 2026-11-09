@@ -18,7 +18,7 @@ import { cardTag } from '../core/card-number';
 import { CardNumber } from './cardNumber';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
 
-/** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
+/** The first line of a card's text that says something (not a bare "Goal" label (or its German "Ziel"), as briefs start). */
 const firstLine = (md: string) =>
   plain(md)
     .split('\n')
@@ -250,7 +250,7 @@ export const CardView = memo(
     const shape = shapeOf(item);
     // a card the Coordinator is checking has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
-    // as "Archivieren" in the unfolded card: a finished card of the owner's whose agent is done, a
+    // as "Archive" in the unfolded card: a finished card of the owner's whose agent is done, a
     // stopped task, or a parked or dropped idea without a prototype on the canvas
     const archivable =
       !item.archivedAt &&
@@ -601,9 +601,9 @@ export function OldBunPill({ version }: { version: string }) {
  * pale while the card holds it otherwise, orange while free but blocked), or per slot of a
  * repository in worktrees, and how many new cards could start now. A click (a tap) drops down each machine's slots and each of its workspaces by path with the card in it, which opens
  * the card (`onOpen`; `onElsewhere` one on another canvas), and why a blocked clone goes to no card
- * and what to do about it. While every clone is taken and a card waits for one, a faint „⋯“ beside
+ * and what to do about it. While every clone is taken and a card waits for one, a faint "⋯" beside
  * a card opens what gives its clone to the one waiting longest (`onTake`); during the undo window
- * the row offers „Rückgängig“ (`onKeep`).
+ * the row offers "Undo" (`onKeep`).
  */
 export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsewhere, onTake, onKeep }: {
   pools: ClonePool[];
@@ -724,9 +724,9 @@ export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsew
 /**
  * A machine's workspaces, one per line: the dot the pill shows for it, its path (cut at the front
  * where it is too long, so its end stays), and the card in it, which opens on a click; or that it
- * is free, or blocked. With `onTake` (a card waits, none is free), a faint „⋯“ beside each card
+ * is free, or blocked. With `onTake` (a card waits, none is free), a faint "⋯" beside each card
  * that may give its clone up, which opens the one action and what it does; a card giving it up has
- * „Rückgängig“ (`onKeep`) instead.
+ * "Undo" (`onKeep`) instead.
  */
 function WorkspaceRows({ host, items, canvases, onOpen, onElsewhere, onTake, onKeep }: {
   host: PoolHost;
@@ -738,7 +738,7 @@ function WorkspaceRows({ host, items, canvases, onOpen, onElsewhere, onTake, onK
   onKeep: (i: Item) => void;
 }) {
   const blocked = new Set(host.blocked?.map((b) => b.path));
-  // the row whose „⋯“ is open
+  // the row whose "⋯" is open
   const [more, setMore] = useState<string | null>(null);
   return (
     <ul className="ws-list">

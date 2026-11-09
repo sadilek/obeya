@@ -235,7 +235,7 @@ describe('pairing', () => {
     expect(ws).not.toBeNull();
     const closed = new Promise((r) => (ws!.onclose = r));
 
-    // „Entfernen“ takes effect at once
+    // "Remove" takes effect at once
     expect(await (await local(`/api/access/devices/${v.devices[0]!.id}`, { method: 'DELETE' })).json()).toEqual({ removed: true });
     await closed;
     expect((await viaTailnet('/', { cookie })).status).toBe(401);
@@ -414,7 +414,7 @@ describe('push', () => {
     expect(pushed).toHaveLength(1);
     page.close();
 
-    // „Entfernen“ takes the subscription with it
+    // "Remove" takes the subscription with it
     expect(push.subscribed((await view()).devices[0]!.id)).toBe(true);
     await local(`/api/access/devices/${(await view()).devices[0]!.id}`, { method: 'DELETE' });
     expect(store.pushes()).toEqual([]);

@@ -16,9 +16,9 @@ import { PdfPages } from './pdf';
 import { phoneView } from './phone';
 import { t } from './strings';
 
-/** How many lines the change list shows before „und N weitere ▾“ where it is not folded to the result; the file picked shows too. */
+/** How many lines the change list shows before "and N more ▾" where it is not folded to the result; the file picked shows too. */
 const FOLD = 8;
-/** How much of a text file the view shows; the rest is a click on „Auf dem Rechner öffnen“ or ↓ away. */
+/** How much of a text file the view shows; the rest is a click on "Open on the computer" or ↓ away. */
 const TEXT_CAP = 400_000;
 /** The highest a page grows in its frame; a higher one scrolls inside it. */
 const PAGE_CAP = 30000;

@@ -463,7 +463,7 @@ describe('an idea', () => {
     expect(s.inbox).toHaveLength(1);
   });
 
-  test('"So bauen" starts it with the brief as its task', async () => {
+  test('"Build it like this" starts it with the brief as its task', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Los.' });
     turn(explorer(), 'Gut.', () => explorer().call('update_brief', { brief: '**Ziel:** CSV-Export.' }));
@@ -663,7 +663,7 @@ describe('an idea', () => {
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
     expect(board().events(i.id).filter((e) => e.text.startsWith('So bauen, sobald'))).toHaveLength(1);
     // the agent hears it with its next step, once: the brief it leaves becomes the task
-    expect(s.toolStep()).toContain('The owner clicked "So bauen" while you worked on this reply');
+    expect(s.toolStep()).toContain('The owner clicked "Build it like this" while you worked on this reply');
     expect(s.toolStep()).toBeUndefined();
     s.call('update_brief', { brief: '**Ziel:** CSV- und PDF-Export.' });
     s.call('reply', { text: 'PDF ist im Stand.' });
@@ -701,7 +701,7 @@ describe('an idea', () => {
     s.emit({ type: 'idle' });
     // the second message goes in with the note, as the agent has not called a tool yet
     expect(s.inbox.at(-1)).toContain('Zweitens.');
-    expect(s.inbox.at(-1)).toContain('"So bauen"');
+    expect(s.inbox.at(-1)).toContain('"Build it like this"');
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
     canvas.act(i.id, { action: 'unbuild' });
     expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'state', text: 'Doch nicht bauen.' });
@@ -1127,7 +1127,7 @@ describe('a prototype', () => {
     expect(() => canvas.act(i.id, { action: 'prototype', variants: ['D Gibt es nicht'] })).toThrow(expect.objectContaining({ code: 'invalid' }));
   });
 
-  test('"Diesen Prototyp bauen" builds the idea on its branch; the others are discarded', async () => {
+  test('"Build this prototype" builds the idea on its branch; the others are discarded', async () => {
     canvas.shutdown();
     canvas = await open(3);
     const i = idea();
@@ -1199,7 +1199,7 @@ describe('a prototype', () => {
     expect(w.call('propose_build', { reason: 'Der Owner hat den Knopf gewählt.' })).toContain('owner decides');
     expect(item(prototype!.id).buildProposal).toBe('Der Owner hat den Knopf gewählt.');
     expect(board().snapshot().items.filter((x) => x.state === 'proposal')).toEqual([]);
-    // accepting it is "Diesen Prototyp bauen"
+    // accepting it is "Build this prototype"
     await canvas.act(prototype!.id, { action: 'buildPrototype' });
     expect(item(i.id)).toMatchObject({ state: 'planned', builtOn: prototype!.id });
     expect(archived(prototype!.id)!.buildProposal).toBeUndefined();
@@ -1225,7 +1225,7 @@ describe('a prototype', () => {
     expect(talk(i.id).at(-1)).toEqual(['explorer', 'Ein Prototyp?']);
   });
 
-  test('"So bauen" discards the prototypes still on the canvas', async () => {
+  test('"Build it like this" discards the prototypes still on the canvas', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
     await settle();
@@ -1235,7 +1235,7 @@ describe('a prototype', () => {
     expect(item(i.id).builtOn).toBeUndefined();
   });
 
-  test('"Als Projekt planen" keeps the prototypes until the project stands; then the one its plan doc names goes to its workstream, and the others are discarded', async () => {
+  test('"Plan as a project" keeps the prototypes until the project stands; then the one its plan doc names goes to its workstream, and the others are discarded', async () => {
     canvas.shutdown();
     canvas = await open(3);
     const i = idea('Webseite');
@@ -1363,7 +1363,7 @@ describe('a prototype', () => {
     expect(() => canvas.act(i.id, { action: 'buildPrototype' })).toThrow('not a prototype');
   });
 
-  test('"Teilaufgabe abtrennen" starts the settled part as a task of its own; the idea stays with its conversation and prototypes', async () => {
+  test('"Split off a task" starts the settled part as a task of its own; the idea stays with its conversation and prototypes', async () => {
     canvas.shutdown();
     canvas = await open(3);
     const i = idea('Lese-Lern-App');

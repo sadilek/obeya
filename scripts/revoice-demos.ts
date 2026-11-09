@@ -10,7 +10,7 @@
 // that language already). The re-voicing itself is the demo skill's (`node lib/revoice.ts <dir>
 // <language>`), run by an agent, which translates and checks each.
 // `publish`: for each card whose demo was re-voiced, the Obeya running on OBEYA_HOME (else
-// ~/.obeya) reads it again (chapters, page) and shares it through its queue, like „Teilen“; one
+// ~/.obeya) reads it again (chapters, page) and shares it through its queue, like "Share"; one
 // narrated in that language already is shared as it is.
 
 import { Database } from 'bun:sqlite';

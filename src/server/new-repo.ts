@@ -1,5 +1,5 @@
 // A repository Obeya creates for a card that is to be built in one that does not exist yet: the
-// folder where there is none, then git as "Hier ein git-Repository einrichten" sets it up (the
+// folder where there is none, then git as "Set up a git repository here" sets it up (the
 // default .gitignore, a first commit under git's name and e-mail), local only. A folder that is a
 // repository already is taken as it is. What it did can be taken back while the steps after it
 // (the canvas, the move) fail.

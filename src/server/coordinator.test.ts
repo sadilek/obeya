@@ -1197,7 +1197,7 @@ describe('preference memory', () => {
     expect(board.preferences()).toEqual([{ id: 1, text: 'Kleinkram selbst entscheiden.', state: 'proposed', quote: 'Warum fragt der Agent immer nach Kleinkram?' }]);
   });
 
-  test('a rule about a repository is proposed for its CLAUDE.md, accepted into its card „CLAUDE.md ergänzen“, and reaches no agent', async () => {
+  test('a rule about a repository is proposed for its CLAUDE.md, accepted into its card "Add to CLAUDE.md", and reaches no agent', async () => {
     const a = card('Export');
     k.learn(item(a.id), 'note', 'Tests schreiben wir hier immer auf Deutsch.');
     await settle();
@@ -1305,7 +1305,7 @@ describe('preference memory', () => {
   });
 });
 
-describe('Rückschau', () => {
+describe('retrospective', () => {
   const texts = (state: 'proposed' | 'active') => board.preferences(state).map((p) => p.text);
   const reviews = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'done'));
   const coordinator = () => new Coordinator({ board, runtime, home: () => board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });

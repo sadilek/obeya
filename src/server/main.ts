@@ -303,7 +303,7 @@ const config = new Config({
       }
     : {}),
 });
-// Claude Code and Codex on this machine: which one a group runs on when the owner chose none, and what the Konfiguration offers
+// Claude Code and Codex on this machine: which one a group runs on when the owner chose none, and what the Configuration offers
 const harnesses = new Harnesses({
   cwd: home,
   claude: async () => {

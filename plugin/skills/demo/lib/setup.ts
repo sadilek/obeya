@@ -225,7 +225,7 @@ export function describeSetup(check: SetupCheck): string {
     if (i.state !== 'missing' || !i.install) continue;
     for (const c of i.install.commands) lines.push(`      ${c}`);
     if (i.install.url) lines.push(`      see ${i.install.url}`);
-    if (i.id === 'voice') lines.push("      or install it in Obeya's settings (Konfiguration → Demos)");
+    if (i.id === 'voice') lines.push("      or install it in Obeya's settings (Configuration → Demos)");
   }
   const missing = check.items.filter((i) => i.state === 'missing');
   lines.push(missing.length ? `Missing: ${missing.map((i) => i.id).join(', ')}. A render stops until they are installed.` : 'Ready to record.');

@@ -1,4 +1,4 @@
-// The excerpt of a worker's run for the Arbeitsrückschau, drawn without a model from the Agent
+// The excerpt of a worker's run for the work retrospective, drawn without a model from the Agent
 // SDK's transcript (`<projects>/<workspace path>/<session id>.jsonl`) or from Codex's thread
 // (`<CODEX_HOME>/sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<thread id>.jsonl`): where the worker went
 // wrong and corrected itself. The formats are the harnesses' own and may change: whatever cannot be

@@ -1,7 +1,7 @@
 // The harnesses Obeya runs agents on, as this machine has them: Claude Code and Codex, each
 // installed or not, logged in or not. The setup assistant shows what it found (machine.ts) and tells
 // this what it found; Obeya looks once as it starts. A group of agents the owner chose no harness for
-// runs on Claude Code, unless only Codex is ready here. The Konfiguration lists each harness with the
+// runs on Claude Code, unless only Codex is ready here. The Configuration lists each harness with the
 // models it offers: Claude Code's aliases, and the models Codex lists for its login, of each family
 // (`gpt-6.1-sol`, `gpt-5.6-sol`) only the newest, which stands for the family.
 
@@ -12,7 +12,7 @@ import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex'
 export interface HarnessFound {
   version?: string;
   loggedIn: boolean;
-  /** How it is logged in, as it says („ChatGPT“). */
+  /** How it is logged in, as it says ("ChatGPT"). */
   how?: string;
 }
 
@@ -67,7 +67,7 @@ export class Harnesses {
     return () => this.listeners.delete(fn);
   }
 
-  /** Each harness with what it offers, for the Konfiguration. */
+  /** Each harness with what it offers, for the Configuration. */
   async view(): Promise<HarnessView[]> {
     // the harness's default is no entry of its own: it is one of the models, which the owner picks by name
     const claude: HarnessView = { id: 'claude', ready: this.ready('claude'), ...this.version('claude'), models: AGENT_MODELS.filter((id) => id !== 'default').map((id) => ({ id })) };

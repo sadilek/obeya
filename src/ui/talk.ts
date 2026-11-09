@@ -472,7 +472,7 @@ export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'fin
 
 /**
  * A card an agent or Obeya is at (working on it, taking in the owner's words on its handover,
- * landing it, finding it a turn in the queue), and that waits for nobody: the phone's „Läuft“.
+ * landing it, finding it a turn in the queue), and that waits for nobody: the phone's "Running".
  */
 export const runs = (i: Item) =>
   !needsYou(i) &&

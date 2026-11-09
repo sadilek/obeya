@@ -129,7 +129,7 @@ describe('a question the Coordinator looks up', () => {
 
     // the Coordinator hears the answer with the next command
     const next = await say('und dann?', { card: w4.id }, 'reply', { confirm: 'Dann wartet er.' });
-    expect(next.brief).toContain('The answer A1 you looked up for the owner\'s question „What would the worker do on W4');
+    expect(next.brief).toContain('The answer A1 you looked up for the owner\'s question “What would the worker do on W4');
   });
 
   test('about a card without a project: a thorough Coordinator turn answers, in the sheet when no card is open', async () => {

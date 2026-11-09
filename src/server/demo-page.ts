@@ -471,7 +471,7 @@ export const ON_DISK = 'file:';
 
 /**
  * The artifact runs in a sandboxed frame, an origin of its own, so its scripts reach neither the
- * page nor the site; it opens no window, and "In eigenem Fenster öffnen" is this page with the
+ * page nor the site; it opens no window, and "Open in its own window" is this page with the
  * frame alone (`?alone`), not the artifact's own file, which would run in the site's origin. The
  * frame grows to the artifact's height where the artifact says it (`withHeightReport`); without
  * that it stays at 80 % of the window and scrolls. Opened from disk (`disk`), the frame keeps the
@@ -592,9 +592,9 @@ const STACK_STYLE = `
 
 /**
  * A page with several demo versions of one change, in order of handover: the first with the page's
- * title and text on top, each later one below as an addendum („Ergänzung vom …“) with its own
+ * title and text on top, each later one below as an addendum ("Addendum of …") with its own
  * title, text and video or artifact, and a list of them at the top. A page with one version is
- * `demoPageHtml` or `artifactPageHtml`. "In eigenem Fenster öffnen" shows an artifact alone
+ * `demoPageHtml` or `artifactPageHtml`. "Open in its own window" shows an artifact alone
  * (`?alone=<n>`, its place on the page).
  */
 export function stackedPageHtml(p: StackedPageParts): string {

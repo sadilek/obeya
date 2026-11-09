@@ -30,7 +30,7 @@ test('a language tag Intl refuses falls back to the usual variant', () => {
   expect(clock(new Date(2026, 9, 6, 15, 4))).toMatch(/03:04\sPM/);
 });
 
-test("a proposal of the Arbeitsrückschau is labelled as Obeya's, a worker's proposal as an agent's", () => {
+test("a proposal of the work retrospective is labelled as Obeya's, a worker's proposal as an agent's", () => {
   setLanguage('en', []);
   expect(stateLabel({ state: 'proposal', retro: 'Two cards hit the same wall.' })).toBe('Proposed by Obeya');
   expect(stateLabel({ state: 'proposal' })).toBe('Proposed by an agent');

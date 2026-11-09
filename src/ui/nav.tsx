@@ -1,5 +1,5 @@
 // The navigation at the bar's left: the canvas's name, and under it the canvases with what waits
-// for the owner on each („Braucht dich“, the phone's list), in one place. It opens as a list under its
+// for the owner on each ("Needs you", the phone's list), in one place. It opens as a list under its
 // button, or stays pinned as a sidebar docked on the left, the canvas the rest. An entry opens its
 // card, on this canvas or on its own; a canvas's section folds away under its head, which keeps its count.
 
@@ -94,7 +94,7 @@ export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
 }
 
 /**
- * „Braucht dich“ and the canvases: with several, each canvas in the configuration's order heads what
+ * "Needs you" and the canvases: with several, each canvas in the configuration's order heads what
  * waits on it, so a click on it switches there, and its arrow folds it; within a canvas in Tab's order.
  * The head counts what waits on every canvas, each canvas's head what waits on it, as the bar's button does.
  */

@@ -51,7 +51,7 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
   if (withOrigin) gitClone(main, origin, { bare: true });
   store = new Store(':memory:');
   docs = [doc];
-  // the checkout is the Lesestand: work lands on its main
+  // the checkout is the read tree: work lands on its main
   const read = new ReadTree({ repoPath: main, dir: null, remote: false, onChange: () => {} });
   const holds = (_repo: string, commit: string) => read.holds(commit, () => board.docsChanged());
   language = 'de';

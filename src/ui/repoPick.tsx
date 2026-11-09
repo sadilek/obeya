@@ -65,8 +65,8 @@ export function useRepoChoice(item: Item, onEdit: (p: CardPatch) => void): RepoC
 const besideHome = (repos: RepoRef[]) => repos[0]?.path.replace(/[/\\][^/\\]+[/\\]?$/, '/') ?? '';
 
 /**
- * The picker: the canvas's repositories and „Neues Repository …“, which once picked shows its
- * folder and „eigene Leinwand“. It stays out of the way: shown on a canvas with several
+ * The picker: the canvas's repositories and "New repository …", which once picked shows its
+ * folder and "own canvas". It stays out of the way: shown on a canvas with several
  * repositories, and where a new one is picked already (by the idea's agent, or the owner's words to
  * Obeya); a card of a canvas with one repository and no new one shows none. `fresh`: a new
  * repository may be picked (not on a proposal, whose acceptance starts it where it is).

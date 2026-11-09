@@ -29,7 +29,7 @@ import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge
 import { Coordinator } from './coordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
-import { branchCommit, prepareLesestand, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
+import { branchCommit, prepareReadTree, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
 import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
@@ -148,7 +148,7 @@ export interface RepoRuntime {
   site: DemoSite | null;
   /** Its forge says it is public: its demos may go to the owner's personal site without the owner's tick. */
   isPublic?: boolean;
-  /** Its Lesestand: the default branch, where plan docs are read and the agents that only read work. */
+  /** Its read tree: the default branch, where plan docs are read and the agents that only read work. */
   read: ReadTree;
   workspaces: CardWorkspaces;
   workers: Workers;
@@ -159,11 +159,11 @@ export interface RepoRuntime {
 interface Repo extends RepoRuntime {
   /** Its entry in the configuration. */
   config: RepoConfig;
-  /** Stops its Lesestand and the retries for clones on other machines. */
+  /** Stops its read tree and the retries for clones on other machines. */
   stops: (() => void)[];
   /** Stops watching its plan docs. */
   docs?: () => void;
-  /** Its plan docs as last read from its Lesestand: what the canvas shows while git moves the Lesestand. */
+  /** Its plan docs as last read from its read tree: what the canvas shows while git moves the read tree. */
   planDocs?: ReturnType<typeof readPlanDocs>;
   /** Watches its pull requests, once its work went out as one; it stays for those still open. */
   prs?: PrWatcher;
@@ -173,7 +173,7 @@ interface Repo extends RepoRuntime {
   from: { resolved: Resolved; index: number; listed: RepoReads['workspaces'] };
   /** Its settings read again (`moved`), the last of those under way. */
   moving?: Promise<unknown>;
-  /** Settles once its Lesestand is in place and the clones it was to make are made (or failed). */
+  /** Settles once its read tree is in place and the clones it was to make are made (or failed). */
   ready: Promise<void>;
 }
 
@@ -214,7 +214,7 @@ const SETTLE_TRIES = 3;
 export class CanvasRuntime {
   readonly board: Board;
   readonly coordinator: Coordinator;
-  /** The Arbeitsrückschau: friction in the workers' runs, made into proposals. */
+  /** The work retrospective: friction in the workers' runs, made into proposals. */
   readonly workRetro: WorkRetro;
   readonly commander: Commander;
   readonly explorers: Explorers;
@@ -234,7 +234,7 @@ export class CanvasRuntime {
   private config: CanvasConfig;
   /** By repository's path: what takes back where the main branch the owner set is read. */
   private branchSettings = new Map<string, () => void>();
-  /** By repository's path: its `.obeya/settings.json` as the Lesestand last had it. */
+  /** By repository's path: its `.obeya/settings.json` as the read tree last had it. */
   private shared = new Map<string, SharedRead>();
   /** By repository's path: its commands that do not count until the owner confirms them, as last worked out (`heldOf`). */
   private held = new Map<string, TrustGroup[]>();
@@ -266,7 +266,7 @@ export class CanvasRuntime {
   inView: Place | undefined;
 
   /**
-   * Starts a canvas: what it reads of its repositories with git (`readRepos`), and the Lesestand of
+   * Starts a canvas: what it reads of its repositories with git (`readRepos`), and the read tree of
    * each where it is to be made or moved, without the server waiting for git meanwhile; then the
    * canvas, whose clones still to be made follow before this settles. Throws a ConfigError, or
    * `HomeDown`.
@@ -281,7 +281,7 @@ export class CanvasRuntime {
         return null;
       }
     })();
-    if (ahead) await Promise.all(ahead.repos.map((x) => lesestandOf(deps.home, ahead.id, x)).map((l) => l && prepareLesestand(l.repoPath, l.dir)));
+    if (ahead) await Promise.all(ahead.repos.map((x) => readTreeOf(deps.home, ahead.id, x)).map((l) => l && prepareReadTree(l.repoPath, l.dir)));
     const canvas = new CanvasRuntime(config, deps, reads);
     await Promise.all(canvas.repos.map((r) => r.ready));
     // its home repository's clones could not be made
@@ -299,7 +299,7 @@ export class CanvasRuntime {
     deps = { ...deps, runtime: runtime(deps.runtime), ...(workerRuntime ? { workerRuntime: runtime(workerRuntime) } : {}) };
     this.deps = deps;
     this.skills = deps.skills ?? sharedSkills;
-    // the main branch the owner set counts from the start: the repository's id, its settings and its Lesestand go by it
+    // the main branch the owner set counts from the start: the repository's id, its settings and its read tree go by it
     for (const r of config.repos) this.useBranch(r);
     this.config = config;
     const resolved = this.resolve(config, reads);
@@ -408,8 +408,8 @@ export class CanvasRuntime {
         const project = sheet ? board.item(sheet)?.title : undefined;
         this.commander.tell(
           project !== undefined
-            ? `The owner asked the project agent of "${project}" in its sheet: „${question}“. Its answer ${answerTag(talk)} was shown to them there: ${answer}`
-            : `The answer ${answerTag(talk)} you looked up for the owner's question „${question}“ came in and was shown to them: ${answer}`,
+            ? `The owner asked the project agent of "${project}" in its sheet: “${question}”. Its answer ${answerTag(talk)} was shown to them there: ${answer}`
+            : `The answer ${answerTag(talk)} you looked up for the owner's question “${question}” came in and was shown to them: ${answer}`,
         );
       },
     });
@@ -602,7 +602,7 @@ export class CanvasRuntime {
   /** What an agent passes on to Obeya (`forward`). */
   private toObeya = (cardId: string, request: string) => this.forward(cardId, request);
 
-  /** The settings of a repository the Arbeitsrückschau may propose a value for, as they apply now. */
+  /** The settings of a repository the work retrospective may propose a value for, as they apply now. */
   private settingsNow = (repo: string): Record<ProposedSetting, string | string[]> | undefined => {
     const a = this.repos.find((r) => r.ref.id === repo)?.adapter;
     return a && { checks: a.checks ?? [], setup: a.setup ?? '', softPaths: a.softPaths, run: a.app?.run ?? '' };
@@ -617,7 +617,7 @@ export class CanvasRuntime {
   private readRepos = (config: CanvasConfig) => readRepos(config.repos, (r) => this.settingsOf(r)()?.branch);
 
   /**
-   * The repository's settings for everyone, as its Lesestand last had them (read with the rest of
+   * The repository's settings for everyone, as its read tree last had them (read with the rest of
    * the repository as the canvas resolves it, `resolve`, and again whenever it moves, `reread`),
    * without the commands that wait for the owner's confirmation (`heldOf`).
    */
@@ -677,14 +677,14 @@ export class CanvasRuntime {
       const mine = this.deps.settings ? this.deps.settings(path) : this.config?.repos.find((r) => resolve(r.path) === path)?.settings;
       held = heldGroups(commandsOf(this.shared.get(path)), this.deps.store.trustedCommands(path), mine);
       this.held.set(path, held);
-      if (held.length) console.warn(`Obeya: ${path}: ${held.join(', ')} of its settings wait for the owner's confirmation in Konfiguration (held)`);
+      if (held.length) console.warn(`Obeya: ${path}: ${held.join(', ')} of its settings wait for the owner's confirmation in Configuration (held)`);
     }
     return held;
   }
 
   /**
    * Whether an agent working in `cwd` works in a repository of the canvas (its checkout, its
-   * Lesestand, a workspace of it; the most specific, since the home repository's workspaces hold
+   * read tree, a workspace of it; the most specific, since the home repository's workspaces hold
    * the others') whose own Claude Code configuration waits for the owner's trust. As the default
    * branch has it now, not as the canvas last read it: a commit there that the canvas did not notice
    * (on the checkout's main, from outside Obeya) is in the files the session reads. Agents start
@@ -745,11 +745,11 @@ export class CanvasRuntime {
     if (!this.branchSettings.has(path)) this.branchSettings.set(path, useBranchSetting(path, () => this.settingsOf(r)()?.branch));
   }
 
-  /** The plan docs of all its repositories, each from its Lesestand: the home repository's by their bare path, the others' with the repository's id before it. */
+  /** The plan docs of all its repositories, each from its read tree: the home repository's by their bare path, the others' with the repository's id before it. */
   private planDocs() {
     const home = this.repos[0]?.ref.id;
     const read = this.repos.map((r) => {
-      // while git moves the Lesestand its files are half the one commit and half the other: the docs read before stand
+      // while git moves the read tree its files are half the one commit and half the other: the docs read before stand
       if (!r.read.moving || !r.planDocs) r.planDocs = readPlanDocs(r.read.path, r.adapter);
       return { r, ...r.planDocs };
     });
@@ -760,7 +760,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * Sets up the repository at `index` of a resolved configuration: its Lesestand, workspaces (clones
+   * Sets up the repository at `index` of a resolved configuration: its read tree, workspaces (clones
    * here and on other machines), project agents and workers. Its workers resume nothing yet.
    */
   private startRepo(resolved: Resolved, index: number, listed: RepoReads['workspaces']): Repo {
@@ -785,19 +785,19 @@ export class CanvasRuntime {
     // filled in below; what is set up here reaches it once it is
     const repo = { config: rc, stops, from: { resolved, index, listed }, ...(isPublic ? { isPublic } : {}) } as Repo;
     repo.problemSources = this.problemSources(info.path, this.adapterModules.get(info.path) ?? false);
-    // where work lands on the local main, the checkout is the Lesestand; otherwise it is a pool clone on a card's branch
+    // where work lands on the local main, the checkout is the read tree; otherwise it is a pool clone on a card's branch
     const folder = !!info.folder;
     const read = new ReadTree({
       repoPath: info.path,
-      dir: lesestandOf(deps.home, resolved.id, resolved.repos[index]!)?.dir ?? null,
+      dir: readTreeOf(deps.home, resolved.id, resolved.repos[index]!)?.dir ?? null,
       remote: !folder && !!info.remote,
       onChange: async () => {
-        board.lesestandMoved(repo.ref.id, await read.head());
+        board.readTreeMoved(repo.ref.id, await read.head());
         if ((await this.moved(repo)) === 'follow') this.follow();
       },
     });
     stops.push(() => read.stop());
-    // a Lesestand made afresh, or one that could not be made, is read from now on
+    // a read tree made afresh, or one that could not be made, is read from now on
     const readFrom = read.path;
     const placed = read.ready.then(() => {
       if (!running || read.path === readFrom) return;
@@ -899,8 +899,8 @@ export class CanvasRuntime {
       onFollowUpTask: (taskId, reviewId) => this.coordinator.followUp(taskId, reviewId),
       onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
       onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
-      // where work lands on the local main, the Lesestand is the checkout and moves with the landing;
-      // a push leaves the checkout as it is: what it changes applies once the Lesestand fetches it
+      // where work lands on the local main, the read tree is the checkout and moves with the landing;
+      // a push leaves the checkout as it is: what it changes applies once the read tree fetches it
       restartsFor: async (l: Landed, pushedFrom?: string) => {
         if (pushedFrom) return false;
         if (deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && (await changesCode(info.path, l.from, l.to))) return 'obeya';
@@ -978,7 +978,7 @@ export class CanvasRuntime {
     this.proposeTheme(r);
   }
 
-  /** Stops what the repository set up: its Lesestand, the watchers, its workers' sessions. Its cards stay. */
+  /** Stops what the repository set up: its read tree, the watchers, its workers' sessions. Its cards stay. */
   private stopRepo(r: Repo) {
     for (const stop of r.stops) stop();
     r.docs?.();
@@ -987,8 +987,8 @@ export class CanvasRuntime {
   }
 
   /**
-   * Watches the plan docs of the repository in its Lesestand, afresh where they were watched (the
-   * directory or the Lesestand moved), and its pull requests once its work goes out as one or a
+   * Watches the plan docs of the repository in its read tree, afresh where they were watched (the
+   * directory or the read tree moved), and its pull requests once its work goes out as one or a
    * card is in one (its own branch said so); a watcher of pull requests stays, for those still open.
    */
   private watch(r: Repo) {
@@ -1398,7 +1398,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * The Lesestand of the repository moved, or its settings were saved: reads its
+   * The read tree of the repository moved, or its settings were saved: reads its
    * `.obeya/settings.json` again from the default branch; the settings apply where they are read.
    * Where the repository's agents now work elsewhere (clones or worktrees, set up when they start),
    * they restart once they paused (`due`); where demos are shared may have changed, and so may the
@@ -1511,7 +1511,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * What the canvas set up by the repositories' settings follows them: the Lesestand where work
+   * What the canvas set up by the repositories' settings follows them: the read tree where work
    * now lands elsewhere, the watched plan directory, the pull requests, what the page shows of
    * each repository (its main branch as last read, `movedTo`).
    */
@@ -1519,7 +1519,7 @@ export class CanvasRuntime {
     for (const r of this.repos) {
       for (const k of ['pullRequests', 'direct', 'forge'] as const) delete r.ref[k];
       Object.assign(r.ref, settled(r.info, r.adapter));
-      // where work lands on the local main, the checkout is the Lesestand; otherwise a worktree on the default branch
+      // where work lands on the local main, the checkout is the read tree; otherwise a worktree on the default branch
       r.read.retarget(r.info.folder || r.adapter.land === 'main' ? null : join(this.deps.home, 'read', this.id, r.ref.id));
       this.watch(r);
     }
@@ -1637,7 +1637,7 @@ export class CanvasRuntime {
   /**
    * A rule the owner gives outright, by „Merk dir: …“ or in the sheet: one of theirs, active at once,
    * or with `repos` one for those repositories' CLAUDE.md, which goes straight into their cards
-   * „CLAUDE.md ergänzen“. `replaces`: the active rule it changes; `card`: the card open when it was said.
+   * "Add to CLAUDE.md". `replaces`: the active rule it changes; `card`: the card open when it was said.
    */
   remember(text: string, o: { repos?: string[]; replaces?: number; card?: string } = {}) {
     // the rule it changes may have been deleted in the meantime: then it is a new one
@@ -1655,7 +1655,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * The owner takes a setting the Arbeitsrückschau proposed, as it is or with their `value`: on
+   * The owner takes a setting the work retrospective proposed, as it is or with their `value`: on
    * this machine, or into the repository's `.obeya/settings.json` for everyone (`Config.takeSetting`).
    */
   async takeSetting(id: number, where: unknown, value?: unknown): Promise<SettingsShared | null> {
@@ -1678,7 +1678,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * Once no proposal waits any more, the cards „CLAUDE.md ergänzen“ start, with all the rules
+   * Once no proposal waits any more, the cards "Add to CLAUDE.md" start, with all the rules
    * accepted for them: a waiting proposal might yet become one of theirs.
    */
   private fileRules() {
@@ -1719,7 +1719,7 @@ export class CanvasRuntime {
   /**
    * A request a card's agent passes on from the owner's words (`to_obeya`): the Coordinator reads it
    * with those words and the card in focus, as a command, and its confirmation (or reply, or that it
-   * looks the question up) is the agent's answer. Actions wait for "Rückgängig" as usual; the owner
+   * looks the question up) is the agent's answer. Actions wait for "Undo" as usual; the owner
    * sees the confirmation above the microphone and in the card's conversation.
    */
   async forward(cardId: string, request: string): Promise<string> {
@@ -1750,7 +1750,7 @@ export class CanvasRuntime {
     return writeWish(this.deps.runtime, w, footer, this.imageFiles(images));
   }
 
-  /** The owner clicks in the card's panel: a click without words the learner reads counts towards the Rückschau. */
+  /** The owner clicks in the card's panel: a click without words the learner reads counts towards the retrospective. */
   /** A script acts as the card's agent, in a scratch Obeya whose workers are idle (`Workers.standIn`). */
   standIn(cardId: string, act: Parameters<Workers['standIn']>[1]) {
     if (!this.deps.idleWorkers) throw new BadRequest('invalid', 'only an Obeya with idle workers (--idle-workers) lets a script stand in for an agent');
@@ -1940,7 +1940,7 @@ export class CanvasRuntime {
     return answersDir(this.deps.home, this.id, thread);
   }
 
-  /** "Im Ordner zeigen", or a click on an answer's file: opened with the system's app on this machine. */
+  /** "Show in folder", or a click on an answer's file: opened with the system's app on this machine. */
   async openAnswerFile(thread: number, file?: string) {
     const dir = this.answerDir(thread);
     mkdirSync(dir, { recursive: true });
@@ -1955,7 +1955,7 @@ export class CanvasRuntime {
     return this.repoOf(this.board.card(cardId) ?? cardId).workers.file(cardId, path, local);
   }
 
-  /** „Auf dem Rechner öffnen“ on a file of the card's work, or with `show` „Im Ordner zeigen“: with the system's app on this machine. */
+  /** "Open on the computer" on a file of the card's work, or with `show` "Show in folder": with the system's app on this machine. */
   async openCardFile(cardId: string, path: string, show: boolean) {
     const file = await this.cardFile(cardId, path, true);
     if (!file || !('path' in file)) throw new BadRequest('noFile', 'the file is not on this machine');
@@ -1963,7 +1963,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * "Als Idee besprechen" on a Question card: it becomes an idea, whose exploration agent starts from
+   * "Discuss as an idea" on a Question card: it becomes an idea, whose exploration agent starts from
    * the thread (questions, answers, the files in its output directory) instead of the look-up's session.
    */
   private questionAsIdea(cardId: string) {
@@ -2035,7 +2035,7 @@ export class CanvasRuntime {
   /**
    * Obeya proposes the card that fills in a repository's settings where it knows them not (nothing
    * of the repository's own in `.obeya/settings.json`, or an adapter module left on its main branch),
-   * as the Konfiguration dialog offers it; a folder without git is left alone.
+   * as the Configuration dialog offers it; a folder without git is left alone.
    */
   private proposeSetup(r: Repo) {
     if (!this.deps.setupProposals || r.info.folder) return;
@@ -2085,7 +2085,7 @@ export class CanvasRuntime {
   private accept(cardId: string, picks: string[][] | undefined, start: boolean, asIdea?: boolean) {
     const card = this.board.item(cardId);
     if (card?.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    // one the Arbeitsrückschau made before it stored proposal data has none
+    // one the work retrospective made before it stored proposal data has none
     const proposal = card.proposal ?? { questions: [] };
     if ((start || asIdea) && proposal.revising) {
       // the owner knows what comes; the new text still may ask what must be settled first
@@ -2149,7 +2149,7 @@ export class CanvasRuntime {
   private newRepos = new Map<string, ReturnType<typeof setTimeout>>();
 
   /**
-   * „So bauen“ or „Agent starten“ on a card to be built in a repository that does not exist yet:
+   * "Build it like this" or "Start agent" on a card to be built in a repository that does not exist yet:
    * after a few seconds in which `stayHere` takes it back, Obeya makes that repository and builds or
    * starts the card there (`makeNewRepo`). What it cannot do is refused at once where it can tell.
    */
@@ -2203,7 +2203,7 @@ export class CanvasRuntime {
   /**
    * Makes the card's new repository and builds or starts the card there, one step after the other:
    * the folder and git (`makeRepo`), the configuration with a canvas of its own named after it (or
-   * the repository on this canvas), then the card: an idea is decided as „So bauen“ decides it, and
+   * the repository on this canvas), then the card: an idea is decided as "Build it like this" decides it, and
    * moves, with its history and decisions, to the new canvas, where it starts. A step that fails takes
    * back those before it, and the card says why.
    */
@@ -2254,7 +2254,7 @@ export class CanvasRuntime {
     }
   }
 
-  /** The new repository joined this canvas: the card works in it, an idea built as „So bauen“ builds it. */
+  /** The new repository joined this canvas: the card works in it, an idea built as "Build it like this" builds it. */
   private joined(cardId: string, path: string, made: boolean) {
     const r = this.repos.find((x) => x.info.path === path);
     if (!r) throw new Error(`${path} does not run on the canvas`);
@@ -2298,7 +2298,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * "Teilaufgabe abtrennen": the part its agent marked as settled becomes a task of its own beside the idea,
+   * "Split off a task": the part its agent marked as settled becomes a task of its own beside the idea,
    * in its group and linked to it, with the screenshots of the discussion, and starts at once. The
    * idea stays open with its conversation and its prototypes; its agent hears what became of the part.
    * Not while the agent works on a reply, which may change the split.
@@ -2751,7 +2751,7 @@ export class CanvasRuntime {
   private untouched(cardId: string): Item {
     const card = this.board.item(cardId);
     if (!card) throw new BadRequest('unknownCard', 'unknown card');
-    if (!untouched(card)) throw new BadRequest('notUntouched', `„${card.title}“ is no planned task nobody has worked on any more`);
+    if (!untouched(card)) throw new BadRequest('notUntouched', `"${card.title}" is no planned task nobody has worked on any more`);
     return card;
   }
 
@@ -2764,7 +2764,7 @@ export class CanvasRuntime {
   }
 
   /**
-   * „Review PR #5“: a review card for the pull request someone outside opened, started at once, the
+   * "Review PR #5": a review card for the pull request someone outside opened, started at once, the
    * owner's words with it as its task. A PR that has a card on the canvas already opens that one, and
    * the words go to its worker. What goes wrong (no such PR, one closed) the owner hears.
    */
@@ -2895,7 +2895,7 @@ export function approachOf(what: string, max = 40): string {
 
 /**
  * Starts the canvases; one that does not start is left out, with why in Obeya's log and in
- * "Konfiguration" (which checks the configuration again, and shows `failed` of one whose home
+ * "Configuration" (which checks the configuration again, and shows `failed` of one whose home
  * repository did not start), and the others run.
  */
 export async function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, failed: (f: StartFailure) => void = () => {}): Promise<CanvasRuntime[]> {
@@ -3245,11 +3245,11 @@ const machineSettings = (deps: Pick<CanvasDeps, 'settings'>, r: RepoConfig): (()
   deps.settings ? () => deps.settings!(resolve(r.path)) : () => r.settings;
 
 /**
- * Where a resolved repository's Lesestand is made, a worktree of its checkout under Obeya's home;
- * none where work lands on the local main (the checkout is the Lesestand), or in a folder without
+ * Where a resolved repository's read tree is made, a worktree of its checkout under Obeya's home;
+ * none where work lands on the local main (the checkout is the read tree), or in a folder without
  * git, which is read as it is.
  */
-function lesestandOf(home: string, canvas: string, x: Resolved['repos'][number]): { repoPath: string; dir: string } | null {
+function readTreeOf(home: string, canvas: string, x: Resolved['repos'][number]): { repoPath: string; dir: string } | null {
   return x.read.info.folder || x.adapter.land === 'main' ? null : { repoPath: x.read.info.path, dir: join(home, 'read', canvas, x.ref.id) };
 }
 

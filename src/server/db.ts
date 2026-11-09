@@ -80,7 +80,7 @@ export interface CardRow {
   images: string | null;
   /** JSON, projects only: the plan doc as last read (`PlanDoc`), kept for the archive once the doc is gone. */
   plan: string | null;
-  /** A card the Arbeitsrückschau proposed: what it rests on. */
+  /** A card the work retrospective proposed: what it rests on. */
   retro: string | null;
   /** JSON, while a worker's proposal waits: `Proposal` (an idea or a task, why, the questions to decide). */
   proposal: string | null;
@@ -97,7 +97,7 @@ export interface CardRow {
   /**
    * JSON, once the card's work landed (`Shipped` in board.ts): the commit it landed with and its
    * pull request. Kept after its worker is done: a workstream whose plan doc keeps it open is
-   * planned again once the Lesestand holds that commit.
+   * planned again once the read tree holds that commit.
    */
   shipped: string | null;
   /** When Obeya stopped the app in the card's workspace while the card waited (Parking); gone once its worker heard so. */
@@ -342,7 +342,7 @@ const SCHEMA = `
     files TEXT,
     card TEXT
   );
-  -- the Arbeitsrückschau: friction noted on a card's run, per repository
+  -- the work retrospective: friction noted on a card's run, per repository
   CREATE TABLE friction (
     id INTEGER PRIMARY KEY,
     canvas_id TEXT NOT NULL REFERENCES canvases(id),
@@ -354,14 +354,14 @@ const SCHEMA = `
     fix TEXT NOT NULL
   );
   CREATE INDEX friction_repo ON friction (canvas_id, repo, at);
-  -- a command the owner has the confirmation of, while it waits for "Rückgängig": it outlives a restart
+  -- a command the owner has the confirmation of, while it waits for "Undo": it outlives a restart
   CREATE TABLE commands (
     token TEXT PRIMARY KEY,
     canvas_id TEXT NOT NULL REFERENCES canvases(id),
     due TEXT NOT NULL,
     body TEXT NOT NULL
   );
-  -- a value for a repository's setting the Arbeitsrückschau proposes, and where the owner took it
+  -- a value for a repository's setting the work retrospective proposes, and where the owner took it
   CREATE TABLE setting_proposals (
     id INTEGER PRIMARY KEY,
     canvas_id TEXT NOT NULL REFERENCES canvases(id),
@@ -424,7 +424,7 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN wish TEXT; ALTER TABLE events ADD COLUMN wish TEXT;',
   // the demos of earlier handovers a later one replaced
   'ALTER TABLE cards ADD COLUMN demos TEXT;',
-  // since when a card waits for the owner, for the phone view's „Braucht dich“
+  // since when a card waits for the owner, for the phone view's "Needs you"
   'ALTER TABLE cards ADD COLUMN waiting_since TEXT;',
   // a repository's commands as the owner last confirmed them, by its path (JSON `RepoCommands`)
   `CREATE TABLE trusted_commands (
@@ -1313,7 +1313,7 @@ export class Store {
     this.db.query('UPDATE talk SET undone = 1 WHERE id = $id').run({ id });
   }
 
-  /** A command that waits for "Rückgängig" until `due`; `body` is what runs then, as JSON. */
+  /** A command that waits for "Undo" until `due`; `body` is what runs then, as JSON. */
   holdCommand(canvasId: string, token: string, due: string, body: string) {
     this.db.query('INSERT OR REPLACE INTO commands (token, canvas_id, due, body) VALUES ($token, $c, $due, $body)').run({ token, c: canvasId, due, body });
   }
@@ -1507,7 +1507,7 @@ export class Store {
       .all({ c: canvasId, since }) as { at: string; title: string; state: CardState }[];
   }
 
-  // ---------------------------------------------------------------- the Arbeitsrückschau
+  // ---------------------------------------------------------------- the work retrospective
 
   addFriction(canvasId: string, repo: string, cardId: string, notes: FrictionNote[]) {
     const stmt = this.db.query('INSERT INTO friction (canvas_id, repo, card_id, at, what, cost, fix) VALUES ($c, $repo, $card, $at, $what, $cost, $fix)');
@@ -1525,7 +1525,7 @@ export class Store {
       .all({ c: canvasId, repo, since: since ?? '' }) as Friction[];
   }
 
-  /** The cards the Arbeitsrückschau proposed for a repository (`null`: the home repository), oldest first, with what became of them. */
+  /** The cards the work retrospective proposed for a repository (`null`: the home repository), oldest first, with what became of them. */
   retroProposals(canvasId: string, repo: string | null): { title: string; retro: string; state: CardState; dismissed: boolean }[] {
     return (
       this.db
@@ -1545,7 +1545,7 @@ export class Store {
     ).id;
   }
 
-  /** The settings the Arbeitsrückschau proposed, oldest first, with what became of them: those of a repository, or all; the cards they rest on with their titles. */
+  /** The settings the work retrospective proposed, oldest first, with what became of them: those of a repository, or all; the cards they rest on with their titles. */
   settingProposals(canvasId: string, repo?: string): (SettingProposal & { state: SettingProposalState })[] {
     const rows = this.db
       .query(`SELECT * FROM setting_proposals WHERE canvas_id = $c AND ($repo IS NULL OR repo = $repo) ORDER BY id`)

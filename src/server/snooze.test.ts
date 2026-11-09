@@ -352,7 +352,7 @@ describe('the owner snoozes a card', () => {
     expect(item(id).snoozed).toBeUndefined();
   });
 
-  test('„Jetzt zurückholen“ wakes it at once, whoever snoozed it', async () => {
+  test('"Wake now" wakes it at once, whoever snoozed it', async () => {
     const { id, s } = await atWork();
     s.call('snooze', { until: later(30 * HOUR), why: 'Prüfen' });
     s.emit({ type: 'idle' });
@@ -550,7 +550,7 @@ describe('a card that starts later', () => {
     expect(item(c.id).snoozed).toMatchObject({ by: 'owner', start: true, until: new Date(changed).toISOString() });
     canvas.wakeDue(Date.parse(until) + 1);
     expect(item(c.id).queue).toBeUndefined();
-    // „Starten“ on the card starts it now, as „Jetzt zurückholen“ does
+    // "Start" on the card starts it now, as "Wake now" does
     canvas.act(c.id, { action: 'start' });
     expect(item(c.id).snoozed).toBeUndefined();
     expect(item(c.id).queue).toMatchObject({ checking: true });

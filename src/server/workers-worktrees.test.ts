@@ -547,7 +547,7 @@ describe('a worktree per card', () => {
     expect(board.item(c.id)!.followUp).toBeUndefined();
     expect(board.row(c.id).workspace).toBeNull();
     expect(board.row(c.id).landed).toBeNull();
-    // the Arbeitsrückschau read the card's runs when its work ended
+    // the work retrospective read the card's runs when its work ended
     expect(ended).toEqual([c.id]);
   });
 

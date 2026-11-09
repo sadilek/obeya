@@ -24,7 +24,7 @@ export const useCostsShown = () =>
     () => shown,
   );
 
-/** A cost as the page writes it: „≈ $1.23“, below a cent „< $0.01“. */
+/** A cost as the page writes it: "≈ $1.23", below a cent "< $0.01". */
 export const costLabel = (usd: number) => (usd < 0.005 ? t.costs.under(money(0.01)) : t.costs.about(money(usd)));
 
 /** Beside the card's conversation heading: what its agents cost so far, once they cost anything. */

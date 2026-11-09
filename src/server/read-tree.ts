@@ -1,7 +1,7 @@
-// The Lesestand of a repository: the directory on its default branch that the canvas reads plan
+// The read tree of a repository: the directory on its default branch that the canvas reads plan
 // docs from and the agents that only read work in. Where work lands on the local main (Obeya's own
 // checkout), that is the checkout itself; otherwise the checkout is one of the pool's clones, on
-// whatever card's branch leased it last, and the Lesestand is a detached worktree of it under
+// whatever card's branch leased it last, and the read tree is a detached worktree of it under
 // Obeya's home, kept on the default branch as `origin` has it.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
@@ -160,7 +160,7 @@ export interface ReadTreeOptions {
   dir: string | null;
   /** Whether the checkout has an `origin` to fetch from. */
   remote: boolean;
-  /** The Lesestand moved to another commit; a move settles once what this returns does. */
+  /** The read tree moved to another commit; a move settles once what this returns does. */
   onChange: () => void | Promise<void>;
 }
 
@@ -178,26 +178,26 @@ export class ReadTree {
   private queued = 0;
   private stopped = false;
 
-  /** Settles once the worktree was first put in place (`sync`), which `onChange` does not hear of; the Lesestand is the checkout until then where there was none. */
+  /** Settles once the worktree was first put in place (`sync`), which `onChange` does not hear of; the read tree is the checkout until then where there was none. */
   readonly ready: Promise<void>;
 
   /**
    * Makes the worktree, or brings it up to date, without blocking the server: a worktree already
-   * there is read from at once, and moves as `sync` says. Made ahead (`prepareLesestand`) as a
+   * there is read from at once, and moves as `sync` says. Made ahead (`prepareReadTree`) as a
    * canvas starts, it is in place before the canvas reads from it: the checkout, read meanwhile,
    * may be on a card's branch.
    */
   constructor(private o: ReadTreeOptions) {
     this.path = o.dir && existsSync(join(o.dir, '.git')) ? o.dir : o.repoPath;
-    // no move to tell of: what was read so far was not the Lesestand's
+    // no move to tell of: what was read so far was not the read tree's
     this.ready = o.dir ? this.move(false) : Promise.resolve();
   }
 
   /**
-   * Fetches the default branch from `origin` and moves the Lesestand to the commit it now reads,
+   * Fetches the default branch from `origin` and moves the read tree to the commit it now reads,
    * without blocking the server: in a repository of thousands of files a checkout takes a while.
    * A fetch that fails (offline, a lock held by a lease at the same moment) is logged; the next
-   * call tries again, and the Lesestand keeps its commit meanwhile. Calls while one runs share it.
+   * call tries again, and the read tree keeps its commit meanwhile. Calls while one runs share it.
    */
   refresh(): Promise<void> {
     if (!this.o.dir || this.stopped) return Promise.resolve();
@@ -211,8 +211,8 @@ export class ReadTree {
   }
 
   /**
-   * Moves the Lesestand where it now belongs, once work lands elsewhere: the checkout (`null`), or
-   * the worktree at `dir`, made or brought up to date in the background, the Lesestand staying
+   * Moves the read tree where it now belongs, once work lands elsewhere: the checkout (`null`), or
+   * the worktree at `dir`, made or brought up to date in the background, the read tree staying
    * where it was until then. Tells `onChange` where it moved.
    */
   retarget(dir: string | null): Promise<void> {
@@ -234,15 +234,15 @@ export class ReadTree {
     return moved;
   }
 
-  /** The commit the Lesestand is on. */
+  /** The commit the read tree is on. */
   async head(): Promise<string> {
     return (await gitSteps(this.path, gitCalls(['rev-parse', 'HEAD'])))[0] ?? '';
   }
 
   /**
-   * Whether the Lesestand holds `commit` (it is the commit the Lesestand is on, or an ancestor of
+   * Whether the read tree holds `commit` (it is the commit the read tree is on, or an ancestor of
    * it), as far as known already: git is asked in the background what is not, which counts as not
-   * held meanwhile, and `then` hears once it is. What was found stands while the Lesestand does
+   * held meanwhile, and `then` hears once it is. What was found stands while the read tree does
    * (`standing`); where that cannot be told, only what is held stands, and what is not is asked again.
    */
   holds(commit: string, then?: () => void): boolean {
@@ -261,7 +261,7 @@ export class ReadTree {
       const asked = gitSteps(this.path, gitCalls(['merge-base', '--is-ancestor', commit, 'HEAD'])).then(([r]) => r !== null);
       this.held.set(commit, asked);
       void asked.then((held) => {
-        // the Lesestand moved meanwhile: what it holds now is asked afresh
+        // the read tree moved meanwhile: what it holds now is asked afresh
         if (this.held.get(commit) !== asked) return;
         if (held || this.heldAt !== null) this.held.set(commit, held);
         else this.held.delete(commit);
@@ -271,14 +271,14 @@ export class ReadTree {
     return false;
   }
 
-  /** By commit, what `holds` found (or is finding) while the Lesestand stood at `heldAt`. */
+  /** By commit, what `holds` found (or is finding) while the read tree stood at `heldAt`. */
   private held = new Map<string, boolean | Promise<boolean>>();
   private heldAt: string | null | undefined;
   /** How often the worktree moved: only this tree moves it. */
   private moved = 0;
 
   /**
-   * Where the Lesestand stands, without git: the worktree by its moves, the checkout by its HEAD
+   * Where the read tree stands, without git: the worktree by its moves, the checkout by its HEAD
    * and the branch that names (`headSeal`), which work landing there moves; null where the
    * checkout's cannot be told.
    */
@@ -296,10 +296,10 @@ export class ReadTree {
       stdin: 'ignore',
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     });
-    if (r.code !== 0) console.error(`Lesestand: git fetch origin in ${this.o.repoPath}: ${r.stderr.trim()}`);
+    if (r.code !== 0) console.error(`Read tree: git fetch origin in ${this.o.repoPath}: ${r.stderr.trim()}`);
   }
 
-  /** Puts the worktree where `sync` says, after the moves before it; tells `onChange` where the Lesestand moved (`tell`). */
+  /** Puts the worktree where `sync` says, after the moves before it; tells `onChange` where the read tree moved (`tell`). */
   private move(tell = true): Promise<void> {
     this.queued++;
     const moved = this.moves
@@ -321,7 +321,7 @@ export class ReadTree {
 
   /**
    * Puts the worktree at `dir` on the commit the default branch has now, making it afresh where it
-   * is missing, broken or another repository's. Returns whether the Lesestand moved (to another
+   * is missing, broken or another repository's. Returns whether the read tree moved (to another
    * commit or directory). Where no worktree can be made, the checkout is read instead.
    */
   private async sync(dir: string): Promise<boolean> {
@@ -334,7 +334,7 @@ export class ReadTree {
     return state !== 'same' || was !== dir;
   }
 
-  /** The checkout is read where no worktree can be made; returns whether that moved the Lesestand. */
+  /** The checkout is read where no worktree can be made; returns whether that moved the read tree. */
   private readCheckout(): boolean {
     const moved = this.path !== this.o.repoPath;
     this.path = this.o.repoPath;
@@ -355,17 +355,17 @@ async function putWorktree(repoPath: string, dir: string): Promise<'same' | 'mov
     await rm(dir, { recursive: true, force: true });
   } catch (e) {
     // on Windows a process working in the directory (an agent reading there) keeps it: the server died of that EBUSY; this time the checkout is read, and the next refresh tries again
-    console.error(`Lesestand: ${dir} cannot be made afresh now (${(e as NodeJS.ErrnoException).code ?? e}); reading the checkout`);
+    console.error(`Read tree: ${dir} cannot be made afresh now (${(e as NodeJS.ErrnoException).code ?? e}); reading the checkout`);
     return 'failed';
   }
   mkdirSync(dirname(dir), { recursive: true });
   if (await gitSteps(repoPath, making(dir, found.target))) return 'made';
-  console.error(`Lesestand: no worktree of ${repoPath} at ${dir}; reading the checkout`);
+  console.error(`Read tree: no worktree of ${repoPath} at ${dir}; reading the checkout`);
   return 'failed';
 }
 
-/** Puts a Lesestand's worktree in place ahead of its `ReadTree` (`putWorktree`), as a canvas starts: the tree then reads from it at once. */
-export const prepareLesestand = (repoPath: string, dir: string): Promise<unknown> => putWorktree(repoPath, dir);
+/** Puts a read tree's worktree in place ahead of its `ReadTree` (`putWorktree`), as a canvas starts: the tree then reads from it at once. */
+export const prepareReadTree = (repoPath: string, dir: string): Promise<unknown> => putWorktree(repoPath, dir);
 
 function real(path: string): string {
   try {
@@ -394,7 +394,7 @@ function* checking(repoPath: string, dir: string): GitSteps<{ state: 'same' | 'm
     // a worktree of the checkout's repository, at its top
     if (top && common && own && real(top) === real(dir) && real(common) === real(own)) {
       if (head === target) return { state: 'same' };
-      // the hooks are the checkout's (a post-checkout installing dependencies, say), not the Lesestand's
+      // the hooks are the checkout's (a post-checkout installing dependencies, say), not the read tree's
       const [checkedOut] = yield [['-C', dir, '-c', 'core.hooksPath=/dev/null', 'checkout', '--quiet', '--detach', '--force', target]];
       if (checkedOut !== null) return { state: 'moved' };
     }

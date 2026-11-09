@@ -90,7 +90,7 @@ describe('building an idea in a new repository', () => {
     expect(git(path, 'remote')).toBe('');
     expect(JSON.parse(readFileSync(join(dir, 'canvases.json'), 'utf8')).at(-1)).toEqual({ repos: [{ path }] });
     expect(there.board.canvas.name).toBe('super59');
-    // the card is there, decided as „So bauen“ decides it, with its conversation, decisions and screenshot, out of its group
+    // the card is there, decided as "Build it like this" decides it, with its conversation, decisions and screenshot, out of its group
     await until(() => there.board.item(card.id)?.queue || there.board.item(card.id)?.state === 'working');
     const moved = there.board.item(card.id)!;
     expect(moved.body).toBe('**Goal** A schedule for the class.');
@@ -122,7 +122,7 @@ describe('building an idea in a new repository', () => {
     expect(brief).toContain('CLAUDE.md');
   });
 
-  test('„Rückgängig“ in the undo window leaves everything as it was', async () => {
+  test('"Undo" in the undo window leaves everything as it was', async () => {
     const path = join(dir, 'super59');
     const card = idea(path);
     docsCanvas().act(card.id, { action: 'build' });

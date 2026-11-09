@@ -355,8 +355,8 @@ the director holds `caffeinate -i` against idle sleep; a closed lid on battery s
 A scene wraps a wait in `d.skip`: the page fades to white, the cut falls while it is white, and it
 fades back in with how much later it is ("31 seconds later"), about two seconds in all. The cut
 comes out of frames, narration, chapters and captions alike; a clip the cut falls into goes on
-across it, so a skip belongs after the scene's narration, and the next scene says the jump („Kurz
-darauf“). The first five seconds of a wait are cut without a trace, only the rest falls into the
+across it, so a skip belongs after the scene's narration, and the next scene says the jump ("Shortly
+after"). The first five seconds of a wait are cut without a trace, only the rest falls into the
 white. A wait that is only the app's latency is cut whole without flash or label (`quiet`). The
 review table flags a scene with more than 5 s without narration. Each take keeps its cuts (wall
 clock) in its work directory, for a playback of its agents.
@@ -623,7 +623,7 @@ ends, the card closes, the video stands still for three minutes, the owner write
 as a card what still matters); otherwise ten minutes after the last. Approving as the card folds
 still takes them. Until they go, each stands dashed and unread at the end of the conversation, with
 a bin to take it back (its words return to an empty field); once sent it moves to where it went. The
-worker gets them in one message, each as `[Demo video at 1:23, chapter „…“, narration: „…“]` above
+worker gets them in one message, each as `[Demo video at 1:23, chapter “…”, narration: “…”]` above
 the words with its frame. Such a comment is no answer to the report's question. Comments still held
 once the card no longer waits for approval (the worker, taking in earlier words, asked a question or
 went back to work) are never dropped: with a question open they go with the answer or a note (the

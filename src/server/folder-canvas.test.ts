@@ -34,7 +34,7 @@ afterEach(async () => {
 const item = (id: string) => canvas.board.item(id)!;
 
 describe('a canvas over a folder without git', () => {
-  test('resolves without git: no branch, no pull requests, the folder its own Lesestand', () => {
+  test('resolves without git: no branch, no pull requests, the folder its own read tree', () => {
     expect(canvas.board.canvas.repos[0]).toMatchObject({ id: 'documents', folder: true, branch: '' });
     expect(canvas.repos[0]!.read.path).toBe(docs);
   });

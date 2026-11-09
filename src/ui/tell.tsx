@@ -1,5 +1,5 @@
 // What the owner says or types reaches its target, and what they are told back, the same on the
-// canvas and in the phone view: the confirmation with „Rückgängig“ above the microphone, words
+// canvas and in the phone view: the confirmation with "Undo" above the microphone, words
 // handed on to the agent of the open card or to the Coordinator, and what the microphone says it
 // speaks to.
 
@@ -14,11 +14,11 @@ import { sent, take, videoOf } from './spot';
 import { failText, t } from './strings';
 import type { useTold } from './voice';
 
-/** How long a confirmation stays, and its „Rückgängig“ unless the action waits longer. */
+/** How long a confirmation stays, and its "Undo" unless the action waits longer. */
 export const ACK_MS = 7000;
 
 /**
- * The confirmation above the microphone: `showAck` with „Rückgängig“ while the action still waits,
+ * The confirmation above the microphone: `showAck` with "Undo" while the action still waits,
  * `showWait` for what the server is still at, `fail` for what went wrong; `line` shows it. With
  * `aside` (the phone) the owner swipes it away.
  */
@@ -27,7 +27,7 @@ export function useAck(aside = false) {
   const [ackOn, setAckOn] = useState(false);
   const ackTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  /** A confirmation; with `undo`, "Rückgängig" shows for `undoMs` (while the server still waits). */
+  /** A confirmation; with `undo`, "Undo" shows for `undoMs` (while the server still waits). */
   function showAck(text: string, undo?: () => unknown, undoMs = ACK_MS) {
     setAck({ text, undo });
     setAckOn(true);
@@ -106,7 +106,7 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
   /**
    * Words typed on a card, in its idea or in the Coordinator's conversation: on a card an agent listens on
    * they go straight to it, else the Coordinator reads them like spoken ones. The conversation shows
-   * them at once either way; above the mic only the Coordinator's confirmation shows, with „Rückgängig“.
+   * them at once either way; above the mic only the Coordinator's confirmation shows, with "Undo".
    */
   const tellTyped = async (text: string, images: string[] | undefined, target: Where, field?: Field, replyTo?: number | TalkRef) => {
     if (listening(target))

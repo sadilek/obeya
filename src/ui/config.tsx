@@ -45,7 +45,7 @@ const SECTIONS: Section[] = ['canvases', 'agents', 'voice', 'demos', 'devices', 
 // the section shown, per tab: a new language reloads the page (as a save that restarts Obeya does), and the dialog comes back at it
 const SECTION_KEY = 'obeya-config-section';
 
-// the canvas shown in Leinwände, per tab, by its place in the list
+// the canvas shown in Canvases, per tab, by its place in the list
 const CANVAS_KEY = 'obeya-config-canvas';
 
 /** Opens the dialog at the canvases next time, at the one the page shows, as from the note on a plan directory. */
@@ -68,7 +68,7 @@ export const showDemosSection = () => {
 /** The personal demo site is to be scrolled to once the dialog shows it. */
 const PERSONAL_SHOW_KEY = 'obeya-config-personal';
 
-/** Opens the dialog at „Von anderen Geräten“ next time, as from „Telefon verbinden“. */
+/** Opens the dialog at "Other devices" next time, as from "Connect a phone". */
 export const showDevicesSection = () => sessionStorage.setItem(SECTION_KEY, 'devices');
 
 /** The section this tab showed last, if any. */
@@ -132,7 +132,7 @@ function checkedMoved(c: Checked, n: number, from: number, to: number): Checked 
   };
 }
 
-export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProblems, onConnect, revs }: { on: boolean; /** The canvas the page shows: the one Leinwände shows first. */ page?: string; onClose: () => void; onSetup: () => void; onAsk: Ask; onTalk: () => void; onProblems: (n: number) => void; onConnect: () => void; revs: string }) {
+export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProblems, onConnect, revs }: { on: boolean; /** The canvas the page shows: the one Canvases shows first. */ page?: string; onClose: () => void; onSetup: () => void; onAsk: Ask; onTalk: () => void; onProblems: (n: number) => void; onConnect: () => void; revs: string }) {
   const [view, setView] = useState<ConfigView | null>(null);
   const [draft, setDraft] = useState<CanvasConfig[]>([]);
   const [checked, setChecked] = useState<Checked | null>(null);
@@ -182,7 +182,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   // the field to show once the canvases are there; a new object each time, so a second jump to the same one still scrolls
   const [focus, setFocus] = useState<ConfigFocus | null>(null);
 
-  // the canvas Leinwände shows, by its place in the draft; until one is chosen, the field to show's or the page's, once their ids are known
+  // the canvas Canvases shows, by its place in the draft; until one is chosen, the field to show's or the page's, once their ids are known
   const [pick, setPickState] = useState<number | null>(keptCanvas);
   const setPick = (i: number | null) => {
     if (i === null) sessionStorage.removeItem(CANVAS_KEY);
@@ -418,7 +418,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                   try {
                     const { restarting, applied } = await api.saveConfig(draft);
                     // what is saved now is the draft as last checked; settings applied at once change what the
-                    // repositories amount to (where „Für alle“ goes, say), so it is read and checked again
+                    // repositories amount to (where "For everyone" goes, say), so it is read and checked again
                     const fresh = applied ? await api.config() : null;
                     savedSeq.current++;
                     setSaved(checked);
@@ -597,7 +597,7 @@ interface CanvasesProps {
 function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, focus, onAsk, onRecheck, onCanvas, onMove, onSave, onReset, onReload, status, json, onJson }: CanvasesProps) {
   const c = t.config;
   const problems = checked?.problems ?? [];
-  // „Für alle“ takes over what is saved: with changes in the dialog it saves them first, where that applies without a restart
+  // "For everyone" takes over what is saved: with changes in the dialog it saves them first, where that applies without a restart
   const prepare = changed && view.source === 'file' && !view.restarting && !problems.some(blocksSaving) ? onSave : undefined;
   // a canvas with a problem has no id yet: which running canvas goes is only known once all resolve
   const resolved = checked?.resolved ?? [];
@@ -1778,7 +1778,7 @@ interface RepoProps {
 /** A repository's name on its tab: its id once checked, else its folder's name. */
 const repoName = (repo: RepoConfig, resolved: ResolvedCanvas['repos'][number] | undefined) => resolved?.id ?? (repo.path.trim().split(/[\\/]/).filter(Boolean).pop() || t.config.newRepo);
 
-/** What „Für alle“ needs of the dialog: whether the canvases are as saved (what is taken over), how to read them again, how to save them first. */
+/** What "For everyone" needs of the dialog: whether the canvases are as saved (what is taken over), how to read them again, how to save them first. */
 interface Takeover {
   saved: boolean;
   /** Reads the saved configuration again: the server changed it. */
@@ -1825,7 +1825,7 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
     else next[k] = v;
     return next;
   };
-  // „Agenten arbeiten in“: this machine's setting where the repository's says otherwise; worktrees put the clones named aside
+  // "Agents work in": this machine's setting where the repository's says otherwise; worktrees put the clones named aside
   const setWorkIn = (mode: 'clones' | 'worktrees') => {
     if (mode === workIn) return;
     const { workspaces: _, ...others } = repo.settings ?? {};
@@ -1961,7 +1961,7 @@ function nestedOf(k: SettingKey): [NestedSetting, string] | undefined {
 /**
  * A repository's settings for this machine, below where its agents work, in groups under a heading
  * each (branch and landing, app and checks, plans and language, demos): each shows the value that
- * applies and where it comes from; changing one sets it on this machine, „Zurücksetzen“
+ * applies and where it comes from; changing one sets it on this machine, "Reset"
  * takes it back to its source. Saved with the configuration; they apply at once.
  */
 function RepoSettingsBlock({
@@ -2019,7 +2019,7 @@ function RepoSettingsBlock({
     onChange(Object.keys(next).length ? (next as RepoSettings) : undefined);
   };
   const lines = (k: SettingKey) => value<string[]>(k).join('\n');
-  // a setting: its label with where its value comes from (and „Zurücksetzen“ where it is set here), its control and what to know about it
+  // a setting: its label with where its value comes from (and "Reset" where it is set here), its control and what to know about it
   const field = (key: string, label: string, here: boolean, from: string, reset: () => void, control: ReactNode, hint?: string) => (
     <div className={shown === key ? 'cfg-field cfg-setting flash' : 'cfg-field cfg-setting'} key={key} data-setting={key}>
       <div className="cfg-label">
@@ -2215,9 +2215,9 @@ function RepoSettingsBlock({
 }
 
 /**
- * „Demo-Seite einrichten“ at a repository without a site: the host chosen, Obeya creates the site
+ * "Set up a demo site …" at a repository without a site: the host chosen, Obeya creates the site
  * there (in the background, with a login in the browser maybe) and fills in its fields, which
- * „Speichern“ then takes over. A setup that finished while the dialog was closed is taken in when it
+ * "Save" then takes over. A setup that finished while the dialog was closed is taken in when it
  * opens again.
  */
 function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: string; empty: boolean; onSite: (site: DemoSite) => void }) {
@@ -2331,7 +2331,7 @@ function TagLines({ tags, placeholder, label, onChange }: { tags: PageTags | und
 }
 
 /**
- * „Tags von einem Agenten vorschlagen lassen“ under the site's tags: a read-only agent reads the
+ * "Have an agent propose the tags" under the site's tags: a read-only agent reads the
  * repository and its cards with their demos and proposes a vocabulary, which goes into the field
  * for the owner to change and save; the tags before can be had back. Offered where the repository
  * runs on a canvas; a proposal that finished while the dialog was closed is taken in when it opens again.
@@ -2440,11 +2440,11 @@ function sharedPreview(repo: RepoConfig, values: RepoValues): Record<string, unk
   return Object.fromEntries(SHARED_FIELDS.filter((k) => merged[k] !== undefined).map((k) => [k, merged[k]]));
 }
 
-/** What „Für alle ins Repository übernehmen“ did, by repository, until the dialog opens again: the reload after it mounts the settings afresh. */
+/** What "Take over into the repository for everyone" did, by repository, until the dialog opens again: the reload after it mounts the settings afresh. */
 const sharedDone = new Map<string, SettingsShared>();
 
 /**
- * „Für alle ins Repository übernehmen“ under a repository's settings: this machine's values (but
+ * "Take over into the repository for everyone" under a repository's settings: this machine's values (but
  * the main branch) go into its `.obeya/settings.json`, so that everyone who clones it gets them.
  * It first shows the file as it would be and where it goes (a commit on the main branch, or a pull
  * request), then does it at the owner's word. Only for the configuration as saved.
@@ -2601,7 +2601,7 @@ const DETAILED: ConfigProblem['code'][] = ['demoSite', 'adapterGone', 'repoSetti
 /**
  * A problem of the configuration: what is wrong, the technical detail folded away where it says
  * what to fix, and a button that has the Coordinator create a task that fixes it (with the detail, which it reads).
- * What did not start as saved tries again with „Erneut versuchen“, where `retried` is given (called after it).
+ * What did not start as saved tries again with "Try again", where `retried` is given (called after it).
  */
 export function Problem({ problem, where, ask, retried }: { problem: ConfigProblem; where: string; ask?: (text: string) => void; retried?: () => void }) {
   const [asked, setAsked] = useState(false);

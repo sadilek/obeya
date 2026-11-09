@@ -1324,7 +1324,7 @@ describe('workers', () => {
     expect(out).toContain('gone from the canvas');
     expect(board.item(p.id)).toBeUndefined();
     expect(board.events(c.id).some((e) => e.text === 'Zieht den Vorschlag „Lange Schnitte“ zurück: Die Diagnose war falsch.')).toBe(true);
-    // the Rückschau reads deleted proposals as the owner's dismissals: this one was not
+    // the retrospective reads deleted proposals as the owner's dismissals: this one was not
     expect(board.removed(since)).toEqual([]);
     expect(runtime.last.call('withdraw_proposal', { title: 'Lange Schnitte', why: 'W' })).toContain('withdrawn already');
     // of two alike, the newer replaces the older

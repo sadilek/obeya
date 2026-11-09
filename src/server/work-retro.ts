@@ -1,4 +1,4 @@
-// The Arbeitsrückschau: Obeya looks back at how the workers worked, to make future runs cheaper.
+// The work retrospective: Obeya looks back at how the workers worked, to make future runs cheaper.
 // When a card's work ends, an excerpt of its runs (transcript.ts, no model) goes to a short session
 // that notes the friction in it; after WORK_RETRO_RAMP finished cards of a new repository (1, 2 more,
 // 4 more), then every WORK_RETRO_EVERY, or when the
@@ -176,7 +176,7 @@ export class WorkRetro {
     const titles = new Map(notes.map((n) => [n.cardId, n.title]));
     const byCard = [...tags].map(([tag, id]) => {
       const mine = notes.filter((n) => n.cardId === id);
-      return `${tag} "${titles.get(id)}":\n${mine.map((n) => `- ${n.what} Kosten: ${n.cost} Verhindert hätte es: ${n.fix}`).join('\n')}`;
+      return `${tag} "${titles.get(id)}":\n${mine.map((n) => `- ${n.what} Cost: ${n.cost} What would have prevented it: ${n.fix}`).join('\n')}`;
     });
     const proposed = b.retroProposals(repo);
     const rules = b.preferences('proposed', 'rejected', 'filed').filter((p) => p.target === repo);
@@ -206,9 +206,9 @@ export class WorkRetro {
       role: 'chores',
       onLimit: waitQuietly,
       brief: [
-        `The repository: ${name}. The friction noted on its cards since the last Arbeitsrückschau, card by card:\n\n${byCard.join('\n\n')}`,
+        `The repository: ${name}. The friction noted on its cards since the last work retrospective, card by card:\n\n${byCard.join('\n\n')}`,
         settings,
-        dismissed.length ? `Proposals of earlier Arbeitsrückschauen the owner dismissed (do not propose them again, in other words either):\n${list(dismissed)}` : '',
+        dismissed.length ? `Proposals of earlier work retrospectives the owner dismissed (do not propose them again, in other words either):\n${list(dismissed)}` : '',
         before.length ? `Proposed before and waiting or taken (do not propose them again):\n${list(before)}` : '',
       ]
         .filter(Boolean)
@@ -283,7 +283,7 @@ export class WorkRetro {
   }
 
   private serial(fn: () => Promise<void>) {
-    this.chain = this.chain.then(fn).catch((e) => console.error('Arbeitsrückschau:', e));
+    this.chain = this.chain.then(fn).catch((e) => console.error('Work retrospective:', e));
   }
 
   /** Settles once what is queued now has run (tests). */
@@ -348,7 +348,7 @@ Note 0 to 3, the costliest first; most runs have one or none. Call note for each
 `.trim();
 
 const RETRO_SYSTEM = (language: Language, ui: Language, repository: Language) => `
-You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Each worker works on one card in its own workspace of a repository. This is the Arbeitsrückschau for the repository you are in (you cannot change it): you get the friction noted on its workers' runs since the last one, card by card, and propose what would make future runs cheaper.
+You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Each worker works on one card in its own workspace of a repository. This is the work retrospective for the repository you are in (you cannot change it): you get the friction noted on its workers' runs since the last one, card by card, and propose what would make future runs cheaper.
 
 Look for friction that recurs on at least two different cards, the same detour taken again and again, and that a change to the repository would prevent:
 - a script (scripts/…) for what workers keep putting together by hand or keep getting wrong;

@@ -248,7 +248,7 @@ describe('plan docs', () => {
     expect(board.item(w2.id)!.state).toBe('live');
   });
 
-  test('a stored live gives way to an empty box once the Lesestand holds what landed; a stored done stays', () => {
+  test('a stored live gives way to an empty box once the read tree holds what landed; a stored done stays', () => {
     const items = board.snapshot().items;
     const w2 = items.find((i) => i.label === 'W2')!;
     const w3 = items.find((i) => i.label === 'W3')!;

@@ -286,7 +286,7 @@ describe("Obeya's configuration", () => {
     expect(c.view().restarting).toBe(false);
   });
 
-  test("what does not run as configured is a problem at its canvas or repository that blocks nothing; „Erneut versuchen“ has the canvases take the configuration over again", async () => {
+  test('what does not run as configured is a problem at its canvas or repository that blocks nothing; "Try again" has the canvases take the configuration over again', async () => {
     mkdirSync(join(dir, 'home'));
     const saved = [{ name: 'Web', repos: [{ path: web }] }, { name: 'API', repos: [{ path: api }, { path: web }] }];
     writeFileSync(file, JSON.stringify(saved));
@@ -403,7 +403,7 @@ describe("Obeya's configuration", () => {
     expect(checked.problems).toEqual([]);
   });
 
-  test("„Für alle ins Repository übernehmen“ where work lands on main: committed there, and this machine's values then come from the repository", async () => {
+  test(`"Take over into the repository for everyone" where work lands on main: committed there, and this machine's values then come from the repository`, async () => {
     mkdirSync(join(dir, 'home'));
     const settings = { branch: 'main', checks: ['bun test'], app: { run: 'bun dev' } };
     writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings }] }]));
@@ -430,7 +430,7 @@ describe("Obeya's configuration", () => {
     await expect(c.shareSettings({ path: web })).rejects.toMatchObject({ code: 'noSettings' });
   });
 
-  test("„Für alle ins Repository übernehmen“ of a demo site's tags: saved with the site, committed with it; once the file has them, nothing is committed", async () => {
+  test(`"Take over into the repository for everyone" of a demo site's tags: saved with the site, committed with it; once the file has them, nothing is committed`, async () => {
     mkdirSync(join(dir, 'home'));
     const site = { title: 'Demos', url: 'https://demos.example.com', deploy: 'deploy {dir}' };
     mkdirSync(join(web, '.obeya'));
@@ -456,7 +456,7 @@ describe("Obeya's configuration", () => {
     expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }] }]);
   });
 
-  test("„Für alle ins Repository übernehmen“ where work goes out as pull requests: one is opened, this machine keeps its values until it is merged", async () => {
+  test(`"Take over into the repository for everyone" where work goes out as pull requests: one is opened, this machine keeps its values until it is merged`, async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');
     gitClone(web, origin, { bare: true });
@@ -487,7 +487,7 @@ describe("Obeya's configuration", () => {
     expect(applied).toBe(0);
   });
 
-  test("„Für alle ins Repository übernehmen“ of what origin's main holds already: no pull request; this machine's values go only where the main branch Obeya reads has them too", async () => {
+  test(`"Take over into the repository for everyone" of what origin's main holds already: no pull request; this machine's values go only where the main branch Obeya reads has them too`, async () => {
     mkdirSync(join(dir, 'home'));
     mkdirSync(join(web, '.obeya'));
     writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'pr', checks: ['bun test'] }));
@@ -513,7 +513,7 @@ describe("Obeya's configuration", () => {
     expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }] }]);
   });
 
-  test("„Für alle ins Repository übernehmen“ straight onto origin's main, where work may go there beside pull requests", async () => {
+  test(`"Take over into the repository for everyone" straight onto origin's main, where work may go there beside pull requests`, async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');
     gitClone(web, origin, { bare: true });
@@ -537,7 +537,7 @@ describe("Obeya's configuration", () => {
     expect(applied).toBe(1);
   });
 
-  test('a setting the Arbeitsrückschau proposed, taken on this machine: it joins the values set there', async () => {
+  test('a setting the work retrospective proposed, taken on this machine: it joins the values set there', async () => {
     mkdirSync(join(dir, 'home'));
     writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings: { checks: ['bun test'], setup: 'bun install' } }] }]));
     const c = config('file', []);
@@ -550,7 +550,7 @@ describe("Obeya's configuration", () => {
     expect(taken).toHaveLength(2);
   });
 
-  test('a setting the Arbeitsrückschau proposed, taken for everyone where work lands on main: that value alone is committed, and applies here too', async () => {
+  test('a setting the work retrospective proposed, taken for everyone where work lands on main: that value alone is committed, and applies here too', async () => {
     mkdirSync(join(dir, 'home'));
     writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings: { checks: ['bun test'], app: { run: 'npm start' } } }] }]));
     const c = config('file', []);
@@ -564,7 +564,7 @@ describe("Obeya's configuration", () => {
     expect(applied).toBe(1);
   });
 
-  test('a setting the Arbeitsrückschau proposed, taken for everyone where work goes out as pull requests: one is opened, and the value applies here meanwhile', async () => {
+  test('a setting the work retrospective proposed, taken for everyone where work goes out as pull requests: one is opened, and the value applies here meanwhile', async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');
     gitClone(web, origin, { bare: true });
@@ -753,7 +753,7 @@ describe('the configuration over HTTP', () => {
     }
   }, 60_000);
 
-  test('a setting the Arbeitsrückschau proposed waits in the snapshot with its cards and the value now, and is taken where the owner says', async () => {
+  test('a setting the work retrospective proposed waits in the snapshot with its cards and the value now, and is taken where the owner says', async () => {
     mkdirSync(join(dir, 'home'));
     writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings: { checks: ['bun test'] } }] }]));
     const c = config('file', []);

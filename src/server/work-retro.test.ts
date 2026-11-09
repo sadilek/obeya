@@ -60,7 +60,7 @@ async function note(...notes: { what: string; cost?: string; fix?: string }[]) {
   await settle();
 }
 
-describe('Arbeitsrückschau', () => {
+describe('work retrospective', () => {
   test('a finished card’s runs become friction notes, written as a small job from the excerpt', async () => {
     files = { s1: SAMPLE };
     const a = ran('A', 's1', 's2');
@@ -152,7 +152,7 @@ describe('Arbeitsrückschau', () => {
     expect(second.inbox[0]).toContain('- card "Skript für Starts" (taken)');
   });
 
-  test('workers who each worked out how to run the app: the retrospective proposes the recipe for „So läuft die App“', async () => {
+  test('workers who each worked out how to run the app: the retrospective proposes the recipe for "How to run the app"', async () => {
     const now = { checks: ['bun test'], setup: '', softPaths: ['docs/'], run: '' };
     retro = new WorkRetro({ board, runtime, pathFor: () => main, transcript: (id) => files[id] ?? null, every: 2, ramp: [], settingsFor: () => now });
     board.showSettings(() => now);

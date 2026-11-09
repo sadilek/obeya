@@ -264,7 +264,7 @@ export interface Told {
   /** The card it was said to, named in the confirmation when another card is open by then. */
   card?: { id: string; title: string };
   heard?: Heard;
-  /** "Rückgängig" shows while the command still waits. */
+  /** "Undo" shows while the command still waits. */
   undo?: boolean;
 }
 
@@ -273,7 +273,7 @@ export interface Told {
  * out quietly (to the open card's agent) leaves no line. The server reads them one after the other.
  * `show` adds a confirmation that comes without a request: a request a card's agent passed on.
  * `inView` says whether the conversation the owner looks at shows the reply already: then it gets
- * no line, unless it has „Rückgängig“, which only the line offers.
+ * no line, unless it has "Undo", which only the line offers.
  */
 export function useTold(onHeard: (h: Heard) => void, inView: (h: Heard) => boolean = () => false) {
   const [told, setTold] = useState<Told[]>([]);
