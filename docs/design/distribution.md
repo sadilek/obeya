@@ -93,6 +93,13 @@ WebKit, the webview on macOS and Linux, knows `user-select` only by its `-webkit
 unprefixed property alone, dragging a card selects some of its text in the app, though not in Chrome
 (2026-10-30). The stylesheet sets both wherever it sets one, and a test holds it to that.
 
+While an element's opacity changes over time, WebKit gives it a layer of its own, and with it the
+positioned elements painted after it in the conversation (the items of a list in a message, whose
+bullets are positioned): their text shifted by a pixel or so for as long as the fade lasted, each
+time the pointer entered or left a message and its Reply button faded in or out, in the app though
+not in Chrome (2026-11-09). Buttons that appear on hover over a message (Reply, the pause of an
+agent at work) therefore fade by their colours, which WebKit paints without a layer.
+
 A text field as tall as its text is measured by shrinking it for a moment. WebKit scrolls a pane
 standing at its end up when that shortens it, and only the browser's own typing brings the caret
 back into view: each Space typed by the page (Space held to talk types a tap itself) and each click
