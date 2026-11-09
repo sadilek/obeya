@@ -10,8 +10,13 @@
 // 0 % CPU with a clip in hand for 40 minutes, and every render and sample waited behind it) fails
 // its clip once it has said nothing for a while (`NARRATION_LOAD_MS`, `NARRATION_SENTENCE_MS`):
 // it is ended, and the next clip starts a new one.
+//
+// A render's clips in a voice that does not hear itself back (all but Qwen3) are heard back here
+// (`POST /api/narration/hear`) with the speech recognition of voice in, for the times of their
+// words, which the captions follow (design: Demos → Subtitles and silent demos).
 
 import type { Subprocess } from 'bun';
+import { rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import type { HeldVoice } from '../../plugin/skills/demo/lib/voices.ts';
@@ -34,12 +39,18 @@ export interface ClipRequest {
 }
 
 /**
- * What the voice heard of its clip (`qwen3.py`), passed on as it says it: a line per sentence, or
- * why it heard none.
+ * What the voice heard of its clip (`qwen3.py`), passed on as it says it: a line per sentence and
+ * the clip in timed pieces, or why it heard none.
  */
-export type Hearing = { heard?: unknown[]; unheard?: string };
+export type Hearing = { heard?: unknown[]; timed?: unknown[]; unheard?: string };
 
 export type ClipReply = ({ ok: true; seconds: number; wav?: string } & Hearing) | { error: string };
+
+/** A clip heard back (`hear`): what was heard in pieces, each with the second it starts at, or why nothing was. */
+export type HeardBack = { timed: [string, number][] } | { unheard: string };
+
+/** How long hearing a clip back may take: a cold start of the recognition loads its model, about 1 GB. */
+export const HEAR_CLIP_MS = 120_000;
 
 /** How long the voice stays loaded after the last clip: the next render within it skips loading the model. */
 export const NARRATION_IDLE_MS = 5 * 60_000;
@@ -94,8 +105,35 @@ export class NarrationHost {
       /** The clock for the silence deadlines: tests expire them by hand. */
       deadline?: Deadline;
       log?: (line: string) => void;
+      /**
+       * Hears a WAV back for the times of its words, as walkthroughs do (main.ts); a string says why
+       * it cannot (voice in through a cloud service). None: nothing hears here.
+       */
+      hear?: (wav: string, language: ClipRequest['language']) => Promise<[string, number][] | string>;
+      hearMs?: number;
     },
   ) {}
+
+  /** Hears a render's clip back (`wav`: its bytes) for the times of its words. */
+  async hear(wav: Uint8Array, language: ClipRequest['language']): Promise<HeardBack> {
+    if (!this.o.hear) return { unheard: 'Obeya hears nothing back here' };
+    const file = join(tmpdir(), `obeya-hear-${crypto.randomUUID()}.wav`);
+    writeFileSync(file, wav);
+    let expire = () => {};
+    const late = new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve(`hearing it back took longer than ${Math.round((this.o.hearMs ?? HEAR_CLIP_MS) / 1000)} s`), this.o.hearMs ?? HEAR_CLIP_MS);
+      expire = () => clearTimeout(timer);
+    });
+    try {
+      const heard = await Promise.race([this.o.hear(file, language), late]);
+      return typeof heard === 'string' ? { unheard: heard } : { timed: heard };
+    } catch (e) {
+      return { unheard: `hearing it back failed: ${messageOf(e)}` };
+    } finally {
+      expire();
+      rmSync(file, { force: true });
+    }
+  }
 
   /** Synthesises one clip once its turn comes; the voice starts first when it is not loaded. */
   clip(request: ClipRequest): Promise<ClipReply> {
@@ -158,7 +196,11 @@ export class NarrationHost {
     if (reply === 'stuck') return this.stuck(voice, 'making a clip', this.o.sentenceMs ?? NARRATION_SENTENCE_MS);
     if (!reply) return this.died(voice);
     if (typeof reply.error === 'string') return { error: reply.error };
-    const hearing: Hearing = Array.isArray(reply.heard) ? { heard: reply.heard } : typeof reply.unheard === 'string' ? { unheard: reply.unheard } : {};
+    const hearing: Hearing = Array.isArray(reply.heard)
+      ? { heard: reply.heard, ...(Array.isArray(reply.timed) ? { timed: reply.timed } : {}) }
+      : typeof reply.unheard === 'string'
+        ? { unheard: reply.unheard }
+        : {};
     return { ok: true, seconds: typeof reply.seconds === 'number' ? reply.seconds : 0, ...hearing };
   }
 
@@ -256,6 +298,15 @@ export class NarrationHost {
     this.o.log?.(`Obeya: narration voice ends (${why})`);
     endGently(voice.child);
   }
+}
+
+/** A request to hear a clip back as it comes over HTTP, checked: the WAV in base64 and the narration's language. */
+export function parseHearRequest(input: unknown): { wav: Uint8Array; language: ClipRequest['language'] } | string {
+  if (!input || typeof input !== 'object') return 'a JSON object is expected';
+  const { wav, language } = input as Record<string, unknown>;
+  if (typeof wav !== 'string' || !wav) return 'wav is missing';
+  if (language !== 'de' && language !== 'en') return 'language must be de or en';
+  return { wav: Buffer.from(wav, 'base64'), language };
 }
 
 /**

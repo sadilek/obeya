@@ -1,11 +1,11 @@
 // A demo video's player in the look of the walkthroughs' (player.css): under the picture the sentence
-// being spoken as a caption, the word being spoken marked, two lines at a time, switched with CC or
+// being spoken as a caption, the word being spoken marked (where the cue says its words start, else by estimate), two lines at a time, switched with CC or
 // C, and under that the controls, the progress bar in a segment per chapter. The card (src/ui/detail.tsx) and the shared demo pages
 // (src/server/demo-page.ts) play their videos in it. A page carries it as its source
 // (`(${videoPlayer})(…)`), so the function holds all it needs; what it takes from elsewhere comes in
 // `lib`, each piece as self-contained.
 
-import type { captionPages, pageOf } from './caption-pages';
+import type { captionPages, cueWords, pageOf, spokenWord } from './caption-pages';
 
 /** The player's words, in the interface's or the page's language. */
 export interface PlayerWords {
@@ -43,6 +43,8 @@ export interface PlayerOptions {
 export interface PlayerLib {
   captionPages: typeof captionPages;
   pageOf: typeof pageOf;
+  cueWords: typeof cueWords;
+  spokenWord: typeof spokenWord;
   preferredTrack: (tracks: readonly string[], preferred: readonly string[]) => string | undefined;
 }
 
@@ -308,34 +310,27 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
   const ro = new ResizeObserver(fit);
   ro.observe(caption);
   void document.fonts?.ready.then(fit);
-  let paged: { text: string; words: string[]; starts: number[] } | null = null;
+  /** The cue shown: its text as written (`raw`), its words, where each starts where the cue says (else none), and its pages. */
+  let paged: { raw: string; words: string[]; times: number[] | null; starts: number[] } | null = null;
   /** What the caption shows: the page's words, the word marked in it (-1: none), whether it points. */
   let shownKey: string | null = null;
-  /** The words of the cue being spoken, and how far into it the video is, 0 to 1. */
-  const cue = (): { text: string; share: number } => {
+  /** The cue being spoken, and how far into it the video is, 0 to 1. */
+  const cue = (): { raw: string; share: number } => {
     const cues = track?.activeCues;
     const c = cues?.length ? (cues[cues.length - 1] as VTTCue) : null;
-    if (!c) return { text: '', share: 0 };
-    const text = (c.text ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-    return { text, share: c.endTime > c.startTime ? (video.currentTime - c.startTime) / (c.endTime - c.startTime) : 0 };
+    if (!c) return { raw: '', share: 0 };
+    return { raw: c.text ?? '', share: c.endTime > c.startTime ? (video.currentTime - c.startTime) / (c.endTime - c.startTime) : 0 };
   };
   const drawCaption = () => {
     if (caption.hidden) return;
-    const { text, share } = cue();
-    if (paged?.text !== text) {
-      const words = text ? text.split(' ') : [];
-      paged = { text, words, starts: measure ? lib.captionPages(words, measure.widthOf, measure.line) : [0] };
+    const { raw, share } = cue();
+    if (paged?.raw !== raw) {
+      const { words, times } = lib.cueWords(raw);
+      paged = { raw, words, times, starts: measure ? lib.captionPages(words, measure.widthOf, measure.line) : [0] };
     }
-    // the word being spoken, by its letters' share of the cue, as the cue's own time is its sentence's share of the scene's clip
+    // the word being spoken: where the narration was heard saying it, else by its letters' share of the cue
+    const word = lib.spokenWord(paged, video.currentTime, share);
     const { words, starts: pages } = paged;
-    const weights = words.map((x) => x.length + 2);
-    const total = weights.reduce((a, b) => a + b, 0) || 1;
-    let word = -1;
-    let at = 0;
-    for (const [k, x] of weights.entries()) {
-      if (share * total >= at) word = k;
-      at += x;
-    }
     const page = lib.pageOf(pages, word);
     const from = pages[page]!;
     const shown = words.slice(from, pages[page + 1] ?? words.length);

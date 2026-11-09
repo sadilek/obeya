@@ -249,7 +249,12 @@ const commitOf = () => {
   return ranFrom ?? (checkout && headOf(checkout));
 };
 const forge = process.env.OBEYA_FORGE_FILE ? fileForge(process.env.OBEYA_FORGE_FILE) : routedForge(ghForge, forgejoForge, originOf, (remote) => onGitHub(remote));
-const narration = new NarrationHost({ argv: (voice, language) => qwen3Serve(voice, language, home), log: (line) => console.log(line) });
+const narration = new NarrationHost({
+  argv: (voice, language) => qwen3Serve(voice, language, home),
+  log: (line) => console.log(line),
+  // a render's clips heard back as a walkthrough's sentences are, below
+  hear: (wav, language) => (cloudInUse(home) ? Promise.resolve('voice in runs through a cloud service, which gives no times of words') : transcriber.local.timed(wav, language)),
+});
 // what a demo's narration reaches of Obeya, for the voice it holds loaded (narration.ts): the
 // narration and nothing else, from a worker here as from one on another machine (design: Hosts)
 const narrationServer = serveNarration(narration);

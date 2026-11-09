@@ -448,8 +448,9 @@ Obeya's tools and hooks over its stdin and stdout. Before a host's first session
 owner's demo settings without a key file (no API key goes to a host) and without the demo directory
 (a path of this machine: demos there go into the host's `~/demos`, which the brief names), and that is the session's
 `OBEYA_HOME`. Its `OBEYA_URL` is a port forwarded
-(`-R`) to a server of Obeya's that answers only narration clips, inline as base64, so demos rendered
-there get the owner's voice, which only this machine runs. A Codex session's hooks reach their
+(`-R`) to a server of Obeya's that answers only narration clips, inline as base64, and hearing such
+a clip back for its captions' times, so demos rendered there get the owner's voice, which only this
+machine runs. A Codex session's hooks reach their
 session's server here through a port of their own forwarded the same way.
 
 Codex there runs on the host's own Codex login: none travels, since Codex keeps its login as a file

@@ -138,7 +138,23 @@ A translation keeps the sentences one to one, or it is refused, so every track s
 After the narration changes, a translation made for the old one is set aside
 (`<language>.stale.json`) and asked for again.
 
-With a voice, a scene's clip is shared out over its sentences by their length. With the voice
+With a voice, each clip is heard back with speech recognition for the times of its words: Qwen3
+hears its own sentences already (see A voice that stays loaded) and says what it heard of the whole
+clip in pieces (parts of words), each with the second it starts at; a clip of any other voice, or
+one cached from before, goes to Obeya (`POST /api/narration/hear`, the WAV inline as base64, with
+the narration's language), which hears it with the recognition of voice in on its machine, as it
+hears a walkthrough's sentences (see The Koordinator → Walkthroughs). The scene's sentences and what
+was heard are lined up letter by letter, so a word starts where its first letter was heard and one
+heard nowhere gets a start between its neighbours' by its length. Each sentence's cue starts with
+its first word and lasts until the next sentence's first word (the scene's first from its narration's
+start, the last to the end of its clip), and the narration's own track, `captions.vtt` and its
+`captions.<language>.vtt`, gives each word after a cue's first its start as a WebVTT timestamp
+(`It <00:00:12.000>shows <00:00:12.250>the`), each later than the one before and within its cue;
+translations share the cues, without timestamps, since their words are not the ones heard. What was
+heard stays with the cached clip, so a render after a visual fix hears nothing again. A clip that
+cannot be heard back (no Obeya, voice in through a cloud service, which gives no times of words, a
+recognition that fails or takes over 2 minutes) is shared out over its sentences by their length,
+without timestamps, and the render says why once. With the voice
 `none` there is no synthesis, no audio track and nothing to install: each sentence stays as long as
 it takes to read in the slowest to read of its tracks' languages (15 characters a second, a wide character as in
 Chinese counting twice, at least 2 s), and `untilSpoken` waits for that, so demo scripts are the same
@@ -270,12 +286,13 @@ a cached clip keeps what was heard of it beside it. None of it goes onto the rep
 recognition that fails to load leaves the sentences unheard, and the review table says so once.
 Hearing back belongs to the Qwen3 voice: no setting turns it off, and the setup check has no line
 for it. Under Obeya the voice Obeya holds hears too: the clip request carries the script beside the
-text, the reply what was heard.
+text, the reply what was heard. The kept take's pieces as Parakeet heard them, each sentence's from
+where it starts in the clip, are the times of the captions' words (see Subtitles and silent demos).
 
 Under Obeya the server holds this voice across renders as a child process. The spec says which voice
 Obeya may hold (reference clip or stock speaker); the server builds the command itself, never from a
 request. Workers and the dialog's sample get `OBEYA_URL`, the address of a narration server that
-answers narration clips and nothing else, so a worker holds no key to the rest of the API (see Who
+answers narration clips, and hearing a clip back (see Subtitles and silent demos), and nothing else, so a worker holds no key to the rest of the API (see Who
 may talk to it). A clip goes to `POST /api/narration/clip` (`{voice, text, inline: true,
 language}`, JSON only, so another page cannot send one without a preflight) and comes back as `ok`
 with its seconds and WAV, or `error`; Obeya's own server answers the route too, with the owner's key,
@@ -557,9 +574,10 @@ button.
 The demo plays in the walkthroughs' player (see The Koordinator → Walkthroughs), on the card and on
 a shared page alike, built by one piece of code that the page carries as its source: the picture,
 under it the sentence being spoken as a caption to read along, two lines at a time, with a pointer
-on the word being spoken as in a walkthrough. A demo has no word times: the word is the one its
-letters' share of the cue has reached, as the cue's own times are its sentence's share of the
-scene's clip, and a long cue turns its page with it. Only the narration's track points, in a video
+on the word being spoken as in a walkthrough: the last word whose timestamp in the cue has come
+(see Subtitles and silent demos), the first from the cue's start. A cue without timestamps (a demo
+rendered before them, a clip that was not heard back) marks the word its letters' share of the cue
+has reached instead. A long cue turns its page with the word. Only the narration's track points, in a video
 with sound; a translation or a silent video's captions show the page without a pointer. Under it come
 the controls: back to the start of the chapter (to the one before within its first 3 s) and on
 to the next, play and pause, a progress bar of one segment per chapter, each as long as its chapter,
@@ -670,6 +688,14 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   demo** (2026-11-01): a silent demo needs no other switch, and one more track costs a voiced demo
   only a translation. Captions come a sentence per cue for every demo, so all tracks share their
   times; a scene as one block was too long to read along.
+- **A demo's cues and words are timed by hearing its narration back** (2026-11-09): in fast or
+  slow stretches, cues shared out by length and a word marked by its letters' share ran ahead of
+  the voice or behind it. Qwen3's clips are timed by the hearing they get already, which works
+  without Obeya too; every other voice's by Obeya's voice in, the recognition walkthroughs hear
+  with. The word times go into the cues as WebVTT timestamps, the format's own, so the files stay
+  plain WebVTT that any player reads. Rejected: the voices' own timestamps (only ElevenLabs and
+  Azure give them); hearing Qwen3's clips a second time through Obeya; word times in a file beside
+  the captions, one more file to serve, share and publish.
 - **The narration's language is always a track; the setting adds further ones** (owner, after
   the maintainer's review, 2026-11-04): one rule for voiced and silent demos alike, and nothing to
   explain about when the narration's track is there. Rejected: the list as the only tracks, an empty

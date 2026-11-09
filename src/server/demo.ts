@@ -157,7 +157,8 @@ function cues(dir: string, file = 'captions.vtt'): { start: number; end: number;
   return [...vtt.matchAll(/^(\d+):(\d{2}):(\d{2})\.(\d{3}) --> (\d+):(\d{2}):(\d{2})\.(\d{3})[^\n]*\n([\s\S]*?)(?:\n\s*\n|$)/gm)].map((c) => ({
     start: time(c[1]!, c[2]!, c[3]!, c[4]!),
     end: time(c[5]!, c[6]!, c[7]!, c[8]!),
-    text: c[9]!.replace(/\s+/g, ' ').trim(),
+    // without the timestamps of its words (`<00:00:03.120>`)
+    text: c[9]!.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
   }));
 }
 

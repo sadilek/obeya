@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { captionPages, pageOf } from './caption-pages';
+import { captionPages, cueWords, pageOf, spokenWord } from './caption-pages';
 
 const words = (s: string) => s.split(' ');
 /** A monospaced measure: 10 px a character. */
@@ -48,4 +48,14 @@ test('the page shown is the one with the word being spoken, the first before any
   expect(pageOf([0, 6, 12], 5)).toBe(0);
   expect(pageOf([0, 6, 12], 6)).toBe(1);
   expect(pageOf([0, 6, 12], 20)).toBe(2);
+});
+
+test("a demo cue's words start where its timestamps say, the first with the cue; a cue without them goes by its letters", () => {
+  const timed = cueWords('Open <00:00:10.450>the <00:01:10.700>card.');
+  expect(timed).toEqual({ words: ['Open', 'the', 'card.'], times: [-Infinity, 10.45, 70.7] });
+  expect([10, 10.5, 70.69, 71].map((now) => spokenWord(timed, now, 0))).toEqual([0, 1, 1, 2]);
+  const plain = cueWords('Open  the\ncard.');
+  expect(plain).toEqual({ words: ['Open', 'the', 'card.'], times: null });
+  expect([0, 0.4, 0.99].map((share) => spokenWord(plain, 0, share))).toEqual([0, 1, 2]);
+  expect(spokenWord(cueWords(''), 0, 0)).toBe(-1);
 });

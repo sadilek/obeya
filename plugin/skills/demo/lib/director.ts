@@ -16,7 +16,7 @@ import { launchChromium, SILENT_SPEECH } from '../../../lib/chromium.ts';
 import { languageName, preferredTrack } from './locale.ts';
 import { type DemoSettings, demoSettingsHere, type NarrationLanguage, silent, subtitleLanguages, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
-import { narrationTrack, narrationVtt, readingTimes, sentencesOf, sharedOut, subtitleTracks, type Track, trackFile, trackVtt, vttTime } from './subtitles.ts';
+import { narrationTrack, narrationVtt, readingTimes, sentencesOf, spokenTimes, subtitleTracks, type Track, trackFile, trackVtt, vttTime } from './subtitles.ts';
 import { CLOCK, type Cut, type Frame, frameDurations, laterLabel, mmss, onPaintTime, readClock, videoTime } from './timeline.ts';
 import { ttsArgs, voiceSpec } from './voices.ts';
 
@@ -94,6 +94,8 @@ export interface Clip {
   heard?: { script: string; heard: string | null; stumbled?: true; misheard?: [string, string][] }[];
   /** Why such a voice heard nothing of the clip. */
   unheard?: string;
+  /** What was heard of the clip in pieces (parts of words), each with the second it starts at: the captions' times. */
+  timed?: [string, number][];
 }
 
 /**
@@ -811,9 +813,9 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   let clips: Clip[] | undefined;
   writeJobs(says, work);
   if (!SILENT) clips = synthesize(says, work);
-  // each sentence's time: its share of the scene's clip, or as long as it takes to read in the slowest of the subtitles' languages
-  const timings = spec.scenes.map((_, i) => (clips ? sharedOut(clips[i]!.seconds, narration.scenes[i]!) : readingTimes(tracks.map((t) => t.scenes[i]!))));
-  const speech = timings.map((t) => t.reduce((a, b) => a + b, 0));
+  // each sentence's time: from its first word as the clip was heard back, or as long as it takes to read in the slowest of the subtitles' languages
+  const timings = spec.scenes.map((_, i) => (clips ? spokenTimes(clips[i]!.seconds, narration.scenes[i]!, clips[i]!.timed) : { sentences: readingTimes(tracks.map((t) => t.scenes[i]!)) }));
+  const speech = timings.map((t) => t.sentences.reduce((a, b) => a + b, 0));
 
   const { browser, ctx, page, d } = await openPage(spec, viewport, work, true);
   // this take's cuts, none so far (`Director.#cut`): after the login, which may stage a playback of the take before
@@ -848,7 +850,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     }
     // In video time: what `skip` cut out is gone from the scenes after it.
     const at = videoTime(start, t0, d.cuts);
-    marks.push({ title: scene.title, start: at, speechStart: at + LEAD_SECONDS, speechEnd: at + LEAD_SECONDS + speech[i]!, sentences: timings[i]! });
+    marks.push({ title: scene.title, start: at, speechStart: at + LEAD_SECONDS, speechEnd: at + LEAD_SECONDS + speech[i]!, ...timings[i]! });
   }
   const tEnd = now() + 0.8;
   try {
@@ -875,13 +877,17 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   if (d.cuts.length) console.log(`cut ${d.cuts.length / 2}× (${Math.round(d.cuts.reduce((s, c) => s + c.to - c.from, 0))} s of waiting)`);
 }
 
-/** A scene's place in the video: where it starts, where its narration does and ends, and how long each of its sentences stays. */
+/**
+ * A scene's place in the video: where it starts, where its narration does and ends, how long each
+ * of its sentences stays and, where its clip was heard back, where each of their words starts.
+ */
 export interface Mark {
   title: string;
   start: number;
   speechStart: number;
   speechEnd: number;
   sentences: number[];
+  words?: number[][];
 }
 
 /** What a take is made into: its frames (`list`, an ffconcat list), its clips and where each scene and clip sits. */
@@ -944,7 +950,7 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
 
   // a track of an earlier render in a language no longer among them goes
   for (const f of fs.readdirSync(outDir)) if (/^captions\.[^.]+\.vtt$/.test(f) && !tracks.some((t) => trackFile(t.language) === f)) fs.rmSync(path.join(outDir, f));
-  for (const t of tracks) fs.writeFileSync(path.join(outDir, trackFile(t.language)), trackVtt(t, marks));
+  for (const t of tracks) fs.writeFileSync(path.join(outDir, trackFile(t.language)), trackVtt(t, marks, t.language === spoken.language));
   fs.writeFileSync(path.join(outDir, 'captions.vtt'), narrationVtt(spoken, marks, tracks.map((t) => t.language)));
   // The scenes as chapters, for a player outside Obeya (the hero video on obeya.si reads them).
   const chapters = ['WEBVTT', ''];

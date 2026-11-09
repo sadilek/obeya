@@ -16,7 +16,7 @@ import { type Focus, type Heard, type Input, isField } from './commands';
 import { holdsNotes } from '../core/queue';
 import type { Config } from './config';
 import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './demo';
-import { type NarrationHost, parseClipRequest } from './narration';
+import { type NarrationHost, parseClipRequest, parseHearRequest } from './narration';
 import type { Restarter } from './self-update';
 import { looping, silence, type Transcriber } from './voice';
 import { CloudError } from './voice-cloud';
@@ -108,18 +108,36 @@ function clipRoute(narration: NarrationHost, remote = false) {
   };
 }
 
+/** A render's clip heard back for the times of its words (narration.ts), the WAV in the request. */
+function hearRoute(narration: NarrationHost) {
+  return async (req: Request, srv: Bun.Server<unknown>) => {
+    if (!req.headers.get('content-type')?.startsWith('application/json')) return Response.json({ code: 'invalid', error: 'JSON only' }, { status: 415 });
+    const request = parseHearRequest(await req.json().catch(() => null));
+    if (typeof request === 'string') return Response.json({ code: 'invalid', error: request }, { status: 400 });
+    // the recognition may load its model first
+    srv.timeout(req, 0);
+    return Response.json(await narration.hear(request.wav, request.language));
+  };
+}
+
 /**
  * What a worker on another machine reaches through the port forwarded to it (design: Hosts): the
- * narration clips and nothing else of Obeya's, as whoever is on that machine reaches the port too.
+ * narration clips, and hearing them back, and nothing else of Obeya's, as whoever is on that
+ * machine reaches the port too.
  */
 export function serveNarration(narration: NarrationHost) {
-  const clip = clipRoute(narration, true);
+  const routes: Record<string, (req: Request, srv: Bun.Server<unknown>) => Promise<Response>> = {
+    '/api/narration/clip': clipRoute(narration, true),
+    '/api/narration/hear': hearRoute(narration),
+  };
   return Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
     idleTimeout: 120,
-    fetch: (req, srv) =>
-      refusal(req, LOCAL_HOSTS) ?? (req.method === 'POST' && new URL(req.url).pathname === '/api/narration/clip' ? clip(req, srv) : notFound()),
+    fetch: (req, srv) => {
+      const route = req.method === 'POST' ? routes[new URL(req.url).pathname] : undefined;
+      return refusal(req, LOCAL_HOSTS) ?? (route ? route(req, srv) : notFound());
+    },
   });
 }
 
@@ -713,6 +731,8 @@ export function serve(
       },
       // a demo's narration clip, in the voice Obeya holds loaded across renders (narration.ts)
       '/api/narration/clip': { POST: narration ? clipRoute(narration) : notFound },
+      // and heard back for the times of its words
+      '/api/narration/hear': { POST: narration ? hearRoute(narration) : notFound },
       // „Für alle ins Repository übernehmen“: a repository's settings for this machine into its .obeya/settings.json
       '/api/config/share-settings': { POST: needs(config, async (c, req) => c.shareSettings(await req.json())) },
       // a repository's commands, new or changed on its default branch, confirmed by the owner: they count from now on

@@ -26,7 +26,7 @@ const python = (args: string[], env: Record<string, string> = {}, input?: string
  * A voice that serves until its stdin ends, writing a short silent WAV per request. Given a second
  * argument, it is loaded only once that file exists. `FAKE_HANG_AT` gives no answer to that
  * request, as a stuck Qwen3 voice did; it reports a sentence done first. Given the script as
- * written, it says it heard the text as said.
+ * written, it says it heard the text as said; with `FAKE_TIMED`, it gives the times of its words.
  */
 const FAKE_VOICE = String.raw`
 import json, os, sys, time, wave
@@ -54,6 +54,8 @@ while line := sys.stdin.readline():
         fh.setnchannels(1); fh.setsampwidth(2); fh.setframerate(24000); fh.writeframes(b"\0\0" * 2400)
     open(log, "a").write(request["language"] + ":" + request["text"] + "\n")
     heard = {"heard": [{"script": request["script"], "heard": request["text"]}]} if "script" in request else {}
+    if os.environ.get("FAKE_TIMED"):
+        heard["timed"] = [[" " + request["text"], 0.01]]
     answer({"ok": True, "seconds": 0.01, **heard})
 open(log, "a").write("end\n")
 `;
@@ -95,12 +97,14 @@ describe('a voice that stays loaded', () => {
 
   test('gets the script without its audio tags, which only ElevenLabs v3 and v4 read, and a pause tag as silence', () => {
     writeFileSync(join(dir, 'jobs.json'), JSON.stringify([{ id: 's0', text: 'Eins. [short pause] Zwei [whispers] drei. [long pause] Vier.' }]));
-    expect(narrate().status).toBe(0);
+    expect(narrate({ FAKE_TIMED: '1' }).status).toBe(0);
     // the parts between the pauses one by one, other tags left out
     expect(log()).toEqual(['start', 'de:Eins.', 'de:Zwei drei.', 'de:Vier.', 'end']);
     // three parts of 0.1 s with 0.5 s and 1.5 s of silence between them
     const clip = JSON.parse(readFileSync(join(dir, 'out', 'tts.json'), 'utf8')).clips[0];
     expect(clip.seconds).toBeCloseTo(2.3, 2);
+    // the times of the words heard in each part, from where the part starts in the clip
+    expect(clip.timed).toEqual([[' Eins.', 0.01], [' Zwei drei.', 0.61], [' Vier.', 2.21]]);
   });
 
   test('a sample starts it once and ends it', () => {
@@ -262,6 +266,32 @@ describe('a voice Obeya holds', () => {
     expect(log().filter((l) => l === 'start')).toHaveLength(1);
   }, 60_000);
 
+  test('hears back each clip its voice did not hear itself, once, for the times of its words; one Obeya cannot hear goes without', async () => {
+    const asked: string[] = [];
+    const hearing = new NarrationHost({
+      argv: () => [...UV, join(dir, 'voice.py'), join(dir, 'log'), go()],
+      hear: async (wav, language) => (asked.push(`${language}:${readFileSync(wav).subarray(0, 4).toString()}`), [[' Eins', 0.05]]),
+    });
+    const hears = serveNarration(hearing);
+    try {
+      const first = await render('a', { OBEYA_URL: hears.url.href });
+      expect(first.status).toBe(0);
+      expect(asked).toEqual(['de:RIFF', 'de:RIFF', 'de:RIFF']);
+      expect(JSON.parse(readFileSync(join(dir, 'a', 'tts.json'), 'utf8')).clips.map((c: { timed?: unknown }) => c.timed)).toEqual([[[' Eins', 0.05]], [[' Eins', 0.05]], [[' Eins', 0.05]]]);
+      // cached with its clip: the next render asks no more
+      expect((await render('a', { OBEYA_URL: hears.url.href })).status).toBe(0);
+      expect(asked).toHaveLength(3);
+    } finally {
+      hears.stop(true);
+      hearing.stop();
+    }
+    // an Obeya that hears nothing (here: the server of this describe) leaves the clips without times, and says why once
+    const deaf = await render('b', { OBEYA_URL: server.url.href });
+    expect(deaf.status).toBe(0);
+    expect(deaf.stderr.match(/not heard back/g)).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(dir, 'b', 'tts.json'), 'utf8')).clips.every((c: { timed?: unknown }) => !c.timed)).toBe(true);
+  }, 60_000);
+
   // the lock is held here with flock, which Windows lacks
   test.skipIf(process.platform === 'win32')('a render does not wait for the machine to synthesise through Obeya, and falls back to its own voice without Obeya', async () => {
     // another render holds the lock, as one with a model of its own does
@@ -411,14 +441,22 @@ def load_model(repo):
       join(dir, 'fake', 'onnx_asr.py'),
       String.raw`
 import json, os
+class Heard:
+    # a piece per word, a tenth of a second apart
+    def __init__(self, text):
+        self.text = text
+        self.tokens = [" " + w for w in text.split()]
+        self.timestamps = [i / 10 for i in range(len(self.tokens))]
 class Model:
     heard = json.loads(os.environ["FAKE_HEARD"])
+    def with_timestamps(self):
+        return self
     def recognize(self, samples, sample_rate):
         assert sample_rate == 24000
         heard = Model.heard.pop(0)
         if heard is None:
             raise RuntimeError("out of memory")
-        return heard
+        return Heard(heard)
 def load_model(name, quantization, sess_options, providers):
     assert name == "nemo-parakeet-tdt-0.6b-v3" and quantization == "int8"
     return Model()
@@ -464,6 +502,15 @@ def load_model(name, quantization, sess_options, providers):
     const failing = serve([stumbled, null]);
     expect(failing.takes).toBe(2);
     expect(failing.reply).toMatchObject({ ok: true, heard: [{ heard: stumbled, stumbled: true }] });
+    // the clip in timed pieces, the kept take's: each sentence's from where it starts in the clip
+    expect(again.reply.timed.slice(0, 2)).toEqual([[' Before', 0], [' the', 0.1]]);
+    const two = python(
+      [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'en', '--reference', join(dir, 'ref.wav'), '--serve'],
+      { PYTHONPATH: join(dir, 'fake'), FAKE_LOG: join(dir, 'log'), FAKE_HEARD: JSON.stringify(['One two.', 'Three four.']) },
+      `${JSON.stringify({ text: 'One two. Three four.', out: join(dir, 'b.wav') })}\n`,
+    );
+    // a take of 0.1 s, then the gap of 0.28 s between sentences
+    expect(JSON.parse(two.stdout.trim().split('\n').at(-1)!).timed).toEqual([[' One', 0], [' two.', 0.1], [' Three', 0.38], [' four.', 0.48]]);
     // without Parakeet the sentences go unheard, and the reply says why
     rmSync(join(dir, 'fake', 'onnx_asr.py'));
     const deaf = serve([]);

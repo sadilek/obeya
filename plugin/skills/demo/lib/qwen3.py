@@ -13,12 +13,14 @@ one JSON object per line each way (what `tts.py` speaks with a voice whose spec 
     → {"ready": true}                                      once the model is loaded
     ← {"text": "...", "script": "...", "out": "/x/clip.wav", "language": "de", "id": 7}
     → {"sentence": 1, "of": 3, "id": 7}                    once per sentence done
-    → {"ok": true, "seconds": 4.2, "heard": [...], "id": 7}  or  {"error": "...", "id": 7}
+    → {"ok": true, "seconds": 4.2, "heard": [...], "timed": [...], "id": 7}  or  {"error": "...", "id": 7}
 
 `script`, `language` and `id` are optional. `script` is the text as written, where `text` has words
 respelt for the voice (`lexicon.qwen3.<language>.json`); it is what the clip is heard against.
 `heard` holds a line per sentence, `{"script", "heard"}` with `"stumbled": true` and `"misheard":
-[[word, heard as], ...]` where they apply; a voice that cannot hear says `"unheard": "why"` instead.
+[[word, heard as], ...]` where they apply; `timed` what was heard of the whole clip in pieces (parts
+of words), `[[text, start], ...]`, each with the second of the clip it starts at, which the
+captions take their times from. A voice that cannot hear says `"unheard": "why"` instead.
 
 The sentence lines tell whoever asked that the voice is still at work: a voice that says nothing
 for minutes is stuck, and gets ended.
@@ -316,12 +318,13 @@ class Ear:
             # as Obeya's voice input: more than 4 threads only cost
             options = onnxruntime.SessionOptions()
             options.intra_op_num_threads = min(4, os.cpu_count() or 4)
-            self._model = onnx_asr.load_model(EAR_MODEL, quantization="int8", sess_options=options, providers=["CPUExecutionProvider"])
+            self._model = onnx_asr.load_model(EAR_MODEL, quantization="int8", sess_options=options, providers=["CPUExecutionProvider"]).with_timestamps()
         except Exception as failed:  # not installed, the model not downloadable, out of memory
             self.unheard = f"Parakeet did not load: {type(failed).__name__}: {failed}"[:400]
             print(f"qwen3: not hearing the narration back, {self.unheard}", file=sys.stderr, flush=True)
 
-    def hear(self, samples, rate: int) -> str | None:
+    def hear(self, samples, rate: int) -> tuple[str, list] | None:
+        """What was heard, and the same in pieces, `[text, start]`, each with the second it starts at."""
         if self._model is None:
             return None
         import numpy as np
@@ -331,16 +334,18 @@ class Ear:
             samples = np.interp(np.arange(0, len(samples), rate / 16000), np.arange(len(samples)), samples).astype(np.float32)
             rate = 16000
         try:
-            return str(self._model.recognize(samples, sample_rate=rate)).strip()
+            heard = self._model.recognize(samples, sample_rate=rate)
+            return str(heard.text).strip(), [[token, round(float(start), 3)] for token, start in zip(heard.tokens or [], heard.timestamps or [])]
         except Exception as failed:
             print(f"qwen3: could not hear a sentence back, {type(failed).__name__}: {failed}", file=sys.stderr, flush=True)
             return None
 
 
 def said(speak, rate, ear, sentence: str, script: str, language: str):
-    """The samples of `sentence` and what was heard of them, `{"script", "heard"}` with
-    `"stumbled"` and `"misheard"` where they apply; made again while the voice runs on to its last
-    frame or stumbles, and the take that differs least from `script` is kept."""
+    """The samples of `sentence`, what was heard of them, `{"script", "heard"}` with `"stumbled"`
+    and `"misheard"` where they apply, and the same in timed pieces (none where nothing was heard);
+    made again while the voice runs on to its last frame or stumbles, and the take that differs
+    least from `script` is kept."""
     frames = frames_for(sentence)
     best = None
     for attempt in range(1, ATTEMPTS + 1):
@@ -348,54 +353,62 @@ def said(speak, rate, ear, sentence: str, script: str, language: str):
         if len(samples) >= (frames - 1) * rate() / FRAMES_PER_SECOND:
             print(f"qwen3: ran on to {frames / FRAMES_PER_SECOND:.0f} s in attempt {attempt}: {sentence}", file=sys.stderr, flush=True)
             continue
-        heard = ear.hear(samples, rate())
-        if heard is None:
+        hearing = ear.hear(samples, rate())
+        if hearing is None:
             # the recognition failed on this take: the best one heard so far, else this one unheard
             if best:
                 break
-            return samples, {"script": script, "heard": None}
+            return samples, {"script": script, "heard": None}, None
+        heard, timed = hearing
         off = differing(script, heard, language)
         if best is None or off < best[0]:
-            best = (off, samples, heard)
+            best = (off, samples, heard, timed)
         if off < STUMBLE_LETTERS:
             break
         print(f"qwen3: stumbled in attempt {attempt}, {off} letters differ: {script} → heard: {heard}", file=sys.stderr, flush=True)
     if best is None:
         raise ValueError(f"the voice ran on {ATTEMPTS} times in a row, without ending the sentence; it may stumble over a word in it, which a respelling in lexicon.qwen3.<language>.json helps with: {sentence}")
-    off, samples, heard = best
+    off, samples, heard, timed = best
     report = {"script": script, "heard": heard}
     if off >= STUMBLE_LETTERS:
         report["stumbled"] = True
     elif words := misheard(script, heard, language):
         report["misheard"] = words
-    return samples, report
+    return samples, report, timed
 
 
-def clip(speak, rate, ear, text: str, language: str, out: str, script: str | None = None, done=lambda n, of: None) -> list[dict]:
-    """Writes the clip of `text` to `out`; what was heard of it, a line per sentence."""
+def clip(speak, rate, ear, text: str, language: str, out: str, script: str | None = None, done=lambda n, of: None) -> tuple[list[dict], list | None]:
+    """Writes the clip of `text` to `out`; what was heard of it, a line per sentence, and in timed
+    pieces across the clip (None when a sentence went unheard)."""
     import numpy as np
 
-    chunks, heard = [], []
+    chunks, heard, timed, at = [], [], [], 0
     parts = sentences(text)
     # the script as written, sentence by sentence; a respelling that moved a sentence's end leaves the text as said
     scripts = sentences(script) if script else []
     if len(scripts) != len(parts):
         scripts = parts
     for n, (sentence, written) in enumerate(zip(parts, scripts), 1):
-        samples, report = said(speak, rate, ear, sentence, written, language)
-        chunks += [samples, np.zeros(int(SENTENCE_GAP_SECONDS * rate()), dtype=np.float32)]
+        samples, report, pieces = said(speak, rate, ear, sentence, written, language)
+        gap = np.zeros(int(SENTENCE_GAP_SECONDS * rate()), dtype=np.float32)
+        if timed is not None and pieces is not None:
+            timed += [[piece, round(start + at / rate(), 3)] for piece, start in pieces]
+        else:
+            timed = None
+        chunks += [samples, gap]
+        at += len(samples) + len(gap)
         heard.append(report)
         done(n, len(parts))
     if not chunks:
         raise ValueError("nothing to say")
     write_wav(out, np.concatenate(chunks[:-1]), rate())
-    return heard
+    return heard, timed
 
 
-def hearing(ear, heard: list[dict]) -> dict:
+def hearing(ear, heard: list[dict], timed: list | None) -> dict:
     """What a reply says of the hearing: each sentence (`"heard": null` for one that could not be
-    heard), or why none was."""
-    return {"unheard": ear.unheard} if ear.unheard else {"heard": heard}
+    heard) and the clip in timed pieces where every sentence was heard, or why none was."""
+    return {"unheard": ear.unheard} if ear.unheard else {"heard": heard} | ({"timed": timed} if timed is not None else {})
 
 
 def serve(args) -> None:
@@ -423,8 +436,8 @@ def serve(args) -> None:
             if language not in LANGUAGES:
                 raise ValueError(f"unknown language {language!r}; known: {', '.join(LANGUAGES)}")
             started = time.monotonic()
-            heard = clip(speak, rate, ear, request["text"], language, request["out"], request.get("script"), lambda n, of: answer({"sentence": n, "of": of, **reply}))
-            reply |= {"ok": True, "seconds": round(time.monotonic() - started, 2), **hearing(ear, heard)}
+            heard, timed = clip(speak, rate, ear, request["text"], language, request["out"], request.get("script"), lambda n, of: answer({"sentence": n, "of": of, **reply}))
+            reply |= {"ok": True, "seconds": round(time.monotonic() - started, 2), **hearing(ear, heard, timed)}
         except Exception as failed:  # a bad request or a failed generation; the model stays loaded
             reply |= {"error": f"{type(failed).__name__}: {failed}"[:600]}
         try:
@@ -455,10 +468,10 @@ def main() -> None:
     ear = Ear()
     ear.load()
     try:
-        heard = clip(speak, rate, ear, text, args.language, args.out)
+        heard, timed = clip(speak, rate, ear, text, args.language, args.out)
     except ValueError as failed:
         sys.exit(str(failed))
-    print(json.dumps(hearing(ear, heard), ensure_ascii=False), file=sys.stderr)
+    print(json.dumps(hearing(ear, heard, timed), ensure_ascii=False), file=sys.stderr)
 
 
 if __name__ == "__main__":

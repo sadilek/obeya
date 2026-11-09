@@ -1042,6 +1042,7 @@ const de = {
       '2026-11-08-player':
         'Das Video spielt im Player der Walkthroughs: der Fortschrittsbalken in einem Abschnitt je Kapitel, die Untertitel zum Mitlesen unter dem Bild, mit CC oder C ein- und ausgeschaltet.',
       '2026-11-09-pointer': 'Der Untertitel markiert das Wort, das gerade gesprochen wird, wie im Walkthrough.',
+      '2026-11-09-word-times': 'Der Untertitel markiert jedes Wort in dem Moment, in dem es zu hören ist, wo das Video mit den Zeiten seiner Wörter gerendert wurde.',
       theme: 'Theme geändert: Die Datei .obeya/theme.css des Repositorys ist neu, anders oder entfernt.',
     } satisfies Record<OutdatedBy, string>,
     pages: (n: number) => (n === 1 ? 'eine Seite' : `${n} Seiten`),
@@ -3195,6 +3196,7 @@ const en: Strings = {
       '2026-11-07-canonical': 'For search engines, every page names its one address (rel="canonical"): they list the page once instead of also under variants such as ?alone.',
       '2026-11-08-player': "The video plays in the walkthroughs' player: the progress bar in a segment per chapter, captions to read along under the picture, switched on and off with CC or C.",
       '2026-11-09-pointer': 'The caption marks the word being spoken, as in a walkthrough.',
+      '2026-11-09-word-times': 'The caption marks each word the moment it is heard, where the video was rendered with the times of its words.',
       theme: 'Theme changed: the repository’s .obeya/theme.css is new, different or removed.',
     },
     pages: (n: number) => (n === 1 ? 'one page' : `${n} pages`),

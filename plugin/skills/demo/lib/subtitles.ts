@@ -2,8 +2,11 @@
 // each further one of the demo settings (`subtitleLanguages`), every track with the same cue times.
 // `captions.vtt` holds the narration's cues as well: where in the video it says what (`placeIn` of
 // the server reads it there), and which tracks the demo offers, in order, in its first line (`narrationVtt`). With a voice,
-// a scene's clip is shared out over its sentences by their length; without one (voice `none`), each
-// sentence stays as long as it takes to read in the language that takes longest.
+// each sentence's cue starts with its first word as the clip was heard back (`spokenTimes`), and the
+// narration's own track marks each word's start in its cue (a WebVTT timestamp, `<00:00:03.120>word`),
+// which the player's pointer follows; a clip not heard back is shared out over its sentences by
+// their length, without word times. Without a voice (`none`), each sentence stays as long as it
+// takes to read in the language that takes longest.
 //
 // The translations come from the agent rendering the demo, the way re-voicing gets its own
 // (`revoice.ts`): a render writes the sentences to `.work/subtitles/source.json` and, while a
@@ -15,6 +18,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { heardStarts, wordsOf } from '../../../../src/core/walkthrough.ts';
 import { languageName } from './locale.ts';
 import { untagged } from './timeline.ts';
 
@@ -84,16 +88,40 @@ export function sharedOut(seconds: number, sentences: string[]): number[] {
   return sentences.map((s) => (total ? (seconds * s.length) / total : 0));
 }
 
+/**
+ * How long each sentence of a scene's clip of `seconds` stays, and where each of its words starts,
+ * in seconds of the clip: from what was heard of the clip (`timed`, in pieces with the second each
+ * starts at), lined up letter by letter with the sentences (`heardStarts`), so each sentence's cue
+ * starts with its first word and lasts until the next one's; the first from the clip's start, the
+ * last to its end. A clip not heard back is shared out by length (`sharedOut`), without word times.
+ */
+export function spokenTimes(seconds: number, sentences: string[], timed?: [string, number][]): { sentences: number[]; words?: number[][] } {
+  if (!timed?.length || !sentences.length) return { sentences: sharedOut(seconds, sentences) };
+  const starts = heardStarts(sentences.join(' '), timed, seconds);
+  let k = 0;
+  const words = sentences.map((s) => {
+    const n = wordsOf(s).length;
+    k += n;
+    return starts.slice(k - n, k).map((t) => Math.min(seconds, t));
+  });
+  const from = words.map((w, i) => (i === 0 ? 0 : (w[0] ?? 0)));
+  return { sentences: from.map((t, i) => Math.max(0, (from[i + 1] ?? seconds) - t)), words };
+}
+
 /** A caption track: its language and, per scene, its sentences, one cue each. */
 export interface Track {
   language: string;
   scenes: string[][];
 }
 
-/** Where a scene's narration starts in the video, and how long each of its sentences stays. */
+/**
+ * Where a scene's narration starts in the video, how long each of its sentences stays, and where
+ * each of their words starts, in seconds from the narration's start, where the clip was heard back.
+ */
 export interface Timed {
   speechStart: number;
   sentences: number[];
+  words?: number[][];
 }
 
 export function vttTime(s: number) {
@@ -105,19 +133,40 @@ export function vttTime(s: number) {
   return `${pad(h)}:${pad(m)}:${pad(sec)}.${pad(ms % 1000, 3)}`;
 }
 
-/** A track as WebVTT: each sentence of each scene one after the other from its scene's narration on. */
-export function trackVtt(track: Track, scenes: Timed[]): string {
+/**
+ * A track as WebVTT: each sentence of each scene one after the other from its scene's narration on.
+ * `spoken`: the track is the narration's own, whose words start where the scene's `words` say: each
+ * word after a cue's first gets its start as a timestamp before it, later than the one before and
+ * within the cue, as WebVTT asks.
+ */
+export function trackVtt(track: Track, scenes: Timed[], spoken = false): string {
   const vtt = ['WEBVTT', ''];
   scenes.forEach((scene, i) => {
     let at = scene.speechStart;
     (track.scenes[i] ?? []).forEach((text, j) => {
       const seconds = scene.sentences[j] ?? 0;
-      vtt.push(`${vttTime(at)} --> ${vttTime(at + seconds)}`, text, '');
+      const words = wordsOf(text);
+      const starts = spoken ? scene.words?.[j] : undefined;
+      let said = text;
+      if (starts?.length === words.length && seconds > 0.01) {
+        let last = at;
+        said = words
+          .map((w, k) => {
+            if (k === 0) return w;
+            last = Math.min(at + seconds - 0.001, Math.max(last + 0.001, scene.speechStart + starts[k]!));
+            return `<${vttTime(last)}>${w}`;
+          })
+          .join(' ');
+      }
+      vtt.push(`${vttTime(at)} --> ${vttTime(at + seconds)}`, said, '');
       at += seconds;
     });
   });
   return vtt.join('\n');
 }
+
+/** A cue's text without its tags: the words as they read, the timestamps of the words left out. */
+export const cueText = (text: string) => text.replace(/<[^>]*>/g, '');
 
 /** The file of a track's captions. */
 export const trackFile = (language: string) => `captions.${language}.vtt`;
@@ -126,11 +175,11 @@ export const trackFile = (language: string) => `captions.${language}.vtt`;
 const LISTED = /^\uFEFF?WEBVTT[ \t]+-[ \t]+subtitles:[ \t]*([^\r\n]*)/;
 
 /**
- * The narration's captions as `captions.vtt` holds them: `trackVtt`, whose first line names the
+ * The narration's captions as `captions.vtt` holds them: `trackVtt` with the words' times, whose first line names the
  * languages of the demo's tracks in their order (`WEBVTT - subtitles: de fr`), or `none`.
  */
 export function narrationVtt(narration: Track, scenes: Timed[], tracks: string[]): string {
-  return trackVtt(narration, scenes).replace(/^WEBVTT/, `WEBVTT - subtitles: ${tracks.length ? tracks.join(' ') : 'none'}`);
+  return trackVtt(narration, scenes, true).replace(/^WEBVTT/, `WEBVTT - subtitles: ${tracks.length ? tracks.join(' ') : 'none'}`);
 }
 
 /** The languages of a demo's tracks, in order, as its `captions.vtt` names them; undefined for one from before, which names none and is its only track. */

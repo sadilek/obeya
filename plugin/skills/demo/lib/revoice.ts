@@ -24,7 +24,7 @@ import { isMain } from './here.ts';
 import { LANGUAGE_NAMES, LANGUAGES, type Language } from './locale.ts';
 import { inLanguage, readDemoSettings, silent, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
-import { listedTracks, sentencesOf, sharedOut, type Track, trackFile } from './subtitles.ts';
+import { cueText, listedTracks, sentencesOf, spokenTimes, type Track, trackFile } from './subtitles.ts';
 
 /** What a demo says, in one language: what is translated. */
 export interface Words {
@@ -56,7 +56,7 @@ export function cuesOf(vtt: string): Cue[] {
     .split(/\n\s*\n/)
     .flatMap((block) => {
       const c = /^(\d+):(\d{2}):(\d{2})\.(\d{3}) --> (\d+):(\d{2}):(\d{2})\.(\d{3})[^\n]*\n([\s\S]*)$/m.exec(block.trim());
-      return c ? [{ start: time(c[1]!, c[2]!, c[3]!, c[4]!), end: time(c[5]!, c[6]!, c[7]!, c[8]!), text: c[9]!.trim() }] : [];
+      return c ? [{ start: time(c[1]!, c[2]!, c[3]!, c[4]!), end: time(c[5]!, c[6]!, c[7]!, c[8]!), text: cueText(c[9]!).trim() }] : [];
     });
 }
 
@@ -254,14 +254,14 @@ export async function revoice(dir: string, language: string | undefined) {
   const total = frames.reduce((t, f) => t + (f.seconds ?? 0), 0);
   const newList = path.join(here, 'frames.txt');
   fs.writeFileSync(newList, frameListText(retimed(frames, at), work, here));
-  // the new narration's sentences share its clips; every track keeps a cue per sentence on the same times
+  // the new narration's sentences on its clips' times as heard back; every track keeps a cue per sentence on the same times
   const narration: Track = { language: to, scenes: words.scenes.map((s) => sentencesOf(s.say, to)) };
   const marks: Mark[] = captions.map((c, i) => ({
     title: words.scenes[i]!.title,
     start: at(chapters[i]!.start),
     speechStart: at(c.start),
     speechEnd: at(c.start) + clips[i]!.seconds,
-    sentences: sharedOut(clips[i]!.seconds, narration.scenes[i]!),
+    ...spokenTimes(clips[i]!.seconds, narration.scenes[i]!, clips[i]!.timed),
   }));
   const { viewport, sharp } = renderOf(path.join(original, 'demo.mp4'));
   assemble({ outDir: dir, work: here, list: newList, clips, marks, total: at(total), viewport, sharp, title: words.title, narration, tracks: keptTracks(original, page.language, says, narration), report: words.report, language: to });

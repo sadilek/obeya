@@ -10,7 +10,7 @@ import { pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { languageName, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { listedTracks, trackFile } from '../../plugin/skills/demo/lib/subtitles.ts';
-import { captionPages, pageOf } from '../core/caption-pages';
+import { captionPages, cueWords, pageOf, spokenWord } from '../core/caption-pages';
 import { type PlayerWords, videoPlayer } from '../core/video-player';
 import PLAYER_STYLE from '../core/player.css' with { type: 'text' };
 
@@ -382,7 +382,7 @@ const CUES = `
 // silent video shows its captions from the start, in the viewer's language where it has a track in it, else the first
 const PLAYERS = (words: PlayerWords) => `
   {
-    const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, preferredTrack: ${preferredTrack} };
+    const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, cueWords: ${cueWords}, spokenWord: ${spokenWord}, preferredTrack: ${preferredTrack} };
     const words = ${JSON.stringify(words)};
     for (const fig of document.querySelectorAll('figure.dp')) {
       const pv = fig.querySelector('video');

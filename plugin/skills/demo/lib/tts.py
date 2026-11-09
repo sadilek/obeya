@@ -34,10 +34,15 @@ is the spoken text, so a change to a lexicon re-synthesises only the clips it to
 
 Qwen3 hears each sentence back and makes one it stumbled over again (`qwen3.py`); it is asked with
 the script as written beside the text as respelt, and says what it heard, sentence by sentence,
-which is kept beside the clip (`<hash>.heard.json`) for the next render that finds it cached.
-Results land in `<out_dir>/tts.json`: `{"clips": [{"id", "file", "seconds"}]}`, a clip of a
-voice that hears with `"heard": [{"script", "heard", "stumbled"?, "misheard"?}]` or `"unheard":
-"why"` as well.
+and the clip in timed pieces (`timed`: `[[text, start], ...]`, parts of words with the second each
+starts at), which the captions take their times from. A clip without them (another voice, or one
+cached from before) is heard back by Obeya, with the speech recognition of its voice input, when
+`OBEYA_URL` says where Obeya runs (`POST $OBEYA_URL/api/narration/hear`); without Obeya, or where it
+cannot hear, the clip has no times and its captions share it out by length. What was heard is kept
+beside the clip (`<hash>.heard.json`) for the next render that finds it cached. Results land in
+`<out_dir>/tts.json`: `{"clips": [{"id", "file", "seconds"}]}`, with `"timed"` where heard, and a
+clip of a voice that hears itself with `"heard": [{"script", "heard", "stumbled"?, "misheard"?}]`
+or `"unheard": "why"` as well.
 
 `--lock <file>` takes that file's lock before this process loads a large model and holds it to
 the end, for voices that load one: one such render at a time on the machine, the others wait. A
@@ -213,7 +218,32 @@ class CommandVoice:
 
 def hearing(reply: dict) -> dict | None:
     """What a voice that hears its clips back said of one, or None from one that does not."""
-    return {k: reply[k] for k in ("heard", "unheard") if k in reply} or None
+    return {k: reply[k] for k in ("heard", "timed", "unheard") if k in reply} or None
+
+
+#: How long Obeya may take to hear a clip back: it may load its recognition first (about 1 GB).
+HEAR_SECONDS = 180
+
+
+def heard_by_obeya(wav: Path, language: str) -> list | str | None:
+    """The clip heard back by Obeya for the times of its words: timed pieces, why Obeya could not
+    hear it, or None without Obeya (no `OBEYA_URL`)."""
+    url = os.environ.get("OBEYA_URL")
+    if not url:
+        return None
+    body = json.dumps({"wav": base64.b64encode(wav.read_bytes()).decode(), "language": language}).encode()
+    request = urllib.request.Request(f"{url.rstrip('/')}/api/narration/hear", data=body, headers={"Content-Type": "application/json"})
+    try:
+        # Obeya is on this machine, or forwarded to it: no proxy in between
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=HEAR_SECONDS) as response:
+            reply = json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return f"Obeya did not hear it back ({error.code}): {error.read().decode(errors='replace')[:300]}"
+    except (OSError, ValueError) as error:
+        return f"Obeya is not reachable ({error})"
+    if isinstance(reply.get("timed"), list):
+        return reply["timed"]
+    return str(reply.get("unheard") or "Obeya heard nothing")
 
 
 #: How long a voice that stays loaded may say nothing, in seconds: while it loads its model (a cold
@@ -529,14 +559,19 @@ def close(voice) -> None:
         voice.close()
 
 
-def joined(hearings: list[dict | None]) -> dict | None:
-    """What was heard of a clip made in parts: every part's sentences, or why one was not heard."""
+def joined(hearings: list[dict | None], starts: list[float]) -> dict | None:
+    """What was heard of a clip made in parts, each starting at its second of `starts`: every
+    part's sentences and timed pieces (these only where every part has them), or why one was not
+    heard."""
     if all(h is None for h in hearings):
         return None
     for h in hearings:
         if h is None or "unheard" in h:
             return {"unheard": (h or {}).get("unheard") or "a part was not heard back"}
-    return {"heard": [s for h in hearings for s in h["heard"]]}
+    out = {"heard": [s for h in hearings for s in h.get("heard", [])]}
+    if all("timed" in h for h in hearings):
+        out["timed"] = [[piece, round(start + at, 3)] for h, at in zip(hearings, starts) for piece, start in h["timed"]]
+    return out
 
 
 def with_pauses(voice, text: str, target: Path, script: str | None = None) -> dict | None:
@@ -557,10 +592,11 @@ def with_pauses(voice, text: str, target: Path, script: str | None = None) -> di
         return voice.synthesize(untagged(text), target, untagged(script) if script else None)
     frames: list[bytes] = []
     shape = None
-    hearings = []
+    hearings, starts, at = [], [], 0.0
     for n, ((part, pause), part_script) in enumerate(zip(spoken, written)):
         piece = target.with_name(f"{target.stem}.part{n}.wav")
         hearings.append(voice.synthesize(part, piece, part_script))
+        starts.append(at)
         with wave.open(str(piece)) as fh:
             params = (fh.getnchannels(), fh.getsampwidth(), fh.getframerate())
             if shape is None:
@@ -568,18 +604,21 @@ def with_pauses(voice, text: str, target: Path, script: str | None = None) -> di
             elif params != shape:
                 sys.exit(f"the voice's parts differ in format: {params} and {shape}")
             frames.append(fh.readframes(fh.getnframes()))
+            at += fh.getnframes() / fh.getframerate()
         piece.unlink()
         if n < len(spoken) - 1:
-            frames.append(b"\0" * int(shape[2] * pause) * shape[0] * shape[1])
+            silence = int(shape[2] * pause)
+            frames.append(b"\0" * silence * shape[0] * shape[1])
+            at += silence / shape[2]
     with wave.open(str(target), "wb") as fh:
         fh.setnchannels(shape[0])
         fh.setsampwidth(shape[1])
         fh.setframerate(shape[2])
         fh.writeframes(b"".join(frames))
-    return joined(hearings)
+    return joined(hearings, starts)
 
 
-def narrate(voice, jobs: list[dict], out: Path) -> None:
+def narrate(voice, jobs: list[dict], out: Path, language: str) -> None:
     reads_tags = getattr(voice, "reads_tags", False)
 
     def key_of(job: dict) -> str:
@@ -587,7 +626,7 @@ def narrate(voice, jobs: list[dict], out: Path) -> None:
         pauses = "\npauses" if not reads_tags and PAUSE_TAG.search(job["text"]) else ""
         return hashlib.sha1(f"{voice.tag}\n{job['text']}{pauses}".encode()).hexdigest()[:16]
 
-    results = []
+    results, unheard = [], set()
     for job in jobs:
         wav = out / f"{key_of(job)}.wav"
         heard_file = wav.with_suffix(".heard.json")
@@ -608,6 +647,15 @@ def narrate(voice, jobs: list[dict], out: Path) -> None:
         with wave.open(str(wav)) as fh:
             seconds = fh.getnframes() / fh.getframerate()
         heard = json.loads(heard_file.read_text(encoding="utf-8")) if heard_file.exists() else {}
+        if "timed" not in heard:
+            # a voice that does not hear itself, or a clip from before: Obeya hears it back
+            timed = heard_by_obeya(wav, language)
+            if isinstance(timed, list):
+                heard["timed"] = timed
+                heard_file.write_text(json.dumps(heard, ensure_ascii=False), encoding="utf-8")
+            elif timed and timed not in unheard:
+                unheard.add(timed)
+                print(f"narration: not heard back, so its captions follow each sentence's length: {timed}", file=sys.stderr, flush=True)
         results.append({"id": job["id"], "file": str(wav), "seconds": seconds, **heard})
 
     (out / "tts.json").write_text(json.dumps({"clips": results}, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -649,7 +697,7 @@ def main() -> None:
     if isinstance(voice, CommandVoice):
         hold_lock()
     try:
-        narrate(voice, jobs, out)
+        narrate(voice, jobs, out, language)
     finally:
         close(voice)
 
