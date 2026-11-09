@@ -85,6 +85,8 @@ describe('timing', () => {
     expect(vtt).toContain('One <00:00:01.500>two <00:00:01.501>three.');
     const late = trackVtt({ language: 'en', scenes: [['One two.']] }, [{ speechStart: 1, sentences: [1], words: [[0, 4]] }], true);
     expect(late).toContain('One <00:00:01.999>two.');
+    const last = trackVtt({ language: 'en', scenes: [['One two three.']] }, [{ speechStart: 1, sentences: [1], words: [[0, 1, 1]] }], true);
+    expect(last).toContain('One <00:00:01.998>two <00:00:01.999>three.');
     // word times that do not match the cue's words are left out
     expect(trackVtt({ language: 'en', scenes: [['One two.']] }, [{ speechStart: 1, sentences: [1], words: [[0]] }], true)).toContain('\nOne two.\n');
   });

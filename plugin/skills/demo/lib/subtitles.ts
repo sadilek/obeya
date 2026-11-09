@@ -18,9 +18,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { heardStarts, wordsOf } from '../../../../src/core/walkthrough.ts';
 import { languageName } from './locale.ts';
 import { untagged } from './timeline.ts';
+import { heardStarts, wordsOf } from './word-times.ts';
 
 /**
  * How long a sentence of a silent demo stays: characters a second (a wide character, as in
@@ -148,12 +148,13 @@ export function trackVtt(track: Track, scenes: Timed[], spoken = false): string 
       const words = wordsOf(text);
       const starts = spoken ? scene.words?.[j] : undefined;
       let said = text;
-      if (starts?.length === words.length && seconds > 0.01) {
+      if (starts?.length === words.length && seconds > 0.001 * words.length) {
         let last = at;
         said = words
           .map((w, k) => {
             if (k === 0) return w;
-            last = Math.min(at + seconds - 0.001, Math.max(last + 0.001, scene.speechStart + starts[k]!));
+            // a millisecond kept for each word after it, so the ones heard at the very end stay apart too
+            last = Math.min(at + seconds - 0.001 * (words.length - k), Math.max(last + 0.001, scene.speechStart + starts[k]!));
             return `<${vttTime(last)}>${w}`;
           })
           .join(' ');
