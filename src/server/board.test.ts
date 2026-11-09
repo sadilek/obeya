@@ -932,3 +932,64 @@ test("a line in a card's log shows in the snapshot as its last change at once; m
   board.docsChanged();
   expect(at(w2.id) > old).toBe(true);
 });
+
+describe('the shared cards', () => {
+  const page = (slug: string) => JSON.stringify({ slug, url: `https://demos.example/${slug}/`, version: '' });
+  const ids = () => board.sharedRows().map((r) => r.id).sort();
+
+  test('stay as the database has them: a write, a new page, one withdrawn, deleted or moved to another canvas', () => {
+    const [a, b, c, d] = ['A', 'B', 'C', 'D'].map((title) => board.create({ title, x: 0, y: 0 }));
+    for (const x of [a!, b!, c!]) board.work(x.id, { share: page(x.title) });
+    expect(ids()).toEqual([a!.id, b!.id, c!.id].sort());
+    const before = board.sharedRows().find((r) => r.id === a!.id)!;
+    // a row not written stays the one read before
+    board.work(b!.id, { status_line: 'Working' });
+    expect(board.sharedRows().find((r) => r.id === a!.id)).toBe(before);
+    expect(board.sharedRows().find((r) => r.id === b!.id)!.status_line).toBe('Working');
+    board.work(d!.id, { share: page('D') });
+    board.work(a!.id, { share: null });
+    board.remove(b!.id);
+    store.ensureCanvas('other', 'Other');
+    store.moveCard(c!.id, 'other', { x: 0, y: 0 });
+    expect(ids()).toEqual([d!.id]);
+    expect(board.sharedRows()).toEqual(store.shared('shop'));
+  });
+
+  test('the log of their writes keeps only what the canvas has not read, and a canvas started anew reads them afresh', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    board.work(a.id, { share: page('A') });
+    board.sharedRows();
+    const log = () => store.db.query("SELECT count(*) AS n FROM shared_changes WHERE canvas_id = 'shop'").get();
+    expect(log()).toEqual({ n: 0 });
+    board.work(a.id, { title: 'Renamed' });
+    expect(log()).toEqual({ n: 1 });
+    expect(board.sharedRows().map((r) => r.title)).toEqual(['Renamed']);
+    expect(log()).toEqual({ n: 0 });
+    board.work(a.id, { title: 'Again' });
+    const restarted = new Board(store, board.canvas, () => ({ docs, dirs }));
+    expect(restarted.sharedRows().map((r) => r.title)).toEqual(['Again']);
+    expect(log()).toEqual({ n: 0 });
+  });
+
+  test('those the UI shows are found with their repository and title as the cards are, archived projects’ workstreams too', () => {
+    const items = board.snapshot().items;
+    const w2 = items.find((i) => i.label === 'W2')!;
+    const own = board.create({ title: 'Own', x: 0, y: 0 });
+    const archived = board.create({ title: 'Archived', x: 0, y: 0 });
+    for (const x of [w2, own, archived]) board.work(x.id, { share: page(x.id) });
+    board.work(archived.id, { state: 'live' });
+    board.archive([archived.id]);
+    const rows = board.sharedRows();
+    const asCards = () => new Map([...board.cards(rows)].map(([id, i]) => [id, { id, repo: i.repo, title: i.title }]));
+    expect(board.shownCards(rows)).toEqual(asCards());
+    expect(board.shownCards(rows).size).toBe(3);
+    // the project's doc goes: it is archived with its workstreams, which its doc as last read shows
+    docs = [];
+    board.docsChanged();
+    board.snapshot();
+    expect(board.shownCards(board.sharedRows())).toEqual(new Map([...board.cards(board.sharedRows())].map(([id, i]) => [id, { id, repo: i.repo, title: i.title }])));
+    expect(board.shownCards(board.sharedRows()).get(w2.id)).toMatchObject({ title: 'Title W2' });
+    board.remove(own.id);
+    expect(board.shownCards(board.sharedRows()).has(own.id)).toBe(false);
+  });
+});

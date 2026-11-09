@@ -1,5 +1,6 @@
 // Test doubles, and git repositories for tests.
 
+import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -300,6 +301,38 @@ export function asOwner(of: () => object) {
 
 /** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
 export const heard = () => Bun.sleep(0);
+
+/**
+ * Windows counts a thread's CPU time in ticks of about 15.6 ms, coarser than a read of the cards;
+ * the clock's time counted the waits for a core with it, which a busy runner made the larger part
+ * of a run's cost or a rebuild's, by turns. The CPU cycles the thread ran are exact there, and
+ * only their ratios count.
+ */
+const cycles = (() => {
+  if (process.platform !== 'win32') return null;
+  const { symbols } = dlopen('kernel32.dll', { QueryThreadCycleTime: { args: [FFIType.i64, FFIType.ptr], returns: FFIType.i32 } });
+  const out = new BigUint64Array(1);
+  // GetCurrentThread's handle, which stands for the calling thread
+  return () => (symbols.QueryThreadCycleTime(-2n, ptr(out)), Number(out[0]));
+})();
+
+/**
+ * What `run` costs the thread that runs the server's code, once what listens to changes heard of
+ * those before it: its CPU time (CPU cycles on Windows), which leaves out the waits for a core of a
+ * busy machine. Only ratios of such costs, measured on the same machine, say anything.
+ */
+export async function cpuTime(run: () => unknown): Promise<number> {
+  await heard();
+  if (cycles) {
+    const start = cycles();
+    await run();
+    return cycles() - start;
+  }
+  const start = process.threadCpuUsage();
+  await run();
+  const used = process.threadCpuUsage(start);
+  return (used.user + used.system) / 1000;
+}
 
 /** Starts a process that runs on in `cwd` the way an app's start script leaves one behind: detached, its starter gone. Its pid. */
 export async function leftBehind(cwd: string): Promise<number> {

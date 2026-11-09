@@ -565,14 +565,36 @@ export const MIGRATIONS = [
   ALTER TABLE cards ADD COLUMN spent REAL;`,
   // what the Koordinator reads with each command and each of the owner's inputs, found by time rather
   // than by going through every event of the canvas: the milestones of the cards' logs (`timeline`),
-  // what the owner said (`utterances`), the cards made, the exchanges of the sheet; and the exchanges
-  // whose reply waits on a card, read on every change of the canvas
+  // what the owner said (`utterances`), the cards made, the exchanges of the sheet; the exchanges
+  // whose reply waits on a card, and the workstreams of the projects shown, read on every change of
+  // the canvas
   `CREATE INDEX events_milestones ON events (at) WHERE kind IN ('state', 'question', 'answer', 'review', 'hint', 'error');
    CREATE INDEX events_owner ON events (at) WHERE author = 'owner' AND kind IN ('hint', 'answer', 'talk');
    CREATE INDEX cards_created ON cards (canvas_id, created_at) WHERE deleted_at IS NULL AND plan_ref IS NULL;
    CREATE INDEX talk_canvas ON talk (canvas_id);
    CREATE INDEX talk_at ON talk (canvas_id, at);
-   CREATE INDEX talk_waiting ON talk (canvas_id) WHERE waits IS NOT NULL;`,
+   CREATE INDEX talk_waiting ON talk (canvas_id) WHERE waits IS NOT NULL;
+   CREATE INDEX cards_parent ON cards (parent_id) WHERE parent_id IS NOT NULL;`,
+  // which shared cards were written, come or went (`Store.sharedChanges`), so a canvas keeps its
+  // shared cards up to date by reading those again rather than all of them with every change
+  `CREATE TABLE shared_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canvas_id TEXT NOT NULL,
+    card_id TEXT NOT NULL
+  );
+  CREATE TRIGGER shared_change AFTER UPDATE ON cards WHEN OLD.share IS NOT NULL OR NEW.share IS NOT NULL
+  BEGIN
+    INSERT INTO shared_changes (canvas_id, card_id) VALUES (NEW.canvas_id, NEW.id);
+    INSERT INTO shared_changes (canvas_id, card_id) SELECT OLD.canvas_id, OLD.id WHERE OLD.canvas_id IS NOT NEW.canvas_id;
+  END;
+  CREATE TRIGGER shared_change_new AFTER INSERT ON cards WHEN NEW.share IS NOT NULL
+  BEGIN
+    INSERT INTO shared_changes (canvas_id, card_id) VALUES (NEW.canvas_id, NEW.id);
+  END;
+  CREATE TRIGGER shared_change_gone AFTER DELETE ON cards WHEN OLD.share IS NOT NULL
+  BEGIN
+    INSERT INTO shared_changes (canvas_id, card_id) VALUES (OLD.canvas_id, OLD.id);
+  END;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -698,9 +720,34 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId }) as CardRow[];
   }
 
-  /** The canvas's cards, archived ones too, that were ever shared or are about to be. */
-  shared(canvasId: string): CardRow[] {
+  /** The canvas's cards, archived ones too, that were ever shared or are about to be; with `ids`, those among them. */
+  shared(canvasId: string, ids?: string[]): CardRow[] {
+    if (ids)
+      return this.db
+        // by their ids, not by going through the canvas's shared cards
+        .query('SELECT * FROM cards WHERE id IN (SELECT value FROM json_each($ids)) AND +canvas_id = $c AND deleted_at IS NULL AND share IS NOT NULL')
+        .all({ c: canvasId, ids: JSON.stringify(ids) }) as CardRow[];
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND share IS NOT NULL').all({ c: canvasId }) as CardRow[];
+  }
+
+  /**
+   * The canvas's cards that were written, came or went since the log of shared cards' writes stood
+   * at `after` (`sharedLog`), while they were shared or about to be; and where the log stands now.
+   * The database keeps that log as the rows are written.
+   */
+  sharedChanges(canvasId: string, after: number): { upTo: number; ids: string[] } {
+    const rows = this.db.query('SELECT id, canvas_id AS canvas, card_id AS card FROM shared_changes WHERE id > $after').all({ after }) as { id: number; canvas: string; card: string }[];
+    return { upTo: rows.reduce((m, r) => Math.max(m, r.id), after), ids: [...new Set(rows.flatMap((r) => (r.canvas === canvasId ? [r.card] : [])))] };
+  }
+
+  /** Where the log of shared cards' writes stands now (`sharedChanges`); its entries' ids are never taken again. */
+  sharedLog(): number {
+    return (this.db.query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'shared_changes'), 0) AS n").get() as { n: number }).n;
+  }
+
+  /** The canvas read its shared cards' writes up to `upTo`: they leave the log. */
+  dropSharedChanges(canvasId: string, upTo: number) {
+    this.db.query('DELETE FROM shared_changes WHERE canvas_id = $c AND id <= $upTo').run({ c: canvasId, upTo });
   }
 
   /**
@@ -748,11 +795,11 @@ export class Store {
     return (this.db.query('SELECT sum(usd + settled) AS usd FROM spend WHERE canvas_id = $c').get({ c: canvasId }) as { usd: number | null }).usd ?? 0;
   }
 
-  /** What the workstreams of each of the canvas's projects cost so far (archived ones too), by project; projects whose workstreams cost nothing are left out. */
-  spentUnder(canvasId: string): Map<string, number> {
+  /** What the workstreams of each of these projects cost so far (archived ones too), by project; projects whose workstreams cost nothing are left out. */
+  spentUnder(projects: string[]): Map<string, number> {
     const rows = this.db
-      .query('SELECT parent_id AS project, sum(spent) AS usd FROM cards WHERE canvas_id = $c AND parent_id IS NOT NULL AND deleted_at IS NULL AND spent IS NOT NULL GROUP BY parent_id')
-      .all({ c: canvasId }) as { project: string; usd: number }[];
+      .query('SELECT parent_id AS project, sum(spent) AS usd FROM cards WHERE parent_id IN (SELECT value FROM json_each($p)) AND deleted_at IS NULL AND spent IS NOT NULL GROUP BY parent_id')
+      .all({ p: JSON.stringify(projects) }) as { project: string; usd: number }[];
     return new Map(rows.map((r) => [r.project, r.usd]));
   }
 

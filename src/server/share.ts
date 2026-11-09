@@ -20,7 +20,7 @@ import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
 import type { DemoSite } from '../adapters/types';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { type Gone, siteBase, siteMissing, siteTarget } from './site';
+import { type Gone, siteBase, siteMissing, type SiteOptions, siteTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
 import { GITHUB_PAGES } from './site-hosts';
@@ -134,13 +134,13 @@ export interface SharingOptions {
   board: Board;
   runtime: AgentRuntime;
   /** Where the card's repository may share demos; null while it does not run. */
-  sourceFor: (card: Item) => ShareSource | null;
+  sourceFor: (card: CardPlace) => ShareSource | null;
   /** The owner's personal demo site on this machine; read from Obeya's home without it. */
   personal?: () => PersonalSite | null;
   /** The personal site as a demo site, how it is deployed (`personalDemoSite` without it; a stand-in in tests). */
   personalSite?: (p: PersonalSite) => DemoSite;
   /** The language the card's repository names for its demos (`demo.language` of its settings); none where it names none. */
-  languageFor?: (card: Item) => PageLanguage | undefined;
+  languageFor?: (card: CardPlace) => PageLanguage | undefined;
   /** Obeya's data directory, passed to a site's deploy as `OBEYA_HOME`; the deploy runs in a directory of it (`SHARE_CWD`). */
   home: string;
   /** Where the card's pull request is, for the page's link in its description. */
@@ -438,9 +438,9 @@ export class Sharing {
     const run = this.o.board.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again already');
     const outdated = tags ? this.o.board.untaggedRows() : this.o.board.outdatedRows().map(({ r }) => r);
-    const cards = this.o.board.cards(outdated);
+    const cards = this.o.board.shownCards(outdated);
     const rows = outdated
-      .map((r) => ({ r, s: JSON.parse(r.share!) as StoredShare, card: cards.get(r.id) }))
+      .map((r) => ({ r, s: this.o.board.storedShare(r), card: cards.get(r.id) }))
       .filter(({ s, card }) => card && this.target(card, s));
     if (!rows.length) throw new BadRequest('nothingOutdated', tags ? 'no shared page lacks tags' : 'no shared page is outdated');
     const made = (dir?: string) => (dir ? (statOr(join(dir, 'demo.mp4')) ?? statOr(join(dir, 'index.html')) ?? statOr(dir) ?? 0) : 0);
@@ -607,10 +607,12 @@ export class Sharing {
     const targets = new Map<string, ShareTarget>();
     // the first site's pages from the same pass; the next site's after the first answered, as they are then
     let cards: SharedCard[] | undefined = this.sharedCards();
-    for (const { s, card } of cards) {
-      const target = s.url ? this.target(card, s) : null;
-      if (target) targets.set(target.key, target);
-    }
+    this.overPages(() => {
+      for (const { s, card } of cards!) {
+        const target = s.url ? this.target(card, s) : null;
+        if (target) targets.set(target.key, target);
+      }
+    });
     for (const target of targets.values()) {
       const shared = this.others('', target.key, cards);
       cards = undefined;
@@ -1031,9 +1033,9 @@ export class Sharing {
 
   /** The slugs of the other pages shared through the target. */
   private others(cardId: string, key: string, cards = this.sharedCards()): string[] {
-    return cards
-      .flatMap(({ s, card }) => (card.id !== cardId && s.url && s.state !== 'withdrawing' && this.target(card, s)?.key === key ? [pathOf(s)] : []))
-      .sort();
+    return this.overPages(() =>
+      cards.flatMap(({ s, card }) => (card.id !== cardId && s.url && s.state !== 'withdrawing' && this.target(card, s)?.key === key ? [pathOf(s)] : [])).sort(),
+    );
   }
 
   /**
@@ -1041,17 +1043,45 @@ export class Sharing {
    * site, where this machine can deploy to it, else the owner's personal site, where the repository
    * may share there (public, or ticked). Null where none takes it: its demos are exported.
    */
-  private target(card: Item, s = this.stored(card.id)): ShareTarget | null {
+  private target(card: CardPlace, s = this.stored(card.id)): ShareTarget | null {
     if (s?.url || s?.state) return s.personal ? this.personalTarget(card, s) : this.ownTarget(card);
     return this.ownTarget(card) ?? (this.personalAllowed(card) ? this.personalTarget(card, s) : null);
   }
 
   /** The card's repository's own site, where this machine has its credentials. */
-  private ownTarget(card: Item): ShareTarget | null {
+  private ownTarget(card: CardPlace): ShareTarget | null {
     const src = this.o.sourceFor(card);
-    if (!src?.site || siteMissing(this.o.home, src.site)) return null;
+    if (!src?.site) return null;
     const language = this.o.languageFor?.(card);
-    return siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share, language ? { language } : {});
+    return this.siteTarget(src.site, src.repo, language ? { language } : {});
+  }
+
+  /**
+   * `siteTarget`, where this machine has the site's credentials; within a pass over the shared pages
+   * (`overPages`), made once per site, repository and options rather than once per page.
+   */
+  private siteTarget(site: DemoSite, repo: string, opts: SiteOptions): ShareTarget | null {
+    const make = () => (siteMissing(this.o.home, site) ? null : siteTarget(site, repo, this.o.home, this.o.board.t.share, opts));
+    if (!this.pass) return make();
+    let bySite = this.pass.get(site);
+    if (!bySite) this.pass.set(site, (bySite = new Map()));
+    const key = JSON.stringify([repo, opts]);
+    if (!bySite.has(key)) bySite.set(key, make());
+    return bySite.get(key)!;
+  }
+
+  /** The targets made during the pass over the shared pages running now (`overPages`), by site; none outside one. */
+  private pass: Map<DemoSite, Map<string, ShareTarget | null>> | null = null;
+
+  /** Runs `f`, a pass over the shared pages that does not wait for anything, making each target once (`siteTarget`). */
+  private overPages<T>(f: () => T): T {
+    if (this.pass) return f();
+    this.pass = new Map();
+    try {
+      return f();
+    } finally {
+      this.pass = null;
+    }
   }
 
   /**
@@ -1059,16 +1089,15 @@ export class Sharing {
    * credentials; none for a page that went out on another personal site (this machine was connected
    * to another one since).
    */
-  private personalTarget(card: Item, s = this.stored(card.id)): ShareTarget | null {
+  private personalTarget(card: CardPlace, s = this.stored(card.id)): ShareTarget | null {
     const src = this.o.sourceFor(card);
     const p = this.personal();
     if (!src || !p) return null;
     const url = s?.url;
     if (url && !url.startsWith(`${p.url.replace(/\/+$/, '')}/`)) return null;
     const site = (this.o.personalSite ?? personalDemoSite)(p);
-    if (siteMissing(this.o.home, site)) return null;
     const language = this.o.languageFor?.(card);
-    return siteTarget(site, src.repo, this.o.home, this.o.board.t.share, { ...(p.secret ? { unlisted: { secret: p.secret } } : {}), ...(language ? { language } : {}) });
+    return this.siteTarget(site, src.repo, { ...(p.secret ? { unlisted: { secret: p.secret } } : {}), ...(language ? { language } : {}) });
   }
 
   private personal(): PersonalSite | null {
@@ -1076,7 +1105,7 @@ export class Sharing {
   }
 
   /** Whether the card's repository may share on the personal site: a public one, or a private one the owner ticked. */
-  private personalAllowed(card: Item): boolean {
+  private personalAllowed(card: CardPlace): boolean {
     const src = this.o.sourceFor(card);
     const p = this.personal();
     return !!src && !!p && allowedHere(p, src.repo, !!src.isPublic);
@@ -1192,13 +1221,13 @@ export class Sharing {
 
   /** The cards of the canvas, archived ones too, that were ever shared or are about to be, with their shares. */
   private shares(): { r: CardRow; s: StoredShare }[] {
-    return this.o.board.sharedRows().map((r) => ({ r, s: JSON.parse(r.share!) as StoredShare }));
+    return this.o.board.sharedRows().map((r) => ({ r, s: this.o.board.storedShare(r) }));
   }
 
-  /** The shared cards (`shares`) as the UI sees them, built at once (`Board.cards`); those gone are left out. */
+  /** The shared cards (`shares`) the UI shows, with where each belongs (`Board.shownCards`); those gone are left out. */
   private sharedCards(): SharedCard[] {
     const shares = this.shares();
-    const cards = this.o.board.cards(shares.map(({ r }) => r));
+    const cards = this.o.board.shownCards(shares.map(({ r }) => r));
     return shares.flatMap(({ r, s }) => {
       const card = cards.get(r.id);
       return card ? [{ r, s, card }] : [];
@@ -1250,11 +1279,14 @@ const TAGS_SYSTEM = `You tag pages on which the demos of changes are shared with
 /** How many pages the run tagging pages tags with one session and one deploy. */
 const TAG_BATCH = 20;
 
-/** A shared card with its share, as the UI sees it. */
+/** What a page's place depends on of its card: its repository, and its title in the tests' stand-ins. */
+export type CardPlace = Pick<Item, 'id' | 'repo' | 'title'>;
+
+/** A shared card with its share and its place. */
 interface SharedCard {
   r: CardRow;
   s: StoredShare;
-  card: Item;
+  card: CardPlace;
 }
 
 /** A page the reading session chooses tags for. */

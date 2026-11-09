@@ -203,7 +203,7 @@ const DUE_REFUSES: CardAction['action'][] = ['start', 'force', 'build', 'planDoc
 const BOARD_ONLY: CardAction['action'][] = ['agent', 'name', 'dequeue', 'reorder', 'startAt', 'dismiss', 'keep', 'park', 'drop'];
 
 /** The card's repository does not run on the canvas: nothing goes to its agents (`Item.repoDown`). */
-const repoDown = (card: Item) => new BadRequest('repoDown', `the repository ${card.repo} of the card does not run on this canvas`);
+const repoDown = (card: Pick<Item, 'repo'>) => new BadRequest('repoDown', `the repository ${card.repo} of the card does not run on this canvas`);
 
 /** New repositories being made, one after the other (`makeNewRepo`). */
 let making: Promise<unknown> = Promise.resolve();
@@ -1531,7 +1531,7 @@ export class CanvasRuntime {
    * configuration, or did not start) has no agents to take the card: it waits for it, rather than
    * going to another repository's.
    */
-  repoOf(card: Item | string): RepoRuntime {
+  repoOf(card: Pick<Item, 'repo'> | string): RepoRuntime {
     const item = typeof card === 'string' ? this.board.item(card) : card;
     if (!item) throw new BadRequest('unknownCard', 'unknown card');
     const r = this.repos.find((x) => x.ref.id === item.repo);
@@ -1564,7 +1564,7 @@ export class CanvasRuntime {
   }
 
   /** Whether the card's repository runs on the canvas. */
-  private runs(card: Item | string): boolean {
+  private runs(card: Pick<Item, 'repo'> | string): boolean {
     const item = typeof card === 'string' ? this.board.card(card) : card;
     return !!item && this.repos.some((r) => r.ref.id === item.repo);
   }

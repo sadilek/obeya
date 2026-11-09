@@ -468,6 +468,16 @@ export class Board {
   private archivedPlans: { rev: string; rows: CardRow[] } | null = null;
   /** What `toItems` made of each card's row, for as long as the row stays the same; gone with any change but a write to one card (`work`). */
   private worked: Worked = new Map();
+  /** The canvas's shared cards (`sharedRows`) by id, with where the database's log of their writes stood when they were read. */
+  private shared: { upTo: number; rows: Map<string, CardRow> } | null = null;
+  /** The page stored with each shared row, as `storedShare` read it. */
+  private shares = new WeakMap<CardRow, StoredShare>();
+  /** The tags of each shared row's page, as `pageTags` read them. */
+  private tagsOf = new WeakMap<CardRow, PageTags>();
+  /** What leaves each shared row's page outdated (`outdatedAsLooked`), with the theme and the look at the demos' files it was found with. */
+  private outdatedOf = new WeakMap<CardRow, { theme: string | null | undefined; looked: number; missed: OutdatedBy[] }>();
+  /** How many times a look at the demos' files found one come or gone (`lookAtDemos`). */
+  private looked = 0;
   /** The archive as `archived` built it; gone with `cache`, since it changes with the same writes. */
   private archiveItems: Item[] | null = null;
   /** The canvas's prototypes, and those `withPrototypes` handed out so far; gone with `cache`. */
@@ -844,9 +854,86 @@ export class Board {
     this.changedRows();
   }
 
-  /** The cards of the canvas, archived ones too, that were ever shared or are about to be. */
+  /**
+   * The cards of the canvas, archived ones too, that were ever shared or are about to be: read once,
+   * then kept up to date by reading again those the database logged a write of (`Store.sharedChanges`).
+   * A row stays the same object while it is not written, so what is made of it can be kept with it.
+   */
   sharedRows(): CardRow[] {
-    return this.store.shared(this.canvas.id);
+    if (!this.shared) {
+      const upTo = this.store.sharedLog();
+      this.shared = { upTo, rows: new Map(this.store.shared(this.canvas.id).map((r) => [r.id, r])) };
+      this.store.dropSharedChanges(this.canvas.id, upTo);
+    } else {
+      const { upTo, ids } = this.store.sharedChanges(this.canvas.id, this.shared.upTo);
+      if (ids.length) {
+        const rows = new Map(this.store.shared(this.canvas.id, ids).map((r) => [r.id, r]));
+        for (const id of ids) {
+          const r = rows.get(id);
+          if (r) this.shared.rows.set(id, r);
+          else this.shared.rows.delete(id);
+        }
+        this.store.dropSharedChanges(this.canvas.id, upTo);
+      }
+      this.shared.upTo = upTo;
+    }
+    return [...this.shared.rows.values()];
+  }
+
+  /** The page stored with a shared card's row, read once per row (`sharedRows`). */
+  storedShare(r: CardRow): StoredShare {
+    let s = this.shares.get(r);
+    if (!s) this.shares.set(r, (s = JSON.parse(r.share!) as StoredShare));
+    return s;
+  }
+
+  /** The tags of a shared card's page (`pageTagsOf`), read once per row (`sharedRows`). */
+  private pageTags(r: CardRow): PageTags {
+    let tags = this.tagsOf.get(r);
+    if (!tags) this.tagsOf.set(r, (tags = pageTagsOf(r)));
+    return tags;
+  }
+
+  /**
+   * Of these rows, those whose card the UI shows (`cards`), each with its repository and title: what
+   * a pass over every shared page needs of them, found without building the archived ones' cards.
+   */
+  shownCards(rows: CardRow[]): Map<string, Pick<Item, 'id' | 'repo' | 'title'>> {
+    const shown = new Map(this.items().map((i) => [i.id, i]));
+    const out = new Map<string, Pick<Item, 'id' | 'repo' | 'title'>>();
+    const mine = (r: CardRow | null): r is CardRow => !!r && r.canvas_id === this.canvas.id && !r.deleted_at;
+    const parents = new Map<string, CardRow | null>();
+    const parent = (id: string) => {
+      if (!parents.has(id)) parents.set(id, this.store.card(id));
+      return parents.get(id)!;
+    };
+    // an archived project shows its doc as it last stood
+    const docOf = (r: CardRow) => {
+      const doc = r.plan ? (JSON.parse(r.plan) as PlanDoc) : null;
+      return doc?.file === r.plan_ref ? doc : null;
+    };
+    for (const given of rows.filter(mine)) {
+      const item = shown.get(given.id);
+      if (item) {
+        out.set(given.id, { id: item.id, repo: item.repo, title: item.title });
+        continue;
+      }
+      // as `cards` finds it in the archive: a card archived itself, or a workstream with its project
+      const r = given.archived_at || (given.parent_id && parent(given.parent_id)?.archived_at) ? given : this.store.card(given.id);
+      if (!mine(r)) continue;
+      if (r.archived_at) {
+        const doc = r.plan_ref && !r.plan_ref.includes('#') ? docOf(r) : null;
+        if (!r.plan_ref) out.set(r.id, { id: r.id, repo: r.repo ?? this.home, title: r.title ?? '' });
+        else if (doc) out.set(r.id, { id: r.id, repo: repoOfRef(doc.file, this.home), title: doc.title });
+        continue;
+      }
+      const project = r.parent_id ? parent(r.parent_id) : null;
+      if (!r.plan_ref || !mine(project) || !project.archived_at) continue;
+      const doc = docOf(project);
+      const w = doc && r.plan_ref.startsWith(`${doc.file}#`) ? doc.workstreams.find((x) => x.key === r.plan_ref!.slice(doc.file.length + 1)) : undefined;
+      if (w) out.set(r.id, { id: r.id, repo: repoOfRef(r.plan_ref, this.home), title: w.title });
+    }
+    return out;
   }
 
   /**
@@ -1064,7 +1151,7 @@ export class Board {
   /** Whether a page of the repository's cards is online, or was (archived cards too). */
   sharesPages(repo: string): boolean {
     const column = this.repoColumn(repo);
-    return this.sharedRows().some((r) => r.repo === column && r.share && !!(JSON.parse(r.share) as StoredShare).url);
+    return this.sharedRows().some((r) => r.repo === column && !!this.storedShare(r).url);
   }
 
   /** Obeya's own proposal still open goes, withdrawn rather than dismissed. */
@@ -1155,6 +1242,15 @@ export class Board {
    * left outdated.
    */
   outdatedRows(shared = this.sharedRows()): { r: CardRow; missed: OutdatedBy[] }[] {
+    const offered = this.offered();
+    return shared.flatMap((r) => {
+      const missed = this.outdatedAsLooked(r);
+      return offered(r, missed) ? [{ r, missed }] : [];
+    });
+  }
+
+  /** Whether the sheet offers to share again a page that lacks the changes `missed` (`outdatedRows`), as the owner put the notice away. */
+  private offered(): (r: CardRow, missed: OutdatedBy[]) => boolean {
     const at = (id: string | null) => PAGE_CHANGES.findIndex((c) => c.id === id);
     const dismissed = at(this.setting(RESHARE_DISMISSED));
     const themes = this.dismissedThemes();
@@ -1162,9 +1258,7 @@ export class Board {
       const was = themes[r.id];
       return !!was && JSON.stringify(was) === JSON.stringify(this.themePair(r));
     };
-    return shared
-      .map((r) => ({ r, missed: this.outdatedAsLooked(r) }))
-      .filter(({ r, missed }) => missed.some((id) => (id === THEME_CHANGED ? !hidden(r) : at(id) > dismissed)));
+    return (r, missed) => missed.some((id) => (id === THEME_CHANGED ? !hidden(r) : at(id) > dismissed));
   }
 
   /** What leaves the card's page outdated (`reshareable`), its repository's theme included. */
@@ -1172,9 +1266,14 @@ export class Board {
     return reshareable(r, this.themeNow(r));
   }
 
-  /** `outdatedBy` with the demos' files as Obeya last looked at them (`lookedFiles`), without the disk. */
+  /** `outdatedBy` with the demos' files as Obeya last looked at them (`lookedFiles`), without the disk; found once per row, theme and look. */
   private outdatedAsLooked(r: CardRow): OutdatedBy[] {
-    return reshareable(r, this.themeNow(r), this.lookedThere);
+    const theme = this.themeNow(r);
+    const had = this.outdatedOf.get(r);
+    if (had && had.theme === theme && had.looked === this.looked) return had.missed;
+    const missed = reshareable(r, theme, this.lookedThere);
+    this.outdatedOf.set(r, { theme, looked: this.looked, missed });
+    return missed;
   }
 
   private lookedThere = (d: { dir: string; kind: DemoKind }): boolean => {
@@ -1218,6 +1317,7 @@ export class Board {
           moved = true;
         });
         if (moved) {
+          this.looked++;
           this.notice = null;
           this.cache = null;
           this.tell();
@@ -1246,7 +1346,7 @@ export class Board {
 
   /** The theme the card's page was published with, and its repository's now. */
   private themePair(r: CardRow): ThemePair {
-    return [(JSON.parse(r.share!) as StoredShare).theme ?? null, this.themeNow(r) ?? null];
+    return [this.storedShare(r).theme ?? null, this.themeNow(r) ?? null];
   }
 
   /**
@@ -1255,11 +1355,14 @@ export class Board {
    * dimensions. Their demos need not be at hand: the site's copy of a page is tagged in place.
    */
   untaggedRows(shared = this.sharedRows()): CardRow[] {
-    return shared.filter((r) => {
-      const s = JSON.parse(r.share!) as StoredShare;
-      const vocabulary = this.vocabularyOf?.(repoOfRow(r, this.home));
-      return !!s.url && !s.state && !s.personal && !!vocabulary && untagged(pageTagsOf(r), vocabulary).length > 0;
-    });
+    return shared.filter((r) => this.untaggedRow(r));
+  }
+
+  /** Whether the card's page is among those the sheet offers to tag (`untaggedRows`). */
+  private untaggedRow(r: CardRow): boolean {
+    const s = this.storedShare(r);
+    const vocabulary = this.vocabularyOf?.(repoOfRow(r, this.home));
+    return !!s.url && !s.state && !s.personal && !!vocabulary && untagged(this.pageTags(r), vocabulary).length > 0;
   }
 
   /** The vocabulary of tags each repository's site names (`demo.site.tags`), for the pages without tags; none where it names none. */
@@ -1992,8 +2095,9 @@ export class Board {
 
   /** A project's cost is its project agent's and its workstreams', archived ones too. */
   private withProjectSpend(items: Item[]): Item[] {
-    if (!items.some((i) => i.kind === 'project')) return items;
-    const under = this.store.spentUnder(this.canvas.id);
+    const projects = items.flatMap((i) => (i.kind === 'project' ? [i.id] : []));
+    if (!projects.length) return items;
+    const under = this.store.spentUnder(projects);
     if (!under.size) return items;
     return items.map((i) => (i.kind === 'project' && under.has(i.id) ? { ...i, spent: (i.spent ?? 0) + under.get(i.id)! } : i));
   }
@@ -2250,7 +2354,7 @@ export class Board {
     if (this.notice?.of !== this.noticeOf(this.notice?.repos ?? [])) {
       const rows = this.sharedRows();
       const repos = [...new Set(rows.map((r) => repoOfRow(r, this.home)))];
-      this.notice = { reshare: this.makeReshare(rows), repos, of: this.noticeOf(repos) };
+      this.notice = { reshare: this.makeReshare(rows, repos), repos, of: this.noticeOf(repos) };
       // what changed may have come with files come or gone
       this.lookSoon();
     }
@@ -2263,16 +2367,44 @@ export class Board {
    * of tags of the repositories with shared pages (`repos`; a theme is asked for of those alone).
    */
   private noticeOf(repos: string[]): string {
-    const settings = [RESHARE_SETTING, RESHARE_DISMISSED, RESHARE_DISMISSED_THEMES].map((k) => this.setting(k));
-    const looks = repos.map((id) => ({ id, theme: this.themeOf?.(id), tags: this.vocabularyOf?.(id) }));
-    return JSON.stringify([this.store.shareRev(this.canvas.id), settings, looks]);
+    return JSON.stringify([this.store.shareRev(this.canvas.id), this.setting(RESHARE_SETTING), this.pageInputs(repos)]);
   }
 
-  private makeReshare(rows: CardRow[]): Reshare | null {
+  /**
+   * What the notice makes of each shared card's page besides its row: what the owner put away, the
+   * theme and vocabulary of tags of the repositories with shared pages, and the look at the demos' files.
+   */
+  private pageInputs(repos: string[]): string {
+    const settings = [RESHARE_DISMISSED, RESHARE_DISMISSED_THEMES].map((k) => this.setting(k));
+    const looks = repos.map((id) => ({ id, theme: this.themeOf?.(id), tags: this.vocabularyOf?.(id) }));
+    return JSON.stringify([settings, looks, this.looked]);
+  }
+
+  /**
+   * What each shared card's page adds to the notice of outdated pages, by card, with its row and what
+   * else it was made of (`pageInputs`): made again only for a row written since, so a change to one
+   * shared card does not go over all of them again.
+   */
+  private pageNotes: { of: string; notes: Map<string, { r: CardRow; missed: OutdatedBy[] | null; untagged: boolean }> } | null = null;
+
+  private makeReshare(rows: CardRow[], repos: string[]): Reshare | null {
     const run = this.reshareRun();
     const queued = new Set(run?.queue);
-    const left = this.outdatedRows(rows).filter(({ r }) => !queued.has(r.id));
-    const untagged = this.untaggedRows(rows).filter((r) => !queued.has(r.id)).length;
+    const of = this.pageInputs(repos);
+    const had = this.pageNotes?.of === of ? this.pageNotes.notes : new Map();
+    const notes = new Map<string, { r: CardRow; missed: OutdatedBy[] | null; untagged: boolean }>();
+    let offered: ReturnType<Board['offered']> | undefined;
+    for (const r of rows) {
+      let note = had.get(r.id);
+      if (note?.r !== r) {
+        const missed = this.outdatedAsLooked(r);
+        note = { r, missed: (offered ??= this.offered())(r, missed) ? missed : null, untagged: this.untaggedRow(r) };
+      }
+      notes.set(r.id, note);
+    }
+    this.pageNotes = { of, notes };
+    const left = [...notes.values()].flatMap(({ r, missed }) => (missed && !queued.has(r.id) ? [{ r, missed }] : []));
+    const untagged = [...notes.values()].filter(({ r, untagged }) => untagged && !queued.has(r.id)).length;
     if (!left.length && !untagged && !run) return null;
     // what sharing them again brings, and to how many of them
     const changes = ([...PAGE_CHANGES.map((c) => c.id), THEME_CHANGED] as OutdatedBy[]).flatMap((id) => {

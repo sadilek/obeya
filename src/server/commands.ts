@@ -218,7 +218,7 @@ export interface CommanderOptions {
 }
 
 /** The Koordinator's conversation with the owner: one agent session that reads command after command. */
-interface Session {
+export interface Session {
   agent: AgentSession;
   ended: boolean;
   /** The interface and conversation languages it started with (`ui/conversation`); others chosen since take a new session. */

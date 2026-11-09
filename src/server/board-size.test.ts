@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
-import { dlopen, FFIType, ptr } from 'bun:ffi';
 import * as fs from 'node:fs';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
-import { FakeRuntime, gitRepo, heard, noForge, removeDir } from './testing';
+import { cpuTime, FakeRuntime, gitRepo, heard, noForge, removeDir } from './testing';
 
 // A canvas the size of a long-used one: hundreds of archived cards, a few hundred of them with a
 // shared page on its repository's site, a hundred on the canvas, ideas with hundreds of prototypes.
@@ -72,37 +71,11 @@ beforeAll(async () => {
   // over a thousand cards and their demo folders take more than the default 5 s on a busy machine
 }, 30_000);
 
-/**
- * Windows counts a thread's CPU time in ticks of about 15.6 ms, coarser than a read of the cards;
- * the clock's time counted the waits for a core with it, which a busy runner made the larger part
- * of a run's cost or a rebuild's, by turns. The CPU cycles the thread ran are exact there, and
- * only their ratios count.
- */
-const cycles = (() => {
-  if (process.platform !== 'win32') return null;
-  const { symbols } = dlopen('kernel32.dll', { QueryThreadCycleTime: { args: [FFIType.i64, FFIType.ptr], returns: FFIType.i32 } });
-  const out = new BigUint64Array(1);
-  // GetCurrentThread's handle, which stands for the calling thread
-  return () => (symbols.QueryThreadCycleTime(-2n, ptr(out)), Number(out[0]));
-})();
-
 // What a run costs is measured against a rebuild of the canvas view on the same machine, in the
-// CPU time of the thread that runs the server's code: on a CI runner the same run counts four to
-// eight times the CPU time it counts on a laptop, more with other test files beside it
-// (`bun test --parallel`), and the time on the clock also waits for a core. A noisy measurement
+// CPU time of the thread that runs the server's code (`cpuTime`): on a CI runner the same run
+// counts four to eight times the CPU time it counts on a laptop, more with other test files beside
+// it (`bun test --parallel`), and the time on the clock also waits for a core. A noisy measurement
 // only makes a run cost more, so the fastest of three rounds counts.
-async function cpuTime(run: () => Promise<void>): Promise<number> {
-  await heard();
-  if (cycles) {
-    const start = cycles();
-    await run();
-    return cycles() - start;
-  }
-  const start = process.threadCpuUsage();
-  await run();
-  const used = process.threadCpuUsage(start);
-  return (used.user + used.system) / 1000;
-}
 
 /** A rebuild of the canvas view as the server sends it to its pages after a change, the median of five. */
 async function rebuildTime(): Promise<number> {
