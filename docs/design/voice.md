@@ -46,10 +46,12 @@ storage as they change, so they survive a canvas switch and a reload.
 The log has each recording's length and level beside its transcript. While the key is held, a level
 flat for 1.5 s shows "The microphone gives no sound.". The first press after a page load opens
 the microphone (0.2–0.3 s); released before it is open, nothing is recorded (rather than a recording running on unheld) and the owner is told
-"The microphone was not ready yet". The microphone stays open between presses, but a phone takes it
-from a page that was in the background (the phone slept, another app recorded): its track ends or
-stays muted, and a recording from it fails or stays silent. Each press checks that the open
-microphone still delivers and opens it afresh if not, as the first press after a load does.
+"The microphone was not ready yet". The microphone stays open for 10 s after a recording, so a press
+soon after starts at once, and is then let go: another app (a call) gets it, and the system's
+microphone indicator goes out; the next press opens it again, as the first after a load does. A
+phone may take it even within those seconds from a page that went to the background (the phone
+slept, another app recorded): its track ends or stays muted, and a recording from it fails or stays
+silent. Each press checks that the open microphone still delivers and opens it afresh if not.
 
 A recording without audible speech gives "I heard nothing.", one Whisper cannot make sense of
 "I did not understand that."; the Coordinator gets neither to guess from. Whisper fails on such
@@ -333,7 +335,9 @@ times of its words, which the caption's pointer follows. Demo narration is separ
   card one almost always is, also when the owner wants to send at once).
 - **The microphone opens on the first press, not on page load**: in the log of 1–5 Oct 2026 first
   recordings after a load failed no more often, and an early open keeps the browser's microphone
-  indicator on.
+  indicator on. **It is let go 10 s after the last recording** (owner's report, 2026-11-09): kept
+  open as long as the page, it stayed taken for Microsoft Teams after dictating. Rejected: letting it
+  go at once (each press would lose its first 0.2–0.3 s to opening it).
 - **Parakeet everywhere, the Mac included** (2026-10-14): 8 s of German on an M4 Pro took 0.23 s
   against 4.4 s for faster-whisper on the same CPU threads and 0.93 s for mlx-whisper on the GPU, same
   text; on a small fanless Windows box Whisper took about a minute. Whisper stays optional. Rejected:

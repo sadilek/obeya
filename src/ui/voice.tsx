@@ -86,6 +86,39 @@ function closeMic(m: Mic) {
   void m.ctx.close().catch(() => {});
 }
 
+/** How long the microphone stays open after a recording, for the next press to start at once. */
+export const MIC_KEPT_MS = 10_000;
+
+/**
+ * The microphone between presses: opened by the first, kept for `keptMs` after the last and then
+ * let go, so other apps (a call) get it and the system's microphone indicator goes out. Until
+ * 2026-11-09 it stayed open as long as the page, and Teams found it taken.
+ */
+export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, keptMs = MIC_KEPT_MS) {
+  let held: Promise<M> | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const drop = () => {
+    clearTimeout(timer);
+    const h = held;
+    held = null;
+    void h?.then(close, () => {});
+  };
+  return {
+    /** The open microphone, opening it if it is not. */
+    take(): Promise<M> {
+      clearTimeout(timer);
+      return (held ??= open());
+    },
+    /** Lets it go at once; the next `take` opens it afresh. */
+    drop,
+    /** Lets it go after `keptMs`, unless taken again meanwhile. */
+    release() {
+      clearTimeout(timer);
+      timer = setTimeout(drop, keptMs);
+    },
+  };
+}
+
 /** A name for a recording, unique enough to ask about it; `crypto.randomUUID` is missing outside a secure context. */
 const recordingName = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -110,10 +143,12 @@ export function usePushToTalk(
   const [flat, setFlat] = useState(false);
   /** Recordings let go of that Obeya has not answered yet. */
   const [writing, setWriting] = useState(0);
-  const mic = useRef<Promise<Mic> | null>(null);
+  const [mic] = useState(() => micHolder(openMic, closeMic));
   const rec = useRef<{ recording: Recording; t0: number; target: Where; into: string | null; spot: Taken | null } | null>(null);
   const held = useRef<number | null>(null);
   const frame = useRef(0);
+  /** Lets the microphone go after a while, unless a press holds it. */
+  const release = () => held.current === null && !rec.current && mic.release();
 
   /** `shownAfter`: how long after the press the microphone shows it listens. */
   async function start(shownAfter = 0) {
@@ -127,7 +162,7 @@ export function usePushToTalk(
     const spot = !into && target && 'card' in target ? take(target.card) : null;
     api.warmVoice();
     const failed = (confirm: string) => {
-      mic.current = null;
+      mic.drop();
       held.current = null;
       onHeard({ confirm });
     };
@@ -135,10 +170,10 @@ export function usePushToTalk(
     try {
       // the first press after a page load opens the microphone, which takes a moment; so does the
       // first after the phone took it away
-      m = await (mic.current ??= openMic());
+      m = await mic.take();
       if (!stillOpen(m)) {
-        closeMic(m);
-        m = await (mic.current = openMic());
+        mic.drop();
+        m = await mic.take();
       }
     } catch {
       return failed(t.voice.noMic);
@@ -146,6 +181,7 @@ export function usePushToTalk(
     if (held.current !== pressed) {
       // let go before the microphone was open: nothing was recorded, and a recording started now would run on unheld
       if (held.current === null && performance.now() - pressed >= TAP_MS) onHeard({ confirm: t.voice.notReady });
+      release();
       return;
     }
     void m.ctx.resume();
@@ -154,7 +190,6 @@ export function usePushToTalk(
       recording = record(m.stream, m.ctx);
     } catch {
       // the next press opens the microphone afresh
-      closeMic(m);
       return failed(t.voice.notReady);
     }
     const r = { recording, t0: performance.now(), target, into, spot };
@@ -198,6 +233,7 @@ export function usePushToTalk(
     setPhase('idle');
     setWriting((n) => n + 1);
     void r.recording.stop().then(async (audio) => {
+      release();
       if (r.into) return into(r.into, r.target, length < TAP_MS ? null : audio);
       // a tap is not a command
       if (length < TAP_MS) return;
@@ -246,7 +282,7 @@ export function usePushToTalk(
     if (note) setTimeout(() => draftOf(key).note === note && updateDraft(key, { note: '' }), NOTE_MS);
   }
 
-  useEffect(() => () => void mic.current?.then((m) => m.stream.getTracks().forEach((tr) => tr.stop())), []);
+  useEffect(() => mic.drop, []);
   // a restart waits while the owner speaks and until what they said is in the field or answered:
   // until 2026-10-14 it went ahead once they let go, and a long dictation's words were lost
   useEffect(() => {
