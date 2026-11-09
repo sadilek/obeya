@@ -211,10 +211,12 @@ export class DemoSpace {
   }
 
   private async job(sweeping: boolean) {
+    const unreadable = await this.unreadable().catch(() => true);
+    // the settings as the file stands once it was found to read, not as it stood before
     const s = this.o.settings();
     const dir = demoDirectory(s);
     try {
-      const days = (await this.unreadable()) ? null : keepDays(s, this.o.home);
+      const days = unreadable ? null : keepDays(s, this.o.home);
       // an Obeya that keeps every frame has nothing to delete, and counts only for the owner looking
       // (or for a directory it has no count of)
       if (sweeping && days === null && this.used?.dir === dir) return;

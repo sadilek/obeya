@@ -199,7 +199,7 @@ export function codeOf(source: string): string {
     } else if (c === '`') {
       i = templateFrom(i + 1);
       last = '`';
-    } else if (c === '/' && (last === '' || /[(,=:[&|?{};+\-*%<>~^]/.test(last) || (last === '!' && !/[\w)\]]/.test(source[lastAt - 1] ?? '')) || /\b(return|typeof|case|in|of)$/.test(source.slice(Math.max(0, i - 8), i).trimEnd()))) {
+    } else if (c === '/' && (last === '' || (/[(,=:[&|?{};+\-*%<>~^]/.test(last) && !(/[+-]/.test(last) && source[lastAt - 1] === last)) || (last === '!' && !/[\w)\]]/.test(source[lastAt - 1] ?? '')) || /\b(return|typeof|case|in|of)$/.test(source.slice(Math.max(0, i - 8), i).trimEnd()))) {
       // a regular expression literal: to its closing slash outside a class, then its flags
       let j = i + 1;
       let inClass = false;
@@ -233,22 +233,22 @@ export function codeOf(source: string): string {
 }
 
 /**
- * The calls of synchronous APIs in the code (`codeOf`): each name ending in `Sync` followed by
- * `(`, with its line; a function or method of that name being declared is no call.
+ * The calls of synchronous APIs in the code (`codeOf`): each name ending in `Sync` followed by `(`,
+ * also with type arguments, `?.` or a line break between them, with its line; a function or method
+ * of that name being declared is no call.
  */
 export function syncCalls(source: string): { name: string; line: number }[] {
   const code = codeOf(source);
-  const lines = code.split('\n');
   const found: { name: string; line: number }[] = [];
-  lines.forEach((text, n) => {
-    for (const m of text.matchAll(/\b(\w+Sync)\s*\(/g)) {
-      const before = text.slice(0, m.index);
-      if (/\bfunction\s*\*?\s*$/.test(before)) continue;
-      // a method of a class: the line begins with its name and its parameters, its body with the line's end
-      if (/^\s*((public|private|protected|static|async|override)\s+)*$/.test(before) && isMethod(text.slice(m.index! + m[0].length))) continue;
-      found.push({ name: m[1]!, line: n + 1 });
-    }
-  });
+  for (const m of code.matchAll(/\b(\w+Sync)\s*(?:<[^<>()]*(?:<[^<>()]*>[^<>()]*)*>)?\s*(?:\?\.)?\s*\(/g)) {
+    const lineStart = code.lastIndexOf('\n', m.index) + 1;
+    const lineEnd = code.indexOf('\n', m.index + m[0].length);
+    const before = code.slice(lineStart, m.index);
+    if (/\bfunction\s*\*?\s*$/.test(before)) continue;
+    // a method of a class: the line begins with its name and its parameters, its body with the line's end
+    if (/^\s*((public|private|protected|static|async|override)\s+)*$/.test(before) && isMethod(code.slice(m.index! + m[0].length, lineEnd < 0 ? code.length : lineEnd))) continue;
+    found.push({ name: m[1]!, line: code.slice(0, m.index).split('\n').length });
+  }
   return found;
 }
 
@@ -282,6 +282,11 @@ describe('the scan for synchronous calls', () => {
       // a division after a value that cannot be null, and a regular expression after a negation
       "const half = `${(ms! / 2).toFixed(1)} s` + 'x' && !/'/.test(y) && renameSync(a, b);",
       '  someSync(a, (b) => {',
+      // a call split over lines, with type arguments, optional, and after a division that follows an increment
+      'const u = readFileSync',
+      '  (file);',
+      'const v = gitStepsSync<string>(cwd, steps) ?? statSync?.(p);',
+      'const w = count++ / 2; mkdirSync(d);',
     ].join('\n');
     expect(syncCalls(source)).toEqual([
       { name: 'existsSync', line: 4 },
@@ -290,6 +295,10 @@ describe('the scan for synchronous calls', () => {
       { name: 'spawnSync', line: 11 },
       { name: 'renameSync', line: 12 },
       { name: 'someSync', line: 13 },
+      { name: 'readFileSync', line: 14 },
+      { name: 'gitStepsSync', line: 16 },
+      { name: 'statSync', line: 16 },
+      { name: 'mkdirSync', line: 17 },
     ]);
   });
 });
