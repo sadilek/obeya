@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { micHolder, stillOpen } from './voice';
 
 const mic = (tracks: { readyState: string; muted: boolean }[], state = 'running') => ({
@@ -20,7 +20,10 @@ describe('stillOpen', () => {
 });
 
 describe('micHolder', () => {
-  const holder = (keptMs: number) => {
+  // the holder's own timer is faked: on a busy machine a real one fires late and the tests go wrong
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+  const holder = (keptMs = 10_000) => {
     const log: string[] = [];
     let n = 0;
     const h = micHolder(
@@ -33,35 +36,52 @@ describe('micHolder', () => {
     );
     return { h, log };
   };
-  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** Lets what waits on a settled promise run. */
+  const settle = () => new Promise((r) => setImmediate(r));
 
   test('the microphone is let go a while after the last recording, and opened afresh by the next press', async () => {
-    const { h, log } = holder(20);
+    const { h, log } = holder();
     expect(await h.take()).toBe(1);
     h.release();
-    await wait(5);
+    jest.advanceTimersByTime(9_999);
     expect(log).toEqual(['open 1']);
-    await wait(40);
+    jest.advanceTimersByTime(1);
     expect(log).toEqual(['open 1', 'close 1']);
     expect(await h.take()).toBe(2);
   });
 
   test('a press within the while keeps the open microphone', async () => {
-    const { h, log } = holder(20);
+    const { h, log } = holder();
     await h.take();
     h.release();
-    await wait(5);
+    jest.advanceTimersByTime(5_000);
     expect(await h.take()).toBe(1);
-    await wait(40);
+    jest.advanceTimersByTime(20_000);
     expect(log).toEqual(['open 1']);
   });
 
   test('dropped, it closes at once', async () => {
-    const { h, log } = holder(1000);
+    const { h, log } = holder();
     await h.take();
     h.release();
     h.drop();
-    await wait(0);
+    expect(log).toEqual(['open 1', 'close 1']);
+  });
+
+  test('an open microphone dropped for a fresh one closes before the fresh one opens', async () => {
+    const { h, log } = holder();
+    await h.take();
+    h.drop();
+    expect(await h.take()).toBe(2);
+    expect(log).toEqual(['open 1', 'close 1', 'open 2']);
+  });
+
+  test('dropped while it opens, it closes once open', async () => {
+    const { h, log } = holder();
+    const opening = h.take();
+    h.drop();
+    expect(await opening).toBe(1);
+    await settle();
     expect(log).toEqual(['open 1', 'close 1']);
   });
 });

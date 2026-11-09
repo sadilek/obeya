@@ -96,18 +96,28 @@ export const MIC_KEPT_MS = 10_000;
  */
 export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, keptMs = MIC_KEPT_MS) {
   let held: Promise<M> | null = null;
+  /** The held microphone once it is open: dropped then, it closes before anything opens it anew. */
+  let opened: M | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const drop = () => {
     clearTimeout(timer);
     const h = held;
+    const m = opened;
     held = null;
-    void h?.then(close, () => {});
+    opened = undefined;
+    if (m !== undefined) close(m);
+    else void h?.then(close, () => {});
   };
   return {
     /** The open microphone, opening it if it is not. */
     take(): Promise<M> {
       clearTimeout(timer);
-      return (held ??= open());
+      if (!held) {
+        const p = open();
+        held = p;
+        p.then((m) => held === p && (opened = m), () => {});
+      }
+      return held;
     },
     /** Lets it go at once; the next `take` opens it afresh. */
     drop,
@@ -147,6 +157,8 @@ export function usePushToTalk(
   const rec = useRef<{ recording: Recording; t0: number; target: Where; into: string | null; spot: Taken | null } | null>(null);
   const held = useRef<number | null>(null);
   const frame = useRef(0);
+  /** Unmounted: a press still opening the microphone is over. */
+  const gone = useRef(false);
   /** Lets the microphone go after a while, unless a press holds it. */
   const release = () => held.current === null && !rec.current && mic.release();
 
@@ -162,6 +174,8 @@ export function usePushToTalk(
     const spot = !into && target && 'card' in target ? take(target.card) : null;
     api.warmVoice();
     const failed = (confirm: string) => {
+      // let go meanwhile and pressed anew: the newer press holds the microphone and tells for itself
+      if (gone.current || (held.current !== null && held.current !== pressed)) return;
       mic.drop();
       held.current = null;
       onHeard({ confirm });
@@ -171,7 +185,8 @@ export function usePushToTalk(
       // the first press after a page load opens the microphone, which takes a moment; so does the
       // first after the phone took it away
       m = await mic.take();
-      if (!stillOpen(m)) {
+      // a press let go meanwhile opens nothing anew: a newer one does, or the next
+      if (!stillOpen(m) && held.current === pressed) {
         mic.drop();
         m = await mic.take();
       }
@@ -180,7 +195,7 @@ export function usePushToTalk(
     }
     if (held.current !== pressed) {
       // let go before the microphone was open: nothing was recorded, and a recording started now would run on unheld
-      if (held.current === null && performance.now() - pressed >= TAP_MS) onHeard({ confirm: t.voice.notReady });
+      if (held.current === null && !gone.current && performance.now() - pressed >= TAP_MS) onHeard({ confirm: t.voice.notReady });
       release();
       return;
     }
@@ -282,7 +297,15 @@ export function usePushToTalk(
     if (note) setTimeout(() => draftOf(key).note === note && updateDraft(key, { note: '' }), NOTE_MS);
   }
 
-  useEffect(() => mic.drop, []);
+  // a press still opening the microphone records nothing then, and opens nothing anew
+  useEffect(() => {
+    gone.current = false;
+    return () => {
+      gone.current = true;
+      held.current = null;
+      mic.drop();
+    };
+  }, []);
   // a restart waits while the owner speaks and until what they said is in the field or answered:
   // until 2026-10-14 it went ahead once they let go, and a long dictation's words were lost
   useEffect(() => {
