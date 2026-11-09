@@ -50,7 +50,8 @@ machine's active account may lack the admin rights a workflow run or a rerun nee
      shows too (`canvas.png` and the phone's);
    - the video's poster, `node scripts/hero-video/publish.ts --poster-only`
      (it uploads nothing);
-   - a copy of `demo.mp4`, `captions.vtt`, `chapters.vtt` and `review/` in `<demos>/obeya-v<version>/`,
+   - a copy of `demo.mp4`, `captions.vtt` with the `captions.<language>.vtt` it names (without
+     them the card shows no captions), `chapters.vtt` and `review/` in `<demos>/obeya-v<version>/`,
      so that what goes out in step 8 is the video that was looked at, even if the hero video is
      rendered again meanwhile.
 4. The version in `package.json` (the app, its settings and the release take it from there),

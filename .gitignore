@@ -7,3 +7,5 @@ dist/
 site/media/
 .voice/
 site/sitemap.xml
+site/player.js
+site/player.css

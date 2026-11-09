@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="preload" href="fonts/ibm-plex-sans-condensed-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/newsreader-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="player.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -41,58 +42,73 @@
 
   <section class="film" id="film" aria-label="Demo video">
     <figure class="player">
-      <video controls preload="none" playsinline poster="img/hero-poster.jpg" width="1440" height="900">
-        <source src="media/hero.mp4" type="video/mp4">
-        <track kind="captions" src="media/hero.vtt" srclang="en" label="English">
-        <track kind="chapters" src="media/hero.chapters.vtt" srclang="en" label="Chapters">
-      </video>
-      <button class="play" type="button" aria-label="Play the video" hidden>
-        <svg viewBox="0 0 148 148" aria-hidden="true"><circle cx="74" cy="74" r="74" fill="#fff" fill-opacity=".38"/>
-          <circle cx="74" cy="74" r="60" fill="#1f1b14" fill-opacity=".84"/><path d="M60.5 48v52l46.8-26z" fill="#fff"/></svg>
-      </button>
+      <div class="dp-screen">
+        <video controls preload="none" playsinline poster="img/hero-poster.jpg" width="1440" height="900">
+          <source src="media/hero.mp4" type="video/mp4">
+          <track kind="captions" src="media/hero.vtt" srclang="en" label="English" default>
+        </video>
+        <button class="play" type="button" aria-label="Play the video" hidden>
+          <svg viewBox="0 0 148 148" aria-hidden="true"><circle cx="74" cy="74" r="74" fill="#fff" fill-opacity=".38"/>
+            <circle cx="74" cy="74" r="60" fill="#1f1b14" fill-opacity=".84"/><path d="M60.5 48v52l46.8-26z" fill="#fff"/></svg>
+        </button>
+      </div>
     </figure>
     <ol class="chapters" aria-label="Chapters" hidden></ol>
+    <script src="player.js"></script>
     <script>
-      // With JavaScript the poster shows one big play button instead of the browser's controls;
-      // without it the button stays hidden and the controls start the video.
-      const film = document.querySelector('.player video'), play = document.querySelector('.player .play');
+      // With JavaScript the poster shows one big play button, and the video plays in the player of
+      // Obeya's cards (player.js): the captions under the picture, on until switched off, the progress
+      // bar in a segment per scene. Without it the browser's controls start the video, captions on;
+      // without player.js (the site opened from the checkout before scripts/site-player.ts) they show
+      // once it plays.
+      const root = document.querySelector('.player'), film = root.querySelector('video'), play = root.querySelector('.play');
+      const player = window.obeyaPlayer;
       const start = () => {
-        play.hidden = true;
-        film.controls = true;
         film.play();
+        (player ? root : film).focus({ preventScroll: true });
       };
       film.controls = false;
       play.hidden = false;
-      play.addEventListener('click', () => {
-        start();
-        film.focus();
+      // the player draws the captions under the picture once it stands, never the browser over it
+      if (player) for (const t of film.textTracks) t.mode = 'hidden';
+      play.addEventListener('click', start);
+      film.addEventListener('play', () => {
+        play.hidden = true;
+        if (!player) film.controls = true;
       });
-      // The scenes as a list under the video, from its chapters track: a click plays from there,
-      // and the scene that plays is marked.
-      const list = document.querySelector('.chapters'), chapters = film.querySelector('track[kind=chapters]');
-      chapters.track.mode = 'hidden';
-      chapters.addEventListener('load', () => {
-        const cues = [...chapters.track.cues];
-        const time = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-        const buttons = cues.map((cue) => {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.innerHTML = `<span class="t">${time(cue.startTime)}</span>`;
-          b.append(cue.text);
-          b.addEventListener('click', () => {
-            film.currentTime = cue.startTime;
-            start();
+      // The scenes, from the chapters file: segments of the player's bar, and a list under the video
+      // as a card lists its demo's chapters: a click plays from there, and the scene that plays is marked.
+      const list = document.querySelector('.chapters');
+      const sec = (t) => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
+      const time = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+      fetch('media/hero.chapters.vtt')
+        .then((r) => (r.ok ? r.text() : ''))
+        .catch(() => '')
+        .then((vtt) => {
+          const scenes = [...vtt.matchAll(/^([\d:.]+) -->.*\r?\n(.+)$/gm)].map((m) => [sec(m[1]), m[2].trim()]);
+          if (player) {
+            root.classList.add('dp');
+            player(root, film, scenes);
+          }
+          const buttons = scenes.map(([at, title]) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.innerHTML = `<span class="t">${time(at)}</span>`;
+            b.append(title);
+            b.addEventListener('click', () => {
+              film.currentTime = at;
+              start();
+            });
+            list.appendChild(document.createElement('li')).append(b);
+            return b;
           });
-          list.appendChild(document.createElement('li')).append(b);
-          return b;
+          // by the playback time, which a seek moves at once
+          film.addEventListener('timeupdate', () => {
+            const on = scenes.findLastIndex(([at]) => at <= film.currentTime + 0.05);
+            buttons.forEach((b, i) => b.classList.toggle('on', i === on));
+          });
+          list.hidden = scenes.length === 0;
         });
-        // by the time rather than the track's active cues, which Chrome leaves stale after a seek
-        film.addEventListener('timeupdate', () => {
-          const on = cues.findLastIndex((cue) => cue.startTime <= film.currentTime + 0.05);
-          buttons.forEach((b, i) => b.classList.toggle('on', i === on));
-        });
-        list.hidden = cues.length === 0;
-      });
     </script>
     <p class="film-note">A real run on a small app: an idea by voice, an agent at work, its demo, the approval.</p>
     <p class="film-note"><a href="https://demos.obeya.si">See every feature in action</a>: each change to Obeya with the demo its agent recorded.</p>

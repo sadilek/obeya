@@ -323,11 +323,15 @@ by scene titles ("Your wall" to "The agent starts"), 1.5 times as fast, about 18
 
 On the page it is a `<video>` with English captions and a poster (the first frame, in git), loading
 nothing before a click; opened from the file, the site shows the poster alone. A script puts a big
-play button (a real `<button>`) over the poster and shows the browser's controls once it plays;
-without JavaScript the controls are there from the start. Below, the scenes are listed as on a
-card's demo (time and title), built from the chapters track: a click plays from that scene, and the
-playing scene is lifted as a card. The mark follows the playback time, not the track's active cues,
-which Chrome leaves stale after a seek. Without JavaScript or the chapters file there is no list.
+play button (a real `<button>`) over the poster, and the video plays in the player of a card's demo
+(Demos), built into the site when it is published, so the site shows a demo the way Obeya does:
+the captions under the picture rather than over it, on until the viewer switches them off, and the
+progress bar in a segment per scene. Its keys (Space, the arrows, C) belong to the player only after
+a click into it; elsewhere Space scrolls the page, as on any page. Without JavaScript the browser's
+controls start the video, its captions on. Below, the scenes are listed as on a card's demo (time
+and title), from the chapters file, which also gives the bar its segments: a click plays from that
+scene, and the playing scene is lifted as a card. Without JavaScript or the chapters file there is
+no list.
 
 ### Decisions
 

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { demoPageHtml, stackedPageHtml } from '../server/demo-page';
+import { demoPageHtml, sitePlayerScript, stackedPageHtml } from '../server/demo-page';
 import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF, SEEK_KEYS_KNOWN, videoPlayer } from './video-player';
 
 /** The scripts of a page that run (not those holding captions or a video's bytes). */
@@ -38,4 +38,12 @@ test('the player keeps the browser settings under the keys the walkthroughs read
   // the function carries its own copy of each, since a page has only its source
   const source = videoPlayer.toString();
   for (const key of [CAPTIONS_OFF, CAPTIONS_KEY_KNOWN, SEEK_KEYS_KNOWN, CAPTIONS_CHANGED]) expect(source).toContain(JSON.stringify(key));
+});
+
+test("obeya.si's script of the player parses and defines obeyaPlayer, with its keys bound to the player", () => {
+  const script = sitePlayerScript();
+  const window: { obeyaPlayer?: unknown } = {};
+  new Function('window', script)(window);
+  expect(typeof window.obeyaPlayer).toBe('function');
+  expect(script).toContain("keys: 'within'");
 });

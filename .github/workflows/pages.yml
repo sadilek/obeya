@@ -4,13 +4,14 @@
 # captions, its chapters and the README's loop cut from it stay out of git: they are assets of
 # the release `site-media`, fetched into site/media/ before the upload. scripts/hero-video/publish.ts replaces them and runs this workflow again.
 # The sitemap is written here too (scripts/site-sitemap.ts), each page dated by its last commit,
-# hence the whole history in the checkout; site/robots.txt points to it.
+# hence the whole history in the checkout; site/robots.txt points to it. The hero video plays in the
+# player of Obeya's cards, built into site/player.js and site/player.css here (scripts/site-player.ts).
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'scripts/site-sitemap.ts', '.github/workflows/pages.yml']
+    paths: ['site/**', 'scripts/site-sitemap.ts', 'scripts/site-player.ts', 'src/core/video-player.ts', 'src/core/caption-pages.ts', 'src/core/player.css', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -35,6 +36,8 @@ jobs:
         with: { bun-version: 1.4.3 }
       - name: Write the sitemap
         run: bun scripts/site-sitemap.ts site https://obeya.si/
+      - name: Build the video player
+        run: bun scripts/site-player.ts site
       - name: Fetch the hero video
         run: gh release download site-media --pattern 'hero.*' --dir site/media
         env:

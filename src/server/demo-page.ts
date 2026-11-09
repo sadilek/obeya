@@ -434,6 +434,18 @@ const PLAYERS = (words: PlayerWords) => `
   }
 `;
 
+/**
+ * The same player for obeya.si's hero video (site/index.html), as a script of its own that defines
+ * `obeyaPlayer(root, video, chapters)`: the site loads its chapters after the page, and its keys
+ * stay with the page until a click into the player. `scripts/site-player.ts` writes it.
+ */
+export const sitePlayerScript = () => `// The video player of Obeya's cards and demo pages (src/core/video-player.ts), written by scripts/site-player.ts.
+window.obeyaPlayer = (root, video, chapters) => {
+  const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, preferredTrack: ${preferredTrack} };
+  return (${videoPlayer})(root, video, { chapters, words: ${JSON.stringify(PAGE_WORDS.en.player)}, prefer: navigator.languages, keys: 'within', fullscreen: true }, lib);
+};
+`;
+
 /** A video in its player: the picture and the big play button over it until it first plays, the caption and the controls added by `PLAYERS`. */
 const playerTag = (chapters: [number, string][], video: string, play: string) =>
   `<div class="player"><figure class="dp" data-chapters="${esc(JSON.stringify(chapters))}"><div class="dp-screen">${video}<button class="start" aria-label="${play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div></figure></div>`;

@@ -34,8 +34,12 @@ export interface PlayerOptions {
   silent?: boolean;
   /** The languages its captions come in, where the viewer has picked none, for a silent video: the interface's on the card, the browser's on a page. */
   prefer: readonly string[];
-  /** It takes its keys itself (a shared page: Space, ← and →, C); on the card Obeya's own handlers route them. */
-  keys?: boolean;
+  /**
+   * It takes its keys itself (a shared page: Space, ← and →, C); on the card Obeya's own handlers route them.
+   * `'within'`: only while the focus is in the player, which a click into it puts there (obeya.si, where Space
+   * elsewhere scrolls the page).
+   */
+  keys?: boolean | 'within';
   /** A full screen button among its controls (a shared page). */
   fullscreen?: boolean;
 }
@@ -395,9 +399,14 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
   const players = ((window as unknown as { obeyaPlayers?: Keyed[] }).obeyaPlayers ??= []);
   if (o.keys) {
     players.push(me);
-    on(root, 'pointerdown', () => (me.used = performance.now()));
+    if (o.keys === 'within') root.tabIndex = -1;
+    on(root, 'pointerdown', () => {
+      me.used = performance.now();
+      if (o.keys === 'within') root.focus({ preventScroll: true });
+    });
     on<KeyboardEvent>(window, 'keydown', (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (o.keys === 'within' && !root.contains(document.activeElement)) return;
       if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
       const live = players.filter((p) => p.root.isConnected);
       const keyed = live.find((p) => !p.video.paused && !p.video.ended) ?? [...live].sort((a, b) => b.used - a.used)[0];

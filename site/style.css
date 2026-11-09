@@ -44,8 +44,11 @@ section { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
 .btn.primary { background: var(--ink); color: var(--card); border-color: var(--ink); }
 
 .film { margin-top: 64px; }
+/* the player of Obeya's cards (player.css, built by scripts/site-player.ts): the caption under the picture, the controls under it */
 .player { position: relative; margin: 0; border-radius: 4px; overflow: hidden; background: #000;
   box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 24px 60px -20px rgba(28,27,25,.35); }
+.player.dp { --bg: var(--paper); --wt-accent: var(--blue); background: var(--wt-deck); }
+.player:focus { outline: none; }
 .player video { display: block; width: 100%; height: auto; }
 .player .play { position: absolute; inset: 0; display: grid; place-items: center; padding: 0; border: 0; background: none; cursor: pointer; }
 .player .play[hidden] { display: none; }
