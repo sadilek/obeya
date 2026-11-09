@@ -44,7 +44,9 @@ each question ("I would take this", with why) and the next step (answer first, b
 task, plan, prototype, park or drop, with why). The card marks the suggested button and options, the
 canvas card says it short ("Tip: prototype"), and the suggestion goes with the owner's next
 message. Every suggested step is a button that exists: answering needs open questions, splitting off
-a task needs one marked. The agent's instructions say what each step does to the rest of the idea
+a task needs one marked, a prototype one still to start (a planned variant with none being built, or
+with none planned, none being built at all). Starting prototypes takes the suggestion off the idea:
+it was made for the idea before they ran. The agent's instructions say what each step does to the rest of the idea
 (building ends the conversation and drops its prototypes, planned and running; splitting off keeps
 the idea, conversation and prototypes; planning hands the prototype the plan builds on to its
 workstream and drops the others), so it never recommends a click for what the click does not do. „Mach, was du

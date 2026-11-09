@@ -1045,6 +1045,48 @@ describe('a prototype', () => {
     expect(prototypes(i.id).map((p) => p.title)).toEqual(['Prototyp: Export für Vermieter – Knopf (2)']);
   });
 
+  test('starting one takes the suggestion off the idea, and a prototype is no step while every planned one is being built', async () => {
+    canvas.shutdown();
+    canvas = await open(4);
+    const i = idea('Leinwand ordnen');
+    canvas.act(i.id, { action: 'discuss', text: 'Erst sehen?' });
+    explorer().call('reply', { text: 'Erst messen.', next: { step: 'prototype', why: 'Erst die Zahlen.' } });
+    explorer().emit({ type: 'idle' });
+    expect(item(i.id).idea!.next).toEqual({ step: 'prototype', why: 'Erst die Zahlen.' });
+    canvas.act(i.id, { action: 'prototype' });
+    await settle();
+    expect(item(i.id).idea!.next).toBeUndefined();
+    // the idea as it stands is being built: suggesting it again is no step
+    canvas.act(i.id, { action: 'discuss', text: 'Und dann?' });
+    explorer().call('reply', { text: 'Der Prototyp entscheidet.', next: { step: 'prototype', why: 'Erst die Zahlen.' } });
+    explorer().emit({ type: 'idle' });
+    expect(item(i.id).idea!.next).toBeUndefined();
+
+    // with variants planned, a prototype is a step while one of them has none being built
+    const j = idea('Logo');
+    canvas.act(j.id, { action: 'discuss', text: 'Zeig beide.' });
+    turn(explorer(), 'Zwei geplant.', () =>
+      explorer().call('plan_prototypes', {
+        prototypes: [
+          { approach: 'Wortmarke', show: 'Der Name.' },
+          { approach: 'Bildmarke', show: 'Ein Zeichen.' },
+        ],
+      }),
+    );
+    canvas.act(j.id, { action: 'prototype', variants: ['Wortmarke'] });
+    await settle();
+    canvas.act(j.id, { action: 'discuss', text: 'Und die Bildmarke?' });
+    explorer().call('reply', { text: 'Die fehlt noch.', next: { step: 'prototype', why: 'Die Bildmarke fehlt.' } });
+    explorer().emit({ type: 'idle' });
+    expect(item(j.id).idea!.next).toEqual({ step: 'prototype', why: 'Die Bildmarke fehlt.' });
+    canvas.act(j.id, { action: 'prototype' });
+    await settle();
+    canvas.act(j.id, { action: 'discuss', text: 'Und jetzt?' });
+    explorer().call('reply', { text: 'Beide laufen.', next: { step: 'prototype', why: '?' } });
+    explorer().emit({ type: 'idle' });
+    expect(item(j.id).idea!.next).toBeUndefined();
+  });
+
   test('the variants its agent planned start at once, one prototype each, and none twice', async () => {
     canvas.shutdown();
     canvas = await open(4);

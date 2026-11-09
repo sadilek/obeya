@@ -406,8 +406,12 @@ export class Explorers {
   private answer(cardId: string, text: string, questions: Question[] = [], next?: NextStep, mocks: Mock[] = []) {
     this.o.board.log(cardId, 'talk', 'explorer', text, { mocks });
     for (const q of questions) this.o.board.log(cardId, 'question', 'explorer', formatQuestion(q, this.o.board.language()));
-    const building = this.o.board.items().some((i) => i.prototypeOf === cardId && (i.state === 'planned' || i.state === 'working'));
-    this.o.board.setIdea(cardId, { yourTurn: questions.length > 0 || !building, questions, next });
+    const building = this.o.board.items().filter((i) => i.prototypeOf === cardId && (i.state === 'planned' || i.state === 'working'));
+    // a prototype is no step while every planned variant, or with none planned the idea itself, is being built
+    const { variants = [] } = this.o.board.idea(cardId);
+    const covered = variants.length ? variants.every((v) => building.some((i) => i.variant === v.approach)) : building.length > 0;
+    if (next?.step === 'prototype' && covered) next = undefined;
+    this.o.board.setIdea(cardId, { yourTurn: questions.length > 0 || !building.length, questions, next });
   }
 
   private tools(cardId: string, live: Live): AgentTool[] {

@@ -2568,8 +2568,9 @@ export class CanvasRuntime {
       }
     } finally {
       if (started.length) {
-        // the owner now waits for the prototypes, not the other way round; the agent's reply to a result gives the turn back
-        this.board.setIdea(cardId, { yourTurn: false });
+        // the owner now waits for the prototypes, not the other way round; the agent's reply to a result gives the turn back.
+        // Its suggestion was for the idea before they started: acted on or passed over, it goes
+        this.board.setIdea(cardId, { yourTurn: false, next: undefined });
         this.board.log(
           cardId,
           'state',
