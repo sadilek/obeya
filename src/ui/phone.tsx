@@ -24,7 +24,7 @@ import { plain } from './markdown';
 import { Cards } from './message';
 import { glide, type Mark, settle, speed, THROWN, thrown } from './panelHeight';
 import { shownState, TalkIcon } from './parts';
-import { quietText, TAILSCALE_APP, tailnet, useWhyQuiet } from './reach';
+import { quietText, TAILSCALE_APP, useTailnet, useWhyQuiet } from './reach';
 import { videoOf } from './spot';
 import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
@@ -482,21 +482,27 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   }, [quietSince]);
   const quiet = quietSince !== null && Date.now() - quietSince >= QUIET_MS;
   const { why, pushedAt } = useWhyQuiet(quietSince);
-  const said = quietText(why, { tailnet: tailnet(location.hostname), android: /Android/i.test(navigator.userAgent), pushedAt: pushedAt === null ? null : when(pushedAt) });
+  const viaTailnet = useTailnet(quietSince === null);
+  const said = quietText(why, { tailnet: viaTailnet, android: /Android/i.test(navigator.userAgent), pushedAt: pushedAt === null ? null : when(pushedAt) });
 
   const several = canvases.length > 1;
   const banner = quiet && (
     <div className="ph-quiet" role="status">
       <b>{t.phone.notAnswering(when(quietSince!))}</b>
-      {said.lines.map((l) => (
-        <span key={l}>{l}</span>
-      ))}
+      <span>{said.line}</span>
       {said.open && (
         <a className="ph-quiet-open" href={TAILSCALE_APP}>
           {t.phone.whyQuiet.openTailscale}
         </a>
       )}
-      {said.keepOn && <small>{t.phone.whyQuiet.keepOn}</small>}
+      {said.more.length > 0 && (
+        <details className="ph-quiet-more">
+          <summary>{t.phone.whyQuiet.more}</summary>
+          {said.more.map((l) => (
+            <p key={l}>{l}</p>
+          ))}
+        </details>
+      )}
     </div>
   );
   const voice = (

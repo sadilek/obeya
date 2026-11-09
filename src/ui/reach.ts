@@ -1,54 +1,86 @@
 // Why the phone does not reach Obeya (design: Running Obeya, "When the server does not answer"). The
 // page tells the likely cause from what it can see on its own: the browser's network state, how a
-// request to Obeya's address fails, and whether a push came since. Pushes travel through the
-// browser's push service on the open internet, not through Tailscale, so one that came says Obeya
-// runs and the phone's way to it is what is down (Tailscale stopped by Android, most often).
+// request to Obeya's address fails, and whether a push came a moment ago. Pushes travel through the
+// browser's push service on the open internet, not through the phone's way to the computer, so a
+// recent one says Obeya was running then, and that way is the likely cause (Tailscale stopped by
+// Android, most often).
 
 import { useEffect, useState } from 'react';
+import { api } from './api';
 import { t } from './strings';
 
 /** The likely cause; null until something tells. */
-export type Why = 'noNetwork' | 'noObeya' | 'pushed' | 'unreachable' | 'noAnswer' | null;
+export type Why = 'noNetwork' | 'noObeya' | 'answers' | 'pushed' | 'unreachable' | 'noAnswer' | null;
 
 /** How a request to Obeya's address went: an HTTP status, a failure after `failed` ms, or no answer at all. */
 export type Probe = { status: number } | { failed: number } | { slow: true };
 
-/** A failure this quick never left the phone: no name for the address, no route to it. */
+/** A failure this quick never got an answer from Obeya: no name or route for the address, or the computer refused it. */
 export const FAST_MS = 2000;
 /** How long the probe waits for an answer: a sleeping machine gives none. */
 const PROBE_MS = 5000;
 /** How often it looks again while Obeya does not answer. */
 const EVERY_MS = 10_000;
-/** Shared with the service worker, which notes there when the last push came. */
+/** Shared with the service worker, which notes there when the last push was sent. */
 const PUSHED = 'obeya-pushed';
+/** Where the page keeps whether Obeya told it that it reaches Obeya through Tailscale. */
+const TAILNET = 'obeya-tailnet';
 
-/** The address is in a tailnet: a MagicDNS name or a Tailscale address (100.64.0.0/10). */
+/**
+ * The address looks like one in a tailnet: a MagicDNS name, or one of Tailscale's addresses
+ * (100.64.0.0/10, which other VPNs use too, or fd7a:115c:a1e0::/48). Only until Obeya has said so itself.
+ */
 export function tailnet(host: string): boolean {
   if (/\.ts\.net$/i.test(host)) return true;
+  if (/^\[?fd7a:115c:a1e0:/i.test(host)) return true;
   const m = /^100\.(\d+)\.\d+\.\d+$/.exec(host);
   return !!m && Number(m[1]) >= 64 && Number(m[1]) < 128;
+}
+
+/** Whether this page reaches Obeya through Tailscale: as Obeya said while it answered, else as the address looks. */
+export function useTailnet(connected: boolean): boolean {
+  const [said, setSaid] = useState<boolean | null>(() => {
+    const v = localStorage.getItem(TAILNET);
+    return v === null ? null : v === 'true';
+  });
+  useEffect(() => {
+    if (!connected) return;
+    let gone = false;
+    api.access().then(
+      (v) => {
+        const yes = !v.local && v.tailnet;
+        localStorage.setItem(TAILNET, String(yes));
+        if (!gone) setSaid(yes);
+      },
+      () => {},
+    );
+    return () => {
+      gone = true;
+    };
+  }, [connected]);
+  return said ?? tailnet(location.hostname);
 }
 
 /** Opens the Tailscale app on Android (its `tailscale://navigate` link); without it, Chrome offers it in the Play Store. */
 export const TAILSCALE_APP = 'intent://navigate#Intent;scheme=tailscale;package=com.tailscale.ipn;end';
 
-/** A push this recent says Obeya ran a moment ago, even one that came before the page lost it (the push the owner tapped to open it). */
+/** A push sent this recently says Obeya was running a moment ago; an older one says nothing about now. */
 export const RECENT_MS = 10 * 60_000;
 
 /**
- * The likely cause of not reaching Obeya since `since`. An answer of the address that is an error of
- * the gateway (`tailscale serve` with nothing behind it) says the machine runs without Obeya; a push
- * since then, or a recent one, says Obeya runs; a request failing at once never got off the phone;
- * one hanging went somewhere nobody answers (a sleeping machine), unless a push came since.
+ * The likely cause of not reaching Obeya. An answer from the address says the way is there: a
+ * gateway error (`tailscale serve` with nothing behind it) that the machine runs without Obeya, any
+ * other answer that Obeya itself answers. A push sent a moment ago says Obeya was running then;
+ * a request failing at once got no answer from Obeya (no way to the address, or the computer
+ * refused it); one hanging went somewhere nobody answers (a sleeping machine).
  */
-export function whyQuiet(o: { online: boolean; since: number; pushedAt: number | null; probe: Probe | null; now?: number }): Why {
+export function whyQuiet(o: { online: boolean; pushedAt: number | null; probe: Probe | null; now?: number }): Why {
   const now = o.now ?? Date.now();
   if (!o.online) return 'noNetwork';
-  if (o.probe && 'status' in o.probe && o.probe.status >= 502 && o.probe.status <= 504) return 'noObeya';
-  if (o.pushedAt !== null && o.pushedAt > o.since) return 'pushed';
-  if (o.probe && 'failed' in o.probe && o.probe.failed < FAST_MS) return 'unreachable';
+  if (o.probe && 'status' in o.probe) return o.probe.status >= 502 && o.probe.status <= 504 ? 'noObeya' : 'answers';
   if (o.pushedAt !== null && now - o.pushedAt < RECENT_MS) return 'pushed';
-  return o.probe && !('status' in o.probe) ? 'noAnswer' : null;
+  if (!o.probe) return null;
+  return 'failed' in o.probe && o.probe.failed < FAST_MS ? 'unreachable' : 'noAnswer';
 }
 
 /** Asks Obeya's address once, through no cache: what came back, or how it failed. */
@@ -76,7 +108,7 @@ async function lastPush(): Promise<number | null> {
   }
 }
 
-/** The likely cause while Obeya has not answered since `since` (null while it does), and when the last push came. */
+/** The likely cause while Obeya has not answered since `since` (null while it does), and when the last push was sent. */
 export function useWhyQuiet(since: number | null): { why: Why; pushedAt: number | null } {
   const [online, setOnline] = useState(() => navigator.onLine);
   const [pushedAt, setPushedAt] = useState<number | null>(null);
@@ -86,7 +118,7 @@ export function useWhyQuiet(since: number | null): { why: Why; pushedAt: number 
     window.addEventListener('online', net);
     window.addEventListener('offline', net);
     void lastPush().then((at) => at !== null && setPushedAt((p) => Math.max(p ?? 0, at)));
-    const pushed = (e: MessageEvent) => e.data?.type === 'pushed' && typeof e.data.at === 'number' && setPushedAt(e.data.at);
+    const pushed = (e: MessageEvent) => e.data?.type === 'pushed' && typeof e.data.at === 'number' && setPushedAt((p) => Math.max(p ?? 0, e.data.at));
     navigator.serviceWorker?.addEventListener('message', pushed);
     return () => {
       window.removeEventListener('online', net);
@@ -124,21 +156,30 @@ export function useWhyQuiet(since: number | null): { why: Why; pushedAt: number 
       window.removeEventListener('online', again);
     };
   }, [since]);
-  return { why: since === null ? null : whyQuiet({ online, since, pushedAt, probe: probed }), pushedAt };
+  return { why: since === null ? null : whyQuiet({ online, pushedAt, probe: probed }), pushedAt };
 }
 
-/** What the line at the top says beneath "Obeya is not answering", and whether it offers Tailscale (its app, how to keep it on). */
-export function quietText(why: Why, o: { tailnet: boolean; android: boolean; pushedAt: string | null }) {
+/**
+ * What the line at the top says beneath "Obeya is not answering": the likely cause, more about it
+ * behind "More about this" (why pushes still come, a changed address, how to keep Android from
+ * stopping Tailscale), and whether it offers to open the Tailscale app (on Android, where Tailscale
+ * may be the cause).
+ */
+export function quietText(why: Why, o: { tailnet: boolean; android: boolean; pushedAt: string | null }): { line: string; more: string[]; open: boolean } {
   const w = t.phone.whyQuiet;
   const ts = o.tailnet;
-  const lines: Record<Exclude<Why, null> | 'unknown', string[]> = {
-    unknown: ts ? [w.tailnet, w.moved(true)] : [t.phone.notAnsweringWhy],
-    noNetwork: [w.noNetwork],
-    noObeya: [w.noObeya],
-    pushed: ts ? [w.pushed(o.pushedAt ?? ''), w.tailscaleOff, w.pushesStill] : [w.pushed(o.pushedAt ?? ''), w.sameNetwork],
-    unreachable: ts ? [w.unreachable, w.tailscaleOff, w.moved(true)] : [w.unreachable, w.sameNetwork, w.moved(false)],
-    noAnswer: ts ? [w.noAnswer, w.tailscaleToo] : [w.noAnswer],
+  const at = o.pushedAt ?? '';
+  const said: Record<Exclude<Why, null> | 'unknown', [string, string[]]> = {
+    unknown: ts ? [w.tailnet, [w.moved]] : [t.phone.notAnsweringWhy, []],
+    noNetwork: [w.noNetwork, []],
+    noObeya: [w.noObeya, []],
+    answers: [w.answers, []],
+    pushed: ts ? [w.pushedTailscale(at), [w.pushesStill, w.moved]] : [w.pushed(at), [w.moved]],
+    unreachable: ts ? [w.unreachableTailscale, [w.moved]] : [w.unreachable, [w.moved]],
+    noAnswer: ts ? [w.noAnswerTailscale, [w.moved]] : [w.noAnswer, [w.moved]],
   };
-  const tailscale = ts && o.android && why !== 'noNetwork' && why !== 'noObeya';
-  return { lines: lines[why ?? 'unknown'], open: tailscale, keepOn: tailscale && (why === 'pushed' || why === 'unreachable') };
+  const [line, more] = said[why ?? 'unknown'];
+  // where Tailscale on the phone may be the cause
+  const tailscale = ts && why !== 'noNetwork' && why !== 'noObeya' && why !== 'answers';
+  return { line, more: tailscale && o.android ? [...more, w.android] : more, open: tailscale && o.android };
 }

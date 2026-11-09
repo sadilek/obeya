@@ -325,7 +325,8 @@ describe('pairing', () => {
     await turnOn();
     const cookie = cookieOf(await viaTailnet(`/pair?code=${(await pairing()).code}`));
     const own = { cookie, origin: `https://${NAME}`, 'content-type': 'application/json' };
-    expect(await (await viaTailnet('/api/access', { cookie })).json()).toEqual({ local: false });
+    // it learns that it reaches Obeya through Tailscale, for when it no longer does
+    expect(await (await viaTailnet('/api/access', { cookie })).json()).toEqual({ local: false, tailnet: true });
     expect((await viaTailnet('/api/access/pair', own, { method: 'POST' })).status).toBe(403);
     expect((await viaTailnet('/api/access', own, { method: 'PUT', body: JSON.stringify({ remote: null }) })).status).toBe(403);
     const id = (await view()).devices[0]!.id;
@@ -454,6 +455,12 @@ describe('on another address', () => {
     expect(paired.headers.get('set-cookie')).toContain('SameSite=Lax');
     expect(paired.headers.get('set-cookie')).not.toContain('Secure');
     expect((await there('/', { cookie: cookieOf(paired) })).status).toBe(200);
+    // another VPN's address is no tailnet; one of Tailscale's own is, whatever its range
+    expect(await (await there('/api/access', { cookie: cookieOf(paired) })).json()).toEqual({ local: false, tailnet: false });
+    tailscaleStatus(ts, { state: 'Running', name: NAME, https: true, ips: [lan!] });
+    expect(await (await there('/api/access', { cookie: cookieOf(paired) })).json()).toEqual({ local: false, tailnet: true });
+    tailscaleStatus(ts, { state: 'Stopped', name: NAME, https: true, ips: [lan!] });
+    expect(await (await there('/api/access', { cookie: cookieOf(paired) })).json()).toEqual({ local: false, tailnet: false });
     expect((await turnOn(null)).address).toBeNull();
     expect(await there('/').then(() => 'answered', () => 'gone')).toBe('gone');
   });

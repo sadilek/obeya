@@ -312,23 +312,31 @@ address (`/api/reach`, through no cache, given 5 s). In this order:
 
 - the browser has no network: the phone has none;
 - the address answers 502 to 504, a gateway with nothing behind it (`tailscale serve` while Obeya is
-  stopped): the computer runs, Obeya does not;
-- a push came since the page lost Obeya, or in the last 10 minutes (the one the owner tapped to open
-  the app): Obeya was running, so the phone's way to the computer is down;
-- the request failed within 2 s: it never left the phone (no name for the address, no route), so the
-  phone does not reach the address at all;
+  not listening): the computer runs, Obeya does not;
+- the address answers anything else: Obeya answers, the page connects again in a moment;
+- a push was sent in the last 10 minutes (the one the owner tapped to open the app, say): Obeya was
+  running then, so the phone's way to the computer is the likely cause. A push older than that says
+  nothing about now; the time is when Obeya sent it (in the push), since the push service holds a
+  push for a phone that is off for up to a day;
+- the request failed within 2 s: the phone has no way to the address (no name for it, no route), or
+  the computer refused it because Obeya does not listen there. The browser cannot tell the two apart,
+  so the line names both;
 - it hung: the computer does not answer, asleep or switched off.
 
-On an address in a tailnet (a `.ts.net` name or one in 100.64.0.0/10) the way down is named as
-Tailscale on the phone being off, which Android often does to it in the background, with the
-address having changed as the other reason; with a push it says notifications still arrive because
-they go through the browser's push service, not Tailscale, while cards and videos come only through
-Tailscale. On Android the line has the button "Open Tailscale" (an `intent:` link to the app's
-`tailscale://navigate`, which Chrome sends to the Play Store where the app is missing) and, where
-Tailscale is the cause, how to keep Android from stopping it: battery use "Unrestricted" and
-"Always-on VPN". Elsewhere the way down is asked as whether the phone is in the computer's network
-or VPN. The service worker notes when the last push came (in a cache of its own) and tells an open
-page.
+Whether the phone reaches Obeya through Tailscale the page asks Obeya while connected (a device's
+`GET /api/access` answers `{ local: false, tailnet }`: true when Obeya is served through Tailscale or
+listens on one of the machine's addresses in the tailnet) and keeps the answer for when it is not;
+before it ever had one, an address that looks like a tailnet's (a `.ts.net` name, 100.64.0.0/10,
+fd7a:115c:a1e0::/48) counts. Through Tailscale, the line names Tailscale on the phone being off as a
+cause; elsewhere it names none and asks whether the phone is in the computer's network or VPN. The
+line gives the cause in a sentence or two; behind "More about this" stands the rest: that
+notifications still arrive because they go through the browser's push service while cards and
+videos come only through Tailscale, that "Connect a phone" helps where the address changed, and, on
+Android only, that Android often stops Tailscale in the background and how to keep it from that
+(battery use "Unrestricted", "Always-on VPN"). On Android, where Tailscale may be the cause, the line also has
+the button "Open Tailscale" (an `intent:` link to the app's `tailscale://navigate`, which Chrome
+sends to the Play Store where the app is missing). The service worker notes when the last push was
+sent (in a cache of its own) and tells an open page.
 
 #### Notifications on the phone
 
@@ -717,11 +725,13 @@ beside the scratch dirs.
   home-screen web app cannot do here). WebCrypto rather than a library: the two RFCs are a few dozen
   lines, checked against RFC 8291's example. A page at the machine holds pushes off while in use, not
   merely in view, or a canvas left open would hold them off until the screen locks.
-- **The phone names the likely cause of not reaching Obeya, from what it sees itself** (2026-11-09,
-  the owner: Android stops Tailscale in the background, and the page sent them to the computer
-  instead). A push that came says Obeya runs, since pushes do not take the way through Tailscale.
-  Rejected: keeping the connection up the way pushes arrive. They come through the browser's push
-  service, which Android keeps alive for every app, carry a few kilobytes each and must each show a
+- **The phone names the likely cause of not reaching Obeya, from what it sees itself** (2026-11-09:
+  Android stops Tailscale in the background, and the page used to send the owner to the computer
+  instead). A push sent a moment ago says Obeya was running, since pushes do not take the way
+  through Tailscale; only a recent one, since the computer may sleep since. Whether the way is
+  Tailscale's comes from Obeya, not the address alone: other VPNs use 100.64.0.0/10 too. Rejected:
+  keeping the connection up the way pushes arrive. They come through the browser's push service,
+  which Android keeps alive for every app, carry a few kilobytes each and must each show a
   notification (Chrome allows no silent ones); cards, conversations and videos need the direct way to
   the computer, and keeping that up is Tailscale's, which Android lets do with "Always-on VPN" and
   unrestricted battery use. Rejected too: a request to a public address to tell no internet from no

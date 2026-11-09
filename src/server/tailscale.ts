@@ -32,7 +32,7 @@ export function findTailscale(platform = process.platform): string | null {
 interface Status {
   BackendState?: string;
   CertDomains?: string[] | null;
-  Self?: { DNSName?: string; UserID?: number };
+  Self?: { DNSName?: string; UserID?: number; TailscaleIPs?: string[] | null };
   Peer?: Record<string, unknown> | null;
   User?: Record<string, { LoginName?: string }> | null;
 }
@@ -75,6 +75,8 @@ function without(config: ServeConfig, entries: NamedEntry[]): ServeConfig {
 export class Tailscale {
   /** What `state` found last, once Tailscale answered. */
   private last: TailscaleState | undefined;
+  /** This machine's addresses in the tailnet, as `state` found them last. */
+  private ips: string[] = [];
 
   constructor(
     /** Its CLI; `null` where it is not installed. */
@@ -107,7 +109,14 @@ export class Tailscale {
     return (this.last = this.stateOf(status));
   }
 
+  /** This machine's addresses in the tailnet; none while Tailscale is missing or stopped. */
+  async addresses(): Promise<string[]> {
+    const s = await this.state();
+    return s.state === 'missing' || s.state === 'stopped' ? [] : this.ips;
+  }
+
   private stateOf(status: Status): TailscaleState {
+    this.ips = (status.Self?.TailscaleIPs ?? []).map((a) => a.toLowerCase());
     const name = status.Self?.DNSName?.replace(/\.$/, '').toLowerCase();
     if (status.BackendState === 'NeedsLogin' || status.BackendState === 'NeedsMachineAuth' || status.BackendState === 'NoState') return { state: 'loggedOut' };
     if (status.BackendState !== 'Running' || !name) return { state: 'stopped' };

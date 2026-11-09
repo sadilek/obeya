@@ -93,19 +93,17 @@ export function worker() {
   }
 
   sw.addEventListener('push', (e) => {
-    let m: { title?: string; body?: string; url?: string; tag?: string } = {};
+    let m: { title?: string; body?: string; url?: string; tag?: string; at?: number } = {};
     try {
       m = e.data?.json() ?? {};
     } catch {}
-    // a push says Obeya runs on the machine: a page that does not reach it tells the owner it is the phone's way there that is down
-    const at = Date.now();
-    e.waitUntil(
-      Promise.all([
-        sw.registration.showNotification(m.title || 'Obeya', { body: m.body ?? '', tag: m.tag, icon: '/icons/180.png', data: { url: m.url ?? '/' } }),
-        caches.open(PUSHED).then((c) => c.put('/pushed', new Response(String(at))), () => {}),
-        sw.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((open) => open.forEach((c) => c.postMessage({ type: 'pushed', at }))),
-      ]),
-    );
+    // a push says Obeya was running when it sent it: a page that does not reach it tells the owner the phone's way there is the likely cause
+    const at = typeof m.at === 'number' ? m.at : Date.now();
+    const noted = Promise.all([
+      caches.open(PUSHED).then((c) => c.put('/pushed', new Response(String(at)))),
+      sw.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((open) => open.forEach((c) => c.postMessage({ type: 'pushed', at }))),
+    ]).catch(() => {});
+    e.waitUntil(Promise.all([sw.registration.showNotification(m.title || 'Obeya', { body: m.body ?? '', tag: m.tag, icon: '/icons/180.png', data: { url: m.url ?? '/' } }), noted]));
   });
 
   // a tapped push opens its card in the phone view (or "Needs you" for several): in the open app, else in a new one

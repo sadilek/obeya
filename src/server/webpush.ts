@@ -126,6 +126,8 @@ export interface PushMessage {
   url: string;
   /** A later push with the same tag replaces this one in the list of notifications. */
   tag: string;
+  /** When Obeya sent it (ms since the epoch): it may arrive up to a day later. */
+  at: number;
 }
 
 /** Sends a request: `fetch`, or a test's push service. */
