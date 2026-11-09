@@ -35,6 +35,10 @@
 // back instead of running agents (replay.ts; why it refuses goes into $OBEYA_HOME/replay-refused.txt).
 // OBEYA_PARK_GRACE=<seconds>: how long a waiting card's app runs on before Obeya stops it
 // (Parking; 300 by default), shorter for a demo or a live check.
+// OBEYA_SCRATCH=<checkout>: a scratch Obeya staged from that checkout (scripts/scratch-obeya.ts), which
+// ends by itself once the checkout is gone or on another branch, or once nothing used it for 30
+// minutes (OBEYA_SCRATCH_IDLE=<seconds> sets another time), and loads the speech recognition only
+// once the owner speaks (scratch.ts).
 // OBEYA_FORGE_FILE=<file.json>: pull requests come from that file instead of GitHub or Forgejo
 // (file-forge.ts), for a scratch Obeya whose demo plays a forge; OBEYA_PR_POLL=<seconds>: how often
 // the watcher looks at open pull requests (120 by default).
@@ -78,6 +82,7 @@ import { DEMO_SETTINGS_FILE, expandHome, inLanguage, readDemoSettings } from '..
 import { DemoSpace } from './demo-space';
 import { qwen3Serve, speak, voiceSpec } from '../../plugin/skills/demo/lib/voices.ts';
 import { Voicing } from './walkthrough';
+import { ScratchEnd } from './scratch';
 import type { Language } from '../core/locale';
 import { agentSetting, conversationLanguage, ownerLanguage, usageMeterView } from './settings';
 import { loginLink } from './owner';
@@ -192,6 +197,8 @@ if (source === 'file' && !values.config && !existsSync(configFile)) {
   ];
 }
 const configs = expandConfig(started);
+// --idle-workers: no agent works on a started card
+const idleWorkers = values['idle-workers'] && !values.record && !values.replay;
 
 const store = (() => {
   try {
@@ -319,7 +326,7 @@ canvases = await Canvases.start(
     store,
     home,
     runtime: agentRuntime(),
-    ...(values['idle-workers'] && !values.record && !values.replay ? { idleWorkers: true } : {}),
+    ...(idleWorkers ? { idleWorkers: true } : {}),
     forge,
     permissionMode: values['permission-mode'] as 'auto',
     watch: true,
@@ -355,7 +362,8 @@ if (new Set(ids).size !== ids.length) {
   console.error(`two canvases share an id: ${ids.join(', ')}; give them different names`);
   process.exit(2);
 }
-const transcriber = new VoiceIn(home, new LocalTranscriber());
+const scratchFrom = process.env.OBEYA_SCRATCH ? resolve(process.env.OBEYA_SCRATCH) : undefined;
+const transcriber = new VoiceIn(home, new LocalTranscriber(), fetch, !!scratchFrom);
 const voiceSetup = new VoiceSetup({ home, local: transcriber.local });
 const updates = new AppUpdates();
 // run from a clone of Obeya's repository: new commits on its upstream, for the owner to pull
@@ -413,7 +421,23 @@ const push = new Push({ store, home, language: () => ownerLanguage(home) });
 const awake = new Awake({ wanted: () => access.awake() === 'always' || (access.awake() === 'works' && busy().length > 0) }).start();
 // what held the server up, or a page, for the owner to notice: in this log and in the home's stalls.log
 const stalls = new Stalls({ home }).start();
-server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, updates, access, push, sources, usage, stalls, harnesses);
+// a scratch Obeya ends by itself once of no more use; an idle worker's card is in a turn that never ends, and uses nothing
+const scratch =
+  scratchFrom === undefined
+    ? undefined
+    : new ScratchEnd({
+        checkout: scratchFrom,
+        ...(process.env.OBEYA_SCRATCH_IDLE ? { idleMs: Number(process.env.OBEYA_SCRATCH_IDLE) * 1000 } : {}),
+        pages: () => server?.pendingWebSockets ?? 0,
+        working: () => !idleWorkers && busy().length > 0,
+        end: (why) => {
+          console.log(`Obeya: ending this scratch Obeya: ${why}`);
+          server?.stop(true);
+          shutdown(0);
+        },
+      });
+server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, updates, access, push, sources, usage, stalls, harnesses, scratch && (() => scratch.used()));
+scratch?.start();
 claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, ...(process.env.OBEYA_FROM_APP ? { app: true } : {}) });
 // the address as a one-time link that signs a browser in (owner.ts)
 const link = access.owner.link(`http://127.0.0.1:${server.port}`);

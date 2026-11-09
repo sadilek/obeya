@@ -30,6 +30,8 @@ let whisper: (vocabulary: string) => string | Transcript;
 let server: ReturnType<typeof serve>;
 let canvas: CanvasRuntime;
 let warmed: number;
+/** How often it was warmed ahead (`?ahead=1`: the cursor went into Obeya's field) rather than for speaking. */
+let warmedAhead: number;
 // how long a command waits for an undo; long enough that a loaded machine still undoes in time
 const DELAY_MS = 200;
 
@@ -47,13 +49,14 @@ beforeEach(async () => {
   whisper = () => 'Neue Karte Export';
   canvas.run = (c) => void executed.push(c);
   warmed = 0;
+  warmedAhead = 0;
   const transcriber = {
     transcribe: async (path: string, vocabulary: string) => {
       heardAudio.push(await Bun.file(path).text());
       const heard = whisper(vocabulary);
       return typeof heard === 'string' ? { text: heard, doubtful: false } : heard;
     },
-    warm: () => void warmed++,
+    warm: (ahead?: boolean) => void (ahead ? warmedAhead++ : warmed++),
   };
   server = serve([canvas], { transcriber }, 0);
 });
@@ -630,8 +633,9 @@ describe('voice', () => {
   test('pressing Space starts the Coordinator ahead; commands then only send it the brief', async () => {
     const c = card();
     expect((await post(api('/voice/warm'), '')).status).toBe(204);
-    await post(api('/voice/warm'), '');
-    expect(warmed).toBe(2);
+    await post(api('/voice/warm?ahead=1'), '');
+    expect(warmed).toBe(1);
+    expect(warmedAhead).toBe(1);
     const k = interpretation();
     expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toHaveLength(1);
     expect(k.inbox).toEqual([]);

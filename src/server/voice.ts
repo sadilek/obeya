@@ -27,8 +27,11 @@ export interface Transcriber {
    * interface's, and Whisper told to expect that one translated into it.
    */
   transcribe(audioPath: string, vocabulary: string): Promise<Transcript>;
-  /** Gets ready for the next recording (the owner started speaking). */
-  warm?(): void;
+  /**
+   * Gets ready for the next recording: the owner started speaking, or with `ahead` may speak soon
+   * (the cursor went into Obeya's field).
+   */
+  warm?(ahead?: boolean): void;
 }
 
 /**
@@ -225,6 +228,8 @@ export class VoiceIn implements Transcriber {
     private home: string,
     readonly local: LocalTranscriber,
     private fetcher: typeof fetch = fetch,
+    /** Loads the recognition only once the owner speaks, not ahead (a scratch Obeya, scratch.ts). */
+    private lazy = false,
   ) {}
 
   transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
@@ -232,8 +237,8 @@ export class VoiceIn implements Transcriber {
     return cloud ? transcribeInCloud(cloud, audioPath, vocabulary, this.fetcher) : this.local.transcribe(audioPath, vocabulary);
   }
 
-  warm() {
-    if (!cloudInUse(this.home)) this.local.warm();
+  warm(ahead = false) {
+    if (!(ahead && this.lazy) && !cloudInUse(this.home)) this.local.warm();
   }
 
   stop() {

@@ -6,7 +6,7 @@ import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PageTags, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn, waitingOn } from '../core/types';
 import index from '../ui/index.html';
-import { guarded, LOCAL_HOSTS, refusal } from './access';
+import { type Gate, guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
 import { type Dropped, findDropped, localImage } from './files';
 import type { CanvasRuntime } from './canvas';
@@ -168,7 +168,18 @@ export function serve(
   stalls?: Stalls,
   /** Claude Code and Codex on this machine, for the Configuration's harnesses and models. */
   harnesses?: Harnesses,
+  /** Hears of every request from Obeya's own site: a scratch Obeya is in use (scratch.ts). */
+  used?: () => void,
 ) {
+  const gate: Gate = used
+    ? {
+        hosts: () => access.hosts(),
+        admit: (req, srv, route) => {
+          used();
+          return access.admit(req, srv, route);
+        },
+      }
+    : access;
   const canvases = Array.isArray(served) ? { all: () => served } : served;
   const sites = config
     ? new SiteSetup({
@@ -1064,9 +1075,10 @@ export function serve(
       // the owner started speaking: transcription and the Coordinator get ready meanwhile
       // whether the recording the page named `?sent=<id>` arrived, for a page that lost the answer
       '/api/c/:canvas/voice/arrived/:id': { GET: on((_c, req) => ({ arrived: arrived.has(req.params.id!) })) },
+      // `?ahead=1`: the owner may speak soon (the cursor went into Obeya's field), rather than speaking now
       '/api/c/:canvas/voice/warm': {
-        POST: on((c) => {
-          transcriber.warm?.();
+        POST: on((c, req) => {
+          transcriber.warm?.(new URL(req.url).searchParams.get('ahead') === '1');
           c.commander.warm();
         }),
       },
@@ -1161,7 +1173,7 @@ export function serve(
         byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID(), device: access.deviceOf(req) } })
           ? undefined
           : new Response('WebSocket expected', { status: 400 }),
-    }, access),
+    }, gate),
     fetch: (req: Request, srv: Bun.Server<Socket>) => refusal(req, access.hosts()) ?? access.admit(req, srv, '') ?? notFound(),
     websocket: {
       data: {} as Socket,

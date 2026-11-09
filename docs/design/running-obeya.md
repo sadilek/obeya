@@ -582,8 +582,51 @@ terminal) would otherwise give each a window: with Windows Terminal as the defau
 flashes up per call and takes the focus from what the owner is typing in, several a second while
 workers are busy.
 
+### Scratch Obeyas
+
+A scratch Obeya (`scripts/scratch-obeya.ts`, for a demo, a live check or a prototype; see Recording
+a demo) is staged with the checkout the script ran from (`OBEYA_SCRATCH`), and ends by itself, as a
+stop goes but without waiting for its workers:
+
+- once that checkout is gone or has another branch checked out than at staging: its card's work
+  has landed or was discarded (the worktree goes), or the clone went to another card;
+- once nothing has used it for 30 minutes (`OBEYA_SCRATCH_IDLE`, in seconds, sets another time for a
+  live check): no page open on it, no request to it (the API, a page loading, the probe of an open
+  card's "Open app ↗"), and none of its own agents in a turn. An idle worker's card counts as no
+  agent. A demo's take keeps it, since it has a page open, and a worker's checks do, since each
+  calls its API or opens a page.
+
+Its log says why it ended, and the script's `--login`, `--say` and `--artifact` repeat that,
+telling to stage afresh. It loads the speech recognition only for a recording (the owner pressed
+to speak) or a walkthrough that needs it, not ahead when the cursor goes into Obeya's field, as
+the owner's Obeya does.
+
+Every staging also stops, in the background, the scratch Obeyas whose code does not end them so
+(staged before this rule, from an older commit with `--code`, or started by hand on a scratch dir):
+those whose working directory is gone, and those that have run for more than 12 hours; it ends what
+each had started (its speech recognition, its agents) and notes each in `obeya-scratch-sweep.log`
+beside the scratch dirs.
+
 ### Decisions
 
+- **Scratch Obeyas end by themselves** (2026-11-09, the owner): on a Mac with 48 GB that had
+  swapped out 9.3 GB, eight scratch Obeyas had run for one to four days after their cards were done,
+  three with a speech recognition of their own (about 730 MB each), 2.8 GB together. Each ends with
+  its checkout, which goes once its card's work is done, or after 30 minutes nothing used it. Thirty
+  minutes because staging afresh takes a second while an idle instance holds 40 to 70 MB: the time
+  only has to outlast a worker's pause between two looks at the same instance, and it is also how
+  long an app the owner opened from a card runs at least (Parking). Rejected: stopping them through
+  the repository's `app.stop` when the card parks (only a card waiting for the owner, and only
+  instances staged from a card), and a time since staging (it would end a take that runs long).
+  The owner's own Obeya keeps its speech recognition loaded once it has started it (the owner).
+- **A scratch Obeya loads the speech recognition only when someone speaks** (2026-11-09): demos and
+  checks click into Obeya's field far more often than they dictate, and every such click had started
+  a recognition of about 730 MB that stayed as long as the instance.
+- **Older scratch Obeyas are swept by stagings, not by the owner's Obeya** (2026-11-09): stagings
+  happen many times a day on a machine where scratch Obeyas are used at all, and the owner's Obeya
+  stays out of what a script of this repository starts. One that does not end by itself cannot tell
+  when it was last used, so 12 hours: a take stages afresh, and a check that long without staging
+  again does not happen.
 - **Other devices over the owner's private network, paired by a QR code** (2026-10-16, plan "Obeya
   from the phone"). Rejected: a public tunnel (agents with shell rights on the open internet), a relay
   of Obeya's own (a cloud service), a messenger bot (a third party sees all, and it is only a chat). A

@@ -8,9 +8,10 @@
 //   bun scripts/scratch-obeya.ts --login <port>
 //   bun scripts/scratch-obeya.ts --say <port> <card key> <say|report|talk|question|review|to_obeya|tool|end> <text>
 //   bun scripts/scratch-obeya.ts --artifact <port> <card key> <file> [<summary>]
+//   bun scripts/scratch-obeya.ts --sweep
 //
 // Prints one JSON line, also kept in <dir>/staged.json:
-//   { "url", "port", "dir", "canvas", "pid", "log", "from", "cards": { "<key>": "<card id>" }, "record"?, "replay"? }
+//   { "url", "port", "dir", "canvas", "pid", "log", "from", "endsItself", "cards": { "<key>": "<card id>" }, "record"?, "replay"? }
 // The port is --port, else the stage file's `port`; without either the script picks one: the
 // first from 4480 up that nothing listens on and no other scratch Obeya holds (a running one, or
 // one being staged at the same time), so that workers staging at once never collide. --stop,
@@ -20,6 +21,12 @@
 // side. The dir is --dir, else the stage file's `dir`, else obeya-scratch-<port> in
 // /tmp on macOS and Linux and in the system temp folder (%TEMP%) on Windows; the port claims lie
 // beside it.
+// A scratch Obeya ends by itself (`endsItself`, where its code does; design: Scratch Obeyas) once this
+// checkout is gone or on another branch, or once nothing used it for 30 minutes (OBEYA_SCRATCH_IDLE,
+// in seconds, sets another time): no page open, no request, no agent of its own in a turn. --login,
+// --say and --artifact then say why. Every staging runs --sweep in the background, which stops the
+// scratch Obeyas whose code does not end them so: those whose working directory is gone, and those
+// running for more than 12 hours (noted in obeya-scratch-sweep.log beside the scratch dirs).
 // `url` signs browsers in (design: Who may talk to it), until the scratch Obeya stops; --login
 // prints it again. --stop ends only the server it staged, never another program that has its
 // process number by now, and fails if the server still runs after it. The script itself talks to the API with the owner's key of the scratch home.
@@ -168,7 +175,7 @@
 
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
@@ -336,7 +343,7 @@ if (loginPort) {
   const d = opt('dir') ?? scratchDir(Number(loginPort));
   const canvas = existsSync(join(d, 'staged.json')) ? (JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas?: string }).canvas : undefined;
   const link = await loginLink(`http://127.0.0.1:${loginPort}`, join(d, 'home'), canvas ? `/c/${canvas}` : '/');
-  if (!link) fail(`no scratch Obeya of ${d} answers on port ${loginPort}`);
+  if (!link) fail(silent(d, Number(loginPort)));
   console.log(link);
   process.exit(0);
 }
@@ -348,6 +355,10 @@ if (sayPort) {
   const act = SAYS[kind as keyof typeof SAYS];
   if (!key || !act || (!text.trim() && kind !== 'end')) fail(`usage: bun scripts/scratch-obeya.ts --say <port> <card key> <${Object.keys(SAYS).join('|')}> <text>`);
   console.log(await standIn(Number(sayPort), key!, act!(text)));
+  process.exit(0);
+}
+if (args.includes('--sweep')) {
+  await sweep();
   process.exit(0);
 }
 const artifactPort = opt('artifact');
@@ -370,6 +381,8 @@ if (!file) fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [
 const stage = JSON.parse(readFileSync(file!, 'utf8')) as Stage;
 // what a scratch Obeya was staged from: staging afresh from it replaces that one
 const from = { stage: realpathSync(file!), ...(opt('code') || opt('binary') ? { code: opt('code') ?? opt('binary') } : {}) };
+// scratch Obeyas from code that does not end them by itself, which this one does not wait for
+spawn(process.execPath, [import.meta.path, '--sweep'], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true }).unref();
 const given = opt('port') ?? stage.port;
 const port = given !== undefined ? Number(given) : await pickPort(opt('dir') ?? stage.dir);
 const dir = resolve(opt('dir') ?? stage.dir ?? scratchDir(port));
@@ -516,9 +529,12 @@ const log = join(dir, 'server.log');
 const out = openSync(log, 'a');
 // not supervised: a scratch Obeya restarts itself only when asked to
 const supervised = args.includes('--restarts');
+// whether the server ends by itself once of no more use (src/server/scratch.ts); code from before that ignores OBEYA_SCRATCH
+const endsItself = (binary ? readFileSync(binary) : readFileSync(join(code, 'src/server/main.ts'))).includes('OBEYA_SCRATCH');
 const env = {
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')),
   OBEYA_HOME: home,
+  OBEYA_SCRATCH: ROOT,
   ...(stage.pulls?.length
     ? {
         OBEYA_FORGE_FILE: join(dir, 'forge.json'),
@@ -594,7 +610,7 @@ if (!started.up) {
   fail(`the server did not come up ${started.exit !== null ? `(exit ${started.exit}) ${after}` : `${after}, so it was stopped`}; ${log}:\n${readFileSync(log, 'utf8').slice(-2000)}`);
 }
 if (stage.setup) {
-  const staged = { url: (await loginLink(base, home)) ?? `${base}/`, port, dir, repo, pid: server.pid, log, from, cards: {} };
+  const staged = { url: (await loginLink(base, home)) ?? `${base}/`, port, dir, repo, pid: server.pid, log, from, endsItself, cards: {} };
   writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
   console.log(JSON.stringify(staged));
   process.exit(0);
@@ -871,7 +887,7 @@ for (const [on, id, at] of refresh) await api('PATCH', `/cards/${id}`, at, on);
 for (const g of stage.groups ?? [])
   await api('POST', '/groups', { name: g.name, cards: g.cards.map((k) => ids[k] ?? fail(`group ${g.name}: card ${k} does not exist`)) });
 
-const staged = { url: (await loginLink(base, home, `/c/${canvas}`)) ?? `${base}/c/${canvas}`, port, dir, canvas, pid: server.pid, log, from, cards: ids, ...(record ? { record } : {}), ...(replay ? { replay } : {}) };
+const staged = { url: (await loginLink(base, home, `/c/${canvas}`)) ?? `${base}/c/${canvas}`, port, dir, canvas, pid: server.pid, log, from, endsItself, cards: ids, ...(record ? { record } : {}), ...(replay ? { replay } : {}) };
 writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
 console.log(JSON.stringify(staged));
 process.exit(0);
@@ -1085,6 +1101,63 @@ function stopTree(pid: number) {
   for (let i = 0; i < 50 && alive(pid); i++) Bun.sleepSync(100);
 }
 
+/** What --login, --say and --artifact say when no scratch Obeya answers: why it ended, where it ended by itself. */
+function silent(d: string, port: number) {
+  const log = existsSync(join(d, 'server.log')) ? readFileSync(join(d, 'server.log'), 'utf8') : '';
+  const why = [...log.matchAll(/^Obeya: ending this scratch Obeya: (.*)$/gm)].at(-1)?.[1];
+  return `no scratch Obeya of ${d} answers on port ${port}${why ? `: it ended by itself (${why}); stage it afresh` : ''}`;
+}
+
+/**
+ * Stops the scratch Obeyas from code that does not end them by itself (from before it did, or
+ * --code of such a commit, or started by hand on a scratch dir): those whose working directory is
+ * gone (the workspace they ran from), and those running for more than 12 hours. Runs in the
+ * background of every staging; says what it stopped in obeya-scratch-sweep.log beside the dirs.
+ */
+async function sweep() {
+  // how long one may run before it is stopped (design: Scratch Obeyas): it cannot tell when it was last used, and a take stages afresh
+  const UNTOLD_MS = 12 * 3600_000;
+  const { commandWords, descendants, localProcesses } = await import('../src/server/folder-processes');
+  const all = await localProcesses();
+  const scratchOf = (text: string) => /obeya-scratch-(\d+)/.exec(text)?.[1];
+  const isServer = (cmd: string) => commandWords(cmd).some((w) => /(^|[\\/])src[\\/]server[\\/]main\.ts$/.test(w));
+  const staged = new Map(scratchDirs().map((d) => [serverIn(d), d] as const).filter(([pid]) => pid !== undefined));
+  const servers = all.filter((p) => staged.has(p.pid) || (isServer(p.cmd) && scratchOf(`${p.cmd} ${p.cwd}`)));
+  const lines: string[] = [];
+  for (const p of servers) {
+    // a supervised server's child goes with its supervisor
+    if (servers.some((q) => q.pid === p.ppid)) continue;
+    const d = staged.get(p.pid) ?? scratchDir(Number(scratchOf(`${p.cmd} ${p.cwd}`)));
+    if (staged.get(p.pid) && (stagedIn(d) as { endsItself?: boolean } | undefined)?.endsItself) continue;
+    const started = startOf(p.pid);
+    const why = p.cwd && !existsSync(p.cwd) ? `${p.cwd}, which it ran from, is gone` : started !== undefined && Date.now() - started > UNTOLD_MS ? `it ran for ${Math.round((Date.now() - started) / 3600_000)} hours` : null;
+    if (!why) continue;
+    const below = descendants(all, [p.pid]);
+    if (staged.get(p.pid)) stop(d);
+    else if (process.platform === 'win32') stopTree(p.pid);
+    else endPid(p.pid);
+    // what it started that did not end with it (a sidecar of its own, an agent)
+    for (const pid of below) if (pid !== p.pid && alive(pid)) process.platform === 'win32' ? stopTree(pid) : endPid(pid);
+    lines.push(`${new Date().toISOString()} stopped the scratch Obeya of ${d} (process ${p.pid}): ${why}`);
+  }
+  if (lines.length) appendFileSync(join(scratchBase(), 'obeya-scratch-sweep.log'), `${lines.join('\n')}\n`);
+}
+
+/** Ends process `pid` as Ctrl-C twice does Obeya, killing it where it does not end within seconds. */
+function endPid(pid: number) {
+  for (let i = 0; i < 40 && alive(pid); i++) {
+    if (i === 0 || i === 15)
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {}
+    Bun.sleepSync(100);
+  }
+  if (alive(pid))
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {}
+}
+
 function ago(s: string): string {
   const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(s) ?? fail(`"${s}" is no time ago (like "15m", "2h", "3d")`);
   const unit = { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's' | 'm' | 'h' | 'd'];
@@ -1117,7 +1190,7 @@ function cardOf(port: number, key: string) {
 
 async function stagedCard(port: number, key: string): Promise<Item> {
   const { base, headers, id } = cardOf(port, key);
-  const r = await fetch(`${base}/canvas`, { headers }).catch(() => fail(`no scratch Obeya answers on port ${port}`));
+  const r = await fetch(`${base}/canvas`, { headers }).catch(() => fail(silent(opt('dir') ?? scratchDir(port), port)));
   return ((await r.json()) as CanvasSnapshot).items.find((i) => i.id === id) ?? fail(`card ${key} is not on the canvas`);
 }
 
@@ -1125,7 +1198,7 @@ async function stagedCard(port: number, key: string): Promise<Item> {
 async function standIn(port: number, key: string, act: { say: string } | { tool: string; args: Record<string, unknown> } | { end: true }): Promise<string> {
   const { base, headers, id } = cardOf(port, key);
   const r = await fetch(`${base}/cards/${id}/stand-in`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(act) }).catch(() =>
-    fail(`no scratch Obeya answers on port ${port}`),
+    fail(silent(opt('dir') ?? scratchDir(port), port)),
   );
   const body = (await r.json()) as { result?: string; error?: string };
   if (!r.ok) fail(`card ${key}: ${body.error ?? r.status}`);

@@ -184,7 +184,7 @@ export function Composer({
           data-esc={menuOn || undefined}
           onFocus={() => {
             setFocused(true);
-            if (obeya) api.warmVoice();
+            if (obeya) api.warmVoice(true);
           }}
           onChange={(e) => setText(e.target.value)}
           onSelect={atCursor}

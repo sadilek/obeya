@@ -368,8 +368,8 @@ export const api = {
   },
   /** Whether the recording `voice` sent as `sent` arrived whole. */
   voiceArrived: async (sent: string) => (await call<{ arrived: boolean }>('GET', at(`/voice/arrived/${encodeURIComponent(sent)}`))).arrived,
-  /** The owner started speaking (or typing a command): Obeya gets ready to read it. */
-  warmVoice: () => fetch(at('/voice/warm'), { method: 'POST' }).catch(() => {}),
+  /** The owner started speaking, or with `ahead` may speak or type a command soon: Obeya gets ready to read it. */
+  warmVoice: (ahead = false) => fetch(at(`/voice/warm${ahead ? '?ahead=1' : ''}`), { method: 'POST' }).catch(() => {}),
   /** The same, typed; `field`: the field of the open card it was typed into. */
   command: (text: string, where: Where, { images, field, replyTo, spot, place }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place } = {}) =>
     call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) }),

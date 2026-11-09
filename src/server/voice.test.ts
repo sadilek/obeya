@@ -219,3 +219,21 @@ test('the recognition sidecar ends quietly when Obeya is gone before it has writ
     await removeDir(dir);
   }
 }, 60_000);
+
+test("a scratch Obeya's voice in loads the recognition only once the owner speaks, not when the cursor goes into Obeya's field", () => {
+  const home = mkdtempSync(join(tmpdir(), 'obeya-voice-lazy-'));
+  try {
+    let warmed = 0;
+    const local = { warm: () => void warmed++ } as unknown as LocalTranscriber;
+    const lazy = new VoiceIn(home, local, fetch, true);
+    lazy.warm(true);
+    expect(warmed).toBe(0);
+    lazy.warm();
+    expect(warmed).toBe(1);
+    // the owner's own Obeya loads it ahead
+    new VoiceIn(home, local).warm(true);
+    expect(warmed).toBe(2);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

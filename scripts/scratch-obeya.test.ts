@@ -173,3 +173,51 @@ test('--stop ends the server it staged, but not another process that has its num
     other.kill('SIGKILL');
   }
 }, 20_000);
+
+test('a scratch Obeya nothing uses ends by itself, and --login says so', async () => {
+  const stage = join(tmp, 'idle.json');
+  const idleDir = join(tmp, 'idle');
+  writeFileSync(stage, JSON.stringify({ dir: idleDir, cards: [{ key: 'A', title: 'Export' }] }));
+  const r = Bun.spawnSync([process.execPath, script, stage], { env: { ...process.env, OBEYA_SCRATCH_IDLE: '2' } });
+  expect(r.stderr.toString()).toBe('');
+  const staged = JSON.parse(r.stdout.toString()) as { port: number; pid: number; endsItself: boolean };
+  expect(staged.endsItself).toBe(true);
+  try {
+    for (const end = Date.now() + 15_000 * PATIENCE; Date.now() < end; await Bun.sleep(200))
+      try {
+        process.kill(staged.pid, 0);
+      } catch {
+        break;
+      }
+    expect(() => process.kill(staged.pid, 0)).toThrow();
+    const login = Bun.spawnSync([process.execPath, script, '--login', String(staged.port), '--dir', idleDir]);
+    expect(login.exitCode).toBe(1);
+    expect(login.stderr.toString()).toMatch(/it ended by itself \(nothing used it for \d+ seconds\); stage it afresh/);
+  } finally {
+    Bun.spawnSync([process.execPath, script, '--stop', String(staged.port), '--dir', idleDir]);
+  }
+}, 30_000 * PATIENCE);
+
+test.skipIf(process.platform === 'win32')('--sweep stops a scratch Obeya of older code once the folder it ran from is gone, and leaves a young one whose folder is there', async () => {
+  // servers as such code runs them: `bun src/server/main.ts` on a scratch dir, without OBEYA_SCRATCH
+  const server = (name: string) => {
+    const from = join(tmp, name);
+    mkdirSync(join(from, 'src/server'), { recursive: true });
+    writeFileSync(join(from, 'src/server/main.ts'), 'setInterval(() => {}, 1000);');
+    return { from, p: spawn(process.execPath, ['src/server/main.ts', '--config', '/tmp/obeya-scratch-49998/canvases.json'], { cwd: from, stdio: 'ignore' }) };
+  };
+  const gone = server('gone-workspace');
+  const kept = server('kept-workspace');
+  try {
+    await Bun.sleep(300);
+    rmSync(gone.from, { recursive: true, force: true });
+    const r = Bun.spawnSync([process.execPath, script, '--sweep']);
+    expect(r.stderr.toString()).toBe('');
+    const ended = await Promise.race([new Promise((done) => (gone.p.exitCode !== null || gone.p.signalCode ? done(true) : gone.p.once('exit', () => done(true)))), Bun.sleep(3000).then(() => false)]);
+    expect(ended).toBe(true);
+    expect(() => process.kill(kept.p.pid!, 0)).not.toThrow();
+  } finally {
+    gone.p.kill('SIGKILL');
+    kept.p.kill('SIGKILL');
+  }
+}, 30_000 * PATIENCE);
