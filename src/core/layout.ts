@@ -1,5 +1,6 @@
 // Card sizes and default placement. Cards keep a fixed, readable size; a project wraps its children.
 
+import { plain } from './plain';
 import { finished, finishingUp, type Item, type PlanDir } from './types';
 
 export type Shape = 'task' | 'chip' | 'project';
@@ -15,6 +16,28 @@ export const PROJECT_HEAD = 78;
 const PROJECT_MIN: readonly [number, number] = [420, 150];
 /** A project the owner collapsed: its head, and a row of marks for its workstreams. */
 export const PROJECT_COLLAPSED: readonly [number, number] = [440, 84];
+
+// A project's title wraps in its head, kind, progress and number flowing after its last word. Only
+// two lines fit above its workstreams, so a project is at least as wide as its title needs for
+// two; a collapsed one grows a line taller instead where its title takes two. The canvas measures
+// nothing here, which the server has to place projects as well: the title's width is estimated,
+// on the generous side (a line of the serif title averages 8–9.5 px a character).
+const TITLE_CHAR = 10;
+/** Kind, progress and number after the title, with a word's worth lost where each line breaks. */
+const HEAD_META = 160;
+const LINE_LOSS = 40;
+/** Left of the title the fold button, right of it the room of the "…" button. */
+const HEAD_SIDES = 12 + 30 + 36;
+const TITLE_LINE = 24;
+const titleWidth = (title: string) => plain(title).length * TITLE_CHAR + HEAD_META;
+/** The width a project needs for its title to take at most two lines. */
+const titleMin = (title: string) => Math.ceil(HEAD_SIDES + titleWidth(title) / 2 + LINE_LOSS);
+
+/** A collapsed project: one line taller where its title takes two. */
+export function collapsedSize(title: string): [number, number] {
+  const [w, h] = PROJECT_COLLAPSED;
+  return titleWidth(title) + LINE_LOSS > w - HEAD_SIDES ? [Math.max(w, titleMin(title)), h + TITLE_LINE] : [w, h];
+}
 const CHIPS_PER_ROW = 4;
 const TASKS_PER_ROW = 3;
 export const GAP = 20;
@@ -31,8 +54,8 @@ export function shapeOf(i: Pick<Item, 'kind' | 'state' | 'parent' | 'finishing'>
   return 'task';
 }
 
-export function projectSize(children: Pick<Item, 'kind' | 'state' | 'parent' | 'finishing' | 'x' | 'y'>[]): [number, number] {
-  let w = PROJECT_MIN[0];
+export function projectSize(children: Pick<Item, 'kind' | 'state' | 'parent' | 'finishing' | 'x' | 'y'>[], title = ''): [number, number] {
+  let w = Math.max(PROJECT_MIN[0], titleMin(title));
   let h = PROJECT_MIN[1];
   for (const c of children) {
     const [cw, ch] = CARD_SIZE[shapeOf(c) as Exclude<Shape, 'project'>];
@@ -44,7 +67,7 @@ export function projectSize(children: Pick<Item, 'kind' | 'state' | 'parent' | '
 
 export function sizeOf(i: Item, all: Item[]): [number, number] {
   const shape = shapeOf(i);
-  if (shape === 'project') return i.collapsed ? [...PROJECT_COLLAPSED] : projectSize(all.filter((c) => c.parent === i.id));
+  if (shape === 'project') return i.collapsed ? collapsedSize(i.title) : projectSize(all.filter((c) => c.parent === i.id), i.title);
   const [w, h] = CARD_SIZE[shape];
   return [w, h];
 }

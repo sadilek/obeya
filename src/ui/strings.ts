@@ -194,6 +194,7 @@ const de = {
     arranged: 'Workstreams nach Abhängigkeiten angeordnet.',
     arrangeUndone: 'Die Karten stehen wieder, wo sie standen.',
     buildsOn: (names: string[]) => `baut auf ${names.join(', ')} auf`,
+    more: 'Weitere Aktionen',
     collapse: 'Zuklappen: nur der Kopf des Projekts bleibt auf der Leinwand',
     expand: 'Aufklappen: die Workstreams wieder zeigen',
     /** The project's conversation with its project agent, in its sheet. */
@@ -2432,6 +2433,7 @@ const en: Strings = {
     arranged: 'Workstreams arranged by their dependencies.',
     arrangeUndone: 'The cards are back where they were.',
     buildsOn: (names: string[]) => `builds on ${names.join(', ')}`,
+    more: 'More actions',
     collapse: 'Collapse: only the project’s head stays on the canvas',
     expand: 'Expand: show the workstreams again',
     askHead: 'Project agent',

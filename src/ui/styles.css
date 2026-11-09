@@ -103,33 +103,44 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .plan-dir .btn.small { margin-top: 0; padding: 3px 9px; flex: none; }
 .project { border-radius: 4px; background: var(--container); border: 1.5px solid var(--container-line);
   backdrop-filter: blur(2px); }
-.project > .head { position: absolute; left: 0; right: 0; top: 0; height: 58px; padding: 16px 22px;
-  display: flex; align-items: center; gap: 10px; cursor: pointer; }
-.project > .head .ttl { font-size: 21px; line-height: 1.15; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.project > .head { position: absolute; left: 0; right: 0; top: 0; min-height: 58px; padding: 16px 22px 0 12px;
+  display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+/* the title wraps where the project is narrow, kind, progress and number flow after its last word */
+.project > .head .name { flex: 1 1 auto; min-width: 0; padding-top: 1px; }
+.project > .head .ttl { font-size: 21px; line-height: 1.15; overflow-wrap: anywhere; }
+.project > .head .meta { display: inline-flex; align-items: baseline; gap: 10px; margin-left: 4px; white-space: nowrap; }
 .project > .head .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.project > .head .progress { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.project > .head .progress { font-size: 12px; color: var(--muted); }
 .project > .head .head-no { order: 0; margin: 0 -2px 0 -4px; font-size: 12px; }
-/* arranges the workstreams by their dependencies, starts all planned ones; quiet until the pointer is on one */
+/* the buttons stand beside the title where they all fit on its line (.roomy), else they go into the "…" menu at the
+   top right, whose room the title always leaves; either while the pointer is on the project, at all times on a touch screen */
+.project > .head.has-acts { padding-right: 36px; }
+.project > .head .acts { position: absolute; top: 16px; right: 22px; display: flex; gap: 10px; visibility: hidden; }
+.project > .head .more { position: absolute; top: 17px; right: 8px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: 3px; background: none; color: var(--muted); cursor: pointer; visibility: hidden; }
+.project > .head .more circle { fill: currentColor; }
+.project > .head .more:hover, .project > .head .more[aria-expanded="true"] { background: var(--card); color: var(--ink); }
+@media (hover: hover) {
+  .project:is(:hover, :has(:focus-visible)) > .head.roomy .acts, .project:is(:hover, :has(:focus-visible)) > .head:not(.roomy) .more { visibility: visible; }
+}
+@media (hover: none) { .project > .head.roomy .acts, .project > .head:not(.roomy) .more { visibility: visible; } }
+.project > .head .more[aria-expanded="true"] { visibility: visible; }
+/* arranges the workstreams by their dependencies, starts all planned ones, archives a done project */
 .project > .head .head-btn { display: flex; align-items: center; gap: 6px; flex: none; padding: 4px 11px 4px 9px; border-radius: 3px;
   font: inherit; font-size: 12px; font-weight: 500; color: var(--working); background: var(--card); border: 1px solid var(--line);
   cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
 .project > .head .head-btn:hover:not(:disabled) { background: var(--working); border-color: var(--working); color: var(--on-ink); }
 .project > .head .arrange { color: var(--muted); }
-/* a done project's archive button shows while the pointer is over the project, as a finished card's does */
-.project > .head .archive { visibility: hidden; }
-.project:hover > .head .archive, .project > .head .archive:focus-visible { visibility: visible; }
 .project > .head .arrange:disabled { cursor: default; animation: arranging 1.4s ease-in-out infinite; }
 @keyframes arranging { 50% { opacity: .45; } }
-.z-far .project .head-btn { display: none; }
-.project > .head { padding-left: 12px; }
+.z-far .project .head-btn, .z-far .project > .head .more { display: none; }
 /* folds the project to its head and back; always in sight, so it is found */
 .project > .head .fold { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; margin-right: -4px;
   border: 0; border-radius: 3px; background: none; color: var(--muted); cursor: pointer; }
 .project > .head .fold:hover { background: var(--card); color: var(--ink); }
 .project > .head .fold path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.project.collapsed > .head { height: 54px; }
-.project > .marks { position: absolute; left: 22px; right: 22px; top: 54px; display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; height: 14px; }
+.project.collapsed > .head { min-height: 54px; }
+.project > .marks { position: absolute; left: 22px; right: 22px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; height: 14px; }
 .project > .marks .mark { flex: none; width: 18px; height: 10px; margin-top: 2px; padding: 0; border: 0; border-radius: 2px; cursor: pointer; opacity: .55; }
 .project > .marks .mark.yours, .project > .marks .mark:hover { opacity: 1; }
 
@@ -1197,6 +1208,12 @@ span.cl-name { color: inherit; cursor: default; }
 .agent-chosen { align-self: center; margin: 0 0 0 10px; font-size: 12.5px; white-space: nowrap; }
 .agent-menu { position: fixed; z-index: 75; bottom: auto; max-width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
 .agent-menu .snooze-opt { display: flex; align-items: baseline; }
+/* a project's buttons where they do not fit beside its title, from its "…" button (placed by script) */
+.project-menu { position: fixed; z-index: 75; bottom: auto; min-width: 180px; }
+.project-menu .snooze-opt { display: flex; align-items: center; gap: 8px; }
+.project-menu .snooze-opt svg { flex: none; width: 12px; color: var(--muted); }
+.project-menu .start-all, .project-menu .start-all svg { color: var(--working); }
+.project-menu .snooze-opt:disabled { cursor: default; color: var(--muted); }
 .agent-check { flex: none; width: 18px; }
 .agent-h { padding-top: 8px; font-weight: 600; }
 .agent-group { display: flex; flex-direction: column; }

@@ -1,6 +1,6 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
-import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { memo, type MouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
@@ -12,8 +12,8 @@ import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';
 import { Doc, excerpt, Inline, plain } from './markdown';
 import { Body } from './message';
-import { waitedOn, waitReason } from './queue';
-import { ClockMark, snoozeWho } from './snooze';
+import { useMenuClose, waitedOn, waitReason } from './queue';
+import { ClockMark, placeOnScreen, snoozeWho } from './snooze';
 import { cardTag } from '../core/card-number';
 import { CardNumber } from './cardNumber';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
@@ -839,6 +839,87 @@ function BlockedClones({ host }: { host: PoolHost }) {
   );
 }
 
+/** One of the buttons in a project's head: beside its title where they all fit, else in its "…" menu. */
+interface HeadAct {
+  key: string;
+  icon: ReactNode;
+  label: string;
+  title: string;
+  disabled?: boolean;
+  run: () => void;
+}
+
+/**
+ * Whether a project's buttons fit beside its title (`roomy`): only where the title and what follows
+ * it take one line and end short of where the buttons start. Measured after each render and whenever
+ * the head or the buttons change size; the title's layout never depends on the answer, so it settles.
+ */
+function useHeadFit(hasActs: boolean) {
+  const head = useRef<HTMLDivElement>(null);
+  const ttl = useRef<HTMLSpanElement>(null);
+  const meta = useRef<HTMLSpanElement>(null);
+  const row = useRef<HTMLDivElement>(null);
+  const moreBtn = useRef<HTMLButtonElement>(null);
+  const [roomy, setRoomy] = useState(true);
+  const [menu, setMenu] = useState(false);
+  const fit = useRef(() => {});
+  fit.current = () => {
+    const [h, tl, m, r] = [head.current, ttl.current, meta.current, row.current];
+    // far out the buttons are not shown and have no size
+    if (!h || !tl || !m || !r || !r.offsetWidth) return;
+    const zoom = h.getBoundingClientRect().width / h.offsetWidth || 1;
+    const lines = tl.getClientRects();
+    const after = m.getBoundingClientRect();
+    const oneLine = lines.length === 1 && after.top < lines[0]!.bottom;
+    const fits = oneLine && after.right + 10 * zoom <= r.getBoundingClientRect().left;
+    setRoomy(fits);
+    if (fits) setMenu(false);
+  };
+  useLayoutEffect(() => fit.current());
+  useEffect(() => {
+    const seen = new ResizeObserver(() => fit.current());
+    for (const el of [head.current, row.current]) if (el) seen.observe(el);
+    document.fonts?.ready.then(() => fit.current());
+    return () => seen.disconnect();
+  }, [hasActs]);
+  return { head, ttl, meta, row, moreBtn, roomy, menu, setMenu };
+}
+
+/** A project's "…" menu: its buttons as entries, over the canvas; a press elsewhere, Escape or moving the view closes it. */
+function HeadMenu({ acts, at, close }: { acts: HeadAct[]; at: React.RefObject<HTMLButtonElement | null>; close: () => void }) {
+  const menu = useRef<HTMLDivElement>(null);
+  const both = useRef({ contains: (n: Node | null) => !!at.current?.contains(n) || !!menu.current?.contains(n) });
+  useMenuClose(true, both as unknown as React.RefObject<HTMLElement>, close, true);
+  useLayoutEffect(() => {
+    if (menu.current && at.current) placeOnScreen(menu.current, at.current.getBoundingClientRect());
+    addEventListener('wheel', close, { passive: true });
+    return () => removeEventListener('wheel', close);
+  }, []);
+  // a portal passes its events up the tree it is written in: the canvas would take them as its own
+  const own = (e: React.SyntheticEvent) => e.stopPropagation();
+  return createPortal(
+    <div className="snooze-menu project-menu" role="menu" ref={menu} onPointerDown={own} onClick={own}>
+      {acts.map((a) => (
+        <button
+          key={a.key}
+          className={`snooze-opt ${a.key}`}
+          role="menuitem"
+          disabled={a.disabled}
+          title={a.title}
+          onClick={() => {
+            close();
+            a.run();
+          }}
+        >
+          {a.icon}
+          {a.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
 export const ProjectView = memo(
   function ProjectView({
     item,
@@ -874,9 +955,17 @@ export const ProjectView = memo(
     const collapsed = !!item.collapsed;
     // the canvas would take the press as the start of a drag or a click that opens the project
     const own = (e: React.PointerEvent) => e.stopPropagation();
+    const acts: HeadAct[] = [];
+    // collapsed, its workstreams are not on the canvas to arrange; its sheet still has the button
+    if (!collapsed && item.state !== 'done' && (item.arranging || arrangeable(kids)))
+      acts.push({ key: 'arrange', icon: <ColumnsIcon size={11} />, label: item.arranging ? t.plan.arranging : t.plan.arrange, title: `${t.plan.arrangeLong}. ${t.plan.arrangeHint}`, disabled: item.arranging, run: () => onArrange(item) });
+    if (startable > 0)
+      acts.push({ key: 'start-all', icon: <PlayIcon size={10} />, label: t.plan.startAllShort(startable), title: `${t.plan.startAll(startable)}. ${t.plan.startAllHint}`, run: () => onStartAll(item, startable) });
+    if (item.state === 'done') acts.push({ key: 'archive', icon: <ArchiveIcon size={11} />, label: t.plan.archive, title: `${t.plan.archiveLong}. ${t.plan.archiveHint}`, run: () => onArchive(item) });
+    const { head, ttl, meta, row, moreBtn, roomy, menu, setMenu } = useHeadFit(acts.length > 0);
     return (
       <div className={`item project s-${item.state}${collapsed ? ' collapsed' : ''}${lit ? ' lit' : ''}`} data-id={item.id} style={{ left: b.x, top: b.y, width: b.w, height: b.h, zIndex: 0 }}>
-        <div className="head">
+        <div className={['head', acts.length > 0 && 'has-acts', roomy && 'roomy'].filter(Boolean).join(' ')} ref={head}>
           <button
             className="fold"
             title={collapsed ? t.plan.expand : t.plan.collapse}
@@ -892,53 +981,58 @@ export const ProjectView = memo(
               <path d={collapsed ? 'M4 2l4 4-4 4' : 'M2 4l4 4 4-4'} />
             </svg>
           </button>
-          <span className="ttl">{plain(item.title)}</span>
-          <span className="kind">{t.kind.project}</span>
-          <span className="progress">{t.progress(live, kids.length)}</span>
-          <CardNumber n={item.number} className="head-no" />
-          {/* collapsed, its workstreams are not on the canvas to arrange; its sheet still has the button */}
-          {!collapsed && item.state !== 'done' && (item.arranging || arrangeable(kids)) && (
-            <button
-              className="head-btn arrange"
-              disabled={item.arranging}
-              title={`${t.plan.arrangeLong}. ${t.plan.arrangeHint}`}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                onArrange(item);
-              }}
-            >
-              <ColumnsIcon size={11} />
-              {item.arranging ? t.plan.arranging : t.plan.arrange}
-            </button>
-          )}
-          {startable > 0 && (
-            <button
-              className="head-btn start-all"
-              title={`${t.plan.startAll(startable)}. ${t.plan.startAllHint}`}
-              onPointerDown={own}
-              onClick={(e) => {
-                e.stopPropagation();
-                onStartAll(item, startable);
-              }}
-            >
-              <PlayIcon size={10} />
-              {t.plan.startAllShort(startable)}
-            </button>
-          )}
-          {item.state === 'done' && (
-            <button
-              className="head-btn archive"
-              title={`${t.plan.archiveLong}. ${t.plan.archiveHint}`}
-              onPointerDown={own}
-              onClick={(e) => {
-                e.stopPropagation();
-                onArchive(item);
-              }}
-            >
-              <ArchiveIcon size={11} />
-              {t.plan.archive}
-            </button>
+          {/* the title wraps where the project is narrow; what follows it flows after its last word */}
+          <div className="name">
+            <span className="ttl" ref={ttl}>
+              {plain(item.title)}
+            </span>{' '}
+            <span className="meta" ref={meta}>
+              <span className="kind">{t.kind.project}</span>
+              <span className="progress">{t.progress(live, kids.length)}</span>
+              <CardNumber n={item.number} className="head-no" />
+            </span>
+          </div>
+          {acts.length > 0 && (
+            <>
+              {/* measured even while hidden: whether they fit beside the title decides between them and the menu */}
+              <div className="acts" ref={row}>
+                {acts.map((a) => (
+                  <button
+                    key={a.key}
+                    className={`head-btn ${a.key}`}
+                    disabled={a.disabled}
+                    title={a.title}
+                    onPointerDown={own}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      a.run();
+                    }}
+                  >
+                    {a.icon}
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                className="more"
+                ref={moreBtn}
+                title={t.plan.more}
+                aria-label={t.plan.more}
+                aria-haspopup="menu"
+                aria-expanded={menu}
+                onPointerDown={own}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenu(!menu);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                  <circle cx="2.5" cy="7" r="1.3" />
+                  <circle cx="7" cy="7" r="1.3" />
+                  <circle cx="11.5" cy="7" r="1.3" />
+                </svg>
+              </button>
+            </>
           )}
         </div>
         {/* a collapsed project's workstreams, a mark each in its state's colour: a click opens one, unfolding from its mark */}
@@ -982,6 +1076,7 @@ export const ProjectView = memo(
             {waiting > 0 && <div className="badge">{waiting}</div>}
           </div>
         )}
+        {menu && acts.length > 0 && <HeadMenu acts={acts} at={moreBtn} close={() => setMenu(false)} />}
       </div>
     );
   },

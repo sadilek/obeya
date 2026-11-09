@@ -151,6 +151,15 @@ proposal, follow-up or prototype to its card joins the facing sides and runs abo
 below cards. Where a wait joins the same two cards (a follow-up queued behind the card it came
 from, say), only the wait's arrow shows: both lines would take the same course.
 
+A project's head shows its title in full, wrapped where the project is narrow, with "Project", its
+progress and its number after the last word. Only two lines fit above the workstreams, so a project
+is at least as wide as its title needs for two (a collapsed one grows a line taller instead); the
+server sizes projects too, so the title's width is estimated from its length, not measured. Its
+buttons ("Arrange", "Start all N", "Archive" once done) show while the pointer is on the project,
+at all times on a touch screen: beside the title where all of them fit on its line, else all
+together in a "…" menu at the head's top right, whose room the title always leaves, so it never
+reflows. Never some beside the title and some in the menu.
+
 The arrow before a project's title collapses it to its head ("Collapse", "Expand"), for
 projects the owner does not work on (on a shared repository every colleague's plan docs are
 projects). Collapsed, it shows title, progress, start button, the badge of workstreams that need the
@@ -503,6 +512,12 @@ code, a generic one otherwise.
 - **A project the owner does not work on collapses** (2026-10-21): it stays in sight and needs no
   second list. Rejected: hiding projects into a list beside the archive, filtered by the plan doc's
   git author ("Only my projects").
+- **A project's buttons go into a "…" menu where they do not fit beside its title** (owner,
+  2026-11-09): the title had shrunk to its first letter in a project of one column. Rejected: a row
+  of their own under the title (it lies under the first workstream once the title wraps, unless
+  every project's workstreams start lower), the top right beside a narrower title (a long one
+  then needs a third line and reflows as the pointer enters), and the project's top edge (covers
+  what lies just above it).
 - **`?` and "New task" only teach** (2026-10-15). Rejected: a permanent `?` button, and "New
   task" creating a card mid-view.
 - **A card's title is optional** (2026-10-15). Rejected: a required title, which dropped untitled

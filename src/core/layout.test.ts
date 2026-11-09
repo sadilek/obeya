@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type Arrangeable, arrangeWorkstreams, type Bounds, dependencyColumns, dependencyOrder, freeSpotNear, GAP, PROJECT_HEAD, PROJECT_PAD, shapeOf } from './layout';
+import { type Arrangeable, arrangeWorkstreams, type Bounds, collapsedSize, dependencyColumns, dependencyOrder, freeSpotNear, GAP, PROJECT_COLLAPSED, PROJECT_HEAD, PROJECT_PAD, projectSize, shapeOf } from './layout';
 
 const clear = (a: Bounds, b: Bounds) => a.x + a.w + GAP <= b.x || b.x + b.w + GAP <= a.x || a.y + a.h + GAP <= b.y || b.y + b.h + GAP <= a.y;
 
@@ -44,6 +44,32 @@ describe('freeSpotNear', () => {
     const taken = [{ x: -100, y: -100, w: 1400, h: 1000 }];
     const at = freeSpotNear({ x: 500, y: 400 }, [300, 136], taken, view);
     expect(clear({ ...at, w: 300, h: 136 }, taken[0]!)).toBe(true);
+  });
+});
+
+describe("a project's title", () => {
+  const column = [
+    { kind: 'task' as const, state: 'planned' as const, parent: 'p', x: PROJECT_PAD, y: PROJECT_HEAD },
+    { kind: 'task' as const, state: 'planned' as const, parent: 'p', x: PROJECT_PAD, y: PROJECT_HEAD + 156 },
+  ];
+
+  test('a short one leaves a project of one column at its narrowest', () => {
+    expect(projectSize(column, 'Faster checkout')[0]).toBe(420);
+  });
+
+  test('a long one widens the project so that it takes two lines at most', () => {
+    const short = 'Split the bill between friends';
+    const long = 'Split the bill between friends, settle it by card and keep a history of every bill shared';
+    expect(projectSize(column, short)[0]).toBe(420);
+    expect(projectSize(column, long)[0]).toBeGreaterThan(420);
+    expect(projectSize(column, `**${long}**`)[0]).toBe(projectSize(column, long)[0]);
+  });
+
+  test('collapsed, a project grows a line taller where its title takes two', () => {
+    expect(collapsedSize('Tips')).toEqual([...PROJECT_COLLAPSED]);
+    const [w, h] = collapsedSize('Receipts by email after every order');
+    expect(w).toBe(PROJECT_COLLAPSED[0]);
+    expect(h).toBeGreaterThan(PROJECT_COLLAPSED[1]);
   });
 });
 

@@ -3170,7 +3170,7 @@ export class Board {
     const kids = items.filter((i) => i.parent === projectId);
     const at = arrangeWorkstreams(kids);
     const moved = kids.map((k) => ({ ...k, ...at.get(k.id)! }));
-    const [w, h] = projectSize(moved);
+    const [w, h] = projectSize(moved, project.title);
     const others = items.filter((i) => !i.parent && i.id !== projectId).map((i) => boundsOf(i, items));
     const overlaps = others.some((b) => project.x < b.x + b.w && b.x < project.x + w && project.y < b.y + b.h && b.y < project.y + h);
     this.store.db.transaction(() => {
@@ -3506,7 +3506,7 @@ export class Board {
     const layouts = fresh.map((d) => {
       const pos = placeWorkstreams(d.workstreams);
       const kids = pos.map((p, n) => ({ kind: 'task' as const, state: d.workstreams[n]!.done ? ('live' as const) : ('planned' as const), parent: 'p', ...p }));
-      return { doc: d, pos, size: projectSize(kids) };
+      return { doc: d, pos, size: projectSize(kids, d.title) };
     });
     const top = items.filter((i) => !i.parent);
     // below a note the owner put there too
