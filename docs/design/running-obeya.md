@@ -771,9 +771,10 @@ workers are busy.
   workstream left its doc takes its title from the doc's history in git when neither the doc as
   last read nor the card knows it, and so does the repair of keys an older Obeya gave. That
   history (the doc as each of its last 200 commits left it, a large output for a long-lived doc)
-  was read synchronously while the canvas view was being built. It is now read like any other git
-  call off the server's thread, once per text of the doc and Lesestand, and the view is built
-  meanwhile: the card waits in its project, as it does for a workspace to come back, and a project
+  was read and parsed synchronously while the canvas view was being built (380 ms for 200 versions
+  of a 30 KB doc on a Mac). It is now read like any other git call off the server's thread and
+  parsed a version per turn of the event loop (13 ms at most at a time), once per text of the doc
+  and Lesestand, and the view is built meanwhile: the card waits in its project, as it does for a workspace to come back, and a project
   whose repair needs the history shows its doc as last read; once git is through, the plan docs
   are read again and the cards move. A read for a doc that changed meanwhile is dropped and done
   anew. Rejected: reading the history of every doc ahead (most docs never need it, and each change
