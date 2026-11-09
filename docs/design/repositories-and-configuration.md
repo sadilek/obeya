@@ -490,9 +490,10 @@ the work in it while the repository does not run (decided 2026-11-08: a reposito
 or moved to another owner left cards nobody could get rid of; rejected: having the owner add the
 repository back to stop them). Once the repository runs again, the cards work as before, in its
 workspaces; an archived one gives its workspace back to the pool, where it would otherwise stay
-taken unseen: at once where it holds no work, a clone with work as when the owner takes it for
-another card (the work kept on the card's branch there, back at its next start), while a worktree
-with work stays the card's, since it takes nothing from the pool.
+taken unseen: a clone as when the owner takes it for another card (the card's branch stays there,
+its uncommitted work in a commit on it, back at its next start; a clone git cannot reach stays the
+card's, so no work is lost), a worktree where it holds no work, while one with work stays the card's,
+since it takes nothing from the pool.
 Decided 2026-10-21: no other repository's agents take such a card, the home repository's included,
 since its worker would work in the wrong repository's workspace. Question cards are exempt: their
 agent only reads, and looks a question about such a card up in the home repository.

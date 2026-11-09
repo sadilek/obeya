@@ -3341,28 +3341,34 @@ export class Workers {
 
   /**
    * The archive took a stopped card with its workspace at `path` while its repository did not run on
-   * the canvas; now that it runs, the workspace goes back to the pool: at once where it holds no work,
-   * and a clone with work as when the owner takes it for another card (`Workspaces.evict`), the work
-   * kept on the card's branch there for its next start. A worktree with work stays the card's, as it
-   * takes nothing from the pool; so does a clone where git fails.
+   * the canvas; now that it runs, the workspace goes back to the pool. A clone goes as when the owner
+   * takes it for another card (`Workspaces.evict`): the card's branch stays there, its uncommitted
+   * work in a commit on it, for its next start; where git cannot reach it, the clone stays the card's.
+   * A worktree takes nothing from the pool: it goes where it holds no work, and stays the card's
+   * otherwise. The card does not start meanwhile (`evicting`), brought back onto the canvas or not.
    */
   private async archivedLease(cardId: string, path: string) {
     const still = () => this.o.board.leaseEnded(cardId, path) === 'archived';
-    if (!(await this.o.workspaces.hasWork(cardId))) {
+    this.evicting.add(cardId);
+    try {
+      if (this.o.workspaces.mode === 'clones') {
+        const kept = await this.o.workspaces.evict(cardId);
+        if (!kept) return;
+        // brought back and deleted meanwhile, the card keeps where its branch is, for its restore
+        this.o.board.keptIn(cardId, kept);
+        this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.archivedFreed(kept));
+        return;
+      }
+      const work = await this.o.workspaces.hasWork(cardId);
       if (!still()) return;
+      if (work) return void this.kept.add(path);
       this.o.workspaces.release(cardId);
       this.o.board.work(cardId, { workspace: null, parked: null, app: null });
-      return;
-    }
-    if (this.o.workspaces.mode !== 'clones' || !still()) return void this.kept.add(path);
-    try {
-      const kept = await this.o.workspaces.evict(cardId);
-      if (!kept) return;
-      this.o.board.work(cardId, { workspace: null, parked: null, app: null, kept_in: kept });
-      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.archivedFreed(kept));
     } catch (e) {
       this.kept.add(path);
       this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.evictFailed(messageOf(e)));
+    } finally {
+      this.evicting.delete(cardId);
     }
   }
 

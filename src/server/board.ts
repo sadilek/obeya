@@ -1853,6 +1853,17 @@ export class Board {
   }
 
   /**
+   * The card's clone went back to the pool, its branch kept there (`Workspaces.evict`), for its next
+   * start to take from it: a card deleted meanwhile keeps that too, for when it is restored.
+   */
+  keptIn(cardId: string, path: string) {
+    const row = this.store.card(cardId);
+    if (!row || row.canvas_id !== this.canvas.id) return;
+    this.store.update(cardId, { workspace: null, parked: null, app: null, kept_in: path });
+    this.changedRows();
+  }
+
+  /**
    * The card's workspace at `path` left the pool, its folder gone: the card names none any more, one
    * at work is planned again, and its next start takes another workspace.
    */
