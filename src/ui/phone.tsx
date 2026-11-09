@@ -491,12 +491,12 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
       {said.lines.map((l) => (
         <span key={l}>{l}</span>
       ))}
-      {said.keepOn && <small>{t.phone.whyQuiet.keepOn}</small>}
       {said.open && (
         <a className="ph-quiet-open" href={TAILSCALE_APP}>
           {t.phone.whyQuiet.openTailscale}
         </a>
       )}
+      {said.keepOn && <small>{t.phone.whyQuiet.keepOn}</small>}
     </div>
   );
   const voice = (
