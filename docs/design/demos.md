@@ -298,8 +298,12 @@ language}`, JSON only, so another page cannot send one without a preflight) and 
 with its seconds and WAV, or `error`; Obeya's own server answers the route too, with the owner's key,
 and there may write to an absolute `out`. Clips of all renders wait in one queue, one at a time, and
 each render asks for its next clip only once the last is done, so parallel renders take turns clip
-by clip; walkthroughs ask the same way, a sentence at a time. The voice runs on for 5 minutes after the queue empties; a clip for another voice
-(reference, speaker or language) ends it at once, as does Obeya's shutdown. The protocol and its
+by clip; walkthroughs ask the same way, a sentence at a time. One voice serves every language: each
+clip brings its language and, for a clone, its reference clip (the demo settings name one per
+narration language), and the voice reads each clip's transcript once. The command Obeya runs names
+only the model and a stock speaker. The voice runs on for 5 minutes after the queue empties; a clip
+for another voice (a clone after a stock speaker, which takes another model, or another speaker)
+ends it at once, as does Obeya's shutdown. The protocol and its
 limits hold between server and voice; a voice that stops answering fails its clip and the next clip
 starts a new one. Without `OBEYA_URL`, or when Obeya does not answer, the render loads the voice
 itself.
@@ -867,6 +871,10 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 - **A held voice that stops answering fails its clip** (2026-10-21): one sat at 0 % CPU for 40
   minutes, and every render and the dialog's sample waited behind it until it was killed by hand.
   Holding the voice saves a model load per render or "Listen", at 3–4 GB held for 5 minutes.
+- **One held voice for every language** (2026-11-09): the reference clip comes with each clip. A
+  voice per language loaded the same 4 GB model again on each switch between a German and an
+  English walkthrough, six times in 30 minutes on one day, and those loads swapped the idle Obeya
+  server out (plain database reads went from milliseconds to over a second).
 - **Respelling only for voices that need it** (2026-10-21). Rejected: English phonemes for Piper
   (Thorsten hardly has *w* and *ɹ*; Whisper heard "Pull Equest" and "Benz"), and recognising English
   words by themselves ("Demo", "Team", "Agent" belong to both languages).

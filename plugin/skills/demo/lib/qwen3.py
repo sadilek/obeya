@@ -4,18 +4,22 @@ Runs in the environment Obeya installs for the voice (`voices.ts`): MLX through 
 Apple Silicon, PyTorch through qwen-tts elsewhere.
 
     python qwen3.py --model <repo> --language de (--speaker ryan | --reference clip.wav) --out x.wav
-    python qwen3.py --model <repo> --language de (--speaker ryan | --reference clip.wav) --serve
+    python qwen3.py --model <repo> [--language de] [--speaker ryan | --reference clip.wav] --serve
 
-With `--out`, the text comes on stdin and one WAV goes out. With `--serve`, the model, the
-reference and its transcript load once and the process answers requests until its stdin ends,
-one JSON object per line each way (what `tts.py` speaks with a voice whose spec has `serve`):
+With `--out`, the text comes on stdin and one WAV goes out. With `--serve`, the model loads once
+and the process answers requests until its stdin ends, one JSON object per line each way (what
+`tts.py` speaks with a voice whose spec has `serve`):
 
     → {"ready": true}                                      once the model is loaded
-    ← {"text": "...", "script": "...", "out": "/x/clip.wav", "language": "de", "id": 7}
+    ← {"text": "...", "script": "...", "out": "/x/clip.wav", "language": "de", "reference": "/x/me.wav", "id": 7}
     → {"sentence": 1, "of": 3, "id": 7}                    once per sentence done
     → {"ok": true, "seconds": 4.2, "heard": [...], "timed": [...], "id": 7}  or  {"error": "...", "id": 7}
 
-`script`, `language` and `id` are optional. `script` is the text as written, where `text` has words
+`script`, `language`, `reference` and `id` are optional; `language` and `reference` fall back to
+`--language` and `--reference`. So one process of a Base model clones a reference clip in each
+language, each with its own transcript (read once): Obeya holds one for every language the demo
+settings name a clip for, since loading the model (4 GB) again on each switch of language swapped
+an idle machine's other processes out. `script` is the text as written, where `text` has words
 respelt for the voice (`lexicon.qwen3.<language>.json`); it is what the clip is heard against.
 `heard` holds a line per sentence, `{"script", "heard"}` with `"stumbled": true` and `"misheard":
 [[word, heard as], ...]` where they apply; `timed` what was heard of the whole clip in pieces (parts
@@ -252,15 +256,35 @@ def write_wav(path: str, samples, rate: int) -> None:
         fh.writeframes(pcm.tobytes())
 
 
+def transcript_of(reference: str) -> str:
+    """The exact transcript of a reference clip, the `.txt` beside it."""
+    transcript = Path(reference).with_suffix(".txt")
+    if not transcript.exists():
+        raise ValueError(f"no transcript for {reference}: expected {transcript}")
+    return transcript.read_text(encoding="utf-8").strip()
+
+
 def load(args):
-    """The model, ready to speak: `speak(sentence, language, frames)` gives the samples of at most
-    `frames` frames, `rate()` their rate."""
-    ref_text = None
+    """The model, ready to speak: `speak(sentence, language, frames, reference)` gives the samples
+    of at most `frames` frames, cloning `reference` (else `--reference`) or speaking as
+    `--speaker`; `rate()` their rate."""
+    transcripts: dict[str, str] = {}
     if args.reference:
-        transcript = Path(args.reference).with_suffix(".txt")
-        if not transcript.exists():
-            sys.exit(f"no transcript for {args.reference}: expected {transcript}")
-        ref_text = transcript.read_text(encoding="utf-8").strip()
+        try:
+            transcripts[args.reference] = transcript_of(args.reference)
+        except ValueError as failed:
+            sys.exit(str(failed))
+
+    def cloned(reference: str | None) -> tuple[str, str] | None:
+        """The clip to clone and its transcript, or None for the stock speaker."""
+        reference = reference or args.reference
+        if not reference:
+            if not args.speaker:
+                raise ValueError("no reference clip to clone and no speaker")
+            return None
+        if reference not in transcripts:
+            transcripts[reference] = transcript_of(reference)
+        return reference, transcripts[reference]
 
     import numpy as np
 
@@ -272,10 +296,10 @@ def load(args):
     if load_model:
         model = load_model(args.model)
 
-        def speak(sentence: str, language: str, frames: int):
+        def speak(sentence: str, language: str, frames: int, reference: str | None = None):
             kwargs = {"lang_code": LANGUAGES[language], "max_tokens": frames}
-            if args.reference:
-                kwargs |= {"ref_audio": args.reference, "ref_text": ref_text}
+            if clone := cloned(reference):
+                kwargs |= {"ref_audio": clone[0], "ref_text": clone[1]}
             else:
                 kwargs["voice"] = args.speaker
             return np.concatenate([np.array(s.audio) for s in model.generate(text=sentence, **kwargs)])
@@ -289,10 +313,10 @@ def load(args):
     model = Qwen3TTSModel.from_pretrained(args.model, device_map=device, dtype=torch.bfloat16)
     rate = 24000
 
-    def speak(sentence: str, language: str, frames: int):
+    def speak(sentence: str, language: str, frames: int, reference: str | None = None):
         nonlocal rate
-        if args.reference:
-            wavs, rate = model.generate_voice_clone(text=sentence, language=LANGUAGES[language].capitalize(), ref_audio=args.reference, ref_text=ref_text, max_new_tokens=frames)
+        if clone := cloned(reference):
+            wavs, rate = model.generate_voice_clone(text=sentence, language=LANGUAGES[language].capitalize(), ref_audio=clone[0], ref_text=clone[1], max_new_tokens=frames)
         else:
             wavs, rate = model.generate_custom_voice(text=sentence, language=LANGUAGES[language].capitalize(), speaker=args.speaker, max_new_tokens=frames)
         return np.asarray(wavs[0], dtype=np.float32)
@@ -435,8 +459,9 @@ def serve(args) -> None:
             language = request.get("language") or args.language
             if language not in LANGUAGES:
                 raise ValueError(f"unknown language {language!r}; known: {', '.join(LANGUAGES)}")
+            reference = request.get("reference")
             started = time.monotonic()
-            heard, timed = clip(speak, rate, ear, request["text"], language, request["out"], request.get("script"), lambda n, of: answer({"sentence": n, "of": of, **reply}))
+            heard, timed = clip(lambda sentence, language, frames: speak(sentence, language, frames, reference), rate, ear, request["text"], language, request["out"], request.get("script"), lambda n, of: answer({"sentence": n, "of": of, **reply}))
             reply |= {"ok": True, "seconds": round(time.monotonic() - started, 2), **hearing(ear, heard, timed)}
         except Exception as failed:  # a bad request or a failed generation; the model stays loaded
             reply |= {"error": f"{type(failed).__name__}: {failed}"[:600]}
@@ -451,7 +476,8 @@ def serve(args) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
-    parser.add_argument("--language", required=True, choices=sorted(LANGUAGES))
+    # with --serve, each request may say its language instead
+    parser.add_argument("--language", choices=sorted(LANGUAGES))
     parser.add_argument("--speaker")
     parser.add_argument("--reference")
     parser.add_argument("--out")
@@ -463,6 +489,8 @@ def main() -> None:
         return
     if not args.out:
         parser.error("--out or --serve is required")
+    if not args.language:
+        parser.error("--language is required with --out")
     text = sys.stdin.read()
     speak, rate = load(args)
     ear = Ear()

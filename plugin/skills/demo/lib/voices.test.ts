@@ -101,10 +101,16 @@ describe('voices', () => {
       // the same voice, model and language as one clip, just without a WAV of its own
       expect(spec.serve).toEqual([...spec.argv.slice(0, -2), '--serve']);
       expect(spec.argv.slice(-2)).toEqual(['--out', '{out}']);
-      // what Obeya runs to hold it across renders is the same command
+      // what Obeya runs to hold it across renders is the same command, for every language: the
+      // language and the reference clip come with each clip
       expect(spec.host).toEqual('references' in s ? { reference: '/x/me.wav' } : { speaker: 'ryan' });
-      expect(qwen3Serve(spec.host!, s.language, home)).toEqual(spec.serve);
+      const held = spec.serve.filter((arg, i, all) => !['--language', '--reference'].includes(arg) && !['--language', '--reference'].includes(all[i - 1] ?? ''));
+      expect(qwen3Serve(spec.host!, home)).toEqual(held);
     }
+    // a clone in each language is held by one process
+    const clones = (['de', 'en'] as const).map((language) => voiceSpec({ language, voice: 'qwen3', references: { de: '/x/de.wav', en: '/x/en.wav' } }, home));
+    const [de, en] = clones.map((spec) => (spec.kind === 'command' && spec.host ? qwen3Serve(spec.host, home) : []));
+    expect(de).toEqual(en);
     for (const voice of ['piper', 'say', 'command'] as const) {
       expect(voiceSpec({ language: 'de', voice, command: 'speak' }, home)).not.toHaveProperty('serve');
     }

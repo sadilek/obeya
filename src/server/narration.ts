@@ -5,8 +5,10 @@
 // workers and for the settings sheet's sample). The clips of all renders wait in one queue, served one at a time: each render asks
 // for one clip at a time, so parallel renders take turns clip by clip. Once the queue is empty
 // the voice stays loaded for a while (`idleMs`), then ends; a request for another voice (another
-// reference, speaker or language) ends it at once. Between this server and the voice runs the
-// line protocol of `qwen3.py`, unchanged. A voice that stops answering (on 2026-10-21 one sat at
+// model or speaker) ends it at once. One voice serves every language: each clip brings its
+// language and reference clip, so a walkthrough in German after one in English keeps the model
+// loaded (reloading its 4 GB on each switch swapped the idle server out, 2026-11-08). Between this
+// server and the voice runs the line protocol of `qwen3.py`, unchanged. A voice that stops answering (on 2026-10-21 one sat at
 // 0 % CPU with a clip in hand for 40 minutes, and every render and sample waited behind it) fails
 // its clip once it has said nothing for a while (`NARRATION_LOAD_MS`, `NARRATION_SENTENCE_MS`):
 // it is ended, and the next clip starts a new one.
@@ -97,8 +99,11 @@ export class NarrationHost {
 
   constructor(
     private o: {
-      /** The command that serves this voice (`voices.ts`: `qwen3Serve`). */
-      argv: (voice: HeldVoice, language: ClipRequest['language']) => string[];
+      /**
+       * The command that serves this voice (`voices.ts`: `qwen3Serve`), in every language and with
+       * any reference clip: those come with each clip.
+       */
+      argv: (voice: HeldVoice) => string[];
       idleMs?: number;
       loadMs?: number;
       sentenceMs?: number;
@@ -138,7 +143,7 @@ export class NarrationHost {
   /** Synthesises one clip once its turn comes; the voice starts first when it is not loaded. */
   clip(request: ClipRequest): Promise<ClipReply> {
     return new Promise((resolve) => {
-      this.queue.push({ argv: this.o.argv(request.voice, request.language), request, resolve });
+      this.queue.push({ argv: this.o.argv(request.voice), request, resolve });
       void this.serve();
     });
   }
@@ -147,8 +152,8 @@ export class NarrationHost {
    * Loads the voice in its turn without a clip, so the clips asked for soon after skip the load (a
    * walkthrough the owner just asked for, walkthrough.ts); one loaded already stays as it is.
    */
-  load(voice: HeldVoice, language: ClipRequest['language']) {
-    this.queue.push({ argv: this.o.argv(voice, language), resolve: () => {} });
+  load(voice: HeldVoice) {
+    this.queue.push({ argv: this.o.argv(voice), resolve: () => {} });
     void this.serve();
   }
 
@@ -187,7 +192,8 @@ export class NarrationHost {
     const voice = this.voice!;
     try {
       const { text, script, out, language } = request;
-      voice.child.stdin.write(`${JSON.stringify({ text, ...(script ? { script } : {}), out, language })}\n`);
+      const reference = request.voice.reference;
+      voice.child.stdin.write(`${JSON.stringify({ text, ...(script ? { script } : {}), out, language, ...(reference ? { reference } : {}) })}\n`);
       voice.child.stdin.flush();
     } catch {
       return this.died(voice);

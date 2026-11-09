@@ -311,8 +311,19 @@ function qwen3Command(voice: HeldVoice, language: NarrationLanguage, home: strin
   return [envPython(path.join(voicesHome(home), 'qwen3')), lib('qwen3.py'), '--model', qwen3Model(!!voice.reference), '--language', language, ...who];
 }
 
-/** The command Obeya holds a Qwen3 voice with across renders (`src/server/narration.ts`). */
-export const qwen3Serve = (voice: HeldVoice, language: NarrationLanguage, home = obeyaHome()) => [...qwen3Command(voice, language, home), '--serve'];
+/**
+ * The command Obeya holds a Qwen3 voice with across renders (`src/server/narration.ts`): one for
+ * every language, so it names neither language nor reference clip; each clip brings its own. A
+ * clone and a stock speaker need different models, so those two stay apart.
+ */
+export const qwen3Serve = (voice: HeldVoice, home = obeyaHome()) => [
+  envPython(path.join(voicesHome(home), 'qwen3')),
+  lib('qwen3.py'),
+  '--model',
+  qwen3Model(!!voice.reference),
+  ...(voice.reference ? [] : ['--speaker', voice.speaker || QWEN3_SPEAKER]),
+  '--serve',
+];
 
 /** The spec `tts.py` synthesises the voice of these settings with. */
 export function voiceSpec(given: DemoSettings, home = obeyaHome()): VoiceSpec {

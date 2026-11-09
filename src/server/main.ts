@@ -250,7 +250,7 @@ const commitOf = () => {
 };
 const forge = process.env.OBEYA_FORGE_FILE ? fileForge(process.env.OBEYA_FORGE_FILE) : routedForge(ghForge, forgejoForge, originOf, (remote) => onGitHub(remote));
 const narration = new NarrationHost({
-  argv: (voice, language) => qwen3Serve(voice, language, home),
+  argv: (voice) => qwen3Serve(voice, home),
   log: (line) => console.log(line),
   // a render's clips heard back as a walkthrough's sentences are, below
   hear: (wav, language) => (cloudInUse(home) ? Promise.resolve('voice in runs through a cloud service, which gives no times of words') : transcriber.local.timed(wav, language)),
@@ -267,7 +267,7 @@ const voicing = new Voicing({
   silent: (language) => narrator(language).voice === 'none',
   warm: (language) => {
     const spec = voiceSpec(narrator(language), home);
-    if (spec.kind === 'command' && spec.host) narration.load(spec.host, language);
+    if (spec.kind === 'command' && spec.host) narration.load(spec.host);
     // the recognition that hears its sentences back for the times of their words
     if (!cloudInUse(home)) transcriber.local.warm();
   },

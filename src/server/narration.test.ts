@@ -14,7 +14,7 @@ import { asOwner, removeDir } from './testing';
  * `mute` at loading, `stalls` says it loads, then nothing more, `slow` waits 350 ms before it starts,
  * longer than the 300 ms loading deadline the tests give it. A clip whose text says "hangs" gets no answer, as
  * the Qwen3 voice gave none on 2026-10-21; a clip of several sentences reports each after a while.
- * Given the script as written, it says it heard the text as said.
+ * Given the script as written, it says it heard the text as said; given a reference clip, it logs it beside the clip.
  */
 const FAKE_VOICE = `
 import { appendFileSync, writeFileSync } from 'node:fs';
@@ -36,7 +36,7 @@ for await (const line of console) {
   const sentences = request.text.split('. ');
   if (sentences.length > 1) for (const n of sentences.keys()) { await Bun.sleep(150); console.log(JSON.stringify({ sentence: n + 1, of: sentences.length })); }
   writeFileSync(request.out, 'RIFF');
-  appendFileSync(log, request.language + ':' + request.text + '\\n');
+  appendFileSync(log, request.language + ':' + request.text + (request.reference ? ' as ' + request.reference : '') + '\\n');
   const heard = request.script ? { heard: [{ script: request.script, heard: request.text }] } : {};
   console.log(JSON.stringify({ ok: true, seconds: 0.01, ...heard }));
 }
@@ -55,7 +55,7 @@ afterEach(async () => {
 });
 
 const hold = (idleMs = 60_000, limits: { loadMs?: number; sentenceMs?: number; deadline?: Deadline } = {}) =>
-  (host = new NarrationHost({ argv: (voice, language) => ['bun', join(dir, 'voice.ts'), join(dir, 'log'), voice.speaker ?? voice.reference ?? '', language], idleMs, ...limits }));
+  (host = new NarrationHost({ argv: (voice) => ['bun', join(dir, 'voice.ts'), join(dir, 'log'), voice.speaker ?? 'clone'], idleMs, ...limits }));
 const log = () => (existsSync(join(dir, 'log')) ? readFileSync(join(dir, 'log'), 'utf8').trim().split('\n') : []);
 const clip = (text: string, speaker = 'ryan', language: ClipRequest['language'] = 'de'): ClipRequest => ({ voice: { speaker }, text, out: join(dir, `${text}.wav`), language });
 const until = async (done: () => boolean) => {
@@ -91,10 +91,10 @@ describe('the voice Obeya holds', () => {
 
   test('loads without a clip, ahead of the first one, and once only for a voice loaded already', async () => {
     hold();
-    host.load({ speaker: 'ryan' }, 'de');
+    host.load({ speaker: 'ryan' });
     await until(() => log().length > 0);
     expect(log()).toEqual(['start ryan']);
-    host.load({ speaker: 'ryan' }, 'de');
+    host.load({ speaker: 'ryan' });
     await host.clip(clip('eins'));
     expect(log()).toEqual(['start ryan', 'de:eins']);
   });
@@ -103,6 +103,19 @@ describe('the voice Obeya holds', () => {
     hold();
     const reply = await host.clip({ ...clip('Reauthentikayt.'), script: 'Reauthenticate.' });
     expect(reply).toEqual({ ok: true, seconds: 0.01, heard: [{ script: 'Reauthenticate.', heard: 'Reauthentikayt.' }] });
+  });
+
+  test('serves every language, each clip with its own reference, without loading again', async () => {
+    // 2026-11-08: each switch between a German and an English clip loaded the 4 GB model anew
+    hold();
+    const cloned = (text: string, language: ClipRequest['language']): ClipRequest => ({ voice: { reference: `/x/${language}.wav` }, text, out: join(dir, `${text}.wav`), language });
+    await host.clip(cloned('Hello', 'en'));
+    await host.clip(cloned('Hallo', 'de'));
+    await host.clip(clip('Und du'));
+    await until(() => log().includes('end clone'));
+    expect(log().slice(0, 3)).toEqual(['start clone', 'en:Hello as /x/en.wav', 'de:Hallo as /x/de.wav']);
+    // a stock speaker needs another model
+    expect(log().filter((l) => l.startsWith('start'))).toEqual(['start clone', 'start ryan']);
   });
 
   test('another voice ends the one loaded', async () => {
@@ -145,8 +158,8 @@ describe('a voice that stops answering', () => {
     expect(await sample).toEqual({ ok: true, seconds: 0.01 });
     expect(replies[0]).toMatch(/^a:a1 hangs the voice said nothing for 0.4 s while making a clip and was ended: .*generating a1 hangs/s);
     expect(replies.slice(1)).toEqual(['b:b1 ok', 'a:a2 ok', 'b:b2 ok']);
-    // the stuck voice is gone: a new one took the next clip, another the sample (German), a third the renders again
-    expect(log().filter((l) => !l.startsWith('end'))).toEqual(['start ryan', 'start ryan', 'en:b1', 'start ryan', 'de:Probe', 'start ryan', 'en:a2', 'en:b2']);
+    // the stuck voice is gone: a new one took the next clip, the sample (German) and the renders again
+    expect(log().filter((l) => !l.startsWith('end'))).toEqual(['start ryan', 'start ryan', 'en:b1', 'de:Probe', 'en:a2', 'en:b2']);
   });
 
   test('loading for too long fails the clip, the time starting anew with each line of output, and the next clip starts the voice anew', async () => {
