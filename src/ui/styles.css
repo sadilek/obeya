@@ -73,8 +73,10 @@ a.link:hover, a.link:focus-visible { --hl: color-mix(in srgb, var(--question) 17
 h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-family: var(--serif); font-weight: 600; letter-spacing: -.005em; }
 
 /* ---------- canvas ---------- */
-#viewport { position: fixed; inset: 0; cursor: grab; touch-action: none;
+/* a press on the canvas drags or pans, so no text on it gets selected (a project's title, say) */
+#viewport { position: fixed; inset: 0; cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none;
   background-image: radial-gradient(var(--dot) 1px, transparent 1px); }
+#viewport :is(input, textarea) { -webkit-user-select: text; user-select: text; }
 #viewport.panning { cursor: grabbing; }
 #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 
