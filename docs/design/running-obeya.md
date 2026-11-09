@@ -702,6 +702,30 @@ workers are busy.
   last write (rejected before: a status line moves it); keeping the shared cards' rows only as long
   as the archive's mark stands (it moves with every card archived, and a run sharing many pages
   again writes archived cards one after the other).
+- **The archive comes a page at a time, and the server searches it** (2026-11-09): opening the
+  archive built every archived card of the canvas for the page (the newest first on their own, then
+  all of them), as did a proposal for a site's tags; over the long history's 9,000 archived cards
+  that held the server for about 110 ms, growing with every card archived. Now the page asks for 50
+  cards at a time as the owner scrolls down the list (and through it to a card opened from its
+  address), each page read by an index in the archive's order and continued after the last card of
+  the one before (when archived, when created, its id), so a card archived meanwhile does not shift
+  the pages; the page reads again what it shows once the archive's mark moves, as far as the owner
+  had scrolled. A page costs a quarter of a rebuild of the canvas view, at the start of the archive
+  and thousands of cards down. Since the page no longer holds the archive, the server searches it,
+  for the archive's filter and the bar's search alike: the first search reads what it needs of every
+  archived card (its text as the search reads it, its label as a key) in slices of a hundred cards,
+  about one rebuild each, the server answering between them; it keeps that for ten minutes after the
+  last search and reads again only the entries the database logs as written since (the log written
+  as the archive's mark is, by triggers on the cards). A search then costs about one rebuild, and
+  only the cards of its page are built. The labels the search matches (Stopped, Idea · parked) come
+  with the search in the page's language, since the server does not know which the page shows. A
+  proposal for a site's tags reads the archive page by page only as far back as its brief has room
+  for. Rejected: SQLite's full-text search (its trigram tokenizer, which would match inside words,
+  ignores accents only from SQLite 3.45, newer than the system SQLite some machines run Bun with,
+  and the text a search reads partly comes from plan docs and JSON columns); reading the whole
+  archive in the background and keeping it built (memory for thousands of cards nobody looks at,
+  and every write to an archived card would build it again); offsets for the pages (a page far down
+  would walk thousands of index entries, and a card archived meanwhile shifts every page after).
 - **Agent starts and landings read git without the server waiting, and reuse what was read while
   the refs stand still** (2026-10-31): with many cards landing in a row, the trust check at each
   agent start and the settings read after each landing called git synchronously, a few calls each,

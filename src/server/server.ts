@@ -48,6 +48,8 @@ type Req = Request & { params: Record<string, string> };
 
 /** How long `/api/waiting-count` holds an answer that would bring nothing new, well within the server's idle timeout. */
 const WAITING_COUNT_HOLD_MS = 50_000;
+/** The most archived cards a page of the archive brings: about a screen's worth, a few times over. */
+const ARCHIVE_PAGE_MAX = 200;
 const notFound = () => new Response('Not found', { status: 404 });
 
 /** `?replyTo=` of a recording: a card's event (`7`), or a message of the sheet (`12.answer`). */
@@ -788,11 +790,26 @@ export function serve(
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },
       '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
       '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },
-      // the archive, newest first (`?first=<n>`: the newest n, each project with its workstreams); posting archives every finished card of the owner's
+      // the archive, newest first, a page at a time (`count`, `after`: the page before's `next`), each project
+      // with its workstreams; `q`: those holding its words (`from`: the page before's `next`; `labels`:
+      // the archive's labels in the owner's words; `everywhere`: for the search across canvas and archive);
+      // `ids` or `code`: the entries of these cards, or the one holding the card an address names.
+      // Posting archives every finished card of the owner's.
       '/api/c/:canvas/archive': {
         GET: on((c, req) => {
-          const first = new URL(req.url).searchParams.get('first');
-          return c.board.archived(first ? Math.max(1, Number(first) || 1) : undefined);
+          const p = new URL(req.url).searchParams;
+          const count = Math.min(ARCHIVE_PAGE_MAX, Math.max(1, Number(p.get('count')) || ARCHIVE_PAGE_MAX));
+          const ids = p.get('ids');
+          if (ids !== null) return { items: c.board.archiveEntries(ids.split(',').filter(Boolean).slice(0, ARCHIVE_PAGE_MAX)) };
+          const code = p.get('code');
+          if (code) return { items: c.board.archiveEntry(code) };
+          const q = p.get('q')?.trim();
+          if (!q) return c.board.archivePage(count, p.get('after') ?? undefined);
+          let labels: Record<string, string> = {};
+          try {
+            labels = JSON.parse(p.get('labels') ?? '{}') as Record<string, string>;
+          } catch {}
+          return c.board.archiveSearch(q, { count, from: Number(p.get('from')) || 0, labels, everywhere: p.has('everywhere') });
         }),
         POST: on((c) => ({ ids: c.board.archiveDone() })),
       },

@@ -5,6 +5,13 @@ import type { AnswerFile, AnswerRef, CardEvent, DeviceView, CardKind, CardState,
 import type { Place } from '../core/layout';
 import type { Wish } from '../core/wish';
 
+/** Where a page of the archive ends (`Store.archivePage`): the last card's archiving, creation and id. */
+export interface ArchiveCursor {
+  at: string;
+  created: string;
+  id: string;
+}
+
 export interface CardRow {
   id: string;
   canvas_id: string;
@@ -599,6 +606,35 @@ export const MIGRATIONS = [
   `UPDATE events SET author = 'coordinator' WHERE author = 'koordinator';
    UPDATE talk SET answer_by = 'coordinator' WHERE answer_by = 'koordinator';
    UPDATE decisions SET by = 'coordinator' WHERE by = 'koordinator';`,
+  // the archive in its order, read a page at a time (`Store.archivePage`); and which of its rows were
+  // written, came or went (`Store.archiveChanges`), as the mark of the archive moves with them, so a
+  // canvas keeps its search through the archive up to date by reading those again
+  `CREATE INDEX cards_archive_order ON cards (canvas_id, archived_at, created_at, id) WHERE deleted_at IS NULL AND archived_at IS NOT NULL;
+  CREATE TABLE archive_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canvas_id TEXT NOT NULL,
+    card_id TEXT NOT NULL
+  );
+  CREATE TRIGGER archive_change AFTER UPDATE ON cards
+    WHEN OLD.archived_at IS NOT NULL OR NEW.archived_at IS NOT NULL
+      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (OLD.parent_id, OLD.prototype_of, NEW.parent_id, NEW.prototype_of) AND a.archived_at IS NOT NULL)
+  BEGIN
+    INSERT INTO archive_changes (canvas_id, card_id) SELECT NEW.canvas_id, value FROM json_each(json_array(NEW.id, NEW.parent_id, NEW.prototype_of)) WHERE value IS NOT NULL;
+    INSERT INTO archive_changes (canvas_id, card_id) SELECT OLD.canvas_id, value FROM json_each(json_array(OLD.parent_id, OLD.prototype_of)) WHERE value IS NOT NULL;
+    INSERT INTO archive_changes (canvas_id, card_id) SELECT OLD.canvas_id, OLD.id WHERE OLD.canvas_id IS NOT NEW.canvas_id;
+  END;
+  CREATE TRIGGER archive_change_new AFTER INSERT ON cards
+    WHEN NEW.archived_at IS NOT NULL
+      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (NEW.parent_id, NEW.prototype_of) AND a.archived_at IS NOT NULL)
+  BEGIN
+    INSERT INTO archive_changes (canvas_id, card_id) SELECT NEW.canvas_id, value FROM json_each(json_array(NEW.id, NEW.parent_id, NEW.prototype_of)) WHERE value IS NOT NULL;
+  END;
+  CREATE TRIGGER archive_change_gone AFTER DELETE ON cards
+    WHEN OLD.archived_at IS NOT NULL
+      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (OLD.parent_id, OLD.prototype_of) AND a.archived_at IS NOT NULL)
+  BEGIN
+    INSERT INTO archive_changes (canvas_id, card_id) SELECT OLD.canvas_id, value FROM json_each(json_array(OLD.id, OLD.parent_id, OLD.prototype_of)) WHERE value IS NOT NULL;
+  END;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -762,11 +798,47 @@ export class Store {
     return (this.db.query('SELECT rev FROM share_revs WHERE canvas_id = $c').get({ c: canvasId }) as { rev: number } | null)?.rev ?? 0;
   }
 
-  /** The canvas's archive, the most recently archived first; `first`: only that many. */
-  archived(canvasId: string, first = -1): CardRow[] {
+  /**
+   * The canvas's archive, the most recently archived first (of those archived at once, the newest
+   * card first): `count` cards after the card `after`, or from the start.
+   */
+  archivePage(canvasId: string, count: number, after?: ArchiveCursor): CardRow[] {
+    const where = 'canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL';
+    return (
+      after
+        ? this.db
+            .query(`SELECT * FROM cards WHERE ${where} AND (archived_at, created_at, id) < ($at, $created, $id) ORDER BY archived_at DESC, created_at DESC, id DESC LIMIT $n`)
+            .all({ c: canvasId, n: count, at: after.at, created: after.created, id: after.id })
+        : this.db.query(`SELECT * FROM cards WHERE ${where} ORDER BY archived_at DESC, created_at DESC, id DESC LIMIT $n`).all({ c: canvasId, n: count })
+    ) as CardRow[];
+  }
+
+  /** The rows of these cards that are in the canvas's archive. */
+  archivedRows(canvasId: string, ids: string[]): CardRow[] {
     return this.db
-      .query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC, created_at DESC LIMIT $n')
-      .all({ c: canvasId, n: first }) as CardRow[];
+      .query('SELECT * FROM cards WHERE id IN (SELECT value FROM json_each($ids)) AND canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL')
+      .all({ c: canvasId, ids: JSON.stringify(ids) }) as CardRow[];
+  }
+
+  /**
+   * The canvas's cards whose archive entries may have changed since the log of the archive's writes
+   * stood at `after` (`archiveLog`): an archived card written, come or gone, and the archived project
+   * or idea of a workstream or prototype written; and where the log stands now. The database keeps
+   * that log as the rows are written.
+   */
+  archiveChanges(canvasId: string, after: number): { upTo: number; ids: string[] } {
+    const rows = this.db.query('SELECT id, card_id AS card FROM archive_changes WHERE canvas_id = $c AND id > $after').all({ c: canvasId, after }) as { id: number; card: string }[];
+    return { upTo: Math.max(after, this.archiveLog()), ids: [...new Set(rows.map((r) => r.card))] };
+  }
+
+  /** Where the log of the archive's writes stands now (`archiveChanges`); its entries' ids are never taken again. */
+  archiveLog(): number {
+    return (this.db.query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'archive_changes'), 0) AS n").get() as { n: number }).n;
+  }
+
+  /** The canvas read its archive's writes up to `upTo`: they leave the log. */
+  dropArchiveChanges(canvasId: string, upTo: number) {
+    this.db.query('DELETE FROM archive_changes WHERE canvas_id = $c AND id <= $upTo').run({ c: canvasId, upTo });
   }
 
   /**
@@ -883,6 +955,11 @@ export class Store {
 
   card(id: string): CardRow | null {
     return (this.db.query('SELECT * FROM cards WHERE id = $id').get({ id }) as CardRow | null) ?? null;
+  }
+
+  /** The card an address names, by its id or its short code. */
+  cardNamed(code: string): CardRow | null {
+    return this.card(code) ?? ((this.db.query('SELECT * FROM cards WHERE short = $s').get({ s: code.toLowerCase() }) as CardRow | null) ?? null);
   }
 
   /** The card with the number, wherever it is: on any canvas, archived or deleted. */

@@ -35,7 +35,7 @@ import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withSpend } from './runtime';
-import { type TagCard, tagCards } from './tag-proposal';
+import { briefFull, type TagCard, tagCards } from './tag-proposal';
 import { commandsOf, heldGroups, withoutHeld } from './trust';
 import { Skills } from './skills';
 
@@ -195,6 +195,8 @@ interface RepoRestart {
 const HOST_RETRY_MS = 2 * 60_000;
 /** How often Obeya looks for snoozed cards whose time has come. */
 const WAKE_EVERY_MS = 15_000;
+/** How many archived cards a proposal for a site's tags reads at a time, until its brief is full. */
+const TAG_ARCHIVE_PAGE = 100;
 
 /** What waits while a card's new repository is about to be made (`NewRepo.due`): every other way on. */
 const DUE_REFUSES: CardAction['action'][] = ['start', 'force', 'build', 'planDoc', 'splitOff', 'prototype', 'snooze', 'startAt', 'accept'];
@@ -1542,7 +1544,7 @@ export class CanvasRuntime {
   /**
    * What a proposal for the tags of the site of the repository at `path` reads on this canvas,
    * where it runs here: its checkout, the agents' runtime, the language of its demos, and its cards
-   * (`tagCards`), those on the canvas first, then the archive.
+   * (`tagCards`), those on the canvas first, then the archive as far back as the brief has room for.
    */
   tagSource(path: string): { cwd: string; runtime: AgentRuntime; language?: Language; cards: TagCard[] } | null {
     const r = this.repos.find((x) => resolve(x.info.path) === resolve(path));
@@ -1555,11 +1557,18 @@ export class CanvasRuntime {
         return undefined;
       }
     };
+    // the archive a page at a time, only as far back as the brief has room for
+    const cards = tagCards(this.board.items().filter(mine), summary);
+    for (let after: string | undefined, first = true; (first || after) && !briefFull(cards); first = false) {
+      const page = this.board.archivePage(TAG_ARCHIVE_PAGE, after);
+      cards.push(...tagCards(page.items.filter(mine), summary));
+      after = page.next;
+    }
     return {
       cwd: r.info.path,
       runtime: this.deps.runtime,
       ...(r.adapter.demo?.language ? { language: r.adapter.demo.language } : {}),
-      cards: tagCards([...this.board.items().filter(mine), ...this.board.archived().filter(mine)], summary),
+      cards,
     };
   }
 

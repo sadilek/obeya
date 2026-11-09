@@ -112,21 +112,14 @@ function brief(o: TagRun): string {
     o.current && dimensions(o.current).length
       ? `The vocabulary in use now, a dimension per line:\n${tagLines(o.current)}`
       : 'The site has no vocabulary yet.',
-    o.cards.length ? `The cards of this repository (${o.cards.length}): those on the canvas, then the archive, the most recently archived first:` : 'There are no cards of this repository yet: propose from the repository alone.',
+    o.cards.length ? 'The cards of this repository: those on the canvas, then the archive, the most recently archived first:' : 'There are no cards of this repository yet: propose from the repository alone.',
   ].join('\n\n');
   let size = head.length;
   const lines: string[] = [];
   for (const c of o.cards) {
-    const line = [
-      `- [${c.status}] ${c.title}`,
-      c.task && `  Task: ${clip(c.task, 400)}`,
-      ...c.demos.slice(0, 3).map((d) => `  Demo: ${clip(d, 400)}`),
-      !c.demos.length && c.summary ? `  Handed over: ${clip(c.summary, 300)}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const line = briefLine(c);
     if (size + line.length > BRIEF_MAX) {
-      lines.push(`(${o.cards.length - lines.length} older cards left out)`);
+      lines.push('(older cards left out)');
       break;
     }
     size += line.length + 1;
@@ -134,6 +127,21 @@ function brief(o: TagRun): string {
   }
   return [head, ...lines].join('\n');
 }
+
+/** A card as the brief lists it. */
+function briefLine(c: TagCard): string {
+  return [
+    `- [${c.status}] ${c.title}`,
+    c.task && `  Task: ${clip(c.task, 400)}`,
+    ...c.demos.slice(0, 3).map((d) => `  Demo: ${clip(d, 400)}`),
+    !c.demos.length && c.summary ? `  Handed over: ${clip(c.summary, 300)}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** Whether these cards fill the brief already: older ones need not be read. */
+export const briefFull = (cards: TagCard[]) => cards.reduce((n, c) => n + briefLine(c).length + 1, 0) > BRIEF_MAX;
 
 const plainText = (s: string) => s.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
 

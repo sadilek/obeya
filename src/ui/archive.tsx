@@ -1,15 +1,98 @@
 // The archive: finished and stopped cards and parked or dropped ideas taken off the canvas and projects whose plan doc is
 // gone, the most recently archived first, listed under the bar's button as the queue is. A project's
 // workstreams belong to it and are not listed on their own. A field over the list filters it as
-// the owner types and stays in sight: only the list under it scrolls. The list holds hundreds of
-// cards: only the rows in view and a margin around them are on the page, the rest stand in as
-// space of the height they had or will roughly have.
+// the owner types and stays in sight: only the list under it scrolls. The archive grows to thousands
+// of cards: the server sends them a page at a time as the owner scrolls (and searches them itself),
+// and of the rows sent, only those in view and a margin around them are on the page, the rest stand
+// in as space of the height they had or will roughly have.
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { ARCHIVE_LABELS, type ArchiveLabel, fold, searchText, searchWords } from '../core/search';
 import { type Item, stopped } from '../core/types';
+import { api } from './api';
 import { plain } from './markdown';
 import { useMenuClose } from './queue';
 import { becomesLabel, stateLabel, t } from './strings';
+
+export { fold, searchWords };
+
+/** How many archived cards a page brings: more than a tall screen shows. */
+export const ARCHIVE_PAGE = 50;
+/** The most a request may ask for (the server's limit): reading again what was shown takes several. */
+const PAGE_MAX = 200;
+
+/** The archived cards of a list as far as the owner scrolled, and how to get more. */
+export interface ArchiveList {
+  /** The archived cards, each project followed by its workstreams. */
+  items: Item[];
+  /** Whether the first page came, for these words. */
+  loaded: boolean;
+  /** Whether there are more after these. */
+  more: boolean;
+  /** Asks for the next page, unless one is on its way. */
+  next: () => void;
+}
+
+const tops = (items: Item[]) => items.reduce((n, i) => n + (i.parent ? 0 : 1), 0);
+
+/**
+ * The archive's cards holding every word of `query` ('' for all), the most recently archived first,
+ * a page at a time while `on`. When the archive's mark (`rev`) moves, what was read is read again,
+ * as far as it went. `onItems` hears of every card that came.
+ */
+export function useArchiveList(query: string, on: boolean, rev: string | undefined, onItems: (items: Item[]) => void): ArchiveList {
+  const [list, setList] = useState<{ query: string; rev?: string; items: Item[]; next?: string; loaded: boolean }>({ query, items: [], loaded: false });
+  const current = useRef(list);
+  current.current = list;
+  // the request whose answer counts: a later one makes an earlier one's answer go unheard
+  const asked = useRef(0);
+  const busy = useRef(false);
+  const read = async (q: string, count: number, after: string | undefined, n: number) => {
+    const items: Item[] = [];
+    let next = after;
+    do {
+      const page = await api.archivePage({ count: Math.min(PAGE_MAX, count - tops(items)), next, q, labels: archiveLabelTexts() });
+      if (n !== asked.current) return null;
+      items.push(...page.items);
+      next = page.next;
+    } while (next && tops(items) < count);
+    onItems(items);
+    return { items, next };
+  };
+  useEffect(() => {
+    const l = current.current;
+    if (!on || (l.loaded && l.query === query && l.rev === rev)) return;
+    // the same words read again as far as the owner scrolled; other words from their start
+    const count = l.query === query ? Math.max(ARCHIVE_PAGE, tops(l.items)) : ARCHIVE_PAGE;
+    const n = ++asked.current;
+    busy.current = true;
+    read(query, count, undefined, n).then(
+      (r) => {
+        if (!r) return;
+        busy.current = false;
+        setList({ query, rev, items: r.items, next: r.next, loaded: true });
+      },
+      (e) => (n === asked.current && (busy.current = false), console.error(e)),
+    );
+  }, [on, query, rev]);
+  const next = () => {
+    const l = current.current;
+    if (busy.current || !l.next || !on) return;
+    const n = ++asked.current;
+    busy.current = true;
+    read(l.query, ARCHIVE_PAGE, l.next, n).then(
+      (r) => {
+        if (!r) return;
+        busy.current = false;
+        setList((was) => ({ ...was, items: [...was.items, ...r.items], next: r.next }));
+      },
+      (e) => (n === asked.current && (busy.current = false), console.error(e)),
+    );
+  };
+  // other words show what the last ones found until theirs come
+  const fits = list.query === query;
+  return { items: list.items, loaded: fits && list.loaded, more: fits && !!list.next, next };
+}
 
 interface Props {
   on: boolean;
@@ -17,8 +100,10 @@ interface Props {
   onClose: () => void;
   /** A card unfolded from the list is open: the list stays under the dim, for the card to fold back into. */
   held: boolean;
-  /** The archive as the server sends it, newest first; a project is followed by its workstreams. */
-  archived: Item[];
+  /** The archive's mark: the list is read again once it moves. */
+  rev: string | undefined;
+  /** Hears of every archived card that came, for the card to open from its row. */
+  onItems: (items: Item[]) => void;
   /** Finished cards of the owner's still on the canvas. */
   done: number;
   onOpen: (i: Item) => void;
@@ -37,7 +122,7 @@ type Row = { key: string; day: string; item?: undefined } | { key: string; item:
 const MARGIN = 800;
 
 /** The bar's archive button; a click lists the archive under it. A click beside the list or Esc (in App) closes it. */
-export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpen, onArchiveDone, els, keep, icon }: Props) {
+export function ArchivePill({ on, onToggle, onClose, held, rev, onItems, done, onOpen, onArchiveDone, els, keep, icon }: Props) {
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(on, box, () => held || onClose());
   const [query, setQuery] = useState('');
@@ -45,13 +130,12 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
   // what was searched last stays, selected, so typing starts a new search
   useEffect(() => void (on && field.current?.select()), [on]);
   const words = useMemo(() => searchWords(query), [query]);
-  const workstreams = useMemo(() => Map.groupBy(archived.filter((x) => x.parent), (x) => x.parent!), [archived]);
-  // each card's text to search, made the first time a search reads it
-  const texts = useMemo(() => new Map<Item, string>(), [archived]);
-  const shown = useMemo(() => {
-    const textOf = (i: Item) => texts.get(i) ?? texts.set(i, searchText(i, workstreams.get(i.id))).get(i)!;
-    return archived.filter((i) => !i.parent && (!words.length || words.every((w) => textOf(i).includes(w))));
-  }, [archived, words]);
+  // the whole archive, and what the words find in it, each as far as the owner scrolled
+  const all = useArchiveList('', on, rev, onItems);
+  const found = useArchiveList(words.join(' '), on && words.length > 0, rev, onItems);
+  const pages = words.length ? found : all;
+  const workstreams = useMemo(() => Map.groupBy(pages.items.filter((x) => x.parent), (x) => x.parent!), [pages.items]);
+  const shown = useMemo(() => pages.items.filter((i) => !i.parent), [pages.items]);
   // one heading per day, in the server's order
   const rows = useMemo(() => {
     const rows: Row[] = [];
@@ -126,6 +210,13 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
       watch.observe(el);
     } else rowEls.delete(key);
   };
+  // the next page once the rows on the page reach the end of those that came; and pages until the
+  // card that unfolds or is open (opened from its address, say) is among them
+  useEffect(() => {
+    if (!on) return;
+    if (to >= rows.length && pages.more) pages.next();
+    else if (keep && !words.length && all.more && !all.items.some((i) => i.id === keep)) all.next();
+  });
   // a new search starts at the top of what it found
   useLayoutEffect(() => {
     if (menu.current) menu.current.scrollTop = 0;
@@ -169,7 +260,7 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
       </button>
       {on && (
         <div id="amenu" className="bar-menu archive-menu">
-          {archived.length > 0 && (
+          {all.items.length > 0 && (
             <div className="a-search">
               <input
                 ref={field}
@@ -194,11 +285,11 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
             </button>
           )}
           <div className="a-list" ref={menu} onScroll={look}>
-            {archived.length === 0 ? (
+            {all.loaded && all.items.length === 0 ? (
               <p className="hint">{t.archive.empty}</p>
-            ) : shown.length === 0 ? (
+            ) : pages.loaded && shown.length === 0 && words.length ? (
               <p className="hint">{t.archive.noMatch(query.trim())}</p>
-            ) : (
+            ) : !shown.length ? null : (
               <div className="timeline" ref={list} style={{ paddingTop: starts[from], paddingBottom: starts.at(-1)! - starts[to]! }}>
                 {rows.slice(from, to).map((r) => {
                   if (!r.item)
@@ -270,25 +361,21 @@ export function labelOf(i: Item) {
   return i.idea || i.prototypeEnd || stopped(i) ? stateLabel(i) : i.becomesProject ? becomesLabel(i) : i.kind === 'task' ? '' : t.kind[i.kind];
 }
 
-/** Lower case without accents, so "uber" finds "Über". */
-export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-
-/** The words of a search in the archive, folded. */
-export const searchWords = (query: string) => fold(query).split(/\s+/).filter(Boolean);
-
-/**
- * A card's text that a search looks through, folded: its title, text, summary, last status, open
- * question, a proposal's reason and label; a project's goal and its workstreams too.
- */
-export function searchText(i: Item, workstreams: Item[] = []) {
-  return fold(
-    [i.title, i.body, i.summary, i.statusLine, i.question?.text, i.proposal?.reason, labelOf(i), i.plan?.goal, ...workstreams.flatMap((w) => [w.title, w.body])].filter(Boolean).join('\n'),
-  );
+/** The archive's labels as the list shows them, for the server's search to find a card by its label too. */
+export function archiveLabelTexts(): Record<ArchiveLabel, string> {
+  const text = (l: ArchiveLabel): string => {
+    const [kind, what] = l.split(' ') as [string, string];
+    if (kind === 'idea') return t.idea.status[what as 'open' | 'parked' | 'dropped'];
+    if (kind === 'prototype') return t.idea.ended[what as 'discarded' | 'built'];
+    if (kind === 'kind') return t.kind[what as 'project' | 'question'];
+    return l === 'stopped' ? t.stoppedState : t.kind[l as 'becomesProject' | 'taskBecomesProject'];
+  };
+  return Object.fromEntries(ARCHIVE_LABELS.map((l) => [l, text(l)])) as Record<ArchiveLabel, string>;
 }
 
-/** Whether a card holds every word of the search, each anywhere in its `searchText`. */
+/** Whether a card holds every word of the search, each anywhere in its `searchText` or its label. */
 export function matches(i: Item, words: string[], workstreams: Item[] = []) {
-  const text = searchText(i, workstreams);
+  const text = searchText(i, workstreams, labelOf(i));
   return words.every((w) => text.includes(w));
 }
 

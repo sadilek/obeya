@@ -209,7 +209,7 @@ test('a rebuild of the canvas view after a change to one card reads the canvasâ€
   const board = canvas.board;
   board.changed();
   board.snapshot();
-  const reads = [spyOn(store, 'cards'), spyOn(store, 'projects'), spyOn(store, 'withPlanDocs'), spyOn(store, 'archivedPlans'), spyOn(store, 'archived')];
+  const reads = [spyOn(store, 'cards'), spyOn(store, 'projects'), spyOn(store, 'withPlanDocs'), spyOn(store, 'archivedPlans'), spyOn(store, 'archivePage')];
   try {
     board.work(onCanvas[5]!, { status_line: 'Working' });
     const first = board.snapshot();

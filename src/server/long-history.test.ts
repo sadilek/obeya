@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,6 +20,8 @@ import { cpuTime, FakeRuntime, gitRepo, heard, noForge, removeDir } from './test
 
 /** The history's length, in multiples of the owner's on 9 November 2026. */
 const SCALE = 10;
+/** The archived cards a page of the archive brings as the owner scrolls. */
+const ARCHIVE_PAGE = 50;
 
 interface Setup {
   dir: string;
@@ -143,3 +145,59 @@ test('what the learner reads around an input of the owner’s: what they said in
 });
 
 
+
+test('the archive opened and scrolled: a page of its cards, at its start and far down', async () => {
+  const board = long.canvas.board;
+  const first = board.archivePage(ARCHIVE_PAGE);
+  expect(first.items.map((i) => i.id)).toEqual(long.history.archived.slice(0, ARCHIVE_PAGE));
+  // the page the owner scrolled to after thousands of cards
+  const r = long.store.card(long.history.archived[8000]!)!;
+  const far = JSON.stringify([r.archived_at, r.created_at, r.id]);
+  expect(board.archivePage(ARCHIVE_PAGE, far).items.map((i) => i.id)).toEqual(long.history.archived.slice(8001, 8001 + ARCHIVE_PAGE));
+  expect(await inUnits(() => board.archivePage(ARCHIVE_PAGE))).toBeLessThan(3);
+  expect(await inUnits(() => board.archivePage(ARCHIVE_PAGE, far))).toBeLessThan(3);
+});
+
+test('a search through the archive: the first reads it a slice at a time, the server free in between; the next only searches', async () => {
+  const board = long.canvas.board;
+  const units: number[] = [];
+  for (let k = 0; k < 5; k++) units.push(await cpuTime(rebuild(fresh)));
+  const unit = Math.min(...units);
+  // each slice: a page of the archive's rows, and what the search reads of their cards
+  const slices: number[] = [];
+  const store = long.store;
+  const page = store.archivePage.bind(store);
+  const read = spyOn(store, 'archivePage').mockImplementation((...a) => {
+    const at = performance.now();
+    const rows = page(...a);
+    slices.push(performance.now() - at);
+    return rows;
+  });
+  const entries = board['indexEntries'].bind(board);
+  const built = spyOn(board as unknown as { indexEntries: typeof entries }, 'indexEntries').mockImplementation((rows) => {
+    const at = performance.now();
+    const out = entries(rows);
+    slices[slices.length - 1]! += performance.now() - at;
+    return out;
+  });
+  let between = 0;
+  let ready = false;
+  const search = board.archiveSearch('card 1234', { count: ARCHIVE_PAGE }).finally(() => (ready = true));
+  // what else waits for the server gets its turn between two slices
+  while (!ready) {
+    await new Promise((r) => setImmediate(r));
+    between++;
+  }
+  read.mockRestore();
+  built.mockRestore();
+  expect((await search).items.map((i) => i.title)).toEqual(['Card 1234']);
+  expect(slices.length).toBeGreaterThan(50);
+  expect(between).toBeGreaterThanOrEqual(slices.length - 1);
+  // a slow moment of the machine makes one slice cost more: the typical one counts
+  const typical = slices.sort((a, b) => a - b)[slices.length >> 1]! / unit;
+  if (process.env.OBEYA_SHOW_UNITS) console.log(`${slices.length} slices, typically ${typical.toFixed(2)} units`);
+  expect(typical).toBeLessThan(3);
+  const words = ['card 9', 'cards few sentences owner'];
+  expect(await inUnits(() => board.archiveSearch(words[n++ % 2]!, { count: ARCHIVE_PAGE }))).toBeLessThan(5);
+  expect(await inUnits(() => board.archiveSearch('card 12', { count: 30, everywhere: true }))).toBeLessThan(5);
+});

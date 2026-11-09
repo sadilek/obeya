@@ -1,14 +1,16 @@
 // The search over every card: the canvas's first, the archive's below. It matches as the archive's
 // filter does (every typed word, case and accents aside); a card whose title holds the words comes
 // before one that holds them only in its text (description, summary, last status, open question,
-// a proposal's reason, a project's goal) or label. Before the first word it lists the canvas's
-// cards, the one changed last first. The row under the pointer or picked by the arrow keys lights
-// its card up on the canvas.
+// a proposal's reason, a project's goal) or label. The server searches the archive, which is not on
+// the page as a whole. Before the first word it lists the canvas's cards, the one changed last
+// first. The row under the pointer or picked by the arrow keys lights its card up on the canvas.
 
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Item } from '../core/types';
 import { onCardEvent } from './api';
-import { fold, labelOf, marked, matches, searchWords } from './archive';
+import { inTitle } from '../core/search';
+import { api } from './api';
+import { archiveLabelTexts, fold, labelOf, marked, matches, searchWords } from './archive';
 import { plain } from './markdown';
 import { shownState } from './parts';
 import { useMenuClose } from './queue';
@@ -27,7 +29,7 @@ export interface Hit {
 export function findCards(query: string, cards: Item[]): Hit[] {
   const words = searchWords(query);
   if (!words.length) return [];
-  const hits = cards.filter((i) => (i.title || i.body) && matches(i, words)).map((item) => ({ item, byTitle: words.every((w) => fold(plain(item.title)).includes(w)) }));
+  const hits = cards.filter((i) => (i.title || i.body) && matches(i, words)).map((item) => ({ item, byTitle: inTitle(item, words) }));
   return [...hits.filter((h) => h.byTitle), ...hits.filter((h) => !h.byTitle)];
 }
 
@@ -79,8 +81,10 @@ interface Props {
   held: boolean;
   /** The cards on the canvas. */
   items: Item[];
-  /** The archive as the server sends it. */
-  archived: Item[];
+  /** The archive's mark: what the search found there is looked for again once it moves. */
+  rev: string | undefined;
+  /** Hears of the archived cards the search found, for them to open. */
+  onArchived: (items: Item[]) => void;
   onOpen: (i: Item) => void;
   /** The canvas's card whose row is under the pointer or picked by the arrow keys, to light it up there; `null` for none. */
   onLight: (id: string | null) => void;
@@ -94,7 +98,7 @@ interface Props {
  * The search in the bar: `/` (in App) shows a field and, under it, the cards it finds; a click beside
  * it or Esc closes it. Until `/` has been used, a button there teaches the key.
  */
-export function SearchPill({ on, teach, onTeach, onClose, held, items, archived, onOpen, onLight, els, onCover }: Props) {
+export function SearchPill({ on, teach, onTeach, onClose, held, items, rev, onArchived, onOpen, onLight, els, onCover }: Props) {
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(on, box, () => held || onClose());
   // the button that teaches the key keeps its place while the search is open, even once the first `/` made it go: nothing in the bar moves under the list
@@ -133,22 +137,33 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
     addEventListener('resize', measure);
     return () => (seen.disconnect(), removeEventListener('resize', measure));
   }, [on]);
-  const byId = useMemo(() => new Map([...items, ...archived].map((i) => [i.id, i])), [items, archived]);
+  // what the server found in the archive for these words: the first cards, and how many in all
+  const [archived, setArchived] = useState<{ words: string; items: Item[]; hits: Hit[]; found: number }>({ words: '', items: [], hits: [], found: 0 });
+  const said = words.join(' ');
+  useEffect(() => {
+    if (!on || !said) return;
+    let current = true;
+    api.archivePage({ count: LIMIT, q: said, labels: archiveLabelTexts(), everywhere: true }).then((p) => {
+      if (!current) return;
+      onArchived(p.items);
+      const byId = new Map(p.items.map((i) => [i.id, i]));
+      const hits = (p.hits ?? []).flatMap((id) => (byId.has(id) ? [{ item: byId.get(id)!, byTitle: inTitle(byId.get(id)!, said.split(' ')) }] : []));
+      setArchived({ words: said, items: p.items, hits, found: p.found ?? hits.length });
+    }, console.error);
+    return () => void (current = false);
+  }, [on, said, rev]);
+  // until the archive's answer to these words comes, the one to the words before stands
+  const byId = useMemo(() => new Map([...items, ...archived.items].map((i) => [i.id, i])), [items, archived]);
   // the archive joins with the first word, so the list before it stays short; worked out once per
   // words and cards, not on every move of the pointer over the list, which lights a card up
-  const sections = useMemo(
-    () =>
-      on
-        ? words.length
-          ? [
-              { key: 'canvas', heading: t.search.canvas, hits: findCards(query, items) },
-              { key: 'archive', heading: t.search.archive, hits: findCards(query, archived) },
-            ].filter((s) => s.hits.length)
-          : [{ key: 'recent', heading: t.search.recent, hits: recentCards(items, lines) }].filter((s) => s.hits.length)
-        : [],
-    [on, query, words, items, archived, lines],
-  );
-  const shown = sections.flatMap((s) => s.hits.slice(0, LIMIT));
+  const sections = useMemo(() => {
+    if (!on) return [];
+    const section = (key: string, heading: string, hits: Hit[], all = hits.length) => ({ key, heading, hits: hits.slice(0, LIMIT), more: all - Math.min(LIMIT, hits.length) });
+    return words.length
+      ? [section('canvas', t.search.canvas, findCards(query, items)), section('archive', t.search.archive, archived.words ? archived.hits : [], archived.found)].filter((s) => s.hits.length)
+      : [section('recent', t.search.recent, recentCards(items, lines))].filter((s) => s.hits.length);
+  }, [on, query, words, items, archived, lines]);
+  const shown = sections.flatMap((s) => s.hits);
   // a list that grew shorter while open (a card archived meanwhile) keeps a row picked: the last
   const at = Math.max(0, Math.min(active, shown.length - 1));
   const litItem = on && lit ? shown[at]?.item : undefined;
@@ -208,7 +223,7 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
                 <section key={s.key}>
                   <h4>{s.heading}</h4>
                   <ol>
-                    {s.hits.slice(0, LIMIT).map((h) => {
+                    {s.hits.map((h) => {
                       const i = h.item;
                       const k = row++;
                       const project = i.parent ? byId.get(i.parent) : undefined;
@@ -234,7 +249,7 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
                       );
                     })}
                   </ol>
-                  {s.hits.length > LIMIT && <p className="hint">{(words.length ? t.search.more : t.search.moreAll)(s.hits.length - LIMIT)}</p>}
+                  {s.more > 0 && <p className="hint">{(words.length ? t.search.more : t.search.moreAll)(s.more)}</p>}
                 </section>
               ))
             )}

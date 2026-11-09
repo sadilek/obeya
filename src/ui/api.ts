@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
+import type { AccessView, ArchivePage, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
 import { setCostsShown } from './costs';
 import type { Wish } from '../core/wish';
 import { INPUT, noteMessage, watchPageStalls } from './stalls';
@@ -267,8 +267,24 @@ export const api = {
   /** Takes a finished card off the canvas into the archive. */
   archive: (id: string) => call<void>('POST', cardAt(id, '/archive')),
   unarchive: (id: string) => call<void>('POST', cardAt(id, '/unarchive')),
-  /** The archive, the most recently archived first; `first`: only the newest so many, each project with its workstreams. */
-  archived: (first?: number) => call<Item[]>('GET', at(first ? `/archive?first=${first}` : '/archive')),
+  /**
+   * A page of the archive, the most recently archived first, each project with its workstreams:
+   * `count` cards after where the page before ended (its `next`); with `q`, those holding its words
+   * (`labels`: the archive's labels as the page shows them; `everywhere`: for the search across
+   * canvas and archive, workstreams on their own too).
+   */
+  archivePage: (o: { count: number; next?: string; q?: string; labels?: Record<string, string>; everywhere?: boolean }) => {
+    const p = new URLSearchParams({ count: String(o.count) });
+    if (o.q) p.set('q', o.q);
+    if (o.next) p.set(o.q ? 'from' : 'after', o.next);
+    if (o.q && o.labels) p.set('labels', JSON.stringify(o.labels));
+    if (o.everywhere) p.set('everywhere', '');
+    return call<ArchivePage>('GET', at(`/archive?${p}`));
+  },
+  /** The archive's entries of these archived cards, each project with its workstreams; one no longer archived is left out. */
+  archiveEntries: (ids: string[]) => call<ArchivePage>('GET', at(`/archive?ids=${ids.map(encodeURIComponent).join(',')}`)).then((p) => p.items),
+  /** The archive's entry holding the card an address names (an archived workstream's is its project's); none outside the archive. */
+  archiveEntry: (code: string) => call<ArchivePage>('GET', at(`/archive?code=${encodeURIComponent(code)}`)).then((p) => p.items),
   /** Archives every finished card of the owner's on the canvas. */
   archiveDone: () => call<{ ids: string[] }>('POST', at('/archive')),
   act: <T = void>(id: string, a: CardAction) => call<T>('POST', cardAt(id, '/act'), a),

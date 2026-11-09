@@ -3271,15 +3271,18 @@ export class Workers {
    */
   private async listFiles() {
     if (!this.folder) return;
-    const cards = [...this.o.board.items(), ...this.o.board.archived()].filter(
-      (i) => i.kind === 'task' && (!this.o.repo || i.repo === this.o.repo) && !i.files && !i.demo && i.state !== 'working',
-    );
-    for (const i of cards) {
-      if (!this.o.board.events(i.id).some((e) => e.kind === 'review')) continue;
-      if (!(await this.showsFiles(i.id))) continue;
-      const row = this.o.board.row(i.id);
-      if (!row.files && !row.demo) this.o.board.work(i.id, { files: '[]' });
-    }
+    const unlisted = (items: Item[]) => items.filter((i) => i.kind === 'task' && (!this.o.repo || i.repo === this.o.repo) && !i.files && !i.demo && i.state !== 'working');
+    const list = async (cards: Item[]) => {
+      for (const i of cards) {
+        if (!this.o.board.events(i.id).some((e) => e.kind === 'review')) continue;
+        if (!(await this.showsFiles(i.id))) continue;
+        const row = this.o.board.row(i.id);
+        if (!row.files && !row.demo) this.o.board.work(i.id, { files: '[]' });
+      }
+    };
+    await list(unlisted(this.o.board.items()));
+    // the archive a page at a time, the server answering between them
+    for await (const page of this.o.board.archivedPages()) await list(unlisted(page));
   }
 
   /** Whether the card's change has files its left column shows (`shownFiles`), beside the ones its worker named. */
@@ -5363,8 +5366,9 @@ ${idea.idea.brief}` : '',
     if (card.mocks?.length) parts.push(mocksText(card.mocks));
     if (card.builtOn) parts.push(this.builtOnPrototype(card.builtOn, !!card.parent));
     // the card it follows up on may be on another canvas (a proposal from a worker there)
-    const fromBoard = card.from && !card.prototypeOf ? this.proposalBoards().find((b) => b.item(card.from!) ?? b.archived().some((i) => i.id === card.from)) : undefined;
-    const from = fromBoard ? fromBoard.item(card.from!) ?? fromBoard.archived().find((i) => i.id === card.from) : undefined;
+    const fromOn = (b: Board) => b.item(card.from!) ?? b.archiveEntry(card.from!).find((i) => i.id === card.from);
+    const fromBoard = card.from && !card.prototypeOf ? this.proposalBoards().find(fromOn) : undefined;
+    const from = fromBoard && fromOn(fromBoard);
     if (fromBoard && from) {
       const summary = fromBoard.summary(from.id)?.trim();
       const there = fromBoard === this.o.board ? '' : ` on the canvas “${fromBoard.canvas.name}”`;

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { CardAction, ClientMessage, ServerMessage } from '../core/types';
+import type { ArchivePage, CardAction, ClientMessage, ServerMessage } from '../core/types';
 import type { Board } from './board';
 import { Canvases, CanvasRuntime } from './canvas';
 import type { Command } from './commands';
@@ -316,8 +316,14 @@ describe('archive', () => {
     expect(await codeOf(post(api(`/cards/${c.id}/archive`), ''))).toBe('notDone');
     board.patch(c.id, { state: 'live' });
     expect((await post(api(`/cards/${c.id}/archive`), '')).status).toBe(204);
-    const archive = (await (await fetch(new URL(api('/archive'), server.url))).json()) as { id: string; archivedAt: string }[];
-    expect(archive.map((i) => i.id)).toEqual([c.id]);
+    const get = async (q: string) => (await (await fetch(new URL(api(`/archive${q}`), server.url))).json()) as ArchivePage;
+    expect((await get('')).items.map((i) => i.id)).toEqual([c.id]);
+    // a page, a search, the entry an address names
+    expect(await get('?count=1')).toEqual({ items: [expect.objectContaining({ id: c.id })] });
+    expect((await get(`?q=${encodeURIComponent(c.title)}&count=5`)).found).toBe(1);
+    expect((await get('?q=nowhere-at-all')).items).toEqual([]);
+    expect((await get(`?code=${c.short}`)).items.map((i) => i.id)).toEqual([c.id]);
+    expect((await get(`?ids=${c.id}`)).items.map((i) => i.id)).toEqual([c.id]);
     expect(board.item(c.id)).toBeUndefined();
     expect((await post(api(`/cards/${c.id}/unarchive`), '')).status).toBe(204);
     expect(board.item(c.id)!.state).toBe('live');

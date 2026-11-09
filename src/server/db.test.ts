@@ -11,6 +11,14 @@ function beforeHistory(s: Store) {
   for (const index of ['events_milestones', 'events_owner', 'cards_created', 'talk_canvas', 'talk_at', 'talk_waiting', 'cards_parent']) s.db.run(`DROP INDEX ${index}`);
   for (const trigger of ['shared_change', 'shared_change_new', 'shared_change_gone']) s.db.run(`DROP TRIGGER ${trigger}`);
   s.db.run('DROP TABLE shared_changes');
+  beforeArchivePages(s);
+}
+
+/** The index and log the migration for the archive's pages and search adds. */
+function beforeArchivePages(s: Store) {
+  s.db.run('DROP INDEX cards_archive_order');
+  for (const trigger of ['archive_change', 'archive_change_new', 'archive_change_gone']) s.db.run(`DROP TRIGGER ${trigger}`);
+  s.db.run('DROP TABLE archive_changes');
 }
 
 const version = (path: string) => {
@@ -185,7 +193,7 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
     s.db.run('DROP TABLE spend');
     s.db.run('ALTER TABLE cards DROP COLUMN spent');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 17}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 18}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -234,7 +242,7 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
     s.db.run('DROP TABLE spend');
     s.db.run('ALTER TABLE cards DROP COLUMN spent');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 15}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 16}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);
@@ -356,7 +364,8 @@ test('the migration gives what the Coordinator said, looked up and decided as `k
     s.db.run("UPDATE events SET author = 'koordinator'");
     s.db.run("UPDATE talk SET answer_by = 'koordinator'");
     s.db.run("UPDATE decisions SET by = 'koordinator'");
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 1}`);
+    beforeArchivePages(s);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 2}`);
     s.db.close();
     const after = new Store(path);
     expect(after.event(card!.id, said.id)!.author).toBe('coordinator');

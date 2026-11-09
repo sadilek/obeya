@@ -1269,10 +1269,27 @@ export interface CanvasSnapshot {
   reshare?: Reshare;
   /** The plan directories the canvas has a note about (`PlanDir`); none when it has none. */
   planDirs?: PlanDir[];
-  /** A mark of the archive that changes with anything it lists: the page reads the archive again only then. */
+  /** A mark of the archive that changes with anything it lists: the page reads what it shows of the archive again only then. */
   archive?: string;
   /** What all agents on the canvas cost so far in US dollars (its cards', archived ones too, and its own agents', the Coordinator's); none before any reported a cost. */
   spent?: number;
+}
+
+/**
+ * A page of the archive as the page asks for it while the owner scrolls or searches, the most
+ * recently archived first: each archived card, a project followed by its workstreams.
+ */
+export interface ArchivePage {
+  items: Item[];
+  /** Where the next page begins, to ask for it; none after the last. */
+  next?: string;
+  /** A search: how many cards it found in all. */
+  found?: number;
+  /**
+   * The search across canvas and archive: the cards found on this page by id, a workstream among them
+   * too, those with every word in the title first; `items` brings each with its project's entry.
+   */
+  hits?: string[];
 }
 
 /**

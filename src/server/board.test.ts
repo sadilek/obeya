@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, onCanvas, PROJECT_COLLAPSED, sizeOf } from '../core/layout';
-import { archivedWithDone } from '../core/types';
+import { archivedWithDone, type Item } from '../core/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, pathOfRef, type PlanRead, repoOfRef } from './board';
 import { Store } from './db';
@@ -536,24 +536,69 @@ describe('archive', () => {
     expect(board.snapshot().archive).not.toBe(renamed);
   });
 
-  test('the newest cards of the archive come on their own, a project with its workstreams', async () => {
+  test('the archive comes a page at a time, the newest first, a project with its workstreams', async () => {
     const task = done('Task');
     board.archive([task.id]);
     await Bun.sleep(2);
     const p = board.snapshot().items[0]!;
     docs = [];
     board.docsChanged();
-    const newest = [
+    const titles = (items: Item[]) => items.map((i) => [i.title, i.parent ?? null]);
+    const first = board.archivePage(1);
+    expect(titles(first.items)).toEqual([
       ['A', null],
       ['Title W1', p.id],
       ['Title W2', p.id],
       ['Title W3', p.id],
-    ];
-    // before the whole archive was read, and after
-    expect(board.archived(1).map((i) => [i.title, i.parent ?? null])).toEqual(newest);
-    expect(board.archived().map((i) => [i.title, i.parent ?? null])).toEqual([...newest, ['Task', null]]);
-    expect(board.archived(1).map((i) => [i.title, i.parent ?? null])).toEqual(newest);
-    expect(board.archived(2)).toEqual(board.archived());
+    ]);
+    const second = board.archivePage(1, first.next);
+    expect(titles(second.items)).toEqual([['Task', null]]);
+    expect(second.next).toBeUndefined();
+    expect([...first.items, ...second.items]).toEqual(board.archived());
+    // a card archived in between comes at the start, not again on the next page
+    const late = done('Late');
+    board.archive([late.id]);
+    expect(titles(board.archivePage(1, first.next).items)).toEqual([['Task', null]]);
+    expect(titles(board.archivePage(1).items)).toEqual([['Late', null]]);
+    // an entry by a workstream's address is its project's, with all its workstreams
+    const w2 = first.items[2]!;
+    expect(board.archiveEntry(w2.short!)).toEqual(first.items);
+    expect(board.archiveEntries([task.id, p.id])).toEqual([...first.items, ...second.items]);
+    expect(board.archiveEntry(board.create({ title: 'Open', x: 0, y: 0 }).id)).toEqual([]);
+  });
+
+  test('a search through the archive finds what holds every word, its label in the owner’s words too', async () => {
+    const a = done('Über den Klon warten');
+    board.patch(a.id, { body: 'Nachfrage an fertige Karte' });
+    const b = done('Klon löschen');
+    board.archive([a.id]);
+    await Bun.sleep(2);
+    board.archive([b.id]);
+    const found = async (q: string, o: Partial<Parameters<Board['archiveSearch']>[1]> = {}) => (await board.archiveSearch(q, { count: 10, ...o })).items.map((i) => i.title);
+    expect(await found('klon')).toEqual(['Klon löschen', 'Über den Klon warten']);
+    expect(await found('uber KARTE')).toEqual(['Über den Klon warten']);
+    expect(await found('gestoppt')).toEqual([]);
+    // what the archive writes since is read again for the next search
+    board.patch(b.id, { title: 'Klon gestoppt' });
+    expect(await found('gestoppt')).toEqual(['Klon gestoppt']);
+    board.unarchive(b.id);
+    expect(await found('klon')).toEqual(['Über den Klon warten']);
+    // a page at a time
+    board.archive([b.id]);
+    const page = await board.archiveSearch('klon', { count: 1 });
+    expect([page.items.length, page.found, page.next]).toEqual([1, 2, '1']);
+    expect((await board.archiveSearch('klon', { count: 1, from: 1 })).next).toBeUndefined();
+    // the search across canvas and archive: the title's words first, with what it found by id
+    const c = done('Karte');
+    board.archive([c.id]);
+    const everywhere = await board.archiveSearch('karte', { count: 10, everywhere: true });
+    expect(everywhere.hits).toEqual([c.id, a.id]);
+    // a label, as the owner's language says it
+    const s = board.create({ title: 'Halted', x: 0, y: 0 });
+    board.work(s.id, { branch: 'obeya/halted', session_id: 'x' });
+    board.archive([s.id]);
+    expect(await found('stopped')).toEqual([]);
+    expect(await found('stopped', { labels: { stopped: 'Stopped' } })).toEqual(['Halted']);
   });
 
   test('only finished cards of the owner go into the archive', () => {

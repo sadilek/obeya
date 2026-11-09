@@ -184,13 +184,16 @@ in the titles. The bar's search finds cards on the canvas and in the archive the
 bar). The list stays under the dim while a card from it is open, so the card folds back into it; a
 card opened from its address scrolls its row into view first.
 
-The archive grows to hundreds of cards and stays quick: the list scrolls through all of them, but
-only the rows in view and a margin around them are on the page, the rest held as space of their
-height (measured once shown, estimated from the title before), with the row at the top kept in
-place as rows above it get measured. Opened the first time, the newest cards come first on their
-own and the whole archive right after. The page reads it again only when the snapshot's mark of the
-archive changed (any row it is made of: an archived card, a workstream of an archived project, a
-prototype of an archived idea), not with every change on the canvas.
+The archive grows to thousands of cards and stays quick: the page asks the server for 50 cards at a
+time, the next ones as the owner scrolls towards the end of those it has (and as far as a card
+opened from its address, whose row it scrolls into view), and the server searches the archive for
+the filter, a page of what it found at a time (see Running Obeya). Of the cards that came, only the
+rows in view and a margin around them are on the page, the rest held as space of their height
+(measured once shown, estimated from the title before), with the row at the top kept in place as
+rows above it get measured. The page reads what it shows again, as far as the owner had scrolled,
+only when the snapshot's mark of the archive changed (any row it is made of: an archived card, a
+workstream of an archived project, a prototype of an archived idea), not with every change on the
+canvas; an archived card or project open then is read again too, and closes if it left the archive.
 
 ### Projects end
 
