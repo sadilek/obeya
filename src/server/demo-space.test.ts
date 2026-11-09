@@ -122,6 +122,18 @@ test('a settings file that does not read deletes nothing', async () => {
   expect(existsSync(join(work, 'frames'))).toBe(true);
 });
 
+test('a settings file that is there and cannot be read deletes nothing; one that is not there deletes by the defaults', async () => {
+  const work = render(join(demos, 'old'), 20);
+  const settings = () => ({ language: 'en' as const, voice: 'piper' as const, directory: demos });
+  const file = join(demos, 'demo.json');
+  // a directory where the file belongs: it is there, and does not read
+  mkdirSync(file);
+  await new DemoSpace({ home: join(homedir(), '.obeya'), settings, file }).sweepSoon();
+  expect(existsSync(join(work, 'frames'))).toBe(true);
+  await new DemoSpace({ home: join(homedir(), '.obeya'), settings, file: join(demos, 'none', 'demo.json') }).sweepSoon();
+  expect(existsSync(join(work, 'frames'))).toBe(false);
+});
+
 test('what was counted in another directory is not shown', async () => {
   render(join(demos, 'a'), 1);
   let directory = demos;

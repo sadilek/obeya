@@ -3,7 +3,6 @@
 // half a gigabyte a demo), which only re-voicing needs once the video is made (design: Demos, Disk
 // space of demos).
 
-import { existsSync, readFileSync } from 'node:fs';
 import { lstat, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -215,7 +214,7 @@ export class DemoSpace {
     const s = this.o.settings();
     const dir = demoDirectory(s);
     try {
-      const days = this.unreadable() ? null : keepDays(s, this.o.home);
+      const days = (await this.unreadable()) ? null : keepDays(s, this.o.home);
       // an Obeya that keeps every frame has nothing to delete, and counts only for the owner looking
       // (or for a directory it has no count of)
       if (sweeping && days === null && this.used?.dir === dir) return;
@@ -233,15 +232,26 @@ export class DemoSpace {
   }
 
   /** The settings file is there and does not read: its `keepFrames` is unknown. */
-  private unreadable(): boolean {
+  private async unreadable(): Promise<boolean> {
     const file = this.o.file;
-    if (!file || !existsSync(file)) return false;
+    if (!file) return false;
+    let text: string;
     try {
-      JSON.parse(readFileSync(file, 'utf8'));
+      text = await readFile(file, 'utf8');
+    } catch {
+      // a file that is not there reads as the defaults; one that is there and cannot be read does not read
+      return (await exists(file)) && this.notRead(file);
+    }
+    try {
+      JSON.parse(text);
       return false;
     } catch {
-      this.o.log?.(`Obeya: ${file} does not read; no demo frames are deleted until it does`);
-      return true;
+      return this.notRead(file);
     }
+  }
+
+  private notRead(file: string): true {
+    this.o.log?.(`Obeya: ${file} does not read; no demo frames are deleted until it does`);
+    return true;
   }
 }
