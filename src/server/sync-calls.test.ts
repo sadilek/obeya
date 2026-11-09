@@ -23,7 +23,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { readFileSync: 1, realpathSync: 2 },
   },
   'board.ts': {
-    why: "server path, a stat per card's demo while the board's items are built (whether its files are still there); cheap each, but many on a large board (counted as on this branch; board.ts is changed elsewhere)",
+    why: "server path, a stat per card's demo while the board's items are built (whether its files are still there); cheap each, and kept with the card's row while it stays the same",
     calls: { existsSync: 3 },
   },
   'canvas.ts': {

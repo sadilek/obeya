@@ -401,6 +401,21 @@ Obeya changes that directory, and lists the directory afresh to notice a page th
 few hundred pages read page by page held the server up for up to a second with every share
 (2026-11-05).
 
+What the server reads of its database with every change of a canvas, every command to the
+Koordinator, every input of the owner's and every pass over the shared pages costs about the same
+however long the history behind it: each such read finds its rows through an index, bounded by a
+window of time or a limit, or keeps what it read and reads again only what was written since. The
+Koordinator's history of the last days and the news since its last command (the milestones of the
+cards' logs, the cards made), what the owner said in the last days, the exchanges whose reply waits
+on a card, the workstreams and costs of the projects shown: each by index. The shared cards (every
+page ever shared, archived cards' too, which the notice of outdated pages and every pass over a
+site's pages go over) are read once; the database logs which of them were written since, came or
+went, and the canvas reads those again, keeping with each unchanged row what it made of it (its
+page, its tags, what leaves it outdated, its part in the notice). A pass over the shared pages finds
+each page's card and repository from its row, without making the archived cards into cards, and
+makes the target of each site once. A test holds these rounds to a budget over a history ten times
+the owner's of 9 November 2026 (see Decisions).
+
 A page reports its own freezes of half a second or more over its WebSocket, and the server logs them
 in the same places, naming the device and the canvas: where the browser says where the time went
 (Chromium's long animation frames: the scripts by what invoked them, and style and layout), the
@@ -660,6 +675,33 @@ workers are busy.
   profiler and the threads that start processes add to. The threshold for the page-ins in words is
   fixed (1,000 pages, each a tenth to half a millisecond from disk, a share of a half-second stall
   worth naming) rather than scaled with the stall's length, so it reads the same in every entry.
+- **The server's rounds read by index or keep what they read, so their cost does not grow with the
+  history** (2026-11-09, from `stalls.log`): from 30 October to 8 November the server stalled 99
+  times for 0.5 to 6.9 s, most of it in reads that went over whole tables and grew with every day of
+  use (by then 55 MB: 158,000 events, 1,700 cards, 1,000 exchanges with the Koordinator over 40
+  days): the brief of every command and the learner's look at every input of the owner's went
+  through every event of the canvas's cards, the steps the Koordinator waited on through every
+  exchange, a change to a shared card made the notice of outdated pages over every shared card, a
+  pass over the shared pages built every archived shared card, and each rebuild of the canvas view
+  summed the costs over every card of the canvas. Most of those stalls came with a busy machine (see
+  the entry before), but what made them long was how much there was to read. A test writes a
+  history ten times as long (1.6 million events over 400 days, 9,000 archived cards on the canvas,
+  4,500 shared pages, 10,000 exchanges) and measures each round in rebuilds of the view of a canvas
+  with the same cards and no history (a millisecond and a half on a laptop): before, the brief and
+  the learner's look cost over 200 such rebuilds each, a change to a shared card 27, a pass over
+  the shared pages 38, a rebuild of the view itself 3; since, a fraction of one for the first two,
+  about 3, 4 and 1. Each round has a budget of a few such rebuilds, so a round that goes over the
+  history again fails it, on any machine, since the unit is measured beside it. Indexes rather
+  than a canvas column on the events: what an event's card belongs to is one lookup by key, and the
+  window of time bounds how many are looked up. The shared cards' log is written by the database
+  as the rows are, as the marks of the shared cards and the archive are (2026-11-05), so no write
+  can forget it; one board per canvas reads it and drops what it read. A pass over the shared pages
+  still goes over every page, as a site is asked about all of them, but half a microsecond each.
+  Rejected: reading in a worker thread (the code reads between its writes and needs the rows at
+  once, and every read would still grow with the history); a mark from the shared cards' times of
+  last write (rejected before: a status line moves it); keeping the shared cards' rows only as long
+  as the archive's mark stands (it moves with every card archived, and a run sharing many pages
+  again writes archived cards one after the other).
 - **Agent starts and landings read git without the server waiting, and reuse what was read while
   the refs stand still** (2026-10-31): with many cards landing in a row, the trust check at each
   agent start and the settings read after each landing called git synchronously, a few calls each,
@@ -727,6 +769,24 @@ workers are busy.
   race with it); pipes created non-inheritable and handed over in an explicit handle list (Bun
   offers no such option; it would mean calling
   `CreateProcess` ourselves).
+- **Synchronous file and process calls in the server's code are counted against a list with reasons**
+  (2026-11-09): a test lists, per file, how many calls of each synchronous API (every function
+  ending in `Sync`: `Bun.spawnSync`, `existsSync`, Obeya's `gitStepsSync`) the file may make and
+  why they may stay (startup before the server listens, the plugin's scripts, the stall watcher's
+  own log, a stat of a known path where the caller cannot wait). A new one fails it until it is
+  made asynchronous or listed with its reason, and a list that allows more than the code has fails
+  too, so the list only shrinks. It counts names, not callers: a synchronous helper of Obeya's own
+  whose name does not end in `Sync` (the git calls of `gitOrNull`) counts once, by what it calls.
+  Rejected: a lint rule (the repository has no linter); forbidding every synchronous call (startup,
+  scripts and a stat of a known path are fine). Where a function serves both the plugin's scripts
+  and the server, the server has an asynchronous sibling of it and the scripts keep theirs. With
+  it, what still waited on the server's thread went asynchronous: a canvas's repository settings
+  and adapter module are only ever those read when the canvas resolved or its repository moved
+  (no fallback read with git), the first canvas's folder is read without waiting, a demo site's
+  page reads its versions' captions, posters and sound beforehand, the demo directory's sweep
+  reads its settings without waiting, and a repository's theme for a page about to go out is read
+  without the server waiting (the page waits for it). A demo site's overview over its pages is
+  built at once: 6 ms over 401 pages the first time, 2 ms after, as each page's facts are kept.
 - **Programs run without a window on Windows by default, not by an option at each call**
   (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
   for its window.
