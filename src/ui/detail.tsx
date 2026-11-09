@@ -833,11 +833,13 @@ function FromElsewhere({ item }: { item: Item }) {
 /** On a card whose repository does not run on the canvas: no agent works on it until that is back. */
 function RepoDownBox({ item }: { item: Item }) {
   if (!item.repoDown) return null;
+  // Stop, then Archive or Delete: on the owner's own tasks, not on a workstream or a prototype, which neither takes
+  const stoppable = (item.state === 'working' || item.state === 'waiting' || !!item.finishing) && item.kind === 'task' && item.source === 'manual' && !item.prototypeOf;
   return (
     <div className="question repo-down">
       <div className="q-text">
         {t.repoDown.long(item.repo)}
-        {(item.state === 'working' || item.state === 'waiting' || item.finishing) && ` ${t.repoDown.stopHint}`}
+        {stoppable && ` ${t.repoDown.stopHint}`}
       </div>
     </div>
   );

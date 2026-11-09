@@ -178,6 +178,9 @@ const de = {
     evicted: (path: string) =>
       `Workspace entzogen: ${path} geht an eine wartende Aufgabe. Nicht committete Arbeit liegt als Commit auf dem Branch; beim nächsten Start ist sie wieder da, als nicht committete Änderungen.`,
     evictFailed: (why: string) => `Der Workspace ließ sich nicht abgeben (${why}); die Aufgabe ist gestoppt und behält ihn.`,
+    /** The archive took the stopped card with its clone while its repository did not run; now that it runs, the clone is free again. */
+    archivedFreed: (path: string) =>
+      `Workspace zurückgegeben: Das Repository läuft wieder, und die Aufgabe ist archiviert. Nicht committete Arbeit liegt als Commit auf dem Branch in ${path}; beim nächsten Start ist sie wieder da, als nicht committete Änderungen.`,
     /** The owner paused the worker at a safe point: it brings its work there first. */
     pausing: 'Hält an, sobald die Arbeit an einem sicheren Punkt ist.',
     /** The owner paused the worker, and let it go on again. */
@@ -696,6 +699,8 @@ const en: Messages = {
     evicted: (path: string) =>
       `Workspace taken away: ${path} goes to a waiting task. Uncommitted work is kept in a commit on the branch; at the next start it is back, as uncommitted changes.`,
     evictFailed: (why: string) => `The workspace could not be given up (${why}); the task is stopped and keeps it.`,
+    archivedFreed: (path: string) =>
+      `Workspace given back: the repository runs again, and the task is archived. Uncommitted work is kept in a commit on the branch in ${path}; at the next start it is back, as uncommitted changes.`,
     pausing: 'Pausing once the work is at a safe point.',
     pausedByOwner: 'Paused.',
     resumedByOwner: 'Resumed.',

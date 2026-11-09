@@ -47,7 +47,7 @@ import { Sharing, siteIncomplete } from './share';
 import { siteMissing, siteName } from './site';
 import { allowedHere, approvedHere, personalDemoSite, readPersonal } from './personal-site';
 import { dimensions } from '../core/page-tags';
-import { type DueRestart, landedOf, Workers } from './workers';
+import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { branchSetting, type CardWorkspaces, type FileAt, detectingBranch, gitCalls, type GitSteps, gitSteps, isFolder, type Landed, markFolder, readingBranches, together, useBranchSetting, Workspaces } from './workspaces';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, readTheme, type Theme } from './theme';
@@ -1994,18 +1994,19 @@ export class CanvasRuntime {
    * moved, or failed to start): no agent of it can be reached, so only the board changes, as
    * `Workers.stop` and `Workers.finish` change it. The card is planned again (stopped), to be started
    * again, archived or deleted; one that finished after landing is done. Its workspace stays recorded,
-   * for the repository's return.
+   * for the repository's return, which frees it where its card no longer needs it (`Workers.settleLeases`).
    */
   private stopWithoutRepo(card: Item) {
     const t = this.board.t.worker;
     if (card.finishing) {
-      const row = this.board.row(card.id);
       this.board.log(card.id, 'state', 'owner', t.stopped);
-      this.board.work(card.id, { landed: null, workspace: null, status_line: null, parked: null, paused: null, pausing: null, snoozed: null, app: null, ...(row.state === 'waiting' ? { state: landedOf(row)?.unchanged ? 'done' : 'live', need: null, detail: null } : {}) });
+      this.board.work(card.id, finishedRow(this.board.row(card.id)));
       return this.board.workDone(card.id);
     }
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
-    this.board.work(card.id, { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null, held: null });
+    // comments held back for the worker stay in the conversation
+    releaseHeld(this.board, card.id);
+    this.board.work(card.id, PLANNED_AGAIN);
     this.board.log(card.id, 'state', 'owner', card.pr ? t.stoppedPrOpen(card.pr.number) : t.stopped);
   }
 

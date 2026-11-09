@@ -1817,7 +1817,7 @@ export class Board {
    * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
    * in a plan folder outside the repository says nothing of a landing (`tickedAhead`).
    */
-  leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
+  leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'archived' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
     if (!row) return 'stale';
     if (row.canvas_id !== this.canvas.id) return null;
@@ -1825,6 +1825,8 @@ export class Board {
     if (row.workspace !== path) return 'stale';
     if (row.landed) return null;
     if (row.deleted_at) return 'deleted';
+    // a stopped task the archive took with its workspace, while its repository did not run on the canvas
+    if (row.archived_at && (row.state ?? 'planned') === 'planned') return 'archived';
     // what remained after the landing is done: the worker that did it gave the workspace up
     if (row.state && finished(row.state)) return 'stale';
     const hash = row.plan_ref?.indexOf('#') ?? -1;

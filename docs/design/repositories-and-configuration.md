@@ -481,14 +481,18 @@ start) stay on the canvas marked "Repository not running", with why in their pan
 their agents meanwhile: starting, messages, approving and the like are refused with that reason, a
 card set to start later or snoozed waits past its time, and a card the Koordinator was deciding on
 goes back to planned. Only what changes the board alone (moving it in the queue, dismissing,
-parking) still goes, and so does "Stop" on a card at work or waiting for the owner, which the panel
-suggests for a repository that is not coming back: it plans the card again as any stop does
-(finishing after a landing, it is done), and the stopped card can be archived or deleted. Its
-workspace stays recorded for the repository's return, but no longer keeps it out of the archive,
-since nothing could show the work in it while the repository does not run (decided 2026-11-08: a
-repository removed, renamed or moved to another owner left cards nobody could get rid of; rejected:
-having the owner add the repository back to stop them). Once the repository runs again, the cards
-work as before, in its workspaces.
+parking) still goes, and so does "Stop" on a card at work or waiting for the owner: it plans the
+card again as any stop does (finishing after a landing, it is done), and the owner's stopped task
+can be archived or deleted; the panel suggests that for a repository that is not coming back, on
+the cards where it leads there (not on a workstream or a prototype). Its workspace stays recorded
+for the repository's return, but no longer keeps it out of the archive, since nothing could show
+the work in it while the repository does not run (decided 2026-11-08: a repository removed, renamed
+or moved to another owner left cards nobody could get rid of; rejected: having the owner add the
+repository back to stop them). Once the repository runs again, the cards work as before, in its
+workspaces; an archived one gives its workspace back to the pool, where it would otherwise stay
+taken unseen: at once where it holds no work, a clone with work as when the owner takes it for
+another card (the work kept on the card's branch there, back at its next start), while a worktree
+with work stays the card's, since it takes nothing from the pool.
 Decided 2026-10-21: no other repository's agents take such a card, the home repository's included,
 since its worker would work in the wrong repository's workspace. Question cards are exempt: their
 agent only reads, and looks a question about such a card up in the home repository.

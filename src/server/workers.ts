@@ -33,7 +33,7 @@ import { type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Fin
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, type GitSteps, isFolder } from './workspaces';
 import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
-import type { CardRow } from './db';
+import type { CardRow, RowUpdate } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf, tooLong } from '../core/text';
 import { holdsNotes } from '../core/queue';
@@ -195,7 +195,36 @@ interface Resolving {
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;
 
 /** What the card's row stores while landed work's worker finishes; null while nothing has landed. */
-export const landedOf = (row: { landed: string | null }): LandedState | null => (row.landed ? (JSON.parse(row.landed) as LandedState) : null);
+const landedOf = (row: { landed: string | null }): LandedState | null => (row.landed ? (JSON.parse(row.landed) as LandedState) : null);
+
+/** What the card's row becomes when it is planned again, its worker stopped (`Workers.stop`, also where its repository does not run). */
+export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null } satisfies RowUpdate;
+
+/** What the card's row becomes once landed work's worker is done (`Workers.finish`, also where its repository does not run). */
+export const finishedRow = (row: CardRow): RowUpdate => ({
+  landed: null,
+  workspace: null,
+  status_line: null,
+  parked: null,
+  paused: null,
+  pausing: null,
+  snoozed: null,
+  app: null,
+  ...(row.state === 'waiting' ? { state: landedOf(row)?.unchanged ? 'done' : 'live', need: null, detail: null } : {}),
+});
+
+/**
+ * The comments held back for the card's worker (`CardRow.held`) are held no more: they stand in the
+ * conversation as read where they go now, never shown meanwhile as words waiting for a step. Returns them.
+ */
+export function releaseHeld(board: Board, cardId: string): HeldComment[] {
+  const held = board.row(cardId).held;
+  const comments = held ? (JSON.parse(held) as HeldComment[]) : [];
+  if (!comments.length) return [];
+  board.readNow(cardId, comments.map((h) => h.id));
+  board.work(cardId, { held: null });
+  return comments;
+}
 
 /** What `f` returns; a workspace it cannot have is the request's error. */
 /** A path with its links resolved, or as it is where it cannot be (gone). */
@@ -1479,11 +1508,8 @@ export class Workers {
   private takeHeld(cardId: string): { text: string; images: string[] } | null {
     clearTimeout(this.holding.get(cardId));
     this.holding.delete(cardId);
-    const held = this.held(cardId);
+    const held = releaseHeld(this.o.board, cardId);
     if (!held.length) return null;
-    // read where they go, before they stop being held: never shown meanwhile as words waiting for a step
-    this.o.board.readNow(cardId, held.map((h) => h.id));
-    this.o.board.work(cardId, { held: null });
     const events = new Map(this.o.board.events(cardId).map((e) => [e.id, e]));
     const images: string[] = [];
     const comments = held.flatMap(({ id, spoken }) => {
@@ -2362,7 +2388,7 @@ export class Workers {
       this.whileFreeing(cardId, row.workspace, reading ? reading.catch(() => {}).then(removeLanded) : removeLanded(), 'freeing a landed workspace');
     }
     const landed = landedOf(row);
-    this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, parked: null, paused: null, pausing: null, snoozed: null, app: null, ...(row.state === 'waiting' ? { state: landed?.unchanged ? 'done' : 'live', need: null, detail: null } : {}) });
+    this.o.board.work(cardId, finishedRow(row));
     this.o.board.workDone(cardId);
     // the Arbeitsrückschau read the card's runs when its work ended
     if (!landed?.followUp) this.o.onWorkEnded?.(cardId, row.workspace);
@@ -2885,7 +2911,7 @@ export class Workers {
     this.bump(cardId);
     const generation = this.generation.get(cardId);
     const path = this.o.board.row(cardId).workspace;
-    this.o.board.work(cardId, { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null });
+    this.o.board.work(cardId, PLANNED_AGAIN);
     said();
     return this.o.workspaces.hasWork(cardId).then((keep) => {
       if (keep || this.generation.get(cardId) !== generation || this.o.board.row(cardId).workspace !== path) return;
@@ -2934,7 +2960,7 @@ export class Workers {
         // comments held back for the worker stay in the conversation
         this.takeHeld(cardId);
         this.end(cardId);
-        this.o.board.work(cardId, { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null });
+        this.o.board.work(cardId, PLANNED_AGAIN);
       }
       this.bump(cardId);
       this.o.board.work(cardId, { status_line: this.o.board.t.worker.evicting });
@@ -3286,6 +3312,10 @@ export class Workers {
       if (!id || this.kept.has(path) || this.preparing.has(id) || this.freeing.has(path)) continue;
       const ended = this.o.board.leaseEnded(id, path);
       if (!ended) continue;
+      if (ended === 'archived') {
+        this.whileFreeing(id, path, this.archivedLease(id, path), 'giving back the workspace of an archived card');
+        continue;
+      }
       if (ended === 'merged') {
         this.merged(id, undefined, this.o.board.t.worker.mergedTicked);
         continue;
@@ -3306,6 +3336,33 @@ export class Workers {
         },
       );
       this.whileFreeing(id, path, abandoned, 'freeing the workspace of a card done with it');
+    }
+  }
+
+  /**
+   * The archive took a stopped card with its workspace at `path` while its repository did not run on
+   * the canvas; now that it runs, the workspace goes back to the pool: at once where it holds no work,
+   * and a clone with work as when the owner takes it for another card (`Workspaces.evict`), the work
+   * kept on the card's branch there for its next start. A worktree with work stays the card's, as it
+   * takes nothing from the pool; so does a clone where git fails.
+   */
+  private async archivedLease(cardId: string, path: string) {
+    const still = () => this.o.board.leaseEnded(cardId, path) === 'archived';
+    if (!(await this.o.workspaces.hasWork(cardId))) {
+      if (!still()) return;
+      this.o.workspaces.release(cardId);
+      this.o.board.work(cardId, { workspace: null, parked: null, app: null });
+      return;
+    }
+    if (this.o.workspaces.mode !== 'clones' || !still()) return void this.kept.add(path);
+    try {
+      const kept = await this.o.workspaces.evict(cardId);
+      if (!kept) return;
+      this.o.board.work(cardId, { workspace: null, parked: null, app: null, kept_in: kept });
+      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.archivedFreed(kept));
+    } catch (e) {
+      this.kept.add(path);
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.evictFailed(messageOf(e)));
     }
   }
 
