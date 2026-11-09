@@ -3,7 +3,7 @@
 // mlx-audio that prints where the protocol runs; and the same voice held by Obeya across renders
 // (`src/server/narration.ts`). Python through uv, as a render runs it.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,13 +14,21 @@ import { untagged } from './timeline';
 import { voiceSpec } from './voices';
 
 const LIB = import.meta.dirname;
-const python = (args: string[], env: Record<string, string> = {}, input?: string) =>
-  spawnSync('uv', ['run', '--quiet', '--no-project', '--with', 'numpy', 'python', ...args], {
-    env: { ...process.env, ...env },
-    input,
-    encoding: 'utf8',
-    timeout: 60_000,
-  });
+/** `uv run` as a render runs `tts.py` (`ttsArgs` in `voices.ts`): no packages. */
+const UV = ['uv', 'run', '--quiet', '--no-project', 'python'];
+/**
+ * As `qwen3.py` runs, with numpy. Each run lays numpy out in an environment of its own, from uv's
+ * cache; the first on a machine downloads it into the cache first (CI starts with an empty one),
+ * which once took a test on a Windows runner past its 25 s. So `qwen3.py`'s tests have it in the
+ * cache before they start, and the others go without it, as a render does.
+ */
+const UV_NUMPY = ['uv', 'run', '--quiet', '--no-project', '--with', 'numpy', 'python'];
+const run =
+  (uv: string[], timeout = 60_000) =>
+  (args: string[], env: Record<string, string> = {}, input?: string) =>
+    spawnSync(uv[0]!, [...uv.slice(1), ...args], { env: { ...process.env, ...env }, input, encoding: 'utf8', timeout });
+const python = run(UV);
+const withNumpy = run(UV_NUMPY);
 
 /**
  * A voice that serves until its stdin ends, writing a short silent WAV per request. Given a second
@@ -217,7 +225,6 @@ describe('English terms in German narration', () => {
 });
 
 describe('a voice Obeya holds', () => {
-  const UV = ['uv', 'run', '--quiet', '--no-project', '--with', 'numpy', 'python'];
   /** A render while this process serves Obeya's narration: spawned, not spawnSync, which would block the server. */
   const render = (out: string, env: Record<string, string>, extra: string[] = []) =>
     new Promise<{ status: number | null; stderr: string }>((resolve) => {
@@ -314,6 +321,13 @@ describe('a voice Obeya holds', () => {
 });
 
 describe('qwen3.py --serve', () => {
+  // numpy into uv's cache, outside the time limit of any test
+  beforeAll(() => {
+    const r = run(UV_NUMPY, 600_000)(['-c', 'import numpy']);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+  }, 600_000);
+
   test('loads once, answers line by line, keeps library output off the protocol, and survives a bad request', async () => {
     // A fake mlx-audio that prints on stdout from Python and from C level, as the real one does.
     const pkg = join(dir, 'fake', 'mlx_audio', 'tts');
@@ -346,7 +360,7 @@ def load_model(repo):
       { text: '   ', out: join(dir, 'b.wav'), id: 2 },
       { text: 'Third.', out: join(dir, 'c.wav'), language: 'en' },
     ];
-    const r = python(
+    const r = withNumpy(
       [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'de', '--reference', join(dir, 'ref.wav'), '--serve'],
       { PYTHONPATH: join(dir, 'fake'), FAKE_LOG: join(dir, 'log') },
       requests.map((q) => JSON.stringify(q)).join('\n') + '\n',
@@ -393,7 +407,7 @@ def load_model(repo):
     writeFileSync(join(dir, 'ref.wav'), '');
     writeFileSync(join(dir, 'ref.txt'), 'Das ist meine Stimme.');
     const serve = (runOn: number) =>
-      python(
+      withNumpy(
         [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'en', '--reference', join(dir, 'ref.wav'), '--serve'],
         { PYTHONPATH: join(dir, 'fake'), FAKE_LOG: join(dir, 'log'), FAKE_RUNON: String(runOn) },
         `${JSON.stringify({ text: 'Click Reauthenticate.', out: join(dir, 'a.wav'), id: 1 })}\n`,
@@ -467,7 +481,7 @@ def load_model(name, quantization, sess_options, providers):
     const script = 'Before the fix, the error showed in the Last failed box with a Reauthenticate button.';
     const serve = (heard: (string | null)[], env: Record<string, string> = {}, fake = join(dir, 'fake')) => {
       rmSync(join(dir, 'log'), { force: true });
-      const r = python(
+      const r = withNumpy(
         [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'en', '--reference', join(dir, 'ref.wav'), '--serve'],
         { PYTHONPATH: fake, FAKE_LOG: join(dir, 'log'), FAKE_HEARD: JSON.stringify(heard), ...env },
         `${JSON.stringify({ text: script.replace('Reauthenticate', 'Reauthentikayt'), script, out: join(dir, 'a.wav') })}\n`,
@@ -504,7 +518,7 @@ def load_model(name, quantization, sess_options, providers):
     expect(failing.reply).toMatchObject({ ok: true, heard: [{ heard: stumbled, stumbled: true }] });
     // the clip in timed pieces, the kept take's: each sentence's from where it starts in the clip
     expect(again.reply.timed.slice(0, 2)).toEqual([[' Before', 0], [' the', 0.1]]);
-    const two = python(
+    const two = withNumpy(
       [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'en', '--reference', join(dir, 'ref.wav'), '--serve'],
       { PYTHONPATH: join(dir, 'fake'), FAKE_LOG: join(dir, 'log'), FAKE_HEARD: JSON.stringify(['One two.', 'Three four.']) },
       `${JSON.stringify({ text: 'One two. Three four.', out: join(dir, 'b.wav') })}\n`,
@@ -534,7 +548,7 @@ def load_model(name, quantization, sess_options, providers):
       // a short sentence not said at all
       ['en', 'Click save.', ''],
     ];
-    const r = python(
+    const r = withNumpy(
       [
         '-c',
         `import sys, json; sys.path.insert(0, ${JSON.stringify(LIB)}); import qwen3
@@ -579,7 +593,7 @@ def load_model(repo):
     );
     writeFileSync(join(dir, 'ref.wav'), '');
     writeFileSync(join(dir, 'ref.txt'), 'Das ist meine Stimme.');
-    const p = Bun.spawn(['uv', 'run', '--quiet', '--no-project', '--with', 'numpy', 'python', join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'de', '--reference', join(dir, 'ref.wav'), '--serve'], {
+    const p = Bun.spawn([...UV_NUMPY, join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'de', '--reference', join(dir, 'ref.wav'), '--serve'], {
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',
