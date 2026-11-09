@@ -66,6 +66,8 @@ const de = {
     write: (file: string) => `Schreibt ${file}`,
     grep: (pattern: string) => `Sucht „${pattern}“`,
     glob: (pattern: string) => `Sucht Dateien ${pattern}`,
+    webSearch: (query: string) => `Sucht im Web nach „${query}“`,
+    webFetch: (url: string) => `Ruft ${url} ab`,
     todo: 'Plant die nächsten Schritte',
   },
   worker: {
@@ -614,6 +616,8 @@ const en: Messages = {
     write: (file: string) => `Writes ${file}`,
     grep: (pattern: string) => `Searches for “${pattern}”`,
     glob: (pattern: string) => `Looks for files ${pattern}`,
+    webSearch: (query: string) => `Searches the web for “${query}”`,
+    webFetch: (url: string) => `Fetches ${url}`,
     todo: 'Plans the next steps',
   },
   worker: {

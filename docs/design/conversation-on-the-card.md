@@ -12,8 +12,8 @@ and the owner's pick marked, muted once answered; a handover in the same turn as
 under it after a dashed line as "Handover"); and what the Coordinator looked up. Small lines between
 them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, the demo's link put on the pull
 request, stopped, errors, usage limit); an address in them is a link (the comment on the pull
-request, say). Everything else (tool calls, thoughts, status
-lines, Obeya's notes) folds away as "History" under the agent's next message. Obeya's reply to what
+request, say). Everything else (tool calls, each with what it acts on: the file, the command, a
+web search's query, a fetched page's address; thoughts, status lines, Obeya's notes) folds away as "History" under the agent's next message. Obeya's reply to what
 the agent passed on (`to_obeya`) answers a step in that "History", so it stands under that message,
 with what Obeya says after it until then (the answer it looked up); while that message has not come
 yet, below the agent at work. The owner's words or a state line before the message keep it where it

@@ -5547,6 +5547,10 @@ export function describeTool(name: string, input: Record<string, unknown>, t: Me
       return t.tool.grep(clip(s('pattern'), 60));
     case 'Glob':
       return t.tool.glob(clip(s('pattern'), 60));
+    case 'WebSearch':
+      return s('query') ? t.tool.webSearch(clip(s('query'), 120)) : name;
+    case 'WebFetch':
+      return s('url') ? t.tool.webFetch(clip(s('url'), 120)) : name;
     case 'TodoWrite':
       return t.tool.todo;
     case 'Task':

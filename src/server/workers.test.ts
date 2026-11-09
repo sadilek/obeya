@@ -2,13 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
+import { MESSAGES } from '../core/messages';
 import { needsYou, pausable } from '../core/types';
 import { BadRequest, Board } from './board';
 import { OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { Restarter } from './self-update';
 import { artifact, until } from './testing';
-import { Workers } from './workers';
+import { describeTool, Workers } from './workers';
 import { board, dir, eachTest, flush, main, manual, runtime, setConversation, setLanguage, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { git } from './workspaces';
 
@@ -1828,4 +1829,10 @@ describe('pausing: the owner halts a worker and lets it go on', () => {
     workers.resume(c.id);
     expect(runtime.last.spec.resume).toBe('sess-1');
   });
+});
+
+test('a web search shows its query in the history, a fetched page its address', () => {
+  expect(describeTool('WebSearch', { query: 'bun sqlite wal mode' }, MESSAGES.en)).toBe('Searches the web for “bun sqlite wal mode”');
+  expect(describeTool('WebFetch', { url: 'https://bun.sh/docs/api/sqlite', prompt: 'WAL?' }, MESSAGES.de)).toBe('Ruft https://bun.sh/docs/api/sqlite ab');
+  expect(describeTool('WebSearch', {}, MESSAGES.en)).toBe('WebSearch');
 });
