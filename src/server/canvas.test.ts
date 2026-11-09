@@ -1079,6 +1079,105 @@ describe('the configuration changed while the canvas runs', async () => {
     expect(canvas.board.item(a.card.id)).toBeDefined();
   });
 
+  test('a card at work in a repository that left the canvas can be stopped, then archived or deleted', async () => {
+    await open([
+      { path: web, settings: { land: 'pr' } },
+      { path: api, settings: { land: 'pr' } },
+    ]);
+    const a = await atWork('api', 'A');
+    const b = await atWork('api', 'B');
+    await canvas.apply({ name: 'Produkt', repos: [{ path: web, settings: { land: 'pr' } }] });
+    a.session.emit({ type: 'idle' });
+    b.session.emit({ type: 'idle' });
+    await until(() => canvas.repos.length === 1);
+    expect(item(a.card.id).repoDown).toBe(true);
+    // a comment on the demo held back for the worker, as while the owner watches
+    const comment = canvas.board.log(a.card.id, 'hint', 'owner', 'The button is cut off.', { unread: true });
+    canvas.board.work(a.card.id, { held: JSON.stringify([{ id: comment.id }]) });
+    canvas.act(a.card.id, { action: 'stop' });
+    canvas.act(b.card.id, { action: 'stop' });
+    expect(item(a.card.id)).toMatchObject({ state: 'planned', branch: expect.any(String) });
+    expect(canvas.board.events(a.card.id).at(-1)?.text).toBe(canvas.board.t.worker.stopped);
+    // it stays in the conversation, no longer waiting for the worker
+    expect(canvas.board.row(a.card.id).held).toBeNull();
+    expect(canvas.board.events(a.card.id).find((e) => e.id === comment.id)?.unread).toBeUndefined();
+    // its workspace stays recorded for the repository's return, and nothing could show the work in it here
+    expect(canvas.board.row(a.card.id).workspace).toBeTruthy();
+    canvas.board.archive([a.card.id]);
+    expect(canvas.board.row(a.card.id).archived_at).toBeTruthy();
+    canvas.remove(b.card.id);
+    expect(canvas.board.item(b.card.id)).toBeUndefined();
+    expect(workers.sessions.filter((s) => !s.closed)).toHaveLength(0);
+  });
+
+  test('an archived card gives the clone it took into the archive back once its repository is back, its work kept on its branch there', async () => {
+    const both: RepoConfig[] = [
+      { path: web, settings: { land: 'pr' } },
+      { path: api, settings: { land: 'pr' }, clones: 2 },
+    ];
+    await open(both);
+    const a = await atWork('api', 'A');
+    const c = await atWork('api', 'C');
+    const apiBefore = canvas.repos.find((r) => r.ref.id === 'api')!;
+    await apiBefore.ready;
+    const withWork = apiBefore.workspaces.leasedBy(a.card.id)!;
+    const clean = apiBefore.workspaces.leasedBy(c.card.id)!;
+    writeFileSync(join(withWork, 'limit.ts'), 'export const LIMIT = 10;\n');
+    await canvas.apply({ name: 'Produkt', repos: [{ path: web, settings: { land: 'pr' } }] });
+    a.session.emit({ type: 'idle' });
+    c.session.emit({ type: 'idle' });
+    await until(() => canvas.repos.length === 1);
+    for (const card of [a.card, c.card]) canvas.act(card.id, { action: 'stop' });
+    canvas.board.archive([a.card.id, c.card.id]);
+    await canvas.apply({ name: 'Produkt', repos: both });
+    const apiAgain = canvas.repos.find((r) => r.ref.id === 'api')!;
+    await until(() => apiAgain.workspaces.list().every((w) => !w.card_id));
+    await apiAgain.workers.freed();
+    // each card's branch stays in its clone, uncommitted work in a commit on it, for its next start
+    expect(canvas.board.row(c.card.id)).toMatchObject({ workspace: null, kept_in: clean });
+    expect(canvas.board.row(a.card.id)).toMatchObject({ workspace: null, kept_in: withWork });
+    expect(git(withWork, 'show', '--name-only', '--format=', 'HEAD')).toBe('limit.ts');
+    expect(canvas.board.events(a.card.id).at(-1)?.text).toBe(canvas.board.t.worker.archivedFreed(withWork));
+    expect(canvas.board.row(a.card.id).archived_at).toBeTruthy();
+    // a card deleted while its clone went back keeps where its branch is, for its restore
+    canvas.board.unarchive(c.card.id);
+    canvas.remove(c.card.id);
+    canvas.board.keptIn(c.card.id, clean);
+    canvas.restore(c.card.id);
+    expect(canvas.board.row(c.card.id)).toMatchObject({ workspace: null, kept_in: clean });
+    // new cards of the repository get the clones
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0, repo: 'api' });
+    await apiAgain.workers.start(b.id);
+    expect([withWork, clean]).toContain(apiAgain.workspaces.leasedBy(b.id)!);
+  });
+
+  test('an archived card gives back a worktree without work once its repository is back, and keeps one with work', async () => {
+    const both: RepoConfig[] = [
+      { path: web, settings: { land: 'pr' } },
+      { path: api, settings: { land: 'pr' } },
+    ];
+    await open(both);
+    const a = await atWork('api', 'A');
+    const c = await atWork('api', 'C');
+    const apiBefore = canvas.repos.find((r) => r.ref.id === 'api')!;
+    await until(() => !!apiBefore.workspaces.leasedBy(a.card.id) && !!apiBefore.workspaces.leasedBy(c.card.id));
+    const withWork = apiBefore.workspaces.leasedBy(a.card.id)!;
+    writeFileSync(join(withWork, 'limit.ts'), 'export const LIMIT = 10;\n');
+    await canvas.apply({ name: 'Produkt', repos: [{ path: web, settings: { land: 'pr' } }] });
+    a.session.emit({ type: 'idle' });
+    c.session.emit({ type: 'idle' });
+    await until(() => canvas.repos.length === 1);
+    for (const card of [a.card, c.card]) canvas.act(card.id, { action: 'stop' });
+    canvas.board.archive([a.card.id, c.card.id]);
+    await canvas.apply({ name: 'Produkt', repos: both });
+    const apiAgain = canvas.repos.find((r) => r.ref.id === 'api')!;
+    await until(() => !canvas.board.row(c.card.id).workspace);
+    await apiAgain.workers.freed();
+    expect(apiAgain.workspaces.leasedBy(c.card.id)).toBeNull();
+    expect(canvas.board.row(a.card.id).workspace).toBe(withWork);
+    expect(apiAgain.workspaces.leasedBy(a.card.id)).toBe(withWork);
+  });
+
   test("a card of a repository that left the canvas goes to no other repository's agents; it starts in its own once that is back", async () => {
     const both: RepoConfig[] = [
       { path: web, settings: { land: 'pr' } },

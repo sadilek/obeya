@@ -1664,10 +1664,11 @@ export class Board {
         if (this.items().some((i) => i.prototypeOf === id)) throw new BadRequest('prototypeRunning', 'a prototype for this idea is still running');
         continue;
       }
-      // a stopped task goes with its conversation, for the owner to come back to; work its workspace holds would be left unseen
+      // a stopped task goes with its conversation, for the owner to come back to; work its workspace holds would be left unseen,
+      // unless its repository does not run on the canvas, where nothing could show it anyway
       if (row.state === 'planned' && row.branch && row.kind === 'task' && !row.prototype_of) {
         if (row.queue) throw new BadRequest('notDone', 'the card waits to be started');
-        if (row.workspace || row.kept_in) throw new BadRequest('holdsWork', 'its workspace holds work that has not landed');
+        if ((row.workspace || row.kept_in) && !this.item(id)?.repoDown) throw new BadRequest('holdsWork', 'its workspace holds work that has not landed');
         continue;
       }
       if (!row.state || !finished(row.state)) throw new BadRequest('notDone', 'only a finished or stopped card can be archived');
@@ -1816,7 +1817,7 @@ export class Board {
    * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
    * in a plan folder outside the repository says nothing of a landing (`tickedAhead`).
    */
-  leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
+  leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'archived' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
     if (!row) return 'stale';
     if (row.canvas_id !== this.canvas.id) return null;
@@ -1824,6 +1825,8 @@ export class Board {
     if (row.workspace !== path) return 'stale';
     if (row.landed) return null;
     if (row.deleted_at) return 'deleted';
+    // a stopped task the archive took with its workspace, while its repository did not run on the canvas
+    if (row.archived_at && (row.state ?? 'planned') === 'planned') return 'archived';
     // what remained after the landing is done: the worker that did it gave the workspace up
     if (row.state && finished(row.state)) return 'stale';
     const hash = row.plan_ref?.indexOf('#') ?? -1;
@@ -1847,6 +1850,17 @@ export class Board {
     // the pool the canvas shows has a clone more
     if (!row || row.deleted_at || row.workspace !== path) return this.changed();
     this.work(cardId, { workspace: null, app: null, parked: null });
+  }
+
+  /**
+   * The card's clone went back to the pool, its branch kept there (`Workspaces.evict`), for its next
+   * start to take from it: a card deleted meanwhile keeps that too, for when it is restored.
+   */
+  keptIn(cardId: string, path: string) {
+    const row = this.store.card(cardId);
+    if (!row || row.canvas_id !== this.canvas.id) return;
+    this.store.update(cardId, { workspace: null, parked: null, app: null, kept_in: path });
+    this.changedRows();
   }
 
   /**
