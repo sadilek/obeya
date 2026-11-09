@@ -33,6 +33,16 @@ node scripts/hero-video/render.ts --replay      # the whole video with that reco
 node scripts/hero-video/render.ts --qwen        # any of these in Qwen3-TTS, into ~/demos/obeya-hero-qwen/: to try a change out first
 ```
 
+Before a take starts, the render measures the machine for five seconds and does not start when it
+is short of memory (macOS reports memory pressure, or it swaps more than 10 MB a second) or when
+more than 90% of its cores are in use; it says why, names the processes using the most memory or
+CPU, and exits with 3. `--ignore-load` renders anyway; `--check-load` only measures. A take
+recorded beside local language models stuttered. Measured on an M4 Pro (48 GB): the screencast
+kept its frame rate with every core busy and with the GPU at 99%, so it is memory short enough to
+swap that stalls the take, and a busy CPU counts only near saturation. The narration alone
+(`--narration`) and a dry run are not measured. A second render while one runs is refused too: both
+use the scratch Obeya on port 4730, and the second would stop the first's.
+
 A change is tried out with `--qwen` (with `HERO_SHORT=1` for the first scenes) and rendered in
 ElevenLabs once it stands.
 

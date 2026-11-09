@@ -6,15 +6,20 @@
 // into `obeya-hero-qwen` in the demo directory (`~/demos` unless the demo settings name another).
 // `--record` records the take's agents (real ones) into a directory, `obeya-hero-recording` there
 // unless named; `--replay` plays such a recording back instead of
-// running agents, the same take in minutes (the README says when which). Other arguments go on to
-// the demo (`--narration`, `--dry`).
+// running agents, the same take in minutes (the README says when which). A take on a busy machine
+// stutters: before one starts, it measures the machine and refuses when it is short of memory or its
+// cores are nearly all busy (`load.ts`), unless `--ignore-load` says to render anyway; it refuses
+// too while another render runs. `--check-load` only measures and says whether a take may start
+// (exit 0, else 3). Other arguments go on to the demo (`--narration`, `--dry`).
 //
-//   node scripts/hero-video/render.ts [--qwen] [--record [<dir>] | --replay [<dir>]] [--narration | --dry]
+//   node scripts/hero-video/render.ts [--qwen] [--record [<dir>] | --replay [<dir>]] [--ignore-load] [--narration | --dry]
+//   node scripts/hero-video/render.ts --check-load
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { demoDirectory } from '../../plugin/skills/demo/lib/settings.ts';
+import { measure, quiet, reasons, warning } from './load.ts';
 
 const VOICE = 'IErGHDQU4vPqicCi8dwR';
 const qwen = process.argv.includes('--qwen');
@@ -44,7 +49,38 @@ if (record && replay) {
   console.error('--record or --replay, not both');
   process.exit(1);
 }
-const own = new Set(['--qwen', '--record', '--replay', ...[record, replay].filter((d) => d !== undefined)]);
+const own = new Set(['--qwen', '--record', '--replay', '--ignore-load', '--check-load', ...[record, replay].filter((d) => d !== undefined)]);
+
+/** Whether the machine is quiet enough for a take: says so, or why not and what loads it. */
+async function quietEnough() {
+  const load = await measure();
+  const why = reasons(load);
+  if (why.length) console.error(warning(load, why));
+  else console.log(quiet(load));
+  return why.length === 0;
+}
+if (process.argv.includes('--check-load')) process.exit((await quietEnough()) ? 0 : 3);
+
+// Two takes share the scratch Obeya on its fixed port: a second one restages it and the first loses its server.
+const narrationOnly = process.argv.includes('--narration');
+const lock = path.join(os.tmpdir(), 'obeya-hero-render.pid');
+if (!narrationOnly) {
+  const holder = Number(fs.existsSync(lock) ? fs.readFileSync(lock, 'utf8') : 0);
+  let alive = false;
+  try {
+    alive = holder > 0 && holder !== process.pid && process.kill(holder, 0);
+  } catch {}
+  if (alive) {
+    console.error(`Another render of the hero video is running (pid ${holder}); a second one would stop its scratch Obeya. Not started.`);
+    process.exit(3);
+  }
+  fs.writeFileSync(lock, String(process.pid));
+  process.on('exit', () => {
+    if (fs.existsSync(lock) && fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.rmSync(lock);
+  });
+}
+// the narration alone and a dry run record no video
+if (!narrationOnly && !process.argv.includes('--dry') && !process.argv.includes('--ignore-load') && !(await quietEnough())) process.exit(3);
 
 const home = path.join(OUT, 'home');
 fs.mkdirSync(home, { recursive: true });

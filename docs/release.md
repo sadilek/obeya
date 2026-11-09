@@ -32,8 +32,11 @@ machine's active account may lack the admin rights a workflow run or a rerun nee
    the site, it names what the release adds that a newcomer should know.
 3. The video, rendered whole from the release's code, with real agents whose run is recorded
    (`--record`), about ten minutes (`scripts/hero-video/README.md`), and its stills checked for the
-   three failures the README names. A correction of the scenes after that renders again with the
-   recording played back (`--replay`), in a few minutes; a run that went wrong is recorded anew.
+   three failures the README names. A take on a busy machine stutters, so the render measures the
+   machine first and does not start when it is short of memory or its cores are nearly all busy,
+   unless told to (`--ignore-load`): whether to free the machine or render anyway is the owner's
+   call. A correction of the scenes after that renders again with the recording played back
+   (`--replay`), in a few minutes; a run that went wrong is recorded anew.
    Then from the same render, in the release's checkout:
    - the site's screenshots, `bun scripts/site-shots.ts`, with the first Tipjar demo the render's
      agent left (`<demos>/tipjar-split-the-bill*`; the newest is its shorter second demo, on the

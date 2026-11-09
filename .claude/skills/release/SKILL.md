@@ -34,18 +34,20 @@ as it can stay.
   new. Render after the answer; credits go only on the wording the owner OKed.
 - None changed: no question. Version and summary go into the handover.
 
-**Step 3, the video.** If port 4730 is taken, another render is running: wait for it in the
-background. The render records its agents (`--record`) and takes about ten minutes; run it in the
-background too. Then look at every still in `review/`. Besides the README's three failures, check
-that each card the narration names is in the picture and that the UI looks as it does today,
-without a stray dialog or an error. A fault in the scenes is fixed in `demo.ts` or `stage.ts`
-(committed with the release) and rendered again with the recording played back (`--replay`), in a
-few minutes; the clips are cached, so that costs no credits. The agent's run differs each time it
-is recorded: a run that went wrong (the Tipjar agent stuck, a demo that shows nothing) is recorded
-again as it is, as is one whose playback refuses. If the same fault comes back after two renders,
-ask. Then the screenshots, the poster and the copy; look at the new screenshots (`git diff --stat
-site/img`, then the pictures themselves, the two phone screens `phone.png` and `phone-demo.png`
-among them) before committing them.
+**Step 3, the video.** The render records its agents (`--record`) and takes about ten minutes; run
+it in the background. It does not start while another render runs: wait for that one in the
+background. Nor does it start on a busy machine; it prints why and which processes load it: `ask`
+with those lines and the options "Machine is free now, render" and "Render anyway"
+(`--ignore-load`), and render after the answer. Then look at every still in `review/`. Besides the
+README's three failures, check that each card the narration names is in the picture and that the UI
+looks as it does today, without a stray dialog or an error. A fault in the scenes is fixed in
+`demo.ts` or `stage.ts` (committed with the release) and rendered again with the recording played
+back (`--replay`), in a few minutes; the clips are cached, so that costs no credits. The agent's
+run differs each time it is recorded: a run that went wrong (the Tipjar agent stuck, a demo that
+shows nothing) is recorded again as it is, as is one whose playback refuses. If the same fault
+comes back after two renders, ask. Then the screenshots, the poster and the copy; look at the new
+screenshots (`git diff --stat site/img`, then the pictures themselves, the two phone screens
+`phone.png` and `phone-demo.png` among them) before committing them.
 
 **Step 4, the handover.** Commit the version, README, poster and screenshots, run the checks, and
 hand over with `ready_for_review`. The demo is the new hero video: the directory
