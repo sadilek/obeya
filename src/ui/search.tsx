@@ -10,7 +10,7 @@ import type { Item } from '../core/types';
 import { onCardEvent } from './api';
 import { inTitle } from '../core/search';
 import { api } from './api';
-import { archiveLabelTexts, fold, labelOf, marked, matches, searchWords } from './archive';
+import { archiveLabelTexts, fold, labelOf, marked, matches, searchWords, useSettled } from './archive';
 import { plain } from './markdown';
 import { shownState } from './parts';
 import { useMenuClose } from './queue';
@@ -139,7 +139,7 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, rev, onAr
   }, [on]);
   // what the server found in the archive for these words: the first cards, and how many in all
   const [archived, setArchived] = useState<{ words: string; items: Item[]; hits: Hit[]; found: number }>({ words: '', items: [], hits: [], found: 0 });
-  const said = words.join(' ');
+  const said = useSettled(words.join(' '));
   useEffect(() => {
     if (!on || !said) return;
     let current = true;

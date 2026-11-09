@@ -35,6 +35,20 @@ export interface ArchiveList {
 
 const tops = (items: Item[]) => items.reduce((n, i) => n + (i.parent ? 0 : 1), 0);
 
+/** How long the words of a search stand still before the server is asked: a page per word typed, not per letter. */
+const SETTLE_MS = 150;
+
+/** `value` once it has stood still for a moment; at once when it becomes empty. */
+export function useSettled(value: string): string {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (!value) return setSettled(value);
+    const t = setTimeout(() => setSettled(value), SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [value]);
+  return settled;
+}
+
 /**
  * The archive's cards holding every word of `query` ('' for all), the most recently archived first,
  * a page at a time while `on`. When the archive's mark (`rev`) moves, what was read is read again,
@@ -132,8 +146,10 @@ export function ArchivePill({ on, onToggle, onClose, held, rev, onItems, done, o
   const words = useMemo(() => searchWords(query), [query]);
   // the whole archive, and what the words find in it, each as far as the owner scrolled
   const all = useArchiveList('', on, rev, onItems);
-  const found = useArchiveList(words.join(' '), on && words.length > 0, rev, onItems);
-  const pages = words.length ? found : all;
+  const said = useSettled(words.join(' '));
+  const found = useArchiveList(said, on && !!said, rev, onItems);
+  // until the words stand still, what was shown before stays
+  const pages = words.length && said ? found : all;
   const workstreams = useMemo(() => Map.groupBy(pages.items.filter((x) => x.parent), (x) => x.parent!), [pages.items]);
   const shown = useMemo(() => pages.items.filter((i) => !i.parent), [pages.items]);
   // one heading per day, in the server's order
