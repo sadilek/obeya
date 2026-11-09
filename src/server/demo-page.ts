@@ -441,7 +441,7 @@ const PLAYERS = (words: PlayerWords) => `
  */
 export const sitePlayerScript = () => `// The video player of Obeya's cards and demo pages (src/core/video-player.ts), written by scripts/site-player.ts.
 window.obeyaPlayer = (root, video, chapters) => {
-  const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, preferredTrack: ${preferredTrack} };
+  const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, cueWords: ${cueWords}, spokenWord: ${spokenWord}, preferredTrack: ${preferredTrack} };
   return (${videoPlayer})(root, video, { chapters, words: ${JSON.stringify(PAGE_WORDS.en.player)}, prefer: navigator.languages, keys: 'within', fullscreen: true }, lib);
 };
 `;

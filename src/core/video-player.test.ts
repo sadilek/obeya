@@ -46,4 +46,6 @@ test("obeya.si's script of the player parses and defines obeyaPlayer, with its k
   new Function('window', script)(window);
   expect(typeof window.obeyaPlayer).toBe('function');
   expect(script).toContain("keys: 'within'");
+  // every helper the player takes from `lib`, as the shared pages pass them
+  for (const helper of ['captionPages', 'pageOf', 'cueWords', 'spokenWord', 'preferredTrack']) expect(script).toContain(`${helper}: `);
 });
