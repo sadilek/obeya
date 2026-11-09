@@ -3,7 +3,7 @@
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import { holdsNotes } from '../core/queue';
-import { answering, askable, type CardEvent, type Demo, finishingUp, type Item, needsYou, openQuestions, ownWords, pausableNow, type Question, resumable, started, type Talk as Exchange } from '../core/types';
+import { askable, type CardEvent, type Demo, finishingUp, type Item, openQuestions, ownWords, pausableNow, type Question, resumable, started, type Talk as Exchange } from '../core/types';
 import { readAnswer } from './answer';
 import type { Field } from './api';
 
@@ -469,15 +469,6 @@ export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'fin
   // a finished card's agent is resumed for what the owner asks about it; a planned card holds the note for the agent that takes it on
   return item.state === 'working' || item.state === 'inPr' || item.finishing || askable(item) || holdsNotes(item) ? 'note' : null;
 }
-
-/**
- * A card an agent or Obeya is at (working on it, taking in the owner's words on its handover,
- * landing it, finding it a turn in the queue), and that waits for nobody: the phone's "Running".
- */
-export const runs = (i: Item) =>
-  !needsYou(i) &&
-  !i.snoozed?.waiting &&
-  (i.state === 'working' || answering(i) || !!i.finishing || !!i.landing || !!i.queue || (i.state === 'inPr' && !!i.pr) || !!i.idea?.thinking || !!i.thread?.thinking);
 
 /**
  * Whether the phone opens a card with its conversation up: while its agent works on it, what the

@@ -1274,9 +1274,16 @@ describe('cards that need the owner', () => {
     second.board.work(c.id, { state: 'waiting', need: 'review' });
     await until(() => sent().length === 3);
     expect(titles(2)).toEqual({ main: [], other: ['B2', 'C1'] });
+    // one that starts working runs there: its title and state reach the pages, a line its agent says does not
     second.board.work(waiting.id, { state: 'working' });
     await until(() => sent().length === 4);
     expect(titles(3)).toEqual({ main: [], other: ['C1'] });
+    expect(sent()[3]!.other!.running).toMatchObject([{ id: waiting.id, short: waiting.short, title: 'B2', kind: 'task', state: 'working' }]);
+    expect(sent()[3]!.other!.running![0]).not.toHaveProperty('body');
+    second.board.work(waiting.id, { status_line: 'Running the tests' });
+    second.board.work(c.id, { state: 'working' });
+    await until(() => sent().length === 5);
+    expect(sent()[4]!.other!.running!.map((i) => i.title)).toEqual(['B2', 'C1']);
     ws.close();
   });
   test('are counted for the app\'s icon, and an answer for the count shown waits until it changed', async () => {

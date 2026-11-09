@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { type CanvasInfo, type Item, type Talk, waitingIn } from '../core/types';
+import { type CanvasInfo, type Item, runningIn, type Talk, waitingIn } from '../core/types';
 import { forYouCount, forYouOf, forYouTotal } from './forYou';
 
 const card = (id: string, more: Partial<Item> = {}) => ({ id, kind: 'task', state: 'working', title: id, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
@@ -41,4 +41,24 @@ test('the count leaves out snoozed cards and those underway, and counts unread a
   expect(forYouCount(a, (id) => id === 'review')).toBe(2);
   const canvases = [{ id: 'a' }, { id: 'b' }, { id: 'c' }] as CanvasInfo[];
   expect(forYouTotal(canvases, { a, b }, () => false)).toBe(4);
+});
+
+test('"Running" holds what is in flight and waits for nobody, a snoozed card last, and counts for nothing that waits', () => {
+  const items = [
+    card('snoozedByAgent', { snoozed: { by: 'agent', until: '2026-11-03T08:00:00Z' } }),
+    card('working', { statusLine: 'Writing tests', body: 'a long task text' }),
+    card('review', { state: 'waiting', need: 'review' }),
+    card('snoozedWhileWaiting', { state: 'waiting', need: 'review', snoozed: { by: 'owner', waiting: true, until: '2026-11-03T08:00:00Z' } }),
+    card('landing', { state: 'waiting', need: 'review', landing: true }),
+    card('queued', { state: 'planned', queue: { checking: true, since: '2026-11-02T09:00:00Z' } }),
+    card('planned', { state: 'planned' }),
+    card('live', { state: 'live' }),
+  ];
+  const w = waitingIn({ items, talk: [] });
+  expect(w.running!.map((i) => i.id)).toEqual(['working', 'landing', 'queued', 'snoozedByAgent', 'snoozedWhileWaiting']);
+  // only what its row shows goes to the other canvases' pages: a line its agent says changes nothing there
+  expect(w.running![0]).toEqual({ id: 'working', title: 'working', kind: 'task', state: 'working' });
+  expect(forYouCount(w, () => false)).toBe(1);
+  // a card the owner just acted on runs until the server says what became of it
+  expect(runningIn(items, (id) => id === 'review').map((i) => i.id)).toEqual(['working', 'review', 'landing', 'queued', 'snoozedByAgent', 'snoozedWhileWaiting']);
 });

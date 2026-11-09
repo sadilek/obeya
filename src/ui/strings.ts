@@ -245,10 +245,11 @@ const de = {
     pause: (n: number) => (n === 1 ? '1 laufenden Agenten pausieren' : `${n} laufende Agenten pausieren`),
     resume: (n: number) => (n === 1 ? '1 pausierten Agenten fortsetzen' : `${n} pausierte Agenten fortsetzen`),
   },
-  /** The navigation at the bar's left: the canvases and what waits for the owner on each, as a list under it or pinned as a sidebar on the left. */
+  /** The navigation at the bar's left: the canvases, what waits for the owner on each and what runs there, as a list under it or pinned as a sidebar on the left. */
   nav: {
-    button: 'Leinwände und was auf dich wartet',
+    button: 'Leinwände, was auf dich wartet und was läuft',
     waiting: (n: number) => (n === 1 ? '1 Sache wartet auf dich' : `${n} Sachen warten auf dich`),
+    running: (n: number) => (n === 1 ? 'An 1 Karte wird gerade gearbeitet' : `An ${n} Karten wird gerade gearbeitet`),
     pin: 'Links als Seitenleiste anheften',
     unpin: 'Seitenleiste lösen',
     fold: 'Einklappen',
@@ -2482,8 +2483,9 @@ const en: Strings = {
     resume: (n: number) => (n === 1 ? 'Resume 1 paused agent' : `Resume ${n} paused agents`),
   },
   nav: {
-    button: 'Canvases and what waits for you',
+    button: 'Canvases, what waits for you and what runs',
     waiting: (n: number) => (n === 1 ? '1 thing waits for you' : `${n} things wait for you`),
+    running: (n: number) => (n === 1 ? '1 card is being worked on' : `${n} cards are being worked on`),
     pin: 'Pin as a sidebar on the left',
     unpin: 'Unpin the sidebar',
     fold: 'Collapse',
@@ -4420,7 +4422,7 @@ export const money = (usd: number) => usd.toLocaleString(locale, { style: 'curre
 /** What an approved card says while Obeya lands it: a review card's agent's commits being pushed onto its PR, its merge, any other's landing. */
 export const landingLabel = (i: { contribution?: { held?: unknown } }) => (i.contribution ? (i.contribution.held ? t.review.pushingHeld : t.review.merging) : t.approving);
 
-export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: { held?: unknown }; landing?: true; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
+export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: { held?: unknown }; landing?: true; queue?: Queue; idea?: Pick<Idea, 'status' | 'yourTurn' | 'thinking'>; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
   i.snoozed
     ? i.snoozed.on
       ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
-import { type CardEvent, formatQuestion, type Item, needsYou, openQuestions, pausable } from '../core/types';
+import { type CardEvent, formatQuestion, type Item, needsYou, openQuestions, pausable, runs } from '../core/types';
 import { answerText } from './answer';
-import { agentWorks, beingWritten, cardTalk, demoHandover, coordinatorReads, obeyaWorks, opensWithTalk, ownerField, parseQuestion, runs, split, talkAlone, talkTurns, unseen, unseenTurns } from './talk';
+import { agentWorks, beingWritten, cardTalk, demoHandover, coordinatorReads, obeyaWorks, opensWithTalk, ownerField, parseQuestion, split, talkAlone, talkTurns, unseen, unseenTurns } from './talk';
 import { MESSAGES } from '../core/messages';
 
 let id = 0;

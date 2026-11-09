@@ -85,8 +85,9 @@ favicon and the app icon's source (`scripts/logo.tsx`).
 
 ### The navigation
 
-One element at the bar's left holds the canvases and what waits for the owner on all of them, in
-place of a canvas switcher, a count of this canvas's cards that need the owner, and an inbox. Its
+One element at the bar's left holds the canvases, what waits for the owner on all of them and what
+runs there, in place of a canvas switcher, a count of this canvas's cards that need the owner, and
+an inbox. Its
 button names the canvas and its home branch (or its count of repositories) and counts, in the
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
 them, and per canvas one for Obeya's answers waiting unread; the app's icon carries the same number
@@ -104,6 +105,18 @@ browser, in the list and the pinned sidebar alike. With one canvas the list has 
 click on an entry opens its card, on this canvas or by switching to its own, and closes the list;
 Obeya's answers open Obeya's sheet on their canvas. Nothing waiting says so, and the canvases are
 still listed.
+
+Under what waits on a canvas stands what runs there, the phone's "Running" (see The phone view),
+decided by the same rule: what an agent or Obeya is at and that waits for nobody (working, taking in
+the owner's words, landing, queued, in a PR, an idea's agent thinking), snoozed cards last, and a
+card the owner just acted on until the server says what became of it. It has a faint heading with
+its own count, then light rows, each its title and its state line ("Working", "Landing", "In the
+queue" …), for a queued card since when. With nothing waiting on a canvas its section holds only
+that; folding the canvas folds both, and the canvas's pause sits on its head right above the agents
+it pauses. Nothing that runs counts anywhere: the button, the app's icon and the heads count only
+what waits for the owner, Tab goes only through what needs them, and the queue keeps its own
+button. Every page receives with what waits on the other canvases what runs there, each card only
+with what its row shows, so an agent's every line sends nothing to the other pages.
 
 A switch to another canvas (its head in the list, an entry of it, a link to it, Back or Forward
 between canvases) stays in the page instead of loading it anew: the canvas shown stays until the
@@ -450,6 +463,13 @@ code, a generic one otherwise.
   one the agent should not have asked for; an inbox as a sheet on the right, which competes
   with Obeya's sheet for the same edge; and the phone's card faces in the list, whose orange frames
   say nothing where every entry waits for the owner and make the list loud.
+- **What runs is part of the navigation, not a button of its own** (owner, 2026-11-09): which agents
+  are at work across every canvas was only to be found by looking over each canvas, while the phone
+  had it in "Running". It stands in the list the owner opens anyway, under what waits on each canvas,
+  so it needs no hint of its own and adds no place to look; it counts for nothing, so the orange
+  number keeps meaning what waits for the owner. Rejected: a "Running" button in the bar, since the
+  bar already gives up labels and buttons on narrow windows and it would have been a fourth place to
+  look; and nothing new, since the canvas alone serves badly with many cards or several canvases.
 - **The navigation's count does not pulse** (owner, 2026-11-09): it pulsed to draw the eye, but
   it always sits in the same place, so it is found without. The pulse made every recording of the
   canvas jerk: together with the bar's backdrop blur and the demo overlay's clock strip, which

@@ -7,7 +7,7 @@
 // what was typed but not sent survives a reload. It holds one WebSocket for every canvas.
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type CanvasInfo, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers } from '../core/types';
+import { atWork, type CanvasInfo, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, runningOrder, runs, unreadAnswers } from '../core/types';
 import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe, when } from './forYou';
@@ -27,7 +27,7 @@ import { shownState, TalkIcon } from './parts';
 import { videoOf } from './spot';
 import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
-import { agentWorks, cardTalk, coordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
+import { agentWorks, cardTalk, coordinatorReads, obeyaWorks, opensWithTalk, unseen } from './talk';
 import { seenOf } from './seen';
 import { noticeLine, tellers, useAck } from './tell';
 import { HoldToTalk, PushToTalk, ToldList, usePushToTalk, useTold } from './voice';
@@ -625,9 +625,9 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const setAside = new Set(all.filter(({ item }) => staysAside(aside, item)).map(({ item }) => item.id));
   // what "Needs you" leaves out: the cards the owner acted on, and those set aside
   const leftOut = (id: string) => isUnderway(id) || setAside.has(id);
-  const active = (i: Item) => runs(i) || !!i.snoozed?.waiting || isUnderway(i.id);
-  // a snoozed card at the end, after those at work now; one the owner snoozed while it waited for them among them
-  const running = all.filter(({ item }) => active(item) && !setAside.has(item.id)).sort((a, b) => Number(!!a.item.snoozed) - Number(!!b.item.snoozed));
+  // "Running" as the navigation has it (`runningIn`), but for the cards set aside
+  const active = (i: Item) => atWork(i) || isUnderway(i.id);
+  const running = all.filter(({ item }) => active(item) && !setAside.has(item.id)).sort((a, b) => runningOrder(a.item, b.item));
   // what would stand in "Needs you" or "Running" but for being set aside
   const putAway = all.filter(({ item }) => setAside.has(item.id) && (needsYou(item) || active(item)));
   // the tasks nobody has started yet (stopped ones and those set to start at a time among them), but nothing the lists above show already

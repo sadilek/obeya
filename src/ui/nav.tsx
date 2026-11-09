@@ -1,16 +1,19 @@
 // The navigation at the bar's left: the canvas's name, and under it the canvases with what waits
-// for the owner on each ("Needs you", the phone's list), in one place. It opens as a list under its
-// button, or stays pinned as a sidebar docked on the left, the canvas the rest. An entry opens its
-// card, on this canvas or on its own; a canvas's section folds away under its head, which keeps its count.
+// for the owner on each ("Needs you", the phone's list) and, under that, what runs there (the phone's
+// "Running"), in one place. It opens as a list under its button, or stays pinned as a sidebar docked
+// on the left, the canvas the rest. An entry opens its card, on this canvas or on its own; a canvas's
+// section folds away under its head, which keeps its count of what waits.
 
 import { useRef, useState } from 'react';
-import type { CanvasInfo, Item, Waiting } from '../core/types';
+import type { CanvasInfo, Item, RunningCard, Waiting } from '../core/types';
 import { canvasPath } from './address';
 import { FoldArrow, toggleFolded, useFolded } from './fold';
-import { forYouCount, forYouOf, ForYouRows, forYouTotal } from './forYou';
+import { forYouCount, forYouOf, ForYouRows, forYouTotal, when } from './forYou';
+import { Inline } from './markdown';
+import { ClockMark } from './snooze';
 import { CanvasAgents } from './parts';
 import { useMenuClose } from './queue';
-import { t } from './strings';
+import { stateLabel, t } from './strings';
 
 /** How wide the navigation is, pinned as a sidebar. */
 export const NAV_W = 340;
@@ -35,7 +38,7 @@ export const savePinned = (on: boolean) => {
 interface ListProps {
   canvas: CanvasInfo;
   canvases: CanvasInfo[];
-  /** What waits on each canvas, this one's as this page sees it. */
+  /** What waits and what runs on each canvas, this one's as this page sees it. */
   waiting: Record<string, Waiting>;
   underway: (id: string) => boolean;
   /** The card open on this canvas: its entry is marked. */
@@ -44,7 +47,7 @@ interface ListProps {
   /** Pinning is offered: the window has room for the sidebar. */
   pinnable: boolean;
   onPin: (on: boolean) => void;
-  onOpen: (canvas: string, i: Item) => void;
+  onOpen: (canvas: string, i: Pick<Item, 'id' | 'short'>) => void;
   onObeya: (canvas: string) => void;
 }
 
@@ -95,8 +98,9 @@ export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
 
 /**
  * "Needs you" and the canvases: with several, each canvas in the configuration's order heads what
- * waits on it, so a click on it switches there, and its arrow folds it; within a canvas in Tab's order.
- * The head counts what waits on every canvas, each canvas's head what waits on it, as the bar's button does.
+ * waits on it, so a click on it switches there, and its arrow folds it; within a canvas in Tab's order,
+ * then what runs there under a "Running" of its own. The head counts what waits on every canvas, each
+ * canvas's head what waits on it, as the bar's button does: what runs waits for nobody.
  */
 function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya, titlebar }: ListProps & { titlebar?: boolean }) {
   // with one canvas, its name heads the list only where the bar's button with the name is not there
@@ -104,7 +108,12 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
   const n = forYouTotal(canvases, waiting, underway);
   const fold = useFolded(FOLD_KEY);
   const none: Waiting = { items: [], talk: [] };
-  const rows = (c: CanvasInfo) => <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />;
+  const rows = (c: CanvasInfo) => (
+    <>
+      <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />
+      <RunningRows cards={waiting[c.id]?.running ?? []} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} />
+    </>
+  );
   return (
     <>
       <div className="nav-head" {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>
@@ -129,7 +138,7 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
         canvases.map((c) => {
           const w = waiting[c.id] ?? none;
           const listed = forYouOf(w, underway);
-          const has = listed.cards.length > 0 || !!listed.obeya;
+          const has = listed.cards.length > 0 || !!listed.obeya || !!w.running?.length;
           const shut = fold.includes(c.id);
           const count = forYouCount(w, underway);
           return (
@@ -173,6 +182,34 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
       ) : (
         <ul className="fy-rows">{rows(canvas)}</ul>
       )}
+    </>
+  );
+}
+
+/**
+ * A canvas's "Running" under what waits there: a faint heading with its count, then its cards as light
+ * rows, each its title and its state line, since when it waits in the queue.
+ */
+function RunningRows({ cards, open, onOpen }: { cards: RunningCard[]; open?: string; onOpen: (i: RunningCard) => void }) {
+  if (!cards.length) return null;
+  return (
+    <>
+      <li className="fy-sub">
+        {t.phone.running}
+        <span title={t.nav.running(cards.length)}>{cards.length}</span>
+      </li>
+      {cards.map((i) => (
+        <li key={i.id}>
+          <button className={i.id === open ? 'fy-row runs on' : 'fy-row runs'} aria-current={i.id === open || undefined} onClick={() => onOpen(i)}>
+            <span className="fy-ttl">{i.title ? <Inline md={i.title} /> : t.titlePlaceholder}</span>
+            <span className="fy-state">
+              {i.snoozed && <ClockMark />}
+              {stateLabel(i)}
+              {i.queue && ` · ${t.phone.since(when(i.queue.since))}`}
+            </span>
+          </button>
+        </li>
+      ))}
     </>
   );
 }

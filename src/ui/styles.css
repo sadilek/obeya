@@ -356,6 +356,15 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .fy-row.on::before { content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 3px; border-radius: 2px; background: var(--ink); }
 .fy-ttl { font: 600 14.5px/1.25 var(--serif); }
 .fy-state { font-size: 12px; color: var(--muted); }
+/* a canvas's "Running" under what waits there: a faint heading in the colour of work with its count, and
+   rows a shade lighter, which wait for nobody */
+.fy-rows > li.fy-sub { display: flex; align-items: baseline; gap: 6px; padding: 8px 10px 3px; border-top: 0; font-size: 11.5px; font-weight: 600;
+  letter-spacing: .02em; color: var(--working); }
+.fy-rows > li.fy-sub:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--line); }
+.fy-rows > li.fy-sub + li { border-top: 0; }
+.fy-sub span { font-weight: 500; opacity: .8; }
+.fy-row.runs .fy-ttl { font-weight: 500; }
+.fy-state .clock-mark { width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
 /* a canvas's agents on its row: the moving line while one works there, which turns into a pause for
    all of them while the pointer is on the row; with only paused ones, a play on the same hover */
 .canvas-agents { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); width: 26px; height: 20px;

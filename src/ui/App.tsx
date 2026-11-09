@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import { flushSync } from 'react-dom';
 import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
+import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, runningIn, waitingIn } from '../core/types';
 import { api, ApiError, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { goTo, onSwitch } from './switch';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
@@ -1728,8 +1728,8 @@ function Canvas({
   // answers in Obeya's sheet the owner has not seen: Obeya waits for them like a card
   const unread = kOn ? 0 : unreadAnswers(snapshot.talk);
   // what waits on each canvas, for the navigation: this one's as this page sees it, without what the
-  // owner just acted on and without answers in Obeya's sheet while it is open
-  const navWaiting = { ...waiting, [snapshot.canvas.id]: waitingIn({ items: items.filter((i) => !underway[i.id]), talk: kOn ? [] : snapshot.talk }) };
+  // owner just acted on and without answers in Obeya's sheet while it is open; what they acted on runs until the server says otherwise
+  const navWaiting = { ...waiting, [snapshot.canvas.id]: { ...waitingIn({ items: items.filter((i) => !underway[i.id]), talk: kOn ? [] : snapshot.talk }), running: runningIn(items, (id) => !!underway[id]) } };
   const nav = {
     canvas: snapshot.canvas,
     canvases,
@@ -1739,7 +1739,11 @@ function Canvas({
     pinned,
     pinnable: !matchMedia(NARROW).matches && innerWidth - NAV_W - side.right >= NAV_CANVAS_MIN,
     onPin: pin,
-    onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : goTo(cardPath(c, i))),
+    onOpen: (c: string, i: Pick<Item, 'id' | 'short'>) => {
+      const here = c === snapshot.canvas.id && items.find((x) => x.id === i.id);
+      if (here) void openFresh(here);
+      else goTo(cardPath(c, i));
+    },
     onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleCoordinator() : goTo(`${canvasPath(c)}?talk`)),
   };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);

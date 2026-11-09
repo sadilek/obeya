@@ -297,15 +297,61 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
 export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
 /**
- * What of a canvas "Needs you" lists (the phone's, and the navigation on every other canvas's page):
- * the cards that need the owner (none snoozed, which are put off), and the Coordinator's answers that
- * wait unread.
+ * What of a canvas the navigation lists on every other canvas's page: for "Needs you" (as the phone
+ * lists it too) the cards that need the owner (none snoozed, which are put off) and the Coordinator's
+ * answers that wait unread; and, apart from them, its "Running" (the phone has whole snapshots, and
+ * no `running`).
  */
-export type Waiting = Pick<CanvasSnapshot, 'items' | 'talk'>;
+export type Waiting = Pick<CanvasSnapshot, 'items' | 'talk'> & { running?: RunningCard[] };
 export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting => ({
   items: s.items.filter(needsYou),
   talk: s.talk.filter((x) => x.unread),
+  running: runningIn(s.items),
 });
+
+/**
+ * A card an agent or Obeya is at (working on it, taking in the owner's words on its handover,
+ * landing it, finding it a turn in the queue), and that waits for nobody.
+ */
+export const runs = (i: Item) =>
+  !needsYou(i) &&
+  !i.snoozed?.waiting &&
+  (i.state === 'working' || answering(i) || !!i.finishing || !!i.landing || !!i.queue || (i.state === 'inPr' && !!i.pr) || !!i.idea?.thinking || !!i.thread?.thinking);
+
+/**
+ * What "Running" lists, on the phone and in the navigation alike: the cards that `runs`, and those
+ * the owner snoozed while they waited for them (they come back to the owner by themselves). A page
+ * adds the cards the owner just acted on, before the server says what became of them.
+ */
+export const atWork = (i: Item) => runs(i) || !!i.snoozed?.waiting;
+
+/** "Running"'s order: the canvas's, a snoozed card after those at work now. */
+export const runningOrder = (a: Pick<Item, 'snoozed'>, b: Pick<Item, 'snoozed'>) => Number(!!a.snoozed) - Number(!!b.snoozed);
+
+/**
+ * A card in another canvas's "Running", as the navigation shows it: what its state line needs, and
+ * no more, so a line its agent says or a change of its text sends nothing to the other pages.
+ */
+export type RunningCard = Pick<Item, 'id' | 'short' | 'title' | 'kind' | 'state' | 'need' | 'landing' | 'queue' | 'answering' | 'finishing' | 'followUp' | 'paused' | 'restartPaused' | 'pausing' | 'snoozed' | 'branch' | 'unstarted'> & {
+  pr?: true;
+  contribution?: { held?: true };
+  idea?: Pick<Idea, 'status' | 'yourTurn' | 'thinking'>;
+  thread?: { thinking?: boolean };
+};
+
+const runningCard = (i: Item): RunningCard => {
+  const { id, short, kind, state, need, landing, queue, answering, finishing, followUp, paused, restartPaused, pausing, snoozed, branch, unstarted } = i;
+  const c: RunningCard = { id, short, title: i.title || titleFrom(i.body), kind, state, need, landing, queue, answering, finishing, followUp, paused, restartPaused, pausing, snoozed, branch, unstarted };
+  if (i.pr) c.pr = true;
+  if (i.contribution) c.contribution = i.contribution.held ? { held: true } : {};
+  if (i.idea) c.idea = { status: i.idea.status, yourTurn: i.idea.yourTurn, thinking: i.idea.thinking };
+  if (i.thread) c.thread = { thinking: i.thread.thinking };
+  return c;
+};
+
+/** A canvas's "Running" in its order, with the cards `also` names (those the owner just acted on). */
+export const runningIn = (items: Item[], also: (id: string) => boolean = () => false): RunningCard[] =>
+  items.filter((i) => atWork(i) || also(i.id)).sort(runningOrder).map(runningCard);
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**
