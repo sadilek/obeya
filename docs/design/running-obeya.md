@@ -359,18 +359,25 @@ restarts (past 1 MB it starts afresh, the one before kept as `stalls.previous.lo
 the time, the stall's length, the few places in the code where most of it went with their share
 (the runtime function the thread was in, `spawnSync` or `stringify`, then the functions of Obeya
 that called it, by file and line), and each process the server waited for longer than 50 ms, by its
-command line. It also counts what tells that the machine, not the code, held the server up: the
-pages read back from disk or swap meanwhile (major page faults) and, on Linux, the times the system
-took the CPU from the process for another (involuntary context switches), on a line of their own
-where either is above zero; from 1,000 pages on, its first line says so in words ("the machine
-paged the server back in: 4,200 pages"). Windows counts neither as such (its page faults include
-those of memory already there), nor macOS the context switches (it counts every one as
-involuntary, the profiler's several hundred a second too), so there the entry leaves them out. A
-pause the thread did not run in at all (the machine slept) is no stall; one it
-spent waiting for a process is, also on Windows, where the profiler takes no samples while the
-thread waits and samples only about every 16 ms whatever interval it is asked for. There the wait
-itself is what tells the two apart, so a sleep during a process the server waited for counts as a
-stall on Windows alone; elsewhere the samples taken during the wait decide.
+command line. It also says whether the machine, not the code, held the server up: how long the
+server's thread computed (on the CPU, in its own code or the system's on its behalf), the pages the
+process read back from disk or swap (major page faults) and, on Linux, the times the system took the
+CPU from it for another (involuntary context switches). The counts go on a line of their own where
+they are above zero; the thread's time only where it waited through half the stall or more,
+neither computing nor waiting for a process it ran. Then the first line says so in words: from
+1,000 pages on "it waited for 4,200 pages from disk or swap", else that its thread computed for
+so long of it and waited the rest (for the disk, swap, the system or a busy machine). An entry of
+code that was slow thus reads as before. Windows counts no page faults that mean this (its count
+includes those of memory already there) and no context switches, macOS no involuntary ones (it
+counts every one as such, the profiler's several hundred a second too), so there the entry leaves
+them out. macOS counts as page-ins only the pages of files (one mapped into memory, the program's
+own code), not memory brought back from its compressor or swap file, and no platform counts a file
+read into memory as page faults; the thread's time tells of those. A pause the thread did not run
+in at all (the machine slept) is no stall; one it spent waiting for a process is, also on Windows,
+where the profiler takes no samples while the thread waits and samples only about every 16 ms
+whatever interval it is asked for. There the wait itself is what tells the two apart, so a sleep
+during a process the server waited for counts as a stall on Windows alone; elsewhere the samples
+taken during the wait decide.
 
 What happens often or many times at once therefore never waits for a process: starting an agent and
 landing work read git without blocking, and so do starting the canvases, applying a saved
@@ -638,14 +645,17 @@ workers are busy.
   calls only (a stall in code nobody thought of goes unnamed); profiling only on demand (the stall
   is over by the time someone asks); a slow-request log (the page acts on a click before the
   server answers, so a slow answer freezes nothing).
-- **A server stall counts the page-ins it had** (2026-11-09, from `stalls.log`): stalls of
+- **A server stall says whether the machine held it up** (2026-11-09, from `stalls.log`): stalls of
   0.5–1.5 s had their time in SQLite reads that take a few milliseconds when warm; they came with
   restarts and a 4 GB voice model loading while the machine had 11.6 GB in swap, and read like a
-  fault of the code. The process's counts are read at each tick (a fraction of a microsecond), and
-  the difference over the stall goes into its entry. The threshold for the words in the first line is
-  fixed (1,000 pages, at a tenth to half a millisecond each a share of a half-second stall worth
-  naming) rather than scaled with the stall's length, so it reads the same in every entry. Rejected:
-  the system's swap activity as a whole (another process paging says nothing about this one).
+  fault of the code. The counts are read at each tick (under a microsecond), and their difference
+  over the stall goes into its entry. Page faults alone would miss most of such stalls on macOS
+  (memory from the compressor or swap file is no page-in there, nor is a file read by `read()`
+  anywhere, as SQLite reads), so the thread's own CPU time comes with them: a thread that neither
+  computed nor waited for a process it ran was held up. Its own, not the process's, which the
+  profiler and the threads that start processes add to. The threshold for the page-ins in words is
+  fixed (1,000 pages, each a tenth to half a millisecond from disk, a share of a half-second stall
+  worth naming) rather than scaled with the stall's length, so it reads the same in every entry.
 - **Agent starts and landings read git without the server waiting, and reuse what was read while
   the refs stand still** (2026-10-31): with many cards landing in a row, the trust check at each
   agent start and the settings read after each landing called git synchronously, a few calls each,

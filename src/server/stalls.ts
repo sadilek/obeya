@@ -30,8 +30,10 @@ const SAMPLE_US = 2000;
 const RUN_GAP_MS = 60_000;
 /** A run that goes on is logged at least this often. */
 const RUN_LOGGED_MS = 3600_000;
-/** From this many pages read back from disk or swap on, the entry's first line says the machine paged the server back in. */
+/** From this many pages read back from disk or swap on, the entry's first line says the server waited for them. */
 const MANY_PAGE_INS = 1000;
+/** A stall its thread waited through this share of, not computing and not waiting for a process it ran, is one the machine held up. */
+const WAITED_SHARE = 0.5;
 /** JavaScriptCore's line and column of a frame it knows no source position of. */
 const NO_POSITION = 4294967295;
 
@@ -78,32 +80,68 @@ const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 const count = (n: number) => n.toLocaleString('en-US');
 
 /**
- * What the system counted of the process while the server stalled that says the machine held it up,
- * each only where the platform counts it as such: pages read back from disk or swap (major page
- * faults), and the times the system took the CPU from one of its threads for another (involuntary
- * context switches).
+ * What the system counted while the server stalled that tells whether the machine held it up, each
+ * only where the platform counts it as such: the ms the server's thread computed (on the CPU, in
+ * its code or the system's on its behalf), the process's pages read back from disk or swap (major
+ * page faults), and the times the system took the CPU from one of its threads for another
+ * (involuntary context switches).
  */
 export interface Held {
+  cpuMs?: number;
   pageIns?: number;
   preempted?: number;
 }
 
+type Usage = Pick<NodeJS.ResourceUsage, 'majorPageFault' | 'involuntaryContextSwitches'>;
+type ThreadCpu = () => { user: number; system: number };
+
 /**
- * The process's counts so far. Windows counts every page fault, the soft ones of memory already
- * there too, and no context switches; macOS counts every context switch of every thread as
- * involuntary, the profiler's several hundred a second included: neither tells the machine held
- * the server up, so they are left out.
+ * The counts so far. Windows counts every page fault, the soft ones of memory already there too,
+ * and no context switches; macOS counts every context switch of every thread as involuntary, the
+ * profiler's several hundred a second included: neither tells the machine held the server up, so
+ * they are left out. macOS's page-ins are pages of files only (a memory-mapped file, the program's
+ * own code): memory brought back from its compressor or swap file it counts apart, per thread,
+ * where no process can read it; the thread's CPU time tells of those.
  */
-export function heldSoFar(platform = process.platform, usage = process.resourceUsage): Held {
-  if (platform === 'win32') return {};
+export function heldSoFar(platform = process.platform, usage: () => Usage = process.resourceUsage, threadCpu: ThreadCpu | null = process.threadCpuUsage ?? null): Held {
+  let cpuMs: number | undefined;
+  try {
+    const t = threadCpu?.();
+    if (t) cpuMs = (t.user + t.system) / 1000;
+  } catch {}
+  const cpu = cpuMs === undefined ? {} : { cpuMs };
+  if (platform === 'win32') return cpu;
   const u = usage();
-  return { pageIns: u.majorPageFault, ...(platform === 'linux' ? { preempted: u.involuntaryContextSwitches } : {}) };
+  return { ...cpu, pageIns: u.majorPageFault, ...(platform === 'linux' ? { preempted: u.involuntaryContextSwitches } : {}) };
 }
 
 /** The counts between two readings. */
 function heldBetween(before: Held, after: Held): Held {
   const d = (k: keyof Held) => (before[k] !== undefined && after[k] !== undefined ? { [k]: Math.max(0, after[k]! - before[k]!) } : {});
-  return { ...d('pageIns'), ...d('preempted') };
+  return { ...d('cpuMs'), ...d('pageIns'), ...d('preempted') };
+}
+
+/**
+ * What a stall's entry says of the machine: words for its first line, where the server waited
+ * rather than computed, and the counts for a line of their own. The thread's CPU time is named only
+ * where it waited, so the entry of a stall in slow code stays as it was.
+ */
+function heldUp(ms: number, waited: Waited[], held: Held): { words: string; figures: string[] } {
+  const { cpuMs, pageIns = 0, preempted = 0 } = held;
+  const inProcesses = waited.reduce((sum, w) => sum + w.ms, 0);
+  const waitedThrough = cpuMs !== undefined && ms - inProcesses - cpuMs >= ms * WAITED_SHARE;
+  const words =
+    pageIns >= MANY_PAGE_INS
+      ? `; it waited for ${count(pageIns)} pages from disk or swap`
+      : waitedThrough
+        ? `; its thread computed for ${(cpuMs! / 1000).toFixed(2)} s of it and waited the rest (for the disk, swap, the system or a busy machine)`
+        : '';
+  const figures = [
+    ...(waitedThrough ? [`its thread computed for ${(cpuMs! / 1000).toFixed(2)} s`] : []),
+    ...(pageIns ? [`${count(pageIns)} ${pageIns === 1 ? 'page' : 'pages'} read back from disk or swap`] : []),
+    ...(preempted ? [`${count(preempted)} involuntary context ${preempted === 1 ? 'switch' : 'switches'}`] : []),
+  ];
+  return { words, figures };
 }
 
 /**
@@ -132,17 +170,12 @@ export function describeStall(ms: number, traces: Trace[] | null, waited: Waited
     counts.set(p, (counts.get(p) ?? 0) + 1);
   }
   const places = [...counts].sort((a, b) => b[1] - a[1]).slice(0, PLACES);
-  const { pageIns = 0, preempted = 0 } = held;
-  const paged = pageIns >= MANY_PAGE_INS ? `; the machine paged the server back in: ${count(pageIns)} pages` : '';
-  const figures = [
-    ...(held.pageIns !== undefined ? [`${count(pageIns)} ${pageIns === 1 ? 'page' : 'pages'} read back from disk or swap`] : []),
-    ...(held.preempted !== undefined ? [`${count(preempted)} involuntary context ${preempted === 1 ? 'switch' : 'switches'}`] : []),
-  ];
+  const { words, figures } = heldUp(ms, waited, held);
   return [
-    `Obeya: the server stalled for ${seconds(ms)}; meanwhile it answered no page and heard no agent${paged}`,
+    `Obeya: the server stalled for ${seconds(ms)}; meanwhile it answered no page and heard no agent${words}`,
     ...places.map(([p, n]) => `  ${String(Math.round((100 * n) / traces!.length)).padStart(3)}% ${p}`),
     ...waited.map((w) => `  waited ${seconds(w.ms)} for: ${command(w.argv)}`),
-    ...(pageIns || preempted ? [`  meanwhile: ${figures.join(', ')}`] : []),
+    ...(figures.length ? [`  meanwhile: ${figures.join(', ')}`] : []),
   ];
 }
 

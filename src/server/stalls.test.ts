@@ -93,37 +93,54 @@ test('a stall the ticks see short is as long as its samples span', () => {
   expect(lines[0]).toBe('Obeya: the server stalled for 0.5 s; meanwhile it answered no page and heard no agent');
 });
 
-test('a stall the machine paged the server back in for says so in its first line, with the counts beneath', () => {
+test('a stall the server waited through names its page-ins and how little its thread computed, in its first line and with the counts beneath', () => {
   const lines: string[] = [];
   home = mkdtempSync(join(tmpdir(), 'obeya-stalls-'));
   stalls = new Stalls({ home, log: (l) => lines.push(l) });
   const read = trace(native('all'), at('shares', 'share.ts', 140));
   const samples = { traces: Array.from({ length: 450 }, (_, i) => ({ ...read, timestamp: i * 0.002 })), intervalMs: 2 };
-  stalls.tick(0, 1000, samples, { pageIns: 4200, preempted: 35 });
-  expect(lines).toEqual([
-    'Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent; the machine paged the server back in: 4,200 pages',
+  const entry = (held: Parameters<Stalls['tick']>[3]) => {
+    lines.length = 0;
+    stalls!.tick(0, 1000, samples, held);
+    return lines.slice();
+  };
+  const today = ['Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent', '  100% all ← shares (share.ts:140)'];
+  expect(entry({ cpuMs: 120, pageIns: 4200, preempted: 35 })).toEqual([
+    'Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent; it waited for 4,200 pages from disk or swap',
     '  100% all ← shares (share.ts:140)',
-    '  meanwhile: 4,200 pages read back from disk or swap, 35 involuntary context switches',
+    '  meanwhile: its thread computed for 0.12 s, 4,200 pages read back from disk or swap, 35 involuntary context switches',
   ]);
-  // a few pages are counted, not called the cause
-  lines.length = 0;
-  stalls.tick(0, 1000, samples, { pageIns: 12 });
-  expect(lines).toEqual(['Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent', '  100% all ← shares (share.ts:140)', '  meanwhile: 12 pages read back from disk or swap']);
-  // without page-ins, and where the platform counts no context switches as such, the entry reads as before
-  lines.length = 0;
-  stalls.tick(0, 1000, samples, { pageIns: 0 });
-  stalls.tick(0, 1000, samples, {});
-  expect(lines).toEqual(Array.from({ length: 2 }, () => ['Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent', '  100% all ← shares (share.ts:140)']).flat());
-  expect(readFileSync(join(home, STALLS_FILE), 'utf8')).toContain('the machine paged the server back in: 4,200 pages\n');
+  // memory brought back from macOS's compressor or swap file counts as no page-in: the thread's time tells
+  expect(entry({ cpuMs: 80, pageIns: 3 })).toEqual([
+    'Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent; its thread computed for 0.08 s of it and waited the rest (for the disk, swap, the system or a busy machine)',
+    '  100% all ← shares (share.ts:140)',
+    '  meanwhile: its thread computed for 0.08 s, 3 pages read back from disk or swap',
+  ]);
+  // code that was slow: a few pages are counted, not called the cause
+  expect(entry({ cpuMs: 880, pageIns: 12 })).toEqual([...today, '  meanwhile: 12 pages read back from disk or swap']);
+  // without page-ins, and where the platform counts no such figure, the entry reads as before
+  expect(entry({ cpuMs: 880, pageIns: 0 })).toEqual(today);
+  expect(entry({})).toEqual(today);
+  expect(readFileSync(join(home, STALLS_FILE), 'utf8')).toContain('it waited for 4,200 pages from disk or swap\n');
+});
+
+test('a stall that waited for a process is not called one the machine held up', () => {
+  const git = trace(native('spawnSync'), at('git', 'workspaces.ts', 77));
+  const lines = describeStall(1000, times(500, git), [{ argv: ['git', 'status'], ms: 900 }], 2, false, { cpuMs: 10, pageIns: 0 })!;
+  expect(lines).toEqual(['Obeya: the server stalled for 1.0 s; meanwhile it answered no page and heard no agent', '  100% spawnSync ← git (workspaces.ts:77)', '  waited 0.9 s for: git status']);
 });
 
 test('the counts are taken where the platform counts them as such', () => {
-  const usage = () => ({ majorPageFault: 40, involuntaryContextSwitches: 900 }) as NodeJS.ResourceUsage;
-  expect(heldSoFar('linux', usage)).toEqual({ pageIns: 40, preempted: 900 });
+  const usage = () => ({ majorPageFault: 40, involuntaryContextSwitches: 900 });
+  const cpu = () => ({ user: 300_000, system: 20_000 });
+  expect(heldSoFar('linux', usage, cpu)).toEqual({ cpuMs: 320, pageIns: 40, preempted: 900 });
   // macOS counts every context switch as involuntary
-  expect(heldSoFar('darwin', usage)).toEqual({ pageIns: 40 });
+  expect(heldSoFar('darwin', usage, cpu)).toEqual({ cpuMs: 320, pageIns: 40 });
   // Windows counts soft page faults with the hard ones, and no context switches
-  expect(heldSoFar('win32', usage)).toEqual({});
+  expect(heldSoFar('win32', usage, cpu)).toEqual({ cpuMs: 320 });
+  // a runtime without the thread's CPU time
+  expect(heldSoFar('darwin', usage, null)).toEqual({ pageIns: 40 });
+  expect(heldSoFar('linux', usage, () => { throw new Error('ENOSYS'); })).toEqual({ pageIns: 40, preempted: 900 });
 });
 
 test('a page that stalls again and again the same way gets one entry, and the stalls like it are counted in one line', () => {
