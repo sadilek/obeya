@@ -767,6 +767,18 @@ workers are busy.
   the thread, and four slow ones in a row were seconds); a cap on
   processes running at once (see the trust check above); fewer git calls alone (the bursts come
   from many clones and canvases, each call needed).
+- **A plan doc's history is read without the server waiting** (2026-11-09): a card whose
+  workstream left its doc takes its title from the doc's history in git when neither the doc as
+  last read nor the card knows it, and so does the repair of keys an older Obeya gave. That
+  history (the doc as each of its last 200 commits left it, a large output for a long-lived doc)
+  was read synchronously while the canvas view was being built. It is now read like any other git
+  call off the server's thread, once per text of the doc and Lesestand, and the view is built
+  meanwhile: the card waits in its project, as it does for a workspace to come back, and a project
+  whose repair needs the history shows its doc as last read; once git is through, the plan docs
+  are read again and the cards move. A read for a doc that changed meanwhile is dropped and done
+  anew. Rejected: reading the history of every doc ahead (most docs never need it, and each change
+  would read it again); building the view with what is known meanwhile (a card would leave under
+  its branch's name instead of its title, or give its log to another workstream, and not come back).
 - **On Windows, one process starts at a time across all threads** (2026-11-08): Bun starts a
   process through libuv, which makes the child's ends of its pipes inheritable until the system has
   created it. A process another thread creates in that moment inherits them and holds them open

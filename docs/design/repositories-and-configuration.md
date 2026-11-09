@@ -130,7 +130,8 @@ the doc as last read. A title the doc reworded since still finds its workstream 
 doc as last read or its history gave it, and a pull request's number before it does not count. A
 card whose workstream the doc no longer has leaves the project as above, its title and text from the
 doc's history in git (the doc as each of its recent commits left it); the project then lays out afresh in the doc's order,
-with fresh cards for the workstreams left without one.
+with fresh cards for the workstreams left without one. Where a card needs the doc's history, it
+stays where it is until git has read it (a project being repaired shows its doc as last read).
 
 #### A plan folder outside the repository
 

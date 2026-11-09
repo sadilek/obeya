@@ -23,15 +23,34 @@ let store: Store;
 let docs: PlanDoc[];
 let board: Board;
 let history: PlanDoc[];
+/** How often the board asked for a doc's history. */
+let asked: number;
+/** Until when git takes to read the history (none: a moment). */
+let gate: Promise<void> | null;
 
 beforeEach(() => {
   store = new Store(':memory:');
   history = [];
+  asked = 0;
+  gate = null;
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs, dirs: [] }));
-  board.readPlanHistory(() => history.flatMap((d) => d.workstreams));
+  board.readPlanHistory(async () => {
+    asked++;
+    await gate;
+    return history.flatMap((d) => d.workstreams);
+  });
 });
 
-const kids = () => board.snapshot().items.filter((i) => i.parent);
+/** The canvas once the board has the history it asked for, as git gives it a moment later. */
+const settled = async () => {
+  for (let was = -1; was !== asked; ) {
+    was = asked;
+    board.snapshot();
+    await Bun.sleep(0);
+  }
+  return board.snapshot();
+};
+const kids = async () => (await settled()).items.filter((i) => i.parent);
 const read = (d: PlanDoc) => {
   docs = [d];
   board.docsChanged();
@@ -46,24 +65,24 @@ const work = (id: string, title: string, fields: Parameters<Store['update']>[1] 
 };
 
 describe('a workstream card keeps its workstream', () => {
-  test('cards stay with their labels when the doc drops, adds and reorders workstreams', () => {
-    const [g, b, c] = read(parse(OLD));
+  test('cards stay with their labels when the doc drops, adds and reorders workstreams', async () => {
+    const [g, b, c] = await read(parse(OLD));
     expect([g, b, c].map((k) => [k!.label, k!.title])).toEqual([
       ['1G', 'Testlücken schließen'],
       ['3B', 'Auth zusammenführen'],
       ['3C', 'Gleichzeitige Bearbeitung'],
     ]);
     work(b!.id, 'Auth zusammenführen', { state: 'planned' });
-    const after = read(parse(NEW));
+    const after = await read(parse(NEW));
     expect(after.map((k) => k.label)).toEqual(['4A', '3B', '3C']);
     expect(after.find((k) => k.label === '3B')!.id).toBe(b!.id);
     expect(after.find((k) => k.label === '3C')!.id).toBe(c!.id);
     expect(after.find((k) => k.label === '4A')!.id).not.toBe(g!.id);
   });
 
-  test('an unlabelled workstream is known by its title, also with a pull request before it', () => {
-    const [one, two] = read(parse(['[ ] First thing. Details', '[ ] Second thing. Details']));
-    const after = read(parse(['[ ] New thing on top', '[x] #12. Second thing. Details', '[ ] First thing. Details']));
+  test('an unlabelled workstream is known by its title, also with a pull request before it', async () => {
+    const [one, two] = await read(parse(['[ ] First thing. Details', '[ ] Second thing. Details']));
+    const after = await read(parse(['[ ] New thing on top', '[x] #12. Second thing. Details', '[ ] First thing. Details']));
     expect(after.map((k) => [k.title, k.id === one!.id, k.id === two!.id])).toEqual([
       ['New thing on top', false, false],
       ['#12. Second thing', false, true],
@@ -71,11 +90,11 @@ describe('a workstream card keeps its workstream', () => {
     ]);
   });
 
-  test('a card an agent worked on leaves the project when its workstream leaves the doc; finished, into the archive', () => {
-    const [g, b, c] = read(parse(OLD));
+  test('a card an agent worked on leaves the project when its workstream leaves the doc; finished, into the archive', async () => {
+    const [g, b, c] = await read(parse(OLD));
     work(g!.id, '1G Testlücken schließen', { state: 'done' });
     work(c!.id, 'Gleichzeitige Bearbeitung', { state: 'working' });
-    read(parse([NEW[0]!]));
+    await read(parse([NEW[0]!]));
     expect(board.archived().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
     expect(board.events(g!.id).at(-1)!.text).toBe('Hat das Projekt „Audit“ verlassen: Das Plan-Doc führt diesen Workstream nicht mehr.');
     // at work, it stands beside the project
@@ -90,25 +109,25 @@ describe('a workstream card keeps its workstream', () => {
 });
 
 describe('a sibling dropped or added changes no card’s workstream', () => {
-  test('a code alone in the doc stops being a label, and the card stays', () => {
-    const [a, b] = read(parse(['[ ] **4A Sitzungen.** Revoke.', '[ ] **3B Auth.** One.']));
+  test('a code alone in the doc stops being a label, and the card stays', async () => {
+    const [a, b] = await read(parse(['[ ] **4A Sitzungen.** Revoke.', '[ ] **3B Auth.** One.']));
     work(a!.id, '4A Sitzungen', { state: 'planned' });
-    const after = read(parse(['[ ] **4A Sitzungen.** Revoke.']));
+    const after = await read(parse(['[ ] **4A Sitzungen.** Revoke.']));
     expect(after.map((k) => [k.id, k.title])).toEqual([[a!.id, '4A Sitzungen']]);
     expect(board.archived()).toEqual([]);
     // and back: a second code makes it a label again
-    expect(read(parse(['[ ] **4A Sitzungen.** Revoke.', '[ ] **5C Neu.** New.'])).map((k) => [k.label, k.id === a!.id])).toEqual([
+    expect((await read(parse(['[ ] **4A Sitzungen.** Revoke.', '[ ] **5C Neu.** New.']))).map((k) => [k.label, k.id === a!.id])).toEqual([
       ['4A', true],
       ['5C', false],
     ]);
     expect(b).toBeDefined();
   });
 
-  test('a label given twice: the one left keeps its card, and a second one added finds the card by its title', () => {
-    const [up, down] = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+  test('a label given twice: the one left keeps its card, and a second one added finds the card by its title', async () => {
+    const [up, down] = await read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
     work(down!.id, 'W1 Download', { state: 'planned' });
-    expect(read(parse(['[ ] **W1:** Download. y'])).map((k) => k.id)).toEqual([down!.id]);
-    const again = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+    expect((await read(parse(['[ ] **W1:** Download. y']))).map((k) => k.id)).toEqual([down!.id]);
+    const again = await read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
     expect(again.map((k) => [k.title, k.id === down!.id])).toEqual([
       ['Upload', false],
       ['Download', true],
@@ -119,13 +138,13 @@ describe('a sibling dropped or added changes no card’s workstream', () => {
 });
 
 describe('a card follows its own workstream, not one that would have had its key', () => {
-  test('a hidden card of a dropped workstream gives way to the card with the log', () => {
-    const [up, down] = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
-    read(parse(['[ ] **W1:** Download. y']));
+  test('a hidden card of a dropped workstream gives way to the card with the log', async () => {
+    const [up, down] = await read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+    await read(parse(['[ ] **W1:** Download. y']));
     // the doc rewords the one left, and an agent works on it
-    expect(read(parse(['[ ] **W1:** Upload. x'])).map((k) => k.id)).toEqual([down!.id]);
+    expect((await read(parse(['[ ] **W1:** Upload. x']))).map((k) => k.id)).toEqual([down!.id]);
     work(down!.id, 'W1 Upload', { state: 'planned' });
-    const after = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+    const after = await read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
     expect(after.map((k) => [k.title, k.id === down!.id])).toEqual([
       ['Upload', true],
       ['Download', false],
@@ -133,13 +152,13 @@ describe('a card follows its own workstream, not one that would have had its key
     expect(after.some((k) => k.id === up!.id)).toBe(false);
   });
 
-  test('cards of titles without a Latin letter keep their places through the repair', () => {
+  test('cards of titles without a Latin letter keep their places through the repair', async () => {
     const was = parse(['[ ] **登录.** a', '[ ] **退出.** b']);
     docs = [positional(was)];
-    const [a, b] = kids();
+    const [a, b] = await kids();
     work(a!.id, '登录', { state: 'working' });
     work(b!.id, '退出', { state: 'done' });
-    const after = read(was);
+    const after = await read(was);
     expect(after.map((k) => [k.title, k.id, k.state])).toEqual([
       ['登录', a!.id, 'working'],
       ['退出', b!.id, 'done'],
@@ -152,82 +171,82 @@ describe('a doc in a plan folder outside the repository', () => {
   const outside = (items: string[]) => parsePlanDoc(OUT, md(items)) as PlanDoc;
   afterEach(() => setSystemTime());
 
-  test('a workstream away for a moment keeps its card; one that stays away lets it go, with its title and text', () => {
-    const [g, b] = read(outside(OLD));
+  test('a workstream away for a moment keeps its card; one that stays away lets it go, with its title and text', async () => {
+    const [g, b] = await read(outside(OLD));
     work(g!.id, '1G Testlücken schließen', { state: 'done' });
     work(b!.id, '3B Auth zusammenführen', { state: 'planned' });
     // the doc is saved in two edits: 3B is missing for a moment
-    read(outside([OLD[0]!, OLD[2]!]));
+    await read(outside([OLD[0]!, OLD[2]!]));
     expect(board.archived()).toEqual([]);
-    expect(read(outside(OLD)).find((k) => k.label === '3B')!.id).toBe(b!.id);
+    expect((await read(outside(OLD))).find((k) => k.label === '3B')!.id).toBe(b!.id);
     // now 1G goes for good
     const t = Date.now();
-    read(outside(OLD.slice(1)));
-    read(outside(OLD.slice(1)));
+    await read(outside(OLD.slice(1)));
+    await read(outside(OLD.slice(1)));
     expect(board.archived()).toEqual([]);
     setSystemTime(new Date(t + LEAVE_AFTER_MS + 1000));
     board.changed();
-    board.snapshot();
+    await settled();
     expect(board.archived().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
   });
 
-  test('a stopped card leaves once it gave its workspace back, under the title and text the doc had', () => {
-    const [, b] = read(outside(OLD));
+  test('a stopped card leaves once it gave its workspace back, under the title and text the doc had', async () => {
+    const [, b] = await read(outside(OLD));
     work(b!.id, '3B Auth zusammenführen', { state: 'planned', branch: `obeya/3b-auth-zusammenfuhren-${b!.id.slice(0, 6)}`, workspace: '/ws/1' });
     const t = Date.now();
-    read(outside([OLD[0]!, OLD[2]!]));
+    await read(outside([OLD[0]!, OLD[2]!]));
     setSystemTime(new Date(t + LEAVE_AFTER_MS + 1000));
     board.changed();
-    board.snapshot();
+    await settled();
     expect(board.snapshot().items.some((i) => i.id === b!.id)).toBe(false);
     store.update(b!.id, { workspace: null });
     board.changed();
     expect(board.snapshot().items.find((i) => i.id === b!.id)).toMatchObject({ title: '3B Auth zusammenführen', body: 'One auth service.', state: 'planned', source: 'manual' });
   });
 
-  test('a workstream back under another key finds its waiting card by what the card remembered', () => {
-    const [u] = read(outside(['[ ] **W1:** Upload. x', '[ ] **W2:** Other. z']));
+  test('a workstream back under another key finds its waiting card by what the card remembered', async () => {
+    const [u] = await read(outside(['[ ] **W1:** Upload. x', '[ ] **W2:** Other. z']));
     work(u!.id, 'W1 Upload', { state: 'planned' });
-    read(outside(['[ ] **W2:** Other. z']));
-    const after = read(outside(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y', '[ ] **W2:** Other. z']));
+    await read(outside(['[ ] **W2:** Other. z']));
+    const after = await read(outside(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y', '[ ] **W2:** Other. z']));
     expect(after.find((k) => k.title === 'Upload')!.id).toBe(u!.id);
   });
 
-  test('the repair lets a card whose workstream is away for a moment wait too', () => {
+  test('the repair lets a card whose workstream is away for a moment wait too', async () => {
     const was = outside(OLD);
     docs = [positional(was)];
-    const [g] = kids();
+    const [g] = await kids();
     work(g!.id, '1G Testlücken schließen', { state: 'planned' });
-    read(outside(OLD.slice(1)));
+    await read(outside(OLD.slice(1)));
     expect(board.archived()).toEqual([]);
     expect(board.snapshot().items.some((i) => i.id === g!.id)).toBe(false);
-    expect(read(outside(OLD)).find((k) => k.label === '1G')!.id).toBe(g!.id);
+    expect((await read(outside(OLD))).find((k) => k.label === '1G')!.id).toBe(g!.id);
   });
 
-  test('the repair finds a reworded labelled title by the doc as last kept, without git', () => {
+  test('the repair finds a reworded labelled title by the doc as last kept, without git', async () => {
     const was = outside(['[ ] **S1: Foundation.** Base', '[ ] **S2: Sign-in.** Rest']);
     docs = [positional(was)];
-    const [s1] = kids();
+    const [s1] = await kids();
     work(s1!.id, 'S1: Foundation', { state: 'live' });
-    const after = read(outside(['[x] **S1: Foundation layer.** Base', '[ ] **S2: Sign-in.** Rest']));
+    const after = await read(outside(['[x] **S1: Foundation layer.** Base', '[ ] **S2: Sign-in.** Rest']));
     expect(after[0]!.id).toBe(s1!.id);
     expect(board.archived()).toEqual([]);
   });
 });
 
 describe('cards of a doc read by an older Obeya', () => {
-  test('a card holding another workstream’s log leaves the project, and the workstream gets a fresh card in its place', () => {
+  test('a card holding another workstream’s log leaves the project, and the workstream gets a fresh card in its place', async () => {
     // as the bug left it: the doc was read anew, and 3B took the card of 1G at its place
     history = [parse(OLD)];
     docs = [positional(parse(NEW))];
-    const [a, b, c] = kids();
+    const [a, b, c] = await kids();
     expect(b!.title).toBe('3B Auth zusammenführen');
     work(b!.id, '1G Testlücken schließen', { state: 'done' });
     work(a!.id, '4A Sitzungen und Mandantensperre', { state: 'planned' });
     board.patch(b!.id, { x: 900, y: 500 });
 
     // the new Obeya reads the same doc
-    const after = read(parse(NEW));
+    const after = await read(parse(NEW));
     expect(after.map((k) => [k.label, k.state])).toEqual([
       ['4A', 'planned'],
       ['3B', 'planned'],
@@ -244,14 +263,14 @@ describe('cards of a doc read by an older Obeya', () => {
     expect(board.events(b!.id).at(-1)!.text).toContain('Dieser Verlauf gehört zu einem Workstream, den das Plan-Doc nicht mehr führt');
   });
 
-  test('a card whose workstream moved in the doc follows it there', () => {
+  test('a card whose workstream moved in the doc follows it there', async () => {
     docs = [positional(parse(OLD))];
-    const [g, b] = kids();
+    const [g, b] = await kids();
     work(b!.id, '3B Auth zusammenführen', { state: 'planned' });
     // the doc changed while the older Obeya did not look: 3B is first now
     const moved = parse([OLD[1]!, OLD[0]!, OLD[2]!]);
     store.update(store.projects('c')[0]!.id, { plan: JSON.stringify(positional(moved)) });
-    const after = read(moved);
+    const after = await read(moved);
     expect(after.find((k) => k.label === '3B')!.id).toBe(b!.id);
     expect(after.find((k) => k.label === '1G')!.id).not.toBe(b!.id);
     expect(g).toBeDefined();
@@ -259,15 +278,15 @@ describe('cards of a doc read by an older Obeya', () => {
 });
 
 describe('cards of a doc read by an older Obeya, as workers left it', () => {
-  test('a card stays when its worker put the pull request before the title, or the doc reworded a labelled title', () => {
+  test('a card stays when its worker put the pull request before the title, or the doc reworded a labelled title', async () => {
     const was = parse(['[ ] Ship the thing. Details', '[ ] **S1: Foundation.** Base', '[ ] **S2: Sign-in.** Rest']);
     history = [was];
     docs = [positional(was)];
-    const [ship, s1] = kids();
+    const [ship, s1] = await kids();
     work(ship!.id, 'Ship the thing', { state: 'live' });
     work(s1!.id, 'S1: Foundation', { state: 'live' });
     const since = new Date(Date.now() - 1000).toISOString();
-    const after = read(parse(['[x] #12. Ship the thing. Details', '[x] **S1: Foundation layer.** Base', '[ ] **S2: Sign-in.** Rest']));
+    const after = await read(parse(['[x] #12. Ship the thing. Details', '[x] **S1: Foundation layer.** Base', '[ ] **S2: Sign-in.** Rest']));
     expect(after.map((k) => [k.label ?? k.title, k.id])).toEqual([
       ['#12. Ship the thing', ship!.id],
       ['S1', s1!.id],
@@ -279,26 +298,94 @@ describe('cards of a doc read by an older Obeya, as workers left it', () => {
   });
 });
 
+describe('while git reads a doc’s history', () => {
+  /** git's read of the history held up until the returned function lets it through. */
+  const slowGit = () => {
+    let through!: () => void;
+    gate = new Promise((r) => (through = r));
+    return through;
+  };
+
+  test('a card whose workstream left the doc stays until the history says what it was, then leaves under that title', async () => {
+    history = [parse(OLD)];
+    const [g] = await read(parse(OLD));
+    work(g!.id, '1G Testlücken schließen', { state: 'done' });
+    // the doc as Obeya kept it lacks 1G too, so only the history knows it
+    store.update(store.projects('c')[0]!.id, { plan: JSON.stringify(parse(NEW)) });
+    const through = slowGit();
+    const waiting = await read(parse(NEW));
+    expect(asked).toBe(1);
+    expect(board.archived()).toEqual([]);
+    expect(waiting.map((k) => k.label)).toEqual(['4A', '3B', '3C']);
+    expect(waiting.some((k) => k.id === g!.id)).toBe(false);
+    expect(store.card(g!.id)!.plan_ref).toBe(`${FILE}#1G`);
+    through();
+    await kids();
+    expect(board.archived().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
+  });
+
+  test('a project whose repair needs the history shows the doc as last read until then', async () => {
+    history = [parse(OLD)];
+    docs = [positional(parse(NEW))];
+    const [a, b, c] = await kids();
+    work(b!.id, '1G Testlücken schließen', { state: 'done' });
+    const through = slowGit();
+    const waiting = await read(parse(NEW));
+    expect(asked).toBe(1);
+    expect(waiting.map((k) => [k.id, k.title])).toEqual([
+      [a!.id, '4A Sitzungen und Mandantensperre'],
+      [b!.id, '3B Auth zusammenführen'],
+      [c!.id, '3C Gleichzeitige Bearbeitung'],
+    ]);
+    expect(board.archived()).toEqual([]);
+    through();
+    const after = await kids();
+    expect(after.map((k) => k.label)).toEqual(['4A', '3B', '3C']);
+    expect(after[1]!.id).not.toBe(b!.id);
+    expect(board.archived().find((i) => i.id === b!.id)).toMatchObject({ title: '1G Testlücken schließen', state: 'done' });
+  });
+
+  test('a history read for a doc that changed meanwhile is read again', async () => {
+    history = [parse(OLD)];
+    const [g] = await read(parse(OLD));
+    work(g!.id, '1G Testlücken schließen', { state: 'done' });
+    store.update(store.projects('c')[0]!.id, { plan: JSON.stringify(parse(NEW)) });
+    const through = slowGit();
+    await read(parse(NEW));
+    // the doc changes again before git is through: what git read is of the doc before
+    gate = null;
+    const edited = parse([...NEW, '[ ] **5D Neu.** New.']);
+    expect((await read(edited)).map((k) => k.label)).toEqual(['4A', '3B', '3C', '5D']);
+    expect(asked).toBe(2);
+    expect(board.archived().map((i) => [i.id, i.title])).toEqual([[g!.id, '1G Testlücken schließen']]);
+    // the read of the doc before comes in late and changes nothing
+    through();
+    await kids();
+    expect(asked).toBe(2);
+    expect(board.archived().map((i) => [i.id, i.title])).toEqual([[g!.id, '1G Testlücken schließen']]);
+  });
+});
+
 describe('planHistory', () => {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-plan-history-'));
   afterAll(() => removeDir(dir));
 
-  test('reads every workstream a doc was given, the newest first', () => {
+  test('reads every workstream a doc was given, the newest first', async () => {
     const repo = gitRepo(join(dir, 'r'), { [FILE]: md(OLD) });
     writeFileSync(join(repo, FILE), md(NEW));
     git(repo, 'commit', '-qam', 'new workstreams');
-    const seen = planHistory(repo, FILE).map((w) => w.label);
+    const seen = (await planHistory(repo, FILE)).map((w) => w.label);
     expect(seen.indexOf('4A')).toBeLessThan(seen.indexOf('1G'));
-    expect(planHistory(repo, FILE).find((w) => w.label === '1G')).toMatchObject({ title: 'Testlücken schließen', body: 'Only tests.' });
-    expect(planHistory(repo, 'docs/plan/none.md')).toEqual([]);
+    expect((await planHistory(repo, FILE)).find((w) => w.label === '1G')).toMatchObject({ title: 'Testlücken schließen', body: 'Only tests.' });
+    expect(await planHistory(repo, 'docs/plan/none.md')).toEqual([]);
   });
 
-  test('a commit that only ticks a box gives the whole item, with its details', () => {
+  test('a commit that only ticks a box gives the whole item, with its details', async () => {
     const items = ['[ ] **W1:** Upload. Details\n  - first\n  - second', '[ ] **W2:** Download.'];
     const repo = gitRepo(join(dir, 't'), { [FILE]: md(items) });
     writeFileSync(join(repo, FILE), md([items[0]!.replace('[ ]', '[x]'), items[1]!]));
     git(repo, 'commit', '-qam', 'tick W1');
-    expect(planHistory(repo, FILE)[0]).toMatchObject({ label: 'W1', done: true, title: 'Upload' });
-    expect(planHistory(repo, FILE)[0]!.body).toContain('second');
+    expect((await planHistory(repo, FILE))[0]).toMatchObject({ label: 'W1', done: true, title: 'Upload' });
+    expect((await planHistory(repo, FILE))[0]!.body).toContain('second');
   });
 });

@@ -334,7 +334,7 @@ export class CanvasRuntime {
       const repo = this.repos.find((r) => r.ref.id === repoOfRef(ref, board.home));
       const path = pathOfRef(ref);
       // a plan folder outside the repository has no history in git
-      return repo && !outsidePlanDir(path) ? planHistory(repo.read.path, path) : [];
+      return repo && !outsidePlanDir(path) ? planHistory(repo.read.path, path) : Promise.resolve([]);
     });
     // the Coordinator needs the workers, and the workers ask it: it is set right after them
     repos.forEach((x, i) => {

@@ -719,6 +719,8 @@ export class Board {
       const { fetch: _, ...rest } = s;
       this.store.update(r.id, { shipped: JSON.stringify({ ...rest, commit } satisfies Shipped) });
     }
+    // the docs' history is read anew
+    this.lesestandAt++;
     this.docsChanged();
   }
 
@@ -2247,8 +2249,8 @@ export class Board {
       this.docs = this.read();
       this.docsOf = repos;
     }
-    const all = this.docs;
-    this.follow(all, read);
+    // a doc whose cards wait for its history stays as last read until git is through (`follow`)
+    const all = (this.docs = this.follow(this.docs, read));
     let rows = this.store.cards(this.canvas.id);
     const { docs, ended } = this.openDocs(all, rows);
     const open = docs.map((d) => d.file).join('\n');
@@ -3179,18 +3181,42 @@ export class Board {
   }
 
   /** Every workstream a plan doc has had, from its history in git, the newest first (`readPlanHistory`); none for a doc outside git. */
-  private planHistory?: (ref: string) => Workstream[];
-  /** What `planHistory` said of each doc during one `follow`, which may ask for several cards. */
-  private pastOf = new Map<string, Workstream[]>();
+  private planHistory?: (ref: string) => Promise<Workstream[]>;
+  /**
+   * Each doc's history as read for the doc's text then (`markdown`) and the Lesestand then (`at`,
+   * which `lesestandMoved` counts on); `past` is missing while git reads it.
+   */
+  private histories = new Map<string, { markdown: string; at: number; past?: Workstream[] }>();
+  private lesestandAt = 0;
 
   /** Who reads a plan doc's history: a card whose workstream left the doc gets its title from there. */
-  readPlanHistory(fn: (ref: string) => Workstream[]) {
+  readPlanHistory(fn: (ref: string) => Promise<Workstream[]>) {
     this.planHistory = fn;
   }
 
-  /** What the doc's history says, read once per `follow`. */
-  private past(file: string): Workstream[] {
-    return this.pastOf.get(file) ?? this.pastOf.set(file, this.planHistory?.(file) ?? []).get(file)!;
+  /**
+   * What the history of the doc as it reads now says. Read once per text of the doc and Lesestand,
+   * without the server waiting: until git is through, this throws `HistoryUnread`, and the plan
+   * docs are read again (`docsChanged`) once it is.
+   */
+  private past(doc: PlanDoc): Workstream[] {
+    if (!this.planHistory) return [];
+    const was = this.histories.get(doc.file);
+    if (was?.markdown === doc.markdown && was.at === this.lesestandAt) {
+      if (was.past) return was.past;
+      throw new HistoryUnread();
+    }
+    const reading: { markdown: string; at: number; past?: Workstream[] } = { markdown: doc.markdown, at: this.lesestandAt };
+    this.histories.set(doc.file, reading);
+    this.planHistory(doc.file)
+      .catch(() => [])
+      .then((past) => {
+        // the doc or the Lesestand moved on meanwhile: what the cards wait for is read anew
+        if (this.histories.get(doc.file) !== reading) return;
+        reading.past = past;
+        this.docsChanged();
+      });
+    throw new HistoryUnread();
   }
 
   /** Cards whose workstream left its doc, by when that was seen, that wait to leave their project (`follow`). */
@@ -3210,19 +3236,20 @@ export class Board {
    * the doc) moves its cards onto those keys first (`rekey`). Between reads, only waiting cards
    * bring it here.
    */
-  private follow(all: PlanDoc[], read: boolean) {
-    if (!read && !this.missing.size) return;
-    this.pastOf.clear();
+  private follow(all: PlanDoc[], read: boolean): PlanDoc[] {
+    if (!read && !this.missing.size) return all;
     const byFile = new Map(all.map((d) => [d.file, d]));
     const projects = this.store.projects(this.canvas.id).filter((p) => byFile.has(p.plan_ref!));
     // the doc as last read, with its whole text: only parsed where a card needs it
     const lastOf = new Map<string, PlanDoc | null>();
     const last = (p: CardRow) => (lastOf.has(p.id) ? lastOf.get(p.id)! : lastOf.set(p.id, p.plan ? (JSON.parse(p.plan) as PlanDoc) : null).get(p.id)!);
-    if (read) for (const p of projects) if (last(p)) this.rekey(p, last(p)!, byFile.get(p.plan_ref!)!);
+    // a project whose repair waits for its doc's history keeps the doc as last read until it is there
+    const unread = new Set(read ? projects.filter((p) => last(p) && !this.rekey(p, last(p)!, byFile.get(p.plan_ref!)!)) : []);
     const kidsOf = Map.groupBy(this.store.children(projects.map((p) => p.id)), (k) => k.parent_id!);
     const waiting = new Set<string>();
     const now = Date.now();
     for (const p of projects) {
+      if (unread.has(p)) continue;
       const doc = byFile.get(p.plan_ref!)!;
       const kids = kidsOf.get(p.id) ?? [];
       const keys = new Set(doc.workstreams.map((w) => w.key));
@@ -3255,7 +3282,14 @@ export class Board {
           this.missing.set(k.id, since);
           continue;
         }
-        this.leave(k, p, this.identity(k, doc.file, last(p), false), this.t.idea.leftGone(doc.title));
+        const was = unreadAs(() => this.identity(k, doc, last(p), false));
+        // what the workstream was waits for the doc's history: the card waits with it
+        if (!was) {
+          waiting.add(k.id);
+          this.missing.set(k.id, since);
+          continue;
+        }
+        this.leave(k, p, was, this.t.idea.leftGone(doc.title));
       }
     }
     for (const id of this.missing.keys()) if (!waiting.has(id)) this.missing.delete(id);
@@ -3265,6 +3299,9 @@ export class Board {
       this.waking = setTimeout(() => this.changed(), next + 50);
       this.waking.unref?.();
     }
+    if (!unread.size) return all;
+    const kept = new Map([...unread].map((p) => [p.plan_ref!, last(p)!]));
+    return all.map((d) => kept.get(d.file) ?? d);
   }
 
   /** The card keeps what its workstream was (`w`), for when it leaves the project after the doc is read again. */
@@ -3279,33 +3316,39 @@ export class Board {
    * branch was named after, since the doc may have changed under its old key, so that its log stays
    * with its own workstream; one whose workstream the doc no longer has leaves the project, and the
    * project lays out afresh in the doc's order, with fresh cards for the workstreams without one.
-   * Otherwise the cards keep their places.
+   * Otherwise the cards keep their places. Returns false, changing nothing, while what it needs of
+   * the doc's history is still being read.
    */
-  private rekey(project: CardRow, before: PlanDoc, doc: PlanDoc) {
+  private rekey(project: CardRow, before: PlanDoc, doc: PlanDoc): boolean {
     const again = parsePlanDoc(before.file, before.markdown);
-    if ('reason' in again || again.workstreams.length !== before.workstreams.length) return;
+    if ('reason' in again || again.workstreams.length !== before.workstreams.length) return true;
     const renamed = new Map(before.workstreams.flatMap((w, i) => (w.key !== again.workstreams[i]!.key ? [[w.key, again.workstreams[i]!.key] as const] : [])));
-    if (!renamed.size) return;
+    if (!renamed.size) return true;
     const kids = this.store.children([project.id]);
     const keys = new Set(doc.workstreams.map((w) => w.key));
     // positional keys of a doc read before this one, whose cards are out of view now
     const positional = (k: string) => renamed.has(k) || (/^#\d+$/.test(k) && !before.workstreams.some((w) => w.key === k));
     const moving = kids.filter((k) => positional(keyOfRef(k.plan_ref) ?? ''));
-    if (!moving.length) return;
+    if (!moving.length) return true;
     const claimed = new Set(kids.filter((k) => !moving.includes(k)).flatMap((k) => keyOfRef(k.plan_ref) ?? []));
     const to = new Map<string, string>();
     const leaving: CardRow[] = [];
     const started = new Map(moving.map((k) => [k.id, this.startedAs(k)]));
     // first the cards an agent worked on, the most recent first, by the workstream they were started on
     const order = [...moving].sort((a, b) => Number(!started.get(a.id)) - Number(!started.get(b.id)) || b.updated_at.localeCompare(a.updated_at));
-    for (const k of order) {
-      const slug = started.get(k.id);
-      const key = slug ? this.startedOn(slug, doc, claimed, again) : renamed.get(keyOfRef(k.plan_ref)!);
-      if (key && keys.has(key) && !claimed.has(key)) {
-        to.set(k.id, key);
-        claimed.add(key);
-      } else if (worked(k)) leaving.push(k);
-    }
+    // what the cards worked on, decided before anything changes: the doc's history may still be read
+    const was = unreadAs(() => {
+      for (const k of order) {
+        const slug = started.get(k.id);
+        const key = slug ? this.startedOn(slug, doc, claimed, again) : renamed.get(keyOfRef(k.plan_ref)!);
+        if (key && keys.has(key) && !claimed.has(key)) {
+          to.set(k.id, key);
+          claimed.add(key);
+        } else if (worked(k)) leaving.push(k);
+      }
+      return new Map(leaving.map((k) => [k.id, this.identity(k, doc, before, true)]));
+    });
+    if (!was) return false;
     const ref = (key: string) => `${doc.file}#${key}`;
     this.store.db.transaction(() => {
       // out of each other's way first: two cards may swap keys
@@ -3318,7 +3361,7 @@ export class Board {
         else if (!leaving.includes(k)) this.store.update(k.id, { deleted_at: new Date().toISOString() });
       }
       for (const k of leaving) {
-        const w = this.identity(k, doc.file, before, true);
+        const w = was.get(k.id)!;
         if ((atWork(k) || !k.workspace) && !outsideRef(doc.file)) this.leave(k, project, w, this.t.idea.leftOther(doc.title));
         // a stopped card gives its workspace back first, and a doc outside the repository may lack an item
         // only for a moment: it leaves later (`follow`), with what it remembers
@@ -3350,6 +3393,7 @@ export class Board {
         this.store.update(project.id, { deps: JSON.stringify({ ...deps, on } satisfies StoredDeps) });
       }
     })();
+    return true;
   }
 
   /**
@@ -3364,7 +3408,7 @@ export class Board {
     if (byTitle) return byTitle.key;
     const label =
       stored.workstreams.find((w) => w.label && named(w, slug))?.label ??
-      this.past(doc.file).find((w) => w.label && named(w, slug))?.label;
+      this.past(doc).find((w) => w.label && named(w, slug))?.label;
     const same = label ? free.filter((w) => w.label === label) : [];
     return same.length === 1 && doc.workstreams.filter((w) => w.label === label).length === 1 ? same[0]!.key : undefined;
   }
@@ -3380,13 +3424,13 @@ export class Board {
 
   /**
    * The workstream a card worked on, from the doc as last read (`before`), what the card remembered
-   * of it (`remember`) or the doc's history: by its key, or, for a card whose key was its place in
-   * the doc (`positional`), by the title its branch was named after.
+   * of it (`remember`) or the history of the doc (`doc`, as it reads now): by its key, or, for a
+   * card whose key was its place in the doc (`positional`), by the title its branch was named after.
    */
-  private identity(row: CardRow, file: string, before: PlanDoc | null, positional: boolean): Pick<Workstream, 'label' | 'title' | 'body'> {
+  private identity(row: CardRow, doc: PlanDoc, before: PlanDoc | null, positional: boolean): Pick<Workstream, 'label' | 'title' | 'body'> {
     const key = keyOfRef(row.plan_ref) ?? '';
     const slug = this.startedAs(row);
-    const past = () => this.past(file);
+    const past = () => this.past(doc);
     // what the card remembered when its workstream left the doc (`remember`)
     const kept = () => (!positional && row.title ? { title: row.title, body: row.body ?? '' } : undefined);
     const byKey = () => (positional ? undefined : (before?.workstreams.find((w) => w.key === key) ?? kept() ?? past().find((w) => w.key === key)));
@@ -3706,6 +3750,19 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
 
 /** How long a workstream stays away from a doc in a plan folder outside the repository before its card leaves the project: such a doc is written in place, an item moved in two edits. */
 export const LEAVE_AFTER_MS = 5 * 60_000;
+
+/** A plan doc's history that `follow` needs is being read in git (`Board.past`). */
+class HistoryUnread extends Error {}
+
+/** What `fn` gives; undefined while the plan doc's history it needs is being read. */
+function unreadAs<T>(fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof HistoryUnread) return undefined;
+    throw e;
+  }
+}
 
 /** Whether a plan reference is to a doc in a plan folder outside the repository. */
 const outsideRef = (ref: string) => OUTSIDE_PATH.test(pathOfRef(ref));

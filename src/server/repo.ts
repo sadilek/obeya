@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { type OtherDoc, type PlanDoc, parsePlanDoc, type Workstream } from '../core/plan-doc';
-import { defaultBranch, defaultBranchAsync, gitCalls, gitOrNull, gitSteps } from './workspaces';
+import { defaultBranch, defaultBranchAsync, gitAsync, gitCalls, gitOrNull, gitSteps } from './workspaces';
 
 /** Where a repository is, its `origin` and its main branch (`defaultBranch`), the caller waiting for git: for scripts. Throws where `path` is no git repository. */
 export function repoInfo(path: string): RepoInfo {
@@ -125,23 +125,28 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): { docs: Pl
 /**
  * Every workstream the plan doc at `path` in the repository at `repoPath` had in its last `max`
  * commits, the newest first, each as the doc read when a commit left it; none where git has no
- * history of it. A card whose workstream the doc no longer lists takes its title from here.
+ * history of it. A card whose workstream the doc no longer lists takes its title from here. Read
+ * without the server waiting: the log of a long-lived doc is large.
  */
-export function planHistory(repoPath: string, path: string, max = 200): Workstream[] {
+export async function planHistory(repoPath: string, path: string, max = 200): Promise<Workstream[]> {
   // with all of the doc as context, each commit's one hunk is the whole doc as the commit left it
-  const log = gitOrNull(repoPath, 'log', '-p', `--max-count=${max}`, '--unified=1000000', '--no-color', '--no-ext-diff', '--format=%x01', '--', path);
+  const log = await gitAsync(repoPath, 'log', '-p', `--max-count=${max}`, '--unified=1000000', '--no-color', '--no-ext-diff', '--format=%x01', '--', path).catch(() => null);
   if (!log) return [];
-  return log.split('\x01').flatMap((commit) => {
+  const seen: Workstream[] = [];
+  for (const commit of log.split('\x01')) {
     const at = commit.search(/^@@.*$/m);
-    if (at < 0) return [];
+    if (at < 0) continue;
     const lines = commit
       .slice(at)
       .split('\n')
       .slice(1)
       .flatMap((l) => (l.startsWith('+') || l.startsWith(' ') ? [l.slice(1)] : []));
     const doc = parsePlanDoc(path, `${lines.join('\n')}\n`);
-    return 'reason' in doc ? [] : doc.workstreams;
-  });
+    if (!('reason' in doc)) seen.push(...doc.workstreams);
+    // a doc each turn of the event loop: parsing all of them at once held the server up as long as git did
+    await new Promise((go) => setImmediate(go));
+  }
+  return seen;
 }
 
 /**

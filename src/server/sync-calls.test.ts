@@ -130,7 +130,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'workers-fixture.ts': { why: "the workers' tests' fixture, not the server", calls: { mkdtempSync: 1 } },
   'workers.ts': { why: "server path, cheap: a path's real path, whether a kept demo copy is still there", calls: { existsSync: 1, realpathSync: 1 } },
   'workspaces.ts': {
-    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync, runSync) and detectedBranch's gitStepsSync serve scripts and startup (repoInfo, self-update's headOf) and repo.ts's planHistory, which board.ts asks for without waiting; the server's own git goes through gitAsync and gitSteps. The rest is cheap: stats of known workspace paths as cards start, land and are cleaned up",
+    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync, runSync) and detectedBranch's gitStepsSync serve scripts and startup (repoInfo, self-update's headOf); the server's own git goes through gitAsync and gitSteps. The rest is cheap: stats of known workspace paths as cards start, land and are cleaned up",
     calls: { existsSync: 20, gitStepsSync: 1, mkdirSync: 3, readdirSync: 1, realpathSync: 1, renameSync: 1, runSync: 1, spawnSync: 3, statSync: 2 },
   },
 };
