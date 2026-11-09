@@ -40,8 +40,12 @@ export function tailnet(host: string): boolean {
 /** Whether this page reaches Obeya through Tailscale: as Obeya said while it answered, else as the address looks. */
 export function useTailnet(connected: boolean): boolean {
   const [said, setSaid] = useState<boolean | null>(() => {
-    const v = localStorage.getItem(TAILNET);
-    return v === null ? null : v === 'true';
+    try {
+      const v = localStorage.getItem(TAILNET);
+      return v === null ? null : v === 'true';
+    } catch {
+      return null;
+    }
   });
   useEffect(() => {
     if (!connected) return;
@@ -49,8 +53,10 @@ export function useTailnet(connected: boolean): boolean {
     api.access().then(
       (v) => {
         const yes = !v.local && v.tailnet;
-        localStorage.setItem(TAILNET, String(yes));
         if (!gone) setSaid(yes);
+        try {
+          localStorage.setItem(TAILNET, String(yes));
+        } catch {}
       },
       () => {},
     );
@@ -78,7 +84,8 @@ export function whyQuiet(o: { online: boolean; pushedAt: number | null; probe: P
   const now = o.now ?? Date.now();
   if (!o.online) return 'noNetwork';
   if (o.probe && 'status' in o.probe) return o.probe.status >= 502 && o.probe.status <= 504 ? 'noObeya' : 'answers';
-  if (o.pushedAt !== null && now - o.pushedAt < RECENT_MS) return 'pushed';
+  // the computer's clock against the phone's: one far ahead says as little as one far behind
+  if (o.pushedAt !== null && Math.abs(now - o.pushedAt) < RECENT_MS) return 'pushed';
   if (!o.probe) return null;
   return 'failed' in o.probe && o.probe.failed < FAST_MS ? 'unreachable' : 'noAnswer';
 }

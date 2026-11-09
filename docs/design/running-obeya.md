@@ -316,8 +316,9 @@ address (`/api/reach`, through no cache, given 5 s). In this order:
 - the address answers anything else: Obeya answers, the page connects again in a moment;
 - a push was sent in the last 10 minutes (the one the owner tapped to open the app, say): Obeya was
   running then, so the phone's way to the computer is the likely cause. A push older than that says
-  nothing about now; the time is when Obeya sent it (in the push), since the push service holds a
-  push for a phone that is off for up to a day;
+  nothing about now, nor does one stamped more than 10 minutes ahead of the phone's clock; the time
+  is when Obeya sent it (in the push), since the push service holds a push for a phone that is off
+  for up to a day, and a push without it counts not at all;
 - the request failed within 2 s: the phone has no way to the address (no name for it, no route), or
   the computer refused it because Obeya does not listen there. The browser cannot tell the two apart,
   so the line names both;

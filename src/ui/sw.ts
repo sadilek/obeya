@@ -98,8 +98,9 @@ export function worker() {
       m = e.data?.json() ?? {};
     } catch {}
     // a push says Obeya was running when it sent it: a page that does not reach it tells the owner the phone's way there is the likely cause
-    const at = typeof m.at === 'number' ? m.at : Date.now();
-    const noted = Promise.all([
+    // one from an Obeya that did not say when it sent it (an older version) tells nothing
+    const at = m.at;
+    const noted = typeof at !== 'number' ? undefined : Promise.all([
       caches.open(PUSHED).then((c) => c.put('/pushed', new Response(String(at)))),
       sw.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((open) => open.forEach((c) => c.postMessage({ type: 'pushed', at }))),
     ]).catch(() => {});

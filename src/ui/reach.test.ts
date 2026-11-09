@@ -32,6 +32,8 @@ test('a push sent a moment ago says Obeya was running; an older one says nothing
   expect(why({ pushedAt: now - 1000, probe: { failed: 10 } })).toBe('pushed');
   expect(why({ pushedAt: now - RECENT_MS - 1, probe: { slow: true } })).toBe('noAnswer');
   expect(why({ pushedAt: now - RECENT_MS - 1 })).toBe(null);
+  // the computer's clock far ahead of the phone's
+  expect(why({ pushedAt: now + RECENT_MS + 1, probe: { slow: true } })).toBe('noAnswer');
 });
 
 test('a request failing at once got no answer from Obeya; one hanging went where nobody answers', () => {
