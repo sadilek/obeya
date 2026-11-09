@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { BUSY, busiest, busyShare, type Load, reasons, swappedOf, warning } from './load.ts';
+import { BUSY, busiest, busyShare, type Load, quiet, reasons, swappedOf, warning } from './load.ts';
 
 const times = (busy: number, idle: number) => ({ user: busy, nice: 0, sys: 0, idle, irq: 0 });
 const quietMachine: Load = { cpu: 0.2, cores: 14, swap: 0, pressure: 1 };
@@ -43,4 +43,10 @@ test('the warning names why, what uses the memory or the cores, and how to go on
   // the cores were not the reason: no CPU list
   expect(text).not.toContain('CPU');
   expect(text).toContain('--ignore-load');
+});
+
+test('a quiet machine is said to be one, with what it swaps', () => {
+  expect(quiet(quietMachine)).toBe('The machine is quiet enough: 20% of its 14 cores in use, nothing swapped.');
+  expect(quiet({ ...quietMachine, swap: 50_000 })).toContain('under 1 MB a second swapped');
+  expect(quiet({ cpu: 0.2, cores: 8 })).toBe('The machine is quiet enough: 20% of its 8 cores in use.');
 });

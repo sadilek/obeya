@@ -131,6 +131,7 @@ export function warning(load: Load, why: Reason[]): string {
 
 /** The one line `render.ts` prints when the machine is quiet enough. */
 export function quiet(load: Load): string {
-  const memory = load.swap === undefined ? '' : `, ${load.swap > 0 ? `${mb(load.swap)} a second` : 'nothing'} swapped`;
+  const swapped = load.swap === undefined ? undefined : load.swap === 0 ? 'nothing' : load.swap < 2 ** 20 ? 'under 1 MB a second' : `${mb(load.swap)} a second`;
+  const memory = swapped ? `, ${swapped} swapped` : '';
   return `The machine is quiet enough: ${pct(load.cpu)} of its ${load.cores} cores in use${memory}.`;
 }
