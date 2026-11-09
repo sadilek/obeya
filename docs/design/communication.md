@@ -154,9 +154,10 @@ along then. "Stop" stays in the card's action row: it ends the agent and plans t
 
 ### Pausing a canvas's agents
 
-With several canvases, each canvas's row in the navigation (see The navigation) shows the moving
-line of a card at work while at least one agent works on that canvas (any agent with a pause, as
-above). While the pointer is on the row, the line turns into a pause button, faint like a card's,
+With several canvases, each canvas's row under the navigation's "Running" (see The navigation)
+shows the moving line of a card at work while at least one agent works on that canvas (any agent
+with a pause, as above); a canvas with an agent to pause or resume stands there even before one of
+its cards counts as running. While the pointer is on the row, the line turns into a pause button, faint like a card's,
 "Pause x running agents" in its tooltip; with none at work but at least one paused, the row shows ▶
 on the same hover, "Resume x paused agents". On a touch screen the button is always there. Nothing
 else of it sits in the bar. The phone has none of it, to stay simple (owner, 2026-10-30): pausing is

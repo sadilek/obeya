@@ -1,10 +1,10 @@
 // The navigation at the bar's left: the canvas's name, and under it the canvases with what waits
-// for the owner on each ("Needs you", the phone's list) and, under that, what runs there (the phone's
+// for the owner on each ("Needs you", the phone's list), then what runs on them (the phone's
 // "Running"), in one place. It opens as a list under its button, or stays pinned as a sidebar docked
 // on the left, the canvas the rest. An entry opens its card, on this canvas or on its own; a canvas's
-// section folds away under its head, which keeps its count of what waits.
+// section folds away under its head, which keeps its count of what waits, and "Running" as a whole.
 
-import { useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import type { CanvasInfo, Item, RunningCard, Waiting } from '../core/types';
 import { canvasPath } from './address';
 import { FoldArrow, toggleFolded, useFolded } from './fold';
@@ -97,10 +97,12 @@ export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
 }
 
 /**
- * "Needs you" and the canvases: with several, each canvas in the configuration's order heads what
- * waits on it, so a click on it switches there, and its arrow folds it; within a canvas in Tab's order,
- * then what runs there under a "Running" of its own. The head counts what waits on every canvas, each
- * canvas's head what waits on it, as the bar's button does: what runs waits for nobody.
+ * "Needs you" and the canvases, then "Running": with several canvases, each canvas in the
+ * configuration's order heads what waits on it, so a click on it switches there, and its arrow folds
+ * it; within a canvas in Tab's order. Under all of that, what runs, canvas by canvas as well (those
+ * with nothing at work left out), which folds away as a whole: however much runs, it never pushes
+ * down what waits. The head counts what waits on every canvas, each canvas's head what waits on it,
+ * as the bar's button does: what runs waits for nobody.
  */
 function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya, titlebar }: ListProps & { titlebar?: boolean }) {
   // with one canvas, its name heads the list only where the bar's button with the name is not there
@@ -108,12 +110,14 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
   const n = forYouTotal(canvases, waiting, underway);
   const fold = useFolded(FOLD_KEY);
   const none: Waiting = { items: [], talk: [] };
-  const rows = (c: CanvasInfo) => (
-    <>
-      <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />
-      <RunningRows cards={waiting[c.id]?.running ?? []} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} />
-    </>
-  );
+  const openOn = (c: CanvasInfo) => (c.id === canvas.id ? open : undefined);
+  const waitRows = (c: CanvasInfo) => <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={openOn(c)} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />;
+  const runningOf = (c: CanvasInfo) => waiting[c.id]?.running ?? [];
+  const runRows = (c: CanvasInfo) => <RunningRows cards={runningOf(c)} open={openOn(c)} onOpen={(i) => onOpen(c.id, i)} />;
+  // a canvas whose agents can be paused or resumed stands under "Running" even before its cards say they run
+  const runs = (several ? canvases : [canvas]).filter((c) => runningOf(c).length || (several && c.agents));
+  const running = runs.reduce((k, c) => k + runningOf(c).length, 0);
+  const runShut = fold.includes(RUNNING_ALL);
   return (
     <>
       <div className="nav-head" {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>
@@ -136,68 +140,91 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
       {!n && <p className="ph-none">{t.phone.nothingWaits}</p>}
       {several ? (
         canvases.map((c) => {
-          const w = waiting[c.id] ?? none;
-          const listed = forYouOf(w, underway);
-          const has = listed.cards.length > 0 || !!listed.obeya || !!w.running?.length;
-          const shut = fold.includes(c.id);
-          const count = forYouCount(w, underway);
+          const listed = forYouOf(waiting[c.id] ?? none, underway);
           return (
-            <section key={c.id} className={['nav-canvas', c.id === canvas.id && 'on', shut && 'folded'].filter(Boolean).join(' ')}>
-              <div className="nav-row">
-                {has ? (
-                  <button
-                    type="button"
-                    className="nav-fold"
-                    aria-expanded={!shut}
-                    aria-controls={`nav-${c.id}`}
-                    aria-label={`${shut ? t.nav.unfold : t.nav.fold}: ${c.name}`}
-                    title={shut ? t.nav.unfold : t.nav.fold}
-                    onClick={() => toggleFolded(FOLD_KEY, c.id)}
-                  >
-                    <FoldArrow />
-                  </button>
-                ) : (
-                  <span className="nav-fold" aria-hidden />
-                )}
-                <a href={canvasPath(c.id)}>
-                  <CanvasIcon />
-                  <b title={c.name}>{c.name}</b>
-                  <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
-                  {count > 0 && (
-                    <span className="waits" title={t.nav.waiting(count)}>
-                      {count}
-                    </span>
-                  )}
-                </a>
-                <CanvasAgents canvas={c} />
-              </div>
-              {has && !shut && (
-                <ul className="fy-rows" id={`nav-${c.id}`}>
-                  {rows(c)}
-                </ul>
-              )}
-            </section>
+            <CanvasSection key={c.id} c={c} on={c.id === canvas.id} fold={c.id} shut={fold.includes(c.id)} has={listed.cards.length > 0 || !!listed.obeya} count={forYouCount(waiting[c.id] ?? none, underway)}>
+              {waitRows(c)}
+            </CanvasSection>
           );
         })
       ) : (
-        <ul className="fy-rows">{rows(canvas)}</ul>
+        <ul className="fy-rows">{waitRows(canvas)}</ul>
+      )}
+      {runs.length > 0 && (
+        <section className={runShut ? 'nav-running folded' : 'nav-running'}>
+          <h3>
+            <button type="button" aria-expanded={!runShut} aria-controls="nav-running" title={runShut ? t.nav.unfold : t.nav.fold} onClick={() => toggleFolded(FOLD_KEY, RUNNING_ALL)}>
+              <FoldArrow />
+              {t.phone.running}
+              {running > 0 && <span title={t.nav.running(running)}>{running}</span>}
+            </button>
+          </h3>
+          {!runShut && (
+            <div id="nav-running">
+              {several
+                ? runs.map((c) => {
+                    const id = `${RUNNING}:${c.id}`;
+                    return (
+                      <CanvasSection key={c.id} c={c} on={c.id === canvas.id} fold={id} shut={fold.includes(id)} has={runningOf(c).length > 0} agents>
+                        {runRows(c)}
+                      </CanvasSection>
+                    );
+                  })
+                : <ul className="fy-rows">{runRows(canvas)}</ul>}
+            </div>
+          )}
+        </section>
       )}
     </>
   );
 }
 
+/** The prefix of each canvas's fold under "Running"; the key of the fold of "Running" as a whole, which no canvas's id is. */
+const RUNNING = 'running';
+const RUNNING_ALL = ':running';
+
 /**
- * A canvas's "Running" under what waits there: a faint heading with its count, then its cards as light
- * rows, each its title and its state line, since when it waits in the queue.
+ * A canvas's section in the list: its shaded head, which switches there, counts what waits on it
+ * (`count`) or carries its agents' pause (`agents`, under "Running", right above them), and folds
+ * its rows away under the arrow, by `fold`.
  */
+function CanvasSection({ c, on, fold, shut, has, count = 0, agents, children }: { c: CanvasInfo; on: boolean; fold: string; shut: boolean; has: boolean; count?: number; agents?: boolean; children: ReactNode }) {
+  const rows = `nav-${fold.replace(':', '-')}`;
+  return (
+    <section className={['nav-canvas', on && 'on', shut && 'folded'].filter(Boolean).join(' ')}>
+      <div className="nav-row">
+        {has ? (
+          <button type="button" className="nav-fold" aria-expanded={!shut} aria-controls={rows} aria-label={`${shut ? t.nav.unfold : t.nav.fold}: ${c.name}`} title={shut ? t.nav.unfold : t.nav.fold} onClick={() => toggleFolded(FOLD_KEY, fold)}>
+            <FoldArrow />
+          </button>
+        ) : (
+          <span className="nav-fold" aria-hidden />
+        )}
+        <a href={canvasPath(c.id)}>
+          <CanvasIcon />
+          <b title={c.name}>{c.name}</b>
+          <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
+          {count > 0 && (
+            <span className="waits" title={t.nav.waiting(count)}>
+              {count}
+            </span>
+          )}
+        </a>
+        {agents && <CanvasAgents canvas={c} />}
+      </div>
+      {has && !shut && (
+        <ul className="fy-rows" id={rows}>
+          {children}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** A canvas's running cards as light rows, each its title and its state line, since when it waits in the queue. */
 function RunningRows({ cards, open, onOpen }: { cards: RunningCard[]; open?: string; onOpen: (i: RunningCard) => void }) {
-  if (!cards.length) return null;
   return (
     <>
-      <li className="fy-sub">
-        {t.phone.running}
-        <span title={t.nav.running(cards.length)}>{cards.length}</span>
-      </li>
       {cards.map((i) => (
         <li key={i.id}>
           <button className={i.id === open ? 'fy-row runs on' : 'fy-row runs'} aria-current={i.id === open || undefined} onClick={() => onOpen(i)}>

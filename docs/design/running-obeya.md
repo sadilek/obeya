@@ -177,8 +177,8 @@ does once its canvas is gone. It shows five lists:
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
   at the end, those the owner snoozed while they waited for them among them. Every card that leaves
   "Needs you" without being done stands here, unless it is set aside. The navigation on the desktop
-  lists the same cards in the same order under what waits on each canvas, decided by the same rule
-  (see The navigation); what is set aside on the phone stays in it.
+  lists the same cards in the same order after what waits, canvas by canvas, decided by the same
+  rule (see The navigation); what is set aside on the phone stays in it.
 - **"Set aside"**: the cards of the two lists above that the owner set aside on this phone (below).
 - **"Planned"**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers

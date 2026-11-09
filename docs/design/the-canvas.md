@@ -98,25 +98,26 @@ button does; a snoozed card is neither listed nor counted until it comes back (s
 card). Each entry is a light row, its title and what it waits for since when, without the waiting
 card's orange frame, set apart from the next by a line, and the card open now is marked in it.
 With several canvases, each canvas in the configuration's order heads what waits on it, in a
-shaded head row that sets the canvases apart, the open one in full ink; a click on the row switches there, it counts what waits on that canvas, and it carries
-its agents' pause (see Pausing a canvas's agents). An arrow at the head's left folds the canvas's
+shaded head row that sets the canvases apart, the open one in full ink; a click on the row switches there, and it counts what waits on that canvas. An arrow at the head's left folds the canvas's
 entries away and back; folded, the head keeps its count, and which canvases are folded holds per
 browser, in the list and the pinned sidebar alike. With one canvas the list has no such heads. A
 click on an entry opens its card, on this canvas or by switching to its own, and closes the list;
 Obeya's answers open Obeya's sheet on their canvas. Nothing waiting says so, and the canvases are
 still listed.
 
-Under what waits on a canvas stands what runs there, the phone's "Running" (see The phone view),
-decided by the same rule: what an agent or Obeya is at and that waits for nobody (working, taking in
-the owner's words, landing, queued, in a PR, an idea's agent thinking), snoozed cards last, and a
-card the owner just acted on until the server says what became of it. It has a faint heading with
-its own count, then light rows, each its title and its state line ("Working", "Landing", "In the
-queue" …), for a queued card since when. With nothing waiting on a canvas its section holds only
-that; folding the canvas folds both, and the canvas's pause sits on its head right above the agents
-it pauses. Nothing that runs counts anywhere: the button, the app's icon and the heads count only
-what waits for the owner, Tab goes only through what needs them, and the queue keeps its own
-button. Every page receives with what waits on the other canvases what runs there, each card only
-with what its row shows, so an agent's every line sends nothing to the other pages.
+Under everything that waits, set apart by a line, stands what runs, the phone's "Running" (see The
+phone view), decided by the same rule: what an agent or Obeya is at and that waits for nobody
+(working, taking in the owner's words, landing, queued, in a PR, an idea's agent thinking), snoozed
+cards last, and a card the owner just acted on until the server says what became of it. Its heading,
+in the colour of work, counts it and folds it away as a whole, held per browser as the canvases'
+folds are; under it the canvases with something at work, each under the same kind of head, which
+carries its agents' pause (see Pausing a canvas's agents) right above the agents it pauses and folds
+the canvas's running cards on its own. Each row is light, its title and its state line ("Working",
+"Landing", "In the queue" …), for a queued card since when. Nothing that runs counts anywhere: the
+button, the app's icon and the heads count only what waits for the owner, Tab goes only through what
+needs them, and the queue keeps its own button. Every page receives with what waits on the other
+canvases what runs there, each card only with what its row shows, so an agent's every line sends
+nothing to the other pages.
 
 A switch to another canvas (its head in the list, an entry of it, a link to it, Back or Forward
 between canvases) stays in the page instead of loading it anew: the canvas shown stays until the
@@ -465,11 +466,15 @@ code, a generic one otherwise.
   say nothing where every entry waits for the owner and make the list loud.
 - **What runs is part of the navigation, not a button of its own** (owner, 2026-11-09): which agents
   are at work across every canvas was only to be found by looking over each canvas, while the phone
-  had it in "Running". It stands in the list the owner opens anyway, under what waits on each canvas,
-  so it needs no hint of its own and adds no place to look; it counts for nothing, so the orange
-  number keeps meaning what waits for the owner. Rejected: a "Running" button in the bar, since the
-  bar already gives up labels and buttons on narrow windows and it would have been a fourth place to
-  look; and nothing new, since the canvas alone serves badly with many cards or several canvases.
+  had it in "Running". It stands in the list the owner opens anyway, so it needs no hint of its own
+  and adds no place to look; it counts for nothing, so the orange number keeps meaning what waits for
+  the owner. It comes after everything that waits, as on the phone, not within each canvas's section:
+  there, one canvas busy with many agents pushed what waited on the next out of view (owner,
+  2026-11-09). Rejected: a "Running" button in the bar, since the bar already gives up labels and
+  buttons on narrow windows and it would have been a fourth place to look; nothing new, since the
+  canvas alone serves badly with many cards or several canvases; within each canvas, capped to a few
+  rows with "Show more" (what waits still slides down with each canvas above it) or folded to one line
+  until opened (what runs is then no longer seen at a glance).
 - **The navigation's count does not pulse** (owner, 2026-11-09): it pulsed to draw the eye, but
   it always sits in the same place, so it is found without. The pulse made every recording of the
   canvas jerk: together with the bar's backdrop blur and the demo overlay's clock strip, which
