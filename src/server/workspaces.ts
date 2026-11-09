@@ -2079,8 +2079,9 @@ async function cloneState(path: string): Promise<Seen> {
       if (r.code === LOST) return { found: 'unreachable' };
       if (r.code !== 0) return { found: 'missing' };
     } else if (!existsSync(path)) return { found: 'missing' };
-    // not `gitAsync`, which trims the first entry's status letters
-    const r = await gitRun(path, ['status', '--porcelain', '-z']);
+    // not `gitAsync`, which trims the first entry's status letters; without the index refresh `git status`
+    // writes under git's index lock, which a card taking the clone meanwhile would find held and fail its checkout
+    const r = await gitRun(path, ['--no-optional-locks', 'status', '--porcelain', '-z']);
     if (r.code !== 0) return { found: 'broken', error: (r.stderr || r.stdout).trim() || `exit code ${r.code}` };
     if (r.stdout === '') return { found: 'clean' };
     // `XY path`, unquoted, each ended by NUL; a rename or copy is followed by the path it came from

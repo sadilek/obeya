@@ -175,7 +175,9 @@ failing does not take it again and again.
 
 Choosing a clone does not block the server either: `git status` in each free clone takes a while in
 a large repository, and over SSH on a host. Obeya chooses by its last look at each free clone (clean,
-uncommitted changes, or not there, its host unreachable), which git takes in the background: when a
+uncommitted changes, or not there, its host unreachable), which git takes in the background, without
+writing the clone's index (a look still running as a card takes the clone would otherwise hold git's
+index lock as the card's checkout needs it, and the card would go back to planned): when a
 clone is given back, and again when a look is older than a minute (half a minute where it found the
 clone not clean, so a waiting card takes a clone within a minute of it being put right) as Obeya
 looks for a free clone (at every change of the board while cards wait for one, and every minute). A clean clone goes first, then one not

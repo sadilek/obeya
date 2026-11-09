@@ -1457,13 +1457,16 @@ describe('the read tree and the free clones', () => {
     git(checkout, 'config', 'filter.slow.smudge', slow('checkout', 'cat'));
     const [clone] = shop.repos[0]!.workspaces.list();
     git(clone!.path, 'config', 'core.fsmonitor', slow('status', 'exit 1'));
+    // a failing hook of no set version is called again with the older protocol: where the test held it again
+    // in between, that second call would keep the look before going on into the card's start
+    git(clone!.path, 'config', 'core.fsmonitorHookVersion', '2');
     server.stop(true);
     server = serve([canvas, shop], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
     const answers = async () => {
       for (const c of [shop, canvas]) {
-        const before = Date.now();
+        const before = performance.now();
         expect((await fetch(new URL(`/api/c/${c.board.canvas.id}/canvas`, server.url))).status).toBe(200);
-        expect(Date.now() - before).toBeLessThan(1000);
+        expect(performance.now() - before).toBeLessThan(1000);
       }
     };
 
@@ -1483,9 +1486,9 @@ describe('the read tree and the free clones', () => {
     // a minute on (the canvas shown before looked at the free clone for the Workspaces pill), whether a card
     // may take it is answered at once, while git looks at it again in the background
     setSystemTime(new Date(Date.now() + RECHECK_MS));
-    const before = Date.now();
+    const before = performance.now();
     expect(shop.repos[0]!.workspaces.leasable()).toBe(true);
-    expect(Date.now() - before).toBeLessThan(1000);
+    expect(performance.now() - before).toBeLessThan(1000);
     await until(() => existsSync(join(marks, 'status')));
     await answers();
     go('status');
@@ -1494,9 +1497,9 @@ describe('the read tree and the free clones', () => {
     for (const f of ['status', 'status.done']) rmSync(join(marks, f));
     // a card takes it at once; git looks at it again before its worker starts there
     const card = shop.board.create({ title: 'Langsamer Blick', x: 0, y: 0 });
-    const starting = Date.now();
+    const starting = performance.now();
     const started = shop.repos[0]!.workers.start(card.id);
-    expect(Date.now() - starting).toBeLessThan(1000);
+    expect(performance.now() - starting).toBeLessThan(1000);
     expect(shop.board.row(card.id).workspace).toBe(clone!.path);
     await until(() => existsSync(join(marks, 'status')));
     await answers();

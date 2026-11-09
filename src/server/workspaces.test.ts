@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -88,6 +88,24 @@ describe('a leased clone', () => {
     expect(() => spaces.lease(b, 'obeya/b')).toThrow(expect.objectContaining({ code: 'noWorkspace' }));
     // the pool says why the free clone goes to no card
     expect(spaces.pool([])[0]!.blocked).toEqual([{ path: clone!, why: 'failed', error: expect.stringContaining('fetch'), made: true }]);
+  });
+
+  test('is looked at while free without git writing its index, which a card taking it meanwhile needs to write', async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    const store = new Store(':memory:');
+    new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    let looked = 0;
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws'), changed: () => looked++ });
+    const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
+    // a file touched since git last looked: `git status` would note that in the index, under git's index lock
+    const index = join(clone, '.git', 'index');
+    const before = readFileSync(index);
+    const later = new Date(Date.now() + 5000);
+    utimesSync(join(clone, 'README.md'), later, later);
+    expect(spaces.leasable()).toBe(true);
+    await until(() => looked);
+    expect(spaces.pool([])[0]!.blocked).toBeUndefined();
+    expect(readFileSync(index).equals(before)).toBe(true);
   });
 });
 

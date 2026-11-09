@@ -354,7 +354,8 @@ export const alive = (pid: number) => {
 };
 
 export const until = async (done: () => unknown, ms = 3000 * PATIENCE) => {
-  for (const end = Date.now() + ms; !(await done()); await Bun.sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
+  // on a clock `setSystemTime` leaves running: Date.now() stands still after it
+  for (const end = performance.now() + ms; !(await done()); await Bun.sleep(2)) if (performance.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
 };
 
 /**
