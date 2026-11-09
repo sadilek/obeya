@@ -58,7 +58,10 @@ What changed since the instructions were built goes with the result of Obeya's n
 any other step as a message that steers the turn. A repository with a CLAUDE.md and no AGENTS.md is
 read as Claude Code reads it (Codex's fallback file names); where its settings wait for the owner's
 trust, Codex reads none of its instructions and they come with the system prompt, as for Claude
-Code. Obeya's plugin's skills are an extra skill root.
+Code. Obeya's plugin's skills are an extra skill root. The thread starts or resumes once Codex has
+fetched its remote plugins' catalog (`plugin/list` answers, about a second after the start; at most
+15 s): their skills join Codex's list only then, and a turn begun before has the next one add the
+whole list again, some 2,500 tokens the cache does not hold, once per process, so at every resume.
 
 Codex works in its own sandbox: writable are the workspace, the git directory a worktree commits
 into, the agent's extra directories and the temporary directory, with the network open; what goes
@@ -429,9 +432,9 @@ be thorough (a fault in one leaves its apps running).
 
 Every agent session (a card's worker, an idea's exploration agent, a project's agent, the
 Koordinator's) gives up its process once it has waited with nothing running (its turn over, no
-other turn to follow, no background work of its own) for longer than its harness keeps the prompt
-cached: 65 minutes on Claude Code, 24 hours on Codex (`OBEYA_REST_AFTER`, in seconds, sets both,
-for demos and live checks). The next message resumes the session by its id, as after a restart, in
+other turn to follow, no background work of its own) for 65 minutes, past the hour Claude Code keeps
+the prompt cached, on Codex alike (`OBEYA_REST_AFTER`, in seconds, sets it, for demos and live
+checks). The next message resumes the session by its id, as after a restart, in
 a process on the same instructions, tools and model; the card and the agent see one conversation
 throughout, and nothing on the card says the process was gone. A resumed Claude Code session takes
 its first message once its MCP servers are all listed (Obeya's own among them) and none is still
@@ -447,13 +450,16 @@ of 81,000, and alike after it). Within the hour a resume reads the whole convers
 cache: 666 of 669 sessions Obeya's restarts resumed over a week did (the other three resumed on
 instructions Obeya had built anew; a resting session keeps its own), as did every controlled
 resume of `scripts/measure-resume-cache.ts`, which runs a session kept against one rested, with
-the same messages after the same pause. Codex resumed within its cache's lifetime read the whole
-conversation from the cache too; how long that lifetime is was measured only up to 20 minutes, so
-Codex waits for the 24 hours OpenAI's longest retention lasts. Waiting for the MCP servers is what
-makes a resume cost the same: one that takes its message before claude.ai's connectors are listed
-and connected has Claude Code tell the agent their tools are gone and, once they connect, back
-again, about 2,300 tokens a kept process never pays; the status Claude Code reports lists those
-connectors only after a moment, before Obeya's own server.
+the same messages after the same pause. Codex's cache has no fixed lifetime: after four hours one
+session read its whole conversation from it and another nothing, and earlier sessions on the same
+machine read it all after ten hours and nothing after two (measured 2026-11-09). A resumed Codex
+session reads it as well as the process kept: all of its 42,000 to 80,000 tokens after pauses of
+2, 30, 65 and 120 minutes and four hours, where the kept one missed once. Waiting for the MCP
+servers is what makes a resume cost the same: one that takes its message before claude.ai's
+connectors are listed and connected has Claude Code tell the agent their tools are gone and, once
+they connect, back again, about 2,300 tokens a kept process never pays; the status Claude Code
+reports lists those connectors only after a moment, before Obeya's own server. On Codex, waiting
+for its remote plugins' skills does the same (see Codex).
 
 ### Hosts
 
@@ -530,7 +536,10 @@ for its hooks), and what the repository's work needs.
   where the process kept would have read it. Measured first, against a process kept (see Resting
   agents). Rejected: a shorter idle time (pays the cache again); resuming without waiting for the
   MCP servers (about 2,300 tokens more per resume); a setting (the time follows from the harness,
-  not from taste). Codex's 24 hours are an upper bound until its cache's lifetime is measured.
+  not from taste). Codex goes after the same 65 minutes (owner, 2026-11-09): its cache has no fixed
+  lifetime to wait for, and a resumed session reads it as a kept one does, once Codex has listed its
+  remote plugins' skills before the first turn. Rejected for Codex: 24 hours, OpenAI's longest
+  retention (memory held a day for nothing).
 - **Costs are opt-in, and counted while hidden** (owner, 2026-11-08, GitHub issue #66): the figures
   make the interface busier for something most owners never need, so a setting shows them; counting
   them all along means turning it on later shows what the cards cost from the start.

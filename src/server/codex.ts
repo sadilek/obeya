@@ -427,6 +427,18 @@ export const tooOld = (e: CodexError) => /unknown variant `model\/list`/.test(e.
 
 /** How long a session waits for Codex's list of models before it gives up starting. */
 const MODELS_WAIT_MS = 30_000;
+
+/**
+ * Settles once Codex has fetched its remote plugins' catalog (`plugin/list` answers then, about a
+ * second after the start), at most after 15 s. The skills of those plugins join its list only then,
+ * and a turn that starts before has the next one add the whole list again, the change from the one
+ * the conversation last saw: some 2,500 tokens the cache does not hold, at each start or resume.
+ */
+function pluginsListed(server: AppServer): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, 15_000)));
+  return Promise.race([server.request('plugin/list', {}).then(() => {}, () => {}), late]).finally(() => clearTimeout(timer));
+}
 /** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
 const hookPortThere = () => 30_000 + Math.floor(Math.random() * 30_000);
 
@@ -592,6 +604,7 @@ class CodexSession implements AgentSession {
     server.onRequest = (method, params) => this.asked(method, params);
     const exited = server.exited;
     await server.init();
+    const plugins = pluginsListed(server);
     if (roots.length) await server.request('skills/extraRoots/set', { extraRoots: roots.map((p) => `${p}/skills`) }).catch(() => {});
     const trust = await hookTrust(server, cwd);
     if (this.closed) return;
@@ -608,6 +621,7 @@ class CodexSession implements AgentSession {
       ...trust,
     };
     const model = await this.model(server);
+    await plugins;
     if (this.closed) return;
     const settings = {
       cwd,

@@ -16,7 +16,9 @@
 // - `late`: the turn goes on until a message comes, then ends before it could take it.
 // - anything else: says `echo: <text>`.
 //
-// With `FAKE_CODEX_REFUSE_START` set, `thread/start` fails with its text.
+// With `FAKE_CODEX_REFUSE_START` set, `thread/start` fails with its text. With `FAKE_CODEX_PLUGINS_MS`,
+// `plugin/list` answers after that many milliseconds, as Codex does once it has fetched its remote
+// plugins, and the log gets `plugin/list answered` then.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -173,6 +175,14 @@ process.stdin.setEncoding('utf8').on('data', (d: string) => {
         else if (process.env.FAKE_CODEX_MODELS === 'old') send({ id: m.id, error: { code: -32600, message: 'Invalid request: unknown variant `model/list`, expected one of `initialize`, `thread/start`, `turn/start`' } });
         else send({ id: m.id, result: { data: process.env.FAKE_CODEX_MODELS ? JSON.parse(process.env.FAKE_CODEX_MODELS) : CATALOG, nextCursor: null } });
         break;
+      case 'plugin/list': {
+        const id = m.id;
+        setTimeout(() => {
+          if (log) appendFileSync(log, `${JSON.stringify({ method: 'plugin/list answered' })}\n`);
+          send({ id, result: { marketplaces: [], marketplaceLoadErrors: [], featuredPluginIds: [] } });
+        }, Number(process.env.FAKE_CODEX_PLUGINS_MS ?? 0));
+        break;
+      }
       case 'hooks/list':
         send({ id: m.id, result: { data: [{ cwd: process.cwd(), hooks: hooks.map((h) => ({ key: h.key, source: 'sessionFlags', currentHash: h.hash, trustStatus: 'untrusted' })), warnings: [], errors: [] }] } });
         break;

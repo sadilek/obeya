@@ -48,6 +48,18 @@ function start(o: Partial<AgentSpec> = {}, first?: string) {
 }
 
 describe.skipIf(process.platform === 'win32')('a Codex session through the app server', () => {
+  test('starts or resumes its thread only once Codex has listed its remote plugins, whose skills join its list then', async () => {
+    const s = start({ env: { FAKE_CODEX_PLUGINS_MS: '300' } }, 'hello');
+    await until(() => s.idles() === 1);
+    const methods = s.requests().map((r) => r.method);
+    expect(methods.indexOf('plugin/list answered')).toBeGreaterThan(-1);
+    expect(methods.indexOf('plugin/list answered')).toBeLessThan(methods.indexOf('thread/start'));
+    const r = start({ resume: 'codex:thread-1', env: { FAKE_CODEX_PLUGINS_MS: '300' } }, 'again');
+    await until(() => r.idles() === 1);
+    const resumed = r.requests().map((q) => q.method);
+    expect(resumed.indexOf('plugin/list answered')).toBeLessThan(resumed.indexOf('thread/resume'));
+  });
+
   test("starts a thread with Obeya's tools, the instructions and the sandbox, says what the agent says and when its turn ends", async () => {
     const s = start({}, 'hello');
     await until(() => s.idles() === 1);

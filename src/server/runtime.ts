@@ -371,24 +371,21 @@ export function withLimitWait(runtime: AgentRuntime, margin = 10_000): AgentRunt
 }
 
 /**
- * How long a Claude Code agent waits before its process goes (`withRest`): past the longest
- * prompt-cache lifetime Claude Code uses (an hour, on a subscription; measured 2026-11-09), with a
- * margin for the time between the turn's last request and its end.
+ * How long an agent waits before its process goes (`withRest`): past the longest prompt-cache
+ * lifetime Claude Code uses (an hour, on a subscription; measured 2026-11-09), with a margin for the
+ * time between the turn's last request and its end. Codex too: its cache has no fixed lifetime (hits
+ * after four hours and misses after two, measured 2026-11-09), and a resumed Codex session reads it
+ * as well as the process kept would have.
  */
 export const REST_AFTER_MS = 65 * 60_000;
-
-/**
- * The same for Codex: past the longest retention OpenAI offers (24 hours), since how long Codex's
- * cache lives was not measured beyond 20 minutes (the usage limit stopped the measurement).
- */
-export const CODEX_REST_AFTER_MS = 24 * 60 * 60_000;
 
 /**
  * A runtime whose sessions give up their process once they have waited `after` with nothing running
  * (their turn over, no background work), so a session waiting for the owner holds no memory. The
  * next message resumes the session by its id, as after a restart: its callers see one session
- * throughout. `after` lies past the harness's prompt-cache lifetime, so the resumed session pays
- * for its conversation what the process kept would have paid then: the cache is gone either way.
+ * throughout. The resumed session pays for its conversation what the process kept would have paid
+ * then: `after` lies past Claude Code's prompt-cache lifetime, so its cache is gone either way, and
+ * Codex's is read by a resumed session as by a kept one.
  */
 export function withRest(runtime: AgentRuntime, after = REST_AFTER_MS): AgentRuntime {
   return {
