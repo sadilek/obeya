@@ -556,9 +556,12 @@ button.
 
 The demo plays in the walkthroughs' player (see The Koordinator → Walkthroughs), on the card and on
 a shared page alike, built by one piece of code that the page carries as its source: the picture,
-under it the sentence being spoken as a caption to read along, two lines at a time (a long cue turns
-its page as it goes, by its words' lengths, without a pointer: a demo has no word times), and under
-that the controls: back to the start of the chapter (to the one before within its first 3 s) and on
+under it the sentence being spoken as a caption to read along, two lines at a time, with a pointer
+on the word being spoken as in a walkthrough. A demo has no word times: the word is the one its
+letters' share of the cue has reached, as the cue's own times are its sentence's share of the
+scene's clip, and a long cue turns its page with it. Only the narration's track points, in a video
+with sound; a translation or a silent video's captions show the page without a pointer. Under it come
+the controls: back to the start of the chapter (to the one before within its first 3 s) and on
 to the next, play and pause, a progress bar of one segment per chapter, each as long as its chapter,
 where a click or a drag goes to that place, the time, sound on and off, the captions' language where
 there are several, "CC", and on the card the magnifier (on the phone full screen instead), on a

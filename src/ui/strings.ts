@@ -1041,6 +1041,7 @@ const de = {
         'Für Suchmaschinen nennt jede Seite ihre eine Adresse (rel="canonical"): Sie führen die Seite einmal statt auch unter Varianten wie ?alone.',
       '2026-11-08-player':
         'Das Video spielt im Player der Walkthroughs: der Fortschrittsbalken in einem Abschnitt je Kapitel, die Untertitel zum Mitlesen unter dem Bild, mit CC oder C ein- und ausgeschaltet.',
+      '2026-11-09-pointer': 'Der Untertitel markiert das Wort, das gerade gesprochen wird, wie im Walkthrough.',
       theme: 'Theme geändert: Die Datei .obeya/theme.css des Repositorys ist neu, anders oder entfernt.',
     } satisfies Record<OutdatedBy, string>,
     pages: (n: number) => (n === 1 ? 'eine Seite' : `${n} Seiten`),
@@ -3193,6 +3194,7 @@ const en: Strings = {
         'The artifact’s frame takes the page’s height at once and keeps it: for a page of images as wide as itself, it jumped between two heights for a second as it opened, and a short page stood in a frame too high for it.',
       '2026-11-07-canonical': 'For search engines, every page names its one address (rel="canonical"): they list the page once instead of also under variants such as ?alone.',
       '2026-11-08-player': "The video plays in the walkthroughs' player: the progress bar in a segment per chapter, captions to read along under the picture, switched on and off with CC or C.",
+      '2026-11-09-pointer': 'The caption marks the word being spoken, as in a walkthrough.',
       theme: 'Theme changed: the repository’s .obeya/theme.css is new, different or removed.',
     },
     pages: (n: number) => (n === 1 ? 'one page' : `${n} pages`),

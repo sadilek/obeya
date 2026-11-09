@@ -1,6 +1,6 @@
 // A demo video's player in the look of the walkthroughs' (player.css): under the picture the sentence
-// being spoken as a caption, two lines at a time, switched with CC or C, and under that the controls,
-// the progress bar in a segment per chapter. The card (src/ui/detail.tsx) and the shared demo pages
+// being spoken as a caption, the word being spoken marked, two lines at a time, switched with CC or
+// C, and under that the controls, the progress bar in a segment per chapter. The card (src/ui/detail.tsx) and the shared demo pages
 // (src/server/demo-page.ts) play their videos in it. A page carries it as its source
 // (`(${videoPlayer})(…)`), so the function holds all it needs; what it takes from elsewhere comes in
 // `lib`, each piece as self-contained.
@@ -257,7 +257,7 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
   const useTrack = (t: TextTrack | null) => {
     track = t;
     for (const x of tracks()) x.mode = x === t ? 'hidden' : 'disabled';
-    shownText = null;
+    shownKey = null;
     render();
   };
   const offerTracks = () => {
@@ -309,7 +309,8 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
   ro.observe(caption);
   void document.fonts?.ready.then(fit);
   let paged: { text: string; words: string[]; starts: number[] } | null = null;
-  let shownText: string | null = null;
+  /** What the caption shows: the page's words, the word marked in it (-1: none), whether it points. */
+  let shownKey: string | null = null;
   /** The words of the cue being spoken, and how far into it the video is, 0 to 1. */
   const cue = (): { text: string; share: number } => {
     const cues = track?.activeCues;
@@ -325,7 +326,7 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
       const words = text ? text.split(' ') : [];
       paged = { text, words, starts: measure ? lib.captionPages(words, measure.widthOf, measure.line) : [0] };
     }
-    // the word being spoken, by its letters' share of the cue: its page shows
+    // the word being spoken, by its letters' share of the cue, as the cue's own time is its sentence's share of the scene's clip
     const { words, starts: pages } = paged;
     const weights = words.map((x) => x.length + 2);
     const total = weights.reduce((a, b) => a + b, 0) || 1;
@@ -336,8 +337,25 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
       at += x;
     }
     const page = lib.pageOf(pages, word);
-    const shown = words.slice(pages[page], pages[page + 1] ?? words.length).join(' ');
-    if (shown !== shownText) captionText.textContent = shownText = shown;
+    const from = pages[page]!;
+    const shown = words.slice(from, pages[page + 1] ?? words.length);
+    // the pointer only where the words shown are those heard: the narration's track of a video with sound
+    const pointing = !o.silent && !!track && track === tracks()[0] && word >= 0;
+    const key = JSON.stringify([shown, pointing ? word - from : -1]);
+    if (key === shownKey) return;
+    shownKey = key;
+    caption.classList.toggle('pointing', pointing);
+    captionText.replaceChildren(
+      ...shown.map((x, i) => {
+        const s = document.createElement('span');
+        if (i > 0) s.append(' ');
+        const inner = document.createElement('span');
+        inner.textContent = x;
+        s.append(inner);
+        if (pointing && from + i <= word) inner.className = from + i < word ? 'said' : 'now';
+        return s;
+      }),
+    );
   };
 
   function render() {
