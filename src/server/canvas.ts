@@ -4,7 +4,7 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { defaultsFor, hasAdapterModule, readingAdapterModule, readingShared, readShared, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
+import { defaultsFor, readingAdapterModule, readingShared, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -617,13 +617,11 @@ export class CanvasRuntime {
   private readRepos = (config: CanvasConfig) => readRepos(config.repos, (r) => this.settingsOf(r)()?.branch);
 
   /**
-   * The repository's settings for everyone, as its Lesestand last had them (read again whenever it
-   * moves, `reread`), without the commands that wait for the owner's confirmation (`heldOf`).
+   * The repository's settings for everyone, as its Lesestand last had them (read with the rest of
+   * the repository as the canvas resolves it, `resolve`, and again whenever it moves, `reread`),
+   * without the commands that wait for the owner's confirmation (`heldOf`).
    */
-  private sharedOf = (path: string): (() => SharedSettings | undefined) => {
-    if (!this.shared.has(path)) this.shared.set(path, readShared(path));
-    return () => withoutHeld(this.shared.get(path)!.settings, this.heldOf(path));
-  };
+  private sharedOf = (path: string): (() => SharedSettings | undefined) => () => withoutHeld(this.shared.get(path)?.settings, this.heldOf(path));
 
   /**
    * The repository's theme for its shared pages, as its default branch had it when last read
@@ -784,7 +782,7 @@ export class CanvasRuntime {
     const stops: (() => void)[] = [() => (running = false)];
     // filled in below; what is set up here reaches it once it is
     const repo = { config: rc, stops, from: { resolved, index, listed }, ...(isPublic ? { isPublic } : {}) } as Repo;
-    repo.problemSources = this.problemSources(info.path, this.adapterModules.get(info.path));
+    repo.problemSources = this.problemSources(info.path, this.adapterModules.get(info.path) ?? false);
     // where work lands on the local main, the checkout is the Lesestand; otherwise it is a pool clone on a card's branch
     const folder = !!info.folder;
     const read = new ReadTree({
@@ -1482,10 +1480,10 @@ export class CanvasRuntime {
   /**
    * What the configuration's problems of the repository are read from on its default branch: its
    * `.obeya/settings.json` as the file has it (a field that does not count included), and whether a
-   * leftover `.obeya/adapter/` is there (`adapterModule`, where it was just read), noted for
+   * leftover `.obeya/adapter/` is there (`adapterModule`, as read with the rest), noted for
    * `proposeSetup`.
    */
-  private problemSources(path: string, adapterModule = hasAdapterModule(path)): string {
+  private problemSources(path: string, adapterModule: boolean): string {
     this.adapterModules.set(path, adapterModule);
     const read = this.shared.get(path);
     return JSON.stringify([read?.raw, read?.problems, read?.claude, this.heldOf(path), adapterModule]);
@@ -3176,7 +3174,7 @@ function readFolder(path: string): RepoRead | null {
   } catch {
     return null;
   }
-  return { info: { path, remote: null, branch: '', folder: true }, detected: '', adapterModule: false, shared: readShared(path) };
+  return { info: { path, remote: null, branch: '', folder: true }, detected: '', adapterModule: false, shared: readSharedFiles(path) };
 }
 
 /**

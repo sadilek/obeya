@@ -225,13 +225,13 @@ describe('the first canvas', () => {
     expect(JSON.parse(readFileSync(join(home, 'canvases.json'), 'utf8'))).toEqual([{ repos: [{ path: repo, clones: CLONES }] }]);
   });
 
-  test('says of a folder before it is saved whether it holds a repository, and its main branch', () => {
+  test('says of a folder before it is saved whether it holds a repository, and its main branch', async () => {
     const repo = gitRepo(join(dir, 'shop'));
     git(repo, 'branch', '-m', 'master');
     mkdirSync(join(dir, 'empty'));
-    expect(setup().folder({ path: `${repo}/` })).toEqual({ repo: true, branch: 'master' });
-    expect(setup().folder({ path: join(dir, 'empty') })).toEqual({ repo: false, folder: true });
-    expect(setup().folder({ path: join(dir, 'nirgends') })).toEqual({ repo: false });
+    expect(await setup().folder({ path: `${repo}/` })).toEqual({ repo: true, branch: 'master' });
+    expect(await setup().folder({ path: join(dir, 'empty') })).toEqual({ repo: false, folder: true });
+    expect(await setup().folder({ path: join(dir, 'nirgends') })).toEqual({ repo: false });
   });
 
   test('a folder without a repository is refused', async () => {

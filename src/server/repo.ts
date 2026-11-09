@@ -3,11 +3,19 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { type OtherDoc, type PlanDoc, parsePlanDoc, type Workstream } from '../core/plan-doc';
-import { defaultBranch, gitOrNull } from './workspaces';
+import { defaultBranch, defaultBranchAsync, gitCalls, gitOrNull, gitSteps } from './workspaces';
 
+/** Where a repository is, its `origin` and its main branch (`defaultBranch`), the caller waiting for git: for scripts. Throws where `path` is no git repository. */
 export function repoInfo(path: string): RepoInfo {
   if (gitOrNull(path, 'rev-parse', '--git-dir') === null) throw new Error(`${path} is not a git repository`);
   return { path, remote: gitOrNull(path, 'remote', 'get-url', 'origin'), branch: defaultBranch(path) };
+}
+
+/** `repoInfo` without the server waiting for git. */
+export async function repoInfoAsync(path: string): Promise<RepoInfo> {
+  const [dir, remote] = await gitSteps(path, gitCalls(['rev-parse', '--git-dir'], ['remote', 'get-url', 'origin']));
+  if (dir === null) throw new Error(`${path} is not a git repository`);
+  return { path, remote: remote ?? null, branch: await defaultBranchAsync(path) };
 }
 
 /**
