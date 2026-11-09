@@ -96,6 +96,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     why: "server path at an agent's start: Claude Code's ~/.claude.json read whole to tell whether Chrome is paired (it grows with Claude's history; a candidate for fs/promises), a repository's trust notes, a message's images",
     calls: { existsSync: 1, readFileSync: 3 },
   },
+  'scratch.ts': { why: "server path, cheap: a scratch Obeya's look once a minute whether its checkout is there and which branch its HEAD names (a stat and a small read)", calls: { existsSync: 1, readFileSync: 1 } },
   'self-update.ts': {
     why: "server path, cheap: the seal of the checkout's HEAD every two seconds (a few stats); bun install runs after the server stopped, before it restarts",
     calls: { existsSync: 1, readFileSync: 1, spawnSync: 1, statSync: 1 },

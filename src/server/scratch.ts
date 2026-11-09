@@ -65,7 +65,8 @@ export class ScratchEnd {
     if (this.o.pages() > 0 || this.o.working()) this.used();
     const idle = this.now() - this.last;
     if (idle < this.idleMs) return null;
-    return `nothing used it for ${idle >= 60_000 ? `${Math.round(idle / 60_000)} minutes` : `${Math.round(idle / 1000)} seconds`}`;
+    const [n, unit] = idle >= 60_000 ? [Math.round(idle / 60_000), 'minute'] : [Math.round(idle / 1000), 'second'];
+    return `nothing used it for ${n} ${unit}${n === 1 ? '' : 's'}`;
   }
 
   /** Looks every minute (sooner for a short idle time), and ends it once there is a reason. */
