@@ -13,6 +13,8 @@ export function worker() {
     registration: { showNotification(title: string, o: object): Promise<void> };
   };
   const CACHE = 'obeya-shell';
+  /** When the last push came, for the page (`reach.ts` reads it under the same name). */
+  const PUSHED = 'obeya-pushed';
   /** How long the network may take before the kept shell shows: a sleeping machine does not answer at all. */
   const WAIT_MS = 3000;
   /** The page came from what was kept, as the network did not answer: its scripts and styles do too, without waiting again. */
@@ -95,7 +97,15 @@ export function worker() {
     try {
       m = e.data?.json() ?? {};
     } catch {}
-    e.waitUntil(sw.registration.showNotification(m.title || 'Obeya', { body: m.body ?? '', tag: m.tag, icon: '/icons/180.png', data: { url: m.url ?? '/' } }));
+    // a push says Obeya runs on the machine: a page that does not reach it tells the owner it is the phone's way there that is down
+    const at = Date.now();
+    e.waitUntil(
+      Promise.all([
+        sw.registration.showNotification(m.title || 'Obeya', { body: m.body ?? '', tag: m.tag, icon: '/icons/180.png', data: { url: m.url ?? '/' } }),
+        caches.open(PUSHED).then((c) => c.put('/pushed', new Response(String(at))), () => {}),
+        sw.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((open) => open.forEach((c) => c.postMessage({ type: 'pushed', at }))),
+      ]),
+    );
   });
 
   // a tapped push opens its card in the phone view (or "Needs you" for several): in the open app, else in a new one

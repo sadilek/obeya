@@ -1307,6 +1307,23 @@ const de = {
     canvas: 'Leinwand',
     notAnswering: (since: string) => `Obeya antwortet nicht · seit ${since}`,
     notAnsweringWhy: 'Vielleicht schläft der Rechner, oder Obeya läuft dort nicht, oder seine Adresse hat sich geändert: Dann sagt „Telefon verbinden“ auf dem Rechner, was zu tun ist. Sobald es wieder antwortet, ist die Seite wieder verbunden.',
+    /** Why Obeya does not answer, as far as the phone can tell (design: When the server does not answer). */
+    whyQuiet: {
+      tailnet: 'Vielleicht ist Tailscale auf diesem Telefon aus, der Rechner schläft, oder Obeya läuft dort nicht.',
+      noNetwork: 'Dieses Telefon hat gerade kein Netz.',
+      noObeya: 'Der Rechner antwortet, aber Obeya läuft dort nicht. Starte Obeya auf dem Rechner.',
+      pushed: (at: string) => `Obeya auf dem Rechner hat um ${at} eine Benachrichtigung geschickt, lief da also: Es fehlt der Weg von diesem Telefon zum Rechner.`,
+      unreachable: 'Dieses Telefon erreicht die Adresse des Rechners gar nicht.',
+      noAnswer: 'Der Rechner antwortet nicht: Vielleicht schläft er oder ist aus.',
+      tailscaleOff: 'Wahrscheinlich ist Tailscale auf diesem Telefon aus: Android beendet es oft im Hintergrund. Schalte es in der Tailscale-App wieder ein.',
+      tailscaleToo: 'Oder Tailscale auf diesem Telefon ist aus: Android beendet es oft im Hintergrund.',
+      sameNetwork: 'Ist das Telefon im selben Netz oder VPN wie der Rechner?',
+      moved: (tailnet: boolean) =>
+        `${tailnet ? 'Läuft Tailscale, hat sich vielleicht' : 'Oder es hat sich'} die Adresse von Obeya geändert: Dann sagt „Telefon verbinden“ auf dem Rechner, was zu tun ist.`,
+      pushesStill: 'Benachrichtigungen kommen trotzdem an, weil sie über den Push-Dienst des Browsers laufen, nicht über Tailscale. Karten und Videos kommen nur über Tailscale direkt vom Rechner.',
+      keepOn: 'Damit Android Tailscale seltener beendet: In den Einstellungen des Telefons bei Tailscale die Akkunutzung auf „Uneingeschränkt“ stellen und unter Netzwerk › VPN „Durchgehend aktives VPN“ einschalten.',
+      openTailscale: 'Tailscale öffnen',
+    },
     gone: 'Diese Karte gibt es nicht mehr.',
     /** Pushes: how to put Obeya on the home screen (iOS allows them only there), and turning them on. */
     notify: {
@@ -3441,6 +3458,23 @@ const en: Strings = {
     canvas: 'Canvas',
     notAnswering: (since: string) => `Obeya is not answering · since ${since}`,
     notAnsweringWhy: 'The computer may be asleep, Obeya may not be running there, or its address has changed: then “Connect a phone” on the computer says what to do. The page connects again as soon as it answers.',
+    /** Why Obeya does not answer, as far as the phone can tell (design: When the server does not answer). */
+    whyQuiet: {
+      tailnet: 'Tailscale on this phone may be off, the computer may be asleep, or Obeya may not be running there.',
+      noNetwork: 'This phone has no network right now.',
+      noObeya: 'The computer answers, but Obeya is not running on it. Start Obeya on the computer.',
+      pushed: (at: string) => `Obeya on the computer sent a notification at ${at}, so it was running: what is missing is the way from this phone to the computer.`,
+      unreachable: "This phone does not reach the computer's address at all.",
+      noAnswer: 'The computer does not answer: it may be asleep or switched off.',
+      tailscaleOff: 'Tailscale on this phone is probably off: Android often stops it in the background. Switch it on again in the Tailscale app.',
+      tailscaleToo: 'Or Tailscale on this phone is off: Android often stops it in the background.',
+      sameNetwork: 'Is the phone in the same network or VPN as the computer?',
+      moved: (tailnet: boolean) =>
+        `${tailnet ? 'If Tailscale is on, Obeya’s address may have changed' : 'Or Obeya’s address has changed'}: then “Connect a phone” on the computer says what to do.`,
+      pushesStill: "Notifications still arrive because they travel through the browser's push service, not through Tailscale. Cards and videos come only through Tailscale, straight from the computer.",
+      keepOn: "So Android stops Tailscale less often: in the phone's settings, set Tailscale's battery use to “Unrestricted” and turn on “Always-on VPN” for it under Network › VPN.",
+      openTailscale: 'Open Tailscale',
+    },
     gone: 'This card no longer exists.',
     notify: {
       install: 'For Obeya to tell you when something waits for you: tap “Share” below, then “Add to Home Screen”, and open Obeya from there.',
