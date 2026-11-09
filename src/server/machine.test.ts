@@ -273,8 +273,9 @@ describe('the first canvas', () => {
     const origin = gitRepo(join(dir, 'origin', 'shop'));
     const s = new MachineSetup({ home, config: config() });
     await s.canvas({ clone: origin, into: join(dir, 'code') });
-    let v = await s.view();
-    for (let i = 0; v.job?.running && i < 100; i++) await Bun.sleep(50), (v = await s.view());
+    // each view looks at the whole machine (Claude Code, git, gh, the demo voice), which on a Windows runner takes seconds
+    await s.done();
+    const v = await s.view();
     expect(v.job).toMatchObject({ kind: 'clone', running: false, canvas: 'shop', branch: 'main', opens: true });
     expect(existsSync(join(dir, 'code', 'shop', '.git'))).toBe(true);
     // the folder is there now: a second clone into it is refused

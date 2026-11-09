@@ -273,6 +273,8 @@ interface Found {
 
 export class MachineSetup {
   private job?: MachineJob;
+  /** Settles once the job is done, whether it failed or not. */
+  private jobDone: Promise<void> = Promise.resolve();
   private codexLogins?: CodexLogins;
 
   constructor(private o: MachineOptions) {}
@@ -437,10 +439,15 @@ export class MachineSetup {
   private startJob(kind: Pick<MachineJob, 'kind' | 'section' | 'id'>, work: (log: (line: string) => void, job: MachineJob) => Promise<void>, failed: (e: Error) => string): Promise<MachineView> {
     this.idle();
     const job: MachineJob = (this.job = { ...kind, running: true, line: '' });
-    work((line) => (job.line = line.slice(0, 300)), job)
+    this.jobDone = work((line) => (job.line = line.slice(0, 300)), job)
       .catch((e: Error) => void (job.error = failed(e)))
       .finally(() => (job.running = false));
     return this.view();
+  }
+
+  /** Settles once the job under way is done: for tests, which would otherwise ask `view` (a look at the whole machine) again and again. */
+  async done(): Promise<void> {
+    await this.jobDone;
   }
 
   /** Runs a program for a job, its output's last line shown as it goes. */

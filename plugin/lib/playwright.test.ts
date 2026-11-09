@@ -92,10 +92,13 @@ describe('Chromium through the plugin’s Playwright', () => {
       const chained = osc.connect(ctx.destination) === ctx.destination;
       osc.start();
       const at = ctx.currentTime;
+      // the context runs once the audio device opened: at once here, seconds later on a busy CI runner
+      const runs = () => ctx.state === 'running' && ctx.currentTime > at;
       await new Promise((r) => setTimeout(r, 300));
+      for (const end = Date.now() + 20_000; !runs() && Date.now() < end; ) await new Promise((r) => setTimeout(r, 50));
       osc.disconnect(ctx.destination);
       osc.connect(ctx.destination);
-      return { chained, running: ctx.state === 'running' && ctx.currentTime > at };
+      return { chained, running: runs() };
     });
     expect(page_).toEqual({ chained: true, running: true });
     const named = edges.map(([from, to]) => `${nodes.get(from)} → ${nodes.get(to)}`);

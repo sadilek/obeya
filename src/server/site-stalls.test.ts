@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MESSAGES } from '../core/messages';
 import { MANIFEST, siteKey, siteTarget } from './site';
+import { STALL_MS } from './stalls';
 import { removeDir } from './testing';
 
 // Sharing a page on a site of some hundred pages holds the server up no longer than a page of its
@@ -12,8 +13,12 @@ import { removeDir } from './testing';
 // and written without blocking (the stalls of 2026-11-02 to -05, 0.5–1.1 s each).
 
 const PAGES = 400;
-/** The longest the event loop may go without a turn while a page is shared; a stall is logged from 500 ms on (stalls.ts). */
-const LONGEST_MS = 150;
+/**
+ * The longest the event loop may go without a turn while a page is shared: short of a stall
+ * (stalls.ts). It goes 10–80 ms here, up to 170 ms on a busy CI runner; a share that goes back to
+ * reading the site page by page, synchronously, the count of such calls below finds (5258 then, 8 now).
+ */
+const LONGEST_MS = STALL_MS;
 
 const dir = mkdtempSync(join(tmpdir(), 'obeya-site-stalls-'));
 afterAll(async () => {
