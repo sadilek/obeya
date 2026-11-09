@@ -95,7 +95,8 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - Before a demo video goes to the owner, watch it for faults of the demo itself and fix them first:
   every dictated text it shows is transcribed completely and correctly (no missing words or
   numbers, no misrecognitions), and what the agents in it say points out no fault (a comment cut
-  off, input missing).
+  off, input missing). A video for the site also runs smoothly: no stutter (dropped frames while
+  typing, dragging a lasso, animating); re-record it until it does.
 - When a demo video shows a feature that speaks itself (the narrated walkthrough, say), that
   feature speaks in a different voice than the video's narration (Kokoro for the walkthrough), so
   viewers can tell the demo's narrator from the presentation inside it.
