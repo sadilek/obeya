@@ -109,6 +109,45 @@ describe('a leased clone', () => {
   });
 });
 
+/** The index of the repository at `repo`, as git has written it. */
+const indexOf = (repo: string) => readFileSync(join(repo, '.git', 'index'));
+
+/** Gives `files` in `repo` new timestamps, their content as it was: what `git status` would note in the index, under git's index lock. */
+function touch(repo: string, ...files: string[]) {
+  const later = new Date(Date.now() + 5000);
+  for (const f of files) utimesSync(join(repo, f), later, later);
+}
+
+describe("a card's workspace looked at while its agent works there", () => {
+  test('is read without git writing its index, and a file whose timestamps alone changed is no change', async () => {
+    const repo = gitRepo(join(dir, 'repo'), { 'README.md': 'hello\n', 'a.txt': 'a\n', 'b.txt': 'b\n', 'c.txt': 'c\n' });
+    const store = new Store(':memory:');
+    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
+    await spaces.ensureClones(repo, 1);
+    const card = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const { path: ws, ready } = spaces.lease(card, 'obeya/a');
+    await ready;
+    // committed, staged, changed and new, and one only touched
+    writeFileSync(join(ws, 'a.txt'), 'a, committed\n');
+    git(ws, 'commit', '--quiet', '-am', 'a');
+    writeFileSync(join(ws, 'b.txt'), 'b, staged\n');
+    git(ws, 'add', 'b.txt');
+    writeFileSync(join(ws, 'c.txt'), 'c, changed\n');
+    writeFileSync(join(ws, 'd.txt'), 'd, new\n');
+    git(ws, 'status', '--porcelain');
+    touch(ws, 'README.md', 'a.txt');
+    const index = indexOf(ws);
+
+    expect(await spaces.hasWork(card)).toBe(true);
+    expect((await spaces.changedFiles(card)).sort()).toEqual(['a.txt', 'b.txt', 'c.txt', 'd.txt']);
+    expect((await spaces.changes(card)).map((c) => c.file).sort()).toEqual(['a.txt', 'b.txt', 'c.txt', 'd.txt']);
+    const diff = await spaces.diff(card, true);
+    expect(diff?.files.map((f) => f.file).sort()).toEqual(['a.txt', 'b.txt', 'c.txt', 'd.txt']);
+    expect(indexOf(ws).equals(index)).toBe(true);
+  });
+});
+
 describe('a clone made ready for a card', () => {
   test('starts from main as its origin has it now, fetching only where the origin has branches or tags it lacks', async () => {
     const repo = gitRepo(join(dir, 'repo'));
@@ -733,6 +772,18 @@ describe('a resolved pull lands', () => {
     git(ws, 'checkout', '--quiet', '-B', 'resolve', at.main);
     expect(await spaces.landResolution(ws, at)).toMatchObject({ code: 'landConflict', worker: true });
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(at.main);
+  });
+
+  test("the owner's checkout found on another branch is looked at without git writing its index, nor the workspace's", async () => {
+    const at = await resolved();
+    git(checkout, 'checkout', '--quiet', '-b', 'other');
+    writeFileSync(join(checkout, 'notes.md'), 'notes of the owner\n');
+    touch(checkout, 'README.md');
+    touch(ws, 'notes.md');
+    const [mine, theirs] = [indexOf(checkout), indexOf(ws)];
+    expect(await spaces.landResolution(ws, at)).toMatchObject({ code: 'landCheckout', files: ['notes.md'] });
+    expect(indexOf(checkout).equals(mine)).toBe(true);
+    expect(indexOf(ws).equals(theirs)).toBe(true);
   });
 
   test('a main pulled meanwhile by hand needs nothing', async () => {

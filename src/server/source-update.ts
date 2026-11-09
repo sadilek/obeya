@@ -10,7 +10,7 @@ import { inert } from '../core/inert';
 import type { SourceUpdate } from '../core/types';
 import { BadRequest } from './board';
 import { spawnOutput } from './spawn';
-import { GIT } from './workspaces';
+import { GIT, worktreeNames } from './workspaces';
 
 /** How often the upstream is fetched. */
 export const FETCH_EVERY_MS = 60 * 60_000;
@@ -121,7 +121,7 @@ export class SourceUpdates {
     if (!(await this.git('merge-base', '--is-ancestor', 'HEAD', '@{upstream}')).ok) return { why: 'diverged' };
     const theirs = new Set((await this.git('-c', 'core.quotePath=false', 'diff', '--name-only', 'HEAD', '@{upstream}')).out.split('\n').filter(Boolean));
     // uncommitted changes, staged or not, to a file the pull would change: git refuses to overwrite them
-    const mine = (await this.git('-c', 'core.quotePath=false', 'diff', '--name-only', 'HEAD')).out.split('\n').filter(Boolean);
+    const mine = await worktreeNames(this.checkout, 'HEAD').catch(() => []);
     const files = mine.filter((f) => theirs.has(f));
     return files.length ? { why: 'local', files } : undefined;
   }

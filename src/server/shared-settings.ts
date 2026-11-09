@@ -11,7 +11,7 @@ import { parseShared, REPO_SETTINGS_FILE } from '../adapters';
 import { layerSettings, SHARED_FIELDS, type SettingsShared, type SharedSettings } from '../core/types';
 import { BadRequest } from './board';
 import type { Forge } from './forge';
-import { defaultBranchAsync, GIT } from './workspaces';
+import { defaultBranchAsync, GIT, LOOK } from './workspaces';
 import { messageOf } from '../core/text';
 import { spawnOutput } from './spawn';
 import { canonical } from './trust';
@@ -89,7 +89,7 @@ export async function commitShared(repoPath: string, mine: SharedSettings): Prom
   const parent = (await gitRun(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`])).out;
   if (!parent) throw new BadRequest('settingsShare', `the repository has no local branch ${branch}`);
   const onIt = (await gitRun(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).out === branch;
-  if (onIt && (await gitRun(repoPath, ['status', '--porcelain', '--', REPO_SETTINGS_FILE])).out)
+  if (onIt && (await gitRun(repoPath, [...LOOK, 'status', '--porcelain', '--', REPO_SETTINGS_FILE])).out)
     throw new BadRequest('settingsDirty', `${REPO_SETTINGS_FILE} has changes of its own in ${repoPath}; commit or discard them first`);
   const { text, same, before, after } = await sharedText(repoPath, parent, mine);
   if (same) return { unchanged: true, branch, ...(before ? { before } : {}), after };

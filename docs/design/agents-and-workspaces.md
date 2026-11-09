@@ -175,11 +175,9 @@ failing does not take it again and again.
 
 Choosing a clone does not block the server either: `git status` in each free clone takes a while in
 a large repository, and over SSH on a host. Obeya chooses by its last look at each free clone (clean,
-uncommitted changes, or not there, its host unreachable), which git takes in the background, without
-writing the clone's index (a look still running as a card takes the clone would otherwise hold git's
-index lock as the card's checkout needs it, and the card would go back to planned): when a
-clone is given back, and again when a look is older than a minute (half a minute where it found the
-clone not clean, so a waiting card takes a clone within a minute of it being put right) as Obeya
+uncommitted changes, or not there, its host unreachable), which git takes in the background (writing
+no index, see below): when a clone is given back, and again when a look is older than a minute (half
+a minute where it found the clone not clean, so a waiting card takes a clone within a minute of it being put right) as Obeya
 looks for a free clone (at every change of the board while cards wait for one, and every minute). A clean clone goes first, then one not
 looked at yet; a look that changes the answer changes the board, so a waiting card takes a clone
 turned clean. The clone a card takes is looked at again before it works there (a look that began as
@@ -187,8 +185,20 @@ it was chosen is that look): one no longer clean
 is given back and the next one taken, and where none is left the card goes back to planned and waits
 in the queue as when none is free at once. What else Obeya asks git about a card's workspace runs in
 the background as well: whether it holds work (uncommitted changes, commits beyond the main branch),
-where its branch left the main branch, and the plan docs its branch adds. A stopped card is planned
-at once and gives its workspace back once git has said that it holds nothing (not if it started
+where its branch left the main branch, and the plan docs its branch adds.
+
+Where Obeya only looks at a repository (a free clone, a card's workspace while its agent works there,
+the owner's checkout before a landing or before taking over settings, Obeya's own checkout for its
+update), git writes no index. A plain `git status` or `git diff` refreshes the index and writes it
+under git's index lock, and a git command another process needs the lock for meanwhile fails: a
+card's checkout of the clone it took (the card would go back to planned), an agent's commit, the
+owner's own, Obeya's landing. `git diff` against the working tree, its refresh turned off, names a
+file whose timestamps alone changed (one a formatter wrote back as it was) as well; such a file
+counts as changed only where its content differs. Where Obeya changes the repository itself
+(committing a taken card's uncommitted work, a landing's rebase), git refreshes the index as part of
+that.
+
+A stopped card is planned at once and gives its workspace back once git has said that it holds nothing (not if it started
 again meanwhile); an approval ends the owner's turn at once, the card landing, and
 lands the work, opens the pull request or closes the card once git has told which; a handover is
 recorded once git has told whether it changes anything.
@@ -683,6 +693,12 @@ for its hooks), and what the repository's work needs.
   taken from queues again and would otherwise take the clone straight back), and behind a faint
   "⋯" rather than a button per row (owner, 2026-10-27: a rare action whose label alone did not
   say what it is for, and buttons in every row crowded the list).
+- **Obeya's looks at a repository write no index** (2026-11-09): a look still running as a card took
+  a free clone held git's index lock as the card's checkout needed it, and the card went back to
+  planned. `git status --no-optional-locks`; `git diff` has no such switch, so its refresh is off and
+  the files it then names only by their timestamps are compared by content. Rejected: a copy of the
+  index for each look (one more file to copy per look, and over SSH a shell on the host); retrying
+  the command that found the lock held (each of Obeya's, the agents' and the owner's own would need it).
 - **Free clones are chosen by their last look, the one taken looked at again** (2026-10-21): in a
   large repository (GitHub issue #2: 9,188 files, on Windows) or over SSH, `git status` in every free
   clone at each look held the server, on every canvas. Rejected: asking git while choosing; a start

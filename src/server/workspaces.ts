@@ -159,8 +159,17 @@ async function gitRun(cwd: string, args: string[]): Promise<{ code: number; stdo
   return spawnOutput([GIT, '-C', cwd, ...args]);
 }
 
+/**
+ * Put before a git command that only looks (`status`, `diff` against the working tree): git then
+ * refreshes the index in memory without writing it. Writing it takes git's index lock, and a git
+ * command that needs the lock meanwhile (a commit or checkout of the owner's or an agent's, Obeya's
+ * own landing) fails. `diff` heeds only its own setting, and so names a file whose timestamps alone
+ * changed as well (`worktreeNames`); its patches leave such a file out.
+ */
+export const LOOK = ['--no-optional-locks', '-c', 'diff.autoRefreshIndex=false'];
+
 /** `git diff` as Obeya shows it to the owner: plain, with renames found and file names unquoted. */
-const DIFF = ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-M'];
+const DIFF = [...LOOK, '-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-M'];
 
 /** How many new files not yet added a branch's diff shows; a worker's stray build output should not flood it. */
 const NEW_FILES_SHOWN = 200;
@@ -181,6 +190,48 @@ function listed(files: string[]): string[] {
     out.push(`:(literal)${f}`);
   }
   return out;
+}
+
+/** The paths `git status --porcelain -z` names (`XY path`, unquoted, each ended by NUL), a rename's or copy's new one. */
+export function statusPaths(out: string): string[] {
+  const files: string[] = [];
+  const entries = out.split('\0');
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]!;
+    if (!e) continue;
+    files.push(e.slice(3));
+    // the path it came from follows
+    if (e[0] === 'R' || e[0] === 'C') i++;
+  }
+  return files;
+}
+
+/**
+ * What `git diff --name-only <args> <base>` names in the working tree at `ws`, without writing its
+ * index (`LOOK`). Refreshing nothing, git also names each file whose timestamps alone changed (one a
+ * formatter wrote back as it was, say); where the index differs from `base` too, the file stays,
+ * the rest git tells apart by their content, which `--numstat` compares.
+ */
+export async function worktreeNames(ws: string, base: string, args: string[] = []): Promise<string[]> {
+  const names = async (more: string[]) => {
+    const r = await gitRun(ws, [...LOOK, '-c', 'core.quotePath=false', 'diff', '-z', ...more]);
+    if (r.code !== 0) throw new WorkspaceError(`git diff in ${ws}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+    return r.stdout.split('\0');
+  };
+  const [all, indexed] = await Promise.all([names(['--name-only', ...args, base]), names(['--name-only', '--cached', ...args, base])]);
+  const staged = new Set(indexed);
+  const unsure = all.filter((f) => f && !staged.has(f));
+  const changed = new Set<string>();
+  // `added<TAB>deleted<TAB>path`, only where the content differs; in batches a command line holds
+  for (let i = 0; i < unsure.length; ) {
+    const batch: string[] = [];
+    for (let length = 0; i < unsure.length && length < 24_000; i++) {
+      batch.push(`:(literal)${unsure[i]}`);
+      length += unsure[i]!.length + 12;
+    }
+    for (const line of await names(['--numstat', '--no-renames', base, '--', ...batch])) if (line) changed.add(line.slice(line.indexOf('\t', line.indexOf('\t') + 1) + 1));
+  }
+  return all.filter((f) => f && (staged.has(f) || changed.has(f)));
 }
 
 /** The whole diff from `base` to `to` (a commit; the working tree when left out), as `git diff` has it. */
@@ -247,7 +298,7 @@ async function rebaseOnto(ws: string, upstream: string, base: string): Promise<L
     await gitAsync(ws, 'rebase', '--quiet', upstream);
     return null;
   } catch (e) {
-    const files = (await gitAsync(ws, 'diff', '--name-only', '--diff-filter=U')).split('\n').filter(Boolean);
+    const files = (await gitAsync(ws, ...LOOK, 'diff', '--name-only', '--diff-filter=U')).split('\n').filter(Boolean);
     await gitAsync(ws, 'rebase', '--abort');
     // replayed one by one, the commits may conflict where the change as a whole does not
     if (await squashOnto(ws, upstream)) return null;
@@ -266,7 +317,7 @@ async function rebaseOnto(ws: string, upstream: string, base: string): Promise<L
  * it, or null once it is ready. `upstream` names it once the workspace has it (fetched, say).
  */
 async function rebased(ws: string, base: string, upstream: () => Promise<string>): Promise<LandProblem | null> {
-  if (await gitAsync(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
+  if (await gitAsync(ws, ...LOOK, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
   const onto = await upstream();
   const conflict = await rebaseOnto(ws, onto, base);
   if (conflict) return conflict;
@@ -301,7 +352,7 @@ async function backOnBase(repo: string, base: string, on: string): Promise<LandP
   const busy = await underway(repo);
   if (busy) return blocked(`a ${busy} is under way there`);
   // untrimmed: a line's first column may be a space
-  const status = await gitRun(repo, ['-c', 'core.quotePath=false', 'status', '--porcelain']);
+  const status = await gitRun(repo, [...LOOK, '-c', 'core.quotePath=false', 'status', '--porcelain']);
   if (status.code !== 0) throw new WorkspaceError(`git status in ${repo}: ${status.stderr.trim()}`);
   const files = status.stdout.split('\n').filter(Boolean).map((l) => l.slice(3));
   if (files.length) return blocked(`has uncommitted changes (${[...files.slice(0, 10), ...(files.length > 10 ? [`${files.length - 10} more`] : [])].join(', ')})`, files);
@@ -1078,7 +1129,7 @@ export class Workspaces implements CardWorkspaces {
     try {
       if (!(await existsAsync(ws))) return false;
       // `# branch.…` headers, then a line per change; the main branch beside it, which a `forkPoint` asked at the same time shares
-      const [lines, up] = await Promise.all([gitAsync(ws, 'status', '--porcelain=v2', '--branch'), this.upstreamAsync(ws)]);
+      const [lines, up] = await Promise.all([gitAsync(ws, ...LOOK, 'status', '--porcelain=v2', '--branch'), this.upstreamAsync(ws)]);
       const status = lines.split('\n');
       if (status.some((line) => line && !line.startsWith('# '))) return true;
       // where the branch tracks that branch (a clone's card branch does), status counted the commits beyond it
@@ -1124,7 +1175,7 @@ export class Workspaces implements CardWorkspaces {
     return this.clearing(path, async () => {
       // given back while git was busy with it before
       if (this.leasedBy(cardId) !== path) return null;
-      if (await gitAsync(path, 'status', '--porcelain')) {
+      if (await gitAsync(path, ...LOOK, 'status', '--porcelain')) {
         await gitAsync(path, 'add', '--all');
         await gitAsync(path, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '--no-verify', '-m', `Uncommitted work, kept by Obeya as the card's workspace went to another card\n\n${SAVED}`);
       }
@@ -1182,7 +1233,7 @@ export class Workspaces implements CardWorkspaces {
         return true;
       }
       if (existsSync(path)) {
-        if ((await gitAsync(path, 'status', '--porcelain').catch(() => null)) !== '') return false;
+        if ((await gitAsync(path, ...LOOK, 'status', '--porcelain').catch(() => null)) !== '') return false;
         await this.quiet(path);
         if ((await gitAsync(this.o.repoPath, 'worktree', 'remove', path).catch(() => null)) === null) return false;
       }
@@ -1221,7 +1272,7 @@ export class Workspaces implements CardWorkspaces {
         await this.clears.get(path)?.catch(() => {});
         if ((await gitAsync(path, 'branch', '--show-current')) === branch) return path;
         if (!(await gitAsync(path, 'branch', '--list', branch))) throw new BranchGone(`${path}: the branch ${branch} is no longer there`);
-        if (await gitAsync(path, 'status', '--porcelain')) throw new WorkspaceError(`${path}: another card left uncommitted changes there`, SHORT_CODE.dirty);
+        if (await gitAsync(path, ...LOOK, 'status', '--porcelain')) throw new WorkspaceError(`${path}: another card left uncommitted changes there`, SHORT_CODE.dirty);
         await gitAsync(path, 'checkout', '--quiet', branch);
         return path;
       },
@@ -1427,7 +1478,7 @@ export class Workspaces implements CardWorkspaces {
       if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
       const repo = this.o.repoPath;
       try {
-        if (await gitAsync(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace, or a rebase not finished there' };
+        if (await gitAsync(ws, ...LOOK, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace, or a rebase not finished there' };
         if (!(await gitAsync(ws, 'branch', '--show-current'))) return { code: 'landConflict', worker: true, detail: 'the workspace is on no branch: finish the rebase (git rebase --continue) so that HEAD stands on a branch' };
         const base = await this.checkoutBase();
         const on = await gitAsync(repo, 'branch', '--show-current');
@@ -1625,10 +1676,9 @@ export class Workspaces implements CardWorkspaces {
     if (!ws || !mayExist(ws)) return [];
     try {
       const base = await this.base(ws);
-      const [names, untracked] = await Promise.all([gitAsync(ws, 'diff', '--name-only', '-z', base), gitAsync(ws, 'ls-files', '-z', '--others', '--exclude-standard')]);
-      const files = names.split('\0').filter(Boolean);
+      const [files, untracked] = await Promise.all([worktreeNames(ws, base), gitAsync(ws, 'ls-files', '-z', '--others', '--exclude-standard')]);
       const only = files.length > CHANGES_LISTED ? ['--', ...listed(files)] : [];
-      const diff = files.length ? await gitAsync(ws, 'diff', '-U0', '--no-color', '--no-ext-diff', base, ...only) : '';
+      const diff = files.length ? await gitAsync(ws, ...LOOK, 'diff', '-U0', '--no-color', '--no-ext-diff', base, ...only) : '';
       const added = untracked.split('\0').filter(Boolean).slice(0, Math.max(0, CHANGES_LISTED - files.length));
       return [...parseChanges(diff), ...added.map((file) => ({ file, regions: [] }))];
     } catch {
@@ -1686,7 +1736,7 @@ export class Workspaces implements CardWorkspaces {
       const ws = this.leasedBy(cardId);
       if (!ws || !mayExist(ws)) return [];
       const base = await this.base(ws);
-      return [...(await names(ws, ['diff', '--name-only', '-z', '-M', '--diff-filter=d', base])), ...(await names(ws, ['ls-files', '-z', '--others', '--exclude-standard']))];
+      return [...(await worktreeNames(ws, base, ['-M', '--diff-filter=d'])), ...(await names(ws, ['ls-files', '-z', '--others', '--exclude-standard']))];
     } catch {
       return [];
     }
@@ -2017,7 +2067,7 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
   await run('worktree', 'prune');
   const trees = (await run('worktree', 'list', '--porcelain'))?.split('\n').filter((l) => l.startsWith('worktree ')).length ?? 1;
   if (trees > 1) lost.push(`${trees - 1} worktree(s) made from it`);
-  const status = await run('status', '--porcelain');
+  const status = await run(...LOOK, 'status', '--porcelain');
   if (status === null) return null;
   if (status) lost.push(`changes not committed or files not in git: ${status.split('\n').length}`);
   if ((await run('rev-parse', '--verify', '--quiet', 'refs/stash')) !== null) lost.push('a stash');
@@ -2079,20 +2129,11 @@ async function cloneState(path: string): Promise<Seen> {
       if (r.code === LOST) return { found: 'unreachable' };
       if (r.code !== 0) return { found: 'missing' };
     } else if (!existsSync(path)) return { found: 'missing' };
-    // not `gitAsync`, which trims the first entry's status letters; without the index refresh `git status`
-    // writes under git's index lock, which a card taking the clone meanwhile would find held and fail its checkout
-    const r = await gitRun(path, ['--no-optional-locks', 'status', '--porcelain', '-z']);
+    // not `gitAsync`, which trims the first entry's status letters; `LOOK`, since a card may take the clone meanwhile
+    const r = await gitRun(path, [...LOOK, 'status', '--porcelain', '-z']);
     if (r.code !== 0) return { found: 'broken', error: (r.stderr || r.stdout).trim() || `exit code ${r.code}` };
     if (r.stdout === '') return { found: 'clean' };
-    // `XY path`, unquoted, each ended by NUL; a rename or copy is followed by the path it came from
-    const files: string[] = [];
-    const entries = r.stdout.split('\0');
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i]!;
-      if (!e) continue;
-      files.push(e.slice(3));
-      if (e[0] === 'R' || e[0] === 'C') i++;
-    }
+    const files = statusPaths(r.stdout);
     return { found: 'dirty', files: files.slice(0, SEEN_FILES), ...(files.length > SEEN_FILES ? { more: files.length - SEEN_FILES } : {}) };
   } catch (e) {
     return { found: 'broken', error: messageOf(e) };

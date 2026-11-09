@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceUpdates } from './source-update';
@@ -111,6 +111,18 @@ test('uncommitted changes to a file the pull changes stand in the way; others do
   writeFileSync(join(clone, 'src/a.ts'), 'mine\n');
   await s.check();
   expect(s.current()?.blocked).toEqual({ why: 'local', files: ['src/a.ts'] });
+});
+
+test("a file whose timestamps alone changed stands in no one's way, and git writes no index while looking", async () => {
+  commit(up, 'src/a.ts', 'b\n');
+  const later = new Date(Date.now() + 5000);
+  utimesSync(join(clone, 'src/a.ts'), later, later);
+  const index = readFileSync(join(clone, '.git', 'index'));
+  const s = new SourceUpdates(clone);
+  await s.check();
+  expect(s.current()).toMatchObject({ count: 1 });
+  expect(s.current()?.blocked).toBeUndefined();
+  expect(readFileSync(join(clone, '.git', 'index')).equals(index)).toBe(true);
 });
 
 test('what git refuses stays on the update for the bar, until a pull goes', async () => {
