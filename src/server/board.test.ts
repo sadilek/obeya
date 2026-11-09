@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, onCanvas, PROJECT_COLLAPSED, sizeOf } from '../core/layout';
 import { archivedWithDone } from '../core/types';
-import type { PlanDoc } from '../core/plan-doc';
+import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, pathOfRef, type PlanRead, repoOfRef } from './board';
 import { Store } from './db';
 import { heard } from './testing';
@@ -992,4 +992,20 @@ describe('the shared cards', () => {
     board.remove(own.id);
     expect(board.shownCards(board.sharedRows()).has(own.id)).toBe(false);
   });
+
+  test('a shared workstream the docs move to another key while its row was read is found as the cards find it', () => {
+    const doc = (more = '') => parsePlanDoc('docs/plan/a.md', `# A\n\n## Goal\n\nGoal\n\n## Workstreams\n\n- [x] **W1:** First.\n- [x] **W2:** Second.\n${more}`) as PlanDoc;
+    docs = [doc()];
+    board.snapshot();
+    const w1 = store.children([store.projects('shop')[0]!.id]).find((r) => r.plan_ref!.endsWith('#W1'))!;
+    board.work(w1.id, { share: page('w1') });
+    // a second W1: each gets a key of its own as the canvas reads the docs again
+    docs = [doc('- [x] **W1:** Third.\n')];
+    board.docsChanged();
+    const rows = board.sharedRows();
+    const asCards = new Map([...board.cards(rows)].map(([id, i]) => [id, { id, repo: i.repo, title: i.title }]));
+    expect(asCards.size).toBe(1);
+    expect(board.shownCards(rows)).toEqual(asCards);
+  });
+
 });

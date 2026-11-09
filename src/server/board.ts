@@ -900,6 +900,8 @@ export class Board {
    */
   shownCards(rows: CardRow[]): Map<string, Pick<Item, 'id' | 'repo' | 'title'>> {
     const shown = new Map(this.items().map((i) => [i.id, i]));
+    // reading the docs for the items may have moved a shared card to another workstream since its row was read
+    const now = new Map(this.sharedRows().map((r) => [r.id, r]));
     const out = new Map<string, Pick<Item, 'id' | 'repo' | 'title'>>();
     const mine = (r: CardRow | null): r is CardRow => !!r && r.canvas_id === this.canvas.id && !r.deleted_at;
     const parents = new Map<string, CardRow | null>();
@@ -912,7 +914,9 @@ export class Board {
       const doc = r.plan ? (JSON.parse(r.plan) as PlanDoc) : null;
       return doc?.file === r.plan_ref ? doc : null;
     };
-    for (const given of rows.filter(mine)) {
+    for (const read of rows) {
+      const given = now.get(read.id) ?? read;
+      if (!mine(given)) continue;
       const item = shown.get(given.id);
       if (item) {
         out.set(given.id, { id: item.id, repo: item.repo, title: item.title });
