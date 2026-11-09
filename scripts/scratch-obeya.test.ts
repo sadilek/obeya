@@ -41,7 +41,7 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
       dir,
       plans: { 'docs/plan/werkzeug.md': '# Werkzeug\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n' },
       cards: [
-        { key: 'P', project: 'docs/plan/werkzeug.md', x: 0, y: 0 },
+        { key: 'P', project: 'docs/plan/werkzeug.md', x: 520, y: 10 },
         { key: 'W1', workstream: 'W1', state: 'working', statusLine: 'Liest ein' },
         { key: 'A', title: 'Einlesen', x: 500, y: 40, state: 'working', statusLine: 'Tests laufen', createdAgo: '2h' },
         { key: 'B', title: 'Optionen', queue: { behind: ['A'], reason: 'Beide ändern src/config.ts.' }, events: [{ kind: 'state', author: 'obeya', text: 'wartet', ago: '10m' }] },
@@ -66,7 +66,7 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
   const headers = ownerHeaders(join(dir, 'home'));
   const { items } = (await (await fetch(`http://127.0.0.1:${port}/api/c/${staged.canvas}/canvas`, { headers })).json()) as CanvasSnapshot;
   const card = (key: string) => items.find((i) => i.id === staged.cards[key])!;
-  expect(card('P')).toMatchObject({ kind: 'project', x: 0, y: 0 });
+  expect(card('P')).toMatchObject({ kind: 'project', x: 520, y: 10 });
   expect(card('W1')).toMatchObject({ label: 'W1', state: 'working', statusLine: 'Liest ein' });
   expect(card('A')).toMatchObject({ title: 'Einlesen', state: 'working', statusLine: 'Tests laufen' });
   expect(card('B').queue).toMatchObject({ behind: [staged.cards.A], reason: 'Beide ändern src/config.ts.' });

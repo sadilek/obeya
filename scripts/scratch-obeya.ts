@@ -855,15 +855,18 @@ for (const [i, p] of (stage.settingProposals ?? []).entries())
     cards: JSON.stringify(p.cards.map((k) => ids[k] ?? fail(`setting proposal ${i}: card ${k} does not exist`))),
     at: new Date().toISOString(),
   });
-db.close();
-// the server keeps a snapshot of the canvas: a change through the API makes it read the database anew
+// the server keeps a snapshot of the canvas: a change through the API makes it read the database anew,
+// here a card moved to where it already is in the database (the snapshot still has where it was)
+const refresh: [string, string, { x: number; y: number }][] = [];
 for (const on of allCanvases) {
   // a project or workstream is on the home canvas: a stage of plan cards alone has nothing else to move
   const first = stage.cards.find((c) => (c.project || c.workstream ? on.id === canvas : c.canvas ? c.canvas === on.name : on.id === canvas));
   if (!first) continue;
-  const c = ((await api('GET', '/canvas', undefined, on.id)) as CanvasSnapshot).items.find((x: Item) => x.id === idOf(first, stage.cards.indexOf(first)))!;
-  await api('PATCH', `/cards/${c.id}`, { x: c.x, y: c.y }, on.id);
+  const id = idOf(first, stage.cards.indexOf(first));
+  refresh.push([on.id, id, db.query('SELECT x, y FROM cards WHERE id = $id').get({ id }) as { x: number; y: number }]);
 }
+db.close();
+for (const [on, id, at] of refresh) await api('PATCH', `/cards/${id}`, at, on);
 
 for (const g of stage.groups ?? [])
   await api('POST', '/groups', { name: g.name, cards: g.cards.map((k) => ids[k] ?? fail(`group ${g.name}: card ${k} does not exist`)) });
