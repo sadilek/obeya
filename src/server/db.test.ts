@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import type { CardEvent } from '../core/types';
 import { MIGRATIONS, NewerDatabase, OlderDatabase, RELEASED, SHORT, Store } from './db';
 
+/** The indexes the latest migration adds, which the schema as an earlier Obeya left it lacks. */
+const HISTORY_INDEXES = ['events_milestones', 'events_owner', 'cards_created', 'talk_canvas', 'talk_at', 'talk_waiting'];
+
 const version = (path: string) => {
   const db = new Database(path);
   const { user_version } = db.query('PRAGMA user_version').get() as { user_version: number };
@@ -62,7 +65,7 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.update(held!.id, { share: JSON.stringify({ slug: 's', state: 'pending', dir: '/d', shown: { title: 'T', text: '', chapters: [] } }) });
     s.setSetting('c', 'work_retro_since:app', '2026-10-01T00:00:00Z');
     // the schema as released: without the columns and indexes later migrations add
-    for (const index of ['cards_open', 'cards_plan_docs', 'cards_prototypes', 'cards_waiting', 'cards_shared']) s.db.run(`DROP INDEX ${index}`);
+    for (const index of ['cards_open', 'cards_plan_docs', 'cards_prototypes', 'cards_waiting', 'cards_shared', ...HISTORY_INDEXES]) s.db.run(`DROP INDEX ${index}`);
     s.db.run('DROP TRIGGER share_rev');
     s.db.run('DROP TRIGGER share_rev_gone');
     s.db.run('DROP TABLE share_revs');
@@ -152,6 +155,7 @@ test('the migration gives the cards there are codes of their own, longer where t
     const s = new Store(path);
     s.ensureCanvas('c', 'C');
     const ids = ['12345678-0000-4000-8000-000000000001', '12345678-0000-4000-8000-000000000002', '1234aaaa-0000-4000-8000-000000000003', 'ffffffff-0000-4000-8000-000000000004'];
+    for (const index of HISTORY_INDEXES) s.db.run(`DROP INDEX ${index}`);
     s.db.run('DROP INDEX cards_number');
     s.db.run('ALTER TABLE cards DROP COLUMN number');
     const insert = s.db.query("INSERT INTO cards (id, short, canvas_id, kind, x, y, created_at, updated_at) VALUES ($id, $id, 'c', 'task', 0, 0, '', '')");
@@ -176,7 +180,7 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
     s.db.run('DROP TABLE spend');
     s.db.run('ALTER TABLE cards DROP COLUMN spent');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 14}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 15}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -205,6 +209,7 @@ test('the migration numbers the cards there are in the order they were made, acr
     insert.run({ id: 'later', c: 'c', at: '2026-10-02T00:00:00.000Z' });
     insert.run({ id: 'first', c: 'd', at: '2026-10-01T00:00:00.000Z' });
     insert.run({ id: 'same-time', c: 'c', at: '2026-10-02T00:00:00.000Z' });
+    for (const index of HISTORY_INDEXES) s.db.run(`DROP INDEX ${index}`);
     s.db.run('DROP INDEX cards_number');
     s.db.run('ALTER TABLE cards DROP COLUMN number');
     s.db.run('DROP INDEX cards_archived');
@@ -224,7 +229,7 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('ALTER TABLE talk DROP COLUMN reply_only');
     s.db.run('DROP TABLE spend');
     s.db.run('ALTER TABLE cards DROP COLUMN spent');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 12}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 13}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);

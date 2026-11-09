@@ -563,6 +563,16 @@ export const MIGRATIONS = [
     PRIMARY KEY (canvas_id, session)
   );
   ALTER TABLE cards ADD COLUMN spent REAL;`,
+  // what the Koordinator reads with each command and each of the owner's inputs, found by time rather
+  // than by going through every event of the canvas: the milestones of the cards' logs (`timeline`),
+  // what the owner said (`utterances`), the cards made, the exchanges of the sheet; and the exchanges
+  // whose reply waits on a card, read on every change of the canvas
+  `CREATE INDEX events_milestones ON events (at) WHERE kind IN ('state', 'question', 'answer', 'review', 'hint', 'error');
+   CREATE INDEX events_owner ON events (at) WHERE author = 'owner' AND kind IN ('hint', 'answer', 'talk');
+   CREATE INDEX cards_created ON cards (canvas_id, created_at) WHERE deleted_at IS NULL AND plan_ref IS NULL;
+   CREATE INDEX talk_canvas ON talk (canvas_id);
+   CREATE INDEX talk_at ON talk (canvas_id, at);
+   CREATE INDEX talk_waiting ON talk (canvas_id) WHERE waits IS NOT NULL;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -610,6 +620,9 @@ const SEEN = new Set<string>(['state', 'need', 'title', 'body', 'status_line', '
 
 /** What `Store.update` may change on a card: all but what is set once at its creation, and its times. */
 export type RowUpdate = Partial<Omit<CardRow, 'id' | 'canvas_id' | 'parent_id' | 'plan_ref' | 'prototype_of' | 'retro' | 'created_at' | 'updated_at' | 'changed_at'>>;
+
+/** The kinds of a card's log lines that are milestones of its history (`timeline`), as its index lists them. */
+const MILESTONES = "('state', 'question', 'answer', 'review', 'hint', 'error')";
 
 /** A database this Obeya cannot open as it is: it leaves it alone. */
 export class UnusableDatabase extends Error {}
@@ -1367,13 +1380,22 @@ export class Store {
     return (
       this.db
         .query(
-          // within one millisecond, cards are created before anything happens to them, each in the order it was written
+          // within one millisecond, cards are created before anything happens to them, each in the order
+          // it was written; each part reads its newest `limit` through an index, so what the history
+          // holds before them is not read
           `SELECT at, cardId, kind, author, text FROM (
-             SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text, 1 AS phase, e.id AS seq FROM events e JOIN cards c ON c.id = e.card_id
-             WHERE c.canvas_id = $c AND c.deleted_at IS NULL AND (e.at > $since OR e.id > $event) AND e.kind IN ('state', 'question', 'answer', 'review', 'hint', 'error')
+             SELECT * FROM (SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text, 1 AS phase, e.id AS seq FROM events e CROSS JOIN cards c ON c.id = e.card_id
+               WHERE e.kind IN ${MILESTONES} AND e.at > $since AND c.canvas_id = $c AND c.deleted_at IS NULL ORDER BY e.at DESC, e.id DESC LIMIT $limit)
              UNION ALL
-             SELECT created_at, id, 'created', CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END, '', 0, rowid FROM cards
-             WHERE canvas_id = $c AND deleted_at IS NULL AND plan_ref IS NULL AND (created_at > $since OR rowid > $card)
+             -- written after the mark with an earlier time
+             SELECT * FROM (SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text, 1 AS phase, e.id AS seq FROM events e CROSS JOIN cards c ON c.id = e.card_id
+               WHERE e.id > $event AND +e.at <= $since AND +e.kind IN ${MILESTONES} AND c.canvas_id = $c AND c.deleted_at IS NULL ORDER BY e.at DESC, e.id DESC LIMIT $limit)
+             UNION ALL
+             SELECT * FROM (SELECT created_at AS at, id AS cardId, 'created' AS kind, CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END AS author, '' AS text, 0 AS phase, rowid AS seq FROM cards
+               WHERE canvas_id = $c AND created_at > $since AND deleted_at IS NULL AND plan_ref IS NULL ORDER BY created_at DESC, rowid DESC LIMIT $limit)
+             UNION ALL
+             SELECT * FROM (SELECT created_at AS at, id AS cardId, 'created' AS kind, CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END AS author, '' AS text, 0 AS phase, rowid AS seq FROM cards
+               WHERE rowid > $card AND +created_at <= $since AND +canvas_id = $c AND deleted_at IS NULL AND +plan_ref IS NULL ORDER BY created_at DESC, rowid DESC LIMIT $limit)
            ) ORDER BY at DESC, phase DESC, seq DESC LIMIT $limit`,
         )
         .all({ c: canvasId, since: m.at, event: m.event, card: m.card, limit }) as Moment[]
@@ -1398,11 +1420,11 @@ export class Store {
       this.db
         .query(
           `SELECT at, cardId, title, kind, text FROM (
-             SELECT e.at, e.card_id AS cardId, c.title, e.kind, e.text, e.id AS seq FROM events e JOIN cards c ON c.id = e.card_id
-             WHERE c.canvas_id = $c AND e.author = 'owner' AND e.kind IN ('hint', 'answer', 'talk') AND e.at > $since
+             SELECT * FROM (SELECT e.at, e.card_id AS cardId, c.title, e.kind, e.text, e.id AS seq FROM events e CROSS JOIN cards c ON c.id = e.card_id
+               WHERE e.author = 'owner' AND e.kind IN ('hint', 'answer', 'talk') AND e.at > $since AND c.canvas_id = $c ORDER BY e.at DESC, e.id DESC LIMIT $limit)
              UNION ALL
-             SELECT t.at, t.card_id, c.title, 'say', t.said, t.id FROM talk t LEFT JOIN cards c ON c.id = t.card_id
-             WHERE t.canvas_id = $c AND t.undone = 0 AND t.after_wait IS NULL AND t.after_answer IS NULL AND t.moved IS NULL AND t.at > $since
+             SELECT * FROM (SELECT t.at, t.card_id AS cardId, c.title, 'say' AS kind, t.said AS text, t.id AS seq FROM talk t LEFT JOIN cards c ON c.id = t.card_id
+               WHERE t.canvas_id = $c AND t.undone = 0 AND t.after_wait IS NULL AND t.after_answer IS NULL AND t.moved IS NULL AND t.at > $since ORDER BY t.at DESC, t.id DESC LIMIT $limit)
            ) ORDER BY at DESC, seq DESC LIMIT $limit`,
         )
         .all({ c: canvasId, since, limit }) as { at: string; cardId: string | null; title: string | null; kind: Utterance['kind']; text: string }[]
