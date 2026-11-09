@@ -381,7 +381,11 @@ export const PAGE_STYLE = `
   .credit { margin-top: 48px; font-size: 13px; color: var(--muted); }
 `;
 
-/** What a page with a video adds: its player (src/core/player.css) in the page's accent, and the big play button over it. */
+/**
+ * What a page with a video adds: its player (src/core/player.css) in the page's accent, and the big play button over it.
+ * The stylesheet's lines end as the checkout ends them (CRLF on Windows, by git's `autocrlf`): the page's always in LF,
+ * so it comes out the same from every machine (`pagesHash`).
+ */
 const VIDEO_STYLE = `
   .player { position: relative; }
   .dp { --wt-accent: var(--accent); }
@@ -390,7 +394,7 @@ const VIDEO_STYLE = `
   .start span { width: 88px; height: 88px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; transition: transform 0.15s, background 0.15s; }
   .start:hover span { background: rgba(0, 0, 0, 0.8); transform: scale(1.06); }
   .start svg { width: 36px; height: 36px; margin-left: 6px; fill: #fff; }
-${PLAYER_STYLE}`;
+${PLAYER_STYLE.replaceAll('\r\n', '\n')}`;
 
 /** A repository's theme (theme.ts) in a page's head, after Obeya's own style, so it wins; nothing in it may close its element. */
 export const themeStyle = (css?: string) => (css ? `<style>${css.replace(/<\/(style)/gi, '<\\/$1')}</style>` : '');

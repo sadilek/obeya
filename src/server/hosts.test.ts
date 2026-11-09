@@ -348,8 +348,9 @@ describe('clones on a host', () => {
     writeFileSync(join(dir, 'far', '3', 'notes.txt'), 'mine\n');
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 0, () => undefined)).toBeNull();
     expect(spaces.list().map((w) => w.path)).toEqual([onHost(name, join(dir, 'far', '1'))]);
-    // a free clean one goes from the host's disk; one with work not landed stays, and the pool says so
-    await until(() => !existsSync(join(dir, 'far', '2')) && spaces.pool([]).some((h) => h.kept?.length));
+    // a free clean one goes from the host's disk; one with work not landed stays, and the pool says so. Each is
+    // looked at through git over ssh, twice: a second here, over three on a busy CI runner
+    await until(() => !existsSync(join(dir, 'far', '2')) && spaces.pool([]).some((h) => h.kept?.length), 10_000);
     expect(spaces.pool([]).find((h) => h.name === name)?.kept).toEqual([join(dir, 'far', '3')]);
     // while the host does not answer, the clone a card gives back stays; the next start looks again
     writeFileSync(join(dir, 'net', 'down'), '');
@@ -360,8 +361,8 @@ describe('clones on a host', () => {
     rmSync(join(dir, 'net', 'down'));
     rmSync(join(dir, 'far', '3', 'notes.txt'));
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 0, () => undefined)).toBeNull();
-    await until(() => !existsSync(join(dir, 'far', '1')) && !existsSync(join(dir, 'far', '3')) && !spaces.pool([]).some((h) => h.kept));
-  }, 20_000);
+    await until(() => !existsSync(join(dir, 'far', '1')) && !existsSync(join(dir, 'far', '3')) && !spaces.pool([]).some((h) => h.kept), 10_000);
+  }, 30_000);
 
   overSsh('wait for a host that cannot be reached, and say why', async () => {
     writeFileSync(join(dir, 'net', 'down'), '');
