@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describePageStall, describeStall, pageStall, placeOf, Stalls, STALLS_FILE, type Trace } from './stalls';
+import { describePageStall, describeStall, heldSoFar, pageStall, placeOf, Stalls, STALLS_FILE, type Trace } from './stalls';
 import { until } from './testing';
 
 const NONE = 4294967295;
@@ -91,6 +91,39 @@ test('a stall the ticks see short is as long as its samples span', () => {
   expect(lines).toEqual([]);
   stalls.tick(0, 560, samples(0.54));
   expect(lines[0]).toBe('Obeya: the server stalled for 0.5 s; meanwhile it answered no page and heard no agent');
+});
+
+test('a stall the machine paged the server back in for says so in its first line, with the counts beneath', () => {
+  const lines: string[] = [];
+  home = mkdtempSync(join(tmpdir(), 'obeya-stalls-'));
+  stalls = new Stalls({ home, log: (l) => lines.push(l) });
+  const read = trace(native('all'), at('shares', 'share.ts', 140));
+  const samples = { traces: Array.from({ length: 450 }, (_, i) => ({ ...read, timestamp: i * 0.002 })), intervalMs: 2 };
+  stalls.tick(0, 1000, samples, { pageIns: 4200, preempted: 35 });
+  expect(lines).toEqual([
+    'Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent; the machine paged the server back in: 4,200 pages',
+    '  100% all ← shares (share.ts:140)',
+    '  meanwhile: 4,200 pages read back from disk or swap, 35 involuntary context switches',
+  ]);
+  // a few pages are counted, not called the cause
+  lines.length = 0;
+  stalls.tick(0, 1000, samples, { pageIns: 12 });
+  expect(lines).toEqual(['Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent', '  100% all ← shares (share.ts:140)', '  meanwhile: 12 pages read back from disk or swap']);
+  // without page-ins, and where the platform counts no context switches as such, the entry reads as before
+  lines.length = 0;
+  stalls.tick(0, 1000, samples, { pageIns: 0 });
+  stalls.tick(0, 1000, samples, {});
+  expect(lines).toEqual(Array.from({ length: 2 }, () => ['Obeya: the server stalled for 0.9 s; meanwhile it answered no page and heard no agent', '  100% all ← shares (share.ts:140)']).flat());
+  expect(readFileSync(join(home, STALLS_FILE), 'utf8')).toContain('the machine paged the server back in: 4,200 pages\n');
+});
+
+test('the counts are taken where the platform counts them as such', () => {
+  const usage = () => ({ majorPageFault: 40, involuntaryContextSwitches: 900 }) as NodeJS.ResourceUsage;
+  expect(heldSoFar('linux', usage)).toEqual({ pageIns: 40, preempted: 900 });
+  // macOS counts every context switch as involuntary
+  expect(heldSoFar('darwin', usage)).toEqual({ pageIns: 40 });
+  // Windows counts soft page faults with the hard ones, and no context switches
+  expect(heldSoFar('win32', usage)).toEqual({});
 });
 
 test('a page that stalls again and again the same way gets one entry, and the stalls like it are counted in one line', () => {

@@ -30,6 +30,8 @@ const SAMPLE_US = 2000;
 const RUN_GAP_MS = 60_000;
 /** A run that goes on is logged at least this often. */
 const RUN_LOGGED_MS = 3600_000;
+/** From this many pages read back from disk or swap on, the entry's first line says the machine paged the server back in. */
+const MANY_PAGE_INS = 1000;
 /** JavaScriptCore's line and column of a frame it knows no source position of. */
 const NO_POSITION = 4294967295;
 
@@ -73,6 +75,36 @@ function command(argv: string[]): string {
 }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+const count = (n: number) => n.toLocaleString('en-US');
+
+/**
+ * What the system counted of the process while the server stalled that says the machine held it up,
+ * each only where the platform counts it as such: pages read back from disk or swap (major page
+ * faults), and the times the system took the CPU from one of its threads for another (involuntary
+ * context switches).
+ */
+export interface Held {
+  pageIns?: number;
+  preempted?: number;
+}
+
+/**
+ * The process's counts so far. Windows counts every page fault, the soft ones of memory already
+ * there too, and no context switches; macOS counts every context switch of every thread as
+ * involuntary, the profiler's several hundred a second included: neither tells the machine held
+ * the server up, so they are left out.
+ */
+export function heldSoFar(platform = process.platform, usage = process.resourceUsage): Held {
+  if (platform === 'win32') return {};
+  const u = usage();
+  return { pageIns: u.majorPageFault, ...(platform === 'linux' ? { preempted: u.involuntaryContextSwitches } : {}) };
+}
+
+/** The counts between two readings. */
+function heldBetween(before: Held, after: Held): Held {
+  const d = (k: keyof Held) => (before[k] !== undefined && after[k] !== undefined ? { [k]: Math.max(0, after[k]! - before[k]!) } : {});
+  return { ...d('pageIns'), ...d('preempted') };
+}
 
 /**
  * How many ms apart the samples were taken: the interval asked for, or longer where the system's
@@ -91,7 +123,7 @@ function sampledEvery(traces: Trace[], intervalMs: number): number {
  * while the thread waits for a process (`blindWhileWaiting`: Windows), the processes it waited for
  * count as covered; elsewhere they do not, so a machine that slept while one ran logs no stall.
  */
-export function describeStall(ms: number, traces: Trace[] | null, waited: Waited[], intervalMs = 1, blindWhileWaiting = process.platform === 'win32'): string[] | null {
+export function describeStall(ms: number, traces: Trace[] | null, waited: Waited[], intervalMs = 1, blindWhileWaiting = process.platform === 'win32', held: Held = {}): string[] | null {
   const inProcesses = blindWhileWaiting ? waited.reduce((sum, w) => sum + w.ms, 0) : 0;
   if (traces && traces.length * sampledEvery(traces, intervalMs) < ms * RAN_SHARE && inProcesses < ms * RAN_SHARE) return null;
   const counts = new Map<string, number>();
@@ -100,10 +132,17 @@ export function describeStall(ms: number, traces: Trace[] | null, waited: Waited
     counts.set(p, (counts.get(p) ?? 0) + 1);
   }
   const places = [...counts].sort((a, b) => b[1] - a[1]).slice(0, PLACES);
+  const { pageIns = 0, preempted = 0 } = held;
+  const paged = pageIns >= MANY_PAGE_INS ? `; the machine paged the server back in: ${count(pageIns)} pages` : '';
+  const figures = [
+    ...(held.pageIns !== undefined ? [`${count(pageIns)} ${pageIns === 1 ? 'page' : 'pages'} read back from disk or swap`] : []),
+    ...(held.preempted !== undefined ? [`${count(preempted)} involuntary context ${preempted === 1 ? 'switch' : 'switches'}`] : []),
+  ];
   return [
-    `Obeya: the server stalled for ${seconds(ms)}; meanwhile it answered no page and heard no agent`,
+    `Obeya: the server stalled for ${seconds(ms)}; meanwhile it answered no page and heard no agent${paged}`,
     ...places.map(([p, n]) => `  ${String(Math.round((100 * n) / traces!.length)).padStart(3)}% ${p}`),
     ...waited.map((w) => `  waited ${seconds(w.ms)} for: ${command(w.argv)}`),
+    ...(pageIns || preempted ? [`  meanwhile: ${figures.join(', ')}`] : []),
   ];
 }
 
@@ -193,13 +232,17 @@ function drain(): { traces: Trace[]; intervalMs: number } | null {
 let watching: Stalls | null = null;
 let ticking: ReturnType<typeof setInterval> | undefined;
 let last = 0;
+let lastHeld: Held = {};
 
 function tick() {
   const now = performance.now();
   const since = last;
   last = now;
   const samples = drain();
-  watching?.tick(since, now, samples);
+  const held = heldSoFar();
+  const between = heldBetween(lastHeld, held);
+  lastHeld = held;
+  watching?.tick(since, now, samples, between);
   watching?.flush();
 }
 
@@ -225,6 +268,7 @@ export class Stalls {
     }
     drain();
     last = performance.now();
+    lastHeld = heldSoFar();
     watching = this;
     const spawnSync = (this.spawnSync = Bun.spawnSync);
     const waited = this.waited;
@@ -281,16 +325,16 @@ export class Stalls {
   /**
    * A tick that came at `now`, the one before at `since`. Late by half a second, the thread was held
    * up; how long, the samples' span says more precisely than the ticks, which see a stall up to a
-   * tick short.
+   * tick short. `held`: what the system counted of the process meanwhile (`Held`).
    */
-  tick(since: number, now: number, samples: { traces: Trace[]; intervalMs: number } | null) {
+  tick(since: number, now: number, samples: { traces: Trace[]; intervalMs: number } | null, held: Held = {}) {
     const waited = this.waited.splice(0).filter((w) => w.end >= since);
     if (now - since < STALL_MS) return;
     const traces = samples?.traces ?? [];
     const span = traces.length > 1 ? (traces.at(-1)!.timestamp - traces[0]!.timestamp) * 1000 : 0;
     const ms = Math.max(now - since - TICK_MS, Math.min(span, now - since));
     if (ms < STALL_MS) return;
-    const lines = describeStall(ms, samples?.traces ?? null, waited, samples?.intervalMs);
+    const lines = describeStall(ms, samples?.traces ?? null, waited, samples?.intervalMs, undefined, held);
     if (lines) this.write(lines);
   }
 
