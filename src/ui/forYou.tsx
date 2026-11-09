@@ -152,7 +152,7 @@ export function ForYouRows({
       ))}
       {obeya && (
         <li key={`obeya:${canvas}`}>
-          <button className="card s-working ph-card" onClick={() => onObeya(canvas)}>
+          <button className="card s-waiting ph-card" onClick={() => onObeya(canvas)}>
             <div className="kind">
               <span>{t.koordinator.title}</span>
             </div>

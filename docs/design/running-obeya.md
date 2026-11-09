@@ -166,7 +166,8 @@ stops while it is open, it goes to `/` (setup, or a canvas started since), as a 
 does once its canvas is gone. It shows five lists:
 
 - **"Needs you"**: what waits for the owner across every canvas, canvas by canvas and within one in
-  Tab's order, then "Obeya answered" where an answer waits unread. Each card says what it waits
+  Tab's order, then "Obeya answered" where an answer waits unread, framed in a waiting card's orange
+  (the answer is finished and waits for the owner, so nothing on it moves). Each card says what it waits
   for (its state line: "Demo ready", "Question for you" …) and since when (the server keeps that across
   restarts). A card the owner snoozed leaves it until it comes back (see Snoozing a card), and so
   does one set aside on the phone (below). Its heading counts what it shows. The canvas's
