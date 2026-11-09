@@ -295,8 +295,10 @@ the card's buttons show under the pointer), at the top right of an entry in the 
 (where the state line, wrapping on the narrow screen, has no room to set it apart), at the end of a
 project's head, beside the close button of its sheet and at the end of the phone's bar over the
 card. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
-says "Copied" for a moment; under the pointer it shows a copy icon, on a touch screen always. The
-form is the same in every language.
+says "Copied" for a moment; under the pointer it shows a copy icon, on a touch screen always. Where
+the page may not write the clipboard, it copies or selects the number as a code block's button does
+(see Conversation on the card), also on the canvas, where no text is selectable otherwise; it says
+"Copied" only when the number is on the clipboard. The form is the same in every language.
 
 The owner names cards by it, to Obeya and to the agents, typed or spoken (speech recognition may
 write `K 42` or `Ka 42`, which count too). The Coordinator knows every card by it (see Coordinator
