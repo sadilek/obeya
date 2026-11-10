@@ -99,6 +99,29 @@ describe('refused requests', () => {
     expect(await codeOf(post(api('/cards'), JSON.stringify({ title: 'x', x: 'links', y: 0 })))).toBe('invalid');
   });
 
+  test('a body that is the JSON literal null is refused, not an error of the server', async () => {
+    const c = card();
+    const send = (method: string, path: string) => fetch(new URL(api(path), server.url), { method, headers: { 'content-type': 'application/json' }, body: 'null' });
+    const routes: [string, string][] = [
+      ['POST', '/cards'],
+      ['POST', '/adapter-setup'],
+      ['PATCH', `/cards/${c.id}`],
+      ['POST', '/assign'],
+      ['POST', '/dependencies'],
+      ['DELETE', '/dependencies'],
+      ['POST', `/cards/${c.id}/act`],
+      ['POST', `/cards/${c.id}/stand-in`],
+      ['POST', '/command'],
+      ['POST', '/wish'],
+      ['POST', '/command/undo'],
+      ['POST', '/preferences'],
+      ['PATCH', '/preferences/1'],
+      ['POST', '/files/find'],
+    ];
+    const statuses = await Promise.all(routes.map(async ([method, path]) => `${method} ${path.replace(c.id, ':id')} ${(await send(method, path)).status}`));
+    expect(statuses.filter((s) => s.endsWith(' 500'))).toEqual([]);
+  });
+
   test('a card already with the Coordinator cannot be started again', async () => {
     const c = card();
     board.work(c.id, { queue: JSON.stringify({ checking: true }) });
@@ -1028,10 +1051,21 @@ describe('a newer version of the app', () => {
     expect(await (await post('/api/app-update', JSON.stringify({ rebuilt: true }))).json()).toEqual({ updating: true });
     // no button in the bar: the restart shows what it waits for
     expect(updates.current()).toBeNull();
-    expect(restarter.due()?.reason).toBe('update');
+    await until(() => restarter.due()?.reason === 'update');
     // the shell says it again every few seconds while it waits
     await post('/api/app-update', JSON.stringify({ rebuilt: true }));
     busy = [];
+    await until(() => gone.length === 1);
+    expect(gone).toEqual(['update']);
+  });
+
+  test('with no worker busy, a shell that built itself anew gets its answer before the update ends this server', async () => {
+    const gone: string[] = [];
+    const restarter = new Restarter({ busy: () => [], go: (reason) => gone.push(reason) });
+    server.stop(true);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, new AppUpdates());
+    expect(await (await post('/api/app-update', JSON.stringify({ rebuilt: true }))).json()).toEqual({ updating: true });
+    expect(gone).toEqual([]);
     await until(() => gone.length === 1);
     expect(gone).toEqual(['update']);
   });

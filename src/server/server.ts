@@ -420,6 +420,12 @@ export function serve(
       throw e;
     }
   };
+  /** A body whose fields a route reads: anything but a JSON object is refused, as invalid JSON is. */
+  const fields = async (req: Request): Promise<Record<string, unknown>> => {
+    const body: unknown = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequest('invalid', 'the body must be a JSON object');
+    return body as Record<string, unknown>;
+  };
   /** A route on one canvas; an unknown canvas is a 404. */
   const on =
     (fn: (c: CanvasRuntime, req: Req) => unknown | Promise<unknown>) =>
@@ -766,9 +772,9 @@ export function serve(
         POST: needs(config, async (c, req) => c.check(await req.json())),
       },
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
-      '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },
+      '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await fields(req)) as unknown as NewCard)) },
       // from "Configuration", for a repository without settings of its own: the card that writes them
-      '/api/c/:canvas/adapter-setup': { POST: on(async (c, req) => c.adapterSetupCard(String(((await req.json()) as { repo?: unknown }).repo))) },
+      '/api/c/:canvas/adapter-setup': { POST: on(async (c, req) => c.adapterSetupCard(String((await fields(req)).repo))) },
       // from the note on a plan directory: the card that prepares one of its docs as a project, started
       '/api/c/:canvas/prepare-plan-doc': {
         POST: on(async (c, req) => {
@@ -781,7 +787,7 @@ export function serve(
         PATCH: on(async (c, req) => c.board.movePlanDirNote(req.params.repo!, await req.json())),
       },
       '/api/c/:canvas/cards/:id': {
-        PATCH: on(async (c, req) => c.patch(req.params.id!, (await req.json()) as CardPatch)),
+        PATCH: on(async (c, req) => c.patch(req.params.id!, (await fields(req)) as CardPatch)),
         DELETE: on((c, req) => click(c, c.remove(req.params.id!))),
       },
       // groups: a new one with its first cards (and a colour, when one comes back), a new name, the
@@ -803,8 +809,8 @@ export function serve(
         }),
       },
       '/api/c/:canvas/dependencies': {
-        POST: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to); }),
-        DELETE: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to, true); }),
+        POST: on(async (c, req) => { const { from, to } = (await fields(req)) as { from: string; to: string }; c.board.connect(from, to); }),
+        DELETE: on(async (c, req) => { const { from, to } = (await fields(req)) as { from: string; to: string }; c.board.connect(from, to, true); }),
       },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },
       '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
@@ -832,9 +838,9 @@ export function serve(
         }),
         POST: on((c) => ({ ids: c.board.archiveDone() })),
       },
-      '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.press(req.params.id!, (await req.json()) as CardAction)) },
+      '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.press(req.params.id!, (await fields(req)) as unknown as CardAction)) },
       // a script acting as the card's agent, in a scratch Obeya whose workers are idle (scripts/scratch-obeya.ts --say)
-      '/api/c/:canvas/cards/:id/stand-in': { POST: on(async (c, req) => ({ result: await c.standIn(req.params.id!, (await req.json()) as Parameters<typeof c.standIn>[1]) })) },
+      '/api/c/:canvas/cards/:id/stand-in': { POST: on(async (c, req) => ({ result: await c.standIn(req.params.id!, (await fields(req)) as Parameters<typeof c.standIn>[1]) })) },
       '/api/c/:canvas/cards/:id/events': { GET: on((c, req) => c.board.events(req.params.id!)) },
       // the skills the owner can ask the card's agent for by `/name`, for the field's menu
       '/api/c/:canvas/cards/:id/skills': { GET: on((c, req) => c.skillsOf(req.params.id!)) },
@@ -851,7 +857,7 @@ export function serve(
       },
       // a file of another kind dropped in a browser: where it lies on this machine, if Obeya finds exactly one that fits
       '/api/c/:canvas/files/find': {
-        POST: on(async (_c, req) => ({ path: await findDropped((await req.json()) as Dropped) })),
+        POST: on(async (_c, req) => ({ path: await findDropped((await fields(req)) as unknown as Dropped) })),
       },
       // an image dropped in the app, which names it by its path: its bytes, for the page to attach it as a screenshot
       '/api/c/:canvas/files/local': {
@@ -983,7 +989,11 @@ export function serve(
           handle(async () => {
             const body = await req.json();
             // a shell installed from a checkout has built itself anew there: in place as landed code is, so installed the same way, without asking
-            if (body?.rebuilt === true) return (restarter?.request('update'), { updating: !!restarter });
+            if (body?.rebuilt === true) {
+              // after the answer is out: with no worker to wait for, the update ends this server at once
+              if (restarter) setTimeout(() => restarter.request('update'), 100);
+              return { updating: !!restarter };
+            }
             return updates.report(body);
           }),
       },
@@ -1095,7 +1105,7 @@ export function serve(
           // `field`: typed into that field of the open card rather than into the Coordinator's sheet
           // `replyTo`: typed in reply to that message of the open card's conversation, or with no card open of the sheet (`TalkRef`)
           // `spot`: typed about that place in the open card's demo video
-          const { text, images, field, replyTo, spot } = (await req.json()) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput };
+          const { text, images, field, replyTo, spot } = (await fields(req)) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput };
           // a screenshot alone may speak for itself to the open card's agent
           const card = focusOf(req).card;
           const open = card ? c.board.item(card) : undefined;
@@ -1121,16 +1131,16 @@ export function serve(
         }),
       },
       '/api/c/:canvas/command/undo': {
-        POST: on(async (c, req) => click(c, { undone: c.commander.undo(((await req.json()) as { token: string }).token) })),
+        POST: on(async (c, req) => click(c, { undone: c.commander.undo((await fields(req)).token as string) })),
       },
       '/api/c/:canvas/preferences': {
         POST: on(async (c, req) => {
-          const { text, target } = (await req.json()) as { text: string; target?: string };
+          const { text, target } = (await fields(req)) as { text: string; target?: string };
           c.remember(text, target ? { repos: [target] } : {});
         }),
       },
       '/api/c/:canvas/preferences/:id': {
-        PATCH: on(async (c, req) => c.board.setPreference(Number(req.params.id), ((await req.json()) as { text: string }).text)),
+        PATCH: on(async (c, req) => c.board.setPreference(Number(req.params.id), (await fields(req)).text as string)),
         DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),
       },
       '/api/c/:canvas/preferences/:id/accept': {
