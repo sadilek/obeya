@@ -1262,6 +1262,13 @@ describe("wishes for Obeya's makers", () => {
 });
 
 describe('snoozing by voice', () => {
+  /** 08:00 local, `days` from today, as the assistant names a time. */
+  const localDay = (days: number) => {
+    const d = new Date(Date.now() + days * 86_400_000);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T08:00`;
+  };
+
   test('„stell das bis morgen früh zurück“ snoozes the card until that local time; wake brings a snoozed one back; the card list says it is snoozed', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: { text: 'CSV?', options: [] } }) });
@@ -1286,11 +1293,12 @@ describe('snoozing by voice', () => {
   test('„erst am Montag starten“ snoozes a planned card, which the card list then says starts at the time', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander();
-    const { heard } = await say(k, 'Export erst am Montag starten', 'act', { actions: [{ do: 'snooze', card: tag(a), until: '2030-01-07T08:00' }], confirm: '„Export“ startet Montag um 8.' });
+    const monday = localDay(6);
+    const { heard } = await say(k, 'Export erst am Montag starten', 'act', { actions: [{ do: 'snooze', card: tag(a), until: monday }], confirm: '„Export“ startet Montag um 8.' });
     k.arm(heard.token!);
     await until(() => executed.length > 0);
-    expect(executed).toEqual([{ do: 'snooze', card: a.id, until: new Date('2030-01-07T08:00').toISOString() }]);
-    board.snooze(a.id, { until: new Date('2030-01-07T08:00').toISOString(), by: 'owner', start: true });
+    expect(executed).toEqual([{ do: 'snooze', card: a.id, until: new Date(monday).toISOString() }]);
+    board.snooze(a.id, { until: new Date(monday).toISOString(), by: 'owner', start: true });
     const { brief } = await say(k, 'was ist mit Export?', 'reply', { confirm: 'Startet Montag.' });
     expect(brief).toContain('it starts then; start or wake starts it now');
   });
@@ -1308,14 +1316,18 @@ describe('snoozing by voice', () => {
     expect(later).toContain('until amerlander, the author of the pull request, responds');
   });
 
-  test('a time that passed, or a card neither planned, at work nor waiting, is refused', async () => {
+  test('a time that passed or lies more than a year ahead, or a card neither planned, at work nor waiting, is refused', async () => {
     const done = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(done.id, { state: 'live' });
+    const planned = board.create({ title: 'Import', x: 0, y: 0 });
     const k = commander();
     const s = k.hear('stell Export zurück', {});
     await settle();
-    const r = runtime.last.call('act', { actions: [{ do: 'snooze', card: tag(done), until: '2030-01-01T08:00' }], confirm: 'x' });
+    const r = runtime.last.call('act', { actions: [{ do: 'snooze', card: tag(done), until: localDay(30) }], confirm: 'x' });
     expect(String(r)).toContain('nothing to snooze');
+    expect(String(runtime.last.call('act', { actions: [{ do: 'snooze', card: tag(planned), until: localDay(-1) }], confirm: 'x' }))).toContain('that time has passed');
+    // refused before the owner hears a confirmation, not only once the snooze runs
+    expect(String(runtime.last.call('act', { actions: [{ do: 'snooze', card: tag(planned), until: localDay(400) }], confirm: 'x' }))).toContain('more than a year ahead');
     runtime.last.call('reply', { confirm: 'Geht nicht.' });
     runtime.last.emit({ type: 'idle' });
     await s;

@@ -1198,6 +1198,7 @@ export class Commander {
         const at = a.until ? localTime(a.until) : NaN;
         if (Number.isNaN(at)) return 'until is missing: the local time as YYYY-MM-DDTHH:MM';
         if (at <= Date.now()) return 'that time has passed';
+        if (at > Date.now() + SNOOZE_LIMIT) return 'until lies more than a year ahead';
         return { do: 'snooze', card: card.id, until: new Date(at).toISOString() };
       }
       case 'wake':
