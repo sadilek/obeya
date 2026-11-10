@@ -2,7 +2,7 @@
 // with the owner's change requests going to the contributor or made by the worker, and merged by
 // Obeya on approval, pinned to the head the worker reviewed.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -817,6 +817,24 @@ describe('a review card', () => {
     expect(told).toContain('push the local main to origin');
     expect(told).toContain('amerlander allows maintainers');
     expect(told).toContain('poll.ts');
+  });
+
+  test('"Push main" waiting out its undo window does not run from workers that were shut down', async () => {
+    landedLocally('poll.ts', 'Polls every minute');
+    const id = await reviewCard();
+    await handOver();
+    await until(() => !!board.item(id)!.contribution!.clash);
+    git(origin, 'config', 'receive.denyCurrentBranch', 'updateInstead');
+    const pushes = spyOn(Workspaces.prototype, 'pushMain');
+    try {
+      workers.pushMainFor(id);
+      // the repository's workers started afresh (`stopRepo`): the new ones know nothing of the push
+      workers.shutdown();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(pushes).not.toHaveBeenCalled();
+    } finally {
+      pushes.mockRestore();
+    }
   });
 
   test('an agent that ends its turn twice without resolving the pull leaves it to the owner', async () => {

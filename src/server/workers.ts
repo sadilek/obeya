@@ -660,6 +660,8 @@ export class Workers {
   private shut = false;
   /** Bumped whenever a card's work starts, stops or ends: replies and tool calls from before are stale. */
   private generation = new Map<string, number>();
+  /** The last run handed out to a card (`bump`). */
+  private runs = 0;
   /** The restart that waits for workers, if one does. */
   private restart: DueRestart | null = null;
   /** Cards that wait for the owner, until their grace runs out and Obeya stops their app. */
@@ -702,8 +704,22 @@ export class Workers {
         const card = this.o.board.item(id);
         if (card?.app !== f.app || this.o.board.row(id).workspace !== f.workspace) this.unforward(id);
       }
+      this.forget();
       this.settleLater();
     });
+  }
+
+  /** What is kept by card goes once its card is deleted or archived: the maps would otherwise grow for the life of the process. */
+  private forget() {
+    // the rows alone: reading the items here would make the board's own notes on them earlier
+    const gone = (id: string) => {
+      try {
+        return !!this.o.board.row(id).archived_at;
+      } catch {
+        return true;
+      }
+    };
+    for (const m of [this.generation, this.tried, this.granted]) for (const id of [...m.keys()]) if (gone(id)) m.delete(id);
   }
 
   /** The folder without git the cards work in, where the repository is one (design: Folders without git). */
@@ -3529,6 +3545,15 @@ export class Workers {
     this.parking.clear();
     for (const timer of this.pausing.values()) clearTimeout(timer);
     this.pausing.clear();
+    // comments held back go from the new workers, which hold them again as they resume
+    for (const timer of this.holding.values()) clearTimeout(timer);
+    this.holding.clear();
+    // a "Push main" still in its undo window goes undone: the new workers could not take it back
+    for (const [id, held] of this.pushingMain) {
+      if (held === true) continue;
+      clearTimeout(held);
+      this.pushingMain.delete(id);
+    }
     for (const id of [...this.forwards.keys()]) this.unforward(id);
   }
 
@@ -3850,7 +3875,8 @@ export class Workers {
   }
 
   private bump(cardId: string) {
-    this.generation.set(cardId, (this.generation.get(cardId) ?? 0) + 1);
+    // counted across cards, so a card's run forgotten (`forget`) is never taken for a later one
+    this.generation.set(cardId, ++this.runs);
     this.unpark(cardId);
   }
 

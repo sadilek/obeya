@@ -79,6 +79,21 @@ describe('workers', () => {
     expect(() => workers.start(d.id)).toThrow(BadRequest);
   });
 
+  test('what the workers keep by card goes once the card is deleted', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    await workers.stop(c.id);
+    const kept = workers as unknown as Record<'generation' | 'tried' | 'granted', Map<string, unknown>>;
+    expect(kept.generation.has(c.id)).toBe(true);
+    kept.tried.set(c.id, 1);
+    kept.granted.set(c.id, new Set());
+    board.remove(c.id);
+    await flush();
+    expect(kept.generation.has(c.id)).toBe(false);
+    expect(kept.tried.has(c.id)).toBe(false);
+    expect(kept.granted.has(c.id)).toBe(false);
+  });
+
   test('the screenshots of the task go with it when the worker starts', async () => {
     const images = new Images(join(dir, 'images'));
     const shot = images.save(new Uint8Array([1, 2, 3]), 'image/png');

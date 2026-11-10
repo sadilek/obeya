@@ -936,6 +936,17 @@ describe('comments on places in the demo video', () => {
     expect(runtime.sessions.flatMap((s) => s.inbox).at(-1)).toContain('Hier.');
   });
 
+  test('held back by workers that were shut down, it goes from neither them nor before the new ones resume', async () => {
+    const c = await waiting();
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic, holdGrace: 10 }));
+    workers.message(c.id, 'Hier.', [], false, undefined, { at: 1 });
+    const sessions = runtime.sessions.length;
+    workers.shutdown();
+    await Bun.sleep(50);
+    expect(runtime.sessions).toHaveLength(sessions);
+    expect(board.item(c.id)!.held).toHaveLength(1);
+  });
+
   test('one made while the worker takes in the ones before, which then asks a question, goes with the answer', async () => {
     const c = await waiting();
     workers.message(c.id, 'Hier fehlt die Kopfzeile.', [], false, undefined, { at: 7 });
