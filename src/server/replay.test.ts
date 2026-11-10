@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -251,6 +251,50 @@ test("a worker's commits go into the workspace at its next call; rewritten ones 
   await until(() => events.some((e) => e.type === 'idle'));
   expect(seen).toEqual(['First step | init', 'First step | First step | init', 'First step | First step | init']);
   expect(readFileSync(join(b, 'ws', 'one.txt'), 'utf8')).toBe('First step, amended\n');
+});
+
+test('a rewritten commit that does not go into the workspace leaves no temp directory behind', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'replay-'));
+  const rec = join(root, 'rec');
+  const worker = (dir: string, run: () => void, events: AgentEvent[] = []): AgentSpec => ({
+    cwd: join(dir, 'ws'),
+    role: 'worker',
+    system: 'You build the card.',
+    tools: [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: () => (run(), 'Shown.') }],
+    onEvent: (e) => events.push(e),
+  });
+  const commit = (ws: string, text: string) => {
+    writeFileSync(join(ws, 'one.txt'), `${text}\n`);
+    git(ws, 'add', '-A');
+    git(ws, 'commit', '-qm', text);
+  };
+  const a = join(root, 'a');
+  gitRepo(join(a, 'ws'));
+  identify(join(a, 'ws'));
+  const fake = new FakeRuntime();
+  const started = headRead();
+  recordingRuntime(fake, rec, join(a, 'home')).start(worker(a, () => {}), 'Build it.');
+  await started;
+  commit(join(a, 'ws'), 'First step');
+  await fake.last.call('report', { status: 'One step' });
+  writeFileSync(join(a, 'ws', 'one.txt'), 'First step, amended\n');
+  git(join(a, 'ws'), 'commit', '-qa', '--amend', '--no-edit');
+  await fake.last.call('report', { status: 'Amended' });
+  fake.last.emit({ type: 'idle' });
+
+  const b = join(root, 'b');
+  gitRepo(join(b, 'ws'));
+  identify(join(b, 'ws'));
+  const temps = () => readdirSync(tmpdir()).filter((n) => n.startsWith('obeya-replay-'));
+  const before = temps();
+  const events: AgentEvent[] = [];
+  // the workspace of today changes the same line in between: the amendment does not apply
+  let calls = 0;
+  const log: string[] = [];
+  replayRuntime(rec, { home: join(b, 'home'), log: (l) => log.push(l) }).start(worker(b, () => calls++ === 0 && commit(join(b, 'ws'), 'Mine'), events), 'Build it.');
+  await until(() => events.some((e) => e.type === 'idle'));
+  expect(log.join('\n')).toContain('does not go into the workspace');
+  expect(temps()).toEqual(before);
 });
 
 test("a handover with a merge of main into a pull request's head plays back as that merge, onto the head and main of today", async () => {

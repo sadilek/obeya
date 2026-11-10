@@ -647,13 +647,17 @@ function play(rec: Recorded, spec: AgentSpec, p: Player): AgentSession {
       const [name, email] = (await gitAsync(cwd, 'log', '-1', '--format=%an%n%ae', head.to)).split('\n');
       const as = ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
       if ((await gitAsync(cwd, 'rev-parse', 'HEAD^{tree}')) === (await gitAsync(cwd, 'rev-parse', `${head.to}^{tree}`))) return;
-      const patch = join(mkdtempSync(join(tmpdir(), 'obeya-replay-')), 'change.patch');
       const diff = await gitAsync(cwd, 'diff', '--binary', head.from, head.to);
       if (!diff) return;
-      writeFileSync(patch, `${diff}\n`);
-      await gitAsync(cwd, 'apply', '--3way', '--index', patch);
+      const temp = mkdtempSync(join(tmpdir(), 'obeya-replay-'));
+      try {
+        const patch = join(temp, 'change.patch');
+        writeFileSync(patch, `${diff}\n`);
+        await gitAsync(cwd, 'apply', '--3way', '--index', patch);
+      } finally {
+        rmSync(temp, { recursive: true, force: true });
+      }
       await gitAsync(cwd, ...as, 'commit', '-q', '--allow-empty', '-m', await gitAsync(cwd, 'log', '-1', '--format=%B', head.to));
-      rmSync(dirname(patch), { recursive: true, force: true });
     } finally {
       await gitAsync(cwd, 'update-ref', '-d', ref).catch(() => {});
     }
