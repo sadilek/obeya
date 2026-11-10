@@ -918,6 +918,12 @@ export class Board {
     return this.items().find((i) => i.id === id);
   }
 
+  /** Of these cards, those deleted, archived or not on this canvas: what is kept by card for them may go. */
+  gone(ids: string[]): string[] {
+    const open = this.store.openIds(this.canvas.id, ids);
+    return ids.filter((id) => !open.has(id));
+  }
+
   /** Changes a card's work fields (state, session, workspace …); for the agents, not the owner. */
   work(id: string, fields: RowUpdate) {
     this.own(id);

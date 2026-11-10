@@ -123,7 +123,7 @@ describe('refused requests', () => {
       ['POST', '/files/find'],
     ];
     const statuses = await Promise.all(routes.map(async ([method, path]) => `${method} ${path.replace(c.id, ':id')} ${(await send(method, path)).status}`));
-    expect(statuses.filter((s) => s.endsWith(' 500'))).toEqual([]);
+    expect(statuses.filter((s) => !s.endsWith(' 400'))).toEqual([]);
   });
 
   test('a card already with the Coordinator cannot be started again', async () => {

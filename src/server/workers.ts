@@ -31,7 +31,7 @@ import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
 import { type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
-import { gitAsync, type GitSteps, isAncestor, isFolder } from './workspaces';
+import { gitAsync, type GitSteps, hasCommit, isAncestor, isFolder } from './workspaces';
 import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
 import type { CardRow, RowUpdate } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
@@ -711,15 +711,12 @@ export class Workers {
 
   /** What is kept by card goes once its card is deleted or archived: the maps would otherwise grow for the life of the process. */
   private forget() {
-    // the rows alone: reading the items here would make the board's own notes on them earlier
-    const gone = (id: string) => {
-      try {
-        return !!this.o.board.row(id).archived_at;
-      } catch {
-        return true;
-      }
-    };
-    for (const m of [this.generation, this.tried, this.granted]) for (const id of [...m.keys()]) if (gone(id)) m.delete(id);
+    const maps = [this.generation, this.tried, this.granted];
+    const ids = [...new Set(maps.flatMap((m) => [...m.keys()]))];
+    if (!ids.length) return;
+    // one look at the rows alone: reading the items here would make the board's own notes on them earlier
+    const gone = new Set(this.o.board.gone(ids));
+    for (const m of maps) for (const id of gone) m.delete(id);
   }
 
   /** The folder without git the cards work in, where the repository is one (design: Folders without git). */
@@ -2049,14 +2046,7 @@ export class Workers {
     }
     if (!base || base === head) return { head, base: head, commits: 0 };
     // a head the workspace does not have is one pushed since it fetched; any other failure tells nothing
-    const on = await isAncestor(ws, base, head).catch(async (e: unknown) =>
-      (await gitAsync(ws, 'cat-file', '-e', `${base}^{commit}`).then(
-        () => true,
-        () => false,
-      ))
-        ? messageOf(e)
-        : false,
-    );
+    const on = await isAncestor(ws, base, head).catch(async (e: unknown) => ((await hasCommit(ws, base).catch(() => true)) ? messageOf(e) : false));
     if (typeof on === 'string') return `Not handed over: Obeya could not tell whether your branch builds on the pull request’s head ${base.slice(0, 7)} (${on}). Check the workspace, then call ready_for_review again.`;
     if (!on)
       return `Not handed over: the pull request's head is ${base.slice(0, 7)}, and your branch does not build on it (${c.author} pushed since you fetched it, or your branch was rewritten). Fetch refs/pull/${c.number}/head from ${this.prSource(c)} and look at what changed before you run any of it; put the commits of your own that are not on the PR yet on top of it (rebase; the PR's commits stay as they are), review what is new, then hand over again.`;

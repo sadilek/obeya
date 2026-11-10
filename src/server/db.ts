@@ -784,6 +784,12 @@ export class Store {
     return { upTo: rows.reduce((m, r) => Math.max(m, r.id), after), ids: [...new Set(rows.flatMap((r) => (r.canvas === canvasId ? [r.card] : [])))] };
   }
 
+  /** Which of these cards are on the canvas: neither deleted nor archived. */
+  openIds(canvasId: string, ids: string[]): Set<string> {
+    const rows = this.db.query('SELECT id FROM cards WHERE id IN (SELECT value FROM json_each($ids)) AND canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId, ids: JSON.stringify(ids) }) as { id: string }[];
+    return new Set(rows.map((r) => r.id));
+  }
+
   /** Where the log of shared cards' writes stands now (`sharedChanges`); its entries' ids are never taken again. */
   sharedLog(): number {
     return (this.db.query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'shared_changes'), 0) AS n").get() as { n: number }).n;

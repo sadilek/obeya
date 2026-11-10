@@ -48,8 +48,8 @@ export const setConversation = (l: 'de' | 'en') => void (conversation = l);
 
 /** `withOrigin`: clones come from a bare `origin`, as from a remote, instead of from the checkout. */
 export async function setup(adapter: RepoAdapter, withOrigin = false) {
-  // a test that sets up afresh is done with the workers of the setup before
-  for (const w of made.splice(0)) w.shutdown();
+  // a test that sets up afresh is done with the setup before: it goes as after a test
+  if (made.length) await tearDown();
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
   main = join(dir, 'main');
   gitRepo(main);
@@ -99,13 +99,15 @@ export function eachTest() {
       app: { run: 'Start it with `bun run stack`; after an API change, `bun run api:restart`. The URL is in `.stack.env` under WEB_URL.' },
     }),
   );
-  afterEach(async () => {
-    // no timer of a test's workers outlives it; git freeing a workspace in the background is done before its repository goes
-    const all = made.splice(0);
-    for (const w of all) w.shutdown();
-    await Promise.all(all.map((w) => w.freed()));
-    await removeDir(dir);
-  });
+  afterEach(tearDown);
+}
+
+/** No timer of a test's workers outlives the setup; git freeing a workspace in the background is done before its repository goes. */
+async function tearDown() {
+  const all = made.splice(0);
+  for (const w of all) w.shutdown();
+  await Promise.all(all.map((w) => w.freed()));
+  await removeDir(dir);
 }
 
 export const manual = () => board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });

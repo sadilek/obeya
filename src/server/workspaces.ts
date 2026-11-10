@@ -163,6 +163,14 @@ export async function isAncestor(cwd: string, a: string, b: string): Promise<boo
   throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
 }
 
+/** Whether `cwd` has the commit `c`. Throws where git cannot tell (a broken repository, a configuration it cannot read). */
+export async function hasCommit(cwd: string, c: string): Promise<boolean> {
+  const args = ['rev-parse', '--verify', '--quiet', `${c}^{commit}`];
+  const r = await gitRun(cwd, args);
+  if (r.code === 0 || r.code === 1) return r.code === 0;
+  throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+}
+
 /** `git` in `cwd` without blocking, with its exit code: for commands whose exit code is an answer (`diff --no-index`). */
 async function gitRun(cwd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const there = remoteWorkspace(cwd);

@@ -8,7 +8,7 @@ import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
 import { alive, gitClone, gitRepo, identify, leftBehind, removeDir, until } from './testing';
-import { addTrailer, defaultBranch, git, originFetch, unlanded, Workspaces } from './workspaces';
+import { addTrailer, defaultBranch, git, hasCommit, isAncestor, originFetch, unlanded, Workspaces } from './workspaces';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
@@ -66,6 +66,21 @@ describe('the main branch', () => {
     git(repo, 'checkout', '--quiet', '--detach');
     git(repo, 'config', 'init.defaultBranch', 'trunk');
     expect(defaultBranch(repo)).toBe('trunk');
+  });
+});
+
+describe('what git can tell of commits', () => {
+  test('a commit the repository lacks is no ancestor and not there; a repository git cannot read tells neither', async () => {
+    const repo = gitRepo(join(dir, 'tell'));
+    const head = git(repo, 'rev-parse', 'HEAD');
+    const unknown = '0123456789abcdef0123456789abcdef01234567';
+    expect(await hasCommit(repo, head)).toBe(true);
+    expect(await hasCommit(repo, unknown)).toBe(false);
+    expect(await isAncestor(repo, head, head)).toBe(true);
+    expect(await rejection(isAncestor(repo, unknown, head))).toBeInstanceOf(Error);
+    writeFileSync(join(repo, '.git', 'config'), '[core\n');
+    expect(await rejection(hasCommit(repo, head))).toBeInstanceOf(Error);
+    expect(await rejection(isAncestor(repo, head, head))).toBeInstanceOf(Error);
   });
 });
 
