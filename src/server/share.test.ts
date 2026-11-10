@@ -487,6 +487,26 @@ describe('the tags of a page', () => {
     expect(board.setting('reshare_dismissed')).toBeNull();
   });
 
+  test('a page the owner tagged while the session chose, which gave it no answer, is no failure of the run', async () => {
+    const [a, b] = ['A', 'B'].map((x) => card(x, { page: { title: `Page ${x}`, text: 'Vermieter laden Zählerstände als CSV.', tags: { Area: ['Billing'], Audience: ['Admins'] } } }));
+    for (const x of [a!, b!]) {
+      sharing.share(x.id);
+      await until(() => still(x.id));
+    }
+    vocabulary = { Area: ['Invoices', 'Reports'], Audience: ['Admins', 'Customers'] };
+    board.changed();
+    sharing.reshareMany(null, true);
+    await until(() => runtime.sessions.length === 1);
+    const pageA = runtime.last.inbox[0]!.match(/Page (\d+)(?: \([^)]*\))?:\nThe page: “Page A”/)![1];
+    // the owner tags B meanwhile; the session answers for A alone
+    sharing.setTags(b!.id, 'Area', ['Reports']);
+    runtime.last.call('tags', { page: Number(pageA), tags: { Area: ['Invoices'] } });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => board.snapshot().reshare?.run?.left === 0);
+    expect(board.snapshot().reshare?.run?.failed).toEqual([]);
+    expect(log(b!.id).filter((l) => l.startsWith('Nicht geteilt'))).toEqual([]);
+  });
+
   test("a page whose demo files are gone is tagged in place: the site's copy of its video stays, the page shows the tags", async () => {
     vocabulary = { Area: ['Billing', 'Reports'], Audience: ['Admins', 'Customers'] };
     const a = tagged({ Area: ['Billing'], Audience: [] }, 'Alt A');

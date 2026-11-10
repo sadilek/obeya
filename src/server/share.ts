@@ -570,7 +570,8 @@ export class Sharing {
       else if (!tags || !Object.keys(tags).length) failed.push(p.id);
       return tags && Object.keys(tags).length ? [{ ...p, chosen: tags, tags: tagsOf({ ...pageTagsOf(this.o.board.row(p.id)), ...tags }, this.vocabulary(p.card)) }] : [];
     });
-    for (const p of pages) if (!chosen.has(p.id)) this.o.board.log(p.id, 'error', 'obeya', `${t.notShared}: ${t.noTags}`);
+    // one the owner tagged meanwhile lacks nothing, whatever the session gave it
+    for (const p of pages) if (!chosen.has(p.id) && failed.includes(p.id)) this.o.board.log(p.id, 'error', 'obeya', `${t.notShared}: ${t.noTags}`);
     if (going.length) {
       const r = await target.retag(
         going.map((p) => ({ slug: p.slug, tags: p.tags })),
