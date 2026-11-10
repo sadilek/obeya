@@ -60,8 +60,12 @@ beforeEach(async () => {
   };
   server = serve([canvas], { transcriber }, 0);
 });
+/** What a test starts beside the default canvas: shut down after it. */
+const started: { shutdown(): void }[] = [];
 afterEach(async () => {
   server.stop(true);
+  canvas.shutdown();
+  for (const c of started.splice(0)) c.shutdown();
   await removeDir(dir);
   setSystemTime();
 });
@@ -418,7 +422,7 @@ describe('the connection to every canvas', () => {
     const others = await Promise.all(
       ['second', 'third'].map((name) => {
         const path = gitRepo(join(dir, name), { 'README.md': 'hi\n' });
-        return CanvasRuntime.start({ repos: [{ path }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+        return CanvasRuntime.start({ repos: [{ path }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge }).then((c) => (started.push(c), c));
       }),
     );
     const all = [canvas, ...others];
@@ -1199,6 +1203,7 @@ describe('a restart that waits', () => {
     const other = join(dir, 'other');
     gitRepo(other);
     const second = await CanvasRuntime.start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    started.push(second);
     const there = second.board.create({ title: 'Export als CSV', x: 0, y: 0 });
     let busy = [
       { canvas: 'main', card: 'k1' },
@@ -1287,6 +1292,7 @@ describe('cards that need the owner', () => {
     const other = join(dir, 'other');
     gitRepo(other);
     const second = await CanvasRuntime.start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    started.push(second);
     const waiting = second.board.create({ title: 'B', x: 0, y: 0 });
     second.board.work(waiting.id, { state: 'waiting', need: 'review' });
     server.stop(true);
@@ -1337,6 +1343,7 @@ describe('canvases that start and stop while Obeya runs', () => {
     const other = join(dir, 'other');
     gitRepo(other);
     const set = await Canvases.start([], { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge, restartIntervalMs: 5 });
+    started.push(set);
     const list = [canvas];
     server.stop(true);
     server = serve({ all: () => [...list, ...set.all()], onChange: (fn) => set.onChange(fn) }, { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
@@ -1376,6 +1383,7 @@ describe('landing approved work', () => {
     const pushing = join(dir, 'pushing');
     writeFileSync(join(origin, 'hooks/pre-receive'), `#!/bin/sh\ntouch '${shPath(pushing)}'\nsleep 1\n`, { mode: 0o755 });
     const pushed = await CanvasRuntime.start({ repos: [{ path: repo, clones: 2, settings: { land: 'pr', direct: true, workspaces: 'clones' } }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    started.push(pushed);
     server.stop(true);
     server = serve([canvas, pushed], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
     const handedOver = async (title: string) => {

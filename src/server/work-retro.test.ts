@@ -33,7 +33,10 @@ beforeEach(() => {
   const workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, onWorkEnded: (id, ws) => retro.ended(id, ws) });
 });
-afterEach(() => removeDir(dir));
+afterEach(async () => {
+  workers.shutdown();
+  await removeDir(dir);
+});
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
 /** The number a card goes by, as the retrospective names it. */

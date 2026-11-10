@@ -35,7 +35,10 @@ beforeEach(() => {
   workers = new Workers({ board, runtime, workspaces, adapter });
   k = new Coordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
 });
-afterEach(() => removeDir(dir));
+afterEach(async () => {
+  workers.shutdown();
+  await removeDir(dir);
+});
 
 /**
  * Lets the Coordinator go on until it waits for an estimate or has decided, and the cards it started
@@ -627,6 +630,7 @@ describe('Coordinator waits for a free workspace', () => {
     for (let i = 1; i <= n; i++) gitClone(main, join(dir, 'clones', String(i)));
     await workspaces.ensureClones(main, n);
     clones = workspaces.list().map((w) => w.path);
+    workers.shutdown();
     workers = new Workers({ board, runtime, workspaces, adapter });
     k = new Coordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
   }
@@ -712,6 +716,7 @@ describe('Coordinator waits for a free workspace', () => {
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }));
     workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws'), machines: [{ host: null, slots: 1 }], busy: () => workers.busyOn(null) });
     const adapter = { ...generic, land: 'main' as const, workspaces: 'worktrees' as const };
+    workers.shutdown();
     workers = new Workers({ board, runtime, workspaces, adapter });
     k = new Coordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
     expect(workspaces.pooled).toBe(true);
@@ -1302,6 +1307,7 @@ describe('preference memory', () => {
       'feedback:Noch die Einheit.',
       'note:UTC.',
     ]);
+    w.shutdown();
   });
 });
 

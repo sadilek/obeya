@@ -5,7 +5,7 @@ import { generic } from '../adapters/generic';
 import { BadRequest, Board } from './board';
 import { artifact, removeDir, until } from './testing';
 import { Workers } from './workers';
-import { board, dir, doc, eachTest, flush, main, manual, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
+import { board, dir, doc, eachTest, flush, main, manual, runtime, setDocs, setup, setWorkers, spaces, state, store, tracked, workers, ws } from './workers-fixture';
 import { GIT, git, gitOrNull } from './workspaces';
 
 eachTest();
@@ -670,7 +670,7 @@ describe('a worktree per card', () => {
     await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'worktrees' });
     const restarting = (b: Board) =>
-      new Workers({ board: b, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, restartsFor: () => 'obeya' });
+      tracked(new Workers({ board: b, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, restartsFor: () => 'obeya' }));
     setWorkers(restarting(board));
     const c = manual();
     await workers.start(c.id);
@@ -831,7 +831,7 @@ describe('a worktree per card', () => {
     expect(board.events(c.id).at(-1)).toMatchObject({ author: 'obeya', kind: 'state' });
 
     workers.shutdown();
-    const after = new Workers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } });
+    const after = tracked(new Workers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } }));
     after.resumeAll();
     const resumed = runtime.last;
     expect(resumed).not.toBe(s);
@@ -891,7 +891,7 @@ describe('a worktree per card', () => {
     expect(s.closed).toBe(false);
     expect(board.item(c.id)!.finishing).toBe(true);
     workers.shutdown();
-    const after = new Workers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } });
+    const after = tracked(new Workers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } }));
     after.resumeAll();
     expect(runtime.last).not.toBe(s);
     expect(runtime.last.spec.resume).toBe('sess-1');

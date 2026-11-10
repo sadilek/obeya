@@ -37,13 +37,19 @@ export let language: 'de' | 'en';
 /** The owner's conversation language in these tests; the interface's where none is set. */
 export let conversation: 'de' | 'en' | undefined;
 
-export const setWorkers = (w: Workers) => void (workers = w);
+/** Every `Workers` a test made here, the ones it replaced too: each is shut down after the test (`eachTest`). */
+const made: Workers[] = [];
+export const setWorkers = (w: Workers) => void made.push((workers = w));
+/** Workers a test makes beside the ones it works through (another canvas's, an Obeya started anew): shut down with them after the test. */
+export const tracked = (w: Workers) => (made.push(w), w);
 export const setDocs = (d: PlanDoc[]) => void (docs = d);
 export const setLanguage = (l: 'de' | 'en') => void (language = l);
 export const setConversation = (l: 'de' | 'en') => void (conversation = l);
 
 /** `withOrigin`: clones come from a bare `origin`, as from a remote, instead of from the checkout. */
 export async function setup(adapter: RepoAdapter, withOrigin = false) {
+  // a test that sets up afresh is done with the workers of the setup before
+  for (const w of made.splice(0)) w.shutdown();
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
   main = join(dir, 'main');
   gitRepo(main);
@@ -67,7 +73,7 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
   }
   runtime = new FakeRuntime();
   merged = [];
-  workers = new Workers({
+  setWorkers(new Workers({
     board,
     runtime,
     workspaces,
@@ -75,7 +81,7 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
     onMerged: (cardId) => void merged.push(cardId),
     env: { OBEYA_URL: 'http://127.0.0.1:4417' },
     keptDemos: join(dir, 'kept'),
-  });
+  }));
 }
 
 /**
@@ -94,8 +100,10 @@ export function eachTest() {
     }),
   );
   afterEach(async () => {
-    // git freeing a workspace in the background is done before its repository goes
-    await workers?.freed();
+    // no timer of a test's workers outlives it; git freeing a workspace in the background is done before its repository goes
+    const all = made.splice(0);
+    for (const w of all) w.shutdown();
+    await Promise.all(all.map((w) => w.freed()));
     await removeDir(dir);
   });
 }

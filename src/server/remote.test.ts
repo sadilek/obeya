@@ -49,6 +49,7 @@ beforeEach(async () => {
 afterEach(async () => {
   access.stop();
   server.stop(true);
+  canvas.shutdown();
   await removeDir(dir);
 });
 

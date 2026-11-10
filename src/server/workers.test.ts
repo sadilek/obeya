@@ -10,7 +10,7 @@ import { Images } from './images';
 import { Restarter } from './self-update';
 import { artifact, until } from './testing';
 import { describeTool, Workers } from './workers';
-import { board, dir, eachTest, flush, main, manual, runtime, setConversation, setLanguage, setWorkers, spaces, state, store, workers } from './workers-fixture';
+import { board, dir, eachTest, flush, main, manual, runtime, setConversation, setLanguage, setWorkers, spaces, state, store, tracked, workers } from './workers-fixture';
 import { git } from './workspaces';
 
 eachTest();
@@ -1323,7 +1323,7 @@ describe('workers', () => {
     await workers.stop(c.id);
     board.work(c.id, { state: 'live', detail: JSON.stringify({ summary: 'Export gebaut.' }) });
     const q = shop.snapshot().items.find((i) => i.title === 'Doku')!;
-    const there = new Workers({ board: shop, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, otherBoards: () => [board, tools, shop] });
+    const there = tracked(new Workers({ board: shop, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, otherBoards: () => [board, tools, shop] }));
     shop.accept(q.id);
     await there.start(q.id);
     expect(runtime.last.inbox[0]).toContain('This card follows up on the card “Zählerstände exportieren” on the canvas “C”. Its worker handed it over with this summary:\n\nExport gebaut.');

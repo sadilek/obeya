@@ -346,6 +346,7 @@ describe('a canvas with several repositories', () => {
 });
 
 test('the home repository stays home when the configuration lists the repositories in another order', async () => {
+  canvas.shutdown();
   fresh();
   const store = new Store(':memory:');
   const web = repo('web', 'Web');
@@ -1438,6 +1439,7 @@ describe('the canvases Obeya serves', () => {
 });
 
 test('a clone registered for a repository must be one of it', async () => {
+  canvas.shutdown();
   fresh();
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
@@ -1450,6 +1452,7 @@ test('a clone registered for a repository must be one of it', async () => {
 });
 
 test('clones of the repository count as its own whether their origin is over https or ssh', async () => {
+  canvas.shutdown();
   fresh();
   const shop = repo('shop', 'Shop');
   git(shop, 'remote', 'add', 'origin', 'https://github.com/acme/shop.git');
@@ -1466,6 +1469,7 @@ test('clones of the repository count as its own whether their origin is over htt
 });
 
 test('canvas ids read well', async () => {
+  canvas.shutdown();
   fresh();
   const c = await CanvasRuntime.start({ name: 'Grüße & Maße', repos: [{ path: repo('g', 'G') }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   expect(c.id).toBe('grusse-masse');
@@ -1473,6 +1477,7 @@ test('canvas ids read well', async () => {
 });
 
 test('a single repository keeps its canvas id and bare plan references', async () => {
+  canvas.shutdown();
   fresh();
   const only = repo('solo', 'Solo');
   const c = await CanvasRuntime.start({ repos: [{ path: only }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });

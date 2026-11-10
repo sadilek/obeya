@@ -70,7 +70,10 @@ beforeEach(async () => {
   };
   watcher = new PrWatcher(board, workers, forge, () => main, () => settings);
 });
-afterEach(() => removeDir(dir));
+afterEach(async () => {
+  workers.shutdown();
+  await removeDir(dir);
+});
 
 const state = (id: string) => {
   const i = board.item(id)!;
@@ -706,6 +709,7 @@ describe('pull requests in several repositories', () => {
   let statuses: Record<string, PrStatus>;
 
   beforeEach(() => {
+    workers.shutdown();
     workers = new Workers({ board, runtime, workspaces, adapter: settings, remote: 'git@github.com:acme/app.git' });
     const open = (): PrStatus => ({ state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [{ name: 'CI', state: 'pending' }], comments: [] });
     statuses = { [URL_]: open(), [OTHER]: { ...open(), head: 'ddd' } };

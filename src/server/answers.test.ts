@@ -38,6 +38,8 @@ beforeEach(async () => {
   canvas = await open();
 });
 afterEach(async () => {
+  // git freeing a workspace in the background is done before its repository goes
+  await Promise.all(canvas.repos.map((r) => r.workers.freed()));
   canvas.shutdown();
   await removeDir(dir);
 });

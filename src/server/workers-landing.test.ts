@@ -7,7 +7,7 @@ import { needsYou, stopped } from '../core/types';
 import { artifact, gitClone, identify, removeDir, until } from './testing';
 import { Board } from './board';
 import { Workers } from './workers';
-import { board, dir, doc, eachTest, flush, main, manual, merged, origin, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
+import { board, dir, doc, eachTest, flush, main, manual, merged, origin, runtime, setDocs, setup, setWorkers, spaces, state, store, tracked, workers, ws } from './workers-fixture';
 import { git } from './workspaces';
 
 eachTest();
@@ -885,7 +885,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     await stoppedWithWork(w.id);
     // the doc was ticked off while an Obeya ran that did not free it; this one starts on the same database
     const fresh = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [{ ...doc, workstreams: [{ ...ws('W1'), done: true }, ws('W2')] }], dirs: [] }));
-    new Workers({ board: fresh, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } }).resumeAll();
+    tracked(new Workers({ board: fresh, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } })).resumeAll();
     expect(spaces.leasedBy(w.id)).toBeNull();
     expect(fresh.item(w.id)!.state).toBe('live');
   });
@@ -1116,7 +1116,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
   /** An Obeya started anew on the same database, which settles the leases as it starts. */
   const restart = () => {
     const fresh = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [doc], dirs: [] }));
-    new Workers({ board: fresh, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } }).resumeAll();
+    tracked(new Workers({ board: fresh, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } })).resumeAll();
     return fresh;
   };
 
