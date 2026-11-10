@@ -11,7 +11,8 @@
 //   bun scripts/scratch-obeya.ts --sweep
 //
 // Prints one JSON line, also kept in <dir>/staged.json:
-//   { "url", "port", "dir", "canvas", "pid", "log", "from", "endsItself", "cards": { "<key>": "<card id>" }, "record"?, "replay"? }
+//   { "url", "port", "dir", "canvas", "pid", "log", "from", "endsItself", "cards": { "<key>": "<card id>" }, "canvasOf": { "<key>": "<canvas id>" }, "record"?, "replay"? }
+// `canvas` is the canvas the url opens, the first; `canvasOf` the one each card is on.
 // The port is --port, else the stage file's `port`; without either the script picks one: the
 // first from 4480 up that nothing listens on and no other scratch Obeya holds (a running one, or
 // one being staged at the same time), so that workers staging at once never collide. --stop,
@@ -31,7 +32,7 @@
 // prints it again. --stop ends only the server it staged, never another program that has its
 // process number by now, and fails if the server still runs after it. The script itself talks to the API with the owner's key of the scratch home.
 //
-// With idle workers, --say and --artifact act as a card's agent (by its key in staged.json), for a
+// With idle workers, --say and --artifact act as a card's agent (by its key in staged.json, on whichever canvas the card is), for a
 // check of what the owner sees while an agent works: through the server, which runs the agent's own
 // tools (`Workers.standIn`), so an open page gets the line at once, unread marker and notification
 // as from a real agent. --say adds a line of the kind a stage file's `events` give: `say` (the
@@ -253,7 +254,7 @@ interface Stage {
   repoName?: string;
   /** Further repositories on the canvas the cards go on, each in a directory of its name, which is its id. */
   repos?: { name: string; files?: Record<string, string> }[];
-  /** Further canvases by name, each over a repository of its own, without cards: to switch between canvases. */
+  /** Further canvases by name, each over a repository of its own; a card goes on one by its `canvas`. */
   canvases?: string[];
   /** Without it (and without --port) the script picks a free one. */
   port?: number;
@@ -643,11 +644,14 @@ if (!stage.setupProposals)
 // the cards: created through the API, the plan doc's looked up, then their fields written directly
 const snapshot = (await api('GET', '/canvas')) as CanvasSnapshot;
 const ids: Record<string, string> = {};
+// the canvas each card is on: a project or workstream is on the first, any other card where its `canvas` puts it
+const canvasOf: Record<string, string> = {};
 const below = Math.max(0, ...snapshot.items.map((x) => x.y)) + 400;
 let placed = 0;
 const idOf = (c: StageCard, i: number) => ids[c.key ?? String(i)]!;
 for (const [i, c] of stage.cards.entries()) {
   let id: string | undefined;
+  let on = canvas;
   if (c.project) id = snapshot.items.find((x) => x.kind === 'project' && x.plan?.file === c.project)?.id;
   else if (c.workstream) {
     const [doc, label] = c.workstream.includes('#') ? c.workstream.split('#') : [undefined, c.workstream];
@@ -658,7 +662,7 @@ for (const [i, c] of stage.cards.entries()) {
     if (c.from && !ids[c.from]) fail(`card ${c.key ?? i}: "from" names ${c.from}, which comes later or does not exist`);
     // without a place: in rows of four below the plan docs (a follow-up goes below its card)
     const at = c.from || (c.x !== undefined && c.y !== undefined) ? {} : { x: 40 + 360 * (placed % 4), y: below + 220 * Math.floor(placed++ / 4) };
-    const on = c.canvas ? (allCanvases.find((x) => x.name === c.canvas)?.id ?? fail(`card ${c.key ?? i}: no canvas named ${c.canvas}`)) : canvas;
+    on = c.canvas ? (allCanvases.find((x) => x.name === c.canvas)?.id ?? fail(`card ${c.key ?? i}: no canvas named ${c.canvas}`)) : canvas;
     const created = await api('POST', '/cards', {
       // code before cards lost their kind (--code) still asks for one; later code ignores it
       kind: 'feature',
@@ -675,6 +679,7 @@ for (const [i, c] of stage.cards.entries()) {
   }
   if (!id) fail(`card ${c.key ?? i}: no ${c.project ? `project for ${c.project}` : `workstream ${c.workstream}`} on the canvas`);
   ids[c.key ?? String(i)] = id!;
+  canvasOf[c.key ?? String(i)] = on;
 }
 
 const db = new Database(join(home, 'obeya.db'), { strict: true });
@@ -893,7 +898,7 @@ for (const [on, id, at] of refresh) await api('PATCH', `/cards/${id}`, at, on);
 for (const g of stage.groups ?? [])
   await api('POST', '/groups', { name: g.name, cards: g.cards.map((k) => ids[k] ?? fail(`group ${g.name}: card ${k} does not exist`)) });
 
-const staged = { url: (await loginLink(base, home, `/c/${canvas}`)) ?? `${base}/c/${canvas}`, port, dir, canvas, pid: server.pid, log, from, endsItself, cards: ids, ...(record ? { record } : {}), ...(replay ? { replay } : {}) };
+const staged = { url: (await loginLink(base, home, `/c/${canvas}`)) ?? `${base}/c/${canvas}`, port, dir, canvas, pid: server.pid, log, from, endsItself, cards: ids, canvasOf, ...(record ? { record } : {}), ...(replay ? { replay } : {}) };
 writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
 console.log(JSON.stringify(staged));
 process.exit(0);
@@ -1181,17 +1186,15 @@ function copyArtifact(from: string, to: string) {
   return to;
 }
 
-/** The scratch Obeya on `port` as its staged.json has it, and the owner's key of its home. */
-function scratchAt(port: number) {
+/** The card of `key` in the scratch Obeya on `port`, as its staged.json has it: its id, the API of the canvas it is on, and the owner's key of the home. */
+function cardOf(port: number, key: string) {
   const d = opt('dir') ?? scratchDir(port);
   if (!existsSync(join(d, 'staged.json'))) fail(`no scratch Obeya staged in ${d}`);
-  const staged = JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas: string; cards: Record<string, string> };
-  return { base: `http://127.0.0.1:${port}/api/c/${staged.canvas}`, cards: staged.cards, headers: ownerHeaders(join(d, 'home')) };
-}
-
-function cardOf(port: number, key: string) {
-  const s = scratchAt(port);
-  return { ...s, id: s.cards[key] ?? fail(`no card ${key} staged (${Object.keys(s.cards).join(', ')})`) };
+  const staged = JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas: string; cards: Record<string, string>; canvasOf?: Record<string, string> };
+  const id = staged.cards[key] ?? fail(`no card ${key} staged (${Object.keys(staged.cards).join(', ')})`);
+  // a staged.json from before canvasOf has its cards on the first canvas
+  const on = staged.canvasOf?.[key] ?? staged.canvas;
+  return { base: `http://127.0.0.1:${port}/api/c/${on}`, id, headers: ownerHeaders(join(d, 'home')) };
 }
 
 async function stagedCard(port: number, key: string): Promise<Item> {

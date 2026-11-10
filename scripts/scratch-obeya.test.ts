@@ -40,6 +40,7 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
       port,
       dir,
       plans: { 'docs/plan/werkzeug.md': '# Werkzeug\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n' },
+      canvases: ['Website'],
       cards: [
         { key: 'P', project: 'docs/plan/werkzeug.md', x: 520, y: 10 },
         { key: 'W1', workstream: 'W1', state: 'working', statusLine: 'Liest ein' },
@@ -48,6 +49,7 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
         { key: 'C', title: 'Frage', state: 'waiting', need: 'question', question: { text: 'Lang oder kurz?', options: ['Lang', 'Kurz'] } },
         { key: 'D', title: 'Folge', from: 'C' },
         { key: 'H', title: 'Entwürfe', state: 'waiting', need: 'demo', summary: 'Zwei Entwürfe.', demo: { kind: 'html', dir: artifact, chapters: [] } },
+        { key: 'S', title: 'Startseite', canvas: 'Website', state: 'working' },
       ],
     }),
   );
@@ -78,6 +80,13 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
   for (const key of ['A', 'C', 'H', 'W1']) expect(worked(card(key))).toBe(true);
   expect(card('B').branch).toBeUndefined();
   expect(card('D').from).toBe(staged.cards.C!);
+  // a card the stage puts on another canvas is there, and staged.json says so
+  const { canvasOf } = staged as unknown as { canvasOf: Record<string, string> };
+  expect(canvasOf.S).not.toBe(staged.canvas);
+  expect(canvasOf.A).toBe(staged.canvas);
+  expect(items.some((i) => i.id === staged.cards.S)).toBe(false);
+  const website = (await (await fetch(`http://127.0.0.1:${port}/api/c/${canvasOf.S}/canvas`, { headers })).json()) as CanvasSnapshot;
+  expect(website.items.find((i) => i.id === staged.cards.S)).toMatchObject({ title: 'Startseite', state: 'working' });
   const db = new Database(join(dir, 'home/obeya.db'), { readonly: true });
   const created = db.query<{ created_at: string }, [string]>('SELECT created_at FROM cards WHERE id = ?').get(staged.cards.A!)!.created_at;
   db.close();
@@ -123,6 +132,13 @@ test("--say and --artifact act as a staged card's agent, through the server", as
   expect(readFileSync(join(artifact, 'index.html'), 'utf8')).toBe('<h1>First draft</h1>');
   const review = (await api<{ kind: string; text: string }[]>(`/cards/${staged.cards.H}/events`)).at(-1)!;
   expect(review).toMatchObject({ kind: 'review', text: 'The second draft, without --force.' });
+  // a card on the second canvas: --say reaches it there
+  const other = run('--say', String(port), 'S', 'report', 'Drawing the hero');
+  expect(other.stderr.toString()).toBe('');
+  expect(other.stdout.toString()).toContain('Shown on the card.');
+  const on = (JSON.parse(readFileSync(join(dir, 'staged.json'), 'utf8')) as { canvasOf: Record<string, string> }).canvasOf.S;
+  const website = (await (await fetch(`http://127.0.0.1:${port}/api/c/${on}/canvas`, { headers })).json()) as CanvasSnapshot;
+  expect(website.items.find((i) => i.id === staged.cards.S)!.statusLine).toBe('Drawing the hero');
 }, 20_000);
 
 test('without a port, stagings at the same time each pick a free one, and staging afresh takes the same again', async () => {
