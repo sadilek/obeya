@@ -427,6 +427,7 @@ export class CanvasRuntime {
       canvases: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => ({ id: c.id, name: c.board.canvas.name })),
       agentSetting: () => agents('coordinator'),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
+      ...(deps.limitMargin !== undefined ? { limitMargin: deps.limitMargin } : {}),
     });
     board.interruptTalk();
     // the undo window of a new repository is not kept across a restart: the card stays as it was
@@ -2888,6 +2889,7 @@ export class CanvasRuntime {
     for (const stop of this.branchSettings.values()) stop();
     for (const r of this.repos) this.stopRepo(r);
     this.coordinator.shutdown();
+    this.commander.shutdown();
     this.explorers.shutdown();
   }
 }

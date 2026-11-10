@@ -1486,6 +1486,44 @@ test('a single repository keeps its canvas id and bare plan references', async (
   canvas = c;
 });
 
+test('a canvas that stops reads no words the usage limit held and runs no command in its undo window; it does both once it runs again', async () => {
+  fresh();
+  const web = repo('web', 'Web');
+  const s = new Store(':memory:');
+  const deps = { store: s, home: dir, runtime, forge: noForge, commandDelayMs: 50, limitMargin: 10 };
+  canvas.shutdown();
+  canvas = await CanvasRuntime.start({ repos: [{ path: web, settings: { land: 'pr' } }] }, deps);
+  const coordinators = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'act'));
+  const a = canvas.board.create({ title: 'Export', x: 0, y: 0, repo: 'web' });
+
+  // a command in its undo window, and words the usage limit holds for 60 ms
+  const started = canvas.commander.hear('starte Export', {});
+  await settle();
+  coordinators()[0]!.call('act', { actions: [{ do: 'start', card: `K${a.number}` }], confirm: '„Export“ startet.' });
+  coordinators()[0]!.emit({ type: 'idle' });
+  canvas.commander.arm((await started).token!);
+  const held = canvas.commander.hear('was läuft?', {});
+  await settle();
+  coordinators()[0]!.emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() + 60 } });
+  expect((await held).confirm).toStartWith('Das Nutzungslimit ist erreicht.');
+
+  // the canvas stops (it left the configuration, say) before either is due
+  canvas.shutdown();
+  await new Promise((r) => setTimeout(r, 200));
+  expect(coordinators()).toHaveLength(1);
+  expect(item(a.id).state).toBe('planned');
+  // both are kept, as a restart leaves them
+  expect(s.heldTalk(canvas.id).map((x) => x.said)).toEqual(['was läuft?']);
+  expect(canvas.board.heldCommands()).toHaveLength(1);
+
+  // the canvas runs again: it runs the command and reads the words
+  canvas = await CanvasRuntime.start({ repos: [{ path: web, settings: { land: 'pr' } }] }, deps);
+  await until(() => coordinators().length === 2);
+  expect(coordinators()[1]!.inbox.at(-1)).toContain('"was läuft?"');
+  await until(() => item(a.id).state !== 'planned');
+  expect(canvas.board.heldCommands()).toEqual([]);
+});
+
 test('what the owner writes in a card, or says to the Coordinator without one, reaches the learner', async () => {
   fresh();
   const web = repo('web', 'Web');

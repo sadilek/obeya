@@ -292,7 +292,9 @@ Words the usage limit keeps from the Coordinator wait as a worker does (see Turn
 handover): the reply says when ("I will read this by myself at 19:20."), the sheet shows "Usage
 limit · reads this by itself at 19:20", and after the reset they are read knowing when they were
 said, the reply coming as a notice. Later words queue behind held ones. Held words survive a
-restart.
+restart. A canvas that stops (it left the configuration, say) reads nothing more: held words wait,
+and so do commands in their undo window, until the canvas runs again, as across a restart; running
+them on a canvas nobody shows would act and notify unseen.
 
 #### Commands on their way
 

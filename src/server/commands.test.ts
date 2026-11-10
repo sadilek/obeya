@@ -794,6 +794,7 @@ describe('the usage limit', () => {
     lifts(10_000);
     await heard;
     // Obeya restarts, shortly before the limit lifts: the words are not cut off, and a new Commander reads them
+    k.shutdown();
     const [x] = store.heldTalk('c');
     store.holdTalk(x!.id, { ...x!.held, until: new Date(Date.now() + 30).toISOString() });
     board.interruptTalk();

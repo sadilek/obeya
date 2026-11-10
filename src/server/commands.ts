@@ -342,6 +342,8 @@ export class Commander {
   private heldUntil = 0;
   private heldTimer?: ReturnType<typeof setTimeout>;
   private draining?: Promise<void>;
+  /** Set once its canvas stopped (`shutdown`): it reads, runs and arms nothing more. */
+  private stopped = false;
 
   constructor(private o: CommanderOptions) {}
 
@@ -368,6 +370,7 @@ export class Commander {
 
   /** Reads the words of exchange `talk` and acts on them; nothing when the usage limit kept the Coordinator from reading them. */
   private async answer(talk: number, { transcript, focus, images, input }: Held): Promise<Heard | undefined> {
+    if (this.stopped) return undefined;
     const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
     const said = input.forwarded ? undefined : transcript;
     const replyTo = card ? this.o.board.quoted(card, input.replyTo)?.id : undefined;
@@ -382,6 +385,8 @@ export class Commander {
     try {
       decision = await this.interpret(transcript, focus, images, input);
     } catch (e) {
+      // the canvas stopped while it read them: they stay held, for the canvas to read once it runs again
+      if (this.stopped) return undefined;
       if (e instanceof LimitError) {
         this.heldUntil = limitLifts(e.limit, this.o.limitMargin ?? 10_000);
         return undefined;
@@ -392,6 +397,8 @@ export class Commander {
       reply(confirm, undefined, undefined, true, false);
       return { confirm };
     }
+    // decided after the canvas stopped: nothing of it happens, the words stay held
+    if (this.stopped) return undefined;
     const { confirm, lookUp } = decision;
     // a draft for Obeya's makers: what the owner wants them told, or what they asked and Obeya could not do
     const wish: Wish | undefined = decision.wish ? { said: decision.wish } : decision.cannot && !lookUp ? { said: transcript, answer: confirm } : undefined;
@@ -441,6 +448,8 @@ export class Commander {
    */
   private hold(talk: number, h: Held): Heard {
     const t = this.o.board.t;
+    // the canvas stopped while it read them: words held before stay held, others are cut off as by a restart
+    if (this.stopped && !this.held.has(talk)) return { confirm: t.voice.interrupted };
     const confirm = t.voice.held(t.when(this.heldUntil));
     const card = h.focus.card && this.o.board.item(h.focus.card) ? h.focus.card : undefined;
     if (!this.held.has(talk) && card) this.o.board.log(card, 'say', 'coordinator', confirm, { reply: true, ...(h.input.forwarded ? { forwarded: true as const } : {}) });
@@ -453,6 +462,7 @@ export class Commander {
 
   private waitForLimit() {
     clearTimeout(this.heldTimer);
+    if (this.stopped) return;
     // a timer runs at most about 24 days
     this.heldTimer = setTimeout(() => void this.drain(), Math.min(Math.max(0, this.heldUntil - Date.now()), 2 ** 31 - 1));
   }
@@ -466,6 +476,7 @@ export class Commander {
     return (this.draining ??= (async () => {
       clearTimeout(this.heldTimer);
       for (const [talk, h] of [...this.held]) {
+        if (this.stopped) return;
         // read now: "is reading …" under the words
         this.o.board.holdTalk(talk, null);
         const heard = await this.answer(talk, { ...h, input: { ...h.input, heldSince: h.at } });
@@ -528,6 +539,8 @@ export class Commander {
   }
 
   private schedule(token: string, w: Waiting & { due?: number; timer?: ReturnType<typeof setTimeout>; running?: boolean }, due: number) {
+    // kept in the database: the canvas runs them once it runs again, as after a restart
+    if (this.stopped) return;
     w.due = due;
     w.timer = setTimeout(async () => {
       w.running = true;
@@ -543,6 +556,24 @@ export class Commander {
       }
       this.waiting.delete(token);
     }, Math.max(0, due - Date.now()));
+  }
+
+  /**
+   * Its canvas stopped (Obeya ends, or the canvas left the configuration): what the usage limit holds
+   * is no longer read once it lifts, and the commands in their undo window do not run. Both stay in
+   * the database, as a restart leaves them: a canvas that runs again reads and runs them then
+   * (`resume`). A command already running finishes; the Coordinator's session ends.
+   */
+  shutdown() {
+    this.stopped = true;
+    clearTimeout(this.heldTimer);
+    for (const w of this.waiting.values()) if (!w.running) clearTimeout(w.timer);
+    const s = this.session;
+    this.session = null;
+    if (s && !s.ended) {
+      s.ended = true;
+      s.agent.close();
+    }
   }
 
   /** Whether commands the owner has the confirmation of wait for "Undo" or run: a restart waits for them. */
@@ -742,7 +773,7 @@ export class Commander {
 
   /** Starts the Coordinator's session ahead, so a command does not wait for its start-up. Called when the owner starts speaking. */
   warm() {
-    if (!this.live()) this.session = this.open();
+    if (!this.stopped && !this.live()) this.session = this.open();
   }
 
   private choice = () => JSON.stringify(this.o.agentSetting?.() ?? {});
@@ -1216,6 +1247,7 @@ export class Commander {
 
   /** Reads one command; settles when the turn has ended, while the decision goes out as soon as it is taken. */
   private async read(transcript: string, focus: Focus, images: string[], input: Input, decide: (d: Decision) => void, retry = true): Promise<void> {
+    if (this.stopped) throw new Error('the canvas stopped');
     const warmed = this.live();
     const s = warmed ?? (this.session = this.open());
     let decided = false;
