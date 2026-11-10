@@ -7,8 +7,12 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 Agents run on one of two harnesses, each the machine's own installation on its own login (the
 owner's subscription, no API key): Claude Code through the Agent SDK, or Codex through
 `codex app-server` (see Codex). Each group of agents runs on the harness the owner chose for it (see
-Harnesses, models and effort). The rest of this section describes Claude Code. The checkout runs the Claude Code binary the SDK brings; the compiled app
-runs the machine's own (`claude` on the `PATH`, else `~/.local/bin`, or `OBEYA_CLAUDE`). Agents get
+Harnesses, models and effort). The rest of this section describes Claude Code. The compiled app
+runs the machine's own (`claude` on the `PATH`, else `~/.local/bin`, or `OBEYA_CLAUDE`); the
+checkout runs the Claude Code binary the SDK brings, unless the machine's own on the `PATH` is
+newer, which it then runs from the next look at Claude Code on (as Obeya starts, in the setup
+assistant, ten minutes after the last when a menu of models asks, after an update; see Updating
+Claude Code). Agents get
 Obeya's environment without the marks of a Claude Code session that may have started Obeya
 (`CLAUDE_CODE_*`, `CLAUDECODE`, `CLAUDE_PID`) or of what started it (`OBEYA_SUPERVISED`, `OBEYA_FROM_APP`,
 `BUN_BE_BUN`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain. On
@@ -99,10 +103,14 @@ Codex), as Opus does for Claude Code; a version cannot be pinned. Both menus (th
 one beside a card's start button) show after each name the version it stands for on this machine,
 in the card's menu greyed (Opus 5.5, Sol 6.1): for Codex its newest model's, for an alias the model
 Claude Code says it stands for (the one it lists under the alias, else the newest of the family it
-lists). Claude Code is asked by an idle session of its own as Obeya starts, again after ten minutes
-or once its version changed, in the background: until it has answered, the aliases show without a
-version, and no menu waits for it. Which version runs shows on a started card's conversation
-heading, as Claude Code's does (Codex · GPT-6.1-Sol).
+lists): the newest of its family Claude Code lists, by its id or under the alias, since a new model
+(Fable 5.2) comes listed by its id while the alias still names the one before. An agent on this
+machine is then given that model's id instead of the alias where the two differ, so Fable runs on
+Fable 5.2; one on another machine gets the alias. Claude Code is asked by an idle session of its own
+as Obeya starts, again after ten minutes or once its version changed, in the background: until it
+has answered, the aliases show without a version and go to Claude Code as they are, and no menu
+waits for it. Which version runs shows on a started card's conversation heading, as Claude Code's
+does (Codex · GPT-6.1-Sol).
 A family is the model id with its version number taken out (`gpt-6.1-sol` and `gpt-5.6-sol` are both `gpt-#-sol`;
 an id without a number is a family of its own), so families with other names (`gpt-#-codex`, `o#`)
 work alike. Claude Code's default is no entry of its own; Codex's needs none. A family the catalog no
@@ -127,6 +135,20 @@ goes with every session of its next run, the ones resumed after a restart includ
 instructions that differ by harness (how a worker waits); what it leaves out is the workers'. It
 changes only while the card waits to start (planned, proposed, in the queue); once it is at work the
 choice stays as it began.
+
+#### Updating Claude Code
+
+Which Claude Code is the newest, npm's registry says (the dist-tag of the channel Claude Code's own
+settings update from, `autoUpdatesChannel`: `latest`, or `stable`), asked in the background as Obeya
+first looks at Claude Code and again after an hour. Where it is newer than the one the agents run
+on, the Claude Code part of a card's menu of models and the Configuration's "Agents and models" say
+"Claude Code 2.1.322 is out" with an "Update" button (on hover: the version the agents run on now).
+The click runs `claude update` on the machine's own installation (it updates one of a package
+manager through that manager), or, where there is none (the checkout on the SDK's binary), the
+official installer; then Obeya looks at Claude Code again and asks it for its models before the
+line goes: meanwhile it says "Updating Claude Code…", after a failure why, with "Try again".
+Agents that start afterwards run on the new version, one at work keeps its own. Sessions on another
+machine run that machine's `claude`, which Obeya neither checks nor updates.
 
 ### What agents cost
 
@@ -625,6 +647,19 @@ for its hooks), and what the repository's work needs.
   auto mode, and what Codex's own users get by default. Rejected: full access without approvals,
   which drops every check; the owner answering every escalation, which would ask about each
   `bun install`.
+- **The checkout runs the machine's own Claude Code once it is newer than the SDK's** (2026-11-10):
+  a new model comes with a new Claude Code, which the SDK's binary got only with a new SDK in
+  `package.json`, so a model released that day stayed out of the menus however current the
+  machine's installation was. Rejected: following the SDK's releases with dependency updates alone,
+  which lag behind the installation the owner updates anyway; the SDK's binary for good, which the
+  app gave up for the same reason.
+- **An update of Claude Code at the owner's click** (owner, 2026-11-10), shown where models are
+  chosen. Rejected: updating by itself, which Claude Code does in interactive use and may be turned
+  off there; a pill in the bar, which Claude Code's near-daily releases would keep there.
+- **An alias stands for the newest of its family Claude Code lists** (owner, 2026-11-10), and an
+  agent gets that model's id where the alias names an older one. Rejected: the alias as Claude Code
+  resolves it, which kept Fable on 5.1 for as long as Claude Code listed 5.2 only by its id;
+  offering every listed id as a model of its own, which pins versions the menus otherwise leave out.
 - **The installed app runs the machine's own Claude Code**, not the SDK's binary (2026-10-07): that
   would add 224 MB to every download, put Anthropic's proprietary binary into an MIT app and pin its
   version to Obeya's releases. Their protocols may drift; it held with every version tried, on macOS,

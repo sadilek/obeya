@@ -10,6 +10,7 @@ import { Store } from './db';
 import { claudeToken } from './hosts';
 import { Harnesses } from './harnesses';
 import { cloneName, machineHint, MachineSetup, runnable, WELCOME_FILE, welcome } from './machine';
+import { claudeExecutable, runClaudeHere } from './runtime';
 import { fakeProgram, gitRepo, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
 import { git } from './workspaces';
@@ -145,9 +146,24 @@ describe('what Obeya needs on this machine', () => {
     expect(harnesses.preferred()).toBe('claude');
   });
 
-  test("from the checkout, the agents' Claude Code is the Agent SDK's", async () => {
-    const v = await setup({ compiled: false }).view();
-    expect(section(v, 'needed').items[0]).toEqual({ id: 'claude', state: 'ok', found: `${v.checkedClaude} (Agent SDK)` });
+  test("from the checkout, the agents' Claude Code is the Agent SDK's, unless the machine's own is newer", async () => {
+    const machine = setup({ compiled: false });
+    try {
+      const v = await machine.view();
+      expect(section(v, 'needed').items[0]).toEqual({ id: 'claude', state: 'ok', found: `${v.checkedClaude} (Agent SDK)` });
+      expect(claudeExecutable({ PATH: bin }, false)).toBeUndefined();
+      const [major, minor, patch] = v.checkedClaude.split('.').map(Number);
+      const own = (version: string) => fake('claude', `case "$1" in --version) echo "${version} (Claude Code)";; auth) echo '{"loggedIn":true}';; esac`);
+      const claude = own(`${major}.${minor}.${patch! + 1}`);
+      expect(section(await machine.view(), 'needed').items[0]).toEqual({ id: 'claude', state: 'ok', found: `${major}.${minor}.${patch! + 1}` });
+      expect(claudeExecutable({ PATH: bin }, false)).toBe(claude);
+      // one older than the SDK's: the SDK's again
+      own(`${major}.${minor}.${patch! - 1}`);
+      expect(section(await machine.view(), 'needed').items[0]).toEqual({ id: 'claude', state: 'ok', found: `${v.checkedClaude} (Agent SDK)` });
+      expect(claudeExecutable({ PATH: bin }, false)).toBeUndefined();
+    } finally {
+      runClaudeHere(undefined);
+    }
   });
 
   test('installs at a click only what needs no password', () => {

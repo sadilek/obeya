@@ -27,7 +27,7 @@ import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
 import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
 import { repoInfoAsync } from './repo';
 import { COMPILED } from './resources';
-import { claudeExecutable } from './runtime';
+import { claudeExecutable, machineClaude, runClaudeHere } from './runtime';
 import { codexExecutable, CodexLogins, type CodexLoginState, spawnOptions, startArgv } from './codex';
 import { findCodex, type HarnessFound, type Harnesses } from './harnesses';
 import { extendPath, freshPath, which } from './path';
@@ -116,18 +116,29 @@ export interface ClaudeFound {
   account?: string;
 }
 
-/** Looks at Claude Code: the checkout's agents run on the SDK's own binary, the compiled one's on the machine's. */
+/**
+ * Looks at Claude Code: the compiled one's agents run on the machine's own, the checkout's on the
+ * SDK's binary unless the machine's own is newer (one updated on the command line, or by Obeya),
+ * which the look then has them run on (`runClaudeHere`).
+ */
 export async function findClaude(env: Env, compiled: boolean, platform: string, arch: string): Promise<ClaudeFound> {
-  const agents = claudeExecutable(env, compiled, platform);
   const own = which('claude', env);
+  const versionOf = async (bin: string) => (await output(bin, ['--version'], env))?.match(/^(\d+\.\d+\.\d+)/)?.[1];
   let bin: string | null;
   let version: string | undefined;
-  if (!agents) {
-    bin = own ?? sdkClaude(platform, arch);
-    version = CHECKED_CLAUDE;
-  } else {
-    version = (await output(agents, ['--version'], env))?.match(/^(\d+\.\d+\.\d+)/)?.[1];
+  let sdk = false;
+  if (compiled || env.OBEYA_CLAUDE) {
+    const agents = claudeExecutable(env, compiled, platform)!;
+    version = await versionOf(agents);
     bin = version ? agents : null;
+  } else {
+    // on the PATH, which Obeya extends by the official installer's directory; npm's `claude.cmd` on Windows is no program to start
+    const here = own && !/\.(cmd|bat|ps1)$/i.test(own) ? own : undefined;
+    const found = here ? await versionOf(here) : undefined;
+    sdk = !here || !found || Bun.semver.order(found, CHECKED_CLAUDE) <= 0;
+    bin = sdk ? (own ?? sdkClaude(platform, arch)) : here!;
+    version = sdk ? CHECKED_CLAUDE : found;
+    runClaudeHere(sdk ? undefined : here);
   }
   const status = bin ? await output(bin, ['auth', 'status'], env) : null;
   let account: { loggedIn?: boolean; email?: string; authMethod?: string } = {};
@@ -135,7 +146,40 @@ export async function findClaude(env: Env, compiled: boolean, platform: string, 
     account = JSON.parse(status ?? '{}');
   } catch {}
   const who = account.email ?? account.authMethod;
-  return { bin, sdk: !agents, own: !!bin && bin === own, ...(version ? { version } : {}), loggedIn: !!account.loggedIn, ...(who ? { account: who } : {}) };
+  return { bin, sdk, own: !!bin && bin === own, ...(version ? { version } : {}), loggedIn: !!account.loggedIn, ...(who ? { account: who } : {}) };
+}
+
+/** Runs a program, its output's last line told as it goes (`log`); fails with that line where it exits with another code than 0. */
+export function runLogged(argv: string[], env: Env, log: (line: string) => void): Promise<void> {
+  return new Promise((done, fail) => {
+    const p = spawn(argv[0]!, argv.slice(1), { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], ...spawnOptions(argv) });
+    let last = '';
+    const take = (d: Buffer) => {
+      // progress comes with carriage returns; the line is what it shows last
+      const lines = String(d).split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
+      if (lines.length) log((last = lines.at(-1)!));
+    };
+    p.stdout.on('data', take);
+    p.stderr.on('data', take);
+    p.on('error', fail);
+    p.on('close', (code) => (code === 0 ? done() : fail(new Error(`${shown(argv.slice(0, 3))} exited with ${code}${last ? `: ${last}` : ''}`))));
+  });
+}
+
+/**
+ * Brings the machine's own Claude Code up to date with `claude update`, which updates an installation
+ * of a package manager through that manager; where there is none (the checkout on the SDK's binary),
+ * the official installer installs the newest.
+ */
+export async function updateClaude(log: (line: string) => void = () => {}, env: Env = process.env, platform: string = process.platform): Promise<void> {
+  const installed = machineClaude(env, platform);
+  const onPath = which('claude', env);
+  const there = await Bun.file(installed).exists();
+  if (there || onPath) return runLogged(there ? [installed, 'update'] : startArgv(onPath!, ['update']), env, log);
+  const argv = runnable(machineHint('claude', platform, null, false).commands[0]!, env, platform);
+  if (!argv) throw new Error(`no installer of Claude Code runs on ${platform}`);
+  await runLogged(argv, env, log);
+  extendPath(env, platform);
 }
 
 /** A command as a shell shows it, its program quoted when its path has spaces. */
@@ -452,19 +496,7 @@ export class MachineSetup {
 
   /** Runs a program for a job, its output's last line shown as it goes. */
   private run(argv: string[], log: (line: string) => void): Promise<void> {
-    return new Promise((done, fail) => {
-      const p = spawn(argv[0]!, argv.slice(1), { env: this.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], ...spawnOptions(argv) });
-      let last = '';
-      const take = (d: Buffer) => {
-        // progress comes with carriage returns; the line is what it shows last
-        const lines = String(d).split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
-        if (lines.length) log((last = lines.at(-1)!));
-      };
-      p.stdout.on('data', take);
-      p.stderr.on('data', take);
-      p.on('error', fail);
-      p.on('close', (code) => (code === 0 ? done() : fail(new Error(`${shown(argv.slice(0, 3))} exited with ${code}${last ? `: ${last}` : ''}`))));
-    });
+    return runLogged(argv, this.env, log);
   }
 
   /**

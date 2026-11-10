@@ -659,6 +659,13 @@ export function serve(
           return saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
         }),
       },
+      // Claude Code brought up to date in the background, at the owner's click; the view says how far it got
+      '/api/agents/update': {
+        POST: needs(config, async (c) => {
+          harnesses?.updateClaude();
+          return agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred());
+        }),
+      },
       // the owner's personal demo site: set up at a host, connected with another machine's code, removed
       // from this machine; the private repositories ticked for it, and those that share there with the approval
       '/api/personal-site': {

@@ -134,6 +134,7 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
                       </button>
                     );
                   })}
+                  {h === 'claude' && <ClaudeUpdate view={view} onView={setView} />}
                 </div>
               );
             })}
@@ -149,6 +150,43 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
           document.body,
         )}
     </span>
+  );
+}
+
+/**
+ * A newer Claude Code that is out, with the button that updates it, in a card's menu of models and
+ * in the Configuration; while the update runs, the view is asked again until it is done, and then
+ * has the new version's models.
+ */
+export function ClaudeUpdate({ view, onView }: { view: AgentsView; onView: (view: AgentsView) => void }) {
+  const claude = view.harnesses.find((h) => h.id === 'claude');
+  const update = claude?.update;
+  const running = !!update?.running;
+  const [asked, setAsked] = useState(false);
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => agentsView().then(onView, () => {}), 1500);
+    return () => clearInterval(timer);
+  }, [running]);
+  if (!update) return null;
+  const u = t.claudeUpdate;
+  const start = () => {
+    setAsked(true);
+    api
+      .updateClaude()
+      .then((v) => ((last = v), onView(v)))
+      .catch(() => {})
+      .finally(() => setAsked(false));
+  };
+  return (
+    <div className={update.error ? 'claude-update failed' : 'claude-update'} title={claude?.version ? u.hint(claude.version) : undefined}>
+      <span className="claude-update-text">{running ? u.running : update.error ? u.failed(update.error) : u.out(update.version)}</span>
+      {!running && (
+        <button className="btn" disabled={asked} onClick={start}>
+          {update.error ? u.again : u.button}
+        </button>
+      )}
+    </div>
   );
 }
 

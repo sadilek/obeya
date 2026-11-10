@@ -216,15 +216,31 @@ export function byHarness(runtimes: Record<Harness, AgentRuntime>): AgentRuntime
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
 
+/** From the checkout: the machine's own Claude Code, once a look found it newer than the SDK's (`findClaude`). */
+let newerHere: string | undefined;
+
+/** Has the checkout's agents run on the machine's own Claude Code (`path`), or on the SDK's again (none). */
+export function runClaudeHere(path: string | undefined) {
+  newerHere = path;
+}
+
 /**
  * The Claude Code the agents run on: the one `OBEYA_CLAUDE` names; from the checkout, the binary
- * the Agent SDK brings for this platform (undefined: the SDK finds it itself); in the compiled
- * binary, which carries none, the machine's own installation, on the PATH or where the official
- * installer puts it (a path that does not exist when there is none, for the SDK to say so).
+ * the Agent SDK brings for this platform (undefined: the SDK finds it itself), unless the machine's
+ * own installation is newer (`runClaudeHere`); in the compiled binary, which carries none, the
+ * machine's own installation (`machineClaude`).
  */
 export function claudeExecutable(env: Record<string, string | undefined> = process.env, compiled = COMPILED, platform: string = process.platform): string | undefined {
   if (env.OBEYA_CLAUDE) return env.OBEYA_CLAUDE;
-  if (!compiled) return undefined;
+  if (!compiled) return newerHere;
+  return machineClaude(env, platform);
+}
+
+/**
+ * The machine's own Claude Code: on the PATH or where the official installer puts it (a path that
+ * does not exist when there is none, for the SDK to say so).
+ */
+export function machineClaude(env: Record<string, string | undefined> = process.env, platform: string = process.platform): string {
   const installed = join(localBin(), platform === 'win32' ? 'claude.exe' : 'claude');
   const onPath = which('claude', env);
   // npm's `claude.cmd` on Windows is no program to start; the installer's binary is

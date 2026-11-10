@@ -182,6 +182,8 @@ export const api = {
   agents: () => call<AgentsView>('GET', '/api/agents'),
   /** Saves the model or the effort of one group. */
   saveAgents: (role: AgentRole, choice: Partial<AgentSetting>) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
+  /** Updates Claude Code in the background; the view says how far it got. */
+  updateClaude: () => call<AgentsView>('POST', '/api/agents/update'),
   /** The setup assistant's list: what Obeya needs on this machine. */
   setup: () => call<MachineView>('GET', '/api/setup'),
   setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),

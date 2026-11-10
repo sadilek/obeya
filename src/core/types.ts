@@ -2744,7 +2744,7 @@ export interface HarnessModel {
   id: string;
   /** Its name as the harness gives it; absent for Claude Code's aliases, which the page names itself. */
   name?: string;
-  /** The model a Claude Code alias stands for here (`opus`: `claude-opus-5-5`), once Claude Code has said. */
+  /** The model a Claude Code alias stands for here (`opus`: `claude-opus-5-5`), the newest of its family Claude Code lists, once it has said. */
   resolved?: string;
   /** The efforts it takes, where the harness says (Codex); absent: all of `AGENT_EFFORTS`. */
   efforts?: AgentEffort[];
@@ -2806,6 +2806,11 @@ export interface HarnessView {
   version?: string;
   /** The models it offers to choose from: Claude Code's aliases; Codex's, of each family the newest. */
   models: HarnessModel[];
+  /**
+   * Claude Code's update: the newer version that is out (`version`), the update under way
+   * (`running`), or why the last one failed (`error`); absent while it is the newest.
+   */
+  update?: { version: string; running?: true; error?: string };
 }
 
 /** The harness, model and effort of each group of agents, as they apply (`settings.json` over `AGENT_DEFAULTS`). */

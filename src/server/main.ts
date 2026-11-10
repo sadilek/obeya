@@ -56,12 +56,12 @@ import { ghForge, routedForge } from './forge';
 import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
-import { byHarness, claudeExecutable, endAgentsHere, sdkRuntime, withRest } from './runtime';
+import { type AgentRuntime, byHarness, claudeExecutable, endAgentsHere, sdkRuntime, withRest } from './runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
-import { findClaude, MachineSetup, welcome } from './machine';
+import { findClaude, MachineSetup, updateClaude, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
-import { claudeAliases, Harnesses } from './harnesses';
+import { claudeModels, claudeNewest, Harnesses } from './harnesses';
 import { addToPath, extendPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
@@ -72,7 +72,7 @@ import { oldLinuxBun, onGitHub } from './repo';
 import { Access } from './remote';
 import { Push } from './push';
 import { Awake } from './awake';
-import { claudeToken } from './hosts';
+import { claudeToken, remote } from './hosts';
 import { serve, serveNarration } from './server';
 import { LocalTranscriber, VoiceIn } from './voice';
 import { cloudInUse } from './voice-cloud';
@@ -317,7 +317,9 @@ const harnesses = new Harnesses({
     const c = await findClaude(process.env, COMPILED, process.platform, process.arch);
     return c.version ? { version: c.version, loggedIn: c.loggedIn } : null;
   },
-  claudeAliases,
+  claudeModels,
+  claudeNewest: () => claudeNewest(),
+  updateClaude: (log) => updateClaude(log),
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
 await Promise.race([harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${e instanceof Error ? e.message : e}`)), Bun.sleep(5000)]);
@@ -351,7 +353,9 @@ function agentRuntime() {
   // a session waiting longer than its prompt cache lives gives up its process, and its next message resumes it
   // (`OBEYA_REST_AFTER`, in seconds, for demos and live checks)
   const rest = process.env.OBEYA_REST_AFTER ? Number(process.env.OBEYA_REST_AFTER) * 1000 : undefined;
-  const live = byHarness({ claude: withRest(sdkRuntime, rest), codex: withRest(codexRuntime, rest) });
+  // an alias goes to Claude Code here as the newest model of its family it lists, which the alias may not name yet
+  const newest: AgentRuntime = { start: (spec, ...more) => sdkRuntime.start(spec.model && !remote(spec.cwd) ? { ...spec, model: harnesses.claudeModel(spec.model) } : spec, ...more) };
+  const live = byHarness({ claude: withRest(newest, rest), codex: withRest(codexRuntime, rest) });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;
   const refusedFile = join(home, 'replay-refused.txt');
