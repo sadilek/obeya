@@ -59,7 +59,7 @@ describe('Web Push encryption', () => {
       got = { url, headers: init.headers, body: init.body };
       return { status: 201, text: async () => '' };
     };
-    const message = { title: 'Login', body: 'Demo bereit', url: '/?card=c1', tag: 'c1' };
+    const message = { title: 'Login', body: 'Demo bereit', url: '/?card=c1', tag: 'c1', at: 1_000 };
     expect(await send(d.sub, message, vapid, post)).toBe(201);
     expect(got!.url).toBe(d.sub.endpoint);
     expect(got!.headers['content-encoding']).toBe('aes128gcm');

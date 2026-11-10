@@ -95,7 +95,7 @@ describe('Push', () => {
   test('a card that starts waiting is pushed at once, encrypted for the phone, and opens that card', async () => {
     const { push, sent, shown } = await setup();
     push.waits([{ ...waits('c1'), canvas: 'Obeya' }]);
-    expect(await shown()).toEqual([{ title: 'c1', body: 'Demo bereit · Obeya', url: '/?card=c1', tag: 'c1' }]);
+    expect(await shown()).toEqual([{ title: 'c1', body: 'Demo bereit · Obeya', url: '/?card=c1', tag: 'c1', at: expect.any(Number) }]);
     expect(sent[0]!.url).toBe('https://web.push.apple.com/abc');
   });
 
@@ -147,12 +147,12 @@ describe('Push', () => {
     expect(await shown()).toHaveLength(1);
     expect(timers).toHaveLength(1);
     endWindow();
-    expect((await shown())[1]).toEqual({ title: '3 Karten warten auf dich', body: 'c2 · c3 · c5', url: '/', tag: 'several' });
+    expect((await shown())[1]).toEqual({ title: '3 Karten warten auf dich', body: 'c2 · c3 · c5', url: '/', tag: 'several', at: expect.any(Number) });
     // a new minute: one more within it waits for its end
     push.waits([waits('c6', 'question')]);
     expect(await shown()).toHaveLength(2);
     endWindow();
-    expect((await shown())[2]).toEqual({ title: 'c6', body: 'Frage an dich', url: '/?card=c6', tag: 'c6' });
+    expect((await shown())[2]).toEqual({ title: 'c6', body: 'Frage an dich', url: '/?card=c6', tag: 'c6', at: expect.any(Number) });
     // a quiet minute ends it: the next goes out at once
     endWindow();
     expect(timers).toHaveLength(0);

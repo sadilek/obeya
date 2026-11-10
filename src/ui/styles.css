@@ -2242,6 +2242,10 @@ button.link:hover { text-decoration: underline; }
 .ph-canvas + .ph-no { margin-left: 0; }
 .ph-quiet { position: sticky; top: 60px; z-index: 5; margin: 12px 0 0; padding: 10px 12px; border-radius: 3px; background: var(--ink); color: var(--bg); display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
 .ph-quiet b { font-weight: 600; font-size: 14.5px; }
+.ph-quiet-more { margin-top: 6px; font-size: 12.5px; }
+.ph-quiet-more summary { cursor: pointer; opacity: 0.8; }
+.ph-quiet-more p { margin: 6px 0 0; opacity: 0.8; }
+.ph-quiet-open { align-self: flex-start; margin-top: 8px; padding: 7px 14px; border-radius: 3px; background: var(--bg); color: var(--ink); font-weight: 600; text-decoration: none; }
 .ph-notify { margin: 14px 0 0; padding: 10px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--card); font-size: 14.5px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .ph-notify .btn { margin-top: 0; }
 .ph-section { margin-top: 22px; }

@@ -518,6 +518,8 @@ export interface TailscaleStatus {
   https: boolean;
   account?: string;
   others?: number;
+  /** The machine's addresses in the tailnet. */
+  ips?: string[];
 }
 
 export function tailscaleStatus(dir: string, s: TailscaleStatus) {
@@ -526,7 +528,7 @@ export function tailscaleStatus(dir: string, s: TailscaleStatus) {
     join(dir, 'status.json'),
     JSON.stringify({
       BackendState: s.state,
-      Self: { DNSName: `${s.name}.`, UserID: 1 },
+      Self: { DNSName: `${s.name}.`, UserID: 1, TailscaleIPs: s.ips ?? ['100.101.102.103', 'fd7a:115c:a1e0::1'] },
       CertDomains: s.https ? [s.name] : null,
       Peer: peers,
       User: { 1: { LoginName: s.account ?? 'owner@example.com' } },

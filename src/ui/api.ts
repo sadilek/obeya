@@ -165,7 +165,7 @@ export const api = {
   /** Light or dark as the owner chose, or `null` for the system's. */
   theme: () => call<ThemeView>('GET', '/api/theme'),
   // other devices reaching Obeya: the section "Other devices" and "Connect a phone"
-  access: () => call<AccessView | { local: false }>('GET', '/api/access'),
+  access: () => call<AccessView | { local: false; tailnet: boolean }>('GET', '/api/access'),
   saveAccess: (remote: RemoteSetting | null) => call<AccessView>('PUT', '/api/access', { remote }),
   pair: () => call<Pairing>('POST', '/api/access/pair'),
   removeDevice: (id: string) => call<{ removed: boolean }>('DELETE', `/api/access/devices/${encodeURIComponent(id)}`),

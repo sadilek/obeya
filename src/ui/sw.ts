@@ -13,6 +13,8 @@ export function worker() {
     registration: { showNotification(title: string, o: object): Promise<void> };
   };
   const CACHE = 'obeya-shell';
+  /** When the last push came, for the page (`reach.ts` reads it under the same name). */
+  const PUSHED = 'obeya-pushed';
   /** How long the network may take before the kept shell shows: a sleeping machine does not answer at all. */
   const WAIT_MS = 3000;
   /** The page came from what was kept, as the network did not answer: its scripts and styles do too, without waiting again. */
@@ -91,11 +93,18 @@ export function worker() {
   }
 
   sw.addEventListener('push', (e) => {
-    let m: { title?: string; body?: string; url?: string; tag?: string } = {};
+    let m: { title?: string; body?: string; url?: string; tag?: string; at?: number } = {};
     try {
       m = e.data?.json() ?? {};
     } catch {}
-    e.waitUntil(sw.registration.showNotification(m.title || 'Obeya', { body: m.body ?? '', tag: m.tag, icon: '/icons/180.png', data: { url: m.url ?? '/' } }));
+    // a push says Obeya was running when it sent it: a page that does not reach it tells the owner the phone's way there is the likely cause
+    // one from an Obeya that did not say when it sent it (an older version) tells nothing
+    const at = m.at;
+    const noted = typeof at !== 'number' ? undefined : Promise.all([
+      caches.open(PUSHED).then((c) => c.put('/pushed', new Response(String(at)))),
+      sw.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((open) => open.forEach((c) => c.postMessage({ type: 'pushed', at }))),
+    ]).catch(() => {});
+    e.waitUntil(Promise.all([sw.registration.showNotification(m.title || 'Obeya', { body: m.body ?? '', tag: m.tag, icon: '/icons/180.png', data: { url: m.url ?? '/' } }), noted]));
   });
 
   // a tapped push opens its card in the phone view (or "Needs you" for several): in the open app, else in a new one

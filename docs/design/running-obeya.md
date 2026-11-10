@@ -306,6 +306,41 @@ the 3 s count from then (a phone back from its lock screen reconnects within the
 machine refuses nothing, so a connection not open within 3 s counts as not answering, and one not
 open after 10 s is tried anew.
 
+*Why it does not answer.* The line says the likely cause, from what the phone can see on its own: a
+request to Obeya's address (`/api/reach`, through no cache, given 3 s), sent as the connection is
+lost, again every 10 s, and on coming back into view or onto a network. The line waits for the first
+one to come back (3 s at most beyond its own 3 s), so it shows with its cause rather than changing
+its words a moment later. In this order:
+
+- the browser has no network: the phone has none;
+- the address answers 502 to 504, a gateway with nothing behind it (`tailscale serve` while Obeya is
+  not listening): the computer runs, Obeya does not;
+- the address answers anything else: Obeya answers, the page connects again in a moment;
+- a push was sent in the last 10 minutes (the one the owner tapped to open the app, say): Obeya was
+  running then, so the phone's way to the computer is the likely cause. A push older than that says
+  nothing about now, nor does one stamped more than 10 minutes ahead of the phone's clock; the time
+  is when Obeya sent it (in the push), since the push service holds a push for a phone that is off
+  for up to a day, and a push without it counts not at all;
+- the request failed within 2 s: the phone has no way to the address (no name for it, no route), or
+  the computer refused it because Obeya does not listen there. The browser cannot tell the two apart,
+  so the line names both;
+- it hung: the computer does not answer, asleep or switched off.
+
+Whether the phone reaches Obeya through Tailscale the page asks Obeya while connected (a device's
+`GET /api/access` answers `{ local: false, tailnet }`: true when Obeya is served through Tailscale or
+listens on one of the machine's addresses in the tailnet) and keeps the answer for when it is not;
+before it ever had one, an address that looks like a tailnet's (a `.ts.net` name, 100.64.0.0/10,
+fd7a:115c:a1e0::/48) counts. Through Tailscale, the line names Tailscale on the phone being off as a
+cause; elsewhere it names none and asks whether the phone is in the computer's network or VPN. The
+line gives the cause in a sentence or two; behind "More about this" stands the rest: that
+notifications still arrive because they go through the browser's push service while cards and
+videos come only through Tailscale, that "Connect a phone" helps where the address changed, and, on
+Android only, that Android often stops Tailscale in the background and how to keep it from that
+(battery use "Unrestricted", "Always-on VPN"). On Android, where Tailscale may be the cause, the line also has
+the button "Open Tailscale" (an `intent:` link to the app's `tailscale://navigate`, which Chrome
+sends to the Play Store where the app is missing). The service worker notes when the last push was
+sent (in a cache of its own) and tells an open page.
+
 #### Notifications on the phone
 
 Obeya tells the owner's phone when something starts to wait for them, by Web Push to the browser's
@@ -693,6 +728,17 @@ beside the scratch dirs.
   home-screen web app cannot do here). WebCrypto rather than a library: the two RFCs are a few dozen
   lines, checked against RFC 8291's example. A page at the machine holds pushes off while in use, not
   merely in view, or a canvas left open would hold them off until the screen locks.
+- **The phone names the likely cause of not reaching Obeya, from what it sees itself** (2026-11-09:
+  Android stops Tailscale in the background, and the page used to send the owner to the computer
+  instead). A push sent a moment ago says Obeya was running, since pushes do not take the way
+  through Tailscale; only a recent one, since the computer may sleep since. Whether the way is
+  Tailscale's comes from Obeya, not the address alone: other VPNs use 100.64.0.0/10 too. Rejected:
+  keeping the connection up the way pushes arrive. They come through the browser's push service,
+  which Android keeps alive for every app, carry a few kilobytes each and must each show a
+  notification (Chrome allows no silent ones); cards, conversations and videos need the direct way to
+  the computer, and keeping that up is Tailscale's, which Android lets do with "Always-on VPN" and
+  unrestricted battery use. Rejected too: a request to a public address to tell no internet from no
+  Tailscale (a third party sees the phone, and the browser's network state tells enough).
 - **No pushes while the owner uses the phone view either** (2026-10-17): they add nothing while the
   owner works through the cards there. Its hold ends the moment it goes out of view, not three
   minutes later, so what starts waiting right after the phone is locked is pushed.

@@ -212,9 +212,9 @@ export class Push {
     const m = MESSAGES[this.language()].push;
     if (cards.length === 1) {
       const w = cards[0]!;
-      return { title: clipped(plainTitle(w.title), 160), body: clipped([m[w.kind], w.canvas].filter(Boolean).join(' · '), 200), url: this.cardUrl(w.card), tag: w.card };
+      return { title: clipped(plainTitle(w.title), 160), body: clipped([m[w.kind], w.canvas].filter(Boolean).join(' · '), 200), url: this.cardUrl(w.card), tag: w.card, at: Date.now() };
     }
-    return { title: m.several(cards.length), body: clipped(cards.map((w) => plainTitle(w.title)).join(' · '), 600), url: '/', tag: 'several' };
+    return { title: m.several(cards.length), body: clipped(cards.map((w) => plainTitle(w.title)).join(' · '), 600), url: '/', tag: 'several', at: Date.now() };
   }
 
   /** Where tapping the push for a card leads: the card on its canvas, by its short code. */

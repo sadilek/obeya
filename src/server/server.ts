@@ -545,7 +545,7 @@ export function serve(
       '/pair': { GET: (req, srv) => access.pairRoute(req, srv), POST: (req, srv) => access.pairRoute(req, srv) },
       // "Other devices": the setting, what the network allows, the devices; only on this machine
       '/api/access': {
-        GET: (req, srv) => (access.isLocal(req, srv) ? handle(() => access.view()) : Response.json({ local: false })),
+        GET: async (req, srv) => (access.isLocal(req, srv) ? handle(() => access.view()) : Response.json({ local: false, tailnet: await access.tailnet() })),
         PUT: async (req, srv) => (access.isLocal(req, srv) ? handle(async () => access.save(await req.json())) : onlyHere()),
       },
       '/api/access/pair': { POST: (req, srv) => (access.isLocal(req, srv) ? handle(() => access.pair()) : onlyHere()) },

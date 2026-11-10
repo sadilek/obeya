@@ -253,6 +253,16 @@ export class Access implements Gate {
     return [...LOCAL_HOSTS, ...(this.served && this.setting?.via === 'tailscale' ? [this.served.name] : []), ...(this.listening ? [inUrl(this.listening).toLowerCase()] : [])];
   }
 
+  /**
+   * Whether other devices reach Obeya through Tailscale: served at its tailnet name, or listening on
+   * one of the machine's addresses in the tailnet. A phone that loses Obeya names Tailscale only then.
+   */
+  async tailnet(): Promise<boolean> {
+    if (this.setting?.via === 'tailscale') return true;
+    if (!this.listening) return false;
+    return (await this.tailscale.addresses()).includes(this.listening.toLowerCase());
+  }
+
   /** The section "Other devices", with what Tailscale says now (and the network made anew if that changed). */
   async view(): Promise<AccessView> {
     if (this.setting?.via === 'tailscale') {
