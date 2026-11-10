@@ -54,14 +54,17 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
   the language in its constructor). `revoice.ts` then imports `assemble.ts` and `narration.ts` only;
   `runDemo`'s `--revoice` branch can import it statically.
 - Win: no line goes, but the 1,079-line file becomes four of 150 to 450 lines, the import cycle and
-  the module-level settings go, and re-voicing and `--narration` no longer load Playwright (see
-  "Bugs noticed in passing").
+  the module-level settings go. (That re-voicing and `--narration` no longer load Playwright is
+  done already, see "Fixed" below.)
 - Risk: medium. No test covers `runDemo`, `assemble` or `startScreencast`; `overlay.test.ts` covers
   `paintTimes`, `revoice.test.ts` the pure parts of re-voicing. The check after the split is a real
   render and a `--revoice` of it (`scripts/check-binary.ts:189` also names `director.ts` by path,
   and `setup.ts:149` resolves Playwright from `lib('director.ts')`).
 - Confidence: high. Read the whole file; importers found with `rg "director\.ts'"` over `src`,
   `scripts`, `plugin`.
+- Fixed: the static import of Playwright, by [Bugs noticed in passing](../bugs-noticed-in-passing.md)
+  W3: `director.ts` imports `chromium.ts` only once a browser is needed, so without Playwright a
+  render gets to `checkSetup`'s list (`director.test.ts`).
 
 ### P2. The demo `SKILL.md` says again what the scripts print when it applies, and says some things three times
 - Principle: DRY
@@ -131,6 +134,8 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
 - Risk: low to medium. `browser.test.ts` (223 lines) drives the commands against a real browser,
   `silent-speech.test.ts` the silencing.
 - Confidence: high. Read the whole file.
+- Fixed: `input`'s missing timeout, by [Bugs noticed in passing](../bugs-noticed-in-passing.md) W3:
+  `send` in `runInput` gives up after 30 s, as `cdp()` does (`browser.test.ts`).
 
 ### P4. The WebVTT cue parser is written in the plugin and again in the server
 - Principle: DRY
@@ -219,6 +224,9 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
 - Risk: low. `tts.test.ts` covers render and `--sample` with served and held voices (starts once,
   ends, dies, stops answering); the lock and the quota message have no test.
 - Confidence: high.
+- Fixed: the sample ended by a spent quota, by [Bugs noticed in passing](../bugs-noticed-in-passing.md)
+  W3: `HttpVoice._post` exits with the full quota message itself and `QuotaExhausted` is gone, so
+  that part of the change is done (`tts.test.ts`, "a hosted voice").
 
 ### P8. The Qwen3 command is built by two functions, and its one-shot mode is never run by a render
 - Principle: YAGNI
@@ -431,16 +439,5 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
   with their imports for a release.
 
 ## Bugs noticed in passing
-- `plugin/skills/demo/lib/director.ts:15` the static import of `chromium.ts` (and through it
-  `playwright-core`) means that without Playwright `node demo.ts`, `node demo.ts --narration` and
-  `node revoice.ts` fail at import with `ERR_MODULE_NOT_FOUND`, before `checkSetup` (787,
-  `revoice.ts:246`) can print its list; the check's `playwright` item is only ever reported by `node
-  setup.ts`.
-- `plugin/skills/demo/lib/tts.py:670-681` the `--sample` branch does not catch `QuotaExhausted`
-  (caught only in `narrate`, 641): a spent daily quota ends a sample in the settings with a
-  traceback instead of the message.
-- `plugin/skills/browser/lib/browser.ts:261-266` `send` in `runInput` has no timeout: an `input`
-  step against a page that does not answer waits forever, where every other command gives up after
-  30 s.
 - `plugin/skills/browser/lib/browser.ts:21-23` the header's list of keys and of `drag`'s arguments
   is behind the code (see P10).

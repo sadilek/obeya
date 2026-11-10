@@ -20,9 +20,9 @@ comment points, the test hygiene (measured instead: the server's test files leav
 workers running) and `replay.ts`'s reading of a failing `merge-base`, which kept its outcome (a
 rewritten head) and now says so. The bare `git` in `forge.ts` and `site.ts` stays for code cleanup
 W5 (E2). The fixed ones are gone from the findings files' lists, and the findings that name them say
-so. W2 and W3 are open; their bugs were read from the code alone, at commit `acfa0484` (2026-11-10),
-and some may turn out to be none; their line numbers still hold or are off by a few (`api.ts` and
-`scratch-obeya.ts` changed by a few lines at commit `3321cd6e`).
+so. W2 is done too. W3 is done: its seven bugs were each reproduced in a test that failed before
+its fix, and its comment point is fixed; the two comment points left to the code cleanup (W24, W25)
+stay in their findings files. With that, every workstream is done.
 
 The 41 lie in 14 findings files. 31 change behaviour; 10 concern only a comment or style (a doc
 comment above the wrong declaration, a constant between the imports, a bare `git`).
@@ -145,7 +145,7 @@ wait. Those that move code in a file a workstream here changes (W11 in `workers.
   - Comments, in one commit: the orphaned and the stale doc comment in `api.ts` (above
     `standalone`, and the first of the two on `readTalk`); no finding of the code cleanup covers
     them. The one in `phone.tsx` stays for code cleanup W21 (H15).
-- [ ] **W3:** Scripts, plugin and CI workflows. The bugs in `scripts/`, `plugin/` and `.github/`, in
+- [x] **W3:** Scripts, plugin and CI workflows. The bugs in `scripts/`, `plugin/` and `.github/`, in
   [scripts-app](code-cleanup/scripts-app.md) and [plugin](code-cleanup/plugin.md), 10 in all:
   - `scripts/build.ts` without `--out` drops its first argument, so `bun scripts/build.ts
     linux-x64` builds this machine's target.

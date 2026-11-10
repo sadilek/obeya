@@ -79,7 +79,11 @@ targets. One of the hand-written argument readers has a real bug (`build.ts` ign
   `arg`, `option` and the positional filters. `render.ts` passes unknown arguments on to the demo,
   so it parses with `strict: false`. Leave `android-phone.ts` as it is: its parser checks options
   per sub-command and `android-phone.test.ts` pins its messages.
-- Win: About 40 lines, the `build.ts` and `check-app.ts` bugs, and typos reported.
+- Win: About 40 lines, and typos reported.
+- Fixed: the `build.ts` and `check-app.ts` bugs and the words `--say` and `--artifact` dropped, by
+  [Bugs noticed in passing](../bugs-noticed-in-passing.md) W3: `build.ts` and `check-app.ts` read
+  their arguments with `parseArgs` and refuse an unknown option already, and `scratch-obeya.ts`
+  takes a text's words with `wordsOf`, which leaves out only `--dir` and its value.
 - Risk: medium. Strict parsing turns an ignored typo into an error, which changes behaviour only for
   wrong input. Only the scratch commands have tests of their command line (`scratch-obeya.test.ts`,
   `check-scratch.ts`).
@@ -438,18 +442,5 @@ targets. One of the hand-written argument readers has a real bug (`build.ts` ign
   report beyond the shared helpers in R5.
 
 ## Bugs noticed in passing
-- `scripts/build.ts:27` without `--out`, the filter `i !== outIndex + 1` drops the first argument:
-  `bun scripts/build.ts linux-x64` builds this machine's target. (`build-app.ts` always passes
-  `--out`, so the workflow is not affected.)
-- `scripts/check-app.ts:31` the program is "the first argument without `--`", so `--screenshot
-  out.png <program>` starts `out.png`.
-- `scripts/scratch-obeya.ts:353,366` `--say` and `--artifact` drop every word of the text or summary
-  that starts with `--`.
-- `scripts/scratch-obeya.ts:895` the doc comment of `initRepo` ("A git repository at `path` …")
-  stands above `gitConfig`, six lines before the function it describes.
-- `.github/workflows/pages.yml:14` the trigger paths lack `src/server/demo-page.ts`
-  (`sitePlayerScript`, the player's words) and `plugin/skills/demo/lib/locale.ts`
-  (`preferredTrack`), both of which `site/player.js` is built from; a change there does not publish
-  the site's player again.
 - `.github/workflows/build.yml:3-5` the comment on what `check-binary.ts` checks is out of date (see
   R14).
