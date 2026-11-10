@@ -659,11 +659,11 @@ export function serve(
           return saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
         }),
       },
-      // Claude Code brought up to date in the background, here or on the host named (`{ host }`), at the owner's click; the view says how far it got
+      // a harness (`{ harness }`, Claude Code where none is named) brought up to date in the background, here or on the host named (`{ host }`), at the owner's click; the view says how far it got
       '/api/agents/update': {
         POST: needs(config, async (c, req) => {
-          const body = (await req.json().catch(() => ({}))) as { host?: unknown };
-          harnesses?.updateClaude(typeof body?.host === 'string' ? body.host : undefined);
+          const body = (await req.json().catch(() => ({}))) as { harness?: unknown; host?: unknown };
+          harnesses?.update(body?.harness === 'codex' ? 'codex' : 'claude', typeof body?.host === 'string' ? body.host : undefined);
           return agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred());
         }),
       },

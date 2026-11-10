@@ -59,9 +59,9 @@ import { NarrationHost } from './narration';
 import { type AgentRuntime, byHarness, claudeExecutable, endAgentsHere, sdkRuntime, withRest } from './runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
-import { findClaude, MachineSetup, updateClaude, welcome } from './machine';
+import { findClaude, MachineSetup, updateClaude, updateCodex, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
-import { claudeModels, claudeNewest, Harnesses, hostClaude } from './harnesses';
+import { claudeModels, claudeNewest, codexNewest, Harnesses, hostClaude, hostCodex } from './harnesses';
 import { addToPath, extendPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
@@ -320,10 +320,12 @@ const harnesses = new Harnesses({
   claudeModels,
   claudeNewest: (channel) => claudeNewest(channel),
   updateClaude: (log) => updateClaude(log),
+  codexNewest,
+  updateCodex: (log) => updateCodex(log),
   // the hosts the configuration names now, once a canvas has them registered
   hosts: () => {
     const names = new Set(config.current().flatMap((c) => c.repos.flatMap((r) => (r.hosts ?? []).map((h) => h.name))));
-    return [...names].map(hostNamed).filter((h) => !!h).map(hostClaude);
+    return [...names].map(hostNamed).filter((h) => !!h).flatMap((h) => [hostClaude(h), hostCodex(h)]);
   },
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long

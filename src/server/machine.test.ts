@@ -9,7 +9,7 @@ import { Config } from './config';
 import { Store } from './db';
 import { claudeToken } from './hosts';
 import { Harnesses } from './harnesses';
-import { cloneName, machineHint, MachineSetup, runnable, WELCOME_FILE, welcome } from './machine';
+import { cloneName, codexManager, machineHint, MachineSetup, runnable, updateCodex, WELCOME_FILE, welcome } from './machine';
 import { claudeExecutable, runClaudeHere } from './runtime';
 import { fakeProgram, gitRepo, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
@@ -314,5 +314,26 @@ describe('the first canvas', () => {
     const cards = board.snapshot().items.filter((i) => i.kind === 'task');
     expect(cards.map((c) => c.title)).toEqual([board.t.welcome.title]);
     expect(existsSync(join(home, WELCOME_FILE))).toBe(false);
+  });
+});
+
+describe("updating this machine's Codex", () => {
+  test('runs `codex update` where Codex has it, and tells its output', async () => {
+    fake('codex', `case "$1 $2" in "update --help") echo "Update Codex to the latest version";; "update ") echo "Updating Codex via npm"; echo updated > ${JSON.stringify(join(dir, 'updated'))};; esac`);
+    const lines: string[] = [];
+    await updateCodex((l) => lines.push(l), { PATH: `${bin}:/usr/bin:/bin` });
+    expect([readFileSync(join(dir, 'updated'), 'utf8').trim(), lines]).toEqual(['updated', ['Updating Codex via npm']]);
+    fake('codex', 'case "$1 $2" in "update --help") echo "Update Codex to the latest version";; *) echo "Error: no network" >&2; exit 1;; esac');
+    await expect(updateCodex(() => {}, { PATH: `${bin}:/usr/bin:/bin` })).rejects.toThrow('exited with 1: Error: no network');
+  });
+
+  test('a Codex older than `codex update` is updated by the package manager it lives in; any other says it cannot be', async () => {
+    expect(codexManager('/opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js')).toEqual(['npm', 'install', '-g', '@openai/codex@latest']);
+    expect(codexManager('/home/me/.bun/install/global/node_modules/@openai/codex/bin/codex.js')).toEqual(['bun', 'install', '-g', '@openai/codex@latest']);
+    expect(codexManager('/opt/homebrew/Caskroom/codex/0.159.2/codex-aarch64-apple-darwin')).toEqual(['brew', 'upgrade', '--cask', 'codex']);
+    expect(codexManager('/home/me/.codex/bin/codex')).toBeNull();
+    // the general help: no such command
+    fake('codex', 'echo "Codex CLI"');
+    await expect(updateCodex(() => {}, { PATH: `${bin}:/usr/bin:/bin` })).rejects.toThrow('is too old to update itself');
   });
 });

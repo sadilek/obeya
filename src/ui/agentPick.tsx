@@ -6,7 +6,7 @@
 
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type ClaudeUpdate as ClaudeUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
+import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
 import { useMenuClose } from './queue';
 import { placeOnScreen } from './snooze';
 import { api } from './api';
@@ -134,7 +134,7 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
                       </button>
                     );
                   })}
-                  {h === 'claude' && <ClaudeUpdate view={view} onView={setView} />}
+                  <HarnessUpdate harness={h} view={view} onView={setView} />
                 </div>
               );
             })}
@@ -154,14 +154,15 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
 }
 
 /**
- * A newer Claude Code that is out, with the button that updates it, in a card's menu of models and
- * in the Configuration: a line for this machine and one for each host whose Claude Code is behind;
- * while an update runs, the view is asked again until it is done, and then has the new version's models.
+ * A newer version of a harness (Claude Code, Codex) that is out, with the button that updates it, in
+ * a card's menu of models and in the Configuration: a line for this machine and one for each host
+ * whose installation is behind; while an update runs, the view is asked again until it is done, and
+ * then has the new version's models.
  */
-export function ClaudeUpdate({ view, onView }: { view: AgentsView; onView: (view: AgentsView) => void }) {
-  const claude = view.harnesses.find((h) => h.id === 'claude');
-  const hosts = (claude?.hosts ?? []).filter((h) => h.update);
-  const running = !!claude?.update?.running || hosts.some((h) => h.update?.running);
+export function HarnessUpdate({ harness, view, onView }: { harness: Harness; view: AgentsView; onView: (view: AgentsView) => void }) {
+  const found = view.harnesses.find((h) => h.id === harness);
+  const hosts = (found?.hosts ?? []).filter((h) => h.update);
+  const running = !!found?.update?.running || hosts.some((h) => h.update?.running);
   const [asked, setAsked] = useState<string | null>(null);
   useEffect(() => {
     if (!running) return;
@@ -171,16 +172,17 @@ export function ClaudeUpdate({ view, onView }: { view: AgentsView; onView: (view
   const start = (host?: string) => {
     setAsked(host ?? '');
     api
-      .updateClaude(host)
+      .updateHarness(harness, host)
       .then((v) => ((last = v), onView(v)))
       .catch(() => {})
       .finally(() => setAsked(null));
   };
-  const line = (update: ClaudeUpdateState, now: string | undefined, host?: string) => {
-    const u = t.claudeUpdate;
+  const name = t.harnesses[harness];
+  const line = (update: HarnessUpdateState, now: string | undefined, host?: string) => {
+    const u = t.harnessUpdate;
     return (
-      <div key={host ?? ''} className={update.error ? 'claude-update failed' : 'claude-update'} title={now ? u.hint(now, host) : undefined}>
-        <span className="claude-update-text">{update.running ? u.running(host) : update.error ? u.failed(update.error, host) : u.out(update.version, host, now)}</span>
+      <div key={host ?? ''} className={update.error ? 'harness-update failed' : 'harness-update'} title={now ? u.hint(now, host) : undefined}>
+        <span className="harness-update-text">{update.running ? u.running(name, host) : update.error ? u.failed(update.error, host) : u.out(name, update.version, host, now)}</span>
         {!update.running && (
           <button className="btn" disabled={asked === (host ?? '')} onClick={() => start(host)}>
             {update.error ? u.again : u.button}
@@ -189,10 +191,10 @@ export function ClaudeUpdate({ view, onView }: { view: AgentsView; onView: (view
       </div>
     );
   };
-  if (!claude?.update && !hosts.length) return null;
+  if (!found?.update && !hosts.length) return null;
   return (
     <>
-      {claude?.update && line(claude.update, claude.version)}
+      {found?.update && line(found.update, found.version)}
       {hosts.map((h) => line(h.update!, h.version, h.name))}
     </>
   );

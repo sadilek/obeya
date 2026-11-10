@@ -106,7 +106,7 @@ Claude Code says it stands for (the one it lists under the alias, else the newes
 lists): the newest of its family Claude Code lists, by its id or under the alias, since a new model
 (Fable 5.2) comes listed by its id while the alias still names the one before. An agent on this
 machine is then given that model's id instead of the alias where the two differ, so Fable runs on
-Fable 5.2; one on a host likewise by what that host's Claude Code lists (see Updating Claude Code),
+Fable 5.2; one on a host likewise by what that host's Claude Code lists (see Updating Claude Code and Codex),
 the alias as it is until it has said. Claude Code is asked by an idle session of its own
 as Obeya starts, again after ten minutes or once its version changed, in the background: until it
 has answered, the aliases show without a version and go to Claude Code as they are, and no menu
@@ -137,7 +137,7 @@ instructions that differ by harness (how a worker waits); what it leaves out is 
 changes only while the card waits to start (planned, proposed, in the queue); once it is at work the
 choice stays as it began.
 
-#### Updating Claude Code
+#### Updating Claude Code and Codex
 
 Which Claude Code is the newest, npm's registry says (the dist-tag of the channel Claude Code's own
 settings update from, `autoUpdatesChannel`: `latest`, or `stable`), asked in the background as Obeya
@@ -150,16 +150,29 @@ official installer; then Obeya looks at Claude Code again and asks it for its mo
 line goes: meanwhile it says "Updating Claude Code…", after a failure why, with "Try again".
 Agents that start afterwards run on the new version, one at work keeps its own.
 
-Sessions on a host run that host's own `claude`, which Obeya looks at over the connection, each host
-the configuration names: as Obeya starts, again ten minutes after the last when a menu of models
-asks, on a host that did not answer once it does. The look asks for its version and for the channel
-its settings there update from, whose newest npm says (asked from this machine); an idle session
-started there, as here, lists its models, which an agent there then runs on (an alias as the newest
-of its family). A host whose Claude Code is behind gets a line of its own under this machine's, in
-both places: "Claude Code 2.1.322 is out, build-box has 2.1.300" with an "Update" button that runs
-`claude update` there, then looks again and asks for the models, with "Updating Claude Code on
-build-box…" meanwhile and why it failed after a failure. A host without Claude Code, or one that has
-not answered yet, shows no line.
+Codex alike: the newest is npm's `latest` of `@openai/codex` (Codex has no channels), asked once
+Codex is found installed, and a Codex behind it gets the same line in the Codex part of the menu
+and in "Agents and models" ("Codex 0.167.0 is out"). The click runs `codex update`, which updates
+Codex through whatever installed it (npm, bun, pnpm, Homebrew, the standalone installer); a Codex
+older than that command (its `update --help` is the general help) is updated by the package manager
+it lives in, by its real path: npm's or bun's global packages, Homebrew's cask; any other says it
+cannot update itself. Then Obeya looks at Codex again and asks it for its models before the line
+goes, so a model that came with the new version is in the menus (and a family's agents run on it,
+see Codex). Obeya looks at both again ten minutes after the last look when a menu of models asks,
+so one updated on the command line shows its version and models then.
+
+Sessions on a host run that host's own `claude` and `codex`, which Obeya looks at over the
+connection, each host the configuration names: as Obeya starts, again ten minutes after the last
+when a menu of models asks, on a host that did not answer once it does. The look asks for each
+one's version, for Claude Code also for the channel its settings there update from, whose newest
+npm says (asked from this machine); an idle Claude Code session started there, as here, lists its
+models, which an agent there then runs on (an alias as the newest of its family; a Codex agent
+there picks its family's newest from that host's catalog as it starts). A host whose Claude Code or
+Codex is behind gets a line of its own under this machine's, in both places: "Claude Code 2.1.322
+is out, build-box has 2.1.300" with an "Update" button that runs `claude update` (or Codex's update
+as here) there, then looks again and asks for the models, with "Updating Claude Code on build-box…"
+meanwhile and why it failed after a failure. A host without the harness, or one that has not
+answered yet, shows no line for it.
 
 ### What agents cost
 
@@ -667,8 +680,12 @@ for its hooks), and what the repository's work needs.
 - **An update of Claude Code at the owner's click** (owner, 2026-11-10), shown where models are
   chosen. Rejected: updating by itself, which Claude Code does in interactive use and may be turned
   off there; a pill in the bar, which Claude Code's near-daily releases would keep there.
-- **Each host's Claude Code is checked and updated there, over the connection** (owner, 2026-11-10),
-  with `claude update` on the host, so its own kind of installation (npm, the installer) updates as
+- **Codex's update runs `codex update`** (2026-11-10), which knows each way Codex is installed and
+  updates it the same way, with a package manager's own command only for a Codex older than it.
+  Rejected: Obeya choosing the package manager itself every time, which would guess wrong for the
+  standalone installer and for any manager Codex adds later.
+- **Each host's Claude Code and Codex are checked and updated there, over the connection** (owner, 2026-11-10),
+  with `claude update` (`codex update`) on the host, so its own kind of installation (npm, the installer) updates as
   it would by hand. Rejected: copying this machine's Claude Code there, which may be built for
   another platform and would leave the host's own installation behind on its `PATH`.
 - **An alias stands for the newest of its family Claude Code lists** (owner, 2026-11-10), and an

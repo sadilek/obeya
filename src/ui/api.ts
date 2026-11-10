@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, ArchivePage, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
+import type { AccessView, ArchivePage, Pairing, RemoteSetting, AgentRole, AgentSetting, Harness, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
 import { setCostsShown } from './costs';
 import type { Wish } from '../core/wish';
 import { INPUT, noteMessage, watchPageStalls } from './stalls';
@@ -183,7 +183,7 @@ export const api = {
   /** Saves the model or the effort of one group. */
   saveAgents: (role: AgentRole, choice: Partial<AgentSetting>) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
   /** Updates Claude Code in the background, here or on the host named; the view says how far it got. */
-  updateClaude: (host?: string) => call<AgentsView>('POST', '/api/agents/update', host === undefined ? {} : { host }),
+  updateHarness: (harness: Harness, host?: string) => call<AgentsView>('POST', '/api/agents/update', host === undefined ? { harness } : { harness, host }),
   /** The setup assistant's list: what Obeya needs on this machine. */
   setup: () => call<MachineView>('GET', '/api/setup'),
   setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),

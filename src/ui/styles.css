@@ -1222,11 +1222,11 @@ span.cl-name { color: inherit; cursor: default; }
 .agent-h { padding-top: 8px; font-weight: 600; }
 .agent-group { display: flex; flex-direction: column; }
 /* a newer Claude Code that is out, with its button: under Claude Code's models, and in the Configuration */
-.claude-update { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
-.claude-update-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.claude-update.failed .claude-update-text { color: var(--error); }
-.claude-update .btn { flex: none; }
-.cfg-box .claude-update { padding: 6px 0; font-size: inherit; }
+.harness-update { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
+.harness-update-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.harness-update.failed .harness-update-text { color: var(--error); }
+.harness-update .btn { flex: none; }
+.cfg-box .harness-update { padding: 6px 0; font-size: inherit; }
 .agent-effort-h { border-top: 1px solid var(--line); margin-top: 4px; }
 .agent-efforts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 10px; }
 .agent-effort { border: 1px solid var(--line); background: none; border-radius: 3px; padding: 4px 9px; font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }

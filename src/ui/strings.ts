@@ -266,15 +266,15 @@ const de = {
     /** The effort chosen, beside the harness and model in the line beside the button. */
     chosenEffort: (effort: string) => `Effort ${effort}`,
   },
-  /** A newer Claude Code that is out, in a card's menu of models and in the Configuration's agents. */
-  claudeUpdate: {
-    /** `host`: the line for that host's Claude Code, which is at `now` there; none: this machine's. */
-    out: (version: string, host?: string, now?: string) => (host ? `Claude Code ${version} ist da, ${host} hat ${now}` : `Claude Code ${version} ist da`),
+  /** A newer version of a harness (`name`: Claude Code, Codex) that is out, in a card's menu of models and in the Configuration's agents. */
+  harnessUpdate: {
+    /** `host`: the line for that host's installation, which is at `now` there; none: this machine's. */
+    out: (name: string, version: string, host?: string, now?: string) => (host ? `${name} ${version} ist da, ${host} hat ${now}` : `${name} ${version} ist da`),
     button: 'Aktualisieren',
     /** On hover: the version the agents run on now (`now`), and what the update does. */
     hint: (now: string, host?: string) =>
       `${host ? `Die Agenten auf ${host} laufen auf ${now}` : `Die Agenten laufen auf ${now}`}. Agenten, die nach dem Aktualisieren starten, laufen auf der neuen Version, mit ihren Modellen; einer, der gerade arbeitet, bleibt bei seiner.`,
-    running: (host?: string) => (host ? `Claude Code wird auf ${host} aktualisiert …` : 'Claude Code wird aktualisiert …'),
+    running: (name: string, host?: string) => (host ? `${name} wird auf ${host} aktualisiert …` : `${name} wird aktualisiert …`),
     failed: (why: string, host?: string) => (host ? `Aktualisieren auf ${host} ging nicht: ${why}` : `Aktualisieren ging nicht: ${why}`),
     again: 'Nochmal versuchen',
   },
@@ -2529,12 +2529,12 @@ const en: Strings = {
     effort: 'Effort',
     chosenEffort: (effort: string) => `effort ${effort}`,
   },
-  claudeUpdate: {
-    out: (version: string, host?: string, now?: string) => (host ? `Claude Code ${version} is out, ${host} has ${now}` : `Claude Code ${version} is out`),
+  harnessUpdate: {
+    out: (name: string, version: string, host?: string, now?: string) => (host ? `${name} ${version} is out, ${host} has ${now}` : `${name} ${version} is out`),
     button: 'Update',
     hint: (now: string, host?: string) =>
       `${host ? `The agents on ${host} run on ${now}` : `The agents run on ${now}`}. Agents that start after the update run on the new version, with its models; one at work keeps its own.`,
-    running: (host?: string) => (host ? `Updating Claude Code on ${host}…` : 'Updating Claude Code…'),
+    running: (name: string, host?: string) => (host ? `Updating ${name} on ${host}…` : `Updating ${name}…`),
     failed: (why: string, host?: string) => (host ? `Update on ${host} failed: ${why}` : `Update failed: ${why}`),
     again: 'Try again',
   },

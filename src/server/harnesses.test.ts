@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { HarnessHost } from '../core/types';
-import { aliasesOf, type ClaudeHost, type ClaudeListed, Harnesses, hostClaude } from './harnesses';
+import { aliasesOf, type HostHarness, type ClaudeListed, Harnesses, hostClaude } from './harnesses';
 import { registerHost } from './hosts';
 
 test('a group without a harness of its own runs on Claude Code, unless only Codex is ready; Codex counts once a look says so', async () => {
@@ -121,9 +121,9 @@ test('a newer Claude Code that is out is offered as an update, which runs in the
   await h.refresh();
   await Bun.sleep(0);
   expect((await h.view())[0]!.update).toEqual({ version: '2.1.322' });
-  h.updateClaude();
+  h.update('claude');
   // a second click while it runs starts no second update
-  h.updateClaude();
+  h.update('claude');
   expect((await h.view())[0]!.update).toEqual({ version: '2.1.322', running: true });
   finish();
   for (let i = 0; i < 20 && (await h.view())[0]!.update; i++) await Bun.sleep(1);
@@ -145,20 +145,90 @@ test('an update that fails says why, and is offered again', async () => {
   await h.refresh();
   await h.view();
   await Bun.sleep(0);
-  h.updateClaude();
+  h.update('claude');
   for (let i = 0; i < 20 && (await h.view())[0]!.update?.running; i++) await Bun.sleep(1);
   expect((await h.view())[0]!.update).toEqual({ version: '2.1.322', error: 'claude update exited with 1: no network' });
 });
 
+test('a newer Codex that is out is offered as an update, after which the menus have the new version and its models', async () => {
+  let version = '0.159.2';
+  let finish = () => {};
+  let updates = 0;
+  const h = new Harnesses({
+    cwd: '/tmp',
+    claude: async () => ({ version: '2.1.338', loggedIn: true }),
+    codex: async () => ({ version, loggedIn: true }),
+    codexModels: async () => (version === '0.159.2' ? [{ id: 'gpt-6.1-sol', name: 'GPT-6.1-Sol' }] : [{ id: 'gpt-6.2-sol', name: 'GPT-6.2-Sol' }, { id: 'gpt-6.1-sol', name: 'GPT-6.1-Sol' }]),
+    claudeNewest: async () => '2.1.338',
+    codexNewest: async () => '0.167.0',
+    updateCodex: () => (updates++, new Promise<void>((done) => (finish = () => ((version = '0.167.0'), done())))),
+  });
+  await h.refresh();
+  await Bun.sleep(0);
+  const [claude, codex] = await h.view();
+  // only Codex is behind
+  expect([claude!.update, codex!.update, codex!.models.map((m) => m.id)]).toEqual([undefined, { version: '0.167.0' }, ['gpt-6.1-sol']]);
+  h.update('codex');
+  h.update('codex');
+  expect((await h.view())[1]!.update).toEqual({ version: '0.167.0', running: true });
+  finish();
+  for (let i = 0; i < 20 && (await h.view())[1]!.update; i++) await Bun.sleep(1);
+  const after = (await h.view())[1]!;
+  expect([after.version, after.update, after.models.map((m) => m.id)]).toEqual(['0.167.0', undefined, ['gpt-6.2-sol']]);
+  expect(updates).toBe(1);
+});
+
+test('Codex is not asked about updates where it is not installed, and a Codex at the newest has none', async () => {
+  let asked = 0;
+  const h = new Harnesses({ cwd: '/tmp', claude: async () => null, codex: async () => null, codexNewest: async () => (asked++, '0.167.0') });
+  await h.refresh();
+  await Bun.sleep(0);
+  expect([(await h.view())[1]!.update, asked]).toEqual([undefined, 0]);
+  h.set({ codex: { version: '0.167.0', loggedIn: true } });
+  await Bun.sleep(0);
+  expect([(await h.view())[1]!.update, asked]).toEqual([undefined, 1]);
+});
+
+test("a host's Codex that is behind gets a line of its own and is updated there; its Claude Code is another", async () => {
+  let codexThere = '0.159.2';
+  let updated = 0;
+  const codexHost: HostHarness = {
+    name: 'box',
+    harness: 'codex',
+    reachable: () => true,
+    look: async () => ({ version: codexThere }),
+    update: async () => void (updated++, (codexThere = '0.167.0')),
+  };
+  const claudeHost = fakeHost('box', { version: '2.1.338' });
+  const h = new Harnesses({
+    cwd: '/tmp',
+    claude: async () => ({ version: '2.1.338', loggedIn: true }),
+    codex: async () => ({ version: '0.167.0', loggedIn: true }),
+    codexModels: async () => [],
+    claudeNewest: async () => '2.1.338',
+    codexNewest: async () => '0.167.0',
+    hosts: () => [claudeHost.claude, codexHost],
+  });
+  await h.refresh();
+  const codexOf = async () => (await h.view())[1]!.hosts ?? [];
+  for (let i = 0; i < 50 && !(await codexOf())[0]?.update; i++) await Bun.sleep(1);
+  expect(await codexOf()).toEqual([{ name: 'box', version: '0.159.2', update: { version: '0.167.0' } }]);
+  expect((await h.view())[0]!.hosts).toEqual([{ name: 'box', version: '2.1.338' }]);
+  h.update('codex', 'box');
+  for (let i = 0; i < 50 && (await codexOf())[0]?.update; i++) await Bun.sleep(1);
+  expect([await codexOf(), updated, claudeHost.updates]).toEqual([[{ name: 'box', version: '0.167.0' }], 1, 0]);
+});
+
 /** A host's Claude Code as `Harnesses` asks it, at `version` there, listing `models`. */
 function fakeHost(name: string, o: { version: string | null; channel?: 'latest' | 'stable'; models?: ClaudeListed[]; newest?: string }) {
-  const host: typeof o & { up: boolean; looks: number; updates: number; claude: ClaudeHost } = {
+  const host: typeof o & { up: boolean; looks: number; updates: number; claude: HostHarness } = {
     ...o,
     up: true,
     looks: 0,
     updates: 0,
     claude: {
       name,
+      harness: 'claude',
       reachable: () => host.up,
       look: async () => {
         host.looks++;
@@ -207,7 +277,7 @@ test("a host whose Claude Code is behind its channel's newest says so in the vie
   expect(asked).toContain(undefined);
   expect(asked).toContain('stable');
   expect((await h.view())[0]!.update).toBeUndefined();
-  h.updateClaude('box');
+  h.update('claude', 'box');
   expect((await h.view())[0]!.hosts![0]!.update).toEqual({ version: '2.1.322', running: true });
   const after = await viewUntil(h, (hosts) => !hosts[0]!.update);
   expect(after[0]).toEqual({ name: 'box', version: '2.1.322' });

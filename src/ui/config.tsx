@@ -9,7 +9,7 @@ import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
-import { ClaudeUpdate } from './agentPick';
+import { HarnessUpdate } from './agentPick';
 import { api, reload, type SiteHow } from './api';
 import { keepConfigDraft, keptConfigDraft } from './configDraft';
 import { keep } from './keep';
@@ -960,7 +960,9 @@ function AgentsBlock({ on }: { on: boolean }) {
           );
         })}
       </div>
-      <ClaudeUpdate view={view} onView={setView} />
+      {HARNESSES.map((h) => (
+        <HarnessUpdate key={h} harness={h} view={view} onView={setView} />
+      ))}
       {unready.length > 0 && <p className="hint">{`${unready.map((h) => a.notReady(t.harnesses[h.id])).join(', ')}. ${a.setUp}`}</p>}
       {status && <p className="hint c-status">{status}</p>}
     </>

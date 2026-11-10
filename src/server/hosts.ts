@@ -320,6 +320,38 @@ export class SshHost {
     throw new HostError(r.code === LOST ? `${this.name} does not answer` : `claude update exited with ${r.code}${last ? `: ${last}` : ''}`);
   }
 
+  /** The version of Codex there; null where it is not installed. */
+  async codex(): Promise<{ version: string } | null> {
+    const r = await this.run('v=$(codex --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"', { timeout: 30_000 });
+    if (r.code === 3) return null;
+    if (r.code !== 0) throw new HostError(`${this.name}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+    const version = r.stdout.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
+    return version ? { version } : null;
+  }
+
+  /**
+   * Brings Codex there up to date: `codex update`, or for a Codex older than that command, the
+   * package manager it lives in (as `updateCodex` does here); fails with the last line it said
+   * where it exits with another code than 0.
+   */
+  async updateCodex(): Promise<void> {
+    const script = [
+      'if codex update --help 2>/dev/null | grep -q "^Update Codex"; then exec codex update; fi',
+      'p=$(command -v codex) || exit 3',
+      'r=$(readlink -f "$p" 2>/dev/null || printf %s "$p")',
+      'case "$r" in',
+      '  */.bun/install/global/node_modules/@openai/codex/*) exec bun install -g @openai/codex@latest ;;',
+      '  */node_modules/@openai/codex/*) exec npm install -g @openai/codex@latest ;;',
+      '  */Caskroom/codex/*) exec brew upgrade --cask codex ;;',
+      'esac',
+      'echo "Codex at $p is too old to update itself; update it as it was installed" >&2; exit 4',
+    ].join('\n');
+    const r = await this.run(script, { timeout: 10 * 60_000 });
+    if (r.code === 0) return;
+    const last = `${r.stdout}\n${r.stderr}`.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean).at(-1);
+    throw new HostError(r.code === LOST ? `${this.name} does not answer` : r.code === 4 && last ? last : `codex update exited with ${r.code}${last ? `: ${last}` : ''}`);
+  }
+
   /**
    * A session's transcript there (Claude Code's, under the directory it ran in; a Codex thread's,
    * under Codex's sessions or archived ones), copied here for the work retrospective; null when there

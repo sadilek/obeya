@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
@@ -465,6 +465,53 @@ describe("Claude Code on a host", () => {
     expect(await claudeModels('/', host)).toEqual([{ value: 'fable', resolvedModel: 'claude-fable-5-1' }, { value: 'claude-fable-5-2' }]);
     expect(log()).not.toContain('sk-claude');
   }, 20_000);
+});
+
+describe('Codex on a host', () => {
+  /** The stand-in's state there (`fixtures/fake-codex.ts`). */
+  let state: string;
+  let bin: string;
+  const fake = join(import.meta.dir, 'fixtures', 'fake-codex.ts');
+  beforeEach(() => {
+    bin = join(dir, 'net', 'home', '.local', 'bin');
+    state = join(dir, 'net', 'home', '.fake-codex');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(state, { recursive: true });
+    writeFileSync(join(bin, 'codex'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fake)} "$@"\n`, { mode: 0o755 });
+    writeFileSync(join(state, 'version'), '0.159.2\n');
+  });
+
+  overSsh('says its version there; null where it is not installed', async () => {
+    expect(await host.codex()).toEqual({ version: '0.159.2' });
+    writeFileSync(join(bin, 'codex'), '#!/bin/sh\nexit 127\n');
+    expect(await host.codex()).toBeNull();
+    writeFileSync(join(dir, 'net', 'down'), '');
+    await expect(host.codex()).rejects.toThrow('Connection refused');
+  });
+
+  overSsh('is updated there with `codex update`, and says why where that fails', async () => {
+    writeFileSync(join(state, 'newest'), '0.167.0');
+    await host.updateCodex();
+    expect(await host.codex()).toEqual({ version: '0.167.0' });
+    writeFileSync(join(state, 'update-fails'), 'Error: no network');
+    await expect(host.updateCodex()).rejects.toThrow('codex update exited with 1: Error: no network');
+  });
+
+  overSsh('older than `codex update`, is updated by the package manager it lives in, and else says so', async () => {
+    writeFileSync(join(state, 'old'), '');
+    // installed by npm: its package's script, linked onto the PATH
+    const pkg = join(dir, 'net', 'home', 'lib', 'node_modules', '@openai', 'codex', 'bin');
+    mkdirSync(pkg, { recursive: true });
+    renameSync(join(bin, 'codex'), join(pkg, 'codex.js'));
+    symlinkSync(join(pkg, 'codex.js'), join(bin, 'codex'));
+    writeFileSync(join(bin, 'npm'), `#!/bin/sh\necho "$@" > ${JSON.stringify(join(state, 'npm'))}\n`, { mode: 0o755 });
+    await host.updateCodex();
+    expect(readFileSync(join(state, 'npm'), 'utf8').trim()).toBe('install -g @openai/codex@latest');
+    // a copy of its own, which no package manager knows
+    rmSync(join(bin, 'codex'));
+    copyFileSync(join(pkg, 'codex.js'), join(bin, 'codex'));
+    await expect(host.updateCodex()).rejects.toThrow(/Codex at .* is too old to update itself/);
+  });
 });
 
 describe('a worker on a host', () => {
