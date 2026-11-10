@@ -1218,6 +1218,7 @@ span.cl-name { color: inherit; cursor: default; }
 .project-menu .start-all, .project-menu .start-all svg { color: var(--working); }
 .project-menu .snooze-opt:disabled { cursor: default; color: var(--muted); }
 .agent-check { flex: none; width: 18px; }
+.agent-version { margin-left: 0.4em; color: var(--muted); }
 .agent-h { padding-top: 8px; font-weight: 600; }
 .agent-group { display: flex; flex-direction: column; }
 .agent-effort-h { border-top: 1px solid var(--line); margin-top: 4px; }

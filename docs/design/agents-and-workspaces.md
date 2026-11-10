@@ -93,10 +93,16 @@ harness (column "Runs on": Claude Code or Codex; one not installed or not logged
 and whatever else its catalog for the login on this machine lists) and the effort (low to max, for a
 Codex family those its newest model here takes), and marks the presets: Claude Code with Opus
 throughout, high effort for workers and exploration agents, medium otherwise. A Codex family shows
-by its name without a version (Sol, Terra; Codex Max for `gpt-#-codex-max`; one named only by its
-version, as `o#`, by its newest model here, o3) and stands for whatever is newest of it where an
-agent runs (see Codex), as Opus does for Claude Code; a version cannot be pinned. Which version
-runs shows on a started card's conversation heading, as Claude Code's does (Codex · GPT-6.1-Sol).
+by its name (Sol, Terra; Codex Max for `gpt-#-codex-max`; one named only by its version, as `o#`,
+by its newest model here, o3) and stands for whatever is newest of it where an agent runs (see
+Codex), as Opus does for Claude Code; a version cannot be pinned. Both menus (this dialog's and the
+one beside a card's start button) show after each name the version it stands for on this machine,
+in the card's menu greyed (Opus 5.5, Sol 6.1): for Codex its newest model's, for an alias the model
+Claude Code says it stands for (the one it lists under the alias, else the newest of the family it
+lists). Claude Code is asked by an idle session of its own as Obeya starts, again after ten minutes
+or once its version changed, in the background: until it has answered, the aliases show without a
+version, and no menu waits for it. Which version runs shows on a started card's conversation
+heading, as Claude Code's does (Codex · GPT-6.1-Sol).
 A family is the model id with its version number taken out (`gpt-6.1-sol` and `gpt-5.6-sol` are both `gpt-#-sol`;
 an id without a number is a family of its own), so families with other names (`gpt-#-codex`, `o#`)
 work alike. Claude Code's default is no entry of its own; Codex's needs none. A family the catalog no

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { Harnesses } from './harnesses';
+import { aliasesOf, Harnesses } from './harnesses';
 
 test('a group without a harness of its own runs on Claude Code, unless only Codex is ready; Codex counts once a look says so', async () => {
   let claude: { version: string; loggedIn: boolean } | null = { version: '2.1.300', loggedIn: true };
@@ -41,4 +41,35 @@ test("the configuration's harnesses: Claude Code's aliases, Codex's models witho
   // asked once for a while
   await h.view();
   expect(asked).toBe(1);
+});
+
+test("Claude Code's aliases go with the model each stands for, asked in the background and again once Claude Code changed", async () => {
+  let asked = 0;
+  let opus = 'claude-opus-5-5';
+  const h = new Harnesses({ cwd: '/tmp', claudeAliases: async () => (asked++, { opus, haiku: 'claude-haiku-4-5-20251001' }) });
+  h.set({ claude: { version: '2.1.300', loggedIn: true }, codex: null });
+  // the menus do not wait for Claude Code: the first answer comes with a later look
+  await Bun.sleep(0);
+  const [claude] = await h.view();
+  expect(claude!.models).toEqual([{ id: 'fable' }, { id: 'opus', resolved: 'claude-opus-5-5' }, { id: 'sonnet' }, { id: 'haiku', resolved: 'claude-haiku-4-5-20251001' }]);
+  await h.view();
+  expect(asked).toBe(1);
+  opus = 'claude-opus-5-6';
+  h.set({ claude: { version: '2.1.301', loggedIn: true } });
+  await Bun.sleep(0);
+  expect((await h.view())[0]!.models[1]).toEqual({ id: 'opus', resolved: 'claude-opus-5-6' });
+  expect(asked).toBe(2);
+});
+
+test("an alias stands for the model Claude Code lists under it, else for the newest of its family it lists", () => {
+  expect(
+    aliasesOf([
+      { value: 'default', resolvedModel: 'claude-opus-5-5' },
+      { value: 'opus', resolvedModel: 'claude-opus-5-5' },
+      { value: 'claude-fable-5', resolvedModel: 'claude-fable-5' },
+      { value: 'claude-fable-5-1', resolvedModel: 'claude-fable-5-1' },
+      { value: 'claude-opus-5-6' },
+      { value: 'haiku', resolvedModel: 'claude-haiku-4-5-20251001' },
+    ]),
+  ).toEqual({ fable: 'claude-fable-5-1', opus: 'claude-opus-5-5', haiku: 'claude-haiku-4-5-20251001' });
 });

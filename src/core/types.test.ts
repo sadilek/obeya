@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CLONES, cardAgentOf, codexFamily, codexFamilyName, modelFits, type FilledClones, type HarnessView, type Item, modelChoices, modelName, nearestEffort, newestOfFamilies, resolveCodexModel, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented, prototypeBuild, prototypeName } from './types';
+import { CLONES, cardAgentOf, codexFamily, codexFamilyName, modelFits, type FilledClones, type HarnessView, type Item, modelChoices, modelName, modelVersion, nearestEffort, newestOfFamilies, resolveCodexModel, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented, prototypeBuild, prototypeName } from './types';
 
 const card = (over: Partial<Item>): Item => ({ id: 'x', number: 1, kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
 
@@ -165,7 +165,7 @@ test('an effort the model does not take becomes the nearest it takes, the higher
   expect(nearestEffort('max', undefined)).toBe('max');
 });
 
-test("both pickers offer Codex's families by name without a version, as Claude Code's aliases, with the efforts of the newest model, and a family no longer listed as chosen", () => {
+test("both pickers offer Codex's families by name, the version apart, as Claude Code's aliases, with the efforts of the newest model, and a family no longer listed as chosen", () => {
   const codex: HarnessView = {
     id: 'codex',
     ready: true,
@@ -175,16 +175,21 @@ test("both pickers offer Codex's families by name without a version, as Claude C
     ],
   };
   expect(modelChoices(codex, 'gpt-#-sol')).toEqual([
-    { value: 'gpt-#-sol', name: 'Sol', efforts: ['low', 'high'] },
-    { value: 'gpt-#-luna', name: 'Luna', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+    { value: 'gpt-#-sol', name: 'Sol', version: '6.1', efforts: ['low', 'high'] },
+    { value: 'gpt-#-luna', name: 'Luna', version: '6', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
   ]);
+  // a family named by its newest model has its version in the name already
+  expect(modelChoices({ id: 'codex', ready: true, models: [{ id: 'o3', name: 'o3' }] })).toEqual([{ value: 'o#', name: 'o3', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] }]);
   expect(modelChoices(codex, 'gpt-#-terra').at(-1)).toEqual({ value: 'gpt-#-terra', name: 'Terra', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] });
   expect(codexFamilyName('gpt-#-codex-max')).toBe('Codex Max');
   // a family named only by its version goes by its newest model's name here
   expect(codexFamilyName('o#', 'o3')).toBe('o3');
   expect(codexFamilyName('gpt-#')).toBe('gpt');
-  const claude: HarnessView = { id: 'claude', ready: true, models: [{ id: 'opus' }, { id: 'haiku' }] };
+  const claude: HarnessView = { id: 'claude', ready: true, models: [{ id: 'opus', resolved: 'claude-opus-5-5' }, { id: 'haiku' }] };
   expect(modelChoices(claude, 'default').map((c) => c.value)).toEqual(['opus', 'haiku', 'default']);
+  // an alias with the version of the model it stands for here, once Claude Code has said
+  expect(modelChoices(claude).map((c) => c.version)).toEqual(['5.5', undefined]);
+  expect([modelVersion('claude-haiku-4-5-20251001'), modelVersion('gpt-6.1-sol'), modelVersion('opus')]).toEqual(['4.5', '6.1', undefined]);
 });
 
 describe('prototypeBuild', () => {

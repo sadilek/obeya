@@ -910,7 +910,7 @@ function AgentsBlock({ on }: { on: boolean }) {
     setBusy(false);
   };
   const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  const modelName = (h: Harness, m: ModelChoice) => (h === 'claude' ? (a.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value));
+  const modelName = (h: Harness, m: ModelChoice) => `${h === 'claude' ? (a.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}${m.version ? ` ${m.version}` : ''}`;
   const unready = view.harnesses.filter((h) => !h.ready);
   return (
     <>

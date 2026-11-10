@@ -61,7 +61,7 @@ import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
 import { findClaude, MachineSetup, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
-import { Harnesses } from './harnesses';
+import { claudeAliases, Harnesses } from './harnesses';
 import { addToPath, extendPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
@@ -317,6 +317,7 @@ const harnesses = new Harnesses({
     const c = await findClaude(process.env, COMPILED, process.platform, process.arch);
     return c.version ? { version: c.version, loggedIn: c.loggedIn } : null;
   },
+  claudeAliases,
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
 await Promise.race([harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${e instanceof Error ? e.message : e}`)), Bun.sleep(5000)]);

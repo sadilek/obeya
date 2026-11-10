@@ -2729,11 +2729,23 @@ export function modelName(model: string): string {
   return `${m[3]![0]!.toUpperCase()}${m[3]!.slice(1)} ${major}${minor ? `.${minor}` : ''}`;
 }
 
+/**
+ * A model id's version as people know it: `claude-opus-5-5` 5.5, `gpt-6.1-sol` 6.1; none for an id
+ * without a number.
+ */
+export function modelVersion(id: string): string | undefined {
+  const name = modelName(id);
+  if (name !== id) return name.slice(name.lastIndexOf(' ') + 1);
+  return codexVersion(id)?.version.join('.');
+}
+
 /** A model a harness offers, as the Configuration lists it. */
 export interface HarnessModel {
   id: string;
   /** Its name as the harness gives it; absent for Claude Code's aliases, which the page names itself. */
   name?: string;
+  /** The model a Claude Code alias stands for here (`opus`: `claude-opus-5-5`), once Claude Code has said. */
+  resolved?: string;
   /** The efforts it takes, where the harness says (Codex); absent: all of `AGENT_EFFORTS`. */
   efforts?: AgentEffort[];
   /** The one the harness takes by default (Codex's), which a family no longer listed runs on. */
@@ -2748,20 +2760,28 @@ export interface HarnessModel {
 export interface ModelChoice {
   value: string;
   name?: string;
+  /** The version it runs on here (`5.5`), shown after the name; absent where unknown or the name holds it. */
+  version?: string;
   efforts: readonly AgentEffort[];
 }
 
 /**
  * The models a picker offers on a harness, with the one chosen (`chosen`, as stored) among them even
- * where the harness no longer lists it. Codex's are its families, each named without a version.
+ * where the harness no longer lists it. Codex's are its families, each named without a version, which `version` carries.
  */
 export function modelChoices(harness: HarnessView | undefined, chosen?: string): ModelChoice[] {
   const codex = harness?.id === 'codex';
-  const listed: ModelChoice[] = newestOfFamilies(harness?.models ?? []).map((m) => ({
-    value: codex ? codexFamily(m.id) : m.id,
-    ...(codex ? { name: codexFamilyName(codexFamily(m.id), m.name ?? m.id) } : {}),
-    efforts: m.efforts ?? AGENT_EFFORTS,
-  }));
+  const listed: ModelChoice[] = newestOfFamilies(harness?.models ?? []).map((m) => {
+    const name = codex ? codexFamilyName(codexFamily(m.id), m.name ?? m.id) : undefined;
+    // a family named by its newest model (`o3`) has its version in the name already
+    const version = modelVersion(codex ? m.id : (m.resolved ?? ''));
+    return {
+      value: codex ? codexFamily(m.id) : m.id,
+      ...(name !== undefined ? { name } : {}),
+      ...(version && !name?.includes(version) ? { version } : {}),
+      efforts: m.efforts ?? AGENT_EFFORTS,
+    };
+  });
   if (chosen === undefined || listed.some((c) => c.value === chosen)) return listed;
   return [...listed, { value: chosen, ...(codex ? { name: codexFamilyName(chosen) } : {}), efforts: AGENT_EFFORTS }];
 }

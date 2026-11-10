@@ -130,6 +130,7 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
                       <button key={m.value} className="snooze-opt" role="menuitemradio" aria-checked={on} onClick={() => pickModel(h, m.value)}>
                         <Check on={on} />
                         {h === 'claude' ? (t.config.agents.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}
+                        {m.version && <span className="agent-version">{m.version}</span>}
                       </button>
                     );
                   })}
