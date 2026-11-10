@@ -321,6 +321,16 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'error', text: expect.stringContaining('Überarbeiten ging nicht') });
   });
 
+  test('with an English interface, why it ended without a text is said in English too', async () => {
+    canvas.shutdown();
+    canvas = await CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, limitMargin: 10, language: () => 'en' });
+    const p = proposal();
+    canvas.revisions.revise(p.id, 'Excel too', false);
+    reviser()!.emit({ type: 'idle' });
+    await settle();
+    expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'error', text: 'Revising did not work: the agent gave no new text' });
+  });
+
   test('a reviser the usage limit stops waits on the proposal and reworks it once the limit lifts', async () => {
     const p = proposal();
     canvas.revisions.revise(p.id, 'Excel auch', false);

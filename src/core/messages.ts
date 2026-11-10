@@ -426,6 +426,7 @@ const de = {
     ruleTaken: (rule: string) => `Regel aufgenommen: „${rule}“`,
     revised: 'Vorschlag überarbeitet.',
     reviseFailed: (why: string) => `Überarbeiten ging nicht: ${why}`,
+    noRevisedText: 'der Agent hat keinen neuen Text geliefert',
   },
   /** The card's button that approves work past the pull request, straight onto the main branch (the UI's own label). */
   approveDirect: 'Direkt auf main',
@@ -921,6 +922,7 @@ const en: Messages = {
     ruleTaken: (rule: string) => `Rule added: “${rule}”`,
     revised: 'Proposal revised.',
     reviseFailed: (why: string) => `Revising did not work: ${why}`,
+    noRevisedText: 'the agent gave no new text',
   },
   approveDirect: 'Straight to main',
   claudeMd: {

@@ -180,7 +180,7 @@ export class Revisions {
     if (revised) return revised;
     if (error !== undefined) throw new Error(error);
     if (passed) return null;
-    throw new Error('der Agent hat keinen neuen Text geliefert');
+    throw new Error(this.o.board.t.coordinator.noRevisedText);
   }
 
   private message(card: Item, said: Revising, shots: ReturnType<Revisions['shots']>): string {
