@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, onCanvas, PROJECT_COLLAPSED, sizeOf } from '../core/layout';
-import { archivedWithDone, type Item } from '../core/types';
+import { archivedWithDone, type Item, stoppedArchivable } from '../core/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, pathOfRef, type PlanRead, repoOfRef } from './board';
 import { Store } from './db';
@@ -627,6 +627,22 @@ describe('archive', () => {
     expect(board.events(c.id).map((e) => e.text)).toEqual(['Sie stimmt.', 'Gestoppt.']);
     board.unarchive(c.id);
     expect(board.snapshot().items.find((i) => i.id === c.id)).toMatchObject({ x: 50, y: 60, state: 'planned' });
+  });
+
+  test('a task built on a prototype that no agent has worked on since is planned, not stopped: the archive takes it as little as the button offers it', () => {
+    const prototype = board.create({ title: 'Prototyp', x: 0, y: 0 });
+    const c = board.create({ title: 'Gebaut', x: 0, y: 0 });
+    // its repository does not run on the canvas, so the workspace it took from the prototype would not keep it
+    board.work(c.id, { branch: 'obeya/gebaut-1', workspace: '/tmp/clone-1', built_on: prototype.id, repo: 'elsewhere' });
+    expect(board.item(c.id)).toMatchObject({ unstarted: true, repoDown: true });
+    expect(stoppedArchivable(board.item(c.id)!)).toBe(false);
+    expect(() => board.archive([c.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
+    board.work(c.id, { workspace: null });
+    expect(() => board.archive([c.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
+    // once an agent has worked on it, it is a stopped one
+    board.work(c.id, { session_id: 's' });
+    board.archive([c.id]);
+    expect(board.archived().map((a) => a.id)).toEqual([c.id]);
   });
 
   test('a dropped idea goes into the archive with its brief, an open one does not', () => {
