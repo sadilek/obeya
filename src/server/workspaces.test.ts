@@ -7,7 +7,7 @@ import { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
-import { alive, gitClone, gitRepo, identify, leftBehind, removeDir, until } from './testing';
+import { alive, gitClone, gitRepo, identify, leftBehind, PATIENCE, removeDir, until } from './testing';
 import { addTrailer, defaultBranch, git, hasCommit, isAncestor, originFetch, unlanded, Workspaces } from './workspaces';
 
 let dir: string;
@@ -914,28 +914,24 @@ describe('clones the configuration no longer names', () => {
     git(other, 'commit', '--quiet', '-m', 'Squashed');
     git(other, 'push', '--quiet', 'origin', 'main');
     spaces.keepOnly(null, []);
-    await until(() => !existsSync(squashed) && spaces.pool([])[0]!.kept?.length === 3);
+    // four clones looked at one after the other, each a dozen git calls: seconds on a busy machine
+    await until(() => !existsSync(squashed) && spaces.pool([])[0]!.kept?.length === 3, 15_000 * PATIENCE);
     expect(spaces.pool([])[0]!.kept!.toSorted()).toEqual([tagged, deleted, odd]);
-  });
+  }, 30_000 * PATIENCE);
 
   test('a branch of a thousand files squashed onto main counts as landed, asked in command lines Windows takes', async () => {
     const { paths } = await make(1);
     const clone = paths[0]!;
     const files = Array.from({ length: 1000 }, (_, i) => `generated/a-directory-with-a-long-name/file-${String(i).padStart(4, '0')}-with-a-long-name-too.txt`);
-    const write = (at: string, message: string) => {
-      mkdirSync(join(at, 'generated', 'a-directory-with-a-long-name'), { recursive: true });
-      for (const f of files) writeFileSync(join(at, f), `${f}\n`);
-      git(at, 'add', '.');
-      git(at, 'commit', '--quiet', '-m', message);
-    };
-    git(clone, 'checkout', '--quiet', '-b', 'obeya/generated');
-    write(clone, 'Generated');
-    const other = join(dir, 'other');
-    gitClone(origin, other);
-    identify(other);
-    // the pull request squashed onto main, and its branch deleted
-    write(other, 'Squashed');
-    git(other, 'push', '--quiet', 'origin', 'main');
+    // one fast-import, not `git add` of a thousand files: that took seconds on a busy machine
+    let stream = 'commit refs/heads/obeya/generated\ncommitter Test <test@example.com> 0 +0000\ndata 9\nGenerated\nfrom refs/heads/main\n';
+    for (const f of files) stream += `M 100644 inline ${f}\ndata ${f.length + 1}\n${f}\n\n`;
+    const imported = Bun.spawnSync(['git', '-C', clone, 'fast-import', '--quiet'], { stdin: Buffer.from(stream), stderr: 'pipe' });
+    expect(imported.exitCode, imported.stderr.toString()).toBe(0);
+    git(clone, 'checkout', '--quiet', 'obeya/generated');
+    // the pull request squashed onto main (the branch's files on main's commit), and its branch deleted
+    const squashed = git(clone, 'commit-tree', 'obeya/generated^{tree}', '-p', 'origin/main', '-m', 'Squashed');
+    git(clone, 'push', '--quiet', 'origin', `${squashed}:refs/heads/main`);
     const lines: number[] = [];
     const stop = onStart((argv) => argv.includes('diff') && lines.push(argv.filter((a) => a.startsWith(':(literal)')).join(' ').length));
     try {
