@@ -448,6 +448,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
           </section>
           <section className="cfg-sec" hidden={section !== 'agents'}>
             <AgentsBlock on={on} />
+            <UsageBlock on={on} />
+            <CostsBlock on={on} />
           </section>
           <section className="cfg-sec" hidden={section !== 'voice'}>
             <VoiceBlock on={on} />
@@ -463,8 +465,6 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
             <Head title={c.sections.general} />
             <LanguageBlock on={on} />
             <ThemeBlock on={on} />
-            <UsageBlock on={on} />
-            <CostsBlock on={on} />
             {view && <ServerBlock server={view.server} />}
           </section>
         </div>
