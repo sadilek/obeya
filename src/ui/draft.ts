@@ -177,6 +177,8 @@ export function updateDraft(key: string, change: Partial<Draft> | ((d: Draft) =>
 
 /** Where the drafts are kept now, for what comes back to a draft later (an upload that arrives). */
 export const draftsHome = (): DraftsHome => kept;
+/** Whether `home` is where the drafts are kept now: the same canvas, also after a switch away and back. */
+const keptAt = (home: NonNullable<DraftsHome>) => home.store === kept?.store && home.canvas === kept.canvas;
 
 /**
  * `updateDraft` for the drafts kept at `home`: where the page has switched to another canvas since,
@@ -184,7 +186,7 @@ export const draftsHome = (): DraftsHome => kept;
  * shown now; a draft that lasts no longer than its field is gone with it.
  */
 export function updateDraftAt(home: DraftsHome, key: string, change: Partial<Draft> | ((d: Draft) => Partial<Draft>)) {
-  if (home === kept || !home) return updateDraft(key, change);
+  if (!home || keptAt(home)) return updateDraft(key, change);
   if (!lasting(key)) return;
   try {
     const saved = JSON.parse(home.store.getItem(storeKey(home.canvas)) ?? '{}') as Record<string, Kept>;
@@ -372,7 +374,7 @@ export function insertFiles(key: string, words: string[]) {
 
 /** `insertFiles` for the drafts kept at `home`: after a switch of canvas, at the end of the draft the canvas left behind has written down (`updateDraftAt`). */
 export function insertFilesAt(home: DraftsHome, key: string, words: string[]) {
-  if (home === kept || !home) return insertFiles(key, words);
+  if (!home || keptAt(home)) return insertFiles(key, words);
   if (!words.length) return;
   updateDraftAt(home, key, (d) => ({ text: d.text + spaced(d.text, words.join(' '), ''), files: [...(d.files ?? []), ...words] }));
 }

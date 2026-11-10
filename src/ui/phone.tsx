@@ -289,8 +289,11 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
         leavesCard.current = false;
         history.replaceState(null, '', addressWith({ card: null, talk: false }));
       }
-      setOpenState(resolve(cardInAddress()));
-      setTalk(talkInAddress());
+      openRef.current = resolve(cardInAddress());
+      talkRef.current = talkInAddress();
+      setOpenState(openRef.current);
+      setTalk(talkRef.current);
+      followOpen.current();
     };
     addEventListener('popstate', pop);
     return () => removeEventListener('popstate', pop);
@@ -314,16 +317,20 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const byId = (id: string) => allRef.current.find((x) => x.item.id === id)?.item;
   // a card the address names by its code: its id once the snapshots hold it, and its address by the
   // code; an open card that moved to another canvas (built in a new repository there) stays open, and
-  // the address follows it there, as the canvas's page does
-  useEffect(() => {
+  // the address follows it there, as the canvas's page does, also on Back and Forward
+  const followOpen = useRef(() => {});
+  followOpen.current = () => {
+    const open = openRef.current;
     if (!open) return;
     const id = resolve(open)!;
     const on = allRef.current.find((x) => x.item.id === id)?.canvas.id;
     if (id === open && (!on || on === readAddress().canvas)) return;
     if (looked.current === open) looked.current = id;
+    openRef.current = id;
     setOpenState(id);
     history.replaceState(history.state, '', addressWith({ card: id, talk: talkRef.current }));
-  }, [all]);
+  };
+  useEffect(() => followOpen.current(), [all]);
   // the cards the owner swiped aside, out of "Needs you" and "Running" until they need the owner anew;
   // the same in every tab of this browser
   const [aside, setAsideState] = useState<SetAside>(loadAside);
