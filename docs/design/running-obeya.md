@@ -210,7 +210,9 @@ new tab. Without such cards it is not there.
 
 With several canvases, each list holds its cards canvas by canvas in the switcher's order, each
 canvas under a head with its name and how many cards it has there (orange in "Needs you", as the
-navigation counts); a tap on the head folds that canvas's cards in that list away and keeps the
+navigation counts; in "Running" split as "2 + 1", the snoozed cards and those whose agent has yet
+to take up the owner's words, then in blue those an agent or Obeya is at, since the list holds both;
+either alone without the "+"); a tap on the head folds that canvas's cards in that list away and keeps the
 count, as the navigation folds its canvases, kept per list and canvas in the browser. A canvas
 without cards in a list has no head there. The cards look as on the canvas, as wide as the screen
 and without the pin; where two of at least 340 px fit (the phone turned) they stand side by side.

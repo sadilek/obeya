@@ -669,6 +669,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     cards: (c: CanvasInfo) => entries.filter((x) => x.canvas.id === c.id).map(({ item: i }) => <PhoneCard key={i.id} item={i} swipe={swipe} onOpen={openCard} />),
   });
   const runningCards = cardsOf(running, swipeRunning);
+  // of those, the ones an agent or Obeya is at right now, not snoozed nor waiting for their agent to pick up the owner's words
+  const atWork = (c: CanvasInfo) => running.filter(({ item, canvas }) => canvas.id === c.id && runs(item) && !item.snoozed).length;
   const asideCards = cardsOf(putAway, { onGone: bringBack, label: t.phone.backLabel });
   const plannedCards = cardsOf(planned);
   const doneCards = cardsOf(done);
@@ -714,7 +716,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           <h2>{t.phone.running}</h2>
           {ordered.length > 0 && !running.length && <p className="ph-none">{putAway.some(({ item }) => active(item)) ? t.phone.nothingElseRuns : t.phone.nothingRuns}</p>}
           {hintIn === 'running' && <p className="ph-hint">{t.phone.swipeHintRunning}</p>}
-          <ByCanvas list="running" canvases={ordered} several={several} count={runningCards.count}>
+          <ByCanvas list="running" canvases={ordered} several={several} count={runningCards.count} atWork={atWork}>
             {runningCards.cards}
           </ByCanvas>
         </section>
@@ -782,9 +784,10 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
  * A list's entries canvas by canvas, in the switcher's order: with several canvases each under a head
  * with its name and how many it holds, which folds them away and keeps the count, as the navigation's
  * canvases do (kept per list and canvas in this browser); with one, the entries alone. A canvas with
- * none in the list has no head.
+ * none in the list has no head. With `atWork`, the count splits into the entries at rest and, in the
+ * colour of work, those at work ("2 + 1"), since "Running" also holds snoozed cards.
  */
-function ByCanvas({ list, canvases, several, waits, count, children }: { list: string; canvases: CanvasInfo[]; several: boolean; waits?: boolean; count: (c: CanvasInfo) => number; children: (c: CanvasInfo) => ReactNode }) {
+function ByCanvas({ list, canvases, several, waits, count, atWork, children }: { list: string; canvases: CanvasInfo[]; several: boolean; waits?: boolean; count: (c: CanvasInfo) => number; atWork?: (c: CanvasInfo) => number; children: (c: CanvasInfo) => ReactNode }) {
   const folded = useFoldedCanvases(CANVASES_FOLDED);
   const listed = canvases.flatMap((c) => {
     const n = count(c);
@@ -810,13 +813,25 @@ function ByCanvas({ list, canvases, several, waits, count, children }: { list: s
             <button className="ph-group-head" aria-expanded={!shut} aria-label={`${shut ? t.nav.unfold : t.nav.fold}: ${c.name}`} onClick={() => toggleFolded(CANVASES_FOLDED, id)}>
               <FoldArrow />
               <span className="name">{c.name}</span>
-              <span className={waits ? 'waits' : 'n'}>{n}</span>
+              {atWork ? <CountAtWork n={n} working={atWork(c)} /> : <span className={waits ? 'waits' : 'n'}>{n}</span>}
             </button>
             {!shut && <ul className="ph-list">{children(c)}</ul>}
           </div>
         );
       })}
     </>
+  );
+}
+
+/** `n` cards, `working` of them at work: the others in the plain count, a "+" and those at work in blue; either alone without the "+". */
+function CountAtWork({ n, working }: { n: number; working: number }) {
+  const rest = n - working;
+  return (
+    <span className="counts" title={t.phone.atWork(rest, working)}>
+      {rest > 0 && <span className="n">{rest}</span>}
+      {rest > 0 && working > 0 && <span className="plus">+</span>}
+      {working > 0 && <span className="n working">{working}</span>}
+    </span>
   );
 }
 

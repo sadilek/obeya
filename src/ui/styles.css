@@ -2298,7 +2298,12 @@ button.link:hover { text-decoration: underline; }
 .ph-group-head svg { flex: none; transition: transform .15s ease-out; transform: rotate(90deg); }
 .ph-group.folded .ph-group-head svg { transform: none; }
 .ph-group-head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-.ph-group-head :is(.n, .waits) { flex: none; margin-left: auto; }
+.ph-group-head :is(.n, .waits, .counts) { flex: none; margin-left: auto; }
+/* in "Running": those at rest, a "+" and those at work, in the colour of work */
+.ph-group-head .counts { display: flex; align-items: center; gap: 5px; }
+.ph-group-head .counts .n { margin-left: 0; }
+.ph-group-head .counts .plus { font: 600 12.5px/1 var(--cond); color: var(--muted); }
+.ph-group-head .n.working { color: var(--working); background: color-mix(in srgb, var(--working) 14%, var(--bg)); }
 .ph-group-head .n { font: 600 12.5px/1 var(--cond); padding: 4px 7px; border-radius: 3px; background: var(--bg); color: var(--muted); }
 /* a card is swiped aside sideways, the page still scrolled up and down under the finger; until the owner
    has swiped one, the first nudges aside and back */

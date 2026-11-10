@@ -1274,6 +1274,8 @@ const de = {
   phone: {
     forYou: 'Braucht dich',
     running: 'Läuft',
+    /** The title of a canvas's count in „Läuft“: the cards snoozed or waiting for their agent, and those an agent is at. */
+    atWork: (rest: number, working: number) => [rest && `${rest} zurückgestellt oder wartend`, working && `${working} in Arbeit`].filter(Boolean).join(', '),
     nothingWaits: 'Nichts wartet auf dich.',
     nothingRuns: 'Gerade arbeitet kein Agent.',
     /** The same while cards of the list are set aside. */
@@ -3436,6 +3438,8 @@ const en: Strings = {
   phone: {
     forYou: 'Needs you',
     running: 'Running',
+    /** The title of a canvas's count in "Running": the cards snoozed or waiting for their agent, and those an agent is at. */
+    atWork: (rest: number, working: number) => [rest && `${rest} snoozed or waiting`, working && `${working} at work`].filter(Boolean).join(', '),
     nothingWaits: 'Nothing waits for you.',
     nothingRuns: 'No agent is at work right now.',
     nothingElseWaits: 'Nothing else waits for you.',
