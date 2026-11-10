@@ -490,5 +490,4 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   a negative has no condition to wait for.
 
 ## Bugs noticed in passing
-None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
-(2026-11-10).
+None left: the ones found here were fixed (2026-11-10).

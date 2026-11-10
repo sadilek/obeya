@@ -48,9 +48,8 @@ browser.
   gives the phone the `project` field too, which its `inView` does not read (the phone has no
   project sheet).
 - Confidence: high. Read both sides of every pair listed.
-- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): the phone's address
-  follows an open card that moved to another canvas, by an effect of its own (`followOpen`), not
-  through the notice handler.
+- Bug fixed: the phone's address follows an open card that moved to another canvas, by an effect of
+  its own (`followOpen`), not through the notice handler.
 
 ### H2. The settings sheets write "load, call, show the error" out by hand about twenty times
 - Principle: DRY
@@ -240,9 +239,9 @@ browser.
   behaviour only in the case that is wrong today.
 - Confidence: high. Callers grepped: `filesTo` from `App.tsx:1251`, the others only inside
   `shots.tsx`.
-- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): `fileTo` pins the drafts'
-  home as `attachTo` does (`updateDraftAt`, and `insertFilesAt` for the path), and both compare the
-  home by store and canvas, so a switch away and back lands in the draft shown.
+- Bug fixed: `fileTo` pins the drafts' home as `attachTo` does (`updateDraftAt`, and `insertFilesAt`
+  for the path), and both compare the home by store and canvas, so a switch away and back lands in
+  the draft shown.
 
 ### H10. A menu over the page is placed and closed by hand in three places
 - Principle: DRY

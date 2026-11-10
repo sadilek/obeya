@@ -80,10 +80,10 @@ targets. One of the hand-written argument readers has a real bug (`build.ts` ign
   so it parses with `strict: false`. Leave `android-phone.ts` as it is: its parser checks options
   per sub-command and `android-phone.test.ts` pins its messages.
 - Win: About 40 lines, and typos reported.
-- Fixed: the `build.ts` and `check-app.ts` bugs and the words `--say` and `--artifact` dropped, by
-  [Bugs noticed in passing](../bugs-noticed-in-passing.md) W3: `build.ts` and `check-app.ts` read
-  their arguments with `parseArgs` and refuse an unknown option already, and `scratch-obeya.ts`
-  takes a text's words with `wordsOf`, which leaves out only `--dir` and its value.
+- Fixed: the `build.ts` and `check-app.ts` bugs and the words `--say` and `--artifact` dropped:
+  `build.ts` and `check-app.ts` read their arguments with `parseArgs` and refuse an unknown option
+  already, and `scratch-obeya.ts` takes a text's words with `wordsOf`, which leaves out only `--dir`
+  and its value.
 - Risk: medium. Strict parsing turns an ignored typo into an error, which changes behaviour only for
   wrong input. Only the scratch commands have tests of their command line (`scratch-obeya.test.ts`,
   `check-scratch.ts`).

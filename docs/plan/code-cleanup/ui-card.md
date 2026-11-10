@@ -122,9 +122,8 @@ parts.tsx has become five unrelated modules in one file.
 - Risk: low; `flush` ordering is what matters (actions await it), and both copies already agree.
 - Confidence: high; both places read side by side. phone.tsx belongs to slice H, which may report
   the same pair.
-- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): the phone's address
-  follows an open card that moved to another canvas (an effect on the snapshots and on Back/Forward,
-  not the notice's `movedTo`); `wish` stays the desktop's only.
+- Bug fixed: the phone's address follows an open card that moved to another canvas (an effect on the
+  snapshots and on Back/Forward, not the notice's `movedTo`); `wish` stays the desktop's only.
 
 ### G4. A card's diff is read in five places, with three different lists of when to read it again
 - Principle: DRY
@@ -262,8 +261,8 @@ parts.tsx has become five unrelated modules in one file.
 - Win: no line less, but five files of 200-500 lines with names that say what is in them.
 - Risk: low; moves and import updates, the type checker finds every miss.
 - Confidence: high.
-- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): the minimap colours a
-  card by `shownState`, as the card and the collapsed project's marks do.
+- Bug fixed: the minimap colours a card by `shownState`, as the card and the collapsed project's
+  marks do.
 
 ### G9. Drawing waits by hand lives inside `Canvas` as loose state and 60 lines of one-line JSX
 - Principle: KISS
@@ -446,9 +445,8 @@ parts.tsx has become five unrelated modules in one file.
 - Win: about 20 lines.
 - Risk: low.
 - Confidence: high.
-- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): `useCopy` copies through
-  `copyText`, which runs `copyOrSelect` on an element of its own out of sight, so its callers copy
-  on an insecure origin too, as the plan of the bug fixes decided.
+- Bug fixed: `useCopy` copies through `copyText`, which runs `copyOrSelect` on an element of its own
+  out of sight, so its callers copy on an insecure origin too.
 
 ### G18. Start, Dequeue and Delete are written out once per situation in `Detail`
 - Principle: DRY
@@ -527,8 +525,7 @@ parts.tsx has become five unrelated modules in one file.
   would now close the search; confirm that is wanted.
 - Confidence: medium; the mutual exclusion is stated in the comments, the `openAddress` path I only
   read, not ran.
-- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): `openAddress` closes the
-  search before it opens the archive's list.
+- Bug fixed: `openAddress` closes the search before it opens the archive's list.
 
 ### G22. A folder's change row is laid out twice
 - Principle: DRY

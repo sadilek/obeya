@@ -62,9 +62,8 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
   and `setup.ts:149` resolves Playwright from `lib('director.ts')`).
 - Confidence: high. Read the whole file; importers found with `rg "director\.ts'"` over `src`,
   `scripts`, `plugin`.
-- Fixed: the static import of Playwright, by [Bugs noticed in passing](../bugs-noticed-in-passing.md)
-  W3: `director.ts` imports `chromium.ts` only once a browser is needed, so without Playwright a
-  render gets to `checkSetup`'s list (`director.test.ts`).
+- Fixed: the static import of Playwright: `director.ts` imports `chromium.ts` only once a browser is
+  needed, so without Playwright a render gets to `checkSetup`'s list (`director.test.ts`).
 
 ### P2. The demo `SKILL.md` says again what the scripts print when it applies, and says some things three times
 - Principle: DRY
@@ -134,8 +133,8 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
 - Risk: low to medium. `browser.test.ts` (223 lines) drives the commands against a real browser,
   `silent-speech.test.ts` the silencing.
 - Confidence: high. Read the whole file.
-- Fixed: `input`'s missing timeout, by [Bugs noticed in passing](../bugs-noticed-in-passing.md) W3:
-  `send` in `runInput` gives up after 30 s, as `cdp()` does (`browser.test.ts`).
+- Fixed: `input`'s missing timeout: `send` in `runInput` gives up after 30 s, as `cdp()` does
+  (`browser.test.ts`).
 
 ### P4. The WebVTT cue parser is written in the plugin and again in the server
 - Principle: DRY
@@ -224,9 +223,9 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
 - Risk: low. `tts.test.ts` covers render and `--sample` with served and held voices (starts once,
   ends, dies, stops answering); the lock and the quota message have no test.
 - Confidence: high.
-- Fixed: the sample ended by a spent quota, by [Bugs noticed in passing](../bugs-noticed-in-passing.md)
-  W3: `HttpVoice._post` exits with the full quota message itself and `QuotaExhausted` is gone, so
-  that part of the change is done (`tts.test.ts`, "a hosted voice").
+- Fixed: the sample ended by a spent quota: `HttpVoice._post` exits with the full quota message
+  itself and `QuotaExhausted` is gone, so that part of the change is done (`tts.test.ts`, "a hosted
+  voice").
 
 ### P8. The Qwen3 command is built by two functions, and its one-shot mode is never run by a render
 - Principle: YAGNI

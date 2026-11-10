@@ -384,5 +384,4 @@ clean apart from two small items (D13, D15).
   `holdMs`, `reviewEvery`, `restartIntervalMs`): test seams.
 
 ## Bugs noticed in passing
-None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
-(2026-11-10).
+None left: the ones found here were fixed (2026-11-10).

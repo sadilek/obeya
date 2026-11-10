@@ -230,9 +230,8 @@ finding is major.
 - Risk: low; it lengthens one line's stay from 7 s to 9.5 s in the one case with a longer window
   (taking a workspace, `App.tsx:1048`), which is what `voice.tsx` does already.
 - Confidence: high; grepped `undoShownMs|confirmShownMs|ACK_MS|7000` across `src/ui`.
-- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): `useAck` keeps its line
-  for `ackLasts(undo, undoMs)` = the longer of `ACK_MS` and the undo window; the drift from
-  `confirmShownMs` (1.5 s after the window) remains for this finding.
+- Bug fixed: `useAck` keeps its line for `ackLasts(undo, undoMs)` = the longer of `ACK_MS` and the
+  undo window; the drift from `confirmShownMs` (1.5 s after the window) remains for this finding.
 
 ### I9. The fields of a kept draft are listed three times in `draft.ts`
 - Principle: DRY

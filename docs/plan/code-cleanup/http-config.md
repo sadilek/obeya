@@ -485,5 +485,4 @@ test for "these commits change code" (F16).
   functions, each named for what main.ts does with it.
 
 ## Bugs noticed in passing
-None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
-(2026-11-10).
+None left: the ones found here were fixed (2026-11-10).
