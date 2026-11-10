@@ -9,11 +9,11 @@ import type { RepoAdapter } from '../adapters/types';
 import { type Board, contributionOf, type PrState, type StoredContribution } from './board';
 import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf, type Forge, type PrStatus } from './forge';
 import type { PrWait } from '../core/types';
+import type { Workers } from './workers';
+import { messageOf } from '../core/text';
 
 /** How long reading a PR fails before its card says so. */
 const READ_ERROR_AFTER_MS = 10 * 60_000;
-import type { Workers } from './workers';
-import { messageOf } from '../core/text';
 
 const watched = (state: string | undefined) => state === 'inPr' || state === 'waiting';
 

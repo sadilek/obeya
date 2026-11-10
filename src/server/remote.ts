@@ -402,8 +402,10 @@ export class Access implements Gate {
     return this.livePairing()!;
   }
 
-  /** Pairs the device that brings the current code; its cookie, or `null` for a wrong or expired code. */
-  /** `counts`: a wrong code spends one of the tries; one another site sent the browser here with spends none. */
+  /**
+   * Pairs the device that brings the current code; its cookie, or `null` for a wrong or expired code.
+   * `counts`: a wrong code spends one of the tries; one another site sent the browser here with spends none.
+   */
   redeem(code: string, userAgent: string, counts = true): { token: string; device: DeviceView } | null {
     if (this.pairing && this.pairing.address !== this.address()) this.pairing = null;
     const p = this.pairing;

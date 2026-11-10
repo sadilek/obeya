@@ -1468,12 +1468,12 @@ export function readSession(
 const describe = (c: Change) =>
   `${c.file} (${c.regions.length ? (c.regions[0] === 'deleted' ? 'deleted' : `lines ${c.regions.slice(0, 8).join('; ')}${c.regions.length > 8 ? '; …' : ''}`) : 'new'})`;
 
-/** The tag a turn of the Coordinator knows a card by. */
 /** A card waited on that still holds back what builds on it: there, and its work not on the main branch yet. */
 const unlanded = (i?: Item) => !!i && !finished(i.state) && !i.archivedAt;
 /** Whether two lists hold the same cards. */
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
+/** The tag a turn of the Coordinator knows a card by. */
 const tagOf = (tags: Map<string, string>, id: string) => [...tags].find(([, x]) => x === id)![0];
 
 const normalize = (p: string) => p.trim().replace(/^\.\//, '').replace(/^\/+/, '');

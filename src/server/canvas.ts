@@ -1759,13 +1759,13 @@ export class CanvasRuntime {
     return writeWish(this.deps.runtime, w, footer, this.imageFiles(images));
   }
 
-  /** The owner clicks in the card's panel: a click without words the learner reads counts towards the retrospective. */
   /** A script acts as the card's agent, in a scratch Obeya whose workers are idle (`Workers.standIn`). */
   standIn(cardId: string, act: Parameters<Workers['standIn']>[1]) {
     if (!this.deps.idleWorkers) throw new BadRequest('invalid', 'only an Obeya with idle workers (--idle-workers) lets a script stand in for an agent');
     return this.repoOf(cardId).workers.standIn(cardId, act);
   }
 
+  /** The owner clicks in the card's panel: a click without words the learner reads counts towards the retrospective. */
   press(cardId: string, a: CardAction) {
     // the options picked on a proposal go to its reviser without the Coordinator, which would have logged them
     const r = this.act(cardId, a, true);
