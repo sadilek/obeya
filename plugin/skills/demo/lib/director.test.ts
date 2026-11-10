@@ -21,7 +21,8 @@ test('without Playwright, a render lists what is missing and re-voicing gets as 
   const lib = join(dir, 'plugin', 'skills', 'demo', 'lib');
   mkdirSync(join(dir, 'demo'));
   const demo = join(dir, 'demo', 'demo.ts');
-  writeFileSync(demo, `import { runDemo } from ${JSON.stringify(join(lib, 'director.ts'))};\nawait runDemo({ title: 'T', baseUrl: 'http://127.0.0.1:9/', scenes: [{ title: 'A', say: 'One.' }] }, import.meta.dirname);\n`);
+  // relative: an absolute path on Windows (C:\…) is no module specifier for Node
+  writeFileSync(demo, `import { runDemo } from '../plugin/skills/demo/lib/director.ts';\nawait runDemo({ title: 'T', baseUrl: 'http://127.0.0.1:9/', scenes: [{ title: 'A', say: 'One.' }] }, import.meta.dirname);\n`);
   const render = await node(demo);
   expect(render.out).not.toContain('ERR_MODULE_NOT_FOUND');
   expect(render.out).toContain('cannot render yet');
