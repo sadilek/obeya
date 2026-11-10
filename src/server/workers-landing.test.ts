@@ -315,7 +315,7 @@ describe('approving directly onto main where work goes out as a pull request', (
     expect(state(c.id)).toBe('inPr');
   });
 
-  test('without `direct` in the settings the approval is refused; where work lands on main anyway it is a plain approval', async () => {
+  test('without `direct` in the settings the approval is refused', async () => {
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' } }));
     const { c, session, clone } = await handedOver();
     commitIn(clone, 'x.ts', 'X');
@@ -324,7 +324,9 @@ describe('approving directly onto main where work goes out as a pull request', (
     expect(err).toMatchObject({ code: 'noDirect' });
     expect(state(c.id)).toBe('waiting:demo');
     expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+  });
 
+  test('where work lands on main anyway, approving directly is a plain approval', async () => {
     await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     const d = await handedOver('Logo');

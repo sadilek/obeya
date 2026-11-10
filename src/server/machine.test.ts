@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { CLONES, type MachineView } from '../core/types';
 import { Board } from './board';
 import type { CanvasRuntime } from './canvas';
@@ -287,15 +287,18 @@ describe('the first canvas', () => {
 
   test('a clone goes into a folder of its name and becomes the canvas', async () => {
     const origin = gitRepo(join(dir, 'origin', 'shop'));
-    const s = new MachineSetup({ home, config: config() });
+    // git for the clone, and none of the runner's other programs: each view looks at the whole
+    // machine, whose Claude Code (the Agent SDK's, where none is installed) once took a busy runner
+    // past the test's limit
+    const machine = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^path$/i.test(k))) as Record<string, string>;
+    const s = setup({ env: { ...machine, PATH: [bin, dirname(Bun.which('git')!)].join(delimiter), OBEYA_CLAUDE: join(dir, 'none', 'claude') } });
     await s.canvas({ clone: origin, into: join(dir, 'code') });
-    // each view looks at the whole machine (Claude Code, git, gh, the demo voice), which on a Windows runner takes seconds
     await s.done();
     const v = await s.view();
     expect(v.job).toMatchObject({ kind: 'clone', running: false, canvas: 'shop', branch: 'main', opens: true });
     expect(existsSync(join(dir, 'code', 'shop', '.git'))).toBe(true);
     // the folder is there now: a second clone into it is refused
-    await expect(new MachineSetup({ home, config: config() }).canvas({ clone: origin, into: join(dir, 'code') })).rejects.toMatchObject({ code: 'cloneTarget' });
+    await expect(setup().canvas({ clone: origin, into: join(dir, 'code') })).rejects.toMatchObject({ code: 'cloneTarget' });
   });
 
   test('names a clone after its repository', () => {
@@ -321,10 +324,10 @@ describe("updating this machine's Codex", () => {
   test('runs `codex update` where Codex has it, and tells its output', async () => {
     fake('codex', `case "$1 $2" in "update --help") echo "Update Codex to the latest version";; "update ") echo "Updating Codex via npm"; echo updated > ${JSON.stringify(join(dir, 'updated'))};; esac`);
     const lines: string[] = [];
-    await updateCodex((l) => lines.push(l), { PATH: `${bin}:/usr/bin:/bin` });
+    await updateCodex((l) => lines.push(l), { PATH: [bin, '/usr/bin', '/bin'].join(delimiter) });
     expect([readFileSync(join(dir, 'updated'), 'utf8').trim(), lines]).toEqual(['updated', ['Updating Codex via npm']]);
     fake('codex', 'case "$1 $2" in "update --help") echo "Update Codex to the latest version";; *) echo "Error: no network" >&2; exit 1;; esac');
-    await expect(updateCodex(() => {}, { PATH: `${bin}:/usr/bin:/bin` })).rejects.toThrow('exited with 1: Error: no network');
+    await expect(updateCodex(() => {}, { PATH: [bin, '/usr/bin', '/bin'].join(delimiter) })).rejects.toThrow('exited with 1: Error: no network');
   });
 
   test('a Codex older than `codex update` is updated by the package manager it lives in; any other says it cannot be', async () => {
@@ -334,6 +337,6 @@ describe("updating this machine's Codex", () => {
     expect(codexManager('/home/me/.codex/bin/codex')).toBeNull();
     // the general help: no such command
     fake('codex', 'echo "Codex CLI"');
-    await expect(updateCodex(() => {}, { PATH: `${bin}:/usr/bin:/bin` })).rejects.toThrow('is too old to update itself');
+    await expect(updateCodex(() => {}, { PATH: [bin, '/usr/bin', '/bin'].join(delimiter) })).rejects.toThrow('is too old to update itself');
   });
 });

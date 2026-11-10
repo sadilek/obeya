@@ -30,6 +30,12 @@ const run =
 const python = run(UV);
 const withNumpy = run(UV_NUMPY);
 
+// uv's first run on a machine finds its Python, which took the first test on a Windows runner past
+// its 25 s: done here, outside the time limit of any test
+beforeAll(() => {
+  expect(run(UV, 600_000)(['-c', 'pass']).status).toBe(0);
+}, 600_000);
+
 /**
  * A voice that serves until its stdin ends, writing a short silent WAV per request. Given a second
  * argument, it is loaded only once that file exists. `FAKE_HANG_AT` gives no answer to that

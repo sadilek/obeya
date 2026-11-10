@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -794,8 +794,11 @@ describe('a resolved pull lands', () => {
 });
 
 describe('clones the configuration no longer names', () => {
-  /** Writes the folder it runs in to `stopped` beside the clones. */
-  const STOP = WINDOWS ? 'echo %CD%>> ..\\stopped' : 'echo "$PWD" >> ../stopped';
+  /**
+   * Writes the folder it runs in to a file of its own beside it (`1.stopped` for `1`): on Windows,
+   * stops that appended to one file at once lost a line.
+   */
+  const STOP = WINDOWS ? 'echo %CD%> "%CD%.stopped"' : 'echo "$PWD" > "$PWD.stopped"';
   let origin: string;
   let store: Store;
   let board: Board;
@@ -807,7 +810,10 @@ describe('clones the configuration no longer names', () => {
     return { spaces, paths };
   };
   // what the stop command ran in, as the path names it (macOS's temporary directory is behind a link)
-  const stopped = () => (existsSync(join(ws, 'stopped')) ? readFileSync(join(ws, 'stopped'), 'utf8').trim().split(/\s*\n/).map((p) => p.replace(/^\/private\//, '/')) : []);
+  const stopped = () =>
+    (existsSync(ws) ? readdirSync(ws).filter((f) => f.endsWith('.stopped')) : [])
+      .toSorted()
+      .map((f) => readFileSync(join(ws, f), 'utf8').trim().replace(/^\/private\//, '/'));
 
   beforeEach(() => {
     gitRepo(join(dir, 'main'));
