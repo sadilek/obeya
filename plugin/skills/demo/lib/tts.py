@@ -179,10 +179,6 @@ def untagged(text: str) -> str:
     return re.sub(r"\s{2,}", " ", AUDIO_TAG.sub(" ", text)).strip()
 
 
-class QuotaExhausted(Exception):
-    """The voice cannot synthesise anything more today."""
-
-
 class CommandVoice:
     """A program run once per clip: Piper, `say`, or the owner's own command."""
 
@@ -432,7 +428,7 @@ class HttpVoice:
                 detail = error.read().decode(errors="replace")
                 # A spent daily quota answers 429 too, but waiting does not help there.
                 if error.code == 429 and "PerDay" in detail:
-                    raise QuotaExhausted(f"the daily {self._service} TTS quota is used up")
+                    sys.exit(f"the daily {self._service} TTS quota is used up; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
                 if error.code not in (429, 503) or attempt == 5:
                     sys.exit(f"{self._service} TTS failed ({error.code}): {detail[:600]}")
                 # A rate limit says how long to wait, in a header or (Gemini) in the body.
@@ -633,13 +629,10 @@ def narrate(voice, jobs: list[dict], out: Path, language: str) -> None:
         if not wav.exists():
             partial = wav.with_suffix(".partial.wav")
             script = job.get("script")
-            try:
-                if reads_tags:
-                    heard = voice.synthesize(job["text"], partial, script)
-                else:
-                    heard = with_pauses(voice, job["text"], partial, script)
-            except QuotaExhausted as exhausted:
-                sys.exit(f"{exhausted}; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
+            if reads_tags:
+                heard = voice.synthesize(job["text"], partial, script)
+            else:
+                heard = with_pauses(voice, job["text"], partial, script)
             heard_file.unlink(missing_ok=True)
             if heard is not None:
                 heard_file.write_text(json.dumps(heard, ensure_ascii=False), encoding="utf-8")

@@ -24,16 +24,24 @@ import { type Subprocess } from 'bun';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { parseArgs } from 'node:util';
 import { ownerHeaders } from '../src/server/owner';
 import { bad, check, exited, expect, failed, sleep, until as untilEvery } from './check-harness';
 
-const args = process.argv.slice(2);
-const programArg = args.find((a) => !a.startsWith('--'));
-if (!programArg) {
-  console.error('usage: bun scripts/check-app.ts <the app\'s program> [--fake-mic] [--screenshot <png>] [--keep]');
+const usage = (why?: string): never => {
+  console.error(`${why ? `check-app: ${why}\n` : ''}usage: bun scripts/check-app.ts <the app's program> [--fake-mic] [--screenshot <png>] [--keep]`);
   process.exit(2);
-}
-const program = resolve(programArg);
+};
+const { values: args, positionals } = (() => {
+  try {
+    return parseArgs({ options: { 'fake-mic': { type: 'boolean' }, screenshot: { type: 'string' }, keep: { type: 'boolean' } }, allowPositionals: true });
+  } catch (error) {
+    return usage((error as Error).message);
+  }
+})();
+if (positionals.length !== 1) usage();
+const program = resolve(positionals[0]!);
+if (!existsSync(program)) usage(`no program at ${program}`);
 const win = process.platform === 'win32';
 
 // the page reports in moments: asked every 250 ms
@@ -155,7 +163,7 @@ const env: Record<string, string> = {
   OBEYA_APP_CHECK: `${harness.url.href}check.js`,
   // a port of its own, so a running Obeya on this machine is not in the way
   OBEYA_PORT: String(4600 + Math.floor(Math.random() * 300)),
-  ...(args.includes('--fake-mic') && win ? { WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--use-fake-device-for-media-stream' } : {}),
+  ...(args['fake-mic'] && win ? { WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--use-fake-device-for-media-stream' } : {}),
 };
 delete env.OBEYA_SUPERVISED;
 const entry = () => {
@@ -233,8 +241,8 @@ try {
     });
     await check('the settings offer "Open in browser"', () => expect(page.browserButton, 'no such button'));
     if (process.platform === 'darwin') await check('the bar may move the window', () => expect(page.drag === 'allowed', String(page.drag)));
-    const shot = args[args.indexOf('--screenshot') + 1];
-    if (args.includes('--screenshot') && shot) await check('a screenshot of the window', () => screenshot(app!.pid, resolve(shot)));
+    const shot = args.screenshot;
+    if (shot) await check('a screenshot of the window', () => screenshot(app!.pid, resolve(shot)));
   }
   await check('starting the app again leaves the first in front and ends', async () => {
     const pid = entry()?.pid;
@@ -279,7 +287,7 @@ try {
   app?.kill();
   server?.kill();
   harness.stop(true);
-  if (args.includes('--keep')) console.log(`kept ${dir}`);
+  if (args.keep) console.log(`kept ${dir}`);
   else rmSync(dir, { recursive: true, force: true });
 }
 console.log(failed ? `${failed} check(s) failed` : 'all checks passed');

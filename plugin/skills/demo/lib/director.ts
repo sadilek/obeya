@@ -12,7 +12,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Browser, BrowserContext, Locator, Page } from 'playwright-core';
-import { launchChromium, SILENT_SPEECH } from '../../../lib/chromium.ts';
 import { languageName, preferredTrack } from './locale.ts';
 import { type DemoSettings, demoSettingsHere, type NarrationLanguage, silent, subtitleLanguages, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
@@ -82,6 +81,11 @@ const LANGUAGE: NarrationLanguage = SETTINGS.language;
 /** No voice: a silent video, its scenes timed by how long their captions take to read. */
 const SILENT = silent(SETTINGS);
 const LIB = import.meta.dirname;
+/**
+ * The plugin's Chromium, imported only once a browser is needed: importing it resolves Playwright,
+ * so without Playwright a render gets as far as `checkSetup`, which lists it with what else is missing.
+ */
+const chromium = () => import('../../../lib/chromium.ts');
 
 export interface Clip {
   id: string;
@@ -526,13 +530,13 @@ export function synthesize(says: string[], dir: string, settings: DemoSettings =
 async function launch(viewport: { width: number; height: number }, scale = 1) {
   const args = [`--window-size=${viewport.width},${viewport.height}`, '--force_high_performance_gpu'];
   if (scale > 1) args.push(`--force-device-scale-factor=${scale}`);
-  return launchChromium({ args });
+  return (await chromium()).launchChromium({ args });
 }
 
 /** A context of the demo's browser, whose pages speak nothing out loud (`SILENT_SPEECH`). */
 async function newContext(browser: Browser, options: Parameters<Browser['newContext']>[0]) {
   const ctx = await browser.newContext(options);
-  await ctx.addInitScript({ path: SILENT_SPEECH });
+  await ctx.addInitScript({ path: (await chromium()).SILENT_SPEECH });
   return ctx;
 }
 

@@ -148,6 +148,30 @@ describe('a voice that stays loaded', () => {
   });
 });
 
+describe('a hosted voice', () => {
+  test('whose daily quota is spent ends a sample with what to do, as it ends a render, not with a traceback', async () => {
+    // a rate limit "per day", as Gemini answers it once the free tier is used up
+    const server = Bun.serve({ port: 0, fetch: () => new Response('{"error":{"code":429,"details":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel"}]}}', { status: 429 }) });
+    try {
+      writeFileSync(join(dir, 'http.json'), JSON.stringify(voiceSpec({ language: 'en', voice: 'http', url: `http://127.0.0.1:${server.port}/tts` })));
+      writeFileSync(join(dir, 'jobs.json'), JSON.stringify([{ id: 's0', text: 'Hello.' }]));
+      // not spawnSync: the server in this process answers while tts.py waits
+      const tts = async (...args: string[]) => {
+        const p = Bun.spawn([...UV, join(LIB, 'tts.py'), ...args], { stdout: 'pipe', stderr: 'pipe' });
+        const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited]);
+        return { err, code };
+      };
+      for (const r of [await tts('--sample', join(dir, 'http.json'), 'en', 'Hello.', join(dir, 'sample.wav')), await tts(join(dir, 'http.json'), 'en', join(dir, 'jobs.json'), join(dir, 'out'))]) {
+        expect(r.err).not.toContain('Traceback');
+        expect(r.err.trim()).toBe('the daily http TTS quota is used up; choose another voice (or DEMO_GEMINI_MODEL) or wait a day');
+        expect(r.code).toBe(1);
+      }
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe('English terms in German narration', () => {
   const lexicon = JSON.parse(readFileSync(join(LIB, 'lexicon.de.json'), 'utf8')) as Record<string, string>;
   const spec = (respell: boolean) => {

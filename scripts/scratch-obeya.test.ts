@@ -96,11 +96,16 @@ test("--say and --artifact act as a staged card's agent, through the server", as
   expect(say.stderr.toString()).toBe('');
   expect(run('--say', String(port), 'A', 'report', 'Writing tests').stdout.toString()).toContain('Shown on the card.');
   expect(run('--say', String(port), 'A', 'talk', 'Done with the parser.').stdout.toString()).toContain('Shown to the owner.');
+  // words of the text that look like options are the text's, given one by one or as one
+  expect(run('--say', String(port), 'A', 'say', 'Ran', 'it', 'with', '--dry', 'first.').stderr.toString()).toBe('');
+  expect(run('--say', String(port), 'A', 'say', '--force is gone.').stderr.toString()).toBe('');
   const events = await api<{ kind: string; author: string; text: string }[]>(`/cards/${staged.cards.A}/events`);
   expect(events.filter((e) => e.author === 'worker').map((e) => [e.kind, e.text])).toEqual([
     ['say', 'Reading the parser first.'],
     ['report', 'Writing tests'],
     ['talk', 'Done with the parser.'],
+    ['say', 'Ran it with --dry first.'],
+    ['say', '--force is gone.'],
   ]);
   expect((await card('A')).statusLine).toBe('Writing tests');
   expect(run('--say', String(port), 'A', 'shout', 'x').stderr.toString()).toContain('usage');
@@ -108,7 +113,7 @@ test("--say and --artifact act as a staged card's agent, through the server", as
   const before = (await card('H')).demo!;
   const next = join(tmp, 'index.html');
   writeFileSync(next, '<h1>Second draft</h1>');
-  const handed = run('--artifact', String(port), 'H', next, 'The second draft.');
+  const handed = run('--artifact', String(port), 'H', next, 'The', 'second', 'draft,', 'without', '--force.');
   expect(handed.stderr.toString()).toBe('');
   const after = await card('H');
   expect(after.demo).toMatchObject({ kind: 'html' });
@@ -117,7 +122,7 @@ test("--say and --artifact act as a staged card's agent, through the server", as
   expect(readFileSync(join(dir, 'artifacts/H/index.html'), 'utf8')).toBe('<h1>Second draft</h1>');
   expect(readFileSync(join(artifact, 'index.html'), 'utf8')).toBe('<h1>First draft</h1>');
   const review = (await api<{ kind: string; text: string }[]>(`/cards/${staged.cards.H}/events`)).at(-1)!;
-  expect(review).toMatchObject({ kind: 'review', text: 'The second draft.' });
+  expect(review).toMatchObject({ kind: 'review', text: 'The second draft, without --force.' });
 }, 20_000);
 
 test('without a port, stagings at the same time each pick a free one, and staging afresh takes the same again', async () => {

@@ -258,10 +258,16 @@ async function runInput(tab: Tab, steps: string[]) {
     const m = JSON.parse(String(e.data));
     if (m.id && pending.has(m.id)) pending.get(m.id)!(m);
   };
+  // as long as `cdp` waits for an answer
   const send = (method: string, params: object = {}): Promise<any> =>
     new Promise((resolve) => {
       const i = ++id;
-      pending.set(i, (m) => (m.error ? fail(`${method}: ${m.error.message}`) : resolve(m.result)));
+      const timer = setTimeout(() => fail(`Timeout waiting for ${method}`), 30_000);
+      pending.set(i, (m) => {
+        clearTimeout(timer);
+        if (m.error) fail(`${method}: ${m.error.message}`);
+        else resolve(m.result);
+      });
       ws.send(JSON.stringify({ id: i, method, params }));
     });
   const evaluate = async (expression: string) => {

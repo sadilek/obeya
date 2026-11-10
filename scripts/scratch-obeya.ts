@@ -350,9 +350,12 @@ if (loginPort) {
   process.exit(0);
 }
 
+/** What follows `--<command> <port>`, but for `--dir` and its value: a text's words as given, those that start with `--` too. */
+const wordsOf = (command: string) => args.slice(args.indexOf(`--${command}`) + 2).filter((a, i, all) => a !== '--dir' && all[i - 1] !== '--dir');
+
 const sayPort = opt('say');
 if (sayPort) {
-  const [key, kind, ...words] = args.slice(args.indexOf('--say') + 2).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--dir');
+  const [key, kind, ...words] = wordsOf('say');
   const text = words.join(' ');
   const act = SAYS[kind as keyof typeof SAYS];
   if (!key || !act || (!text.trim() && kind !== 'end')) fail(`usage: bun scripts/scratch-obeya.ts --say <port> <card key> <${Object.keys(SAYS).join('|')}> <text>`);
@@ -365,7 +368,7 @@ if (args.includes('--sweep')) {
 }
 const artifactPort = opt('artifact');
 if (artifactPort) {
-  const [key, from, ...words] = args.slice(args.indexOf('--artifact') + 2).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--dir');
+  const [key, from, ...words] = wordsOf('artifact');
   if (!key || !from || !existsSync(from)) fail('usage: bun scripts/scratch-obeya.ts --artifact <port> <card key> <file> [<summary>]');
   const d = opt('dir') ?? scratchDir(Number(artifactPort));
   const to = artifactDir(d, key!);

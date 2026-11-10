@@ -15,18 +15,23 @@
 
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { parseArgs } from 'node:util';
 import pkg from '../package.json';
 
 const TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'windows-x64'] as const;
 type Target = (typeof TARGETS)[number];
 
 const ROOT = resolve(import.meta.dir, '..');
-const args = process.argv.slice(2);
-const outIndex = args.indexOf('--out');
-const out = resolve(outIndex >= 0 ? args[outIndex + 1]! : join(ROOT, 'dist'));
-const named = args.filter((a, i) => !a.startsWith('--') && i !== outIndex + 1);
+const { values, positionals: named } = (() => {
+  try {
+    return parseArgs({ options: { out: { type: 'string' }, all: { type: 'boolean' } }, allowPositionals: true });
+  } catch (error) {
+    fail((error as Error).message);
+  }
+})();
+const out = resolve(values.out ?? join(ROOT, 'dist'));
 const here = `${process.platform === 'win32' ? 'windows' : process.platform}-${process.arch}` as Target;
-const targets: Target[] = args.includes('--all') ? [...TARGETS] : named.length ? (named as Target[]) : [here];
+const targets: Target[] = values.all ? [...TARGETS] : named.length ? (named as Target[]) : [here];
 for (const t of targets) if (!TARGETS.includes(t)) fail(`unknown target ${t} (known: ${TARGETS.join(', ')})`);
 
 function fail(msg: string): never {
