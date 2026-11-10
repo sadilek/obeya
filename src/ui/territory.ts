@@ -27,7 +27,7 @@ export interface Territory {
   inner: string;
   /** The territory's outlines in world coordinates, each piece's rings (outer first). */
   pieces: [number, number][][][];
-  /** Where its name goes: the middle of its largest piece. */
+  /** Where its name stands, as a header: the middle of the top edge of its largest piece. */
   label?: Pt;
   labelSize: number;
 }
@@ -307,25 +307,21 @@ function territory(group: string, f: Field, rivals: Field[]): Territory {
     mp!.coordinates.map((poly) => poly.map((ring) => soften(ring.slice(0, -1).map(([gx, gy]) => [(i0 + gx!) * CELL, (j0 + gy!) * CELL] as [number, number]))));
   const pieces = world(main);
   const path = (ps: [number, number][][][]) => ps.map((poly) => poly.map((ring) => smooth(ring)).join('')).join('');
-  // the name sits in the largest piece
+  // the name stands above the largest piece, centred over it, the same for one card and for many
   let label: Pt | undefined;
   let best = 0;
   for (const poly of pieces) {
     const r = poly[0]!;
     let a = 0;
-    let cx = 0;
-    let cy = 0;
     for (let k = 0; k < r.length; k++) {
       const [ax, ay] = r[k]!;
       const [bx, by] = r[(k + 1) % r.length]!;
-      const c = ax * by - bx * ay;
-      a += c;
-      cx += (ax + bx) * c;
-      cy += (ay + by) * c;
+      a += ax * by - bx * ay;
     }
     if (Math.abs(a) > best) {
       best = Math.abs(a);
-      label = { x: cx / (3 * a), y: cy / (3 * a) };
+      const xs = r.map(([x]) => x);
+      label = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...r.map(([, y]) => y)) };
     }
   }
   const area = best / 2;

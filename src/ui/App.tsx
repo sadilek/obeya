@@ -1941,6 +1941,7 @@ function Canvas({
         >
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
+            <GroupNames shapes={territories.shapes} />
             <Links placed={placed} waits={shownWaits} standsFor={standsForId} />
             <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} steps={deps?.steps} loops={loops.flatMap((l) => l.edges)} standsFor={standsForId} s={cam.s}>
               {(shift) => [
@@ -2021,7 +2022,6 @@ function Canvas({
                 onHide={() => hideNote(d)}
               />
             ))}
-            <GroupNames shapes={territories.shapes} />
           </div>
         </div>
         {/* on an empty canvas the camera centres the notes on the plan directories: the hint stands above them, with space between */}

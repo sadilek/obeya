@@ -375,7 +375,12 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
 
 A group shows as a territory behind its cards: a soft glowing outline over a faint area in its
 colour. Group colours appear only there and in the minimap, never on a card, so they do not compete
-with the state inks. Zoomed far out, group names stand pale over their territories.
+with the state inks. Zoomed far out, a group's name stands pale as a header just above the top edge
+of its territory's largest piece, centred over it, the same for one card and for many; it is drawn
+over the territories but under every card, so a card standing right above covers it and no card
+title has a name showing through. Chosen 2026-11-10 over the territory's centre (it lands on a
+card, with one card right over its title) and over a free spot inside the territory (needs a search,
+and the name jumps as cards move).
 
 A territory is the contour of an energy field (Bubble Sets): the group's cards pull, near cards are
 linked so they share one territory (not across another card), other cards push back, and where two

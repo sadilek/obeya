@@ -25,6 +25,17 @@ describe('territories', () => {
     expect(t!.label).toBeDefined();
   });
 
+  test("put the name as a header on the top edge of the largest piece, never over a card", () => {
+    const lone = card('a', 0, 0, { A: 1 });
+    const [one] = new Territories().compute([lone], ['A']);
+    expect(one!.label!.x).toBeCloseTo(mid(lone).x, 0);
+    expect(one!.label!.y).toBeLessThan(lone.b.y);
+    const row = [card('b1', 0, 0, { B: 1 }), card('b2', 360, 100, { B: 1 }), card('b3', 720, 0, { B: 1 })];
+    const [many] = new Territories().compute(row, ['B']);
+    expect(many!.label!.x).toBeCloseTo(510, -1);
+    expect(many!.label!.y).toBeLessThan(Math.min(...row.map((c) => c.b.y)));
+  });
+
   test('exclude each other: a card amid another group is an island in its own colour', () => {
     const as = [card('a1', 0, 0, { A: 1 }), card('a2', 360, 0, { A: 1 }), card('a3', 720, 0, { A: 1 })];
     const island = card('b', 360, 0, { B: 1 });

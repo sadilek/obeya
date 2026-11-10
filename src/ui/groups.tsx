@@ -179,14 +179,14 @@ export function TerritoryLayer({ shapes, waves, streaks, selected }: { shapes: S
   );
 }
 
-/** The groups' names over their territories, shown when zoomed far out. */
+/** The groups' names as headers on their territories' top edges, under the cards; shown when zoomed far out. */
 export function GroupNames({ shapes }: { shapes: Shape[] }) {
   return (
     <svg id="gnames" width="1" height="1">
       {shapes.map(
         ({ g, t: x }) =>
           x.label && (
-            <text key={g.id} className="gname" x={x.label.x} y={x.label.y} style={{ ...hue(g.hue), fontSize: `calc(${x.labelSize}px / var(--s))` }}>
+            <text key={g.id} className="gname" x={x.label.x} y={x.label.y} dy="-0.3em" style={{ ...hue(g.hue), fontSize: `calc(${x.labelSize}px / var(--s))` }}>
               {g.name}
             </text>
           ),

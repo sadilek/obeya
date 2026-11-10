@@ -2044,7 +2044,8 @@ button.link:hover { text-decoration: underline; }
 :root { --tl: 54%; --ta: .10; --tel: 44%; --tea: .7; --tga: .09; --tna: .17; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tl: 60%; --ta: .13; --tel: 66%; --tea: .85; --tga: .20; --tna: .22; } }
 :root[data-theme="dark"] { --tl: 60%; --ta: .13; --tel: 66%; --tea: .85; --tga: .20; --tna: .22; }
-#gnames { position: absolute; left: 0; top: 0; z-index: 5; overflow: visible; pointer-events: none; }
+/* over the territories, under every card (projects included: they come later at the same level) */
+#gnames { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; pointer-events: none; }
 #territories { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; pointer-events: none; }
 .terr .area { fill: hsl(var(--h) 80% var(--tl) / var(--ta)); transition: fill .4s; }
 .z-far .terr .area { fill: hsl(var(--h) 80% var(--tl) / calc(var(--ta) * 1.7)); }
@@ -2063,7 +2064,7 @@ button.link:hover { text-decoration: underline; }
   animation: wave .9s cubic-bezier(.2,.7,.3,1) both; }
 @keyframes wave { 0% { r: 20px; opacity: .9; stroke-width: 10px; } 100% { r: 420px; opacity: 0; stroke-width: 1px; } }
 .sel { fill: none; stroke: var(--ink); stroke-width: calc(2px / var(--s)); stroke-dasharray: 6 5; opacity: .55; animation: halo-drift 4s linear infinite; }
-.gname { font-weight: 800; letter-spacing: .14em; text-transform: uppercase; text-anchor: middle; dominant-baseline: central;
+.gname { font-weight: 800; letter-spacing: .14em; text-transform: uppercase; text-anchor: middle; dominant-baseline: alphabetic;
   fill: hsl(var(--h) 60% var(--tel) / var(--tna)); opacity: 0; transition: opacity .5s; }
 .z-far .gname { opacity: 1; }
 
