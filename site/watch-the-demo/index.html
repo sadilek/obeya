@@ -49,8 +49,8 @@
     <p>An engineering director with dozens of people does not install every build and test manually. Instead, in a launch review, the team shows
       what it built. The director asks questions and sends it back
       or says ship it. Showing that the work works is the job of whoever did it.</p>
-    <p>Agents can work the same way. What most agent workflows lack is not more autonomy. It is the presentation
-      at the end.</p>
+    <p>Agents can work the same way. What most agent workflows lack is the presentation at the end, not more
+      autonomy.</p>
 
     <h2>What the agent hands over</h2>
     <p>In <a href="../">Obeya</a>, the tool I built for this, an agent always hands over with a demo: a narrated
@@ -77,8 +77,8 @@
 
     <h2>Recording the demo tests the change</h2>
     <p>To record a demo, the agent has to start the app, create the data, go through the flow and look at what
-      the screen shows. That is an end-to-end test of its own work, run before I see anything, often letting the agent catch mistakes that automated code reviews missed. Before handing over, the agent also looks through
-      stills of every scene of its video, so it can also catch visual issues like a label that is cut off.</p>
+      the screen shows. That is an end-to-end test of its own work, run before I see anything. It often catches mistakes that automated code reviews missed. Before handing over, the agent also looks through
+      stills of every scene of its video, so it catches visual issues too, like a label that is cut off.</p>
     <p>The repository's tests and type checks still run before every handover. The demo does not replace them. It replaces the
       part where I click through the app myself.</p>
 
@@ -87,19 +87,18 @@
       When something is off, I say so at the moment in the video where it shows: "this label should say the total,
       not the subtotal." What I say goes to the agent with that frame and the sentence the narrator was speaking.
       The agent goes another round and comes back with a new demo. When it is right, I approve and Obeya lands it
-      on main.</p>
-    <p>My job changes from testing to deciding.</p>
+      on main. My job changes from testing to deciding.</p>
 
     <h2>A record of every change</h2>
     <p>Every change that lands comes with its demo. Obeya is built with Obeya, agents wrote all of its code, and
       each change I approve goes on <a href="https://demos.obeya.si">demos.obeya.si</a> with the recording its
-      agent made. That page is the changelog, and it is watchable. A colleague who missed a change watches its demo instead of asking for a
+      agent made. That page is a changelog you can watch. A colleague who missed a change watches its demo instead of asking for a
       meeting.</p>
 
     <h2>Try it</h2>
     <p>Obeya is an open-source canvas for directing coding agents. Every task is a card, each agent works in its
       own clone or worktree, and every handover is a demo. It runs on your machine and starts the agents through
-      your own Claude Code installation and login.</p>
+      your own Claude Code or Codex installation and login.</p>
     <div class="cta">
       <a class="btn primary" href="../#start">Get started</a>
       <a class="btn" href="https://github.com/sadilek/obeya">View on GitHub</a>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Obeya: direct AI coding agents like an engineering director</title>
-<meta name="description" content="Obeya is an open-source canvas for directing AI coding agents. Every task is a card, agents work in the background, and you decide by voice from a narrated demo instead of testing every change yourself, at your desk or on your phone.">
+<meta name="description" content="Obeya is an open-source canvas for directing AI coding agents. Every task is a card, and agents work in the background. Each agent shows its finished work in a narrated demo, so you approve changes without testing them yourself, at your desk or on your phone.">
 <meta property="og:title" content="Obeya: direct coding agents like an engineering director">
 <meta property="og:description" content="An open-source canvas for directing AI coding agents. You watch the demo instead of testing it yourself.">
 <meta property="og:image" content="https://obeya.si/img/canvas.png">
@@ -34,7 +34,7 @@
     <p class="eyebrow">Open source · runs on your machine</p>
     <h1>Direct coding agents like an engineering director.</h1>
     <p class="lede">Every task is a card on a canvas. Agents work in the background, each in its own clone or worktree.
-      You decide by voice, from a narrated demo, the way a director decides in a launch review.</p>
+      When an agent is done, it shows you a narrated demo. You approve it or say what to change, like a director in a launch review.</p>
     <div class="cta">
       <a class="btn primary" href="#start">Get started</a>
       <a class="btn" href="https://github.com/sadilek/obeya">View on GitHub</a>
@@ -111,19 +111,19 @@
           list.hidden = scenes.length === 0;
         });
     </script>
-    <p class="film-note">A real run on a small app: an idea by voice, an agent at work, its demo, the approval.</p>
-    <p class="film-note"><a href="https://demos.obeya.si">See every feature in action</a>: each change to Obeya with the demo its agent recorded.</p>
+    <p class="film-note">The video shows a real run on a small app, from a spoken idea to the approved change.</p>
+    <p class="film-note"><a href="https://demos.obeya.si">See every feature in action</a>. Each change to Obeya is listed with the demo its agent recorded.</p>
   </section>
 
   <section class="pillars">
     <article class="pillar">
       <div class="text">
         <span class="tag blue">Canvas</span>
-        <h2>Space is memory.</h2>
-        <p>Every task is a card you place where it belongs, and there it stays. Projects hold their workstreams; related work sits together.
-          You know where things are the way you know where things are in a room. The state is a colour, not a column:
-          a card does not move when its agent is done.
-          Each product you build gets a canvas of its own, over one repository or several, and one Obeya runs them all side by side.</p>
+        <h2>A card stays where you put it.</h2>
+        <p>Every task is a card, and you decide where it goes on the canvas. A project keeps its workstreams in one frame, and you put related cards next to each other.
+          You know where things are the way you know where things are in a room. A card shows its state by its colour.
+          It does not move to another column when its agent is done, as it would on a kanban board.
+          Each product you build gets its own canvas, for one repository or several, and one Obeya runs all of them.</p>
         <ul class="legend">
           <li><i class="dot blue"></i>Agent working</li>
           <li><i class="dot amber"></i>Waiting for you</li>
@@ -136,10 +136,10 @@
     <article class="pillar flip">
       <div class="text">
         <span class="tag amber">Voice</span>
-        <h2>Push to talk, not terminals.</h2>
+        <h2>Talk instead of typing.</h2>
         <p>Hold the space bar and say what you want: a new task, an answer to an agent's question, feedback on a demo.
-          Obeya routes it to the card you are looking at.
-          No tabs of terminals to babysit.</p>
+          Obeya sends it to the card you are looking at.
+          You don't keep a terminal tab open for each agent.</p>
       </div>
       <img class="shot" src="img/voice.png" width="940" height="788" loading="lazy" alt="An agent's question, answered by holding push-to-talk">
     </article>
@@ -148,11 +148,11 @@
       <div class="text">
         <span class="tag green">Demos</span>
         <h2>Watch the demo instead of testing it yourself.</h2>
-        <p>Lean back, as in a launch review. Every change comes back with a short report and something to look at:
+        <p>Every change comes back with a short report and something to look at:
           a narrated screen recording with chapters, or a page when the result is a layout or variants side by side.
-          No clicking through the app to see whether it works. Approve it or say what to change, also about one moment of the video:
-          pause it there, and the agent gets that frame with your words.</p>
-        <p class="aside">Obeya is built with Obeya: <a href="https://demos.obeya.si">see the latest demos from its own development</a>.</p>
+          You don't have to click through the app to see whether it works. Approve the change or say what to change.
+          If your feedback is about one moment of the video, pause it there, and the agent gets that frame along with your words.</p>
+        <p class="aside">Obeya is built with Obeya. <a href="https://demos.obeya.si">See the latest demos from its own development</a>.</p>
       </div>
       <img class="shot" src="img/demo.png" width="1360" height="950" loading="lazy" alt="A card unfolded with the demo video of a tip calculator, its chapters and the approve button">
     </article>
@@ -162,8 +162,8 @@
         <span class="tag grey">Order</span>
         <h2>Parallel where it can, in order where it must.</h2>
         <p>Start ten tasks or a whole project at once. Before a card starts, Obeya looks at what it will change and at what is already running.
-          Independent work starts right away; a card that builds on another or would collide with it waits until that one has landed.
-          Point at a card to see what it waits for, or draw an arrow from one card to another to make the second wait for the first.</p>
+          Independent work starts right away. A card that builds on another, or would collide with it, waits until that one has landed.
+          Hover over a card to see what it is waiting for, or draw an arrow from one card to another to make the second wait for the first.</p>
       </div>
       <img class="shot" src="img/order.png" width="728" height="376" loading="lazy" alt="A queued workstream waiting for the one it builds on, linked by an arrow">
     </article>
@@ -171,26 +171,27 @@
     <article class="pillar">
       <div class="text">
         <span class="tag purple">Review</span>
-        <h2>Pull requests from others, reviewed like your own work.</h2>
-        <p>Say “Review PR #14”, and a pull request someone else opened gets a card. Its agent reads the diff before anything of it runs on your machine,
-          reviews it and records a demo before and after. For each finding you choose: to the contributor, changed by the agent,
-          a follow-up task, or ignore it. You edit the text that goes onto the pull request, then “Push and merge” or “Push and comment only”.</p>
-        <p class="aside">When the next step is the contributor’s, the card waits until they respond:
-          their comment or push brings it back, reviewed again.</p>
+        <h2>Other people's pull requests get a card and a demo too.</h2>
+        <p>Say “Review PR #14”, and a pull request someone else opened gets a card. Its agent reads the diff before any of that code runs on your machine,
+          reviews it, and records a demo of the app before and after the change. For each finding you choose what happens:
+          it goes to the contributor, the agent fixes it, it becomes a follow-up task, or you ignore it.
+          You can edit the text that goes onto the pull request, then click “Push and merge” or “Push and comment only”.</p>
+        <p class="aside">When it is the contributor's turn, the card waits.
+          Once they comment or push, the agent reviews the pull request again.</p>
       </div>
-      <img class="shot" src="img/review.png" width="1360" height="1488" loading="lazy" alt="A contributor’s pull request on a card: three findings, one of them still to decide, the demo, and the text that goes onto the pull request">
+      <img class="shot" src="img/review.png" width="1360" height="1488" loading="lazy" alt="A contributor's pull request on a card: three findings, one of them still to decide, the demo, and the text that goes onto the pull request">
     </article>
 
     <article class="pillar flip">
       <div class="text">
         <span class="tag pink">Phone</span>
-        <h2>The wall in your pocket.</h2>
-        <p>Away from the desk, your phone shows what waits for you across all your canvases, grouped by canvas, and what is running.
-          Watch a demo and approve it, answer a question, or hold the microphone and say a new task.
+        <h2>Watch and approve on your phone.</h2>
+        <p>Away from your desk, your phone lists the cards that are waiting for you on all your canvases and the ones agents are working on.
+          Watch a demo and approve it, answer a question, or hold the microphone button and describe a new task.
           A notification tells you when a card needs you.</p>
-        <p class="aside">Obeya keeps running on your computer and reaches your phone over your own private network, Tailscale or another VPN.
-          Nothing goes through a service of ours. Turn on “Reachable from other devices” in its configuration
-          and scan the code of “Connect a phone”.</p>
+        <p class="aside">Obeya keeps running on your computer, and your phone connects to it over your own private network, Tailscale or another VPN.
+          Nothing goes through our servers. Turn on “Reachable from other devices” in the configuration
+          and scan the QR code under “Connect a phone”.</p>
       </div>
       <div class="phones">
         <img class="shot phone" src="img/phone.png" width="393" height="852" loading="lazy" alt="Obeya on a phone: the cards that wait for you, and those at work">
@@ -205,22 +206,22 @@
     </div>
     <ul class="fits">
       <li>
-        <h3>Workers on other machines</h3>
-        <p>A repository’s agents can also run on other computers, reached over SSH. Obeya clones the repository there itself,
-          and a new card goes there once this machine has no free slot.</p>
+        <h3>Agents on other machines</h3>
+        <p>Agents can also run on other computers that Obeya reaches over SSH. Obeya clones the repository there
+          and starts new cards there when this machine has no free slot.</p>
       </li>
       <li>
         <h3>Folders without git</h3>
-        <p>A document archive in a cloud drive works too. Cards work in the folder itself, each lists what it changed,
-          and “Discard changes” puts it back.</p>
+        <p>Obeya also works on a folder that is not a git repository, such as a document archive in a cloud drive.
+          Agents work in the folder itself. Each card lists the files it changed, and “Discard changes” restores them.</p>
       </li>
       <li>
         <h3>GitHub, Forgejo and Gitea</h3>
-        <p>Approved work lands on main or goes out as a pull request, which Obeya carries to the merge.</p>
+        <p>Approved work lands on main or goes out as a pull request, which Obeya looks after until it is merged.</p>
       </li>
       <li>
         <h3>English and German</h3>
-        <p>The interface speaks English and German, and so does the voice input. Agents answer in the language you use.</p>
+        <p>The interface and the voice input work in English and German. Agents answer in the language you use.</p>
       </li>
     </ul>
   </section>
@@ -232,8 +233,8 @@
     <div class="head">
       <div>
         <h2>From idea to main</h2>
-        <p class="std">The usual way of a card: three steps, and the work in between is the agent's.</p>
-        <p class="ext">One card's way along the wall. A clear task goes straight to work; the detours are there when you need them.</p>
+        <p class="std">For most tasks you do three things: say what you want, watch the demo, and approve. The agent does the work in between.</p>
+        <p class="ext">A card can take more steps than these three. If a task is not clear yet, start with an idea or with prototypes. If the result is not right, the agent goes another round.</p>
       </div>
       <div class="seg" aria-label="Show">
         <label for="how-std">Standard case</label>
@@ -244,17 +245,17 @@
       <li class="step">
         <h3><span class="n">1</span>Say the task</h3>
         <div class="card s-working"><div class="ttl">Export invoices as CSV</div><div class="meta">“One row per invoice, VAT in its own column”</div><div class="state">Agent at work</div></div>
-        <p>Hold the space bar and say what you want. It becomes a card, and an agent builds it in its own clone or worktree. You don't watch.</p>
+        <p>Hold the space bar and say what you want. It becomes a card, and an agent builds it in its own clone or worktree. You can do something else in the meantime.</p>
       </li>
       <li class="step">
         <h3><span class="n">2</span>Watch the demo</h3>
         <div class="card s-waiting"><b class="badge">!</b><div class="ttl">Export invoices as CSV</div><div class="meta">Narrated demo, three chapters, a short report</div><div class="state">Demo ready</div></div>
-        <p>The agent comes back with a demo of the finished work. You lean back and watch, instead of testing it yourself.</p>
+        <p>When the agent is done, it shows you a demo of the finished work. You watch it instead of testing the change yourself.</p>
       </li>
       <li class="step">
         <h3><span class="n">3</span>Approve</h3>
         <div class="card s-approved"><div class="ttl">Export invoices as CSV</div><div class="meta">Landed on main</div><div class="state">Approved</div></div>
-        <p>Approve it with a click or a word. Obeya lands the branch on main or carries a pull request to the merge.</p>
+        <p>Approve it with a click or a word. Obeya lands the branch on main, or opens a pull request and looks after it until it is merged.</p>
       </li>
     </ol>
     <p class="more">Not clear yet, or not quite right? <label for="how-ext">The extended cases</label> show ideas, prototypes, another round and what an agent proposes on the way.</p>
@@ -264,7 +265,7 @@
         <div class="card s-idea thinking"><div class="kind">Idea</div><div class="ttl">Invoices for the accountant</div>
           <div class="meta">Which export would they actually use?</div><div class="state">Idea</div></div>
       </div>
-      <p class="f-c1">Start with an idea and talk it through with an agent: variants, trade-offs, what it would cost. It keeps a brief of what you decided.</p>
+      <p class="f-c1">Start with an idea and talk it through with an agent. It lays out variants, their trade-offs and what each would cost, and it keeps a brief of what you decided.</p>
       <div class="station f-proto">
         <div class="stack">
           <div class="card s-working"><div class="kind">Prototype</div><div class="ttl">A download button</div>
@@ -277,7 +278,7 @@
       <div class="station f-work">
         <div class="card s-working"><div class="ttl">Export invoices as CSV</div><div class="meta">Writing the export</div><div class="state">Agent at work</div></div>
       </div>
-      <p class="f-c3">A worker takes the card into its own clone or worktree and builds it. You don't watch.</p>
+      <p class="f-c3">An agent builds the card in its own clone or worktree. You don't have to watch.</p>
       <div class="station f-demo">
         <div class="card s-waiting"><b class="badge">!</b><div class="ttl">Export invoices as CSV</div><div class="meta">One row per invoice, VAT in its own column</div><div class="state">Demo ready</div></div>
       </div>
@@ -287,8 +288,8 @@
         <div class="card s-approved"><div class="ttl">Export invoices as CSV</div><div class="meta">One row per invoice, VAT in its own column</div><div class="state">Approved</div></div>
       </div>
       <div class="f-branch">
-        <p>You approve. Obeya lands the branch on main or carries a pull request to the merge.
-          What the agent noticed on the way comes back as a proposal for a new card.</p>
+        <p>You approve. Obeya lands the branch on main, or opens a pull request and looks after it until it is merged.
+          If the agent noticed something outside its task, it proposes a new card for it.</p>
         <div class="card s-proposal"><b class="badge">✦</b><div class="kind">✦ Proposal</div><div class="ttl">Import invoices from CSV</div>
           <div class="meta">Noticed while building the export</div><div class="state">Proposed by an agent</div></div>
       </div>
@@ -299,11 +300,11 @@
     <div class="room-mark" lang="ja" aria-hidden="true">大部屋</div>
     <div>
       <h2>The big room</h2>
-      <p class="big"><em>Obeya</em> is Japanese for the big room where a project lives on the walls.
-        Nobody has to ask how things stand. You look.</p>
-      <p>One agent in one chat works well. Scale your work beyond a few, and you lose yourself in parallel chats
-        that know nothing of each other: which one is waiting for you, which one is stuck, which one is touching what another built.
-        Obeya puts every agent's work on one wall instead, and you stand in front of it.</p>
+      <p class="big"><em>Obeya</em> is Japanese for “big room”, the room where a project's plans and status hang on the walls.
+        Nobody has to ask how things stand, because everyone can see it.</p>
+      <p>One agent in one chat works well. With more than a few, you lose track of which chat is waiting for you,
+        which one is stuck, and which one is changing what another built.
+        Obeya puts every agent's work on one wall instead.</p>
     </div>
   </section>
 
@@ -334,9 +335,9 @@
         <h3>From source</h3>
 <pre><code><span class="c"># needs Bun, Claude Code or Codex (logged in), git and gh</span>
 git clone https://github.com/sadilek/obeya && cd obeya
-<span class="c"># the same setup, then your first canvas</span>
+<span class="c"># runs the same setup as the app, then opens your first canvas</span>
 bun install && bun start</code></pre>
-        <p class="small">The wall opens on <code>http://127.0.0.1:4417</code>, through the link Obeya prints, which signs your browser in. The app and the source share their data in <code>~/.obeya</code>.</p>
+        <p class="small">Obeya prints a link to <code>http://127.0.0.1:4417</code> that opens the canvas and signs your browser in. The app and the source share their data in <code>~/.obeya</code>.</p>
         <div class="cta">
           <a class="btn primary" href="https://github.com/sadilek/obeya">Source on GitHub</a>
         </div>

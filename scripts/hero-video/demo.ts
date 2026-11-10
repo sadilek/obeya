@@ -600,7 +600,7 @@ const scenes: Scene[] = [
       await d.highlight(card(d, 'A script that serves Tipjar'), 'proposed by Obeya');
       await saying(d, say, 'Not every thought');
       await d.clearHighlights();
-      await saying(d, say, 'goes on the wall as an idea');
+      await saying(d, say, 'goes on the canvas as an idea');
       await d.highlight(card(d, 'Settle up after a trip'), 'idea');
       await saying(d, say, 'and you think it through');
       await d.clearHighlights();
@@ -628,7 +628,7 @@ const scenes: Scene[] = [
       // a step back from the wall, where the groups' names show
       await zoom(d, 720, 450, 8);
       await phone(d);
-      await saying(d, say, 'And it comes with you');
+      await saying(d, say, 'You can also pair your phone');
       await d.page.evaluate(() => document.querySelector('#hero-phone')!.classList.add('on'));
       // what waits for the owner, and one of it opened on the phone, with its decisions
       await saying(d, say, 'You watch the demo');
