@@ -98,13 +98,19 @@ For the agent that takes a workstream:
    the copies.
 8. Tick the workstream in this doc when it has landed, and delete a findings file when every
    finding in it is done or dropped. Each "Bugs noticed in passing" list is outside this plan (a
-   fix changes behaviour); a finding that removes such a bug as a side effect says so.
+   fix changes behaviour); the plan [Bugs noticed in passing](bugs-noticed-in-passing.md) fixes
+   them, and a finding whose bug it has fixed says so.
 
 Workstreams that touch the same files should not run at the same time. W7, W8, W9 and W10 share
 `board.ts`; W10, W11 and W12 share `workers.ts`; W14 and W15 share `canvas.ts` and `commands.ts`;
 W20 to W23 share the UI's large files. W2 and W3 make the later server workstreams cheaper, since
 they put most direct constructions of `Board`, `Workers` and `CanvasRuntime` in tests behind
 helpers.
+
+W2, W3, W5, W6, W7, W9, W12, W16, W17, W19, W20, W21, W23, W24 and W25 rework code that holds a bug
+of a "Bugs noticed in passing" list. Each starts only once the workstream of
+[Bugs noticed in passing](bugs-noticed-in-passing.md) that fixes it has landed; that plan's table
+"Order with the code cleanup" names which.
 
 ## The same finding in more than one file
 
