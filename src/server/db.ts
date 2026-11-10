@@ -730,6 +730,10 @@ export class Store {
         this.db.run(`PRAGMA user_version = ${v + 1}`);
       })();
     }
+    // a canvas reads its shared cards and its archive afresh when it opens, and only then follows the
+    // logs of their writes: what they hold now no canvas reads, and one never opened again would never drop it
+    this.db.run('DELETE FROM shared_changes');
+    this.db.run('DELETE FROM archive_changes');
   }
 
   /** A canvas's name as last stored; none for a canvas this database has never seen. */

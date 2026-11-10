@@ -1016,6 +1016,28 @@ describe('the shared cards', () => {
     expect(log()).toEqual({ n: 0 });
   });
 
+  test('the logs of writes of a canvas never opened again are gone once Obeya starts afresh', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-logs-'));
+    try {
+      const path = join(dir, 'obeya.db');
+      const before = new Store(path);
+      const other = new Board(before, { id: 'other', name: 'Other', repos: board.canvas.repos }, () => ({ docs, dirs }));
+      const a = other.create({ title: 'A', x: 0, y: 0 });
+      other.work(a.id, { share: page('A'), state: 'live' });
+      other.archive([a.id]);
+      other.work(a.id, { title: 'Renamed' });
+      const count = (s: Store) => ['shared_changes', 'archive_changes'].map((t) => (s.db.query(`SELECT count(*) AS n FROM ${t}`).get() as { n: number }).n);
+      expect(count(before).every((n) => n > 0)).toBe(true);
+      before.db.close();
+      // its pages and archive are read afresh when it opens: nothing in the logs is read again
+      const after = new Store(path);
+      expect(count(after)).toEqual([0, 0]);
+      after.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('those the UI shows are found with their repository and title as the cards are, archived projects’ workstreams too', () => {
     const items = board.snapshot().items;
     const w2 = items.find((i) => i.label === 'W2')!;
