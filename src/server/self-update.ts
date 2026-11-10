@@ -187,8 +187,9 @@ const key = (b: Busy[]) => b.map((x) => `${x.canvas}/${x.card}`).join(' ');
 
 /** Whether the commits from `from` to `to` change code, not only docs (unknown counts as code); without the server waiting for git. */
 export async function changesCode(checkout: string, from: string, to: string): Promise<boolean> {
-  const changed = await gitAsync(checkout, 'diff', '--name-only', from, to).catch(() => null);
-  return changed === null || changed.split('\n').some((f) => f && !inert(f));
+  // -z: the names as they are, which git otherwise quotes where they hold a non-ASCII character or a quote
+  const changed = await gitAsync(checkout, 'diff', '-z', '--name-only', from, to).catch(() => null);
+  return changed === null || changed.split('\0').some((f) => f && !inert(f));
 }
 
 /** The commit `checkout` stands at, if it is a git checkout. */

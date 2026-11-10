@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Busy, headSeal, installDependencies, ownCheckout, Restarter, symbolicTarget, watchOwnCode, whenIdle } from './self-update';
+import { type Busy, changesCode, headSeal, installDependencies, ownCheckout, Restarter, symbolicTarget, watchOwnCode, whenIdle } from './self-update';
 import { onStart } from './spawn';
 import { gitRepo } from './testing';
 import { git } from './workspaces';
@@ -87,6 +87,14 @@ test('docs, the site and its workflow alone change nothing that runs', async () 
   await until(() => calls.length > 0);
   expect(calls).toEqual([head]);
 }, 20_000);
+
+test('docs whose file names git would quote (non-ASCII, a space) change nothing that runs either', async () => {
+  const start = git(repo, 'rev-parse', 'HEAD');
+  commit('docs/Übersicht.md', 'Überblick');
+  const to = commit('design/a "quoted" name.txt', 'x');
+  expect(await changesCode(repo, start, to)).toBe(false);
+  expect(await changesCode(repo, start, commit('src/ä.ts', 'b'))).toBe(true);
+});
 
 test('a commit while git looks at what changed has not held still: the restart waits for a round of its own', async () => {
   const start = git(repo, 'rev-parse', 'HEAD');
