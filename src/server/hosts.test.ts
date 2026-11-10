@@ -14,6 +14,7 @@ import { Store } from './db';
 import { githubToken, HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
+import { claudeModels } from './harnesses';
 import { type AgentEvent, sdkRuntime } from './runtime';
 import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
@@ -423,6 +424,47 @@ describe('a Codex session on a host', () => {
     expect(readFileSync(file!, 'utf8')).toBe('{"type":"session_meta"}\n');
     expect(await host.transcript('codex:../../x', join(dir, 'ws'))).toBeNull();
   });
+});
+
+describe("Claude Code on a host", () => {
+  /** The stand-in's state there (`fixtures/fake-claude.ts`). */
+  let state: string;
+  beforeEach(() => {
+    const bin = join(dir, 'net', 'home', '.local', 'bin');
+    state = join(dir, 'net', 'home', '.fake-claude');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(state, { recursive: true });
+    writeFileSync(join(bin, 'claude'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dir, 'fixtures', 'fake-claude.ts'))} "$@"\n`, { mode: 0o755 });
+    writeFileSync(join(state, 'version'), '2.1.300\n');
+  });
+
+  overSsh('says its version there and the channel it updates from; null where it is not installed', async () => {
+    expect(await host.claude()).toEqual({ version: '2.1.300', channel: 'latest' });
+    // the stand-in's host has this machine's environment, with the tests' own CLAUDE_CONFIG_DIR
+    const config = process.env.CLAUDE_CONFIG_DIR ?? join(dir, 'net', 'home', '.claude');
+    mkdirSync(config, { recursive: true });
+    writeFileSync(join(config, 'settings.json'), JSON.stringify({ autoUpdatesChannel: 'stable' }));
+    expect(await host.claude()).toEqual({ version: '2.1.300', channel: 'stable' });
+    // as a shell says of a program it does not find (this machine, the stand-in's host, may have one on its PATH)
+    writeFileSync(join(dir, 'net', 'home', '.local', 'bin', 'claude'), '#!/bin/sh\nexit 127\n');
+    expect(await host.claude()).toBeNull();
+    writeFileSync(join(dir, 'net', 'down'), '');
+    await expect(host.claude()).rejects.toThrow('Connection refused');
+  });
+
+  overSsh('is updated there, and says why where that fails', async () => {
+    writeFileSync(join(state, 'newest'), '2.1.338');
+    await host.updateClaude();
+    expect((await host.claude())?.version).toBe('2.1.338');
+    writeFileSync(join(state, 'update-fails'), 'Error: no network');
+    await expect(host.updateClaude()).rejects.toThrow('claude update exited with 1: Error: no network');
+  });
+
+  overSsh('lists its models there, from a session started over the connection with the Claude login', async () => {
+    writeFileSync(join(state, 'models.json'), JSON.stringify([{ value: 'fable', resolvedModel: 'claude-fable-5-1' }, { value: 'claude-fable-5-2' }]));
+    expect(await claudeModels('/', host)).toEqual([{ value: 'fable', resolvedModel: 'claude-fable-5-1' }, { value: 'claude-fable-5-2' }]);
+    expect(log()).not.toContain('sk-claude');
+  }, 20_000);
 });
 
 describe('a worker on a host', () => {

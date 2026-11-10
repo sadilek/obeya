@@ -51,7 +51,7 @@ touches, and keep those current in the same change.
   card, addresses (a card's permalink, Back and Forward), card numbers (`K42`), sheets, visual
   identity, groups on the canvas, refusals.
 - [Agents and workspaces](design/agents-and-workspaces.md) — how agents run and where: agents
-  (Claude Code, Codex), harnesses, models and effort (updating Claude Code at a click), workspaces (taking a card's workspace, slots,
+  (Claude Code, Codex), harnesses, models and effort (updating Claude Code at a click, here and on hosts), workspaces (taking a card's workspace, slots,
   the pool in the bar), folders without git, parking, resting agents (an idle agent's process goes
   after 65 minutes, once Claude Code's prompt cache has expired), hosts (running there, logins and files, a dropped connection).
 - [Landing](design/landing.md) — how approved work reaches `main`: how work lands, the PR loop

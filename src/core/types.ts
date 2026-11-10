@@ -2806,11 +2806,27 @@ export interface HarnessView {
   version?: string;
   /** The models it offers to choose from: Claude Code's aliases; Codex's, of each family the newest. */
   models: HarnessModel[];
-  /**
-   * Claude Code's update: the newer version that is out (`version`), the update under way
-   * (`running`), or why the last one failed (`error`); absent while it is the newest.
-   */
-  update?: { version: string; running?: true; error?: string };
+  /** Claude Code's update on this machine. */
+  update?: ClaudeUpdate;
+  /** Claude Code on each other machine of the configuration (hosts) that answered with its version. */
+  hosts?: HarnessHost[];
+}
+
+/**
+ * Claude Code's update: the newer version that is out (`version`), the update under way
+ * (`running`), or why the last one failed (`error`); absent while it is the newest.
+ */
+export interface ClaudeUpdate {
+  version: string;
+  running?: true;
+  error?: string;
+}
+
+/** Claude Code on a host: the version it is at there, and its update. */
+export interface HarnessHost {
+  name: string;
+  version: string;
+  update?: ClaudeUpdate;
 }
 
 /** The harness, model and effort of each group of agents, as they apply (`settings.json` over `AGENT_DEFAULTS`). */

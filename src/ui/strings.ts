@@ -268,12 +268,14 @@ const de = {
   },
   /** A newer Claude Code that is out, in a card's menu of models and in the Configuration's agents. */
   claudeUpdate: {
-    out: (version: string) => `Claude Code ${version} ist da`,
+    /** `host`: the line for that host's Claude Code, which is at `now` there; none: this machine's. */
+    out: (version: string, host?: string, now?: string) => (host ? `Claude Code ${version} ist da, ${host} hat ${now}` : `Claude Code ${version} ist da`),
     button: 'Aktualisieren',
     /** On hover: the version the agents run on now (`now`), and what the update does. */
-    hint: (now: string) => `Die Agenten laufen auf ${now}. Agenten, die nach dem Aktualisieren starten, laufen auf der neuen Version, mit ihren Modellen; einer, der gerade arbeitet, bleibt bei seiner.`,
-    running: 'Claude Code wird aktualisiert …',
-    failed: (why: string) => `Aktualisieren ging nicht: ${why}`,
+    hint: (now: string, host?: string) =>
+      `${host ? `Die Agenten auf ${host} laufen auf ${now}` : `Die Agenten laufen auf ${now}`}. Agenten, die nach dem Aktualisieren starten, laufen auf der neuen Version, mit ihren Modellen; einer, der gerade arbeitet, bleibt bei seiner.`,
+    running: (host?: string) => (host ? `Claude Code wird auf ${host} aktualisiert …` : 'Claude Code wird aktualisiert …'),
+    failed: (why: string, host?: string) => (host ? `Aktualisieren auf ${host} ging nicht: ${why}` : `Aktualisieren ging nicht: ${why}`),
     again: 'Nochmal versuchen',
   },
   /** The state of a task the owner stopped, in place of „Geplant“. */
@@ -2528,11 +2530,12 @@ const en: Strings = {
     chosenEffort: (effort: string) => `effort ${effort}`,
   },
   claudeUpdate: {
-    out: (version: string) => `Claude Code ${version} is out`,
+    out: (version: string, host?: string, now?: string) => (host ? `Claude Code ${version} is out, ${host} has ${now}` : `Claude Code ${version} is out`),
     button: 'Update',
-    hint: (now: string) => `The agents run on ${now}. Agents that start after the update run on the new version, with its models; one at work keeps its own.`,
-    running: 'Updating Claude Code…',
-    failed: (why: string) => `Update failed: ${why}`,
+    hint: (now: string, host?: string) =>
+      `${host ? `The agents on ${host} run on ${now}` : `The agents run on ${now}`}. Agents that start after the update run on the new version, with its models; one at work keeps its own.`,
+    running: (host?: string) => (host ? `Updating Claude Code on ${host}…` : 'Updating Claude Code…'),
+    failed: (why: string, host?: string) => (host ? `Update on ${host} failed: ${why}` : `Update failed: ${why}`),
     again: 'Try again',
   },
   stoppedState: 'Stopped',

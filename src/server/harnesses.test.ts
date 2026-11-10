@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
-import { aliasesOf, Harnesses } from './harnesses';
+import type { HarnessHost } from '../core/types';
+import { aliasesOf, type ClaudeHost, type ClaudeListed, Harnesses, hostClaude } from './harnesses';
+import { registerHost } from './hosts';
 
 test('a group without a harness of its own runs on Claude Code, unless only Codex is ready; Codex counts once a look says so', async () => {
   let claude: { version: string; loggedIn: boolean } | null = { version: '2.1.300', loggedIn: true };
@@ -146,4 +148,103 @@ test('an update that fails says why, and is offered again', async () => {
   h.updateClaude();
   for (let i = 0; i < 20 && (await h.view())[0]!.update?.running; i++) await Bun.sleep(1);
   expect((await h.view())[0]!.update).toEqual({ version: '2.1.322', error: 'claude update exited with 1: no network' });
+});
+
+/** A host's Claude Code as `Harnesses` asks it, at `version` there, listing `models`. */
+function fakeHost(name: string, o: { version: string | null; channel?: 'latest' | 'stable'; models?: ClaudeListed[]; newest?: string }) {
+  const host: typeof o & { up: boolean; looks: number; updates: number; claude: ClaudeHost } = {
+    ...o,
+    up: true,
+    looks: 0,
+    updates: 0,
+    claude: {
+      name,
+      reachable: () => host.up,
+      look: async () => {
+        host.looks++;
+        if (!host.up) throw new Error(`${name}: Connection refused`);
+        return host.version === null ? null : { version: host.version, channel: host.channel ?? 'latest' };
+      },
+      models: async () => host.models ?? [],
+      update: async () => {
+        host.updates++;
+        host.version = host.newest ?? host.version;
+      },
+    },
+  };
+  return host;
+}
+
+/** Until the view's hosts satisfy `ok`, a millisecond at a time. */
+async function viewUntil(h: Harnesses, ok: (hosts: HarnessHost[]) => boolean) {
+  for (let i = 0; i < 50; i++) {
+    const hosts = (await h.view())[0]!.hosts ?? [];
+    if (ok(hosts)) return hosts;
+    await Bun.sleep(1);
+  }
+  throw new Error(`the view's hosts: ${JSON.stringify((await h.view())[0]!.hosts)}`);
+}
+
+test("a host whose Claude Code is behind its channel's newest says so in the view, and is updated there at a click", async () => {
+  const box = fakeHost('box', { version: '2.1.300', channel: 'stable', newest: '2.1.322' });
+  const current = fakeHost('current', { version: '2.1.338' });
+  const none = fakeHost('none', { version: null });
+  const asked: (string | undefined)[] = [];
+  const h = new Harnesses({
+    cwd: '/tmp',
+    claude: async () => ({ version: '2.1.338', loggedIn: true }),
+    codex: async () => null,
+    claudeNewest: async (channel) => (asked.push(channel), channel === 'stable' ? '2.1.322' : '2.1.338'),
+    hosts: () => [box.claude, current.claude, none.claude],
+  });
+  await h.refresh();
+  // looked at in the background: the first view has none of them yet
+  expect((await h.view())[0]!.hosts).toBeUndefined();
+  const hosts = await viewUntil(h, (hosts) => !!hosts.find((x) => x.name === 'box')?.update);
+  // a host without Claude Code is not listed; one at the newest of its channel has no update
+  expect(hosts).toEqual([{ name: 'box', version: '2.1.300', update: { version: '2.1.322' } }, { name: 'current', version: '2.1.338' }]);
+  // this machine's channel, read here, and the host's own
+  expect(asked).toContain(undefined);
+  expect(asked).toContain('stable');
+  expect((await h.view())[0]!.update).toBeUndefined();
+  h.updateClaude('box');
+  expect((await h.view())[0]!.hosts![0]!.update).toEqual({ version: '2.1.322', running: true });
+  const after = await viewUntil(h, (hosts) => !hosts[0]!.update);
+  expect(after[0]).toEqual({ name: 'box', version: '2.1.322' });
+  expect([box.updates, current.updates]).toEqual([1, 0]);
+});
+
+test('a host that does not answer is looked at again once it does, and one the configuration no longer names goes', async () => {
+  const box = fakeHost('box', { version: '2.1.300' });
+  box.up = false;
+  let named = [box.claude];
+  const h = new Harnesses({ cwd: '/tmp', claude: async () => ({ version: '2.1.338', loggedIn: true }), codex: async () => null, claudeNewest: async () => '2.1.338', hosts: () => named });
+  await h.refresh();
+  await h.view();
+  expect(box.looks).toBe(0);
+  box.up = true;
+  await viewUntil(h, (hosts) => hosts.length === 1);
+  expect(box.looks).toBe(1);
+  named = [];
+  expect((await h.view())[0]!.hosts).toBeUndefined();
+});
+
+test("an agent on a host is given the newest of its alias's family that the host's Claude Code lists", async () => {
+  const box = fakeHost('box', { version: '2.1.338', models: [{ value: 'fable', resolvedModel: 'claude-fable-5-1' }, { value: 'claude-fable-5-2' }] });
+  const old = fakeHost('old', { version: '2.1.300', models: [{ value: 'fable', resolvedModel: 'claude-fable-5-1' }] });
+  const h = new Harnesses({
+    cwd: '/tmp',
+    claude: async () => ({ version: '2.1.338', loggedIn: true }),
+    codex: async () => null,
+    claudeModels: async () => [{ value: 'fable', resolvedModel: 'claude-fable-5-1' }],
+    hosts: () => [box.claude, old.claude],
+  });
+  await h.refresh();
+  for (let i = 0; i < 50 && h.claudeModel('fable', 'box') === 'fable'; i++) await (h.view(), Bun.sleep(1));
+  expect([h.claudeModel('fable', 'box'), h.claudeModel('fable', 'old'), h.claudeModel('fable'), h.claudeModel('fable', 'unknown')]).toEqual(['claude-fable-5-2', 'fable', 'fable', 'fable']);
+});
+
+test("a host's Claude Code is one and the same for as long as the host is", () => {
+  const host = registerHost({ name: `same-${Math.random().toString(36).slice(2, 8)}`, ssh: 'me@box', home: '/tmp' });
+  expect(hostClaude(host)).toBe(hostClaude(host));
 });

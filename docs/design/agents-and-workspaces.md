@@ -106,7 +106,8 @@ Claude Code says it stands for (the one it lists under the alias, else the newes
 lists): the newest of its family Claude Code lists, by its id or under the alias, since a new model
 (Fable 5.2) comes listed by its id while the alias still names the one before. An agent on this
 machine is then given that model's id instead of the alias where the two differ, so Fable runs on
-Fable 5.2; one on another machine gets the alias. Claude Code is asked by an idle session of its own
+Fable 5.2; one on a host likewise by what that host's Claude Code lists (see Updating Claude Code),
+the alias as it is until it has said. Claude Code is asked by an idle session of its own
 as Obeya starts, again after ten minutes or once its version changed, in the background: until it
 has answered, the aliases show without a version and go to Claude Code as they are, and no menu
 waits for it. Which version runs shows on a started card's conversation heading, as Claude Code's
@@ -147,8 +148,18 @@ The click runs `claude update` on the machine's own installation (it updates one
 manager through that manager), or, where there is none (the checkout on the SDK's binary), the
 official installer; then Obeya looks at Claude Code again and asks it for its models before the
 line goes: meanwhile it says "Updating Claude Code…", after a failure why, with "Try again".
-Agents that start afterwards run on the new version, one at work keeps its own. Sessions on another
-machine run that machine's `claude`, which Obeya neither checks nor updates.
+Agents that start afterwards run on the new version, one at work keeps its own.
+
+Sessions on a host run that host's own `claude`, which Obeya looks at over the connection, each host
+the configuration names: as Obeya starts, again ten minutes after the last when a menu of models
+asks, on a host that did not answer once it does. The look asks for its version and for the channel
+its settings there update from, whose newest npm says (asked from this machine); an idle session
+started there, as here, lists its models, which an agent there then runs on (an alias as the newest
+of its family). A host whose Claude Code is behind gets a line of its own under this machine's, in
+both places: "Claude Code 2.1.322 is out, build-box has 2.1.300" with an "Update" button that runs
+`claude update` there, then looks again and asks for the models, with "Updating Claude Code on
+build-box…" meanwhile and why it failed after a failure. A host without Claude Code, or one that has
+not answered yet, shows no line.
 
 ### What agents cost
 
@@ -656,6 +667,10 @@ for its hooks), and what the repository's work needs.
 - **An update of Claude Code at the owner's click** (owner, 2026-11-10), shown where models are
   chosen. Rejected: updating by itself, which Claude Code does in interactive use and may be turned
   off there; a pill in the bar, which Claude Code's near-daily releases would keep there.
+- **Each host's Claude Code is checked and updated there, over the connection** (owner, 2026-11-10),
+  with `claude update` on the host, so its own kind of installation (npm, the installer) updates as
+  it would by hand. Rejected: copying this machine's Claude Code there, which may be built for
+  another platform and would leave the host's own installation behind on its `PATH`.
 - **An alias stands for the newest of its family Claude Code lists** (owner, 2026-11-10), and an
   agent gets that model's id where the alias names an older one. Rejected: the alias as Claude Code
   resolves it, which kept Fable on 5.1 for as long as Claude Code listed 5.2 only by its id;

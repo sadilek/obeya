@@ -151,7 +151,9 @@
 // host at the same path, so that Obeya clones it there as it would a remote; staging afresh
 // removes <dir> there first. A host with `"gone": true` held its clones once and does not answer
 // now (an `ssh` target nobody resolves, say): nothing goes there, and its clones are registered as if
-// Obeya had made them. `name` names the canvas the cards go on; `repoName` names its repository's
+// Obeya had made them. `OBEYA_SSH` in the script's environment names a program that stands for `ssh`
+// in the server (`fakeSsh` in src/server/testing.ts: a host that is this machine, with a home of its
+// own), and nothing is copied there. `name` names the canvas the cards go on; `repoName` names its repository's
 // directory (<dir>/repo by default), and so its id; `repos` adds further repositories to that canvas,
 // `[{ "name": "promo", "files": { … } }]`, each in <dir>/<name> with that id, which a card's `repo`
 // names; `canvases` adds further ones by
@@ -483,7 +485,8 @@ const further = (stage.canvases ?? []).map((name, i) => {
 });
 // the origin at the same path on each host, which clones it from there
 for (const h of stage.hosts ?? []) {
-  if (h.gone) continue;
+  // a stand-in's host is this machine, which has it there already
+  if (h.gone || process.env.OBEYA_SSH) continue;
   const ssh = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', h.ssh];
   // through ssh rather than scp, which takes no ssh://user@host:port target
   const tar = spawnSync('tar', ['-cf', '-', 'scratch.git'], { cwd: dir, maxBuffer: 1 << 30 });

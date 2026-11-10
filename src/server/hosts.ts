@@ -92,7 +92,7 @@ export interface HostOptions {
   home: string;
   /** The Claude login the host's sessions run on (`claude setup-token`); without it they run on the host's own. */
   claudeToken?: () => string | undefined;
-  /** The program that is `ssh` (tests run the commands on this machine with a stand-in). */
+  /** The program that is `ssh`, else `OBEYA_SSH`, else `ssh` (tests and demos run the commands on this machine with a stand-in). */
   program?: string;
 }
 
@@ -158,7 +158,7 @@ export class SshHost {
       .join(' ');
     // a forward from here goes on a connection of its own, which ends with it rather than with the shared one
     const forwards = [...(o.forward ?? []).flatMap((f) => ['-R', f]), ...(o.local ? ['-o', 'ExitOnForwardFailure=yes', '-L', o.local] : [])];
-    return [this.o.program ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
+    return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
   }
 
   /** The environment line for a command in `cwd`: the GitHub login of the repository it is in. */
@@ -295,6 +295,32 @@ export class SshHost {
   }
 
   /**
+   * Claude Code there: the version it is at, and the channel it updates from (`autoUpdatesChannel`
+   * in its settings there: `latest`, the default, or `stable`); null where it is not installed.
+   */
+  async claude(): Promise<{ version: string; channel: 'latest' | 'stable' } | null> {
+    const r = await this.run('v=$(claude --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"; cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; true', { timeout: 30_000 });
+    if (r.code === 3) return null;
+    if (r.code !== 0) throw new HostError(`${this.name}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+    const [first = '', ...rest] = r.stdout.split('\n');
+    const version = first.match(/^(\d+\.\d+\.\d+)/)?.[1];
+    if (!version) return null;
+    let channel: 'latest' | 'stable' = 'latest';
+    try {
+      if (JSON.parse(rest.join('\n'))?.autoUpdatesChannel === 'stable') channel = 'stable';
+    } catch {}
+    return { version, channel };
+  }
+
+  /** Brings Claude Code there up to date (`claude update`); fails with the last line it said where it exits with another code than 0. */
+  async updateClaude(): Promise<void> {
+    const r = await this.run(['claude', 'update'], { timeout: 10 * 60_000 });
+    if (r.code === 0) return;
+    const last = `${r.stdout}\n${r.stderr}`.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean).at(-1);
+    throw new HostError(r.code === LOST ? `${this.name} does not answer` : `claude update exited with ${r.code}${last ? `: ${last}` : ''}`);
+  }
+
+  /**
    * A session's transcript there (Claude Code's, under the directory it ran in; a Codex thread's,
    * under Codex's sessions or archived ones), copied here for the work retrospective; null when there
    * is none or the host does not answer.
@@ -409,18 +435,19 @@ export class SshHost {
    * Codex's app server) through `ssh` in `cwd` once the host has `files` (paths of those directories
    * among its arguments become their copies there), its environment (the SDK's and the session's,
    * Obeya's directory there as `OBEYA_HOME`, the Claude login unless `login` is false) read from
-   * stdin first. A host that cannot be made ready ends the process as a lost connection would. With
+   * stdin first. Without `files`, a session that needs nothing of Obeya's there (one that only asks
+   * Claude Code for its models) starts at once, in the home there without `cwd`. A host that cannot be made ready ends the process as a lost connection would. With
    * `OBEYA_NARRATION_URL` in the environment, a port there is forwarded to it, Obeya's narration
    * alone, as `OBEYA_URL` there; `forwards` are more (`-R`), for the session's own hooks. `onExit`
    * hears the exit code of `ssh` (`LOST`: the connection failed or dropped), `onStderr` what the
    * command there and ssh say on stderr.
    */
-  session(o: { cwd: string; files: HostFiles; login?: boolean; forwards?: string[]; onExit?: (code: number | null) => void; onStderr?: (text: string) => void }): (s: SpawnOptions) => SpawnedProcess {
-    const ready = Promise.all([this.prepare(o.files), this.loginRead(o.cwd)]).then(([dir]) => dir);
+  session(o: { cwd?: string; files?: HostFiles; login?: boolean; forwards?: string[]; onExit?: (code: number | null) => void; onStderr?: (text: string) => void }): (s: SpawnOptions) => SpawnedProcess {
+    const ready = Promise.all([o.files && this.prepare(o.files), this.loginRead(o.cwd)]).then(([dir]) => dir);
     return (s) => {
       const p = deferred(ready, (dir) => {
         const token = o.login === false ? undefined : this.o.claudeToken?.();
-        const local = Object.entries(o.files.dirs);
+        const local = Object.entries(o.files?.dirs ?? {});
         const args = s.args.map((a) => {
           const hit = local.find(([, from]) => a === from);
           return hit ? `${dir}/${hit[0]}` : a;
@@ -431,18 +458,20 @@ export class SshHost {
         const there = here ? 30_000 + Math.floor(Math.random() * 30_000) : 0;
         // a session cut off by a dropped connection may still run there: the one that resumes it ends it first;
         // not itself, whose pid a host that restarted since (a container, say) may give out again
-        const pid = sh(`${dir}/sessions/${o.cwd.replace(/[^\w.-]+/g, '-')}.pid`);
-        const previous = `mkdir -p ${sh(`${dir}/sessions`)}; old=$(cat ${pid} 2>/dev/null); [ -n "$old" ] && [ "$old" != $$ ] && ps -p "$old" -o command= 2>/dev/null | grep -q ${sh(basename(s.command))} && kill "$old"; echo $$ > ${pid};`;
+        const pid = dir && o.cwd ? sh(`${dir}/sessions/${o.cwd.replace(/[^\w.-]+/g, '-')}.pid`) : undefined;
+        const previous = pid
+          ? `mkdir -p ${sh(`${dir}/sessions`)}; old=$(cat ${pid} 2>/dev/null); [ -n "$old" ] && [ "$old" != $$ ] && ps -p "$old" -o command= 2>/dev/null | grep -q ${sh(basename(s.command))} && kill "$old"; echo $$ > ${pid};`
+          : '';
         const forward = [...(here ? [`127.0.0.1:${there}:127.0.0.1:${here}`] : []), ...(o.forwards ?? [])];
         const argv = this.argv(`${previous} exec ${[s.command, ...args].map(sh).join(' ')}`, {
-          cwd: o.cwd,
+          ...(o.cwd ? { cwd: o.cwd } : {}),
           env: true,
           ...(forward.length ? { forward } : {}),
         });
         const child = spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
         // with Obeya reachable, a voice it holds loaded narrates from Obeya's machine (OBEYA_HOLDS_VOICE: no need to install it here)
         const { OBEYA_URL: _, OBEYA_NARRATION_URL: __, ...own } = s.env;
-        const env = { ...own, OBEYA_HOME: dir, ...(here ? { OBEYA_URL: `http://127.0.0.1:${there}`, OBEYA_HOLDS_VOICE: '1' } : {}), ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) };
+        const env = { ...own, ...(dir ? { OBEYA_HOME: dir } : {}), ...(here ? { OBEYA_URL: `http://127.0.0.1:${there}`, OBEYA_HOLDS_VOICE: '1' } : {}), ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) };
         child.stdin!.write(this.envLine(o.cwd, env));
         // ssh's own complaints (a forward refused, the connection dropped) are no session output
         child.stderr!.on('data', (d: Buffer) => {
@@ -598,6 +627,9 @@ export function sessionFiles(home: string, plugins: string[]): HostFiles {
 
 /** The hosts of the configuration, by name. */
 const hosts = new Map<string, SshHost>();
+
+/** The host of that name, once registered. */
+export const hostNamed = (name: string): SshHost | undefined => hosts.get(name);
 
 /** Makes a host known under its name; the configuration's hosts are registered at start. */
 export function registerHost(o: HostOptions): SshHost {

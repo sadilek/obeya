@@ -61,7 +61,7 @@ import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
 import { findClaude, MachineSetup, updateClaude, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
-import { claudeModels, claudeNewest, Harnesses } from './harnesses';
+import { claudeModels, claudeNewest, Harnesses, hostClaude } from './harnesses';
 import { addToPath, extendPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
@@ -72,7 +72,7 @@ import { oldLinuxBun, onGitHub } from './repo';
 import { Access } from './remote';
 import { Push } from './push';
 import { Awake } from './awake';
-import { claudeToken, remote } from './hosts';
+import { claudeToken, hostName, hostNamed } from './hosts';
 import { serve, serveNarration } from './server';
 import { LocalTranscriber, VoiceIn } from './voice';
 import { cloudInUse } from './voice-cloud';
@@ -318,8 +318,13 @@ const harnesses = new Harnesses({
     return c.version ? { version: c.version, loggedIn: c.loggedIn } : null;
   },
   claudeModels,
-  claudeNewest: () => claudeNewest(),
+  claudeNewest: (channel) => claudeNewest(channel),
   updateClaude: (log) => updateClaude(log),
+  // the hosts the configuration names now, once a canvas has them registered
+  hosts: () => {
+    const names = new Set(config.current().flatMap((c) => c.repos.flatMap((r) => (r.hosts ?? []).map((h) => h.name))));
+    return [...names].map(hostNamed).filter((h) => !!h).map(hostClaude);
+  },
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
 await Promise.race([harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${e instanceof Error ? e.message : e}`)), Bun.sleep(5000)]);
@@ -353,8 +358,8 @@ function agentRuntime() {
   // a session waiting longer than its prompt cache lives gives up its process, and its next message resumes it
   // (`OBEYA_REST_AFTER`, in seconds, for demos and live checks)
   const rest = process.env.OBEYA_REST_AFTER ? Number(process.env.OBEYA_REST_AFTER) * 1000 : undefined;
-  // an alias goes to Claude Code here as the newest model of its family it lists, which the alias may not name yet
-  const newest: AgentRuntime = { start: (spec, ...more) => sdkRuntime.start(spec.model && !remote(spec.cwd) ? { ...spec, model: harnesses.claudeModel(spec.model) } : spec, ...more) };
+  // an alias goes to Claude Code (here, or on the host the agent runs on) as the newest model of its family it lists, which the alias may not name yet
+  const newest: AgentRuntime = { start: (spec, ...more) => sdkRuntime.start(spec.model ? { ...spec, model: harnesses.claudeModel(spec.model, hostName(spec.cwd) ?? undefined) } : spec, ...more) };
   const live = byHarness({ claude: withRest(newest, rest), codex: withRest(codexRuntime, rest) });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;
@@ -385,6 +390,8 @@ harnesses.onChange(() => (usage.update(), usage.changed()));
 const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses });
 // the canvas the assistant created gets a first card that says what to try
 welcome(home, canvases.all());
+// Claude Code on the hosts the canvases registered, so the first menu of models has whether it is behind there
+harnesses.lookAtHosts();
 const shutdown = (code: number) => {
   canvases?.shutdown();
   usage.stop();

@@ -6,7 +6,7 @@
 
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
+import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type ClaudeUpdate as ClaudeUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
 import { useMenuClose } from './queue';
 import { placeOnScreen } from './snooze';
 import { api } from './api';
@@ -155,38 +155,46 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
 
 /**
  * A newer Claude Code that is out, with the button that updates it, in a card's menu of models and
- * in the Configuration; while the update runs, the view is asked again until it is done, and then
- * has the new version's models.
+ * in the Configuration: a line for this machine and one for each host whose Claude Code is behind;
+ * while an update runs, the view is asked again until it is done, and then has the new version's models.
  */
 export function ClaudeUpdate({ view, onView }: { view: AgentsView; onView: (view: AgentsView) => void }) {
   const claude = view.harnesses.find((h) => h.id === 'claude');
-  const update = claude?.update;
-  const running = !!update?.running;
-  const [asked, setAsked] = useState(false);
+  const hosts = (claude?.hosts ?? []).filter((h) => h.update);
+  const running = !!claude?.update?.running || hosts.some((h) => h.update?.running);
+  const [asked, setAsked] = useState<string | null>(null);
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(() => agentsView().then(onView, () => {}), 1500);
     return () => clearInterval(timer);
   }, [running]);
-  if (!update) return null;
-  const u = t.claudeUpdate;
-  const start = () => {
-    setAsked(true);
+  const start = (host?: string) => {
+    setAsked(host ?? '');
     api
-      .updateClaude()
+      .updateClaude(host)
       .then((v) => ((last = v), onView(v)))
       .catch(() => {})
-      .finally(() => setAsked(false));
+      .finally(() => setAsked(null));
   };
+  const line = (update: ClaudeUpdateState, now: string | undefined, host?: string) => {
+    const u = t.claudeUpdate;
+    return (
+      <div key={host ?? ''} className={update.error ? 'claude-update failed' : 'claude-update'} title={now ? u.hint(now, host) : undefined}>
+        <span className="claude-update-text">{update.running ? u.running(host) : update.error ? u.failed(update.error, host) : u.out(update.version, host, now)}</span>
+        {!update.running && (
+          <button className="btn" disabled={asked === (host ?? '')} onClick={() => start(host)}>
+            {update.error ? u.again : u.button}
+          </button>
+        )}
+      </div>
+    );
+  };
+  if (!claude?.update && !hosts.length) return null;
   return (
-    <div className={update.error ? 'claude-update failed' : 'claude-update'} title={claude?.version ? u.hint(claude.version) : undefined}>
-      <span className="claude-update-text">{running ? u.running : update.error ? u.failed(update.error) : u.out(update.version)}</span>
-      {!running && (
-        <button className="btn" disabled={asked} onClick={start}>
-          {update.error ? u.again : u.button}
-        </button>
-      )}
-    </div>
+    <>
+      {claude?.update && line(claude.update, claude.version)}
+      {hosts.map((h) => line(h.update!, h.version, h.name))}
+    </>
   );
 }
 
