@@ -230,6 +230,9 @@ finding is major.
 - Risk: low; it lengthens one line's stay from 7 s to 9.5 s in the one case with a longer window
   (taking a workspace, `App.tsx:1048`), which is what `voice.tsx` does already.
 - Confidence: high; grepped `undoShownMs|confirmShownMs|ACK_MS|7000` across `src/ui`.
+- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): `useAck` keeps its line
+  for `ackLasts(undo, undoMs)` = the longer of `ACK_MS` and the undo window; the drift from
+  `confirmShownMs` (1.5 s after the window) remains for this finding.
 
 ### I9. The fields of a kept draft are listed three times in `draft.ts`
 - Principle: DRY
@@ -371,11 +374,3 @@ finding is major.
   (`known.ts` is the exception, see I1).
 - `src/ui/api.ts:705-737` `useCanvas` holds eight `useState`s for one feed: each message sets one,
   and a switch of canvas seeds each from `start`; one reducer would not be shorter.
-
-## Bugs noticed in passing
-- `src/ui/tell.tsx:36-37` `showAck` hides the line after `ACK_MS` (7 s) even when called with a
-  longer undo window (`EVICT_HOLD_MS` = 8 s at `src/ui/App.tsx:1048`): "Undo" is gone a second
-  before the action stops waiting.
-- `src/ui/api.ts:69-70` an orphaned doc comment ("A path in the shown canvas's API.") stands above
-  `standalone`, three lines before the `at` it describes; `src/ui/api.ts:401-402` two doc comments
-  stacked on `readTalk`, the first one stale.

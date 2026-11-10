@@ -233,7 +233,8 @@ Under a task's title stand its branch (and plan doc) and the size of its change 
 files"; where the card shows its change list, the size stands below the list instead): before landing the workspace against where its base branch was, uncommitted and new files
 included; after, what the landing put on the default branch (an archived card keeps it). A click
 shows the whole diff over the page; "Copy path" copies the workspace's directory (`host:/dir` on
-another machine). The owner rarely reads code, so it stays a quiet line.
+another machine), on a page that may not write the clipboard too, as a code block's button does
+(so do the share link's "Copy" and the setup's copy buttons). The owner rarely reads code, so it stays a quiet line.
 
 #### The files beside the demo
 

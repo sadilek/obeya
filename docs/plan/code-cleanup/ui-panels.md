@@ -48,6 +48,9 @@ browser.
   gives the phone the `project` field too, which its `inView` does not read (the phone has no
   project sheet).
 - Confidence: high. Read both sides of every pair listed.
+- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): the phone's address
+  follows an open card that moved to another canvas, by an effect of its own (`followOpen`), not
+  through the notice handler.
 
 ### H2. The settings sheets write "load, call, show the error" out by hand about twenty times
 - Principle: DRY
@@ -237,6 +240,9 @@ browser.
   behaviour only in the case that is wrong today.
 - Confidence: high. Callers grepped: `filesTo` from `App.tsx:1251`, the others only inside
   `shots.tsx`.
+- Bug fixed ([bugs noticed in passing](../bugs-noticed-in-passing.md) W2): `fileTo` pins the drafts'
+  home as `attachTo` does (`updateDraftAt`, and `insertFilesAt` for the path), and both compare the
+  home by store and canvas, so a switch away and back lands in the draft shown.
 
 ### H10. A menu over the page is placed and closed by hand in three places
 - Principle: DRY
@@ -503,12 +509,4 @@ browser.
   `src/ui/talk.ts:120`; `src/ui/wish.tsx:105` exports only tests use: test seams.
 
 ## Bugs noticed in passing
-- `src/ui/shots.tsx:87-98` `fileTo` updates the draft with `updateDraft(key, …)` after awaiting
-  `api.findFile`/`api.uploadFile`; unlike `attachTo` it does not pin `draftsHome()`. After a switch
-  of canvas during the upload, the path and the `uploading - 1` likely go to the same-named draft of
-  the canvas now shown (`uploading` there falls below 0) and the old canvas's draft keeps its count.
-- `src/ui/phone.tsx:431` the phone's notice handler ignores `n.wish` (open the wish dialog) and
-  `n.movedTo` (follow the open card to its new canvas), which `src/ui/App.tsx:1183-1194` handles;
-  possibly meant (the phone has no wish dialog), but a card that moves canvas while open on the
-  phone then shows "gone". A product question rather than a clear bug.
 - `src/ui/phone.tsx:163` a doc comment above nothing (see H15).

@@ -127,7 +127,7 @@ wait. Those that move code in a file a workstream here changes (W11 in `workers.
   - Comments, in one commit: the doc comments of `press` (`canvas.ts`), `tagOf` (`coordinator.ts`)
     and `redeem` (`remote.ts`) above their declarations, and the constant between the imports of
     `pr-watcher.ts`. The bare `git` in `forge.ts` and `site.ts` stays for code cleanup W5 (E2).
-- [ ] **W2:** The interface. The bugs in `src/ui`, in [ui-card](code-cleanup/ui-card.md),
+- [x] **W2:** The interface. The bugs in `src/ui`, in [ui-card](code-cleanup/ui-card.md),
   [ui-panels](code-cleanup/ui-panels.md) and [ui-small-modules](code-cleanup/ui-small-modules.md),
   8 in all. No test renders `Canvas`, `Detail` or the phone view, so each fix is also checked in a
   browser against a scratch Obeya:
