@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceUpdates } from './source-update';
-import { gitClone, gitRepo, removeDir } from './testing';
+import { commit, gitClone, gitRepo, identify, removeDir } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -11,19 +11,15 @@ let dir: string;
 let up: string;
 let clone: string;
 
-const commit = (repo: string, file: string, text: string) => {
-  mkdirSync(join(repo, file, '..'), { recursive: true });
-  writeFileSync(join(repo, file), text);
-  git(repo, 'add', '.');
-  git(repo, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--quiet', '-m', `change ${file}`);
-  return git(repo, 'rev-parse', 'HEAD');
-};
+/** A commit in `repo` that writes `file`, as "change <file>". */
+const change = (repo: string, file: string, text: string) => commit(repo, file, text, `change ${file}`);
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-source-'));
   up = gitRepo(join(dir, 'up'), { 'src/a.ts': 'a\n', 'docs/design.md': 'design\n' });
   clone = join(dir, 'clone');
   gitClone(up, clone);
+  identify(clone);
 });
 
 afterEach(() => removeDir(dir));
@@ -35,8 +31,8 @@ test('a clone up to date with its upstream has nothing to pull', async () => {
 });
 
 test('new commits that change code wait upstream: fetched, counted and named, newest first', async () => {
-  commit(up, 'src/a.ts', 'b\n');
-  commit(up, 'src/b.ts', 'c\n');
+  change(up, 'src/a.ts', 'b\n');
+  change(up, 'src/b.ts', 'c\n');
   const s = new SourceUpdates(clone);
   const changes: unknown[] = [];
   s.onChange(() => changes.push(s.current()));
@@ -53,18 +49,18 @@ test('new commits that change code wait upstream: fetched, counted and named, ne
 });
 
 test('docs alone do not count, as for the self-update', async () => {
-  commit(up, 'docs/design.md', 'more design\n');
-  commit(up, 'README.md', 'readme\n');
+  change(up, 'docs/design.md', 'more design\n');
+  change(up, 'README.md', 'readme\n');
   const s = new SourceUpdates(clone);
   await s.check();
   expect(s.current()).toBeNull();
-  commit(up, 'src/a.ts', 'b\n');
+  change(up, 'src/a.ts', 'b\n');
   await s.check();
   expect(s.current()?.count).toBe(3);
 });
 
 test('a branch that follows nothing, or a detached HEAD, has nothing to pull', async () => {
-  commit(up, 'src/a.ts', 'b\n');
+  change(up, 'src/a.ts', 'b\n');
   git(clone, 'switch', '--quiet', '-c', 'obeya/card');
   const s = new SourceUpdates(clone);
   await s.check();
@@ -75,7 +71,7 @@ test('a branch that follows nothing, or a detached HEAD, has nothing to pull', a
 });
 
 test('a pull fast-forwards the clone to its upstream, and then nothing waits', async () => {
-  const head = commit(up, 'src/a.ts', 'b\n');
+  const head = change(up, 'src/a.ts', 'b\n');
   const s = new SourceUpdates(clone);
   await s.check();
   await s.pull();
@@ -84,17 +80,17 @@ test('a pull fast-forwards the clone to its upstream, and then nothing waits', a
 });
 
 test('the pull fetches first: a commit since the last look comes along', async () => {
-  commit(up, 'src/a.ts', 'b\n');
+  change(up, 'src/a.ts', 'b\n');
   const s = new SourceUpdates(clone);
   await s.check();
-  const head = commit(up, 'src/c.ts', 'c\n');
+  const head = change(up, 'src/c.ts', 'c\n');
   await s.pull();
   expect(git(clone, 'rev-parse', 'HEAD')).toBe(head);
 });
 
 test('commits of the clone its own: no fast-forward, and the pull is refused', async () => {
-  commit(up, 'src/a.ts', 'b\n');
-  const mine = commit(clone, 'src/mine.ts', 'mine\n');
+  change(up, 'src/a.ts', 'b\n');
+  const mine = change(clone, 'src/mine.ts', 'mine\n');
   const s = new SourceUpdates(clone);
   await s.check();
   expect(s.current()).toMatchObject({ count: 1, blocked: { why: 'diverged' } });
@@ -103,7 +99,7 @@ test('commits of the clone its own: no fast-forward, and the pull is refused', a
 });
 
 test('uncommitted changes to a file the pull changes stand in the way; others do not', async () => {
-  commit(up, 'src/a.ts', 'b\n');
+  change(up, 'src/a.ts', 'b\n');
   writeFileSync(join(clone, 'docs/design.md'), 'my notes\n');
   const s = new SourceUpdates(clone);
   await s.check();
@@ -114,7 +110,7 @@ test('uncommitted changes to a file the pull changes stand in the way; others do
 });
 
 test("a file whose timestamps alone changed stands in no one's way, and git writes no index while looking", async () => {
-  commit(up, 'src/a.ts', 'b\n');
+  change(up, 'src/a.ts', 'b\n');
   const later = new Date(Date.now() + 5000);
   utimesSync(join(clone, 'src/a.ts'), later, later);
   const index = readFileSync(join(clone, '.git', 'index'));
@@ -126,7 +122,7 @@ test("a file whose timestamps alone changed stands in no one's way, and git writ
 });
 
 test('what git refuses stays on the update for the bar, until a pull goes', async () => {
-  const head = commit(up, 'src/new.ts', 'theirs\n');
+  const head = change(up, 'src/new.ts', 'theirs\n');
   // an untracked file the pull would overwrite: only git finds it
   writeFileSync(join(clone, 'src/new.ts'), 'mine\n');
   const s = new SourceUpdates(clone);
@@ -143,7 +139,7 @@ test('what git refuses stays on the update for the bar, until a pull goes', asyn
 });
 
 test('an upstream that cannot be reached keeps what was fetched', async () => {
-  commit(up, 'src/a.ts', 'b\n');
+  change(up, 'src/a.ts', 'b\n');
   const s = new SourceUpdates(clone);
   await s.check();
   git(clone, 'remote', 'set-url', 'origin', join(dir, 'gone'));

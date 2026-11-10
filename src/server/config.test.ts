@@ -10,7 +10,7 @@ import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './co
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, FakeRuntime, gitClone, gitRepo, noForge, removeDir, syncGitCalls, until } from './testing';
+import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -433,10 +433,7 @@ describe("Obeya's configuration", () => {
   test(`"Take over into the repository for everyone" of a demo site's tags: saved with the site, committed with it; once the file has them, nothing is committed`, async () => {
     mkdirSync(join(dir, 'home'));
     const site = { title: 'Demos', url: 'https://demos.example.com', deploy: 'deploy {dir}' };
-    mkdirSync(join(web, '.obeya'));
-    writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'main', demo: { language: 'en', site } }, null, 2));
-    git(web, 'add', '.obeya/settings.json');
-    git(web, 'commit', '--quiet', '-m', 'settings');
+    commit(web, '.obeya/settings.json', JSON.stringify({ land: 'main', demo: { language: 'en', site } }, null, 2), 'settings');
     const c = config('file', []);
     // saved with the site, as the dialog has them
     const tags = { Area: ['Billing', 'Reports'], Kind: ['Fix'] };
@@ -489,10 +486,7 @@ describe("Obeya's configuration", () => {
 
   test(`"Take over into the repository for everyone" of what origin's main holds already: no pull request; this machine's values go only where the main branch Obeya reads has them too`, async () => {
     mkdirSync(join(dir, 'home'));
-    mkdirSync(join(web, '.obeya'));
-    writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'pr', checks: ['bun test'] }));
-    git(web, 'add', '.obeya/settings.json');
-    git(web, 'commit', '--quiet', '-m', 'settings');
+    commit(web, '.obeya/settings.json', JSON.stringify({ land: 'pr', checks: ['bun test'] }), 'settings');
     const origin = join(dir, 'origin.git');
     gitClone(web, origin, { bare: true });
     git(web, 'remote', 'add', 'origin', origin);
@@ -819,8 +813,8 @@ describe('a change the Coordinator makes', () => {
     const canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime, forge: noForge, config: config('file', saved, ['web', 'dokumente']), commandDelayMs: 0 });
     try {
       const heard = canvas.commander.hear('Nimm api auf die Leinwand web.', {});
-      await until(() => runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'configure')));
-      const k = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'configure'))!;
+      await until(() => runtime.withTool('configure').length > 0);
+      const k = runtime.withTool('configure')[0]!;
       // the configuration as the Coordinator reads it, with api added, through the tool's schema as its SDK hands the arguments on
       const { canvases } = JSON.parse(await k.call('config', {})) as ConfigView;
       const tool = k.spec.tools.find((t) => t.name === 'configure')!;

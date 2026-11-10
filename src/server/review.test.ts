@@ -14,7 +14,7 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
+import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -72,9 +72,7 @@ let prHead: string;
 /** A commit on the contributor's side, published as the PR's head in `origin`. */
 function push(file: string) {
   git(origin, 'checkout', '--quiet', '-B', 'contrib', prHead || 'main');
-  writeFileSync(join(origin, file), `${file}\n`);
-  git(origin, 'add', '.');
-  git(origin, 'commit', '--quiet', '-m', file);
+  commit(origin, file);
   prHead = git(origin, 'rev-parse', 'HEAD').trim();
   git(origin, 'update-ref', 'refs/pull/5/head', prHead);
   git(origin, 'checkout', '--quiet', 'main');
@@ -121,10 +119,7 @@ async function reviewCard(canModify = true) {
 function commitOwn(id: string, file: string) {
   const ws = board.row(id).workspace!;
   identify(ws);
-  writeFileSync(join(ws, file), `${file}\n`);
-  git(ws, 'add', '.');
-  git(ws, 'commit', '--quiet', '-m', file);
-  return git(ws, 'rev-parse', 'HEAD').trim();
+  return commit(ws, file);
 }
 
 /** The worker records its findings and hands over, and its turn ends. */
@@ -149,9 +144,7 @@ const contribution = (id: string) => JSON.parse(board.row(id).contribution!) as 
 function landedLocally(file: string, subject: string) {
   identify(main);
   const base = git(main, 'rev-parse', 'HEAD').trim();
-  writeFileSync(join(main, file), `${subject}\n`);
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', subject);
+  commit(main, file, `${subject}\n`, subject);
   const card = board.create({ title: 'Poll more often', x: 400, y: 0 });
   board.work(card.id, { state: 'live', branch: 'obeya/poll-more-often', session_id: 'session-x', shipped: JSON.stringify({ commit: git(main, 'rev-parse', 'HEAD').trim(), base }) });
   return card.id;
@@ -190,9 +183,7 @@ describe('a review card', () => {
 
   test('its session reads none of the PR’s Claude Code settings, and the default branch’s CLAUDE.md', async () => {
     git(main, 'checkout', '-q', 'main');
-    writeFileSync(join(main, 'CLAUDE.md'), 'Reviews bring in a second reviewer.\n');
-    git(main, 'add', '.');
-    git(main, 'commit', '--quiet', '-m', 'notes');
+    commit(main, 'CLAUDE.md', 'Reviews bring in a second reviewer.\n', 'notes');
     await reviewCard();
     expect(runtime.last.spec.untrusted).toBe(true);
     expect(runtime.last.spec.system).toContain('Reviews bring in a second reviewer.');
@@ -201,9 +192,7 @@ describe('a review card', () => {
   test('resuming after a restart, its session gets the default branch’s CLAUDE.md without the server waiting for git, read again once main moved', async () => {
     git(main, 'checkout', '-q', 'main');
     const notes = (text: string) => {
-      writeFileSync(join(main, 'CLAUDE.md'), `${text}\n`);
-      git(main, 'add', '.');
-      git(main, 'commit', '--quiet', '-m', text);
+      commit(main, 'CLAUDE.md', `${text}\n`, text);
     };
     notes('Reviews bring in a second reviewer.');
     const id = await reviewCard();
@@ -961,9 +950,7 @@ describe('a review card', () => {
     await handOver();
     // main moved since the PR branched off, in the same file
     identify(origin);
-    writeFileSync(join(origin, 'poll.ts'), 'poll every minute\n');
-    git(origin, 'add', '.');
-    git(origin, 'commit', '--quiet', '-m', 'Poll every minute');
+    commit(origin, 'poll.ts', 'poll every minute\n', 'Poll every minute');
     fake.status.mergeable = 'CONFLICTING';
     expect(await workers.approve(id, { findings: { 2: 'drop' } })).toEqual({ conflict: 'agent' });
     expect(fake.said.merges).toEqual([]);

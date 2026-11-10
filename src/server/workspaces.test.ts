@@ -7,7 +7,7 @@ import { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
-import { alive, gitClone, gitRepo, identify, leftBehind, PATIENCE, removeDir, until } from './testing';
+import { alive, commit, gitClone, gitRepo, identify, leftBehind, PATIENCE, removeDir, until } from './testing';
 import { addTrailer, defaultBranch, git, hasCommit, isAncestor, originFetch, unlanded, Workspaces } from './workspaces';
 
 let dir: string;
@@ -29,6 +29,9 @@ const rejection = (p: Promise<unknown>) =>
     },
     (e: unknown) => e,
   );
+
+/** A commit in `repo` that writes `text` into `file`, named after both ("notes.md: mine"). */
+const edit = (repo: string, file: string, text: string) => commit(repo, file, text, `${file}: ${text.trim()}`);
 
 describe('the main branch', () => {
   test("is origin's HEAD where the checkout knows one, whatever branch it is on", () => {
@@ -183,9 +186,7 @@ describe('a clone made ready for a card', () => {
     // as cloned: nothing to fetch
     expect(await start('a')).toBe(false);
     // main moved on
-    writeFileSync(join(repo, 'b.txt'), 'b');
-    git(repo, 'add', '.');
-    git(repo, 'commit', '--quiet', '-m', 'b');
+    commit(repo, 'b.txt', 'b', 'b');
     expect(await start('b')).toBe(true);
     expect(git(clone, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'main'));
     // a tag on a commit the clone has, and a branch of its own
@@ -507,21 +508,21 @@ describe("a card's fork point", () => {
     await ready;
     expect(await spaces.forkPoint(card, SETTINGS)).toBeNull();
     // at the same second, so git ranks the two places they parted at by the merges' parents alone
-    const commit = (tree: string, parents: string[], message: string) =>
+    const commitTree = (tree: string, parents: string[], message: string) =>
       Bun.spawnSync(['git', '-C', repo, 'commit-tree', tree, ...parents.flatMap((p) => ['-p', p]), '-m', message], {
         env: { ...process.env, GIT_AUTHOR_DATE: '1700000000 +0000', GIT_COMMITTER_DATE: '1700000000 +0000' },
       }).stdout.toString().trim();
     const root = git(repo, 'rev-parse', 'HEAD');
     writeFileSync(join(ws, SETTINGS), '{"land":"pr"}\n');
     git(ws, 'commit', '--quiet', '-am', 'land by pull request');
-    const card1 = commit(git(ws, 'rev-parse', 'HEAD^{tree}'), [root], 'land by pull request');
+    const card1 = commitTree(git(ws, 'rev-parse', 'HEAD^{tree}'), [root], 'land by pull request');
     writeFileSync(join(repo, 'README.md'), 'hello again\n');
     git(repo, 'commit', '--quiet', '-am', 'readme');
-    const main1 = commit(git(repo, 'rev-parse', 'HEAD^{tree}'), [root], 'readme');
+    const main1 = commitTree(git(repo, 'rev-parse', 'HEAD^{tree}'), [root], 'readme');
     // each merges the other: the branch from main's side, main keeping its own settings
     const both = git(repo, 'merge-tree', '--write-tree', card1, main1);
-    git(ws, 'reset', '--quiet', '--hard', commit(both, [main1, card1], 'merge'));
-    git(repo, 'reset', '--quiet', '--hard', commit(git(repo, 'rev-parse', `${main1}^{tree}`), [card1, main1], 'merge'));
+    git(ws, 'reset', '--quiet', '--hard', commitTree(both, [main1, card1], 'merge'));
+    git(repo, 'reset', '--quiet', '--hard', commitTree(git(repo, 'rev-parse', `${main1}^{tree}`), [card1, main1], 'merge'));
     expect(git(ws, 'merge-base', '--all', 'HEAD', 'main').split('\n').sort()).toEqual([card1, main1].sort());
     // the settings differ at one of the two and not at the other, the README the other way round: a
     // check against another of them than the one named answers wrongly for one of the files
@@ -553,15 +554,10 @@ describe('the pull after a merge', () => {
     if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
     else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
 
   test('rebases a main with commits of its own where git sets no way of pulling', async () => {
-    const own = commit(checkout, 'notes.md', 'mine\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    const own = edit(checkout, 'notes.md', 'mine\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD') });
     // the owner's commit on top of the merge, no merge commit
@@ -572,8 +568,8 @@ describe('the pull after a merge', () => {
 
   test("keeps the repository's own way of pulling", async () => {
     git(checkout, 'config', 'pull.rebase', 'false');
-    const own = commit(checkout, 'notes.md', 'mine\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    const own = edit(checkout, 'notes.md', 'mine\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     expect(await spaces.pullMain()).not.toHaveProperty('problem');
     expect(git(checkout, 'rev-parse', 'HEAD^1')).toBe(own);
     expect(git(checkout, 'rev-parse', 'HEAD^2')).toBe(merged);
@@ -581,16 +577,16 @@ describe('the pull after a merge', () => {
 
   test("fast-forwards a main without commits of its own, the owner's uncommitted changes kept", async () => {
     writeFileSync(join(checkout, 'notes.md'), 'draft\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     expect(await spaces.pullMain()).not.toHaveProperty('problem');
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(merged);
     expect(readFileSync(join(checkout, 'notes.md'), 'utf8')).toBe('draft\n');
   });
 
   test('a pull that would stop on a conflict is not made: it names the unpushed commit it would stop at', async () => {
-    commit(checkout, 'notes.md', 'mine\n');
-    const own = commit(checkout, 'README.md', 'mine\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     expect(r).toEqual({ stopped: { commit: own, subject: 'README.md: mine', files: ['README.md'], unpushed: 2, main: own, upstream: merged } });
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(own);
@@ -599,10 +595,10 @@ describe('the pull after a merge', () => {
   });
 
   test('an unpushed commit the remote has cherry-picked is skipped, as the rebase skips it', async () => {
-    const own = commit(checkout, 'README.md', 'mine\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
     git(origin, 'fetch', '--quiet', checkout, own);
     git(origin, 'cherry-pick', own);
-    commit(origin, 'README.md', 'then theirs\n');
+    edit(origin, 'README.md', 'then theirs\n');
     const r = await spaces.pullMain();
     expect(r).not.toHaveProperty('stopped');
     expect(r).not.toHaveProperty('problem');
@@ -611,9 +607,9 @@ describe('the pull after a merge', () => {
 
   test('where the owner pulls by a merge, the conflict is the merge’s as a whole', async () => {
     git(checkout, 'config', 'pull.rebase', 'false');
-    const own = commit(checkout, 'README.md', 'mine\n');
-    commit(checkout, 'notes.md', 'mine\n');
-    commit(origin, 'README.md', 'merged\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     expect(r).toMatchObject({ stopped: { commit: own, files: ['README.md'], unpushed: 2 } });
   });
@@ -640,15 +636,10 @@ describe('pushing main', () => {
     if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
     else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
 
   test('puts the unpushed commits on the remote, after what the remote has of its own', async () => {
-    commit(checkout, 'notes.md', 'mine\n');
-    const theirs = commit(origin, 'README.md', 'theirs\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    const theirs = edit(origin, 'README.md', 'theirs\n');
     const r = await spaces.pushMain();
     expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD') });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(git(checkout, 'rev-parse', 'HEAD'));
@@ -656,8 +647,8 @@ describe('pushing main', () => {
   });
 
   test('pushes nothing where what the remote has conflicts with them', async () => {
-    const own = commit(checkout, 'README.md', 'mine\n');
-    const theirs = commit(origin, 'README.md', 'theirs\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
+    const theirs = edit(origin, 'README.md', 'theirs\n');
     expect(await spaces.pushMain()).toEqual({ problem: expect.stringContaining('README.md') });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(theirs);
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(own);
@@ -691,15 +682,10 @@ describe('before a merge, the clash with unpushed commits', () => {
     if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
     else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
 
   test('names the unpushed commit the pull would stop at, and touches nothing', async () => {
-    commit(checkout, 'notes.md', 'mine\n');
-    const own = commit(checkout, 'README.md', 'mine\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
     writeFileSync(join(checkout, 'notes.md'), 'draft\n');
     expect(await spaces.clashBeforeMerge('card', pr)).toEqual({ commit: own, subject: 'README.md: mine', files: ['README.md'], unpushed: 2 });
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(own);
@@ -708,13 +694,13 @@ describe('before a merge, the clash with unpushed commits', () => {
 
   test('none without unpushed commits, nor where they touch other lines', async () => {
     expect(await spaces.clashBeforeMerge('card', pr)).toBeNull();
-    commit(checkout, 'notes.md', 'mine\n');
+    edit(checkout, 'notes.md', 'mine\n');
     expect(await spaces.clashBeforeMerge('card', pr)).toBeNull();
   });
 
   test('none where the PR conflicts with the remote’s main itself: the forge shows that', async () => {
-    commit(origin, 'README.md', 'moved\n');
-    commit(checkout, 'README.md', 'mine\n');
+    edit(origin, 'README.md', 'moved\n');
+    edit(checkout, 'README.md', 'mine\n');
     expect(await spaces.clashBeforeMerge('card', pr)).toBeNull();
   });
 });
@@ -742,15 +728,10 @@ describe('a resolved pull lands', () => {
     if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
     else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
   /** The local main stopped at the merge; the worker rebases it in its workspace, the conflict resolved. */
   async function resolved() {
-    commit(checkout, 'README.md', 'mine\n');
-    commit(origin, 'README.md', 'merged\n');
+    edit(checkout, 'README.md', 'mine\n');
+    edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     if (!('stopped' in r)) throw new Error('the pull did not stop');
     const { main, upstream } = r.stopped;
@@ -776,7 +757,7 @@ describe('a resolved pull lands', () => {
 
   test('what landed on the local main meanwhile goes on top', async () => {
     const at = await resolved();
-    const later = commit(checkout, 'notes.md', 'later\n');
+    const later = edit(checkout, 'notes.md', 'later\n');
     const r = await spaces.landResolution(ws, at);
     expect(r).toMatchObject({ from: later });
     expect(git(checkout, 'log', '-1', '--format=%s')).toBe('notes.md: later');
@@ -857,9 +838,7 @@ describe('clones the configuration no longer names', () => {
     writeFileSync(join(stashed, 'README.md'), 'stashed\n');
     git(stashed, 'stash', '--quiet');
     git(unpushed, 'checkout', '--quiet', '-b', 'obeya/card-abc123');
-    writeFileSync(join(unpushed, 'work.txt'), 'work\n');
-    git(unpushed, 'add', '.');
-    git(unpushed, 'commit', '--quiet', '-m', 'not pushed');
+    commit(unpushed, 'work.txt', 'work\n', 'not pushed');
     let changes = 0;
     const watched = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: STOP, changed: () => changes++ });
     watched.keepOnly(null, []);
@@ -884,11 +863,6 @@ describe('clones the configuration no longer names', () => {
   test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main counts as landed', async () => {
     const { spaces, paths } = await make(4);
     const [tagged, deleted, squashed, odd] = paths as [string, string, string, string];
-    const commit = (clone: string, file: string) => {
-      writeFileSync(join(clone, file), `${file}\n`);
-      git(clone, 'add', '.');
-      git(clone, 'commit', '--quiet', '-m', file);
-    };
     git(tagged, 'checkout', '--quiet', '-b', 'try');
     commit(tagged, 'try.txt');
     git(tagged, 'tag', 'tried');

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BadRequest } from './board';
-import { identify } from './testing';
+import { commit, identify } from './testing';
 import { board, eachTest, main, manual, runtime, spaces, state, workers } from './workers-fixture';
 import { git } from './workspaces';
 
@@ -19,9 +19,7 @@ describe("taking a card's workspace", () => {
     const c = manual();
     await workers.start(c.id);
     const { workspace, branch } = board.row(c.id);
-    writeFileSync(join(workspace!, 'work.ts'), 'x');
-    git(workspace!, 'add', '.');
-    git(workspace!, 'commit', '--quiet', '-m', 'Work');
+    commit(workspace!, 'work.ts', 'x', 'Work');
     writeFileSync(join(workspace!, 'README.md'), 'changed\n');
     writeFileSync(join(workspace!, 'new.ts'), 'new');
 
@@ -44,9 +42,7 @@ describe("taking a card's workspace", () => {
     const c = manual();
     await workers.start(c.id);
     const { workspace: first, branch } = board.row(c.id);
-    writeFileSync(join(first!, 'work.ts'), 'x');
-    git(first!, 'add', '.');
-    git(first!, 'commit', '--quiet', '-m', 'Work');
+    commit(first!, 'work.ts', 'x', 'Work');
     writeFileSync(join(first!, 'README.md'), 'changed\n');
     writeFileSync(join(first!, 'new.ts'), 'new');
     const e = manual();

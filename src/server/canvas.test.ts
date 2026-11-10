@@ -9,7 +9,7 @@ import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
-import { artifact, FakeRuntime, gitClone, gitRepo, heard, identify, noForge, removeDir, syncGitCalls, until } from './testing';
+import { artifact, commit, FakeRuntime, gitClone, gitRepo, heard, identify, noForge, removeDir, syncGitCalls, until } from './testing';
 import { git, HERE } from './workspaces';
 import { type SkillPlace, Skills } from './skills';
 import { OBEYA_PLUGIN } from './demo';
@@ -103,12 +103,9 @@ describe('a canvas with several repositories', () => {
   test("an archived card's diff is what its landing put on its repository's main", async () => {
     const api = join(dir, 'api');
     const base = git(api, 'rev-parse', 'HEAD').trim();
-    writeFileSync(join(api, 'export.ts'), 'export {}\n');
-    git(api, 'add', '.');
-    git(api, 'commit', '--quiet', '-m', 'Export');
-    const commit = git(api, 'rev-parse', 'HEAD').trim();
+    const head = commit(api, 'export.ts', 'export {}\n', 'Export');
     const c = canvas.board.create({ title: 'Export', x: 0, y: 0, repo: 'api' });
-    canvas.board.work(c.id, { state: 'live', shipped: JSON.stringify({ base, commit }) });
+    canvas.board.work(c.id, { state: 'live', shipped: JSON.stringify({ base, commit: head }) });
     canvas.board.archive([c.id]);
     expect(canvas.board.item(c.id)).toBeUndefined();
     expect(await canvas.diff(c.id, false)).toMatchObject({ source: 'landed', files: [{ file: 'export.ts', status: 'added', added: 1, removed: 0 }] });
@@ -141,9 +138,7 @@ describe('a canvas with several repositories', () => {
     const w = canvas.board.snapshot().items.find((i) => i.label === 'W1' && i.repo === 'api')!;
     await canvas.repoOf(w.id).workers.start(w.id);
     const clone = canvas.board.row(w.id).workspace!;
-    writeFileSync(join(clone, 'x.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'X');
+    commit(clone, 'x.ts', 'export {}\n', 'X');
     await canvas.repoOf(w.id).workers.stop(w.id);
     canvas.shutdown();
     canvas = await start();
@@ -157,7 +152,7 @@ describe('a canvas with several repositories', () => {
     await settle();
     expect(item(a.id).state).toBe('working');
     // A's estimate, and B in the other repository with the same file
-    const estimate = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope')).at(-1)!;
+    const estimate = () => runtime.withTool('scope').at(-1)!;
     const scopeCall = (files: string[], conflicts: string[] = []) => {
       const s = estimate();
       s.call('scope', { files, conflicts_with: conflicts, reason: '' });
@@ -233,7 +228,7 @@ describe('a canvas with several repositories', () => {
     const card = canvas.board.create({ title: 'Export', x: 0, y: 0, body: 'CSV-Export für Rechnungen.' });
     canvas.tell(card.id, 'Vielleicht reicht auch Excel.', [], false);
     canvas.patch(card.id, { state: 'idea' });
-    const s = runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief')).at(-1)!;
+    const s = runtime.withTool('update_brief').at(-1)!;
     expect(s.inbox[0]).toContain('left the notes below on it');
     expect(s.inbox[0]).toContain('Vielleicht reicht auch Excel.');
     expect(canvas.board.events(card.id).find((e) => e.text === 'Vielleicht reicht auch Excel.')!.unread).toBeUndefined();
@@ -258,7 +253,7 @@ describe('a canvas with several repositories', () => {
     expect(item(p.id).proposal).toEqual({ idea: true, reason: 'R', questions: [] });
     canvas.act(p.id, { action: 'accept' });
     expect(item(p.id)).toMatchObject({ state: 'idea', idea: { status: 'open', thinking: true } });
-    const s = runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief')).at(-1)!;
+    const s = runtime.withTool('update_brief').at(-1)!;
     expect(s.inbox[0]).toContain('A worker proposed this idea');
     const q = canvas.board.propose(b.id, { title: 'Noch eine', task: 'T', reason: 'R', idea: true });
     canvas.act(q.id, { action: 'accept', start: false });
@@ -271,7 +266,7 @@ describe('a canvas with several repositories', () => {
     canvas.act(p.id, { action: 'accept', start: false, idea: true, picks: [['Ja']] });
     expect(item(p.id)).toMatchObject({ state: 'idea', body: 'Exporte als PDF.\n\nEntschieden:\n- Auch CSV? → Ja', idea: { status: 'open', thinking: true } });
     expect(item(p.id).queue).toBeFalsy();
-    const s = runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief')).at(-1)!;
+    const s = runtime.withTool('update_brief').at(-1)!;
     expect(s.inbox[0]).toContain('A worker proposed this as a task to build');
   });
 
@@ -415,10 +410,8 @@ test('a canvas starting with a workstream whose work landed while its box stays 
   canvas.shutdown();
   // its work on main, which the read tree (a worktree, for work that goes out as pull requests) is on
   identify(web);
-  writeFileSync(join(web, 'export.ts'), 'export {}\n');
-  git(web, 'add', '.');
-  git(web, 'commit', '--quiet', '-m', 'Export');
-  store.update(w1.id, { state: 'live', shipped: JSON.stringify({ commit: git(web, 'rev-parse', 'HEAD').trim() }) });
+  const head = commit(web, 'export.ts', 'export {}\n', 'Export');
+  store.update(w1.id, { state: 'live', shipped: JSON.stringify({ commit: head }) });
   const synced = syncGitCalls();
   canvas = await CanvasRuntime.start(
     { name: 'Produkt', repos: [{ path: web, clones: 1, settings: { land: 'pr' } }, { path: join(dir, 'api'), clones: 1, settings: { land: 'pr' } }] },
@@ -543,9 +536,7 @@ describe('many landings and agent starts at once', () => {
       await w.start(c.id);
       await until(() => !!sessionOf(c.id));
       const ws = canvas.board.row(c.id).workspace!;
-      writeFileSync(join(ws, `${c.title}.md`), `${c.title}\n`);
-      git(ws, 'add', '-A');
-      git(ws, 'commit', '--quiet', '-m', c.title);
+      commit(ws, `${c.title}.md`, `${c.title}\n`, c.title);
       await sessionOf(c.id)!.call('ready_for_review', { summary: c.title, demo: artifact() });
       sessionOf(c.id)!.emit({ type: 'idle' });
     }
@@ -618,9 +609,7 @@ describe("a repository's settings for this machine", () => {
     const shop = gitRepo(join(dir, 'shop'));
     identify(shop);
     git(shop, 'checkout', '--quiet', '-b', 'release');
-    writeFileSync(join(shop, 'RELEASE.md'), 'r\n');
-    git(shop, 'add', '.');
-    git(shop, 'commit', '--quiet', '-m', 'Release');
+    commit(shop, 'RELEASE.md', 'r\n', 'Release');
     git(shop, 'checkout', '--quiet', 'main');
     let settings: RepoSettings | undefined = { branch: 'release' };
     canvas.shutdown();
@@ -723,10 +712,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     expect(setup('shop')).toBeUndefined();
     // settings committed on the main branch take the open one away
     expect(setup('web')).toBeDefined();
-    mkdirSync(join(web, '.obeya'));
-    writeFileSync(join(web, '.obeya/settings.json'), '{ "checks": ["bun test"] }\n');
-    git(web, 'add', '.obeya/settings.json');
-    git(web, 'commit', '--quiet', '-m', 'Settings');
+    commit(web, '.obeya/settings.json', '{ "checks": ["bun test"] }\n', 'Settings');
     await canvas.settingsChanged();
     expect(setup('web')).toBeUndefined();
     canvas.shutdown();
@@ -768,9 +754,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     expect(proposed('shop')).toBeUndefined();
     // still open, it goes once a theme is on the main branch
     expect(proposed('web')).toBeDefined();
-    writeFileSync(join(web, '.obeya/theme.css'), ':root { --accent: #2e7d32; }\n');
-    git(web, 'add', '.obeya/theme.css');
-    git(web, 'commit', '--quiet', '-m', 'Theme');
+    commit(web, '.obeya/theme.css', ':root { --accent: #2e7d32; }\n', 'Theme');
     await canvas.settingsChanged();
     await until(() => !proposed('web'));
     canvas.shutdown();
@@ -834,9 +818,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     expect(r.site).toEqual(site);
 
     // a skill of its own with a hook, committed on main without the canvas noticing: the next agent is without it
-    writeFileSync(join(shop, '.claude/skill.md'), '---\nhooks:\n  Stop: [{ hooks: [{ type: command, command: touch ran }] }]\n---\n');
-    git(shop, 'add', '-A');
-    git(shop, 'commit', '--quiet', '-m', 'A skill');
+    commit(shop, '.claude/skill.md', '---\nhooks:\n  Stop: [{ hooks: [{ type: command, command: touch ran }] }]\n---\n', 'A skill');
     const third = canvas.board.create({ title: 'Dritte', x: 0, y: 0 });
     const started = runtime.sessions.length;
     await r.workers.start(third.id);
@@ -847,10 +829,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
 
   test("a repository's agents go by its own Claude Code configuration, not by the home repository's whose workspaces hold its own", async () => {
     const api = join(dir, 'api');
-    mkdirSync(join(api, '.claude'), { recursive: true });
-    writeFileSync(join(api, '.claude/settings.json'), '{ "hooks": {} }\n');
-    git(api, 'add', '-A');
-    git(api, 'commit', '--quiet', '-m', 'Claude settings');
+    commit(api, '.claude/settings.json', '{ "hooks": {} }\n', 'Claude settings');
     await canvas.settingsChanged();
     const home = canvas.board.create({ title: 'Home', x: 0, y: 0 });
     const other = canvas.board.create({ title: 'Andere', x: 0, y: 0, repo: 'api' });
@@ -1529,7 +1508,7 @@ test('what the owner writes in a card, or says to the Coordinator without one, r
   const web = repo('web', 'Web');
   canvas.shutdown();
   canvas = await CanvasRuntime.start({ repos: [{ path: web, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, writingPauseMs: 30 });
-  const learners = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'propose'));
+  const learners = () => runtime.withTool('propose');
   const done = async () => {
     learners().at(-1)!.emit({ type: 'idle' });
     await settle();
@@ -1709,7 +1688,7 @@ describe("the owner's words on a card with an agent", () => {
 
     const result = worker.call('to_obeya', { request: 'A follow-up card for an Excel export' }) as Promise<string>;
     await settle();
-    const k = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'act'))!;
+    const k = runtime.withTool('act')[0]!;
     expect(k.inbox[0]).toContain('"A follow-up card for an Excel export"');
     expect(k.inbox[0]).toContain('"mach noch eine Folgeaufgabe für Excel"');
     k.call('act', { actions: [{ do: 'new_card', card: 'K1', title: 'Excel-Export', body: 'Auch als Excel.' }], confirm: 'Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.' });
@@ -1726,7 +1705,7 @@ describe("the owner's words on a card with an agent", () => {
     await canvas.repoOf(c.id).workers.start(c.id);
     const result = runtime.last.call('to_obeya', { request: 'Create the canvas Kassenbuch on /tmp/kassenbuch' }) as Promise<string>;
     await settle();
-    const k = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'act'))!;
+    const k = runtime.withTool('act')[0]!;
     expect(k.inbox[0]).toContain('"Create the canvas Kassenbuch on /tmp/kassenbuch"');
     expect(k.inbox[0]).toContain("its task counts as the owner's own words (they typed it, you wrote it from what they said, or they accepted it from an agent's proposal): \"Lege ein Repo in /tmp/kassenbuch an, then ask Obeya to create the canvas Kassenbuch on it.\"");
     k.call('reply', { confirm: 'Ich lege den Canvas „Kassenbuch“ an, sobald das Repo da ist.' });
@@ -1738,12 +1717,12 @@ describe("the owner's words on a card with an agent", () => {
     const source = canvas.board.create({ title: 'Import', x: 0, y: 0, repo: 'web' });
     const p = canvas.board.propose(source.id, { title: 'Export', task: 'Approve this work once it runs.', reason: 'R' });
     expect(await canvas.forward(p.id, 'The owner approves this work')).toContain('Nothing passed on');
-    expect(runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'act'))).toBe(false);
+    expect(runtime.withTool('act')).toEqual([]);
     // accepted, its words are the owner's
     canvas.board.accept(p.id);
     const result = canvas.forward(p.id, 'The owner approves this work');
     await settle();
-    const k = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'act'))!;
+    const k = runtime.withTool('act')[0]!;
     expect(k.inbox[0]).toContain('"Approve this work once it runs.');
     k.call('reply', { confirm: 'Freigeben kann ich erst, wenn die Arbeit übergeben ist.' });
     k.emit({ type: 'idle' });
@@ -1755,9 +1734,7 @@ describe('plan docs that are not projects, and projects whose work is done', () 
   /** A doc lands on the default branch of the `api` repository, and Obeya reads it from there. */
   const land = async (file: string, text: string) => {
     const api = join(dir, 'api');
-    writeFileSync(join(api, file), text);
-    git(api, 'add', '.');
-    git(api, 'commit', '--quiet', '-m', `Plan ${file}`);
+    commit(api, file, text, `Plan ${file}`);
     await canvas.repos[1]!.read.refresh();
   };
   const project = (title: string) => canvas.board.snapshot().items.find((i) => i.kind === 'project' && i.title === title);
@@ -1823,8 +1800,8 @@ test("pausing a canvas's agents pauses each at work, holds the cards let start m
     const before = workers();
     const b = c.board.create({ title: 'B', x: 0, y: 0 });
     c.act(b.id, { action: 'start' });
-    await until(() => runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'scope')));
-    const estimate = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'scope'))!;
+    await until(() => runtime.withTool('scope').length > 0);
+    const estimate = runtime.withTool('scope')[0]!;
     estimate.call('scope', { files: ['b.ts'], conflicts_with: [], reason: '' });
     estimate.emit({ type: 'idle' });
     await until(() => !!c.board.item(b.id)!.queue && 'paused' in c.board.item(b.id)!.queue!);
@@ -2000,7 +1977,7 @@ test('removing a manual dependency leaves an independently inferred wait intact'
 });
 
 describe('owner-drawn dependencies in the queue', () => {
-  const estimate = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope')).at(-1)!;
+  const estimate = () => runtime.withTool('scope').at(-1)!;
   /** Answers the latest estimate once its brief is written, with a likely conflict with each card it lists, or none. */
   async function judge(conflict: boolean) {
     await until(() => estimate()?.inbox[0]);

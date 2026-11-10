@@ -16,7 +16,7 @@ import type { NarrationHost } from './narration';
 import { KEY_HEADER, keyOf } from './owner';
 import { Stalls } from './stalls';
 import { serve, serveNarration } from './server';
-import { artifact, asOwner, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, until } from './testing';
+import { artifact, asOwner, commit, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, until } from './testing';
 import { git, RECHECK_MS } from './workspaces';
 import type { Transcript } from './voice';
 
@@ -532,7 +532,7 @@ describe('plan docs', () => {
 });
 
 describe('voice', () => {
-  const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1)!;
+  const interpretation = () => runtime.withTool('act').at(-1)!;
   /** The Coordinator's session once the command has reached it. */
   const briefed = async () => {
     await until(() => interpretation()?.inbox.length);
@@ -628,7 +628,7 @@ describe('voice', () => {
       const body = (await (await fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { confirm: string; token?: string; audio?: string };
       expect(body.confirm).toBe(confirm);
       expect(body.token).toBeUndefined();
-      expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+      expect(runtime.withTool('act')).toEqual([]);
     });
   }
 
@@ -664,7 +664,7 @@ describe('voice', () => {
     expect(warmed).toBe(1);
     expect(warmedAhead).toBe(1);
     const k = interpretation();
-    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toHaveLength(1);
+    expect(runtime.withTool('act')).toHaveLength(1);
     expect(k.inbox).toEqual([]);
     const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'starte A' }) });
     expect(await briefed()).toBe(k);
@@ -723,7 +723,7 @@ describe('voice', () => {
     const idea = board.create({ title: 'Export', x: 0, y: 0, idea: true });
     await post(api(`/command?card=${idea.id}`), JSON.stringify({ text: 'Was kostet das?' }));
     expect(told.at(-1)).toEqual([idea.id, 'Was kostet das?', [], false]);
-    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+    expect(runtime.withTool('act')).toEqual([]);
     const planned = card();
     const res = post(api(`/command?card=${planned.id}`), JSON.stringify({ text: 'starte das' }));
     (await briefed()).call('reply', { confirm: 'Ok.' });
@@ -826,7 +826,7 @@ describe('screenshots', () => {
 
     const c = working();
     expect((await act(c.id, { action: 'message', text: 'Der Knopf hier ist zu klein', images: [id] })).status).toBe(204);
-    const s = runtime.sessions.find((x) => x.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    const s = runtime.withTool('ready_for_review')[0]!;
     expect(s.inbox[0]).toContain('Der Knopf hier ist zu klein');
     expect(s.inbox[0]).toContain('attached a screenshot');
     expect(s.images[0]).toEqual([canvas.images.path(id)!]);
@@ -850,7 +850,7 @@ describe('screenshots', () => {
     const c = card();
     board.work(c.id, { state: 'working', workspace: dir, session_id: 'sess-1' });
     const res = post(api('/command'), JSON.stringify({ text: 'Neue Karte: diese Seite bricht um, und sag A, dass es so aussieht', images: [id] }));
-    const coordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    const coordinator = () => runtime.withTool('act').at(-1);
     await until(() => coordinator()?.inbox.length);
     const k = coordinator()!;
     expect(k.images[0]).toEqual([canvas.images.path(id)!]);
@@ -880,7 +880,7 @@ describe('screenshots', () => {
     expect(await codeOf(voice('?image=0000.png'))).toBe('invalid');
     expect(heardAudio).toEqual([]);
     const res = voice(`?image=${id}`);
-    const coordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    const coordinator = () => runtime.withTool('act').at(-1);
     await until(() => coordinator()?.inbox.length);
     const k = coordinator()!;
     expect(k.images[0]).toEqual([canvas.images.path(id)!]);
@@ -1392,9 +1392,7 @@ describe('landing approved work', () => {
       const session = runtime.last;
       const clone = pushed.board.row(c.id).workspace!;
       identify(clone);
-      writeFileSync(join(clone, `${title}.ts`), title);
-      git(clone, 'add', '.');
-      git(clone, 'commit', '--quiet', '-m', title);
+      commit(clone, `${title}.ts`, title, title);
       await session.call('ready_for_review', { summary: 'S', demo: artifact() });
       session.emit({ type: 'idle' });
       return c;
@@ -1517,9 +1515,7 @@ describe('the read tree and the free clones', () => {
     };
 
     // main moves: the read tree follows in the background, the plan docs read before standing meanwhile
-    writeFileSync(join(origin, 'docs/plan/import.md'), doc('Import'));
-    git(origin, 'add', '.');
-    git(origin, 'commit', '--quiet', '-m', 'import');
+    commit(origin, 'docs/plan/import.md', doc('Import'), 'import');
     let moved = false;
     const refreshed = shop.repos[0]!.read.refresh().then(() => (moved = true));
     await until(() => existsSync(join(marks, 'checkout')));
@@ -1633,9 +1629,7 @@ describe('freeing and discarding workspaces', () => {
     await tools.repos[0]!.workers.start(card.id);
     await tools.repos[0]!.workers.prepared();
     const tree = tools.board.row(card.id).workspace!;
-    writeFileSync(join(tree, 'lint.ts'), 'lint\n');
-    git(tree, 'add', '.');
-    git(tree, 'commit', '--quiet', '-m', 'Lint');
+    commit(tree, 'lint.ts', 'lint\n', 'Lint');
     await tools.repos[0]!.workers.stop(card.id);
     hold('status');
     const deleting = Date.now();

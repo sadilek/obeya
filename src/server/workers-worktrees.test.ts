@@ -1,26 +1,17 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { BadRequest, Board } from './board';
-import { artifact, until } from './testing';
-import { Workers } from './workers';
-import { board, dir, doc, eachTest, flush, main, manual, runtime, setDocs, setup, setWorkers, spaces, state, store, tracked, workers, ws } from './workers-fixture';
+import { artifact, commit, until } from './testing';
+import { board, dir, doc, eachTest, flush, main, manual, newWorkers, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
 import { GIT, git, gitOrNull } from './workspaces';
 
-eachTest();
+eachTest({ ...generic, land: 'main', workspaces: 'worktrees' });
 
 describe('a worktree per card', () => {
-  beforeEach(async () => {
-    await workers?.freed();
-    await setup({ ...generic, land: 'main', workspaces: 'worktrees' });
-  });
-
-  const commitIn = (path: string, file: string, msg: string) => {
-    writeFileSync(join(path, file), msg);
-    git(path, 'add', '.');
-    git(path, 'commit', '--quiet', '-m', msg);
-  };
+  /** A commit of `file` in `path` with `msg` as its text and message. */
+  const commitIn = (path: string, file: string, msg: string) => commit(path, file, msg, msg);
 
   test('a worktree git cannot add puts the card back as planned, its conversation saying why', async () => {
     const c = manual();
@@ -451,13 +442,9 @@ describe('a worktree per card', () => {
     await workers.start(c.id);
     const wc = board.row(c.id).workspace!;
     const trailer = 'Co-Authored-By: W <w@example.com>';
-    writeFileSync(join(wc, 'same.ts'), 'C draft');
-    git(wc, 'add', '.');
-    git(wc, 'commit', '--quiet', '-m', 'C draft', '-m', trailer);
+    commit(wc, 'same.ts', 'C draft', `C draft\n\n${trailer}`);
     git(wc, 'rm', '--quiet', 'same.ts');
-    writeFileSync(join(wc, 'c.ts'), 'C');
-    git(wc, 'add', '.');
-    git(wc, 'commit', '--quiet', '-m', 'C', '-m', trailer);
+    commit(wc, 'c.ts', 'C', `C\n\n${trailer}`);
     commitIn(main, 'same.ts', 'main');
     await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
     await workers.approve(c.id);
@@ -501,7 +488,7 @@ describe('a worktree per card', () => {
 
   test('asked about a live card, its worker is resumed in a fresh workspace, answers, and ends again', async () => {
     const ended: string[] = [];
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, onWorkEnded: (id) => void ended.push(id) }));
+    rebuild({ onWorkEnded: (id) => void ended.push(id) });
     const c = manual();
     await workers.start(c.id);
     commitIn(board.row(c.id).workspace!, 'c.ts', 'C');
@@ -664,9 +651,7 @@ describe('a worktree per card', () => {
   });
 
   test('a worker whose remaining work needs the new code waits for the restart and goes on after it', async () => {
-    await setup({ ...generic, land: 'main', workspaces: 'worktrees' });
-    const restarting = (b: Board) =>
-      tracked(new Workers({ board: b, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, restartsFor: () => 'obeya' }));
+    const restarting = (b: Board) => newWorkers({ board: b, restartsFor: () => 'obeya' });
     setWorkers(restarting(board));
     const c = manual();
     await workers.start(c.id);
@@ -827,7 +812,7 @@ describe('a worktree per card', () => {
     expect(board.events(c.id).at(-1)).toMatchObject({ author: 'obeya', kind: 'state' });
 
     workers.shutdown();
-    const after = tracked(new Workers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } }));
+    const after = newWorkers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })) });
     after.resumeAll();
     const resumed = runtime.last;
     expect(resumed).not.toBe(s);
@@ -841,7 +826,7 @@ describe('a worktree per card', () => {
   });
 
   test('after the landing, a worker waiting for a deploy in the background keeps its workspace until the watcher wakes it', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, backgroundGrace: 5 }));
+    rebuild({ backgroundGrace: 5 });
     const c = manual();
     await workers.start(c.id);
     const wc = board.row(c.id).workspace!;
@@ -887,14 +872,14 @@ describe('a worktree per card', () => {
     expect(s.closed).toBe(false);
     expect(board.item(c.id)!.finishing).toBe(true);
     workers.shutdown();
-    const after = tracked(new Workers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } }));
+    const after = newWorkers({ board: new Board(store, board.canvas, () => ({ docs: [doc], dirs: [] })) });
     after.resumeAll();
     expect(runtime.last).not.toBe(s);
     expect(runtime.last.spec.resume).toBe('sess-1');
   });
 
   test('a turn after the landing that the usage limit stopped waits for the limit and goes on; the card does not finish', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, limitMargin: 30 }));
+    rebuild({ limitMargin: 30 });
     const c = manual();
     await workers.start(c.id);
     commitIn(board.row(c.id).workspace!, 'c.ts', 'C');

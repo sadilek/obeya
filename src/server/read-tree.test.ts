@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ReadTree, refsSeal } from './read-tree';
-import { artifact, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, syncGitCalls, until } from './testing';
+import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 const doc = (title: string, ticked = '') =>
@@ -129,9 +129,7 @@ describe('the read tree', () => {
     const read = join(dir, 'read');
     const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
     await tree.ready;
-    writeFileSync(join(checkout, 'local.md'), 'x\n');
-    git(checkout, 'add', '.');
-    git(checkout, 'commit', '--quiet', '-m', 'local');
+    commit(checkout, 'local.md', 'x\n', 'local');
     await tree.refresh();
     expect(existsSync(join(read, 'local.md'))).toBe(true);
     // origin moves on without it: the local main no longer has everything, so origin counts
@@ -274,9 +272,7 @@ describe("the seal of a repository's refs", () => {
     git(checkout, 'checkout', '--quiet', '-b', 'obeya/export-a1');
     const first = seal();
     expect(first).not.toBeNull();
-    writeFileSync(join(checkout, 'a.md'), 'a\n');
-    git(checkout, 'add', '-A');
-    git(checkout, 'commit', '--quiet', '-m', 'A');
+    commit(checkout, 'a.md', 'a\n', 'A');
     git(checkout, 'worktree', 'add', '--quiet', '-b', 'obeya/import-b2', join(dir, 'tree'));
     git(checkout, 'checkout', '--quiet', '--detach');
     expect(seal()).toBe(first);
@@ -303,9 +299,7 @@ describe("the seal of a repository's refs", () => {
     git(checkout, 'branch', 'release/obeya/stable');
     const before = refsSeal(checkout);
     git(checkout, 'checkout', '--quiet', 'release/obeya/stable');
-    writeFileSync(join(checkout, 'r.md'), 'r\n');
-    git(checkout, 'add', '-A');
-    git(checkout, 'commit', '--quiet', '-m', 'R');
+    commit(checkout, 'r.md', 'r\n', 'R');
     git(checkout, 'checkout', '--quiet', '--detach');
     expect(refsSeal(checkout)).not.toBe(before);
 
@@ -420,10 +414,7 @@ describe("a repository's settings for everyone", () => {
       // the lease fetched main as the remote has it: its agent starts once git has read it there
       await until(() => runtime.sessions.length > started);
       const ws = c.board.row(card.id).workspace!;
-      mkdirSync(join(ws, file, '..'), { recursive: true });
-      writeFileSync(join(ws, file), text);
-      git(ws, 'add', '-A');
-      git(ws, 'commit', '--quiet', '-m', title);
+      commit(ws, file, text, title);
       await runtime.last.call('ready_for_review', { summary: title, demo: artifact() });
       runtime.last.emit({ type: 'idle' });
       await workers.approve(card.id, { direct: true });

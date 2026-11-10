@@ -9,7 +9,7 @@ import { Store } from './db';
 import { Coordinator, overlaps } from './coordinator';
 import { cardTag } from '../core/card-number';
 import { move, queueOrder, reach } from '../core/queue';
-import { artifact, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir } from './testing';
+import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir } from './testing';
 import { Workers } from './workers';
 import { git, HERE, parseChanges, Workspaces } from './workspaces';
 import { withLimitWait } from './runtime';
@@ -57,7 +57,7 @@ const card = (title: string) => board.create({ title, x: 0, y: 0 });
 const item = (id: string) => board.item(id)!;
 /** The number a card goes by, as the Coordinator's sessions name it. */
 const tag = (c: { number: number }) => cardTag(c.number);
-const estimates = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'scope'));
+const estimates = () => runtime.withTool('scope');
 const workerOf = (id: string) => runtime.sessions.find((s) => s.spec.cwd === board.row(id).workspace)!;
 
 /** Answers the latest open estimate. */
@@ -69,7 +69,7 @@ async function scope(files: string[], conflicts: string[] = [], reason = 'Grund.
   await settle();
 }
 
-const schedules = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'schedule'));
+const schedules = () => runtime.withTool('schedule');
 
 /** Answers the latest open joint turn: one entry per card, [tag, files, builds on, conflicts with, reason]. */
 async function schedule(entries: [string, string[], string[], string[], string][]) {
@@ -106,9 +106,7 @@ describe('Coordinator', () => {
     expect(item(b.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id], reason: 'Beide ändern decide() in src/a.ts.' } });
 
     const wa = board.row(a.id).workspace!;
-    writeFileSync(join(wa, 'a.ts'), 'a');
-    git(wa, 'add', '.');
-    git(wa, 'commit', '--quiet', '-m', 'A');
+    commit(wa, 'a.ts', 'a', 'A');
     await workerOf(a.id).call('ready_for_review', { summary: 'S', demo: artifact() });
     await workers.approve(a.id);
     await settle();
@@ -131,9 +129,7 @@ describe('Coordinator', () => {
     k.request(a.id);
     await scope(['src/a.ts', 'docs/plan.md']);
     const wa = board.row(a.id).workspace!;
-    writeFileSync(join(wa, 'README.md'), 'hello\nworld\n');
-    git(wa, 'add', '.');
-    git(wa, 'commit', '--quiet', '-m', 'A');
+    commit(wa, 'README.md', 'hello\nworld\n', 'A');
     writeFileSync(join(wa, 'x.ts'), 'x');
     const b = card('B');
     k.request(b.id);
@@ -544,7 +540,7 @@ describe("Coordinator queues a review's follow-up tasks", () => {
 });
 
 describe('Coordinator names a card the owner left without a title', () => {
-  const namings = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'title'));
+  const namings = () => runtime.withTool('title');
   const task = (body: string) => board.create({ title: '', body, x: 0, y: 0 });
 
   test('from its text, by a short read-only session; asked twice, one session answers', async () => {
@@ -1015,9 +1011,7 @@ describe('Coordinator starts all workstreams of a project', () => {
   /** Lands a card in progress: a commit in its workspace, handed over and approved. */
   async function land(id: string) {
     const w = board.row(id).workspace!;
-    writeFileSync(join(w, `${id}.ts`), id);
-    git(w, 'add', '.');
-    git(w, 'commit', '--quiet', '-m', id);
+    commit(w, `${id}.ts`, id, id);
     await workerOf(id).call('ready_for_review', { summary: 'S', demo: artifact() });
     await workers.approve(id);
     await settle();
@@ -1114,7 +1108,7 @@ describe('Coordinator starts all workstreams of a project', () => {
 });
 
 describe('preference memory', () => {
-  const learnSession = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'propose')).at(-1)!;
+  const learnSession = () => runtime.withTool('propose').at(-1)!;
   const learn = async (tool: string, args: Record<string, unknown>) => {
     learnSession().call(tool, args);
     learnSession().emit({ type: 'idle' });
@@ -1313,7 +1307,7 @@ describe('preference memory', () => {
 
 describe('retrospective', () => {
   const texts = (state: 'proposed' | 'active') => board.preferences(state).map((p) => p.text);
-  const reviews = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'done'));
+  const reviews = () => runtime.withTool('done');
   const coordinator = () => new Coordinator({ board, runtime, home: () => board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });
 
   test('after enough inputs, counted across a restart, it reads the history since the last one and proposes rules from it', async () => {
@@ -1438,7 +1432,7 @@ test('overlaps', () => {
 
 describe('Coordinator arranges a project by what builds on what', () => {
   const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: `Text ${key}`, done, inReview: false });
-  const readings = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'dependencies'));
+  const readings = () => runtime.withTool('dependencies');
   /** A project with W1 live and W2 to W4 planned, just come. */
   function project() {
     docs = [{ file: 'docs/plan/p.md', title: 'P', goal: 'Ziel P', workstreams: [ws('W1', true), ws('W2'), ws('W3'), ws('W4')], markdown: '' }];

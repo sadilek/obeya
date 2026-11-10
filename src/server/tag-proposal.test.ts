@@ -64,7 +64,7 @@ const call = async (method: string, path: string, body?: unknown) => {
   return { status: res.status, body: (await res.json()) as { job: TagProposalJob | null; available?: boolean } };
 };
 const at = (path: string) => `/api/tag-proposal?path=${encodeURIComponent(path)}`;
-const proposer = () => runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'tags'))!;
+const proposer = () => runtime.withTool('tags')[0]!;
 
 describe('a proposal for the tags of a site', () => {
   test('reads the repository and its cards, finished and open, archived ones too, with their demos, and its proposal goes to the dialog', async () => {

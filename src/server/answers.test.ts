@@ -47,14 +47,13 @@ afterEach(async () => {
 const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 const board = () => canvas.board;
 const workstream = () => board().snapshot().items.find((i) => i.label === 'W4')!;
-const isCoordinator = (s: FakeSession) => s.spec.tools.some((t) => t.name === 'look_up');
-const answerer = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'answer_owner')).at(-1)!;
+const answerer = () => runtime.withTool('answer_owner').at(-1)!;
 
 /** Says `text` with `focus`; the Coordinator reads it with `tool`. */
 async function say(text: string, focus: Focus, tool: string, args: Record<string, unknown>) {
   const heard = canvas.commander.hear(text, focus);
   await settle();
-  const s = runtime.sessions.filter(isCoordinator).at(-1)!;
+  const s = runtime.withTool('look_up').at(-1)!;
   s.call(tool, args);
   s.emit({ type: 'idle' });
   return { heard: await heard, brief: s.inbox.at(-1)! };
@@ -72,7 +71,7 @@ describe('a question the Coordinator looks up', () => {
     a.call('answer_owner', { text: '- #27 Skills (https://github.com/o/r/issues/27)' });
     a.emit({ type: 'idle' });
     // the Coordinator hears the answer with the step it takes now, not as news for the next command
-    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const k = runtime.withTool('look_up').at(-1)!;
     await until(() => k.inbox.length === 2);
     expect(k.inbox[1]).toContain("No words of the owner's this time");
     expect(k.inbox[1]).toContain('is in (the owner sees it too): - #27 Skills');
@@ -165,7 +164,7 @@ describe('a question the Coordinator looks up', () => {
   test('an unknown card tag goes back to the Coordinator', async () => {
     const heard = canvas.commander.hear('was macht X?', {});
     await settle();
-    const s = runtime.sessions.find(isCoordinator)!;
+    const s = runtime.withTool('look_up')[0]!;
     expect(s.call('look_up', { question: 'X?', card: 'K9', confirm: 'Moment.' })).toContain('No card K9 on this canvas');
     s.call('reply', { confirm: 'Welche Karte meinst du?' });
     s.emit({ type: 'idle' });
@@ -357,7 +356,7 @@ describe('a looked-up answer goes on', () => {
   test('an unknown answer tag goes back to the Coordinator', async () => {
     canvas.commander.hear('und weiter?', {});
     await settle();
-    const s = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const s = runtime.withTool('look_up').at(-1)!;
     expect(s.call('look_up', { question: 'More?', follows: 'A99', confirm: 'Moment.' })).toContain('Unknown answer A99');
   });
 
@@ -834,7 +833,7 @@ describe("a question asked in a project's sheet", () => {
     const shot = canvas.images.save(new Uint8Array([1, 2, 3]), 'image/png');
     const { a, talk } = await asked('Warum wartet W4 auf das Go?', 'Weil der Shop live geht.', 'project-1', { images: [shot] });
     // no Coordinator read the words first
-    expect(runtime.sessions.some(isCoordinator)).toBe(false);
+    expect(runtime.withTool('look_up')).toEqual([]);
     expect(a.spec.system).toContain('project agent of the project "PR-Loop"');
     expect(a.spec.tools.map((t) => t.name)).toContain('to_obeya');
     expect(a.inbox[0]).toContain("The owner wrote to you in the project's sheet in Obeya");
@@ -875,7 +874,7 @@ describe("a question asked in a project's sheet", () => {
     const a = answerer();
     const passed = a.call('to_obeya', { request: 'Start W4.' });
     await settle();
-    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const k = runtime.withTool('look_up').at(-1)!;
     expect(k.inbox.at(-1)).toContain('Starte bitte W4.');
     k.call('reply', { confirm: 'Mache ich gleich.' });
     k.emit({ type: 'idle' });

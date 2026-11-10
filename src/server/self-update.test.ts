@@ -1,22 +1,15 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Busy, changesCode, headSeal, installDependencies, ownCheckout, Restarter, symbolicTarget, watchOwnCode, whenIdle } from './self-update';
 import { onStart } from './spawn';
-import { gitRepo } from './testing';
+import { commit, gitRepo } from './testing';
 import { git } from './workspaces';
 
 let repo: string;
 let stop = () => {};
 
-const commit = (file: string, text: string) => {
-  mkdirSync(join(repo, file, '..'), { recursive: true });
-  writeFileSync(join(repo, file), text);
-  git(repo, 'add', '.');
-  git(repo, 'commit', '--quiet', '-m', file);
-  return git(repo, 'rev-parse', 'HEAD');
-};
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Waits until `done` holds: the watch's git calls take their time, on Windows far longer than the interval (so do its tests: 20 s each). */
 const until = async (done: () => boolean) => {
@@ -58,16 +51,16 @@ test('a commit that changes code asks for a restart, once', async () => {
   const start = git(repo, 'rev-parse', 'HEAD');
   const calls: [string, string][] = [];
   stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
-  const head = commit('src/a.ts', 'b');
+  const head = commit(repo, 'src/a.ts', 'b');
   await until(() => calls.length > 0);
-  commit('src/b.ts', 'c');
+  commit(repo, 'src/b.ts', 'c');
   await wait(120);
   expect(calls).toEqual([[start, head]]);
 }, 20_000);
 
 test('a commit between the server starting and the watch is new code to it', async () => {
   const start = git(repo, 'rev-parse', 'HEAD');
-  const head = commit('src/a.ts', 'b');
+  const head = commit(repo, 'src/a.ts', 'b');
   const calls: [string, string][] = [];
   stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
   await until(() => calls.length > 0);
@@ -77,31 +70,31 @@ test('a commit between the server starting and the watch is new code to it', asy
 test('docs, the site and its workflow alone change nothing that runs', async () => {
   const calls: string[] = [];
   stop = watchOwnCode(repo, git(repo, 'rev-parse', 'HEAD'), (_, to) => calls.push(to), 20);
-  commit('docs/plan.md', 'plan');
-  commit('README.md', 'readme');
-  commit('site/index.html', '<!doctype html>');
-  commit('.github/workflows/pages.yml', 'name: Pages');
+  commit(repo, 'docs/plan.md', 'plan');
+  commit(repo, 'README.md', 'readme');
+  commit(repo, 'site/index.html', '<!doctype html>');
+  commit(repo, '.github/workflows/pages.yml', 'name: Pages');
   await wait(120);
   expect(calls).toEqual([]);
-  const head = commit('src/a.ts', 'b');
+  const head = commit(repo, 'src/a.ts', 'b');
   await until(() => calls.length > 0);
   expect(calls).toEqual([head]);
 }, 20_000);
 
 test('docs whose file names git would quote (non-ASCII, a space) change nothing that runs either', async () => {
   const start = git(repo, 'rev-parse', 'HEAD');
-  commit('docs/Übersicht.md', 'Überblick');
-  const to = commit('design/a "quoted" name.txt', 'x');
+  commit(repo, 'docs/Übersicht.md', 'Überblick');
+  const to = commit(repo, 'design/a "quoted" name.txt', 'x');
   expect(await changesCode(repo, start, to)).toBe(false);
-  expect(await changesCode(repo, start, commit('src/ä.ts', 'b'))).toBe(true);
+  expect(await changesCode(repo, start, commit(repo, 'src/ä.ts', 'b'))).toBe(true);
 });
 
 test('a commit while git looks at what changed has not held still: the restart waits for a round of its own', async () => {
   const start = git(repo, 'rev-parse', 'HEAD');
-  const first = commit('src/a.ts', 'b');
+  const first = commit(repo, 'src/a.ts', 'b');
   let second = '';
   const watching = onStart((argv) => {
-    if (!second && argv.includes('diff')) second = commit('src/b.ts', 'c');
+    if (!second && argv.includes('diff')) second = commit(repo, 'src/b.ts', 'c');
   });
   const calls: [string, string][] = [];
   try {
@@ -137,7 +130,7 @@ test('while HEAD stands still, the watch starts no git', async () => {
   }
   expect(started).toBe(0);
   // and it still watches
-  const head = commit('src/a.ts', 'b');
+  const head = commit(repo, 'src/a.ts', 'b');
   await until(() => calls.length > 0);
   expect(calls).toEqual([head]);
 }, 20_000);
@@ -155,7 +148,7 @@ test('a round that throws ends neither the watch nor its rounds', async () => {
     });
     await until(() => rounds >= 3);
     expect(rounds).toBeGreaterThanOrEqual(3);
-    const head = commit('src/a.ts', 'b');
+    const head = commit(repo, 'src/a.ts', 'b');
     await until(() => calls.length > 0);
     expect(calls).toEqual([head]);
   } finally {
@@ -174,7 +167,7 @@ test('a restart that threw is asked for again the next round, and once it went t
       calls.push(to);
       if (calls.length === 1) throw new Error('restart');
     }, 20);
-    const head = commit('src/a.ts', 'b');
+    const head = commit(repo, 'src/a.ts', 'b');
     await until(() => calls.length >= 2);
     await wait(120);
     expect(calls).toEqual([head, head]);
@@ -205,14 +198,14 @@ test('the seal of HEAD moves with a branch that HEAD reaches through another', (
   git(repo, 'symbolic-ref', 'HEAD', 'refs/heads/alias');
   const before = headSeal(repo);
   expect(before).not.toBeNull();
-  commit('src/a.ts', 'b');
+  commit(repo, 'src/a.ts', 'b');
   expect(headSeal(repo)).not.toBe(before);
 }, 20_000);
 
 test("the seal of HEAD moves with a ref of the worktree's own", () => {
   const tree = `${repo}-tree`;
   const start = git(repo, 'rev-parse', 'HEAD');
-  const next = commit('src/a.ts', 'b');
+  const next = commit(repo, 'src/a.ts', 'b');
   git(repo, 'worktree', 'add', '--quiet', '--detach', tree);
   try {
     git(tree, 'update-ref', 'refs/worktree/own', start);
@@ -228,7 +221,7 @@ test("the seal of HEAD moves with a ref of the worktree's own", () => {
 
 test.skipIf(!fineTimes)('the seal of HEAD moves with packed refs written anew in the same size and millisecond', () => {
   const start = git(repo, 'rev-parse', 'HEAD');
-  const next = commit('src/a.ts', 'b');
+  const next = commit(repo, 'src/a.ts', 'b');
   git(repo, 'pack-refs', '--all');
   const packed = join(repo, '.git', 'packed-refs');
   const [first, second] = WITHIN_MS;
@@ -252,7 +245,7 @@ test('the seal of HEAD follows a branch whose name git allows beyond ASCII lette
     const before = headSeal(repo);
     // the seal names the file the branch is in: with backslashes on Windows
     expect(before?.replaceAll('\\', '/')).toContain(name);
-    commit('src/a.ts', name);
+    commit(repo, 'src/a.ts', name);
     expect(headSeal(repo)).not.toBe(before);
   }
 }, 20_000);
@@ -269,20 +262,20 @@ test("a symbolic ref's target is read whole, and one git would refuse is not rea
 test('a restart installs the dependencies only when package.json or bun.lock changed', () => {
   const start = git(repo, 'rev-parse', 'HEAD');
   const install = [process.execPath, '-e', "require('fs').writeFileSync('installed', '')"];
-  commit('src/a.ts', 'b');
-  commit('docs/package.json', '{}');
+  commit(repo, 'src/a.ts', 'b');
+  commit(repo, 'docs/package.json', '{}');
   expect(installDependencies(repo, start, install)).toEqual({ ran: false });
   expect(existsSync(join(repo, 'installed'))).toBe(false);
-  commit('bun.lock', '{}');
+  commit(repo, 'bun.lock', '{}');
   expect(installDependencies(repo, start, install)).toMatchObject({ ran: true, ok: true });
   expect(existsSync(join(repo, 'installed'))).toBe(true);
-  const after = commit('package.json', '{}');
+  const after = commit(repo, 'package.json', '{}');
   expect(installDependencies(repo, after, install)).toEqual({ ran: false });
 });
 
 test('an install that fails is told, not thrown', () => {
   const start = git(repo, 'rev-parse', 'HEAD');
-  commit('package.json', '{}');
+  commit(repo, 'package.json', '{}');
   const failed = installDependencies(repo, start, [process.execPath, '-e', "console.error('no network'); process.exit(1)"]);
   expect(failed).toEqual({ ran: true, ok: false, output: 'no network' });
   expect(installDependencies(repo, start, [join(repo, 'no-such-bun')])).toMatchObject({ ran: true, ok: false });

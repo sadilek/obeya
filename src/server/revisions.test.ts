@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { agentListens, type Item } from '../core/types';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession, gitRepo, noForge, removeDir } from './testing';
+import { FakeRuntime, gitRepo, noForge, removeDir } from './testing';
 
 let dir: string;
 let main: string;
@@ -32,8 +32,7 @@ afterEach(async () => {
 
 const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 const board = () => canvas.board;
-const isCoordinator = (s: FakeSession) => s.spec.tools.some((t) => t.name === 'look_up');
-const reviser = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'revise_proposal')).at(-1);
+const reviser = () => runtime.withTool('revise_proposal').at(-1);
 
 /** A proposal from the agent of "Export", with one question. */
 function proposal(): Item {
@@ -50,7 +49,7 @@ function proposal(): Item {
 async function say(text: string, card: Item, actions: (tag: string) => Record<string, unknown>[], typed = false, images: string[] = []) {
   const heard = canvas.commander.hear(text, { card: card.id }, images, typed ? { typed: true, field: 'revise' } : {});
   await settle();
-  const s = runtime.sessions.filter(isCoordinator).at(-1)!;
+  const s = runtime.withTool('look_up').at(-1)!;
   const brief = s.inbox.at(-1)!;
   const tag = brief.match(new RegExp(`(K\\d+) \\[proposal\\] "${card.title}"`))![1]!;
   const result = s.call('act', { actions: actions(tag), confirm: 'Ich überarbeite den Vorschlag.' });
@@ -105,7 +104,7 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().item(p.id)!.proposal?.revising).toMatchObject({ words: 'Was würdest du nehmen?' });
     expect(reviser()!.inbox[0]).toContain('Was würdest du nehmen?');
     expect(reviser()!.spec.tools.map((t) => t.name)).toContain('to_obeya');
-    expect(runtime.sessions.some(isCoordinator)).toBe(false);
+    expect(runtime.withTool('look_up')).toEqual([]);
     // the question stays above the owner's words
     expect(board().events(p.id).map((e) => [e.kind, e.author])).toEqual([
       ['question', 'worker'],
@@ -148,7 +147,7 @@ describe('a proposal reworked by what the owner says', () => {
     const r = reviser()!;
     const result = r.call('to_obeya', { request: 'Accept the proposal and start it' }) as Promise<string>;
     await settle();
-    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const k = runtime.withTool('look_up').at(-1)!;
     const tag = k.inbox.at(-1)!.match(/(K\d+) \[proposal\] "CSV-Export prüfen"/)![1]!;
     expect(k.call('act', { actions: [{ do: 'accept', card: tag }], confirm: 'Ich übernehme den Vorschlag und starte ihn.' })).not.toContain('goes by a click');
     k.emit({ type: 'idle' });
@@ -302,7 +301,7 @@ describe('a proposal reworked by what the owner says', () => {
     const p = board().propose(from.id, { title: 'Exportformate', task: 'PDF-Export bauen.' });
     const heard = canvas.commander.hear('Das will ich erst als Idee besprechen', {});
     await settle();
-    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const k = runtime.withTool('look_up').at(-1)!;
     const tag = k.inbox.at(-1)!.match(/(K\d+) \[proposal\] "Exportformate"/)![1]!;
     k.call('act', { actions: [{ do: 'accept', card: tag, idea: true }], confirm: 'Ich übernehme ihn als Idee.' });
     k.emit({ type: 'idle' });
@@ -474,7 +473,7 @@ describe('a proposal its agent takes back', () => {
     // the Coordinator sees the mark, and keep takes it off
     const heard = canvas.commander.hear('Behalte die alte Karte', { card: p.id }, []);
     await settle();
-    const s = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const s = runtime.withTool('look_up').at(-1)!;
     expect(s.inbox.at(-1)).toContain('replaced it by "CSV-Kodierung festlegen"; the owner removes it (dismiss) or keeps it (keep)');
     const tag = s.inbox.at(-1)!.match(/(K\d+) \[planned\] "CSV-Export prüfen"/)![1]!;
     s.call('act', { actions: [{ do: 'keep', card: tag }], confirm: 'Sie bleibt.' });

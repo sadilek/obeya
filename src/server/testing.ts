@@ -78,6 +78,10 @@ export class FakeRuntime implements AgentRuntime {
   get last() {
     return this.sessions.at(-1)!;
   }
+  /** The sessions given tool `name`: the kind of agent that alone has it (`update_brief`, say). */
+  withTool(name: string): FakeSession[] {
+    return this.sessions.filter((s) => s.spec.tools.some((t) => t.name === name));
+  }
 }
 
 /** How much longer a test may take on this machine: `patience.ts`. */
@@ -157,6 +161,19 @@ export function gitClone(source: string, path: string, { bare = false } = {}): s
   writeFileSync(config, text.replace(url, (_, section: string) => `${section}\turl = ${quoted}\n`));
   copies.set(resolve(path), clone);
   return path;
+}
+
+/**
+ * Writes `file` in `repo` (making its directory), commits everything there as `message` and
+ * returns the new HEAD: a repository's or a workspace's next commit in a test. The repository
+ * needs an identity (`identify`; `gitRepo`'s copies and the workers fixture's clones have one).
+ */
+export function commit(repo: string, file: string, text = `${file}\n`, message = file): string {
+  mkdirSync(dirname(join(repo, file)), { recursive: true });
+  writeFileSync(join(repo, file), text);
+  git(repo, 'add', '-A');
+  git(repo, 'commit', '--quiet', '-m', message);
+  return git(repo, 'rev-parse', 'HEAD');
 }
 
 const gitDir = (repo: string) => (existsSync(join(repo, '.git')) ? join(repo, '.git') : repo);

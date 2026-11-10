@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-Nothing is cleaned up yet. The review, made on 2026-11-10 at commit `acfa0484`, found the code in
+W2 is done; the other workstreams are open. The review, made on 2026-11-10 at commit `acfa0484`, found the code in
 better shape than its size suggests, and found its debt in a few recurring forms.
 
 What is already good, and stays out of the workstreams:
@@ -142,13 +142,14 @@ the workstream named does it for all of them.
   I11; [core](code-cleanup/core.md) J8, J10; [plugin](code-cleanup/plugin.md) P15;
   [scripts-app](code-cleanup/scripts-app.md) R8, R10; [tests](code-cleanup/tests.md) T16. C11 and
   F15 have medium confidence: trace them before removing.
-- [ ] **W2:** A workers test fixture that covers the common setups. [tests](code-cleanup/tests.md)
+- [x] **W2:** A workers test fixture that covers the common setups. [tests](code-cleanup/tests.md)
   T1 (one `handedOver()`), T2 (the fixture takes its adapter, so no test builds everything twice),
   T5 (one "write a file and commit it"), T7 (changing one option of `Workers`), T14 (finding a
   session by its tool).
 - [ ] **W3:** A canvas test fixture. [tests](code-cleanup/tests.md) T3 (one harness for a
   one-repository canvas instead of 72 hand-written starts), T4 (`canvas.test.ts` starts only the
-  canvas a test uses), T6 (the test canvas literal and `new Board(…)` behind a helper).
+  canvas a test uses), T6 (the test canvas literal and `new Board(…)` behind a helper), and what is
+  left of T1: the handover helpers of the canvas-level tests.
 - [ ] **W4:** The rest of the test infrastructure. [tests](code-cleanup/tests.md) T8 (old databases
   for migration tests), T9 (one harness for a long-used canvas), T10 (one `settle` and one `until`),
   T11 (`workspaces.test.ts` setup), T12 (one stand-in for a demo site's host), T15.

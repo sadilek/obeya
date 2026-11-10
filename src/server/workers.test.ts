@@ -8,9 +8,9 @@ import { BadRequest, Board } from './board';
 import { OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { Restarter } from './self-update';
-import { artifact, until } from './testing';
-import { describeTool, Workers } from './workers';
-import { board, dir, eachTest, flush, main, manual, runtime, setConversation, setLanguage, setWorkers, spaces, state, store, tracked, workers } from './workers-fixture';
+import { artifact, commit, until } from './testing';
+import { describeTool } from './workers';
+import { board, dir, eachTest, flush, handedOver, main, manual, newWorkers, rebuild, runtime, setConversation, setLanguage, state, store, workers } from './workers-fixture';
 import { git } from './workspaces';
 
 eachTest();
@@ -45,7 +45,7 @@ describe('workers', () => {
   test('with English interface and conversation, nothing German in the worker\'s instructions or tools suggests the owner speaks German', async () => {
     setLanguage('en');
     setConversation('en');
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, toObeya: async () => '' }));
+    rebuild({ toObeya: async () => '' });
     await workers.start(manual().id);
     const { system, tools } = runtime.last.spec;
     expect(tools.map((t) => t.name)).toContain('to_obeya');
@@ -54,7 +54,7 @@ describe('workers', () => {
 
   test("a repository that names German for what lands in it has its worker commit in German, whatever the owner's language", async () => {
     setConversation('en');
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones', language: 'de' } }));
+    rebuild({ adapter: { ...generic, land: 'main', workspaces: 'clones', language: 'de' } });
     await workers.start(manual().id);
     expect(runtime.last.spec.system).toContain('until they have said anything, English.');
     expect(runtime.last.spec.system).toContain('What you commit (code, comments, commit messages, docs, plan docs, CLAUDE.md) is in German');
@@ -97,7 +97,7 @@ describe('workers', () => {
   test('the screenshots of the task go with it when the worker starts', async () => {
     const images = new Images(join(dir, 'images'));
     const shot = images.save(new Uint8Array([1, 2, 3]), 'image/png');
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic, imageFiles: (ids = []) => ids.flatMap((i) => images.path(i) ?? []) }));
+    rebuild({ imageFiles: (ids = []) => ids.flatMap((i) => images.path(i) ?? []) });
     const c = board.create({ title: 'Seite bricht um', x: 0, y: 0, images: [shot] });
     await workers.start(c.id);
     expect(runtime.last.images[0]).toEqual([images.path(shot)!]);
@@ -540,9 +540,7 @@ describe('workers', () => {
   const words = (id: string) => board.events(id).filter((e) => e.author === 'worker' && ['say', 'talk', 'closing'].includes(e.kind)).map((e) => `${e.kind}: ${e.text}`);
 
   test("after a reply on a card waiting for review, the worker's closing words are logged as such, to fold under the reply; after a handover they are left out", async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'Export gebaut.', demo: artifact() });
+    const { card: c } = await handedOver({ summary: 'Export gebaut.', idle: false });
     // those after a handover repeat it
     runtime.last.emit({ type: 'text', text: 'Übergeben: Export gebaut.' });
     runtime.last.emit({ type: 'idle' });
@@ -732,7 +730,7 @@ describe('workers', () => {
   });
 
   test('a worker the usage limit stopped goes on by itself once the limit lifts', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 30 }));
+    rebuild({ limitMargin: 30 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.call('report', { status: 'Exporter steht' });
@@ -761,11 +759,8 @@ describe('workers', () => {
   });
 
   test("a worker the usage limit stopped while it took in the owner's words on its handover stays at them and goes on once it lifts", async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 30 }));
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'Studie fertig.', demo: artifact() });
-    runtime.last.emit({ type: 'idle' });
+    rebuild({ limitMargin: 30 });
+    const { card: c } = await handedOver({ summary: 'Studie fertig.' });
     workers.message(c.id, 'Und wenn wir früher handeln?');
     runtime.last.call('reply', { text: 'Ich rechne das nach.' });
     runtime.last.call('report', { status: 'Rechne frühes Handeln nach' });
@@ -787,7 +782,7 @@ describe('workers', () => {
   });
 
   test('a worker the usage limit stopped while its background work runs says so, and goes on once it lifts', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 30 }));
+    rebuild({ limitMargin: 30 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.call('report', { status: 'Rendere das Demo-Video' });
@@ -807,7 +802,7 @@ describe('workers', () => {
   });
 
   test('a worker the usage limit stopped is no longer busy once its background work stopped counting', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundLimit: 10 }));
+    rebuild({ backgroundLimit: 10 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.emit({ type: 'background', tasks: [{ id: 'watch', description: 'watch the deploy' }] });
@@ -822,7 +817,7 @@ describe('workers', () => {
   });
 
   test('a worker the usage limit stopped is not woken once stopped', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 10 }));
+    rebuild({ limitMargin: 10 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() + 20 } });
@@ -836,7 +831,7 @@ describe('workers', () => {
   });
 
   test('a turn in which the worker did nothing does not use up its nudge', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5, backgroundLimit: 5 }));
+    rebuild({ backgroundGrace: 5, backgroundLimit: 5 });
     const c = manual();
     await workers.start(c.id);
     const before = runtime.last.inbox.length;
@@ -854,7 +849,7 @@ describe('workers', () => {
   });
 
   test('a turn in which the worker did nothing counts as ended after a while', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 }));
+    rebuild({ backgroundGrace: 5 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.emit({ type: 'idle' });
@@ -912,7 +907,7 @@ describe('workers', () => {
   });
 
   test('background work that ends without waking the worker counts as an ended turn after a while', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 }));
+    rebuild({ backgroundGrace: 5 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.emit({ type: 'text', text: 'Ich warte auf den Server.' });
@@ -934,7 +929,7 @@ describe('workers', () => {
   });
 
   test('background work the session never reports as ended counts as an ended turn after a long while', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 1000, backgroundLimit: 5 }));
+    rebuild({ backgroundGrace: 1000, backgroundLimit: 5 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.emit({ type: 'text', text: 'Ich warte auf den Server.' });
@@ -944,7 +939,7 @@ describe('workers', () => {
   });
 
   test('a worker that asks while its background work runs counts as busy until the work wakes it', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5, backgroundLimit: 5 }));
+    rebuild({ backgroundGrace: 5, backgroundLimit: 5 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.call('ask', { question: 'Soll das Video Ton haben?' });
@@ -959,7 +954,7 @@ describe('workers', () => {
   });
 
   test('the card shows the background work that keeps its worker in a turn, each since it started, until it ends', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 1000, backgroundLimit: 1000 }));
+    rebuild({ backgroundGrace: 1000, backgroundLimit: 1000 });
     const c = manual();
     await workers.start(c.id);
     const s = runtime.last;
@@ -991,7 +986,7 @@ describe('workers', () => {
   });
 
   test('a note to a worker waiting for its background work starts a turn of its own', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 }));
+    rebuild({ backgroundGrace: 5 });
     const c = manual();
     await workers.start(c.id);
     runtime.last.emit({ type: 'idle', background: 1 });
@@ -1004,7 +999,7 @@ describe('workers', () => {
   });
 
   test('a preference learned while a worker runs reaches it once, with its next tool step', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, preferences: () => board.preferencesText() }));
+    rebuild({ preferences: () => board.preferencesText() });
     board.addPreference('Antworten auf Deutsch.');
     const c = manual();
     await workers.start(c.id);
@@ -1047,14 +1042,7 @@ describe('workers', () => {
   });
 
   test('review, feedback, approval: the work lands on main and the clone is free again', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    const clone = board.row(c.id).workspace!;
-    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'Export');
-    await runtime.last.call('ready_for_review', { summary: 'Export gebaut.', demo: artifact() });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c, workspace: clone } = await handedOver({ commit: 'export.ts', summary: 'Export gebaut.' });
     expect(state(c.id)).toBe('waiting:demo');
     expect(board.item(c.id)!.summary).toBe('Export gebaut.');
 
@@ -1072,7 +1060,7 @@ describe('workers', () => {
     runtime.last.emit({ type: 'idle' });
     await workers.approve(c.id);
     expect(state(c.id)).toBe('live');
-    expect(git(main, 'log', '--format=%s', '-1')).toBe('Export');
+    expect(git(main, 'log', '--format=%s', '-1')).toBe('export.ts');
     // the worker hears that its work is on main; its session ends with that turn
     expect(runtime.last.inbox.at(-1)).toContain('is on main now');
     expect(runtime.last.closed).toBe(false);
@@ -1084,14 +1072,7 @@ describe('workers', () => {
   });
 
   test('a session that ends by itself after the landing tells the owner what was left undone', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    const clone = board.row(c.id).workspace!;
-    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'Export');
-    await runtime.last.call('ready_for_review', { summary: 'CSV-Export gebaut.', demo: artifact() });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ commit: 'export.ts', summary: 'CSV-Export gebaut.' });
     await workers.approve(c.id);
     expect(board.item(c.id)!.finishing).toBe(true);
     runtime.last.emit({ type: 'error', message: 'API Error: 500' });
@@ -1105,9 +1086,7 @@ describe('workers', () => {
     const c = manual();
     await workers.start(c.id);
     const clone = board.row(c.id).workspace!;
-    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'Export');
+    commit(clone, 'export.ts', 'export {}\n', 'Export');
     expect(runtime.last.spec.tools.find((x) => x.name === 'ready_for_review')!.description).toContain('on a later one, only what your last handover and your replies since have not said yet');
     await runtime.last.call('ready_for_review', { summary: 'CSV-Export gebaut.', demo: artifact() });
     runtime.last.emit({ type: 'idle' });
@@ -1134,15 +1113,11 @@ describe('workers', () => {
     await workers.start(c.id);
     expect(await workers.diff(c.id, false)).toEqual({ source: 'branch', files: [] });
     const clone = board.row(c.id).workspace!;
-    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'Export');
+    commit(clone, 'export.ts', 'export {}\n', 'Export');
     writeFileSync(join(clone, 'README.md'), 'hello\nworld\n');
     writeFileSync(join(clone, 'notes über.txt'), 'eins\nzwei\n');
     // main moving on is not the card's change
-    writeFileSync(join(main, 'other.ts'), 'x\n');
-    git(main, 'add', '.');
-    git(main, 'commit', '--quiet', '-m', 'Other');
+    commit(main, 'other.ts', 'x\n', 'Other');
     git(clone, 'fetch', '--quiet', 'origin');
     expect((await workers.diff(c.id, false))!.files).toEqual([
       { file: 'README.md', status: 'modified', added: 1, removed: 0 },
@@ -1192,9 +1167,7 @@ describe('workers', () => {
     const c = manual();
     await workers.start(c.id);
     const { workspace, branch } = board.row(c.id);
-    writeFileSync(join(workspace!, 'work.ts'), 'x');
-    git(workspace!, 'add', '.');
-    git(workspace!, 'commit', '--quiet', '-m', 'Work');
+    commit(workspace!, 'work.ts', 'x', 'Work');
     await workers.stop(c.id);
     expect(board.row(c.id).workspace).toBe(workspace);
     board.patch(c.id, { title: 'Neuer Titel' });
@@ -1241,9 +1214,7 @@ describe('workers', () => {
   });
 
   test('after a restart that cut off a landing, the card waits for the owner to approve again', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    const { card: c } = await handedOver({ idle: false });
     board.work(c.id, { approved_at: new Date().toISOString() });
     expect(needsYou(board.item(c.id)!)).toBe(false);
     workers.shutdown();
@@ -1300,7 +1271,7 @@ describe('workers', () => {
   test('a proposal goes to a repository of another canvas, waits for the owner there, and its agent can take it back', async () => {
     const tools = new Board(store, { id: 'tools', name: 'Tools', repos: [{ id: 'tool', name: 'Tool', path: '/r/tool', branch: 'main' }, { id: 'docs', name: 'Docs', path: '/r/docs', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     const shop = new Board(store, { id: 'shop', name: 'Shop', repos: [{ id: 'docs', name: 'Docs', path: '/r/shop-docs', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, otherBoards: () => [board, tools, shop] }));
+    rebuild({ otherBoards: () => [board, tools, shop] });
     const c = manual();
     await workers.start(c.id);
     // with one repository of its own the worker sees those of the other canvases, by canvas
@@ -1323,7 +1294,7 @@ describe('workers', () => {
     await workers.stop(c.id);
     board.work(c.id, { state: 'live', detail: JSON.stringify({ summary: 'Export gebaut.' }) });
     const q = shop.snapshot().items.find((i) => i.title === 'Doku')!;
-    const there = tracked(new Workers({ board: shop, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, otherBoards: () => [board, tools, shop] }));
+    const there = newWorkers({ board: shop, otherBoards: () => [board, tools, shop] });
     shop.accept(q.id);
     await there.start(q.id);
     expect(runtime.last.inbox[0]).toContain('This card follows up on the card “Zählerstände exportieren” on the canvas “C”. Its worker handed it over with this summary:\n\nExport gebaut.');
@@ -1684,9 +1655,7 @@ describe('pausing: the owner halts a worker and lets it go on', () => {
   test("a worker taking in the owner's words on its handover can be paused: the card still waits for approval, and it finishes taking them in once it goes on", async () => {
     const c = await atWork();
     const clone = board.row(c.id).workspace!;
-    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'Export');
+    commit(clone, 'export.ts', 'export {}\n', 'Export');
     await runtime.last.call('ready_for_review', { summary: 'Export gebaut.', demo: artifact() });
     runtime.last.emit({ type: 'idle' });
     expect(() => workers.pause(c.id)).toThrow(BadRequest);
@@ -1715,9 +1684,7 @@ describe('pausing: the owner halts a worker and lets it go on', () => {
   test('a note to a worker paused on its handover lets it go on with the note', async () => {
     const c = await atWork();
     const clone = board.row(c.id).workspace!;
-    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'Export');
+    commit(clone, 'export.ts', 'export {}\n', 'Export');
     await runtime.last.call('ready_for_review', { summary: 'Export gebaut.', demo: artifact() });
     runtime.last.emit({ type: 'idle' });
     workers.message(c.id, 'Bitte mit Kopfzeile.');
@@ -1800,7 +1767,7 @@ describe('pausing: the owner halts a worker and lets it go on', () => {
   });
 
   test('a worker that does not come to a safe point in time is paused at once', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic, pauseLimit: 20 }));
+    rebuild({ pauseLimit: 20 });
     const c = await atWork();
     const session = runtime.last;
     workers.pauseAtSafePoint(c.id);
@@ -1813,9 +1780,7 @@ describe('pausing: the owner halts a worker and lets it go on', () => {
   test('a worker about to pause that hands over is paused on its handover, the card waiting for approval', async () => {
     const c = await atWork();
     const clone = board.row(c.id).workspace!;
-    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
-    git(clone, 'add', '.');
-    git(clone, 'commit', '--quiet', '-m', 'Export');
+    commit(clone, 'export.ts', 'export {}\n', 'Export');
     workers.pauseAtSafePoint(c.id);
     await runtime.last.call('ready_for_review', { summary: 'Export gebaut.', demo: artifact() });
     runtime.last.emit({ type: 'idle' });

@@ -41,8 +41,8 @@ afterEach(async () => {
 const settle = () => new Promise((r) => setTimeout(r, 5));
 /** The number a card goes by, as the retrospective names it. */
 const tag = (c: { number: number }) => cardTag(c.number);
-const noteSessions = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'note'));
-const retroSessions = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'card'));
+const noteSessions = () => runtime.withTool('note');
+const retroSessions = () => runtime.withTool('card');
 
 /** A card that ran in the given sessions and whose work ended. */
 function ran(title: string, ...sessions: string[]) {

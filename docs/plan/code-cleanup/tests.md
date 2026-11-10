@@ -45,6 +45,14 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   lines.
 - Risk: low; test code only, each test's own assertions protect it.
 - Confidence: high; all listed definitions read side by side, inline counts by rg.
+- Done by W2 for the workers tests: `handedOver({ card?, title?, commit?, summary?, demo?, idle? })`
+  in `workers-fixture.ts` returns `{ card, session, workspace }`; the local helpers of
+  `workers-landing.test.ts` and `workers-demo.test.ts` and the contiguous inline sequences of the
+  workers tests use it; the helper with two commits and a trailer stays, as `trailered`. Inline
+  sequences that do something between start, commit and handover (most in
+  `workers-worktrees.test.ts`) stay as they are. Left for W3, since they drive other `Workers` than
+  the fixture's: the helpers of `pr-watcher.test.ts`, `review.test.ts`, `ideas.test.ts`,
+  `server.test.ts` and `folder-canvas.test.ts`.
 
 ### T2. The workers fixture cannot be told its adapter: 27 "remove it and set it up again" calls, about 85 tests build everything twice
 - Principle: KISS (and plain waste)
@@ -80,6 +88,9 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   (`setWorkers`, `tracked`) before awaiting their `freed()`, and `setup` tears the setup before it
   down the same way (`tearDown`), so the 27 call sites lost their `removeDir` line; what is left of
   this finding is the adapter for `eachTest`.
+- Done by W2: `eachTest(adapter?, withOrigin?)` registers its hooks in the scope it is called
+  from; `workers-landing.test.ts` calls it per describe, `workers-worktrees.test.ts` once with the
+  worktrees adapter. Single tests with an adapter of their own still `await setup(adapter)`.
 
 ### T3. The one-repository canvas harness is rebuilt in file after file: there is a workers fixture but no canvas fixture
 - Principle: DRY
@@ -170,6 +181,8 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Win: about 150 lines and a dozen helper definitions.
 - Risk: low.
 - Confidence: high; counts by multiline rg, eleven of the thirteen helpers read.
+- Done by W2: `commit(repo, file, text?, message?)` in `testing.ts` replaces the inline triples
+  that commit one file and the local helpers; commits of several files at once stay inline.
 
 ### T6. The test canvas literal and the positional `new Board(…)` are spelled out about 50 times
 - Principle: DRY
@@ -222,6 +235,10 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Confidence: medium; the count is by rg, about a third of the sites read.
 - Bug fixed (W1 of the bug plan): the `Workers` these sites replace are shut down after the test,
   through `setWorkers` in the fixture.
+- Done by W2: `rebuild(options)` replaces `workers` with workers built from the setup's own
+  options (its adapter, `onMerged`, `env`, `keptDemos`) and the overrides, and `newWorkers(options)`
+  builds further ones (another board, an Obeya started anew). The tests pass with the fixture's
+  adapter except where they name another; one test that needs workers without `keptDemos` says so.
 
 ### T8. `db.test.ts` builds old databases by undoing later migrations by hand, and addresses migrations by their distance from the end
 - Principle: DRY (parallel lists kept in step by hand)
@@ -327,7 +344,8 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Why it matters: about 80 duplicated lines in one file; the reason for the empty global
   configuration is given once (`:521`) and silently repeated three times.
 - Change: one file-level `originAndCheckout()` (returns `{ origin, checkout, spaces }`) and the
-  `commit` of T5 for the four describes, each adding its extra lines; and `ownGlobalGitConfig(text =
+  `commit` of T5 for the four describes (W2 did this part: one file-level `edit`), each adding its
+  extra lines; and `ownGlobalGitConfig(text =
   '')` in `testing.ts`, which registers its own `beforeEach`/`afterEach`, for all seven places.
 - Win: about 90 lines.
 - Risk: low.
@@ -411,6 +429,8 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Win: 65 long expressions shortened.
 - Risk: low.
 - Confidence: high; rg counts.
+- Done by W2: `FakeRuntime.withTool(name)`; `isCoordinator` in `answers.test.ts` and
+  `revisions.test.ts` went with it.
 
 ### T15. Small helpers defined in several test files
 - Principle: DRY
@@ -461,7 +481,7 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   over themselves.
 - Change: the comment moves to `until`; `test-setup.ts` imports the one `alive`, with one answer for
   `EPERM` (a process one may not signal runs); `costly` goes into the header; the helper is renamed
-  or goes with T1.
+  or goes with T1 (W2 renamed it `started`).
 - Win: four small inconsistencies.
 - Risk: low.
 - Confidence: high; all read.

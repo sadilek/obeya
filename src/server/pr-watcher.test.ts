@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -10,9 +10,9 @@ import { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, fakeGh, FakeRuntime, gitClone, gitRepo, noContributions, PATIENCE, removeDir, until } from './testing';
+import { artifact, commit, fakeGh, FakeRuntime, gitClone, gitRepo, noContributions, PATIENCE, removeDir, until } from './testing';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { Workspaces } from './workspaces';
 
 let dir: string;
 let main: string;
@@ -81,18 +81,15 @@ const state = (id: string) => {
 };
 
 /** Work on the card's branch, so approving it goes out as a pull request. */
-function commit(cardId: string) {
-  const clone = board.row(cardId).workspace!;
-  writeFileSync(join(clone, 'export.ts'), '');
-  git(clone, 'add', '.');
-  git(clone, 'commit', '--quiet', '-m', 'Export');
+function commitOn(cardId: string) {
+  commit(board.row(cardId).workspace!, 'export.ts', '', 'Export');
 }
 
 /** A card through review and approval, with its PR reported. */
 async function inPr() {
   const c = board.create({ title: 'Export', x: 0, y: 0 });
   await workers.start(c.id);
-  commit(c.id);
+  commitOn(c.id);
   await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
   await workers.approve(c.id);
   return c.id;
@@ -124,7 +121,7 @@ describe('the PR phase', () => {
   test('a demo shared before approval is linked in the PR by the worker; pr_opened passes the PR on', async () => {
     const c = board.create({ title: 'Export', x: 0, y: 0 });
     await workers.start(c.id);
-    commit(c.id);
+    commitOn(c.id);
     await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
     board.work(c.id, { share: JSON.stringify({ slug: 'export', url: 'https://demos.example/export/', dir: '/d' }) });
     await workers.approve(c.id);
