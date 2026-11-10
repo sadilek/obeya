@@ -24,7 +24,7 @@ import { plain } from './markdown';
 import { Cards } from './message';
 import { glide, type Mark, settle, speed, THROWN, thrown } from './panelHeight';
 import { shownState, TalkIcon } from './parts';
-import { quietText, TAILSCALE_APP, useTailnet, useWhyQuiet } from './reach';
+import { PROBE_MS, quietText, TAILSCALE_APP, useTailnet, useWhyQuiet } from './reach';
 import { videoOf } from './spot';
 import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
@@ -477,11 +477,13 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const [, tick] = useState(0);
   useEffect(() => {
     if (quietSince === null) return;
-    const h = setTimeout(() => tick((n) => n + 1), Math.max(0, quietSince + QUIET_MS - Date.now()) + 50);
-    return () => clearTimeout(h);
+    const hs = [QUIET_MS, QUIET_MS + PROBE_MS].map((ms) => setTimeout(() => tick((n) => n + 1), Math.max(0, quietSince + ms - Date.now()) + 50));
+    return () => hs.forEach(clearTimeout);
   }, [quietSince]);
-  const quiet = quietSince !== null && Date.now() - quietSince >= QUIET_MS;
-  const { why, pushedAt } = useWhyQuiet(quietSince);
+  const { why, pushedAt, probed } = useWhyQuiet(quietSince);
+  // the line comes with its cause, once the probe that started with the silence is back, so it does not change its words a moment later
+  const waited = quietSince === null ? 0 : Date.now() - quietSince;
+  const quiet = waited >= QUIET_MS && (probed || waited >= QUIET_MS + PROBE_MS);
   const viaTailnet = useTailnet(quietSince === null);
   const said = quietText(why, { tailnet: viaTailnet, android: /Android/i.test(navigator.userAgent), pushedAt: pushedAt === null ? null : when(pushedAt) });
 

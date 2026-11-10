@@ -18,7 +18,7 @@ export type Probe = { status: number } | { failed: number } | { slow: true };
 /** A failure this quick never got an answer from Obeya: no name or route for the address, or the computer refused it. */
 export const FAST_MS = 2000;
 /** How long the probe waits for an answer: a sleeping machine gives none. */
-const PROBE_MS = 5000;
+export const PROBE_MS = 3000;
 /** How often it looks again while Obeya does not answer. */
 const EVERY_MS = 10_000;
 /** Shared with the service worker, which notes there when the last push was sent. */
@@ -115,8 +115,11 @@ async function lastPush(): Promise<number | null> {
   }
 }
 
-/** The likely cause while Obeya has not answered since `since` (null while it does), and when the last push was sent. */
-export function useWhyQuiet(since: number | null): { why: Why; pushedAt: number | null } {
+/**
+ * The likely cause while Obeya has not answered since `since` (null while it does), when the last
+ * push was sent, and whether the first probe since then is back.
+ */
+export function useWhyQuiet(since: number | null): { why: Why; pushedAt: number | null; probed: boolean } {
   const [online, setOnline] = useState(() => navigator.onLine);
   const [pushedAt, setPushedAt] = useState<number | null>(null);
   const [probed, setProbed] = useState<Probe | null>(null);
@@ -163,7 +166,7 @@ export function useWhyQuiet(since: number | null): { why: Why; pushedAt: number 
       window.removeEventListener('online', again);
     };
   }, [since]);
-  return { why: since === null ? null : whyQuiet({ online, pushedAt, probe: probed }), pushedAt };
+  return { why: since === null ? null : whyQuiet({ online, pushedAt, probe: probed }), pushedAt, probed: probed !== null };
 }
 
 /**

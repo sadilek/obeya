@@ -306,9 +306,11 @@ the 3 s count from then (a phone back from its lock screen reconnects within the
 machine refuses nothing, so a connection not open within 3 s counts as not answering, and one not
 open after 10 s is tried anew.
 
-*Why it does not answer.* The line says the likely cause, from what the phone can see on its own,
-and looks again every 10 s and on coming back into view or onto a network: a request to Obeya's
-address (`/api/reach`, through no cache, given 5 s). In this order:
+*Why it does not answer.* The line says the likely cause, from what the phone can see on its own: a
+request to Obeya's address (`/api/reach`, through no cache, given 3 s), sent as the connection is
+lost, again every 10 s, and on coming back into view or onto a network. The line waits for the first
+one to come back (3 s at most beyond its own 3 s), so it shows with its cause rather than changing
+its words a moment later. In this order:
 
 - the browser has no network: the phone has none;
 - the address answers 502 to 504, a gateway with nothing behind it (`tailscale serve` while Obeya is
