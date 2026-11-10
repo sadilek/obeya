@@ -66,10 +66,10 @@ let canvasId = '';
 export function setCanvas(id: string) {
   canvasId = id;
 }
-/** A path in the shown canvas's API. */
 /** The page runs as the app on a phone's home screen, not in its browser. */
 export const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
+/** A path in the shown canvas's API. */
 export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
 /**
  * The canvas each card is on, where the page shows the cards of several (the phone view). A call
@@ -398,7 +398,6 @@ export const api = {
   stopReshare: () => call<void>('POST', at('/reshare/stop')),
   /** "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change. */
   dismissReshare: () => call<void>('DELETE', at('/reshare')),
-  /** The owner has the Coordinator's sheet in view: the answers waiting there are read. */
   /** Obeya's sheet is in view, or (`ids`) these exchanges in a project's sheet. */
   readTalk: (ids?: number[]) => call<void>('POST', at('/talk/read'), ids ? { ids } : undefined),
   /** Obeya no longer waits on the card after that exchange, to take the step it said it would. */
