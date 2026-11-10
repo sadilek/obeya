@@ -64,7 +64,8 @@ import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
 import { HERE, isFolder } from './workspaces';
 import { BLANK_PAGE, GITHUB_PAGES, githubPagesDeploy } from './site-hosts';
-import { COMMAND_TIMEOUT, commandWords, SHARE_CWD, type SharePage, type ShareTarget, scriptArgv, tail } from './share';
+import { commandWords } from './folder-processes';
+import { COMMAND_TIMEOUT, SHARE_CWD, type SharePage, type ShareTarget, scriptArgv, tail } from './share';
 import { messageOf } from '../core/text';
 
 /** Where the sites live under Obeya's home. */

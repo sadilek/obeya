@@ -31,6 +31,7 @@ import { type Forge, landedUrl, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { readSession } from './coordinator';
 import type { CardRow } from './db';
+import { commandWords } from './folder-processes';
 import { branchName, gitAsync } from './workspaces';
 import { originOf } from './forgejo';
 import { zip } from './zip';
@@ -1361,9 +1362,6 @@ export function withDemoLink(body: string, url: string, kind: DemoKind = 'video'
 
 /** A card's page keeps this slug for good: a shared link stays the same, and an export is named by it. */
 const slugOf = (card: Item) => branchName(card.title, card.id).slice('obeya/'.length);
-
-/** The words of a command line, as a shell would split it where quotes ("…", '…') keep spaces. */
-export const commandWords = (line: string): string[] => [...line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]!);
 
 /**
  * Argv whose program, given as a path, is found in the repository (`~` is the home directory), and

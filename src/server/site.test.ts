@@ -27,7 +27,8 @@ let target: ShareTarget;
 // machine's snapshot, deployed right after this one (one per deploy)
 const DEPLOY = `
 const { appendFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
-const [site, out] = process.argv.slice(2);
+const [site, out, ...more] = process.argv.slice(2);
+if (more.length) writeFileSync(out + '/args', JSON.stringify(more));
 appendFileSync(out + '/deploys', readdirSync(site).sort().join(' ') + ' token=' + (process.env.TOKEN ?? '') + '\\n');
 console.log('Uploaded ' + readdirSync(site).length + ' entries');
 if (existsSync(out + '/fail')) { console.error('upload refused: token expired'); process.exit(3); }
@@ -215,6 +216,12 @@ describe('a site Obeya keeps', () => {
     expect(overview()).toContain('<h1>Team demos</h1>');
     expect(overview()).toContain(`${CREDIT_DE}</main>`);
     expect(readFileSync(join(deployed(), 'index.html'), 'utf8')).toBe(overview());
+  });
+
+  test('a deploy line keeps a quoted value inside a word together, without its quotes, as a shell does', async () => {
+    target = make(SITE({ deploy: `deploy.ts {dir} __OUT__ --message="Demo of the week" --tag='a b'` }));
+    expect('url' in (await target.publish(page('csv-export-abc123')))).toBe(true);
+    expect(JSON.parse(readFileSync(join(dir, 'args'), 'utf8'))).toEqual(['--message=Demo of the week', '--tag=a b']);
   });
 
   test("writes each page in its demo's language and the overview in the repository's", async () => {
