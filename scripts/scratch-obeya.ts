@@ -898,12 +898,12 @@ writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
 console.log(JSON.stringify(staged));
 process.exit(0);
 
-/** A git repository at `path` with what is there committed on the main branch. */
 /** Git configuration for the server's git calls, as environment variables. */
 function gitConfig(pairs: (readonly [string, string])[]): Record<string, string> {
   return Object.fromEntries([['GIT_CONFIG_COUNT', String(pairs.length)], ...pairs.flatMap(([k, v], i) => [[`GIT_CONFIG_KEY_${i}`, k], [`GIT_CONFIG_VALUE_${i}`, v]])]);
 }
 
+/** A git repository at `path` with what is there committed on the main branch. */
 function initRepo(path: string) {
   run('git', ['init', '-q', '-b', mainBranch], path);
   run('git', ['add', '-A'], path);
