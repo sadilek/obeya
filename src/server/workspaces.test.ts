@@ -6,8 +6,9 @@ import { pathToFileURL } from 'node:url';
 import { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
+import { onStart } from './spawn';
 import { alive, gitClone, gitRepo, identify, leftBehind, removeDir, until } from './testing';
-import { addTrailer, defaultBranch, git, originFetch, Workspaces } from './workspaces';
+import { addTrailer, defaultBranch, git, originFetch, unlanded, Workspaces } from './workspaces';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
@@ -900,6 +901,36 @@ describe('clones the configuration no longer names', () => {
     spaces.keepOnly(null, []);
     await until(() => !existsSync(squashed) && spaces.pool([])[0]!.kept?.length === 3);
     expect(spaces.pool([])[0]!.kept!.toSorted()).toEqual([tagged, deleted, odd]);
+  });
+
+  test('a branch of a thousand files squashed onto main counts as landed, asked in command lines Windows takes', async () => {
+    const { paths } = await make(1);
+    const clone = paths[0]!;
+    const files = Array.from({ length: 1000 }, (_, i) => `generated/a-directory-with-a-long-name/file-${String(i).padStart(4, '0')}-with-a-long-name-too.txt`);
+    const write = (at: string, message: string) => {
+      mkdirSync(join(at, 'generated', 'a-directory-with-a-long-name'), { recursive: true });
+      for (const f of files) writeFileSync(join(at, f), `${f}\n`);
+      git(at, 'add', '.');
+      git(at, 'commit', '--quiet', '-m', message);
+    };
+    git(clone, 'checkout', '--quiet', '-b', 'obeya/generated');
+    write(clone, 'Generated');
+    const other = join(dir, 'other');
+    gitClone(origin, other);
+    identify(other);
+    // the pull request squashed onto main, and its branch deleted
+    write(other, 'Squashed');
+    git(other, 'push', '--quiet', 'origin', 'main');
+    const lines: number[] = [];
+    const stop = onStart((argv) => argv.includes('diff') && lines.push(argv.filter((a) => a.startsWith(':(literal)')).join(' ').length));
+    try {
+      expect(await unlanded(clone)).toEqual([]);
+    } finally {
+      stop();
+    }
+    expect(lines.length).toBeGreaterThan(1);
+    // the rule `listed` keeps: about 32,000 characters fit on a command line on Windows
+    for (const n of lines) expect(n).toBeLessThan(24_000);
   });
 
   test('a clone named again while its folder is looked at stays, with what a card does in it', async () => {

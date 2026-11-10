@@ -2094,7 +2094,17 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
     const listed = await gitRun(path, ['diff', '-z', '--no-ext-diff', '--no-textconv', '--name-only', '--no-renames', base, ref]);
     const files = listed.stdout.split('\0').filter(Boolean);
     if (listed.code !== 0 || files.length > 1000) return false;
-    return !files.length || (await run('diff', '--quiet', '--no-ext-diff', '--no-textconv', main, ref, '--', ...files.map((f) => `:(literal)${f}`))) !== null;
+    // in batches a command line holds (`listed`)
+    for (let i = 0; i < files.length; ) {
+      const batch: string[] = [];
+      for (let length = 0; i < files.length && length + files[i]!.length + 12 < 24_000; i++) {
+        batch.push(`:(literal)${files[i]}`);
+        length += files[i]!.length + 12;
+      }
+      if (!batch.length) return false;
+      if ((await run('diff', '--quiet', '--no-ext-diff', '--no-textconv', main, ref, '--', ...batch)) === null) return false;
+    }
+    return true;
   };
   for (const ref of refs) {
     const n = await run('rev-list', '--count', ref, '--not', '--remotes=origin');
