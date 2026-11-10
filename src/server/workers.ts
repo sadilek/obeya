@@ -31,7 +31,7 @@ import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
 import { type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
-import { gitAsync, type GitSteps, isFolder } from './workspaces';
+import { gitAsync, type GitSteps, isAncestor, isFolder } from './workspaces';
 import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
 import type { CardRow, RowUpdate } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
@@ -2048,10 +2048,16 @@ export class Workers {
       return `Not handed over: Obeya could not read the pull request's head from the forge (${messageOf(e)}). Call ready_for_review again in a moment.`;
     }
     if (!base || base === head) return { head, base: head, commits: 0 };
-    const on = await gitAsync(ws, 'merge-base', '--is-ancestor', base, head).then(
-      () => true,
-      () => false,
+    // a head the workspace does not have is one pushed since it fetched; any other failure tells nothing
+    const on = await isAncestor(ws, base, head).catch(async (e: unknown) =>
+      (await gitAsync(ws, 'cat-file', '-e', `${base}^{commit}`).then(
+        () => true,
+        () => false,
+      ))
+        ? messageOf(e)
+        : false,
     );
+    if (typeof on === 'string') return `Not handed over: Obeya could not tell whether your branch builds on the pull request’s head ${base.slice(0, 7)} (${on}). Check the workspace, then call ready_for_review again.`;
     if (!on)
       return `Not handed over: the pull request's head is ${base.slice(0, 7)}, and your branch does not build on it (${c.author} pushed since you fetched it, or your branch was rewritten). Fetch refs/pull/${c.number}/head from ${this.prSource(c)} and look at what changed before you run any of it; put the commits of your own that are not on the PR yet on top of it (rebase; the PR's commits stay as they are), review what is new, then hand over again.`;
     // a merge of main into it counts once, not with each commit it brings

@@ -152,6 +152,17 @@ export async function gitAsync(cwd: string, ...args: string[]): Promise<string> 
   return r.stdout.trim();
 }
 
+/**
+ * Whether commit `a` is an ancestor of `b` in `cwd`. Throws where git cannot tell (an unknown commit,
+ * a broken repository): each caller decides what that means for it.
+ */
+export async function isAncestor(cwd: string, a: string, b: string): Promise<boolean> {
+  const args = ['merge-base', '--is-ancestor', a, b];
+  const r = await gitRun(cwd, args);
+  if (r.code === 0 || r.code === 1) return r.code === 0;
+  throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+}
+
 /** `git` in `cwd` without blocking, with its exit code: for commands whose exit code is an answer (`diff --no-index`). */
 async function gitRun(cwd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const there = remoteWorkspace(cwd);

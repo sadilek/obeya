@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, AgentTool } from './runtime';
-import { gitAsync } from './workspaces';
+import { gitAsync, isAncestor } from './workspaces';
 import { messageOf } from '../core/text';
 
 /** What an agent was given of a tool: what the fingerprint of a recording covers. */
@@ -199,11 +199,9 @@ async function headOf(cwd: string): Promise<string | undefined> {
   return gitAsync(cwd, 'rev-parse', 'HEAD').catch(() => undefined);
 }
 
+/** Whether `to` builds on `from`; where git cannot tell, not: the replay of a rewritten head takes what changed as one commit, which goes onto any history. */
 async function descends(cwd: string, from: string, to: string): Promise<boolean> {
-  return gitAsync(cwd, 'merge-base', '--is-ancestor', from, to).then(
-    () => true,
-    () => false,
-  );
+  return isAncestor(cwd, from, to).catch(() => false);
 }
 
 /** A commit as `rebuilt` compares it: what makes two commits of two stagings the same one. */

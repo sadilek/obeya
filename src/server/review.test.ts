@@ -3,7 +3,7 @@
 // Obeya on approval, pinned to the head the worker reviewed.
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -892,6 +892,20 @@ describe('a review card', () => {
     expect(board.item(id)!.contribution!.held).toMatchObject({ body: 'I added the shortcut.', commits: 1 });
     await workers.approve(id);
     expect(fake.said.merges).toEqual([head]);
+  });
+
+  test('a handover where git cannot tell whether the branch builds on the PR’s head says so, instead of blaming a push of the contributor’s', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
+    runtime.last.emit({ type: 'idle' });
+    const head = commitOwn(id, 'shortcut.ts');
+    // a broken repository: the branch's head names a commit git no longer has
+    const ws = board.row(id).workspace!;
+    rmSync(join(ws, '.git', 'objects', head.slice(0, 2), head.slice(2)));
+    const told = await runtime.last.call('ready_for_review', { summary: 'S', review: results });
+    expect(told).toContain('Obeya could not tell whether your branch builds on the pull request’s head');
+    expect(told).not.toContain('does not build on it');
   });
 
   test('a push the contributor’s repository rejects is a push of theirs: nothing is posted or merged', async () => {
