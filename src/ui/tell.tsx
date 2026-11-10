@@ -17,6 +17,9 @@ import type { useTold } from './voice';
 /** How long a confirmation stays, and its "Undo" unless the action waits longer. */
 export const ACK_MS = 7000;
 
+/** How long a confirmation stays: `ACK_MS`, or with an "Undo" that shows for `undoMs` as long as that. */
+export const ackLasts = (undo: boolean, undoMs = ACK_MS) => (undo ? Math.max(ACK_MS, undoMs) : ACK_MS);
+
 /**
  * The confirmation above the microphone: `showAck` with "Undo" while the action still waits,
  * `showWait` for what the server is still at, `fail` for what went wrong; `line` shows it. With
@@ -34,7 +37,7 @@ export function useAck(aside = false) {
     clearTimeout(ackTimer.current);
     clearTimeout(undoTimer.current);
     if (undo) undoTimer.current = setTimeout(() => setAck((a) => (a && a.text === text ? { text } : a)), Math.max(0, undoMs - 400));
-    ackTimer.current = setTimeout(() => setAckOn(false), ACK_MS);
+    ackTimer.current = setTimeout(() => setAckOn(false), ackLasts(!!undo, undoMs));
   }
   /** What went wrong, in place of the confirmation; what the server did not refuse also goes to the console. */
   function fail(e: unknown) {

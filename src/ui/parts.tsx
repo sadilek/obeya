@@ -1643,7 +1643,7 @@ export function Minimap({
             width={b.w * k}
             height={b.h * k}
             rx={item.kind === 'project' ? 1.5 : 0.5}
-            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : `var(--${item.snoozed ? 'muted' : item.state})` }}
+            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : `var(--${shownState(item)})` }}
             opacity={item.kind === 'project' || needsYou(item) ? 1 : 0.55}
           />
         ))}

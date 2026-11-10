@@ -370,6 +370,13 @@ export function insertFiles(key: string, words: string[]) {
   updateDraft(key, (d) => ({ files: [...(d.files ?? []), ...words] }));
 }
 
+/** `insertFiles` for the drafts kept at `home`: after a switch of canvas, at the end of the draft the canvas left behind has written down (`updateDraftAt`). */
+export function insertFilesAt(home: DraftsHome, key: string, words: string[]) {
+  if (home === kept || !home) return insertFiles(key, words);
+  if (!words.length) return;
+  updateDraftAt(home, key, (d) => ({ text: d.text + spaced(d.text, words.join(' '), ''), files: [...(d.files ?? []), ...words] }));
+}
+
 /** `text` with `piece` after it, in a paragraph of its own. */
 const paragraphAfter = (text: string, piece: string) => (text.trim() ? `${text.replace(/\s+$/, '')}\n\n${piece}` : piece);
 

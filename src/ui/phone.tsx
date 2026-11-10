@@ -312,10 +312,14 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const allRef = useRef(all);
   allRef.current = all;
   const byId = (id: string) => allRef.current.find((x) => x.item.id === id)?.item;
-  // a card the address names by its code: its id once the snapshots hold it, and its address by the code
+  // a card the address names by its code: its id once the snapshots hold it, and its address by the
+  // code; an open card that moved to another canvas (built in a new repository there) stays open, and
+  // the address follows it there, as the canvas's page does
   useEffect(() => {
-    const id = resolve(open);
-    if (!open || id === open) return;
+    if (!open) return;
+    const id = resolve(open)!;
+    const on = allRef.current.find((x) => x.item.id === id)?.canvas.id;
+    if (id === open && (!on || on === readAddress().canvas)) return;
     if (looked.current === open) looked.current = id;
     setOpenState(id);
     history.replaceState(history.state, '', addressWith({ card: id, talk: talkRef.current }));

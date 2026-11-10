@@ -920,9 +920,10 @@ function Canvas({
     history.replaceState(history.state, '', pathOf(i));
     if (!i) return;
     if (i.kind === 'project') return openAgain({ project: i.id }, quick);
-    // an archived workstream unfolds from its project's sheet, any other archived card from the archive's list
+    // an archived workstream unfolds from its project's sheet, any other archived card from the
+    // archive's list, which takes the search's place: the two never show at once
     const project = i.archivedAt ? i.parent : undefined;
-    if (i.archivedAt && !project) setAOn(true);
+    if (i.archivedAt && !project) setSOn(false), setAOn(true);
     await openAgain({ card: i.id, project }, quick);
   }
   /** Back or Forward: what the address no longer names closes, what it names opens. */

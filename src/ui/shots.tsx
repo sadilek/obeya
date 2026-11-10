@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES } from '../core/types';
 import { api, ApiError, at } from './api';
 import { droppedPath, withBytes } from './appDrop';
-import { draftOf, draftsHome, dropDraft, insertFiles, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
+import { draftOf, draftsHome, dropDraft, insertFilesAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
 import { know, known } from './known';
 import { badgeOf, CLICK_PX, drawMarks, EDGE, type Mark, markOf, markSize, type Point, RED, roundedRect } from './marks';
 import { confirmPasteHint, pastedShots, pickedShots, usePasteHint } from './pasteHint';
@@ -77,24 +77,28 @@ export async function attachTo(key: string, files: File[], added?: () => void) {
 
 /**
  * Files for a draft that are no screenshots, one after the other; the path of each goes into its
- * text by `put` as it is known. That is the file's own path: the app's drop names it, and for a
- * browser's Obeya looks for the file on its machine. Where it finds none, the file is uploaded and
- * its copy's path goes in. How many did.
+ * text by `put` as it is known, into the draft's text at `home` without one. That is the file's own
+ * path: the app's drop names it, and for a browser's Obeya looks for the file on its machine. Where
+ * it finds none, the file is uploaded and its copy's path goes in. How many did.
  */
-export async function fileTo(key: string, files: File[], put: (path: string) => void) {
+export async function fileTo(key: string, files: File[], put?: (path: string) => void) {
   let arrived = 0;
   if (!files.length) return arrived;
+  // a switch to another canvas meanwhile: the paths go to the draft the files were dropped into
+  const home = draftsHome();
   updateDraft(key, (d) => ({ error: '', uploading: d.uploading + files.length }));
   for (const f of files) {
     try {
       const own = droppedPath(f) ?? (await api.findFile(f).catch(() => null));
       if (!own && f.size > MAX_FILE_BYTES) throw new ApiError('fileTooLarge', '');
-      put(own ?? (await api.uploadFile(f)));
+      const path = own ?? (await api.uploadFile(f));
+      if (put) put(path);
+      else insertFilesAt(home, key, [pathWord(path)]);
       arrived++;
     } catch (e) {
-      updateDraft(key, { error: failText(e) });
+      updateDraftAt(home, key, { error: failText(e) });
     } finally {
-      updateDraft(key, (d) => ({ uploading: d.uploading - 1 }));
+      updateDraftAt(home, key, (d) => ({ uploading: d.uploading - 1 }));
     }
   }
   return arrived;
@@ -103,7 +107,7 @@ export async function fileTo(key: string, files: File[], put: (path: string) => 
 /** Pasted or dropped files for a draft whose text is its own: the screenshots as screenshots, the others by their paths. How many arrived. */
 export async function filesTo(key: string, files: File[]) {
   const shots = attachTo(key, files.filter(isImage));
-  const others = fileTo(key, files.filter((f) => !isImage(f)), (path) => insertFiles(key, [pathWord(path)]));
+  const others = fileTo(key, files.filter((f) => !isImage(f)));
   return (await shots) + (await others);
 }
 
@@ -135,7 +139,7 @@ export function useShotInput({ draft, initial = [], onChange, off = false, put }
   const attach = async (files: File[]) => {
     if (off) return 0;
     const shots = attachTo(key, files.filter(isImage), () => change.current?.(draftOf(key).images));
-    const others = fileTo(key, files.filter((f) => !isImage(f)), (path) => (putRef.current ?? ((w) => insertFiles(key, [w])))(pathWord(path)));
+    const others = fileTo(key, files.filter((f) => !isImage(f)), putRef.current && ((path) => putRef.current?.(pathWord(path))));
     return (await shots) + (await others);
   };
   const failed = (e: unknown) => updateDraft(key, { error: failText(e) });
