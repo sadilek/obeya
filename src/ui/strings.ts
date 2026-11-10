@@ -2058,6 +2058,12 @@ const de = {
     /** A limit for one model or surface only. */
     scoped: (scope: string) => `Woche, nur ${scope}`,
     resets: (when: string) => `neu ab ${when}`,
+    /** How long until then, after it. */
+    left: (span: string) => `noch ${span}`,
+    /** The parts of that span. */
+    days: (n: number) => `${n} ${n === 1 ? 'Tag' : 'Tage'}`,
+    hours: (n: number) => `${n} Std.`,
+    minutes: (n: number) => `${n} Min.`,
     source: (harness: string, time: string) => `Von ${harness} auf diesem Rechner, jede Minute neu; Stand ${time}.`,
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
@@ -4203,6 +4209,10 @@ const en: Strings = {
     kinds: { session: 'Session (5 hours)', weekly_all: 'Week, all models' },
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,
+    left: (span: string) => `in ${span}`,
+    days: (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`,
+    hours: (n: number) => `${n} h`,
+    minutes: (n: number) => `${n} min`,
     source: (harness: string, time: string) => `From ${harness} on this machine, every minute; as of ${time}.`,
     setting: {
       title: 'Usage limits in the bar',
@@ -4466,6 +4476,15 @@ export const snoozeWhen = (at: string | number) => {
             .toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'numeric', ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) })
             .replace(/^(\p{L}+)\.?,?/u, '$1');
   return `${day}, ${clock(d)}`;
+};
+/** A span of time in its two largest units, rounded up to the minute: „6 Tage 14 Std.“, „3 Std. 12 Min.“, „42 Min.“. */
+export const countdown = (ms: number) => {
+  const all = Math.max(1, Math.ceil(ms / 60_000));
+  const [d, h, m] = [Math.floor(all / 1440), Math.floor((all % 1440) / 60), all % 60];
+  const u = t.usage;
+  if (d) return h ? `${u.days(d)} ${u.hours(h)}` : u.days(d);
+  if (h) return m ? `${u.hours(h)} ${u.minutes(m)}` : u.hours(h);
+  return u.minutes(m);
 };
 /** A short date: day and month. */
 export const shortDay = (d: Date | string | number) => new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
