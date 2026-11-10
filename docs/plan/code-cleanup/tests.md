@@ -77,8 +77,9 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Confidence: high for the pattern (all 27 sites listed by rg, their context read); the 85 is the
   sum of the affected describes' test counts, approximate.
 - Bug fixed (W1 of the bug plan): the fixture's `afterEach` shuts down every `Workers` a test made
-  (`setWorkers`, `tracked`) before awaiting their `freed()`, and `setup` shuts down the workers of
-  the setup before it.
+  (`setWorkers`, `tracked`) before awaiting their `freed()`, and `setup` tears the setup before it
+  down the same way (`tearDown`), so the 27 call sites lost their `removeDir` line; what is left of
+  this finding is the adapter for `eachTest`.
 
 ### T3. The one-repository canvas harness is rebuilt in file after file: there is a workers fixture but no canvas fixture
 - Principle: DRY
