@@ -278,6 +278,8 @@ clean apart from two small items (D13, D15).
 - Win: about 6 lines and one rule.
 - Risk: low. `commands.test.ts` covers the refusals of both actions.
 - Confidence: high. `SNOOZE_LIMIT` appears in `commands.ts` only at `:1088`.
+- Bug fixed (W1 of the bug plan): `snooze` refuses a time more than `SNOOZE_LIMIT` ahead with
+  `new_card`'s message, so `futureTime` changes nothing the assistant is told.
 
 ### D13. `oneLine` and `clip` from `core/text` spelt out inline
 - Principle: DRY
@@ -382,9 +384,5 @@ clean apart from two small items (D13, D15).
   `holdMs`, `reviewEvery`, `restartIntervalMs`): test seams.
 
 ## Bugs noticed in passing
-- `src/server/canvas.ts:1762` the doc comment of `press` sits above `standIn`, which has its own.
-- `src/server/coordinator.ts:1471` the doc comment of `tagOf` sits above `unlanded`.
-- `src/server/commands.ts:1198-1200` `snooze` accepts a time more than a year ahead, which
-  `canvas.ts:576` refuses after the owner heard the confirmation (see D12).
-- `src/server/push.ts:215`, `:217` the message's `at` is `Date.now()` although the class takes a
-  clock (`this.now`) for everything else.
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).

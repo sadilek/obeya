@@ -246,6 +246,9 @@ across the server.
 - Risk: low. No test names these methods; `board.test.ts` and `share.test.ts` cover them through the
   archive search and the outdated-pages notice.
 - Confidence: high. Both readers and both consumers read.
+- Bug fixed (W1 of the bug plan): the `Store` empties `shared_changes` and `archive_changes` as it
+  opens the database (a canvas reads both afresh when it opens), so a canvas never opened again
+  leaves no rows for good; the readers stay as they were.
 
 ### C10. `changed_at` cannot be null, but is read as if it could
 - Principle: YAGNI
@@ -456,10 +459,5 @@ across the server.
   `json_each($ids)`: same result, not worth a change on its own.
 
 ## Bugs noticed in passing
-- `src/server/revisions.ts:183` throws `new Error('der Agent hat keinen neuen Text geliefert')`: a
-  German literal outside the string tables, which reaches the owner through
-  `reviseFailed(messageOf(e))` whatever the interface language.
-- `src/server/db.ts:778-781` `sharedChanges` reads every canvas's rows after the cursor and filters
-  in JavaScript, while each canvas drops only its own: rows of a canvas that is never opened again
-  are never dropped from `shared_changes` (small, but it grows without bound; `archive_changes`
-  likewise for a canvas never opened again).
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).

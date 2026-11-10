@@ -553,6 +553,5 @@ class (8×), the refresh-after-a-while cache (4×).
   doubles.
 
 ## Bugs noticed in passing
-- `src/server/replay.ts:652-658` the temp directory made for `change.patch` is removed only on the
-  success path: `if (!diff) return` and a failing `git apply` or `git commit` leave it behind in the
-  temp directory.
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).

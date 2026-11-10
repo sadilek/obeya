@@ -276,6 +276,8 @@ prompt sentences). `stalls.ts`, `workers-fixture.ts` and `patience.ts` are clean
 - Risk: low; clearing `holding` on shutdown is a behaviour change (a fix), to be decided with the
   bug below.
 - Confidence: high (every use of the four maps grepped).
+- Bug fixed (W1 of the bug plan): `shutdown` now clears `holding` and the pending timers of
+  `pushingMain`, so `CardTimers.clearAll` keeps that behaviour rather than introducing it.
 
 ### A10. "Is this still the same run?" is written inline 15 times and as three local closures
 - Principle: DRY
@@ -298,6 +300,9 @@ prompt sentences). `stalls.ts`, `workers-fixture.ts` and `patience.ts` are clean
 - Risk: low to medium: sites that today do not check the card's existence would start to; go site by
   site.
 - Confidence: high on the counts (grep), medium that one predicate fits all 15.
+- Bug fixed (W1 of the bug plan): `generation`, `tried` and `granted` lose a card's entry once the
+  card is deleted or archived (`forget`), and `bump` hands out runs counted across cards (`runs`), so a
+  forgotten generation is never equal to a later one; `sameRun` keeps that.
 
 ### A11. `halt` and `snooze` are the same suspension written twice
 - Principle: DRY
@@ -473,12 +478,5 @@ prompt sentences). `stalls.ts`, `workers-fixture.ts` and `patience.ts` are clean
   without the test helpers.
 
 ## Bugs noticed in passing
-- `src/server/workers.ts:3521-3533` `shutdown` clears `parking`, `pausing` and `reconnecting` but
-  not `holding` (`:1425`) nor `pushingMain` (`:2679`): after `stopRepo` (`canvas.ts:988`) makes new
-  workers for the repository, the old instance's `releaseLater` timer still fires `release` →
-  `deliver` → `launch` (which does not check `this.shut`), starting a session the new instance does
-  not know of; a pending "Push main" likewise runs from the old instance, where the new one's
-  `keepMainFor` cannot undo it.
-- `src/server/workers.ts:662`, `:668`, `:678` `generation`, `tried`, `granted` have no `delete`
-  anywhere in the file (grepped): entries stay for cards that are gone, for the life of the process;
-  small.
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).

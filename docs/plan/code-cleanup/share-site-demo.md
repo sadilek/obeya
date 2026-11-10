@@ -198,6 +198,8 @@ when a page could go to something other than a site.
 - Risk: low. For every line without a quote inside a word the results are the same; the settings'
   tests and `site.test.ts` run deploy lines.
 - Confidence: high; both read, the difference checked by hand.
+- Done by W1 of the bug plan, which fixed the deploy line's quoting this way: the `commandWords` of
+  `share.ts` is gone, and `share.ts` and `site.ts` import the one of `folder-processes.ts`.
 
 ### S10. A second env-file parser and a second `'sites'` in `site-hosts.ts`
 - Principle: DRY
@@ -471,8 +473,5 @@ when a page could go to something other than a site.
   language to people outside Obeya.
 
 ## Bugs noticed in passing
-- `src/server/share.ts:1366`: a deploy line with a quote inside a word (`--message="a b"`) is split
-  at the space and keeps its quotes (see S9).
-- `src/server/share.ts:572`: a page of a tagging batch that the owner tagged while the session ran,
-  and for which the session gave no answer, is dropped from the run and still gets the error line
-  "not shared: no tags" (possible, read from the code, not reproduced).
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).

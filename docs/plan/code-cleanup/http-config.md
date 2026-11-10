@@ -254,6 +254,9 @@ test for "these commits change code" (F16).
 - Risk: medium. A route moved from the plain form to the forgiving one answers a malformed request
   differently, so each route keeps its current strictness. `server.test.ts` checks several 400s.
 - Confidence: high on the count (grep). The strictness of each route needs care in the change.
+- Bug fixed (W1 of the bug plan): the canvas routes that read fields of the body or pass it on
+  whole read it through `fields(req)` beside `handle`, which refuses anything but a JSON object with
+  `invalid`; the helpers of this finding start from it.
 
 ### F10. `usageMeter` and `costs` are the same setting twice
 - Principle: DRY
@@ -292,6 +295,8 @@ test for "these commits change code" (F16).
   signal), which changes nothing the owner sees. `server.test.ts` builds its own `Restarter` and may
   rely on the route's delay.
 - Confidence: medium. I read all five places, not the tests' timing.
+- Bug fixed (W1 of the bug plan): `/api/app-update` with `rebuilt: true` now waits 100 ms too, a
+  sixth timer for `go` to take over.
 
 ### F12. `Config` repeats lookups and calls inside itself
 - Principle: DRY
@@ -387,6 +392,8 @@ test for "these commits change code" (F16).
 - Risk: low. The one change in behaviour is that a docs-only commit with a non-ASCII file name no
   longer restarts Obeya.
 - Confidence: medium to high (read both and `inert`; did not run git).
+- Bug fixed (W1 of the bug plan): `changesCode` reads the names with `-z`, unquoted; the shared
+  function can keep that.
 
 ### F17. Server messages for the bar are built in two places each
 - Principle: DRY
@@ -478,12 +485,5 @@ test for "these commits change code" (F16).
   functions, each named for what main.ts does with it.
 
 ## Bugs noticed in passing
-- `src/server/server.ts:805-806, 1097, 1123, 1127, 1132`: a body that is the JSON literal `null`
-  makes the destructuring throw a `TypeError`, which `handle` rethrows as a 500 where the neighbours
-  answer 400. Only a hand-written request reaches it.
-- `src/server/server.ts:985`: `/api/app-update` with `rebuilt: true` requests the update without the
-  100 ms delay its neighbours use. With no worker busy the server may stop before the shell has its
-  answer (see F11).
-- `src/server/self-update.ts:190`: `changesCode` reads file names with git's default quoting, so a
-  docs-only commit that touches a file with a non-ASCII name counts as code and restarts Obeya (see
-  F16).
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).

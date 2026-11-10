@@ -15,11 +15,14 @@ test that fails without it.
 
 ## Where it stands
 
-Nothing is fixed yet. The review that found the bugs was made on 2026-11-10 at commit `acfa0484`.
-Of the files the bugs point to, only `server.ts`, `api.ts`, `scratch-obeya.ts` and `core/types.ts`
-have changed since (at commit `3321cd6e`), by a few lines each, so the line numbers in the findings
-files still hold or are off by a few. Every bug was read from the code alone: none was reproduced,
-and some may turn out to be none.
+W1 is done: each of its bugs was reproduced in a test that failed before its fix, except the
+comment points, the test hygiene (measured instead: the server's test files leave no canvas and no
+workers running) and `replay.ts`'s reading of a failing `merge-base`, which kept its outcome (a
+rewritten head) and now says so. The bare `git` in `forge.ts` and `site.ts` stays for code cleanup
+W5 (E2). The fixed ones are gone from the findings files' lists, and the findings that name them say
+so. W2 and W3 are open; their bugs were read from the code alone, at commit `acfa0484` (2026-11-10),
+and some may turn out to be none; their line numbers still hold or are off by a few (`api.ts` and
+`scratch-obeya.ts` changed by a few lines at commit `3321cd6e`).
 
 The 41 lie in 14 findings files. 31 change behaviour; 10 concern only a comment or style (a doc
 comment above the wrong declaration, a constant between the imports, a bare `git`).
@@ -82,7 +85,7 @@ wait. Those that move code in a file a workstream here changes (W11 in `workers.
 
 ## Workstreams
 
-- [ ] **W1:** The server, with test hygiene. The bugs in `src/server`, in
+- [x] **W1:** The server, with test hygiene. The bugs in `src/server`, in
   [workers](code-cleanup/workers.md), [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md),
   [runtimes](code-cleanup/runtimes.md), [canvas-coordinator](code-cleanup/canvas-coordinator.md),
   [http-config](code-cleanup/http-config.md), [board-db](code-cleanup/board-db.md),

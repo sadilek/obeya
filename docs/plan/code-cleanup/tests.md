@@ -76,6 +76,9 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   last); the workers tests themselves are the check.
 - Confidence: high for the pattern (all 27 sites listed by rg, their context read); the 85 is the
   sum of the affected describes' test counts, approximate.
+- Bug fixed (W1 of the bug plan): the fixture's `afterEach` shuts down every `Workers` a test made
+  (`setWorkers`, `tracked`) before awaiting their `freed()`, and `setup` shuts down the workers of
+  the setup before it.
 
 ### T3. The one-repository canvas harness is rebuilt in file after file: there is a workers fixture but no canvas fixture
 - Principle: DRY
@@ -111,6 +114,8 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Risk: low.
 - Confidence: high for the four files (headers read side by side); medium for the wider list (setup
   blocks read, bodies sampled).
+- Bug fixed (W1 of the bug plan): `revisions.test.ts`, `answers.test.ts` and `snooze.test.ts`
+  await `freed()` of the canvas's workers before removing the directory, as `ideas.test.ts` does.
 
 ### T4. `canvas.test.ts` starts a two-repository canvas before every test, and 51 of its 89 tests start their own instead
 - Principle: KISS (and plain waste)
@@ -138,6 +143,8 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Risk: low; test code only.
 - Confidence: high; lines 1-610 read completely, the rest by the listing of `fresh()`,
   `canvas.shutdown()` and the start calls with their lines, and the awk count.
+- Bug fixed (W1 of the bug plan): every test of `canvas.test.ts` that starts a canvas of its own
+  shuts down the default one first; the file leaves no canvas or workers running.
 
 ### T5. No shared "write a file and commit it": about 70 inline triples and a dozen local helpers
 - Principle: DRY
@@ -212,6 +219,8 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   `checks` and `app.run`), which changes briefing text some tests assert on; keep the adapter
   explicit where assertions depend on it.
 - Confidence: medium; the count is by rg, about a third of the sites read.
+- Bug fixed (W1 of the bug plan): the `Workers` these sites replace are shut down after the test,
+  through `setWorkers` in the fixture.
 
 ### T8. `db.test.ts` builds old databases by undoing later migrations by hand, and addresses migrations by their distance from the end
 - Principle: DRY (parallel lists kept in step by hand)
@@ -480,11 +489,5 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   a negative has no condition to wait for.
 
 ## Bugs noticed in passing
-- `src/server/canvas.test.ts:348-363` overwrites `canvas` with its own without shutting down the one
-  `beforeEach` started; that canvas is never shut down.
-- `src/server/workers-fixture.ts:96-100`: the fixture's `afterEach` never calls `workers.shutdown()`
-  (`review.test.ts:105-108` does for its own), nor do the 35 sites of T7 for the `Workers` they
-  replace; timers of a test's workers can outlive it.
-- `src/server/ideas.test.ts:29-34` awaits `workers.freed()` before removing the directory;
-  `revisions.test.ts`, `answers.test.ts` and `snooze.test.ts` (same harness, cards that start
-  workers) do not.
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).

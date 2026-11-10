@@ -251,6 +251,10 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - Risk: low; for `workers.ts`/`replay.ts` the answer on a git error stays `false`. Landing and pull
   tests in `workspaces.test.ts` and the workers' landing tests cover the callers.
 - Confidence: high (grepped `is-ancestor`, read each site).
+- Bug fixed (W1 of the bug plan): `isAncestor(cwd, a, b)` exists in `workspaces.ts` and throws
+  where git cannot tell; `workers.ts` (`ownCommits`) and `replay.ts` (`descends`) use it and decide
+  themselves what that means. The six sites in `workspaces.ts` can move to it, keeping `:1369`'s
+  explicit "no".
 
 ### E7. PrWatcher.react does five jobs in 130 lines and resets four "ready" fields by hand per branch
 - Principle: KISS
@@ -322,6 +326,8 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - Win: ~35 lines; the landing methods get shorter and name their steps.
 - Risk: low; `workspaces.test.ts` and the workers' worktree/clone tests exercise each path.
 - Confidence: high (read every site; differences listed above).
+- Bug fixed (W1 of the bug plan): `unlanded`'s `landedOn` now asks in batches under 24,000
+  characters, a third copy of the batching loop for `pathspecBatches` to take over.
 
 ### E9. Three caches of a login, each "ten minutes, asked once for calls side by side"
 - Principle: DRY
@@ -537,10 +543,3 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 ## Bugs noticed in passing
 - `src/server/forge.ts:276`, `src/server/site.ts:230`, `:258` run bare `'git'` instead of `GIT`
   (slower on macOS and Windows, see `workspaces.ts:75-81`); fixed by E2.
-- `src/server/workspaces.ts:2083-2086` `unlanded` passes up to 1,000 `:(literal)` pathspecs on one
-  command line, which the 24,000-character rule of `listed` (`:180-193`) says Windows cannot take;
-  the failure reads as "not landed", so the folder is only kept needlessly.
-- `src/server/workers.ts:2035-2038`, `src/server/replay.ts:202-207` read any failure of
-  `git merge-base --is-ancestor` (an unknown commit, a broken repository) as "not an ancestor".
-- `src/server/remote.ts:405-406` `redeem` has two JSDoc blocks; the first is orphaned.
-- `src/server/pr-watcher.ts:13-16` a constant sits between the imports.

@@ -101,6 +101,10 @@ sites.
   case by case. `src/core/types.test.ts:92` and the archive tests of `board.test.ts` cover the main
   cases.
 - Confidence: medium (both sides read; the row-to-item equivalences not traced to the end).
+- Bug fixed (W1 of the bug plan): `Board.archive` refuses a planned task built on a prototype that
+  no agent has worked on since (`built_on` without `session_id`) as `notDone`, as core's `stopped`
+  does; a direct request reached it where the card's repository did not run on the canvas. Merging
+  into `archiveRefusal` keeps that.
 
 ### J3. Log lines are recognised by hand-typed copies of their words, beside a mechanism that derives them from the table
 - Principle: DRY
@@ -341,8 +345,5 @@ sites.
   `PlayerLib`): test seams, or named parts of exported types.
 
 ## Bugs noticed in passing
-- `src/server/board.ts:1847` against `src/core/types.ts:35`: the request to archive takes a planned
-  task with a branch as a stopped one without asking whether it is `unstarted` (built on a
-  prototype's branch, no session yet), which the UI's `stopped` excludes; the button does not offer
-  it, so only a direct request could reach the difference (see J2; not traced whether such a card
-  can pass the other checks).
+None left: the ones found here were fixed by W1 of the plan for the bugs noticed in passing
+(2026-11-10).
