@@ -18,6 +18,7 @@ import { know, known, local, session, setFlag, takeJson, writeJson, useKnown } f
 import { t } from './strings';
 import { plainKey, useZoom } from './zoom';
 import { zoomBox } from './zoomBox';
+import { signal } from './signal';
 
 /** The deck's margin around the slide, on its sides and above it (styles.css `.wt-stage`). */
 const WT_INSET = 10;
@@ -227,7 +228,7 @@ class Playback {
   private reading = false;
   private shown = 0;
   private hide?: ReturnType<typeof setTimeout>;
-  private listeners = new Set<() => void>();
+  private changes = signal();
   version = 0;
 
   constructor(
@@ -261,14 +262,11 @@ class Playback {
     return this.started || this.autoplay ? { slide: this.slide, part: this.part, playing: this.playing || (this.autoplay && !this.autoplayed) } : undefined;
   }
 
-  subscribe = (fn: () => void) => {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  };
+  subscribe = this.changes.on;
 
   private changed() {
     this.version++;
-    for (const fn of this.listeners) fn();
+    this.changes.emit();
   }
 
   /** Draws its player anew: something of the page changed that it shows (captions on or off). */

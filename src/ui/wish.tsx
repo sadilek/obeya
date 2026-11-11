@@ -15,6 +15,7 @@ import { imageUrl, Shots } from './shots';
 import { readJson, type Store, writeJson } from './stored';
 import { clock, errorText, t } from './strings';
 import { oneLine } from '../core/text';
+import { signal } from './signal';
 
 /** The issue as it will go out; `raw`: the job wrote nothing, the owner's words stand as they are. */
 interface Issue {
@@ -43,7 +44,7 @@ interface WishState {
 }
 
 let state: WishState = { open: false, issue: null, writing: false, error: '' };
-const listeners = new Set<() => void>();
+const changed = signal();
 let kept: { store: Store; key: string } | null = null;
 
 function set(change: Partial<WishState>) {
@@ -53,7 +54,7 @@ function set(change: Partial<WishState>) {
     if (kept) writeJson(kept.store, kept.key, state.issue);
     writeAgain();
   }
-  for (const fn of listeners) fn();
+  changed.emit();
 }
 
 let again: ReturnType<typeof setTimeout> | undefined;
@@ -84,17 +85,10 @@ export function keepWish(store: Store, canvas: string) {
   if (switched) state = { open: false, issue, writing: false, error: '' };
   else if (issue) state = { ...state, issue };
   writeAgain();
-  if (switched) for (const fn of listeners) fn();
+  if (switched) changed.emit();
 }
 
-export const useWish = () =>
-  useSyncExternalStore(
-    (fn) => {
-      listeners.add(fn);
-      return () => void listeners.delete(fn);
-    },
-    () => state,
-  );
+export const useWish = () => useSyncExternalStore(changed.on, () => state);
 
 /** The dialog's state as it stands, outside React. */
 export const wishNow = () => state;

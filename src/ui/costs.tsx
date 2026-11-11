@@ -7,23 +7,20 @@ import { useRef, useState, useSyncExternalStore } from 'react';
 import type { Item } from '../core/types';
 import { money, t } from './strings';
 import { useMenuClose } from './menu';
+import { signal } from './signal';
 
 let shown = false;
-const listeners = new Set<() => void>();
+const changed = signal();
 
 /** What the server said of the setting: on connect and whenever the owner changes it. */
 export function setCostsShown(on: boolean) {
   if (on === shown) return;
   shown = on;
-  for (const l of listeners) l();
+  changed.emit();
 }
 
 /** Whether the page shows what the agents cost. */
-export const useCostsShown = () =>
-  useSyncExternalStore(
-    (l) => (listeners.add(l), () => void listeners.delete(l)),
-    () => shown,
-  );
+export const useCostsShown = () => useSyncExternalStore(changed.on, () => shown);
 
 /** A cost as the page writes it: "≈ $1.23", below a cent "< $0.01". */
 export const costLabel = (usd: number) => (usd < 0.005 ? t.costs.under(money(0.01)) : t.costs.about(money(usd)));

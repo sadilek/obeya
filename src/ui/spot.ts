@@ -7,6 +7,7 @@ import { useSyncExternalStore } from 'react';
 import { chapterAt, type SpotInput } from '../core/types';
 import { api } from './api';
 import { MAX_SIDE } from './shots';
+import { signal } from './signal';
 
 interface Watched {
   cardId: string;
@@ -26,10 +27,10 @@ let watched: Watched | null = null;
 /** The place the owner took out of the field (its ×), until the video moves again. */
 let dismissed: number | null = null;
 let version = 0;
-const listeners = new Set<() => void>();
+const changed = signal();
 const bump = () => {
   version++;
-  for (const fn of listeners) fn();
+  changed.emit();
 };
 
 /** The card's demo video is the one its words may be about, while it is shown; returns the end of that. */
@@ -72,13 +73,7 @@ export function placeOn(cardId: string): Place | null {
 
 /** The same, live. */
 export function usePlace(cardId: string): Place | null {
-  useSyncExternalStore(
-    (fn) => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
-    () => version,
-  );
+  useSyncExternalStore(changed.on, () => version);
   return placeOn(cardId);
 }
 

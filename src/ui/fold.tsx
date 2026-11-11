@@ -5,10 +5,11 @@
 
 import { useSyncExternalStore } from 'react';
 import { local, readJson, writeJson } from './stored';
+import { signal } from './signal';
 
 interface Store {
   ids: string[];
-  listeners: Set<() => void>;
+  changed: ReturnType<typeof signal<[]>>;
 }
 
 const stores = new Map<string, Store>();
@@ -18,7 +19,7 @@ function storeOf(key: string): Store {
   if (s) return s;
   const v = readJson<unknown>(local, key);
   const ids = Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
-  s = { ids, listeners: new Set() };
+  s = { ids, changed: signal() };
   stores.set(key, s);
   return s;
 }
@@ -28,19 +29,13 @@ export function toggleFolded(key: string, id: string) {
   const s = storeOf(key);
   s.ids = s.ids.includes(id) ? s.ids.filter((x) => x !== id) : [...s.ids, id];
   writeJson(local, key, s.ids.length ? s.ids : null);
-  for (const l of s.listeners) l();
+  s.changed.emit();
 }
 
 /** The sections folded under `key`. */
 export function useFolded(key: string): string[] {
   const s = storeOf(key);
-  return useSyncExternalStore(
-    (l) => {
-      s.listeners.add(l);
-      return () => s.listeners.delete(l);
-    },
-    () => s.ids,
-  );
+  return useSyncExternalStore(s.changed.on, () => s.ids);
 }
 
 /** The arrow at a foldable head's left: pointing right while folded, down while open (turned by CSS). */

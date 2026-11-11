@@ -5,6 +5,7 @@ import type { AccessView, ArchivePage, Pairing, RemoteSetting, AgentRole, AgentS
 import { setCostsShown } from './costs';
 import type { Wish } from '../core/wish';
 import { INPUT, noteMessage, watchPageStalls } from './stalls';
+import { signal } from './signal';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -405,43 +406,33 @@ export const api = {
 };
 
 // Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.
-const eventListeners = new Set<(e: CardEvent) => void>();
-export function onCardEvent(fn: (e: CardEvent) => void): () => void {
-  eventListeners.add(fn);
-  return () => eventListeners.delete(fn);
-}
+const cardEvents = signal<[e: CardEvent]>();
+export const onCardEvent = cardEvents.on;
 
 // A canvas's WebSocket is open again after it was lost: what was pushed meanwhile never arrived, so
 // whoever shows a card's log loads it anew (the agent may have read the owner's words meanwhile).
-const reconnectListeners = new Set<() => void>();
-export function onReconnect(fn: () => void): () => void {
-  reconnectListeners.add(fn);
-  return () => reconnectListeners.delete(fn);
-}
+const reconnected = signal();
+export const onReconnect = reconnected.on;
 
 // A line taken out of a card's log (a comment deleted before it went to the worker).
-const goneListeners = new Set<(cardId: string, id: number) => void>();
-export function onCardEventGone(fn: (cardId: string, id: number) => void): () => void {
-  goneListeners.add(fn);
-  return () => goneListeners.delete(fn);
-}
+const cardEventsGone = signal<[cardId: string, id: number]>();
+export const onCardEventGone = cardEventsGone.on;
 
 // What Obeya tells the owner without a command of theirs to answer (an answer looked up, what a
 // request an agent passed on came to): it shows above the microphone, with "Undo" while actions wait.
-const noticeListeners = new Set<(n: Notice) => void>();
+const notices = signal<[n: Notice]>();
 /** Notices that came before anything showed them: those a page gets as it opens, before the canvas is drawn. */
 let heldNotices: { n: Notice; at: number }[] = [];
 export function onNotice(fn: (n: Notice) => void): () => void {
-  noticeListeners.add(fn);
+  const off = notices.on(fn);
   const held = heldNotices;
   heldNotices = [];
   // the undo window went on meanwhile
   for (const { n, at } of held) fn(n.undoMs ? { ...n, undoMs: Math.max(0, n.undoMs - (Date.now() - at)) } : n);
-  return () => noticeListeners.delete(fn);
+  return off;
 }
 function notice(n: Notice) {
-  if (!noticeListeners.size) heldNotices.push({ n, at: Date.now() });
-  for (const fn of noticeListeners) fn(n);
+  if (!notices.emit(n)) heldNotices.push({ n, at: Date.now() });
 }
 
 // What the owner does in this page that a restart would cut off, by who holds it (the demo video,
@@ -514,15 +505,12 @@ if (typeof document !== 'undefined') {
 }
 
 // Whoever has something to keep across the reload a restart brings writes it down here first.
-const reloadListeners = new Set<() => void>();
-export function beforeReload(fn: () => void): () => void {
-  reloadListeners.add(fn);
-  return () => reloadListeners.delete(fn);
-}
+const reloading = signal();
+export const beforeReload = reloading.on;
 
 /** Loads the page again, keeping what is open, as after a restart. */
 export function reload() {
-  for (const fn of reloadListeners) fn();
+  reloading.emit();
   location.reload();
 }
 
@@ -532,7 +520,7 @@ export function reload() {
  * storage, which the new shell's webview starts without. `token` tells the shell it is there.
  */
 export async function handOver(token: string) {
-  for (const fn of reloadListeners) fn();
+  reloading.emit();
   const entries = Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)!).map((k) => [k, sessionStorage.getItem(k) ?? '']);
   await send('POST', '/api/app-rebuilt/handover', { token, entries });
 }
@@ -613,7 +601,7 @@ function keepOpen(key: string, link: Link): () => void {
     setTimeout(() => opening.readyState === WebSocket.CONNECTING && opening.close(), GIVE_UP_MS);
     ws.onopen = () => {
       if (document.visibilityState === 'visible') sendHere();
-      if (opened) for (const fn of reconnectListeners) fn();
+      if (opened) reconnected.emit();
       opened = true;
       link.answers();
       delay = 500;
@@ -630,8 +618,8 @@ function keepOpen(key: string, link: Link): () => void {
         if (server && server !== msg.server) reload();
         server = msg.server;
       }
-      if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
-      else if (msg.type === 'eventGone') for (const fn of goneListeners) fn(msg.cardId, msg.id);
+      if (msg.type === 'event') cardEvents.emit(msg.event);
+      else if (msg.type === 'eventGone') cardEventsGone.emit(msg.cardId, msg.id);
       else if (msg.type === 'notice') notice(msg);
       else link.message(msg);
     };

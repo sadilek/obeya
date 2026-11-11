@@ -11,6 +11,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import type { Mark } from './marks';
 import type { Reply } from './reply';
 import { readJson, type Store, writeJson } from './stored';
+import { signal } from './signal';
 
 export interface Draft {
   text: string;
@@ -79,14 +80,9 @@ const noEnter = new Set<string>();
 const carets = new Map<string, [number, number]>();
 /** Where the cursor stood when the field on the page last lost it, for a quote put in from the conversation (`cite`). */
 const left = new Map<string, number>();
-const listeners = new Set<() => void>();
-const changed = () => {
-  for (const fn of listeners) fn();
-};
-const subscribe = (fn: () => void) => {
-  listeners.add(fn);
-  return () => void listeners.delete(fn);
-};
+const draftsChanged = signal();
+const changed = draftsChanged.emit;
+const subscribe = draftsChanged.on;
 
 /** The drafts that last beyond their field: the cards', the sidebar's (the phone view's per canvas) and the microphone's, not those of a field of its own. */
 const lasting = (key: string) => key.startsWith('card:') || toObeya(key) || key === MIC_DRAFT || key === WISH_DRAFT;
@@ -138,7 +134,7 @@ export function keepDrafts(store: Store, canvas: string) {
   // what was written down is pruned by `keptOf` already
   for (const [key, saved] of Object.entries(readJson<Record<string, Kept>>(store, storeKey(canvas)) ?? {})) if (!drafts.has(key)) drafts.set(key, { ...EMPTY, ...saved });
   for (const [id, m] of Object.entries(readJson<Record<string, Markup>>(store, markupsKey(canvas)) ?? {})) if (!markups.has(id)) markups.set(id, m);
-  listeners.add(writeDown);
+  subscribe(writeDown);
   if (switched) changed();
 }
 
