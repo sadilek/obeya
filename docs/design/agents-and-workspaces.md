@@ -267,13 +267,17 @@ The pool is what the configuration names. A clone no longer named leaves it: a f
 leased one when its card gives it back (no card moves mid-work). A clone Obeya made is then deleted
 from disk, after its app stopped (see Parking), if nothing would be lost: no uncommitted or untracked files
 (ignored ones aside), no stash, no submodules, no worktree from it in use, and no branch, tag or
-detached HEAD with commits on no branch of `origin` (fetched with pruning) unless each file they
-change is as on `origin`'s main branch, so a branch squashed or rebased in its pull request counts as
-landed (where work lands on the local main, `origin` is the Obeya checkout). The folder is moved
-aside first, so a clone named again meanwhile (here or by another canvas) is never removed under a
-card. Otherwise it stays: the log says once what lies in it, the pool's list shows "stays: work not
-landed in <path>", and a later start looks again; raising the number takes it back as it
-is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
+detached HEAD with commits on no branch of `origin` (fetched with pruning), unless its changes are on
+`origin`'s main branch already or it is a tag `origin` has too (a release tagged on a branch since
+deleted). Changes count as on the main branch where merging the branch into the main branch's head,
+or into one of its last 50 commits that changed the branch's files, changes nothing (with a git
+before 2.38: where each file it changed is there as the branch has it): a branch squashed or rebased
+in its pull request counts as landed, also once the main branch changed the same files again (where
+work lands on the local main, `origin` is the Obeya checkout). The folder is moved aside first, so a
+clone named again meanwhile (here or by another canvas) is never removed under a card. Otherwise it
+stays: the log says once what lies in it, the pool's list shows "stays, as work not landed lies
+there:" with what (a branch or tag by name with how many commits, uncommitted changes, a stash) and
+the path, and a later start looks again; raising the number takes it back as it is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
 workspace on this machine whose folder is gone (moved or deleted by hand) and that the configuration
 no longer names leaves at once, clone or worktree, held or not: its card names no workspace any
 more, one at work is planned again, its log says so, and its next start takes another. Only a
@@ -368,12 +372,28 @@ A free clone is blocked when the last look at it (see Workspaces) says no new ca
 uncommitted or untracked changes (the list names the first five files), git fails in it, its
 folder is missing, its machine does not answer over SSH (one line per machine), or git failed making
 it ready for a card in the last minute. Blocked clones do not count as free, and the list says in
-orange, per clone, why and what puts it right: commit or discard the changes; repair it, or delete
-a clone Obeya made, which its next start makes again; clone it again or take the path out of the
-configuration; check the network and SSH access. Showing the pool looks again, in the background,
-at free clones whose look is old by the same measure or that were never looked at, so the pill tells
-before a card waits what a waiting card would find. A card queued for want of a workspace points to
-the pill for the reason.
+orange, per clone, why and what puts it right: for uncommitted changes, the card whose branch the
+clone is on (a link, as in the rows) and whether its work has landed, and "Save leftovers and free
+it" (see Leftovers in a free clone); repair it, or delete a clone Obeya made, which its next start
+makes again; clone it again or take the path out of the configuration; check the network and SSH
+access. Showing the pool looks again, in the background, at free clones whose look is old by the
+same measure or that were never looked at, so the pill tells before a card waits what a waiting card
+would find. A card queued for want of a workspace points to the pill for the reason.
+
+#### Leftovers in a free clone
+
+What a card leaves uncommitted in its clone (files of a landed task, a generated file a tool wrote
+back with other line endings) would keep every other card out of it. "Save leftovers and free it"
+on such a clone's line in the pool's list puts it all (untracked files too, ignored ones aside) into
+a commit of Obeya's, marked by the trailer `Obeya-Kept: leftovers`, on a branch of its own in that
+clone, `obeya-leftovers/<branch it was on>-<date>-<time>`, made from the commit checked out; the
+clone is then clean on the branch it was on, and a confirmation names the branch. Changes of line
+endings alone are dropped without a branch. It takes effect at once, without an undo window: the
+work is on the branch. A clone Obeya made is freed so by itself once a card would take it but for
+the leftovers (a card starting or waiting finds no clean free clone), once for the changes as it
+found them, so a card does not wait for the owner to clean up after another; a clone the owner
+listed only by the button, since it may be one they also work in by hand. The leftovers' branch is
+work not on `origin`: a clone holding one stays on disk when it leaves the pool (see above).
 
 ### Folders without git
 
@@ -787,6 +807,19 @@ for its hooks), and what the repository's work needs.
   the files it then names only by their timestamps are compared by content. Rejected: a copy of the
   index for each look (one more file to copy per look, and over SSH a shell on the host); retrying
   the command that found the lock held (each of Obeya's, the agents' and the owner's own would need it).
+- **Leftovers in a free clone go onto a branch of their own, by themselves in a clone Obeya made**
+  (2026-11-11): files a landed card left uncommitted, or a generated file with other line endings,
+  blocked a clone for every card until the owner cleaned it up by hand, while cards waited. Kept on a
+  branch, nothing is lost and the clone is free; Obeya does it once a card needs the clone, not at
+  every look, so a tool still writing there does not leave a branch a minute. Rejected: discarding
+  them (they may be work); a stash (shared by the clone's branches and found by no one); committing
+  them onto the card's own branch (a landed card's branch would hold work again); doing it in a clone
+  the owner listed without being asked.
+- **A tag `origin` has, and a branch whose changes the main branch had at some point, count as
+  landed** (2026-11-11): two clones stayed on disk for good as "work not landed", held by a release
+  tag that origin has but no branch of origin holds; and a squashed pull request's branch counted
+  only while each of its files was still as on the main branch's head. Rejected: comparing patch-ids
+  of the main branch's commits (git needs them piped in, which a run over SSH does not offer).
 - **Free clones are chosen by their last look, the one taken looked at again** (2026-10-21): in a
   large repository (GitHub issue #2: 9,188 files, on Windows) or over SSH, `git status` in every free
   clone at each look held the server, on every canvas. Rejected: asking git while choosing; a start

@@ -930,6 +930,11 @@ export class Store {
     return this.card(code) ?? ((this.db.query('SELECT * FROM cards WHERE short = $s').get({ s: code.toLowerCase() }) as CardRow | null) ?? null);
   }
 
+  /** The card that works on a branch, archived ones too: the one that took it last, where several did. */
+  cardOnBranch(branch: string): CardRow | null {
+    return (this.db.query('SELECT * FROM cards WHERE branch = $b AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1').get({ b: branch }) as CardRow | null) ?? null;
+  }
+
   /** The card with the number, wherever it is: on any canvas, archived or deleted. */
   cardByNumber(n: number): CardRow | null {
     return (this.db.query('SELECT * FROM cards WHERE number = $n').get({ n }) as CardRow | null) ?? null;

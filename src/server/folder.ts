@@ -532,6 +532,10 @@ export class FolderWorkspaces implements CardWorkspaces {
     return [];
   }
 
+  async keepLeftovers(): Promise<string | null> {
+    return null;
+  }
+
   async hasWork(cardId: string): Promise<boolean> {
     return this.changed(cardId).length > 0;
   }

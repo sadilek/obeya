@@ -1216,8 +1216,8 @@ export interface PoolHost {
   cards: string[];
   /** The cards whose worker is in a turn there now. */
   busy: string[];
-  /** The folders (paths there) of clones Obeya made that left the pool and stay, since something in them would be lost. */
-  kept?: string[];
+  /** The folders of clones Obeya made that left the pool and stay, since something in them would be lost, with what. */
+  kept?: KeptClone[];
   /** Its free clones no new card gets now, by their last look; none when every free clone can be taken. */
   blocked?: BlockedClone[];
   /** Each of its clones (free ones too), or worktrees, by path there and with the card that holds it. */
@@ -1238,6 +1238,24 @@ export interface PoolWorkspace {
   leaving?: true;
 }
 
+/** The folder of a clone Obeya made that left the pool and stays (its path there), and what would be lost with it. */
+export interface KeptClone {
+  path: string;
+  lost: LostWork[];
+}
+
+/**
+ * What lies in a clone's folder that would be lost with it: submodules (not looked into), worktrees
+ * made from it in use, changes not committed or files not in git (`n` of them), a stash, or a ref
+ * (`kind`, its `name`: a branch, a tag, a detached HEAD) with `n` commits that are not on `origin`.
+ */
+export type LostWork =
+  | { what: 'submodules' }
+  | { what: 'worktrees'; n: number }
+  | { what: 'changes'; n: number }
+  | { what: 'stash' }
+  | { what: 'commits'; kind: 'branch' | 'tag' | 'head' | 'ref'; name: string; n: number };
+
 /**
  * A free clone no new card gets now, and why, for the owner to put right: `dirty`, uncommitted
  * changes (the first `files`, `more` beyond them); `broken`, git fails in it (`error`); `missing`,
@@ -1253,6 +1271,10 @@ export interface BlockedClone {
   more?: number;
   error?: string;
   made?: true;
+  /** The branch checked out in it, as the last look found it. */
+  branch?: string;
+  /** The card whose branch that is, which left the changes there: on the canvas or not (`canvas`, `title`), and whether its work has landed. */
+  by?: { card: string; title: string; canvas?: string; work: 'landed' | 'open' | 'none' };
 }
 
 export interface CanvasSnapshot {
@@ -1776,6 +1798,8 @@ export type ErrorCode =
   | 'dirtyWorkspaces'
   /** Taking a card's workspace from it: it holds no clone that may be taken (worktrees, its work landed, a prototype's), or one is being taken already. */
   | 'notEvictable'
+  /** Saving the leftovers in a clone: it is no free clone of the repository, or git failed there. */
+  | 'notFreed'
   /** Starting a card while its workspace is being given to another. */
   | 'evicting'
   /** Changing a card's new repository, or starting it, while Obeya is about to make it (`NewRepo.due`). */

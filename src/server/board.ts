@@ -2223,7 +2223,11 @@ export class Board {
     this.changed();
   }
 
-  /** The pools, each workspace a card holds with the card's title, also of a card not on the canvas, and the canvas of one on another. */
+  /**
+   * The pools, each workspace a card holds with the card's title, also of a card not on the canvas,
+   * and the canvas of one on another; a clone blocked by uncommitted changes with the card whose
+   * branch it is on, and whether that card's work has landed.
+   */
   private clonePools(): ClonePool[] {
     return (this.pools?.() ?? []).map((p) => ({
       ...p,
@@ -2233,6 +2237,14 @@ export class Board {
           const row = w.card ? this.store.card(w.card) : null;
           if (!row) return w;
           return { ...w, ...(row.title ? { title: row.title } : {}), ...(row.canvas_id !== this.canvas.id ? { canvas: row.canvas_id } : {}) };
+        }),
+        ...(h.blocked && {
+          blocked: h.blocked.map((b) => {
+            const row = b.why === 'dirty' && b.branch ? this.store.cardOnBranch(b.branch) : null;
+            if (!row) return b;
+            const work = row.state === 'live' ? 'landed' : row.state === 'done' ? 'none' : 'open';
+            return { ...b, by: { card: row.id, title: row.title ?? '', ...(row.canvas_id !== this.canvas.id ? { canvas: row.canvas_id } : {}), work } };
+          }),
         }),
       })),
     }));
