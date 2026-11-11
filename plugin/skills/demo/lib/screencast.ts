@@ -22,55 +22,53 @@ export function now() {
   return Date.now() / 1000;
 }
 
-/**
- * The spells the director stood still, each from when (wall clock) and how long, and whether this
- * computer slept meanwhile (known on a Mac). A laptop with its lid closed sleeps on battery
- * whatever keeps it awake otherwise, and wakes for a few seconds now and then: renders failed
- * mid-take with "no frame for 20 s", which looked like a hanging page (2026-10-17). The display
- * sleeping costs a render nothing.
- */
-const stillSpells: { at: number; seconds: number; slept: boolean }[] = [];
-let lastTick = now();
-/** Since when (wall clock, s) the director watches whether it stands still; a failure names the spells since. */
-export let watchedSince = now();
-let watching: ReturnType<typeof setInterval> | undefined;
-
-/** Notes a spell when the director has not ticked for `STILL_SECONDS`; called every second. */
-export function tick() {
-  const t = now();
-  if (t - lastTick > STILL_SECONDS) stillSpells.push({ at: lastTick, seconds: t - lastTick, slept: macSleptSince(lastTick) });
-  lastTick = t;
-}
-
-/**
- * Watches from now on, once the app is staged: the synthesis, the setup check and a demo's `login`
- * before it may block the director in child processes, which is no sleep.
- */
-export function watchStillness() {
-  lastTick = watchedSince = now();
-  stillSpells.length = 0;
-  watching ??= setInterval(tick, 1000);
-  watching.unref();
-}
-
 const AWAKE_ADVICE = 'render again once it stays awake (a laptop with its lid closed sleeps on battery whatever keeps it awake otherwise)';
 
-/** Why the take fails when this computer slept since `since` (wall clock, s); else undefined. */
-function sleepCause(since: number) {
-  const spells = stillSpells.filter((s) => s.slept && s.at >= since - 1);
-  if (!spells.length) return undefined;
-  const seconds = Math.round(spells.reduce((sum, s) => sum + s.seconds, 0));
-  return `this computer slept for ${seconds} s during the render, and nothing can be recorded meanwhile: ${AWAKE_ADVICE}`;
-}
+/**
+ * A watch on the spells the director stood still, each from when (wall clock) and how long, and
+ * whether this computer slept meanwhile (known on a Mac). A laptop with its lid closed sleeps on
+ * battery whatever keeps it awake otherwise, and wakes for a few seconds now and then: renders
+ * failed mid-take with "no frame for 20 s", which looked like a hanging page (2026-10-17). The
+ * display sleeping costs a render nothing. Started once the app is staged: the synthesis, the setup
+ * check and a demo's `login` before it may block the director in child processes, which is no sleep.
+ */
+export class Stillness {
+  /** Since when (wall clock, s) it watches; a failure names the spells since. */
+  readonly since = now();
+  #last = this.since;
+  readonly #spells: { at: number; seconds: number; slept: boolean }[] = [];
 
-/** What a failure since `since` likely comes from when the director stood still meanwhile; else undefined. */
-export function stillCause(since: number) {
-  const slept = sleepCause(since);
-  if (slept) return slept;
-  const spells = stillSpells.filter((s) => s.at >= since - 1);
-  if (!spells.length) return undefined;
-  const seconds = Math.round(spells.reduce((sum, s) => sum + s.seconds, 0));
-  return `the director stood still for ${seconds} s during the render: this computer may have slept; if so, ${AWAKE_ADVICE}`;
+  constructor() {
+    setInterval(() => this.tick(), 1000).unref();
+  }
+
+  /** Notes a spell when the director has not ticked for `STILL_SECONDS`; called every second. */
+  tick() {
+    const t = now();
+    if (t - this.#last > STILL_SECONDS) this.#spells.push({ at: this.#last, seconds: t - this.#last, slept: macSleptSince(this.#last) });
+    this.#last = t;
+  }
+
+  /** How many seconds the director stood still since `since` (wall clock, s); with `sleptOnly`, only while this computer slept. */
+  #stoodStill(since: number, sleptOnly: boolean) {
+    const spells = this.#spells.filter((s) => (s.slept || !sleptOnly) && s.at >= since - 1);
+    return Math.round(spells.reduce((sum, s) => sum + s.seconds, 0));
+  }
+
+  /** Why the take fails when this computer slept since `since` (wall clock, s); else undefined. */
+  sleepCause(since: number) {
+    const seconds = this.#stoodStill(since, true);
+    return seconds ? `this computer slept for ${seconds} s during the render, and nothing can be recorded meanwhile: ${AWAKE_ADVICE}` : undefined;
+  }
+
+  /** What a failure likely comes from when the director stood still since the watch began; else undefined. */
+  stillCause() {
+    this.tick();
+    const slept = this.sleepCause(this.since);
+    if (slept) return slept;
+    const seconds = this.#stoodStill(this.since, false);
+    return seconds ? `the director stood still for ${seconds} s during the render: this computer may have slept; if so, ${AWAKE_ADVICE}` : undefined;
+  }
 }
 
 /** Whether this Mac went to sleep at `t` (wall clock, s) or later, from the kernel's last sleep; false elsewhere. */
@@ -123,7 +121,7 @@ export async function prioritize(browser: Browser | null, level: number) {
   }
 }
 
-export async function startScreencast(ctx: BrowserContext, page: Page, dir: string, size: { width: number; height: number }, scale: number) {
+export async function startScreencast(ctx: BrowserContext, page: Page, dir: string, size: { width: number; height: number }, scale: number, stillness: Stillness) {
   const frames: Frame[] = [];
   const cdp = await ctx.newCDPSession(page);
   let lastFrame = now();
@@ -134,9 +132,9 @@ export async function startScreencast(ctx: BrowserContext, page: Page, dir: stri
   const first = new Promise<void>((resolve) => (arrived = resolve));
   const since = now();
   const watch = setInterval(() => {
-    tick();
+    stillness.tick();
     // the frames from before the sleep and after it no longer fit the narration
-    const slept = sleepCause(since);
+    const slept = stillness.sleepCause(since);
     if (slept) stall(new Error(slept));
     else if (now() - lastFrame > STALL_SECONDS) stall(new Error(`the recording page sent no frame for ${STALL_SECONDS} s: it hangs`));
   }, 1000);
@@ -171,8 +169,8 @@ export async function startScreencast(ctx: BrowserContext, page: Page, dir: stri
     stop: async () => {
       clearInterval(watch);
       clearInterval(raising);
-      tick();
-      const slept = sleepCause(since);
+      stillness.tick();
+      const slept = stillness.sleepCause(since);
       if (slept) throw new Error(slept);
       await answered(cdp.send('Page.stopScreencast'), 'stopping the screencast');
       frames.splice(0, frames.length, ...onPaintTime(frames, paintTimes(frames, dir, size)));

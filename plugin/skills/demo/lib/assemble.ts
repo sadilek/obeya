@@ -7,10 +7,11 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { holdPidLock } from '../../../lib/process.ts';
 import { languageName, preferredTrack } from './locale.ts';
 import { type Clip, heardNotes, printHeard } from './narration.ts';
 import type { NarrationLanguage } from './settings.ts';
-import { narrationVtt, type Track, trackFile, trackVtt, vttTime } from './subtitles.ts';
+import { narrationVtt, type Track, trackFile, trackLanguage, trackVtt, vttTime } from './subtitles.ts';
 import { CLOCK, type Cut, type Frame, frameDurations, mmss } from './timeline.ts';
 
 export interface Report {
@@ -40,16 +41,53 @@ export function run(cmd: string, args: string[], opts: { cwd?: string } = {}) {
   return r.stdout;
 }
 
+/**
+ * One render per demo at a time: two renders of the same demo (one left running in the background)
+ * write the same frames and, through the demo's `login`, reset each other's app.
+ */
+export function holdRenderLock(work: string) {
+  const other = holdPidLock(path.join(work, 'render.pid'));
+  if (other) throw new Error(`another render of this demo is running (pid ${other}); wait for it, or end it with \`kill ${other}\``);
+}
+
+/** An entry of an ffconcat list: a frame and how long it is held (the last one: none). */
+export interface Held {
+  file: string;
+  seconds?: number;
+}
+
+export function framesOf(list: string): Held[] {
+  const out: Held[] = [];
+  for (const line of list.split('\n')) {
+    const file = /^file '(.*)'$/.exec(line.trim());
+    if (file) out.push({ file: file[1]! });
+    const d = /^duration ([\d.]+)$/.exec(line.trim());
+    if (d && out.length) out[out.length - 1]!.seconds = Number(d[1]);
+  }
+  return out;
+}
+
+/**
+ * An ffconcat list of `frames`, their files named relative to `from` (where the old list was, or
+ * absolute) and written for one in `to`: relative, with forward slashes, which ffmpeg reads on
+ * every platform, a Windows drive path not always.
+ */
+export function frameListText(frames: Held[], from: string, to: string): string {
+  const name = (f: string) => path.relative(to, path.resolve(from, f)).split(path.sep).join('/');
+  const lines = ['ffconcat version 1.0'];
+  for (const f of frames) {
+    lines.push(`file '${name(f.file)}'`);
+    if (f.seconds !== undefined) lines.push(`duration ${f.seconds.toFixed(4)}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 /** Writes an ffconcat list that holds each frame until the next one, from t0 to tEnd, less the cuts. */
 export function frameList(frames: Frame[], t0: number, tEnd: number, cuts: Cut[], file: string) {
   const held = frameDurations(frames, t0, tEnd, cuts);
   if (!held.length) throw new Error(`none of the screencast's ${frames.length} frames falls into the take`);
-  // Relative, with forward slashes: ffmpeg reads them on every platform, a Windows drive path not always.
-  const entry = (f: string) => `file '${path.relative(path.dirname(file), f).split(path.sep).join('/')}'`;
-  const lines = ['ffconcat version 1.0'];
-  for (const h of held) lines.push(entry(h.file), `duration ${h.seconds.toFixed(4)}`);
-  lines.push(entry(held[held.length - 1]!.file));
-  fs.writeFileSync(file, `${lines.join('\n')}\n`);
+  const dir = path.dirname(file);
+  fs.writeFileSync(file, frameListText([...held, { file: held.at(-1)!.file }], dir, dir));
 }
 
 /**
@@ -96,6 +134,8 @@ export interface Take {
  */
 export function assemble({ outDir, work, list, clips, marks, total, viewport, sharp, title, narration: spoken, tracks, report, language }: Take) {
   const scale = sharp ? 2 : 1;
+  /** Where scene `i` ends: where the next starts, or the video does. */
+  const sceneEnd = (i: number) => (i + 1 < marks.length ? marks[i + 1]!.start : total);
   // Narration track: every clip at its scene's offset, levelled once as a whole.
   const narration = path.join(work, 'narration.wav');
   if (clips) {
@@ -124,12 +164,12 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   ]);
 
   // a track of an earlier render in a language no longer among them goes
-  for (const f of fs.readdirSync(outDir)) if (/^captions\.[^.]+\.vtt$/.test(f) && !tracks.some((t) => trackFile(t.language) === f)) fs.rmSync(path.join(outDir, f));
+  for (const f of fs.readdirSync(outDir)) if (trackLanguage(f) && !tracks.some((t) => trackFile(t.language) === f)) fs.rmSync(path.join(outDir, f));
   for (const t of tracks) fs.writeFileSync(path.join(outDir, trackFile(t.language)), trackVtt(t, marks, t.language === spoken.language));
   fs.writeFileSync(path.join(outDir, 'captions.vtt'), narrationVtt(spoken, marks, tracks.map((t) => t.language)));
   // The scenes as chapters, for a player outside Obeya (the hero video on obeya.si reads them).
   const chapters = ['WEBVTT', ''];
-  marks.forEach((m, i) => chapters.push(`${vttTime(m.start)} --> ${vttTime(i + 1 < marks.length ? marks[i + 1]!.start : total)}`, m.title, ''));
+  marks.forEach((m, i) => chapters.push(`${vttTime(m.start)} --> ${vttTime(sceneEnd(i))}`, m.title, ''));
   fs.writeFileSync(path.join(outDir, 'chapters.vtt'), chapters.join('\n'));
 
   // One still per scene, taken just before it ends: what the agent checks against the narration.
@@ -139,7 +179,7 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   const still = (at: number, name: string) =>
     run('ffmpeg', ['-y', '-loglevel', 'error', '-ss', at.toFixed(2), '-i', video, '-frames:v', '1', '-q:v', '3', path.join(reviewDir, `${name}.jpg`)]);
   marks.forEach((m, i) => {
-    const end = i + 1 < marks.length ? marks[i + 1]!.start : total;
+    const end = sceneEnd(i);
     const nn = String(i + 1).padStart(2, '0');
     still((m.start + end) / 2, `${nn}-mid`);
     still(Math.max(m.start, end - 0.4), nn);
@@ -151,7 +191,7 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   console.log('\nreview:');
   const heard = heardNotes(clips ?? []);
   marks.forEach((m, i) => {
-    const end = i + 1 < marks.length ? marks[i + 1]!.start : total;
+    const end = sceneEnd(i);
     const silent = end - m.speechEnd - GAP_SECONDS;
     const idle = silent > SILENCE_WARN ? `  ← ${Math.round(silent)} s without narration: cut it with d.skip where it only waits` : '';
     console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}${idle}`.trimEnd());
@@ -160,6 +200,9 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   printHeard(heard);
   console.log(`stills → ${reviewDir}: NN-mid.jpg (middle of each scene), NN.jpg (its end)`);
 }
+
+/** The paragraphs of a report's summary, separated by a blank line. */
+export const paragraphs = (summary: string) => summary.split(/\n\s*\n/).filter((p) => p.trim());
 
 function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -178,10 +221,8 @@ const PAGE_WORDS: Record<NarrationLanguage, { question: string }> = {
  */
 export function reportPage(title: string, r: Report, marks: { title: string; start: number }[], language: NarrationLanguage, tracks: string[] = [], silentVideo = false) {
   const w = PAGE_WORDS[language];
-  const summary = r.summary
-    .split(/\n\s*\n/)
+  const summary = paragraphs(r.summary)
     .map((p) => p.trim())
-    .filter(Boolean)
     .map((p) => `<p class="summary">${esc(p)}</p>`)
     .join('\n');
   const chapters = marks

@@ -19,14 +19,14 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { assemble, type Mark, type Report } from './assemble.ts';
-import { holdRenderLock } from './director.ts';
-import { type Clip, synthesize } from './narration.ts';
 import { isMain } from '../../../lib/process.ts';
+import { assemble, frameListText, framesOf, type Held, holdRenderLock, type Mark, paragraphs, type Report } from './assemble.ts';
 import { LANGUAGE_NAMES, LANGUAGES, type Language } from './locale.ts';
+import { type Clip, synthesize } from './narration.ts';
 import { inLanguage, readDemoSettings, silent, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
-import { cuesOf, listedTracks, sentencesOf, spokenTimes, type Track, trackFile } from './subtitles.ts';
+import { cuesOf, listedTracks, sentencesOf, spokenTimes, type Track, trackFile, trackLanguage } from './subtitles.ts';
+import { AUDIO_TAG } from './timeline.ts';
 
 /** What a demo says, in one language: what is translated. */
 export interface Words {
@@ -39,27 +39,8 @@ export interface Words {
 
 /** The files of a render that re-voicing replaces, beside a caption file per track; the recorded ones are kept in `original/`. */
 const RENDERED = ['demo.mp4', 'captions.vtt', 'chapters.vtt', 'index.html', 'poster.jpg'] as const;
-/** A caption track's file, and its language. */
-const TRACK_FILE = /^captions\.([^.]+)\.vtt$/;
 /** A scene whose narration gets this much longer or shorter changes pace visibly: worth a look at its stills. */
 const PACE_WARN = 0.35;
-
-/** An entry of an ffconcat list: a frame and how long it is held (the last one: none). */
-export interface Held {
-  file: string;
-  seconds?: number;
-}
-
-export function framesOf(list: string): Held[] {
-  const out: Held[] = [];
-  for (const line of list.split('\n')) {
-    const file = /^file '(.*)'$/.exec(line.trim());
-    if (file) out.push({ file: file[1]! });
-    const d = /^duration ([\d.]+)$/.exec(line.trim());
-    if (d && out.length) out[out.length - 1]!.seconds = Number(d[1]);
-  }
-  return out;
-}
 
 /** A stretch of the video played `ratio` times as long. */
 export interface Stretch {
@@ -92,21 +73,7 @@ export function retimed(frames: Held[], at: (t: number) => number): Held[] {
   });
 }
 
-/** An ffconcat list of `frames`, their files named relative to `from` (where the old list was) and written for one in `to`. */
-export function frameListText(frames: Held[], from: string, to: string): string {
-  const name = (f: string) => path.relative(to, path.resolve(from, f)).split(path.sep).join('/');
-  const lines = ['ffconcat version 1.0'];
-  for (const f of frames) {
-    lines.push(`file '${name(f.file)}'`);
-    if (f.seconds !== undefined) lines.push(`duration ${f.seconds.toFixed(4)}`);
-  }
-  return `${lines.join('\n')}\n`;
-}
-
 const unesc = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
-
-/** The paragraphs of a report's summary, separated by a blank line. */
-const paragraphs = (summary: string) => summary.split(/\n\s*\n/).filter((p) => p.trim());
 
 /**
  * The report page the director wrote (`index.html`): its language, title and report. A page of a
@@ -131,7 +98,7 @@ export function reportOf(html: string): { language?: Language; title: string; re
 }
 
 /** The audio tags of a narration, in order (`[short pause]`): a translation keeps them where they stand. */
-const tagsOf = (say: string) => [...say.matchAll(/\[[^\]]*\]/g)].map((m) => m[0].toLowerCase());
+const tagsOf = (say: string) => [...say.matchAll(AUDIO_TAG)].map((m) => m[0].toLowerCase());
 
 /** What is wrong with a translation of `source` (in `from`) into `to`; empty when nothing is. */
 export function translationProblems(source: Words, t: Partial<Words>, from?: string, to?: string): string[] {
@@ -202,7 +169,7 @@ export async function revoice(dir: string, language: string | undefined) {
     for (const f of RENDERED) if (f !== 'poster.jpg' && !fs.existsSync(path.join(dir, f))) throw new Error(`${f} is missing in ${dir}`);
     fs.rmSync(original, { recursive: true, force: true });
     fs.mkdirSync(original, { recursive: true });
-    for (const f of [...RENDERED, ...fs.readdirSync(dir).filter((f) => TRACK_FILE.test(f))]) if (fs.existsSync(path.join(dir, f))) fs.copyFileSync(path.join(dir, f), path.join(original, f));
+    for (const f of [...RENDERED, ...fs.readdirSync(dir).filter((f) => trackLanguage(f))]) if (fs.existsSync(path.join(dir, f))) fs.copyFileSync(path.join(dir, f), path.join(original, f));
     fs.copyFileSync(list, keptList);
   }
   const chapters = cuesOf(read(path.join(original, 'chapters.vtt')));

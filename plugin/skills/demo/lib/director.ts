@@ -12,10 +12,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Browser, Locator, Page } from 'playwright-core';
-import { assemble, frameList, GAP_SECONDS, type Mark, type Report, run } from './assemble.ts';
+import { assemble, frameList, GAP_SECONDS, holdRenderLock, type Mark, type Report, run } from './assemble.ts';
 import { type Clip, heardNotes, printHeard, synthesize, writeJobs } from './narration.ts';
-import { answered, frameWidth, now, prioritize, startScreencast, stayAwake, stillCause, tick, watchedSince, watchStillness } from './screencast.ts';
-import { demoSettingsHere, type NarrationLanguage, silent, subtitleLanguages, withVoice } from './settings.ts';
+import { revoice } from './revoice.ts';
+import { answered, frameWidth, now, prioritize, Stillness, startScreencast, stayAwake } from './screencast.ts';
+import { type DemoSettings, demoSettingsHere, type NarrationLanguage, silent, subtitleLanguages, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
 import { narrationTrack, readingTimes, sentencesOf, spokenTimes, subtitleTracks } from './subtitles.ts';
 import { type Cut, laterLabel, videoTime } from './timeline.ts';
@@ -51,13 +52,8 @@ export interface DemoSpec {
 const LEAD_SECONDS = 0.35;
 /** A wait shorter than this stays in the video rather than being cut (`Director.skip`). */
 const MIN_CUT_SECONDS = 5;
-const SAVED = demoSettingsHere();
-/** The settings of this render: `DEMO_VOICE` names another provider, or a `.wav` to clone. */
-const SETTINGS = withVoice(SAVED, process.env.DEMO_VOICE);
-const LANGUAGE: NarrationLanguage = SETTINGS.language;
-/** No voice: a silent video, its scenes timed by how long their captions take to read. */
-const SILENT = silent(SETTINGS);
-const LIB = import.meta.dirname;
+/** The viewport of a demo that names none. */
+const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 /**
  * The plugin's Chromium, imported only once a browser is needed: importing it resolves Playwright,
  * so without Playwright a render gets as far as `checkSetup`, which lists it with what else is missing.
@@ -68,6 +64,8 @@ export class Director {
   readonly page: Page;
   readonly baseUrl: string;
   readonly workDir: string;
+  /** The narration's language, in which a cut says how much later it is. */
+  readonly #language: NarrationLanguage;
   /** A dry run (`--dry`) has no narration, so `untilSpoken` does not wait. */
   readonly #paced: boolean;
   #sceneStart = 0;
@@ -77,10 +75,11 @@ export class Director {
   #skippedInScene = 0;
 
   // No parameter properties: Node runs this file by type stripping, which does not transform them.
-  constructor(page: Page, baseUrl: string, workDir: string, paced = true) {
+  constructor(page: Page, baseUrl: string, workDir: string, language: NarrationLanguage, paced = true) {
     this.page = page;
     this.baseUrl = baseUrl;
     this.workDir = workDir;
+    this.#language = language;
     this.#paced = paced;
   }
 
@@ -138,7 +137,7 @@ export class Director {
     const to = now();
     this.#cut({ from, to: fadeFrom }, { from: cutFrom, to });
     this.#skippedInScene += fadeFrom - from + to - cutFrom;
-    await this.evaluate((l) => window.__demo.timeJump(l), laterLabel(to - from, LANGUAGE));
+    await this.evaluate((l) => window.__demo.timeJump(l), laterLabel(to - from, this.#language));
     await this.wait(1100);
     await this.evaluate(() => window.__demo.whiteIn());
     await this.wait(450);
@@ -315,30 +314,6 @@ function underNode() {
 }
 
 /**
- * One render per demo at a time: two renders of the same demo (one left running in the background)
- * write the same frames and, through the demo's `login`, reset each other's app.
- */
-export function holdRenderLock(work: string) {
-  const file = path.join(work, 'render.pid');
-  const other = fs.existsSync(file) ? Number(fs.readFileSync(file, 'utf8')) : 0;
-  if (other && other !== process.pid && alive(other))
-    throw new Error(`another render of this demo is running (pid ${other}); wait for it, or end it with \`kill ${other}\``);
-  fs.writeFileSync(file, String(process.pid));
-  process.on('exit', () => {
-    if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === String(process.pid)) fs.rmSync(file);
-  });
-}
-
-function alive(pid: number) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Headless Chrome with its window the size of the viewport: in a window of another size the
  * screencast captured only the top 813 of 900 pixels. It asks for the stronger of two graphics
  * chips (Windows and macOS; Linux ignores it), which hands the screencast more frames on a busy machine.
@@ -363,7 +338,7 @@ async function newContext(browser: Browser, options: Parameters<Browser['newCont
  * runs `fn` and closes. Run it from a file in the demo directory (`node explore.ts`); importing this
  * module is what resolves Playwright.
  */
-export async function explore(url: string, fn: (page: Page) => Promise<void>, viewport = { width: 1440, height: 900 }) {
+export async function explore(url: string, fn: (page: Page) => Promise<void>, viewport = DEFAULT_VIEWPORT) {
   underNode();
   const browser = await launch(viewport);
   try {
@@ -376,11 +351,19 @@ export async function explore(url: string, fn: (page: Page) => Promise<void>, vi
   }
 }
 
-async function login(spec: DemoSpec, dir: string) {
+/** A render of a demo: the demo, its viewport, its work directory and the settings it renders with. */
+interface Render {
+  spec: DemoSpec;
+  viewport: { width: number; height: number };
+  work: string;
+  settings: DemoSettings;
+}
+
+async function login(spec: DemoSpec, viewport: { width: number; height: number }, dir: string) {
   const stateFile = path.join(dir, 'state.json');
   if (!spec.login) return undefined;
-  const browser = await launch(spec.viewport!);
-  const ctx = await newContext(browser, { viewport: spec.viewport });
+  const browser = await launch(viewport);
+  const ctx = await newContext(browser, { viewport });
   const page = await ctx.newPage();
   try {
     await spec.login(page);
@@ -394,9 +377,10 @@ async function login(spec: DemoSpec, dir: string) {
 
 /**
  * The error for a step of the demo that failed: which step, the page's URL, a screenshot of it and
- * the cause, each on its own line, so the screenshot's path is not taken for the page's address.
+ * the cause, each on its own line, so the screenshot's path is not taken for the page's address;
+ * where the director stood still since the app was staged (`stillness`), that as the likely cause.
  */
-async function failure(step: string, page: Page, dir: string, error: unknown) {
+async function failure(step: string, page: Page, dir: string, error: unknown, stillness?: Stillness) {
   const shot = path.join(dir, 'failure.png');
   const captured = await page.screenshot({ path: shot, timeout: 10_000 }).then(
     () => true,
@@ -405,8 +389,7 @@ async function failure(step: string, page: Page, dir: string, error: unknown) {
   await closeBrowser(page.context().browser());
   // Playwright's message names the call and the locator it waited for; its colours are noise here.
   const cause = (error instanceof Error ? error.message : String(error)).replace(/\x1b\[[0-9;]*m/g, '').trim();
-  tick();
-  const still = stillCause(watchedSince);
+  const still = stillness?.stillCause();
   const lines = [
     `${step} failed`,
     `  URL: ${page.url()}`,
@@ -426,23 +409,23 @@ function sceneName(i: number, spec: DemoSpec) {
   return `scene ${i + 1}/${spec.scenes.length} "${spec.scenes[i]!.title}"`;
 }
 
-/** The recording browser, with the overlay, on the opening shot. */
-async function openPage(spec: DemoSpec, viewport: { width: number; height: number }, work: string, paced: boolean) {
-  const storageState = await login({ ...spec, viewport }, work);
-  watchStillness();
+/** The recording browser, with the overlay, on the opening shot; from then on, a watch on whether the director stands still. */
+async function openPage({ spec, viewport, work, settings }: Render, paced: boolean) {
+  const storageState = await login(spec, viewport, work);
+  const stillness = new Stillness();
   const scale = spec.sharp ? 2 : 1;
   const browser = await launch(viewport, scale);
   const ctx = await newContext(browser, { viewport, storageState, deviceScaleFactor: scale });
-  await ctx.addInitScript({ path: path.join(LIB, 'overlay.js') });
+  await ctx.addInitScript({ path: path.join(import.meta.dirname, 'overlay.js') });
   const page = await ctx.newPage();
-  const d = new Director(page, spec.baseUrl, work, paced);
+  const d = new Director(page, spec.baseUrl, work, settings.language, paced);
   try {
     await spec.open(d);
   } catch (error) {
-    throw await failure('open', page, work, error);
+    throw await failure('open', page, work, error, stillness);
   }
   await d.evaluate(() => window.__demo.moveTo(window.innerWidth * 0.6, window.innerHeight * 0.55));
-  return { browser, ctx, page, d };
+  return { browser, ctx, page, d, stillness, scale };
 }
 
 /**
@@ -450,8 +433,9 @@ async function openPage(spec: DemoSpec, viewport: { width: number; height: numbe
  * narration, setup check, screencast or ffmpeg; `untilSpoken` does not wait. Ends with a line per
  * scene, or with the first one that failed.
  */
-async function dryRun(spec: DemoSpec, viewport: { width: number; height: number }, work: string) {
-  const { browser, d } = await openPage(spec, viewport, work, false);
+async function dryRun(r: Render) {
+  const { spec, work } = r;
+  const { browser, d, stillness } = await openPage(r, false);
   const took: number[] = [];
   for (const [i, scene] of spec.scenes.entries()) {
     await d.clearHighlights();
@@ -460,7 +444,7 @@ async function dryRun(spec: DemoSpec, viewport: { width: number; height: number 
     try {
       await scene.run?.(d);
     } catch (error) {
-      throw await failure(sceneName(i, spec), d.page, work, error);
+      throw await failure(sceneName(i, spec), d.page, work, error, stillness);
     }
     took.push(now() - start);
   }
@@ -469,65 +453,63 @@ async function dryRun(spec: DemoSpec, viewport: { width: number; height: number 
   spec.scenes.forEach((s, i) => console.log(`  ${String(i + 1).padStart(2)}  ok  ${took[i]!.toFixed(1).padStart(5)} s  ${s.title}`));
 }
 
-export async function runDemo(spec: DemoSpec, demoDir: string) {
-  underNode();
-  stayAwake();
-  const revoicing = process.argv.indexOf('--revoice');
-  if (revoicing >= 0) return (await import('./revoice.ts')).revoice(demoDir, process.argv[revoicing + 1]);
-  const override = process.env.DEMO_VOICE;
-  const voiceName = override?.endsWith('.wav') ? path.basename(override, '.wav') : override;
-  // The voice of the settings renders next to the script; another one gets its own subdirectory,
-  // so two renders of one demo can be compared side by side.
-  const outDir = !voiceName || override === SAVED.voice ? demoDir : path.join(demoDir, voiceName);
-  const viewport = spec.viewport ?? { width: 1440, height: 900 };
-  const work = path.join(outDir, '.work');
-  fs.mkdirSync(work, { recursive: true });
-  holdRenderLock(work);
-  if (process.argv.includes('--dry')) return dryRun(spec, viewport, work);
-  // Everything the render needs is there before it starts, or it stops with the whole list.
-  const setup = await checkSetup(SETTINGS, { narrationOnly: process.argv.includes('--narration') });
-  if (setup.items.some((i) => i.state === 'missing')) throw new Error(`cannot render yet:\n${describeSetup(setup)}`);
-  const says = spec.scenes.map((s) => s.say);
-  if (process.argv.includes('--narration')) {
-    if (SILENT) return console.log('narration only: no voice, so nothing to synthesise');
-    const clips = synthesize(says, work, SETTINGS);
-    console.log(`narration only: ${clips.length} clips cached, ${clips.reduce((t, c) => t + c.seconds, 0).toFixed(0)} s spoken`);
-    const heard = heardNotes(clips);
-    heard.stumbled.forEach((lines, i) => lines.forEach((line) => console.log(`  ${String(i + 1).padStart(2)}  ${line}`)));
-    printHeard(heard);
-    return;
-  }
-  // the subtitles' translations before anything is recorded: a silent scene lasts as long as its slowest language takes to read
-  const source = { language: LANGUAGE, scenes: spec.scenes.map((s) => ({ title: s.title, sentences: sentencesOf(s.say, LANGUAGE) })) };
-  const subtitles = subtitleTracks(work, source, subtitleLanguages(SETTINGS));
+/** `--narration`: the clips alone, cached for the render, with what was heard of them. */
+function narrateOnly({ spec, work, settings }: Render) {
+  if (silent(settings)) return console.log('narration only: no voice, so nothing to synthesise');
+  const clips = synthesize(spec.scenes.map((s) => s.say), work, settings);
+  console.log(`narration only: ${clips.length} clips cached, ${clips.reduce((t, c) => t + c.seconds, 0).toFixed(0)} s spoken`);
+  const heard = heardNotes(clips);
+  heard.stumbled.forEach((lines, i) => lines.forEach((line) => console.log(`  ${String(i + 1).padStart(2)}  ${line}`)));
+  printHeard(heard);
+}
+
+/**
+ * Everything a take needs before it starts: the subtitles' translations, the clips (none without a
+ * voice) and each sentence's time. Undefined when a translation is missing: the render stops with
+ * exit code 2 and what to translate, before anything is recorded.
+ */
+function prepare({ spec, work, settings }: Render) {
+  const { language } = settings;
+  // a silent scene lasts as long as its slowest language takes to read
+  const source = { language, scenes: spec.scenes.map((s) => ({ title: s.title, sentences: sentencesOf(s.say, language) })) };
+  const subtitles = subtitleTracks(work, source, subtitleLanguages(settings));
   if ('brief' in subtitles) {
     console.log(subtitles.brief);
     process.exitCode = 2;
-    return;
+    return undefined;
   }
+  const { tracks } = subtitles;
+  const narration = narrationTrack(source);
+  const says = spec.scenes.map((s) => s.say);
+  writeJobs(says, work);
+  const clips: Clip[] | undefined = silent(settings) ? undefined : synthesize(says, work, settings);
+  // each sentence's time: from its first word as the clip was heard back, or as long as it takes to read in the slowest of the subtitles' languages
+  const timings = spec.scenes.map((_, i) => (clips ? spokenTimes(clips[i]!.seconds, narration.scenes[i]!, clips[i]!.timed) : { sentences: readingTimes(tracks.map((t) => t.scenes[i]!)) }));
+  return { tracks, narration, clips, timings };
+}
+
+/**
+ * Records the scenes: the frames in `.work/frames`, held as long as the take shows them (`frames.txt`,
+ * less what `skip` cut), and where each scene sits in the video.
+ */
+async function take(r: Render, timings: { sentences: number[]; words?: number[][] }[]) {
+  const { spec, viewport, work } = r;
+  const speech = timings.map((t) => t.sentences.reduce((a, b) => a + b, 0));
   // the frames of the take before go only now: a render that stops before recording keeps them for re-voicing
   const framesDir = path.join(work, 'frames');
   fs.rmSync(framesDir, { recursive: true, force: true });
   fs.mkdirSync(framesDir, { recursive: true });
-  const { tracks } = subtitles;
-  const narration = narrationTrack(source);
-  let clips: Clip[] | undefined;
-  writeJobs(says, work);
-  if (!SILENT) clips = synthesize(says, work, SETTINGS);
-  // each sentence's time: from its first word as the clip was heard back, or as long as it takes to read in the slowest of the subtitles' languages
-  const timings = spec.scenes.map((_, i) => (clips ? spokenTimes(clips[i]!.seconds, narration.scenes[i]!, clips[i]!.timed) : { sentences: readingTimes(tracks.map((t) => t.scenes[i]!)) }));
-  const speech = timings.map((t) => t.sentences.reduce((a, b) => a + b, 0));
 
-  const { browser, ctx, page, d } = await openPage(spec, viewport, work, true);
+  const { browser, ctx, page, d, stillness, scale } = await openPage(r, true);
   // this take's cuts, none so far (`Director.#cut`): after the login, which may stage a playback of the take before
   fs.writeFileSync(path.join(work, 'cuts.json'), '[]');
-  const cast = await startScreencast(ctx, page, framesDir, viewport, spec.sharp ? 2 : 1);
+  const cast = await startScreencast(ctx, page, framesDir, viewport, scale, stillness);
   // The take starts once a frame has come: at twice the pixels the first one took seconds, and what
   // the page showed until then was missing from the video.
   try {
     await Promise.race([cast.first, cast.stalled]);
   } catch (error) {
-    throw await failure('the start of the take', page, work, error);
+    throw await failure('the start of the take', page, work, error, stillness);
   }
   await d.wait(500);
   const t0 = now();
@@ -547,7 +529,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
       })();
       await Promise.race([played, cast.stalled]);
     } catch (error) {
-      throw await failure(sceneName(i, spec), page, work, error);
+      throw await failure(sceneName(i, spec), page, work, error, stillness);
     }
     // In video time: what `skip` cut out is gone from the scenes after it.
     const at = videoTime(start, t0, d.cuts);
@@ -558,22 +540,49 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     await Promise.race([d.wait(800), cast.stalled]);
     await cast.stop();
   } catch (error) {
-    throw await failure('the end of the take', page, work, error);
+    throw await failure('the end of the take', page, work, error, stillness);
   }
   await closeBrowser(browser);
   // the encoding at normal priority: below it, a busy machine starved it for minutes
   await prioritize(null, os.constants.priority.PRIORITY_NORMAL);
-  const total = videoTime(tEnd, t0, d.cuts);
   const cut = cast.frames.find((f) => Math.round(f.width) !== viewport.width || Math.round(f.height) !== viewport.height);
   if (cut) console.warn(`screencast frames are ${Math.round(cut.width)}×${Math.round(cut.height)}, not ${viewport.width}×${viewport.height}: part of the page is missing`);
-  const pixels = spec.sharp && cast.frames[0] ? frameWidth(cast.frames[0].file) : undefined;
-  if (pixels && pixels < viewport.width * 2) console.warn(`screencast frames are ${pixels} pixels wide, not ${viewport.width * 2}: the sharp video is scaled up from them`);
+  const pixels = scale > 1 && cast.frames[0] ? frameWidth(cast.frames[0].file) : undefined;
+  if (pixels && pixels < viewport.width * scale) console.warn(`screencast frames are ${pixels} pixels wide, not ${viewport.width * scale}: the sharp video is scaled up from them`);
 
   const list = path.join(work, 'frames.txt');
   frameList(cast.frames, t0, tEnd, d.cuts, list);
+  return { list, marks, total: videoTime(tEnd, t0, d.cuts), cuts: d.cuts };
+}
+
+export async function runDemo(spec: DemoSpec, demoDir: string) {
+  underNode();
+  stayAwake();
+  const revoicing = process.argv.indexOf('--revoice');
+  if (revoicing >= 0) return revoice(demoDir, process.argv[revoicing + 1]);
+  const mode = process.argv.includes('--dry') ? 'dry' : process.argv.includes('--narration') ? 'narration' : 'render';
+  const saved = demoSettingsHere();
+  // `DEMO_VOICE` names another provider, or a `.wav` to clone
+  const override = process.env.DEMO_VOICE;
+  const voiceName = override?.endsWith('.wav') ? path.basename(override, '.wav') : override;
+  // The voice of the settings renders next to the script; another one gets its own subdirectory,
+  // so two renders of one demo can be compared side by side.
+  const outDir = !voiceName || override === saved.voice ? demoDir : path.join(demoDir, voiceName);
+  const work = path.join(outDir, '.work');
+  fs.mkdirSync(work, { recursive: true });
+  holdRenderLock(work);
+  const r: Render = { spec, viewport: spec.viewport ?? DEFAULT_VIEWPORT, work, settings: withVoice(saved, override) };
+  if (mode === 'dry') return dryRun(r);
+  // Everything the render needs is there before it starts, or it stops with the whole list.
+  const setup = await checkSetup(r.settings, { narrationOnly: mode === 'narration' });
+  if (setup.items.some((i) => i.state === 'missing')) throw new Error(`cannot render yet:\n${describeSetup(setup)}`);
+  if (mode === 'narration') return narrateOnly(r);
+  const prepared = prepare(r);
+  if (!prepared) return;
+  const { list, marks, total, cuts } = await take(r, prepared.timings);
   assemble({
-    outDir, work, list, clips, marks, total, viewport, sharp: !!spec.sharp,
-    title: spec.title, narration, tracks, report: spec.report, language: LANGUAGE,
+    outDir, work, list, clips: prepared.clips, marks, total, viewport: r.viewport, sharp: !!spec.sharp,
+    title: spec.title, narration: prepared.narration, tracks: prepared.tracks, report: spec.report, language: r.settings.language,
   });
-  if (d.cuts.length) console.log(`cut ${d.cuts.length / 2}× (${Math.round(d.cuts.reduce((s, c) => s + c.to - c.from, 0))} s of waiting)`);
+  if (cuts.length) console.log(`cut ${cuts.length / 2}× (${Math.round(cuts.reduce((s, c) => s + c.to - c.from, 0))} s of waiting)`);
 }

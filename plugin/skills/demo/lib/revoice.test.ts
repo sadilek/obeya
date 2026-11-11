@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cuesByScene, frameListText, framesOf, keptTracks, reportOf, retimed, stretched, translationProblems, type Words } from './revoice.ts';
+import { frameListText, framesOf } from './assemble.ts';
+import { cuesByScene, keptTracks, reportOf, retimed, stretched, translationProblems, type Words } from './revoice.ts';
 
 const source: Words = {
   title: 'Vorschläge lassen sich übernehmen',

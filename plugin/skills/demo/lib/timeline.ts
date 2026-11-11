@@ -23,6 +23,9 @@ export interface Frame {
   height: number;
 }
 
+/** An audio tag of a narration (`[short pause]`), which only some voices read. */
+export const AUDIO_TAG = /\[[^\]]*\]/g;
+
 /**
  * A narration as it is shown (captions) and checked: without audio tags ("[short pause]"), which
  * only some voices read, and a term respelt for the voice as it is written (`{Canvas|Kännwes}`
@@ -31,7 +34,7 @@ export interface Frame {
 export function untagged(say: string) {
   return say
     .replace(/\{([^{}|]*)\|[^{}]*\}/g, '$1')
-    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(AUDIO_TAG, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }

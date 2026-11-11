@@ -191,6 +191,9 @@ export function cuesOf(vtt: string): Cue[] {
 /** The file of a track's captions. */
 export const trackFile = (language: string) => `captions.${language}.vtt`;
 
+/** The language of a track's captions file (`trackFile`); undefined for any other file. */
+export const trackLanguage = (file: string) => /^captions\.([^.]+)\.vtt$/.exec(file)?.[1];
+
 /** The first line of a `captions.vtt` that names the demo's tracks: WebVTT lets text follow its signature. */
 const LISTED = /^\uFEFF?WEBVTT[ \t]+-[ \t]+subtitles:[ \t]*([^\r\n]*)/;
 
