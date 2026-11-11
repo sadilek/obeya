@@ -53,7 +53,7 @@ export function heardNotes(clips: Clip[]) {
 
 /** The notes on what was heard that follow the review table, or the scene list of `--narration`. */
 export function printHeard({ stumbled, misheard, unheard }: ReturnType<typeof heardNotes>) {
-  if (stumbled.some((s) => s.length)) console.log('stumbled in every take: reword the sentence or respell the word it stumbles over, then render the narration again (--narration)');
+  if (stumbled.some((s) => s.length)) console.log('stumbled in every take: reword the sentence or respell the word it stumbles over (lib/lexicon.qwen3.<language>.json), then render the narration again (--narration)');
   if (misheard.length) console.log(`heard differently (a word the voice cannot read goes into lib/lexicon.qwen3.<language>.json):\n${misheard.map((m) => `  ${m}`).join('\n')}`);
   if (unheard) console.log(`narration not heard back: ${unheard}`);
 }

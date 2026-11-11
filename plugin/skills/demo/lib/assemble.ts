@@ -86,8 +86,8 @@ export function frameListText(frames: Held[], from: string, to: string): string 
 export function frameList(frames: Frame[], t0: number, tEnd: number, cuts: Cut[], file: string) {
   const held = frameDurations(frames, t0, tEnd, cuts);
   if (!held.length) throw new Error(`none of the screencast's ${frames.length} frames falls into the take`);
-  const dir = path.dirname(file);
-  fs.writeFileSync(file, frameListText([...held, { file: held.at(-1)!.file }], dir, dir));
+  // the frames' paths are absolute or relative to the working directory, as the screencast wrote them
+  fs.writeFileSync(file, frameListText([...held, { file: held.at(-1)!.file }], process.cwd(), path.dirname(file)));
 }
 
 /**

@@ -146,9 +146,10 @@ Narration — in the language and person the settings name, matter-of-fact.
 - Write large numbers as words ("about fifteen thousand two hundred euros"); small ones as digits
   are fine. Avoid abbreviations the voice would spell out.
 - A foreign term that is not in the narration language's lexicon (`lib/lexicon.de.json`) gets
-  its spoken form in a mark, `{Canvas|Kännwes}`: the captions show "Canvas", Piper and
-  `say` (which read every word by the narration language's rules) speak "Kännwes". Qwen3 gets
-  no marks; a word it cannot read goes into its own lexicon (section 6).
+  its spoken form in a mark, `{Canvas|Kännwes}`: the captions show "Canvas", Piper (also Kokoro's
+  German narration) and `say` (which read every word by the narration language's rules) speak "Kännwes". Qwen3 gets
+  no marks; a word it cannot read goes into its own lexicon (`lib/lexicon.qwen3.<language>.json`,
+  section 6).
 - Audio tags in square brackets (`[short pause]`, `[long pause]`) go to ElevenLabs v4 (its default
   model) and v3, which read them. Every other voice speaks the text between two pause tags on its
   own and puts silence where they stand (half a second for a short one, a second and a half for a

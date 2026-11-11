@@ -63,6 +63,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -237,7 +238,7 @@ class CommandVoice(Voice):
                 produced = Path(lines[-1].strip()) if lines else raw
                 if not produced.exists():
                     sys.exit(f"the voice command wrote no WAV: neither $DEMO_WAV ({raw}) nor a path on its last line")
-                to_wav(produced, raw)
+                shutil.copyfile(produced, raw)
         return None
 
 

@@ -478,6 +478,9 @@ function prepare({ spec, work, settings }: Render) {
     process.exitCode = 2;
     return undefined;
   }
+  // the frames of the take before go only now, and before the narration that replaces theirs: a
+  // render that stops before recording keeps them for re-voicing, with the narration they were taken with
+  fs.rmSync(path.join(work, 'frames'), { recursive: true, force: true });
   const { tracks } = subtitles;
   const narration = narrationTrack(source);
   const says = spec.scenes.map((s) => s.say);
@@ -495,9 +498,7 @@ function prepare({ spec, work, settings }: Render) {
 async function take(r: Render, timings: { sentences: number[]; words?: number[][] }[]) {
   const { spec, viewport, work } = r;
   const speech = timings.map((t) => t.sentences.reduce((a, b) => a + b, 0));
-  // the frames of the take before go only now: a render that stops before recording keeps them for re-voicing
   const framesDir = path.join(work, 'frames');
-  fs.rmSync(framesDir, { recursive: true, force: true });
   fs.mkdirSync(framesDir, { recursive: true });
 
   const { browser, ctx, page, d, stillness, scale } = await openPage(r, true);

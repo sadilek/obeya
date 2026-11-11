@@ -150,9 +150,17 @@ interface Connection {
 async function connect(wsUrl: string): Promise<Connection> {
   const ws = new WebSocket(wsUrl);
   const failed = () => new Error(`WebSocket connection to ${wsUrl} failed`);
+  // the connection gets the same 30 s as a command
   await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    ws.onerror = () => reject(failed());
+    const timer = setTimeout(() => {
+      reject(new Error(`Timeout connecting to ${wsUrl}`));
+      ws.close();
+    }, 30_000);
+    ws.onopen = () => resolve(clearTimeout(timer));
+    ws.onerror = () => {
+      clearTimeout(timer);
+      reject(failed());
+    };
   });
   let id = 0;
   const pending = new Map<number, { method: string; timer: NodeJS.Timeout; resolve: (result: any) => void; reject: (error: Error) => void }>();
