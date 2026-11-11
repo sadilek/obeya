@@ -36,6 +36,7 @@ import { seenOf } from './seen';
 import { noticeLine, tellers, useAck } from './tell';
 import { HoldToTalk, PushToTalk, ToldList, usePushToTalk, useTold } from './voice';
 import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
+import { useLatest } from './latest';
 
 /**
  * Whether the page shows the phone view: on a phone, which has a coarse pointer and a short side
@@ -178,8 +179,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   useEffect(() => setCanvases(loaded), [loaded]);
   // every canvas over one connection, with the plan's usage limits
   const { snapshots: snaps, offlineSince: quietSince, usage, canvases: listed } = useEveryCanvas();
-  const snapsRef = useRef(snaps);
-  snapsRef.current = snaps;
+  const snapsRef = useLatest(snaps);
   useEffect(() => void (listed && setCanvases(listed)), [listed]);
 
   // ---------------------------------------------------------------- what is open
@@ -197,12 +197,10 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   };
   /** The id of the card a code names, once the snapshots hold it. */
   const resolve = (code: string | null) => (code && named(allRef.current.map((x) => x.item), code)?.id) || code;
-  const openRef = useRef(open);
-  openRef.current = open;
+  const openRef = useLatest(open);
   // the conversation of what is in view, a panel over it: the open card's, else Obeya's
   const [talk, setTalk] = useState(talkInAddress);
-  const talkRef = useRef(talk);
-  talkRef.current = talk;
+  const talkRef = useLatest(talk);
   /** Closes the open panel as dragging it down does, sliding out. */
   const leaveTalk = useRef<(() => void) | null>(null);
   // the panel sliding out: the button offers it again at once
@@ -313,14 +311,12 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   // ---------------------------------------------------------------- the cards
   const ordered = canvases.filter((c) => snaps[c.id]);
   const all = useMemo(() => ordered.flatMap((c) => snaps[c.id]!.items.map((item) => ({ item, canvas: c }))), [snaps, canvases]);
-  const allRef = useRef(all);
-  allRef.current = all;
+  const allRef = useLatest(all);
   const byId = (id: string) => allRef.current.find((x) => x.item.id === id)?.item;
   // a card the address names by its code: its id once the snapshots hold it, and its address by the
   // code; an open card that moved to another canvas (built in a new repository there) stays open, and
   // the address follows it there, as the canvas's page does, also on Back and Forward
-  const followOpen = useRef(() => {});
-  followOpen.current = () => {
+  const followOpen = useLatest(() => {
     const open = openRef.current;
     if (!open) return;
     const id = resolve(open)!;
@@ -330,7 +326,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     openRef.current = id;
     setOpenState(id);
     history.replaceState(history.state, '', addressWith({ card: id, talk: talkRef.current }));
-  };
+  });
   useEffect(() => followOpen.current(), [all]);
   // the cards the owner swiped aside, out of "Needs you" and "Running" until they need the owner anew;
   // the same in every tab of this browser
@@ -361,8 +357,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     return (canvases.find((c) => c.id === wanted) ?? canvases[0]!).id;
   });
   const obeyaId = canvases.some((c) => c.id === obeyaCanvas) ? obeyaCanvas : canvases[0]!.id;
-  const obeyaRef = useRef(obeyaId);
-  obeyaRef.current = obeyaId;
+  const obeyaRef = useLatest(obeyaId);
   const setObeyaCanvas = (id: string) => {
     // at once, for the address of the conversation opened next
     obeyaRef.current = id;
@@ -408,8 +403,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     return fieldOn(key) ? key : MIC_DRAFT;
   };
   const ptt = usePushToTalk(where, fieldFor, tellAbout, (h) => showAck(h.confirm), () => undefined);
-  const pttRef = useRef(ptt);
-  pttRef.current = ptt;
+  const pttRef = useLatest(ptt);
   /** The open card's demo video while the microphone is held: it pauses, and plays on after unless the words went into a field. */
   const pressing = useRef<{ video: HTMLVideoElement | null; playing: boolean; dictating: boolean } | null>(null);
   const press = () => {

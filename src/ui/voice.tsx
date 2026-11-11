@@ -19,6 +19,7 @@ import { replyOn, setReply, useReply } from './reply';
 import { sent, take, type Taken } from './spot';
 import { pasteKeys, t } from './strings';
 import { usePasteTextHint } from './pasteHint';
+import { useLatest } from './latest';
 
 /** Starts a recording, for a text field's microphone and Space held in it; null where nobody listens. */
 export const HoldToTalk = createContext<(() => void) | null>(null);
@@ -336,8 +337,7 @@ export interface Told {
  */
 export function useTold(onHeard: (h: Heard) => void, inView: (h: Heard) => boolean = () => false) {
   const [told, setTold] = useState<Told[]>([]);
-  const toldRef = useRef(told);
-  toldRef.current = told;
+  const toldRef = useLatest(told);
   const next = useRef(0);
   const update = (id: number, fn: (x: Told) => Told | null) => setTold((ts) => ts.flatMap((x) => (x.id === id ? (fn(x) ?? []) : [x])));
 

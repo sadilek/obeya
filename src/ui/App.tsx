@@ -53,6 +53,7 @@ import { canvasPath, cardPath, named, queryWithout, readAddress } from './addres
 import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 import { captionKey } from './walkthrough';
+import { useLatest, useLive, useStable } from './latest';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -79,8 +80,7 @@ export function App() {
   // a switch to another canvas: what it starts from, and whether the canvas before has gone yet
   const [switching, setSwitching] = useState<{ path: string; push: boolean; start: Partial<CanvasFeed>; gone: boolean } | null>(null);
   const shownRef = useRef<string | undefined>(undefined);
-  const canvasesRef = useRef(canvases);
-  canvasesRef.current = canvases;
+  const canvasesRef = useLatest(canvases);
   useEffect(() => {
     if (phone) return;
     let latest = 0;
@@ -255,8 +255,7 @@ function Canvas({
   const [pending, setPending] = useState<Item[]>([]);
   // Approved cards the server is still landing, with what the card says meanwhile, until it moves on.
   const [underway, setUnderway] = useState<Record<string, string>>({});
-  const snapshotRef = useRef(snapshot);
-  snapshotRef.current = snapshot;
+  const snapshotRef = useLatest(snapshot);
   useEffect(() => {
     const byId = new Map(snapshot.items.map((i) => [i.id, i]));
     setMoved((m) => {
@@ -290,8 +289,7 @@ function Canvas({
       return c ? { ...open, collapsed: true as const } : open;
     });
   }, [snapshot, pending, moved, folded]);
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
+  const itemsRef = useLatest(items);
   // the workstreams of a collapsed project are not on the canvas: its marks stand for them
   const placed = useMemo(() => onCanvas(items).map((item) => ({ item, b: boundsOf(item, items) })), [items]);
   const territories = useTerritories(placed, snapshot.groups);
@@ -320,8 +318,7 @@ function Canvas({
   const all: Bounds = useMemo(() => unionBounds([...placed.map((p) => p.b), ...notes]) ?? { x: 0, y: 0, w: 1000, h: 600 }, [placed, notes]);
   // what the view keeps in sight: the cards, a project only while it shows none, and the notes on plan directories
   const content = useMemo(() => [...placed.filter(({ item }) => item.collapsed || !kidsOf.has(item.id)).map((p) => p.b), ...notes], [placed, kidsOf, notes]);
-  const contentRef = useRef(content);
-  contentRef.current = content;
+  const contentRef = useLatest(content);
   const byId = (id: string) => itemsRef.current.find((i) => i.id === id);
   /** Where a card stands on the canvas; a workstream of a collapsed project, where its project does. */
   const bounds = (i: Item) => boundsOf(standsFor(i), itemsRef.current);
@@ -373,8 +370,7 @@ function Canvas({
   // how wide the sheets are, as the owner dragged them; in effect clamped to the window
   const [widths, setWidths] = useState<SheetWidths>(() => loadWidths(localStorage));
   const sheetW = widthsIn(widths, innerWidth);
-  const sheetWRef = useRef(sheetW);
-  sheetWRef.current = sheetW;
+  const sheetWRef = useLatest(sheetW);
   const [kOn, setKOn, kOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
   const [sOn, setSOn, sOnRef] = useLive(false);
@@ -772,8 +768,7 @@ function Canvas({
 
   // ---------------------------------------------------------------- kept across a restart
   // a restart reloads the page: what was open comes back as it was, without the flights
-  const keepNow = useRef(() => {});
-  keepNow.current = () => {
+  const keepNow = useLatest(() => {
     flushEdit().catch(console.error);
     const f = focusRef.current;
     const project = f?.type === 'project' ? f.id : f?.type === 'card' ? f.project?.id : undefined;
@@ -786,7 +781,7 @@ function Canvas({
       ...(cOn ? { config: true } : {}),
       ...collect(),
     });
-  };
+  });
   useEffect(() => beforeReload(() => keepNow.current()), []);
   // Obeya's sheet left open over a draft comes back with the canvas; left empty or closed, it stays closed
   useEffect(() => {
@@ -932,8 +927,7 @@ function Canvas({
       addressSet.current = false;
     }
   }
-  const follow = useRef(followAddress);
-  follow.current = followAddress;
+  const follow = useLatest(followAddress);
   useEffect(() => {
     const pop = () => {
       // Back or Forward to another canvas: the page switches to it (App)
@@ -981,9 +975,7 @@ function Canvas({
       fail(e);
     }
   }
-  const archiveProjectRef = useRef(archiveProjectNow);
-  archiveProjectRef.current = archiveProjectNow;
-  const archiveProject = useCallback((p: Item) => void archiveProjectRef.current(p), []);
+  const archiveProject = useStable((p: Item) => void archiveProjectNow(p));
 
   /** "Back to the canvas" in the sheet of an archived project whose work is done. */
   async function unarchiveProject(p: Item) {
@@ -1082,9 +1074,7 @@ function Canvas({
     }
   }, []);
   // a stable handle on `open` for the memoised project views
-  const openRef = useRef(open);
-  openRef.current = open;
-  const openCard = useCallback((i: Item) => void openRef.current(i).catch(console.error), []);
+  const openCard = useStable((i: Item) => void open(i).catch(console.error));
 
   /** "Prepare as a project" on the note on a plan directory: a card whose agent prepares the doc, started at once. */
   const preparePlanDoc = useCallback(async (dir: PlanDir, file: string) => {
@@ -1201,8 +1191,7 @@ function Canvas({
     return key && fieldOn(key) ? key : MIC_DRAFT;
   };
   const ptt = usePushToTalk(where, fieldFor, tellAbout, (h) => showAck(h.confirm), placeNow);
-  const pttRef = useRef(ptt);
-  pttRef.current = ptt;
+  const pttRef = useLatest(ptt);
   // a text field's microphone, and Space held in it
   /** The open card's demo video while the owner holds Space or the microphone: whether it played, and since when. */
   const pressing = useRef<{ video: HTMLVideoElement | null; playing: boolean; at: number; space: boolean; dictating: boolean } | null>(null);
@@ -1227,11 +1216,8 @@ function Canvas({
     const tap = p.space && performance.now() - p.at < TAP_MS;
     if (tap ? !p.playing : p.playing && !p.dictating) p.video.play().catch(() => {});
   };
-  const letGoRef = useRef(letGo);
-  letGoRef.current = letGo;
-  const pressRef = useRef(press);
-  pressRef.current = press;
-  const holdToTalk = useCallback(() => pressRef.current(false), []);
+  const letGoRef = useLatest(letGo);
+  const holdToTalk = useStable(() => press(false));
   useEffect(() => {
     const up = (e: KeyboardEvent) => e.code === 'Space' && letGoRef.current();
     const release = () => letGoRef.current();
@@ -1712,8 +1698,7 @@ function Canvas({
 
   // ---------------------------------------------------------------- keys
   // an approved card stops needing the owner with the click, before the snapshot says it lands
-  const underwayRef = useRef(underway);
-  underwayRef.current = underway;
+  const underwayRef = useLatest(underway);
   const yours = (i: Item) => needsYou(i) && !underwayRef.current[i.id];
   // answers in Obeya's sheet the owner has not seen: Obeya waits for them like a card
   const unread = kOn ? 0 : unreadAnswers(snapshot.talk);
@@ -1754,8 +1739,7 @@ function Canvas({
     if (next === 'k') toggleCoordinator();
     else open(next);
   }
-  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
-  keys.current = (e: KeyboardEvent) => {
+  const keys = useLatest((e: KeyboardEvent) => {
     const f = focusRef.current;
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     // a field being edited handles its own keys (Esc cancels the edit there); any other field's Esc closes what it is in
@@ -1845,7 +1829,7 @@ function Canvas({
         knowSearch();
       } else toggleArchive();
     }
-  };
+  });
   useEffect(() => {
     const h = (e: KeyboardEvent) => keys.current(e);
     addEventListener('keydown', h, true);
@@ -2343,17 +2327,6 @@ const rect = (r: DOMRect) => ({ left: `${r.left}px`, top: `${r.top}px`, width: `
 
 /** Camera centred on the middle of `b` at scale `s` between the panels `side`, ignoring the top bar (the unfold is centred there too). */
 const centreOnPoint = (b: Bounds, s: number, side: Sides): Cam => ({ s, x: midX(side) - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s });
-
-/** State with a ref that holds the value set last, for what reads it before the next render. */
-function useLive<T>(init: T | (() => T)): [T, (v: T) => void, { readonly current: T }] {
-  const [v, setV] = useState(init);
-  const ref = useRef(v);
-  const set = useCallback((n: T) => {
-    ref.current = n;
-    setV(n);
-  }, []);
-  return [v, set, ref];
-}
 
 /** A button's icon in the top bar, shown in place of its label where the bar is narrow (beside a wide sheet). */
 function BarIcon({ d }: { d: string }) {

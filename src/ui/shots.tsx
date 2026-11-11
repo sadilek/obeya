@@ -14,6 +14,7 @@ import { badgeOf, CLICK_PX, drawMarks, EDGE, type Mark, markOf, markSize, type P
 import { confirmPasteHint, pastedShots, pickedShots, usePasteHint } from './pasteHint';
 import { pasteKeys, t } from './strings';
 import { behindThumb, type Box, onto, ZOOM_EASE, ZOOM_MS } from './zoomBox';
+import { useLatest } from './latest';
 
 /** The longest side the model looks at in detail; larger screenshots only cost upload and context. */
 export const MAX_SIDE = 2000;
@@ -126,15 +127,13 @@ export function useShotInput({ draft, initial = [], onChange, off = false, put }
   const { images, uploading, marking, error } = useDraft(key);
   const [dropping, setDropping] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
-  const change = useRef(onChange);
-  change.current = onChange;
+  const change = useLatest(onChange);
   const update = (fn: (cur: string[]) => string[]) => {
     updateDraft(key, (d) => ({ images: fn(d.images) }));
     change.current?.(draftOf(key).images);
   };
   const pasteHint = usePasteHint(key, !off);
-  const putRef = useRef(put);
-  putRef.current = put;
+  const putRef = useLatest(put);
   /** The screenshots among `files` as screenshots, the others by their paths. How many arrived. */
   const attach = async (files: File[]) => {
     if (off) return 0;
@@ -264,8 +263,7 @@ export function AttachButton({ shots, title = t.shots.attach }: { shots: ShotInp
     f.blur();
     f.focus();
   };
-  const backRef = useRef(back);
-  backRef.current = back;
+  const backRef = useLatest(back);
   useEffect(() => {
     const input = shots.picker.current;
     if (!input) return;
@@ -403,8 +401,7 @@ function Lightbox({ src, thumb, marking, onClose }: { src: string; thumb: HTMLIm
   const layer = useRef<SVGSVGElement>(null);
   const [closing, setClosing] = useState(false);
   const [marks, setMarks] = useState(marking?.marks ?? []);
-  const marksRef = useRef(marks);
-  marksRef.current = marks;
+  const marksRef = useLatest(marks);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [drag, setDrag] = useState<{ a: Point; b: Point; from: Point; moved: number } | null>(null);
   const [marksKnown, knowMarks] = useKnown(MARKS_KNOWN);
@@ -452,8 +449,7 @@ function Lightbox({ src, thumb, marking, onClose }: { src: string; thumb: HTMLIm
       if (el === img.current) back.onfinish = onClose;
     }
   };
-  const closeRef = useRef(close);
-  closeRef.current = close;
+  const closeRef = useLatest(close);
   // grows out of its thumbnail, which stays hidden while it is out
   useLayoutEffect(() => {
     const el = img.current!;
