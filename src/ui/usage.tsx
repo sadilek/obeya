@@ -3,11 +3,16 @@
 // numbers, beside the harness's name once the bar shows two. A tick on each meter marks how much of
 // its window has gone by: green while the usage stays at or under it, red once it runs ahead. A
 // click (a tap on the phone) lists every limit of every plan with how much of it is used, when it
-// starts anew and how long until then, and where the numbers come from.
+// starts anew and how long until then, and where the numbers come from; under it, until the owner
+// confirms it once, a line that explains the tick.
 
 import { useEffect, useRef, useState } from 'react';
 import type { PlanUsage, Usage, UsageLimit } from '../core/types';
+import { know, known } from './known';
 import { clock, countdown, snoozeWhen, t } from './strings';
+
+/** Set once the owner confirmed the line that explains the tick: it shows no more. */
+const PACE_KNOWN = 'obeya-usage-pace-known';
 
 /** How much of a limit's window has gone by at `now`, 0–100; none for a window of unknown length or reset. */
 export function elapsed(l: UsageLimit, now: number): number | undefined {
@@ -50,6 +55,7 @@ export function UsagePill({ usage }: { usage: Usage }) {
   // open by a click (a tap) until one elsewhere or Escape
   const [open, setOpen] = useState(false);
   const now = useNow();
+  const [paceKnown, setPaceKnown] = useState(() => known(PACE_KNOWN));
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -86,7 +92,20 @@ export function UsagePill({ usage }: { usage: Usage }) {
         {plans.map((p) => (
           <PlanList key={p.harness} plan={p} now={now} />
         ))}
-        {plans.some((p) => p.limits.some((l) => elapsed(l, now) !== undefined)) && <p className="hint pace-key">{t.usage.pace}</p>}
+        {!paceKnown && plans.some((p) => p.limits.some((l) => elapsed(l, now) !== undefined)) && (
+          <p className="hint pace-key">
+            {t.usage.pace}{' '}
+            <button
+              className="link"
+              onClick={() => {
+                know(PACE_KNOWN);
+                setPaceKnown(true);
+              }}
+            >
+              {t.gotIt}
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

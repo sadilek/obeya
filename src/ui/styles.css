@@ -426,6 +426,9 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.usage .meter .pace { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--approved); }
 .pill.usage .meter .pace.ahead { background: var(--error); }
 .pill.usage .stack .meter .pace { top: -1px; bottom: -1px; }
+/* the line that explains the tick, and its quiet button that puts it away */
+.pill.usage .pace-key button.link { color: var(--muted); font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.pill.usage .pace-key button.link:hover { color: var(--ink); }
 .pill.usage .warning .meter i, .pill.usage .meter.warning i { background: var(--waiting); }
 .pill.usage .critical .meter i, .pill.usage .meter.critical i { background: var(--error); }
 .pill.usage .usage-list { list-style: none; margin: 0 0 8px; padding: 0; }

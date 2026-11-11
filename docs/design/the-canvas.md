@@ -59,8 +59,8 @@ when it shows two, without one when it shows one. A click lists every limit of
 every plan (the session, the week for all models, the week for a single model) with its meter and
 percentage, when it starts anew and how long until then ("in 3 h 12 min", counting down while the
 list is open), and where the numbers come from and as of when; a line under it says what the tick
-means, for whoever sees it the first time. "Usage limits in
-the bar" under Configuration → General turns them off and on (on until then). The phone view shows
+means, for whoever sees it the first time, until they put it away with "Got it" (kept in the
+browser). "Usage limits in the bar" under Configuration → General turns them off and on (on until then). The phone view shows
 the same at the right of its bar; its list hangs from the bar as wide as the screen.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
