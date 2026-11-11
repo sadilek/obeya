@@ -12,14 +12,19 @@ type Env = Record<string, string | undefined>;
 /** Where the official installers of Claude Code and uv put their programs. */
 export const localBin = () => join(homedir(), '.local', 'bin');
 
+/** A copied Windows environment loses process.env's case-insensitive property lookup. */
+const pathKey = (env: Env) =>
+  process.platform !== 'win32' || env.PATH !== undefined ? 'PATH' : Object.keys(env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
+
 /** Where `program` is on the PATH of `env`; null where it is on none. */
-export const which = (program: string, env: Env = process.env) => Bun.which(program, { PATH: env.PATH ?? '' });
+export const which = (program: string, env: Env = process.env) => Bun.which(program, { PATH: env[pathKey(env)] ?? '' });
 
 /** Adds the directories to the PATH of `env` that it lacks, after those it has. */
 export function addToPath(env: Env, dirs: string[]) {
-  const parts = (env.PATH ?? '').split(delimiter).filter(Boolean);
+  const key = pathKey(env);
+  const parts = (env[key] ?? '').split(delimiter).filter(Boolean);
   for (const d of dirs) if (d && !parts.includes(d)) parts.push(d);
-  env.PATH = parts.join(delimiter);
+  env[key] = parts.join(delimiter);
 }
 
 /**
