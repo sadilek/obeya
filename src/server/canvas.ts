@@ -16,6 +16,7 @@ import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
 import { holdsNotes } from '../core/queue';
+import { Listeners } from '../core/watched';
 import { BadRequest, Board, DEMO_LOOK_MS, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander } from './commands';
@@ -2935,11 +2936,11 @@ export async function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, f
 /**
  * The canvases Obeya serves, as its configuration has them while it runs (design: Live
  * configuration): a canvas new in it starts at once, one that changed takes the change
- * (`CanvasRuntime.apply`), one no longer in it stops once its agents paused, its cards kept.
+ * (`CanvasRuntime.apply`), one no longer in it stops once its agents paused, its cards kept. Its
+ * listeners hear whenever a canvas starts, stops, or changes its name or repositories.
  */
-export class Canvases {
+export class Canvases extends Listeners {
   private list: CanvasRuntime[] = [];
-  private listeners = new Set<() => void>();
   /** By canvas's id: why one in the configuration does not run (its home repository did not start). */
   private down = new Map<string, string>();
   /** The configuration as last saved (`apply`), by canvas's id: a canvas that was starting meanwhile takes it once it runs. */
@@ -2961,6 +2962,7 @@ export class Canvases {
     /** A canvas started while Obeya runs. */
     private started: (c: CanvasRuntime) => void = () => {},
   ) {
+    super();
     this.deps = {
       ...deps,
       stopped: (c, why) => {
@@ -2990,12 +2992,6 @@ export class Canvases {
 
   get(id: string): CanvasRuntime | undefined {
     return this.list.find((c) => c.id === id);
-  }
-
-  /** Calls `fn` whenever a canvas starts, stops, or changes its name or repositories. */
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
   }
 
   /**
@@ -3078,10 +3074,6 @@ export class Canvases {
 
   /** Set once Obeya ends (`shutdown`). */
   private closed = false;
-
-  private emit() {
-    for (const fn of this.listeners) fn();
-  }
 }
 
 /** Why a canvas's configuration does not work; `repo` is the index of the repository in question. */

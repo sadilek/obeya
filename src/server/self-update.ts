@@ -8,6 +8,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { inert } from '../core/inert';
 import type { OwnerHold, RestartReason } from '../core/types';
+import { Listeners } from '../core/watched';
 import { gitDirs } from './read-tree';
 import { COMPILED } from './resources';
 import { gitAsync, gitOrNull } from './git';
@@ -74,27 +75,23 @@ export interface RestarterOptions {
  * and until when at most. The owner can have it go ahead at once. A stop waits for the workers
  * alone: the owner asked for it, and a page left playing a video does not hold it off.
  */
-export class Restarter {
+export class Restarter extends Listeners {
   private current: Due | null = null;
   private stopping = false;
   private updating = false;
   private taking = false;
   private gone = false;
   private stopWaiting = () => {};
-  private listeners = new Set<() => void>();
   /** What the owner does in each open page (by connection), as the page last said, and in each request the server answers. */
   private holds = new Map<string, OwnerHold[]>();
 
-  constructor(private o: RestarterOptions) {}
+  constructor(private o: RestarterOptions) {
+    super();
+  }
 
   /** The restart that waits, if one does. */
   due(): Due | null {
     return this.current;
-  }
-
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
   }
 
   /** What the owner does in the open page `page` (or a request the server answers) that a restart waits for; none, or `[]`, when the page closes. */
@@ -173,10 +170,6 @@ export class Restarter {
     this.stopWaiting();
     this.current = null;
     this.o.go(this.stopping ? 'stop' : this.updating ? 'update' : this.taking ? 'takeover' : reason);
-  }
-
-  private emit() {
-    for (const fn of this.listeners) fn();
   }
 }
 

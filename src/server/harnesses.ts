@@ -14,6 +14,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { AGENT_MODELS, type AgentModel, HARNESSES, type Harness, type HarnessHost, type HarnessUpdate, type HarnessModel, type HarnessView, modelName, modelVersion, newestOfFamilies } from '../core/types';
+import { Listeners } from '../core/watched';
 import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex';
 import type { SshHost } from './hosts';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
@@ -196,7 +197,7 @@ class Install {
   }
 }
 
-export class Harnesses {
+export class Harnesses extends Listeners {
   /** By harness, once looked at. */
   private found: Partial<Record<Harness, HarnessFound | null>> = {};
   private models: { at: number; list: Promise<HarnessModel[]> } | undefined;
@@ -209,7 +210,6 @@ export class Harnesses {
    * it is installed there.
    */
   private there = new Map<string, { host: HostHarness; install: Install; at: number; looking?: boolean; installed?: boolean }>();
-  private listeners = new Set<() => void>();
 
   constructor(
     private o: {
@@ -233,7 +233,8 @@ export class Harnesses {
       hosts?: () => HostHarness[];
     },
   ) {
-    const changed = () => this.changed();
+    super();
+    const changed = () => this.emit();
     this.here = {
       claude: new Install({
         harness: 'claude',
@@ -265,10 +266,6 @@ export class Harnesses {
     };
   }
 
-  private changed() {
-    for (const fn of this.listeners) fn();
-  }
-
   /** Looks at the harnesses again. */
   async refresh(): Promise<void> {
     this.lookedAt = { claude: Date.now(), codex: Date.now() };
@@ -285,7 +282,7 @@ export class Harnesses {
     if (!this.ready('codex') || this.found.codex?.version !== before.codex?.version) this.models = undefined;
     this.here.claude.found(this.found.claude?.version);
     this.here.codex.found(this.found.codex?.version);
-    this.changed();
+    this.emit();
   }
 
   /**
@@ -316,7 +313,7 @@ export class Harnesses {
           update: () => host.update(),
           look,
           ready: () => !!this.there.get(key)?.installed,
-          changed: () => this.changed(),
+          changed: () => this.emit(),
         });
         on = { host, install, at: 0 };
         this.there.set(key, on);
@@ -329,7 +326,7 @@ export class Harnesses {
         try {
           const version = it.install.version;
           await it.install.look();
-          if (it.install.version !== version) this.changed();
+          if (it.install.version !== version) this.emit();
         } catch {
           // asked again once it answers
           it.at = 0;
@@ -348,11 +345,6 @@ export class Harnesses {
   /** The harness of a group the owner chose none for: Claude Code, unless only Codex is ready. */
   preferred(): Harness {
     return !this.ready('claude') && this.ready('codex') ? 'codex' : 'claude';
-  }
-
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
   }
 
   /** Each harness with what it offers, for the Configuration. */

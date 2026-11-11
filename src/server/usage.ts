@@ -9,6 +9,7 @@
 
 import { query, type SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
 import type { Harness, Usage, UsageLimit } from '../core/types';
+import { Listeners, Watched } from '../core/watched';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
 
 /** How often the limits are fetched while the bar shows them: just over the minute Claude Code keeps an answer. */
@@ -42,11 +43,10 @@ export interface UsageSource {
  * holds, a page closed `lingerMs` ago still counting as open (the page a reload or another canvas
  * opens next shows the numbers at once, without a session started anew). A source that fails is closed, and a later round starts a new one, after more rounds the
  * more often it failed (a Claude Code too old to answer would otherwise start a session a minute);
- * what it fetched last stands meanwhile, for a few minutes.
+ * what it fetched last stands meanwhile, for a few minutes. `current`: the limits as last fetched,
+ * while the bar shows them.
  */
-export class UsageMeter {
-  private last: PlanLimits | null = null;
-  private listeners = new Set<() => void>();
+export class UsageMeter extends Watched<PlanLimits> {
   private watchers = 0;
   private on: boolean;
   private source: UsageSource | null = null;
@@ -64,6 +64,7 @@ export class UsageMeter {
     private open: () => UsageSource,
     o: { on?: boolean; everyMs?: number; lingerMs?: number } = {},
   ) {
+    super();
     this.on = !!o.on;
     this.everyMs = o.everyMs ?? USAGE_EVERY_MS;
     this.lingerMs = o.lingerMs ?? USAGE_LINGER_MS;
@@ -93,16 +94,6 @@ export class UsageMeter {
     };
   }
 
-  /** The limits as last fetched, while the bar shows them. */
-  current(): PlanLimits | null {
-    return this.last;
-  }
-
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
   /** Fetches the limits now, unless a fetch is under way or the bar does not show them. */
   async refresh(): Promise<void> {
     if (!this.running() || this.fetching) return;
@@ -119,7 +110,8 @@ export class UsageMeter {
       // a new session next round; what was fetched last stands a little longer
       if (this.source === source) this.source = null;
       source.close();
-      if (this.last && Date.now() - Date.parse(this.last.at) > STALE_MS) this.set(null);
+      const last = this.current();
+      if (last && Date.now() - Date.parse(last.at) > STALE_MS) this.set(null);
     } finally {
       this.fetching = false;
     }
@@ -152,26 +144,20 @@ export class UsageMeter {
     // numbers from before would show as now once a page opens again
     this.set(null);
   }
-
-  private set(usage: PlanLimits | null) {
-    if (JSON.stringify(usage) === JSON.stringify(this.last)) return;
-    this.last = usage;
-    for (const fn of this.listeners) fn();
-  }
 }
 
 /**
  * The meters of the harnesses, as one for the bar: each runs while the bar shows the limits and its
  * harness has a login (`ready`); the bar shows every plan it has numbers for.
  */
-export class UsageMeters {
+export class UsageMeters extends Listeners {
   private on: boolean;
-  private listeners = new Set<() => void>();
 
   constructor(
     private meters: { harness: Harness; meter: UsageMeter }[],
     private o: { on?: boolean; ready: (h: Harness) => boolean },
   ) {
+    super();
     this.on = !!o.on;
     for (const { meter } of meters) meter.onChange(() => this.changed());
     this.update();
@@ -203,14 +189,9 @@ export class UsageMeters {
     return plans.length ? { plans } : null;
   }
 
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
   /** What the bar shows changed without new numbers: a harness's login. */
   changed() {
-    for (const fn of this.listeners) fn();
+    this.emit();
   }
 
   stop() {
