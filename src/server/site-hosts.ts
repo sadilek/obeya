@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
 import { AS_OBEYA } from './git';
+import { messageOf } from '../core/text';
 
 /** The deploy line's word for the deploy Obeya builds in: `obeya:github-pages <owner>/<repository>`. */
 export const GITHUB_PAGES = 'obeya:github-pages';
@@ -27,7 +28,7 @@ export const exec: Exec = async (argv, o = {}) => {
     const r = await spawnOutput(argv, { stdin: 'ignore', env: { ...process.env, ...o.env }, timeout: o.timeout ?? 120_000, ...(o.cwd ? { cwd: o.cwd } : {}) });
     return { code: r.code, out: r.stdout, err: r.stderr };
   } catch (e) {
-    return { code: -1, out: '', err: e instanceof Error ? e.message : String(e) };
+    return { code: -1, out: '', err: messageOf(e) };
   }
 };
 
@@ -155,7 +156,7 @@ export async function setupGithub(o: { name: string; private: boolean; log: (lin
   try {
     user = JSON.parse(await gh('api', 'user'));
   } catch (e) {
-    throw new SetupRefused(`gh is not logged in to GitHub (gh auth login): ${e instanceof Error ? e.message : e}`);
+    throw new SetupRefused(`gh is not logged in to GitHub (gh auth login): ${messageOf(e)}`);
   }
   if (o.private && user.plan?.name === 'free') throw new SetupRefused(NEEDS_PRO, 'cloudflare');
   let name = o.name;

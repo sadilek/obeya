@@ -10,11 +10,12 @@ import { createPortal } from 'react-dom';
 import { cite } from './draft';
 import { know, known } from './known';
 import { t } from './strings';
+import { oneLine } from '../core/text';
 
 const KNOWN = 'obeya-cite-known';
 
 /** The marked text as the quote has it: one line, without the spaces around it. */
-export const citable = (marked: string) => marked.replace(/\s+/g, ' ').trim();
+export const citable = oneLine;
 
 interface Marked {
   text: string;

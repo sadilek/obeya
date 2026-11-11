@@ -35,7 +35,7 @@ import { branchName } from './branches';
 import { gitAsync } from './git';
 import { originOf } from './forgejo';
 import { zip } from './zip';
-import { messageOf } from '../core/text';
+import { messageOf, plainText } from '../core/text';
 
 /** A later demo version on a page, below the first as an addendum. */
 export interface PageDemo {
@@ -1404,4 +1404,3 @@ export function tail(s: string, lines = 20): string {
   return (all.length > lines ? ['…', ...all.slice(-lines)] : all).join('\n').slice(-3000);
 }
 
-const plainText = (s: string) => s.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();

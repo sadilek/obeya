@@ -7,6 +7,7 @@ import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { Skill } from '../core/types';
 import { withTimeout } from '../core/late';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+import { messageOf } from '../core/text';
 
 /** Where an agent works, as far as its skills go. */
 export interface SkillPlace {
@@ -111,7 +112,7 @@ export class Skills {
     if (!asking) {
       asking = this.list(place)
         .catch((e) => {
-          console.error(`Obeya: Claude Code did not list the skills in ${place.cwd}: ${e instanceof Error ? e.message : String(e)}`);
+          console.error(`Obeya: Claude Code did not list the skills in ${place.cwd}: ${messageOf(e)}`);
           return null;
         })
         .then((skills) => {

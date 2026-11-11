@@ -49,6 +49,7 @@ import { PageChangeList } from './page-changes';
 import { WishReplyLink } from './wish';
 import { claudeLoginFailed, codexLoginLost } from '../core/login';
 import { CodexLogin, Reauthenticate } from './reauthenticate';
+import { clip } from '../core/text';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -1797,7 +1798,7 @@ function Background({ tasks }: { tasks?: BackgroundTask[] }) {
 
 const clipLine = (s: string) => {
   const line = s.split('\n').find((l) => l.trim())?.trim() ?? '';
-  return line.length > 140 ? line.slice(0, 139) + '…' : line;
+  return clip(line, 140);
 };
 
 /** The agent's latest words, cut to their first line; under the mouse, all of them. */

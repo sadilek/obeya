@@ -1094,7 +1094,7 @@ export async function carryTo(host: SshHost, dir: string | Promise<string>, text
     const carried = images.reduce((t, f) => t.split(f).join(`${to}/${basename(f)}`), text);
     return { text: dropped.reduce((t, d) => t.split(d).join(`${there}/${basename(d)}`), carried), images: images.map((f) => `${to}/${basename(f)}`) };
   } catch (e) {
-    console.error(e instanceof Error ? e.message : e);
+    console.error(messageOf(e));
     return { text, images };
   }
 }

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { type Language, ownersLanguage } from '../core/locale';
 import type { AnswerFile, Question } from '../core/types';
 import { type AgentRuntime, type AgentTool, BackgroundWait } from './runtime';
-import { clip } from '../core/text';
+import { clip, oneLine } from '../core/text';
 
 /** An answer to a question the owner asked, for the card or the sheet, with the files it comes with. */
 export interface OwnerAnswer {
@@ -172,7 +172,7 @@ export function answerFiles(dir: string, list: unknown): AnswerFile[] | string {
     else if (!existsSync(full) || !statSync(full).isFile()) wrong.push(`${path} is no file`);
     else {
       const name = relative(root, full).split(sep).join('/');
-      if (!files.some((x) => x.name === name)) files.push({ name, caption: clip(String(f?.caption ?? '').replace(/\s+/g, ' ').trim(), 200) });
+      if (!files.some((x) => x.name === name)) files.push({ name, caption: clip(oneLine(String(f?.caption ?? '')), 200) });
     }
   }
   return wrong.length ? `${wrong.join('; ')}: the files of an answer are in its output directory ${root}.` : files;

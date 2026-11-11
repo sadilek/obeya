@@ -1057,7 +1057,7 @@ export class Commander {
       }
       if (a.do === 'ungroup') return { do: 'ungroup', cards };
       // the name may come where rename_group takes the group
-      const name = (a.text || a.group)?.replace(/\s+/g, ' ').trim();
+      const name = oneLine(a.text || a.group || '');
       if (!name) return "the group's name is missing (text)";
       if (name.length > 60) return "a group's name has at most 60 characters";
       return { do: 'group', cards, name };
@@ -1066,7 +1066,7 @@ export class Commander {
       const groups = this.o.board.snapshot().groups;
       const g = groups.find((x) => x.name.toLowerCase() === a.group?.trim().toLowerCase());
       if (!g) return `there is no group ${a.group ?? '(none named)'}; the canvas has ${groups.map((x) => `"${x.name}"`).join(', ') || 'none'}`;
-      const name = a.text?.replace(/\s+/g, ' ').trim();
+      const name = oneLine(a.text ?? '');
       if (!name) return 'the new name is missing (text)';
       if (name.length > 60) return "a group's name has at most 60 characters";
       if (groups.some((x) => x.id !== g.id && x.name.toLowerCase() === name.toLowerCase())) return `there is a group "${name}" already`;
@@ -1086,7 +1086,7 @@ export class Commander {
       if (a.do === 'delete') return cards.length === 1 ? { do: 'delete', card: cards[0]!.id } : 'delete takes one card; give one delete action for each';
       if (cards.length < 2) return 'name at least two cards to merge (cards)';
       if (new Set(cards.map((c) => c.repo)).size > 1) return `only tasks of one repository can be merged: ${cards.map((c) => `"${c.title}" is in ${c.repo}`).join(', ')}`;
-      const title = (a.title || a.text)?.replace(/\s+/g, ' ').trim();
+      const title = oneLine(a.title || a.text || '');
       if (!title) return "the merged task's title is missing (title)";
       if (title.length > 200) return 'a title has at most 200 characters';
       return { do: 'merge', card: cards[0]!.id, others: cards.slice(1).map((c) => c.id), title };
@@ -1501,7 +1501,7 @@ export function talkReplyNote(quoted: TalkQuote | undefined): string {
       : quoted.part === 'reply'
         ? 'your reply'
         : `the answer ${answerTag(quoted.talk)}${quoted.by === 'project' ? " the project's agent" : ' you'} looked up`;
-  return `[In reply to ${whose}: “${excerpt(quoted.text.replace(/\s+/g, ' ').trim(), 2000)}”]\n\n`;
+  return `[In reply to ${whose}: “${excerpt(oneLine(quoted.text), 2000)}”]\n\n`;
 }
 
 /** A queued card's state as the Coordinator reads it. */

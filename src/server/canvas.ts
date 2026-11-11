@@ -56,7 +56,7 @@ import { gitTry } from './git';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, type Theme } from './theme';
 import { claudeToken, githubToken, hostName, registerHost } from './hosts';
-import { clip, messageOf, oneLine } from '../core/text';
+import { clip, messageOf, oneLine, plainText } from '../core/text';
 import { type WishDraft, type WishInput, writeWish } from './wish';
 
 export type { CanvasConfig, RepoConfig };
@@ -2906,7 +2906,7 @@ export class CanvasRuntime {
 
 /** A prototype's approach, for its title: the first sentence of what it is to show, kept short. */
 export function approachOf(what: string, max = 40): string {
-  const text = what.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+  const text = plainText(what);
   const first = (text.match(/^.+?[.!?;:](?=\s|$)/)?.[0] ?? text).replace(/[.;:]$/, '');
   if (first.length <= max) return first;
   const cut = first.slice(0, max - 1);

@@ -35,7 +35,7 @@ import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { headSeal, refsSeal } from './read-tree';
 import type { CardRow, RowUpdate } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
-import { clip, messageOf, tooLong } from '../core/text';
+import { clip, messageOf, tooLong, oneLine } from '../core/text';
 import { within } from '../core/late';
 import { holdsNotes } from '../core/queue';
 
@@ -2568,7 +2568,7 @@ export class Workers {
       if (root) given = given.slice(root.length + 1);
       const path = isAbsolute(given) ? null : normalPath(given);
       if (!path || !changed.includes(path)) outside.push(String(f.path));
-      else if (!out.some((o) => o.path === path)) out.push({ path, caption: clip(String(f.caption ?? '').replace(/\s+/g, ' ').trim(), 200) });
+      else if (!out.some((o) => o.path === path)) out.push({ path, caption: clip(oneLine(String(f.caption ?? '')), 200) });
     }
     if (!outside.length) return { named: out };
     const list = changed.length ? `(${changed.slice(0, 30).join(', ')}${changed.length > 30 ? ', …' : ''})` : '(none)';

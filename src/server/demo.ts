@@ -10,6 +10,7 @@ import { filesKey, ownOrigin } from './access';
 import { artifactFiles, captionTracks, demoFile, esc, silentVideo, videoSize } from './demo-page';
 import type { FileAt } from './workspaces';
 import { resource } from './resources';
+import { oneLine, messageOf } from '../core/text';
 
 /**
  * The plugin Obeya loads into its workers' sessions: it brings the demo skill (`obeya:demo`), the
@@ -89,7 +90,7 @@ export function keepDemo(demo: { dir: string; kind: DemoKind }, to: string): boo
     }
     return true;
   } catch (e) {
-    console.error(`keeping a copy of the demo in ${demo.dir}:`, e instanceof Error ? e.message : e);
+    console.error(`keeping a copy of the demo in ${demo.dir}:`, messageOf(e));
     rmSync(to, { recursive: true, force: true });
     return false;
   }
@@ -158,7 +159,7 @@ function cues(dir: string, file = 'captions.vtt'): { start: number; end: number;
     start: time(c[1]!, c[2]!, c[3]!, c[4]!),
     end: time(c[5]!, c[6]!, c[7]!, c[8]!),
     // without the timestamps of its words (`<00:00:03.120>`)
-    text: c[9]!.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
+    text: oneLine(c[9]!.replace(/<[^>]*>/g, '')),
   }));
 }
 

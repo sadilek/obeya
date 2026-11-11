@@ -14,7 +14,7 @@ import { type AgentRuntime, type AgentTool, waitQuietly } from './runtime';
 import type { Workers } from './workers';
 import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './workspaces';
 import { LANGUAGE_NAMES } from '../core/locale';
-import { clip, messageOf } from '../core/text';
+import { clip, messageOf, oneLine } from '../core/text';
 
 /** A workstream as the Coordinator scheduled it, in its turn's order. */
 interface Planned {
@@ -987,7 +987,7 @@ export class Coordinator {
           schema: { title: z.string() },
           run: (a) => {
             if (title !== null) return 'Already named.';
-            title = String(a.title).replace(/\s+/g, ' ').trim().slice(0, 200);
+            title = oneLine(String(a.title)).slice(0, 200);
             return finish('Recorded. End your turn now.');
           },
         },

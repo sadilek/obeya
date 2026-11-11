@@ -7,6 +7,7 @@ import { appendFileSync, renameSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { PageStall } from '../core/types';
 import { ONE_AT_A_TIME } from './spawn';
+import { clip } from '../core/text';
 
 /** A stall from this long on is logged: a pause of half a second is one the owner notices. */
 export const STALL_MS = 500;
@@ -74,7 +75,7 @@ export function placeOf(t: Trace): string {
 function command(argv: string[]): string {
   const [program = '', ...args] = argv;
   const text = [basename(program), ...args].join(' ');
-  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+  return clip(text, 200);
 }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;

@@ -15,6 +15,7 @@ import type { SpawnedProcess, SpawnOptions } from '@anthropic-ai/claude-agent-sd
 import { resource } from './resources';
 import { failureText, OWN_GROUP, spawnOutput } from './spawn';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { messageOf } from '../core/text';
 
 /** Where a workspace on another machine says which machine it is on. */
 const PREFIX = 'ssh://';
@@ -573,7 +574,7 @@ function deferred<T>(ready: Promise<T>, start: (value: T) => ChildProcess): Spaw
       try {
         child = start(value);
       } catch (e) {
-        console.error(e instanceof Error ? e.message : e);
+        console.error(messageOf(e));
         return exit(LOST, null);
       }
       stdin.pipe(child.stdin!);
@@ -582,7 +583,7 @@ function deferred<T>(ready: Promise<T>, start: (value: T) => ChildProcess): Spaw
       child.on('error', (e) => events.emit('error', e));
     },
     (e: unknown) => {
-      console.error(e instanceof Error ? e.message : e);
+      console.error(messageOf(e));
       exit(LOST, null);
     },
   );

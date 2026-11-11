@@ -6,6 +6,7 @@ import type { CardEvent, TalkQuote, TalkRef } from '../core/types';
 import { draftOf, updateDraft, useDraft } from './draft';
 import { plain } from './markdown';
 import { parseQuestion } from './talk';
+import { oneLine } from '../core/text';
 
 /** A message as a quote shows it: who said it, what it was, its text, and where it stands in the conversation (`data-ev`). */
 export interface Quoted {
@@ -23,7 +24,7 @@ export interface Reply {
 
 /** As much of a message as a quote keeps: it shows a few lines. */
 const KEPT = 400;
-const clean = (md: string) => plain(md).replace(/\s+/g, ' ').trim().slice(0, KEPT);
+const clean = (md: string) => oneLine(plain(md)).slice(0, KEPT);
 
 /** A message of a card's conversation as a quote: the owner's also for an answer given in their name. */
 export const eventQuote = (e: CardEvent): Quoted => ({

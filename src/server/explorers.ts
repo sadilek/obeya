@@ -15,7 +15,7 @@ import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, 
 import { imageNote } from './images';
 import { describeTool, SPOKEN } from './workers';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
-import { clip, tooLong } from '../core/text';
+import { clip, tooLong, oneLine } from '../core/text';
 import { folderPath } from './new-repo';
 
 export interface ExplorerOptions {
@@ -675,7 +675,7 @@ function plannedPrototypes(list: unknown): PlannedPrototype[] {
   const seen = new Set<string>();
   const out: PlannedPrototype[] = [];
   for (const p of (list as { approach?: unknown; show?: unknown }[] | undefined) ?? []) {
-    const approach = clip(String(p.approach ?? '').replace(/\s+/g, ' ').trim(), 60);
+    const approach = clip(oneLine(String(p.approach ?? '')), 60);
     const show = clip(String(p.show ?? '').trim(), 4000);
     if (!approach || !show || seen.has(approach.toLowerCase())) continue;
     seen.add(approach.toLowerCase());
@@ -687,7 +687,7 @@ function plannedPrototypes(list: unknown): PlannedPrototype[] {
 /** The mocks as the agent wrote them: each with a title and some HTML, at most one per variant. */
 function mocksOf(list: unknown): Mock[] {
   return ((list as { title?: unknown; html?: unknown }[] | undefined) ?? [])
-    .map((m) => ({ title: clip(String(m.title ?? '').replace(/\s+/g, ' ').trim(), 80), html: String(m.html ?? '').trim() }))
+    .map((m) => ({ title: clip(oneLine(String(m.title ?? '')), 80), html: String(m.html ?? '').trim() }))
     .filter((m) => m.html && m.html.length <= MOCK_MAX)
     .slice(0, MAX_VARIANTS);
 }
@@ -697,7 +697,7 @@ const MOCK_MAX = 20000;
 
 /** The part to build now as the agent marked it: both a title and a brief, or no split. */
 function settledPart(title: unknown, brief: unknown): SettledPart | undefined {
-  const part = { title: clip(String(title ?? '').replace(/\s+/g, ' ').trim(), 160), brief: clip(String(brief ?? '').trim(), 20000) };
+  const part = { title: clip(oneLine(String(title ?? '')), 160), brief: clip(String(brief ?? '').trim(), 20000) };
   return part.title && part.brief ? part : undefined;
 }
 

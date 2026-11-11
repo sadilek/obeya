@@ -13,6 +13,7 @@ import { WISH_DRAFT } from './draft';
 import { useFitHeight } from './fitHeight';
 import { imageUrl, Shots } from './shots';
 import { clock, errorText, t } from './strings';
+import { oneLine } from '../core/text';
 
 /** The issue as it will go out; `raw`: the job wrote nothing, the owner's words stand as they are. */
 interface Issue {
@@ -270,7 +271,7 @@ export function WishDialog() {
 
 /** The owner's words of a waiting wish, as the dialog quotes them. */
 const short = (said: string) => {
-  const one = said.replace(/\s+/g, ' ').trim();
+  const one = oneLine(said);
   return one.length > 160 ? `${one.slice(0, 159).trimEnd()} …` : one;
 };
 

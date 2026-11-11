@@ -18,6 +18,7 @@ import { Listeners } from '../core/watched';
 import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex';
 import type { SshHost } from './hosts';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+import { messageOf } from '../core/text';
 
 /** What a look at a harness found. */
 export interface HarnessFound {
@@ -139,7 +140,7 @@ class Install {
       try {
         await update();
       } catch (e) {
-        error = e instanceof Error ? e.message : String(e);
+        error = messageOf(e);
         console.error(`Obeya: updating ${this.named} failed: ${error}`);
       }
       try {
@@ -165,7 +166,7 @@ class Install {
       ask(this.channel).then(
         (version) => (this.newest = { at: Date.now(), ...(version ? { version } : {}) }),
         (e) => {
-          console.warn(`Obeya: npm did not say which ${NAMES[this.o.harness]} is the newest: ${e instanceof Error ? e.message : e}`);
+          console.warn(`Obeya: npm did not say which ${NAMES[this.o.harness]} is the newest: ${messageOf(e)}`);
           this.newest = { at: Date.now(), ...(known?.version ? { version: known.version } : {}) };
         },
       );
@@ -187,7 +188,7 @@ class Install {
       const asking = ask().then(
         (models) => void (this.listed = { at: Date.now(), models }),
         (e) => {
-          console.warn(`Obeya: ${this.named} did not list its models: ${e instanceof Error ? e.message : e}`);
+          console.warn(`Obeya: ${this.named} did not list its models: ${messageOf(e)}`);
           this.listed = { at: Date.now(), models: known?.models ?? [] };
         },
       );
@@ -411,7 +412,7 @@ export class Harnesses extends Listeners {
   private async codexModels(): Promise<HarnessModel[]> {
     if (!this.models || Date.now() - this.models.at > MODELS_FOR_MS) {
       const list = (this.o.codexModels ?? codexModels)(this.o.cwd).catch((e) => {
-        console.warn(`Obeya: Codex did not list its models: ${e instanceof Error ? e.message : e}`);
+        console.warn(`Obeya: Codex did not list its models: ${messageOf(e)}`);
         this.models = undefined;
         return [];
       });

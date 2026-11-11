@@ -440,7 +440,7 @@ export function replyNote(quoted: CardEvent | undefined, to: 'worker' | 'explore
         ? `the ${quoted.author === 'explorer' ? "idea's agent's" : "card's worker's"} ${what}`
         : `Obeya's ${what} in the card's conversation`;
   const heard = own || (quoted.author === 'owner' && quoted.kind !== 'say');
-  const text = quoted.text.replace(/\s+/g, ' ').trim();
+  const text = oneLine(quoted.text);
   return `[In reply to ${whose}: “${excerpt(text, heard && to !== 'coordinator' ? 160 : 2000)}”]\n\n`;
 }
 
@@ -2918,7 +2918,7 @@ export class Board {
 
   private groupName(name: unknown): string {
     checkText(name, 'name', 60);
-    const n = (name as string).replace(/\s+/g, ' ').trim();
+    const n = oneLine(name as string);
     if (!n) throw new BadRequest('emptyText', 'a group needs a name');
     return n;
   }

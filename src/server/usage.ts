@@ -12,6 +12,7 @@ import type { Harness, Usage, UsageLimit } from '../core/types';
 import { withTimeout } from '../core/late';
 import { Listeners, Watched } from '../core/watched';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+import { messageOf } from '../core/text';
 
 /** How often the limits are fetched while the bar shows them: just over the minute Claude Code keeps an answer. */
 export const USAGE_EVERY_MS = 65_000;
@@ -107,7 +108,7 @@ export class UsageMeter extends Watched<PlanLimits> {
     } catch (e) {
       this.failures++;
       this.skip = Math.min(2 ** (this.failures - 1) - 1, MAX_SKIPPED);
-      console.warn(`Obeya: the usage limits could not be fetched: ${e instanceof Error ? e.message : e}`);
+      console.warn(`Obeya: the usage limits could not be fetched: ${messageOf(e)}`);
       // a new session next round; what was fetched last stands a little longer
       if (this.source === source) this.source = null;
       source.close();

@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import { LANGUAGE_NAMES, type Language } from '../core/locale';
 import { dimensions, parseTagLines, tagLines } from '../core/page-tags';
-import { messageOf } from '../core/text';
+import { messageOf, plainText } from '../core/text';
 import { finished, type Item, type PageTags, type TagProposalJob } from '../core/types';
 import { BadRequest } from './board';
 import { readSession } from './coordinator';
@@ -132,9 +132,9 @@ function brief(o: TagRun): string {
 function briefLine(c: TagCard): string {
   return [
     `- [${c.status}] ${c.title}`,
-    c.task && `  Task: ${clip(c.task, 400)}`,
-    ...c.demos.slice(0, 3).map((d) => `  Demo: ${clip(d, 400)}`),
-    !c.demos.length && c.summary ? `  Handed over: ${clip(c.summary, 300)}` : '',
+    c.task && `  Task: ${cutAt(c.task, 400)}`,
+    ...c.demos.slice(0, 3).map((d) => `  Demo: ${cutAt(d, 400)}`),
+    !c.demos.length && c.summary ? `  Handed over: ${cutAt(c.summary, 300)}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -143,9 +143,9 @@ function briefLine(c: TagCard): string {
 /** Whether these cards fill the brief already: older ones need not be read. */
 export const briefFull = (cards: TagCard[]) => cards.reduce((n, c) => n + briefLine(c).length + 1, 0) > BRIEF_MAX;
 
-const plainText = (s: string) => s.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
 
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n).trimEnd()} …` : s);
+/** `s` cut after `n` characters, the cut marked " …" (core's `clip` keeps to `n` with the mark). */
+const cutAt = (s: string, n: number) => (s.length > n ? `${s.slice(0, n).trimEnd()} …` : s);
 
 /** The proposals, by a repository's checkout as the dialog names it. */
 export class TagProposals {
