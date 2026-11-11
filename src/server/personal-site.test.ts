@@ -28,7 +28,7 @@ const personal = (extra: Partial<PersonalSite> = {}): PersonalSite => ({ host: '
 const unlisted = (at = home, machine = 'a') =>
   siteTarget({ title: 'Demos', url: URL_, deploy: `deploy.ts {dir} ${dir}` }, repo, at, MESSAGES.en.share, { machine, checkWaits: [0, 10, 10], by: 'Ada Lovelace', unlisted: { secret: personal().secret! } });
 const siteDir = (at = home) => join(at, 'sites', siteKey(URL_), 'site');
-const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({ slug, title: `Title ${slug}`, text: 'One sentence.', kind: 'video', chapters: [[0, 'Before']], pr: null, language: 'en', dir: demo, shared: [], ...extra });
+const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({ slug, demos: [{ title: `Title ${slug}`, text: 'One sentence.', kind: 'video', chapters: [[0, 'Before']], dir: demo }], pr: null, language: 'en', shared: [], ...extra });
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-personal-'));

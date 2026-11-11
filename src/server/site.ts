@@ -68,39 +68,34 @@ import { messageOf } from '../core/text';
 /** The largest file a site takes without `maxFile` (Cloudflare Pages' limit). */
 export const MAX_FILE = 25 * 1024 * 1024;
 
-/** A later demo version on a page, below the first as an addendum. */
+/** A demo version on a page: the first gives the page its title and text, each later one is an addendum below it. */
 export interface PageDemo {
-  title: string;
-  text: string;
-  kind: DemoKind;
-  chapters: [number, string][];
-  dir: string;
-  /** When it was handed over, which its section is headed with. */
-  at?: string;
-}
-
-/** What a page on the site is made of: the first demo version shared, and the later ones below it. */
-export interface SharePage {
-  /** Stays the same for a card, so a shared link keeps working when the page is published again. */
-  slug: string;
   title: string;
   text: string;
   /** A video, or an HTML artifact. */
   kind: DemoKind;
   /** Seconds and title of each scene; none for an artifact. */
   chapters: [number, string][];
+  /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`; an artifact's `index.html` and the files it loads. */
+  dir: string;
+  /** When it was handed over, which a later version's section is headed with. */
+  at?: string;
+}
+
+/** What a page on the site is made of: its demo versions, and what the page says of the change. */
+export interface SharePage {
+  /** Stays the same for a card, so a shared link keeps working when the page is published again. */
+  slug: string;
+  /** The demo versions on the page, in order of handover. */
+  demos: [PageDemo, ...PageDemo[]];
   /** The card's pull request, once it has one. */
   pr: string | null;
   /** Without a pull request: where the card's work landed on the default branch, once it has. */
   commit?: PageCommit | null;
   /** The demo's language, for the page's own words (`language` of the page templates). */
   language: PageLanguage;
-  /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`; an artifact's `index.html` and the files it loads. */
-  dir: string;
   /** The slugs of the other pages Obeya has stored as shared on this site: the site must still hold them. */
   shared: string[];
-  /** The later demo versions on the page, in order of handover. */
-  more?: PageDemo[];
   /** The page's tags from the site's vocabulary, by dimension (`tagsOf`); none where the site has none. */
   tags?: PageTags;
   /** The theme of the card's repository (theme.ts); none where it has none. */
@@ -796,9 +791,8 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       attempt(async (gone) => {
         const slug = checkSlug(p.slug, unlisted);
         // the first version at the page's root, each later one in a directory of its own
-        const parts = [{ ...p, sub: '' }, ...(p.more ?? []).map((m, i) => ({ ...m, sub: String(i + 2) }))];
         const ready = await Promise.all(
-          parts.map(async (d) => {
+          p.demos.map(async (d, i) => {
             if (!d.title.trim() || !d.text.trim() || !d.dir) throw new Refused(t.pageIncomplete);
             const html = d.kind === 'html';
             const files = html ? artifactFiles(d.dir) : demoFiles(d.dir);
@@ -810,7 +804,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               const size = copy.has(f) ? Buffer.byteLength(copy.get(f)!) : (await stat(join(d.dir, f))).size;
               if (size > max) throw new Refused(t.fileTooLarge(f, (size / 1024 / 1024).toFixed(1), String(Math.round((max / 1024 / 1024) * 10) / 10)));
             }
-            return { d, html, files, copy };
+            return { d, sub: i ? String(i + 1) : '', html, files, copy };
           }),
         );
         const target = join(dir, slug);
@@ -825,8 +819,8 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             // the one whose Obeya publishes it now; a machine whose git has no name keeps whom the page named
             const by = opts.by ?? (await gitName(repo)) ?? before?.by;
             const written = [];
-            for (const { d, html, files, copy } of ready) {
-              const into = join(target, d.sub, html ? ARTIFACT_DIR : '');
+            for (const { d, sub, html, files, copy } of ready) {
+              const into = join(target, sub, html ? ARTIFACT_DIR : '');
               await mkdir(into, { recursive: true });
               for (const f of files) {
                 await mkdir(dirname(join(into, f)), { recursive: true });
@@ -834,14 +828,14 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               }
               for (const [f, data] of copy) await writeFile(join(into, f), data);
               const source = await sourceHash(d.dir, html ? files : ['demo.mp4']);
-              written.push({ d, html, source, at: dated.get(source) ?? now });
+              written.push({ d, sub, html, source, at: dated.get(source) ?? now });
             }
             const [first, ...later] = written as [(typeof written)[number], ...typeof written];
             const meta: Meta = {
               ...(first.html ? { kind: 'html' as const } : {}),
-              title: p.title.trim(),
-              text: p.text.trim(),
-              chapters: first.html ? [] : p.chapters,
+              title: first.d.title.trim(),
+              text: first.d.text.trim(),
+              chapters: first.html ? [] : first.d.chapters,
               pr: p.pr,
               ...(p.commit ? { commit: p.commit } : {}),
               first: before?.first ?? now,
@@ -853,13 +847,13 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               repo: await repoMark(repo),
               ...(later.length
                 ? {
-                    more: later.map(({ d, html, source, at }) => ({
+                    more: later.map(({ d, sub, html, source, at }) => ({
                       ...(html ? { kind: 'html' as const } : {}),
                       title: d.title.trim(),
                       text: d.text.trim(),
                       chapters: html ? [] : d.chapters,
-                      dir: d.sub,
-                      handed: 'at' in d && d.at ? d.at : at,
+                      dir: sub,
+                      handed: d.at ?? at,
                       at,
                       source,
                     })),

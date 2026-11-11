@@ -17,7 +17,7 @@ import { BadRequest, type Board, cardDemos, contributionOf, type DemoRef, pageTa
 import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { type Gone, siteBase, siteMissing, type SiteOptions, type SharePage, siteTarget, type ShareTarget } from './site';
+import { type Gone, type PageDemo, siteBase, siteMissing, type SiteOptions, type SharePage, siteTarget, type ShareTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
 import { rereadChapters } from './demo';
@@ -605,6 +605,7 @@ export class Sharing {
       }
     }
     const [first, ...later] = demos as [SharedDemo, ...SharedDemo[]];
+    const onPage = (d: SharedDemo): PageDemo => ({ ...d.shown, dir: d.dir, ...(d.at ? { at: d.at } : {}) });
     const vocabulary = this.vocabulary(card);
     const lacking = this.missingTags(card);
     if (lacking) {
@@ -617,13 +618,11 @@ export class Sharing {
     const theme = await this.themeOf(card);
     const input: SharePage = {
       slug: pathOf(s),
-      ...first.shown,
+      demos: [onPage(first), ...later.map(onPage)],
       pr,
       ...(commit ? { commit } : {}),
       language: this.languageOf(first.dir, card),
-      dir: first.dir,
       shared: this.others(cardId, target.key),
-      ...(later.length ? { more: later.map((d) => ({ ...d.shown, dir: d.dir, ...(d.at ? { at: d.at } : {}) })) } : {}),
       ...(Object.keys(tags).length ? { tags } : {}),
       ...(theme ? { theme } : {}),
     };

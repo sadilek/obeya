@@ -10,7 +10,7 @@ import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
 import { Sharing } from './share';
-import { MANIFEST, repoMark, type SharePage, type ShareTarget, siteKey, siteMissing, siteName, siteTarget } from './site';
+import { MANIFEST, type PageDemo, repoMark, type SharePage, type ShareTarget, siteKey, siteMissing, siteName, siteTarget } from './site';
 import { NOT_FOUND, pagesHash } from './site-pages';
 import { parseEnv } from './site-hosts';
 import { PAGES_HASH } from '../core/page-changes';
@@ -75,18 +75,24 @@ beforeEach(() => {
 });
 afterEach(() => removeDir(dir));
 
-const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({
+/** A page of one demo version (its fields among `extra`), and the later ones (`more`). */
+const page = (slug: string, { title, text, kind, chapters, dir, more = [], ...extra }: Partial<Omit<SharePage, 'demos'> & PageDemo> & { more?: PageDemo[] } = {}): SharePage => ({
   slug,
-  title: `Titel ${slug}`,
-  text: 'Erster Satz <b>roh</b>. Zweiter Satz.',
-  kind: 'video',
-  chapters: [
-    [0, 'Vorher'],
-    [12.5, 'Nachher'],
+  demos: [
+    {
+      title: title ?? `Titel ${slug}`,
+      text: text ?? 'Erster Satz <b>roh</b>. Zweiter Satz.',
+      kind: kind ?? 'video',
+      chapters: chapters ?? [
+        [0, 'Vorher'],
+        [12.5, 'Nachher'],
+      ],
+      dir: dir ?? demo,
+    },
+    ...more,
   ],
   pr: null,
   language: 'de',
-  dir: demo,
   shared: [],
   ...extra,
 });
@@ -358,7 +364,7 @@ describe('a site Obeya keeps', () => {
     mkdirSync(join(art, 'data'), { recursive: true });
     writeFileSync(join(art, 'index.html'), '<html><body><h2>Graph</h2><script src="data/chart.js"></script></body></html>');
     writeFileSync(join(art, 'data/chart.js'), 'draw()');
-    const artifact = (extra: Partial<SharePage> = {}) => page('auswertung-abc123', { kind: 'html', chapters: [], dir: art, ...extra });
+    const artifact = (extra: Parameters<typeof page>[1] = {}) => page('auswertung-abc123', { kind: 'html', chapters: [], dir: art, ...extra });
     expect(await target.publish(artifact())).toMatchObject({ url: `${URL_}auswertung-abc123/` });
     const at = join(siteDir(), 'auswertung-abc123');
     expect(readdirSync(at).sort()).toEqual(['artifact', 'index.html', 'meta.json']);

@@ -85,7 +85,7 @@ test('sharing a page on a site of some hundred pages keeps the server answering'
   writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n');
   const target = siteTarget({ title: 'Team demos', url, deploy: `deploy.ts {dir} ${join(dir, 'deployed')}` }, repo, home, MESSAGES.en.share, { machine: 'a', checkWaits: [0], language: 'en' });
   const share = (slug: string) =>
-    target.publish({ slug, title: `Title ${slug}`, text: 'A sentence.', kind: 'video', chapters: [], pr: null, language: 'en', dir: demo, shared: [] });
+    target.publish({ slug, demos: [{ title: `Title ${slug}`, text: 'A sentence.', kind: 'video', chapters: [], dir: demo }], pr: null, language: 'en', shared: [] });
 
   // the longest the event loop went without a turn, the way stalls.ts looks for it
   // and the synchronous calls it made meanwhile: on a busy machine each may take milliseconds
