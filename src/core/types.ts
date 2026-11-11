@@ -2503,6 +2503,8 @@ export interface UsageLimit {
   percent: number;
   /** When the window starts anew (ISO time), when the endpoint says. */
   resetsAt?: string;
+  /** How long the window lasts, in minutes, where Obeya knows it: Claude's session five hours, its week seven days, Codex's windows as it reports them. */
+  windowMinutes?: number;
   /** The endpoint's grade of the meter: `normal`, `warning` or `critical`. */
   severity: string;
 }

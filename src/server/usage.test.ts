@@ -22,9 +22,9 @@ test('the endpoint’s meters as it sends them, a scoped one with what it is for
   expect(usage).toEqual({
     at: AT.toISOString(),
     limits: [
-      { kind: 'session', group: 'session', percent: 3, resetsAt: '2026-10-28T10:40:00Z', severity: 'normal' },
-      { kind: 'weekly_all', group: 'weekly', percent: 81, resetsAt: '2026-11-02T19:00:00Z', severity: 'warning' },
-      { kind: 'weekly_scoped', group: 'weekly', scope: 'Fable', percent: 0, severity: 'normal' },
+      { kind: 'session', group: 'session', percent: 3, resetsAt: '2026-10-28T10:40:00Z', windowMinutes: 300, severity: 'normal' },
+      { kind: 'weekly_all', group: 'weekly', percent: 81, resetsAt: '2026-11-02T19:00:00Z', windowMinutes: 10_080, severity: 'warning' },
+      { kind: 'weekly_scoped', group: 'weekly', scope: 'Fable', percent: 0, windowMinutes: 10_080, severity: 'normal' },
     ],
   });
 });
@@ -40,9 +40,9 @@ test('from a Claude Code that passes no meters on: its five-hour, weekly and per
     AT,
   );
   expect(usage!.limits).toEqual([
-    { kind: 'session', group: 'session', percent: 12, resetsAt: '2026-10-28T10:40:00Z', severity: 'normal' },
-    { kind: 'weekly_all', group: 'weekly', percent: 40, severity: 'normal' },
-    { kind: 'weekly_scoped', group: 'weekly', scope: 'Fable', percent: 5, resetsAt: '2026-11-02T19:00:00Z', severity: 'normal' },
+    { kind: 'session', group: 'session', percent: 12, resetsAt: '2026-10-28T10:40:00Z', windowMinutes: 300, severity: 'normal' },
+    { kind: 'weekly_all', group: 'weekly', percent: 40, windowMinutes: 10_080, severity: 'normal' },
+    { kind: 'weekly_scoped', group: 'weekly', scope: 'Fable', percent: 5, resetsAt: '2026-11-02T19:00:00Z', windowMinutes: 10_080, severity: 'normal' },
   ]);
 });
 

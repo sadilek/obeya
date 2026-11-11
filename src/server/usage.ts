@@ -262,6 +262,10 @@ export function claudeUsage(cwd: string): UsageSource {
   };
 }
 
+/** How long the windows of Claude's groups last, in minutes: the session five hours, the week seven days. */
+const WINDOW_MINUTES: Record<string, number> = { session: 300, weekly: 10_080 };
+const windowOf = (group: string) => (WINDOW_MINUTES[group] ? { windowMinutes: WINDOW_MINUTES[group] } : {});
+
 type Window = { utilization: number | null; resets_at: string | null } | null | undefined;
 /** A meter of the endpoint's `limits`, as Claude Code passes it on. */
 type Row = { kind?: unknown; group?: unknown; percent?: unknown; resets_at?: unknown; severity?: unknown; scope?: { model?: { display_name?: unknown } | null; surface?: { display_name?: unknown } | null } | null };
@@ -280,13 +284,15 @@ export function usageOf(r: SDKControlGetUsageResponse, now = new Date()): PlanLi
     const limits = (rows as Row[]).flatMap((row): UsageLimit[] => {
       if (typeof row.kind !== 'string' || typeof row.percent !== 'number') return [];
       const scope = row.scope?.model?.display_name ?? row.scope?.surface?.display_name;
+      const group = typeof row.group === 'string' ? row.group : row.kind;
       return [
         {
           kind: row.kind,
-          group: typeof row.group === 'string' ? row.group : row.kind,
+          group,
           ...(typeof scope === 'string' && scope ? { scope } : {}),
           percent: row.percent,
           ...(typeof row.resets_at === 'string' ? { resetsAt: row.resets_at } : {}),
+          ...windowOf(group),
           severity: typeof row.severity === 'string' ? row.severity : 'normal',
         },
       ];
@@ -295,7 +301,7 @@ export function usageOf(r: SDKControlGetUsageResponse, now = new Date()): PlanLi
   }
   const window = (kind: string, group: string, w: Window, scope?: string): UsageLimit[] =>
     w && typeof w.utilization === 'number'
-      ? [{ kind, group, ...(scope ? { scope } : {}), percent: w.utilization, ...(w.resets_at ? { resetsAt: w.resets_at } : {}), severity: 'normal' }]
+      ? [{ kind, group, ...(scope ? { scope } : {}), percent: w.utilization, ...(w.resets_at ? { resetsAt: w.resets_at } : {}), ...windowOf(group), severity: 'normal' }]
       : [];
   return {
     limits: [
