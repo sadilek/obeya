@@ -256,6 +256,9 @@ const commitOf = () => {
   const checkout = own ?? ownCheckout();
   return ranFrom ?? (checkout && headOf(checkout));
 };
+const scratchFrom = process.env.OBEYA_SCRATCH ? resolve(process.env.OBEYA_SCRATCH) : undefined;
+const transcriber = new VoiceIn(home, new LocalTranscriber(), { lazy: !!scratchFrom });
+const voiceSetup = new VoiceSetup({ home, local: transcriber.local });
 const forge = process.env.OBEYA_FORGE_FILE ? fileForge(process.env.OBEYA_FORGE_FILE) : routedForge(ghForge, forgejoForge, originOf, (remote) => onGitHub(remote));
 const narration = new NarrationHost({
   argv: (voice) => qwen3Serve(voice, home),
@@ -373,9 +376,6 @@ if (new Set(ids).size !== ids.length) {
   console.error(`two canvases share an id: ${ids.join(', ')}; give them different names`);
   process.exit(2);
 }
-const scratchFrom = process.env.OBEYA_SCRATCH ? resolve(process.env.OBEYA_SCRATCH) : undefined;
-const transcriber = new VoiceIn(home, new LocalTranscriber(), { lazy: !!scratchFrom });
-const voiceSetup = new VoiceSetup({ home, local: transcriber.local });
 const updates = new AppUpdates();
 // run from a clone of Obeya's repository: new commits on its upstream, for the owner to pull
 const sources = own ? new SourceUpdates(own) : undefined;
@@ -393,7 +393,16 @@ const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses })
 welcome(home, canvases.all());
 // Claude Code on the hosts the canvases registered, so the first menu of models has whether it is behind there
 harnesses.lookAtHosts();
-const shutdown = (code: number) => {
+// other devices, when the owner lets them: the phone over the owner's own network
+const access = new Access({ store, home, language: () => ownerLanguage(home) });
+// and what starts waiting for the owner, pushed to the phones that turned notifications on
+const push = new Push({ store, home, language: () => ownerLanguage(home) });
+// while other devices may reach Obeya, the machine stays awake as long as a worker works, or the whole time
+const awake = new Awake({ wanted: () => access.awake() === 'always' || (access.awake() === 'works' && busy().length > 0) }).start();
+// what held the server up, or a page, for the owner to notice: in this log and in the home's stalls.log
+const stalls = new Stalls({ home }).start();
+/** Ends everything started above and exits; a declaration, so `leave` near the top may call it. */
+function shutdown(code: number) {
   canvases?.shutdown();
   usage.stop();
   demoSpace.stop();
@@ -407,7 +416,7 @@ const shutdown = (code: number) => {
   // the supervisor stays across a restart, and gives the entry up when it ends
   if (!process.env.OBEYA_SUPERVISED) (code === TAKEOVER ? takenOver : release)(home, process.pid);
   process.exit(code);
-};
+}
 // stopping waits for the workers like a restart; a second Ctrl-C has it go ahead at once
 const SAME_PRESS_MS = 1000;
 let stopAsked = 0;
@@ -426,14 +435,6 @@ const stop = () => {
 };
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, stop);
 
-// other devices, when the owner lets them: the phone over the owner's own network
-const access = new Access({ store, home, language: () => ownerLanguage(home) });
-// and what starts waiting for the owner, pushed to the phones that turned notifications on
-const push = new Push({ store, home, language: () => ownerLanguage(home) });
-// while other devices may reach Obeya, the machine stays awake as long as a worker works, or the whole time
-const awake = new Awake({ wanted: () => access.awake() === 'always' || (access.awake() === 'works' && busy().length > 0) }).start();
-// what held the server up, or a page, for the owner to notice: in this log and in the home's stalls.log
-const stalls = new Stalls({ home }).start();
 // a scratch Obeya ends by itself once of no more use; an idle worker's card is in a turn that never ends, and uses nothing
 const scratch =
   scratchFrom === undefined
