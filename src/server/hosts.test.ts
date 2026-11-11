@@ -11,7 +11,7 @@ import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { generic } from '../adapters/generic';
 import type { Board } from './board';
 import { Store } from './db';
-import { githubToken, HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
+import { HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
 import { claudeModels } from './harnesses';
@@ -19,7 +19,7 @@ import { type AgentEvent, sdkRuntime } from './runtime';
 import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { HERE, RECHECK_MS, Workspaces } from './workspaces';
-import { git, gitAsync } from './git';
+import { git, gitAsync, githubToken } from './git';
 
 let dir: string;
 let ssh: string;

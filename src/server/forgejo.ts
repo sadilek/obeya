@@ -4,7 +4,7 @@
 import { messageOf } from '../core/text';
 import { type Forge, type PrStatus, parsePrUrl, verdictOf, withBodyFile } from './forge';
 import { spawnOutput } from './spawn';
-import { GIT, gitTry } from './git';
+import { gitCredential, gitTry, LOGIN_TTL } from './git';
 
 /**
  * One call of the API below `<base>/api/v1/`; returns the parsed answer (undefined for an empty one)
@@ -315,7 +315,7 @@ async function loginFor(cwd: string, base: string, path: string): Promise<{ auth
   const url = await repoUrl(cwd, base, path);
   const key = `${cwd}\n${url}`;
   let known = logins.get(key);
-  const fresh = !known || Date.now() - known.at >= 10 * 60_000;
+  const fresh = !known || Date.now() - known.at >= LOGIN_TTL;
   if (fresh) logins.set(key, (known = { auth: credential(cwd, base, url), at: Date.now() }));
   const entry = known!;
   // only this login goes: one read since in its place stays
@@ -327,23 +327,10 @@ async function loginFor(cwd: string, base: string, path: string): Promise<{ auth
 
 async function credential(cwd: string, base: string, url: string): Promise<string> {
   const { host } = new URL(base);
-  const r = await spawnOutput([GIT, 'credential', 'fill'], {
-    cwd,
-    stdin: Buffer.from(`url=${url}\n\n`),
-    // asks nobody: no terminal, no askpass program (an empty one ends git's search for one), no dialog
-    // of Git Credential Manager; a keyring that opens one anyway is cut off
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '', GCM_INTERACTIVE: 'never' },
-    timeout: 15_000,
-  });
-  const fields = new Map(
-    r.stdout
-      .split('\n')
-      .filter((l) => l.includes('='))
-      .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
-  );
-  if (r.code !== 0 || !fields.get('password'))
-    throw new Error(`git has no login for ${host}: store an access token of yours there as git's password for ${host} (a push over https with it does); ${gheHint(host)}`);
-  return `Basic ${Buffer.from(`${fields.get('username') ?? ''}:${fields.get('password')}`).toString('base64')}`;
+  const fields = await gitCredential(cwd, `url=${url}`);
+  const password = fields?.get('password');
+  if (!password) throw new Error(`git has no login for ${host}: store an access token of yours there as git's password for ${host} (a push over https with it does); ${gheHint(host)}`);
+  return `Basic ${Buffer.from(`${fields!.get('username') ?? ''}:${password}`).toString('base64')}`;
 }
 
 /** The API over curl (on every system Obeya runs on), the login in its config on stdin, never on the command line. */

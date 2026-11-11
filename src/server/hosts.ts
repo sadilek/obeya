@@ -677,9 +677,6 @@ export const TOKEN_HELPER = ['', '!f() { test "$1" = get && test -n "$GH_TOKEN" 
 /** git's options that make a command there use `TOKEN_HELPER`. */
 export const TOKEN_HELPER_ARGS = TOKEN_HELPER.flatMap((h) => ['-c', `credential.helper=${h}`]);
 
-/** How long a repository's GitHub login is asked again after it was read. */
-const TOKEN_TTL = 10 * 60_000;
-
 /**
  * A GitHub login for a host's workspaces (`SshHost.tokenFor`): as last read, and `ready`, which
  * settles once it is read for the first time.
@@ -687,31 +684,4 @@ const TOKEN_TTL = 10 * 60_000;
 export interface GithubLogin {
   (): string | undefined;
   ready?: () => Promise<unknown>;
-}
-
-/**
- * The GitHub login git uses for a repository here (`git credential fill` in its checkout, so the
- * account its own configuration picks), for its clones on a host; none for a remote not on HTTPS.
- * Read in the background, without the server waiting for git: from the start, and again once it is
- * older than `TOKEN_TTL`, the login read before standing meanwhile.
- */
-export function githubToken(repoPath: string, remoteUrl: string | undefined, git: string = 'git'): GithubLogin {
-  const url = remoteUrl?.match(/^https:\/\/([^/]+)\//);
-  let cached: { token: string | undefined; at: number } | undefined;
-  let reading: Promise<void> | undefined;
-  const read = () =>
-    (reading ??= (async () => {
-      const r = await spawnOutput([git, '-C', repoPath, 'credential', 'fill'], {
-        stdin: new Blob([`protocol=https\nhost=${url![1]}\n\n`]),
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      }).catch(() => null);
-      cached = { token: r?.code === 0 ? /^password=(.*)$/m.exec(r.stdout)?.[1] : undefined, at: Date.now() };
-    })().finally(() => (reading = undefined)));
-  if (url) void read();
-  const login: GithubLogin = () => {
-    if (url && (!cached || Date.now() - cached.at >= TOKEN_TTL)) void read();
-    return cached?.token;
-  };
-  login.ready = () => (url && !cached ? read() : Promise.resolve());
-  return login;
 }

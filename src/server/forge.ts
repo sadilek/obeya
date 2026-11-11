@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import type { PrReviewEntry, PrThread, PrWait } from '../core/types';
 import { enterpriseServer, ghHosts, onGitHub, parseRemote } from './repo';
 import { spawnOutput } from './spawn';
-import { gitTry } from './git';
+import { gitTry, LOGIN_TTL } from './git';
 
 export interface PrStatus {
   state: 'OPEN' | 'MERGED' | 'CLOSED';
@@ -198,8 +198,6 @@ export function githubRepo(remote: string, hosts: () => string[] = ghHosts): { h
 }
 
 
-/** How long a token gh keeps for an account is taken as it stands. */
-const TOKEN_TTL = 10 * 60_000;
 /** By gh program, host and account: its token as gh hands it out (asked once for calls side by side), and when it was asked. */
 const tokens = new Map<string, { token: Promise<string | null>; at: number }>();
 
@@ -222,7 +220,7 @@ async function ghEnv(program: string, { host, owner }: Omit<GhAt, 'cwd'>, timeou
   if (owner) {
     const key = `${program}\n${host}\n${owner}`;
     let known = tokens.get(key);
-    if (!known || Date.now() - known.at > TOKEN_TTL) {
+    if (!known || Date.now() - known.at > LOGIN_TTL) {
       // without the tokens in the environment, which gh would hand back instead of the account's own
       const { GH_TOKEN: _, GITHUB_TOKEN: __, GH_ENTERPRISE_TOKEN: ___, GITHUB_ENTERPRISE_TOKEN: ____, ...plain } = process.env;
       const asked = spawnOutput([program, 'auth', 'token', '--hostname', host, '--user', owner], { env: plain, stdin: 'ignore', timeout }).then(

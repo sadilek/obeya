@@ -52,10 +52,10 @@ import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
 import { branchCommit, branchSetting, defaultBranchCommit, detectBranch, isFolder, markFolder, readBranches, useBranchSetting } from './branches';
-import { gitTry } from './git';
+import { githubToken, gitTry } from './git';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, type Theme } from './theme';
-import { claudeToken, githubToken, hostName, registerHost } from './hosts';
+import { claudeToken, hostName, registerHost } from './hosts';
 import { clip, messageOf, oneLine, plainText } from '../core/text';
 import { type WishDraft, type WishInput, writeWish } from './wish';
 

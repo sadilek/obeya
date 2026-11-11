@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { messageOf } from '../core/text';
-import { remote, TOKEN_HELPER_ARGS } from './hosts';
+import { type GithubLogin, remote, TOKEN_HELPER_ARGS } from './hosts';
 import { failureText, spawnOutput } from './spawn';
 
 export class WorkspaceError extends Error {
@@ -44,6 +44,52 @@ export function remoteWorkspace(path: string) {
   } catch (e) {
     throw new WorkspaceError(messageOf(e));
   }
+}
+
+/** How long a login read from git or gh is taken as it stands, before it is read again. */
+export const LOGIN_TTL = 10 * 60_000;
+
+/**
+ * The login git has for what `input` names (`url=…`, or `protocol=…` and `host=…`), as `git
+ * credential fill` in `cwd` finds it: the keychain, the credential manager, whatever the machine set
+ * up, a repository's own helper too. Its fields by name (`username`, `password`); null where git has
+ * none. Asks nobody: no terminal, no askpass program (an empty one ends git's search for one), no
+ * dialog of Git Credential Manager; a keyring that opens one anyway is cut off. `git`: the program,
+ * a stand-in in tests.
+ */
+export async function gitCredential(cwd: string, input: string, git = GIT): Promise<Map<string, string> | null> {
+  const r = await spawnOutput([git, '-C', cwd, 'credential', 'fill'], {
+    stdin: new Blob([`${input}\n\n`]),
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '', GCM_INTERACTIVE: 'never' },
+    timeout: 15_000,
+  });
+  if (r.code !== 0) return null;
+  const fields = r.stdout.split('\n').filter((l) => l.includes('='));
+  return new Map(fields.map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+}
+
+/**
+ * The GitHub login git uses for a repository here (`gitCredential` in its checkout, so the account
+ * its own configuration picks), for its clones on a host; none for a remote not on HTTPS. Read in
+ * the background, without the server waiting for git: from the start, and again once it is older
+ * than `LOGIN_TTL`, the login read before standing meanwhile.
+ */
+export function githubToken(repoPath: string, remoteUrl: string | undefined, git = GIT): GithubLogin {
+  const url = remoteUrl?.match(/^https:\/\/([^/]+)\//);
+  let cached: { token: string | undefined; at: number } | undefined;
+  let reading: Promise<void> | undefined;
+  const read = () =>
+    (reading ??= (async () => {
+      const fields = await gitCredential(repoPath, `protocol=https\nhost=${url![1]}`, git).catch(() => null);
+      cached = { token: fields?.get('password'), at: Date.now() };
+    })().finally(() => (reading = undefined)));
+  if (url) void read();
+  const login: GithubLogin = () => {
+    if (url && (!cached || Date.now() - cached.at >= LOGIN_TTL)) void read();
+    return cached?.token;
+  };
+  login.ready = () => (url && !cached ? read() : Promise.resolve());
+  return login;
 }
 
 /** What a git call answered: its exit code and its output, untrimmed. */
