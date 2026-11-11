@@ -10,7 +10,7 @@ import type { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { fakeGh, FakeRuntime, gitRepo, handedOverOn, noContributions, PATIENCE, primedClones, removeDir, testBoard, until } from './testing';
+import { fakeGh, FakeRuntime, gitRepo, handedOverOn, noContributions, PATIENCE, primedClones, removeDir, stateOn, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
 
@@ -73,10 +73,7 @@ afterEach(async () => {
   await removeDir(dir);
 });
 
-const state = (id: string) => {
-  const i = board.item(id)!;
-  return i.need ? `${i.state}:${i.need}` : i.state;
-};
+const state = (id: string) => stateOn(board, id);
 
 /** A card handed over with work on its branch, so approving it goes out as a pull request; the worker's turn goes on. */
 const handedOver = async () => (await handedOverOn({ board, workers, runtime }, { title: 'Export', commit: 'export.ts', idle: false })).card;

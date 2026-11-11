@@ -1,9 +1,9 @@
 import { beforeEach, expect, test } from 'bun:test';
 import { api } from './api';
 import { closeWish, keepWish, openWish, wishNow } from './wish';
+import { memoryStorage } from './testing';
 
-const m = new Map<string, string>();
-const store = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+const store = memoryStorage();
 const KEY = 'obeya-wish-shop';
 (globalThis as { window?: object }).window ??= {};
 
@@ -23,7 +23,7 @@ const misaligned = { said: 'Die Zeile „Wunsch oder Fehler melden“ ist nicht 
 
 test('a draft with only a title gives way to the wish Obeya drafted, which is written from its words alone', async () => {
   // the draft the page kept, back after a reload
-  m.set(KEY, JSON.stringify({ title: 'Archive filter loses focus', body: '', images: [] }));
+  store.setItem(KEY, JSON.stringify({ title: 'Archive filter loses focus', body: '', images: [] }));
   keepWish(store, 'shop');
   openWish(misaligned);
   expect(wishNow().pending).toBeUndefined();
@@ -35,7 +35,7 @@ test('a draft with only a title gives way to the wish Obeya drafted, which is wr
   openWish(misaligned);
   expect(wishNow()).toMatchObject({ open: true, pending: undefined, writing: false });
   expect(calls).toHaveLength(1);
-  expect(JSON.parse(m.get(KEY)!).from).toEqual(misaligned);
+  expect(JSON.parse(store.getItem(KEY)!).from).toEqual(misaligned);
 });
 
 test('a draft with text or screenshots stays, and the new wish waits for the owner to decide', () => {
@@ -54,11 +54,11 @@ test("another canvas in the same page brings its own draft of a wish, and closes
   wishNow().issue = null;
   openWish({ said: 'x' });
   closeWish();
-  m.set('obeya-wish-web', JSON.stringify({ title: 'On the website', body: '', images: [] }));
-  const shop = m.get(KEY);
+  store.setItem('obeya-wish-web', JSON.stringify({ title: 'On the website', body: '', images: [] }));
+  const shop = store.getItem(KEY);
   keepWish(store, 'web');
   expect(wishNow()).toMatchObject({ open: false, issue: { title: 'On the website' } });
-  expect(m.get(KEY)).toBe(shop);
+  expect(store.getItem(KEY)).toBe(shop);
   keepWish(store, 'shop');
   expect(wishNow().issue?.title).toBe(shop ? JSON.parse(shop).title : undefined);
 });
@@ -66,8 +66,8 @@ test("another canvas in the same page brings its own draft of a wish, and closes
 test('a wish still being written when the page switches canvas goes into the draft of the canvas it was asked on', async () => {
   keepWish(store, 'shop');
   wishNow().issue = null;
-  m.delete(KEY);
-  m.delete('obeya-wish-web');
+  store.removeItem(KEY);
+  store.removeItem('obeya-wish-web');
   const write = api.writeWish;
   let answer: (v: Awaited<ReturnType<typeof api.writeWish>>) => void = () => {};
   api.writeWish = () => new Promise((r) => (answer = r));
@@ -76,8 +76,8 @@ test('a wish still being written when the page switches canvas goes into the dra
   answer({ title: 'Issue: Late wish', body: 'Late wish' });
   await written();
   expect(wishNow()).toMatchObject({ issue: null, writing: false });
-  expect(m.get('obeya-wish-web')).toBeUndefined();
-  expect(JSON.parse(m.get(KEY)!).title).toBe('Issue: Late wish');
+  expect(store.getItem('obeya-wish-web')).toBeNull();
+  expect(JSON.parse(store.getItem(KEY)!).title).toBe('Issue: Late wish');
   keepWish(store, 'shop');
   expect(wishNow().issue?.title).toBe('Issue: Late wish');
   api.writeWish = write;

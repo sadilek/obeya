@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
 import { findCards, recentCards } from './search';
+import { testItem } from './testing';
 
-const card = (title: string, more: Partial<Item> = {}) => ({ id: title, kind: 'task', state: 'done', title, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
+const card = (title: string, more: Partial<Item> = {}) => testItem({ id: title, state: 'done', title, ...more });
 const titles = (q: string, cards: Item[]) => findCards(q, cards).map((h) => h.item.title);
 
 test('a search finds cards holding every word, in any case and without accents', () => {

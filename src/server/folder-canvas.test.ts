@@ -5,14 +5,13 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { FolderWorkspaces } from './folder';
-import { artifact, FakeRuntime, noForge, removeDir } from './testing';
+import { artifact, bytes, FakeRuntime, noForge, removeDir } from './testing';
 
 let dir: string;
 let docs: string;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 
-const bytes = (n: number, seed: number) => Uint8Array.from({ length: n }, (_, i) => (i * seed + 3) % 251);
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-folder-canvas-'));

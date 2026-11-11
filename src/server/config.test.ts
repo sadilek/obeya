@@ -10,7 +10,7 @@ import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './co
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, syncGitCalls, until } from './testing';
+import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, silentWav, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -713,7 +713,7 @@ describe('the configuration over HTTP', () => {
 
   test.skipIf(!Bun.which('uv') || !Bun.which('ffmpeg'))('plays a sentence in the voice being chosen, or says why it cannot', async () => {
     const clip = join(dir, 'clip.wav');
-    writeFileSync(clip, wav(0.2));
+    writeFileSync(clip, silentWav(0.2));
     // the owner's command goes to the platform's shell: cmd.exe on Windows
     const windows = process.platform === 'win32';
     const command = windows ? `findstr "^" > "${join(dir, 'said.txt')}" & copy /y "${clip}" "%DEMO_WAV%" >nul` : `cat > ${JSON.stringify(join(dir, 'said.txt'))}; cp ${JSON.stringify(clip)} "$DEMO_WAV"`;
@@ -731,7 +731,7 @@ describe('the configuration over HTTP', () => {
       port: 0,
       fetch: async (req) => {
         asked = { auth: req.headers.get('authorization'), body: await req.json() };
-        return new Response(wav(0.3), { headers: { 'content-type': 'audio/wav' } });
+        return new Response(silentWav(0.3), { headers: { 'content-type': 'audio/wav' } });
       },
     });
     try {
@@ -857,22 +857,3 @@ describe('the demo settings', () => {
     expect(clipProblems({ ...s, voice: 'piper' })).toEqual({});
   });
 });
-
-/** A silent mono 16-bit WAV of `seconds`. */
-function wav(seconds: number, rate = 16000) {
-  const data = Math.round(seconds * rate) * 2;
-  const b = Buffer.alloc(44 + data);
-  b.write('RIFF', 0);
-  b.writeUInt32LE(36 + data, 4);
-  b.write('WAVEfmt ', 8);
-  b.writeUInt32LE(16, 16);
-  b.writeUInt16LE(1, 20);
-  b.writeUInt16LE(1, 22);
-  b.writeUInt32LE(rate, 24);
-  b.writeUInt32LE(rate * 2, 28);
-  b.writeUInt16LE(2, 32);
-  b.writeUInt16LE(16, 34);
-  b.write('data', 36);
-  b.writeUInt32LE(data, 40);
-  return b;
-}

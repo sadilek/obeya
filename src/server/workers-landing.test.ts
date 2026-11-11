@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
 import { needsYou, stopped } from '../core/types';
-import { artifact, commit, gitClone, identify, testBoard, until } from './testing';
+import { artifact, commit, gitClone, identify, testBoard, until, ws } from './testing';
 import type { Board } from './board';
-import { board, dir, doc, eachTest, flush, handedOver, main, manual, merged, newWorkers, origin, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
+import { board, dir, doc, eachTest, flush, handedOver, main, manual, merged, newWorkers, origin, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { git } from './workspaces';
 import { type RepoAdapter } from '../adapters/types';
 

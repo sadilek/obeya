@@ -1,26 +1,8 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import type { Browser } from 'playwright-core';
+import { silentWav } from '../../src/server/testing';
 import { chromium, webkit } from './playwright.mjs';
-
-// Half a second of silence as a WAV: should the muting fail, the test still plays nothing audible.
-function silentWav(): string {
-  const samples = 4000;
-  const buf = Buffer.alloc(44 + samples * 2);
-  buf.write('RIFF', 0);
-  buf.writeUInt32LE(36 + samples * 2, 4);
-  buf.write('WAVEfmt ', 8);
-  buf.writeUInt32LE(16, 16);
-  buf.writeUInt16LE(1, 20);
-  buf.writeUInt16LE(1, 22);
-  buf.writeUInt32LE(8000, 24);
-  buf.writeUInt32LE(16000, 28);
-  buf.writeUInt16LE(2, 32);
-  buf.writeUInt16LE(16, 34);
-  buf.write('data', 36);
-  buf.writeUInt32LE(samples * 2, 40);
-  return `data:audio/wav;base64,${buf.toString('base64')}`;
-}
 
 const open: Browser[] = [];
 afterAll(() => Promise.all(open.map((b) => b.close())), 30_000);
@@ -32,7 +14,8 @@ describe.skipIf(!existsSync(webkit.executablePath()))('WebKit through the plugin
     const browser = await webkit.launch();
     open.push(browser);
     const page = await browser.newPage();
-    const wav = silentWav();
+    // half a second of silence: should the muting fail, the test still plays nothing audible
+    const wav = `data:audio/wav;base64,${silentWav(0.5, 8000).toString('base64')}`;
     await page.goto(`data:text/html,<audio id=parsed autoplay src="${wav}"></audio><iframe srcdoc="<p>frame</p>"></iframe>`);
     const seen = await page.evaluate(async (wav) => {
       const parsed = document.querySelector('audio')!;

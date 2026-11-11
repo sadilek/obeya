@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { type AgentSetting, type CanvasConfig, type ConfigProblem, type ConfigView, type Notice, waitingOn } from '../core/types';
-import { cardTag } from '../core/card-number';
 import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession, testBoard, until } from './testing';
+import { FakeRuntime, type FakeSession, testBoard, until, tag } from './testing';
 
 let store: Store;
 let board: Board;
@@ -12,8 +11,6 @@ let runtime: FakeRuntime;
 let executed: Command[];
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
-/** The number a card goes by, as the Coordinator names it. */
-const tag = (c: { number: number }) => cardTag(c.number);
 const commander = (sessionCommands?: number) =>
   new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, ...(sessionCommands ? { sessionCommands } : {}) });
 

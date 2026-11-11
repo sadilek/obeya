@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
 import type { CardAction, RepoConfig, RepoSettings } from '../core/types';
-import type { BadRequest, StoredContribution } from './board';
+import type { StoredContribution } from './board';
 import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
-import { artifact, commit, FakeRuntime, gitClone, gitRepo, heard, identify, noForge, removeDir, syncGitCalls, until } from './testing';
+import { artifact, commit, FakeRuntime, gitClone, gitRepo, heard, identify, noForge, refusal, removeDir, syncGitCalls, until } from './testing';
 import { git, HERE } from './workspaces';
 import { type SkillPlace, Skills } from './skills';
 import { OBEYA_PLUGIN } from './demo';
@@ -71,13 +71,7 @@ function quiet() {
 }
 const item = (id: string) => canvas.board.item(id)!;
 /** Why the canvas refuses the owner's action on the card, if it does. */
-function refused(cardId: string, a: CardAction): string | undefined {
-  try {
-    canvas.act(cardId, a);
-  } catch (e) {
-    return (e as BadRequest).code;
-  }
-}
+const refused = (cardId: string, a: CardAction) => refusal(() => canvas.act(cardId, a));
 
 describe('a canvas with several repositories', () => {
   beforeEach(produkt);
@@ -457,19 +451,13 @@ test("a canvas without a name is named after its repository; a canvas that does 
   const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
   const shop = gitRepo(join(dir, 'shop'), { 'docs/plan/plan.md': '# Laden\n\n## Goal\n\nG.\n' });
   const web = repo('web', 'Web');
-  const errors: string[] = [];
-  const error = console.error;
-  console.error = (line: string) => errors.push(line);
-  try {
-    const started = (await startCanvases([{ repos: [{ path: shop }] }, { name: 'Weg', repos: [{ path: join(dir, 'nowhere') }] }, { name: 'Web', repos: [{ path: web }] }], deps)).map(track);
-    expect(started.map((c) => [c.id, c.board.canvas.name])).toEqual([
-      ['shop', 'shop'],
-      ['web', 'Web'],
-    ]);
-  } finally {
-    console.error = error;
-  }
-  expect(errors).toEqual([expect.stringMatching(/^Obeya: the canvas Weg does not start, left out: .*nowhere is not a git repository$/)]);
+  const errors = quiet();
+  const started = (await startCanvases([{ repos: [{ path: shop }] }, { name: 'Weg', repos: [{ path: join(dir, 'nowhere') }] }, { name: 'Web', repos: [{ path: web }] }], deps).finally(errors.restore)).map(track);
+  expect(started.map((c) => [c.id, c.board.canvas.name])).toEqual([
+    ['shop', 'shop'],
+    ['web', 'Web'],
+  ]);
+  expect(errors.lines).toEqual([expect.stringMatching(/^Obeya: the canvas Weg does not start, left out: .*nowhere is not a git repository$/)]);
 });
 
 test("the cards' workers run on their own runtime when one is given (a scratch Obeya's idle workers)", async () => {
@@ -1608,13 +1596,7 @@ describe('merging and deleting planned tasks by voice', () => {
     const other = canvas.board.create({ title: 'Elsewhere', x: 800, y: 0, repo: 'api' });
     const worked = canvas.board.create({ title: 'Stopped', x: 1200, y: 0, repo: 'web' });
     canvas.board.work(worked.id, { branch: 'obeya/stopped' });
-    const code = (c: Parameters<CanvasRuntime['run']>[0]) => {
-      try {
-        canvas.run(c);
-      } catch (e) {
-        return (e as BadRequest).code;
-      }
-    };
+    const code = (c: Parameters<CanvasRuntime['run']>[0]) => refusal(() => canvas.run(c));
     expect(code({ do: 'merge', card: a.id, others: [other.id], title: 'X' })).toBe('otherRepos');
     expect(code({ do: 'merge', card: a.id, others: [worked.id], title: 'X' })).toBe('notUntouched');
     expect(code({ do: 'delete', card: worked.id })).toBe('notUntouched');

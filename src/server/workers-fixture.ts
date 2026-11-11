@@ -13,11 +13,10 @@ import type { PlanDoc } from '../core/plan-doc';
 import type { Board } from './board';
 import { Store } from './db';
 import { ReadTree } from './read-tree';
-import { FakeRuntime, gitClone, gitRepo, handedOverOn, identify, primedClones, removeDir, testBoard } from './testing';
+import { FakeRuntime, gitClone, gitRepo, handedOverOn, identify, primedClones, removeDir, stateOn, testBoard, ws } from './testing';
 import { type WorkerOptions, Workers } from './workers';
 import { Workspaces } from './workspaces';
 
-export const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
 export const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')], markdown: '' };
 
 /** The repository's settings unless a test sets up with others: work lands on main from clones, with setup, checks and an app. */
@@ -125,8 +124,5 @@ export const manual = () => board.create({ title: 'Zählerstände exportieren', 
 /** A card started and handed over on the setup's board, as `handedOverOn` has it. */
 export const handedOver = (o: Parameters<typeof handedOverOn>[1] = {}) => handedOverOn({ board, workers, runtime }, o);
 
-export const state = (id: string) => {
-  const i = board.item(id)!;
-  return i.need ? `${i.state}:${i.need}` : i.state;
-};
+export const state = (id: string) => stateOn(board, id);
 export const flush = () => new Promise((r) => setTimeout(r, 0));

@@ -7,9 +7,8 @@ import { archivedWithDone, type Item, stoppedArchivable } from '../core/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, pathOfRef, type PlanRead, repoOfRef } from './board';
 import { Store } from './db';
-import { heard } from './testing';
+import { heard, refusal, ws } from './testing';
 
-const ws = (key: string, done = false) => ({ key, label: key, title: `Title ${key}`, body: `Body ${key}`, done, inReview: false });
 const docA: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal A', workstreams: [ws('W1', true), ws('W2'), ws('W3')], markdown: '# A\n\n## Goal\n\nGoal A\n' };
 const docB: PlanDoc = { file: 'docs/plan/b.md', title: 'B', goal: 'Goal B', workstreams: [ws('W1')], markdown: '' };
 
@@ -818,20 +817,13 @@ describe('groups', () => {
 
   test('rejects invalid input', () => {
     const a = board.create({ title: 'A', x: 0, y: 0 });
-    const code = (fn: () => unknown) => {
-      try {
-        fn();
-      } catch (e) {
-        return (e as BadRequest).code;
-      }
-    };
-    expect(code(() => board.createGroup('  ', [a.id]))).toBe('emptyText');
-    expect(code(() => board.createGroup('x'.repeat(61), [a.id]))).toBe('invalid');
-    expect(code(() => board.createGroup('Leer', []))).toBe('invalid');
-    expect(code(() => board.createGroup('X', ['nope']))).toBe('unknownCard');
-    expect(code(() => board.createGroup('X', 'a' as unknown as string[]))).toBe('invalid');
-    expect(code(() => board.group([a.id], 'nope'))).toBe('unknownGroup');
-    expect(code(() => board.renameGroup('nope', 'X'))).toBe('unknownGroup');
+    expect(refusal(() => board.createGroup('  ', [a.id]))).toBe('emptyText');
+    expect(refusal(() => board.createGroup('x'.repeat(61), [a.id]))).toBe('invalid');
+    expect(refusal(() => board.createGroup('Leer', []))).toBe('invalid');
+    expect(refusal(() => board.createGroup('X', ['nope']))).toBe('unknownCard');
+    expect(refusal(() => board.createGroup('X', 'a' as unknown as string[]))).toBe('invalid');
+    expect(refusal(() => board.group([a.id], 'nope'))).toBe('unknownGroup');
+    expect(refusal(() => board.renameGroup('nope', 'X'))).toBe('unknownGroup');
     expect(board.snapshot().groups).toEqual([]);
   });
 
@@ -899,17 +891,6 @@ describe('a plan reference', () => {
     ]);
   });
 });
-
-
-/** The code of the refusal `act` meets. */
-function refusal(act: () => void): string | undefined {
-  try {
-    act();
-  } catch (e) {
-    if (e instanceof BadRequest) return e.code;
-    throw e;
-  }
-}
 
 describe('owner-drawn dependencies', () => {
   test('connections survive a new board, reject cycles, and can be removed independently', () => {

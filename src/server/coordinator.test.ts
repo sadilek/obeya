@@ -7,9 +7,8 @@ import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, type Board, type StoredContribution } from './board';
 import { Store } from './db';
 import { Coordinator, overlaps } from './coordinator';
-import { cardTag } from '../core/card-number';
 import { move, queueOrder, reach } from '../core/queue';
-import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir, testBoard } from './testing';
+import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir, testBoard, tag } from './testing';
 import { Workers } from './workers';
 import { git, HERE, parseChanges, Workspaces } from './workspaces';
 import { withLimitWait } from './runtime';
@@ -55,8 +54,6 @@ async function settle() {
 }
 const card = (title: string) => board.create({ title, x: 0, y: 0 });
 const item = (id: string) => board.item(id)!;
-/** The number a card goes by, as the Coordinator's sessions name it. */
-const tag = (c: { number: number }) => cardTag(c.number);
 const estimates = () => runtime.withTool('scope');
 const workerOf = (id: string) => runtime.sessions.find((s) => s.spec.cwd === board.row(id).workspace)!;
 

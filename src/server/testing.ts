@@ -8,7 +8,8 @@ import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { PATIENCE } from './patience';
 import { git, Workspaces } from './workspaces';
-import { Board } from './board';
+import { BadRequest, Board } from './board';
+import { cardTag } from '../core/card-number';
 import { Store } from './db';
 import type { PlanDoc } from '../core/plan-doc';
 import type { Item } from '../core/types';
@@ -382,6 +383,31 @@ export function asOwner(of: () => object) {
 /** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
 export const heard = () => Bun.sleep(0);
 
+/** The code of the `BadRequest` that `act` throws, if it throws one: why the action was refused. */
+export function refusal(act: () => unknown): string | undefined {
+  try {
+    act();
+  } catch (e) {
+    if (e instanceof BadRequest) return e.code;
+    throw e;
+  }
+}
+
+/** A card's state as tests compare it: with its need after a colon where it has one (`waiting:review`). */
+export const stateOn = (board: Board, id: string) => {
+  const i = board.item(id)!;
+  return i.need ? `${i.state}:${i.need}` : i.state;
+};
+
+/** A workstream of a plan doc. */
+export const ws = (key: string, done = false) => ({ key, label: key, title: `Title ${key}`, body: `Body ${key}`, done, inReview: false });
+
+/** The content of a file that is not text: `n` bytes, other ones for each `seed`. */
+export const bytes = (n: number, seed: number) => Uint8Array.from({ length: n }, (_, i) => (i * seed + 7) % 251);
+
+/** The tag a card goes by in what agents read (`K42`). */
+export const tag = (c: { number: number }) => cardTag(c.number);
+
 /**
  * Windows counts a thread's CPU time in ticks of about 15.6 ms, coarser than a read of the cards;
  * the clock's time counted the waits for a core with it, which a busy runner made the larger part
@@ -519,7 +545,6 @@ kill $proxy 2>/dev/null
   return program;
 }
 
-
 /** A demo for a handover in a test that is not about demos: an HTML artifact in a directory of its own. */
 export function artifact(): { kind: 'html'; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-artifact-'));
@@ -621,9 +646,9 @@ export function tailscaleStatus(dir: string, s: TailscaleStatus) {
   );
 }
 
-/** A WAV of `seconds` of silence, 16 kHz mono 16-bit, as a voice writes one. */
-export function silentWav(seconds: number): Buffer {
-  const data = Math.round(seconds * 16000) * 2;
+/** A WAV of `seconds` of silence, mono 16-bit at `rate` (16 kHz, as a voice writes one). */
+export function silentWav(seconds: number, rate = 16000) {
+  const data = Math.round(seconds * rate) * 2;
   const b = Buffer.alloc(44 + data);
   b.write('RIFF', 0, 'ascii');
   b.writeUInt32LE(36 + data, 4);
@@ -631,8 +656,8 @@ export function silentWav(seconds: number): Buffer {
   b.writeUInt32LE(16, 16);
   b.writeUInt16LE(1, 20);
   b.writeUInt16LE(1, 22);
-  b.writeUInt32LE(16000, 24);
-  b.writeUInt32LE(32000, 28);
+  b.writeUInt32LE(rate, 24);
+  b.writeUInt32LE(rate * 2, 28);
   b.writeUInt16LE(2, 32);
   b.writeUInt16LE(16, 34);
   b.write('data', 36, 'ascii');

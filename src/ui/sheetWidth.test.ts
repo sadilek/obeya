@@ -1,10 +1,7 @@
 import { expect, test } from 'bun:test';
 import { clampWidth, loadWidths, readingDefault, saveWidths, SHEET_W, widthsIn } from './sheetWidth';
+import { memoryStorage } from './testing';
 
-const store = () => {
-  const m = new Map<string, string>();
-  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
-};
 
 test('a sheet is as wide as dragged, but leaves the canvas room and keeps its minimum', () => {
   expect(clampWidth(900, 2560, 'sheet')).toBe(900);
@@ -16,7 +13,7 @@ test('a sheet is as wide as dragged, but leaves the canvas room and keeps its mi
 });
 
 test('without a choice the sheets have their own width and reading follows the window', () => {
-  const s = store();
+  const s = memoryStorage();
   expect(loadWidths(s)).toEqual({ sheet: SHEET_W, read: null });
   expect(widthsIn(loadWidths(s), 1440)).toEqual({ sheet: SHEET_W, read: readingDefault(1440) });
   // reading widens the sheet, also one dragged wider than reading would be
@@ -24,7 +21,7 @@ test('without a choice the sheets have their own width and reading follows the w
 });
 
 test('the chosen widths are remembered, and held to the window they are shown in', () => {
-  const s = store();
+  const s = memoryStorage();
   saveWidths(s, { sheet: 720, read: 1100 });
   expect(loadWidths(s)).toEqual({ sheet: 720, read: 1100 });
   expect(widthsIn(loadWidths(s), 2560)).toEqual({ sheet: 720, read: 1100 });
@@ -32,7 +29,7 @@ test('the chosen widths are remembered, and held to the window they are shown in
 });
 
 test('a broken entry falls back to the defaults', () => {
-  const s = store();
+  const s = memoryStorage();
   s.setItem('obeya-sheet-width', '{nope');
   expect(loadWidths(s)).toEqual({ sheet: SHEET_W, read: null });
 });

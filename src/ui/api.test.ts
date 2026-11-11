@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import type { CanvasInfo, CanvasSnapshot } from '../core/types';
 import { api, beforeReload, cardsOn, everyCanvasHeard, handOver, setCanvas, takeHandOver } from './api';
+import { memoryStorage } from './testing';
 
 const fetched: string[] = [];
 const real = globalThis.fetch;
@@ -44,21 +45,6 @@ test('the connection to every canvas drops the cards of a canvas that stopped, a
   expect(lists.map((l) => l.map((c) => c.id))).toEqual([['shop', 'website'], ['website']]);
 });
 
-/** A tab's session storage, as the page has it. */
-function storage(): Storage {
-  const m = new Map<string, string>();
-  return {
-    get length() {
-      return m.size;
-    },
-    key: (i: number) => [...m.keys()][i] ?? null,
-    getItem: (k: string) => m.get(k) ?? null,
-    setItem: (k: string, v: string) => void m.set(k, String(v)),
-    removeItem: (k: string) => void m.delete(k),
-    clear: () => m.clear(),
-  };
-}
-
 test('before the app starts again, the page hands what a reload keeps to the server, and the new page takes it back', async () => {
   const real = globalThis.sessionStorage;
   let handed: unknown = null;
@@ -67,7 +53,7 @@ test('before the app starts again, the page hands what a reload keeps to the ser
     return Response.json(init?.method === 'POST' ? { ok: true } : (handed as { entries: unknown }).entries);
   }) as typeof fetch;
   try {
-    globalThis.sessionStorage = storage();
+    globalThis.sessionStorage = memoryStorage();
     sessionStorage.setItem('obeya-drafts-shop', '{"card:k1":{"text":"half a sentence"}}');
     // what is written down just before a reload goes along
     const off = beforeReload(() => sessionStorage.setItem('obeya-kept-shop', '{"card":"k1"}'));
@@ -76,7 +62,7 @@ test('before the app starts again, the page hands what a reload keeps to the ser
     expect(handed).toEqual({ token: '17', entries: [['obeya-drafts-shop', '{"card:k1":{"text":"half a sentence"}}'], ['obeya-kept-shop', '{"card":"k1"}']] });
 
     // the new shell's webview: an empty tab
-    globalThis.sessionStorage = storage();
+    globalThis.sessionStorage = memoryStorage();
     await takeHandOver();
     expect(sessionStorage.getItem('obeya-kept-shop')).toBe('{"card":"k1"}');
     expect(sessionStorage.getItem('obeya-drafts-shop')).toBe('{"card:k1":{"text":"half a sentence"}}');

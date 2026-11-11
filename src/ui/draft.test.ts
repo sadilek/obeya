@@ -2,14 +2,11 @@ import { expect, test } from 'bun:test';
 import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, withoutPasted, withoutWords } from './draft';
 import { api } from './api';
 import { filesTo } from './shots';
+import { memoryStorage } from './testing';
 
-const store = () => {
-  const m = new Map<string, string>();
-  return { m, getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
-};
 
 // `keepDrafts` holds its store for the rest of the page
-const s = store();
+const s = memoryStorage();
 
 test("a card's draft outlives the page: written down per canvas as it changes, taken back by the next page", () => {
   const picks = { of: '[{"text":"Farbe?"}]', picks: [['Blau']] };

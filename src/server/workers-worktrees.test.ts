@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { BadRequest, Board } from './board';
-import { artifact, commit, until } from './testing';
-import { board, dir, doc, eachTest, flush, main, manual, newWorkers, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
+import { artifact, commit, until, ws } from './testing';
+import { board, dir, doc, eachTest, flush, main, manual, newWorkers, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { GIT, git, gitOrNull } from './workspaces';
 
 eachTest({ ...generic, land: 'main', workspaces: 'worktrees' });
