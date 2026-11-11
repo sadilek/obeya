@@ -76,7 +76,7 @@ import {
   cardAgentOf,
   storedModel,
 } from '../core/types';
-import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
+import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewEvent, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
 import { fromJson, type DemoRef, type PrState, type SharedDemo, type Shipped, type StoredDemo, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredShare, type StoredThread, toJson } from './row';
 import type { Images } from './images';
 import { sessionHarness } from './runtime';
@@ -613,28 +613,9 @@ export class Board {
     kind: CardEvent['kind'],
     author: CardEvent['author'],
     text: string,
-    extra: Partial<Pick<CardEvent, 'code' | 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'at' | 'wish' | 'reply' | 'forwarded' | 'token'>> & { unread?: boolean } = {},
+    extra: Omit<NewEvent, 'cardId' | 'kind' | 'author' | 'text'> = {},
   ): CardEvent {
-    const { code, images, mocks, replyTo, spot, answer, picks, at, unread, wish, reply, forwarded, token } = extra;
-    const e = this.store.addEvent({
-      cardId,
-      kind,
-      author,
-      text,
-      ...(code ? { code } : {}),
-      ...(images?.length ? { images: images.map((f) => basename(f)) } : {}),
-      ...(mocks?.length ? { mocks } : {}),
-      ...(replyTo ? { replyTo } : {}),
-      ...(spot ? { spot } : {}),
-      ...(answer ? { answer } : {}),
-      ...(at ? { at } : {}),
-      ...(unread ? { unread: true as const } : {}),
-      ...(picks?.length ? { picks } : {}),
-      ...(wish ? { wish } : {}),
-      ...(reply ? { reply } : {}),
-      ...(forwarded ? { forwarded } : {}),
-      ...(token ? { token } : {}),
-    });
+    const e = this.store.addEvent({ cardId, kind, author, text, ...extra, ...(extra.images ? { images: extra.images.map((f) => basename(f)) } : {}) });
     for (const fn of this.eventListeners) fn(e);
     // a line other than tool activity is a change at the card, which the search lists by (`changedAt`)
     if (kind !== 'activity') this.stamp(cardId, e.at);

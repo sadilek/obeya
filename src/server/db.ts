@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { AnswerFile, AnswerRef, CardAgent, CardEvent, ChangeSize, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, RepoCommands, SettingProposal, SettingProposalState, Snooze, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
+import type { AnswerFile, CardAgent, CardEvent, ChangeSize, DeviceView, CardKind, CardState, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, RepoCommands, SettingProposal, SettingProposalState, Snooze, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
 import type { Place } from '../core/layout';
 import type { Wish } from '../core/wish';
 import type { CardFile } from '../core/files';
@@ -641,38 +641,46 @@ export const MIGRATIONS = [
   END;`,
 ];
 
-const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
-type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'token'> & {
-  code: CardEvent['code'] | null;
-  images: string | null;
-  mocks: string | null;
-  replyTo: number | null;
-  spot: string | null;
-  answer: string | null;
-  picks: string | null;
-  unread: number | null;
-  readAfter: number | null;
-  wish: string | null;
-  reply: number | null;
-  forwarded: number | null;
-  token: number | null;
-};
-const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, token, ...e }: EventRow): CardEvent => ({
-  ...e,
-  ...(code ? { code } : {}),
-  ...(images ? { images: JSON.parse(images) as string[] } : {}),
-  ...(mocks ? { mocks: JSON.parse(mocks) as Mock[] } : {}),
-  ...(replyTo ? { replyTo } : {}),
-  ...(spot ? { spot: JSON.parse(spot) as Spot } : {}),
-  ...(answer ? { answer: JSON.parse(answer) as AnswerRef } : {}),
-  ...(picks ? { picks: JSON.parse(picks) as string[] } : {}),
-  ...(unread ? { unread: true as const } : {}),
-  ...(readAfter ? { readAfter } : {}),
-  ...(wish ? { wish: JSON.parse(wish) as Wish } : {}),
-  ...(reply ? { reply: true as const } : {}),
-  ...(forwarded ? { forwarded: true as const } : {}),
-  ...(token ? { token: true as const } : {}),
-});
+/**
+ * How each optional field of a log line is stored, in the column of its name in snake case: empty
+ * (absent, false, an empty list) is null, and null is read back as absent.
+ */
+const EVENT_FIELDS = {
+  code: 'text',
+  images: 'list',
+  mocks: 'list',
+  replyTo: 'int',
+  spot: 'json',
+  answer: 'json',
+  picks: 'list',
+  unread: 'flag',
+  readAfter: 'int',
+  wish: 'json',
+  reply: 'flag',
+  forwarded: 'flag',
+  token: 'flag',
+} as const satisfies Partial<Record<keyof CardEvent, 'text' | 'int' | 'flag' | 'json' | 'list'>>;
+type EventField = keyof typeof EVENT_FIELDS;
+const FIELDS = Object.entries(EVENT_FIELDS) as [EventField, (typeof EVENT_FIELDS)[EventField]][];
+const columnOf = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+const EVENT_COLUMNS = ['id', 'card_id AS cardId', 'at', 'kind', 'author', 'text', ...FIELDS.map(([f]) => (columnOf(f) === f ? f : `${columnOf(f)} AS ${f}`))].join(', ');
+const INSERT_EVENT = `INSERT INTO events (card_id, at, kind, author, text, ${FIELDS.map(([f]) => columnOf(f)).join(', ')}) VALUES ($cardId, $at, $kind, $author, $text, ${FIELDS.map(([f]) => `$${f}`).join(', ')}) RETURNING id`;
+type EventRow = Omit<CardEvent, EventField> & Record<EventField, string | number | null>;
+
+/** A line to write into a card's log, said now or (`at`) earlier; an optional field that is empty or false is not stored. */
+export type NewEvent = Pick<CardEvent, 'cardId' | 'kind' | 'author' | 'text'> & Partial<Pick<CardEvent, Exclude<EventField, 'unread' | 'readAfter'> | 'at'>> & { unread?: boolean };
+
+const stored = (how: (typeof EVENT_FIELDS)[EventField], v: unknown): string | number | null =>
+  how === 'flag' ? (v ? 1 : null) : how === 'list' ? ((v as unknown[] | undefined)?.length ? JSON.stringify(v) : null) : how === 'json' ? (v ? JSON.stringify(v) : null) : ((v as string | number | undefined) || null);
+
+function eventOf(r: EventRow): CardEvent {
+  const e: Record<string, unknown> = { id: r.id, cardId: r.cardId, at: r.at, kind: r.kind, author: r.author, text: r.text };
+  for (const [f, how] of FIELDS) {
+    const v = r[f];
+    if (v) e[f] = how === 'flag' ? true : how === 'json' || how === 'list' ? JSON.parse(v as string) : v;
+  }
+  return e as unknown as CardEvent;
+}
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
   Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro' | 'proposal' | 'group_id'>>;
@@ -1107,31 +1115,15 @@ export class Store {
 
   // ---------------------------------------------------------------- events
 
-  /** A line in a card's log, said now or (`at`) earlier: a thread copied onto its Question card keeps its times. */
-  addEvent(e: Omit<CardEvent, 'id' | 'at'> & { at?: string }): CardEvent {
-    const at = e.at ?? now();
-    const { id } = this.db
-      .query(
-        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, token) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $token) RETURNING id',
-      )
-      .get({
-        ...e,
-        answer: e.answer ? JSON.stringify(e.answer) : null,
-        code: e.code ?? null,
-        images: e.images?.length ? JSON.stringify(e.images) : null,
-        mocks: e.mocks?.length ? JSON.stringify(e.mocks) : null,
-        replyTo: e.replyTo ?? null,
-        spot: e.spot ? JSON.stringify(e.spot) : null,
-        picks: e.picks?.length ? JSON.stringify(e.picks) : null,
-        unread: e.unread ? 1 : null,
-        wish: e.wish ? JSON.stringify(e.wish) : null,
-        reply: e.reply ? 1 : null,
-        forwarded: e.forwarded ? 1 : null,
-        token: e.token ? 1 : null,
-        at,
-      }) as { id: number };
+  /** Writes a line into a card's log; returns it as it is read back. */
+  addEvent(e: NewEvent): CardEvent {
+    const at = e.at || now();
+    // a new line was read after none (`readAfter` is set as it is read)
+    const fields = Object.fromEntries(FIELDS.map(([f, how]) => [f, stored(how, f === 'readAfter' ? undefined : e[f])])) as Record<EventField, string | number | null>;
+    const head = { cardId: e.cardId, at, kind: e.kind, author: e.author, text: e.text };
+    const { id } = this.db.query(INSERT_EVENT).get({ ...head, ...fields }) as { id: number };
     if (e.kind !== 'activity') this.db.query('UPDATE cards SET changed_at = max(changed_at, $at) WHERE id = $id').run({ id: e.cardId, at });
-    return { ...e, id, at };
+    return eventOf({ id, ...head, ...fields });
   }
 
   /** The latest messages of the card's conversation (`talk`, `question`), however many other lines came between them, oldest first. */
