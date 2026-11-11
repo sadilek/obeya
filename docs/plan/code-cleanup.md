@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W7, W13 to W18 and W20 are done; the other workstreams are open. The review, made on
+W1 to W7, W13 to W18, W20 and W24 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -140,7 +140,7 @@ the workstream named does it for all of them.
   http-config F13, F14, F15;
   share-site-demo S16, S17, S22; [ui-card](code-cleanup/ui-card.md)
   G20; [ui-panels](code-cleanup/ui-panels.md) H13; [ui-small-modules](code-cleanup/ui-small-modules.md)
-  I11; [core](code-cleanup/core.md) J8, J10; [plugin](code-cleanup/plugin.md) P15;
+  I11; [core](code-cleanup/core.md) J8, J10; plugin P15;
   [scripts-app](code-cleanup/scripts-app.md) R8, R10; [tests](code-cleanup/tests.md) T16. C11 and
   F15 have medium confidence: trace them before removing.
 - [x] **W2:** A workers test fixture that covers the common setups. [tests](code-cleanup/tests.md)
@@ -209,7 +209,7 @@ the workstream named does it for all of them.
 - [x] **W17:** Sharing, demo sites and demo pages. share-site-demo S1 (the page templates share
   their fragments and scripts), S2 (`share.ts` and `site.ts` no longer import each other), S3, S4,
   S5 (module seams), S6 to S10, S12 to S15, S18 to S21, and one WebVTT cue parser beside the writer
-  (S11, [plugin](code-cleanup/plugin.md) P4, [scripts-app](code-cleanup/scripts-app.md) R12). Its
+  (S11, plugin P4, [scripts-app](code-cleanup/scripts-app.md) R12). Its
   findings file is gone: the second step of S13 (the demo's facts read asynchronously at the
   handover) went to [workers](code-cleanup/workers.md) A19, for W12; of S21, the two `exists`
   one-liners (`site.ts`, `demo-space.ts`) stayed, as a shared home for them would be a module of its
@@ -238,10 +238,18 @@ the workstream named does it for all of them.
 - [ ] **W23:** The settings sheets and panels. [ui-panels](code-cleanup/ui-panels.md) H2 (`useAct`
   promoted and a `useLoaded` for "load, call, show the error"), H4 (the canvases as one array of
   rows), H5 (one segmented control), H6, H8, H9, H11, H12, H14, H18, H19, H20, H21, H22. After W20.
-- [ ] **W24:** The plugin. [plugin](code-cleanup/plugin.md) P1 (`director.ts` as scene API,
-  screencast, encoding and report, so `revoice.ts` no longer loads Playwright), P2 (the demo
-  `SKILL.md` without what the scripts print when it applies), P3 (one CDP client in `browser.ts`),
-  P5 to P14.
+- [x] **W24:** The plugin. plugin P1 (`director.ts` as scene API, screencast, encoding and
+  report, so `revoice.ts` no longer loads Playwright), P2 (the demo `SKILL.md` without what the
+  scripts print when it applies), P3 (one CDP client in `browser.ts`), P5 to P14. Its findings file
+  is gone. `director.ts` became four modules (`director.ts`, `assemble.ts`, `narration.ts`,
+  `screencast.ts`), with the settings computed by `runDemo` and the stillness watch an object
+  created once the app is staged; a failing `login` therefore names no "likely cause" any more,
+  where it used to report the time since the module loaded as standing still. `plugin/lib/process.ts`
+  holds `alive`, `isMain` and `holdPidLock`, for W25's copies in `scripts` and `src/server` too.
+  Of P9, the shared `print` stayed two one-liners (the command indents, the step does not); of
+  P13, the UI keeps its own `captions.<language>.vtt`, since `subtitles.ts` reads files and the
+  UI cannot import it. P8 dropped `qwen3.py`'s `--out`; `scripts/check-voice.ts` speaks every voice
+  through `tts.py --sample`.
 - [ ] **W25:** The scripts and the desktop app. [scripts-app](code-cleanup/scripts-app.md) R1
   (`scratch-obeya.ts` staged by functions), R2 (`parseArgs` instead of ten hand-written argument
   readers), R3 (one table of release targets), R4, R5 (shared `fail`, `run`, `git`, `alive`), R6,
@@ -262,7 +270,7 @@ the workstream named does it for all of them.
 | [ui-panels.md](code-cleanup/ui-panels.md) | H: panels and the phone | 22 | 1 | 7 | 14 |
 | [ui-small-modules.md](code-cleanup/ui-small-modules.md) | I: small UI modules, API client, strings, styles | 14 | 0 | 2 | 12 |
 | [core.md](code-cleanup/core.md) | J: `src/core` | 11 | 1 | 4 | 6 |
-| [plugin.md](code-cleanup/plugin.md) | P: the plugin | 15 | 1 | 3 | 11 |
+| plugin.md (done, deleted) | P: the plugin | 15 | 1 | 3 | 11 |
 | [scripts-app.md](code-cleanup/scripts-app.md) | R: scripts and the desktop app | 14 | 1 | 4 | 9 |
 | [tests.md](code-cleanup/tests.md) | T: the tests | 16 | 3 | 10 | 3 |
 | | | 246 | 19 | 70 | 157 |
