@@ -24,19 +24,23 @@ import { codexRuntime } from '../src/server/codex';
 import { OBEYA_PLUGIN } from '../src/server/demo';
 import { sdkRuntime } from '../src/server/claude';
 import { type AgentEvent, type AgentRuntime, type AgentSession, CODEX_SESSION, withRest } from '../src/server/runtime';
+import { ROOT, script } from './common';
 
-const arg = (name: string) => {
-  const i = process.argv.indexOf(name);
-  return i < 0 ? undefined : process.argv[i + 1];
-};
-const harnesses = (['claude', 'codex'] as const).filter((h) => process.argv.includes(`--${h}`));
+const { values } = script('measure-resume-cache').args({
+  claude: { type: 'boolean' },
+  codex: { type: 'boolean' },
+  pauses: { type: 'string' },
+  modes: { type: 'string' },
+  repeat: { type: 'string' },
+  out: { type: 'string' },
+});
+const harnesses = (['claude', 'codex'] as const).filter((h) => values[h]);
 const runs = harnesses.length ? harnesses : (['claude', 'codex'] as const);
-const pauses = (arg('--pauses') ?? '2,65').split(',').map(Number);
+const pauses = (values.pauses ?? '2,65').split(',').map(Number);
 const MODES = ['live', 'rested'] as const;
 type Mode = (typeof MODES)[number];
-const modes = (arg('--modes')?.split(',') ?? MODES) as Mode[];
-const out = arg('--out') ?? join(tmpdir(), `resume-cache-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-const root = join(import.meta.dirname, '..');
+const modes = (values.modes?.split(',') ?? MODES) as Mode[];
+const out = values.out ?? join(tmpdir(), `resume-cache-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 
 const FIRST =
   'Read the files guide-1.md, guide-2.md and guide-3.md in this folder, each in full with your file reading tool (not the shell), then answer in one sentence: what do they describe?';
@@ -49,7 +53,7 @@ const FOLLOW_MS = 90_000;
 function folder(): string {
   const dir = mkdtempSync(join(tmpdir(), 'resume-cache-'));
   for (const [i, f] of ['communication.md', 'card-lifecycle.md', 'landing.md'].entries())
-    writeFileSync(join(dir, `guide-${i + 1}.md`), readFileSync(join(root, 'docs/design', f), 'utf8'));
+    writeFileSync(join(dir, `guide-${i + 1}.md`), readFileSync(join(ROOT, 'docs/design', f), 'utf8'));
   execFileSync('git', ['init', '-q'], { cwd: dir });
   execFileSync('git', ['-c', 'user.name=m', '-c', 'user.email=m@example.com', 'commit', '-qm', 'guides', '--allow-empty'], { cwd: dir });
   return dir;
@@ -66,7 +70,7 @@ function drive(runtime: AgentRuntime, harness: 'claude' | 'codex', cwd: string) 
     harness,
     effort: 'high' as const,
     // in place of a worker's instructions: as long, and the same at every start
-    system: readFileSync(join(root, 'docs/design/agents-and-workspaces.md'), 'utf8'),
+    system: readFileSync(join(ROOT, 'docs/design/agents-and-workspaces.md'), 'utf8'),
     tools: [{ name: 'report', description: 'Show the owner one short status line.', schema: { status: z.string() }, run: () => 'Shown.' }],
     plugins: [OBEYA_PLUGIN],
     onEvent: (e: AgentEvent) => {
@@ -171,7 +175,7 @@ function summary(a: Arm) {
   };
 }
 
-const repeat = Number(arg('--repeat') ?? 1);
+const repeat = Number(values.repeat ?? 1);
 const arms: Promise<Arm | { failed: string }>[] = [];
 for (const harness of runs)
   for (const pause of pauses)

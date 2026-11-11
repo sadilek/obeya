@@ -27,17 +27,13 @@ import { chromium, type Page } from 'playwright-core';
 import { demoDirectory } from '../plugin/skills/demo/lib/settings.ts';
 import { rereadChapters } from '../src/server/demo';
 import { ownerHeaders } from '../src/server/owner';
-import { scratchDir } from './common';
+import { ROOT, scratchDir, script } from './common';
 import { writeStage } from './hero-video/stage';
 
 const PORT = 4740;
 const REVIEW_PORT = 4741;
-const ROOT = join(import.meta.dirname, '..');
 const IMG = join(ROOT, 'site', 'img');
-const arg = (name: string) => {
-  const i = process.argv.indexOf(name);
-  return i < 0 ? undefined : process.argv[i + 1];
-};
+const { values: options } = script('site-shots').args({ demo: { type: 'string' }, at: { type: 'string' }, 'review-demo': { type: 'string' }, keep: { type: 'boolean' }, 'stage-only': { type: 'boolean' } });
 
 /** The demos in the demo directory whose names `match`, newest first. */
 function demosOf(match: (name: string) => boolean): string[] {
@@ -57,9 +53,9 @@ function newestDemo(): string {
   const newest = statSync(found[0]).mtimeMs;
   return found.filter((d) => newest - statSync(d).mtimeMs < 10 * 60_000).at(-1)!;
 }
-const demo = arg('--demo') ?? newestDemo();
+const demo = options.demo ?? newestDemo();
 // the render's demo of the owner's comment, a comma as the decimal point, under whatever name its agent gave it
-const reviewDemo = arg('--review-demo') ?? demosOf((n) => n.startsWith('tipjar-') && n.includes('comma'))[0] ?? demosOf((n) => n.startsWith('tipjar-split-the-bill'))[0]!;
+const reviewDemo = options['review-demo'] ?? demosOf((n) => n.startsWith('tipjar-') && n.includes('comma'))[0] ?? demosOf((n) => n.startsWith('tipjar-split-the-bill'))[0]!;
 
 /** The demo's chapters from its `chapters.vtt`, as a card has them: [start in seconds, title]. */
 function chaptersOf(dir: string): [number, string][] {
@@ -162,7 +158,7 @@ while (Date.now() < settled) {
   await new Promise((r) => setTimeout(r, 1000));
 }
 
-if (process.argv.includes('--stage-only')) process.exit(0);
+if (options['stage-only']) process.exit(0);
 
 // a fake microphone, so that holding Space lights it as it does for the owner
 const browser = await chromium.launch({ channel: 'chrome', args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
@@ -177,7 +173,7 @@ try {
   await reviewShot(reviewing.url, reviewing.cards.R);
 } finally {
   await browser.close();
-  if (!process.argv.includes('--keep')) for (const port of [PORT, REVIEW_PORT]) execFileSync('bun', [join(ROOT, 'scripts', 'scratch-obeya.ts'), '--stop', String(port)]);
+  if (!options.keep) for (const port of [PORT, REVIEW_PORT]) execFileSync('bun', [join(ROOT, 'scripts', 'scratch-obeya.ts'), '--stop', String(port)]);
 }
 
 type Box = { x: number; y: number; width: number; height: number };
@@ -206,7 +202,7 @@ async function still(page: Page, video: string) {
     v.pause();
     v.currentTime = at;
     await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
-  }, arg('--at') ? Number(arg('--at')) : inSecondChapter(chapters, 0.8));
+  }, options.at ? Number(options.at) : inSecondChapter(chapters, 0.8));
 }
 
 async function shots(page: Page, cards: Record<string, string>) {

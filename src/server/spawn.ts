@@ -11,14 +11,7 @@
 export const OWN_GROUP = process.platform !== 'win32';
 
 /** Whether the process `pid` runs (one of another user's, which this process may not signal, runs too). */
-export const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
-};
+export { alive } from '../../plugin/lib/process.ts';
 
 /**
  * Makes every console program Obeya starts through `Bun.spawn` or `Bun.spawnSync` (git above all,

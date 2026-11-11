@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: oven-sh/setup-bun@v2
-        with: { bun-version: 1.4.3 }
+        with: { bun-version-file: .bun-version }
       - name: Write the sitemap
         run: bun scripts/site-sitemap.ts site https://obeya.si/
       - name: Build the video player

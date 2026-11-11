@@ -6,8 +6,8 @@
 //
 //   bun scripts/build.ts [<target>…] [--all] [--out <dir>]
 //
-// Targets: darwin-arm64, darwin-x64, linux-x64, linux-arm64, windows-x64; by default this
-// machine's. Each goes into <out>/obeya-<version>-<target>/ (default out: dist/), holding `obeya`
+// Targets: darwin-arm64, darwin-x64, linux-x64, linux-arm64, windows-x64 (scripts/targets.ts); by
+// default this machine's. Each goes into <out>/obeya-<version>-<target>/ (default out: dist/), holding `obeya`
 // (`obeya.exe`) and `resources/`. Bun compiles for another platform too, fetching that platform's
 // Bun once. A macOS binary is signed ad hoc on a Mac: as Bun writes it, macOS kills it at start.
 // Claude Code is not part of it: the binary runs the machine's own installation
@@ -15,34 +15,15 @@
 
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { parseArgs } from 'node:util';
 import pkg from '../package.json';
+import { ROOT, script } from './common';
+import { here, isTarget, type Target, TARGETS, unknownTarget } from './targets';
 
-const TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'windows-x64'] as const;
-type Target = (typeof TARGETS)[number];
-
-const ROOT = resolve(import.meta.dir, '..');
-const { values, positionals: named } = (() => {
-  try {
-    return parseArgs({ options: { out: { type: 'string' }, all: { type: 'boolean' } }, allowPositionals: true });
-  } catch (error) {
-    fail((error as Error).message);
-  }
-})();
+const { fail, args, run } = script('build');
+const { values, positionals: named } = args({ out: { type: 'string' }, all: { type: 'boolean' } });
 const out = resolve(values.out ?? join(ROOT, 'dist'));
-const here = `${process.platform === 'win32' ? 'windows' : process.platform}-${process.arch}` as Target;
-const targets: Target[] = values.all ? [...TARGETS] : named.length ? (named as Target[]) : [here];
-for (const t of targets) if (!TARGETS.includes(t)) fail(`unknown target ${t} (known: ${TARGETS.join(', ')})`);
-
-function fail(msg: string): never {
-  console.error(`build: ${msg}`);
-  process.exit(1);
-}
-
-function run(cmd: string[], cwd = ROOT) {
-  const r = Bun.spawnSync(cmd, { cwd, stdout: 'pipe', stderr: 'pipe' });
-  if (r.exitCode !== 0) fail(`${cmd.join(' ')}\n${r.stdout.toString()}${r.stderr.toString()}`);
-}
+const targets = values.all ? (Object.keys(TARGETS) as Target[]) : named.length ? named : [here()];
+for (const t of targets) if (!isTarget(t)) fail(unknownTarget(t));
 
 /** What goes among the resources: everything another process runs or imports, tests left out. */
 function resources(dir: string) {
@@ -57,8 +38,8 @@ function resources(dir: string) {
   // the settings and theme skills read the reference up the tree, as in the checkout
   cpSync(join(ROOT, 'docs', 'settings.md'), join(dir, 'docs', 'settings.md'));
   cpSync(join(ROOT, 'docs', 'design', 'sharing-demos.md'), join(dir, 'docs', 'design', 'sharing-demos.md'));
-  for (const script of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/settings/lib/check.ts', 'plugin/skills/theme/lib/preview.ts'])
-    run([process.execPath, 'build', script, '--target', 'bun', '--outfile', join(dir, script)]);
+  for (const file of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/settings/lib/check.ts', 'plugin/skills/theme/lib/preview.ts'])
+    run([process.execPath, 'build', file, '--target', 'bun', '--outfile', join(dir, file)], { quiet: true });
 }
 
 const started = Date.now();
@@ -73,12 +54,12 @@ for (const target of targets) {
   const production = ['--define', 'process.env.NODE_ENV="production"'];
   // a Worker's script goes in as an entrypoint of its own, or the binary has none to start
   const workers = ['src/server/windows-processes.ts'].map((f) => join(ROOT, f));
-  run([process.execPath, 'build', '--compile', `--target=bun-${target}`, ...production, join(ROOT, 'src/server/main.ts'), ...workers, '--outfile', binary], dir);
+  run([process.execPath, 'build', '--compile', `--target=bun-${target}`, ...production, join(ROOT, 'src/server/main.ts'), ...workers, '--outfile', binary], { cwd: dir, quiet: true });
   for (const f of readdirSync(dir)) if (f.endsWith('.bun-build')) rmSync(join(dir, f), { force: true });
   if (target.startsWith('darwin')) {
     if (process.platform === 'darwin') {
-      run(['codesign', '--remove-signature', binary]);
-      run(['codesign', '--sign', '-', '--force', binary]);
+      run(['codesign', '--remove-signature', binary], { quiet: true });
+      run(['codesign', '--sign', '-', '--force', binary], { quiet: true });
     } else console.warn(`build: ${target} is not signed (only a Mac signs): macOS kills it at start until it is`);
   }
   resources(join(dir, 'resources'));

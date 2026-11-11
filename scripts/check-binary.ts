@@ -22,36 +22,33 @@ import { type Subprocess } from 'bun';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { loginLink, ownerHeaders } from '../src/server/owner';
+import { loginLink, ownerApi, ownerHeaders } from '../src/server/owner';
 import { pathToFileURL } from 'node:url';
 import pkg from '../package.json';
-import { check, expect, failed, until as untilEvery } from './check-harness';
-import { opt } from './common';
+import { check, expect, finish, scratchRepo, until as untilEvery } from './check-harness';
+import { script } from './common';
+import { waitUp } from './wait-up';
 
-const args = process.argv.slice(2);
-const binaryArg = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--port');
-if (!binaryArg) {
+const { values: args, positionals } = script('check-binary').args({
+  voice: { type: 'boolean' },
+  demo: { type: 'boolean' },
+  worker: { type: 'boolean' },
+  port: { type: 'string', default: '4499' },
+  keep: { type: 'boolean' },
+});
+if (positionals.length !== 1) {
   console.error('usage: bun scripts/check-binary.ts <obeya> [--voice] [--demo] [--worker] [--port <n>] [--keep]');
   process.exit(2);
 }
-const binary = resolve(binaryArg);
+const binary = resolve(positionals[0]!);
 const resources = join(dirname(binary), 'resources');
-const port = Number(opt('port') ?? 4499);
+const port = Number(args.port);
 const base = `http://127.0.0.1:${port}`;
 const win = process.platform === 'win32';
 
 // what is waited for here takes minutes: asked every 2 s
 const until: typeof untilEvery = (what, ms, fn) => untilEvery(what, ms, fn, 2000);
-const api = async (path: string, init?: RequestInit & { json?: unknown }) => {
-  const res = await fetch(`${base}${path}`, {
-    ...init,
-    headers: ownerHeaders(home),
-    ...(init?.json !== undefined ? { method: init.method ?? 'POST', body: JSON.stringify(init.json), headers: { ...ownerHeaders(home), 'content-type': 'application/json' } } : {}),
-    signal: AbortSignal.timeout(180_000),
-  });
-  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path}: ${res.status} ${await res.text()}`);
-  return res;
-};
+const api = (path: string, init?: RequestInit & { json?: unknown }) => ownerApi(base, home)(path, { signal: AbortSignal.timeout(180_000), ...init });
 const json = async <T = any>(path: string, init?: RequestInit & { json?: unknown }) => (await (await api(path, init)).json()) as T;
 
 // the scratch repository: a plan doc, its own settings with a demo site, and the site's deploy
@@ -71,7 +68,7 @@ const host = Bun.serve({
   },
 });
 const siteUrl = `http://127.0.0.1:${host.port}/`;
-const files: Record<string, string> = {
+scratchRepo(repo, {
   'README.md': '# Scratch\n',
   'docs/plan/tool.md': '# Tool\n\n## Workstreams\n\n- [ ] **W1:** Configuration.\n',
   '.obeya/settings.json': `${JSON.stringify({ app: { run: 'Nothing to run.' }, demo: { site: { title: 'Check demos', url: siteUrl, deploy: 'deploy.ts {dir}' } } }, null, 2)}\n`,
@@ -81,19 +78,7 @@ rmSync(out, { recursive: true, force: true });
 cpSync(process.argv[2], out, { recursive: true });
 console.log('deployed to ' + out);
 `,
-};
-for (const [path, text] of Object.entries(files)) {
-  mkdirSync(dirname(join(repo, path)), { recursive: true });
-  writeFileSync(join(repo, path), text);
-}
-const git = (...a: string[]) => {
-  const r = Bun.spawnSync(['git', '-c', 'user.name=Check', '-c', 'user.email=check@example.com', '-C', repo, ...a], { stderr: 'pipe' });
-  if (r.exitCode !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr.toString()}`);
-  return r.stdout.toString().trim();
-};
-git('init', '-q', '-b', 'main');
-git('add', '-A');
-git('commit', '-qm', 'init');
+});
 mkdirSync(home, { recursive: true });
 const configFile = join(home, 'canvases.json');
 writeFileSync(configFile, JSON.stringify([{ name: 'Check', repos: [{ path: repo, clones: 1 }] }], null, 2));
@@ -114,7 +99,7 @@ const stop = () => {
     } catch {}
 };
 process.on('exit', () => {
-  if (!args.includes('--keep')) {
+  if (!args.keep) {
     stop();
     rmSync(dir, { recursive: true, force: true });
   }
@@ -122,7 +107,8 @@ process.on('exit', () => {
 
 await check(`Obeya ${pkg.version} starts from ${binary}`, async () => {
   server = Bun.spawn([binary, '--port', String(port)], { cwd: dir, env, stdout: Bun.file(log), stderr: Bun.file(log), detached: !win });
-  await until('the canvas answers', 60_000, async () => (await fetch(`${base}/api/canvases`, { headers: ownerHeaders(home) })).ok);
+  const up = await waitUp(`${base}/api/canvases`, { headers: ownerHeaders(home), exited: () => server!.exitCode, limit: 60_000 });
+  expect(up.up, `the canvas does not answer${!up.up && up.exit !== null ? `: it exited (${up.exit})` : ' within 60 s'}; ${logText().slice(-2000)}`);
   return logText().split('\n')[0];
 });
 const canvas = 'check';
@@ -157,7 +143,7 @@ await check("the site's deploy script runs on the binary's Bun", async () => {
   return p.stdout.toString().trim();
 });
 
-if (args.includes('--voice')) {
+if (args.voice) {
   await check('voice: Whisper installs from the settings', async () => {
     await api('/api/voice-setup/install', { method: 'POST' });
     const view = await until('the installation ends', 30 * 60_000, async () => {
@@ -182,7 +168,7 @@ if (args.includes('--voice')) {
   });
 }
 
-if (args.includes('--demo')) {
+if (args.demo) {
   await check('demo: a render with the director from the resources', async () => {
     const demo = join(dir, 'demo');
     mkdirSync(demo);
@@ -218,7 +204,7 @@ await runDemo(
   });
 }
 
-if (args.includes('--worker')) {
+if (args.worker) {
   const artifact = join(dir, 'artifact');
   let card = '';
   await check('worker: a real agent commits and hands over an HTML artifact', async () => {
@@ -281,6 +267,5 @@ await b.close();
   return `the page loaded once more:\n${r.stdout.toString()}${r.stderr.toString().slice(-1500)}`;
 }
 
-console.log(failed ? `${failed} check(s) failed; the server's log:\n${logText().slice(-4000)}` : 'all checks passed');
-if (args.includes('--keep')) console.log(`kept: ${dir} (server pid ${server?.pid}, port ${port})`);
-process.exit(failed ? 1 : 0);
+if (args.keep) console.log(`kept: ${dir} (server pid ${server?.pid}, port ${port})`);
+finish(`; the server's log:\n${logText().slice(-4000)}`);

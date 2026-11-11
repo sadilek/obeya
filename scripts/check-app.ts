@@ -21,12 +21,14 @@
 // Prints one line per check; exits 1 when one failed. Needs ffmpeg (for the video) and git.
 
 import { type Subprocess } from 'bun';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { recorded } from '../src/server/instance';
 import { ownerHeaders } from '../src/server/owner';
-import { bad, check, exited, expect, failed, sleep, until as untilEvery } from './check-harness';
+import { bad, check, exited, expect, finish, scratchRepo, sleep, until as untilEvery } from './check-harness';
+import { answers } from './wait-up';
 
 const usage = (why?: string): never => {
   console.error(`${why ? `check-app: ${why}\n` : ''}usage: bun scripts/check-app.ts <the app's program> [--fake-mic] [--screenshot <png>] [--keep]`);
@@ -51,15 +53,7 @@ const until: typeof untilEvery = (what, ms, fn) => untilEvery(what, ms, fn, 250)
 const dir = mkdtempSync(join(tmpdir(), 'obeya-app-check-'));
 const repo = join(dir, 'repo');
 const home = join(dir, 'home');
-mkdirSync(join(repo, 'docs', 'plan'), { recursive: true });
-writeFileSync(join(repo, 'docs', 'plan', 'check.md'), '# The app check\n\n## Workstreams\n\n- [ ] **W1:** Something to show.\n');
-const git = (...a: string[]) => {
-  const r = Bun.spawnSync(['git', '-C', repo, ...a], { stderr: 'pipe' });
-  if (r.exitCode !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr.toString()}`);
-};
-git('init', '-q', '-b', 'main');
-git('-c', 'user.name=Check', '-c', 'user.email=check@example.com', 'add', '.');
-git('-c', 'user.name=Check', '-c', 'user.email=check@example.com', 'commit', '-qm', 'init');
+scratchRepo(repo, { 'docs/plan/check.md': '# The app check\n\n## Workstreams\n\n- [ ] **W1:** Something to show.\n' });
 mkdirSync(home);
 writeFileSync(join(home, 'canvases.json'), JSON.stringify([{ name: 'App check', repos: [{ path: repo }] }]));
 
@@ -166,15 +160,8 @@ const env: Record<string, string> = {
   ...(args['fake-mic'] && win ? { WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--use-fake-device-for-media-stream' } : {}),
 };
 delete env.OBEYA_SUPERVISED;
-const entry = () => {
-  try {
-    return JSON.parse(readFileSync(join(home, 'server.json'), 'utf8')) as { pid: number; port: number; url: string; app: boolean };
-  } catch {
-    return null;
-  }
-};
+const entry = () => recorded(home);
 const startApp = () => Bun.spawn([program], { env, stdout: 'ignore', stderr: 'ignore' });
-const answers = async (url: string) => (await fetch(`${url}/api/canvases`, { headers: ownerHeaders(home), signal: AbortSignal.timeout(2000) }).catch(() => null))?.ok === true;
 
 /** The app's window (macOS), else the screen, as a PNG. */
 async function screenshot(pid: number, file: string) {
@@ -278,7 +265,7 @@ try {
     await check('quitting the app leaves that Obeya running', async () => {
       app!.kill();
       await exited(app!, 10_000);
-      expect(await answers(e.url), 'it does not answer');
+      expect(await answers(`${e.url}/api/canvases`, ownerHeaders(home)), 'it does not answer');
     });
     await fetch(`${e.url}/api/stop`, { method: 'POST', headers: ownerHeaders(home) }).catch(() => {});
     await exited(server, 30_000);
@@ -290,5 +277,4 @@ try {
   if (args.keep) console.log(`kept ${dir}`);
   else rmSync(dir, { recursive: true, force: true });
 }
-console.log(failed ? `${failed} check(s) failed` : 'all checks passed');
-process.exit(failed ? 1 : 0);
+finish();

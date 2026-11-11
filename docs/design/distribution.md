@@ -161,7 +161,7 @@ Mac runner where the same commit builds on the next try (2026-11-05 and -06), so
 to three times, the tries after the first with `--verbose`, the only way Tauri shows the script's
 output.
 
-Builds and tests use Bun 1.4.3. Obeya needs Bun 1.3.14 or later: in 1.3.12 on Linux, a closed
+Builds and tests use the Bun that `.bun-version` names. Obeya needs Bun 1.3.14 or later: in 1.3.12 on Linux, a closed
 `fs.watch` can deadlock Bun's work pool, after which every page bundle hangs for good (2026-10-13).
 `bun start` from a checkout runs on the machine's Bun; on Linux with a Bun before 1.3.14 Obeya still
 starts, but warns in the log and with a pill in the bar ("Bun 1.3.12 is too old", the hover saying

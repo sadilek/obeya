@@ -8,7 +8,7 @@
 // --config merges into app/tauri.conf.json for this build (scripts/check-update.ts gives the app
 // another version and another updater that way).
 //
-// The target is this machine's by default (see scripts/build.ts); another needs Rust's target for it
+// The target is this machine's by default (scripts/targets.ts lists them); another needs Rust's target for it
 // and Tauri's tools for cross-building. Needs Rust (rustup) and, on Linux, WebKitGTK's development
 // files (libwebkit2gtk-4.1-dev and the rest Tauri lists). The bundles end up in
 // app/target/[<triple>/]release/bundle/.
@@ -32,53 +32,24 @@
 
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import pkg from '../package.json';
-import { endingIn, opt } from './common';
+import { endingIn, ROOT, script } from './common';
+import { bundled, here, isTarget, TARGETS, unknownTarget } from './targets';
 
-const TRIPLES = {
-  'darwin-arm64': 'aarch64-apple-darwin',
-  'darwin-x64': 'x86_64-apple-darwin',
-  'linux-x64': 'x86_64-unknown-linux-gnu',
-  'linux-arm64': 'aarch64-unknown-linux-gnu',
-  'windows-x64': 'x86_64-pc-windows-msvc',
-} as const;
-type Target = keyof typeof TRIPLES;
-
-const ROOT = resolve(import.meta.dir, '..');
+const { fail, args, run, retry } = script('build-app');
 const APP = join(ROOT, 'app');
-const args = process.argv.slice(2);
-const here = `${process.platform === 'win32' ? 'windows' : process.platform}-${process.arch}` as Target;
-const target = (args.find((a, i) => !a.startsWith('--') && !['--bundles', '--config'].includes(args[i - 1] ?? '')) ?? here) as Target;
-if (!(target in TRIPLES)) fail(`unknown target ${target} (known: ${Object.keys(TRIPLES).join(', ')})`);
-const triple = TRIPLES[target];
+const { values, positionals } = args({ bundles: { type: 'string' }, config: { type: 'string' }, debug: { type: 'boolean' }, verbose: { type: 'boolean' } });
+if (positionals.length > 1) fail(`one target at a time, not ${positionals.join(' ')}`);
+const target = positionals[0] ?? here();
+const { triple, update } = isTarget(target) ? TARGETS[target] : fail(unknownTarget(target));
 const os = target.split('-')[0];
-const bundles = opt('bundles') ?? (os === 'darwin' ? 'dmg' : os === 'windows' ? 'nsis' : 'appimage,deb');
+const bundles = values.bundles ?? (os === 'darwin' ? 'dmg' : os === 'windows' ? 'nsis' : 'appimage,deb');
 
-function fail(msg: string): never {
-  console.error(`build-app: ${msg}`);
-  process.exit(1);
-}
-
-function run(cmd: string[], cwd = ROOT, env: Record<string, string> = {}) {
-  console.log(`$ ${cmd.join(' ')}`);
-  const r = Bun.spawnSync(cmd, { cwd, stdout: 'inherit', stderr: 'inherit', env: { ...process.env, ...env } });
-  if (r.exitCode !== 0) fail(`${cmd[0]} failed (exit ${r.exitCode})`);
-}
-
-/** `run`, tried again after a pause when it fails: stapler fetches the ticket from Apple's CloudKit,
- * which now and then drops the connection for a quarter of an hour (NSURLErrorDomain -1005, the
- * Intel Mac runner twice for v0.2.0, 2026-10-13), and stapling or validating again is harmless. */
-function persist(cmd: string[], pauses = [30, 60, 120, 240, 300]) {
-  for (const pause of pauses) {
-    console.log(`$ ${cmd.join(' ')}`);
-    const r = Bun.spawnSync(cmd, { cwd: ROOT, stdout: 'inherit', stderr: 'inherit' });
-    if (r.exitCode === 0) return;
-    console.warn(`build-app: ${cmd[0]} failed (exit ${r.exitCode}), again in ${pause} s`);
-    Bun.sleepSync(pause * 1000);
-  }
-  run(cmd);
-}
+/** Stapler fetches the ticket from Apple's CloudKit, which now and then drops the connection for a
+ * quarter of an hour (NSURLErrorDomain -1005, the Intel Mac runner twice for v0.2.0, 2026-10-13);
+ * stapling or validating again is harmless. */
+const persist = (cmd: string[]) => retry(() => cmd, [30, 60, 120, 240, 300]);
 
 /** What `cmd` prints, failing with what it said when it fails. */
 function output(cmd: string[], cwd = ROOT): string {
@@ -106,29 +77,20 @@ cpSync(join(built, 'resources'), join(APP, 'staged', 'resources'), { recursive: 
 // on Linux the server goes among the resources (app/tauri.linux.conf.json), not into usr/bin
 if (os === 'linux') cpSync(join(built, 'obeya'), join(APP, 'staged', 'obeya-server'));
 
-const cross = target !== here;
-const out = join(APP, 'target', ...(cross ? [triple] : []), args.includes('--debug') ? 'debug' : 'release', 'bundle');
+const cross = target !== here();
+const out = join(APP, 'target', ...(cross ? [triple] : []), values.debug ? 'debug' : 'release', 'bundle');
 // a bundle of an earlier build is no part of this one (the AppImage's AppDir would be reused)
 rmSync(out, { recursive: true, force: true });
 const developerId = os === 'darwin' && !!(process.env.APPLE_SIGNING_IDENTITY || process.env.APPLE_CERTIFICATE);
 // without a name, Tauri takes the certificate's own (null removes the ad hoc "-" of tauri.conf.json)
 const signing = developerId ? ['--config', JSON.stringify({ bundle: { macOS: { signingIdentity: process.env.APPLE_SIGNING_IDENTITY ?? null } } })] : [];
 const tauri = (bundles: string, ...more: string[]) => {
-  const cmd = (verbose: boolean) => [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(verbose ? ['--verbose'] : []), ...(opt('config') ? ['--config', opt('config')!] : []), ...signing, ...more];
+  const cmd = (attempt: number) => [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(values.debug ? ['--debug'] : []), ...(values.verbose || attempt > 0 ? ['--verbose'] : []), ...(values.config ? ['--config', values.config] : []), ...signing, ...more];
   // Tauri's bundle_dmg.sh now and then fails on GitHub's Intel Mac runner where the same commit
   // builds on the next try (2026-11-05 and -06); Tauri says why only with --verbose, which the
   // tries after the first add. Bundling again reuses what Rust compiled.
   const pauses = os === 'darwin' && bundles.split(',').includes('dmg') ? [10, 30] : [];
-  for (const [n, pause] of pauses.entries()) {
-    const verbose = args.includes('--verbose') || n > 0;
-    console.log(`$ ${cmd(verbose).join(' ')}`);
-    const r = Bun.spawnSync(cmd(verbose), { cwd: APP, stdout: 'inherit', stderr: 'inherit', env: { ...process.env, CI: 'true' } });
-    if (r.exitCode === 0) return;
-    console.warn(`build-app: tauri build failed (exit ${r.exitCode}), again in ${pause} s, with --verbose`);
-    rmSync(join(out, 'dmg'), { recursive: true, force: true });
-    Bun.sleepSync(pause * 1000);
-  }
-  run(cmd(args.includes('--verbose') || pauses.length > 0), APP, { CI: 'true' });
+  retry(cmd, pauses, { cwd: APP, env: { CI: 'true' }, between: () => rmSync(join(out, 'dmg'), { recursive: true, force: true }) });
 };
 const wanted = bundles.split(',');
 // the updater's archive is of the app, which a DMG's build does not leave in bundle/macos
@@ -144,11 +106,9 @@ if (wanted.includes('appimage')) {
   cpSync(join(APP, 'staged', 'obeya-server'), server);
   chmodSync(server, 0o755);
   const cache = join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'tauri');
-  const packer = readdirSync(cache).find((f) => f.startsWith('linuxdeploy-plugin-appimage') && f.endsWith('.AppImage'));
-  if (!packer) fail(`no linuxdeploy-plugin-appimage in ${cache}`);
-  const image = readdirSync(join(out, 'appimage')).find((f) => f.endsWith('.AppImage'));
-  if (!image) fail('Tauri wrote no AppImage');
-  run([join(cache, packer), '--appdir', appdir], join(out, 'appimage'), { OUTPUT: image, ARCH: target.endsWith('arm64') ? 'aarch64' : 'x86_64', APPIMAGE_EXTRACT_AND_RUN: '1' });
+  const packer = readdirSync(cache).find((f) => f.startsWith('linuxdeploy-plugin-appimage') && f.endsWith('.AppImage')) ?? fail(`no linuxdeploy-plugin-appimage in ${cache}`);
+  const image = readdirSync(join(out, 'appimage')).find((f) => f.endsWith('.AppImage')) ?? fail('Tauri wrote no AppImage');
+  run([join(cache, packer), '--appdir', appdir], { cwd: join(out, 'appimage'), env: { OUTPUT: image, ARCH: triple.split('-')[0]!, APPIMAGE_EXTRACT_AND_RUN: '1' } });
 } else tauri(wanted.join(','));
 
 if (!existsSync(out)) fail(`${out} was not written`);
@@ -203,13 +163,11 @@ function notarise() {
 }
 
 if (process.env.TAURI_SIGNING_PRIVATE_KEY) {
-  const sign = (file: string) => run([process.execPath, 'x', 'tauri', 'signer', 'sign', file], APP);
-  const one = (sub: string, end: string) => endingIn(join(out, sub), end) ?? fail(`no ${end} in ${join(out, sub)} to sign for the updater`);
+  const sign = (file: string) => run([process.execPath, 'x', 'tauri', 'signer', 'sign', file], { cwd: APP });
   if (os === 'darwin') {
     // as Tauri packs it: the app at the archive's top, without macOS's ._ files
-    run(['tar', '-czf', 'Obeya.app.tar.gz', 'Obeya.app'], join(out, 'macos'), { COPYFILE_DISABLE: '1' });
-    sign(join(out, 'macos', 'Obeya.app.tar.gz'));
-  } else if (os === 'windows' && wanted.includes('nsis')) sign(one('nsis', '-setup.exe'));
-  else if (wanted.includes('appimage')) sign(one('appimage', '.AppImage'));
+    run(['tar', '-czf', 'Obeya.app.tar.gz', 'Obeya.app'], { cwd: join(out, 'macos'), env: { COPYFILE_DISABLE: '1' } });
+  }
+  if (os === 'darwin' || wanted.includes(update.from)) sign(bundled(out, update) ?? fail(`no ${update.ends} in ${join(out, update.from)} to sign for the updater`));
 }
 console.log(`\n${out}\nbuilt in ${((Date.now() - started) / 1000).toFixed(0)} s`);

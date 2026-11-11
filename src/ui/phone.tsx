@@ -15,7 +15,9 @@ import { SWIPED_CARD, swipedOnce } from './aside';
 import { FoldArrow, toggleFolded, useFolded as useFoldedCanvases } from './fold';
 import { asideMark, changeAside, forgotten, loadAside, onAsideElsewhere, type SetAside, staysAside } from './setAside';
 import { CardNumber } from './cardNumber';
-import { type ActDone, Detail, type Pending, TalkElsewhere, useEvents } from './detail';
+import type { ActDone, Pending } from './cardSheet';
+import { CardLog, TalkElsewhere, useCardLog } from './conversation';
+import { Detail } from './detail';
 import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
 import { CoordinatorTalk } from './coordinator';
 import { Sign } from './logo';
@@ -583,6 +585,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     const i = opened?.item;
     return (
       <HoldToTalk.Provider value={press}>
+        {/* the card's log, which its conversation and the button for it both read */}
+        <CardLog id={i?.id}>
         <div id="ph-card" className="ph-view" ref={cardRef} style={i ? ({ '--c': `var(--${shownState(i)})` } as React.CSSProperties) : undefined}>
           <header className="ph-bar">
             <button className="ph-back" onClick={back}>
@@ -635,6 +639,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           </TalkPanel>
         )}
         {i && <CardTalkButton key={i.id} item={i} open={talk} shown={talk && !closing} onClick={() => (talk ? leaveTalk.current?.() : openTalk())} />}
+        </CardLog>
         {voice}
       </HoldToTalk.Provider>
     );
@@ -913,7 +918,7 @@ function TalkButton({ label, shown, n, count, working, onClick }: { label: strin
  * questions open, which count as one, the block they stand in together.
  */
 function CardTalkButton({ item, open, shown, onClick }: { item: Item; open: boolean; shown: boolean; onClick: () => void }) {
-  const events = useEvents(item.id);
+  const events = useCardLog();
   // the conversation marks what it holds seen while it is open
   const messages = events && !open ? unseen(cardTalk(item, events), events, seenOf(item.id)) : 0;
   const questions = openQuestions(item).length;

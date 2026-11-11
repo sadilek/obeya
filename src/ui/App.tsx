@@ -12,7 +12,9 @@ import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edge
 import { plain } from './markdown';
 import { CardNumber } from './cardNumber';
 import { clip } from '../core/text';
-import { type ActDone, Detail, type Pending } from './detail';
+import type { ActDone, Pending } from './cardSheet';
+import { CardLog } from './conversation';
+import { Detail } from './detail';
 import { Cards } from './message';
 import type { Heard, Where } from './api';
 import { replyOn, setReply } from './reply';
@@ -2151,6 +2153,7 @@ function Canvas({
             <div className="content">
               {openItem && (
                 <Cards.Provider value={{ items, open: (i) => void openFresh(i) }}>
+                <CardLog id={openItem.id}>
                 <Detail
                   key={openItem.id}
                   item={openItem}
@@ -2173,6 +2176,7 @@ function Canvas({
                   onDone={onDone}
                   onTell={(text, images, field, replyTo) => tellTyped(text, images, { card: openItem.id }, field, replyTo)}
                 />
+                </CardLog>
                 </Cards.Provider>
               )}
             </div>

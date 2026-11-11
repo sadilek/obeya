@@ -131,24 +131,21 @@ async function created() {
   return snap.items.find((x) => /split the bill/i.test(x.title));
 }
 
+type Created = Awaited<ReturnType<typeof created>>;
+
+/** Until the card of the task the video creates is `done`, asked every `every` ms: false once `ms` passed without. */
+async function untilCard(done: (card: Created) => boolean, ms: number, every = 2000) {
+  for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, every))) if (done(await created())) return true;
+  return false;
+}
+
 /** Until the card of the task the video creates is in `states` (25 min at most). */
 async function until(states: string[], what: string) {
-  const end = Date.now() + 25 * 60_000;
-  while (Date.now() < end) {
-    if (states.includes((await created())?.state ?? '')) return;
-    await new Promise((r) => setTimeout(r, 3000));
-  }
-  throw new Error(`the task did not ${what} within 25 minutes`);
+  if (!(await untilCard((c) => states.includes(c?.state ?? ''), 25 * 60_000, 3000))) throw new Error(`the task did not ${what} within 25 minutes`);
 }
 
 /** Until the agent has reported a status line, or a minute has passed: it does not always report one. */
-async function statusLine() {
-  const end = Date.now() + 60_000;
-  while (Date.now() < end) {
-    if ((await created())?.statusLine) return;
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-}
+const statusLine = () => untilCard((c) => !!c?.statusLine, 60_000);
 
 /**
  * About when `phrase` is spoken in a scene's narration `text`, as a fraction of its clip: by the
@@ -173,7 +170,7 @@ const saying = (d: Director, text: string, phrase: string) => d.untilSpoken(at(t
 /** The demo's pointer to a point, as the real one goes there. */
 async function pointer(d: Director, x: number, y: number) {
   await d.page.mouse.move(x, y);
-  await d.page.evaluate(([px, py]) => (window as unknown as { __demo: { moveTo: (x: number, y: number, i: boolean) => void } }).__demo.moveTo(px!, py!, true), [x, y]);
+  await d.page.evaluate(([px, py]) => (window as unknown as Demo).__demo.moveTo(px!, py!, true), [x, y]);
 }
 
 /** Shift + drag in a loop round `cards`: the lasso that marks them. */
@@ -189,7 +186,7 @@ async function lasso(d: Director, cards: Locator[]) {
   const ry = (y1 - y0) / 2 + 45;
   // from the left, clockwise round, ending a little past the start so the loop closes
   const at = (a: number) => [cx - rx * Math.cos(a), cy - ry * Math.sin(a)] as const;
-  await d.page.evaluate(([x, y]) => (window as unknown as { __demo: { moveTo: (x: number, y: number) => void } }).__demo.moveTo(x!, y!), at(0));
+  await d.page.evaluate(([x, y]) => (window as unknown as Demo).__demo.moveTo(x!, y!), at(0));
   await d.wait(400);
   await d.page.mouse.move(...at(0));
   await d.page.keyboard.down('Shift');
@@ -215,6 +212,9 @@ async function zoom(d: Director, x: number, y: number, steps: number) {
   await d.page.keyboard.up('Control');
 }
 
+/** What the page holds for the demo: its pointer. */
+type Demo = { __demo: { moveTo: (x: number, y: number, instant?: boolean) => void } };
+/** The microphone the page is given, playing the narration's clips. */
 type Mic = { __load: (name: string, url: string) => Promise<void>; __play: (name: string, from?: number, to?: number) => Promise<number> };
 
 /** Plays the clip `name` into the microphone, exactly when the narration track plays it, while `hold` is down. */
@@ -516,8 +516,7 @@ const scenes: Scene[] = [
       // the end of the video sends them; one that ran past it is sent by hand
       await d.skip(
         async () => {
-          const end = Date.now() + 90_000;
-          while (Date.now() < end && (await created())?.held?.length) await new Promise((r) => setTimeout(r, 1000));
+          await untilCard((c) => !c?.held?.length, 90_000, 1000);
           if ((await created())?.held?.length) await d.page.locator('.held-send').click();
           await d.wait(1200);
         },
@@ -532,14 +531,15 @@ const scenes: Scene[] = [
       await d.untilSpoken(1);
       // the agent takes the comments in, reworks, and hands over again
       await d.skip(async () => {
-        const end = Date.now() + 25 * 60_000;
         let took = false;
-        while (Date.now() < end) {
-          const c = await created();
-          took ||= !!c?.answering;
-          if (took && !c?.answering && c?.state === 'waiting') break;
-          await new Promise((r) => setTimeout(r, 3000));
-        }
+        await untilCard(
+          (c) => {
+            took ||= !!c?.answering;
+            return took && !c?.answering && c?.state === 'waiting';
+          },
+          25 * 60_000,
+          3000,
+        );
         await d.wait(2500);
       });
     },
@@ -557,8 +557,7 @@ const scenes: Scene[] = [
         async () => {
           await until(['live'], 'land');
           // the agent's turn after the landing: until it ends, the card offers no Archive button
-          const end = Date.now() + 10 * 60_000;
-          while (Date.now() < end && (await created())?.finishing) await new Promise((r) => setTimeout(r, 2000));
+          await untilCard((c) => !c?.finishing, 10 * 60_000);
           // Obeya's proposal from its retrospective, which the stage kept back so far
           await fetch(`${base}/api/c/tipjar/cards/${staged.cards.R}/unarchive`, { method: 'POST', headers: owner() });
           await d.wait(1200);
@@ -652,6 +651,12 @@ await runDemo(
     },
     open: async (d) => {
       const clips = { command: clipOf(narration.command).file, dictation: clipOf(narration.dictation).file, comments: clipOf(narration.comments).file };
+      /** After a page load: the dev server's badge hidden, the microphone's clips loaded, the canvas shown. */
+      const loaded = async () => {
+        await d.page.addStyleTag({ content: 'bun-hmr { display: none !important; }' });
+        for (const name of Object.keys(clips)) await d.page.evaluate((n) => (window as unknown as Mic).__load(n, `/__demo/${n}.wav`), name);
+        await card(d, 'App icon').waitFor();
+      };
       await d.page.route('**/__demo/*.wav', (r) => r.fulfill({ path: clips[path.basename(new URL(r.request().url()).pathname, '.wav') as keyof typeof clips] }));
       await d.page.addInitScript(() => {
         let ctx: AudioContext | undefined;
@@ -696,9 +701,7 @@ await runDemo(
         localStorage.setItem('obeya-move-marked-known', '1');
       });
       await d.goto('/c/tipjar');
-      await d.page.addStyleTag({ content: 'bun-hmr { display: none !important; }' });
-      for (const name of Object.keys(clips)) await d.page.evaluate((n) => (window as unknown as Mic).__load(n, `/__demo/${n}.wav`), name);
-      await card(d, 'App icon').waitFor();
+      await loaded();
       // a step back from the wall, with the room the groups' territories take, once the Coordinator
       // has arranged the project: the camera as saved, zoomed around the middle and a little up, so
       // that the idea at the bottom stays clear of the microphone, and the page again
@@ -711,9 +714,7 @@ await runDemo(
         if (c) localStorage.setItem('obeya-cam-tipjar', JSON.stringify({ s: c.s * k, x: cx - (cx - c.x) * k, y: cy - (cy - c.y) * k - 25 }));
       });
       await d.page.reload();
-      await d.page.addStyleTag({ content: 'bun-hmr { display: none !important; }' });
-      for (const name of Object.keys(clips)) await d.page.evaluate((n) => (window as unknown as Mic).__load(n, `/__demo/${n}.wav`), name);
-      await card(d, 'App icon').waitFor();
+      await loaded();
       await d.wait(1200);
     },
     scenes: scenes.slice(0, SHORT ? 7 : undefined),

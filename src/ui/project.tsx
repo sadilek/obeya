@@ -17,8 +17,8 @@ import { ArchiveIcon, PlayIcon, sameBounds, shownState, TalkIcon } from './parts
 /** How many of a project's workstreams its button starts: those planned and in no queue. */
 const startableIn = (kids: Item[]) => kids.filter((k) => k.state === 'planned' && !k.queue).length;
 
-/** A project is worth arranging by its dependencies with two cards or more standing open in it. */
-const arrangeable = (kids: Item[]) => kids.filter((k) => shapeOf(k) !== 'chip').length > 1;
+/** A project's workstreams can be arranged by what builds on what while it is not done: with two cards or more standing open in it, or while that runs. */
+const arrangeable = (project: Item, kids: Item[]) => project.state !== 'done' && (!!project.arranging || kids.filter((k) => shapeOf(k) !== 'chip').length > 1);
 
 /** The columns mark on the button that arranges a project's workstreams by what builds on what. */
 const ColumnsIcon = ({ size }: { size: number }) => (
@@ -147,7 +147,7 @@ export const ProjectView = memo(
     const own = (e: React.PointerEvent) => e.stopPropagation();
     const acts: HeadAct[] = [];
     // collapsed, its workstreams are not on the canvas to arrange; its sheet still has the button
-    if (!collapsed && item.state !== 'done' && (item.arranging || arrangeable(kids)))
+    if (!collapsed && arrangeable(item, kids))
       acts.push({ key: 'arrange', icon: <ColumnsIcon size={11} />, label: item.arranging ? t.plan.arranging : t.plan.arrange, title: `${t.plan.arrangeLong}. ${t.plan.arrangeHint}`, disabled: item.arranging, run: () => onArrange(item) });
     if (startable > 0)
       acts.push({ key: 'start-all', icon: <PlayIcon size={10} />, label: t.plan.startAllShort(startable), title: `${t.plan.startAll(startable)}. ${t.plan.startAllHint}`, run: () => onStartAll(item, startable) });
@@ -442,7 +442,7 @@ export function Sheet({
               <p className="hint">{t.plan.startAllHint}</p>
             </div>
           )}
-          {!project.archivedAt && project.state !== 'done' && (project.arranging || arrangeable(kids)) && (
+          {!project.archivedAt && arrangeable(project, kids) && (
             <div className="arrange">
               <button className="btn" disabled={project.arranging} onClick={() => onArrange(project)}>
                 <ColumnsIcon size={12} />

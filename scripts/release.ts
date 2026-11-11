@@ -2,7 +2,7 @@
 // collects its installers, and the release job adds the checksums and the updater's latest.json.
 //
 //   bun scripts/release.ts collect <target> <dir>
-//       copies the installers of <target> (darwin-arm64, …, as in scripts/build.ts) from
+//       copies the installers of <target> (darwin-arm64, …, as in scripts/targets.ts) from
 //       app/target/release/bundle/ (scripts/build-app.ts) into <dir> under the release's fixed
 //       names, with the update artifact and its signature when there is one.
 //   bun scripts/release.ts notes <tag> <file>
@@ -19,66 +19,25 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { INERT } from '../src/core/inert';
-
-type Asset = { from: string; ends: string; name: string };
-type Release = { platform: string; installers: Asset[]; update: Asset };
-
-/** Per target: where Tauri puts each installer, the name it has in the release, and the update. */
-export const RELEASE: Record<string, Release> = {
-  'darwin-arm64': {
-    platform: 'darwin-aarch64',
-    installers: [{ from: 'dmg', ends: '.dmg', name: 'Obeya-macOS-arm64.dmg' }],
-    update: { from: 'macos', ends: '.app.tar.gz', name: 'Obeya-macOS-arm64.app.tar.gz' },
-  },
-  'darwin-x64': {
-    platform: 'darwin-x86_64',
-    installers: [{ from: 'dmg', ends: '.dmg', name: 'Obeya-macOS-x64.dmg' }],
-    update: { from: 'macos', ends: '.app.tar.gz', name: 'Obeya-macOS-x64.app.tar.gz' },
-  },
-  'windows-x64': {
-    platform: 'windows-x86_64',
-    installers: [{ from: 'nsis', ends: '-setup.exe', name: 'Obeya-Windows-x64-setup.exe' }],
-    update: { from: 'nsis', ends: '-setup.exe', name: 'Obeya-Windows-x64-setup.exe' },
-  },
-  'linux-x64': {
-    platform: 'linux-x86_64',
-    installers: [
-      { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-x86_64.AppImage' },
-      { from: 'deb', ends: '.deb', name: 'obeya_amd64.deb' },
-    ],
-    update: { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-x86_64.AppImage' },
-  },
-  'linux-arm64': {
-    platform: 'linux-aarch64',
-    installers: [
-      { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-aarch64.AppImage' },
-      { from: 'deb', ends: '.deb', name: 'obeya_arm64.deb' },
-    ],
-    update: { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-aarch64.AppImage' },
-  },
-};
+import { git } from './common';
+import { bundled, isTarget, TARGETS, unknownTarget } from './targets';
 
 /** Copies the installers of `target` in `bundle` (Tauri's bundle directory) into `dir`; returns their names. */
 export function collect(target: string, bundle: string, dir: string): string[] {
-  const release = RELEASE[target];
-  if (!release) throw new Error(`unknown target ${target} (known: ${Object.keys(RELEASE).join(', ')})`);
+  if (!isTarget(target)) throw new Error(unknownTarget(target));
+  const release = TARGETS[target];
   mkdirSync(dir, { recursive: true });
   const copied: string[] = [];
-  const find = (a: Asset) => {
-    const sub = join(bundle, a.from);
-    const f = existsSync(sub) ? readdirSync(sub).find((f) => f.endsWith(a.ends)) : undefined;
-    return f && join(sub, f);
-  };
   const put = (from: string, name: string) => {
     copyFileSync(from, join(dir, name));
     copied.push(name);
   };
   for (const a of release.installers) {
-    const from = find(a);
+    const from = bundled(bundle, a);
     if (!from) throw new Error(`no ${a.ends} in ${join(bundle, a.from)}`);
     put(from, a.name);
   }
-  const update = find(release.update);
+  const update = bundled(bundle, release.update);
   if (update && existsSync(`${update}.sig`)) {
     if (!copied.includes(release.update.name)) put(update, release.update.name);
     put(`${update}.sig`, `${release.update.name}.sig`);
@@ -90,11 +49,6 @@ export type Latest = { version: string; notes?: string; pub_date: string; platfo
 
 /** What the bar's hover shows of the notes at most, in lines. */
 const NOTES_SHOWN = 12;
-
-const git = (cwd: string, ...args: string[]) => {
-  const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stderr: 'pipe' });
-  return r.exitCode === 0 ? r.stdout.toString().trim() : null;
-};
 
 /** The paths of the commits that change what runs, as `git log -- <these>` takes them: all but the inert ones. */
 export const RUNS = ['.', ...INERT.dirs.map((d) => `:!${d}`), `:!*${INERT.ending}`];
@@ -115,7 +69,7 @@ export function notes(cwd: string, tag: string): string {
 /** latest.json for Tauri's updater, from the signed update artifacts in `dir`, with the start of `changes` (the notes) for the bar. */
 export function latest(dir: string, tag: string, repo: string, now = new Date(), changes?: string): Latest {
   const platforms: Latest['platforms'] = {};
-  for (const { platform, update } of Object.values(RELEASE)) {
+  for (const { platform, update } of Object.values(TARGETS)) {
     const sig = join(dir, `${update.name}.sig`);
     if (!existsSync(join(dir, update.name)) || !existsSync(sig)) continue;
     platforms[platform] = {

@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W8, W13 to W18, W20 and W24 are done; the other workstreams are open. The review, made on
+W1 to W8, W13 to W18, W20, W22, W24 and W25 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -141,7 +141,7 @@ the workstream named does it for all of them.
   share-site-demo S16, S17, S22; [ui-card](code-cleanup/ui-card.md)
   G20; [ui-panels](code-cleanup/ui-panels.md) H13; [ui-small-modules](code-cleanup/ui-small-modules.md)
   I11; [core](code-cleanup/core.md) J8, J10; plugin P15;
-  [scripts-app](code-cleanup/scripts-app.md) R8, R10; [tests](code-cleanup/tests.md) T16. C11 and
+  scripts-app R8, R10; [tests](code-cleanup/tests.md) T16. C11 and
   F15 have medium confidence: trace them before removing.
 - [x] **W2:** A workers test fixture that covers the common setups. [tests](code-cleanup/tests.md)
   T1 (one `handedOver()`), T2 (the fixture takes its adapter, so no test builds everything twice),
@@ -209,7 +209,7 @@ the workstream named does it for all of them.
 - [x] **W17:** Sharing, demo sites and demo pages. share-site-demo S1 (the page templates share
   their fragments and scripts), S2 (`share.ts` and `site.ts` no longer import each other), S3, S4,
   S5 (module seams), S6 to S10, S12 to S15, S18 to S21, and one WebVTT cue parser beside the writer
-  (S11, plugin P4, [scripts-app](code-cleanup/scripts-app.md) R12). Its
+  (S11, plugin P4, scripts-app R12). Its
   findings file is gone: the second step of S13 (the demo's facts read asynchronously at the
   handover) went to [workers](code-cleanup/workers.md) A19, for W12; of S21, the two `exists`
   one-liners (`site.ts`, `demo-space.ts`) stayed, as a shared home for them would be a module of its
@@ -232,9 +232,11 @@ the workstream named does it for all of them.
   six extraction steps the finding names), G9, G12, G13, G21; G3 with
   [ui-panels](code-cleanup/ui-panels.md) H1 (the open card's plumbing shared by desktop and phone);
   H3 (`Phone()` by job), H15, H16, H17. After W20.
-- [ ] **W22:** The card. [ui-card](code-cleanup/ui-card.md) G2 (`Detail` as a dispatcher with a view
+- [x] **W22:** The card. [ui-card](code-cleanup/ui-card.md) G2 (`Detail` as a dispatcher with a view
   per card kind), G4 (the card's diff read once), G5 (head, state line and text block shared by the
   kinds), G6 (the log followed once), G7 (`DemoView`), G14, G15, G16, G18, G19, G22. After W20.
+  `detail.tsx` went by subject first, as moves (`cardSheet.tsx`, `conversation.tsx`, `demo.tsx`,
+  `share.tsx`, `pr.tsx`, `review.tsx`, `idea.tsx`); what came of each finding stands under it.
 - [ ] **W23:** The settings sheets and panels. [ui-panels](code-cleanup/ui-panels.md) H2 (`useAct`
   promoted and a `useLoaded` for "load, call, show the error"), H4 (the canvases as one array of
   rows), H5 (one segmented control), H6, H8, H9, H11, H12, H14, H18, H19, H20, H21, H22. After W20.
@@ -250,10 +252,21 @@ the workstream named does it for all of them.
   P13, the UI keeps its own `captions.<language>.vtt`, since `subtitles.ts` reads files and the
   UI cannot import it. P8 dropped `qwen3.py`'s `--out`; `scripts/check-voice.ts` speaks every voice
   through `tts.py --sample`.
-- [ ] **W25:** The scripts and the desktop app. [scripts-app](code-cleanup/scripts-app.md) R1
-  (`scratch-obeya.ts` staged by functions), R2 (`parseArgs` instead of ten hand-written argument
-  readers), R3 (one table of release targets), R4, R5 (shared `fail`, `run`, `git`, `alive`), R6,
-  R7, R9, R11, R13 (ask the owner first: `hero-video/qwen.py` is named in `CLAUDE.md`), R14.
+- [x] **W25:** The scripts and the desktop app. scripts-app R1 (`scratch-obeya.ts` keeps the
+  command line; `scripts/scratch/process.ts` the processes and ports, `scripts/scratch/stage.ts` the
+  staging in named steps, with every stage field described at its declaration), R2 (`parseArgs`
+  through `script(name).args` in `common.ts`), R3 (`scripts/targets.ts`), R4, R5 (`script(name)`
+  gives `fail`, `args`, `run` and `retry`; `git`, `writeFiles`, `alive` beside them), R6, R7, R9,
+  R11, R13 (the owner agreed: `qwen.py` went, `render.ts --qwen` stays for iterating), R14 (Bun
+  pinned in `.bun-version`). Its findings file is gone. Staged from one stage file, the old and the
+  new scratch script wrote the same database. Kept apart: `render.ts` reads its own arguments (a
+  value after `--record` or `--replay` is optional, which `parseArgs` cannot say), `check-app.ts`
+  its own `parseArgs` (it exits 2 with its usage); `ownerApi` went beside `ownerHeaders` in
+  `src/server/owner.ts`, since `common.ts` must load under Node; `check-update.ts` keeps its fetch
+  (a refusal is null there), and the hero video and `site-shots.ts` their single requests. R4's
+  `started()` was not needed: `check-binary.ts` calls `waitUp` itself. The shell's `request()`
+  follows no redirect and sends an empty POST with `Content-Length: 0`, as the hand-written client
+  did; it was compiled, not run, since the app opens windows.
 
 ## Findings by area
 
@@ -271,7 +284,7 @@ the workstream named does it for all of them.
 | [ui-small-modules.md](code-cleanup/ui-small-modules.md) | I: small UI modules, API client, strings, styles | 14 | 0 | 2 | 12 |
 | [core.md](code-cleanup/core.md) | J: `src/core` | 11 | 1 | 4 | 6 |
 | plugin.md (done, deleted) | P: the plugin | 15 | 1 | 3 | 11 |
-| [scripts-app.md](code-cleanup/scripts-app.md) | R: scripts and the desktop app | 14 | 1 | 4 | 9 |
+| scripts-app.md (done, deleted) | R: scripts and the desktop app | 14 | 1 | 4 | 9 |
 | [tests.md](code-cleanup/tests.md) | T: the tests | 16 | 3 | 10 | 3 |
 | | | 246 | 19 | 70 | 157 |
 

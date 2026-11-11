@@ -113,7 +113,7 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   `.voice/qwen-reference-de.wav` (a recording) and `qwen-reference-en.wav` (cut from the ElevenLabs
   voice); the demo settings' `references` name each under its narration language. Qwen3 is good
   enough for demos, ElevenLabs marginally better for the site, so the site stays with ElevenLabs
-  (owner, 2026-10-12); `scripts/hero-video/qwen.py` renders the hero narration in Qwen3 to compare.
+  (owner, 2026-10-12); `scripts/hero-video/render.ts --qwen` renders the hero video in Qwen3.
 - The site (obeya.si) stays quick to read and understand: it names features in a few plain words
   and leaves out details and special cases (which forges, how a single interaction goes); those
   belong in the docs or the README.
