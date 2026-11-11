@@ -95,7 +95,7 @@ export class Answers {
     const card = root.movedTo ? this.o.board.item(root.movedTo) : undefined;
     if (card?.kind === 'question') {
       if (!t.movedTo) this.o.board.moveThread(thread, card.id);
-      if (!(this.o.board.thread(card.id).pending ?? []).some((p) => p.talk === talkId)) this.ask(card.id, t.said, this.o.imageFiles?.(t.images) ?? [], true, undefined, talkId);
+      if (!(this.o.board.thread(card.id).pending ?? []).some((p) => p.talk === talkId)) this.ask(card.id, t.said, { images: this.o.imageFiles?.(t.images), spoken: true, talk: talkId });
       return;
     }
     this.busy.add(talkId);
@@ -161,7 +161,7 @@ export class Answers {
     const project = this.o.board.item(projectId);
     if (project?.kind !== 'project' || !project.plan) throw new BadRequest('invalid', 'not a project with a plan doc');
     const quoted = this.o.board.quotedTalk(replyTo);
-    const talk = this.o.board.addTalk(text, '', null, { question: text, about: projectId }, images, quoted, undefined, projectId);
+    const talk = this.o.board.addTalk(text, '', { lookUp: { question: text, about: projectId }, images, replyTo: quoted, askedIn: projectId });
     if (quoted && this.o.board.exchange(quoted.talk)?.thread) this.o.board.followTalk(talk, quoted.talk);
     this.lookUp(talk);
     return talk;
@@ -174,7 +174,7 @@ export class Answers {
    * waits for its background work, they go in at once. `walkthrough`: the words are "Show as
    * walkthrough" on one of its answers: what the agent hears instead, and the walkthrough prepared.
    */
-  ask(cardId: string, text: string, images: string[], spoken: boolean, replyTo?: number, talk?: number, walkthrough?: { heard: string; prepared: Told; files: AnswerFile[] }) {
+  ask(cardId: string, text: string, { images = [], spoken = false, replyTo, talk, walkthrough }: { images?: string[]; spoken?: boolean; replyTo?: number; talk?: number; walkthrough?: { heard: string; prepared: Told; files: AnswerFile[] } }) {
     const card = this.questionCard(cardId);
     const e = this.o.board.log(cardId, 'talk', 'owner', text, { images, replyTo, unread: this.reading.has(cardId) && !this.waiting.has(cardId) && !talk });
     const quoted = replyTo ? this.o.board.quoted(cardId, replyTo) : undefined;
@@ -301,7 +301,7 @@ export class Answers {
     const about = follow ? (t.about ?? null) : (t.about ?? t.cardId ?? null);
     // in the sheet, quoting the direct answer it tells; a follow-up shows the answer it continues
     const quote = !on && direct ? { talk: talkId, part: 'reply' as const } : undefined;
-    const talk = this.o.board.addTalk(words.walkthroughAsked, words.walkthroughReply, on?.card ?? null, { question, about }, [], quote);
+    const talk = this.o.board.addTalk(words.walkthroughAsked, words.walkthroughReply, { card: on?.card, lookUp: { question, about }, replyTo: quote });
     if (follow) this.o.board.followTalk(talk, talkId);
     if (on) {
       this.o.board.log(on.card, 'say', 'owner', words.walkthroughAsked, { replyTo: on.ev });
@@ -344,7 +344,7 @@ export class Answers {
     // the words it answered: the owner's last before it, else the thread's question
     const question = this.o.board.events(card.id).findLast((x) => x.id < e.id && x.author === 'owner' && x.kind === 'talk')?.text ?? this.o.board.exchange(thread.talk)?.question ?? card.title;
     const { prepared, files } = this.prepare(thread.talk, question, e.text);
-    this.ask(card.id, this.o.board.t.answer.walkthroughAsked, [], false, e.id, undefined, { heard: asWalkthrough(question, e.text), prepared, files });
+    this.ask(card.id, this.o.board.t.answer.walkthroughAsked, { replyTo: e.id, walkthrough: { heard: asWalkthrough(question, e.text), prepared, files } });
     return { thread: thread.talk, file: files[0]!.name };
   }
 

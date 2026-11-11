@@ -607,7 +607,7 @@ describe('the Coordinator remembers', () => {
     // what is no message of the sheet is dropped, and the words go alone
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     await say(k, 'hallo', 'reply', { confirm: 'Hallo.' });
-    const onCard = board.addTalk('starte ihn', 'Startet.', a.id);
+    const onCard = board.addTalk('starte ihn', 'Startet.', { card: a.id });
     for (const ref of [{ talk: first!.id + 99, part: 'reply' }, { talk: onCard, part: 'reply' }, { talk: first!.id, part: 'nothing' }, 7]) {
       expect(await reply('so?', ref)).not.toContain('In reply to');
       expect(board.snapshot().talk.at(-1)!.replyTo).toBeUndefined();
@@ -642,7 +642,7 @@ describe('the Coordinator remembers', () => {
   test('words being read when Obeya stopped get a reply that says so, in the sheet and on the card', () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.addTalk('hallo', '');
-    board.addTalk('starte ihn', '', a.id);
+    board.addTalk('starte ihn', '', { card: a.id });
     board.log(a.id, 'say', 'owner', 'starte ihn');
     board.interruptTalk();
     expect(board.snapshot().talk.map((t) => t.reply)).toEqual(['Obeya startete neu, bevor ich das gelesen hatte. Bitte noch einmal.']);

@@ -145,7 +145,7 @@ describe('a question the Coordinator looks up', () => {
   });
 
   test('the Coordinator hears a long answer to its end, in its running session and in a fresh one', async () => {
-    const asked = (said: string, answer: string) => board().answerTalk(board().addTalk(said, 'Moment.', null, { question: `${said}?`, about: null }), answer, 'coordinator');
+    const asked = (said: string, answer: string) => board().answerTalk(board().addTalk(said, 'Moment.', { lookUp: { question: `${said}?`, about: null } }), answer, 'coordinator');
     asked('alte frage', `${'Alt. '.repeat(200)}ENDE-ALT`);
     const answer = `${'Die Datenbankregel gilt für jeden Zugriff. '.repeat(80)}Soll ich eine Karte für Tool-Verwendungen anlegen?`;
     await say('wie ist die datenbankregel?', {}, 'look_up', { question: 'What is the database rule?', confirm: 'Ich lese nach.' });

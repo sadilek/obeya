@@ -156,6 +156,24 @@ export interface CardRow {
   number: number;
 }
 
+/** The question the Coordinator looks up for an exchange, and the project it is about (null: none). */
+export type TalkLookUp = { question: string; about: string | null };
+
+/**
+ * What an exchange with the Coordinator holds beside its words and reply (`Talk`): the card the
+ * words were said on, the question looked up for them, their screenshots, the message they reply
+ * to, the wait (`after`) or the answer (`answered`) the Coordinator took them up after, the project
+ * sheet they were asked in.
+ */
+export type NewTalk = { card?: string | null; lookUp?: TalkLookUp; images?: string[]; replyTo?: TalkRef; after?: TalkAfter; askedIn?: string; answered?: number };
+
+/**
+ * How the Coordinator replies (`Store.replyTalk`): the question it looks up, what a draft for Obeya's
+ * makers starts from; `waits`: unread in the sheet until the owner sees it; `answers`: it answers
+ * the words (not that it could not read them).
+ */
+export type TalkReply = { lookUp?: TalkLookUp; wish?: Wish; waits?: boolean; answers?: boolean };
+
 /** Words the usage limit keeps the Coordinator from reading (`talk.held`): until when, and how it reads them then (`Commander`'s). */
 export interface HeldTalk {
   until: string;
@@ -1315,7 +1333,7 @@ export class Store {
     return (this.db.query("INSERT INTO talk (canvas_id, at, said, reply, moved) VALUES ($c, $at, '', $reply, $moved) RETURNING id").get({ c: canvasId, at: now(), reply, moved: JSON.stringify(moved) }) as { id: number }).id;
   }
 
-  addTalk(canvasId: string, said: string, reply: string, cardId: string | null, lookUp?: { question: string; about: string | null }, images: string[] = [], replyTo?: TalkRef, after?: TalkAfter, askedIn?: string, answered?: number): number {
+  addTalk(canvasId: string, said: string, reply: string, { card = null, lookUp, images = [], replyTo, after, askedIn, answered }: NewTalk = {}): number {
     return (
       this.db
         .query(
@@ -1326,7 +1344,7 @@ export class Store {
           at: now(),
           said,
           reply,
-          cardId,
+          cardId: card,
           question: lookUp?.question ?? null,
           about: lookUp?.about ?? null,
           images: images.length ? JSON.stringify(images) : null,
@@ -1343,7 +1361,7 @@ export class Store {
    * for Obeya's makers would start from; with `waits`, one for the sheet waits there unread, as an
    * answer that was looked up does.
    */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) {
+  replyTalk(id: number, reply: string, { lookUp, wish, waits = false, answers = waits }: TalkReply = {}) {
     this.db
       .query('UPDATE talk SET reply = $reply, question = $question, about = $about, wish = $wish, unread = $waits AND card_id IS NULL AND card IS NULL, reply_only = $only WHERE id = $id')
       .run({ id, reply, question: lookUp?.question ?? null, about: lookUp?.about ?? null, wish: wish ? JSON.stringify(wish) : null, waits: waits ? 1 : 0, only: answers && !lookUp && !wish ? 1 : null });

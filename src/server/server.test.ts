@@ -933,7 +933,7 @@ describe('other files', () => {
 
 describe('a walkthrough an answer comes with', () => {
   test("is read by its player, the owner's alone, by its name in the thread's directory; its clips come as the answer's files", async () => {
-    const thread = board.addTalk('wie landet eine karte?', 'Moment.', null, { question: 'How does a card land?', about: null });
+    const thread = board.addTalk('wie landet eine karte?', 'Moment.', { lookUp: { question: 'How does a card land?', about: null } });
     const out = canvas.answerDir(thread);
     mkdirSync(join(out, 'landen.clips'), { recursive: true });
     const w = { title: 'Landen', slides: [{ type: 'title', title: 'Landen', parts: ['Landen.'] }], done: false, clips: [[{ file: '1-1.wav', seconds: 1 }]], clipsDir: 'landen.clips' };

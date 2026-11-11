@@ -11,7 +11,7 @@ import type { Place } from '../core/layout';
 import { type Config, configShape } from './config';
 import { parsePrUrl } from './forge';
 import { folderPath } from './new-repo';
-import type { Mark, Moment, TalkWaitRow } from './db';
+import type { Mark, Moment, TalkReply, TalkWaitRow } from './db';
 import { type AgentRuntime, type AgentSession, failureReason, limitLifts } from './runtime';
 import { type Language, LANGUAGES, ownersLanguage } from '../core/locale';
 import { MESSAGES } from '../core/messages';
@@ -361,7 +361,7 @@ export class Commander {
     const replyTo = card ? this.o.board.quoted(card, input.replyTo)?.id : undefined;
     const quoted = card ? undefined : this.o.board.quotedTalk(input.replyTo);
     // the owner's words stand in the conversation at once, the Coordinator's reply follows once it has read them
-    const talk = this.o.board.addTalk(transcript, '', card ?? null, undefined, images, quoted);
+    const talk = this.o.board.addTalk(transcript, '', { card, images, replyTo: quoted });
     if (card && said) this.o.board.log(card, 'say', 'owner', said, { images, replyTo });
     const held: Held = { transcript, images, focus, input, at: new Date().toISOString() };
     // what the usage limit held is read first, in the order it was said; while the limit holds, these words wait with it
@@ -402,9 +402,9 @@ export class Commander {
     // a reply that only answers (no actions to take back, no answer to look up) waits in the sheet
     // until the owner sees it, as a looked-up answer does: it may come once the sheet is closed; on a
     // card it stands in the conversation, where a confirmation folds away
-    const reply = (confirm: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) => {
-      this.o.board.replyTalk(talk, confirm, lookUp, wish, waits, answers);
-      if (card) this.o.board.log(card, 'say', 'coordinator', confirm, { ...(wish ? { wish } : {}), ...(waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
+    const reply = (confirm: string, how: TalkReply = {}) => {
+      this.o.board.replyTalk(talk, confirm, how);
+      if (card) this.o.board.log(card, 'say', 'coordinator', confirm, { ...(how.wish ? { wish: how.wish } : {}), ...(how.waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
     };
     let decision: Decision;
     try {
@@ -419,7 +419,7 @@ export class Commander {
       // the Coordinator's session failed (not logged in, say): the owner hears why, not that they went unheard
       const t = this.o.board.t;
       const confirm = t.voice.couldNotRead(failureReason(messageOf(e), t));
-      reply(confirm, undefined, undefined, true, false);
+      reply(confirm, { waits: true, answers: false });
       return { confirm };
     }
     // decided after the canvas stopped: nothing of it happens, the words stay held
@@ -445,7 +445,7 @@ export class Commander {
     if (lookUp) {
       // nothing to take back: the answer follows once it is looked up
       const about = lookUp.about ?? card ?? (focus.project && this.o.board.item(focus.project) ? focus.project : undefined);
-      reply(confirm, { question: lookUp.question, about: about ?? null });
+      reply(confirm, { lookUp: { question: lookUp.question, about: about ?? null } });
       if (lookUp.follows) this.o.board.followTalk(talk, lookUp.follows);
       if (lookUp.then) this.o.board.thenTalk(talk, lookUp.then, focus.place);
       this.o.lookUp?.(talk);
@@ -455,7 +455,7 @@ export class Commander {
     // talking about an idea changes nothing that would need taking back: it goes on at once
     const talking = commands.filter((c) => c.do === 'discuss');
     const rest = commands.filter((c) => !talking.includes(c));
-    reply(confirm, undefined, wish, !commands.length);
+    reply(confirm, { wish, waits: !commands.length });
     for (const c of talking) await this.run(c);
     if (!commands.length && said && !decision.wish) this.o.onOwnerInput?.(card, 'talk', said, confirm);
     if (!rest.length) return { confirm, ...drafted };
@@ -721,7 +721,7 @@ export class Commander {
       if (n >= 0) this.o.board.waitTalk(x.id, now.filter((_, i) => i !== n));
       return n >= 0;
     };
-    const talk = this.o.board.addTalk('', '', card ?? null, undefined, [], undefined, after);
+    const talk = this.o.board.addTalk('', '', { card, after });
     const h: Held = {
       transcript: '',
       images: [],
@@ -765,7 +765,7 @@ export class Commander {
 
   private async takeUp(x: Talk & { then: string; answer: string; question: string; thenPlace?: Place }) {
     const card = this.openCard(x.cardId);
-    const talk = this.o.board.addTalk('', '', card ?? null, undefined, x.images ?? [], undefined, undefined, undefined, x.id);
+    const talk = this.o.board.addTalk('', '', { card, images: x.images, answered: x.id });
     const h: Held = {
       transcript: '',
       // the screenshots of the owner's words go with the cards the step creates

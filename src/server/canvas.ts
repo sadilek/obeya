@@ -1747,7 +1747,7 @@ export class CanvasRuntime {
         return this.board.startAt(cardId, a.at === null ? null : this.until(a.at));
       case 'message':
         // a note to a Question card is a question to its agent
-        if (card?.kind === 'question') return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
+        if (card?.kind === 'question') return this.answers.ask(cardId, text.trim(), { images, spoken: !!a.spoken, replyTo });
         return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken, replyTo, this.spot(a.spot), this.decisions(a.findings));
       case 'release':
         return this.repoOf(cardId).workers.released(cardId, !!a.now);
@@ -1807,7 +1807,7 @@ export class CanvasRuntime {
       case 'discard':
         return this.ideas.discard(cardId);
       case 'ask':
-        return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
+        return this.answers.ask(cardId, text.trim(), { images, spoken: !!a.spoken, replyTo });
       case 'consult': {
         // the agent passes a request on in its words; the Coordinator reads the owner's own beside them
         this.said.set(cardId, { text: text.trim(), spoken: !!a.spoken });

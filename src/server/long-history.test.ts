@@ -39,7 +39,7 @@ async function setup(scale: number): Promise<Setup> {
   const history = writeHistory(store, canvas.board.canvas.id, dir, scale);
   const board = canvas.board;
   // the Coordinator waits on a card for a step, and a card is snoozed until another one is done
-  const talk = store.addTalk(board.canvas.id, 'Tell me once it is done.', 'I will.', null);
+  const talk = store.addTalk(board.canvas.id, 'Tell me once it is done.', 'I will.');
   store.waitTalk(talk, [{ card: history.onCanvas[0]!, title: 'Card', state: 'done', then: 'tell the owner' }]);
   board.work(history.onCanvas[1]!, { snoozed: JSON.stringify({ by: 'owner', on: { card: history.onCanvas[2]!, state: 'done' } }) });
   board.changed();

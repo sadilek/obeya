@@ -1321,7 +1321,7 @@ describe('retrospective', () => {
     board.log(a.id, 'state', 'owner', 'Trotz Überschneidung gestartet.');
     const p = board.propose(a.id, { title: 'Emoji-Picker', task: 'S.', reason: 'R.' });
     board.remove(p.id);
-    board.undoTalk(board.addTalk('Lösch die Karte Export.', 'Mache ich.', a.id));
+    board.undoTalk(board.addTalk('Lösch die Karte Export.', 'Mache ich.', { card: a.id }));
     board.rejectProposal(board.proposePreference('Commits auf Englisch.', { cardId: a.id, quote: 'Englisch bitte.' }));
     l1.noticed();
     expect(board.setting('review_inputs')).toBe('2');

@@ -56,8 +56,6 @@ import {
   type Queue,
   type Reshare,
   type TalkQuote,
-  type TalkAfter,
-  type TalkRef,
   type Thread,
   isTalkRef,
   STATES,
@@ -76,13 +74,12 @@ import {
   cardAgentOf,
   storedModel,
 } from '../core/types';
-import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewEvent, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
+import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewEvent, NewRow, NewTalk, RowUpdate, Store, TalkReply, TalkWaitRow } from './db';
 import { fromJson, type DemoRef, type PrState, type SharedDemo, type Shipped, type StoredDemo, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredShare, type StoredThread, toJson } from './row';
 import type { Images } from './images';
 import { sessionHarness } from './runtime';
 import { branchName, CARD_BRANCH } from './branches';
 import { clip, messageOf, oneLine } from '../core/text';
-import type { Wish } from '../core/wish';
 
 /** A card's place in the queue where it waits behind other cards; none otherwise. */
 const waitOf = (r: Pick<CardRow, 'queue'>) => {
@@ -1391,19 +1388,17 @@ export class Board {
    * Records an exchange with the Coordinator, without its reply (`''`) while it reads the words;
    * returns its id. `replyTo`: the message of the sheet the words reply to.
    */
-  addTalk(said: string, reply: string, cardId: string | null = null, lookUp?: { question: string; about: string | null }, images: string[] = [], replyTo?: TalkRef, after?: TalkAfter, askedIn?: string, answered?: number): number {
-    const id = this.store.addTalk(this.canvas.id, said, reply, cardId, lookUp, images, replyTo, after, askedIn, answered);
+  addTalk(said: string, reply: string, talk: NewTalk = {}): number {
+    const id = this.store.addTalk(this.canvas.id, said, reply, talk);
     this.changed();
     return id;
   }
 
   /**
-   * The Coordinator's reply to words it has read, the question it looks up for them, and what a
-   * draft for Obeya's makers would start from; `waits`: unread in the sheet until the owner sees it;
-   * `answers`: it answers them (not that it could not read them).
+   * The Coordinator's reply to words it has read (`TalkReply`).
    */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) {
-    this.store.replyTalk(id, reply, lookUp, wish, waits, answers);
+  replyTalk(id: number, reply: string, how: TalkReply = {}) {
+    this.store.replyTalk(id, reply, how);
     this.changed();
   }
 
