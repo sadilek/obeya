@@ -40,6 +40,9 @@ export const holdsNotes = (i: Pick<Item, 'state' | 'archivedAt'>) => i.state ===
 /** A card that has not been started: planned and not in the queue (a stopped one too). */
 export const notStarted = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !i.queue;
 
+/** What starting `project` starts: its planned workstreams that are not with Obeya yet. */
+export const startable = (project: Pick<Item, 'id'>, items: Item[]) => items.filter((i) => i.parent === project.id && notStarted(i));
+
 /** Whether `card` waits for `id`, directly or through cards it waits for. */
 export function waitsOn(card: Item, id: string, items: Item[]): boolean {
   const byId = new Map(items.map((i) => [i.id, i]));

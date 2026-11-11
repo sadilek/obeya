@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { cardTag } from '../core/card-number';
-import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
+import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, startable, waitsOn } from '../core/queue';
 import { EVICT_HOLD_MS, finished, type Item, nameless, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
 import { ACTIVE, BadRequest, type Board, contributionOf, TITLE_MAX } from './board';
 import { type AgentRuntime, readSession, waitQuietly } from './runtime';
@@ -203,7 +203,7 @@ export class Coordinator {
    * few seconds, so the owner can take the start back (`dequeue` on the project).
    */
   private requestAll(project: Item): void {
-    const open = this.o.board.items().filter((i) => i.parent === project.id && i.state === 'planned' && !i.queue);
+    const open = startable(project, this.o.board.items());
     if (!open.length) throw new BadRequest('nothingToStart', 'the project has no planned workstream left to start');
     // one the owner set aside to start later goes with them, so a workstream building on it waits for it
     for (const w of open) if (w.snoozed?.start) this.o.board.unsnooze(w.id, 'owner');
@@ -285,18 +285,15 @@ export class Coordinator {
               });
             }
             const missing = kids.filter((k) => !finished(k.state) && !(keys.get(k.id)! in found));
-            if (missing.length) return `Every open workstream once, please: missing ${missing.map((k) => tagOf(tags, k.id)).join(', ')}. Call dependencies again with all of them.`;
+            if (missing.length) return `Every open workstream once, please: missing ${missing.map((k) => cardTag(k.number)).join(', ')}. Call dependencies again with all of them.`;
             on = found;
             return finish('Recorded. End your turn now.');
           },
         },
       ],
       brief: [
-        `The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`,
-        project.plan?.goal ? `Goal: ${project.plan.goal}` : '',
-        `Its workstreams, in the plan's order:\n${kids
-          .map((k) => `- ${tagOf(tags, k.id)}${finished(k.state) ? ' (delivered)' : ''}: ${k.label ? `${k.label} ` : ''}"${k.title}"${k.body ? ` — ${k.body.replace(/\s+/g, ' ').slice(0, 600)}` : ''}`)
-          .join('\n')}`,
+        ...projectHeader(project),
+        `Its workstreams, in the plan's order:\n${kids.map((k) => `- ${cardTag(k.number)}${finished(k.state) ? ' (delivered)' : ''}: ${named(k)}${bodyCut(k, 600)}`).join('\n')}`,
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -799,7 +796,7 @@ export class Coordinator {
           },
         },
       ],
-      brief: await this.brief(card, active, ahead, pending, tags),
+      brief: await this.brief(card, active, ahead, pending),
     });
     if (!scope) throw new Error(error ?? 'no estimate');
     return scope;
@@ -851,7 +848,7 @@ export class Coordinator {
               });
             }
             const missing = batch.filter((w) => !seen.has(w.id));
-            if (missing.length) return `Every ${noun} once, please: missing ${missing.map((w) => tagOf(tags, w.id)).join(', ')}. Call schedule again with all of them.`;
+            if (missing.length) return `Every ${noun} once, please: missing ${missing.map((w) => cardTag(w.number)).join(', ')}. Call schedule again with all of them.`;
             plan = order;
             return finish('Recorded. End your turn now.');
           },
@@ -860,22 +857,19 @@ export class Coordinator {
       brief: [
         ...(project
           ? [
-              `The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`,
-              project.plan?.goal ? `Goal: ${project.plan.goal}` : '',
-              `Its workstreams to schedule, in the plan's order:\n${batch
-                .map((w) => `- ${tagOf(tags, w.id)}: ${w.label ? `${w.label} ` : ''}"${w.title}"${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 600)}` : ''}`)
-                .join('\n')}`,
+              ...projectHeader(project),
+              `Its workstreams to schedule, in the plan's order:\n${batch.map((w) => `- ${cardTag(w.number)}: ${named(w)}${bodyCut(w, 600)}`).join('\n')}`,
             ]
           : [
               `The cards to schedule, freed at once, in their order in the queue, which the owner may have set: keep it where neither a dependency nor a likely conflict asks for another:\n${batch
                 .map((w) => {
                   const of = w.parent ? this.o.board.item(w.parent) : undefined;
                   const where = of?.plan ? ` (workstream ${w.label ?? ''} of the project "${of.title}", plan doc ${of.plan.file})` : '';
-                  return `- ${tagOf(tags, w.id)}: ${w.kind} "${w.title}"${where}${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 1500)}` : ''}`;
+                  return `- ${cardTag(w.number)}: ${w.kind} "${w.title}"${where}${bodyCut(w, 1500)}`;
                 })
                 .join('\n')}`,
             ]),
-        ...(await this.others(batch[0]!, active, ahead, tags)),
+        ...(await this.others(batch[0]!, active, ahead)),
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -884,20 +878,20 @@ export class Coordinator {
     return plan;
   }
 
-  private async brief(card: Item, active: Item[], ahead: Item[], pending: Item[], tags: Map<string, string>): Promise<string> {
+  private async brief(card: Item, active: Item[], ahead: Item[], pending: Item[]): Promise<string> {
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
-    const siblings = [...active, ...ahead].filter((a) => a.parent === card.parent).map((a) => tagOf(tags, a.id));
+    const siblings = [...active, ...ahead].filter((a) => a.parent === card.parent).map((a) => cardTag(a.number));
     const lines = [
       `The card to start: ${card.kind} "${card.title}".`,
       card.body.trim(),
       project?.plan ? `It is workstream ${card.label ?? ''} of the project "${project.title}"; plan doc ${project.plan.file}.` : '',
-      ...(await this.others(card, active, ahead, tags)),
+      ...(await this.others(card, active, ahead)),
       siblings.length ? `Of these, workstreams of the same project: ${siblings.join(', ')}.` : '',
       pending.length
         ? `The project's other workstreams that have not landed, neither in progress nor queued ahead:\n${pending
             .map((w) => {
               const state = notStarted(w) ? (w.branch ? 'stopped by the owner, not running' : 'not started') : 'queued after this card';
-              return `- ${tagOf(tags, w.id)}: ${w.label ? `${w.label} ` : ''}"${w.title}" (${state})${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`;
+              return `- ${cardTag(w.number)}: ${named(w)} (${state})${bodyCut(w, 300)}`;
             })
             .join('\n')}`
         : '',
@@ -906,23 +900,26 @@ export class Coordinator {
   }
 
   /** The cards in progress and queued ahead, as a turn of the Coordinator reads them. */
-  private async others(card: Item, active: Item[], ahead: Item[], tags: Map<string, string>): Promise<string[]> {
+  private async others(card: Item, active: Item[], ahead: Item[]): Promise<string[]> {
     const folder = !!this.o.repoFor(card).folder;
     // in a folder nothing is merged later: every path counts
     const soft = folder ? [] : this.o.repoFor(card).adapter.softPaths;
     const described = folder ? (c: Change) => `${c.file} (${c.regions[0] ?? 'changed'})` : describe;
     const hard = (f: string) => !soft.some((s) => overlaps(normalize(f), s));
+    /** A card in progress or ahead: its tag, title and first line, and what it is expected to change. */
+    const head = (a: Item) => [
+      `- ${cardTag(a.number)}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
+      `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+    ];
     // git reads the branches side by side, without holding up the server
     const changes = await Promise.all(active.map((a) => this.o.repoFor(a).workspaces.changes(a.id)));
     return [
       active.length
         ? `Cards in progress:\n${active
             .map((a, n) => {
-              const tag = tagOf(tags, a.id);
               const changed = changes[n]!.filter((c) => hard(c.file));
               return [
-                `- ${tag}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
-                `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+                ...head(a),
                 `  changed so far: ${changed.length ? changed.slice(0, 60).map(described).join(', ') : '(nothing yet)'}`,
               ].join('\n');
             })
@@ -935,8 +932,7 @@ export class Coordinator {
               const waitsFor =
                 'behind' in q ? q.behind.map((id) => `"${this.o.board.item(id)?.title ?? id}"`).join(', ') : 'workspace' in q ? 'a free workspace (its start is decided)' : 'paused' in q ? "the owner to resume the canvas's paused agents (its start is decided)" : '';
               return [
-                `- ${tagOf(tags, a.id)}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
-                `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+                ...head(a),
                 `  waits for: ${waitsFor || 'your decision'}`,
               ].join('\n');
             })
@@ -1089,8 +1085,14 @@ const unlanded = (i?: Item) => !!i && !finished(i.state) && !i.archivedAt;
 /** Whether two lists hold the same cards. */
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
-/** The tag a turn of the Coordinator knows a card by. */
-const tagOf = (tags: Map<string, string>, id: string) => [...tags].find(([, x]) => x === id)![0];
+/** A project as a turn of the Coordinator reads it above its workstreams: its title and plan doc, and its goal (empty without one). */
+const projectHeader = (project: Item) => [`The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`, project.plan?.goal ? `Goal: ${project.plan.goal}` : ''];
+
+/** A workstream by its label and title, as a turn of the Coordinator reads it. */
+const named = (w: Item) => `${w.label ? `${w.label} ` : ''}"${w.title}"`;
+
+/** A card's body on one line, cut at `cut` characters, behind a dash; nothing without one. */
+const bodyCut = (w: Item, cut: number) => (w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, cut)}` : '');
 
 const normalize = (p: string) => p.trim().replace(/^\.\//, '').replace(/^\/+/, '');
 

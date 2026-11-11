@@ -18,7 +18,7 @@ import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, aw
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, DEMO_LOOK_MS, TITLE_MAX, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
-import { type Command, Commander } from './commands';
+import { type Command, Commander, reaches } from './commands';
 import type { Config } from './config';
 import type { Store } from './db';
 import { Explorers } from './explorers';
@@ -1636,11 +1636,10 @@ export class CanvasRuntime {
     const card = this.board.item(cardId);
     const task = !steps.length && card && card.state !== 'proposal' && (card.body.trim() || card.title.trim());
     const said = this.said.get(cardId) ?? (before ? { text: before.text, spoken: false } : task ? { text: task, spoken: false, task: true } : undefined);
-    const later = steps.length ? ` Obeya itself takes these steps once your card ${steps.map((w) => `${w.state === 'done' ? 'is done' : 'waits for the owner'}: ${w.then.replace(/[.\s]+$/, '')}`).join('; ')}. If you asked for one of them, it is not missing: leave it to Obeya.` : '';
+    const later = steps.length ? ` Obeya itself takes these steps once your card ${steps.map((w) => `${reaches(w.state)}: ${w.then.replace(/[.\s]+$/, '')}`).join('; ')}. If you asked for one of them, it is not missing: leave it to Obeya.` : '';
     if (!said) return `Nothing passed on: the owner has said nothing on your card. to_obeya passes on the owner's own words.${later}`;
     const h = await this.commander.forward(cardId, request, said);
-    if (h.token) this.commander.arm(h.token);
-    this.board.notify({ cardId, text: h.confirm, ...(h.token ? { token: h.token, undoMs: this.commander.delayMs } : {}), ...(h.wish ? { wish: h.wish } : {}) });
+    this.commander.announce(h, cardId);
     // the agent learns what the owner finds under the answer
     if (h.wish) return `${h.confirm} (A draft for Obeya's makers opened for the owner to check and send on GitHub.)`;
     if (h.cannot) return `${h.confirm} (Obeya lacks this; under this answer the owner finds a link to send it to Obeya's makers as a wish.)`;

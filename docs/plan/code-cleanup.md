@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W6, W13, W14 and W16 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W6 and W13 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -163,7 +163,7 @@ the workstream named does it for all of them.
 - [x] **W6:** Small shared server helpers, each written once. A value with listeners
   ([runtimes](code-cleanup/runtimes.md) B5, http-config F6); kept a
   while and asked once (B6, workspaces-git-hosts E9, E10); a
-  promise against a timer (B9, [canvas-coordinator](code-cleanup/canvas-coordinator.md) D15); "does
+  promise against a timer (B9, canvas-coordinator D15); "does
   this pid run" (B18); core's text helpers at their call sites ([core](code-cleanup/core.md) J5,
   D13, B14); a time within the coming year ([workers](code-cleanup/workers.md) A15, D12); text
   limits and two small registries ([board-db](code-cleanup/board-db.md) C15, C19); "answer first,
@@ -194,12 +194,13 @@ the workstream named does it for all of them.
   contract; the Claude Code runtime moves to a `claude.ts` beside `codex.ts`, the shell reader to
   `shell.ts`), B2 (one idle Claude Code session), B7, B8, B10, B13, B15, B16, B19.
 - [x] **W14:** `canvas.ts` and `coordinator.ts` by subject.
-  [canvas-coordinator](code-cleanup/canvas-coordinator.md) D1 (configuration, the set of canvases,
+  canvas-coordinator D1 (configuration, the set of canvases,
   the repository lifecycle and the owner's card actions as modules), D2 (the learner out of the
   coordinator, `readSession` to the runtime), D5, D6, D9, D10, D11. After W3.
-- [ ] **W15:** The commands. [canvas-coordinator](code-cleanup/canvas-coordinator.md) D3
+- [x] **W15:** The commands. canvas-coordinator D3
   (`Commander.command()` with a method per action instead of one chain of 240 lines), D4 (the notice
-  for a late reply and the open-card check once), D7, D8, D14, D16.
+  for a late reply and the open-card check once), D7, D8, D14, D16. Its findings file is gone, every
+  finding in it done.
 - [x] **W16:** The HTTP server and the configuration. http-config F1
   (`serve()` split into the pages' fan-out, the voice pipeline and route groups), F2 (`serve(served,
   port, deps)` instead of 17 positional parameters), F3 (the demo-settings dialog out of `Config`),
@@ -253,7 +254,7 @@ the workstream named does it for all of them.
 | [workers.md](code-cleanup/workers.md) | A: `workers.ts` and its small neighbours | 18 | 1 | 7 | 10 |
 | [runtimes.md](code-cleanup/runtimes.md) | B: the agent runtimes | 21 | 1 | 5 | 15 |
 | [board-db.md](code-cleanup/board-db.md) | C: board and database | 19 | 3 | 4 | 12 |
-| [canvas-coordinator.md](code-cleanup/canvas-coordinator.md) | D: canvas, commands, coordinator | 16 | 1 | 3 | 12 |
+| canvas-coordinator.md (done, deleted) | D: canvas, commands, coordinator | 16 | 1 | 3 | 12 |
 | workspaces-git-hosts.md (all done, deleted) | E: workspaces, git, forges, hosts | 17 | 3 | 5 | 9 |
 | http-config.md (all done, deleted) | F: HTTP server, startup, configuration | 19 | 1 | 4 | 14 |
 | share-site-demo.md (done, deleted) | S: sharing, demo sites, demo pages | 22 | 0 | 5 | 17 |
