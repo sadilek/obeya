@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W5 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W6 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -160,7 +160,7 @@ the workstream named does it for all of them.
   sentence in `docs/design/agents-and-workspaces.md` in the same change), E5 (`workspaces.ts` as
   three modules), E3 (one parser for a remote URL), E6 ("is A an ancestor of B"), E8, E14. Update
   `sync-calls.test.ts` with it.
-- [ ] **W6:** Small shared server helpers, each written once. A value with listeners
+- [x] **W6:** Small shared server helpers, each written once. A value with listeners
   ([runtimes](code-cleanup/runtimes.md) B5, [http-config](code-cleanup/http-config.md) F6); kept a
   while and asked once (B6, [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E9, E10); a
   promise against a timer (B9, [canvas-coordinator](code-cleanup/canvas-coordinator.md) D15); "does

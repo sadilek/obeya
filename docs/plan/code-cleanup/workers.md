@@ -393,6 +393,9 @@ prompt sentences). `stalls.ts`, `workers-fixture.ts` and `patience.ts` are clean
 - Win: about 8 lines; the rule once.
 - Risk: low.
 - Confidence: high (all four read).
+- Done by W6: `laterTime(at, now?)` beside `SNOOZE_LIMIT` in `core/types.ts` (which no longer
+  needs exporting); `propose_card`, `snooze`, `new_card`, the assistant's `snooze` and
+  `CanvasRuntime.until` call it.
 
 ### A16. A turn is started on a live session in three places
 - Principle: DRY

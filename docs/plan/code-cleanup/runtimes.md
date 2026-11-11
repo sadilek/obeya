@@ -185,6 +185,11 @@ class (8×), the refresh-after-a-while cache (4×).
   `app-update`/`source-update` tests subscribe through `onChange`.
 - Confidence: high; grepped `onChange(fn: () => void): () => void` and `JSON.stringify(…) ===
   JSON.stringify(this.last)` over `src`, read each class.
+- Done by W6 with F6: `Listeners` and `Watched<T>` in `src/core/watched.ts` (core, so the UI's
+  stores of W20 can take them too). `AppUpdates`, `SourceUpdates` and `UsageMeter` extend
+  `Watched`; `UsageMeters`, `Harnesses`, `Restarter` and `Canvases` extend `Listeners`. `Board`
+  keeps its own: it tells its listeners after the change, once for many, and catches what each
+  throws.
 
 ### B6. Four hand-rolled "kept a while, asked again behind it" caches
 - Principle: KISS
@@ -219,6 +224,10 @@ class (8×), the refresh-after-a-while cache (4×).
   it), so the helper needs that one switch. `harnesses.test.ts` and `skills.test.ts` (injected
   `now`) cover TTL, single flight and failure.
 - Confidence: medium; read all four, the shape of the helper is a proposal.
+- Done by W6: `Kept<T>` in `src/core/kept.ts` (`get`, `last`, `fresh`, `expire`; `forget` for a
+  failure that drops the value). The class `Install` in `harnesses.ts` holds its models and npm's
+  newest as `Kept`; `Skills` keeps a `Kept` per place. `Harnesses.codexModels` stays: the view
+  waits for Codex's list on purpose.
 
 ### B7. How a Codex step is named as a Claude Code tool call is stated three times, the shell wrapper three times
 - Principle: DRY
@@ -294,6 +303,10 @@ class (8×), the refresh-after-a-while cache (4×).
 - Risk: low; error texts stay when passed as `message`. Covered by `codex.test.ts` (model catalog
   timeout), `skills.test.ts`, `runtime.test.ts` (`mcpSettled`).
 - Confidence: high; grepped `Promise.race(` over `src`.
+- Done by W6 with D15: `within` (undefined when time is up) and `withTimeout` (rejects, with a
+  message of its own) in `src/core/late.ts`. Besides the seven sites, the four races against
+  `Bun.sleep` (`narration.ts` twice, the eviction in `workers.ts`, the harness look in `main.ts`)
+  use `within` too.
 
 ### B10. `Explorers.send` takes six positional arguments, three of them flags or lists
 - Principle: KISS
@@ -383,6 +396,7 @@ class (8×), the refresh-after-a-while cache (4×).
 - Win: readability.
 - Risk: low.
 - Confidence: high.
+- Done by W6 with J5.
 
 ### B15. Replay's stub sessions and its refusal text are written twice
 - Principle: DRY
@@ -461,6 +475,8 @@ class (8×), the refresh-after-a-while cache (4×).
 - Risk: low; `test-setup.ts` is preloaded by `bun test`, so it must import nothing heavy: `spawn.ts`
   is already imported there.
 - Confidence: high.
+- Done by W6: `alive(pid)` in `spawn.ts`, imported by `instance.ts`, `demo-space.ts` and
+  re-exported by `testing.ts` (which `test-setup.ts` already took it from).
 
 ### B19. `ProjectAgents.inform` unpacks its options only to pack them again
 - Principle: KISS

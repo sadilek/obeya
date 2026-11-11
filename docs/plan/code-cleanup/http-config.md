@@ -191,6 +191,7 @@ test for "these commits change code" (F16).
 - Risk: low. `server.test.ts:978-1136` covers the update, source and usage messages.
 - Confidence: high (read all three in the slice, found the others by grep of `onChange(fn: () =>
   void)`).
+- Done by W6 with B5.
 
 ### F7. "Only on this machine" is written inline in eight routes
 - Principle: DRY
@@ -297,6 +298,10 @@ test for "these commits change code" (F16).
 - Confidence: medium. I read all five places, not the tests' timing.
 - Bug fixed (W1 of the bug plan): `/api/app-update` with `rebuilt: true` now waits 100 ms too, a
   sixth timer for `go` to take over.
+- Done by W6: `go` in `main.ts` waits 100 ms for every reason; the four routes and the
+  configuration's `restart` call the `Restarter` (or `stop`) directly. The server test of the
+  rebuilt shell no longer checks that the route waits, since the route does not: it checks that
+  the update goes ahead at once with no worker busy.
 
 ### F12. `Config` repeats lookups and calls inside itself
 - Principle: DRY

@@ -392,6 +392,10 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
   stricter environment changes nothing where no dialog would have opened.
 - Confidence: medium (read all three; not checked whether a prompt can in fact open in the host
   path today).
+- Done by W6: `gitCredential(cwd, input, git?)` and `LOGIN_TTL` in `git.ts`, with Forgejo's
+  environment and its 15 s limit; `githubToken` moved beside it from `hosts.ts`, which `git.ts`
+  imports (the other way round would be a cycle). gh's token cache in `forge.ts` takes
+  `LOGIN_TTL`. The three cache policies stay.
 
 ### E10. `onPath` is `oneAtATime`; "share the call in flight" is written out at six places
 - Principle: DRY
@@ -420,6 +424,9 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
   the double undo.
 - Confidence: high for `onPath` (compared line by line); medium for `shared` (the copies differ in
   when they delete: `looking` deletes inside its `then`, before notifying).
+- Done by W6: `onPath` went for `oneAtATime(busyPaths, …)`; `shared(running, key, fn)` beside
+  `oneAtATime` serves `looking` (which still leaves the map before the board hears of the look),
+  `mains`, `undoing` and `reading` (a `WeakMap`).
 
 ### E11. Rules about PR comments are stated once per forge instead of above the interface
 - Principle: DRY

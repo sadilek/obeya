@@ -193,6 +193,11 @@ sites.
 - Risk: low; pure functions, same expressions.
 - Confidence: high (every listed site read in the grep output; `tag-proposal.ts:148` differs and is
   named as such).
+- Done by W6: `oneLine`, `clip` and `messageOf` at the sites (and at a few more the grep found:
+  `board.ts`'s quote, `demo.ts`'s chapter text, `reply.ts`); `answer.ts`'s `oneLine` and
+  `push.ts`'s `clipped` went; `plainText` is in `core/text.ts`; `tag-proposal.ts`'s different
+  cut is `cutAt`. `caption-pages.ts` keeps its expression: a shared demo page carries its
+  functions as source, so each holds all it needs.
 
 ### J6. The fields of a repository's settings are listed by hand in parallel, one list unchecked
 - Principle: DRY

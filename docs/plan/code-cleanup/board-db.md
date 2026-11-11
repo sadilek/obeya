@@ -365,6 +365,9 @@ across the server.
 - Win: three named limits.
 - Risk: low.
 - Confidence: high.
+- Done by W6: `TITLE_MAX`, `BODY_MAX` and `NOTE_MAX` in `board.ts`, also used for the PR card's
+  title in `canvas.ts`, the merge in `commands.ts` and the Coordinator's card title. The excerpt of
+  a quoted reply (2,000) and the wish's issue title (200) are other limits and keep their numbers.
 
 ### C16. `Store.folderCards` has no caller
 - Principle: YAGNI
@@ -429,6 +432,10 @@ across the server.
 - Confidence: medium-high. Both pairs read. (`tag-proposal.ts:148` also has a local `clip` beside
   `core/text.ts:4`; they cut differently, `n` characters plus ` …` against `n-1` plus `…`, and the
   text goes to an agent, so it stays.)
+- Done by W6 in part: `remote.ts` imports `cookie` from `owner.ts`. The job registry was dropped:
+  what the two share is `job` and `doneWith`, two one-line methods; their starts differ (a second
+  start is returned or refused, the job is replaced or logs into itself while it runs), so a
+  `Jobs` class would carry a switch for each and be larger than the copies.
 
 ## Justified (looks redundant or complex, but has a reason; leave it)
 - `src/server/db.ts:395-417` the first migration (shapes of an Obeya before the release) and

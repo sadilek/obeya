@@ -280,6 +280,7 @@ clean apart from two small items (D13, D15).
 - Confidence: high. `SNOOZE_LIMIT` appears in `commands.ts` only at `:1088`.
 - Bug fixed (W1 of the bug plan): `snooze` refuses a time more than `SNOOZE_LIMIT` ahead with
   `new_card`'s message, so `futureTime` changes nothing the assistant is told.
+- Done by W6 with A15: `laterTime` serves `new_card` and `snooze` alike, each with its words.
 
 ### D13. `oneLine` and `clip` from `core/text` spelt out inline
 - Principle: DRY
@@ -294,6 +295,7 @@ clean apart from two small items (D13, D15).
 - Win: one local helper and seven regular expressions.
 - Risk: low.
 - Confidence: high. I compared `clipped` with `clip` and each site with `oneLine`.
+- Done by W6 with J5.
 
 ### D14. Phrases and filters of the waits restated in `commands.ts`
 - Principle: DRY
@@ -334,6 +336,7 @@ clean apart from two small items (D13, D15).
 - Win: about 30 lines over the seven places.
 - Risk: low. Each place keeps its own message for the late case.
 - Confidence: high. I read all seven.
+- Done by W6 with B9.
 
 ### D16. The Coordinator's briefs format a card's line six times
 - Principle: DRY
