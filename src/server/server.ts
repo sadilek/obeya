@@ -791,7 +791,7 @@ function fileRoutes(x: Routing) {
       POST: here(
         on(async (c, req) => {
           const { file } = await someFields(req);
-          await c.openAnswerFile(Number(req.params.thread), typeof file === 'string' ? file : undefined);
+          await c.openAnswerFile(Number(req.params.thread), file as string | undefined);
         }),
       ),
     },
