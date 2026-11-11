@@ -550,7 +550,14 @@ export interface Item {
 }
 
 /** A year: no card is snoozed longer, nor set to start later than that. */
-export const SNOOZE_LIMIT = 366 * 24 * 60 * 60_000;
+const SNOOZE_LIMIT = 366 * 24 * 60 * 60_000;
+
+/** Whether a card can be snoozed until or set to start at `at` (ms; NaN: no time): only within the coming year. */
+export function laterTime(at: number, now = Date.now()): 'none' | 'past' | 'far' | 'ok' {
+  if (Number.isNaN(at)) return 'none';
+  if (at <= now) return 'past';
+  return at > now + SNOOZE_LIMIT ? 'far' : 'ok';
+}
 
 /**
  * A card set aside until a point in time (`CardRow.snoozed`): by its worker, which has nothing to do

@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import { type AgentSetting, agentListens, answering, askable, type Awaited, awaited, type AwaitedState, awaitsContributorNext, blocksSaving, type CanvasConfig, finished, handedOver, type Item, type NextStep, type Notice, openQuestions, pausableNow, plannableAsProject, halted, untouched, snoozable, SNOOZE_LIMIT, type Queue, type SpotInput, type Talk, type TalkAfter, type TalkQuote, type TalkRef } from '../core/types';
+import { type AgentSetting, agentListens, answering, askable, type Awaited, awaited, type AwaitedState, awaitsContributorNext, blocksSaving, type CanvasConfig, finished, handedOver, type Item, type NextStep, type Notice, openQuestions, pausableNow, plannableAsProject, halted, untouched, snoozable, laterTime, type Queue, type SpotInput, type Talk, type TalkAfter, type TalkQuote, type TalkRef } from '../core/types';
 import { holdsNotes, notStarted } from '../core/queue';
 import { answerTag, fromAnswerTag } from './answers';
 import { cardNumbersIn, cardTag, NUMBERS_SINCE, numberOfTag } from '../core/card-number';
@@ -1114,9 +1114,10 @@ export class Commander {
       const from = a.card ? this.cardOf(a.card) : undefined;
       if (a.card && (!from || !this.o.board.item(from))) return `no card ${a.card}; give the card a follow-up comes from, or none`;
       const until = a.until?.trim() ? localTime(a.until) : undefined;
-      if (until !== undefined && Number.isNaN(until)) return 'until is no time: the local time as YYYY-MM-DDTHH:MM';
-      if (until !== undefined && until <= Date.now()) return 'that time has passed: leave until out to start it now';
-      if (until !== undefined && until > Date.now() + SNOOZE_LIMIT) return 'until lies more than a year ahead';
+      const when = until === undefined ? 'ok' : laterTime(until);
+      if (when === 'none') return 'until is no time: the local time as YYYY-MM-DDTHH:MM';
+      if (when === 'past') return 'that time has passed: leave until out to start it now';
+      if (when === 'far') return 'until lies more than a year ahead';
       return { do: 'newCard', title: a.title.trim(), body: a.body ?? '', start: a.start !== false, ...(until !== undefined ? { until: new Date(until).toISOString() } : {}), ...(repo ? { repo } : {}), ...(from ? { from } : {}), ...there };
     }
     const id = a.card ? this.cardOf(a.card) : undefined;
@@ -1227,9 +1228,10 @@ export class Commander {
         }
         if (!snoozable(card)) return `the card is neither planned, at work nor waiting for the owner, so there is nothing to snooze (${is})`;
         const at = a.until ? localTime(a.until) : NaN;
-        if (Number.isNaN(at)) return 'until is missing: the local time as YYYY-MM-DDTHH:MM';
-        if (at <= Date.now()) return 'that time has passed';
-        if (at > Date.now() + SNOOZE_LIMIT) return 'until lies more than a year ahead';
+        const when = laterTime(at);
+        if (when === 'none') return 'until is missing: the local time as YYYY-MM-DDTHH:MM';
+        if (when === 'past') return 'that time has passed';
+        if (when === 'far') return 'until lies more than a year ahead';
         return { do: 'snooze', card: card.id, until: new Date(at).toISOString() };
       }
       case 'wake':
