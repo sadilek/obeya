@@ -193,7 +193,7 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   marks.forEach((m, i) => {
     const end = sceneEnd(i);
     const silent = end - m.speechEnd - GAP_SECONDS;
-    const idle = silent > SILENCE_WARN ? `  ← ${Math.round(silent)} s without narration: cut it with d.skip where it only waits` : '';
+    const idle = silent > SILENCE_WARN ? `  ← ${Math.round(silent)} s without narration: cut it with d.skip where it only waits, else let the narration say what happens` : '';
     console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}${idle}`.trimEnd());
     for (const line of heard.stumbled[i] ?? []) console.log(`               ${line}`);
   });
