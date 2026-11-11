@@ -617,6 +617,13 @@ function canvasRoutes(x: Routing) {
         return c.preparePlanDoc(String(repo), String(file));
       }),
     },
+    // "Commit to a new branch and free the clone" on a clone that uncommitted changes block, in the Workspaces list
+    '/api/c/:canvas/workspaces/leftovers': {
+      POST: on(async (c, req) => {
+        const { repo, host, path } = await fields(req);
+        return c.keepLeftovers(String(repo), String(host), String(path));
+      }),
+    },
     // the owner moved the note on a repository's plan directory
     '/api/c/:canvas/plan-dirs/:repo': {
       PATCH: on(async (c, req) => c.board.movePlanDirNote(req.params.repo!, await req.json())),

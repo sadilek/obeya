@@ -1034,6 +1034,14 @@ function Canvas({
       showAck(e instanceof ApiError && e.code === 'notEvictable' ? t.voice.tooLate : failText(e));
     }
   }, []);
+  /** "Commit to a new branch and free the clone" on a clone uncommitted changes block: it takes effect at once, the leftovers on a branch of their own. */
+  const keepLeftovers = useCallback(async (repo: string, host: string, path: string) => {
+    try {
+      showAck(t.workspaces.leftoversKept((await api.keepLeftovers(repo, host, path)).branch));
+    } catch (e) {
+      fail(e);
+    }
+  }, []);
   const takeWorkspace = useCallback(async (i: Item) => {
     try {
       await api.act(i.id, { action: 'takeWorkspace' });
@@ -2104,7 +2112,7 @@ function Canvas({
             {online && source && <SourcePill source={source} />}
             {online && usage && <UsagePill usage={usage} />}
             <CostsPill total={snapshot.spent} items={items} onOpen={open} />
-            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => goTo(cardPath(c, card))} onTake={takeWorkspace} onKeep={keepWorkspace} />}
+            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => goTo(cardPath(c, card))} onTake={takeWorkspace} onKeep={keepWorkspace} onLeftovers={keepLeftovers} />}
             <button className={cOn ? 'pill kpill config on' : 'pill kpill config'} title={t.config.button} onClick={toggleConfig}>
               <BarIcon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
               <span className="lbl">{t.config.button}</span>

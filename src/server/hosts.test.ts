@@ -353,7 +353,7 @@ describe('clones on a host', () => {
     // a free clean one goes from the host's disk; one with work not landed stays, and the pool says so. Each is
     // looked at through git over ssh, twice: a second here, over three on a busy CI runner
     await until(() => !existsSync(join(dir, 'far', '2')) && spaces.pool([]).some((h) => h.kept?.length), 10_000);
-    expect(spaces.pool([]).find((h) => h.name === name)?.kept).toEqual([join(dir, 'far', '3')]);
+    expect(spaces.pool([]).find((h) => h.name === name)?.kept?.map((k) => k.path)).toEqual([join(dir, 'far', '3')]);
     // while the host does not answer, the clone a card gives back stays; the next start looks again
     writeFileSync(join(dir, 'net', 'down'), '');
     spaces.release(a);

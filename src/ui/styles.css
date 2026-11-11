@@ -449,9 +449,13 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.workspaces .ws-path { grid-column: 2; font: 12px/1.4 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   direction: rtl; text-align: left; }
 .pill.workspaces .ws-card { grid-column: 2; overflow-wrap: anywhere; }
-.pill.workspaces .ws-card .from, .prefs .occasion .from, .proposals .setting-edit .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
-.pill.workspaces .ws-card .from:hover { text-decoration-color: currentColor; }
+.pill.workspaces .ws-card .from, .pill.workspaces .tip p.warn .from, .prefs .occasion .from, .proposals .setting-edit .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.pill.workspaces .ws-card .from:hover, .pill.workspaces .tip p.warn .from:hover { text-decoration-color: currentColor; }
 .pill.workspaces .btn.ws-take { margin-left: 8px; padding: 2px 9px; font-size: 12px; font-weight: 500; vertical-align: 1px; }
+/* under a clone its leftovers block: the button that commits them to a branch and frees it, and what it does */
+.pill.workspaces .ws-leftovers { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin: 8px 0 2px; }
+.pill.workspaces .ws-leftovers .btn.ws-take { margin-left: 0; flex: none; }
+.pill.workspaces .ws-leftovers .hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
 /* the rare action of giving a card's clone away sits behind a faint "⋯" */
 .pill.workspaces .ws-more { margin-left: 6px; padding: 0 5px; border: 0; border-radius: 3px; background: none; color: var(--muted); opacity: .55; cursor: pointer; font-size: 13px; line-height: 1.2; }
 .pill.workspaces .ws-more:hover, .pill.workspaces .ws-more[aria-expanded="true"] { opacity: 1; background: var(--chip); }

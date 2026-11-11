@@ -3,12 +3,13 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { KeptClone } from '../core/types';
 import type { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
 import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
-import { addTrailer, originFetch, unlanded, Workspaces } from './workspaces';
+import { addTrailer, originFetch, statusEntries, unlanded, Workspaces } from './workspaces';
 import { defaultBranch } from './branches';
 import { git, hasCommit, isAncestor } from './git';
 
@@ -306,12 +307,106 @@ describe('free clones', () => {
     expect(await lease.ready!).toBe(two);
     expect(spaces.leasedBy(a)).toBe(two);
     expect(git(two, 'branch', '--show-current')).toBe('obeya/a');
-    // the dirty one is free, and known as dirty: no card takes it until it is clean
+    // the dirty one is free, and known as dirty: no card takes it while it is
     expect(spaces.list().find((w) => w.path === one)!.card_id).toBeNull();
     expect(spaces.leasable()).toBe(false);
     const b = board.create({ title: 'B', x: 0, y: 0 }).id;
     expect(() => spaces.lease(b, 'obeya/b')).toThrow(expect.objectContaining({ code: 'dirtyWorkspaces' }));
+    // a card wanted it: Obeya keeps what was left there on a branch of its own, and the clone is free
+    await until(() => spaces.leasable());
+    expect(existsSync(join(one, 'stray.txt'))).toBe(false);
+    const [kept] = git(one, 'branch', '--list', '--format=%(refname:short)', 'obeya-leftovers/*').split('\n') as [string];
+    expect(kept).toMatch(/^obeya-leftovers\/main-\d{8}-\d{6}$/);
+    expect(git(one, 'show', `${kept}:stray.txt`)).toBe('x');
+    expect(git(one, 'log', '-1', '--format=%B', kept)).toContain('Obeya-Kept: leftovers');
+    expect(git(one, 'branch', '--show-current')).toBe('main');
+    const taken = spaces.lease(b, 'obeya/b');
+    expect(taken.path).toBe(one);
+    expect(await taken.ready).toBe(one);
+  }, 20_000);
+
+  test('"Commit to a new branch and free the clone" keeps changed and new files on a branch; line endings alone it drops', async () => {
+    const { board, spaces } = await setup();
+    const a = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const lease = spaces.lease(a, 'obeya/a');
+    await lease.ready;
+    const path = spaces.leasedBy(a)!;
+    // a held clone is the card's own
+    expect(await spaces.keepLeftovers(path)).toBeNull();
+    spaces.release(a);
+    expect(await spaces.keepLeftovers(path)).toBe('');
+    writeFileSync(join(path, 'README.md'), 'changed\n');
+    writeFileSync(join(path, 'notes.txt'), 'mine\n');
+    // as the pool names it: its path there and the machine
+    const branch = (await spaces.keepLeftovers(path, spaces.pool([])[0]!.name))!;
+    expect(branch).toMatch(/^obeya-leftovers\/obeya\/a-/);
+    expect(git(path, 'status', '--porcelain')).toBe('');
+    expect(git(path, 'branch', '--show-current')).toBe('obeya/a');
+    expect(git(path, 'show', `${branch}:notes.txt`)).toBe('mine');
+    expect(git(path, 'show', `${branch}:README.md`)).toBe('changed');
+    // the same file with other line endings, as a tool may write it back: nothing to keep
+    git(path, 'config', 'core.autocrlf', 'false');
+    git(path, 'reset', '--quiet', '--hard');
+    writeFileSync(join(path, 'README.md'), 'hello\r\n');
+    expect(git(path, 'status', '--porcelain')).not.toBe('');
+    expect(await spaces.keepLeftovers(path)).toBe('');
+    expect(git(path, 'status', '--porcelain')).toBe('');
+    expect(git(path, 'branch', '--list', 'obeya-leftovers/*').split('\n')).toHaveLength(1);
+    // named with another machine, the clone of the same path here is not the one meant
+    writeFileSync(join(path, 'notes.txt'), 'mine\n');
+    expect(await spaces.keepLeftovers(path, 'elsewhere')).toBeNull();
+    expect(existsSync(join(path, 'notes.txt'))).toBe(true);
+    // a file staged otherwise than the working tree has it: both are kept, the staged one in a commit of its own
+    writeFileSync(join(path, 'README.md'), 'staged\n');
+    git(path, 'add', 'README.md');
+    writeFileSync(join(path, 'README.md'), 'worked on\n');
+    const both = (await spaces.keepLeftovers(path))!;
+    expect(git(path, 'show', `${both}:README.md`)).toBe('worked on');
+    expect(git(path, 'show', `${both}:notes.txt`)).toBe('mine');
+    expect(git(path, 'show', `${both}~1:README.md`)).toBe('staged');
+    expect(git(path, 'rev-parse', `${both}~2`)).toBe(git(path, 'rev-parse', 'HEAD'));
+    expect(git(path, 'status', '--porcelain')).toBe('');
+    // git failing on the way (no branch obeya-leftovers/… beside one named obeya-leftovers): the index is put back as it was
+    for (const b of git(path, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/obeya-leftovers/').split('\n')) git(path, 'branch', '--quiet', '-D', b);
+    git(path, 'branch', 'obeya-leftovers');
+    writeFileSync(join(path, 'README.md'), 'staged again\n');
+    git(path, 'add', 'README.md');
+    writeFileSync(join(path, 'README.md'), 'worked on again\n');
+    writeFileSync(join(path, 'more.txt'), 'new\n');
+    expect(await spaces.keepLeftovers(path)).toBeNull();
+    expect(git(path, 'show', ':README.md')).toBe('staged again');
+    expect(readFileSync(join(path, 'README.md'), 'utf8')).toBe('worked on again\n');
+    expect(git(path, 'status', '--porcelain', '--', 'more.txt')).toBe('?? more.txt');
+  }, 20_000);
+
+  test('status entries skip the source of a rename in either column', () => {
+    expect(statusEntries(' R a-new.txt\0old.txt\0MM z.txt\0').map((e) => e.xy)).toEqual([' R', 'MM']);
+    expect(statusEntries('R  b.txt\0a.txt\0?? c.txt\0').map((e) => `${e.xy}|${e.path}`)).toEqual(['R |b.txt', '??|c.txt']);
   });
+
+  test('a clone with files assumed unchanged stays as it is; the next blocked one is freed for the card instead', async () => {
+    const { board, spaces, clones, changed } = await setup();
+    const [one, two] = clones as [string, string];
+    // `add` would leave the hidden change out, and the reset overwrite it
+    git(one, 'update-index', '--assume-unchanged', 'README.md');
+    writeFileSync(join(one, 'README.md'), 'hidden\n');
+    writeFileSync(join(one, 'stray.txt'), 'x');
+    writeFileSync(join(two, 'stray.txt'), 'y');
+    // not looked at yet: the looks find both dirty
+    spaces.leasable();
+    await until(() => changed() === 2);
+    const a = board.create({ title: 'A', x: 0, y: 0 }).id;
+    expect(() => spaces.lease(a, 'obeya/a')).toThrow(expect.objectContaining({ code: 'dirtyWorkspaces' }));
+    // the first could not be freed: the next one is, and the card takes it
+    // a waiting card asks again on every change of the board
+    await until(() => (spaces.leasable(), !existsSync(join(two, 'stray.txt'))));
+    await until(() => spaces.leasable());
+    expect(readFileSync(join(one, 'README.md'), 'utf8')).toBe('hidden\n');
+    expect(existsSync(join(one, 'stray.txt'))).toBe(true);
+    expect(git(one, 'branch', '--list', 'obeya-leftovers/*')).toBe('');
+    expect(existsSync(join(two, 'stray.txt'))).toBe(false);
+    expect(await spaces.lease(a, 'obeya/a').ready).toBe(two);
+  }, 20_000);
 
   test('no card gets are named in the pool, with why: the files changed, git failing, the folder gone', async () => {
     const { spaces, clones, changed } = await setup();
@@ -805,7 +900,7 @@ describe('clones the configuration no longer names', () => {
     watched.keepOnly(null, []);
     expect(watched.list()).toEqual([]);
     await until(() => watched.pool([])[0]!.kept?.length === 4);
-    expect(watched.pool([])[0]!.kept!.toSorted()).toEqual(paths);
+    expect(watched.pool([])[0]!.kept!.map((k) => k.path).toSorted()).toEqual(paths);
     expect(changes).toBe(4);
     for (const p of paths) expect(existsSync(join(p, '.git'))).toBe(true);
     // nothing was stopped: the folder stays as it is
@@ -821,9 +916,9 @@ describe('clones the configuration no longer names', () => {
     expect(stopped().toSorted()).toEqual(paths);
   });
 
-  test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main counts as landed', async () => {
-    const { spaces, paths } = await make(4);
-    const [tagged, deleted, squashed, odd] = paths as [string, string, string, string];
+  test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main, or a tag origin has, count as landed', async () => {
+    const { spaces, paths } = await make(5);
+    const [tagged, deleted, squashed, odd, released] = paths as [string, string, string, string, string];
     git(tagged, 'checkout', '--quiet', '-b', 'try');
     commit(tagged, 'try.txt');
     git(tagged, 'tag', 'tried');
@@ -847,11 +942,27 @@ describe('clones the configuration no longer names', () => {
     for (const f of ['a.txt', 'b.txt']) writeFileSync(join(other, f), `${f}\n`);
     git(other, 'add', '.');
     git(other, 'commit', '--quiet', '-m', 'Squashed');
+    // and main changed one of its files since
+    writeFileSync(join(other, 'a.txt'), 'a.txt\nmore\n');
+    git(other, 'commit', '--quiet', '-am', 'More');
     git(other, 'push', '--quiet', 'origin', 'main');
+    // a release tagged on a branch that is gone from origin, its tag pushed
+    git(released, 'checkout', '--quiet', '-b', 'hotfix');
+    commit(released, 'fix.txt');
+    git(released, 'tag', '-a', '-m', 'Release', 'v1.0.1');
+    git(released, 'push', '--quiet', 'origin', 'hotfix', 'v1.0.1');
+    git(released, 'checkout', '--quiet', 'main');
+    git(released, 'branch', '--quiet', '-D', 'hotfix');
+    git(origin, 'branch', '--quiet', '-D', 'hotfix');
     spaces.keepOnly(null, []);
-    // four clones looked at one after the other, each a dozen git calls: seconds on a busy machine
-    await until(() => !existsSync(squashed) && spaces.pool([])[0]!.kept?.length === 3, 15_000 * PATIENCE);
-    expect(spaces.pool([])[0]!.kept!.toSorted()).toEqual([tagged, deleted, odd]);
+    await until(() => !existsSync(squashed) && !existsSync(released) && spaces.pool([])[0]!.kept?.length === 3, 15_000 * PATIENCE);
+    const kept: KeptClone[] = [
+      { path: tagged, lost: [{ what: 'commits', kind: 'tag', name: 'tried', n: 1 }] },
+      { path: deleted, lost: [{ what: 'commits', kind: 'branch', name: 'obeya/gone', n: 1 }] },
+      { path: odd, lost: [{ what: 'commits', kind: 'branch', name: 'odd', n: WINDOWS ? 1 : 2 }] },
+    ];
+    const byPath = (a: KeptClone, b: KeptClone) => a.path.localeCompare(b.path);
+    expect(spaces.pool([])[0]!.kept!.toSorted(byPath)).toEqual(kept.toSorted(byPath));
   }, 30_000 * PATIENCE);
 
   test('a branch of a thousand files squashed onto main counts as landed, asked in command lines Windows takes', async () => {
@@ -868,7 +979,7 @@ describe('clones the configuration no longer names', () => {
     const squashed = git(clone, 'commit-tree', 'obeya/generated^{tree}', '-p', 'origin/main', '-m', 'Squashed');
     git(clone, 'push', '--quiet', 'origin', `${squashed}:refs/heads/main`);
     const lines: number[] = [];
-    const stop = onStart((argv) => argv.includes('diff') && lines.push(argv.filter((a) => a.startsWith(':(literal)')).join(' ').length));
+    const stop = onStart((argv) => argv.some((a) => a.startsWith(':(literal)')) && lines.push(argv.filter((a) => a.startsWith(':(literal)')).join(' ').length));
     try {
       expect(await unlanded(clone)).toEqual([]);
     } finally {
@@ -877,6 +988,35 @@ describe('clones the configuration no longer names', () => {
     expect(lines.length).toBeGreaterThan(1);
     // the rule `listed` keeps: about 32,000 characters fit on a command line on Windows
     for (const n of lines) expect(n).toBeLessThan(24_000);
+  });
+
+  test('work not landed that merges cleanly into main is told after one merge, not one per commit of main', async () => {
+    const { paths } = await make(1);
+    const clone = paths[0]!;
+    git(clone, 'checkout', '--quiet', '-b', 'obeya/open');
+    commit(clone, 'a.txt');
+    // main changed the same file in many commits since
+    const other = gitRepo(join(dir, 'other'));
+    git(other, 'remote', 'add', 'origin', origin);
+    git(other, 'fetch', '--quiet', 'origin');
+    git(other, 'reset', '--quiet', '--hard', 'origin/main');
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(join(other, `main-${i}.txt`), `${i}\n`);
+      writeFileSync(join(other, 'a.txt'), '');
+      git(other, 'add', '.');
+      git(other, 'commit', '--quiet', '-m', `Main ${i}`);
+      git(other, 'rm', '--quiet', 'a.txt');
+      git(other, 'commit', '--quiet', '-m', `Main ${i} again`);
+    }
+    git(other, 'push', '--quiet', 'origin', 'main');
+    let merges = 0;
+    const stop = onStart((argv) => argv.includes('merge-tree') && merges++);
+    try {
+      expect(await unlanded(clone)).toEqual([{ what: 'commits', kind: 'branch', name: 'obeya/open', n: 1 }]);
+    } finally {
+      stop();
+    }
+    expect(merges).toBe(1);
   });
 
   test('a clone named again while its folder is looked at stays, with what a card does in it', async () => {

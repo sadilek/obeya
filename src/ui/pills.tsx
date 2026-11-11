@@ -254,9 +254,10 @@ export function OldBunPill({ version }: { version: string }) {
  * the card (`onOpen`; `onElsewhere` one on another canvas), and why a blocked clone goes to no card
  * and what to do about it. While every clone is taken and a card waits for one, a faint "⋯" beside
  * a card opens what gives its clone to the one waiting longest (`onTake`); during the undo window
- * the row offers "Undo" (`onKeep`).
+ * the row offers "Undo" (`onKeep`). A clone blocked by uncommitted changes names the card they come
+ * from and offers "Save "Commit to a new branch and free the clone" (`onLeftovers`).
  */
-export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsewhere, onTake, onKeep }: {
+export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsewhere, onTake, onKeep, onLeftovers }: {
   pools: ClonePool[];
   canvas: CanvasInfo;
   canvases: CanvasInfo[];
@@ -265,6 +266,7 @@ export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsew
   onElsewhere: (canvas: string, card: string) => void;
   onTake: (i: Item) => void;
   onKeep: (i: Item) => void;
+  onLeftovers: (repo: string, host: string, path: string) => void;
 }) {
   // open by a click (a tap) until one elsewhere, Escape or a card opened from it
   const [open, setOpen] = useState(false);
@@ -345,12 +347,19 @@ export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsew
                     onKeep={onKeep}
                   />
                 )}
-                {h.kept?.map((path) => (
-                  <p key={path} className="hint">
-                    {t.workspaces.kept(path)}
+                {h.kept?.map((k) => (
+                  <p key={k.path} className="hint">
+                    {t.workspaces.kept(k.path, k.lost.map(t.workspaces.lost))}
                   </p>
                 ))}
-                <BlockedClones host={h} />
+                <BlockedClones
+                  host={h}
+                  items={items}
+                  canvases={canvases}
+                  onOpen={(i) => opened(() => onOpen(i))}
+                  onElsewhere={(c, card) => opened(() => onElsewhere(c, card))}
+                  onLeftovers={(path) => onLeftovers(p.repo, h.name, path)}
+                />
               </div>
             ))}
           </div>
@@ -448,15 +457,52 @@ function WorkspaceRows({ host, items, canvases, onOpen, onElsewhere, onTake, onK
   );
 }
 
-/** Why each of a machine's blocked clones goes to no card, and what the owner can do: a line per clone, one for all of an unreachable machine's. */
-function BlockedClones({ host }: { host: PoolHost }) {
+/**
+ * Why each of a machine's blocked clones goes to no card, and what the owner can do: a line per
+ * clone, one for all of an unreachable machine's. One blocked by uncommitted changes names the card
+ * whose branch it is on (a link, as in the rows) and whether its work has landed, and offers "Save
+ * "Commit to a new branch and free the clone" (`onLeftovers`).
+ */
+function BlockedClones({ host, items, canvases, onOpen, onElsewhere, onLeftovers }: {
+  host: PoolHost;
+  items: Item[];
+  canvases: CanvasInfo[];
+  onOpen: (i: Item) => void;
+  onElsewhere: (canvas: string, card: string) => void;
+  onLeftovers: (path: string) => void;
+}) {
   const all = host.blocked ?? [];
   const away = all.filter((b) => b.why === 'unreachable').map((b) => b.path);
+  const by = (b: BlockedClone) => {
+    if (!b.by) return null;
+    const item = b.by.canvas ? undefined : items.find((i) => i.id === b.by!.card);
+    const there = b.by.canvas && canvases.find((c) => c.id === b.by!.canvas);
+    const title = plain(item?.title ?? b.by.title);
+    return (
+      <>
+        {' '}
+        {t.workspaces.blocked.leftBy}
+        {item ? <a className="from" onClick={() => onOpen(item)}>{title}</a> : there ? <a className="from" onClick={() => onElsewhere(there.id, b.by!.card)}>{title}</a> : t.quote(title)}
+        {t.workspaces.blocked.leftWork(b.by.work)}
+      </>
+    );
+  };
   const line = (b: BlockedClone) => {
     const tb = t.workspaces.blocked;
     switch (b.why) {
       case 'dirty':
-        return tb.dirty(b.path, b.files ?? [], b.more ?? 0);
+        return (
+          <>
+            {tb.dirty(b.path, b.files ?? [], b.more ?? 0)}
+            {by(b)}
+            <span className="ws-leftovers">
+              <button className="btn ws-take" onClick={() => onLeftovers(b.path)}>
+                {t.workspaces.keepLeftovers}
+              </button>
+              <span className="hint">{t.workspaces.keepLeftoversWhat(!!b.made)}</span>
+            </span>
+          </>
+        );
       case 'broken':
         return tb.broken(b.path, b.error ?? '', !!b.made);
       case 'missing':
