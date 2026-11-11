@@ -7,11 +7,11 @@ import { useRef, useState } from 'react';
 import type { Place } from '../core/layout';
 import { agentListens, type Item, type TalkRef } from '../core/types';
 import { Aside } from './aside';
-import { api, ApiError, type Field, type Heard, type Where } from './api';
+import { api, ApiError, type Field, type Heard, type Where, failText } from './api';
 import { clip } from '../core/text';
 import { excerpt, plain } from './markdown';
 import { sent, take, videoOf } from './spot';
-import { failText, t } from './strings';
+import { t } from './strings';
 import type { useTold } from './voice';
 
 /** How long a confirmation stays, and its "Undo" unless the action waits longer. */

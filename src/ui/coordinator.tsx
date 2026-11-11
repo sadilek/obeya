@@ -5,13 +5,13 @@
 
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuote, TalkRef, TalkWait } from '../core/types';
-import { api } from './api';
+import { api, failText } from './api';
 import { Body, Inline, plain } from './markdown';
 import { AnswerFiles, Continues, Msg, Quote, Reading, ThreadCard } from './message';
 import { WalkthroughButton } from './walkthrough';
 import { isWalkthrough } from '../core/walkthrough';
 import { type Reply, setReply, talkEv, talkQuote } from './reply';
-import { clock, failText, t } from './strings';
+import { clock, t } from './strings';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
 import { DictationLine, useDictatedField } from './dictation';

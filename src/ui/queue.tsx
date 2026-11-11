@@ -7,10 +7,10 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { move, movable, notStarted, queueOrder, reach } from '../core/queue';
 import type { Item } from '../core/types';
-import { api } from './api';
+import { api, failText } from './api';
 import { plain } from './markdown';
 import { type Drag, useSortable } from './sortable';
-import { failText, stateLabel, t } from './strings';
+import { stateLabel, t } from './strings';
 import { useMenuClose } from './menu';
 
 /** The bar's queue button: how many cards wait; a click lists them under it, in turn, to open or move. */

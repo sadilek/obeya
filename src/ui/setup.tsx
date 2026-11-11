@@ -7,10 +7,10 @@
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CLOUD_PRESETS, CLOUD_VOICES, type CloudPreset, type GitSetupPreview, LARGE_FILE, type Language, type MachineItem, type MachineSection, type MachineView, type SetupItem, type VoiceSetupItem } from '../core/types';
 import { LANGUAGES } from '../core/locale';
-import { api, reload } from './api';
+import { api, reload, failText } from './api';
 import { useCopy } from './copy';
 import { Sign } from './logo';
-import { failText, fileSize, t } from './strings';
+import { fileSize, t } from './strings';
 import { canvasPath } from './address';
 import { FolderPick } from './folderPick';
 

@@ -7,7 +7,7 @@ import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
 import { answerText, toggle } from './answer';
-import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
+import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect, failText } from './api';
 import { cardPath } from './address';
 import { Naming } from './cardLink';
 import { useCopy } from './copy';
@@ -45,7 +45,7 @@ import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPi
 import { dismissPlace, type Place, seekTo, showsVersions, usePlace, videoOf, watch } from './spot';
 import { cameInView, useSeen } from './seen';
 import { ClockMark, contributorChoice, SnoozeLine, SnoozeMenu, snoozeWho } from './snooze';
-import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen, stateLabel, t, uiLanguage } from './strings';
+import { becomesLabel, clock as time, errorText, shortDay, snoozeWhen, stateLabel, t, uiLanguage } from './strings';
 import { agentWorks, cardTalk, demoHandover, talkState, coordinatorReads, ownerField, parseQuestion, snoozeLine, talkAlone, type Turn, unseenTurns, waitsFirstStart, worked as isWorked } from './talk';
 import { PageChangeList } from './page-changes';
 import { WishReplyLink } from './wish';

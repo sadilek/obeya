@@ -8,7 +8,7 @@
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type CanvasInfo, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers } from '../core/types';
-import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where } from './api';
+import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where, failText } from './api';
 import { enterBreaksLines } from './composer';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe, when } from './forYou';
 import { SWIPED_CARD, swipedOnce } from './aside';
@@ -27,7 +27,7 @@ import { shownState, TalkIcon } from './parts';
 import { PROBE_MS, quietText, TAILSCALE_APP, useTailnet, useWhyQuiet } from './reach';
 import { videoOf } from './spot';
 import { flag, local, read, session, setFlag, write } from './stored';
-import { failText, forTouch, t } from './strings';
+import { forTouch, t } from './strings';
 import { UsagePill } from './usage';
 import { agentWorks, cardTalk, coordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
 import { seenOf } from './seen';

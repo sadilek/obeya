@@ -6,13 +6,13 @@
 import { type ClipboardEvent, type DragEvent, type MouseEvent, type PointerEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES } from '../core/types';
-import { api, ApiError, at } from './api';
+import { api, ApiError, at, failText } from './api';
 import { droppedPath, withBytes } from './appDrop';
 import { draftOf, draftsHome, dropDraft, insertFilesAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
 import { useKnown } from './stored';
 import { badgeOf, CLICK_PX, drawMarks, EDGE, type Mark, markOf, markSize, type Point, RED, roundedRect } from './marks';
 import { confirmPasteHint, pastedShots, pickedShots, usePasteHint } from './pasteHint';
-import { failText, pasteKeys, t } from './strings';
+import { pasteKeys, t } from './strings';
 import { behindThumb, type Box, onto, ZOOM_EASE, ZOOM_MS } from './zoomBox';
 
 /** The longest side the model looks at in detail; larger screenshots only cost upload and context. */

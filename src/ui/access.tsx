@@ -6,9 +6,9 @@
 import { Fragment, type ReactNode, useEffect, useState } from 'react';
 import { encode } from 'uqr';
 import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
-import { api } from './api';
+import { api, failText } from './api';
 import { Field, Head } from './config';
-import { clock, failText, shortDay, t } from './strings';
+import { clock, shortDay, t } from './strings';
 
 /** Text with `code` in backticks, as the strings write commands. */
 function Coded({ text }: { text: string }) {

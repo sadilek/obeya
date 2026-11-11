@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, failText } from './api';
 import { phoneView } from './phone';
-import { failText, t } from './strings';
+import { t } from './strings';
 
 /** Whether this browser runs on the machine Obeya runs on, asked once per page. */
 let local: Promise<boolean> | undefined;

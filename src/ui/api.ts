@@ -6,6 +6,7 @@ import { setCostsShown } from './costs';
 import type { Wish } from '../core/wish';
 import { INPUT, noteMessage, watchPageStalls } from './stalls';
 import { signal } from './signal';
+import { errorText, t } from './strings';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -17,19 +18,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The owner's text for a call that failed: the server's refusal, else `offline` (Obeya could not be
+ * reached). For the codes in `detail`, and those whose text ends in a colon, the refusal's own
+ * message follows, which names the particulars.
+ */
+export const failText = (e: unknown, { detail = [], offline = t.offlineError }: { detail?: string[]; offline?: string } = {}) =>
+  e instanceof ApiError ? errorText(e.code) + (e.code && (detail.includes(e.code) || errorText(e.code).endsWith(':')) ? ` ${e.message}` : '') : offline;
+
 async function call<T>(method: string, path: string, body?: unknown, keepalive?: boolean): Promise<T> {
   const res = await send(method, path, body, keepalive);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
 /** The request, with `body` as JSON; throws the server's refusal. With `keepalive`, it outlasts the page. */
-async function send(method: string, path: string, body?: unknown, keepalive?: boolean) {
-  const res = await fetch(path, {
+const send = (method: string, path: string, body?: unknown, keepalive?: boolean) =>
+  raw(path, {
     method,
     keepalive,
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+
+/** The request as it is; throws the server's refusal. */
+async function raw(path: string, init?: RequestInit) {
+  const res = await fetch(path, init);
   await refused(res);
   return res;
 }
@@ -48,8 +61,7 @@ async function refused(res: Response) {
 
 /** Saves a file the server makes, under the name it gives. */
 async function download(path: string, fallback: string) {
-  const res = await fetch(path);
-  await refused(res);
+  const res = await raw(path);
   const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallback;
   const url = URL.createObjectURL(await res.blob());
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
@@ -70,8 +82,10 @@ export function setCanvas(id: string) {
 /** The page runs as the app on a phone's home screen, not in its browser. */
 export const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
+/** A path in the API of the canvas `canvas`. */
+const canvasApi = (canvas: string, path = '') => `/api/c/${encodeURIComponent(canvas)}${path}`;
 /** A path in the shown canvas's API. */
-export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
+export const at = (path: string) => canvasApi(canvasId, path);
 /**
  * The canvas each card is on, where the page shows the cards of several (the phone view). A call
  * about a card goes to its canvas even once another is in view: the card closing puts Obeya's in
@@ -84,19 +98,20 @@ export function cardsOn(canvas: string, cards: string[]) {
 /** The canvas of the card `id`: the one it is on where the page shows several, else the shown one. */
 export const canvasOf = (id: string) => canvasOfCard.get(id) ?? canvasId;
 /** A path in the API of the card's canvas, about the card or project `id`. */
-export const cardAt = (id: string, path = '') => `/api/c/${encodeURIComponent(canvasOf(id))}/cards/${id}${path}`;
+export const cardAt = (id: string, path = '') => canvasApi(canvasOf(id), `/cards/${id}${path}`);
 /** A path in the API of the canvas of what the words are about, else of the shown one. */
 const whereAt = (where: Where, path: string) => {
   const id = where && ('card' in where ? where.card : where.project);
-  return id ? `/api/c/${encodeURIComponent(canvasOf(id))}${path}` : at(path);
+  return canvasApi(id ? canvasOf(id) : canvasId, path);
 };
+/** The address of a served file below its owner's, by its path; `download` to save it. */
+const filePath = (path: string, download: boolean) => `/files/${path.split('/').map(encodeURIComponent).join('/')}${download ? '?download' : ''}`;
+
 /** Where a looked-up answer's file is served; `download` to save it. */
-export const answerFile = (thread: number, name: string, download = false) =>
-  at(`/threads/${thread}/files/${name.split('/').map(encodeURIComponent).join('/')}${download ? '?download' : ''}`);
+export const answerFile = (thread: number, name: string, download = false) => at(`/threads/${thread}${filePath(name, download)}`);
 
 /** Where a file of a card's work is served (its left column's tabs); `download` to save it. */
-export const cardFile = (id: string, path: string, download = false) =>
-  cardAt(id, `/files/${path.split('/').map(encodeURIComponent).join('/')}${download ? '?download' : ''}`);
+export const cardFile = (id: string, path: string, download = false) => cardAt(id, filePath(path, download));
 
 /** What a command is said about: the open card, the open project, or neither. */
 export type Where = { card: string } | { project: string } | null;
@@ -144,7 +159,7 @@ export interface SiteHow {
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
   /** The canvas `id` as it is now, for a switch to it before its own connection is open. */
-  canvasOf: (id: string) => call<CanvasSnapshot>('GET', `/api/c/${encodeURIComponent(id)}/canvas`),
+  canvasOf: (id: string) => call<CanvasSnapshot>('GET', canvasApi(id, '/canvas')),
   /** Obeya's configuration, for all canvases. */
   config: () => call<ConfigView>('GET', '/api/config'),
   /** What the configuration as saved amounts to, and what is wrong with it: it reads every repository, so it comes after `config`. */
@@ -240,9 +255,9 @@ export const api = {
   /** Has the restart of this canvas's repositories' agents that waits for them go ahead at once. */
   restartReposNow: () => call<{ restarting: boolean }>('POST', at('/restart')),
   /** Pauses the agents at work on a canvas; cards the Coordinator lets start there wait until they resume. */
-  pauseAgents: (canvas: string) => call<void>('POST', `/api/c/${encodeURIComponent(canvas)}/pause`),
+  pauseAgents: (canvas: string) => call<void>('POST', canvasApi(canvas, '/pause')),
   /** Resumes a canvas's paused agents, and the cards waiting for that start. */
-  resumeAgents: (canvas: string) => call<void>('POST', `/api/c/${encodeURIComponent(canvas)}/resume`),
+  resumeAgents: (canvas: string) => call<void>('POST', canvasApi(canvas, '/resume')),
   /** Installs the newer version of the app once the workers paused, as a restart waits for them. */
   installUpdate: () => call<{ updating: boolean }>('POST', '/api/app-update/install'),
   /** Fast-forwards the checkout Obeya runs from to its upstream; Obeya then restarts with the new code once the workers paused. */
@@ -251,10 +266,10 @@ export const api = {
   dependency: (from: string, to: string, remove = false, keepalive = false) => call<void>(remove ? 'DELETE' : 'POST', at('/dependencies'), { from, to }, keepalive),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   /** The card that writes a repository's settings for everyone, on the canvas it belongs to (not necessarily the shown one). */
-  adapterSetup: (canvas: string, repo: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/adapter-setup`, { repo }),
+  adapterSetup: (canvas: string, repo: string) => call<Item>('POST', canvasApi(canvas, '/adapter-setup'), { repo }),
   /** The note on a repository's plan directory stays where the owner put it (its top left). */
   movePlanDirNote: (repo: string, to: { x: number; y: number }) => call<void>('PATCH', at(`/plan-dirs/${encodeURIComponent(repo)}`), to),
-  preparePlanDoc: (canvas: string, repo: string, file: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/prepare-plan-doc`, { repo, file }),
+  preparePlanDoc: (canvas: string, repo: string, file: string) => call<Item>('POST', canvasApi(canvas, '/prepare-plan-doc'), { repo, file }),
   /** Downloads a card's demo as a ZIP of its page with the files, or as one HTML file. */
   exportDemo: (id: string, as: 'zip' | 'html', demo?: number) => download(cardAt(id, `/export?as=${as}${demo === undefined ? '' : `&demo=${demo}`}`), `demo.${as}`),
   /** The size of a card's demo video in bytes, the latest one or earlier one `n`; null when unknown. */
@@ -306,22 +321,19 @@ export const api = {
   assign: (cards: string[], group: string | null) => call<void>('POST', at('/assign'), { cards, group }),
   /** Stores a screenshot for a message; the message names it by the id. */
   uploadImage: async (image: Blob) => {
-    const res = await fetch(at('/images'), { method: 'POST', headers: { 'content-type': image.type }, body: image });
-    await refused(res);
+    const res = await raw(at('/images'), { method: 'POST', headers: { 'content-type': image.type }, body: image });
     return ((await res.json()) as { id: string }).id;
   },
   /** Stores another kind of file for a message; returns the path the agent reads it at. */
   uploadFile: async (file: File) => {
-    const res = await fetch(at(`/files?name=${encodeURIComponent(file.name)}`), { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
-    await refused(res);
+    const res = await raw(at(`/files?name=${encodeURIComponent(file.name)}`), { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
     return ((await res.json()) as { path: string }).path;
   },
   /** Where a file dropped in the browser lies on Obeya's machine, if Obeya finds exactly one that fits its name, size and time. */
   findFile: async (file: File) => (await call<{ path: string | null }>('POST', at('/files/find'), { name: file.name, size: file.size, modified: file.lastModified })).path,
   /** An image the app's drop names by its path on this machine, as a file the page attaches. */
   localImage: async (path: string) => {
-    const res = await fetch(at(`/files/local?path=${encodeURIComponent(path)}`));
-    await refused(res);
+    const res = await raw(at(`/files/local?path=${encodeURIComponent(path)}`));
     const blob = await res.blob();
     return new File([blob], path.split(/[\\/]/).at(-1)!, { type: blob.type });
   },
@@ -365,8 +377,7 @@ export const api = {
       body.set('audio', audio);
       body.set('text', text);
     }
-    const res = await fetch(whereAt(where, `/voice${query(where)}${q && (where ? '&' : '?')}${q}`), { method: 'POST', body });
-    await refused(res);
+    const res = await raw(whereAt(where, `/voice${query(where)}${q && (where ? '&' : '?')}${q}`), { method: 'POST', body });
     return (await res.json()) as Heard;
   },
   /** Whether the recording `voice` sent as `sent` arrived whole. */
@@ -377,7 +388,7 @@ export const api = {
   command: (text: string, where: Where, { images, field, replyTo, spot, place }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place } = {}) =>
     call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) }),
   /** A typed request to the Coordinator of another canvas, about nothing in view there. */
-  commandOn: (canvas: string, text: string) => call<Heard>('POST', `/api/c/${encodeURIComponent(canvas)}/command`, { text }),
+  commandOn: (canvas: string, text: string) => call<Heard>('POST', canvasApi(canvas, '/command'), { text }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
   /** The issue for Obeya's makers as a small job writes it from the owner's words, reworking the draft so far; `app`: Obeya runs in its app. */
   writeWish: (w: { said: string; answer?: string; title?: string; body?: string; images?: string[]; app: boolean }) =>
@@ -442,8 +453,16 @@ const holds = new Map<string, OwnerHold>();
 const sockets = new Map<string, WebSocket>();
 /** The key of the phone view's one connection among them. */
 const EVERY = '*';
+/** The socket of the canvas the page shows, or the phone view's one. */
+const mainSocket = () => sockets.get(canvasId) ?? sockets.get(EVERY);
+/** Sends `m` over `ws` while it is open; false where it is not. */
+function tell(ws: WebSocket | undefined, m: ClientMessage): boolean {
+  if (ws?.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(m));
+  return true;
+}
 const sendHolds = () => {
-  for (const ws of sockets.values()) if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'hold', hold: [...new Set(holds.values())] } satisfies ClientMessage));
+  for (const ws of sockets.values()) tell(ws, { type: 'hold', hold: [...new Set(holds.values())] });
 };
 /** Holds a due restart off while the owner watches (`video`) or dictates (`voice`); `null` lets go. */
 export function holdRestart(by: string, what: OwnerHold | null) {
@@ -458,8 +477,7 @@ export function holdRestart(by: string, what: OwnerHold | null) {
 // the page the owner looked at last wins.
 let focusMessage: Extract<ClientMessage, { type: 'focus' }> | null = null;
 const sendFocus = () => {
-  const ws = sockets.get(canvasId) ?? sockets.get(EVERY);
-  if (focusMessage && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(focusMessage));
+  if (focusMessage) tell(mainSocket(), focusMessage);
 };
 export function reportFocus(place: Place) {
   focusMessage = { type: 'focus', place: placeParam(place) };
@@ -477,17 +495,12 @@ let inViewIsUse = false;
 /** The phone view: being in view is using it. */
 export const phoneInUse = () => void (inViewIsUse = true);
 const sendHere = () => {
-  const ws = sockets.get(canvasId) ?? sockets.get(EVERY);
-  if (document.visibilityState === 'visible' && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'here' } satisfies ClientMessage));
+  if (document.visibilityState === 'visible') tell(mainSocket(), { type: 'here' });
 };
 if (typeof document !== 'undefined') {
   // a stall of this page goes into the server's log
-  watchPageStalls((stall) => {
-    const ws = sockets.get(canvasId) ?? [...sockets.values()][0];
-    if (ws?.readyState !== WebSocket.OPEN) return false;
-    ws.send(JSON.stringify({ type: 'stall', ...stall } satisfies ClientMessage));
-    return true;
-  });
+  // any socket reaches the server's log
+  watchPageStalls((stall) => tell(sockets.get(canvasId) ?? [...sockets.values()][0], { type: 'stall', ...stall }));
   for (const type of INPUT) addEventListener(type, () => void (used = true), { capture: true, passive: true });
   setInterval(() => {
     const playing = [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended);
@@ -498,7 +511,7 @@ if (typeof document !== 'undefined') {
   // the phone locked or another app in front: what starts waiting from now on is pushed again
   const away = () => {
     if (document.visibilityState !== 'hidden') return;
-    for (const ws of sockets.values()) if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'away' } satisfies ClientMessage));
+    for (const ws of sockets.values()) tell(ws, { type: 'away' });
   };
   document.addEventListener('visibilitychange', away);
   addEventListener('pagehide', away);
@@ -637,7 +650,7 @@ function keepOpen(key: string, link: Link): () => void {
     const visible = document.visibilityState === 'visible';
     const cameBack = hidden && visible;
     hidden = !visible;
-    if (visible && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'back' } satisfies ClientMessage));
+    if (visible) tell(ws, { type: 'back' });
     if (!visible || closed || ws.readyState === WebSocket.OPEN) return sendFocus();
     // a phone that was locked had no connection meanwhile, which says nothing of the server: not
     // answering counts from now, and a connection still opening from back then is tried anew

@@ -10,14 +10,14 @@
 
 import { createContext, useEffect, useRef, useState } from 'react';
 import type { Place } from '../core/layout';
-import { ApiError, api, confirmShownMs, type Heard, holdRestart, undoShownMs, type Where } from './api';
+import { ApiError, api, confirmShownMs, type Heard, holdRestart, undoShownMs, type Where, failText } from './api';
 import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, insertPasted, MIC_DRAFT, moveFiles, moveImages, pastedIn, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, withoutPasted, withoutWords, wordsOf } from './draft';
 import { Aside } from './aside';
 import { type Recording, record } from './recorder';
 import { AttachButton, ShotStrip, useShotInput } from './shots';
 import { replyOn, setReply, useReply } from './reply';
 import { sent, take, type Taken } from './spot';
-import { failText, pasteKeys, t } from './strings';
+import { pasteKeys, t } from './strings';
 import { usePasteTextHint } from './pasteHint';
 
 /** Starts a recording, for a text field's microphone and Space held in it; null where nobody listens. */
