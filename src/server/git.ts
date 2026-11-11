@@ -46,14 +46,8 @@ export function remoteWorkspace(path: string) {
   }
 }
 
-/** `git` in `cwd`, which may be a workspace on another machine (`ssh://<host>/…`, see `hosts.ts`). */
+/** `git` in `cwd` on this machine, the caller waiting: for scripts, tests and startup. */
 export function git(cwd: string, ...args: string[]): string {
-  const there = remoteWorkspace(cwd);
-  if (there) {
-    const r = there.host.runSync(['git', ...TOKEN_HELPER_ARGS, '-C', there.path, ...args], there.path);
-    if (r.code !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-    return r.stdout.trim();
-  }
   const r = Bun.spawnSync([GIT, '-C', cwd, ...args], { stderr: 'pipe' });
   if (r.exitCode !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${r.stderr.toString().trim()}`);
   return r.stdout.toString().trim();

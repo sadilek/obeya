@@ -56,16 +56,16 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'forge.ts': { why: "server path, cheap: a pull request's body in a temporary file for gh", calls: { mkdtempSync: 1, rmSync: 1, writeFileSync: 1 } },
   'git.ts': {
-    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync, runSync) serves scripts, tests and startup (self-update's headOf); the server's own git goes through gitRun and the async runners on it",
-    calls: { existsSync: 2, runSync: 1, spawnSync: 3 },
+    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync), on this machine only, serves scripts, tests and startup (self-update's headOf); the server's own git goes through gitRun and the async runners on it",
+    calls: { existsSync: 2, spawnSync: 3 },
   },
   'git-setup.ts': {
     why: "server path, rare: setting up git in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting; a candidate for spawnOutput",
     calls: { existsSync: 2, mkdtempSync: 1, rmSync: 3, spawnSync: 1, statSync: 2, writeFileSync: 2 },
   },
   'hosts.ts': {
-    why: "runSync's spawnSync is reached only through workspaces.ts's synchronous git() for a workspace on another machine, which no server path calls (they use gitAsync/gitTry); the rest is cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",
-    calls: { chmodSync: 2, existsSync: 3, lstatSync: 1, mkdirSync: 3, readFileSync: 1, readdirSync: 1, rmSync: 1, spawnSync: 1, statSync: 1, writeFileSync: 2 },
+    why: "cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",
+    calls: { chmodSync: 2, existsSync: 3, lstatSync: 1, mkdirSync: 3, readFileSync: 1, readdirSync: 1, rmSync: 1, statSync: 1, writeFileSync: 2 },
   },
   'images.ts': { why: "server path, cheap: a pasted image written, looked up and copied to another canvas", calls: { copyFileSync: 1, existsSync: 1, mkdirSync: 2, writeFileSync: 1 } },
   'instance.ts': { why: "startup and shutdown: the running instance's file", calls: { readFileSync: 1, renameSync: 1, rmSync: 1, writeFileSync: 1 } },

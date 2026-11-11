@@ -536,9 +536,10 @@ unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' dire
 `exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
 another pid. One shared connection where `ControlMaster` exists (not Windows), its sockets in
 `/tmp/obeya-ssh-<uid>` for the owner alone, since whoever reaches a socket uses its connection;
-`BatchMode`; keep-alives that notice a dropped link within 45 s. Calls the server still blocks on fail
-at once after a host's connection failed, and the host is asked again in the background 30 s on;
-when it answers, waiting cards look again.
+`BatchMode`; keep-alives that notice a dropped link within 45 s. The server never waits on a call
+there: each runs beside its other work. A host whose connection failed counts as unreachable until a
+call there answers again (the pool's next look at its free clones, a minute on, say); then waiting cards look
+again.
 
 #### Logins and files
 

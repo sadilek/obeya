@@ -57,9 +57,8 @@ describe('a workspace on a host', () => {
     const repo = gitRepo(join(dir, 'repo'));
     host.tokenFor(repo, () => 'ghp_secret');
     const path = onHost(name, repo);
-    expect(git(path, 'branch', '--show-current')).toBe('main');
     expect(await gitAsync(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
-    expect(() => git(path, 'checkout', 'nowhere')).toThrow('git checkout nowhere');
+    await expect(gitAsync(path, 'checkout', 'nowhere')).rejects.toThrow('git checkout nowhere');
     expect((await host.run('printf %s "$GH_TOKEN"', { cwd: repo })).stdout).toBe('ghp_secret');
     expect((await host.run('printf %s "$GH_TOKEN"', { cwd: dir })).stdout).toBe('');
     expect(log()).toContain('me@box');
