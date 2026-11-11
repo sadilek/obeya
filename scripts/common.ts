@@ -96,8 +96,11 @@ export const endingIn = (dir: string, end: string) => {
  */
 export const scratchBase = (platform: NodeJS.Platform = process.platform, temp = tmpdir()) => (platform === 'win32' ? temp : '/tmp');
 
-/** The name of a scratch Obeya's dir in `scratchBase()`, with its port as the one group. */
-export const SCRATCH_NAME = /^obeya-scratch-(\d+)$/;
+/** The port of the scratch Obeya a path or command line names (`…/obeya-scratch-<port>…`), if it names one. */
+export const scratchPortIn = (text: string) => {
+  const m = /obeya-scratch-(\d+)/.exec(text);
+  return m ? Number(m[1]) : undefined;
+};
 
 /** The dir a scratch Obeya on `port` is staged in when its stage gives none. */
 export const scratchDir = (port: number) => join(scratchBase(), `obeya-scratch-${port}`);

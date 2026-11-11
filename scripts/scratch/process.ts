@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, linkSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { findTailscale, type NamedEntry, Tailscale } from '../../src/server/tailscale';
-import { scratchBase, scratchDir, script } from '../common';
+import { alive, scratchBase, scratchDir, scratchPortIn, script } from '../common';
 
 const { fail } = script('scratch-obeya');
 
@@ -32,15 +32,34 @@ export async function pickPort(givenDir: string | undefined, from: unknown): Pro
   return fail('no free port from 4480 to 4979');
 }
 
-export function scratchDirs() {
+/** The scratch dirs there are, by their names. */
+function scratchDirs() {
   return readdirSync(scratchBase())
-    .filter((n) => /^obeya-scratch-\d+$/.test(n))
-    .map((n) => join(scratchBase(), n));
+    .map((n) => join(scratchBase(), n))
+    .filter((d) => scratchPortIn(d) !== undefined && d === scratchDir(scratchPortIn(d)!));
 }
 
-export function stagedIn(d: string): { port?: number; from?: unknown } | undefined {
+/** What a staging prints, also kept in <dir>/staged.json. */
+export type Staged = {
+  url: string;
+  port: number;
+  dir: string;
+  canvas?: string;
+  repo?: string;
+  pid: number;
+  log: string;
+  from: { stage: string; code?: string };
+  endsItself: boolean;
+  cards: Record<string, string>;
+  canvasOf?: Record<string, string>;
+  record?: string;
+  replay?: string;
+};
+
+/** The staged.json of the scratch dir `d`, if there is one. */
+export function stagedIn(d: string): Staged | undefined {
   try {
-    return JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8'));
+    return JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as Staged;
   } catch {
     return undefined;
   }
@@ -50,7 +69,7 @@ export function pidIn(d: string) {
   return pidOf(join(d, 'server.pid'));
 }
 
-export function pidOf(file: string) {
+function pidOf(file: string) {
   try {
     return Number(readFileSync(file, 'utf8'));
   } catch {
@@ -64,17 +83,17 @@ export function pidOf(file: string) {
  * may name another program. The server started right before server.pid was written; a process
  * with its number that started later is another one.
  */
-export function serverIn(d: string) {
+function serverIn(d: string) {
   const file = join(d, 'server.pid');
   const pid = pidOf(file);
-  if (!alive(pid)) return undefined;
+  if (!pid || !alive(pid)) return undefined;
   const started = startOf(pid!);
   // a second for the start's precision, one for the file time's
   return started !== undefined && started <= statSync(file).mtimeMs + 2000 ? pid : undefined;
 }
 
 /** When process `pid` started (ms since the epoch, to the second), unless it is gone or not ours to look at. */
-export function startOf(pid: number): number | undefined {
+function startOf(pid: number): number | undefined {
   if (process.platform === 'win32') {
     const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `([DateTimeOffset](Get-Process -Id ${pid} -ErrorAction Stop).StartTime).ToUnixTimeMilliseconds()`], {
       encoding: 'utf8',
@@ -90,22 +109,13 @@ export function startOf(pid: number): number | undefined {
   return Date.now() - (((days! * 24 + hours!) * 60 + minutes!) * 60 + seconds!) * 1000;
 }
 
-export function alive(pid: number | undefined) {
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
-export function claimOf(p: number) {
+function claimOf(p: number) {
   return `${scratchDir(p)}.claim`;
 }
 
 /** Claims port `p` for this staging until it ends, unless another staging that still runs has. */
-export function claim(p: number): boolean {
+function claim(p: number): boolean {
   // linked in whole, so that another staging never reads a claim without its pid
   const mine = `${claimOf(p)}.${process.pid}`;
   writeFileSync(mine, String(process.pid));
@@ -117,7 +127,7 @@ export function claim(p: number): boolean {
         return true;
       } catch {
         const holder = pidOf(claimOf(p));
-        if (alive(holder)) return false;
+        if (holder && alive(holder)) return false;
         // a staging that was killed left it; one that let go of the port meanwhile left none
         if (holder) rmSync(claimOf(p), { force: true });
       }
@@ -128,7 +138,7 @@ export function claim(p: number): boolean {
 }
 
 /** Whether port `p` of a server just stopped is free within a few seconds: Windows lets go of it a moment after the process is gone, later on a busy machine. */
-export async function freed(p: number) {
+async function freed(p: number) {
   for (const end = Date.now() + 5000; ; await Bun.sleep(100)) {
     if (await free(p)) return true;
     if (Date.now() > end) return false;
@@ -136,7 +146,7 @@ export async function freed(p: number) {
 }
 
 /** Whether a server could listen on port `p` of the loopback and nothing answers there (one listening on every address, say). */
-export async function free(p: number) {
+async function free(p: number) {
   try {
     Bun.serve({ port: p, hostname: '127.0.0.1', fetch: () => new Response() }).stop(true);
   } catch {
@@ -164,40 +174,20 @@ export function stop(d: string) {
 }
 
 /** Ends the scratch server of `d` with its process group (its tree on Windows); whether it is gone then. */
-export function stopServer(d: string) {
+function stopServer(d: string) {
   const pid = serverIn(d);
   if (!pid) return true;
   if (process.platform === 'win32') stopTree(pid);
-  else signalGroup(pid);
+  else end(-pid);
   return serverIn(d) !== pid;
 }
 
-export function signalGroup(pid: number) {
-  try {
-    process.kill(-pid, 'SIGTERM');
-  } catch {
-    return;
-  }
-  for (let i = 0; i < 40; i++) {
-    if (!alive(pid)) return;
-    // Obeya waits for workers in the middle of a turn (an idle worker always is); a second signal ends it at once
-    if (i === 15)
-      try {
-        process.kill(-pid, 'SIGTERM');
-      } catch {}
-    Bun.sleepSync(100);
-  }
-  try {
-    process.kill(-pid, 'SIGKILL');
-  } catch {}
-  for (let i = 0; i < 20 && alive(pid); i++) Bun.sleepSync(100);
-}
 
 /**
  * Windows has no process groups to signal: ends the server's process tree, which a console process
  * without a window lets end only forcefully, and waits until it is gone and lets go of its files.
  */
-export function stopTree(pid: number) {
+function stopTree(pid: number) {
   spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
   for (let i = 0; i < 50 && alive(pid); i++) Bun.sleepSync(100);
 }
@@ -213,41 +203,49 @@ export async function sweep() {
   const UNTOLD_MS = 12 * 3600_000;
   const { commandWords, descendants, localProcesses } = await import('../../src/server/folder-processes');
   const all = await localProcesses();
-  const scratchOf = (text: string) => /obeya-scratch-(\d+)/.exec(text)?.[1];
   const isServer = (cmd: string) => commandWords(cmd).some((w) => /(^|[\\/])src[\\/]server[\\/]main\.ts$/.test(w));
   const staged = new Map(scratchDirs().map((d) => [serverIn(d), d] as const).filter(([pid]) => pid !== undefined));
-  const servers = all.filter((p) => staged.has(p.pid) || (isServer(p.cmd) && scratchOf(`${p.cmd} ${p.cwd}`)));
+  const servers = all.filter((p) => staged.has(p.pid) || (isServer(p.cmd) && scratchPortIn(`${p.cmd} ${p.cwd}`) !== undefined));
   const lines: string[] = [];
   for (const p of servers) {
     // a supervised server's child goes with its supervisor
     if (servers.some((q) => q.pid === p.ppid)) continue;
-    const d = staged.get(p.pid) ?? scratchDir(Number(scratchOf(`${p.cmd} ${p.cwd}`)));
-    if (staged.get(p.pid) && (stagedIn(d) as { endsItself?: boolean } | undefined)?.endsItself) continue;
+    const d = staged.get(p.pid) ?? scratchDir(Number(scratchPortIn(`${p.cmd} ${p.cwd}`) !== undefined));
+    if (staged.get(p.pid) && stagedIn(d)?.endsItself) continue;
     const started = startOf(p.pid);
     const why = p.cwd && !existsSync(p.cwd) ? `${p.cwd}, which it ran from, is gone` : started !== undefined && Date.now() - started > UNTOLD_MS ? `it ran for ${Math.round((Date.now() - started) / 3600_000)} hours` : null;
     if (!why) continue;
     const below = descendants(all, [p.pid]);
     if (staged.get(p.pid)) stop(d);
     else if (process.platform === 'win32') stopTree(p.pid);
-    else endPid(p.pid);
+    else end(p.pid);
     // what it started that did not end with it (a sidecar of its own, an agent)
-    for (const pid of below) if (pid !== p.pid && alive(pid)) process.platform === 'win32' ? stopTree(pid) : endPid(pid);
+    for (const pid of below) if (pid !== p.pid && alive(pid)) process.platform === 'win32' ? stopTree(pid) : end(pid);
     lines.push(`${new Date().toISOString()} stopped the scratch Obeya of ${d} (process ${p.pid}): ${why}`);
   }
   if (lines.length) appendFileSync(join(scratchBase(), 'obeya-scratch-sweep.log'), `${lines.join('\n')}\n`);
 }
 
-/** Ends process `pid` as Ctrl-C twice does Obeya, killing it where it does not end within seconds. */
-export function endPid(pid: number) {
-  for (let i = 0; i < 40 && alive(pid); i++) {
-    if (i === 0 || i === 15)
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {}
+/**
+ * Ends process `pid` as Ctrl-C twice ends Obeya, `target` its group (`-pid`) or itself: SIGTERM,
+ * again after 1.5 s (Obeya waits for workers in the middle of a turn, and an idle worker always
+ * is), SIGKILL after 4 s; then waits up to 2 s for it to be gone.
+ */
+function end(target: number, pid = Math.abs(target)) {
+  const signal = (s: NodeJS.Signals) => {
+    try {
+      process.kill(target, s);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!signal('SIGTERM')) return;
+  for (let i = 1; i < 40 && alive(pid); i++) {
+    if (i === 15) signal('SIGTERM');
     Bun.sleepSync(100);
   }
-  if (alive(pid))
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {}
+  // a group's other processes too, should its first have ended
+  if (target < 0 || alive(pid)) signal('SIGKILL');
+  for (let i = 0; i < 20 && alive(pid); i++) Bun.sleepSync(100);
 }

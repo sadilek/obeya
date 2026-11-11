@@ -74,7 +74,8 @@
 // phone reaching the scratch Obeya through `tailscale serve` gets a blank page from one with --dev,
 // so stage with --restarts for that. Stopping a scratch Obeya removes its `tailscale serve` entry.
 //
-// The stage file (JSON; every field but `cards` optional):
+// The stage file (JSON; every field but `cards` optional; each is described at `Stage` and
+// `StageCard` in scripts/scratch/stage.ts):
 //   {
 //     "name": "Shop", "canvases": ["Website"], "language": "en", "conversation": "de",
 //     "agents": { "worker": { "harness": "codex" } },
@@ -111,212 +112,14 @@
 //     "settingProposals": [{ "field": "run", "value": "bun run dev", "basis": "…", "cards": ["A", "B"] }],
 //     "talk": [{ "said": "…", "reply": "…", "ago": "2h", "card": "A", "answer": "…" }]
 //   }
-// `language` is the language the scratch Obeya speaks (de or en); without it, the language of the
-// demos where the script runs (`plugin/skills/demo/lib/settings.ts`: `DEMO_LANGUAGE`, which Obeya
-// gives its workers from the repository's `demo.language`, else the demo settings'), so that the
-// screen a demo records matches its narration. Card titles and conversations are not translated:
-// write them in that language. `language` is the interface's; `conversation`, the language agents
-// write the owner in before the owner's words say otherwise, follows it where left out. `agents` is
-// what "Agents and models" sets per group (`settings.json`'s `agents`: Codex for workers, say).
-// `"voice": true` gives the scratch Obeya the voice of the machine's Obeya (OBEYA_HOME where the
-// script runs, else ~/.obeya): a copy of its demo settings and a link to its installed voices, for
-// what Obeya itself speaks (a walkthrough); an object instead is demo settings over the machine's
-// (`{ "voice": "kokoro" }`: another voice than the owner's, so a demo tells what Obeya says apart
-// from its own narration). Without it, the scratch home has the default settings and no voice installed.
-// A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
-// POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
-// several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
-// into the database:
-// state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
-// now), snoozed (`{ on, state?, why? }`: its agent snoozed it until the card with key `on` gets to `state`, done by default), scope (files), branch (a working or waiting card without one gets the branch a start would
-// have given it, which every started card has), createdAgo, changedAgo (when something last happened at it), archivedAgo, spent (what its agents cost so far, US dollars; the stage's own `spent` is what the canvas's own agents did; both need code that counts costs), events ([{ kind, author, text, ago?, mocks?, spot?, token?, reply? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
-// `reply`: Obeya's reply that only answers the owner's words, which stands in the conversation (with a `talk` entry on the card of the same reply, its exchange);
-// with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
-// place in a demo video, `{ at, chapter?, demo? }`) names its demo by its place in that order; earlier demos need code that has them),
-// workspace (true: the card holds the next free clone, for a repository whose settings say clones; with
-// its branch checked out there, holding a commit where `branch` names it, of `branchFiles` (else of a `scratch.txt`; by path, a text or `{ from }` a file to copy); for one that works in worktrees, a branch is
-// required and the card gets a worktree of its own on it), prototypeOf (the key of the idea it is a prototype of),
-// and `row` for any other column of `cards` (objects are stored as JSON; a
-// review card's `row.contribution` naming one of `pulls` gets that PR's head as `reviewed` where it names none). Times: "90s", "15m", "2h",
-// "3d" ago. `mainBranch` is the branch the repositories are on (default `main`). With `forgeClone`, the forge that plays `pulls` keeps its repository in <dir>/forge, a clone the PRs' heads are in, so that what lands on the local main is not on the forge until pushed; the contributors' repositories are that one too, so a push onto a PR's branch moves its head. `"setup": true` serves no canvas (no configuration, no repository given): the first start,
-// which shows the setup assistant; the repository is still made, for the assistant to pick, and
-// `cards` may be empty. `"git": false` makes the repository a folder without git (a card's `workspace: true` then
-// is the folder itself, and its `changes`, as `[{ "kind": "added", "path": "…" }]` with `from` for a move, are what it
-// changed there: the files are as `files` and `copy` leave them, a changed one without a copy from before), and `copy` copies a directory into it first (documents, binaries). The repository has settings of its own where `files` hold `.obeya/settings.json` (a demo site among them, say). `poolCheckout` makes the repository's checkout a workspace of the pool too
-// (`workspaces` in the configuration), as a pool of clones often has it, with a bare origin in
-// <dir>; `settings` are the repository's settings on this machine, in the configuration (a plan
-// folder outside the repository, which only they may name); with either, the server
-// starts from a configuration file in <dir>. `slots` caps the workers busy at once on this machine
-// (an idle worker counts as busy). `hosts` are other machines over SSH (as in the configuration;
-// `root` defaults to <dir>/far there): the repository gets a bare origin in <dir>, copied to each
-// host at the same path, so that Obeya clones it there as it would a remote; staging afresh
-// removes <dir> there first. A host with `"gone": true` held its clones once and does not answer
-// now (an `ssh` target nobody resolves, say): nothing goes there, and its clones are registered as if
-// Obeya had made them. `OBEYA_SSH` in the script's environment names a program that stands for `ssh`
-// in the server (`fakeSsh` in src/server/testing.ts: a host that is this machine, with a home of its
-// own), and nothing is copied there. `name` names the canvas the cards go on; `repoName` names its repository's
-// directory (<dir>/repo by default), and so its id; `repos` adds further repositories to that canvas,
-// `[{ "name": "promo", "files": { … } }]`, each in <dir>/<name> with that id, which a card's `repo`
-// names; `canvases` adds further ones by
-// name, each over a repository of its own (<dir>/repo-2, …); a card goes on one of them by its `canvas` (the name), and
-// works there, with `workspace`, in a worktree of that canvas's repository. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
-// `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
-// What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
-// Groups are created through the API with their cards (keys; a workstream stands for its project),
-// in their colours by order. `talk` is the conversation with the Coordinator, oldest first (`card` a key;
-// `question` and `answer`, `answerBy` for a question it looked up; `follows`: the index of the
-// exchange whose answer it continues, in that one's thread; `files`: the answer's files, each with
-// its name, caption and either `content` or a file to copy (`from`), written to the thread's output
-// directory; needs code that has them; `unread`: its answer waits unread; `replyOnly`: the reply only
-// answers the words, no actions (what "Show as walkthrough" tells), needs code that has it; `wish`: what a draft for
-// Obeya's makers starts from, `{ said, answer? }`, for the link under the reply; `askedIn`: the key of
-// the project whose sheet the words were written in, straight to its project agent, with an empty `reply`). `friction` is what the work retrospective noted on a card's
-// runs (`card` a key), read by its next retrospective; `settingProposals` are values for a
-// repository's settings it proposed (`field`: checks, setup, softPaths or run; `cards` keys;
-// `repo` defaults to the canvas's home repository); both need code that has them.
-// Obeya proposes a card that fills in the settings of a repository without any ("Set up Obeya for
-// …"); staging dismisses it on every canvas, unless `"setupProposals": true` keeps it.
 
-import { Database } from 'bun:sqlite';
-import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
-import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
-import { type Language, LANGUAGES } from '../src/core/locale';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import type { CanvasSnapshot, Item } from '../src/core/types';
-import { videoFacts } from '../src/server/demo-files';
 import { loginLink, ownerHeaders } from '../src/server/owner';
-import { mayRecordInto } from '../src/server/replay';
-import { branchName } from '../src/server/branches';
-import { ROOT, scratchDir, script } from './common';
-import { waitUp } from './wait-up';
-import { pickPort, pidIn, stop, sweep } from './scratch/process';
-
-type StageEvent = NonNullable<StageCard['events']>[number];
-
-interface StageCard {
-  key?: string;
-  title?: string;
-  body?: string;
-  x?: number;
-  y?: number;
-  idea?: boolean;
-  repo?: string;
-  from?: string;
-  project?: string;
-  workstream?: string;
-  /** The name of one of `canvases` the card goes on, instead of the first canvas. */
-  canvas?: string;
-  state?: string;
-  need?: string | null;
-  statusLine?: string;
-  summary?: string;
-  question?: { text: string; options?: string[]; multiple?: boolean };
-  demo?: Record<string, unknown>;
-  queue?: { behind?: string[]; reason?: string; since?: string; checking?: true };
-  /** Snoozed by its agent until the card with key `on` gets to `state` (default done). */
-  snoozed?: { on: string; state?: string; why?: string };
-  scope?: string[];
-  changes?: { kind: 'added' | 'modified' | 'deleted' | 'moved'; path: string; from?: string }[];
-  branch?: string;
-  /** Files the card's branch commits (instead of a `scratch.txt`): by path, its text, or `{ from }` a file to copy (a PDF, say). */
-  branchFiles?: Record<string, string | { from: string }>;
-  workspace?: boolean;
-  /** A prototype of the idea with this key. */
-  prototypeOf?: string;
-  createdAgo?: string;
-  /** What its agents cost so far, in US dollars, as one session of theirs. */
-  spent?: number;
-  changedAgo?: string;
-  archivedAgo?: string;
-  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean; reply?: boolean }[];
-  row?: Record<string, unknown>;
-}
-
-interface Stage {
-  /** What the canvas's own agents (the Coordinator's) cost so far, in US dollars. */
-  spent?: number;
-  /** No canvas: Obeya's first start, with the setup assistant. */
-  setup?: boolean;
-  /** Keeps Obeya's proposal to fill in the settings of a repository that has none. */
-  setupProposals?: boolean;
-  /** Names the canvas the cards go on. */
-  name?: string;
-  /** The language of the scratch Obeya's interface; the demos' where the script runs without it. */
-  language?: Language;
-  /** The owner's conversation language; the interface's without it. */
-  conversation?: Language;
-  /** Speaks in the voice of the machine's Obeya, or in the demo settings given over its. */
-  voice?: boolean | Record<string, unknown>;
-  /** What "Agents and models" sets per group, as `settings.json` keeps it under `agents`. */
-  agents?: Record<string, unknown>;
-  /** The directory of the canvas's repository under the scratch directory, and so its id (default `repo`). */
-  repoName?: string;
-  /** Further repositories on the canvas the cards go on, each in a directory of its name, which is its id. */
-  repos?: { name: string; files?: Record<string, string> }[];
-  /** Further canvases by name, each over a repository of its own; a card goes on one by its `canvas`. */
-  canvases?: string[];
-  /** Without it (and without --port) the script picks a free one. */
-  port?: number;
-  dir?: string;
-  /** The branch the repositories are on (default `main`). */
-  mainBranch?: string;
-  /** Clones for the workers, who then work in clones whatever the settings say: real workers need one each. */
-  clones?: number;
-  /** The repository's checkout is a workspace of the pool too. */
-  poolCheckout?: boolean;
-  /** The repository's settings on this machine, in the configuration (a plan folder outside it, say). */
-  settings?: Record<string, unknown>;
-  /** Workers busy at once on this machine. */
-  slots?: number;
-  /** Other machines over SSH, as in the configuration. */
-  hosts?: { name: string; ssh: string; root?: string; clones: number; slots?: number; gone?: boolean }[];
-  files?: Record<string, string>;
-  plans?: Record<string, string>;
-  /** `false`: the repository is a folder without git (design: Folders without git). */
-  git?: false;
-  /** A directory whose contents go into the repository first (a small folder of documents, binaries included). */
-  copy?: string;
-  /**
-   * Pull requests someone outside opened on the canvas's repository, played by a forge in a file
-   * (src/server/file-forge.ts): each a commit of `files` on the main branch, its head as
-   * `refs/pull/<number>/head` in the repository. Their URLs are GitHub's for `forgeRepo` (default
-   * `acme/<repoName>`), the repository's origin too, which git of the scratch Obeya reads as the
-   * repository itself; the account Obeya acts as is `forgeViewer` (default `owner`); the watcher
-   * looks at them every `prPoll` seconds (default 10). The file is <dir>/forge.json, which a demo
-   * edits to play the contributor (a comment, a push).
-   */
-  pulls?: { number: number; title: string; author: string; files: Record<string, string>; canModify?: boolean; checks?: { name: string; state: 'pending' | 'success' | 'failure' }[]; body?: string }[];
-  forgeRepo?: string;
-  /**
-   * The forge's repository is a clone of the repository (<dir>/forge, the PRs' heads in it) rather
-   * than the repository itself: what lands on the local main is not on the forge until pushed.
-   */
-  forgeClone?: boolean;
-  forgeViewer?: string;
-  prPoll?: number;
-  cards: StageCard[];
-  preferences?: { key?: string; text: string; state?: string; card?: string; quote?: string; review?: boolean; replaces?: string; target?: string }[];
-  groups?: { name: string; cards: string[] }[];
-  friction?: { card: string; what: string; cost: string; fix: string; ago?: string; repo?: string }[];
-  settingProposals?: { field: string; value: string | string[]; basis: string; cards: string[]; repo?: string }[];
-  talk?: {
-    said: string;
-    reply: string;
-    ago?: string;
-    card?: string;
-    question?: string;
-    answer?: string;
-    answerBy?: string;
-    follows?: number;
-    files?: { name: string; caption: string; content?: string; from?: string }[];
-    unread?: boolean;
-    replyOnly?: boolean;
-    wish?: { said: string; answer?: string };
-    askedIn?: string;
-  }[];
-}
+import { scratchDir, script } from './common';
+import { pidIn, stagedIn, stop, sweep } from './scratch/process';
+import { artifactDir, stageObeya } from './scratch/stage';
 
 const { fail, args } = script('scratch-obeya');
 const argv = process.argv.slice(2);
@@ -342,6 +145,10 @@ const { values: options, positionals } = args(
   },
   command < 0 ? argv : argv.filter((a, i) => i < command + 2 || a === '--dir' || argv[i - 1] === '--dir'),
 );
+
+/** The scratch dir of the scratch Obeya on `port`: --dir, else where it is staged by default. */
+const dirOf = (port: number) => options.dir ?? scratchDir(port);
+
 /** What --say has the card's agent do for each kind of its lines in the conversation (as in a stage file's `events`). */
 const SAYS = {
   say: (text: string) => ({ say: text }),
@@ -354,615 +161,50 @@ const SAYS = {
   end: () => ({ end: true as const }),
 };
 
-const stopPort = options.stop;
-if (stopPort) {
-  const d = options.dir ?? scratchDir(Number(stopPort));
+if (options.stop) {
+  const d = dirOf(Number(options.stop));
   if (!stop(d)) fail(`the server of ${d} (process ${pidIn(d)}) still runs after the stop`);
-  process.exit(0);
-}
-const loginPort = options.login;
-if (loginPort) {
-  const d = options.dir ?? scratchDir(Number(loginPort));
-  const canvas = existsSync(join(d, 'staged.json')) ? (JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas?: string }).canvas : undefined;
-  const link = await loginLink(`http://127.0.0.1:${loginPort}`, join(d, 'home'), canvas ? `/c/${canvas}` : '/');
-  if (!link) fail(silent(d, Number(loginPort)));
-  console.log(link);
-  process.exit(0);
-}
-
-const sayPort = options.say;
-if (sayPort) {
+} else if (options.login) {
+  const port = Number(options.login);
+  const canvas = stagedIn(dirOf(port))?.canvas;
+  console.log((await loginLink(`http://127.0.0.1:${port}`, join(dirOf(port), 'home'), canvas ? `/c/${canvas}` : '/')) ?? fail(silent(port)));
+} else if (options.say) {
   const [key, kind, ...said] = words;
   const text = said.join(' ');
   const act = SAYS[kind as keyof typeof SAYS];
   if (!key || !act || (!text.trim() && kind !== 'end')) fail(`usage: bun scripts/scratch-obeya.ts --say <port> <card key> <${Object.keys(SAYS).join('|')}> <text>`);
-  console.log(await standIn(Number(sayPort), key!, act!(text)));
-  process.exit(0);
-}
-if (options.sweep) {
-  await sweep();
-  process.exit(0);
-}
-const artifactPort = options.artifact;
-if (artifactPort) {
-  const [key, from, ...summaryWords] = words;
+  console.log(await standIn(Number(options.say), key!, act!(text)));
+} else if (options.artifact) {
+  const port = Number(options.artifact);
+  const [key, from, ...summary] = words;
   if (!key || !from || !existsSync(from)) fail('usage: bun scripts/scratch-obeya.ts --artifact <port> <card key> <file> [<summary>]');
-  const d = options.dir ?? scratchDir(Number(artifactPort));
-  const to = artifactDir(d, key!);
+  const to = artifactDir(dirOf(port), key!);
   mkdirSync(to, { recursive: true });
   copyFileSync(from!, join(to, basename(from!)));
   // the page it may be shared on stays as the card's demo had it
-  const { page } = (await stagedCard(Number(artifactPort), key!)).demo ?? {};
-  const summary = summaryWords.join(' ').trim() || 'Updated the artifact.';
-  console.log(await standIn(Number(artifactPort), key!, { tool: 'ready_for_review', args: { summary, demo: { kind: 'html', dir: to, ...(page ? { page } : {}) } } }));
-  process.exit(0);
-}
-
-const file = positionals.length === 1 ? positionals[0] : undefined;
-if (!file) fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit> | --binary <obeya>] [--real-workers | --record <dir> | --replay <dir>] [--restarts] | --stop <port> | --login <port> | --say <port> … | --artifact <port> …');
-const stage = JSON.parse(readFileSync(file!, 'utf8')) as Stage;
-// what a scratch Obeya was staged from: staging afresh from it replaces that one
-const from = { stage: realpathSync(file!), ...(options.code || options.binary ? { code: options.code ?? options.binary } : {}) };
-// scratch Obeyas from code that does not end them by itself, which this one does not wait for
-spawn(process.execPath, [import.meta.path, '--sweep'], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true }).unref();
-const given = options.port ?? stage.port;
-const port = given !== undefined ? Number(given) : await pickPort(options.dir ?? stage.dir, from);
-const dir = resolve(options.dir ?? stage.dir ?? scratchDir(port));
-const base = `http://127.0.0.1:${port}`;
-
-stop(dir);
-// whatever answers there, with Obeya's key or without
-if (await fetch(base, { signal: AbortSignal.timeout(1000) }).then(() => true, () => false)) fail(`port ${port} is taken by another process (lsof -i :${port})`);
-rmSync(dir, { recursive: true, force: true });
-const home = join(dir, 'home');
-/** Where a host keeps the repository's clones. */
-const rootOn = (h: { root?: string }) => h.root ?? `${dir}/far`;
-const repo = join(dir, stage.repoName ?? 'repo');
-const mainBranch = stage.mainBranch ?? 'main';
-mkdirSync(home, { recursive: true });
-for (const k of ['language', 'conversation'] as const) if (stage[k] && !LANGUAGES.includes(stage[k])) fail(`"${k}" is ${LANGUAGES.join(' or ')}, not ${stage[k]}`);
-// the languages of Obeya's interface and of its agents' conversation with the owner (src/server/settings.ts)
-writeFileSync(join(home, 'settings.json'), `${JSON.stringify({ language: stage.language ?? demoSettingsHere().language, ...(stage.conversation ? { conversationLanguage: stage.conversation } : {}), ...(stage.agents ? { agents: stage.agents } : {}) })}\n`);
-if (stage.voice) {
-  const machine = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
-  const settings = existsSync(join(machine, 'demo.json')) ? (JSON.parse(readFileSync(join(machine, 'demo.json'), 'utf8')) as Record<string, unknown>) : {};
-  writeFileSync(join(home, 'demo.json'), `${JSON.stringify({ ...settings, ...(typeof stage.voice === 'object' ? stage.voice : {}) }, null, 2)}\n`);
-  if (existsSync(join(machine, 'voices')) && !existsSync(join(home, 'voices'))) symlinkSync(join(machine, 'voices'), join(home, 'voices'));
-}
-// the owner's key, made before the server starts, which takes it from the home (owner.ts); code from before it has none and ignores it
-const owner = ownerHeaders(home);
-
-// the repository
-const files = { ...(stage.files ?? {}), ...(stage.plans ?? {}) };
-mkdirSync(repo, { recursive: true });
-if (stage.copy) cpSync(resolve(stage.copy), repo, { recursive: true, preserveTimestamps: true });
-if (!Object.keys(files).length && !stage.copy) files['README.md'] = '# Scratch\n';
-for (const [path, text] of Object.entries(files)) {
-  mkdirSync(dirname(join(repo, path)), { recursive: true });
-  writeFileSync(join(repo, path), text);
-}
-const folder = stage.git === false;
-if (!folder) initRepo(repo);
-// a workspace of the pool is a clone of the repository's origin, the checkout included
-if (stage.poolCheckout || stage.hosts?.length) {
-  run('git', ['clone', '-q', '--bare', repo, join(dir, 'scratch.git')], dir);
-  run('git', ['remote', 'add', 'origin', join(dir, 'scratch.git')], repo);
-  run('git', ['fetch', '-q', 'origin'], repo);
-  run('git', ['branch', '-q', '-u', `origin/${mainBranch}`], repo);
-}
-// pull requests of people outside, for the forge the file plays
-const forgeRepo = join(dir, 'forge');
-const prHeads = new Map<number, string>();
-if (stage.pulls?.length) {
-  const slug = stage.forgeRepo ?? `acme/${basename(repo)}`;
-  const prs = stage.pulls.map((p) => {
-    run('git', ['checkout', '-q', '-b', `pr-${p.number}`], repo);
-    for (const [path, text] of Object.entries(p.files)) {
-      mkdirSync(dirname(join(repo, path)), { recursive: true });
-      writeFileSync(join(repo, path), text);
-    }
-    run('git', ['add', '-A'], repo);
-    run('git', ['-c', `user.name=${p.author}`, '-c', `user.email=${p.author}@users.noreply`, 'commit', '-qm', p.title], repo);
-    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.trim();
-    run('git', ['update-ref', `refs/pull/${p.number}/head`, head], repo);
-    run('git', ['checkout', '-q', mainBranch], repo);
-    run('git', ['branch', '-q', '-D', `pr-${p.number}`], repo);
-    prHeads.set(p.number, head);
-    return { url: `https://github.com/${slug}/pull/${p.number}`, number: p.number, title: p.title, author: p.author, head, canModify: p.canModify ?? true, headRepo: `https://github.com/${p.author}/${basename(slug)}.git`, headRef: `pr-${p.number}`, checks: p.checks ?? [], comments: [], ...(p.body ? { body: p.body } : {}) };
-  });
-  // a remote of its own, which what lands on the local main reaches only once pushed: a clone with the PRs' heads
-  if (stage.forgeClone) {
-    run('git', ['clone', '-q', repo, forgeRepo], dir);
-    // pushes onto its checked-out main go into its files too, as the forge's merges do
-    run('git', ['config', 'receive.denyCurrentBranch', 'updateInstead'], forgeRepo);
-    // a push onto a PR's branch moves its refs/pull head at once, as on the forge
-    writeFileSync(join(forgeRepo, '.git', 'hooks', 'post-receive'), '#!/bin/sh\nwhile read old new ref; do case "$ref" in refs/heads/pr-*) git update-ref "refs/pull/${ref#refs/heads/pr-}/head" "$new";; esac; done\n', { mode: 0o755 });
-    run('git', ['fetch', '-q', repo, '+refs/pull/*:refs/pull/*'], forgeRepo);
-  }
-  writeFileSync(join(dir, 'forge.json'), `${JSON.stringify({ repo: stage.forgeClone ? forgeRepo : repo, viewer: stage.forgeViewer ?? 'owner', prs }, null, 2)}\n`);
-  // its origin is the forge's repository, which git of the scratch Obeya finds in the repository itself
-  if (!stage.poolCheckout && !stage.hosts?.length) run('git', ['remote', 'add', 'origin', `git@github.com:${slug}.git`], repo);
-}
-// the further repositories of the canvas
-const others = (stage.repos ?? []).map((r) => {
-  const path = join(dir, r.name);
-  mkdirSync(path, { recursive: true });
-  const files = r.files && Object.keys(r.files).length ? r.files : { 'README.md': `# ${r.name}\n` };
-  for (const [file, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(path, file)), { recursive: true });
-    writeFileSync(join(path, file), text);
-  }
-  initRepo(path);
-  return { path, ...(stage.clones ? { clones: stage.clones } : {}) };
-});
-// the repositories of the further canvases
-const further = (stage.canvases ?? []).map((name, i) => {
-  const path = join(dir, `repo-${i + 2}`);
-  mkdirSync(path, { recursive: true });
-  writeFileSync(join(path, 'README.md'), `# ${name}\n`);
-  initRepo(path);
-  return { name, repos: [{ path }] };
-});
-// the origin at the same path on each host, which clones it from there
-for (const h of stage.hosts ?? []) {
-  // a stand-in's host is this machine, which has it there already
-  if (h.gone || process.env.OBEYA_SSH) continue;
-  const ssh = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', h.ssh];
-  // through ssh rather than scp, which takes no ssh://user@host:port target
-  const tar = spawnSync('tar', ['-cf', '-', 'scratch.git'], { cwd: dir, maxBuffer: 1 << 30 });
-  const r = spawnSync('ssh', [...ssh, `rm -rf '${dir}' && mkdir -p '${dir}' && tar --no-same-owner -xf - -C '${dir}'`], { input: tar.stdout, encoding: 'utf8' });
-  if (tar.status !== 0 || r.status !== 0) fail(`copying the origin to ${h.name}: ${r.stderr || tar.stderr}`);
-}
-
-// the code it runs
-let code = ROOT;
-const commit = options.code;
-if (commit) {
-  code = join(dir, 'code');
-  mkdirSync(code);
-  const archive = spawnSync('git', ['-C', ROOT, 'archive', commit], { maxBuffer: 1 << 30 });
-  if (archive.status !== 0) fail(`git archive ${commit}: ${archive.stderr}`);
-  // tar in the directory rather than with -C, whose Windows path (D:\…) Git's MSYS tar takes for host D
-  const tar = spawnSync('tar', ['-xf', '-'], { cwd: code, input: archive.stdout });
-  if (tar.status !== 0) fail(`tar: ${tar.stderr}`);
-  // a junction on Windows, which needs no developer mode; other systems ignore the type
-  symlinkSync(join(ROOT, 'node_modules'), join(code, 'node_modules'), 'junction');
-}
-const binary = options.binary && resolve(options.binary);
-if (binary && !existsSync(binary)) fail(`${binary} does not exist`);
-const record = options.record && resolve(options.record);
-const replay = options.replay && resolve(options.replay);
-if (record && replay) fail('--record or --replay, not both');
-if (record && !mayRecordInto(record)) fail(`${record} holds something other than a recording; record into an empty or new directory`);
-if (replay && !existsSync(join(replay, 'meta.json'))) fail(`${replay} holds no recording (record one with --record)`);
-if ((record || replay) && (binary || !readFileSync(join(code, 'src/server/main.ts'), 'utf8').includes('replayRuntime'))) fail(`${binary ?? commit} cannot record or play back its agents`);
-// a fresh take, recorded from its first session
-if (record) rmSync(record, { recursive: true, force: true });
-// a recording in a demo's directory takes the cuts of the take that recorded it, before a take played back writes its own
-const takeCuts = replay && join(dirname(replay), '.work', 'cuts.json');
-if (replay && takeCuts && !existsSync(join(replay, 'cuts.json')) && existsSync(takeCuts) && statSync(takeCuts).mtimeMs >= statSync(join(replay, 'meta.json')).mtimeMs)
-  copyFileSync(takeCuts, join(replay, 'cuts.json'));
-const idle = !options['real-workers'] && !record && !replay;
-
-// the server, in its own process group so --stop ends it with everything it started (on Windows,
-// which has none, its process tree)
-const log = join(dir, 'server.log');
-const out = openSync(log, 'a');
-// not supervised: a scratch Obeya restarts itself only when asked to
-const supervised = !!options.restarts;
-// whether the server ends by itself once of no more use (src/server/scratch.ts); code from before that ignores OBEYA_SCRATCH
-const endsItself = (binary ? readFileSync(binary) : readFileSync(join(code, 'src/server/main.ts'))).includes('OBEYA_SCRATCH');
-const env = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')),
-  OBEYA_HOME: home,
-  OBEYA_SCRATCH: ROOT,
-  ...(stage.pulls?.length
-    ? {
-        OBEYA_FORGE_FILE: join(dir, 'forge.json'),
-        OBEYA_PR_POLL: String(stage.prPoll ?? 10),
-        ...gitConfig(
-          // the forge's repository is the remote's, and with a clone of its own the contributors' too: a push onto a PR's branch moves its head
-          [`git@github.com:${stage.forgeRepo ?? `acme/${basename(repo)}`}.git`, ...(stage.forgeClone ? stage.pulls.map((p) => `https://github.com/${p.author}/${basename(stage.forgeRepo ?? `acme/${basename(repo)}`)}.git`) : [])].map(
-            (url) => [`url.${stage.forgeClone ? forgeRepo : repo}.insteadOf`, url] as const,
-          ),
-        ),
-      }
-    : {}),
-};
-// a pool's workspaces live in the configuration, which the command line cannot give
-const configFile = join(dir, 'canvases.json');
-const configured = folder || !!stage.poolCheckout || !!stage.settings || stage.slots !== undefined || !!stage.hosts?.length || !!stage.name || further.length > 0 || others.length > 0;
-if (configured)
-  writeFileSync(
-    configFile,
-    JSON.stringify(
-      [
-        {
-          ...(stage.name ? { name: stage.name } : {}),
-          repos: [
-            {
-              path: repo,
-              ...(folder ? { git: false } : {}),
-              ...(stage.clones ? { clones: stage.clones } : {}),
-              ...(stage.poolCheckout ? { workspaces: [repo] } : {}),
-              ...(stage.settings ? { settings: stage.settings } : {}),
-              ...(stage.slots !== undefined ? { slots: stage.slots } : {}),
-              ...(stage.hosts?.length ? { hosts: stage.hosts.map(({ gone: _, ...h }) => ({ ...h, root: rootOn(h) })) } : {}),
-            },
-            ...others,
-          ],
-        },
-        ...further,
-      ],
-      null,
-      2,
-    ),
-  );
-const canvasArgs = stage.setup ? [] : configured ? ['--config', configFile] : [repo, ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
-const serverArgs = [
-  ...canvasArgs,
-  '--port',
-  String(port),
-  ...(supervised ? [] : ['--dev']),
-  ...(idle ? ['--idle-workers'] : []),
-  ...(record ? ['--record', record] : []),
-  ...(replay ? ['--replay', replay] : []),
-];
-const server = spawn(binary ?? process.execPath, binary ? serverArgs : ['src/server/main.ts', ...serverArgs], {
-  cwd: binary ? dir : code,
-  env,
-  detached: true,
-  stdio: ['ignore', out, out],
-});
-server.unref();
-writeFileSync(join(dir, 'server.pid'), String(server.pid));
-let exited: number | null = null;
-server.on('exit', (c) => (exited = c ?? -1));
-const started = await waitUp(`${base}/api/canvases`, {
-  headers: owner,
-  exited: () => exited,
-  limit: 5 * 60_000,
-  slowAfter: 15_000,
-  onSlow: () => console.error(`scratch-obeya: the server takes long to start${commit ? ' (code from git archive starts cold)' : ''}; waiting up to 5 min`),
-});
-if (!started.up) {
-  if (started.exit === null) stop(dir);
-  const after = `after ${Math.round(started.waited / 1000)} s`;
-  fail(`the server did not come up ${started.exit !== null ? `(exit ${started.exit}) ${after}` : `${after}, so it was stopped`}; ${log}:\n${readFileSync(log, 'utf8').slice(-2000)}`);
-}
-if (stage.setup) {
-  const staged = { url: (await loginLink(base, home)) ?? `${base}/`, port, dir, repo, pid: server.pid, log, from, endsItself, cards: {} };
-  writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
+  const { page } = (await stagedCard(port, key!)).demo ?? {};
+  console.log(await standIn(port, key!, { tool: 'ready_for_review', args: { summary: summary.join(' ').trim() || 'Updated the artifact.', demo: { kind: 'html', dir: to, ...(page ? { page } : {}) } } }));
+} else if (options.sweep) await sweep();
+else {
+  if (positionals.length !== 1)
+    fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit> | --binary <obeya>] [--real-workers | --record <dir> | --replay <dir>] [--restarts] | --stop <port> | --login <port> | --say <port> … | --artifact <port> …');
+  const staged = await stageObeya({ ...options, file: positionals[0]!, realWorkers: options['real-workers'] });
   console.log(JSON.stringify(staged));
-  process.exit(0);
 }
-const allCanvases = (await (await fetch(`${base}/api/canvases`, { headers: owner })).json()) as { id: string; name: string }[];
-const canvas = allCanvases[0]!.id;
-const api = async (method: string, path: string, body?: unknown, on = canvas) => {
-  const r = await fetch(`${base}/api/c/${on}${path}`, {
-    method,
-    headers: { ...owner, 'content-type': 'application/json' },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const text = await r.text();
-  if (!r.ok) fail(`${method} ${path} ${JSON.stringify(body)}: ${r.status} ${text}`);
-  return text ? JSON.parse(text) : undefined;
-};
-
-// Obeya's proposal to fill in a repository's settings, on every canvas, unless the stage keeps it
-if (!stage.setupProposals)
-  for (const c of allCanvases)
-    for (const i of ((await api('GET', '/canvas', undefined, c.id)) as CanvasSnapshot).items)
-      if (i.state === 'proposal' && i.proposal?.setup) await api('POST', `/cards/${i.id}/act`, { action: 'dismiss' }, c.id);
-
-// the cards: created through the API, the plan doc's looked up, then their fields written directly
-const snapshot = (await api('GET', '/canvas')) as CanvasSnapshot;
-const ids: Record<string, string> = {};
-// the canvas each card is on: a project or workstream is on the first, any other card where its `canvas` puts it
-const canvasOf: Record<string, string> = {};
-const below = Math.max(0, ...snapshot.items.map((x) => x.y)) + 400;
-let placed = 0;
-const idOf = (c: StageCard, i: number) => ids[c.key ?? String(i)]!;
-for (const [i, c] of stage.cards.entries()) {
-  let id: string | undefined;
-  let on = canvas;
-  if (c.project) id = snapshot.items.find((x) => x.kind === 'project' && x.plan?.file === c.project)?.id;
-  else if (c.workstream) {
-    const [doc, label] = c.workstream.includes('#') ? c.workstream.split('#') : [undefined, c.workstream];
-    const projects = new Set(snapshot.items.filter((x) => x.kind === 'project' && (!doc || x.plan?.file === doc)).map((x) => x.id));
-    // code before short codes were labels (`4A Title`, --code) has the code at the start of the title
-    id = snapshot.items.find((x) => (x.label ?? x.title.split(' ')[0]) === label && x.parent && projects.has(x.parent))?.id;
-  } else {
-    if (c.from && !ids[c.from]) fail(`card ${c.key ?? i}: "from" names ${c.from}, which comes later or does not exist`);
-    // without a place: in rows of four below the plan docs (a follow-up goes below its card)
-    const at = c.from || (c.x !== undefined && c.y !== undefined) ? {} : { x: 40 + 360 * (placed % 4), y: below + 220 * Math.floor(placed++ / 4) };
-    on = c.canvas ? (allCanvases.find((x) => x.name === c.canvas)?.id ?? fail(`card ${c.key ?? i}: no canvas named ${c.canvas}`)) : canvas;
-    const created = await api('POST', '/cards', {
-      title: c.title ?? '',
-      ...(c.body !== undefined ? { body: c.body } : {}),
-      ...at,
-      ...(c.x !== undefined ? { x: c.x } : {}),
-      ...(c.y !== undefined ? { y: c.y } : {}),
-      ...(c.idea ? { idea: true } : {}),
-      ...(c.repo ? { repo: c.repo } : {}),
-      ...(c.from ? { from: ids[c.from] } : {}),
-    }, on);
-    id = created.id;
-  }
-  if (!id) fail(`card ${c.key ?? i}: no ${c.project ? `project for ${c.project}` : `workstream ${c.workstream}`} on the canvas`);
-  ids[c.key ?? String(i)] = id!;
-  canvasOf[c.key ?? String(i)] = on;
-}
-
-const db = new Database(join(home, 'obeya.db'), { strict: true });
-db.run('PRAGMA busy_timeout = 10000');
-for (const h of stage.hosts ?? [])
-  for (let n = 1; h.gone && n <= h.clones; n++)
-    db.query('INSERT INTO workspaces (path, canvas_id, repo) VALUES ($path, $c, NULL) ON CONFLICT(path) DO NOTHING').run({ path: `ssh://${h.name}${rootOn(h)}/${n}`, c: canvas });
-const columns = new Set((db.query('PRAGMA table_info(cards)').all() as { name: string }[]).map((c) => c.name));
-for (const [i, c] of stage.cards.entries()) {
-  const id = idOf(c, i);
-  const row: Record<string, unknown> = {};
-  if ((c.project || c.workstream) && (c.x !== undefined || c.y !== undefined)) Object.assign(row, { x: c.x, y: c.y });
-  if (c.state !== undefined) row.state = c.state;
-  if (c.need !== undefined) row.need = c.need;
-  if (c.statusLine !== undefined) row.status_line = c.statusLine;
-  if (c.summary !== undefined) row.detail = { summary: c.summary };
-  if (c.question !== undefined) row.detail = { question: { options: [], ...c.question } };
-  // an HTML artifact is shown from a copy in <dir>, which --artifact may rewrite
-  // a video as a handover keeps it, with what the player knows of it beforehand
-  const demo = c.demo && (c.demo.kind === 'html' ? { ...c.demo, dir: copyArtifact(String(c.demo.dir), artifactDir(dir, c.key ?? String(i))) } : { ...videoFacts(String(c.demo.dir)), ...c.demo });
-  if (demo !== undefined) row.demo = { kind: 'video', ...demo };
-  if (c.queue !== undefined)
-    row.queue = {
-      ...c.queue,
-      ...(c.queue.behind ? { behind: c.queue.behind.map((k) => ids[k] ?? fail(`card ${c.key ?? i}: queue names ${k}, which does not exist`)) } : {}),
-      since: c.queue.since ?? new Date().toISOString(),
-    };
-  if (c.snoozed !== undefined) {
-    const on = ids[c.snoozed.on] ?? fail(`card ${c.key ?? i}: snoozed names ${c.snoozed.on}, which does not exist`);
-    const title = stage.cards.find((x) => x.key === c.snoozed!.on)?.title ?? '';
-    row.snoozed = { on: { card: on, title, state: c.snoozed.state ?? 'done' }, by: 'agent', ...(c.snoozed.why ? { why: c.snoozed.why } : {}) };
-  }
-  if (c.scope !== undefined) row.scope = { files: c.scope, reason: '' };
-  // a card at work or waiting for the owner has the branch its start gave it, as every started card
-  // has: without one the card shows neither its conversation's field nor the question it waits on
-  const branch = c.branch ?? (c.state === 'working' || c.state === 'waiting' ? branchName(c.title ?? snapshot.items.find((x) => x.id === id)?.title ?? '', id) : undefined);
-  if (branch !== undefined) row.branch = branch;
-  if (c.workspace && folder) {
-    // every card works in the folder itself, with a record of what it changed there (folder.ts)
-    row.workspace = repo;
-    row.branch = branch ?? `obeya/${id.slice(0, 6)}`;
-    db.query('INSERT INTO folder_cards (card_id, folder, state) VALUES ($id, $f, $s) ON CONFLICT(card_id) DO NOTHING').run({
-      id,
-      f: realpathSync(repo),
-      s: JSON.stringify({ held: true, undo: null, changes: c.changes ?? [] }),
-    });
-  } else if (c.workspace) {
-    // a card on a further canvas (`canvases`) works in a workspace of that canvas's repository, a card
-    // on a further repository of the first canvas (`repos`) in a workspace of that one
-    const on = canvasOf[c.key ?? String(i)]!;
-    const elsewhere = on !== canvas ? further.find((f) => f.name === c.canvas)! : null;
-    const other = c.repo && c.repo !== (elsewhere ? basename(elsewhere.repos[0]!.path) : (stage.repoName ?? 'repo')) ? c.repo : null;
-    const checkout = other ? join(dir, other) : elsewhere ? elsewhere.repos[0]!.path : repo;
-    const free = db.query('SELECT path FROM workspaces WHERE card_id IS NULL AND canvas_id = $c AND repo IS $r ORDER BY path').get({ c: on, r: other }) as { path: string } | null;
-    // no clones: the repository works in worktrees, one per card under Obeya's home (`clones` are the first canvas's)
-    const tree = !free && !!branch && (!stage.clones || !!elsewhere);
-    if (!free && !tree) fail(`card ${c.key ?? i}: no free clone for it ("clones" in the stage, settings that say clones), nor a branch for a worktree`);
-    const path = tree ? join(home, 'workspaces', on, id.slice(0, 8)) : free!.path;
-    if (tree) {
-      mkdirSync(dirname(path), { recursive: true });
-      run('git', ['worktree', 'add', '-q', '-b', branch!, path, mainBranch], checkout);
-      db.query('INSERT INTO workspaces (path, canvas_id, card_id, repo) VALUES ($path, $c, $id, $r)').run({ path, c: on, id, r: other });
-    } else {
-      db.query('UPDATE workspaces SET card_id = $id WHERE path = $path').run({ id, path });
-      if (branch) run('git', ['checkout', '-q', '-b', branch], path);
-    }
-    row.workspace = path;
-    if (c.branch) {
-      // a commit of its own, where the stage names no files for it
-      if (!c.branchFiles || !Object.keys(c.branchFiles).length) writeFileSync(join(path, 'scratch.txt'), `${c.title ?? c.branch}\n`);
-      for (const [file, what] of Object.entries(c.branchFiles ?? {})) {
-        mkdirSync(dirname(join(path, file)), { recursive: true });
-        if (typeof what === 'string') writeFileSync(join(path, file), what);
-        else copyFileSync(what.from, join(path, file));
-      }
-      run('git', ['add', '-A'], path);
-      run('git', ['-c', 'user.name=Scratch', '-c', 'user.email=scratch@example.com', 'commit', '-qm', c.title ?? c.branch], path);
-    }
-  }
-  if (c.prototypeOf !== undefined) row.prototype_of = ids[c.prototypeOf] ?? fail(`card ${c.key ?? i}: prototypeOf names ${c.prototypeOf}, which does not exist`);
-  if (c.createdAgo !== undefined) row.created_at = ago(c.createdAgo);
-  if (c.archivedAgo !== undefined) row.archived_at = ago(c.archivedAgo);
-  // code from before `changed_at` ordered by `updated_at`
-  if (c.changedAgo !== undefined) row[columns.has('changed_at') ? 'changed_at' : 'updated_at'] = ago(c.changedAgo);
-  Object.assign(row, c.row ?? {});
-  // a review card handed over has reviewed its PR's head, which is all Obeya merges
-  const contribution = row.contribution as { number?: number; reviewed?: string } | undefined;
-  const pull = contribution && !contribution.reviewed && prHeads.get(contribution.number ?? -1);
-  if (pull) row.contribution = { ...contribution, reviewed: pull };
-  const keys = Object.keys(row).filter((k) => row[k] !== undefined);
-  const missing = keys.filter((k) => !columns.has(k));
-  if (missing.length) fail(`card ${c.key ?? i}: this code's database has no column ${missing.join(', ')}`);
-  if (keys.length)
-    db.query(`UPDATE cards SET ${keys.map((k) => `${k} = $${k}`).join(', ')} WHERE id = $id`).run({
-      id,
-      ...Object.fromEntries(keys.map((k) => [k, typeof row[k] === 'object' && row[k] !== null ? JSON.stringify(row[k]) : (row[k] as string | number | null)])),
-    } as Record<string, string | number | null>);
-  if (c.spent !== undefined) {
-    if (!columns.has('spent')) fail(`card ${c.key ?? i}: this code's database has no costs`);
-    db.query("INSERT INTO spend (canvas_id, card_id, session, usd) SELECT canvas_id, id, 'staged:' || id, $usd FROM cards WHERE id = $id").run({ id, usd: c.spent });
-    db.query('UPDATE cards SET spent = $usd WHERE id = $id').run({ id, usd: c.spent });
-  }
-  const reviews: { id: number; at: string }[] = [];
-  const spots: [number, NonNullable<StageEvent['spot']>][] = [];
-  for (const e of c.events ?? []) {
-    // only code that has mocks (an error's token) has their column
-    const at = ago(e.ago ?? '0s');
-    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}${e.reply ? ', reply' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''}${e.reply ? ', 1' : ''})`).run({
-      c: id,
-      at,
-      kind: e.kind,
-      author: e.author,
-      text: e.text,
-      ...(e.mocks ? { mocks: JSON.stringify(e.mocks) } : {}),
-    });
-    if (e.kind === 'review') reviews.push({ id: Number(lastInsertRowid), at });
-    if (e.spot) spots.push([Number(lastInsertRowid), e.spot]);
-  }
-  // the earlier demos (`row.demos`) and then the demo go with the handovers among the events, in order; a spot's `demo` names one of them by its place in that order
-  if (reviews.length && (demo || c.row?.demos)) {
-    const earlier = (c.row?.demos ?? []) as Record<string, unknown>[];
-    const handed = (d: Record<string, unknown>, i: number) => (reviews[i] ? { ...d, kind: d.kind ?? 'video', handover: reviews[i].id, at: reviews[i].at } : d);
-    db.query('UPDATE cards SET demos = $demos, demo = $demo WHERE id = $id').run({
-      id,
-      demos: earlier.length ? JSON.stringify(earlier.map(handed)) : null,
-      demo: demo ? JSON.stringify(handed({ kind: 'video', ...demo }, earlier.length)) : null,
-    });
-  }
-  for (const [event, { demo, ...spot }] of spots)
-    db.query('UPDATE events SET spot = $spot WHERE id = $id').run({ id: event, spot: JSON.stringify({ ...spot, ...(demo !== undefined && reviews[demo] ? { demo: reviews[demo].id } : {}) }) });
-}
-if (stage.spent !== undefined) db.query("INSERT INTO spend (canvas_id, session, usd) VALUES ($c, 'staged', $usd)").run({ c: canvas, usd: stage.spent });
-const prefIds: Record<string, number> = {};
-for (const [i, p] of (stage.preferences ?? []).entries()) {
-  const row: Record<string, string | number | null> = {
-    canvas_id: canvas,
-    text: p.text,
-    created_at: new Date().toISOString(),
-    card_id: p.card ? (ids[p.card] ?? fail(`preference ${p.key ?? i}: card ${p.card} does not exist`)) : null,
-  };
-  if (p.state !== undefined) row.state = p.state;
-  if (p.quote !== undefined) row.quote = p.quote;
-  if (p.review) row.review = 1;
-  if (p.target !== undefined) row.target = p.target;
-  if (p.replaces !== undefined) row.replaces = prefIds[p.replaces] ?? fail(`preference ${p.key ?? i}: replaces ${p.replaces}, which comes later or does not exist`);
-  const keys = Object.keys(row);
-  const r = db.query(`INSERT INTO preferences (${keys.join(', ')}) VALUES (${keys.map((k) => `$${k}`).join(', ')}) RETURNING id`).get(row) as { id: number };
-  if (p.key) prefIds[p.key] = r.id;
-}
-const talkIds: number[] = [];
-const threadOf = new Map<number, number>();
-for (const [i, x] of (stage.talk ?? []).entries()) {
-  const row: Record<string, string | number | null> = {
-    canvas_id: canvas,
-    at: ago(x.ago ?? '0s'),
-    said: x.said,
-    reply: x.reply,
-    card_id: x.card ? (ids[x.card] ?? fail(`talk ${i}: card ${x.card} does not exist`)) : null,
-    question: x.question ?? null,
-    answer: x.answer ?? null,
-    answer_by: x.answerBy ?? null,
-  };
-  if (x.unread) row.unread = 1;
-  if (x.replyOnly) row.reply_only = 1;
-  if (x.wish) row.wish = JSON.stringify(x.wish);
-  if (x.askedIn) row.asked_in = row.about = ids[x.askedIn] ?? fail(`talk ${i}: project ${x.askedIn} does not exist`);
-  if (x.follows !== undefined) {
-    const followed = talkIds[x.follows] ?? fail(`talk ${i}: follows ${x.follows}, which comes later or does not exist`);
-    row.follows = followed;
-    row.thread = threadOf.get(followed) ?? followed;
-  }
-  if (x.files?.length) row.files = JSON.stringify(x.files.map((f) => ({ name: f.name, caption: f.caption })));
-  const keys = Object.keys(row);
-  const { id } = db.query(`INSERT INTO talk (${keys.join(', ')}) VALUES (${keys.map((k) => `$${k}`).join(', ')}) RETURNING id`).get(row) as { id: number };
-  talkIds.push(id);
-  const thread = typeof row.thread === 'number' ? row.thread : id;
-  threadOf.set(id, thread);
-  for (const f of x.files ?? []) {
-    const to = join(home, 'answers', canvas, String(thread), f.name);
-    mkdirSync(dirname(to), { recursive: true });
-    writeFileSync(to, f.from ? readFileSync(f.from) : (f.content ?? ''));
-  }
-}
-const homeRepo = () => (db.query(`SELECT value FROM settings WHERE canvas_id = $c AND key = 'home_repo'`).get({ c: canvas }) as { value: string } | null)?.value ?? canvas;
-for (const [i, f] of (stage.friction ?? []).entries())
-  db.query('INSERT INTO friction (canvas_id, repo, card_id, at, what, cost, fix) VALUES ($c, $repo, $card, $at, $what, $cost, $fix)').run({
-    c: canvas,
-    repo: f.repo ?? homeRepo(),
-    card: ids[f.card] ?? fail(`friction ${i}: card ${f.card} does not exist`),
-    at: ago(f.ago ?? '0s'),
-    what: f.what,
-    cost: f.cost,
-    fix: f.fix,
-  });
-for (const [i, p] of (stage.settingProposals ?? []).entries())
-  db.query('INSERT INTO setting_proposals (canvas_id, repo, field, value, basis, cards, created_at) VALUES ($c, $repo, $field, $value, $basis, $cards, $at)').run({
-    c: canvas,
-    repo: p.repo ?? homeRepo(),
-    field: p.field,
-    value: JSON.stringify(p.value),
-    basis: p.basis,
-    cards: JSON.stringify(p.cards.map((k) => ids[k] ?? fail(`setting proposal ${i}: card ${k} does not exist`))),
-    at: new Date().toISOString(),
-  });
-// the server keeps a snapshot of the canvas: a change through the API makes it read the database anew,
-// here a card moved to where it already is in the database (the snapshot still has where it was)
-const refresh: [string, string, { x: number; y: number }][] = [];
-for (const on of allCanvases) {
-  // a project or workstream is on the home canvas: a stage of plan cards alone has nothing else to move
-  const first = stage.cards.find((c) => (c.project || c.workstream ? on.id === canvas : c.canvas ? c.canvas === on.name : on.id === canvas));
-  if (!first) continue;
-  const id = idOf(first, stage.cards.indexOf(first));
-  refresh.push([on.id, id, db.query('SELECT x, y FROM cards WHERE id = $id').get({ id }) as { x: number; y: number }]);
-}
-db.close();
-for (const [on, id, at] of refresh) await api('PATCH', `/cards/${id}`, at, on);
-
-for (const g of stage.groups ?? [])
-  await api('POST', '/groups', { name: g.name, cards: g.cards.map((k) => ids[k] ?? fail(`group ${g.name}: card ${k} does not exist`)) });
-
-const staged = { url: (await loginLink(base, home, `/c/${canvas}`)) ?? `${base}/c/${canvas}`, port, dir, canvas, pid: server.pid, log, from, endsItself, cards: ids, canvasOf, ...(record ? { record } : {}), ...(replay ? { replay } : {}) };
-writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
-console.log(JSON.stringify(staged));
 process.exit(0);
 
-/** Git configuration for the server's git calls, as environment variables. */
-function gitConfig(pairs: (readonly [string, string])[]): Record<string, string> {
-  return Object.fromEntries([['GIT_CONFIG_COUNT', String(pairs.length)], ...pairs.flatMap(([k, v], i) => [[`GIT_CONFIG_KEY_${i}`, k], [`GIT_CONFIG_VALUE_${i}`, v]])]);
-}
-
-/** A git repository at `path` with what is there committed on the main branch. */
-function initRepo(path: string) {
-  run('git', ['init', '-q', '-b', mainBranch], path);
-  run('git', ['add', '-A'], path);
-  run('git', ['-c', 'user.name=Scratch', '-c', 'user.email=scratch@example.com', 'commit', '-qm', 'init'], path);
-}
-
-function run(cmd: string, a: string[], cwd: string) {
-  const r = spawnSync(cmd, a, { cwd, encoding: 'utf8' });
-  if (r.status !== 0) fail(`${cmd} ${a.join(' ')}: ${r.stderr}`);
-}
-
 /** What --login, --say and --artifact say when no scratch Obeya answers: why it ended, where it ended by itself. */
-function silent(d: string, port: number) {
+function silent(port: number) {
+  const d = dirOf(port);
   const log = existsSync(join(d, 'server.log')) ? readFileSync(join(d, 'server.log'), 'utf8') : '';
   const why = [...log.matchAll(/^Obeya: ending this scratch Obeya: (.*)$/gm)].at(-1)?.[1];
   return `no scratch Obeya of ${d} answers on port ${port}${why ? `: it ended by itself (${why}); stage it afresh` : ''}`;
 }
 
-function ago(s: string): string {
-  const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(s) ?? fail(`"${s}" is no time ago (like "15m", "2h", "3d")`);
-  const unit = { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's' | 'm' | 'h' | 'd'];
-  return new Date(Date.now() - Number(m[1]) * unit * 1000).toISOString();
-}
-
-/** Where the card of `key` keeps its HTML artifact in the scratch Obeya of `d`. */
-function artifactDir(d: string, key: string) {
-  return join(d, 'artifacts', key);
-}
-
-function copyArtifact(from: string, to: string) {
-  if (!existsSync(join(from, 'index.html'))) fail(`${from} holds no index.html for an HTML artifact`);
-  cpSync(from, to, { recursive: true });
-  return to;
-}
-
 /** The card of `key` in the scratch Obeya on `port`, as its staged.json has it: its id, the API of the canvas it is on, and the owner's key of the home. */
 function cardOf(port: number, key: string) {
-  const d = options.dir ?? scratchDir(port);
-  if (!existsSync(join(d, 'staged.json'))) fail(`no scratch Obeya staged in ${d}`);
-  const staged = JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas: string; cards: Record<string, string>; canvasOf?: Record<string, string> };
+  const d = dirOf(port);
+  const staged = stagedIn(d) ?? fail(`no scratch Obeya staged in ${d}`);
   const id = staged.cards[key] ?? fail(`no card ${key} staged (${Object.keys(staged.cards).join(', ')})`);
   // a staged.json from before canvasOf has its cards on the first canvas
   const on = staged.canvasOf?.[key] ?? staged.canvas;
@@ -971,16 +213,14 @@ function cardOf(port: number, key: string) {
 
 async function stagedCard(port: number, key: string): Promise<Item> {
   const { base, headers, id } = cardOf(port, key);
-  const r = await fetch(`${base}/canvas`, { headers }).catch(() => fail(silent(options.dir ?? scratchDir(port), port)));
+  const r = await fetch(`${base}/canvas`, { headers }).catch(() => fail(silent(port)));
   return ((await r.json()) as CanvasSnapshot).items.find((i) => i.id === id) ?? fail(`card ${key} is not on the canvas`);
 }
 
 /** The card's agent says or does `act`, through the server (`Workers.standIn`); returns what the agent would have read back. */
 async function standIn(port: number, key: string, act: { say: string } | { tool: string; args: Record<string, unknown> } | { end: true }): Promise<string> {
   const { base, headers, id } = cardOf(port, key);
-  const r = await fetch(`${base}/cards/${id}/stand-in`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(act) }).catch(() =>
-    fail(silent(options.dir ?? scratchDir(port), port)),
-  );
+  const r = await fetch(`${base}/cards/${id}/stand-in`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(act) }).catch(() => fail(silent(port)));
   const body = (await r.json()) as { result?: string; error?: string };
   if (!r.ok) fail(`card ${key}: ${body.error ?? r.status}`);
   // a tool's refusal ("Not shown: …", "Not handed over: …")
