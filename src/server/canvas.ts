@@ -4,9 +4,9 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { defaultsFor, readSharedFiles, type SharedRead } from '../adapters';
+import { defaultsFor } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
-import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readDefault, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, visibilityKey } from './canvas-config';
+import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
@@ -14,7 +14,7 @@ import { openWithSystem } from './machine';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, type CanvasConfig, type CardAction, untouched, type CardPatch, finished, type Item, layerSettings, nameless, needsYou, pausable, halted, snoozable, laterTime, type PendingRestart, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, type CanvasConfig, type CardAction, untouched, type CardPatch, finished, type Item, layerSettings, nameless, needsYou, pausable, halted, snoozable, laterTime, type PendingRestart, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type Skill, type SpotInput, type DemoSite } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, DEMO_LOOK_MS, TITLE_MAX, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
@@ -25,18 +25,18 @@ import { Explorers } from './explorers';
 import { Files } from './files';
 import { IdeaActions } from './idea-actions';
 import { Images } from './images';
+import { SettingsReads } from './settings-reads';
 import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge';
 import { Coordinator } from './coordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
-import { prepareReadTree, ReadTree, refsSeal } from './read-tree';
+import { prepareReadTree, ReadTree } from './read-tree';
 import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withSpend } from './runtime';
 import { briefFull, type TagCard, tagCards } from './tag-proposal';
-import { commandsOf, heldGroups, withoutHeld } from './trust';
 import { Skills } from './skills';
 
 /** The skill lists of all canvases: several share a repository, and the user's skills are the same on each. */
@@ -47,10 +47,9 @@ import { Sharing } from './share';
 import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
-import { isFolder, useBranchSetting } from './branches';
+import { useBranchSetting } from './branches';
 import { githubToken } from './git';
 import { FolderWorkspaces } from './folder';
-import { readingTheme, type Theme } from './theme';
 import { claudeToken, hostName, registerHost } from './hosts';
 import { messageOf } from '../core/text';
 import { type WishDraft, type WishInput, writeWish } from './wish';
@@ -232,12 +231,8 @@ export class CanvasRuntime {
   private config: CanvasConfig;
   /** By repository's path: what takes back where the main branch the owner set is read. */
   private branchSettings = new Map<string, () => void>();
-  /** By repository's path: its `.obeya/settings.json` as the read tree last had it. */
-  private shared = new Map<string, SharedRead>();
-  /** By repository's path: its commands that do not count until the owner confirms them, as last worked out (`heldOf`). */
-  private held = new Map<string, TrustGroup[]>();
-  /** By repository's path: whether its main branch had an adapter module as the configuration was last resolved, which a repository starting takes. */
-  private adapterModules = new Map<string, boolean>();
+  /** What it last read of its repositories' default branches: their settings for everyone, held commands, themes. */
+  private readonly reads: SettingsReads;
   /** The restart of some repositories' agents that waits, if one does. */
   private pending: RepoRestart | null = null;
   /** Set once the canvas stopped because its home repository did not start again. */
@@ -296,6 +291,18 @@ export class CanvasRuntime {
     const workerRuntime = deps.workerRuntime ?? (deps.idleWorkers ? idleRuntime : undefined);
     deps = { ...deps, runtime: runtime(deps.runtime), ...(workerRuntime ? { workerRuntime: runtime(workerRuntime) } : {}) };
     this.deps = deps;
+    this.reads = new SettingsReads({
+      store: deps.store,
+      // the configuration as it runs may not have a repository new on the canvas yet; the file has it
+      mine: (path) => (deps.settings ? deps.settings(path) : this.config?.repos.find((r) => resolve(r.path) === path)?.settings),
+      takenOver: (path, before, now) => deps.config?.takenOver(path, before, now),
+      themeRead: (path, changed) => {
+        if (this.shutDown) return;
+        if (changed) this.board.changed();
+        const r = this.repos.find((x) => x.info.path === path);
+        if (r) this.proposeTheme(r);
+      },
+    });
     this.skills = deps.skills ?? sharedSkills;
     // the main branch the owner set counts from the start: the repository's id, its settings and its read tree go by it
     for (const r of config.repos) this.useBranch(r);
@@ -468,7 +475,7 @@ export class CanvasRuntime {
         const r = this.runs(card) ? this.repoOf(card) : undefined;
         if (!r) return null;
         const path = r.info.path;
-        return { site: r.site, repo: path, ...(r.isPublic ? { isPublic: true } : {}), theme: () => this.themeOf(path) };
+        return { site: r.site, repo: path, ...(r.isPublic ? { isPublic: true } : {}), theme: () => this.reads.themeOf(path) };
       },
       languageFor: (card) => (this.runs(card) ? this.repoOf(card).adapter.demo?.language : undefined),
       onPage: (cardId, r) => {
@@ -489,7 +496,7 @@ export class CanvasRuntime {
     board.showThemes((repo) => {
       const r = this.repos.find((x) => x.ref.id === repo);
       if (!r) return undefined;
-      const theme = this.themeKnown(r.info.path);
+      const theme = this.reads.themeKnown(r.info.path);
       return theme === undefined ? undefined : (theme?.hash ?? null);
     });
     // snoozed cards wake at their time: one that passed while Obeya was not running, or the machine slept, at once
@@ -617,72 +624,6 @@ export class CanvasRuntime {
   private readRepos = (config: CanvasConfig) => readRepos(config.repos, (r) => this.settingsOf(r)()?.branch);
 
   /**
-   * The repository's settings for everyone, as its read tree last had them (read with the rest of
-   * the repository as the canvas resolves it, `resolve`, and again whenever it moves, `reread`),
-   * without the commands that wait for the owner's confirmation (`heldOf`).
-   */
-  private sharedOf = (path: string): (() => SharedSettings | undefined) => () => withoutHeld(this.shared.get(path)?.settings, this.heldOf(path));
-
-  /**
-   * The repository's theme for its shared pages, as its default branch had it when last read
-   * (theme.ts, `movedTo`); null without one. For a page about to go out: one not read yet is read
-   * now, the page waiting for it, not the server.
-   */
-  private themeOf(path: string): Theme | null | Promise<Theme | null> {
-    if (this.themes.has(path)) return this.themes.get(path)!;
-    if (!this.themeReads.has(path)) this.readThemeOf(path, this.shared.get(path)?.obeyaTree);
-    // a read begun meanwhile wins; one that failed leaves the page without a theme
-    return this.themeReads.get(path)!.then(() => (this.themes.has(path) ? this.themes.get(path)! : this.themeReads.has(path) ? this.themeOf(path) : null));
-  }
-
-  /** `themeOf` for the canvas, which does not wait for it: undefined while it is read. */
-  private themeKnown(path: string): Theme | null | undefined {
-    if (!this.themes.has(path) && !this.themeReads.has(path)) this.readThemeOf(path, this.shared.get(path)?.obeyaTree);
-    return this.themes.get(path);
-  }
-
-  /** Reads the repository's theme from `tree` without the server waiting for git; a read or a theme since wins. */
-  private readThemeOf(path: string, tree: string | undefined) {
-    const reading: Promise<void> = readingTheme(path, tree).then(
-      (theme) => void (this.themeReads.get(path) === reading && this.setTheme(path, theme)),
-      () => void (this.themeReads.get(path) === reading && this.themeReads.delete(path)),
-    );
-    this.themeReads.set(path, reading);
-  }
-
-  /** The repository's theme as now read: a different one leaves other pages outdated. */
-  private setTheme(path: string, theme: Theme | null) {
-    this.themeReads.delete(path);
-    const before = this.themes.get(path);
-    this.themes.set(path, theme);
-    if (this.shutDown) return;
-    if (before === undefined || before?.hash !== theme?.hash) this.board.changed();
-    const r = this.repos.find((x) => x.info.path === path);
-    if (r) this.proposeTheme(r);
-  }
-
-  /** By repository's path: its theme (`themeOf`), and a read of it under way. */
-  private themes = new Map<string, Theme | null>();
-  private themeReads = new Map<string, Promise<void>>();
-
-  /**
-   * The groups of the repository's commands that do not count until the owner confirms them: new
-   * or changed on its default branch since (`heldGroups`). Worked out again whenever it moves or
-   * its settings are saved (`moved`).
-   */
-  private heldOf(path: string): TrustGroup[] {
-    let held = this.held.get(path);
-    if (!held) {
-      // the configuration as it runs may not have a repository new on the canvas yet; the file has it
-      const mine = this.deps.settings ? this.deps.settings(path) : this.config?.repos.find((r) => resolve(r.path) === path)?.settings;
-      held = heldGroups(commandsOf(this.shared.get(path)), this.deps.store.trustedCommands(path), mine);
-      this.held.set(path, held);
-      if (held.length) console.warn(`Obeya: ${path}: ${held.join(', ')} of its settings wait for the owner's confirmation in Configuration (held)`);
-    }
-    return held;
-  }
-
-  /**
    * Whether an agent working in `cwd` works in a repository of the canvas (its checkout, its
    * read tree, a workspace of it; the most specific, since the home repository's workspaces hold
    * the others') whose own Claude Code configuration waits for the owner's trust. As the default
@@ -700,43 +641,15 @@ export class CanvasRuntime {
         if (at >= 0 && (!best || at > best.at)) best = { r, at };
       }
     if (!best) return false;
-    const path = best.r.info.path;
-    const mine = this.deps.settings ? this.deps.settings(path) : best.r.config.settings;
-    const trusted = this.deps.store.trustedCommands(path);
-    const held = (read: SharedRead) => heldGroups(commandsOf(read), trusted, mine).includes('claude');
-    // a folder without git is read as it is
-    if (best.r.info.folder) return held(readSharedFiles(path));
-    const seal = refsSeal(path);
-    const known = this.defaultRead.get(path);
-    const read = seal && known?.seal === seal ? known.read : this.readSettings(path);
-    return read instanceof Promise ? read.then((r) => held(r.shared)) : held(read.shared);
+    return this.reads.claudeHeld(best.r.info.path, !!best.r.info.folder, this.settingsOf(best.r.config)());
   };
-
-  /**
-   * By repository's path: what its default branch had when last read (`claudeHeld`, `moved`), or as
-   * it is being read, under the seal its refs had before (`refsSeal`).
-   */
-  private defaultRead = new Map<string, { seal: string; read: DefaultRead | Promise<DefaultRead> }>();
-
-  /** Keeps `read`, read from the default branch after its refs had `seal`; a read since (another seal) is not undone. */
-  private readAt(path: string, seal: string, read: DefaultRead | Promise<DefaultRead>) {
-    const entry = { seal, read };
-    this.defaultRead.set(path, entry);
-    if (read instanceof Promise) void read.then((r) => this.defaultRead.get(path) === entry && this.defaultRead.set(path, { seal, read: r }), () => this.defaultRead.get(path) === entry && this.defaultRead.delete(path));
-  }
 
   /**
    * What a configuration of this canvas amounts to, with this machine's settings and the
    * repositories' (`resolveCanvas`): those of a repository new here as its read has them.
    */
   private resolve(config: CanvasConfig, reads: RepoReads) {
-    return resolveCanvas(config, this.deps.store, this.settingsOf, this.sharedOf, (path) => {
-      const { seal, read } = reads.repos.get(path) ?? { seal: null, read: null };
-      if (read && seal) this.readAt(path, seal, { shared: read.shared, adapterModule: read.adapterModule, branch: read.info.branch });
-      if (read && !this.shared.has(path)) this.shared.set(path, read.shared);
-      if (read) this.adapterModules.set(path, read.adapterModule);
-      return read;
-    });
+    return resolveCanvas(config, this.deps.store, this.settingsOf, this.reads.sharedOf, this.reads.took(reads));
   }
 
   /** Registers where the main branch the owner set for the repository is read, once per path. */
@@ -779,7 +692,7 @@ export class CanvasRuntime {
       ref,
     } = resolved.repos[index]!;
     const isHome = index === 0;
-    for (const p of this.shared.get(info.path)?.problems ?? []) console.warn(`Obeya: ${info.path}: ${p} (ignored)`);
+    for (const p of this.reads.sharedRead(info.path)?.problems ?? []) console.warn(`Obeya: ${info.path}: ${p} (ignored)`);
     const site = siteOf(adapter);
     // public as its forge said last time: workers resumed before it answers again get the tools of a repository that shares
     const isPublic = !info.folder && board.setting(visibilityKey(info.path)) === 'public';
@@ -790,7 +703,7 @@ export class CanvasRuntime {
     const stops: (() => void)[] = [() => (running = false)];
     // filled in below; what is set up here reaches it once it is
     const repo = { config: rc, stops, from: { resolved, index, listed }, ...(isPublic ? { isPublic } : {}) } as Repo;
-    repo.problemSources = this.problemSources(info.path, this.adapterModules.get(info.path) ?? false);
+    repo.problemSources = this.reads.problemSources(info.path, this.reads.adapterModule(info.path) ?? false);
     // where work lands on the local main, the checkout is the read tree; otherwise it is a pool clone on a card's branch
     const folder = !!info.folder;
     const read = new ReadTree({
@@ -1416,35 +1329,15 @@ export class CanvasRuntime {
    */
   private moved(r: Repo): Moved | Promise<Moved> {
     const path = r.info.path;
-    const known = r.moving ? undefined : this.readNow(path);
+    const known = r.moving ? undefined : this.reads.readNow(path);
     if (known) return this.movedTo(r, known);
-    const now = (r.moving ?? Promise.resolve()).then(async () => this.movedTo(r, await this.readSettings(path)));
+    const now = (r.moving ?? Promise.resolve()).then(async () => this.movedTo(r, await this.reads.readSettings(path)));
     const moving: Promise<void> = (r.moving = now.then(
       () => {},
       () => {},
     ));
     void moving.then(() => r.moving === moving && delete r.moving);
     return now;
-  }
-
-  /** What `moved` read of the repository at `path` last, where its refs did not move since; a folder without git as it is now. */
-  private readNow(path: string): DefaultRead | undefined {
-    if (isFolder(path)) return { shared: readSharedFiles(path), adapterModule: false, branch: '' };
-    const seal = refsSeal(path);
-    const known = this.defaultRead.get(path);
-    return seal && known?.seal === seal && !(known.read instanceof Promise) ? known.read : undefined;
-  }
-
-  /**
-   * Reads the repository at `path` on its default branch again, without the server waiting for git,
-   * and keeps that (`defaultRead`). Where its refs moved while git read, what it read may be the
-   * commit before: it reads again, a few times at most.
-   */
-  private readSettings(path: string, tries = READ_TRIES): Promise<DefaultRead> {
-    const seal = refsSeal(path);
-    const read = readDefault(path).then(async (r): Promise<DefaultRead> => (seal && tries > 1 && refsSeal(path) !== seal ? this.readSettings(path, tries - 1) : { ...r, theme: await readingTheme(path, r.shared.obeyaTree) }));
-    if (seal) this.readAt(path, seal, read);
-    return read;
   }
 
   /** `moved`, with what was read of the repository on its default branch. */
@@ -1454,14 +1347,12 @@ export class CanvasRuntime {
     if (this.pending?.paths.has(path)) return 'due';
     // what the canvas follows (`follow`) goes by it
     r.info.branch = read.branch;
-    const shared = this.reread(r, read.shared);
+    const shared = this.reads.reread(path, read.shared);
     // a new theme leaves pages outdated; one read with the settings the server waited for is read now without waiting
-    if (read.theme !== undefined) this.setTheme(path, read.theme);
-    else this.readThemeOf(path, read.shared.obeyaTree);
-    const was = this.held.get(path);
-    this.held.delete(path);
-    const held = JSON.stringify(this.heldOf(path)) !== JSON.stringify(was ?? []);
-    const sources = this.problemSources(path, read.adapterModule);
+    if (read.theme !== undefined) this.reads.setTheme(path, read.theme);
+    else this.reads.readThemeOf(path, read.shared.obeyaTree);
+    const held = this.reads.heldAgain(path);
+    const sources = this.reads.problemSources(path, read.adapterModule);
     const problems = sources !== r.problemSources;
     if (problems) {
       // the page reads the configuration's problems again
@@ -1470,7 +1361,7 @@ export class CanvasRuntime {
       // the settings may be there now, or gone
       this.proposeSetup(r);
     }
-    const layered = layerSettings<RepoSettings>(this.sharedOf(path)(), this.settingsOf(r.config)());
+    const layered = layerSettings<RepoSettings>(this.reads.sharedOf(path)(), this.settingsOf(r.config)());
     const workIn = r.info.folder ? 'folder' : namesClones(r.config, r.info, layered) ? 'clones' : (layered?.workspaces ?? defaultsFor(r.info).workspaces);
     if (workIn !== r.workspaces.mode) {
       this.due([path], shared ? 'repository' : 'config');
@@ -1483,37 +1374,6 @@ export class CanvasRuntime {
       return 'follow';
     }
     return shared || problems || held ? 'follow' : 'same';
-  }
-
-  /**
-   * What the configuration's problems of the repository are read from on its default branch: its
-   * `.obeya/settings.json` as the file has it (a field that does not count included), and whether a
-   * leftover `.obeya/adapter/` is there (`adapterModule`, as read with the rest), noted for
-   * `proposeSetup`.
-   */
-  private problemSources(path: string, adapterModule: boolean): string {
-    this.adapterModules.set(path, adapterModule);
-    const read = this.shared.get(path);
-    return JSON.stringify([read?.raw, read?.problems, read?.claude, this.heldOf(path), adapterModule]);
-  }
-
-  /**
-   * The repository's `.obeya/settings.json` as its default branch has it now (`now`). Where it
-   * changed, this machine's values that it now holds as well go (they were taken over for everyone,
-   * see `Config.takenOver`). Says whether it changed.
-   */
-  private reread(r: Repo, now: SharedRead): boolean {
-    const path = r.info.path;
-    const before = this.shared.get(path);
-    if (JSON.stringify([now.settings, now.claude]) === JSON.stringify([before?.settings, before?.claude])) {
-      // a field that does not count changed alone: the problems change, the settings do not
-      this.shared.set(path, now);
-      return false;
-    }
-    this.shared.set(path, now);
-    for (const p of now.problems) console.warn(`Obeya: ${path}: ${p} (ignored)`);
-    this.deps.config?.takenOver(path, before?.settings, now.settings);
-    return true;
   }
 
   /**
@@ -2052,9 +1912,9 @@ export class CanvasRuntime {
    */
   private proposeSetup(r: Repo) {
     if (!this.deps.setupProposals || r.info.folder) return;
-    const settings = this.shared.get(r.info.path)?.settings ?? {};
+    const settings = this.reads.sharedRead(r.info.path)?.settings ?? {};
     const own = SHARED_FIELDS.some((k) => settings[k] !== undefined);
-    this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.adapterModules.get(r.info.path));
+    this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.reads.adapterModule(r.info.path));
   }
 
   /**
@@ -2063,7 +1923,7 @@ export class CanvasRuntime {
    */
   private proposeTheme(r: RepoRuntime) {
     if (!this.deps.setupProposals) return;
-    const theme = this.themeKnown(r.info.path);
+    const theme = this.reads.themeKnown(r.info.path);
     if (theme === undefined) return;
     this.board.proposeTheme(r.ref.id, r.ref.name, { themed: theme !== null, shares: this.board.sharesPages(r.ref.id) });
   }
@@ -2343,9 +2203,6 @@ export class CanvasRuntime {
 }
 
 
-
-/** How often `readSettings` reads a repository whose refs move while git reads it. */
-const READ_TRIES = 5;
 
 /** What `moved` came to (`moved`). */
 type Moved = 'same' | 'follow' | 'due';
