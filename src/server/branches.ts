@@ -2,7 +2,7 @@
 // the folders without git, which have none; and the branches Obeya names for cards.
 
 import { resolve } from 'node:path';
-import { gitTry } from './git';
+import { gitTry, isAncestor } from './git';
 
 /**
  * The main branches the owner set for repositories on this machine (`RepoSettings.branch`), by
@@ -135,6 +135,5 @@ export async function branchCommit(cwd: string, branch: string, branches?: Branc
   const remote = b?.remote.get(branch);
   if (!local || !remote) return local ?? remote ?? 'HEAD';
   if (local === remote) return local;
-  const ahead = await gitTry(cwd, 'merge-base', '--is-ancestor', remote, local);
-  return ahead != null ? local : remote;
+  return (await isAncestor(cwd, remote, local, false)) ? local : remote;
 }

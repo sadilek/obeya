@@ -98,18 +98,22 @@ export async function gitTry(cwd: string, ...args: string[]): Promise<string | n
   return r?.code === 0 ? r.stdout.trim() : null;
 }
 
-/** What a git call whose exit code 1 is an answer (no) answered: whether it exited 0; throws where it failed otherwise. */
-async function yesOrNo(cwd: string, args: string[]): Promise<boolean> {
+/**
+ * What a git call whose exit code 1 is an answer (no) answered: whether it exited 0. Where it failed
+ * otherwise, `unsure` where given, else it throws.
+ */
+async function yesOrNo(cwd: string, args: string[], unsure?: boolean): Promise<boolean> {
   const r = await gitRun(cwd, args);
   if (r.code === 0 || r.code === 1) return r.code === 0;
+  if (unsure !== undefined) return unsure;
   throw failed(cwd, args, r);
 }
 
 /**
- * Whether commit `a` is an ancestor of `b` in `cwd`. Throws where git cannot tell (an unknown commit,
- * a broken repository): each caller decides what that means for it.
+ * Whether commit `a` is an ancestor of `b` in `cwd`. Where git cannot tell (an unknown commit, a
+ * broken repository) it is `unsure` where the caller gives what that means for it, else it throws.
  */
-export const isAncestor = (cwd: string, a: string, b: string): Promise<boolean> => yesOrNo(cwd, ['merge-base', '--is-ancestor', a, b]);
+export const isAncestor = (cwd: string, a: string, b: string, unsure?: boolean): Promise<boolean> => yesOrNo(cwd, ['merge-base', '--is-ancestor', a, b], unsure);
 
 /** Whether `cwd` has the commit `c`. Throws where git cannot tell (a broken repository, a configuration it cannot read). */
 export const hasCommit = (cwd: string, c: string): Promise<boolean> => yesOrNo(cwd, ['rev-parse', '--verify', '--quiet', `${c}^{commit}`]);
@@ -142,6 +146,9 @@ export function gitOrNull(cwd: string, ...args: string[]): string | null {
     return null;
   }
 }
+
+/** Put before a git command that makes a commit of Obeya's own, with no identity of the owner's. */
+export const AS_OBEYA = ['-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost'];
 
 /**
  * Put before a git command that only looks (`status`, `diff` against the working tree): git then

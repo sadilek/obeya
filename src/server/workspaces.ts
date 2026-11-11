@@ -23,7 +23,7 @@ import { failureText } from './spawn';
 import { demoFile } from './demo-page';
 import { sameRemote } from './repo';
 import { branchSetting, type Branches, CARD_BRANCH, detectBranch, readBranches } from './branches';
-import { GIT, gitAsync, gitNames, gitRun, gitTry, LOOK, remoteWorkspace, WorkspaceError } from './git';
+import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, isAncestor, LOOK, remoteWorkspace, WorkspaceError } from './git';
 
 /** A restored card's branch is no longer in the clone it takes back (`retake`). */
 export class BranchGone extends WorkspaceError {}
@@ -93,19 +93,28 @@ const NEW_FILES_SHOWN = 200;
 const CHANGES_LISTED = 200;
 
 /**
- * The first `CHANGES_LISTED` of `files` as git pathspecs, as many as fit on a command line: Windows
- * takes about 32,000 characters, which 200 long paths exceed.
+ * `files` as git pathspecs, each name as it is (`:(literal)`), in batches a command line holds:
+ * Windows takes about 32,000 characters, which 200 long paths exceed.
  */
-function listed(files: string[]): string[] {
-  const out: string[] = [];
+function pathspecBatches(files: string[]): string[][] {
+  const batches: string[][] = [];
+  let batch: string[] = [];
   let length = 0;
-  for (const f of files.slice(0, CHANGES_LISTED)) {
+  for (const f of files) {
+    if (batch.length && length + f.length + 12 > 24_000) {
+      batches.push(batch);
+      batch = [];
+      length = 0;
+    }
+    batch.push(`:(literal)${f}`);
     length += f.length + 12;
-    if (length > 24_000) break;
-    out.push(`:(literal)${f}`);
   }
-  return out;
+  if (batch.length) batches.push(batch);
+  return batches;
 }
+
+/** The files git does not track and does not ignore in the workspace `ws`, by their names as they are. */
+const untracked = (ws: string) => gitNames(ws, ['ls-files', '-z', '--others', '--exclude-standard']);
 
 /** The paths `git status --porcelain -z` names (`XY path`, unquoted, each ended by NUL), a rename's or copy's new one. */
 export function statusPaths(out: string): string[] {
@@ -133,15 +142,8 @@ export async function worktreeNames(ws: string, base: string, args: string[] = [
   const staged = new Set(indexed);
   const unsure = all.filter((f) => f && !staged.has(f));
   const changed = new Set<string>();
-  // `added<TAB>deleted<TAB>path`, only where the content differs; in batches a command line holds
-  for (let i = 0; i < unsure.length; ) {
-    const batch: string[] = [];
-    for (let length = 0; i < unsure.length && length < 24_000; i++) {
-      batch.push(`:(literal)${unsure[i]}`);
-      length += unsure[i]!.length + 12;
-    }
-    for (const line of await names(['--numstat', '--no-renames', base, '--', ...batch])) if (line) changed.add(line.slice(line.indexOf('\t', line.indexOf('\t') + 1) + 1));
-  }
+  // `added<TAB>deleted<TAB>path`, only where the content differs
+  for (const batch of pathspecBatches(unsure)) for (const line of await names(['--numstat', '--no-renames', base, '--', ...batch])) changed.add(line.slice(line.indexOf('\t', line.indexOf('\t') + 1) + 1));
   return all.filter((f) => f && (staged.has(f) || changed.has(f)));
 }
 
@@ -273,6 +275,23 @@ async function backOnBase(repo: string, base: string, on: string): Promise<LandP
   return { branch: on || null, commit: head };
 }
 
+/** Puts the Obeya checkout at `repo` back on `base` (`backOnBase`) where it is on another branch; null where it is on `base`. */
+async function ensureOnBase(repo: string, base: string): Promise<LandProblem | { branch: string | null; commit: string } | null> {
+  const on = await gitAsync(repo, 'branch', '--show-current');
+  return on !== base ? backOnBase(repo, base, on) : null;
+}
+
+/** Fetches `origin`'s `base` into the checkout at `repo`; its commit. */
+async function fetchedMain(repo: string, base: string): Promise<string> {
+  await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
+  return gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
+}
+
+/** Deletes `branch` in `repo` where it is there: `-d` only once it is merged, `-D` whatever it holds. */
+async function deleteBranch(repo: string, branch: string, flag: '-d' | '-D') {
+  if (await gitAsync(repo, 'branch', '--list', branch)) await gitAsync(repo, 'branch', '--quiet', flag, branch);
+}
+
 /**
  * How `pullMain` pulls `origin`'s `base` into the checkout: the owner's way where their git
  * configuration sets one (`pull.rebase`, `pull.ff`, `branch.<base>.rebase`), else as git does where
@@ -296,8 +315,7 @@ async function pullSet(repo: string, base: string): Promise<'merge' | 'rebase' |
 
 /** Whether `a` and `b` each have commits the other lacks. */
 async function diverged(repo: string, a: string, b: string): Promise<boolean> {
-  const contains = async (x: string, y: string) => (await gitRun(repo, ['merge-base', '--is-ancestor', x, y])).code === 0;
-  const [behind, ahead] = await Promise.all([contains(a, b), contains(b, a)]);
+  const [behind, ahead] = await Promise.all([isAncestor(repo, a, b, false), isAncestor(repo, b, a, false)]);
   return !behind && !ahead;
 }
 
@@ -319,7 +337,7 @@ async function rewrites(repo: string, old: string, upstream: string, tip: string
 let mergesTreesAsCommits = false;
 
 /** A commit of the tree of `treeish`, without parents or refs: in git's object store alone, for a `git merge-tree` that takes no trees. */
-const asCommit = (repo: string, treeish: string) => gitAsync(repo, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', 'commit-tree', `${treeish}^{tree}`, '-m', 'merge-tree');
+const asCommit = (repo: string, treeish: string) => gitAsync(repo, ...AS_OBEYA, 'commit-tree', `${treeish}^{tree}`, '-m', 'merge-tree');
 
 /**
  * Where a pull into the checkout's `base` would stop on a conflict: its commits that `upstream`
@@ -1085,7 +1103,7 @@ export class Workspaces implements CardWorkspaces {
       if (this.leasedBy(cardId) !== path) return null;
       if (await gitAsync(path, ...LOOK, 'status', '--porcelain')) {
         await gitAsync(path, 'add', '--all');
-        await gitAsync(path, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '--no-verify', '-m', `Uncommitted work, kept by Obeya as the card's workspace went to another card\n\n${SAVED}`);
+        await gitAsync(path, ...AS_OBEYA, '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '--no-verify', '-m', `Uncommitted work, kept by Obeya as the card's workspace went to another card\n\n${SAVED}`);
       }
       // given back meanwhile (a stop that had asked git before) and perhaps taken by another card, which waits for this
       if (this.leasedBy(cardId) === path) this.free(path);
@@ -1251,12 +1269,9 @@ export class Workspaces implements CardWorkspaces {
         const problem = await rebased(ws, base, onto);
         if (problem) return problem;
         await withTrailer(ws, trailer);
-        const on = await gitAsync(repo, 'branch', '--show-current');
-        if (on !== base) {
-          const back = await backOnBase(repo, base, on);
-          if ('code' in back) return back;
-          switched ??= back;
-        }
+        const back = await ensureOnBase(repo, base);
+        if (back && 'code' in back) return back;
+        if (back) switched ??= back;
       } catch (e) {
         return { code: 'land', worker: false, detail: messageOf(e) };
       }
@@ -1273,8 +1288,8 @@ export class Workspaces implements CardWorkspaces {
         const commits = Number(await gitAsync(repo, 'rev-list', '--count', `HEAD..${switched.branch ?? switched.commit}`).catch(() => '0'));
         return { from, to, switched: { ...switched, commits } };
       } catch (e) {
-        // main moved while the branch was rebased (a commit made in the checkout by hand): once more onto it
-        const moved = (await gitRun(repo, ['merge-base', '--is-ancestor', 'HEAD', tip])).code === 1;
+        // main moved while the branch was rebased (a commit made in the checkout by hand), as far as git can tell: once more onto it
+        const moved = !(await isAncestor(repo, 'HEAD', tip, true));
         if (moved && attempt === 0) continue;
         // else typically local changes in the Obeya checkout that the fast-forward would overwrite
         return { code: moved ? 'land' : 'landMerge', worker: false, detail: messageOf(e) };
@@ -1302,8 +1317,7 @@ export class Workspaces implements CardWorkspaces {
       // a merge or rebase of the owner's under way is theirs: nothing is pulled into it, nor undone
       const busy = await underway(repo);
       if (busy) return { problem: `the checkout is in the middle of a ${busy}` };
-      await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
-      const upstream = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
+      const upstream = await fetchedMain(repo, base);
       if (await diverged(repo, `refs/heads/${base}`, upstream)) {
         const clash = await replayClash(repo, base, upstream, `${upstream}^{tree}`);
         if (clash) return { stopped: { ...clash, main: from, upstream } };
@@ -1332,9 +1346,8 @@ export class Workspaces implements CardWorkspaces {
       const repo = this.o.repoPath;
       try {
         const base = await this.checkoutBase();
-        await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
-        const from = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
-        if ((await gitRun(repo, ['merge-base', '--is-ancestor', from, `refs/heads/${base}`])).code !== 0) {
+        const from = await fetchedMain(repo, base);
+        if (!(await isAncestor(repo, from, `refs/heads/${base}`, false))) {
           const pulled = await this.pull();
           if ('stopped' in pulled) return { problem: `origin's ${base} has commits of its own that conflict with the local ${base}'s (${pulled.stopped.commit.slice(0, 7)} “${pulled.stopped.subject}” in ${pulled.stopped.files.join(', ')})` };
           if ('problem' in pulled) return pulled;
@@ -1364,8 +1377,7 @@ export class Workspaces implements CardWorkspaces {
       const ws = this.leasedBy(cardId);
       if (!(await known()) && ws) await gitRun(repo, ['fetch', '--quiet', '--no-write-fetch-head', ws, head]);
       if (!(await known())) return null;
-      await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
-      const upstream = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
+      const upstream = await fetchedMain(repo, base);
       const merged = await gitRun(repo, ['merge-tree', '--write-tree', '--no-messages', upstream, head]);
       if (merged.code !== 0) return null;
       return replayClash(repo, base, upstream, merged.stdout.trim().split('\n')[0]!);
@@ -1389,19 +1401,15 @@ export class Workspaces implements CardWorkspaces {
         if (await gitAsync(ws, ...LOOK, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace, or a rebase not finished there' };
         if (!(await gitAsync(ws, 'branch', '--show-current'))) return { code: 'landConflict', worker: true, detail: 'the workspace is on no branch: finish the rebase (git rebase --continue) so that HEAD stands on a branch' };
         const base = await this.checkoutBase();
-        const on = await gitAsync(repo, 'branch', '--show-current');
-        if (on !== base) {
-          const back = await backOnBase(repo, base, on);
-          if ('code' in back) return { ...back, worker: false };
-        }
+        const back = await ensureOnBase(repo, base);
+        if (back && 'code' in back) return { ...back, worker: false };
         const now = await gitAsync(repo, 'rev-parse', `refs/heads/${base}`);
-        const contains = async (cwd: string, a: string, b: string) => (await gitRun(cwd, ['merge-base', '--is-ancestor', a, b])).code === 0;
-        if (await contains(repo, at.upstream, now)) return { already: now };
-        if (!(await contains(repo, at.main, now))) return { code: 'land', worker: false, detail: `the local ${base} no longer holds ${at.main.slice(0, 7)}, where it stood when the pull stopped: it was changed by hand` };
+        if (await isAncestor(repo, at.upstream, now, false)) return { already: now };
+        if (!(await isAncestor(repo, at.main, now, false))) return { code: 'land', worker: false, detail: `the local ${base} no longer holds ${at.main.slice(0, 7)}, where it stood when the pull stopped: it was changed by hand` };
         const cloned = this.cloned(ws);
         const own = (await gitAsync(ws, 'rev-parse', 'HEAD')) as string;
         if (cloned) await gitAsync(ws, 'fetch', '--quiet', repo, at.upstream, now);
-        if (!(await contains(ws, at.upstream, own)))
+        if (!(await isAncestor(ws, at.upstream, own, false)))
           return { code: 'landConflict', worker: true, detail: `your HEAD (${own.slice(0, 7)}) does not build on ${at.upstream.slice(0, 7)}, origin's ${base} with the merge: rebase the local ${base}'s commits onto it` };
         if (now !== at.main) {
           // what landed on the local main while the worker resolved goes on top of its work
@@ -1442,8 +1450,7 @@ export class Workspaces implements CardWorkspaces {
    */
   async landingOf(commit: string, ranges: { base: string; commit: string }[]): Promise<number> {
     const repo = this.o.repoPath;
-    const contains = async (a: string, b: string) => (await gitRun(repo, ['merge-base', '--is-ancestor', a, b])).code === 0;
-    for (const [i, r] of ranges.entries()) if ((await contains(commit, r.commit)) && !(await contains(commit, r.base))) return i;
+    for (const [i, r] of ranges.entries()) if ((await isAncestor(repo, commit, r.commit, false)) && !(await isAncestor(repo, commit, r.base, false))) return i;
     return -1;
   }
 
@@ -1486,6 +1493,13 @@ export class Workspaces implements CardWorkspaces {
     }
   }
 
+  /** Removes a card's worktree at `ws`, its processes ended first (`quiet`). */
+  private async removeWorktree(ws: string) {
+    if (!existsSync(ws)) return;
+    await this.quiet(ws);
+    await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+  }
+
   /**
    * Frees the workspace of work that has landed, once its worker is done: a worktree and its
    * branch are removed (a branch with commits that never landed stays), a clone is free again.
@@ -1497,12 +1511,9 @@ export class Workspaces implements CardWorkspaces {
     if (this.cloned(ws)) return this.release(cardId);
     this.store.removeWorkspace(ws);
     await this.clearing(ws, async () => {
-      if (existsSync(ws)) {
-        await this.quiet(ws);
-        await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
-      }
+      await this.removeWorktree(ws);
       try {
-        if (await gitAsync(this.o.repoPath, 'branch', '--list', branch)) await gitAsync(this.o.repoPath, 'branch', '--quiet', '-d', branch);
+        await deleteBranch(this.o.repoPath, branch, '-d');
       } catch (e) {
         console.error(`keeping branch ${branch}:`, messageOf(e));
       }
@@ -1520,11 +1531,8 @@ export class Workspaces implements CardWorkspaces {
     if (!this.cloned(ws)) {
       this.store.removeWorkspace(ws);
       return this.clearing(ws, async () => {
-        if (existsSync(ws)) {
-          await this.quiet(ws);
-          await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
-        }
-        if (await gitAsync(this.o.repoPath, 'branch', '--list', branch)) await gitAsync(this.o.repoPath, 'branch', '--quiet', '-D', branch);
+        await this.removeWorktree(ws);
+        await deleteBranch(this.o.repoPath, branch, '-D');
       });
     }
     await this.clearing(ws, async () => {
@@ -1534,7 +1542,7 @@ export class Workspaces implements CardWorkspaces {
         await gitAsync(ws, 'reset', '--quiet', '--hard');
         await gitAsync(ws, 'clean', '--quiet', '-fd');
         await gitAsync(ws, 'checkout', '--quiet', '--detach', `origin/${await this.mainAsync(ws)}`);
-        if (await gitAsync(ws, 'branch', '--list', branch)) await gitAsync(ws, 'branch', '--quiet', '-D', branch);
+        await deleteBranch(ws, branch, '-D');
       }
       this.release(cardId);
     });
@@ -1584,10 +1592,10 @@ export class Workspaces implements CardWorkspaces {
     if (!ws || !mayExist(ws)) return [];
     try {
       const base = await this.base(ws);
-      const [files, untracked] = await Promise.all([worktreeNames(ws, base), gitAsync(ws, 'ls-files', '-z', '--others', '--exclude-standard')]);
-      const only = files.length > CHANGES_LISTED ? ['--', ...listed(files)] : [];
+      const [files, fresh] = await Promise.all([worktreeNames(ws, base), untracked(ws)]);
+      const only = files.length > CHANGES_LISTED ? ['--', ...(pathspecBatches(files.slice(0, CHANGES_LISTED))[0] ?? [])] : [];
       const diff = files.length ? await gitAsync(ws, ...LOOK, 'diff', '-U0', '--no-color', '--no-ext-diff', base, ...only) : '';
-      const added = untracked.split('\0').filter(Boolean).slice(0, Math.max(0, CHANGES_LISTED - files.length));
+      const added = fresh.slice(0, Math.max(0, CHANGES_LISTED - files.length));
       return [...parseChanges(diff), ...added.map((file) => ({ file, regions: [] }))];
     } catch {
       return [];
@@ -1604,10 +1612,10 @@ export class Workspaces implements CardWorkspaces {
     try {
       const base = await this.base(ws);
       const tracked = await gitDiff(ws, base);
-      const untracked = (await gitAsync(ws, 'ls-files', '-z', '--others', '--exclude-standard')).split('\0').filter(Boolean);
+      const fresh = await untracked(ws);
       const added: string[] = [];
       // a new file against nothing; git answers 1 when there is a difference
-      for (const file of untracked.slice(0, NEW_FILES_SHOWN)) {
+      for (const file of fresh.slice(0, NEW_FILES_SHOWN)) {
         const r = await gitRun(ws, [...DIFF, '--no-index', '--', '/dev/null', file]);
         if (r.code === 1) added.push(r.stdout.trim());
       }
@@ -1640,7 +1648,7 @@ export class Workspaces implements CardWorkspaces {
       const ws = this.leasedBy(cardId);
       if (!ws || !mayExist(ws)) return [];
       const base = await this.base(ws);
-      return [...(await worktreeNames(ws, base, ['-M', '--diff-filter=d'])), ...(await names(ws, ['ls-files', '-z', '--others', '--exclude-standard']))];
+      return [...(await worktreeNames(ws, base, ['-M', '--diff-filter=d'])), ...(await untracked(ws))];
     } catch {
       return [];
     }
@@ -1695,10 +1703,9 @@ export class Workspaces implements CardWorkspaces {
     if (!own.length) return head!;
     const fork = own.at(-1)!.split(' ')[1];
     if (!fork || fork === main) return main;
-    const before = async (a: string, b: string) => (await gitRun(ws, ['merge-base', '--is-ancestor', a, b])).code === 0;
     // the main branch merged into the card's branch since it left it
-    if (await before(fork, main)) return main;
-    if (await before(main, fork)) return fork;
+    if (await isAncestor(ws, fork, main, false)) return main;
+    if (await isAncestor(ws, main, fork, false)) return fork;
     // a card on a long-lived branch with the main branch merged in since: both, as one tree
     try {
       return (await gitAsync(ws, 'merge-tree', '--write-tree', fork, main)).split('\n')[0]!;
@@ -1984,16 +1991,7 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
     const listed = await gitRun(path, ['diff', '-z', '--no-ext-diff', '--no-textconv', '--name-only', '--no-renames', base, ref]);
     const files = listed.stdout.split('\0').filter(Boolean);
     if (listed.code !== 0 || files.length > 1000) return false;
-    // in batches a command line holds (`listed`)
-    for (let i = 0; i < files.length; ) {
-      const batch: string[] = [];
-      for (let length = 0; i < files.length && length + files[i]!.length + 12 < 24_000; i++) {
-        batch.push(`:(literal)${files[i]}`);
-        length += files[i]!.length + 12;
-      }
-      if (!batch.length) return false;
-      if ((await run('diff', '--quiet', '--no-ext-diff', '--no-textconv', main, ref, '--', ...batch)) === null) return false;
-    }
+    for (const batch of pathspecBatches(files)) if ((await run('diff', '--quiet', '--no-ext-diff', '--no-textconv', main, ref, '--', ...batch)) === null) return false;
     return true;
   };
   for (const ref of refs) {

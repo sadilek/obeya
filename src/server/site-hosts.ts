@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
+import { AS_OBEYA } from './git';
 
 /** The deploy line's word for the deploy Obeya builds in: `obeya:github-pages <owner>/<repository>`. */
 export const GITHUB_PAGES = 'obeya:github-pages';
@@ -242,7 +243,7 @@ export async function githubPagesDeploy(dir: string, repo: string, gitDir: strin
     GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
     GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token.out.trim()}`).toString('base64')}`,
   };
-  const git = ['git', `--git-dir=${gitDir}`, `--work-tree=${dir}`, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', '-c', `core.hooksPath=${join(gitDir, 'none')}`, '-c', `core.excludesFile=${join(gitDir, 'none')}`];
+  const git = ['git', `--git-dir=${gitDir}`, `--work-tree=${dir}`, ...AS_OBEYA, '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', '-c', `core.hooksPath=${join(gitDir, 'none')}`, '-c', `core.excludesFile=${join(gitDir, 'none')}`];
   const step = async (argv: string[], what: string) => {
     const r = await x(argv, { env, timeout: 15 * 60_000 });
     if (r.code !== 0) throw new Error(`${what}: ${lastLine(r)}`);

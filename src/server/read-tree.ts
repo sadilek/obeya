@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node
 import { rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { branchSetting, CARD_BRANCH, defaultBranchCommit } from './branches';
-import { gitRun, gitTry, NO_PROMPT } from './git';
+import { gitRun, gitTry, isAncestor, NO_PROMPT } from './git';
 import { realPath } from './path';
 import { detachedTree } from './workspaces';
 
@@ -298,7 +298,7 @@ export class ReadTree {
     const known = this.held.get(commit);
     if (typeof known === 'boolean') return known;
     if (!known) {
-      const asked = gitTry(this.path, 'merge-base', '--is-ancestor', commit, 'HEAD').then((r) => r !== null);
+      const asked = isAncestor(this.path, commit, 'HEAD', false).catch(() => false);
       this.held.set(commit, asked);
       void asked.then((held) => {
         // the read tree moved meanwhile: what it holds now is asked afresh

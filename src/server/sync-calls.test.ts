@@ -137,7 +137,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'workers.ts': { why: "server path, cheap: whether a kept demo copy is still there", calls: { existsSync: 1 } },
   'workspaces.ts': {
     why: "server path, cheap: stats of known workspace paths as cards start, land and are cleaned up",
-    calls: { existsSync: 18, mkdirSync: 3, readdirSync: 1, realpathSync: 1, renameSync: 1, statSync: 2 },
+    calls: { existsSync: 17, mkdirSync: 3, readdirSync: 1, realpathSync: 1, renameSync: 1, statSync: 2 },
   },
 };
 
