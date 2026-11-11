@@ -6,12 +6,12 @@
 // landing, once the workers paused. Where a fast-forward cannot go (commits of the checkout's own,
 // uncommitted changes in the way) the bar says so, and the owner pulls by hand.
 
-import { inert } from '../core/inert';
 import type { SourceUpdate } from '../core/types';
 import { Watched } from '../core/watched';
 import { BadRequest } from './board';
 import { worktreeNames } from './workspaces';
 import { gitRun, NO_PROMPT } from './git';
+import { changesCode } from './self-update';
 
 /** How often the upstream is fetched. */
 export const FETCH_EVERY_MS = 60 * 60_000;
@@ -85,8 +85,7 @@ export class SourceUpdates extends Watched<SourceUpdate> {
     const count = Number((await this.git('rev-list', '--count', 'HEAD..@{upstream}')).out) || 0;
     if (!count) return this.set(null);
     // what the upstream changed since the checkout branched off it, not what the checkout changed itself
-    const changed = (await this.git('-c', 'core.quotePath=false', 'diff', '--name-only', 'HEAD...@{upstream}')).out.split('\n').filter(Boolean);
-    if (!changed.some((f) => !inert(f))) return this.set(null);
+    if (!(await changesCode(this.checkout, ['HEAD...@{upstream}']))) return this.set(null);
     const log = await this.git('log', `-n${SHOWN}`, '--format=%ct%x09%s', 'HEAD..@{upstream}');
     const commits = log.out
       .split('\n')

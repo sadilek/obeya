@@ -83,8 +83,8 @@ test('docs whose file names git would quote (non-ASCII, a space) change nothing 
   const start = git(repo, 'rev-parse', 'HEAD');
   commit(repo, 'docs/Übersicht.md', 'Überblick');
   const to = commit(repo, 'design/a "quoted" name.txt', 'x');
-  expect(await changesCode(repo, start, to)).toBe(false);
-  expect(await changesCode(repo, start, commit(repo, 'src/ä.ts', 'b'))).toBe(true);
+  expect(await changesCode(repo, [start, to])).toBe(false);
+  expect(await changesCode(repo, [start, commit(repo, 'src/ä.ts', 'b')])).toBe(true);
 });
 
 test('a commit while git looks at what changed has not held still: the restart waits for a round of its own', async () => {

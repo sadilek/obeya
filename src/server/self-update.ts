@@ -172,10 +172,13 @@ const OUTRANKS: Record<RestartReason, number> = { code: 0, config: 0, repository
 
 const key = (b: Busy[]) => b.map((x) => `${x.canvas}/${x.card}`).join(' ');
 
-/** Whether the commits from `from` to `to` change code, not only docs (unknown counts as code); without the server waiting for git. */
-export async function changesCode(checkout: string, from: string, to: string): Promise<boolean> {
+/**
+ * Whether the commits of `range` (`git diff`'s arguments: `[from, to]`, `['HEAD...@{upstream}']`)
+ * change code, not only docs (unknown counts as code); without the server waiting for git.
+ */
+export async function changesCode(checkout: string, range: string[]): Promise<boolean> {
   // -z: the names as they are, which git otherwise quotes where they hold a non-ASCII character or a quote
-  const changed = await gitAsync(checkout, 'diff', '-z', '--name-only', from, to).catch(() => null);
+  const changed = await gitAsync(checkout, 'diff', '-z', '--name-only', ...range).catch(() => null);
   return changed === null || changed.split('\0').some((f) => f && !inert(f));
 }
 
@@ -245,7 +248,7 @@ export function watchOwnCode(checkout: string, start: string, fn: (from: string,
       if ((done = stopped)) return;
       if (head && head !== seen) seen = head;
       else if (head && head !== base) {
-        const code = await changesCode(checkout, base, head);
+        const code = await changesCode(checkout, [base, head]);
         // a commit while git diffed has not held still for a round (it may be a landing under way): the next round tells
         const still = code && (await look()) === head;
         if ((done = stopped)) return;

@@ -916,7 +916,7 @@ export class CanvasRuntime {
       // a push leaves the checkout as it is: what it changes applies once the read tree fetches it
       restartsFor: async (l: Landed, pushedFrom?: string) => {
         if (pushedFrom) return false;
-        if (deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && (await changesCode(info.path, l.from, l.to))) return 'obeya';
+        if (deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && (await changesCode(info.path, [l.from, l.to]))) return 'obeya';
         const moved = await this.moved(repo);
         if (moved === 'follow') this.follow();
         return moved === 'due' ? 'repo' : false;
