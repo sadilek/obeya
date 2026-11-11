@@ -456,6 +456,28 @@ prompt sentences). `stalls.ts`, `workers-fixture.ts` and `patience.ts` are clean
 - Risk: low.
 - Confidence: high.
 
+### A19. A demo's facts and its kept copy are read synchronously at the handover
+- Principle: DRY
+- Size: minor
+- Where: `src/server/demo-files.ts` (`captionTracks` beside `captionTracksAsync`, `silentVideo` beside
+  `silentVideoAsync`, `mp4Head`, `videoSize`, and their callers `demoFiles`, `videoFacts`,
+  `keepDemo`); callers `Workers.keep` and the `ready_for_review` and `ask` tools in `workers.ts`,
+  `Sharing.rebuilt` in `share.ts`, `site.ts` (`demoFiles` in a publish), `scripts/scratch-obeya.ts`
+- Now: the caption tracks and the silence of a video are read by two twins each, one with
+  `node:fs`'s synchronous calls, one with `fs/promises`. The site and the export read the async
+  ones; the handover reads the synchronous ones through `videoFacts` and `keepDemo`, inside
+  `handOverNow`, which checks that the session is still live and writes the card's row without
+  waiting in between.
+- Why it matters: each change to how tracks are named or a video is read is made twice, and the
+  synchronous calls stay in `sync-calls.test.ts`.
+- Change: `demoFiles`, `videoFacts` and `keepDemo` become async, `videoSize` reads through the async
+  head, and the synchronous twins with `mp4Head` go. The handover reads the facts and keeps the copy
+  before its synchronous section (in `handOverWork`, say), and `Sharing.rebuilt` becomes async.
+- Win: about 30 lines and five synchronous calls.
+- Risk: medium: the handover's order of checks and writes changes. With A2.
+- Confidence: high for the duplication; this is the second step of S13 of the sharing review, which
+  W17 left here because it takes the handover apart.
+
 ## Justified (looks redundant or complex, but has a reason; leave it)
 - `src/server/workers.ts:3094` `standIn`: a scripted stand-in for the agent;
   `scripts/scratch-obeya.ts --say` drives it (CLAUDE.md, "idle workers").

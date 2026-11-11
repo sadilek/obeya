@@ -357,6 +357,7 @@ targets. One of the hand-written argument readers has a real bug (`build.ts` ign
 - Win: About 12 lines and one of three chapter readers.
 - Risk: low. The script's result is looked at before it is committed.
 - Confidence: high. Read both readers.
+- Done by W17: `chaptersOf` through `rereadChapters`, `inSecondChapter` and `cardsShown`.
 
 ### R13. `hero-video/qwen.py` answers a question that was decided, and has to be kept in step
 - Principle: YAGNI

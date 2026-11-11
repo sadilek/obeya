@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W6, W13 and W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W6, W13, W17 and W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -138,7 +138,7 @@ the workstream named does it for all of them.
   B11, B12, B17, B21; [board-db](code-cleanup/board-db.md) C10, C11, C16, C17, C18;
   workspaces-git-hosts E13;
   [http-config](code-cleanup/http-config.md) F13, F14, F15;
-  [share-site-demo](code-cleanup/share-site-demo.md) S16, S17, S22; [ui-card](code-cleanup/ui-card.md)
+  share-site-demo S16, S17, S22; [ui-card](code-cleanup/ui-card.md)
   G20; [ui-panels](code-cleanup/ui-panels.md) H13; [ui-small-modules](code-cleanup/ui-small-modules.md)
   I11; [core](code-cleanup/core.md) J8, J10; [plugin](code-cleanup/plugin.md) P15;
   [scripts-app](code-cleanup/scripts-app.md) R8, R10; [tests](code-cleanup/tests.md) T16. C11 and
@@ -187,7 +187,7 @@ the workstream named does it for all of them.
   its unchanged public API), with [runtimes](code-cleanup/runtimes.md) B4 and B20 (workers' own
   copies of `BackgroundWait` and of the limit-lift timer). After W2 and W7.
 - [ ] **W12:** The long functions of the workers. [workers](code-cleanup/workers.md) A2
-  (`ready_for_review` as one linear method), A3 (`turnEnded` with its conditions named once), A4
+  (`ready_for_review` as one linear method, with A19), A3 (`turnEnded` with its conditions named once), A4
   (the three endings of a card's work), A5 and A6 (the owner's words as one value), A8, A9 (the
   per-card timer maps), A10, A11, A12, A13, A14, A16, A18. After W11.
 - [x] **W13:** The runtimes. [runtimes](code-cleanup/runtimes.md) B1 (`runtime.ts` keeps the
@@ -205,11 +205,14 @@ the workstream named does it for all of them.
   port, deps)` instead of 17 positional parameters), F3 (the demo-settings dialog out of `Config`),
   F4 (`Restarter` tracks its reason once), F5 with [core](code-cleanup/core.md) J6 (a repository's
   settings listed once), F7, F8, F9, F10, F12, F16, F17, F18.
-- [ ] **W17:** Sharing, demo sites and demo pages. [share-site-demo](code-cleanup/share-site-demo.md)
-  S1 (the page templates share their fragments and scripts), S2 (`share.ts` and `site.ts` no longer
-  import each other), S3, S4, S5 (module seams), S6 to S10, S12 to S15, S18 to S21, and one WebVTT
-  cue parser beside the writer (S11, [plugin](code-cleanup/plugin.md) P4,
-  [scripts-app](code-cleanup/scripts-app.md) R12).
+- [x] **W17:** Sharing, demo sites and demo pages. share-site-demo S1 (the page templates share
+  their fragments and scripts), S2 (`share.ts` and `site.ts` no longer import each other), S3, S4,
+  S5 (module seams), S6 to S10, S12 to S15, S18 to S21, and one WebVTT cue parser beside the writer
+  (S11, [plugin](code-cleanup/plugin.md) P4, [scripts-app](code-cleanup/scripts-app.md) R12). Its
+  findings file is gone: the second step of S13 (the demo's facts read asynchronously at the
+  handover) went to [workers](code-cleanup/workers.md) A19, for W12; of S21, the two `exists`
+  one-liners (`site.ts`, `demo-space.ts`) stayed, as a shared home for them would be a module of its
+  own.
 - [x] **W18:** Forges, the PR watcher, hosts and folders.
   workspaces-git-hosts E7 (`PrWatcher.react` by job), E11
   (rules about PR comments above the forge interface), E12, E15, E16, E17. After W5.
@@ -253,7 +256,7 @@ the workstream named does it for all of them.
 | [canvas-coordinator.md](code-cleanup/canvas-coordinator.md) | D: canvas, commands, coordinator | 16 | 1 | 3 | 12 |
 | workspaces-git-hosts.md (all done, deleted) | E: workspaces, git, forges, hosts | 17 | 3 | 5 | 9 |
 | [http-config.md](code-cleanup/http-config.md) | F: HTTP server, startup, configuration | 19 | 1 | 4 | 14 |
-| [share-site-demo.md](code-cleanup/share-site-demo.md) | S: sharing, demo sites, demo pages | 22 | 0 | 5 | 17 |
+| share-site-demo.md (done, deleted) | S: sharing, demo sites, demo pages | 22 | 0 | 5 | 17 |
 | [ui-card.md](code-cleanup/ui-card.md) | G: the app shell and the card | 22 | 2 | 7 | 13 |
 | [ui-panels.md](code-cleanup/ui-panels.md) | H: panels and the phone | 22 | 1 | 7 | 14 |
 | [ui-small-modules.md](code-cleanup/ui-small-modules.md) | I: small UI modules, API client, strings, styles | 14 | 0 | 2 | 12 |

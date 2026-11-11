@@ -158,6 +158,9 @@ themselves, a WebVTT parser and an ffconcat writer on both sides of
 - Risk: low. `revoice.test.ts` tests `cuesOf`; `src/server/demo.test.ts` tests `placeIn`, which goes
   through `cues`. Keep the server's whitespace collapsing at its call.
 - Confidence: high. Both functions read side by side.
+- Done by W17: `Cue` and `cuesOf` in `subtitles.ts`, read by `revoice.ts` and `demo.ts`, whose cue
+  of several lines is now read whole, as the skill's was. `site-shots.ts` takes its chapters from
+  `rereadChapters` (R12); `hero-video/publish.ts` keeps its reader, since its test runs it alone.
 
 ### P5. The ffconcat frame list is written twice
 - Principle: DRY
