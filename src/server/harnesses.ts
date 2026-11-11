@@ -14,6 +14,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { AGENT_MODELS, type AgentModel, HARNESSES, type Harness, type HarnessHost, type HarnessUpdate, type HarnessModel, type HarnessView, modelName, modelVersion, newestOfFamilies } from '../core/types';
+import { Kept } from '../core/kept';
 import { Listeners } from '../core/watched';
 import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex';
 import type { SshHost } from './hosts';
@@ -66,10 +67,10 @@ const NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' }
 class Install {
   version?: string;
   channel?: ClaudeChannel;
-  /** The models it lists, as last heard, and when it was asked. */
-  private listed: { at: number; models: ClaudeListed[]; asking?: Promise<void> } | undefined;
-  /** The newest version npm has (of its channel), as last heard, and when it was asked. */
-  private newest: { at: number; version?: string; asking?: true } | undefined;
+  /** The models it lists (Claude Code), as last heard. */
+  private listed: Kept<ClaudeListed[]> | undefined;
+  /** The newest version npm has (of its channel), as last heard. */
+  private newest: Kept<string | undefined> | undefined;
   /** An update under way, or how the last one failed. */
   private updating: { running: boolean; error?: string } | undefined;
 
@@ -89,12 +90,21 @@ class Install {
       ready: () => boolean;
       changed: () => void;
     },
-  ) {}
+  ) {
+    const { models, newest } = o;
+    if (models)
+      this.listed = new Kept(models, { forMs: MODELS_FOR_MS, failed: (e) => console.warn(`Obeya: ${this.named} did not list its models: ${messageOf(e)}`) });
+    if (newest)
+      this.newest = new Kept(() => newest(this.channel), {
+        forMs: NEWEST_FOR_MS,
+        failed: (e) => console.warn(`Obeya: npm did not say which ${NAMES[o.harness]} is the newest: ${messageOf(e)}`),
+      });
+  }
 
   /** What a look found; another version may stand for other models, another channel for another newest. */
   found(version: string | undefined, channel?: ClaudeChannel) {
-    if (this.listed && version !== this.version) this.listed.at = 0;
-    if (this.newest && channel !== this.channel) this.newest.at = 0;
+    if (version !== this.version) this.listed?.expire();
+    if (channel !== this.channel) this.newest?.expire();
     this.version = version;
     this.channel = channel;
     // asked as it is first looked at, the menus have them at once
@@ -118,7 +128,7 @@ class Install {
    * else `model` as it is.
    */
   model(model: string): string {
-    const listed = this.listed?.models ?? [];
+    const listed = this.listed?.last ?? [];
     const alias = AGENT_MODELS.find((m) => m === model && m !== 'default');
     const newest = alias && aliasesOf(listed)[alias];
     return newest && newest !== listed.find((m) => m.value === alias)?.resolvedModel ? newest : model;
@@ -148,7 +158,7 @@ class Install {
         if (this.version) console.log(`Obeya: ${this.named} is at ${this.version}`);
         // the models of the version it is at now, which the look had it asked for
         this.models();
-        await this.listed?.asking;
+        await this.listed?.fresh();
         if (this.o.settle && this.o.ready()) await this.o.settle();
       } catch {}
       this.updating = error ? { running: false, error } : undefined;
@@ -158,23 +168,12 @@ class Install {
 
   /** What the view says of updating it: a newer version that is out, one under way, how it failed. */
   offer(): HarnessUpdate | undefined {
-    const ask = this.o.newest;
-    const known = this.newest;
-    // npm is not asked for one that is not installed
-    if (ask && this.version && !known?.asking && (!known || Date.now() - known.at > NEWEST_FOR_MS)) {
-      this.newest = { at: known?.at ?? 0, ...(known?.version ? { version: known.version } : {}), asking: true };
-      ask(this.channel).then(
-        (version) => (this.newest = { at: Date.now(), ...(version ? { version } : {}) }),
-        (e) => {
-          console.warn(`Obeya: npm did not say which ${NAMES[this.o.harness]} is the newest: ${messageOf(e)}`);
-          this.newest = { at: Date.now(), ...(known?.version ? { version: known.version } : {}) };
-        },
-      );
-    }
     const now = this.version;
-    if (this.updating?.running) return { version: known?.version ?? '', running: true };
-    if (!known?.version || !now || Bun.semver.order(known.version, now) <= 0) return undefined;
-    return { version: known.version, ...(this.updating?.error ? { error: this.updating.error } : {}) };
+    // npm is not asked for one that is not installed
+    const newest = now ? this.newest?.get() : this.newest?.last;
+    if (this.updating?.running) return { version: newest ?? '', running: true };
+    if (!newest || !now || Bun.semver.order(newest, now) <= 0) return undefined;
+    return { version: newest, ...(this.updating?.error ? { error: this.updating.error } : {}) };
   }
 
   /**
@@ -182,19 +181,7 @@ class Install {
    * background once that is a while ago or it changed (another version).
    */
   models(): ClaudeListed[] {
-    const ask = this.o.models;
-    const known = this.listed;
-    if (ask && this.o.ready() && !known?.asking && (!known || Date.now() - known.at > MODELS_FOR_MS)) {
-      const asking = ask().then(
-        (models) => void (this.listed = { at: Date.now(), models }),
-        (e) => {
-          console.warn(`Obeya: ${this.named} did not list its models: ${messageOf(e)}`);
-          this.listed = { at: Date.now(), models: known?.models ?? [] };
-        },
-      );
-      this.listed = { at: known?.at ?? 0, models: known?.models ?? [], asking };
-    }
-    return known?.models ?? [];
+    return (this.o.ready() ? this.listed?.get() : this.listed?.last) ?? [];
   }
 }
 

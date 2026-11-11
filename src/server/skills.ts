@@ -5,6 +5,7 @@
 
 import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { Skill } from '../core/types';
+import { Kept } from '../core/kept';
 import { withTimeout } from '../core/late';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
 import { messageOf } from '../core/text';
@@ -95,8 +96,7 @@ export const sdkSkills: SkillLister = async (place) => {
  * asks for them, and many cards share a repository. A list that fails is empty, and asked again next time.
  */
 export class Skills {
-  private known = new Map<string, { skills: Skill[]; at: number }>();
-  private asking = new Map<string, Promise<Skill[]>>();
+  private kept = new Map<string, Kept<Skill[]>>();
 
   constructor(
     private list: SkillLister = sdkSkills,
@@ -106,23 +106,12 @@ export class Skills {
   /** The skills at `place`: the list kept, asked afresh behind it once it is old; the first time, once Claude Code has answered. */
   of(place: SkillPlace): Promise<Skill[]> {
     const key = JSON.stringify([place.cwd, place.plugins, place.untrusted]);
-    const kept = this.known.get(key);
-    if (kept && this.now() - kept.at < FRESH_MS) return Promise.resolve(kept.skills);
-    let asking = this.asking.get(key);
-    if (!asking) {
-      asking = this.list(place)
-        .catch((e) => {
-          console.error(`Obeya: Claude Code did not list the skills in ${place.cwd}: ${messageOf(e)}`);
-          return null;
-        })
-        .then((skills) => {
-          this.asking.delete(key);
-          if (skills) this.known.set(key, { skills, at: this.now() });
-          else this.known.delete(key);
-          return skills ?? [];
-        });
-      this.asking.set(key, asking);
+    let kept = this.kept.get(key);
+    if (!kept) {
+      const failed = (e: unknown) => console.error(`Obeya: Claude Code did not list the skills in ${place.cwd}: ${messageOf(e)}`);
+      this.kept.set(key, (kept = new Kept(() => this.list(place), { forMs: FRESH_MS, failed, forget: true, now: this.now })));
     }
-    return kept ? Promise.resolve(kept.skills) : asking;
+    const skills = kept.get();
+    return skills ? Promise.resolve(skills) : kept.fresh().then((s) => s ?? []);
   }
 }
