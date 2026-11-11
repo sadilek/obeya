@@ -1,10 +1,10 @@
 // The canvas: camera, drag, unfold-in-place and the plan sheet.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
+import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
 import { api, ApiError, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas, failText } from './api';
 import { goTo, onSwitch } from './switch';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
@@ -27,7 +27,7 @@ import { PhoneDialog } from './access';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { CoordinatorSheet } from './coordinator';
-import { forcedText, QueuePill } from './queue';
+import { QueuePill } from './queue';
 import { SearchPill } from './search';
 import { depsOf, handleAt, holdsAmong, loopsAmong, nearestHandle, type Side, SIDES, waitKinds, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
@@ -54,6 +54,7 @@ import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, showNotice, tellers, useAck, voiceTarget } from './tell';
 import { followDone, useCardEdits } from './cardHost';
 import { useCanvasAddress } from './canvasAddress';
+import { useCanvasActions } from './canvasActions';
 import { captionKey } from './walkthrough';
 import { useLatest, useLive, useStable } from './latest';
 import { type Pos, useOptimisticItems } from './optimistic';
@@ -770,146 +771,18 @@ function Canvas({
   // ---------------------------------------------------------------- acknowledgement with undo
   const { showAck, showWait, fail, line: ackLine } = useAck();
 
-  /** The play button on a card: starts it, or one queued behind others despite the likely conflict. */
-  const startCard = useCallback(async (i: Item) => {
-    try {
-      await api.act(i.id, { action: i.queue ? 'force' : 'start' });
-      if (i.queue) showAck(forcedText(i.queue));
-    } catch (e) {
-      fail(e);
-    }
-  }, []);
-
-  /** The archive button on a finished card or a parked or dropped idea: takes it off the canvas, with a moment to undo. */
-  const archiveCard = useCallback(async (i: Item) => {
-    try {
-      await api.archive(i.id);
-      showAck(t.archive.archived(plain(i.title)), () => api.unarchive(i.id));
-    } catch (e) {
-      fail(e);
-    }
-  }, []);
-
-  /** The archive button of a project whose work is done, on the canvas and in its sheet: takes it off the canvas, with a moment to undo. */
-  async function archiveProjectNow(p: Item) {
-    try {
-      await api.archive(p.id);
+  const { startCard, archiveCard, archiveProject, unarchiveProject, archiveDone, startAll, keepWorkspace, keepLeftovers, takeWorkspace, arrange, collapse, preparePlanDoc } = useCanvasActions({
+    canvasId: snapshot.canvas.id,
+    items: itemsRef,
+    fold: (id, c) => setFolded(({ [id]: _, ...rest }) => (c === undefined ? rest : { ...rest, [id]: c })),
+    closeSheet: async (p) => {
       if (focusRef.current?.type === 'project' && focusRef.current.id === p.id) await closeProject(false);
-      showAck(t.archive.archived(plain(p.title)), () => api.unarchive(p.id));
-    } catch (e) {
-      fail(e);
-    }
-  }
-  const archiveProject = useStable((p: Item) => void archiveProjectNow(p));
-
-  /** "Back to the canvas" in the sheet of an archived project whose work is done. */
-  async function unarchiveProject(p: Item) {
-    try {
-      await api.unarchive(p.id);
-      await closeProject(false);
-      showAck(t.archive.unarchived(plain(p.title)));
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  /**
-   * The project's button, on its card and in its sheet: all planned workstreams go to the
-   * Coordinator together, which waits a few seconds before it plans them, so the start can be taken back.
-   */
-  const startAll = useCallback(async (p: Item, n: number) => {
-    try {
-      await api.act(p.id, { action: 'start' });
-      showAck(
-        t.plan.startedAll(n),
-        async () => {
-          try {
-            await api.act(p.id, { action: 'dequeue' });
-            showAck(t.plan.startTakenBack);
-          } catch (e) {
-            showAck(e instanceof ApiError && e.code === 'notQueued' ? t.voice.tooLate : t.offlineError);
-          }
-        },
-        START_ALL_HOLD_MS,
-      );
-    } catch (e) {
-      fail(e);
-    }
-  }, []);
-
-  /**
-   * "Give to the waiting card" in the Workspaces list: the card's clone goes to the card waiting longest once the
-   * undo window is through; "Undo" (here or in its row) takes that back meanwhile.
-   */
-  const keepWorkspace = useCallback(async (i: Item) => {
-    try {
-      await api.act(i.id, { action: 'keepWorkspace' });
-      showAck(t.workspaces.keptBack(plain(i.title)));
-    } catch (e) {
-      showAck(e instanceof ApiError && e.code === 'notEvictable' ? t.voice.tooLate : failText(e));
-    }
-  }, []);
-  /** "Commit to a new branch and free the clone" on a clone uncommitted changes block: it takes effect at once, the leftovers on a branch of their own. */
-  const keepLeftovers = useCallback(async (repo: string, host: string, path: string) => {
-    try {
-      showAck(t.workspaces.leftoversKept((await api.keepLeftovers(repo, host, path)).branch));
-    } catch (e) {
-      fail(e);
-    }
-  }, []);
-  const takeWorkspace = useCallback(async (i: Item) => {
-    try {
-      await api.act(i.id, { action: 'takeWorkspace' });
-      showAck(t.workspaces.taken(plain(i.title)), () => keepWorkspace(i), EVICT_HOLD_MS);
-    } catch (e) {
-      fail(e);
-    }
-  }, []);
-
-  /**
-   * The project's "Arrange", on its card and in its sheet: its workstreams in columns by what builds
-   * on what, once Obeya has read that from the plan doc. It takes effect at once; "Undo" puts
-   * the cards (and the project, which may have made room for itself) back where they stood.
-   */
-  const arrange = useCallback(async (p: Item) => {
-    const before = [p, ...itemsRef.current.filter((i) => i.parent === p.id)].map(({ id, x, y }) => ({ id, x, y }));
-    try {
-      await api.act(p.id, { action: 'arrange' });
-      showAck(t.plan.arranged, async () => {
-        try {
-          await Promise.all(before.map(({ id, x, y }) => api.patch(id, { x, y })));
-          showAck(t.plan.arrangeUndone);
-        } catch (e) {
-          fail(e);
-        }
-      });
-    } catch (e) {
-      fail(e);
-    }
-  }, []);
-
-  /** The fold in a project's head: collapsed, only its head and a mark for each workstream stay on the canvas. */
-  const collapse = useCallback(async (p: Item, collapsed: boolean) => {
-    setFolded((f) => ({ ...f, [p.id]: collapsed }));
-    try {
-      await api.patch(p.id, { collapsed });
-    } catch (e) {
-      setFolded(({ [p.id]: _, ...rest }) => rest);
-      fail(e);
-    }
-  }, []);
+    },
+    showAck,
+    fail,
+  });
   // a stable handle on `open` for the memoised project views
   const openCard = useStable((i: Item) => void open(i).catch(console.error));
-
-  /** "Prepare as a project" on the note on a plan directory: a card whose agent prepares the doc, started at once. */
-  const preparePlanDoc = useCallback(async (dir: PlanDir, file: string) => {
-    try {
-      const card = await api.preparePlanDoc(snapshot.canvas.id, dir.repo, file);
-      showAck(t.planDir.started(plain(card.title)));
-    } catch (e) {
-      fail(e);
-    }
-  }, []);
 
   // ---------------------------------------------------------------- voice
   const where = (): Where => {
@@ -1536,10 +1409,6 @@ function Canvas({
   };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
   const doneCount = items.filter(archivedWithDone).length;
-  async function archiveDone() {
-    const { ids } = await api.archiveDone();
-    if (ids.length) showAck(t.archive.archivedMany(ids.length), () => Promise.all(ids.map((id) => api.unarchive(id))));
-  }
   const attnLast = useRef<string | null>(null);
   /** The next card that needs the owner, in turn, and Obeya's sheet among them while an answer waits there. */
   function nextAttention() {
@@ -2024,7 +1893,7 @@ function Canvas({
           onStartAll={startAll}
           onArrange={arrange}
           onArchive={archiveProject}
-          onUnarchive={(p) => void unarchiveProject(p)}
+          onUnarchive={unarchiveProject}
           els={sheetEls}
           version={snapshot}
         />
