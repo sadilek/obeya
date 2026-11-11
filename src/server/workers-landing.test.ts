@@ -7,7 +7,7 @@ import { needsYou, stopped } from '../core/types';
 import { artifact, commit, gitClone, heard, identify, testBoard, until, ws } from './testing';
 import type { Board } from './board';
 import { board, dir, doc, eachTest, handedOver, main, manual, merged, newWorkers, origin, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
-import { git } from './workspaces';
+import { git } from './git';
 import { type RepoAdapter } from '../adapters/types';
 
 const MAIN: RepoAdapter = { ...generic, land: 'main', workspaces: 'clones' };

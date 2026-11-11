@@ -13,7 +13,7 @@ import { siteKey } from './site';
 import { missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import type { Theme } from './theme';
 import { deployScript, FakeRuntime, fakeSiteHost, gitRepo, noContributions, removeDir, testBoard, until, videoDemo } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 let dir: string;
 let store: Store;

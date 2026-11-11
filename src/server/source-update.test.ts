@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SourceUpdates } from './source-update';
 import { commit, gitClone, gitRepo, identify, removeDir } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 let dir: string;
 /** Where Obeya's repository is published (`origin`), and the clone Obeya runs from. */

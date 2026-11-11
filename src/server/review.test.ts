@@ -16,7 +16,8 @@ import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
 import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, primedClones, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { Workspaces } from './workspaces';
+import { git } from './git';
 
 const URL_ = 'https://github.com/acme/app/pull/5';
 

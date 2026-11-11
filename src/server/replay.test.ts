@@ -7,7 +7,7 @@ import { CUT_MS, GAP_MS, paced, readRecording, recordingRuntime, replayRuntime, 
 import type { AgentEvent, AgentSpec, AgentTool } from './runtime';
 import { onStart } from './spawn';
 import { commit, FakeRuntime, gitRepo, identify, until } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 const THEN = '3f2a9c4e-1b7d-4e8a-9c3f-5d6e7f8a9b0c';
 const NOW = 'b81c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e';

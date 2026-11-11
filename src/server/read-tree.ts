@@ -8,25 +8,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSyn
 import { rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { spawnOutput } from './spawn';
-import { branchSetting, type Branches, CARD_BRANCH, detachedTree, detectingBranch, GIT, gitCalls, type GitSteps, gitSteps, gitStepsSync, isFolder, readingBranches } from './workspaces';
-
-/**
- * The default branch (`defaultBranch`) and its commit as Obeya reads it: the local branch where it
- * has everything `origin`'s has (work lands there first), else `origin`'s; HEAD in a repository
- * with neither.
- */
-export function defaultBranchCommit(repoPath: string): { branch: string; commit: string } {
-  // a folder without git has neither
-  if (isFolder(repoPath)) return { branch: '', commit: '' };
-  return gitStepsSync(repoPath, readingDefaultBranch(repoPath));
-}
-
-/** `defaultBranchCommit` as git steps. */
-export function* readingDefaultBranch(repoPath: string): GitSteps<{ branch: string; commit: string }> {
-  const branches = yield* readingBranches();
-  const branch = branchSetting(repoPath) || (yield* detectingBranch(branches));
-  return { branch, commit: yield* branchCommit(branch, branches) };
-}
+import { branchSetting, CARD_BRANCH, readingDefaultBranch } from './branches';
+import { GIT, gitCalls, type GitSteps, gitSteps } from './git';
+import { detachedTree } from './workspaces';
 
 /**
  * A seal of what the default branch and its commit are read from (`defaultBranchCommit`), taken
@@ -158,17 +142,6 @@ export function gitDirs(repoPath: string): { own: string; common: string } | nul
   const dirs = { own, common };
   knownDirs.set(repoPath, dirs);
   return dirs;
-}
-
-/** The commit of the default branch `branch` by `defaultBranchCommit`'s rule, as git steps, from `branches` where they were read already. */
-export function* branchCommit(branch: string, branches?: Branches | null): GitSteps<string> {
-  const b = branches !== undefined ? branches : yield* readingBranches();
-  const local = b?.local.get(branch);
-  const remote = b?.remote.get(branch);
-  if (!local || !remote) return local ?? remote ?? 'HEAD';
-  if (local === remote) return local;
-  const [ahead] = yield [['merge-base', '--is-ancestor', remote, local]];
-  return ahead != null ? local : remote;
 }
 
 export interface ReadTreeOptions {

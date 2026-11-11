@@ -5,7 +5,7 @@ import { generic } from '../adapters/generic';
 import { BadRequest, Board } from './board';
 import { artifact, commit, heard, until, ws } from './testing';
 import { board, dir, doc, eachTest, main, manual, newWorkers, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
-import { GIT, git, gitOrNull } from './workspaces';
+import { GIT, git, gitOrNull } from './git';
 
 eachTest({ ...generic, land: 'main', workspaces: 'worktrees' });
 

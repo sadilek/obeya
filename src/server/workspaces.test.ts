@@ -8,7 +8,9 @@ import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
 import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
-import { addTrailer, defaultBranch, git, hasCommit, isAncestor, originFetch, unlanded, Workspaces } from './workspaces';
+import { addTrailer, originFetch, unlanded, Workspaces } from './workspaces';
+import { defaultBranch } from './branches';
+import { git, hasCommit, isAncestor } from './git';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));

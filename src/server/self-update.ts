@@ -10,7 +10,7 @@ import { inert } from '../core/inert';
 import type { OwnerHold, RestartReason } from '../core/types';
 import { gitDirs } from './read-tree';
 import { COMPILED } from './resources';
-import { gitAsync, gitOrNull } from './workspaces';
+import { gitAsync, gitOrNull } from './git';
 
 /** The exit code that asks the supervisor for a fresh server. */
 export const RESTART = 75;

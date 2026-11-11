@@ -10,7 +10,8 @@ import { Coordinator, overlaps } from './coordinator';
 import { move, queueOrder, reach } from '../core/queue';
 import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir, tag, testBoard, until } from './testing';
 import { Workers } from './workers';
-import { git, HERE, parseChanges, Workspaces } from './workspaces';
+import { HERE, parseChanges, Workspaces } from './workspaces';
+import { git } from './git';
 import { withLimitWait } from './runtime';
 
 let dir: string;

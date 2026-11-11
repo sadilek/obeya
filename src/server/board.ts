@@ -89,7 +89,7 @@ import {
 import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
 import type { Images } from './images';
 import { sessionHarness } from './runtime';
-import { branchName, CARD_BRANCH } from './workspaces';
+import { branchName, CARD_BRANCH } from './branches';
 import { clip, messageOf, oneLine } from '../core/text';
 import type { Wish } from '../core/wish';
 

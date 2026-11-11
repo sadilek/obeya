@@ -11,7 +11,7 @@ import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
 import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, silentWav, syncGitCalls, until } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 let dir: string;
 let store: Store;

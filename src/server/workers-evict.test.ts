@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { BadRequest } from './board';
 import { commit, identify, until } from './testing';
 import { board, eachTest, main, manual, runtime, spaces, state, workers } from './workers-fixture';
-import { git } from './workspaces';
+import { git } from './git';
 
 eachTest();
 

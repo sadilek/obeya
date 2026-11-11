@@ -18,7 +18,8 @@ import { messageOf } from '../core/text';
 import type { Store } from './db';
 import { spawnOutput } from './spawn';
 import { writesNothing } from './shell';
-import { type CardWorkspaces, type Change, type FileAt, GIT, ownFile, type LandProblem, type Landed, type Lease, WorkspaceError } from './workspaces';
+import { type CardWorkspaces, type Change, type FileAt, ownFile, type LandProblem, type Landed, type Lease } from './workspaces';
+import { GIT, WorkspaceError } from './git';
 
 /** A file or directory as the manifest has it. */
 export interface Entry {

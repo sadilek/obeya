@@ -13,7 +13,7 @@ import { cloneName, codexManager, machineHint, MachineSetup, runnable, updateCod
 import { claudeExecutable, runClaudeHere } from './runtime';
 import { fakeProgram, gitRepo, ownGlobalGitConfig, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
-import { git } from './workspaces';
+import { git } from './git';
 
 let dir: string;
 let home: string;

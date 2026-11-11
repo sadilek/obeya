@@ -4,7 +4,7 @@
 import { messageOf } from '../core/text';
 import { type Forge, type PrStatus, parsePrUrl, verdictOf, withBodyFile } from './forge';
 import { spawnOutput } from './spawn';
-import { GIT } from './workspaces';
+import { GIT } from './git';
 
 /**
  * One call of the API below `<base>/api/v1/`; returns the parsed answer (undefined for an empty one)

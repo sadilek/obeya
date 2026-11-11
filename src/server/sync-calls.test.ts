@@ -26,6 +26,10 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     why: "server path, a stat per card's demo while the board's items are built (whether its files are still there); cheap each, and kept with the card's row while it stays the same",
     calls: { existsSync: 3 },
   },
+  'branches.ts': {
+    why: "detectedBranch's and defaultBranchCommit's gitStepsSync serve scripts and startup (repoInfo, adapters' readShared without a commit); the server reads with gitSteps",
+    calls: { gitStepsSync: 2 },
+  },
   'canvas.ts': {
     why: "server path, cheap: an answer's directory made, a free plan doc name probed, a folder repository's directory checked, two paths compared by their real path after a landing",
     calls: { existsSync: 1, mkdirSync: 1, realpathSync: 2, statSync: 1 },
@@ -55,6 +59,10 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { mkdirSync: 1, realpathSync: 3, statSync: 1, writeFileSync: 2 },
   },
   'forge.ts': { why: "server path, cheap: a pull request's body in a temporary file for gh", calls: { mkdtempSync: 1, rmSync: 1, writeFileSync: 1 } },
+  'git.ts': {
+    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync, runSync) serves scripts, tests and startup (self-update's headOf); the server's own git goes through gitAsync and gitSteps",
+    calls: { existsSync: 2, runSync: 1, spawnSync: 3 },
+  },
   'git-setup.ts': {
     why: "server path, rare: setting up git in a folder the owner chose (setup, a card's new repository) runs git init, add and commit with the server waiting; a candidate for spawnOutput",
     calls: { existsSync: 2, mkdtempSync: 1, rmSync: 3, spawnSync: 1, statSync: 2, writeFileSync: 2 },
@@ -83,8 +91,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'personal-site.ts': { why: "the owner's personal site settings, a small file read and written when they change", calls: { existsSync: 1, mkdirSync: 2, readFileSync: 2, rmSync: 1, statSync: 1, writeFileSync: 2 } },
   'push.ts': { why: 'the push notification keys, read or made once per server', calls: { chmodSync: 1, existsSync: 1, readFileSync: 1, writeFileSync: 1 } },
   'read-tree.ts': {
-    why: "server path, cheap by design: the seals of a repository's refs and HEAD (refsSeal, headSeal) are a few stats and small reads instead of a git call, and so is whether git is at work in the read tree (gitAtWork, a few stats in its git directory before the plan docs are read); defaultBranchCommit's gitStepsSync is left for scripts (adapters' readShared without a commit), the server reads with gitSteps",
-    calls: { existsSync: 8, gitStepsSync: 1, mkdirSync: 1, readFileSync: 6, readdirSync: 1, realpathSync: 1, statSync: 4 },
+    why: "server path, cheap by design: the seals of a repository's refs and HEAD (refsSeal, headSeal) are a few stats and small reads instead of a git call, and so is whether git is at work in the read tree (gitAtWork, a few stats in its git directory before the plan docs are read)",
+    calls: { existsSync: 8, mkdirSync: 1, readFileSync: 6, readdirSync: 1, realpathSync: 1, statSync: 4 },
   },
   'remote.ts': { why: 'the remote access setting: a small file, and tailscale serve taken back as the server stops', calls: { existsSync: 1, readFileSync: 1, rmSync: 1, unserveSync: 1, writeFileSync: 1 } },
   'replay.ts': { why: 'CLI for recording and replaying demos, not the server', calls: { appendFileSync: 1, cpSync: 2, existsSync: 7, mkdirSync: 3, mkdtempSync: 2, readFileSync: 4, readdirSync: 3, rmSync: 2, writeFileSync: 4 } },
@@ -132,8 +140,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'workers-fixture.ts': { why: "the workers' tests' fixture, not the server", calls: { mkdtempSync: 1 } },
   'workers.ts': { why: "server path, cheap: a path's real path, whether a kept demo copy is still there", calls: { existsSync: 1, realpathSync: 1 } },
   'workspaces.ts': {
-    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync, runSync) and detectedBranch's gitStepsSync serve scripts and startup (repoInfo, self-update's headOf); the server's own git goes through gitAsync and gitSteps. The rest is cheap: stats of known workspace paths as cards start, land and are cleaned up",
-    calls: { existsSync: 20, gitStepsSync: 1, mkdirSync: 3, readdirSync: 1, realpathSync: 1, renameSync: 1, runSync: 1, spawnSync: 3, statSync: 2 },
+    why: "server path, cheap: stats of known workspace paths as cards start, land and are cleaned up",
+    calls: { existsSync: 18, mkdirSync: 3, readdirSync: 1, realpathSync: 1, renameSync: 1, statSync: 2 },
   },
 };
 

@@ -17,7 +17,8 @@ import { Stalls } from './stalls';
 import { serve, serveNarration } from './server';
 import { canvas, dir, eachTest, runtime, start } from './canvas-fixture';
 import { artifact, asOwner, commit, gitClone, gitRepo, handedOverOn, identify, noForge, until } from './testing';
-import { git, RECHECK_MS } from './workspaces';
+import { RECHECK_MS } from './workspaces';
+import { git } from './git';
 import type { Transcript } from './voice';
 
 let board: Board;

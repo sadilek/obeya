@@ -18,7 +18,8 @@ import { claudeModels } from './harnesses';
 import { type AgentEvent, sdkRuntime } from './runtime';
 import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
-import { git, gitAsync, HERE, RECHECK_MS, Workspaces } from './workspaces';
+import { HERE, RECHECK_MS, Workspaces } from './workspaces';
+import { git, gitAsync } from './git';
 
 let dir: string;
 let ssh: string;

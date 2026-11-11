@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { type Busy, changesCode, headSeal, installDependencies, ownCheckout, Restarter, symbolicTarget, watchOwnCode, whenIdle } from './self-update';
 import { onStart } from './spawn';
 import { commit, gitRepo, until } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 let repo: string;
 let stop = () => {};

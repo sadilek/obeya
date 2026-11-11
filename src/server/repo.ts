@@ -3,7 +3,8 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { type OtherDoc, type PlanDoc, parsePlanDoc, type Workstream } from '../core/plan-doc';
-import { defaultBranch, defaultBranchAsync, gitAsync, gitCalls, gitOrNull, gitSteps } from './workspaces';
+import { defaultBranch, defaultBranchAsync } from './branches';
+import { gitAsync, gitCalls, gitOrNull, gitSteps } from './git';
 
 /** Where a repository is, its `origin` and its main branch (`defaultBranch`), the caller waiting for git: for scripts. Throws where `path` is no git repository. */
 export function repoInfo(path: string): RepoInfo {

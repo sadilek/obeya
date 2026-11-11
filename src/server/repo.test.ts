@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, remoteHost, repoInfo, repoInfoAsync, sameRemote, watchPlanDocs } from './repo';
 import { gitRepo } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 const DOC = '# P\n\n## Workstreams\n\n- [ ] **W1:** One.\n';
 

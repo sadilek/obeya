@@ -21,16 +21,8 @@ import { messageOf } from '../core/text';
 import { oneAtATime } from '../core/one-at-a-time';
 import { demoFile } from './demo-page';
 import { sameRemote } from './repo';
-import { spawnOutput } from './spawn';
-
-export class WorkspaceError extends Error {
-  constructor(
-    message: string,
-    readonly code: 'noWorkspace' | 'dirtyWorkspaces' | 'noSlot' | 'workspace' = 'workspace',
-  ) {
-    super(message);
-  }
-}
+import { branchSetting, type Branches, CARD_BRANCH, detectingBranch, readingBranches } from './branches';
+import { GIT, gitAsync, gitRun, gitSteps, LOOK, remoteWorkspace, WorkspaceError } from './git';
 
 /** A restored card's branch is no longer in the clone it takes back (`retake`). */
 export class BranchGone extends WorkspaceError {}
@@ -72,58 +64,6 @@ export interface PullStopped extends PullClash {
   upstream: string;
 }
 
-/**
- * The git binary. On macOS `/usr/bin/git` is a shim that asks xcrun for the real one on every
- * call, which more than doubles what a call costs; Obeya calls git often, so it asks once. On
- * Windows the `git` on the PATH is usually Git for Windows' `cmd\git.exe`, a launcher that starts
- * the real one as a second process: starting a process costs a lot there (a virus scanner looks at
- * each), so it is the real one in git's exec path, which finds its helpers (sh, ssh) by itself.
- */
-export const GIT = gitBinary();
-
-function gitBinary(): string {
-  if (process.platform === 'win32') {
-    const r = Bun.spawnSync(['git', '--exec-path'], { stderr: 'ignore', windowsHide: true });
-    const path = r.exitCode === 0 ? join(r.stdout.toString().trim(), 'git.exe') : '';
-    return path && existsSync(path) ? path : 'git';
-  }
-  if (process.platform !== 'darwin' || Bun.which('git') !== '/usr/bin/git') return 'git';
-  const r = Bun.spawnSync(['xcrun', '--find', 'git'], { stderr: 'ignore' });
-  const path = r.exitCode === 0 ? r.stdout.toString().trim() : '';
-  return path && existsSync(path) ? path : 'git';
-}
-
-/** The host of a workspace on another machine, as `remote` finds it; a host gone from the configuration is a workspace error. */
-function remoteWorkspace(path: string) {
-  try {
-    return remote(path);
-  } catch (e) {
-    throw new WorkspaceError(messageOf(e));
-  }
-}
-
-/** `git` in `cwd`, which may be a workspace on another machine (`ssh://<host>/…`, see `hosts.ts`). */
-export function git(cwd: string, ...args: string[]): string {
-  const there = remoteWorkspace(cwd);
-  if (there) {
-    const r = there.host.runSync(['git', ...TOKEN_HELPER_ARGS, '-C', there.path, ...args], there.path);
-    if (r.code !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-    return r.stdout.trim();
-  }
-  const r = Bun.spawnSync([GIT, '-C', cwd, ...args], { stderr: 'pipe' });
-  if (r.exitCode !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${r.stderr.toString().trim()}`);
-  return r.stdout.toString().trim();
-}
-
-/** `git` in `cwd`, or null where it fails (no repository there, a ref that does not exist). */
-export function gitOrNull(cwd: string, ...args: string[]): string | null {
-  try {
-    return git(cwd, ...args);
-  } catch {
-    return null;
-  }
-}
-
 /** Whether a workspace may be there, without asking its host: for one on another machine, the git call that follows finds out. */
 function mayExist(path: string): boolean {
   try {
@@ -141,51 +81,6 @@ async function existsAsync(path: string): Promise<boolean> {
   const there = remoteWorkspace(path);
   return there ? (await there.host.run(['test', '-e', there.path])).code === 0 : existsSync(path);
 }
-
-/**
- * `git` without blocking the server while it runs: landing approved work fetches, rebases and
- * pushes, over the network seconds in which the server would answer nothing else.
- */
-export async function gitAsync(cwd: string, ...args: string[]): Promise<string> {
-  const r = await gitRun(cwd, args);
-  if (r.code !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-  return r.stdout.trim();
-}
-
-/**
- * Whether commit `a` is an ancestor of `b` in `cwd`. Throws where git cannot tell (an unknown commit,
- * a broken repository): each caller decides what that means for it.
- */
-export async function isAncestor(cwd: string, a: string, b: string): Promise<boolean> {
-  const args = ['merge-base', '--is-ancestor', a, b];
-  const r = await gitRun(cwd, args);
-  if (r.code === 0 || r.code === 1) return r.code === 0;
-  throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-}
-
-/** Whether `cwd` has the commit `c`. Throws where git cannot tell (a broken repository, a configuration it cannot read). */
-export async function hasCommit(cwd: string, c: string): Promise<boolean> {
-  const args = ['rev-parse', '--verify', '--quiet', `${c}^{commit}`];
-  const r = await gitRun(cwd, args);
-  if (r.code === 0 || r.code === 1) return r.code === 0;
-  throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-}
-
-/** `git` in `cwd` without blocking, with its exit code: for commands whose exit code is an answer (`diff --no-index`). */
-async function gitRun(cwd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-  const there = remoteWorkspace(cwd);
-  if (there) return there.host.run(['git', ...TOKEN_HELPER_ARGS, '-C', there.path, ...args], { cwd: there.path });
-  return spawnOutput([GIT, '-C', cwd, ...args]);
-}
-
-/**
- * Put before a git command that only looks (`status`, `diff` against the working tree): git then
- * refreshes the index in memory without writing it. Writing it takes git's index lock, and a git
- * command that needs the lock meanwhile (a commit or checkout of the owner's or an agent's, Obeya's
- * own landing) fails. `diff` heeds only its own setting, and so names a file whose timestamps alone
- * changed as well (`worktreeNames`); its patches leave such a file out.
- */
-export const LOOK = ['--no-optional-locks', '-c', 'diff.autoRefreshIndex=false'];
 
 /** `git diff` as Obeya shows it to the owner: plain, with renames found and file names unquoted. */
 const DIFF = [...LOOK, '-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-M'];
@@ -2218,108 +2113,6 @@ export function parseChanges(diff: string): Change[] {
 }
 
 /**
- * The main branches the owner set for repositories on this machine (`RepoSettings.branch`), by
- * the repository's path, each read when it is asked for: a running canvas registers its own.
- */
-const branchSettings = new Map<string, () => string | undefined>();
-
-/** Registers where the main branch the owner set for the repository at `repoPath` is read; returns what takes it back. */
-export function useBranchSetting(repoPath: string, branch: () => string | undefined): () => void {
-  const key = resolve(repoPath);
-  branchSettings.set(key, branch);
-  return () => {
-    if (branchSettings.get(key) === branch) branchSettings.delete(key);
-  };
-}
-
-/** The main branch the owner set on this machine for the repository at `path`; none where they set none. */
-export const branchSetting = (path: string): string | undefined => branchSettings.get(resolve(path))?.()?.trim() || undefined;
-
-/** The repository's main branch: the one the owner set for it on this machine, else the one detected (`detectedBranch`); none in a folder without git. */
-export function defaultBranch(path: string): string {
-  if (isFolder(path)) return '';
-  return branchSetting(path) || detectedBranch(path);
-}
-
-/** `defaultBranch` without the server waiting for git. */
-export async function defaultBranchAsync(path: string): Promise<string> {
-  if (isFolder(path)) return '';
-  return branchSetting(path) || (await gitSteps(path, detectingBranch()));
-}
-
-/**
- * The folders without git in the configuration (`RepoConfig.git` false), by path: they have no
- * branch, and what Obeya reads of them (`.obeya/settings.json`, plan docs) it reads as the folder has
- * it. Marked whenever a configuration is resolved.
- */
-const folders = new Set<string>();
-
-/** Marks the path as a folder without git, or as a repository again. */
-export function markFolder(path: string, folder: boolean) {
-  if (folder) folders.add(resolve(path));
-  else folders.delete(resolve(path));
-}
-
-/** Whether the path is a folder without git in the configuration. */
-export const isFolder = (path: string): boolean => folders.has(resolve(path));
-
-/**
- * The repository's main branch as git tells it, where cards start from and work lands: `origin`'s HEAD where the
- * checkout knows one. Else its only branch that is not a card's; else the one of them named as
- * git's `init.defaultBranch`, `main` or `master`, so that a branch the owner checks out for a
- * while does not take its place; else the branch the checkout is on, unless that is a card's;
- * else `init.defaultBranch`, else `main`.
- */
-export const detectedBranch = (path: string): string => gitStepsSync(path, detectingBranch());
-
-/** `detectedBranch` as git steps, from `branches` where they were read already. */
-export function* detectingBranch(branches?: Branches | null): GitSteps<string> {
-  const b = branches !== undefined ? branches : yield* readingBranches();
-  if (b?.originHead) return b.originHead;
-  const own = [...(b?.local.keys() ?? [])].filter((name) => !name.startsWith(CARD_BRANCH));
-  if (own.length === 1) return own[0]!;
-  const [init] = yield [['config', '--get', 'init.defaultBranch']];
-  const usual = [init, 'main', 'master'].find((name) => name && own.includes(name));
-  if (usual) return usual;
-  const [current] = yield [['symbolic-ref', '--short', '-q', 'HEAD']];
-  if (current && !current.startsWith(CARD_BRANCH)) return current;
-  return init || 'main';
-}
-
-/** A repository's branches, what its main branch and that branch's commit are read from. */
-export interface Branches {
-  /** The branch `origin`'s HEAD names, where the checkout knows one. */
-  originHead?: string;
-  /** The local branches and their commits. */
-  local: Map<string, string>;
-  /** `origin`'s branches as the checkout last fetched them, and their commits. */
-  remote: Map<string, string>;
-  /** The names of the tags, where they were asked for. */
-  tags?: Set<string>;
-}
-
-/**
- * Reads `Branches` as git steps, all with one call: Obeya reads them each time it needs the main
- * branch, and each call of git takes a few milliseconds. Null where there is no git repository.
- * `tags`: with the names of the tags.
- */
-export function* readingBranches(tags = false): GitSteps<Branches | null> {
-  const [refs] = yield [['for-each-ref', '--format=%(refname)%00%(objectname)%00%(symref)', 'refs/heads/', 'refs/remotes/origin/', ...(tags ? ['refs/tags/'] : [])]];
-  if (refs == null) return null;
-  const b: Branches = { local: new Map(), remote: new Map(), ...(tags ? { tags: new Set<string>() } : {}) };
-  const ORIGIN = 'refs/remotes/origin/';
-  for (const line of refs.split('\n')) {
-    const [ref = '', commit = '', symref = ''] = line.split('\0');
-    if (ref === `${ORIGIN}HEAD`) {
-      if (symref.startsWith(ORIGIN)) b.originHead = symref.slice(ORIGIN.length);
-    } else if (ref.startsWith('refs/heads/')) b.local.set(ref.slice('refs/heads/'.length), commit);
-    else if (ref.startsWith(ORIGIN)) b.remote.set(ref.slice(ORIGIN.length), commit);
-    else if (ref.startsWith('refs/tags/')) b.tags?.add(ref.slice('refs/tags/'.length));
-  }
-  return b;
-}
-
-/**
  * Whether `git fetch origin` in a clone would bring nothing: it fetches (`how`) from a repository on
  * this machine whose branches the clone has (`refs`, read with tags) as they are there, and its tags
  * too; where the fetch prunes, the clone has no branch or tag the origin no longer has. Asking that
@@ -2409,58 +2202,3 @@ export async function originFetch(path: string): Promise<OriginFetch | null> {
   };
 }
 
-/**
- * What Obeya reads of a repository with git, written once for both ways it runs: batches of git
- * calls (their arguments) that do not depend on one another, each answered with the calls' output
- * (trimmed; null where git failed) before the next batch is asked.
- */
-export type GitSteps<T> = Generator<string[][], T, (string | null)[]>;
-
-/** Runs git steps in `cwd` one call after the other, the server waiting: for code that cannot wait otherwise. */
-export function gitStepsSync<T>(cwd: string, steps: GitSteps<T>): T {
-  for (let step = steps.next([]); ; step = steps.next(step.value.map((args) => gitOrNull(cwd, ...args)))) if (step.done) return step.value;
-}
-
-/** Runs git steps in `cwd` without blocking the server, the calls of each batch at once. */
-export async function gitSteps<T>(cwd: string, steps: GitSteps<T>): Promise<T> {
-  const one = async (args: string[]) => {
-    const r = await gitRun(cwd, args).catch(() => null);
-    return r?.code === 0 ? r.stdout.trim() : null;
-  };
-  for (let step = steps.next([]); ; step = steps.next(await Promise.all(step.value.map(one)))) if (step.done) return step.value;
-}
-
-/** Git steps of their own that run beside each other: each batch holds the next calls of both. */
-export function* together<A, B>(a: GitSteps<A>, b: GitSteps<B>): GitSteps<[A, B]> {
-  let x = a.next([]);
-  let y = b.next([]);
-  while (!x.done || !y.done) {
-    const asked = x.done ? 0 : x.value.length;
-    const got = yield [...(x.done ? [] : x.value), ...(y.done ? [] : y.value)];
-    if (!x.done) x = a.next(got.slice(0, asked));
-    if (!y.done) y = b.next(got.slice(asked));
-  }
-  return [x.value, y.value];
-}
-
-/** Git steps of one batch: these calls. */
-export function* gitCalls(...calls: string[][]): GitSteps<(string | null)[]> {
-  return yield calls;
-}
-
-/** What every card's branch begins with. */
-export const CARD_BRANCH = 'obeya/';
-
-/** `obeya/<slug>` from a card title, kept short and unique by the card id. */
-export function branchName(title: string, cardId: string): string {
-  const slug = title
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40)
-    .replace(/-$/, '');
-  return `${CARD_BRANCH}${slug || 'card'}-${cardId.slice(0, 6)}`;
-}

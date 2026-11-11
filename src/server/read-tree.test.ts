@@ -6,7 +6,7 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ReadTree, refsSeal } from './read-tree';
 import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, syncGitCalls, until } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 const doc = (title: string, ticked = '') =>
   `# ${title}\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [${ticked.includes('W1') ? 'x' : ' '}] **W1:** Eins.\n- [${ticked.includes('W2') ? 'x' : ' '}] **W2:** Zwei.\n`;

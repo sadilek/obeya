@@ -11,7 +11,7 @@ import { Restarter } from './self-update';
 import { artifact, commit, heard, until } from './testing';
 import { describeTool } from './workers';
 import { board, dir, eachTest, handedOver, main, manual, newWorkers, rebuild, runtime, setConversation, setLanguage, state, store, workers } from './workers-fixture';
-import { git } from './workspaces';
+import { git } from './git';
 
 eachTest();
 

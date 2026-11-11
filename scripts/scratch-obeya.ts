@@ -189,7 +189,7 @@ import { videoFacts } from '../src/server/demo';
 import { loginLink, ownerHeaders } from '../src/server/owner';
 import { findTailscale, type NamedEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';
-import { branchName } from '../src/server/workspaces';
+import { branchName } from '../src/server/branches';
 import { opt, scratchBase, scratchDir } from './common';
 import { waitUp } from './wait-up';
 

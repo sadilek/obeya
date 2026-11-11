@@ -7,7 +7,7 @@ import { Canvases } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
 import { FakeRuntime, gitRepo, noForge, ownGlobalGitConfig, refusal, removeDir, until } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 let dir: string;
 let store: Store;

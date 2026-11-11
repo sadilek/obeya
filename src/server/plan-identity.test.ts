@@ -8,7 +8,8 @@ import { type Board, LEAVE_AFTER_MS } from './board';
 import { Store } from './db';
 import { planHistory } from './repo';
 import { gitRepo, removeDir, testBoard } from './testing';
-import { branchName, git } from './workspaces';
+import { branchName } from './branches';
+import { git } from './git';
 
 const FILE = 'docs/plan/audit.md';
 const md = (items: string[]) => `# Audit\n\n## Goal\n\nFix the findings.\n\n## Workstreams\n\n${items.map((i) => `- ${i}`).join('\n')}\n`;

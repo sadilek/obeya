@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, AgentTool } from './runtime';
-import { gitAsync, isAncestor } from './workspaces';
+import { gitAsync, isAncestor } from './git';
 import { messageOf } from '../core/text';
 
 /** What an agent was given of a tool: what the fingerprint of a recording covers. */

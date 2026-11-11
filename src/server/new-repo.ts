@@ -9,7 +9,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { BadRequest } from './board';
 import { setUpGit } from './git-setup';
 import { expandHome } from '../../plugin/skills/demo/lib/settings.ts';
-import { GIT } from './workspaces';
+import { GIT } from './git';
 import type { Messages } from '../core/messages';
 
 type Words = Messages['newRepo'];

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { board, canvas, dir, eachTest, item, main, restart, runtime, settle } from './canvas-fixture';
 import { Explorers } from './explorers';
 import { commit, type FakeSession, heard, identify, until } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 eachTest({ repo: { settings: { land: 'pr' } }, deps: () => ({ permissionMode: 'acceptEdits', limitMargin: 10 }) });
 

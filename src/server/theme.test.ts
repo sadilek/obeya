@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { readShared } from '../adapters';
 import { readingTheme } from './theme';
 import { gitRepo } from './testing';
-import { GIT, markFolder } from './workspaces';
+import { markFolder } from './branches';
+import { GIT } from './git';
 
 const root = mkdtempSync(join(tmpdir(), 'obeya-theme-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
