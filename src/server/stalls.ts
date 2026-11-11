@@ -46,7 +46,7 @@ export interface Trace {
 }
 
 /** A process run synchronously, how long the server waited for it, and how long its thread computed meanwhile (starting it, taking in its output). */
-export interface Waited {
+interface Waited {
   argv: string[];
   ms: number;
   cpuMs?: number;
@@ -224,7 +224,7 @@ interface Run {
 }
 
 /** The line a run gets. */
-export function describeRun(r: Run): string {
+function describeRun(r: Run): string {
   const s = Math.round((r.last - r.since) / 1000);
   const span = s < 120 ? `${s} s` : `${Math.round(s / 60)} min`;
   const each = r.least === r.most ? seconds(r.least) : `${(r.least / 1000).toFixed(1)}–${seconds(r.most)}`;
@@ -252,7 +252,7 @@ export function pageStall(msg: unknown): PageStall | null {
   };
 }
 
-export interface StallOptions {
+interface StallOptions {
   /** Obeya's home, where `stalls.log` is kept. */
   home: string;
   /** The server's log. */

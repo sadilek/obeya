@@ -757,11 +757,6 @@ export class Config {
   }
 
   /**
-   * Saves a configuration that works, and the running canvases take it over (design: Live
-   * configuration). Where they came from the command line, Obeya starts again with it where
-   * something restarts it.
-   */
-  /**
    * "Try again": the running canvases take the saved configuration over again, as after a
    * save, so what did not start as it has them tries again.
    */
@@ -772,6 +767,11 @@ export class Config {
     return {};
   }
 
+  /**
+   * Saves a configuration that works, and the running canvases take it over (design: Live
+   * configuration). Where they came from the command line, Obeya starts again with it where
+   * something restarts it.
+   */
   async save(input: unknown): Promise<ConfigSaved> {
     const { canvases, resolved, problems: all } = await this.check(input);
     const problems = all.filter(blocksSaving);

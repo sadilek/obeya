@@ -5,7 +5,6 @@ import { MESSAGES } from '../core/messages';
 import { holdsNotes } from '../core/queue';
 import { answering, askable, type CardEvent, type Demo, finishingUp, type Item, needsYou, openQuestions, ownWords, pausableNow, type Question, resumable, started, type Talk as Exchange } from '../core/types';
 import { readAnswer } from './answer';
-import type { Field } from './api';
 
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
 export interface Turn {
@@ -464,7 +463,7 @@ export function parseQuestion(text: string): { text: string; options: string[] }
  * a question, the answer and feedback together, sorted out by the Coordinator as spoken words are.
  * Null where no agent hears it. Ideas and proposals have fields of their own.
  */
-export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'finishing' | 'branch' | 'prototypeOf' | 'archivedAt' | 'queue'>): Field | null {
+export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'finishing' | 'branch' | 'prototypeOf' | 'archivedAt' | 'queue'>): 'note' | 'answer' | 'feedback' | 'demo' | null {
   if (item.state === 'waiting') return item.need === 'question' ? 'answer' : item.need === 'demo' && item.question ? 'demo' : 'feedback';
   // a finished card's agent is resumed for what the owner asks about it; a planned card holds the note for the agent that takes it on
   return item.state === 'working' || item.state === 'inPr' || item.finishing || askable(item) || holdsNotes(item) ? 'note' : null;

@@ -14,11 +14,10 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
-import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented } from '../core/types';
+import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented, type DemoSite } from '../core/types';
 import { BadRequest, type Board, cardDemos, contributionOf, type DemoRef, pageTagsOf, type PrState, sameDemo, type SharedDemo, sharedDemos, type Shipped, type StoredDemo, type StoredReshare, type StoredShare } from './board';
 import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
-import type { DemoSite } from '../adapters/types';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { type Gone, siteBase, siteMissing, type SiteOptions, siteTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
@@ -95,8 +94,6 @@ export interface ShareSource {
  */
 export interface ShareTarget {
   key: string;
-  /** An unlisted site (the owner's personal one): a page's place on it is `<token>/<slug>`. */
-  unlisted?: true;
   /** The card's repository checkout. */
   repo: string;
   /**
@@ -416,15 +413,6 @@ export class Sharing {
       const version = page.includes('body.alone') ? '2026-10-16-alone' : page.includes('Newsreader') ? '2026-10-10-look' : '';
       const { outdated: _, ...rest } = s as StoredShare & { outdated?: true };
       this.set(r.id, { ...rest, version });
-    }
-    // pages from before several versions (until 2026-10-16) showed one demo: a list of one, the
-    // card's demo in that directory (the latest one rendered there) named by its handover
-    for (const { r, s } of this.shares()) {
-      if (s.demos || !s.dir || !s.shown) continue;
-      const { dir: _, shown: __, ...rest } = s;
-      const demo = cardDemos(r).findLast((d) => d.dir === s.dir);
-      const one: SharedDemo = { ...(demo ? refOf(demo) : { dir: s.dir }), ...(demo?.at ? { at: demo.at } : {}), dir: s.dir, shown: s.shown };
-      this.set(r.id, { ...rest, demos: [one] });
     }
   }
 
@@ -1193,7 +1181,6 @@ export class Sharing {
     return this.o.languageFor?.(card) ?? readDemoSettings(this.o.home).language;
   }
 
-  /** One of the card's demos a page may show (`cardDemos`), by its handover, else by its directory. */
   /** The versions on the page, the demo and the ones it supplements (`withSupplemented`), in order of handover. */
   private beside(cardId: string, now: DemoRef[], ref: DemoRef): DemoRef[] {
     const all = cardDemos(this.o.board.row(cardId));
@@ -1212,6 +1199,7 @@ export class Sharing {
     return dir && d.handover !== undefined ? { ...d, dir } : d;
   }
 
+  /** One of the card's demos a page may show (`cardDemos`), by its handover, else by its directory. */
   private cardDemo(cardId: string, ref: DemoRef): StoredDemo | null {
     return cardDemos(this.o.board.row(cardId)).findLast((d) => sameDemo(d, ref)) ?? null;
   }
@@ -1349,7 +1337,7 @@ function statOr(path: string): number | null {
 export const DEMO_MARKER = '<!-- obeya:demo -->';
 
 /** The description with a line linking the demo's page; null when it links the page already. */
-export function withDemoLink(body: string, url: string, kind: DemoKind = 'video', t: Messages = MESSAGES.de): string | null {
+export function withDemoLink(body: string, url: string, kind: DemoKind, t: Messages): string | null {
   if (body.includes(url)) return null;
   const line = `${t.share.prLine(kind === 'html')}: ${url} ${DEMO_MARKER}`;
   const lines = body.split('\n');

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { readyToMerge, reviewOf } from './forge';
+import { reviewOf, waitsOf } from './forge';
 import { ForgeError, makeForgejoForge, remoteRepo, type Api } from './forgejo';
 
 const URL_ = 'https://codeberg.org/acme/app/pulls/12';
@@ -111,8 +111,8 @@ test('merged, closed, conflicting and draft PRs on Forgejo', async () => {
   expect((await status({ state: 'closed' })).state).toBe('CLOSED');
   const draft = await status({ mergeable: false, draft: true });
   expect([draft.mergeable, draft.mergeState]).toEqual(['UNKNOWN', 'DRAFT']);
-  expect(readyToMerge(await status({}))).toBe(true);
-  expect(readyToMerge(draft)).toBe(false);
+  expect(waitsOf(await status({}))).toEqual([]);
+  expect(waitsOf(draft)).toEqual(['draft']);
 });
 
 test('the description on Forgejo is read and replaced', async () => {
@@ -198,5 +198,5 @@ test('a failed check on a later page of the head’s statuses keeps the PR from 
   const s = await forge.status('/repo', URL_);
   expect(s.checks.length).toBe(51);
   expect(s.checks.at(-1)).toEqual({ name: 'e2e', state: 'failure' });
-  expect(readyToMerge(s)).toBe(false);
+  expect(waitsOf(s)).toEqual(['checksFailed']);
 });

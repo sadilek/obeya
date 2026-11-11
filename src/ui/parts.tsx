@@ -25,9 +25,10 @@ const firstLine = (md: string) =>
     .map((l) => l.replace(/^(Ziel|Goal)\s*:?\s*/i, '').trim())
     .find(Boolean) ?? '';
 
-/** What of a workstream planned again has landed: its pull request, else its commit. */
-/** The state whose colour an open card wears: a demo whose worker takes in the owner's answer is at work. */
-/** The colour a card's state gives its unfolded sheet: a snoozed card's is pencil grey, as on the canvas. */
+/**
+ * The state whose colour an open card wears, and its unfolded sheet: a demo whose worker takes in
+ * the owner's answer is at work, a snoozed card's is pencil grey, as on the canvas.
+ */
 export const shownState = (i: Item) => (i.snoozed ? 'muted' : i.kind === 'question' ? 'question' : answering(i) ? 'working' : i.state);
 
 /** A card's pull requests still open as far as Obeya knows: its own and those in other repositories. */
@@ -40,6 +41,7 @@ const prShort = (p: PullRequest) => {
   return t.pr.short(`${p.repo ? `${p.repo.split('/').pop()} ` : ''}#${p.number}`, p.checks.filter((c) => c.state === 'failure').length, p.conflict, p.ready, p.held?.score, wait && t.pr.waitShort[wait]);
 };
 
+/** What of a workstream planned again has landed: its pull request, else its commit. */
 export const landedRef = (l: NonNullable<Item['landedPart']>) => (l.pr ? `PR #${l.pr.number}` : (l.commit?.slice(0, 7) ?? ''));
 
 /** The button for the conversation with Obeya (the canvas's top bar, the phone view's): a speech bubble. */
@@ -1229,7 +1231,7 @@ export const depWidth = (s: number) => Math.max(2, 1.6 / s);
 export const depHead = (s: number) => 6 * depWidth(s);
 
 /** How strongly a wait shows under the pointer, by its steps from the card there: its own waits fully, those further along fainter. */
-export const stepOpacity = (step: number) => [1, 1, 0.6, 0.42][step] ?? 0.3;
+const stepOpacity = (step: number) => [1, 1, 0.6, 0.42][step] ?? 0.3;
 
 /**
  * Every direct wait between cards on the canvas as a faint line, from the card waited for to the

@@ -13,12 +13,14 @@ test('a shared page carries the player as source that parses, for a page alone a
     pr: null,
     when: '',
     tabTitle: '',
+    language: 'en',
     video: { src: 'demo.mp4' },
     tracks: [{ language: 'en', src: 'captions.en.vtt' }],
   });
   const stacked = stackedPageHtml({
     when: '',
     tabTitle: '',
+    language: 'en',
     pr: null,
     demos: [
       { kind: 'video', title: 'One', text: '', base: 'v1/', chapters: [[0, 'Start']], poster: true, tracks: [] },

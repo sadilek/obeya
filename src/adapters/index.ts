@@ -9,7 +9,7 @@ import { checkShared } from './schema';
 import type { RepoAdapter, RepoInfo } from './types';
 import { messageOf } from '../core/text';
 
-/** Where a repository kept an adapter module before its settings said it all (`hasAdapterModule`). */
+/** Where a repository kept an adapter module before its settings said it all (`readingAdapterModule`). */
 export const REPO_ADAPTER_DIR = '.obeya/adapter';
 
 /** Obeya's defaults for the repository: what it runs on where its settings say nothing. */
@@ -184,15 +184,9 @@ export function* readingSettings(commit: string): GitSteps<SharedRead> {
 }
 
 /**
- * Whether the repository's main branch still has a `.obeya/adapter/index.ts`: a module that said
- * what its settings say now, which Obeya no longer reads (problem `adapterGone`).
+ * Whether the repository still has a `.obeya/adapter/index.ts` at `commit`, as git steps: a module
+ * that said what its settings say now, which Obeya no longer reads (problem `adapterGone`).
  */
-export function hasAdapterModule(repoPath: string, commit = defaultBranchCommit(repoPath).commit): boolean {
-  if (isFolder(repoPath)) return false;
-  return gitStepsSync(repoPath, readingAdapterModule(commit));
-}
-
-/** `hasAdapterModule` at `commit` as git steps. */
 export function* readingAdapterModule(commit: string): GitSteps<boolean> {
   const [found] = yield [['cat-file', '-e', `${commit}:${REPO_ADAPTER_DIR}/index.ts`]];
   return found != null;

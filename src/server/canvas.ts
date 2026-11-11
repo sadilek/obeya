@@ -11,10 +11,10 @@ import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/se
 import { demoFile } from './demo-page';
 import { openWithSystem } from './machine';
 import { repoName } from '../adapters/generic';
-import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
+import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, DEMO_LOOK_MS, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
@@ -3089,7 +3089,7 @@ export class ConfigError extends Error {
 /**
  * What resolving a repository reads of it with git (`readingRepo`): where it is and its main
  * branch (`info`), that branch as git tells it whatever the owner set (`detected`), whether its
- * main branch still has an adapter module (`hasAdapterModule`), and its `.obeya/settings.json`
+ * main branch still has an adapter module (`readingAdapterModule`), and its `.obeya/settings.json`
  * there (`readShared`).
  */
 export interface RepoRead {
@@ -3163,7 +3163,7 @@ const READ_TRIES = 5;
 /** What `moved` came to (`moved`). */
 type Moved = 'same' | 'follow' | 'due';
 
-/** What a repository's default branch has of its settings: its `.obeya/settings.json` and Claude Code configuration (`readShared`), and whether an adapter module is still there (`hasAdapterModule`). */
+/** What a repository's default branch has of its settings: its `.obeya/settings.json` and Claude Code configuration (`readShared`), and whether an adapter module is still there (`readingAdapterModule`). */
 interface DefaultRead {
   shared: SharedRead;
   adapterModule: boolean;

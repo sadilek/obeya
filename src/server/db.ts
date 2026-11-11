@@ -31,9 +31,9 @@ export interface CardRow {
   /**
    * When something last happened at the card: a change the owner sees (`SEEN`) or a line in its log
    * other than a worker's tool activity. Moving it, grouping it, folding a project or bookkeeping do
-   * not count. Null only on rows from before it was kept.
+   * not count. The migration that added it filled it from `updated_at`.
    */
-  changed_at: string | null;
+  changed_at: string;
   deleted_at: string | null;
   /** Agent session of the card's worker, or of a project's project agent. */
   session_id: string | null;
@@ -852,11 +852,6 @@ export class Store {
   }
 
   /**
-   * A mark of the canvas's archive that moves whenever a row its items are made of is written: an
-   * archived card, a workstream of an archived project, a prototype of an archived idea; one leaving
-   * the archive (taken back, deleted) too. Kept by the database as the rows are written.
-   */
-  /**
    * An agent session's estimated cost so far (`usd`, US dollars), as its harness reports it after each
    * turn: cumulative over the session, a resumed one going on from its earlier total. A total below
    * the last one means the harness started counting afresh (a resume without the earlier total, a
@@ -889,6 +884,11 @@ export class Store {
     return new Map(rows.map((r) => [r.project, r.usd]));
   }
 
+  /**
+   * A mark of the canvas's archive that moves whenever a row its items are made of is written: an
+   * archived card, a workstream of an archived project, a prototype of an archived idea; one leaving
+   * the archive (taken back, deleted) too. Kept by the database as the rows are written.
+   */
   archiveRev(canvasId: string): string {
     return String((this.db.query('SELECT rev FROM archive_revs WHERE canvas_id = $c').get({ c: canvasId }) as { rev: number } | null)?.rev ?? 0);
   }
@@ -1126,7 +1126,7 @@ export class Store {
         token: e.token ? 1 : null,
         at,
       }) as { id: number };
-    if (e.kind !== 'activity') this.db.query('UPDATE cards SET changed_at = max(coalesce(changed_at, updated_at), $at) WHERE id = $id').run({ id: e.cardId, at });
+    if (e.kind !== 'activity') this.db.query('UPDATE cards SET changed_at = max(changed_at, $at) WHERE id = $id').run({ id: e.cardId, at });
     return { ...e, id, at };
   }
 
@@ -1690,11 +1690,6 @@ export class Store {
   folderCard(cardId: string): string | null {
     const row = this.db.query('SELECT state FROM folder_cards WHERE card_id = $c').get({ c: cardId }) as { state: string } | null;
     return row?.state ?? null;
-  }
-
-  /** The cards with a record in the folder at `folder`. */
-  folderCards(folder: string): { card_id: string; state: string }[] {
-    return this.db.query('SELECT card_id, state FROM folder_cards WHERE folder = $f').all({ f: folder }) as { card_id: string; state: string }[];
   }
 
   /** Keeps the card's record in the folder; null removes it. */

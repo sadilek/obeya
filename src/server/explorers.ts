@@ -334,7 +334,7 @@ export class Explorers {
         break;
       case 'tool':
         // its own tools show in the conversation and the brief, not as reading
-        if (!e.name.startsWith('mcp__') && !OWN_TOOLS.includes(e.name)) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input, this.o.board.t));
+        if (!e.name.startsWith('mcp__')) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input, this.o.board.t));
         break;
       case 'error':
         this.o.board.log(cardId, 'error', 'obeya', e.message, { token: e.token });
@@ -618,7 +618,6 @@ Owner-facing text (your replies, the brief, its mocks, prototypes and split-off 
 `.trim();
 };
 
-const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'plan_split', 'plan_repo', 'record_decision', 'to_obeya'];
 
 /** At most this many prototypes are planned for one idea. */
 const MAX_VARIANTS = 6;

@@ -217,7 +217,6 @@ let canvases: Canvases | undefined;
 let server: ReturnType<typeof serve> | undefined;
 let exitCode = RESTART;
 const live = () => canvases?.all() ?? [];
-/** Starts the server again once no worker is in the middle of a turn, or when the owner says so. */
 const busy = () => live().flatMap((c) => c.busy().map((card) => ({ canvas: c.id, card })));
 const leave = (reason: RestartReason) => {
   server?.stop(true);
@@ -231,6 +230,7 @@ const leave = (reason: RestartReason) => {
   // after a takeover the app starts it again, not the supervisor
   shutdown(reason === 'takeover' ? TAKEOVER : exitCode);
 };
+/** Starts the server again once no worker is in the middle of a turn, or when the owner says so. */
 const restarter = new Restarter({
   busy,
   // a command in its undo window holds a restart off even when the page that said it reloads
@@ -319,9 +319,9 @@ const harnesses = new Harnesses({
   },
   claudeModels,
   claudeNewest: (channel) => claudeNewest(channel),
-  updateClaude: (log) => updateClaude(log),
+  updateClaude: () => updateClaude(),
   codexNewest,
-  updateCodex: (log) => updateCodex(log),
+  updateCodex: () => updateCodex(),
   // the hosts the configuration names now, once a canvas has them registered
   hosts: () => {
     const names = new Set(config.current().flatMap((c) => c.repos.flatMap((r) => (r.hosts ?? []).map((h) => h.name))));
@@ -343,7 +343,7 @@ canvases = await Canvases.start(
     setupProposals: true,
     ownCheckout: own,
     config,
-    workerEnv: { OBEYA_URL: narrationUrl, OBEYA_NARRATION_URL: narrationUrl },
+    workerEnv: { OBEYA_URL: narrationUrl },
     voicing,
     ...(process.env.OBEYA_PARK_GRACE ? { parkGrace: Number(process.env.OBEYA_PARK_GRACE) * 1000 } : {}),
     ...(process.env.OBEYA_PR_POLL ? { prPollMs: Number(process.env.OBEYA_PR_POLL) * 1000 } : {}),

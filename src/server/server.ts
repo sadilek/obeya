@@ -764,9 +764,9 @@ export function serve(
       '/api/config/share-settings': { POST: needs(config, async (c, req) => c.shareSettings(await req.json())) },
       // a repository's commands, new or changed on its default branch, confirmed by the owner: they count from now on
       '/api/config/trust': { POST: needs(config, async (c, req) => (await c.trust(await req.json()), {})) },
-      // what the configuration amounts to and what is wrong with it: as saved, or a draft as the owner edits it
       // "Try again": what did not start as the configuration has it tries again
       '/api/config/retry': { POST: needs(config, (c) => c.retry()) },
+      // what the configuration amounts to and what is wrong with it: as saved, or a draft as the owner edits it
       '/api/config/check': {
         GET: needs(config, (c) => c.checkSaved()),
         POST: needs(config, async (c, req) => c.check(await req.json())),
@@ -1090,10 +1090,10 @@ export function serve(
           return heard(c, words, focusOf(req, c), images, { ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) });
         })),
       },
-      // the owner started speaking: transcription and the Coordinator get ready meanwhile
       // whether the recording the page named `?sent=<id>` arrived, for a page that lost the answer
       '/api/c/:canvas/voice/arrived/:id': { GET: on((_c, req) => ({ arrived: arrived.has(req.params.id!) })) },
-      // `?ahead=1`: the owner may speak soon (the cursor went into Obeya's field), rather than speaking now
+      // the owner started speaking: transcription and the Coordinator get ready meanwhile; `?ahead=1`:
+      // the owner may speak soon (the cursor went into Obeya's field), rather than speaking now
       '/api/c/:canvas/voice/warm': {
         POST: on((c, req) => {
           transcriber.warm?.(new URL(req.url).searchParams.get('ahead') === '1');

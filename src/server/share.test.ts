@@ -2,9 +2,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:tes
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DemoSite } from '../adapters/types';
 import { BadRequest, type Board } from './board';
-import { EXPORT_HTML_MAX } from '../core/types';
+import { Store } from './db';
+import { EXPORT_HTML_MAX, type DemoSite } from '../core/types';
+import { MESSAGES } from '../core/messages';
 import type { Forge } from './forge';
 import { demoPageHtml } from './demo-page';
 import { DEMO_MARKER, SHARE_CWD, Sharing, withDemoLink } from './share';
@@ -15,6 +16,7 @@ import { FakeRuntime, gitRepo, noContributions, PATIENCE, removeDir, testBoard }
 import { git } from './workspaces';
 
 let dir: string;
+let store: Store;
 let board: Board;
 let runtime: FakeRuntime;
 let sharing: Sharing;
@@ -87,7 +89,8 @@ beforeEach(() => {
   theme = null;
   dir = mkdtempSync(join(tmpdir(), 'obeya-share-'));
   writeFileSync(join(dir, 'deploy.ts'), DEPLOY);
-  board = testBoard({ path: dir });
+  store = new Store(':memory:');
+  board = testBoard({ store, path: dir });
   runtime = new FakeRuntime();
   bodies = new Map();
   edits = [];
@@ -694,11 +697,11 @@ describe('several demo versions on one page', () => {
     const { demos, ...rest } = stored(c.id) as { demos: { dir: string; shown: unknown }[] };
     board.work(c.id, { share: JSON.stringify({ ...rest, dir: demos[0]!.dir, shown: demos[0]!.shown }) });
     later(c.id, 2);
-    // read as a list of one before it is converted
-    expect(share(c.id)).toMatchObject({ on: [1], stale: true });
-    sharing.resume();
+    // the next start converts it before anything reads it
+    board = testBoard({ store, path: dir });
     expect(stored(c.id)).not.toHaveProperty('dir');
     expect(stored(c.id).demos!.map((d) => d.handover)).toEqual([1]);
+    expect(share(c.id)).toMatchObject({ on: [1], stale: true });
   });
 });
 
@@ -1226,11 +1229,11 @@ describe('the link in the pull request', () => {
   });
 
   test('withDemoLink adds a line once and replaces its own', () => {
-    expect(withDemoLink('', 'https://d/a/')).toBe(`Demo-Video: https://d/a/ ${DEMO_MARKER}\n`);
-    expect(withDemoLink('Text\n\n', 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n`);
-    expect(withDemoLink('Siehe https://d/a/', 'https://d/a/')).toBeNull();
-    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}\n\nFooter`, 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n\nFooter`);
-    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}`, 'https://d/a/', 'html')).toBe(`Text\n\nDemo-Seite: https://d/a/ ${DEMO_MARKER}`);
+    expect(withDemoLink('', 'https://d/a/', 'video', MESSAGES.de)).toBe(`Demo-Video: https://d/a/ ${DEMO_MARKER}\n`);
+    expect(withDemoLink('Text\n\n', 'https://d/a/', 'video', MESSAGES.de)).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n`);
+    expect(withDemoLink('Siehe https://d/a/', 'https://d/a/', 'video', MESSAGES.de)).toBeNull();
+    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}\n\nFooter`, 'https://d/a/', 'video', MESSAGES.de)).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n\nFooter`);
+    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}`, 'https://d/a/', 'html', MESSAGES.de)).toBe(`Text\n\nDemo-Seite: https://d/a/ ${DEMO_MARKER}`);
   });
 });
 
@@ -1454,7 +1457,7 @@ describe('exporting a demo, where the repository has no demo site', () => {
     expect(html).toContain('<script type="text/vtt" class="captions" data-lang="en" data-label="English">');
     for (const german of ['Deutsch', 'Abspielen', 'Demo vom', 'ansehen', 'lang="de"']) expect(html).not.toContain(german);
     // a site's page, with the caption files beside it, names each track in its own language
-    const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', video: { src: 'demo.mp4' }, tracks: [{ language: 'en', src: 'captions.en.vtt' }, { language: 'fr', src: 'captions.fr.vtt' }] };
+    const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', language: 'de' as const, video: { src: 'demo.mp4' }, tracks: [{ language: 'en', src: 'captions.en.vtt' }, { language: 'fr', src: 'captions.fr.vtt' }] };
     expect(demoPageHtml({ ...parts, language: 'en' })).toContain('<track kind="captions" src="captions.en.vtt" srclang="en" label="English"><track kind="captions" src="captions.fr.vtt" srclang="fr" label="French">');
     // without a language the page is German
     expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.fr.vtt" srclang="fr" label="Französisch">');

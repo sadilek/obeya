@@ -117,7 +117,6 @@
   // dimming shadow on every ring would lay itself over the other rings' elements. A clip path, not
   // an SVG mask: the mask's full-page layer stalled the page for about 0.27 s each time it went
   // (seen as a jerk in a drag or a card appearing, in every render of the hero video).
-  const SVG = 'http://www.w3.org/2000/svg';
   function ensureDim() {
     if (dim && dim.el.isConnected) return dim;
     const el = document.createElement('div');

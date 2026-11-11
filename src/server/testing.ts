@@ -358,11 +358,6 @@ export function identify(repo: string) {
 }
 
 /**
- * Waits until `done` holds. A request reaches the server only after a round trip, which on a
- * loaded machine (other workers' test runs) takes longer than any fixed pause; a test that went
- * on too early failed and left its request open, and stopping the server reset it in the next test.
- */
-/**
  * `fetch` and `WebSocket` with the owner's key of the server `of` gives (one of `serve`), as the
  * page, the app's shell and Obeya's scripts send it. A request without it goes through the global ones.
  */
@@ -428,16 +423,21 @@ export async function leftBehind(cwd: string): Promise<number> {
   return pid;
 }
 
-/** Whether the process `pid` runs. */
+/** Whether the process `pid` runs (one this process may not signal runs too). */
 export const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
   }
 };
 
+/**
+ * Waits until `done` holds. A request reaches the server only after a round trip, which on a
+ * loaded machine (other workers' test runs) takes longer than any fixed pause; a test that went
+ * on too early failed and left its request open, and stopping the server reset it in the next test.
+ */
 export const until = async (done: () => unknown, ms = 3000 * PATIENCE) => {
   // on a clock `setSystemTime` leaves running: Date.now() stands still after it
   for (const end = performance.now() + ms; !(await done()); await Bun.sleep(2)) if (performance.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);

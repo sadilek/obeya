@@ -12,6 +12,7 @@
 // - `patch <path> <text>`: adds a file through `apply_patch`, with the hooks around it.
 // - `unauthorized`: the turn fails for a missing login.
 // - `limit`: the usage limit stops the turn.
+// - `costly`: reports the thread's token usage, then says `done`.
 // - `wait`: the turn goes on until a message steers it.
 // - `late`: the turn goes on until a message comes, then ends before it could take it.
 // - anything else: says `echo: <text>`.

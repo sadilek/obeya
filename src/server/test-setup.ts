@@ -5,7 +5,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { oneStartAtATime } from './spawn';
-import { removeTemplates } from './testing';
+import { alive, removeTemplates } from './testing';
 
 // as the server does: a test's process started next to a slow one does not wait for it (Windows)
 oneStartAtATime();
@@ -14,14 +14,6 @@ oneStartAtATime();
 // run that was killed (Obeya restarting stops its workers' test runs) never got there: the next run
 // removes the directories of runs whose process is gone.
 const RUN = 'obeya-test-';
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
-};
 for (const name of readdirSync(tmpdir())) {
   const pid = Number(name.startsWith(RUN) && name.slice(RUN.length).split('-')[0]);
   if (!pid || alive(pid)) continue;

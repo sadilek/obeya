@@ -24,6 +24,8 @@ export function writeStage(file: string) {
     port: PORT,
     dir: scratchDir(PORT),
     name: 'Tipjar',
+    // the interface in English, whatever the demo settings of the machine say
+    language: 'en',
     // the repository's settings (.obeya/settings.json) among the files: work lands on main
     files: rest,
     plans,

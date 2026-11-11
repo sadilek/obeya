@@ -453,8 +453,6 @@ class HttpVoice:
             reply = json.loads(self._post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
                 json.dumps(body).encode(), {"x-goog-api-key": self._key, "Content-Type": "application/json"}))
-            import base64
-
             audio = reply["candidates"][0]["content"]["parts"][0]["inlineData"]["data"]
             write_pcm(target, base64.b64decode(audio), 24000)
             return

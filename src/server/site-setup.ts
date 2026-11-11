@@ -3,8 +3,7 @@
 // background, since a login in the browser may take minutes; the dialog follows its lines.
 
 import { basename, resolve } from 'node:path';
-import type { DemoSite } from '../adapters/types';
-import type { PersonalSiteView, SiteSetupJob } from '../core/types';
+import type { PersonalSiteView, SiteSetupJob, DemoSite } from '../core/types';
 import { BadRequest } from './board';
 import { allowPrivate, cloudflareDeploy, connect, connectionCode, envFileFor, newToken, type PersonalSite, personalDemoSite, readPersonal, shareApproved, type SiteHost, writeEnv, writePersonal } from './personal-site';
 import { siteMissing } from './site';

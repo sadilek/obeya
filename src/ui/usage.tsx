@@ -69,15 +69,13 @@ export function UsagePill({ usage }: { usage: Usage }) {
     };
   }, [open]);
   const plans = usage.plans.filter((p) => p.limits.length);
-  // every plan with a login, whether agents run on it or not: what is left there decides what to start
-  const faced = plans;
-  if (!faced.length) return null;
+  if (!plans.length) return null;
   // the bar names a plan only beside another; the list names each
-  const named = faced.length > 1;
+  const named = plans.length > 1;
   return (
     <div ref={ref} className={['pill usage', open && 'open'].filter(Boolean).join(' ')} id="usage">
       <button className="face" aria-expanded={open} aria-label={t.usage.title} onClick={() => setOpen(!open)}>
-        {faced.map((p) => (
+        {plans.map((p) => (
           <span key={p.harness} className="plan">
             {named && <span className="harness">{t.usage.short[p.harness]}</span>}
             <span className="stack">

@@ -231,9 +231,6 @@ export interface StoredShare {
   url?: string;
   /** The demo versions on the published page, in order of handover: the first on top, each later one below as an addendum. */
   demos?: SharedDemo[];
-  /** Before a page held several versions (until 2026-10-16): the one demo it showed, read as a list of one (`sharedDemos`). */
-  dir?: string;
-  shown?: SharedDemo['shown'];
   /** While `publishing` without `refresh`: the versions the page is to show, as the owner chose them. */
   next?: DemoRef[];
   /** The pull request the published page links. */
@@ -253,7 +250,8 @@ export interface StoredShare {
   /** The page's tags the owner set by hand, by dimension: neither a worker nor the reading session changes them. */
   tags?: PageTags;
   /** The page's tags the reading session chose, by dimension, where neither the owner nor a worker had (`pageTagsOf`). */
-  auto?: PageTags;  /** The page is on the owner's personal site (unlisted), not on its repository's. */
+  auto?: PageTags;
+  /** The page is on the owner's personal site (unlisted), not on its repository's. */
   personal?: true;
   /** The random part of the page's address on the personal site (`<token>/<slug>`): drawn once for the card, so its link stays. */
   token?: string;
@@ -272,7 +270,7 @@ export function pageTagsOf(r: CardRow): PageTags {
 }
 
 /** The demo versions on a stored page, in order of handover. */
-export const sharedDemos = (s: StoredShare): SharedDemo[] => s.demos ?? (s.dir && s.shown ? [{ dir: s.dir, shown: s.shown }] : []);
+export const sharedDemos = (s: StoredShare): SharedDemo[] => s.demos ?? [];
 
 /** The file that shows a demo: its video, or its artifact's page. */
 const demoFile = (d: { dir: string; kind: DemoKind }) => join(d.dir, d.kind === 'html' ? 'index.html' : 'demo.mp4');
@@ -369,6 +367,21 @@ export function cardDemos(r: CardRow): StoredDemo[] {
   const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
   // drafts a question brought are not the work's result: no page shows them
   return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])].filter((d) => !d.asked);
+}
+
+/**
+ * Pages from before several versions (until 2026-10-16) showed one demo (`dir`, `shown`): each
+ * becomes a list of one, the card's demo in that directory (the latest one rendered there) named by
+ * its handover. Runs before anything reads the canvas's shares.
+ */
+function convertSingleDemoShares(store: Store, canvasId: string) {
+  for (const r of store.shared(canvasId)) {
+    const { dir, shown, ...rest } = JSON.parse(r.share!) as StoredShare & { dir?: string; shown?: SharedDemo['shown'] };
+    if (rest.demos || !dir || !shown) continue;
+    const demo = cardDemos(r).findLast((d) => d.dir === dir);
+    const one: SharedDemo = { ...(demo?.handover !== undefined ? { handover: demo.handover } : {}), ...(demo?.at ? { at: demo.at } : {}), dir, shown };
+    store.update(r.id, { share: JSON.stringify({ ...rest, demos: [one] } satisfies StoredShare) });
+  }
 }
 
 /** States a worker or the owner's decision is still part of. */
@@ -593,6 +606,7 @@ export class Board {
     store.ensureCanvas(canvas.id, canvas.name);
     // a new card whose page closed before anything was written in it was never wanted
     store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
+    convertSingleDemoShares(store, canvas.id);
     // the search reads the whole archive anew the first time: what its log held before is read with it
     store.dropArchiveChanges(canvas.id, store.archiveLog());
   }
@@ -720,7 +734,7 @@ export class Board {
       this.store.update(r.id, { shipped: JSON.stringify({ ...rest, commit } satisfies Shipped) });
     }
     // the docs' history is read anew
-    this.lesestandAt++;
+    this.readTreeAt++;
     this.docsChanged();
   }
 
@@ -1068,10 +1082,10 @@ export class Board {
   }
 
   /**
-   * A card an agent proposes, placed below the card it came from, or at the nearest free spot: its
-   * text for the agent that takes it on, and apart from it why and what the owner has to decide.
+   * An agent's proposal from card `fromId`: in the repository it names (`p.repo`), else in that card's,
+   * placed below that card, or at the nearest free spot; its text for the agent that takes it on, and
+   * apart from it why and what the owner has to decide.
    */
-  /** An agent's proposal from card `fromId`: in the repository it names (`p.repo`), else in that card's. */
   propose(fromId: string, p: { title: string; task: string; reason?: string; idea?: boolean; questions?: Question[]; startAt?: string; repo?: string }): Item {
     if (p.repo !== undefined) this.checkRepo(p.repo);
     const items = this.items();
@@ -1664,7 +1678,6 @@ export class Board {
     this.changed();
   }
 
-  /** The owner has the Coordinator's sheet in view: its answers are read. */
   /** The owner has Obeya's sheet in view, or (`ids`) those exchanges in a project's sheet. */
   readTalk(ids?: number[]) {
     if (this.store.readTalk(this.canvas.id, ids)) this.changed();
@@ -2971,7 +2984,6 @@ export class Board {
     }
     this.store.update(id, {
       ...fields,
-      // a repository of the canvas picked instead of a new one
       // a repository of the canvas picked instead of a new one: the owner's pick, which the idea's agent leaves
       ...(repo !== undefined ? { repo: this.repoColumn(repo) } : {}),
       ...(newRepo !== undefined || repo !== undefined
@@ -3190,11 +3202,11 @@ export class Board {
   /** Every workstream a plan doc has had, from its history in git, the newest first (`readPlanHistory`); none for a doc outside git. */
   private planHistory?: (ref: string) => Promise<Workstream[]>;
   /**
-   * Each doc's history as read for the doc's text then (`markdown`) and the Lesestand then (`at`,
-   * which `lesestandMoved` counts on); `past` is missing while git reads it.
+   * Each doc's history as read for the doc's text then (`markdown`) and the read tree then (`at`,
+   * which `readTreeMoved` counts on); `past` is missing while git reads it.
    */
   private histories = new Map<string, { markdown: string; at: number; past?: Workstream[] }>();
-  private lesestandAt = 0;
+  private readTreeAt = 0;
 
   /** Who reads a plan doc's history: a card whose workstream left the doc gets its title from there. */
   readPlanHistory(fn: (ref: string) => Promise<Workstream[]>) {
@@ -3202,23 +3214,23 @@ export class Board {
   }
 
   /**
-   * What the history of the doc as it reads now says. Read once per text of the doc and Lesestand,
+   * What the history of the doc as it reads now says. Read once per text of the doc and read tree,
    * without the server waiting: until git is through, this throws `HistoryUnread`, and the plan
    * docs are read again (`docsChanged`) once it is.
    */
   private past(doc: PlanDoc): Workstream[] {
     if (!this.planHistory) return [];
     const was = this.histories.get(doc.file);
-    if (was?.markdown === doc.markdown && was.at === this.lesestandAt) {
+    if (was?.markdown === doc.markdown && was.at === this.readTreeAt) {
       if (was.past) return was.past;
       throw new HistoryUnread();
     }
-    const reading: { markdown: string; at: number; past?: Workstream[] } = { markdown: doc.markdown, at: this.lesestandAt };
+    const reading: { markdown: string; at: number; past?: Workstream[] } = { markdown: doc.markdown, at: this.readTreeAt };
     this.histories.set(doc.file, reading);
     this.planHistory(doc.file)
       .catch(() => [])
       .then((past) => {
-        // the doc or the Lesestand moved on meanwhile: what the cards wait for is read anew
+        // the doc or the read tree moved on meanwhile: what the cards wait for is read anew
         if (this.histories.get(doc.file) !== reading) return;
         reading.past = past;
         this.docsChanged();
@@ -3613,11 +3625,6 @@ const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
 /** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
 const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
 
-/**
- * A workstream card with work not landed yet that a box in a plan folder outside the repository says
- * nothing of: the worker ticks it there at once, in no commit, so it may be ticked while the card is
- * in its pull request (before it is even open) or stopped with its branch.
- */
 /** Whether the work of a project's doc is done: each workstream ticked, or its card (among `rows`) finished. */
 function workDone(doc: PlanDoc, rows: Pick<CardRow, 'plan_ref' | 'state'>[]): boolean {
   const states = new Map(rows.flatMap((r) => (r.plan_ref?.startsWith(`${doc.file}#`) && r.state ? [[r.plan_ref, r.state]] : [])));
@@ -3627,6 +3634,11 @@ function workDone(doc: PlanDoc, rows: Pick<CardRow, 'plan_ref' | 'state'>[]): bo
   });
 }
 
+/**
+ * A workstream card with work not landed yet that a box in a plan folder outside the repository says
+ * nothing of: the worker ticks it there at once, in no commit, so it may be ticked while the card is
+ * in its pull request (before it is even open) or stopped with its branch.
+ */
 function tickedAhead(r: Pick<CardRow, 'plan_ref' | 'state' | 'branch'>): boolean {
   if (!r.plan_ref || !OUTSIDE_PATH.test(pathOfRef(r.plan_ref))) return false;
   return r.state === 'inPr' || (r.state === 'planned' && !!r.branch);
@@ -3669,7 +3681,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         y: r.y,
         source: 'manual',
         repo: r.repo ?? home,
-        changedAt: r.changed_at ?? r.updated_at,
+        changedAt: r.changed_at,
         ...work(r),
         ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? decided(r) : {}),
         ...(r.thread ? { thread: threadOf(r) } : {}),
@@ -3700,7 +3712,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         y: r.y,
         source: 'plan',
         repo: repoOfRef(doc.file, home),
-        changedAt: r.changed_at ?? r.updated_at,
+        changedAt: r.changed_at,
         plan: { file: doc.file, goal: doc.goal },
         ...(depsOf.get(r.id)?.reading ? { arranging: true as const } : {}),
         ...(r.collapsed ? { collapsed: true } : {}),
@@ -3737,7 +3749,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         parent: r.parent_id,
         source: 'plan',
         repo: repoOfRef(r.plan_ref, home),
-        changedAt: r.changed_at ?? r.updated_at,
+        changedAt: r.changed_at,
         ...(w.label ? { label: w.label } : {}),
         ...work(r),
         ...(shipped ? { landedPart: { ...(shipped.commit ? { commit: shipped.commit } : {}), ...(shipped.pr ? { pr: shipped.pr } : {}) } } : {}),

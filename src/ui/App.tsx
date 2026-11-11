@@ -167,7 +167,6 @@ function NoCanvas() {
   );
 }
 
-/** While the page loads, and after a restart until the canvas is back: the sign in the middle, above "offline" when the server cannot be reached. */
 /** The canvases the phone view last had, for when the machine does not answer. */
 const KEPT_CANVASES = 'obeya-phone-canvases';
 /** Set once the owner has drawn their first arrow between cards: what an arrow does no longer shows while drawing. */
@@ -186,6 +185,7 @@ function keptCanvases(): CanvasInfo[] | null {
   }
 }
 
+/** While the page loads, and after a restart until the canvas is back: the sign in the middle, above "offline" when the server cannot be reached. */
 function Splash({ offline }: { offline: boolean }) {
   return (
     <div id="splash">

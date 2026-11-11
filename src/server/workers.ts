@@ -12,8 +12,8 @@ import { basename, isAbsolute, join } from 'node:path';
 import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
-import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
-import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
+import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started, type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
+import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, type StoredDemo, titleKey, contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
 import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, keepDemo, OBEYA_PLUGIN, placeIn, readChapters, videoFacts } from './demo';
@@ -26,12 +26,9 @@ import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readingSettings, REPO_SETTINGS_FILE } from '../adapters';
-import { BranchGone, branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
+import { BranchGone, branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces, gitAsync, type GitSteps, hasCommit, isAncestor, isFolder } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
-import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
-import { type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
-import { gitAsync, type GitSteps, hasCommit, isAncestor, isFolder } from './workspaces';
 import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
 import type { CardRow, RowUpdate } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
@@ -153,7 +150,7 @@ interface HeldComment {
 }
 
 /** Where in the demo video the owner's words are, as the worker reads it above them. */
-export const spotNote = (spot: Spot) => {
+const spotNote = (spot: Spot) => {
   return `[${spot.earlier ? 'Earlier demo video, one a later handover of yours replaced,' : 'Demo video'} at ${mmss(spot.at)}${spot.chapter ? `, chapter “${spot.chapter}”` : ''}${spot.narration ? `, narration: “${spot.narration}”` : ''}]`;
 };
 
@@ -226,7 +223,6 @@ export function releaseHeld(board: Board, cardId: string): HeldComment[] {
   return comments;
 }
 
-/** What `f` returns; a workspace it cannot have is the request's error. */
 /** A path with its links resolved, or as it is where it cannot be (gone). */
 const realpathOr = (path: string) => {
   try {
@@ -236,6 +232,7 @@ const realpathOr = (path: string) => {
   }
 };
 
+/** What `f` returns; a workspace it cannot have is the request's error. */
 function asBadRequest<T>(f: () => T): T {
   try {
     return f();
@@ -261,7 +258,6 @@ export const PROPOSAL_QUESTIONS = z.array(z.object({ question: z.string(), optio
 /** The questions of a proposal as the card holds them. */
 export const proposalQuestions = (questions: z.infer<typeof PROPOSAL_QUESTIONS> = []) => questions.map((q) => toQuestion(q.question, q.options, q.multiple));
 
-/** How an agent writes a proposal's task, for the agent who takes it on and has not seen `unseen`. */
 /** What became of a proposal the worker took back (`replaced`: by a new one), as it reads it. */
 const retractedText = (r: Retracted, replaced: boolean): string => {
   if (r.kind === 'unknown')
@@ -291,6 +287,7 @@ const TASK_BY: Record<Exclude<TaskAuthor, 'owner'>, string> = {
   proposal: "A worker proposed the card's task and the owner took it on: its language tells nothing about theirs.",
 };
 
+/** How an agent writes a proposal's task, for the agent who takes it on and has not seen `unseen`. */
 export const proposalTask = (unseen: string) =>
   `task: the card's text, written for the agent who will take it on, which has seen neither ${unseen}: what is wrong or wanted, where (files, names), what done looks like. Write it as the owner would write a card: no "I", no "my question", no "your card"; name other cards by their title.`;
 
@@ -304,10 +301,10 @@ const heldEdited = (body: string) =>
 /** How the worker hears that the owner ignored findings of its review, and nothing else; until it has, its list keeps them dropped. */
 const FINDINGS_IGNORED = 'The owner ignored findings of your review, on the card:';
 
-/** How the worker hears that its approved work could not land for something that is not its own to fix. */
 /** How gh words a merge GitHub refused for a conflict with the base branch. */
 const CONFLICT = /cannot be cleanly created|merge conflict/i;
 
+/** How the worker hears that its approved work could not land for something that is not its own to fix. */
 const NOT_LANDED = 'Since you handed over, the owner approved your work, but Obeya could not land it on main:';
 
 /**
@@ -471,7 +468,7 @@ const limitLine = (line: string | null | undefined) => !!line && LANGUAGES.some(
 export const SPOKEN = 'spoken, so speech recognition may have misheard words';
 
 /** An answer as the worker reads it: the options the owner picked, apart from the words they added. */
-export function answerNote(picks: string[], text: string): string {
+function answerNote(picks: string[], text: string): string {
   if (!picks.length) return text;
   const words = ownWords({ text, picks });
   return `They picked ${picks.map((o) => `“${o}”`).join(', ')}.${words ? `\n\nThey added in their own words:\n\n${words}` : ''}`;
@@ -2132,7 +2129,7 @@ export class Workers {
    * change with the work, and has answered how work lands in the card that makes it. `own` holds
    * what the branch decides.
    */
-  async landingOf(cardId: string): Promise<{ land: 'main' | 'pr'; direct: boolean; own?: CardLanding }> {
+  private async landingOf(cardId: string): Promise<{ land: 'main' | 'pr'; direct: boolean; own?: CardLanding }> {
     const repo = { land: this.o.adapter.land, direct: !!this.o.adapter.direct };
     const fork = await this.o.workspaces.forkPoint(cardId, REPO_SETTINGS_FILE);
     if (!fork) return repo;
@@ -5208,7 +5205,6 @@ export class Workers {
     this.live.get(cardId)?.permission?.({ allow: false, message: `Not run: ${why} If you still need the call, make it again; the owner is asked anew.` });
   }
 
-  /** The worker takes back one of its proposals by title, or marks it replaced (`s.by`): what became of it, as the tool's result. */
   /** The boards a card's proposals may be on: this canvas's, then those of the other canvases. */
   private proposalBoards(): Board[] {
     return [this.o.board, ...this.otherBoards()];
@@ -5235,6 +5231,7 @@ export class Workers {
     return `Not proposed: Obeya has no repository ${wanted}; give one of ${all.join(', ')}.`;
   }
 
+  /** The worker takes back one of its proposals by title, or marks it replaced (`s.by`): what became of it, as the tool's result. */
   private retract(cardId: string, title: string, s: Superseded): string {
     // the proposal may be on another canvas: where none of this card's has the title, the next one is asked
     const mine: Extract<Retracted, { kind: 'unknown' }>['mine'] = [];
@@ -5584,7 +5581,7 @@ export function describeTool(name: string, input: Record<string, unknown>, t: Me
 }
 
 /** What a tool call that needs the owner's permission does, as the question shows it: a command whole, line by line as code, else its log line or its input. */
-export function permissionWhat(name: string, input: Record<string, unknown>, t: Messages): string {
+function permissionWhat(name: string, input: Record<string, unknown>, t: Messages): string {
   if (name === 'Bash' && typeof input.command === 'string') return code(clip(input.command, 4000));
   const line = describeTool(name, input, t);
   return line === name ? `${name}: ${code(clip(JSON.stringify(input), 2000))}` : line;

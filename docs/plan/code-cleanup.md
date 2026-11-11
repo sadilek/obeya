@@ -15,8 +15,9 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W2 and W3 are done; the other workstreams are open. The review, made on 2026-11-10 at commit `acfa0484`, found the code in
-better shape than its size suggests, and found its debt in a few recurring forms.
+W1, W2 and W3 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+`acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
+recurring forms.
 
 What is already good, and stays out of the workstreams:
 
@@ -132,7 +133,7 @@ the workstream named does it for all of them.
 
 ## Workstreams
 
-- [ ] **W1:** Dead code and stray comments. Remove what nothing uses and move doc comments back to
+- [x] **W1:** Dead code and stray comments. Remove what nothing uses and move doc comments back to
   what they describe: [workers](code-cleanup/workers.md) A17; [runtimes](code-cleanup/runtimes.md)
   B11, B12, B17, B21; [board-db](code-cleanup/board-db.md) C10, C11, C16, C17, C18;
   [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E13;

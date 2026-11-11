@@ -512,9 +512,9 @@ const de = {
     restored: 'Die Seite fehlte auf der Site: Der Deploy eines anderen Rechners hatte sie offline genommen. Obeya hat sie wieder deployt.',
     notRestored: (why: string) => `Die Seite fehlt auf der Site (der Deploy eines anderen Rechners hat sie offline genommen) und ist nicht wieder deployt: ${why}`,
     exported: (zip: boolean, name: string) => `Exportiert als ${zip ? 'ZIP' : 'HTML-Datei'}: ${name}`,
-    /** The line in a pull request's description that links its demo. */
     rebuilt: (language: 'de' | 'en'): string =>
       `Das Demo ist in seinem Verzeichnis neu vertont, auf ${language === 'en' ? 'Englisch' : 'Deutsch'}: Die Aufgabe zeigt es mit seinen neuen Kapiteln, und der Text seiner Seite wird beim Teilen neu geschrieben.`,
+    /** The line in a pull request's description that links its demo. */
     prLine: (html: boolean): string => (html ? 'Demo-Seite' : 'Demo-Video'),
   },
   /** The first card on the canvas the setup assistant created: what to try. */

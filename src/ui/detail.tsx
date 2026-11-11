@@ -596,7 +596,7 @@ export function Detail(p: Props) {
                   }
                 />
                 {item.pr && (item.state === 'inPr' || item.state === 'waiting') && (
-                  <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id, save: (body: string) => api.act(item.id, { action: 'editHeld', body }) } : {})} />
+                  <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id } : {})} />
                 )}
                 {(item.state === 'inPr' || item.state === 'waiting') && item.morePrs?.map((pr) => <PrBox key={pr.url} pr={pr} />)}
                 {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
@@ -789,10 +789,6 @@ function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, done: A
 // ------------------------------------------------------------------ ideas
 
 /**
- * An idea under discussion: the brief its agent keeps on top, a prototype's demo when there is one,
- * then the conversation, and the owner's decisions.
- */
-/**
  * On an accepted proposal its agent withdrew or replaced since: who did, why, and the choice to
  * remove the card (as "Delete" does, its worker stopped, with an undo) or keep it.
  */
@@ -848,7 +844,11 @@ function RepoDownBox({ item }: { item: Item }) {
   );
 }
 
-/** `prototypes`: the idea's repository can have them (a folder without git has no branch to build one on). */
+/**
+ * An idea under discussion: the brief its agent keeps on top, a prototype's demo when there is one,
+ * then the conversation, and the owner's decisions. `prototypes`: the idea's repository can have
+ * them (a folder without git has no branch to build one on).
+ */
 function IdeaView({
   item,
   act,
@@ -1278,8 +1278,6 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
   );
 }
 
-/** A workstream as the owner picks it: its label and title. */
-
 /** The demos of an idea's prototypes, each under its title and how it stands; the latest one open. */
 function PrototypeDemos({ item }: { item: Item }) {
   const all = item.prototypes ?? [];
@@ -1531,8 +1529,6 @@ const takeBack = (cardId: string, e: CardEvent) =>
     .act(cardId, { action: 'unsay', id: e.id })
     .then(() => giveBack(cardDraft(cardId), e.text, e.images))
     .catch(() => {});
-
-/** Who wrote the task an agent started on: the owner, a plan doc, the work retrospective, an agent's proposal, or a prototype's idea. */
 
 /** Where a conversation starts, as its first message: what was said to an idea, the task an agent started on; long ones folded. */
 function Seed({ item, by, who }: { item: Item; by: string; who: string }) {
@@ -2187,9 +2183,6 @@ function useWatching(cardId: string, video: RefObject<HTMLVideoElement | null>, 
   return { ended: () => on && release() };
 }
 
-/** A key with no modifier, pressed outside a text field and with nothing over the card: one for the demo video. */
-const forTheVideo = plainKey;
-
 /** The demo video the keys are for, with several on a card: the zoomed one, else the one playing, else the first. */
 function keyedVideo() {
   const videos = [...document.querySelectorAll<HTMLVideoElement>('.card-sheet .demo-view video')];
@@ -2205,7 +2198,8 @@ function useSeekKeys(video: RefObject<HTMLVideoElement | null>) {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       const v = video.current;
-      if (!v || !forTheVideo(e) || keyedVideo() !== v) return;
+      // a key with no modifier, pressed outside a text field and with nothing over the card
+      if (!v || !plainKey(e) || keyedVideo() !== v) return;
       e.preventDefault();
       const to = v.currentTime + (e.key === 'ArrowLeft' ? -SEEK_S : SEEK_S);
       v.currentTime = Math.max(0, Number.isFinite(v.duration) ? Math.min(v.duration, to) : to);
@@ -2408,7 +2402,7 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
  * agent's own changes wait for the approval (`held`), first what goes onto the PR with it: how many
  * commits, the text posted with them, and the findings it asks the contributor for.
  */
-function PrBox({ pr, held, author, card, save }: { pr: PullRequest; held?: HeldChanges; author?: string; card?: string; save?: (body: string) => Promise<void> }) {
+function PrBox({ pr, held, author, card }: { pr: PullRequest; held?: HeldChanges; author?: string; card?: string }) {
   // a conflict says so on its own line
   const waits = pr.ready ? [] : (pr.waits ?? []).filter((w) => w !== 'conflict' || !pr.conflict);
   return (
@@ -2423,8 +2417,8 @@ function PrBox({ pr, held, author, card, save }: { pr: PullRequest; held?: HeldC
           <h5>
             {t.review.heldHead(pr.number)} · {t.review.heldCommits(held.commits)}
           </h5>
-          {card && save ? (
-            <HeldText card={card} body={held.body} save={save} />
+          {card ? (
+            <HeldText card={card} body={held.body} />
           ) : (
             <div className="pr-held-text">
               <Body md={held.body} />
@@ -2477,7 +2471,7 @@ async function saveHeld(id: string) {
  * emptied, the commits go without a comment. What is typed waits in a draft of its own until then,
  * through a reload; words dictated with the cursor in it go in.
  */
-function HeldText({ card, body, save }: { card: string; body: string; save: (body: string) => Promise<void> }) {
+function HeldText({ card, body }: { card: string; body: string }) {
   const key = heldDraft(card);
   const drafting = useDrafting(key);
   const { text } = useDraft(key);
@@ -2490,7 +2484,7 @@ function HeldText({ card, body, save }: { card: string; body: string; save: (bod
     if (!hasDraft(key) || words.trim() === body) return dropDraft(key);
     setError('');
     try {
-      await save(words);
+      await api.act(card, { action: 'editHeld', body: words });
       setSent(words.trim());
       dropDraft(key);
     } catch (e) {
@@ -3006,7 +3000,7 @@ function TaskTalk({
         field
           ? {
               key: `${item.state}:${item.need ?? ''}:${field}:${key}`,
-              placeholder: { note: item.snoozed && !item.snoozed.waiting && !item.snoozed.start ? t.snooze.compose : item.paused || item.pausing ? t.pause.compose : askable(item) || item.followUp ? t.compose.followUp : agentWorks(item) ? t.compose.working : holdsNotes(item) ? t.compose.queued : t.compose.idle, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo, discuss: '', revise: t.compose.revise }[field],
+              placeholder: { note: item.snoozed && !item.snoozed.waiting && !item.snoozed.start ? t.snooze.compose : item.paused || item.pausing ? t.pause.compose : askable(item) || item.followUp ? t.compose.followUp : agentWorks(item) ? t.compose.working : holdsNotes(item) ? t.compose.queued : t.compose.idle, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo }[field],
               listener,
               onWords: tell(field),
               onPicked: (text, [picks = []], images, replyTo) => act({ action: 'answer', text, picks, images, ...(replyTo ? { replyTo } : {}) }, { close: false }),
@@ -3063,7 +3057,6 @@ interface TalkField {
   listener?: string;
   /** Starts the field afresh when it changes (another question, another state). */
   key?: string;
-  noImages?: boolean;
   /**
    * The picks stand in the text, each with its question: the conversation is read later without
    * the questions beside. Without it the text is the owner's words, and the picks go apart from
@@ -3124,7 +3117,6 @@ function Talk({ item, past, field }: { item: Item; past?: boolean; field?: TalkF
           label={options ? t.ask.send : t.send}
           allowEmpty={picked || deciding}
           obeya={field.listener}
-          noImages={field.noImages}
           skills={field.listener ? undefined : item.id}
           chip={
             (at || deciding) && (

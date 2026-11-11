@@ -528,8 +528,6 @@ const takeCuts = replay && join(dirname(replay), '.work', 'cuts.json');
 if (replay && takeCuts && !existsSync(join(replay, 'cuts.json')) && existsSync(takeCuts) && statSync(takeCuts).mtimeMs >= statSync(join(replay, 'meta.json')).mtimeMs)
   copyFileSync(takeCuts, join(replay, 'cuts.json'));
 const idle = !args.includes('--real-workers') && !record && !replay;
-const canIdle = !!binary || readFileSync(join(code, 'src/server/main.ts'), 'utf8').includes("'idle-workers'");
-if (idle && !canIdle) console.error(`scratch-obeya: ${commit} has no --idle-workers; a started card gets a real agent`);
 
 // the server, in its own process group so --stop ends it with everything it started (on Windows,
 // which has none, its process tree)
@@ -591,7 +589,7 @@ const serverArgs = [
   '--port',
   String(port),
   ...(supervised ? [] : ['--dev']),
-  ...(idle && canIdle ? ['--idle-workers'] : []),
+  ...(idle ? ['--idle-workers'] : []),
   ...(record ? ['--record', record] : []),
   ...(replay ? ['--replay', replay] : []),
 ];
@@ -665,8 +663,6 @@ for (const [i, c] of stage.cards.entries()) {
     const at = c.from || (c.x !== undefined && c.y !== undefined) ? {} : { x: 40 + 360 * (placed % 4), y: below + 220 * Math.floor(placed++ / 4) };
     on = c.canvas ? (allCanvases.find((x) => x.name === c.canvas)?.id ?? fail(`card ${c.key ?? i}: no canvas named ${c.canvas}`)) : canvas;
     const created = await api('POST', '/cards', {
-      // code before cards lost their kind (--code) still asks for one; later code ignores it
-      kind: 'feature',
       title: c.title ?? '',
       ...(c.body !== undefined ? { body: c.body } : {}),
       ...at,

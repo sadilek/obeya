@@ -8,9 +8,9 @@
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Item } from '../core/types';
 import { onCardEvent } from './api';
-import { inTitle } from '../core/search';
+import { fold, inTitle, searchWords } from '../core/search';
 import { api } from './api';
-import { archiveLabelTexts, fold, labelOf, marked, matches, searchWords, useSettled } from './archive';
+import { archiveLabelTexts, labelOf, marked, matches, useSettled } from './archive';
 import { plain } from './markdown';
 import { shownState } from './parts';
 import { useMenuClose } from './queue';

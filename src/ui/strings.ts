@@ -420,7 +420,6 @@ const de = {
   openThere: 'Dort öffnen',
   /** The repository picker of a card before work begins, with a repository Obeya creates for it. */
   repoPick: {
-    label: 'Repository',
     newRepo: 'Neues Repository …',
     newRepoHint: 'Ein Repository, das es noch nicht gibt: Obeya legt Ordner und git an, nur lokal.',
     /** The picker's entry and the buttons once a new repository has its folder. */
@@ -528,7 +527,6 @@ const de = {
     cancel: 'Abbrechen',
     clickToCancel: 'Noch einmal klicken bricht ab',
     cancelHint: 'Bricht ab: Die Änderungen der Karte bleiben, wie sie sind. Ist die Zeit abgelaufen, lässt sich das Verwerfen nicht mehr zurücknehmen.',
-    discarded: 'Änderungen verworfen.',
     approveHint: 'Freigeben beendet die Karte: Die Änderungen bleiben im Ordner und lassen sich danach nicht mehr verwerfen.',
     approved: 'Freigegeben: erledigt.',
     noChangeHint: 'Nichts im Ordner geändert: Beenden schließt die Karte ab.',
@@ -670,7 +668,6 @@ const de = {
     prClosed: 'Der Pull Request ist geschlossen.',
     mergeRefused: 'Nicht gemergt:',
     pushRefused: 'Nicht gepusht:',
-    noPr: 'Diesen Pull Request kann Obeya nicht lesen:',
     notFolder: 'Das geht nur in einem Ordner ohne git.',
     inFolder: 'Das gibt es in einem Ordner ohne git nicht.',
     repoDown: 'Das Repository dieser Karte läuft gerade nicht auf dieser Leinwand.',
@@ -2667,7 +2664,6 @@ const en: Strings = {
   fromElsewhere: (title: string, canvas: string) => `Comes from “${title}” on the canvas “${canvas}”.`,
   openThere: 'Open it there',
   repoPick: {
-    label: 'Repository',
     newRepo: 'New repository …',
     newRepoHint: 'A repository that does not exist yet: Obeya creates the folder and git, local only.',
     named: (name: string) => `${name} (new)`,
@@ -2760,7 +2756,6 @@ const en: Strings = {
     cancel: 'Cancel',
     clickToCancel: 'Click again to cancel',
     cancelHint: 'Cancels: the card’s changes stay as they are. Once the time is up, discarding cannot be taken back.',
-    discarded: 'Changes discarded.',
     approveHint: 'Approving finishes the card: the changes stay in the folder and can no longer be discarded.',
     approved: 'Approved: done.',
     noChangeHint: 'Nothing changed in the folder: Close finishes the card.',
@@ -2886,7 +2881,6 @@ const en: Strings = {
     prClosed: 'The pull request is closed.',
     mergeRefused: 'Not merged:',
     pushRefused: 'Not pushed:',
-    noPr: 'Obeya cannot read this pull request:',
     notFolder: 'That is only possible in a folder without git.',
     inFolder: 'A folder without git has no such thing.',
     repoDown: 'This card’s repository does not run on this canvas right now.',

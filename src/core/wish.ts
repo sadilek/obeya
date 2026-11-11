@@ -15,9 +15,6 @@ export interface Wish {
   answer?: string;
 }
 
-export const isWish = (w: unknown): w is Wish =>
-  !!w && typeof w === 'object' && typeof (w as Wish).said === 'string' && ((w as Wish).answer === undefined || typeof (w as Wish).answer === 'string');
-
 /** The line under the body: Obeya's version, the system, and how it runs. */
 export const issueFooter = (version: string, os: string, runs: string) => `Obeya ${version} · ${os} · ${runs}`;
 const FOOTER = /\n*Obeya \S+ · [^\n]+$/;

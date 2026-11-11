@@ -11,11 +11,11 @@
 // approved card's latest demo there by itself, as a repository's site does with `publish`. A
 // second machine joins with a connection code, which carries the site and its credentials.
 
+import type { DemoSite } from '../core/types';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import type { DemoSite } from '../adapters/types';
 import { GITHUB_PAGES, GITHUB_PAGES_MAX } from './site-hosts';
 import { parseEnv, SITES_DIR, siteKey } from './site';
 

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { matches, offsets, searchWords, visible } from './archive';
+import { searchText, searchWords } from '../core/search';
+import { matches, offsets, visible } from './archive';
 
 const card = (title: string, more: Partial<Item> = {}) => ({ id: title, kind: 'task', state: 'done', title, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
 
@@ -13,8 +14,8 @@ test('a search finds a card holding every word, in any case and without accents'
 
 test("a project is found by its workstreams' titles", () => {
   const p = card('Voice', { kind: 'project' });
-  expect(matches(p, searchWords('whisper'), [card('Local Whisper model', { parent: 'Voice' })])).toBe(true);
-  expect(matches(p, searchWords('whisper'))).toBe(false);
+  expect(searchText(p, [card('Local Whisper model', { parent: 'Voice' })])).toContain('whisper');
+  expect(searchText(p)).not.toContain('whisper');
 });
 
 test('of a long list, only the rows reaching into the stretch in view are on the page', () => {

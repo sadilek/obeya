@@ -591,11 +591,6 @@ export function waitsOf(s: PrStatus, skip: string[] = []): PrWait[] {
   return waits;
 }
 
-/** Whether the pull request only waits for the merge: open, and nothing of `waitsOf` in the way. */
-export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
-  return s.state === 'OPEN' && !waitsOf(s, skip).length;
-}
-
 /**
  * Whether a reviewer wrote on the pull request, but nothing since its own changes last changed
  * (a merge of the base does not count): the last verdict is about an older state. A PR merged on Greptile's 3/5 of its first commit

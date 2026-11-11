@@ -13,7 +13,7 @@ import type { Locator, Page } from 'playwright-core';
 import { runDemo, type Director, type Scene } from '../../plugin/skills/demo/lib/director.ts';
 import { narration } from './narration.ts';
 import { PORT, writeStage } from './stage.ts';
-import { KEY_HEADER, ownerHeaders } from '../../src/server/owner.ts';
+import { ownerHeaders } from '../../src/server/owner.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 /** Where the video, its stills and the work files go: outside the repository. */
@@ -36,7 +36,7 @@ let staged: { url: string; dir: string; cards: Record<string, string> };
 /** The scratch Obeya's owner key, for the API (design: Who may talk to it). */
 const owner = () => ownerHeaders(path.join(staged.dir, 'home'));
 
-function stage() {
+async function stage() {
   const file = path.join(OUT, 'stage.json');
   writeStage(file);
   const agents = RECORD ? ['--record', RECORD] : REPLAY ? ['--replay', REPLAY] : SHORT ? [] : ['--real-workers'];
@@ -47,11 +47,9 @@ function stage() {
   staged = JSON.parse(printed);
   // the worker's own demo: English, a quick voice (the hero video has no page audio), in the owner's demo directory, where site-shots.ts finds it
   fs.writeFileSync(path.join(staged.dir, 'home', 'demo.json'), JSON.stringify({ language: 'en', voice: 'say', voiceName: 'Samantha', directory: demoDirectory() }));
-  const key = `${KEY_HEADER}: ${owner()[KEY_HEADER]}`;
-  execFileSync('curl', ['-s', '-H', key, '-X', 'PUT', `${base}/api/language`, '-d', '{"language":"en"}']);
   // Whisper and Obeya loaded before the take, so the spoken command is heard at once
-  execFileSync('curl', ['-s', '-H', key, '-X', 'POST', `${base}/api/c/tipjar/voice/warm`]);
-  execFileSync('sleep', ['20']);
+  await fetch(`${base}/api/c/tipjar/voice/warm`, { method: 'POST', headers: owner() });
+  await new Promise((done) => setTimeout(done, 20_000));
 }
 
 /** Tipjar as a user sees it with a comma in the bill: served from `tipjar/` into the login's page. */
@@ -647,7 +645,7 @@ await runDemo(
     // for the site: as sharp as the app on a Retina screen
     sharp: true,
     login: async (page) => {
-      stage();
+      await stage();
       // the staged link signs this browser in
       await page.goto(staged.url);
       await tipjarShot(page);

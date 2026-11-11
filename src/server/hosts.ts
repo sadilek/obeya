@@ -469,8 +469,8 @@ export class SshHost {
    * Obeya's directory there as `OBEYA_HOME`, the Claude login unless `login` is false) read from
    * stdin first. Without `files`, a session that needs nothing of Obeya's there (one that only asks
    * Claude Code for its models) starts at once, in the home there without `cwd`. A host that cannot be made ready ends the process as a lost connection would. With
-   * `OBEYA_NARRATION_URL` in the environment, a port there is forwarded to it, Obeya's narration
-   * alone, as `OBEYA_URL` there; `forwards` are more (`-R`), for the session's own hooks. `onExit`
+   * `OBEYA_URL` in the environment (Obeya's narration server, which answers nothing else), a port
+   * there is forwarded to it, as `OBEYA_URL` there; `forwards` are more (`-R`), for the session's own hooks. `onExit`
    * hears the exit code of `ssh` (`LOST`: the connection failed or dropped), `onStderr` what the
    * command there and ssh say on stderr.
    */
@@ -485,7 +485,7 @@ export class SshHost {
           return hit ? `${dir}/${hit[0]}` : a;
         });
         // only the narration's port: whoever is on that machine reaches the forward too
-        const here = s.env.OBEYA_NARRATION_URL ? Number(new URL(s.env.OBEYA_NARRATION_URL).port) : 0;
+        const here = s.env.OBEYA_URL ? Number(new URL(s.env.OBEYA_URL).port) : 0;
         // a port of its own per session, so that sessions ending do not take another's forward along
         const there = here ? 30_000 + Math.floor(Math.random() * 30_000) : 0;
         // a session cut off by a dropped connection may still run there: the one that resumes it ends it first;
@@ -502,7 +502,7 @@ export class SshHost {
         });
         const child = spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
         // with Obeya reachable, a voice it holds loaded narrates from Obeya's machine (OBEYA_HOLDS_VOICE: no need to install it here)
-        const { OBEYA_URL: _, OBEYA_NARRATION_URL: __, ...own } = s.env;
+        const { OBEYA_URL: _, ...own } = s.env;
         const env = { ...own, ...(dir ? { OBEYA_HOME: dir } : {}), ...(here ? { OBEYA_URL: `http://127.0.0.1:${there}`, OBEYA_HOLDS_VOICE: '1' } : {}), ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) };
         child.stdin!.write(this.envLine(o.cwd, env));
         // ssh's own complaints (a forward refused, the connection dropped) are no session output

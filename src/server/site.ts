@@ -51,10 +51,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import type { DemoSite } from '../adapters/types';
 import type { Messages } from '../core/messages';
 import { dimensions } from '../core/page-tags';
-import type { PageTags } from '../core/types';
+import type { PageTags, DemoSite } from '../core/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type CaptionTrack, captionTracksAsync, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, silentVideoAsync, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
 import { artifactCopy } from './artifact-copy';
@@ -126,9 +125,9 @@ export function siteKey(url: string): string {
 /** The site's directory under Obeya's home: `site/` is deployed, `backup/` holds a page set aside while a deploy runs. */
 export const siteBase = (home: string, site: DemoSite) => join(home, SITES_DIR, siteKey(site.url));
 
-/** The page's URL on the site. */
 /** The site's root, the overview's address. */
 export const siteRoot = (site: DemoSite) => `${site.url.replace(/\/+$/, '')}/`;
+/** The page's URL on the site. */
 export const pageUrl = (site: DemoSite, slug: string) => `${siteRoot(site)}${slug}/`;
 
 /** The site's host and path, as the owner reads it. */
@@ -724,7 +723,6 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   return {
     key: `site:${siteKey(site.url)}`,
     repo,
-    ...(unlisted ? { unlisted: true as const } : {}),
     publish: (p: SharePage, log = () => {}) =>
       attempt(async (gone) => {
         const slug = checkSlug(p.slug, unlisted);
@@ -732,7 +730,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         const parts = [{ ...p, sub: '' }, ...(p.more ?? []).map((m, i) => ({ ...m, sub: String(i + 2) }))];
         const ready = await Promise.all(
           parts.map(async (d) => {
-            if (!d.title?.trim() || !d.text?.trim() || !d.dir) throw new Refused(t.pageIncomplete);
+            if (!d.title.trim() || !d.text.trim() || !d.dir) throw new Refused(t.pageIncomplete);
             const html = d.kind === 'html';
             const files = html ? artifactFiles(d.dir) : demoFiles(d.dir);
             for (const f of html ? ['index.html'] : ['demo.mp4', 'captions.vtt']) if (!files.includes(f)) throw new Refused(t.fileMissing(f, d.dir));
@@ -749,7 +747,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         const target = join(dir, slug);
         const said = await change(
           [slug],
-          p.shared ?? [],
+          p.shared,
           async (_, rev, entry) => {
             const before = entry?.withdrawn ? null : entry?.meta;
             // a version keeps its date while its demo's own files stay the same, wherever it was on the page
@@ -774,8 +772,8 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               ...(first.html ? { kind: 'html' as const } : {}),
               title: p.title.trim(),
               text: p.text.trim(),
-              chapters: first.html ? [] : (p.chapters ?? []),
-              pr: p.pr ?? null,
+              chapters: first.html ? [] : p.chapters,
+              pr: p.pr,
               ...(p.commit ? { commit: p.commit } : {}),
               first: before?.first ?? now,
               at: first.at,
@@ -790,7 +788,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
                       ...(html ? { kind: 'html' as const } : {}),
                       title: d.title.trim(),
                       text: d.text.trim(),
-                      chapters: html ? [] : (d.chapters ?? []),
+                      chapters: html ? [] : d.chapters,
                       dir: d.sub,
                       handed: 'at' in d && d.at ? d.at : at,
                       at,
@@ -935,8 +933,8 @@ async function filesUnder(root: string, at = ''): Promise<string[]> {
   return out.sort();
 }
 
-function checkSlug(slug: unknown, unlisted: boolean): string {
-  if (typeof slug !== 'string' || !isPage(slug, unlisted)) throw new Refused(`not a slug: ${String(slug)}`);
+function checkSlug(slug: string, unlisted: boolean): string {
+  if (!isPage(slug, unlisted)) throw new Refused(`not a slug: ${String(slug)}`);
   return slug;
 }
 
@@ -1044,7 +1042,6 @@ async function versionsFiles(target: string, m: Meta): Promise<(dir: string) => 
 }
 
 /**
-
  * The page at `slug` of the site, in its language; `files`: what a version's directory (the page's
  * own: '') holds. A listed site's page names its address for search engines; a page of an unlisted
  * site links no overview and no tags, and keeps itself out of search engines. `theme`: the CSS of

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, routedForge, waitsOf, type PrStatus } from './forge';
+import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, reviewOf, reviewStale, routedForge, waitsOf, type PrStatus } from './forge';
 import { onGitHub } from './repo';
 import { fakeGh, noContributions, removeDir } from './testing';
 
@@ -284,23 +284,23 @@ test('ready to merge: GitHub clean, checks green, threads resolved, the last re-
       { id: 'i2', author: 'owner', body: 'Split the steps.', at: at('46'), round: 'B', replyTo: 'i1' },
     ],
   };
-  expect(readyToMerge(s, ['cloudflare'])).toBe(true);
+  expect(waitsOf(s, ['cloudflare'])).toEqual([]);
   const without = (f: (s: PrStatus) => void) => {
     const c = structuredClone(s);
     f(c);
-    return readyToMerge(c, ['cloudflare']);
+    return waitsOf(c, ['cloudflare']);
   };
   // the re-review not answered yet: only the deploy bot has written since
-  expect(without((c) => delete c.comments[1]!.edited)).toBe(false);
-  expect(without((c) => (c.comments[4]!.resolved = false))).toBe(false);
-  expect(without((c) => (c.checks[1]!.state = 'pending'))).toBe(false);
-  expect(without((c) => (c.mergeState = 'BLOCKED'))).toBe(false);
-  expect(without((c) => (c.mergeable = 'UNKNOWN'))).toBe(false);
+  expect(without((c) => delete c.comments[1]!.edited)).toEqual(['answer']);
+  expect(without((c) => (c.comments[4]!.resolved = false))).toEqual(['threads']);
+  expect(without((c) => (c.checks[1]!.state = 'pending'))).toEqual(['checks']);
+  expect(without((c) => (c.mergeState = 'BLOCKED'))).toEqual(['protection']);
+  expect(without((c) => (c.mergeable = 'UNKNOWN'))).toEqual(['forge']);
   // no reviewer asked for anything
-  expect(without((c) => (c.comments = []))).toBe(true);
+  expect(without((c) => (c.comments = []))).toEqual([]);
   // the PR's changes are older than the reviewer's last word; a change after it is not reviewed yet
-  expect(without((c) => (c.changedAt = at('45')))).toBe(true);
-  expect(without((c) => (c.changedAt = at('50')))).toBe(false);
+  expect(without((c) => (c.changedAt = at('45')))).toEqual([]);
+  expect(without((c) => (c.changedAt = at('50')))).toEqual(['review']);
 });
 
 test('a push since the review is not ready to merge until the reviewer has seen it', () => {
@@ -322,15 +322,15 @@ test('a push since the review is not ready to merge until the reviewer has seen 
     ],
   };
   expect(reviewStale(s, ['cloudflare'])).toBe(true);
-  expect(readyToMerge(s, ['cloudflare'])).toBe(false);
+  expect(waitsOf(s, ['cloudflare'])).toEqual(['review']);
   // asked, not answered yet
   s.comments.push({ id: 'cPING', author: 'owner', body: '@greptile re-review', at: '2026-10-02T12:53:00Z' });
   expect(lastAsked(s)).toBe('2026-10-02T12:53:00Z');
-  expect(readyToMerge(s, ['cloudflare'])).toBe(false);
+  expect(waitsOf(s, ['cloudflare'])).toEqual(['review']);
   // the reviewer rewrites its summary
   s.comments[1]!.edited = '2026-10-02T12:57:00Z';
   expect(reviewStale(s, ['cloudflare'])).toBe(false);
-  expect(readyToMerge(s, ['cloudflare'])).toBe(true);
+  expect(waitsOf(s, ['cloudflare'])).toEqual([]);
   // a PR no reviewer wrote on waits for nobody
   expect(reviewStale({ ...s, comments: [s.comments[0]!] }, ['cloudflare'])).toBe(false);
 });
@@ -372,10 +372,10 @@ test('a plain reply to a reviewer who asked for changes waits for the reviewer, 
   };
   expect(lastAsked(s)).toBe('2026-11-02T12:30:00Z');
   expect(waitsOf(s)).toEqual(['answer']);
-  expect(readyToMerge(s)).toBe(false);
+  expect(waitsOf(s)).toEqual(['answer']);
   // the reviewer answers: through
   s.comments.push({ id: 'cOK', author: 'lead', body: 'Fine, thanks.', at: '2026-11-02T12:40:00Z' });
-  expect(readyToMerge(s)).toBe(true);
+  expect(waitsOf(s)).toEqual([]);
   // a thank-you after a verdict below 4/5 asks for an answer too
   const low: PrStatus = { ...s, comments: [{ id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 3/5', at: '2026-11-02T12:10:00Z' }, { id: 'cTHX', author: 'owner', body: 'Thanks!', at: '2026-11-02T12:11:00Z' }] };
   expect(waitsOf(low)).toEqual(['answer']);
@@ -454,7 +454,7 @@ test('what a pull request waits for, in the order it is in the way', () => {
     return waitsOf(c);
   };
   expect(waitsOf(s)).toEqual([]);
-  expect(readyToMerge(s)).toBe(true);
+  expect(waitsOf(s)).toEqual([]);
   expect(waits((c) => (c.mergeable = 'CONFLICTING'))).toEqual(['conflict']);
   expect(waits((c) => (c.mergeState = 'BEHIND'))).toEqual(['behind']);
   expect(waits((c) => (c.mergeState = 'DRAFT'))).toEqual(['draft']);
@@ -469,7 +469,7 @@ test('what a pull request waits for, in the order it is in the way', () => {
   expect(waits((c) => c.comments.push({ id: 'cPING', author: 'owner', body: '@greptileai review', at: '2026-11-02T12:45:00Z' }))).toEqual(['answer']);
   // a PR merged or closed waits for nothing
   expect(waits((c) => ((c.state = 'MERGED'), (c.mergeable = 'UNKNOWN')))).toEqual([]);
-  expect(readyToMerge({ ...s, state: 'CLOSED' })).toBe(false);
+  expect(waits((c) => (c.state = 'CLOSED'))).toEqual([]);
 });
 
 test('the confidence a reviewer gave last', () => {

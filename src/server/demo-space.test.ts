@@ -104,7 +104,7 @@ test('the view counts in the background, and a sweep deletes per the settings', 
   const work = render(join(demos, 'old'), 20);
   const home = join(demos, 'home');
   const space = new DemoSpace({ home, settings: () => ({ language: 'en', voice: 'piper', directory: demos, keepFrames: 7 }) });
-  expect(space.view()).toMatchObject({ keepDays: 7, defaultDays: null, busy: true });
+  expect(space.view()).toMatchObject({ defaultDays: null, busy: true });
   await space.sweepSoon();
   expect(existsSync(join(work, 'frames'))).toBe(false);
   const view = space.view();

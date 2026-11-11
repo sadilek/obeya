@@ -144,8 +144,6 @@ const scratch = (file: string) => JSON.parse(execFileSync('bun', [join(ROOT, 'sc
 const staged = scratch(stageFile);
 const reviewing = scratch(reviewFile);
 const base = `http://127.0.0.1:${PORT}`;
-for (const [at, home] of [[base, staged.dir], [`http://127.0.0.1:${REVIEW_PORT}`, reviewing.dir]])
-  await fetch(`${at}/api/language`, { method: 'PUT', headers: ownerHeaders(join(home, 'home')), body: JSON.stringify({ language: 'en' }) });
 console.log('staged', staged.url, reviewing.url);
 
 // the Coordinator reads the new project's plan doc for what builds on what and arranges it: until

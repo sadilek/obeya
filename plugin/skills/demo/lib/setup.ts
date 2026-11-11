@@ -213,7 +213,7 @@ export const platformName = (platform: string) => PLATFORM_NAMES[platform] ?? pl
 
 /** The check as the agent reads it, one line per piece and the commands under a missing one. */
 export function describeSetup(check: SetupCheck): string {
-  const mark = { ok: '✓', missing: '✗', later: '…', off: '–' };
+  const mark = { ok: '✓', missing: '✗', later: '…' };
   const what = (i: SetupItem) => {
     const found = [i.found, i.need && `needs ${i.need}`].filter(Boolean).join(', ');
     if (i.state === 'missing') return found ? `${found} — ${i.id === 'voice' ? 'not installed' : 'not usable'}` : 'not found';

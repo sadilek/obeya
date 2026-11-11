@@ -177,8 +177,8 @@ interface PageParts {
   when: string;
   /** The browser tab's title. */
   tabTitle: string;
-  /** The demo's language, which the page's own words and the captions' name are in; German without one. */
-  language?: PageLanguage;
+  /** The demo's language, which the page's own words and the captions' name are in. */
+  language: PageLanguage;
   /** A link above the title (say, to all demos). */
   top?: { href: string; text: string };
   /** The page's tags, by dimension, each a link (say, to the overview showing the pages with it). */
@@ -334,7 +334,7 @@ const changeLink = (p: Pick<PageParts, 'pr' | 'commit'>, w: (typeof PAGE_WORDS)[
 /** Text inside a `<script>` element must not close it. */
 const inScript = (s: string) => s.replace(/<\//g, '<\\/');
 
-export const day = (at: Date | string, language: PageLanguage = 'de') => dayFormat(language).format(new Date(at));
+export const day = (at: Date | string, language: PageLanguage) => dayFormat(language).format(new Date(at));
 
 /** A formatter per language: making one for each date took the overview of a site of some hundred pages a quarter of a second. */
 const dayFormats = new Map<PageLanguage, Intl.DateTimeFormat>();
@@ -498,7 +498,7 @@ export const ON_DISK = 'file:';
  * as `srcdoc` has the page's policy as well as its own).
  */
 export function artifactPageHtml(p: ArtifactPageParts): string {
-  const language = p.language ?? 'de';
+  const language = p.language;
   const w = PAGE_WORDS[language];
   const frame =
     'src' in p.artifact
@@ -552,7 +552,7 @@ ${p.tags?.length ? `<div class="tags">${p.tags.map((x) => `<a class="tag" href="
 }
 
 export function demoPageHtml(p: DemoPageParts): string {
-  const language = p.language ?? 'de';
+  const language = p.language;
   const w = PAGE_WORDS[language];
   const chapters = p.chapters.length
     ? `<ol>${p.chapters.map(([at, title], i) => `<li><button data-at="${at}"${i === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
@@ -614,7 +614,7 @@ const STACK_STYLE = `
  * (`?alone=<n>`, its place on the page).
  */
 export function stackedPageHtml(p: StackedPageParts): string {
-  const language = p.language ?? 'de';
+  const language = p.language;
   const w = PAGE_WORDS[language];
   const [first, ...later] = p.demos;
   const name = (i: number) => (i === 0 ? w.first : w.addendum(later[i - 1]!.at, p.timeZone));

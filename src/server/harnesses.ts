@@ -78,7 +78,7 @@ class Install {
       host?: string;
       models?: () => Promise<ClaudeListed[]>;
       newest?: (channel?: ClaudeChannel) => Promise<string | undefined>;
-      update?: (log: (line: string) => void) => Promise<void>;
+      update?: () => Promise<void>;
       /** Looks at it again (after an update), which `found` then tells. */
       look: () => Promise<void>;
       /** Waited for after an update and its look, before the view no longer says it runs (Codex's models). */
@@ -136,7 +136,7 @@ class Install {
     void (async () => {
       let error: string | undefined;
       try {
-        await update(() => {});
+        await update();
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
         console.error(`Obeya: updating ${this.named} failed: ${error}`);
@@ -223,12 +223,12 @@ export class Harnesses {
       claudeModels?: (cwd: string) => Promise<ClaudeListed[]>;
       /** The newest Claude Code there is, of the channel given (none: the one this machine's Claude Code updates from); none: no update is offered. */
       claudeNewest?: (channel?: ClaudeChannel) => Promise<string | undefined>;
-      /** Updates Claude Code, the last line of its output to `log`. */
-      updateClaude?: (log: (line: string) => void) => Promise<void>;
+      /** Updates Claude Code. */
+      updateClaude?: () => Promise<void>;
       /** The newest Codex there is; none: no update is offered. */
       codexNewest?: () => Promise<string | undefined>;
-      /** Updates Codex, the last line of its output to `log`. */
-      updateCodex?: (log: (line: string) => void) => Promise<void>;
+      /** Updates Codex. */
+      updateCodex?: () => Promise<void>;
       /** The harnesses on the hosts of the configuration, which are looked at too. */
       hosts?: () => HostHarness[];
     },

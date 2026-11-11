@@ -488,7 +488,7 @@ export const sdkRuntime: AgentRuntime = {
     const files = there ? sessionFiles(there.host.o.home, spec.plugins ?? []) : undefined;
     if (there && files) {
       const dir = there.host.prepare(files);
-      inbox.carry = (text, images) => carryImages(there.host, dir, text, images, join(there.host.o.home, 'files'));
+      inbox.carry = async (text, images) => (await carryTo(there.host, dir, text, images, join(there.host.o.home, 'files'))).text;
     }
     if (firstMessage !== undefined) inbox.push(firstMessage, images);
     const abort = new AbortController();
@@ -905,13 +905,13 @@ export function refuseForegroundWait(input: HookInput): HookJSONOutput {
   };
 }
 
-/** Obeya's own tools run without asking anyone. */
 /** A tool call as the hooks of `AgentSpec.watch` hear of it. */
 function toolCall(input: HookInput): ToolCall {
   const i = input as { tool_use_id?: string; tool_name?: string; tool_input?: unknown };
   return { id: i.tool_use_id ?? '', name: i.tool_name ?? '', input: (i.tool_input ?? {}) as Record<string, unknown> };
 }
 
+/** Obeya's own tools run without asking anyone. */
 const ownToolAllowed: HookJSONOutput = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } };
 
 function withContext(event: 'PostToolUse' | 'PostToolUseFailure', text: string | undefined): HookJSONOutput {
@@ -1077,32 +1077,20 @@ export function cleanEnv(env: Record<string, string | undefined> = process.env):
 }
 
 /**
- * Copies the owner's screenshots to the session's machine, into `images` in Obeya's directory
- * there, and the files the message names by path under `files` (Obeya's, here) into `files` there,
- * and names them by their paths there in the message; the message goes as it was if that fails
- * (the session sees the images in it all the same).
- */
-async function carryImages(host: SshHost, dir: Promise<string>, text: string, images: string[], files: string): Promise<string> {
-  if (!images.length && !filesIn(text, files).length) return text;
-  try {
-    return (await carryTo(host, await dir, text, images, files)).text;
-  } catch {
-    return text;
-  }
-}
-
-/**
  * Copies a message's images and the dropped files its text names (under `files` here) into Obeya's
- * directory `dir` on the host: the text with their paths there, and the images' paths there. What
- * cannot be copied keeps its path here.
+ * directory `dir` on the host (awaited only when there is something to copy): the text with their
+ * paths there, and the images' paths there. What cannot be copied keeps its path here; a directory
+ * that cannot be made ready leaves the message as it was (the session sees the images in it all the
+ * same).
  */
-export async function carryTo(host: SshHost, dir: string, text: string, images: string[], files: string): Promise<{ text: string; images: string[] }> {
+export async function carryTo(host: SshHost, dir: string | Promise<string>, text: string, images: string[], files: string): Promise<{ text: string; images: string[] }> {
   const dropped = filesIn(text, files);
   if (!images.length && !dropped.length) return { text, images };
   try {
-    const to = `${dir}/images`;
+    const at = await dir;
+    const to = `${at}/images`;
     if (images.length) await host.copyFiles(images, to);
-    const there = `${dir}/files`;
+    const there = `${at}/files`;
     if (dropped.length) await host.copyFiles(dropped, there);
     const carried = images.reduce((t, f) => t.split(f).join(`${to}/${basename(f)}`), text);
     return { text: dropped.reduce((t, d) => t.split(d).join(`${there}/${basename(d)}`), carried), images: images.map((f) => `${to}/${basename(f)}`) };

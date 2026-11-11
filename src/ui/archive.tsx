@@ -14,7 +14,6 @@ import { plain } from './markdown';
 import { useMenuClose } from './queue';
 import { becomesLabel, stateLabel, t } from './strings';
 
-export { fold, searchWords };
 
 /** How many archived cards a page brings: more than a tall screen shows. */
 export const ARCHIVE_PAGE = 50;
@@ -390,8 +389,8 @@ export function archiveLabelTexts(): Record<ArchiveLabel, string> {
 }
 
 /** Whether a card holds every word of the search, each anywhere in its `searchText` or its label. */
-export function matches(i: Item, words: string[], workstreams: Item[] = []) {
-  const text = searchText(i, workstreams, labelOf(i));
+export function matches(i: Item, words: string[]) {
+  const text = searchText(i, [], labelOf(i));
   return words.every((w) => text.includes(w));
 }
 

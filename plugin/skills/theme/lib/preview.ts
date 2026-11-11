@@ -102,7 +102,7 @@ const theme = workingTheme(repo);
 if (!theme) fail(`no ${THEME_DIR}/${THEME_FILE} in ${repo}: write the theme first`);
 const settingsFile = join(repo, REPO_SETTINGS_FILE);
 const own = existsSync(settingsFile) ? parseShared(readFileSync(settingsFile, 'utf8')).settings?.demo?.site : undefined;
-const language: PageLanguage = demoSettingsHere().language === 'en' ? 'en' : 'de';
+const language: PageLanguage = demoSettingsHere().language;
 const site: DemoSite = {
   title: own?.title || `${repoNameHere(repo)} demos`,
   url: own?.url || 'https://demos.example',

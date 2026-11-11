@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { DemoSite } from '../core/types';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DemoSite } from '../adapters/types';
 import { MESSAGES } from '../core/messages';
 import type { Board } from './board';
 import { CanvasRuntime } from './canvas';

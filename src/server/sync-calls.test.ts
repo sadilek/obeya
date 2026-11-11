@@ -83,7 +83,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'personal-site.ts': { why: "the owner's personal site settings, a small file read and written when they change", calls: { existsSync: 1, mkdirSync: 2, readFileSync: 2, rmSync: 1, statSync: 1, writeFileSync: 2 } },
   'push.ts': { why: 'the push notification keys, read or made once per server', calls: { chmodSync: 1, existsSync: 1, readFileSync: 1, writeFileSync: 1 } },
   'read-tree.ts': {
-    why: "server path, cheap by design: the seals of a repository's refs and HEAD (refsSeal, headSeal) are a few stats and small reads instead of a git call; defaultBranchCommit's gitStepsSync is left for scripts (adapters' readShared and hasAdapterModule without a commit), the server reads with gitSteps",
+    why: "server path, cheap by design: the seals of a repository's refs and HEAD (refsSeal, headSeal) are a few stats and small reads instead of a git call; defaultBranchCommit's gitStepsSync is left for scripts (adapters' readShared without a commit), the server reads with gitSteps",
     calls: { existsSync: 7, gitStepsSync: 1, mkdirSync: 1, readFileSync: 6, readdirSync: 1, realpathSync: 1, statSync: 4 },
   },
   'remote.ts': { why: 'the remote access setting: a small file, and tailscale serve taken back as the server stops', calls: { existsSync: 1, readFileSync: 1, rmSync: 1, unserveSync: 1, writeFileSync: 1 } },

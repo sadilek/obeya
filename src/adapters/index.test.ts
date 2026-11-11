@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { repoInfo } from '../server/repo';
 import { gitRepo } from '../server/testing';
-import { git } from '../server/workspaces';
+import { defaultBranchCommit } from '../server/read-tree';
+import { git, gitStepsSync } from '../server/workspaces';
 import { layerSettings, type RepoSettings } from '../core/types';
-import { defaultsFor, hasAdapterModule, parseShared, readShared, repoValues, withSettings } from '.';
+import { defaultsFor, parseShared, readingAdapterModule, readShared, repoValues, withSettings } from '.';
 import { generic } from './generic';
 
 let dir: string;
@@ -135,7 +136,8 @@ describe('.obeya/settings.json', () => {
   });
 });
 
-describe('hasAdapterModule', () => {
+describe('readingAdapterModule', () => {
+  const hasAdapterModule = (repo: string) => gitStepsSync(repo, readingAdapterModule(defaultBranchCommit(repo).commit));
   test('finds an adapter module from before on the default branch, not in the checkout', () => {
     const repo = gitRepo(join(dir, 'shop'), { 'README.md': 'hi\n', '.obeya/adapter/index.ts': "export default { name: 'shop' };\n" });
     expect(hasAdapterModule(repo)).toBe(true);

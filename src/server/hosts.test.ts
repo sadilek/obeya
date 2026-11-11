@@ -139,7 +139,7 @@ describe('a session on a host', () => {
     const s = spawnSession({
       command: 'sh',
       args: ['-c', 'echo "$PWD|$FOO|$OBEYA_HOME|$CLAUDE_CODE_OAUTH_TOKEN|$OBEYA_URL|$1|$OBEYA_HOLDS_VOICE"; cat "$1/skills/SKILL.md"; echo; read line; echo "got $line"', 'x', join(dir, 'plugin')],
-      env: { FOO: "it's", OBEYA_URL: 'http://localhost:4417', OBEYA_NARRATION_URL: 'http://127.0.0.1:4418' },
+      env: { FOO: "it's", OBEYA_URL: 'http://127.0.0.1:4418' },
     });
     s.p.stdin.write('ping\n');
     expect(await s.exited).toBe(0);

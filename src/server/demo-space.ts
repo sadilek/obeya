@@ -184,7 +184,6 @@ export class DemoSpace {
     const freed = this.freed?.dir === dir ? this.freed : undefined;
     if (!this.pending && (!used || Date.now() - Date.parse(used.at) > STALE_MS)) void this.queue(false);
     return {
-      keepDays: keepDays(s, this.o.home),
       defaultDays: defaultDays(this.o.home),
       busy: this.pending > 0,
       ...(used ? { used: { bytes: used.bytes, work: used.work, at: used.at } } : {}),

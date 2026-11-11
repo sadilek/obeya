@@ -51,12 +51,6 @@ export const archivedWithDone = (i: Pick<Item, 'state' | 'source' | 'finishing' 
   (finishedArchivable(i) && i.kind !== 'question') || (i.kind === 'project' && i.state === 'done');
 /** A finished card whose agent still works: after the landing, or answering a follow-up question. */
 export const finishingUp = (i: Pick<Item, 'state' | 'finishing'>) => !!i.finishing && finished(i.state);
-/**
- * Whether the card's agent is working on something right now, so that the owner can pause it: a
- * Question card's agent reading, an idea's agent working on its reply, a worker in a turn (whatever
- * the card's state: at work, taking in the owner's words on its handover, on its pull request, after
- * the landing). An idle agent is no such agent: there is nothing running to pause.
- */
 /** A piece of an agent's background work as the agent described it (`Run the test suite`), and since when it runs (milliseconds). */
 export interface BackgroundTask {
   description: string;
@@ -307,7 +301,6 @@ export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting =>
   talk: s.talk.filter((x) => x.unread),
 });
 
-/** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**
  * Who wrote a card's task: the owner (also through the Coordinator, from their words), the plan doc
  * of its workstream, Obeya (the work retrospective), the idea a prototype is for, or a worker whose
@@ -318,6 +311,7 @@ export type TaskAuthor = 'owner' | 'plan' | 'coordinator' | 'idea' | 'proposal';
 export const taskAuthor = (item: Pick<Item, 'source' | 'prototypeOf' | 'retro' | 'proposed' | 'brief'>): TaskAuthor =>
   item.source === 'plan' ? 'plan' : item.prototypeOf || item.brief !== undefined ? 'idea' : item.retro ? 'coordinator' : item.proposed ? 'proposal' : 'owner';
 
+/** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 export interface Item {
   id: string;
   /** The card's code in addresses (`/c/<canvas>/card/<code>`): a few hex digits, unique among all cards; the id works there too. */
@@ -1047,11 +1041,11 @@ export interface Share {
   /** The card's latest demo is not on the page. */
   stale?: boolean;
   /** The page shows the card's demo, but pages changed since it was published ("Share again"): those changes, oldest first. */
-  outdated?: OutdatedBy[];  /** The page is on the owner’s personal demo site, unlisted (behind a random part of its address). */
+  outdated?: OutdatedBy[];
+  /** The page is on the owner’s personal demo site, unlisted (behind a random part of its address). */
   unlisted?: true;
 }
 
-/** One line in a card's log. */
 /** The kinds of screenshot the owner can attach, with the extension each is stored under. */
 export const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 /** What the model takes per image (5 MB base64); the browser scales screenshots down to fit. */
@@ -1059,6 +1053,7 @@ export const MAX_IMAGE_BYTES = 3_750_000;
 /** The largest other file the owner may drop into what they write; its path goes to the agent. */
 export const MAX_FILE_BYTES = 100_000_000;
 
+/** One line in a card's log. */
 export interface CardEvent {
   id: number;
   cardId: string;
@@ -1757,8 +1752,6 @@ export type ErrorCode =
   | 'mergeRefused'
   /** Approving a review card: the worker's own commits could not go onto the PR's branch (the detail says why). */
   | 'pushRefused'
-  /** "Review PR #5": no such pull request, or none Obeya can read. */
-  | 'noPr'
   /** Deleting a comment on the demo video: it is no longer held back, the worker has it. */
   | 'notHeld'
   /** Approving directly onto main: the card's repository lands approved work only through a pull request. */
@@ -1922,11 +1915,6 @@ export interface AppSettings {
   keep?: string;
 }
 
-/**
- * A static site the demos are shared on (`demo.site` of a repository's settings): Obeya keeps its
- * directory (one subdirectory per page, and the overview), writes the pages with its own templates
- * and runs the deploy command after each change.
- */
 /** A demo site being set up at a host, as the configuration follows it: its last lines, and how it ended. */
 export interface SiteSetupJob {
   host: 'cloudflare' | 'github';
@@ -1977,6 +1965,11 @@ export interface PersonalSiteView {
   cloudflareAccounts: string[];
 }
 
+/**
+ * A static site the demos are shared on (`demo.site` of a repository's settings): Obeya keeps its
+ * directory (one subdirectory per page, and the overview), writes the pages with its own templates
+ * and runs the deploy command after each change.
+ */
 export interface DemoSite {
   /** The overview's heading, and the pages' tab titles. */
   title: string;
@@ -2297,10 +2290,10 @@ export interface ConfigProblem {
   detail: string;
 }
 
-/** Whether a problem keeps the configuration from being saved: not one in the repository, which is fixed there. */
 /** Problems of the running canvases, not of the configuration: a canvas or repository that did not start as it has them (`StartFailure`). Saving the configuration, or "Try again", has them try again. */
 export const START_FAILED: ConfigProblemCode[] = ['canvasDown', 'repoDown', 'repoBefore'];
 
+/** Whether a problem keeps the configuration from being saved: not one in the repository, which is fixed there. */
 export const blocksSaving = (p: ConfigProblem) => !['demoSite', 'adapterGone', 'repoSettings', 'untrusted', ...START_FAILED].includes(p.code);
 
 export type ConfigProblemCode =
@@ -2449,8 +2442,6 @@ export interface DemoSettingsView {
 
 /** The demo directory's disk space (`src/server/demo-space.ts`). */
 export interface DemoSpaceView {
-  /** Days after a demo's last render that its frames are kept, as applies now; null: always. */
-  keepDays: number | null;
   /** What applies while the demo settings name nothing; null: always. */
   defaultDays: number | null;
   /** Counting or deleting right now. */
