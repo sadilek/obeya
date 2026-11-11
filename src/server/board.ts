@@ -583,12 +583,12 @@ export class Board {
     const byFile = new Map(docs.map((d) => [d.file, d]));
     for (const r of this.store.cards(this.canvas.id)) {
       // a worker still finishing after the landing keeps its card until it is done (workDone)
-      if (r.state !== 'live' || !r.plan_ref?.includes('#') || r.landed) continue;
-      const hash = r.plan_ref.indexOf('#');
-      const w = byFile.get(r.plan_ref.slice(0, hash))?.workstreams.find((x) => x.key === r.plan_ref!.slice(hash + 1));
+      const key = keyOfRef(r.plan_ref);
+      if (r.state !== 'live' || key === null || r.landed) continue;
+      const w = byFile.get(docOfRef(r.plan_ref!))?.workstreams.find((x) => x.key === key);
       if (!w || w.done) continue;
       const s = fromJson(r.shipped) ?? {};
-      if (s.fetch || (s.commit && this.holds && !this.holds(repoOfRef(r.plan_ref, this.home), s.commit))) continue;
+      if (s.fetch || (s.commit && this.holds && !this.holds(repoOfRef(r.plan_ref!, this.home), s.commit))) continue;
       const pr = fromJson(r.pr);
       const shipped: Shipped = { ...s, ...(!s.pr && pr?.url && pr.number ? { pr: { url: pr.url, number: pr.number } } : {}) };
       // a new run starts on a fresh branch: the old one is merged, perhaps squashed
@@ -706,7 +706,7 @@ export class Board {
     const row = this.own(id);
     const ref = row.plan_ref;
     // a doc gone from a project whose work is done, as it last stood
-    const doc = ref && !ref.includes('#') ? ((this.docs ??= this.read()).find((d) => d.file === ref) ?? fromJson(row.plan) ?? undefined) : undefined;
+    const doc = ref && keyOfRef(ref) === null ? ((this.docs ??= this.read()).find((d) => d.file === ref) ?? fromJson(row.plan) ?? undefined) : undefined;
     if (!doc) throw new BadRequest('invalid', 'not a project with a plan doc');
     return { file: doc.file, markdown: doc.markdown };
   }
@@ -834,7 +834,7 @@ export class Board {
       const r = given.archived_at || (given.parent_id && parent(given.parent_id)?.archived_at) ? given : this.store.card(given.id);
       if (!mine(r)) continue;
       if (r.archived_at) {
-        const doc = r.plan_ref && !r.plan_ref.includes('#') ? docOf(r) : null;
+        const doc = r.plan_ref && keyOfRef(r.plan_ref) === null ? docOf(r) : null;
         if (!r.plan_ref) out.set(r.id, { id: r.id, repo: r.repo ?? this.home, title: r.title ?? '' });
         else if (doc) out.set(r.id, { id: r.id, repo: repoOfRef(doc.file, this.home), title: doc.title });
         continue;
@@ -842,7 +842,7 @@ export class Board {
       const project = r.parent_id ? parent(r.parent_id) : null;
       if (!r.plan_ref || !mine(project) || !project.archived_at) continue;
       const doc = docOf(project);
-      const w = doc && r.plan_ref.startsWith(`${doc.file}#`) ? doc.workstreams.find((x) => x.key === r.plan_ref!.slice(doc.file.length + 1)) : undefined;
+      const w = doc && docOfRef(r.plan_ref) === doc.file ? doc.workstreams.find((x) => x.key === keyOfRef(r.plan_ref)) : undefined;
       if (w) out.set(r.id, { id: r.id, repo: repoOfRef(r.plan_ref, this.home), title: w.title });
     }
     return out;
@@ -1976,14 +1976,14 @@ export class Board {
     if (row.archived_at && stateOf(row) === 'planned') return 'archived';
     // what remained after the landing is done: the worker that did it gave the workspace up
     if (row.state && finished(row.state)) return 'stale';
-    const hash = row.plan_ref?.indexOf('#') ?? -1;
-    if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
+    const key = keyOfRef(row.plan_ref);
+    if (key === null || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
     if (row.state === 'inPr' && tickedAhead(row)) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();
-    const doc = this.docs?.find((d) => d.file === row.plan_ref!.slice(0, hash));
-    const w = doc?.workstreams.find((x) => x.key === row.plan_ref!.slice(hash + 1));
+    const doc = this.docs?.find((d) => d.file === docOfRef(row.plan_ref!));
+    const w = doc?.workstreams.find((x) => x.key === key);
     // an open pull request goes on without the doc: its watcher sees it merged or closed; a repository
     // not (yet) on the canvas has no docs read
     if (!w) return row.state === 'inPr' || !this.canvas.repos.some((r) => r.id === repoOfRef(row.plan_ref!, this.home)) ? null : 'gone';
@@ -2251,8 +2251,8 @@ export class Board {
   private openDocs(all: PlanDoc[], rows: CardRow[]): { docs: PlanDoc[]; ended: Set<string> } {
     const busy = new Set(
       rows
-        .filter((r) => r.plan_ref?.includes('#') && (atWork(r) || tickedAhead(r)))
-        .map((r) => r.plan_ref!.slice(0, r.plan_ref!.indexOf('#'))),
+        .filter((r) => keyOfRef(r.plan_ref) !== null && (atWork(r) || tickedAhead(r)))
+        .map((r) => docOfRef(r.plan_ref!)),
     );
     // the projects on the canvas, as just read: an archived one is not among the rows
     const standing = new Set(rows.flatMap((r) => (r.kind === 'project' && r.plan_ref ? [r.plan_ref] : [])));
@@ -2934,7 +2934,7 @@ export class Board {
         const before = r.plan && doc && r.plan !== plan ? fromJson(r.plan) : null;
         for (const w of doc?.workstreams ?? []) {
           const was = before?.workstreams.find((x) => x.key === w.key);
-          if (was && (was.title !== w.title || was.body !== w.body || was.done !== w.done || was.inReview !== w.inReview)) this.store.touch(this.canvas.id, `${r.plan_ref}#${w.key}`);
+          if (was && (was.title !== w.title || was.body !== w.body || was.done !== w.done || was.inReview !== w.inReview)) this.store.touch(this.canvas.id, workstreamRef(r.plan_ref!, w.key));
         }
       }
     })();
@@ -2970,7 +2970,7 @@ export class Board {
 
   /** The workstream key of each of the project's workstreams, by card. */
   workstreamKeys(projectId: string): Map<string, string> {
-    return new Map(this.store.children([projectId]).flatMap((k) => (k.plan_ref?.includes('#') ? [[k.id, k.plan_ref.slice(k.plan_ref.indexOf('#') + 1)]] : [])));
+    return new Map(this.store.children([projectId]).flatMap((k) => (keyOfRef(k.plan_ref) !== null ? [[k.id, keyOfRef(k.plan_ref)!]] : [])));
   }
 
   /** Whether none of the project's workstreams stands anywhere but where it was placed when the project came (`placeNew`). */
@@ -2980,7 +2980,7 @@ export class Board {
     const first = placeWorkstreams(doc.workstreams);
     const kids = this.store.children([projectId]);
     return kids.every((k) => {
-      const n = doc.workstreams.findIndex((w) => `${doc.file}#${w.key}` === k.plan_ref);
+      const n = doc.workstreams.findIndex((w) => workstreamRef(doc.file, w.key) === k.plan_ref);
       return n >= 0 && first[n]!.x === k.x && first[n]!.y === k.y;
     });
   }
@@ -3096,7 +3096,7 @@ export class Board {
             this.store.replan(holder.id, `${p.plan_ref}#\u0000${holder.id}`, p.id);
             this.store.update(holder.id, { deleted_at: new Date().toISOString() });
           }
-          this.store.replan(k.id, `${doc.file}#${w.key}`, p.id);
+          this.store.replan(k.id, workstreamRef(doc.file, w.key), p.id);
           holderOf.set(w.key, k);
           this.missing.delete(k.id);
           continue;
@@ -3178,7 +3178,7 @@ export class Board {
       return new Map(leaving.map((k) => [k.id, this.identity(k, doc, before, true)]));
     });
     if (!was) return false;
-    const ref = (key: string) => `${doc.file}#${key}`;
+    const ref = (key: string) => workstreamRef(doc.file, key);
     this.store.db.transaction(() => {
       // out of each other's way first: two cards may swap keys
       for (const k of moving) this.store.replan(k.id, `${project.plan_ref}#\u0000${k.id}`, project.id);
@@ -3313,12 +3313,12 @@ export class Board {
     for (const doc of docs) {
       const project = byRef.get(doc.file);
       if (!project) continue;
-      const missing = doc.workstreams.filter((w) => !byRef.has(`${doc.file}#${w.key}`));
+      const missing = doc.workstreams.filter((w) => !byRef.has(workstreamRef(doc.file, w.key)));
       if (!missing.length) continue;
       const kids = items.filter((i) => i.parent === project.id);
       const startY = kids.length ? Math.max(...kids.map((k) => k.y + sizeOf(k, items)[1])) + GAP : PROJECT_HEAD;
       placeWorkstreams(missing, startY).forEach((pos, n) =>
-        add.push({ canvas_id: c, kind: 'task', parent_id: project.id, plan_ref: `${doc.file}#${missing[n]!.key}`, ...pos }),
+        add.push({ canvas_id: c, kind: 'task', parent_id: project.id, plan_ref: workstreamRef(doc.file, missing[n]!.key), ...pos }),
       );
     }
     if (add.length) this.store.insert(add);
@@ -3343,7 +3343,7 @@ export class Board {
       // a project just come stands arranged by what builds on what, once the Coordinator has read that
       if (docs.includes(doc) && doc.workstreams.filter((w) => !w.done).length > 1) this.store.update(project!.id, { deps: toJson({ reading: 'auto' }) });
       this.store.insert(
-        doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'task' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
+        doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'task' as const, parent_id: project!.id, plan_ref: workstreamRef(doc.file, w.key), ...pos[k]! })),
       );
     });
     this.linkOrigins(docs, this.store.cards(this.canvas.id));
@@ -3434,9 +3434,9 @@ const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
 
 /** Whether the work of a project's doc is done: each workstream ticked, or its card (among `rows`) finished. */
 function workDone(doc: PlanDoc, rows: Pick<CardRow, 'plan_ref' | 'state'>[]): boolean {
-  const states = new Map(rows.flatMap((r) => (r.plan_ref?.startsWith(`${doc.file}#`) && r.state ? [[r.plan_ref, r.state]] : [])));
+  const states = new Map(rows.flatMap((r) => (r.plan_ref && keyOfRef(r.plan_ref) !== null && docOfRef(r.plan_ref) === doc.file && r.state ? [[r.plan_ref, r.state]] : [])));
   return doc.workstreams.every((w) => {
-    const state = states.get(`${doc.file}#${w.key}`);
+    const state = states.get(workstreamRef(doc.file, w.key));
     return w.done || (!!state && finished(state));
   });
 }
@@ -3503,10 +3503,10 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       });
       continue;
     }
-    const hash = r.plan_ref.indexOf('#');
-    const doc = docByFile.get(hash < 0 ? r.plan_ref : r.plan_ref.slice(0, hash));
+    const key = keyOfRef(r.plan_ref);
+    const doc = docByFile.get(docOfRef(r.plan_ref));
     if (!doc) continue;
-    if (hash < 0) {
+    if (key === null) {
       projects.push({
         id: r.id,
         short: r.short,
@@ -3529,7 +3529,6 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       });
       continue;
     }
-    const key = r.plan_ref.slice(hash + 1);
     const order = doc.workstreams.findIndex((w) => w.key === key);
     const w = doc.workstreams[order];
     if (!w || !r.parent_id) continue;
@@ -3539,7 +3538,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
     const state = r.state && (ACTIVE.includes(r.state) || tickedAhead(r)) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
     // what landed of a workstream planned again, also while a new run does the rest; once that lands, the card is live
     const shipped = state === 'planned' || ACTIVE.includes(state) ? fromJson(r.shipped) : null;
-    const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(`${doc.file}#${k}`) ?? []);
+    const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(workstreamRef(doc.file, k)) ?? []);
     workstreams.push({
       order,
       item: {
@@ -3608,7 +3607,13 @@ function sameWorkstream(key: string, doc: PlanDoc, was?: Pick<Workstream, 'label
   return same.length === 1 ? same[0] : undefined;
 }
 
-/** The workstream key of a plan reference (`<doc>#<key>`); null for a project's or a card's without one. */
+/** A workstream's plan reference: its doc's file, then its key (`<doc>#<key>`). A project's is its doc's file alone. */
+const workstreamRef = (file: string, key: string) => `${file}#${key}`;
+
+/** The doc's file of a plan reference, a project's or a workstream's. */
+const docOfRef = (ref: string) => (ref.includes('#') ? ref.slice(0, ref.indexOf('#')) : ref);
+
+/** The workstream key of a plan reference; null for a project's or a card's without one. */
 const keyOfRef = (ref: string | null): string | null => (ref?.includes('#') ? ref.slice(ref.indexOf('#') + 1) : null);
 
 /** Whether an agent worked on the card: it was started, or its work landed or ended. */
