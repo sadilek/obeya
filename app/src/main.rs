@@ -43,8 +43,7 @@ mod update;
 use std::{
   collections::HashMap,
   fs,
-  io::{Read, Write},
-  net::{SocketAddr, TcpListener, TcpStream},
+  net::TcpListener,
   path::{Path, PathBuf},
   process::{Child, Command, Stdio},
   sync::{
@@ -143,45 +142,47 @@ fn say(de: &str, en: &str) -> String {
   if german() { de } else { en }.to_string()
 }
 
-/// A request to the server; its status code, or none when it does not answer.
-fn http(port: u16, method: &str, path: &str) -> Option<u16> {
-  let addr = SocketAddr::from(([127, 0, 0, 1], port));
-  let mut s = TcpStream::connect_timeout(&addr, Duration::from_millis(500)).ok()?;
-  s.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
-  let key = key().map(|k| format!("{KEY_HEADER}: {k}\r\n")).unwrap_or_default();
-  write!(
-    s,
-    "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{key}Content-Length: 0\r\nConnection: close\r\n\r\n"
-  )
-  .ok()?;
-  let mut head = [0u8; 12];
-  s.read_exact(&mut head).ok()?;
-  std::str::from_utf8(&head[9..12]).ok()?.parse().ok()
+/// A request to the server that names the owner's key and waits up to `patience` for its answer:
+/// its status and its JSON (null where it has none), or none when it does not answer.
+fn request(port: u16, method: &str, path: &str, body: Option<&serde_json::Value>, patience: Duration) -> Option<(u16, serde_json::Value)> {
+  let agent = ureq::AgentBuilder::new().timeout_connect(Duration::from_millis(500)).timeout(patience).build();
+  let req = agent.request(method, &format!("http://127.0.0.1:{port}{path}"));
+  let req = match key() {
+    Some(key) => req.set(KEY_HEADER, &key),
+    None => req,
+  };
+  let res = match body {
+    Some(body) => req.set("content-type", "application/json").send_string(&body.to_string()),
+    None => req.call(),
+  };
+  match res {
+    Ok(res) => {
+      let status = res.status();
+      Some((status, serde_json::from_str(&res.into_string().ok()?).unwrap_or(serde_json::Value::Null)))
+    }
+    // ureq takes a status from 400 up for an error
+    Err(ureq::Error::Status(status, _)) => Some((status, serde_json::Value::Null)),
+    Err(_) => None,
+  }
 }
 
-/// A JSON request to the server that names the owner's key; its answer, or none when it fails.
+/// A JSON request to the server; its answer, or none when it fails.
 pub(crate) fn post(port: u16, path: &str, body: &serde_json::Value) -> Option<serde_json::Value> {
-  let req = ureq::post(&format!("http://127.0.0.1:{port}{path}")).timeout(Duration::from_secs(2));
-  let req = match key() {
-    Some(key) => req.set(KEY_HEADER, &key),
-    None => req,
-  };
-  let res = req.set("content-type", "application/json").send_string(&body.to_string()).ok()?;
-  Some(serde_json::from_str(&res.into_string().ok()?).unwrap_or(serde_json::Value::Null))
+  request(port, "POST", path, Some(body), Duration::from_secs(2)).filter(|(status, _)| *status < 400).map(|(_, answer)| answer)
 }
 
-/// A GET from the server that names the owner's key and may take up to `patience`; its answer, or none when it fails.
+/// A GET from the server that may take up to `patience`; its answer, or none when it fails.
 pub(crate) fn get(port: u16, path: &str, patience: Duration) -> Option<serde_json::Value> {
-  let req = ureq::get(&format!("http://127.0.0.1:{port}{path}")).timeout(patience);
-  let req = match key() {
-    Some(key) => req.set(KEY_HEADER, &key),
-    None => req,
-  };
-  serde_json::from_str(&req.call().ok()?.into_string().ok()?).ok()
+  request(port, "GET", path, None, patience).filter(|(status, _)| *status < 400).map(|(_, answer)| answer)
+}
+
+/// Tells the server to stop; whether it answered.
+fn stop(port: u16) -> bool {
+  request(port, "POST", "/api/stop", None, Duration::from_secs(5)).is_some()
 }
 
 fn answers(port: u16) -> bool {
-  http(port, "GET", "/api/canvases") == Some(200)
+  request(port, "GET", "/api/canvases", None, Duration::from_secs(5)).is_some_and(|(status, _)| status == 200)
 }
 
 pub(crate) fn home() -> PathBuf {
@@ -478,12 +479,12 @@ fn watch(app: &AppHandle, obeya: &Obeya, home: &Path) -> bool {
     silent = if answers(port) { 0 } else { silent + 1 };
     // a restart keeps the home's entry, marked while new dependencies go in (up to 90 s, as a start
     // waits for it); a stop ends it for good and gives the entry up
-    let entry = fs::read_to_string(home.join("server.json")).ok();
+    let entry = entry(home);
     let stopped = obeya.stopping.load(Ordering::SeqCst) || entry.is_none();
-    if silent > 0 && !stopped && entry.as_ref().is_some_and(|e| e.contains("\"takenOver\"")) {
+    if silent > 0 && !stopped && entry.as_ref().is_some_and(|e| e["takenOver"] == true) {
       return true;
     }
-    let patience = if entry.is_some_and(|e| e.contains("\"restarting\"")) { 90 } else { 30 };
+    let patience = if entry.is_some_and(|e| e["restarting"] == true) { 90 } else { 30 };
     if silent > 0 && stopped || silent > patience {
       app.exit(0);
       return false;
@@ -499,7 +500,7 @@ fn navigate(app: &AppHandle, obeya: &Obeya) {
     let _ = w.navigate(url);
   }
   if obeya.stopping.load(Ordering::SeqCst) {
-    http(obeya.port.load(Ordering::SeqCst), "POST", "/api/stop");
+    stop(obeya.port.load(Ordering::SeqCst));
   }
 }
 
@@ -514,7 +515,7 @@ fn quit(app: &AppHandle, obeya: &Obeya) -> bool {
         // the canvas shows what the stop waits for
         show(app);
       }
-      http(port, "POST", "/api/stop").is_some()
+      stop(port)
     }
   }
 }
@@ -841,7 +842,7 @@ fn main() {
     // ended without asking (the Dock's Quit, logging out): the server is told on the way out and
     // stops on its own once its workers paused
     RunEvent::Exit if !obeya.stopping.load(Ordering::SeqCst) && !obeya.relaunching.load(Ordering::SeqCst) => {
-      http(obeya.port.load(Ordering::SeqCst), "POST", "/api/stop");
+      stop(obeya.port.load(Ordering::SeqCst));
     }
     _ => {}
   });
