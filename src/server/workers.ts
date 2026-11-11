@@ -156,6 +156,12 @@ const spotNote = (spot: Spot) => {
 /** Landed work's state once what it waited for (the restart) has happened. */
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;
 
+/** Where a live card's landed work starts and ends, where both are known: `base..commit` is what it changed. */
+function landedAt(row: CardRow): { base: string; commit: string } | undefined {
+  const s = row.state === 'live' ? fromJson(row.shipped) : null;
+  return s?.commit && s.base ? { base: s.base, commit: s.commit } : undefined;
+}
+
 /** What the card's row becomes when it is planned again, its worker stopped (`Workers.stop`, also where its repository does not run). */
 export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null } satisfies RowUpdate;
 
@@ -2425,10 +2431,9 @@ export class Workers {
    * before, its branch in its workspace so far. Null when neither is there to read.
    */
   async diff(cardId: string, full: boolean): Promise<CardDiff | null> {
-    const row = this.o.board.row(cardId);
-    const shipped = fromJson(row.shipped);
+    const landed = landedAt(this.o.board.row(cardId));
     // landed work's workspace, while its worker finishes, has nothing left against the default branch
-    const diff = row.state === 'live' && shipped?.commit && shipped.base ? await this.o.workspaces.landedDiff(shipped.base, shipped.commit, full) : await this.o.workspaces.diff(cardId, full);
+    const diff = landed ? await this.o.workspaces.landedDiff(landed.base, landed.commit, full) : await this.o.workspaces.diff(cardId, full);
     // its size, for the page to lay out the card's change list before it has read the change
     const size = diff && toJson<ChangeSize>(changeSize(diff));
     try {
@@ -2441,10 +2446,8 @@ export class Workers {
 
   /** The files of the card's change as they are now, as `diff` reads it, by a list no file name can pass for another in (`CardWorkspaces.changedFiles`). */
   changedFiles(cardId: string): Promise<string[]> {
-    const row = this.o.board.row(cardId);
-    const shipped = fromJson(row.shipped);
-    if (row.state === 'live' && shipped?.commit && shipped.base) return this.o.workspaces.changedFiles(cardId, { base: shipped.base, commit: shipped.commit });
-    return this.o.workspaces.changedFiles(cardId);
+    const landed = landedAt(this.o.board.row(cardId));
+    return landed ? this.o.workspaces.changedFiles(cardId, landed) : this.o.workspaces.changedFiles(cardId);
   }
 
   /**
