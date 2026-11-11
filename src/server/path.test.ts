@@ -24,6 +24,12 @@ describe('program lookup in copied environments', () => {
     test('explicit PATH takes precedence over a differently cased key', () => {
       expect(which('codex', { Path: dir, PATH: '' })).toBeNull();
     });
+    test('of two other spellings, the one a spawned process gets wins', () => {
+      expect(which('codex', { path: '', Path: dir })).toBe(bin);
+      const env = { path: '', Path: dir };
+      addToPath(env, ['extra']);
+      expect(env).toEqual({ path: '', Path: [dir, 'extra'].join(delimiter) });
+    });
     test('appending directories preserves the existing spelling and entries', () => {
       const env = { Path: dir };
       addToPath(env, [dir, 'extra']);

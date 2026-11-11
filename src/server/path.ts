@@ -12,9 +12,12 @@ type Env = Record<string, string | undefined>;
 /** Where the official installers of Claude Code and uv put their programs. */
 export const localBin = () => join(homedir(), '.local', 'bin');
 
-/** A copied Windows environment loses process.env's case-insensitive property lookup. */
+/**
+ * A copied Windows environment loses process.env's case-insensitive property lookup. Of several
+ * spellings, the one that sorts first: the one a spawned process gets (`PATH` before `Path`).
+ */
 const pathKey = (env: Env) =>
-  process.platform !== 'win32' || env.PATH !== undefined ? 'PATH' : Object.keys(env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
+  process.platform !== 'win32' ? 'PATH' : (Object.keys(env).filter((key) => key.toUpperCase() === 'PATH').sort()[0] ?? 'PATH');
 
 /** Where `program` is on the PATH of `env`; null where it is on none. */
 export const which = (program: string, env: Env = process.env) => Bun.which(program, { PATH: env[pathKey(env)] ?? '' });
