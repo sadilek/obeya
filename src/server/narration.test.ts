@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ClipRequest, type Deadline, NarrationHost, parseClipRequest } from './narration';
 import { serve } from './server';
-import { asOwner, removeDir, until } from './testing';
+import { asOwner, removeDir, until, silent } from './testing';
 
 /**
  * Logs its start, each clip and its end; `dies` as the speaker makes it die at the second clip,
@@ -196,7 +196,7 @@ describe('a voice that stops answering', () => {
 describe('a clip over HTTP', () => {
   test('is taken as JSON only, with an absolute WAV and a plain voice', async () => {
     hold();
-    const server = serve([], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, host);
+    const server = serve([], 0, { transcriber: silent, narration: host });
     try {
       const post = (body: unknown, type = 'application/json') =>
         asOwner(() => server).fetch(new URL('/api/narration/clip', server.url), { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': type } });
@@ -213,7 +213,7 @@ describe('a clip over HTTP', () => {
 
   test('inline, sends the WAV back instead of writing it where the render runs (another machine)', async () => {
     hold();
-    const server = serve([], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, host);
+    const server = serve([], 0, { transcriber: silent, narration: host });
     try {
       const { out: _, ...rest } = clip('eins');
       const r = (await (await asOwner(() => server).fetch(new URL('/api/narration/clip', server.url), { method: 'POST', body: JSON.stringify({ ...rest, inline: true }), headers: { 'content-type': 'application/json' } })).json()) as { ok: boolean; wav: string };

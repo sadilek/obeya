@@ -21,6 +21,7 @@ import type { Workers } from './workers';
 import { KEY_HEADER, keyOf } from './owner';
 import { Voicing } from './walkthrough';
 import type { Language } from '../core/locale';
+import type { Transcriber } from './voice';
 
 /** The calls of a forge that only review cards make, for a fake forge of a test that has none. */
 export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {} };
@@ -806,3 +807,6 @@ export function fakeVoicing() {
     },
   };
 }
+
+/** A transcriber that hears nothing, for a server under test that takes no recordings. */
+export const silent: Transcriber = { transcribe: async () => ({ text: '', doubtful: false }) };

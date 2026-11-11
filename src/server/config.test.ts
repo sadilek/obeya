@@ -10,7 +10,7 @@ import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './co
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, silentWav, syncGitCalls, until } from './testing';
+import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, silentWav, syncGitCalls, until, silent } from './testing';
 import { git } from './git';
 
 let dir: string;
@@ -635,7 +635,7 @@ describe('the configuration over HTTP', () => {
   beforeEach(async () => {
     const c = config('args', [{ repos: [{ path: web }] }], ['web']);
     canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c });
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, c);
+    server = serve([canvas], 0, { transcriber: silent, config: c });
   });
   afterEach(() => {
     server.stop(true);
@@ -752,7 +752,7 @@ describe('the configuration over HTTP', () => {
     writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings: { checks: ['bun test'] } }] }]));
     const c = config('file', []);
     const live = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c, settings: (p) => c.repoSettings(p) });
-    const at = serve([live], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, c);
+    const at = serve([live], 0, { transcriber: silent, config: c });
     const post = async (path: string, body?: unknown) => {
       const res = await asOwner(() => at).fetch(new URL(path, at.url), { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }) });
       return { status: res.status, body: res.status === 204 ? null : ((await res.json()) as Record<string, unknown>) };

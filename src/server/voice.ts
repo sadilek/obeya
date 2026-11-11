@@ -227,18 +227,17 @@ export class VoiceIn implements Transcriber {
   constructor(
     private home: string,
     readonly local: LocalTranscriber,
-    private fetcher: typeof fetch = fetch,
-    /** Loads the recognition only once the owner speaks, not ahead (a scratch Obeya, scratch.ts). */
-    private lazy = false,
+    /** `lazy`: loads the recognition only once the owner speaks, not ahead (a scratch Obeya, scratch.ts). */
+    private o: { fetcher?: typeof fetch; lazy?: boolean } = {},
   ) {}
 
   transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
     const cloud = cloudInUse(this.home);
-    return cloud ? transcribeInCloud(cloud, audioPath, vocabulary, this.fetcher) : this.local.transcribe(audioPath, vocabulary);
+    return cloud ? transcribeInCloud(cloud, audioPath, vocabulary, this.o.fetcher ?? fetch) : this.local.transcribe(audioPath, vocabulary);
   }
 
   warm(ahead = false) {
-    if (!(ahead && this.lazy) && !cloudInUse(this.home)) this.local.warm();
+    if (!(ahead && this.o.lazy) && !cloudInUse(this.home)) this.local.warm();
   }
 
   stop() {

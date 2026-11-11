@@ -10,7 +10,7 @@ import { Access, deviceName, machineAddresses, PAIRING_MS, UNUSED_MS } from './r
 import { serve } from './server';
 import { Tailscale } from './tailscale';
 import { Push } from './push';
-import { asOwner, fakeProgram, fakeTailscale, tailscaleStatus, until } from './testing';
+import { asOwner, fakeProgram, fakeTailscale, tailscaleStatus, until, silent } from './testing';
 import { b64u } from './webpush';
 
 const NAME = 'mac.tail1234.ts.net';
@@ -37,7 +37,7 @@ beforeEach(() => {
       return { status: 201, text: async () => '' };
     },
   });
-  server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, access, push);
+  server = serve([canvas], 0, { transcriber: silent, access, push });
 });
 afterEach(() => {
   access.stop();
@@ -339,7 +339,7 @@ describe("the system's folder dialog", () => {
     const config = new Config({ file: join(dir, 'canvases.json'), source: 'file', started: [], store, running: () => [], server: { port: 4417, home: dir, permissionMode: 'auto' }, apply: () => {} });
     const machine = new MachineSetup({ home: dir, config, env: { PATH: bin }, platform: windows ? 'win32' : 'linux', arch: 'x64', compiled: true });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, config, undefined, undefined, machine, undefined, undefined, access, push);
+    server = serve([canvas], 0, { transcriber: silent, config, machine, access, push });
     const post = { method: 'POST', body: JSON.stringify({ prompt: 'Folder' }) };
 
     // this machine: offered, and the folder comes back

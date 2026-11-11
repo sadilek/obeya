@@ -5,7 +5,7 @@ import type { TagProposalJob } from '../core/types';
 import { canvas, dir, eachTest, main, runtime, store } from './canvas-fixture';
 import { Config } from './config';
 import { serve } from './server';
-import { asOwner, until, videoDemo } from './testing';
+import { asOwner, until, videoDemo, silent } from './testing';
 
 let server: ReturnType<typeof serve>;
 let configured: Config;
@@ -28,7 +28,7 @@ function config() {
 
 eachTest({ files: { 'README.md': 'A shop with a cart and invoices.\n' }, repo: { clones: 0 }, deps: () => ({ config: (configured = config()) }) });
 beforeEach(() => {
-  server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, configured);
+  server = serve([canvas], 0, { transcriber: silent, config: configured });
   // a finished card with its demo, archived; an open one; a Question card, which is no change
   const c = canvas.board.canvas.id;
   const [done] = store.insert([

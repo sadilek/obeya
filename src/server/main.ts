@@ -374,7 +374,7 @@ if (new Set(ids).size !== ids.length) {
   process.exit(2);
 }
 const scratchFrom = process.env.OBEYA_SCRATCH ? resolve(process.env.OBEYA_SCRATCH) : undefined;
-const transcriber = new VoiceIn(home, new LocalTranscriber(), fetch, !!scratchFrom);
+const transcriber = new VoiceIn(home, new LocalTranscriber(), { lazy: !!scratchFrom });
 const voiceSetup = new VoiceSetup({ home, local: transcriber.local });
 const updates = new AppUpdates();
 // run from a clone of Obeya's repository: new commits on its upstream, for the owner to pull
@@ -449,7 +449,24 @@ const scratch =
           shutdown(0);
         },
       });
-server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, updates, access, push, sources, usage, stalls, harnesses, scratch && (() => scratch.used()));
+server = serve(canvases, Number(values.port), {
+  transcriber,
+  voiceSetup,
+  development: values.dev,
+  config,
+  restarter,
+  narration,
+  machine,
+  stop,
+  updates,
+  access,
+  push,
+  sources,
+  usage,
+  stalls,
+  harnesses,
+  ...(scratch ? { used: () => scratch.used() } : {}),
+});
 scratch?.start();
 claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, ...(process.env.OBEYA_FROM_APP ? { app: true } : {}) });
 // the address as a one-time link that signs a browser in (owner.ts)

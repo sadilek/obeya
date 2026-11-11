@@ -76,12 +76,6 @@ const EVERY = '';
 /** What a connection may hold unsent before a newer snapshot replaces the ones it has not sent yet. */
 const BEHIND_BYTES = 256 * 1024;
 
-export interface Voice {
-  transcriber: Transcriber;
-  /** What voice in needs on this machine, for the settings sheet. */
-  setup?: VoiceSetup;
-}
-
 /** The canvases a server serves: those that run now, and word whenever one starts, stops or changes (`Canvases`). */
 export interface Served {
   all(): CanvasRuntime[];
@@ -143,34 +137,43 @@ export function serveNarration(narration: NarrationHost) {
   });
 }
 
-export function serve(
-  served: Served | CanvasRuntime[],
-  { transcriber, setup }: Voice,
-  port: number,
-  development = false,
-  config?: Config,
-  restarter?: Restarter,
-  narration?: NarrationHost,
-  machine?: MachineSetup,
+/** What a server serves besides its canvases; all but the transcriber may be absent, in tests. */
+export interface ServeDeps {
+  /** What turns the owner's recordings into words. */
+  transcriber: Transcriber;
+  /** What voice in needs on this machine, for the settings sheet. */
+  voiceSetup?: VoiceSetup;
+  /** Bun's hot reloading of the page, for `--dev`. */
+  development?: boolean;
+  config?: Config;
+  restarter?: Restarter;
+  narration?: NarrationHost;
+  machine?: MachineSetup;
   /** Stops Obeya as Ctrl-C does: once the workers paused, a second time at once. */
-  stop?: () => void,
+  stop?: () => void;
   /** The newer version of the app its shell has ready. */
-  updates = new AppUpdates(),
+  updates?: AppUpdates;
   /** Who reaches Obeya from other devices; by default no one. */
-  access = new Access({ store: new Store(':memory:'), tailscale: new Tailscale(null) }),
+  access?: Access;
   /** What goes to the devices that turned notifications on. */
-  push = new Push({ store: access.store }),
+  push?: Push;
   /** New commits on the upstream of the checkout Obeya runs from; none for the app or the compiled binary. */
-  sources?: SourceUpdates,
+  sources?: SourceUpdates;
   /** The plans' usage limits for the bar, fetched while the owner has it show them and a page is open. */
-  usage?: UsageMeters,
+  usage?: UsageMeters;
   /** Where the stalls of the pages go, beside the server's own. */
-  stalls?: Stalls,
+  stalls?: Stalls;
   /** Claude Code and Codex on this machine, for the Configuration's harnesses and models. */
-  harnesses?: Harnesses,
+  harnesses?: Harnesses;
   /** Hears of every request from Obeya's own site: a scratch Obeya is in use (scratch.ts). */
-  used?: () => void,
-) {
+  used?: () => void;
+}
+
+export function serve(served: Served | CanvasRuntime[], port: number, deps: ServeDeps) {
+  const { transcriber, voiceSetup: setup, development = false, config, restarter, narration, machine, stop, sources, usage, stalls, harnesses, used } = deps;
+  const updates = deps.updates ?? new AppUpdates();
+  const access = deps.access ?? new Access({ store: new Store(':memory:'), tailscale: new Tailscale(null) });
+  const push = deps.push ?? new Push({ store: access.store });
   const gate: Gate = used
     ? {
         hosts: () => access.hosts(),
