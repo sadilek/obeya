@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PrReviewEntry, PrThread, PrWait } from '../core/types';
-import { enterpriseServer, ghHosts, onGitHub, remoteHost } from './repo';
+import { enterpriseServer, ghHosts, onGitHub, parseRemote } from './repo';
 import { spawnOutput } from './spawn';
 import { gitTry } from './git';
 
@@ -129,14 +129,7 @@ export function parsePrUrl(
 
 /** Whether a git remote (https, ssh, scp-like, or a path) is the repository `owner/repo`. */
 export const sameRepo = (remote: string, owner: string, repo: string) =>
-  remote
-    .trim()
-    .toLowerCase()
-    .replace(/[/\\]+$/, '')
-    .replace(/\.git$/, '')
-    .split(/[/\\:]/)
-    .slice(-2)
-    .join('/') === `${owner}/${repo}`.toLowerCase();
+  parseRemote(remote).path.split(/[/\\]/).slice(-2).join('/').toLowerCase() === `${owner}/${repo}`.toLowerCase();
 
 /**
  * Where work that landed on the default branch without a pull request shows on the forge of
@@ -145,13 +138,9 @@ export const sameRepo = (remote: string, owner: string, repo: string) =>
  * None for a repository on this machine.
  */
 export function landedUrl(remote: string, to: string, from?: string): string | null {
-  const url = remote.trim();
-  const host = remoteHost(url);
-  if (!host) return null;
-  const web = /^https?:\/\//i.test(url)
-    ? url.replace(/^(https?:\/\/)[^@/]*@/i, '$1')
-    : `https://${host}/${url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*\//i, '').replace(/^[^/\\:]*:\/?/, '')}`;
-  const repo = `${web.replace(/\/+$/, '').replace(/\.git$/, '')}${host.includes('gitlab') ? '/-' : ''}`;
+  const { host, web } = parseRemote(remote);
+  if (!host || !web) return null;
+  const repo = `${web}${host.includes('gitlab') ? '/-' : ''}`;
   return from ? `${repo}/compare/${from}...${to}` : `${repo}/commit/${to}`;
 }
 
@@ -201,11 +190,9 @@ export interface GhAt {
  * github.com or a GitHub Enterprise server gh is logged into (`onGitHub`), or none for any other.
  */
 export function githubRepo(remote: string, hosts: () => string[] = ghHosts): { host: string; owner: string } | undefined {
-  const url = remote.trim();
-  const host = remoteHost(url);
-  if (!host || !onGitHub(url, hosts)) return undefined;
-  const path = url.includes('://') ? url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*\//i, '') : url.replace(/^[^:]*:\/?/, '');
-  const owner = /^([^/]+)\/[^/]+?\/?$/.exec(path)?.[1];
+  const { host, path } = parseRemote(remote);
+  if (!host || !onGitHub(remote.trim(), hosts)) return undefined;
+  const owner = /^([^/]+)\/[^/]+$/.exec(path)?.[1];
   // ssh.github.com, GitHub's SSH over port 443, is github.com to gh
   return owner ? { host: host.endsWith('.github.com') ? 'github.com' : host, owner } : undefined;
 }

@@ -26,7 +26,7 @@ import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
 import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
-import { repoInfo } from './repo';
+import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable, machineClaude, runClaudeHere } from './runtime';
 import { codexExecutable, CodexLogins, type CodexLoginState, runCodex, spawnOptions, startArgv } from './codex';
@@ -310,14 +310,7 @@ export function welcome(home: string, canvases: CanvasRuntime[]) {
 
 /** The folder a clone gets: the repository's name, from a URL or `owner/name`. */
 export function cloneName(spec: string): string {
-  return (
-    spec
-      .trim()
-      .replace(/[/\\]+$/, '')
-      .replace(/\.git$/, '')
-      .split(/[/:\\]/)
-      .at(-1) ?? ''
-  );
+  return parseRemote(spec).path.split(/[/\\]/).at(-1) ?? '';
 }
 
 export interface MachineOptions {

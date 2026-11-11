@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmdirSync, rmSync, unlinkSync, watch, writeFile
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
-import { ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, remoteHost, repoInfo, sameRemote, watchPlanDocs } from './repo';
+import { ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, parseRemote, remoteHost, repoInfo, sameRemote, watchPlanDocs } from './repo';
 import { gitRepo } from './testing';
 import { git } from './git';
 
@@ -274,6 +274,18 @@ describe('a remote on GitHub', () => {
     expect(sameRemote('git@github.com:acme/shop.git', 'https://github.com/other/shop.git')).toBe(false);
     expect(sameRemote('/srv/git/shop', '/srv/git/shop.git/')).toBe(true);
     expect(sameRemote('/srv/git/shop', 'git@github.com:srv/git/shop')).toBe(false);
+  });
+
+  test('is taken apart into host, path and web address in every form git takes; a path has neither host nor address', () => {
+    const shop = { host: 'github.com', path: 'acme/shop', web: 'https://github.com/acme/shop' };
+    expect(parseRemote(' https://token@github.com/acme/shop.git/ ')).toEqual(shop);
+    expect(parseRemote('ssh://git@GitHub.com:22/acme/shop.git')).toEqual(shop);
+    expect(parseRemote('git@github.com:acme/shop.git')).toEqual(shop);
+    expect(parseRemote('git@github.com:/acme/shop')).toEqual(shop);
+    // a server below a path keeps it, and its own scheme and port
+    expect(parseRemote('http://git.acme.com:3000/forge/acme/shop.git')).toEqual({ host: 'git.acme.com', path: 'forge/acme/shop', web: 'http://git.acme.com:3000/forge/acme/shop' });
+    expect(parseRemote('/srv/git/shop.git/')).toEqual({ host: null, path: '/srv/git/shop', web: null });
+    expect(parseRemote('C:\\repos\\shop\\')).toEqual({ host: null, path: 'C:\\repos\\shop', web: null });
   });
 
   test("on another host counts where the GitHub CLI is logged into it, by its hosts.yml where gh keeps it", () => {

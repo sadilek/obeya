@@ -22,6 +22,30 @@ export function remoteHost(url: string): string | null {
   return m ? m[1]!.toLowerCase() : null;
 }
 
+/** A git remote URL taken apart (`parseRemote`). */
+export interface Remote {
+  /** Its host (`remoteHost`); null for a repository on this machine. */
+  host: string | null;
+  /**
+   * Its path without trailing slashes and `.git`: on a host without the slashes it begins with
+   * (`owner/repo`, `group/owner/repo` on a server below a path), on this machine as written.
+   */
+  path: string;
+  /** Where a browser finds it, without credentials: an http(s) remote at its own address, another at `https://<host>/<path>`; null on this machine. */
+  web: string | null;
+}
+
+/** A git remote URL taken apart, in whichever form git takes it: `https://host/owner/repo.git`, `ssh://git@host:22/owner/repo`, `git@host:owner/repo`, a path. */
+export function parseRemote(url: string): Remote {
+  const u = url.trim();
+  const host = remoteHost(u);
+  const bare = (p: string) => p.replace(/[/\\]+$/, '').replace(/\.git$/, '');
+  if (!host) return { host, path: bare(u), web: null };
+  const path = bare(u.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '').replace(/^[^/\\:]*:/, '')).replace(/^\/+/, '');
+  const web = /^https?:\/\//i.test(u) ? bare(u.replace(/^(https?:\/\/)[^@/]*@/i, '$1')) : `https://${host}/${path}`;
+  return { host, path, web };
+}
+
 /**
  * Whether two git remote URLs name the same repository, in whichever form git takes each: https,
  * `ssh://` and `user@host:path` of one repository are the same (user, port, `.git` and case aside);
@@ -29,10 +53,8 @@ export function remoteHost(url: string): string | null {
  */
 export function sameRemote(a: string, b: string): boolean {
   const key = (url: string) => {
-    const u = url.trim();
-    const host = remoteHost(u);
-    const path = host ? u.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '').replace(/^[^/\\:]*:/, '') : u;
-    return `${host ?? ''}|${path.replace(/\/+$/, '').replace(/\.git$/, '').replace(/^\/+/, host ? '' : '/')}`.toLowerCase();
+    const { host, path } = parseRemote(url);
+    return `${host ?? ''}|${host ? path : path.replace(/^\/+/, '/')}`.toLowerCase();
   };
   return key(a) === key(b);
 }
