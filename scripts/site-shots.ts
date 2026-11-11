@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Page } from 'playwright-core';
 import { demoDirectory } from '../plugin/skills/demo/lib/settings.ts';
+import { rereadChapters } from '../src/server/demo';
 import { ownerHeaders } from '../src/server/owner';
 import { scratchDir } from './common';
 import { writeStage } from './hero-video/stage';
@@ -60,11 +61,17 @@ const demo = arg('--demo') ?? newestDemo();
 // the render's demo of the owner's comment, a comma as the decimal point, under whatever name its agent gave it
 const reviewDemo = arg('--review-demo') ?? demosOf((n) => n.startsWith('tipjar-') && n.includes('comma'))[0] ?? demosOf((n) => n.startsWith('tipjar-split-the-bill'))[0]!;
 
-/** The demo's chapters from its `chapters.vtt`, as the card has them: [start in seconds, title]. */
+/** The demo's chapters from its `chapters.vtt`, as a card has them: [start in seconds, title]. */
 function chaptersOf(dir: string): [number, string][] {
-  const seconds = (t: string) => t.split(':').reduce((s, part) => s * 60 + Number(part), 0);
-  return [...readFileSync(join(dir, 'chapters.vtt'), 'utf8').matchAll(/^([\d:.]+) --> [\d:.]+\n(.+)$/gm)].map((m) => [Math.round(seconds(m[1]!) * 10) / 10, m[2]!.trim()]);
+  const chapters = rereadChapters(dir);
+  if (typeof chapters === 'string') throw new Error(chapters);
+  return chapters;
 }
+/** A moment `share` into the second chapter, the change at work; 3 s into a demo without one. */
+const inSecondChapter = (chapters: [number, string][], share: number) => {
+  const second = chapters[1]?.[0];
+  return second === undefined ? 3 : second + ((chapters[2]?.[0] ?? second + 4) - second) * share;
+};
 const chapters = chaptersOf(demo);
 const reviewChapters = chaptersOf(reviewDemo);
 
@@ -163,8 +170,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 813 }, deviceScaleFactor: 1 });
   await page.context().grantPermissions(['microphone'], { origin: base });
   await page.goto(staged.url);
-  await page.locator('.card').first().waitFor();
-  await page.waitForTimeout(1000);
+  await cardsShown(page);
   // the phone first: the voice shot's held Space sends what the fake microphone hears to App icon's agent, and the card no longer waits
   await phoneShots(staged.url);
   await shots(page, staged.cards as Record<string, string>);
@@ -188,13 +194,19 @@ function card(id: string | undefined) {
   return `[data-id="${id}"]`;
 }
 
+/** Waits for the canvas to show its cards, and a second more for them to settle. */
+async function cardsShown(page: Page) {
+  await page.locator('.card').first().waitFor();
+  await page.waitForTimeout(1000);
+}
+
 /** Pauses the demo video at `--at`, else in its second chapter (the change at work). */
 async function still(page: Page, video: string) {
   await page.locator(video).evaluate(async (v: HTMLVideoElement, at: number) => {
     v.pause();
     v.currentTime = at;
     await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
-  }, arg('--at') ? Number(arg('--at')) : chapters[1] ? chapters[1][0] + ((chapters[2]?.[0] ?? chapters[1][0] + 4) - chapters[1][0]) * 0.8 : 3);
+  }, arg('--at') ? Number(arg('--at')) : inSecondChapter(chapters, 0.8));
 }
 
 async function shots(page: Page, cards: Record<string, string>) {
@@ -205,8 +217,7 @@ async function shots(page: Page, cards: Record<string, string>) {
   // taller, so that the minimap and the microphone stay below the cards
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
-  await page.locator('.card').first().waitFor();
-  await page.waitForTimeout(1000);
+  await cardsShown(page);
 
   // the cards in their states
   const all = await Promise.all((await page.locator('.card, .project').all()).map((l) => l.boundingBox()));
@@ -272,8 +283,7 @@ async function phoneShots(url: string) {
 async function reviewShot(url: string, id: string) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1640 }, deviceScaleFactor: 1 });
   await page.goto(url);
-  await page.locator('.card').first().waitFor();
-  await page.waitForTimeout(1000);
+  await cardsShown(page);
   await page.click(card(id));
   await page.locator('#panel video').waitFor();
   await page.waitForTimeout(1500);
@@ -281,7 +291,7 @@ async function reviewShot(url: string, id: string) {
   await page.locator('#panel video').evaluate(async (v: HTMLVideoElement, at: number) => {
     v.currentTime = at;
     await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
-  }, reviewChapters[1] ? reviewChapters[1][0] + ((reviewChapters[2]?.[0] ?? reviewChapters[1][0] + 4) - reviewChapters[1][0]) * 0.6 : 3);
+  }, inSecondChapter(reviewChapters, 0.6));
   await page.getByRole('button', { name: 'As a follow-up task' }).first().click();
   await page.mouse.move(5, 5);
   await page.waitForTimeout(800);

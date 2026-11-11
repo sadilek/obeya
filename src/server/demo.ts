@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { chapterAt } from '../core/types';
 import { resource } from './resources';
 import { oneLine } from '../core/text';
+import { type Cue, cuesOf } from '../../plugin/skills/demo/lib/subtitles.ts';
 
 /**
  * The plugin Obeya loads into its workers' sessions: it brings the demo skill (`obeya:demo`), the
@@ -93,21 +94,15 @@ export function rereadChapters(dir: string): [number, string][] | string {
   return readChapters(dir, cues(dir, 'chapters.vtt').map((c) => c.text));
 }
 
-/** The cues of a demo's captions (one per sentence of its narration; per scene before 2026-11), or of another WebVTT file of it. */
-function cues(dir: string, file = 'captions.vtt'): { start: number; end: number; text: string }[] {
+/** The cues of a demo's captions (one per sentence of its narration; per scene before 2026-11), or of another WebVTT file of it, each on one line. */
+function cues(dir: string, file = 'captions.vtt'): Cue[] {
   let vtt: string;
   try {
     vtt = readFileSync(join(dir, file), 'utf8');
   } catch {
     return [];
   }
-  const time = (h: string, m: string, s: string, ms: string) => Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
-  return [...vtt.matchAll(/^(\d+):(\d{2}):(\d{2})\.(\d{3}) --> (\d+):(\d{2}):(\d{2})\.(\d{3})[^\n]*\n([\s\S]*?)(?:\n\s*\n|$)/gm)].map((c) => ({
-    start: time(c[1]!, c[2]!, c[3]!, c[4]!),
-    end: time(c[5]!, c[6]!, c[7]!, c[8]!),
-    // without the timestamps of its words (`<00:00:03.120>`)
-    text: oneLine(c[9]!.replace(/<[^>]*>/g, '')),
-  }));
+  return cuesOf(vtt).map((c) => ({ ...c, text: oneLine(c.text) }));
 }
 
 /**

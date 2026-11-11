@@ -169,6 +169,25 @@ export function trackVtt(track: Track, scenes: Timed[], spoken = false): string 
 /** A cue's text without its tags: the words as they read, the timestamps of the words left out. */
 export const cueText = (text: string) => text.replace(/<[^>]*>/g, '');
 
+/** A cue of a WebVTT file: from, to (seconds) and its text. */
+export interface Cue {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** The cues of a WebVTT file, each cue's text without the timestamps of its words (`cueText`). */
+export function cuesOf(vtt: string): Cue[] {
+  const time = (h: string, m: string, s: string, ms: string) => Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
+  return vtt
+    .replace(/\r\n/g, '\n')
+    .split(/\n\s*\n/)
+    .flatMap((block) => {
+      const c = /^(\d+):(\d{2}):(\d{2})\.(\d{3}) --> (\d+):(\d{2}):(\d{2})\.(\d{3})[^\n]*\n([\s\S]*)$/m.exec(block.trim());
+      return c ? [{ start: time(c[1]!, c[2]!, c[3]!, c[4]!), end: time(c[5]!, c[6]!, c[7]!, c[8]!), text: cueText(c[9]!).trim() }] : [];
+    });
+}
+
 /** The file of a track's captions. */
 export const trackFile = (language: string) => `captions.${language}.vtt`;
 

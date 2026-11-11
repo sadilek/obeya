@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { knownLanguage, languageName, preferredTrack } from './locale.ts';
-import { cueText, listedTracks, narrationVtt, READING, readingSeconds, readingTimes, sentencesOf, sharedOut, spokenTimes, type SubtitleSource, subtitleProblems, subtitleTracks, trackVtt } from './subtitles.ts';
+import { cuesOf, cueText, listedTracks, narrationVtt, READING, readingSeconds, readingTimes, sentencesOf, sharedOut, spokenTimes, type SubtitleSource, subtitleProblems, subtitleTracks, trackVtt } from './subtitles.ts';
 
 describe('sentences', () => {
   test('a narration is split into its sentences, without its audio tags and respellings', () => {
@@ -192,5 +192,22 @@ describe('subtitle languages', () => {
     expect(preferredTrack(['en', 'de', 'fr'], ['fr-CA', 'en'])).toBe('fr');
     expect(preferredTrack(['en', 'pt-BR'], ['pt-PT'])).toBe('pt-BR');
     expect(preferredTrack(['en', 'de'], ['ja'])).toBe('en');
+  });
+});
+
+describe('reading WebVTT', () => {
+  test('reads the cues of captions and chapters', () => {
+    const vtt = 'WEBVTT\n\n00:00:00.352 --> 00:00:10.292\nEin Vorschlag.\n\n00:01:11.247 --> 00:01:22.467\nJetzt „geht“ es.\n';
+    expect(cuesOf(vtt)).toEqual([
+      { start: 0.352, end: 10.292, text: 'Ein Vorschlag.' },
+      { start: 71.247, end: 82.467, text: 'Jetzt „geht“ es.' },
+    ]);
+  });
+
+  test('a cue of several lines is read whole', () => {
+    expect(cuesOf('WEBVTT\n\n00:00:00.002 --> 00:00:09.000\nVorher:\nkein Vorschlag\n\n00:00:09.000 --> 00:00:12.000\nJetzt\n')).toEqual([
+      { start: 0.002, end: 9, text: 'Vorher:\nkein Vorschlag' },
+      { start: 9, end: 12, text: 'Jetzt' },
+    ]);
   });
 });

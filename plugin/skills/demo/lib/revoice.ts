@@ -24,7 +24,7 @@ import { isMain } from './here.ts';
 import { LANGUAGE_NAMES, LANGUAGES, type Language } from './locale.ts';
 import { inLanguage, readDemoSettings, silent, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
-import { cueText, listedTracks, sentencesOf, spokenTimes, type Track, trackFile } from './subtitles.ts';
+import { cuesOf, listedTracks, sentencesOf, spokenTimes, type Track, trackFile } from './subtitles.ts';
 
 /** What a demo says, in one language: what is translated. */
 export interface Words {
@@ -35,30 +35,12 @@ export interface Words {
   report: Report;
 }
 
-/** A cue of a WebVTT file: from, to (seconds) and its text. */
-export interface Cue {
-  start: number;
-  end: number;
-  text: string;
-}
-
 /** The files of a render that re-voicing replaces, beside a caption file per track; the recorded ones are kept in `original/`. */
 const RENDERED = ['demo.mp4', 'captions.vtt', 'chapters.vtt', 'index.html', 'poster.jpg'] as const;
 /** A caption track's file, and its language. */
 const TRACK_FILE = /^captions\.([^.]+)\.vtt$/;
 /** A scene whose narration gets this much longer or shorter changes pace visibly: worth a look at its stills. */
 const PACE_WARN = 0.35;
-
-export function cuesOf(vtt: string): Cue[] {
-  const time = (h: string, m: string, s: string, ms: string) => Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
-  return vtt
-    .replace(/\r\n/g, '\n')
-    .split(/\n\s*\n/)
-    .flatMap((block) => {
-      const c = /^(\d+):(\d{2}):(\d{2})\.(\d{3}) --> (\d+):(\d{2}):(\d{2})\.(\d{3})[^\n]*\n([\s\S]*)$/m.exec(block.trim());
-      return c ? [{ start: time(c[1]!, c[2]!, c[3]!, c[4]!), end: time(c[5]!, c[6]!, c[7]!, c[8]!), text: cueText(c[9]!).trim() }] : [];
-    });
-}
 
 /** An entry of an ffconcat list: a frame and how long it is held (the last one: none). */
 export interface Held {
