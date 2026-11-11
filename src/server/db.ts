@@ -211,8 +211,8 @@ export interface DecisionRow {
   at: string;
 }
 
-/** The schema Obeya was released with. */
-const SCHEMA = `
+/** The schema Obeya was released with; exported for the migration tests, which build older databases from it. */
+export const SCHEMA = `
   CREATE TABLE canvases (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
