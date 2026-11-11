@@ -98,7 +98,8 @@ function AppLink({ item }: { item: Item }) {
   );
 }
 
-function CopyPath({ path }: { path: string }) {
+/** A path's button that copies it, and says so for a moment. */
+export function CopyPath({ path }: { path: string }) {
   const [copied, copy] = useCopy(3000);
   return (
     <button className={copied ? 'link copied' : 'link'} title={path} onClick={() => copy(path)}>

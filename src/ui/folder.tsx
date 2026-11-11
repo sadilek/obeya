@@ -7,9 +7,8 @@ import { type CardDiff, diffSize, shownChanges } from '../core/diff';
 import { changeRows } from '../core/files';
 import type { CardAction, Item } from '../core/types';
 import { api } from './api';
-import { useCopy } from './copy';
 import type { ActDone } from './detail';
-import { DiffView, Lines } from './diff';
+import { CopyPath, DiffView, Lines } from './diff';
 import { atWork, ChangeList } from './files';
 import { t } from './strings';
 
@@ -51,7 +50,6 @@ function UndoKind({ undo }: { undo: 'full' | 'partial' }) {
  */
 export function FolderLine({ item, diff, sizeBelow }: { item: Item; diff: CardDiff | null; sizeBelow?: boolean }) {
   const [open, setOpen] = useState(false);
-  const [copied, copy] = useCopy(3000);
   const changes = diff?.folder?.changes ?? [];
   const size = diff && diffSize(diff.files);
   const below = sizeBelow && !!changes.length;
@@ -85,9 +83,7 @@ export function FolderLine({ item, diff, sizeBelow }: { item: Item; diff: CardDi
       {item.workspace && (
         <>
           {' · '}
-          <button className={copied ? 'link copied' : 'link'} title={item.workspace} onClick={() => copy(item.workspace!)}>
-            {copied ? t.diff.copied : t.diff.copyPath}
-          </button>
+          <CopyPath path={item.workspace} />
         </>
       )}
       {open && <DiffView item={item} onClose={() => setOpen(false)} onRead={() => {}} />}

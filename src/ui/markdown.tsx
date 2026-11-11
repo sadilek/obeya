@@ -4,9 +4,9 @@
 // An asterisk opens emphasis only before a non-space and closes it only after one, so `5 * 3` and
 // a list's `* ` stay as they are; neither may touch a word outside, so `a*b*c` stays too.
 
-import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, type ReactNode, useContext, useRef } from 'react';
 import { CopyIcon } from './cardNumber';
-import { copyOrSelect } from './copy';
+import { useCopied } from './copy';
 import { t } from './strings';
 import { FENCE, HEADING, LIST_ITEM, RULE, TOKEN } from '../core/plain';
 
@@ -364,15 +364,7 @@ export function Body({ md }: { md: string }) {
  */
 function Code({ text }: { text: string }) {
   const pre = useRef<HTMLPreElement>(null);
-  const [done, setDone] = useState<'copied' | 'selected' | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = async () => {
-    const how = await copyOrSelect(text, pre.current!);
-    setDone(how);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setDone(null), how === 'copied' ? 2000 : 4000);
-  };
+  const [done, copy] = useCopied(2000, 4000);
   const label = done === 'copied' ? t.copied : done === 'selected' ? t.talk.selected : t.talk.copy;
   return (
     <div className="p-code-box">
@@ -384,7 +376,7 @@ function Code({ text }: { text: string }) {
         title={t.talk.copy}
         aria-label={label}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => void copy()}
+        onClick={() => void copy(text, pre.current!)}
       >
         {done ? (
           <span>{label}</span>

@@ -1,6 +1,6 @@
 // A button that copies a text says so for a moment after.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * Whether the text was just copied, and `copy`, which copies it as `copyOrSelect` does and says so
@@ -16,6 +16,23 @@ export function useCopy(ms: number): [boolean, (text: string) => void] {
       setTimeout(() => setCopied(false), ms);
     }, console.error);
   return [copied, copy];
+}
+
+/**
+ * What copying a text that an element on the page shows did, for a moment (`copiedMs`, or
+ * `selectedMs` where it could only select the text), and `copy`, which copies it as `copyOrSelect`.
+ */
+export function useCopied(copiedMs: number, selectedMs = copiedMs): ['copied' | 'selected' | null, (text: string, el: HTMLElement) => Promise<void>] {
+  const [done, setDone] = useState<'copied' | 'selected' | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async (text: string, el: HTMLElement) => {
+    const how = await copyOrSelect(text, el);
+    setDone(how);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setDone(null), how === 'copied' ? copiedMs : selectedMs);
+  };
+  return [done, copy];
 }
 
 /** Puts `text` on the clipboard as `copyOrSelect` does, from an element out of sight; whether it did. */
