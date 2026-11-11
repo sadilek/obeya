@@ -56,6 +56,7 @@ import { createHash } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
+import { alive } from './common';
 
 export type Command =
   | { cmd: 'start'; avd?: string; serial?: string; window: boolean; timeout: number }
@@ -312,15 +313,6 @@ async function run(cmd: string[], ms = 20_000): Promise<Ran> {
 }
 
 const sleep = (ms: number) => Bun.sleep(ms);
-
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 /** Polls `check` until it gives a value or `ms` have passed; then a Fail naming what it waited for. */
 async function until<T>(what: string, ms: number, check: () => Promise<T | undefined>, every = 500): Promise<T> {
