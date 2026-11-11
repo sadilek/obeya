@@ -98,8 +98,9 @@ orange of a waiting card, everything that waits for the owner on every canvas: t
 them, and per canvas one for Obeya's answers waiting unread; the app's icon carries the same number
 (see App). The count stands still: it always sits in the same place, so the eye finds it without a
 pulse. A click lists under it "Needs you", the phone's list (see The phone view), built once
-for both: the same entries in the same order. Its head counts what waits on every canvas, as the
-button does; a snoozed card is neither listed nor counted until it comes back (see Snoozing a
+for both: the same entries in the same order. Its head carries no count, the button just above it
+has it; pinned as the sidebar (below), where the button is gone, the head counts what waits on
+every canvas in its stead. A snoozed card is neither listed nor counted until it comes back (see Snoozing a
 card). Each entry is a light row, its title and what it waits for since when, without the waiting
 card's orange frame, set apart from the next by a line, and the card open now is marked in it.
 With several canvases, each canvas in the configuration's order heads what waits on it, in a
@@ -463,6 +464,9 @@ code, a generic one otherwise.
   as a compositor-only scaled layer it did the same. Rejected: dropping the bar's blur or changing
   the overlay instead, which either also ends the gaps; the bar keeps its look and the overlay its
   clock.
+- **The total is counted once on screen** (owner, 2026-11-11): the list opened under the button
+  repeated the button's count in its head, right below it. Docked, the button is gone, so the
+  sidebar's head keeps the total.
 - **A snoozed card leaves "Needs you"** (issue #50, 2026-11-03): the owner put it off, so it
   waits for nobody until it comes back, and listing it under what needs them (uncounted, at the
   end) only made the list longer. On the canvas it still stands, greyed; on the phone it moves to

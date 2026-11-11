@@ -88,7 +88,7 @@ export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
   const titlebar = window.obeyaApp?.platform === 'macos';
   return (
     <aside id="nav" className={['nav-sheet', on && 'on', titlebar && 'titlebar'].filter(Boolean).join(' ')} aria-hidden={!on}>
-      <NavList {...p} titlebar={titlebar} />
+      <NavList {...p} docked titlebar={titlebar} />
     </aside>
   );
 }
@@ -96,9 +96,10 @@ export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
 /**
  * "Needs you" and the canvases: with several, each canvas in the configuration's order heads what
  * waits on it, so a click on it switches there, and its arrow folds it; within a canvas in Tab's order.
- * The head counts what waits on every canvas, each canvas's head what waits on it, as the bar's button does.
+ * Docked as the sidebar, its head counts what waits on every canvas, in the bar's button's stead; under
+ * the button it leaves that to the button just above. Each canvas's head counts what waits on it.
  */
-function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya, titlebar }: ListProps & { titlebar?: boolean }) {
+function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya, docked, titlebar }: ListProps & { docked?: boolean; titlebar?: boolean }) {
   // with one canvas, its name heads the list only where the bar's button with the name is not there
   const several = canvases.length > 1 || pinned;
   const n = forYouTotal(canvases, waiting, underway);
@@ -109,7 +110,7 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
     <>
       <div className="nav-head" {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>
         <h2 {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>{t.phone.forYou}</h2>
-        {n > 0 && (
+        {docked && n > 0 && (
           <span className="waits" title={t.nav.waiting(n)}>
             {n}
           </span>
