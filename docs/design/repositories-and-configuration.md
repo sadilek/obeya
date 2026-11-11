@@ -82,6 +82,15 @@ the worktree is there; so does a repository's restart. When a canvas starts, its
 or moved before it reads from them, since the checkout, the only thing to read meanwhile, may be on a
 card's branch; the server answers meanwhile.
 
+The same holds wherever git is at work in the read tree, the checkout included, by Obeya (pulling a
+merged pull request, landing) or by hand: while git holds the index's lock or stands in a rebase,
+merge, cherry-pick, revert or bisect, the files are no finished state of main. A rebase shows
+`origin`'s files until the local commits are back on top, so a doc deleted only on the local main is
+back for that moment, and a doc added there is gone. Plan docs are read only from a finished state:
+meanwhile the ones read before stand, and they are read again once git is done (looked at every
+100 ms; git still at work after a minute, a rebase stopped on a conflict or a lock left behind, is
+logged).
+
 ### Plan docs
 
 A doc in the repository's plan directory (`planDocs`) is a project when its `## Workstreams` (or
@@ -623,6 +632,11 @@ its status lines in German).
   to do. Rejected: the text only as the conversation's first message.
 - **A plan doc with every workstream ticked ends its project** (2026-10-12, the owner), or finished
   plans kept in a repository stay on the canvas forever; the owner archives it (see Projects end).
+- **Plan docs are not read while git is at work in the read tree** (2026-11-11): a pull with rebase
+  in the checkout showed `origin`'s files for a moment, where a doc deleted only locally was back,
+  and its archived project came back to the canvas for good. Told by what git keeps in its directory
+  meanwhile (the index's lock, a rebase's or merge's state), without git. Rejected: marking only
+  Obeya's own git calls (a pull by hand does the same).
 - **A plan doc that disappears ends its project automatically** (2026-10-01); an explicit
   "Finish" may sit on top later. Rejected: reading old content from git history (fragile).
 - **The configuration is the file `canvases.json`**, edited in the UI or by the Coordinator

@@ -752,8 +752,14 @@ export class CanvasRuntime {
   private planDocs() {
     const home = this.repos[0]?.ref.id;
     const read = this.repos.map((r) => {
-      // while git moves the read tree its files are half the one commit and half the other: the docs read before stand
-      if (!r.read.moving || !r.planDocs) r.planDocs = readPlanDocs(r.read.path, r.adapter);
+      // while git is at work in the read tree (Obeya moving it, a pull or rebase in the checkout) its files are half the one
+      // state and half the other, where a doc gone on main may be back for a moment: the docs read before stand until git is done
+      if (!r.read.busy() || !r.planDocs) {
+        const docs = readPlanDocs(r.read.path, r.adapter);
+        // git began while they were read
+        if (!r.planDocs || !r.read.busy()) r.planDocs = docs;
+      }
+      if (r.read.busy()) r.read.afterGit(() => this.board.docsChanged());
       return { r, ...r.planDocs };
     });
     return {

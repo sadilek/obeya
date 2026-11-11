@@ -208,7 +208,8 @@ the canvas". A doc deleted before its work was done (dropped, or renamed into a 
 its project into the archive at once, for good. Opened from the archive, a project's sheet shows
 read-only the goal and workstreams as the doc last stood, each workstream with its conversation and
 demo; on the canvas, a project whose doc is gone shows its doc as it last stood too. When the file
-comes back, or gets an open workstream, the project returns to its place.
+comes back on a finished state of main (not for the moment a pull or rebase shows another, see Read
+tree), or gets an open workstream, the project returns to its place.
 
 Every project's sheet holds its conversation with its project agent (see Asking in a project's
 sheet), lists its decisions and links the idea or task its plan doc came from (see Deciding).

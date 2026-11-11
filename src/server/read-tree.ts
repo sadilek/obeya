@@ -109,6 +109,24 @@ export function headSeal(repoPath: string): string | null {
   }
 }
 
+/**
+ * What git keeps in a checkout's own git directory while it writes the checkout's files or stands
+ * in the middle of an operation there: the index's lock (a checkout, merge, reset or pull writing
+ * files), a rebase, a merge, cherry-pick or revert stopped on a conflict or running commit after
+ * commit, a bisect.
+ */
+const AT_WORK = ['index.lock', 'rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'sequencer', 'BISECT_START'];
+
+/**
+ * Whether git is at work in the checkout at `path` (`AT_WORK`), told without git: its files are then
+ * no finished state of its branch, but half the one commit and half the other (a rebase's files are
+ * the upstream's until the local commits are put back on top).
+ */
+export function gitAtWork(path: string): boolean {
+  const dirs = gitDirs(path);
+  return !!dirs && AT_WORK.some((f) => existsSync(join(dirs.own, f)));
+}
+
 /** The directory the cards' branches are in, under a repository's branches and `origin`'s. */
 const CARD_REFS = CARD_BRANCH.slice(0, -1);
 
@@ -172,6 +190,8 @@ export class ReadTree {
    * afresh): what is read there meanwhile may be half the one commit and half the other.
    */
   moving = false;
+  /** Who hears once git is done in the read tree (`afterGit`), and the look every so often whether it is. */
+  private gitWait: { then: () => void; since: number; warned: boolean; timer: ReturnType<typeof setInterval> } | null = null;
   private refreshing: Promise<void> | null = null;
   /** The moves of the worktree, one after the other, and how many have not begun yet or run. */
   private moves: Promise<unknown> = Promise.resolve();
@@ -208,6 +228,53 @@ export class ReadTree {
 
   stop() {
     this.stopped = true;
+    this.endGitWait();
+  }
+
+  /**
+   * Whether git is changing the read tree's files now or stands in the middle of an operation there:
+   * Obeya moving the worktree (`moving`), or git at work in the directory read (`gitAtWork`), such as
+   * a pull, rebase or landing in the checkout, by Obeya or by hand. What is read meanwhile may be
+   * half the one state and half the other.
+   */
+  busy(): boolean {
+    return this.moving || gitAtWork(this.path);
+  }
+
+  /**
+   * Calls `then` once git is done in the read tree (`busy`), looked at every 100 ms. Calls while it
+   * waits share the wait, the last one's `then` called. Git still at work after a minute (a rebase
+   * stopped on a conflict, a lock left behind by a git that crashed) is logged once.
+   */
+  afterGit(then: () => void) {
+    if (this.stopped) return;
+    if (this.gitWait) {
+      this.gitWait.then = then;
+      return;
+    }
+    const wait: NonNullable<ReadTree['gitWait']> = {
+      then,
+      since: Date.now(),
+      warned: false,
+      timer: setInterval(() => {
+        if (this.busy()) {
+          if (!wait.warned && Date.now() - wait.since > 60_000) {
+            wait.warned = true;
+            console.warn(`Read tree: git has been at work in ${this.path} for a minute (a rebase or merge stopped on a conflict, or a lock left behind); its plan docs are read again once it is done`);
+          }
+          return;
+        }
+        this.endGitWait();
+        wait.then();
+      }, 100),
+    };
+    wait.timer.unref?.();
+    this.gitWait = wait;
+  }
+
+  private endGitWait() {
+    if (this.gitWait) clearInterval(this.gitWait.timer);
+    this.gitWait = null;
   }
 
   /**

@@ -125,6 +125,39 @@ describe('the read tree', () => {
     expect(existsSync(join(dir, 'home', 'read'))).toBe(false);
   });
 
+  test('is not read while git is at work in the checkout: a doc deleted on the local main and back for the length of a rebase leaves its project archived', async () => {
+    const c = await open('main');
+    const project = () => c.board.snapshot().items.find((i) => i.kind === 'project' && i.title === 'Export');
+    // the project's work done and the doc deleted on the local main, not pushed; the owner archives it
+    commit(checkout, 'docs/plan/export.md', doc('Export', 'W1 W2'), 'done');
+    c.board.docsChanged();
+    expect(project()?.state).toBe('done');
+    git(checkout, 'rm', '--quiet', 'docs/plan/export.md');
+    commit(checkout, 'docs/plan/import.md', doc('Import'), 'export done, import planned');
+    c.board.docsChanged();
+    c.board.archive([project()!.id]);
+    expect(projects(c)).toEqual(['Import']);
+    // a pull request merged on origin, pulled with a rebase that stops right after checking out origin's main
+    push({ 'docs/plan/billing.md': doc('Billing') });
+    git(checkout, 'fetch', '--quiet', 'origin');
+    const rebase = Bun.spawnSync([...['git', '-C', checkout, 'rebase', '--quiet', '-i'], 'origin/main'], {
+      env: { ...process.env, GIT_SEQUENCE_EDITOR: 'f() { printf "break\\n" | cat - "$1" > "$1.tmp" && mv "$1.tmp" "$1"; }; f' },
+      stderr: 'pipe',
+    });
+    expect(rebase.exitCode).toBe(0);
+    // the files are origin's now: the deleted doc is back, the local main's new one is not
+    expect([existsSync(join(checkout, 'docs/plan/export.md')), existsSync(join(checkout, 'docs/plan/import.md'))]).toEqual([true, false]);
+    c.board.docsChanged();
+    expect(projects(c)).toEqual(['Import']);
+    expect(project()).toBeUndefined();
+    // the rebase done, the docs are read again by themselves
+    git(checkout, 'rebase', '--continue');
+    await until(() => projects(c).includes('Billing'));
+    expect(projects(c)).toEqual(['Billing', 'Import']);
+    expect(project()).toBeUndefined();
+    expect(c.board.archived().some((i) => i.title === 'Export')).toBe(true);
+  });
+
   test('takes the local main where it has everything of origin, else origin', async () => {
     const read = join(dir, 'read');
     const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
