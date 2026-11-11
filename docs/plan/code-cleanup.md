@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W9, W13 to W18, W20, W22, W24 and W25 are done; the other workstreams are open. The review, made on
+W1 to W9, W13 to W18, W20 to W22, W24 and W25 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -230,7 +230,7 @@ the workstream named does it for all of them.
   I13, I14; [ui-card](code-cleanup/ui-card.md) G8 (`parts.tsx` by subject), G10 with I3 and
   [ui-panels](code-cleanup/ui-panels.md) H10 (one click-away closer), G11 (first-use flags), G17.
   Storage keys and formats stay as they are.
-- [ ] **W21:** The app shell and the phone. [ui-card](code-cleanup/ui-card.md) G1 (`Canvas` in the
+- [x] **W21:** The app shell and the phone. [ui-card](code-cleanup/ui-card.md) G1 (`Canvas` in the
   six extraction steps the finding names), G9, G12, G13, G21; G3 with
   [ui-panels](code-cleanup/ui-panels.md) H1 (the open card's plumbing shared by desktop and phone);
   H3 (`Phone()` by job), H15, H16, H17. After W20.

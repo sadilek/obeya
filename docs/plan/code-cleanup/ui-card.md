@@ -60,6 +60,12 @@ parts.tsx has become five unrelated modules in one file.
 - Confidence: high that the split is possible along these lines (the sections already carry banners
   and touch each other through a handful of names: `focusRef`, `camRef`, `itemsRef`, `open`,
   `closeCard`, `showAck`, `fail`); I read the whole function, I did not try the extraction.
+- Done by W21 in the six steps: `optimistic.ts` (`useOptimisticItems`), `archived.ts`
+  (`useArchivedCards`, with `namedBy`), `cardHost.ts` (G3), `canvasAddress.ts` (`useCanvasAddress`,
+  which owns the flag for a canvas left as well), `canvasActions.ts` (`useCanvasActions`, G12),
+  `depDraw.tsx` (G9), `marking.tsx` (`useMarking` and `MarkingLayer`) and `useSheetWidths` in
+  `sheetWidth.ts`. `Canvas` is about 1,430 lines now; camera, focus, open and close, the restart
+  memory, voice, pointer, keys and the render stay in it, as the finding planned.
 
 ### G2. `Detail` renders four kinds of card through early returns and some twenty booleans
 - Principle: KISS
@@ -131,6 +137,9 @@ parts.tsx has become five unrelated modules in one file.
   the same pair.
 - Bug fixed: the phone's address follows an open card that moved to another canvas (an effect on the
   snapshots and on Back/Forward, not the notice's `movedTo`); `wish` stays the desktop's only.
+- Done by W21 with H1: `useCardEdits` and `followDone` in `cardHost.ts`. The phone now logs an
+  action's failure that is not a refusal to the console, as the canvas did. The edits are saved
+  before a reload by the hook on both pages, and when the canvas's page leaves for another canvas.
 
 ### G4. A card's diff is read in five places, with three different lists of when to read it again
 - Principle: DRY
@@ -311,6 +320,9 @@ parts.tsx has become five unrelated modules in one file.
 - Risk: medium; the removal with a held "Undo" (1394-1417, pagehide flush 1315-1328) is delicate;
   `deps.test.ts` covers the pure part only.
 - Confidence: high.
+- Done by W21: `depDraw.tsx` (`useDepDrawing`, `ManualEdges`, `ConnectionGhost`, `ConnectionDots`,
+  `ConnectionHint`), `ArrowMarker` in `links.tsx`. The loop's button asks Obeya through `Canvas`,
+  which owns the conversation.
 
 ### G10. The click-away closer is written out three times beside `useMenuClose`
 - Principle: DRY
@@ -365,6 +377,9 @@ parts.tsx has become five unrelated modules in one file.
 - Win: about 40 lines.
 - Risk: low; `keepWorkspace` (1037-1044) and `collapse` (1077-1085) have their own catch and stay.
 - Confidence: high.
+- Done by W21 in `useCanvasActions`: `attempt`, and one `archived` confirmation for card and
+  project. The archive button inside a card's detail stays in `detail.tsx`'s own action protocol
+  (`run` with `ActDone`), which is not this wrapper.
 
 ### G13. Fourteen latest-value refs by hand beside `useLive`
 - Principle: DRY
@@ -386,6 +401,10 @@ parts.tsx has become five unrelated modules in one file.
   into hooks.
 - Risk: low.
 - Confidence: high.
+- Done by W21: `latest.ts` holds `useLatest`, `useStable` and `useLive`; used in `App.tsx`,
+  `phone.tsx`, `composer.tsx`, `shots.tsx`, `voice.tsx`, `menu.ts`, `sortable.ts`, `zoom.ts` and
+  `fitHeight.ts`. The pairs left in `config.tsx`, `setup.tsx`, `archive.tsx` and `detail.tsx` go
+  with W22 and W23, which own those files.
 
 ### G14. What kind a card is, is derived twice with different tests
 - Principle: DRY
@@ -562,6 +581,8 @@ parts.tsx has become five unrelated modules in one file.
 - Confidence: medium; the mutual exclusion is stated in the comments, the `openAddress` path I only
   read, not ran.
 - Bug fixed: `openAddress` closes the search before it opens the archive's list.
+- Done by W21: `drop` (`'archive' | 'search' | null`); `shut` closes one only where it is the one
+  down.
 
 ### G22. A folder's change row is laid out twice
 - Principle: DRY

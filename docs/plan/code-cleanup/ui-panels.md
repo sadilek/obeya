@@ -50,6 +50,9 @@ browser.
 - Confidence: high. Read both sides of every pair listed.
 - Bug fixed: the phone's address follows an open card that moved to another canvas, by an effect of
   its own (`followOpen`), not through the notice handler.
+- Done by W21 with G3: `useCardEdits` and `followDone` in `cardHost.ts`, the notice's line as
+  `showNotice` in `tell.tsx` (it gives the phone the `project` field, which its check of what is in
+  view does not read), and `fieldOrMic` in `draft.ts`.
 
 ### H2. The settings sheets write "load, call, show the error" out by hand about twenty times
 - Principle: DRY
@@ -110,6 +113,12 @@ browser.
   `obeyaRef` feed `addressWith`). Needs the checks with `bun scripts/android-phone.ts` (Back,
   Forward, reload on a card and on its conversation, a tapped push).
 - Confidence: medium. Read the whole function; did not trace every caller of the refs.
+- Done by W21 in `phone.tsx`: `usePhoneSteps` (the history steps, with the address that follows
+  the open card), `useQuiet`, `PhoneCardPage` and `PhoneHome`. `Phone` keeps what both pages share:
+  the snapshots, set aside, edits, voice and confirmations. The list's scroll position is kept as it
+  scrolls, since the list is a component of its own that goes while a card is open. Checked in the
+  headless browser (Back, Forward, reload on a card and on its conversation, the panel's button,
+  dragging it down and up); not in the emulator.
 
 ### H4. `ConfigDialog` keeps the canvases in three parallel arrays
 - Principle: KISS
@@ -359,6 +368,7 @@ browser.
 - Win: a duplicate and a stale comment.
 - Risk: low.
 - Confidence: high. Grepped `when\b` definitions in `src/ui` and `src/core`.
+- Done by W21.
 
 ### H16. The phone's three folded lists are written out three times
 - Principle: DRY
@@ -376,6 +386,7 @@ browser.
 - Win: about 20 lines.
 - Risk: low.
 - Confidence: high.
+- Done by W21: `FoldedList`, the keys kept in `LIST_OPEN`; the local hook is `useOpenInTab`.
 
 ### H17. The panel's way out is state in two components
 - Principle: KISS
@@ -396,6 +407,9 @@ browser.
 - Risk: medium. Animation timing, no tests; check with the emulator (button, drag down, throw, Back
   while sliding).
 - Confidence: medium.
+- Done by W21: `Phone` holds `leaving` (reset as the panel closes) and `leaveTalk(ms)`; `TalkPanel`
+  gets `leaving` and calls `onLeave(ms)` from its drag. The panel stays `talk` from the history
+  steps rather than a three-state value, since Back and Forward set it.
 
 ### H18. `ArchivePill` contains a windowed list
 - Principle: KISS
@@ -509,6 +523,3 @@ browser.
   down on the dim versus a click), on purpose in `config.tsx:321`.
 - `src/ui/archive.tsx:20`, `345`; `src/ui/search.tsx:29`, `40`; `src/ui/voice.tsx:81`, `97`;
   `src/ui/talk.ts:120`; `src/ui/wish.tsx:105` exports only tests use: test seams.
-
-## Bugs noticed in passing
-- `src/ui/phone.tsx:163` a doc comment above nothing (see H15).
