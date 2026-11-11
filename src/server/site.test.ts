@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DemoSite } from '../adapters/types';
 import { MESSAGES } from '../core/messages';
-import { Board } from './board';
+import type { Board } from './board';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
@@ -13,7 +13,7 @@ import type { SharePage, ShareTarget } from './share';
 import { Sharing } from './share';
 import { MANIFEST, NOT_FOUND, parseEnv, repoMark, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
 import { PAGES_HASH } from '../core/page-changes';
-import { FakeRuntime, gitRepo, noForge, removeDir } from './testing';
+import { FakeRuntime, gitRepo, noForge, removeDir, testBoard } from './testing';
 
 let dir: string;
 let home: string;
@@ -819,7 +819,7 @@ describe('sharing to a site', () => {
   let sharing: Sharing;
 
   beforeEach(() => {
-    board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ path: repo });
     sharing = new Sharing({
       board,
       runtime: new FakeRuntime(),

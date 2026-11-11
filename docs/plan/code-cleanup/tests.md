@@ -53,6 +53,13 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   `workers-worktrees.test.ts`) stay as they are. Left for W3, since they drive other `Workers` than
   the fixture's: the helpers of `pr-watcher.test.ts`, `review.test.ts`, `ideas.test.ts`,
   `server.test.ts` and `folder-canvas.test.ts`.
+- Done by W3: the handover moved to `handedOverOn({ board, workers, runtime }, opts)` in `testing.ts`
+  (it identifies the workspace before it commits), and `handedOver` of either fixture is that on
+  the fixture's own board and workers; `pr-watcher.test.ts` and the pushed canvas of
+  `server.test.ts` call it. Left as they are: the review card's helpers in `review.test.ts` (they
+  record findings and pass review results, another protocol), the prototype's one-line `handOver`
+  in `ideas.test.ts`, and the folder canvas's `handed` (no git, it writes through the agent's
+  tools).
 
 ### T2. The workers fixture cannot be told its adapter: 27 "remove it and set it up again" calls, about 85 tests build everything twice
 - Principle: KISS (and plain waste)
@@ -128,6 +135,14 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   blocks read, bodies sampled).
 - Bug fixed (W1 of the bug plan): `revisions.test.ts`, `answers.test.ts` and `snooze.test.ts`
   await `freed()` of the canvas's workers before removing the directory, as `ideas.test.ts` does.
+- Done by W3: `src/server/canvas-fixture.ts` with `eachTest({ files?, repo?, deps? })`, `open`,
+  `restart` (Obeya started anew), `start` (another canvas beside it, shut down after the test too),
+  `board()`, `item(id)`, `workers()`, `settle()`, `say(…)` and `handedOver`. ideas, revisions,
+  answers, snooze, `server.test.ts`, `remote.test.ts` and `tag-proposal.test.ts` use it.
+  `isCoordinator` was gone already (`withTool('look_up')`). Left as they are: `folder-canvas.test.ts`
+  (a folder without git), `read-tree.test.ts` (a checkout cloned from an origin, started per test),
+  `config.test.ts` (one describe with a canvas among tests of the configuration) and `commands.test.ts`
+  (a `Commander` on a bare board, no canvas).
 
 ### T4. `canvas.test.ts` starts a two-repository canvas before every test, and 51 of its 89 tests start their own instead
 - Principle: KISS (and plain waste)
@@ -208,6 +223,12 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Win: about 50 long lines shortened; the constructor's shape known in one place.
 - Risk: low.
 - Confidence: high; rg counts, the setup blocks of twelve of the files read.
+- Done by W3: `testBoard` and `primedClones(store, repo, dir, { n?, source? })` in `testing.ts`;
+  every board on the test canvas literal goes through `testBoard`, the clone triple through
+  `primedClones` where it is that triple (the workers fixture, `review.test.ts`,
+  `pr-watcher.test.ts`). Boards on other canvases (`board.test.ts`, several repositories, other
+  ids) and clones set up another way (from an origin, a second clone, `coordinator.test.ts`'s pool)
+  keep their own lines.
 
 ### T7. `setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: … }))` 35 times to change one option
 - Principle: DRY

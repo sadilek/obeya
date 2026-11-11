@@ -9,12 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
-import type { Item } from '../core/types';
 import type { PlanDoc } from '../core/plan-doc';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
 import { ReadTree } from './read-tree';
-import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, removeDir } from './testing';
+import { FakeRuntime, gitClone, gitRepo, handedOverOn, identify, primedClones, removeDir, testBoard } from './testing';
 import { type WorkerOptions, Workers } from './workers';
 import { Workspaces } from './workspaces';
 
@@ -76,15 +75,13 @@ export async function setup(adapter: RepoAdapter = defaultAdapter, withOrigin = 
   const holds = (_repo: string, commit: string) => read.holds(commit, () => board.docsChanged());
   language = 'de';
   conversation = undefined;
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }), undefined, holds, () => language, () => conversation ?? language);
-  const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
+  board = testBoard({ store, path: main, docs: () => docs, holds, language: () => language, conversation: () => conversation ?? language });
+  const clones = adapter.workspaces === 'clones';
+  const workspaces = clones
+    ? await primedClones(store, main, dir, { source: withOrigin ? origin : main })
+    : new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
-  if (adapter.workspaces === 'clones') {
-    // the clone ensureClones would make, without git's clone (`gitClone`)
-    gitClone(withOrigin ? origin : main, join(dir, 'ws', '1'));
-    await workspaces.ensureClones(withOrigin ? origin : main, 1);
-    for (const w of workspaces.list()) identify(w.path);
-  }
+  if (clones) for (const w of workspaces.list()) identify(w.path);
   runtime = new FakeRuntime();
   merged = [];
   base = {
@@ -125,28 +122,8 @@ async function tearDown() {
 
 export const manual = () => board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
 
-/**
- * A card started and handed over as a worker hands over: with `commit` (a file name) a commit of
- * that file in its workspace, `ready_for_review` with `summary` and `demo`, and with `idle` the end
- * of the worker's turn. The card is a new one titled `title`, or `card`.
- */
-export async function handedOver({
-  card,
-  title = 'Zählerstände exportieren',
-  commit: file,
-  summary = 'S',
-  demo = artifact() as object,
-  idle = true,
-}: { card?: Item; title?: string; commit?: string; summary?: string; demo?: object; idle?: boolean } = {}) {
-  card ??= board.create({ title, x: 0, y: 0 });
-  await workers.start(card.id);
-  const session = runtime.last;
-  const workspace = board.row(card.id).workspace!;
-  if (file) commit(workspace, file);
-  await session.call('ready_for_review', { summary, demo });
-  if (idle) session.emit({ type: 'idle' });
-  return { card, session, workspace };
-}
+/** A card started and handed over on the setup's board, as `handedOverOn` has it. */
+export const handedOver = (o: Parameters<typeof handedOverOn>[1] = {}) => handedOverOn({ board, workers, runtime }, o);
 
 export const state = (id: string) => {
   const i = board.item(id)!;

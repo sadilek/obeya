@@ -9,14 +9,14 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { generic } from '../adapters/generic';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
 import { githubToken, HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
 import { claudeModels } from './harnesses';
 import { type AgentEvent, sdkRuntime } from './runtime';
-import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
+import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { git, gitAsync, HERE, RECHECK_MS, Workspaces } from './workspaces';
 
@@ -232,7 +232,7 @@ describe('clones on a host', () => {
     origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ store, path: join(dir, 'main') });
     spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
   });
 
@@ -520,7 +520,7 @@ describe('a worker on a host', () => {
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: join(dir, 'main') });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toBeNull();
     const runtime = new FakeRuntime();
@@ -580,7 +580,7 @@ describe('a worker on a host', () => {
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: join(dir, 'main') });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toBeNull();
     const runtime = new FakeRuntime();
@@ -624,7 +624,7 @@ describe('the app of a card on a host', () => {
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ store, path: join(dir, 'main') });
     spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toBeNull();
     runtime = new FakeRuntime();

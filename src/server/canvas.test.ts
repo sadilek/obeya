@@ -16,35 +16,46 @@ import { OBEYA_PLUGIN } from './demo';
 import { STALL_MS } from './stalls';
 
 let dir: string;
-const dirs: string[] = [];
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 let store: Store;
-
-/** A fresh `dir`; tests that need an empty one take another, and all of them go after the test. */
-function fresh() {
-  dirs.push((dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'))));
-}
 
 /** A repository with one plan doc (same path in both). */
 function repo(name: string, title: string) {
   return gitRepo(join(dir, name), { 'docs/plan/plan.md': `# ${title}\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Erster Schritt.\n` });
 }
 
-beforeEach(async () => {
-  fresh();
+/** The canvases and sets of them the test started: each is shut down after it. */
+const running = new Set<CanvasRuntime | Canvases>();
+const track = <T extends CanvasRuntime | Canvases>(c: T) => (running.add(c), c);
+const start = async (...args: Parameters<typeof CanvasRuntime.start>) => track(await CanvasRuntime.start(...args));
+const startSet = async (...args: Parameters<typeof Canvases.start>) => track(await Canvases.start(...args));
+/** Shuts `c` down (Obeya stopping) and waits for git freeing its workspaces, so their directory can go. */
+async function stop(c: CanvasRuntime | Canvases) {
+  running.delete(c);
+  c.shutdown();
+  await Promise.all((c instanceof Canvases ? c.all() : [c]).flatMap((x) => x.repos).map((r) => r.workers.freed()));
+}
+const stopAll = () => Promise.all([...running].map(stop));
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
+  runtime = new FakeRuntime();
+});
+afterEach(async () => {
+  await stopAll();
+  await removeDir(dir);
+});
+
+/** The canvas "Produkt" on the repositories web, its home, and api, with a plan doc each. */
+async function produkt() {
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
-  runtime = new FakeRuntime();
-  canvas = await CanvasRuntime.start(
+  canvas = await start(
     { name: 'Produkt', repos: [{ path: web, clones: 1, settings: { land: 'pr' } }, { path: api, clones: 1, settings: { land: 'pr' } }] },
     { store: (store = new Store(':memory:')), home: dir, runtime, forge: noForge },
   );
-});
-afterEach(async () => {
-  canvas.shutdown();
-  for (const d of dirs.splice(0)) await removeDir(d);
-});
+}
 
 // the timers' work done, and the workers it started at work in their workspaces
 const settle = async () => {
@@ -69,6 +80,8 @@ function refused(cardId: string, a: CardAction): string | undefined {
 }
 
 describe('a canvas with several repositories', () => {
+  beforeEach(produkt);
+
   test('names itself, lists its repositories, and shows the plan docs of all of them', () => {
     expect(canvas.board.canvas).toMatchObject({ id: 'produkt', name: 'Produkt', repos: [{ id: 'web' }, { id: 'api' }] });
     const projects = canvas.board.snapshot().items.filter((i) => i.kind === 'project');
@@ -130,18 +143,18 @@ describe('a canvas with several repositories', () => {
   });
 
   test("a stopped workstream of a repository after the first keeps its clone when Obeya starts again", async () => {
-    canvas.shutdown();
+    await stop(canvas);
     const config = { name: 'Produkt', repos: [{ path: join(dir, 'web'), clones: 1, settings: { land: 'main' as const } }, { path: join(dir, 'api'), clones: 1, settings: { land: 'main' as const } }] };
     // watching the first repository reads the docs before the second one is on the canvas
-    const start = () => CanvasRuntime.start(config, { store, home: dir, runtime, forge: noForge, watch: true });
-    canvas = await start();
+    const open = () => start(config, { store, home: dir, runtime, forge: noForge, watch: true });
+    canvas = await open();
     const w = canvas.board.snapshot().items.find((i) => i.label === 'W1' && i.repo === 'api')!;
     await canvas.repoOf(w.id).workers.start(w.id);
     const clone = canvas.board.row(w.id).workspace!;
     commit(clone, 'x.ts', 'export {}\n', 'X');
     await canvas.repoOf(w.id).workers.stop(w.id);
-    canvas.shutdown();
-    canvas = await start();
+    await stop(canvas);
+    canvas = await open();
     expect(canvas.repoOf(w.id).workspaces.leasedBy(w.id)).toBe(clone);
     expect(canvas.board.row(w.id).workspace).toBe(clone);
   });
@@ -341,26 +354,21 @@ describe('a canvas with several repositories', () => {
 });
 
 test('the home repository stays home when the configuration lists the repositories in another order', async () => {
-  canvas.shutdown();
-  fresh();
   const store = new Store(':memory:');
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
   const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
-  const first = await CanvasRuntime.start({ name: 'P', repos: [{ path: web }, { path: api }] }, deps);
+  const first = await start({ name: 'P', repos: [{ path: web }, { path: api }] }, deps);
   const card = first.board.create({ title: 'Home-Karte', x: 0, y: 0 });
-  first.shutdown();
-  const again = await CanvasRuntime.start({ name: 'P', repos: [{ path: api }, { path: web }] }, deps);
+  await stop(first);
+  const again = await start({ name: 'P', repos: [{ path: api }, { path: web }] }, deps);
   expect(again.board.canvas.repos.map((r) => r.id)).toEqual(['web', 'api']);
   expect(again.board.item(card.id)!.repo).toBe('web');
-  again.shutdown();
+  await stop(again);
   expect(() => CanvasRuntime.start({ name: 'P', repos: [{ path: api }] }, deps)).toThrow('home repository "web" is not configured');
-  canvas = await CanvasRuntime.start({ name: 'Q', repos: [{ path: web }] }, deps);
 });
 
 test('canvases start, take a new configuration and restart a repository without the server waiting for git', async () => {
-  canvas.shutdown();
-  fresh();
   const web = repo('web', 'Web');
   // a repository with an origin on a server (named after it), its read tree a worktree, clones to make and one listed
   const upstream = repo('shop.git', 'Shop');
@@ -374,7 +382,7 @@ test('canvases start, take a new configuration and restart a repository without 
   const api = repo('api', 'API');
   const shopConfig = (clones: number) => ({ path: shop, clones, workspaces: [listed], settings: { land: 'pr' as const } });
   const synced = syncGitCalls();
-  const set = await Canvases.start(
+  const set = await startSet(
     [
       { name: 'Produkt', repos: [{ path: web }, shopConfig(1)] },
       { name: 'Docs', repos: [{ path: docs }] },
@@ -400,20 +408,19 @@ test('canvases start, take a new configuration and restart a repository without 
   await until(() => produkt.repos[1]!.workspaces.list().length === 3);
   expect(set.get('docs')!.board.canvas.repos.map((r) => r.id)).toEqual(['docs', 'api']);
   expect(synced.stop()).toEqual([]);
-  set.shutdown();
-  canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: join(dir, 'again'), runtime: new FakeRuntime(), forge: noForge });
 });
 
 test('a canvas starting with a workstream whose work landed while its box stays open plans it again without the server waiting for git', async () => {
+  await produkt();
   const web = join(dir, 'web');
   const w1 = canvas.board.snapshot().items.find((i) => i.label === 'W1' && i.repo === 'web')!;
-  canvas.shutdown();
+  await stop(canvas);
   // its work on main, which the read tree (a worktree, for work that goes out as pull requests) is on
   identify(web);
   const head = commit(web, 'export.ts', 'export {}\n', 'Export');
   store.update(w1.id, { state: 'live', shipped: JSON.stringify({ commit: head }) });
   const synced = syncGitCalls();
-  canvas = await CanvasRuntime.start(
+  canvas = await start(
     { name: 'Produkt', repos: [{ path: web, clones: 1, settings: { land: 'pr' } }, { path: join(dir, 'api'), clones: 1, settings: { land: 'pr' } }] },
     { store, home: dir, runtime, forge: noForge },
   );
@@ -423,14 +430,12 @@ test('a canvas starting with a workstream whose work landed while its box stays 
 });
 
 test('a repository whose clones cannot be made does not run: another one leaves its canvas, the home one keeps the canvas from starting', async () => {
-  canvas.shutdown();
-  fresh();
   const web = repo('web', 'Web');
   const shop = repo('shop', 'Shop');
   // its origin is gone (and names it): the clones of work that goes out as pull requests come from there
   git(shop, 'remote', 'add', 'origin', join(dir, 'gone.git'));
   const errors = quiet();
-  const set = await Canvases.start(
+  const set = await startSet(
     [
       { name: 'Web', repos: [{ path: web }, { path: shop, clones: 1, settings: { land: 'pr' } }] },
       { name: 'Shop', repos: [{ path: shop, clones: 1, settings: { land: 'pr' } }] },
@@ -445,38 +450,32 @@ test('a repository whose clones cannot be made does not run: another one leaves 
     { canvas: 'web', repo: 'gone', detail: expect.stringContaining('git clone') },
   ]);
   expect(errors.lines.join('\n')).toContain('its clones cannot be made');
-  set.shutdown();
-  canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: join(dir, 'again'), runtime: new FakeRuntime(), forge: noForge });
 });
 
 test("a canvas without a name is named after its repository; a canvas that does not start leaves the others running", async () => {
-  canvas.shutdown();
   const store = new Store(':memory:');
   const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
   const shop = gitRepo(join(dir, 'shop'), { 'docs/plan/plan.md': '# Laden\n\n## Goal\n\nG.\n' });
+  const web = repo('web', 'Web');
   const errors: string[] = [];
   const error = console.error;
   console.error = (line: string) => errors.push(line);
   try {
-    const started = await startCanvases([{ repos: [{ path: shop }] }, { name: 'Weg', repos: [{ path: join(dir, 'nowhere') }] }, { name: 'Web', repos: [{ path: join(dir, 'web') }] }], deps);
+    const started = (await startCanvases([{ repos: [{ path: shop }] }, { name: 'Weg', repos: [{ path: join(dir, 'nowhere') }] }, { name: 'Web', repos: [{ path: web }] }], deps)).map(track);
     expect(started.map((c) => [c.id, c.board.canvas.name])).toEqual([
       ['shop', 'shop'],
       ['web', 'Web'],
     ]);
-    for (const c of started) c.shutdown();
   } finally {
     console.error = error;
   }
   expect(errors).toEqual([expect.stringMatching(/^Obeya: the canvas Weg does not start, left out: .*nowhere is not a git repository$/)]);
-  canvas = await CanvasRuntime.start({ name: 'Q', repos: [{ path: join(dir, 'web') }] }, deps);
 });
 
 test("the cards' workers run on their own runtime when one is given (a scratch Obeya's idle workers)", async () => {
-  fresh();
   const web = repo('web', 'Web');
   const workers = new FakeRuntime();
-  canvas.shutdown();
-  canvas = await CanvasRuntime.start({ repos: [{ path: web, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
+  canvas = await start({ repos: [{ path: web, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
   const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
   canvas.act(a.id, { action: 'start' });
   await settle();
@@ -487,12 +486,10 @@ test("the cards' workers run on their own runtime when one is given (a scratch O
 
 describe('where the settings do not say how work lands', () => {
   test('a repository without a remote gets its approved work on its main branch', async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'));
     git(shop, 'branch', '-m', 'master');
     const workers = new FakeRuntime();
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
+    canvas = await start({ repos: [{ path: shop, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
     expect(canvas.repos[0]!.adapter.land).toBe('main');
     expect(canvas.board.snapshot().canvas.repos[0]!.pullRequests).toBeUndefined();
     const card = canvas.board.create({ title: 'Readme', x: 0, y: 0 });
@@ -510,11 +507,9 @@ describe('where the settings do not say how work lands', () => {
   });
 
   test('a repository whose origin is on GitHub goes on through pull requests', async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'));
     git(shop, 'remote', 'add', 'origin', 'git@github.com:acme/shop.git');
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
     expect(canvas.repos[0]!.adapter.land).toBe('pr');
     expect(canvas.board.snapshot().canvas.repos[0]!.pullRequests).toBe(true);
   });
@@ -522,12 +517,10 @@ describe('where the settings do not say how work lands', () => {
 
 describe('many landings and agent starts at once', () => {
   test("the server waits for git in none of them, however slow git is: no stall", async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', '.obeya/settings.json': '{ "land": "main" }\n', '.claude/settings.json': '{}\n' });
     identify(shop);
     const workers = new FakeRuntime();
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
     const w = canvas.repos[0]!.workers;
     const cards = ['A', 'B', 'C', 'D', 'E', 'F'].map((title) => canvas.board.create({ title, x: 0, y: 0 }));
     const sessionOf = (id: string) => workers.sessions.find((s) => s.spec.cwd === canvas.board.row(id).workspace);
@@ -576,13 +569,11 @@ describe('many landings and agent starts at once', () => {
 
 describe("a repository's settings for this machine", () => {
   test('apply without a restart: landing switched from pull requests to main lands the next approval on main', async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'));
     git(shop, 'remote', 'add', 'origin', 'git@github.com:acme/shop.git');
     let settings: RepoSettings | undefined;
     const workers = new FakeRuntime();
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge, settings: () => settings });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge, settings: () => settings });
     expect(canvas.board.snapshot().canvas.repos[0]!.pullRequests).toBe(true);
     const card = canvas.board.create({ title: 'Readme', x: 0, y: 0 });
     await canvas.repos[0]!.workers.start(card.id);
@@ -605,15 +596,13 @@ describe("a repository's settings for this machine", () => {
   });
 
   test('the main branch set takes the place of the one detected: cards start from it', async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'));
     identify(shop);
     git(shop, 'checkout', '--quiet', '-b', 'release');
     commit(shop, 'RELEASE.md', 'r\n', 'Release');
     git(shop, 'checkout', '--quiet', 'main');
     let settings: RepoSettings | undefined = { branch: 'release' };
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, settings: () => settings });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, settings: () => settings });
     expect(canvas.board.snapshot().canvas.repos[0]!.branch).toBe('release');
     const card = canvas.board.create({ title: 'A', x: 0, y: 0 });
     await canvas.repos[0]!.workers.start(card.id);
@@ -626,13 +615,11 @@ describe("a repository's settings for this machine", () => {
 
 describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   test("a fresh clone runs with them; this machine's go before them; a new version on the default branch applies without a restart", async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', '.obeya/settings.json': '{ "land": "main", "checks": ["bun test"], "planDocs": { "dir": "plans", "exclude": [] } }\n' });
     const clone = join(dir, 'clone');
     gitClone(shop, clone);
     let settings: RepoSettings | undefined;
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: clone }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, settings: () => settings });
+    canvas = await start({ repos: [{ path: clone }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, settings: () => settings });
     const adapter = canvas.repos[0]!.adapter;
     // detection alone would send work from a clone with a remote out as pull requests only on GitHub; the file says main
     expect([adapter.land, adapter.checks, adapter.planDocs.dir]).toEqual(['main', ['bun test'], 'plans']);
@@ -651,11 +638,9 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test('a change on the default branch to what the problems are read from tells the page to read them again', async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', '.obeya/settings.json': '{ "land": "main" }\n', '.obeya/adapter/index.ts': 'export default {};\n' });
     identify(shop);
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
     const rev = () => canvas.board.snapshot().canvas.repos[0]!.configRev;
     await canvas.settingsChanged();
     expect(rev()).toBeUndefined();
@@ -674,19 +659,17 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test("where a repository has none, Obeya proposes the card that fills them in, once; the dialog's button takes it on as the owner's card", async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n' });
     const done = gitRepo(join(dir, 'done'), { 'README.md': 'Done\n', '.obeya/settings.json': '{ "checks": ["bun test"] }\n' });
-    canvas.shutdown();
     const store = new Store(':memory:');
-    const start = () => CanvasRuntime.start({ repos: [{ path: shop }, { path: done }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
-    canvas = await start();
+    const open = () => start({ repos: [{ path: shop }, { path: done }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
+    canvas = await open();
     const setup = () => canvas.board.snapshot().items.filter((i) => i.title.endsWith('einrichten'));
     expect(setup()).toMatchObject([{ state: 'proposal', title: 'Obeya für shop einrichten', repo: 'shop', proposal: { setup: true, reason: expect.stringContaining('shop') } }]);
     const id = setup()[0]!.id;
     // a restart proposes no second one
-    canvas.shutdown();
-    canvas = await start();
+    await stop(canvas);
+    canvas = await open();
     expect(setup().map((i) => i.id)).toEqual([id]);
     // the dialog's button takes it on, planned, as if it had made it
     const card = canvas.adapterSetupCard('shop');
@@ -697,39 +680,35 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test('dismissed, the proposal does not come back; still open, it goes once the repository has settings', async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n' });
     const web = gitRepo(join(dir, 'web'), { 'README.md': 'Web\n' });
     identify(web);
-    canvas.shutdown();
     const store = new Store(':memory:');
-    const start = () => CanvasRuntime.start({ repos: [{ path: shop }, { path: web }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
-    canvas = await start();
+    const open = () => start({ repos: [{ path: shop }, { path: web }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
+    canvas = await open();
     const setup = (repo: string) => canvas.board.snapshot().items.find((i) => i.repo === repo && i.proposal?.setup);
     canvas.act(setup('shop')!.id, { action: 'dismiss' });
-    canvas.shutdown();
-    canvas = await start();
+    await stop(canvas);
+    canvas = await open();
     expect(setup('shop')).toBeUndefined();
     // settings committed on the main branch take the open one away
     expect(setup('web')).toBeDefined();
     commit(web, '.obeya/settings.json', '{ "checks": ["bun test"] }\n', 'Settings');
     await canvas.settingsChanged();
     expect(setup('web')).toBeUndefined();
-    canvas.shutdown();
-    canvas = await start();
+    await stop(canvas);
+    canvas = await open();
     expect(setup('web')).toBeUndefined();
   });
 
   test('once a page of a repository without a theme is online, Obeya proposes the card that writes one, once; a theme takes it away', async () => {
-    fresh();
     const settings = { '.obeya/settings.json': '{ "checks": ["bun test"] }\n' };
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', ...settings });
     const web = gitRepo(join(dir, 'web'), { 'README.md': 'Web\n', ...settings });
     const docs = gitRepo(join(dir, 'docs'), { 'README.md': 'Docs\n', ...settings, '.obeya/theme.css': ':root { --accent: #c0392b; }\n' });
-    canvas.shutdown();
     const store = new Store(':memory:');
-    const start = () => CanvasRuntime.start({ repos: [{ path: shop }, { path: web }, { path: docs }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
-    canvas = await start();
+    const open = () => start({ repos: [{ path: shop }, { path: web }, { path: docs }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
+    canvas = await open();
     const proposed = (repo: string) => canvas.board.snapshot().items.find((i) => i.repo === repo && i.proposal?.setup);
     await settle();
     // nothing shared yet
@@ -738,8 +717,8 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
       const card = canvas.board.create({ title: 'Checkout', x: 0, y: 0, repo });
       canvas.board.work(card.id, { state: 'done', share: JSON.stringify({ slug: 'checkout', url: `https://demos.example/${repo}/checkout/` }) });
     }
-    canvas.shutdown();
-    canvas = await start();
+    await stop(canvas);
+    canvas = await open();
     await until(() => !!proposed('shop') && !!proposed('web'));
     expect(proposed('shop')).toMatchObject({ state: 'proposal', title: 'Demo-Seiten von shop im Look des Projekts', proposal: { reason: expect.stringContaining('shop') } });
     expect(proposed('shop')!.body).toContain('obeya:theme');
@@ -748,8 +727,8 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     // dismissed, it does not come back
     const id = proposed('shop')!.id;
     canvas.act(id, { action: 'dismiss' });
-    canvas.shutdown();
-    canvas = await start();
+    await stop(canvas);
+    canvas = await open();
     await settle();
     expect(proposed('shop')).toBeUndefined();
     // still open, it goes once a theme is on the main branch
@@ -757,18 +736,16 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     commit(web, '.obeya/theme.css', ':root { --accent: #2e7d32; }\n', 'Theme');
     await canvas.settingsChanged();
     await until(() => !proposed('web'));
-    canvas.shutdown();
-    canvas = await start();
+    await stop(canvas);
+    canvas = await open();
     await settle();
     expect(proposed('web')).toBeUndefined();
   });
 
   test("a demo site set in them is shared on once it is complete, without a restart", async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n' });
     let settings: RepoSettings | undefined;
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, settings: () => settings });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, settings: () => settings });
     expect(canvas.repos[0]!.site).toBeNull();
     const site = { title: 'Demos', url: 'https://demos.example.dev', deploy: '' };
     settings = { demo: { site } };
@@ -781,7 +758,6 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test("commands new in them wait for the owner's trust: no stop, no demo site, the repository's agents without its Claude Code settings", async () => {
-    fresh();
     const site = { title: 'Demos', url: 'https://demos.example.dev', deploy: 'git {dir}' };
     const shop = gitRepo(join(dir, 'shop'), {
       'README.md': 'Shop\n',
@@ -790,8 +766,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
       '.claude/settings.json': JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'touch ran' }] }] } }),
     });
     const store = new Store(':memory:');
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store, home: dir, runtime, forge: noForge });
+    canvas = await start({ repos: [{ path: shop }] }, { store, home: dir, runtime, forge: noForge });
     const r = canvas.repos[0]!;
     expect(r.adapter.app).toEqual({ run: 'bun dev' });
     expect(r.site).toBeNull();
@@ -828,6 +803,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test("a repository's agents go by its own Claude Code configuration, not by the home repository's whose workspaces hold its own", async () => {
+    await produkt();
     const api = join(dir, 'api');
     commit(api, '.claude/settings.json', '{ "hooks": {} }\n', 'Claude settings');
     await canvas.settingsChanged();
@@ -841,12 +817,10 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test("where its workers work changed in it: its agents restart with it once they paused, Obeya runs on", async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', '.obeya/settings.json': '{ "land": "main" }\n' });
     identify(shop);
     const workers = new FakeRuntime();
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge, restartIntervalMs: 5 });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge, restartIntervalMs: 5 });
     const card = canvas.board.create({ title: 'A', x: 0, y: 0 });
     await canvas.repos[0]!.workers.start(card.id);
     const session = workers.last;
@@ -873,12 +847,10 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test("what a worker's session costs counts to its card and its canvas; the worker hears nothing of it", async () => {
-    fresh();
     const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', '.obeya/settings.json': '{ "land": "main" }\n' });
     identify(shop);
     const workers = new FakeRuntime();
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
+    canvas = await start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
     const card = canvas.board.create({ title: 'A', x: 0, y: 0 });
     await canvas.repos[0]!.workers.start(card.id);
     const session = workers.last;
@@ -899,11 +871,12 @@ describe('the configuration changed while the canvas runs', async () => {
   let web: string;
   let api: string;
   let workers: FakeRuntime;
+  /** Obeya started anew, as `repos` configure the canvas. */
   const open = async (repos: RepoConfig[]) => {
-    canvas.shutdown();
+    await stopAll();
     workers = new FakeRuntime();
     const saved = () => repos;
-    canvas = await CanvasRuntime.start(
+    canvas = await start(
       { name: 'Produkt', repos },
       { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge, restartIntervalMs: 5, settings: (path) => saved().find((r) => r.path === path)?.settings },
     );
@@ -918,8 +891,8 @@ describe('the configuration changed while the canvas runs', async () => {
     return { card, session: workers.last };
   };
   beforeEach(() => {
-    web = join(dir, 'web');
-    api = join(dir, 'api');
+    web = repo('web', 'Web');
+    api = repo('api', 'API');
   });
 
   test('a new name and a repository new on the canvas apply at once; the workers at work go on', async () => {
@@ -963,6 +936,8 @@ describe('the configuration changed while the canvas runs', async () => {
   test('clones the configuration no longer names leave the pool: a free one at once, one a card holds once it gives it back', async () => {
     const own = join(dir, 'x-own');
     gitClone(web, own);
+    // Obeya ran with it before and made its clones then: they are in the pool from the start, beside the listed one, and the card takes the first
+    await open([{ path: web, settings: { land: 'pr' }, clones: 2, workspaces: [own] }]);
     await open([{ path: web, settings: { land: 'pr' }, clones: 2, workspaces: [own] }]);
     expect(canvas.repos[0]!.workspaces.list()).toHaveLength(3);
     const w = await atWork('web', 'W');
@@ -1299,11 +1274,9 @@ describe('the configuration changed while the canvas runs', async () => {
 
 describe('the canvases Obeya serves', () => {
   test("a canvas whose home repository does not start is left out, another repository that does not start leaves its canvas running; both are listed and start once they can", async () => {
-    fresh();
     const web = repo('web', 'Web');
     const api = repo('api', 'API');
     const shop = repo('shop', 'Shop');
-    canvas.shutdown();
     // a clone listed for web and one listed for shop that belong to api: their workspaces refuse them
     const forWeb = join(dir, 'x-web');
     const forShop = join(dir, 'x-shop');
@@ -1315,7 +1288,7 @@ describe('the canvases Obeya serves', () => {
     ];
     const store = new Store(':memory:');
     const errors = quiet();
-    const set = await Canvases.start(configs, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 });
+    const set = await startSet(configs, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 });
     errors.restore();
     expect(set.all().map((c) => c.id)).toEqual(['api']);
     expect(set.get('api')!.board.canvas.repos.map((r) => r.id)).toEqual(['api']);
@@ -1344,16 +1317,12 @@ describe('the canvases Obeya serves', () => {
     expect(set.failures()).toEqual([{ canvas: 'web', detail: expect.stringContaining(`${forWeb} is not a clone of`) }]);
     expect(again.lines.join('\n')).toContain('the home repository of the canvas web does not start; the canvas stopped');
     expect(store.cards('web').map((c) => c.id)).toContain(keep.id);
-    set.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: api, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   });
 
   test('a canvas whose home repository leaves because its clones cannot be made stops, and nothing of it reads its repositories after', async () => {
-    fresh();
     const web = repo('web', 'Web');
-    canvas.shutdown();
     const config = { name: 'Web', repos: [{ path: web, settings: { land: 'pr' as const, workspaces: 'clones' as const } }] };
-    const set = await Canvases.start([config], { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 });
+    const set = await startSet([config], { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 });
     // where its clone goes, a link to nowhere: git makes no folder there. A folder's modes or access
     // list did not stop git for the administrator GitHub's Windows runners run as, nor would they root
     const clones = join(dir, 'workspaces', 'web');
@@ -1363,25 +1332,21 @@ describe('the canvases Obeya serves', () => {
     try {
       await set.apply([{ ...config, repos: [{ ...config.repos[0]!, clones: 1 }] }], ['web']);
       await until(() => set.all().length === 0);
-      await settle();
+      await new Promise((r) => setTimeout(r, 5));
     } finally {
       errors.restore();
     }
     expect(set.failures()).toEqual([{ canvas: 'web', detail: expect.any(String) }]);
     expect(errors.lines.join('\n')).toContain('its clones cannot be made');
     expect(errors.lines.filter((l) => !l.includes('its clones cannot be made'))).toEqual([]);
-    set.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: join(dir, 'again'), runtime: new FakeRuntime(), forge: noForge });
   });
 
   test('a canvas new in the configuration starts at once, one moved in it moves in the list, one no longer in it stops, its cards kept', async () => {
-    fresh();
     const web = repo('web', 'Web');
     const api = repo('api', 'API');
-    canvas.shutdown();
     const store = new Store(':memory:');
     const started: string[] = [];
-    const set = await Canvases.start([{ name: 'Web', repos: [{ path: web, settings: { land: 'pr' } }] }], { store, home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 }, (c) => started.push(c.id));
+    const set = await startSet([{ name: 'Web', repos: [{ path: web, settings: { land: 'pr' } }] }], { store, home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 }, (c) => started.push(c.id));
     let changes = 0;
     set.onChange(() => changes++);
     const keep = set.get('web')!.board.create({ title: 'Bleibt', x: 0, y: 0 });
@@ -1411,28 +1376,21 @@ describe('the canvases Obeya serves', () => {
     expect(set.all().map((c) => c.id)).toEqual(['api']);
     expect(changes).toBeGreaterThan(1);
     expect(store.cards('web').map((c) => c.id)).toContain(keep.id);
-    set.shutdown();
-    // the canvas variable the other tests shut down after them
-    canvas = await CanvasRuntime.start({ repos: [{ path: web, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   });
 });
 
 test('a clone registered for a repository must be one of it', async () => {
-  canvas.shutdown();
-  fresh();
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
   gitClone(api, join(dir, 'api-clone'));
   const deps = { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge };
   expect(() => CanvasRuntime.start({ repos: [{ path: web, workspaces: [join(dir, 'api-clone')] }] }, deps)).toThrow('is not a clone of');
   // the repository itself counts too, though it has no origin (where work lands on its main, it stays out of the pool)
-  canvas = await CanvasRuntime.start({ repos: [{ path: api, settings: { land: 'pr' }, workspaces: [api, join(dir, 'api-clone')] }] }, deps);
+  canvas = await start({ repos: [{ path: api, settings: { land: 'pr' }, workspaces: [api, join(dir, 'api-clone')] }] }, deps);
   expect(canvas.repos[0]!.workspaces.list()).toHaveLength(2);
 });
 
 test('clones of the repository count as its own whether their origin is over https or ssh', async () => {
-  canvas.shutdown();
-  fresh();
   const shop = repo('shop', 'Shop');
   git(shop, 'remote', 'add', 'origin', 'https://github.com/acme/shop.git');
   const clones = ['https', 'ssh', 'scp'].map((name) => {
@@ -1443,35 +1401,27 @@ test('clones of the repository count as its own whether their origin is over htt
   git(clones[0]!, 'remote', 'set-url', 'origin', 'https://github.com/acme/shop');
   git(clones[1]!, 'remote', 'set-url', 'origin', 'ssh://git@github.com/acme/shop.git');
   git(clones[2]!, 'remote', 'set-url', 'origin', 'git@github.com:acme/shop.git');
-  canvas = await CanvasRuntime.start({ repos: [{ path: shop, workspaces: clones, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
+  canvas = await start({ repos: [{ path: shop, workspaces: clones, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   expect(canvas.repos[0]!.workspaces.list()).toHaveLength(3);
 });
 
 test('canvas ids read well', async () => {
-  canvas.shutdown();
-  fresh();
-  const c = await CanvasRuntime.start({ name: 'Grüße & Maße', repos: [{ path: repo('g', 'G') }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
+  const c = await start({ name: 'Grüße & Maße', repos: [{ path: repo('g', 'G') }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   expect(c.id).toBe('grusse-masse');
-  canvas = c;
 });
 
 test('a single repository keeps its canvas id and bare plan references', async () => {
-  canvas.shutdown();
-  fresh();
   const only = repo('solo', 'Solo');
-  const c = await CanvasRuntime.start({ repos: [{ path: only }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
+  const c = await start({ repos: [{ path: only }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   expect(c.board.canvas.id).toBe('solo');
   expect(c.board.snapshot().items.find((i) => i.kind === 'project')!.plan!.file).toBe('docs/plan/plan.md');
-  canvas = c;
 });
 
 test('a canvas that stops reads no words the usage limit held and runs no command in its undo window; it does both once it runs again', async () => {
-  fresh();
   const web = repo('web', 'Web');
   const s = new Store(':memory:');
   const deps = { store: s, home: dir, runtime, forge: noForge, commandDelayMs: 50, limitMargin: 10 };
-  canvas.shutdown();
-  canvas = await CanvasRuntime.start({ repos: [{ path: web, settings: { land: 'pr' } }] }, deps);
+  canvas = await start({ repos: [{ path: web, settings: { land: 'pr' } }] }, deps);
   const coordinators = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'act'));
   const a = canvas.board.create({ title: 'Export', x: 0, y: 0, repo: 'web' });
 
@@ -1487,7 +1437,7 @@ test('a canvas that stops reads no words the usage limit held and runs no comman
   expect((await held).confirm).toStartWith('Das Nutzungslimit ist erreicht.');
 
   // the canvas stops (it left the configuration, say) before either is due
-  canvas.shutdown();
+  await stop(canvas);
   await new Promise((r) => setTimeout(r, 200));
   expect(coordinators()).toHaveLength(1);
   expect(item(a.id).state).toBe('planned');
@@ -1496,7 +1446,7 @@ test('a canvas that stops reads no words the usage limit held and runs no comman
   expect(canvas.board.heldCommands()).toHaveLength(1);
 
   // the canvas runs again: it runs the command and reads the words
-  canvas = await CanvasRuntime.start({ repos: [{ path: web, settings: { land: 'pr' } }] }, deps);
+  canvas = await start({ repos: [{ path: web, settings: { land: 'pr' } }] }, deps);
   await until(() => coordinators().length === 2);
   expect(coordinators()[1]!.inbox.at(-1)).toContain('"was läuft?"');
   await until(() => item(a.id).state !== 'planned');
@@ -1504,10 +1454,8 @@ test('a canvas that stops reads no words the usage limit held and runs no comman
 });
 
 test('what the owner writes in a card, or says to the Coordinator without one, reaches the learner', async () => {
-  fresh();
   const web = repo('web', 'Web');
-  canvas.shutdown();
-  canvas = await CanvasRuntime.start({ repos: [{ path: web, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, writingPauseMs: 30 });
+  canvas = await start({ repos: [{ path: web, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, writingPauseMs: 30 });
   const learners = () => runtime.withTool('propose');
   const done = async () => {
     learners().at(-1)!.emit({ type: 'idle' });
@@ -1559,6 +1507,7 @@ test('what the owner writes in a card, or says to the Coordinator without one, r
 });
 
 test('clicks in a card count towards the retrospective, and words the learner reads count once', async () => {
+  await produkt();
   const count = () => canvas.board.setting('review_inputs');
   const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
   canvas.press(a.id, { action: 'start' });
@@ -1575,6 +1524,8 @@ test('clicks in a card count towards the retrospective, and words the learner re
 });
 
 describe('where a spoken new card lands', () => {
+  beforeEach(produkt);
+
   test('in view, at the place the owner was; without one, in what a page last had in view', async () => {
     canvas.board.create({ title: 'Far', x: 5000, y: 3000 });
     // clear of the canvas's projects, which stand at the origin
@@ -1597,6 +1548,8 @@ describe('where a spoken new card lands', () => {
 });
 
 describe('groups by voice', () => {
+  beforeEach(produkt);
+
   test('a command puts cards into a group by name, a new one or the one there is, takes them out, and renames it', async () => {
     const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
     const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
@@ -1612,6 +1565,8 @@ describe('groups by voice', () => {
 });
 
 describe('merging and deleting planned tasks by voice', () => {
+  beforeEach(produkt);
+
   test('a merge keeps the first card with a new title and every text; what pointed at the others points at it', async () => {
     const a = canvas.board.create({ title: 'Login error', body: 'The button shows on the wrong message.', x: 100, y: 200, repo: 'web' });
     const b = canvas.board.create({ title: 'Sign in again', body: 'Two buttons for one error.', x: 600, y: 200, repo: 'web' });
@@ -1670,6 +1625,8 @@ describe('merging and deleting planned tasks by voice', () => {
 });
 
 describe("the owner's words on a card with an agent", () => {
+  beforeEach(produkt);
+
   test('go straight to its worker, which passes on to the Coordinator what asks Obeya for something', async () => {
     const c = canvas.board.create({ title: 'Export', x: 0, y: 0, repo: 'web' });
     await canvas.repoOf(c.id).workers.start(c.id);
@@ -1731,6 +1688,8 @@ describe("the owner's words on a card with an agent", () => {
 });
 
 describe('plan docs that are not projects, and projects whose work is done', () => {
+  beforeEach(produkt);
+
   /** A doc lands on the default branch of the `api` repository, and Obeya reads it from there. */
   const land = async (file: string, text: string) => {
     const api = join(dir, 'api');
@@ -1774,106 +1733,91 @@ describe('plan docs that are not projects, and projects whose work is done', () 
 });
 
 test("pausing a canvas's agents pauses each at work, holds the cards let start meanwhile, and resuming lets all go on", async () => {
-  const c = await CanvasRuntime.start({ name: 'Pause', repos: [{ path: repo('solo', 'Solo'), clones: 2 }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
-  try {
-    const a = c.board.create({ title: 'A', x: 0, y: 0 });
-    await c.repos[0]!.workers.start(a.id);
-    const worker = runtime.sessions.at(-1)!;
-    worker.emit({ type: 'session', id: 's-a' });
-    worker.emit({ type: 'text', text: 'Arbeite.' });
-    await heard();
-    expect(c.board.canvas.agents).toEqual({ running: 1, paused: 0 });
-    c.pauseAgents();
-    await heard();
-    // as the card's own pause: it brings its work to a safe point first, and counts as paused meanwhile
-    expect(worker.closed).toBe(false);
-    expect(worker.inbox.at(-1)).toContain('The owner pauses you now');
-    expect(c.board.item(a.id)!.pausing).toBe(true);
-    expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
-    worker.emit({ type: 'idle' });
-    await heard();
-    expect(worker.closed).toBe(true);
-    expect(c.board.item(a.id)!.paused).toBe(true);
-    expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
-    // a card started meanwhile: the Coordinator judges it as ever, and it waits in the queue
-    const workers = () => runtime.sessions.filter((s) => s.spec.role === 'worker').length;
-    const before = workers();
-    const b = c.board.create({ title: 'B', x: 0, y: 0 });
-    c.act(b.id, { action: 'start' });
-    await until(() => runtime.withTool('scope').length > 0);
-    const estimate = runtime.withTool('scope')[0]!;
-    estimate.call('scope', { files: ['b.ts'], conflicts_with: [], reason: '' });
-    estimate.emit({ type: 'idle' });
-    await until(() => !!c.board.item(b.id)!.queue && 'paused' in c.board.item(b.id)!.queue!);
-    expect(workers()).toBe(before);
-    c.resumeAgents();
-    expect(c.board.canvas.paused).toBeUndefined();
-    const resumed = runtime.sessions.find((s) => s.spec.resume === 's-a')!;
-    expect(resumed.inbox[0]).toContain('The owner paused you');
-    await until(() => c.board.item(b.id)!.state === 'working');
-  } finally {
-    c.shutdown();
-  }
+  const c = await start({ name: 'Pause', repos: [{ path: repo('solo', 'Solo'), clones: 2 }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+  const a = c.board.create({ title: 'A', x: 0, y: 0 });
+  await c.repos[0]!.workers.start(a.id);
+  const worker = runtime.sessions.at(-1)!;
+  worker.emit({ type: 'session', id: 's-a' });
+  worker.emit({ type: 'text', text: 'Arbeite.' });
+  await heard();
+  expect(c.board.canvas.agents).toEqual({ running: 1, paused: 0 });
+  c.pauseAgents();
+  await heard();
+  // as the card's own pause: it brings its work to a safe point first, and counts as paused meanwhile
+  expect(worker.closed).toBe(false);
+  expect(worker.inbox.at(-1)).toContain('The owner pauses you now');
+  expect(c.board.item(a.id)!.pausing).toBe(true);
+  expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
+  worker.emit({ type: 'idle' });
+  await heard();
+  expect(worker.closed).toBe(true);
+  expect(c.board.item(a.id)!.paused).toBe(true);
+  expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
+  // a card started meanwhile: the Coordinator judges it as ever, and it waits in the queue
+  const workers = () => runtime.sessions.filter((s) => s.spec.role === 'worker').length;
+  const before = workers();
+  const b = c.board.create({ title: 'B', x: 0, y: 0 });
+  c.act(b.id, { action: 'start' });
+  await until(() => runtime.withTool('scope').length > 0);
+  const estimate = runtime.withTool('scope')[0]!;
+  estimate.call('scope', { files: ['b.ts'], conflicts_with: [], reason: '' });
+  estimate.emit({ type: 'idle' });
+  await until(() => !!c.board.item(b.id)!.queue && 'paused' in c.board.item(b.id)!.queue!);
+  expect(workers()).toBe(before);
+  c.resumeAgents();
+  expect(c.board.canvas.paused).toBeUndefined();
+  const resumed = runtime.sessions.find((s) => s.spec.resume === 's-a')!;
+  expect(resumed.inbox[0]).toContain('The owner paused you');
+  await until(() => c.board.item(b.id)!.state === 'working');
 }, 30_000);
 
 test("a canvas's pause ends once none of its agents is paused any more, and lasts over a restart until then", async () => {
   const store = new Store(':memory:');
   const config = { name: 'Pause', repos: [{ path: repo('solo', 'Solo'), clones: 2 }] };
-  let c = await CanvasRuntime.start(config, { store, home: dir, runtime, forge: noForge });
+  let c = await start(config, { store, home: dir, runtime, forge: noForge });
   const a = c.board.create({ title: 'A', x: 0, y: 0 });
-  try {
-    await c.repos[0]!.workers.start(a.id);
-    const worker = runtime.sessions.at(-1)!;
-    worker.emit({ type: 'session', id: 's-a' });
-    worker.emit({ type: 'text', text: 'Arbeite.' });
-    // Obeya stops while the agent is about to pause: it is paused when Obeya runs again
-    c.pauseAgents();
-  } finally {
-    c.shutdown();
-  }
-  c = await CanvasRuntime.start(config, { store, home: dir, runtime, forge: noForge });
-  try {
-    expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
-    // the owner resumes the card on its own: nothing on the canvas is paused any more
-    c.act(a.id, { action: 'resume' });
-    await heard();
-    expect(c.board.canvas.paused).toBeUndefined();
-  } finally {
-    c.shutdown();
-  }
+  await c.repos[0]!.workers.start(a.id);
+  const worker = runtime.sessions.at(-1)!;
+  worker.emit({ type: 'session', id: 's-a' });
+  worker.emit({ type: 'text', text: 'Arbeite.' });
+  // Obeya stops while the agent is about to pause: it is paused when Obeya runs again
+  c.pauseAgents();
+  await stop(c);
+  c = await start(config, { store, home: dir, runtime, forge: noForge });
+  expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
+  // the owner resumes the card on its own: nothing on the canvas is paused any more
+  c.act(a.id, { action: 'resume' });
+  await heard();
+  expect(c.board.canvas.paused).toBeUndefined();
 }, 30_000);
 
 test("a card the owner snoozed counts as no paused agent: resuming the canvas leaves it asleep, and it does not hold the queue", async () => {
-  const c = await CanvasRuntime.start({ name: 'Pause', repos: [{ path: repo('solo', 'Solo'), clones: 2 }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
-  try {
-    const atWork = async (title: string, session: string) => {
-      const card = c.board.create({ title, x: 0, y: 0 });
-      await c.repos[0]!.workers.start(card.id);
-      const worker = runtime.sessions.at(-1)!;
-      worker.emit({ type: 'session', id: session });
-      worker.emit({ type: 'text', text: 'Arbeite.' });
-      return card;
-    };
-    const later = await atWork('Later', 's-later');
-    const now = await atWork('Now', 's-now');
-    // "Later …": its worker stops until then, holding what comes for it as a paused one does
-    c.act(later.id, { action: 'snooze', until: new Date(Date.now() + 3_600_000).toISOString() });
-    await heard();
-    expect(c.board.canvas.agents).toEqual({ running: 1, paused: 0 });
-    c.pauseAgents();
-    await heard();
-    expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
-    // the one paused resumed on its own card: none is paused any more, and the queue runs again
-    c.act(now.id, { action: 'resume' });
-    await heard();
-    expect(c.board.canvas.paused).toBeUndefined();
-    // nor does resuming the canvas wake the snoozed one
-    c.resumeAgents();
-    expect(c.board.item(later.id)!.snoozed).toMatchObject({ by: 'owner' });
-    expect(runtime.sessions.some((s) => s.spec.resume === 's-later')).toBe(false);
-  } finally {
-    c.shutdown();
-  }
+  const c = await start({ name: 'Pause', repos: [{ path: repo('solo', 'Solo'), clones: 2 }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+  const atWork = async (title: string, session: string) => {
+    const card = c.board.create({ title, x: 0, y: 0 });
+    await c.repos[0]!.workers.start(card.id);
+    const worker = runtime.sessions.at(-1)!;
+    worker.emit({ type: 'session', id: session });
+    worker.emit({ type: 'text', text: 'Arbeite.' });
+    return card;
+  };
+  const later = await atWork('Later', 's-later');
+  const now = await atWork('Now', 's-now');
+  // "Later …": its worker stops until then, holding what comes for it as a paused one does
+  c.act(later.id, { action: 'snooze', until: new Date(Date.now() + 3_600_000).toISOString() });
+  await heard();
+  expect(c.board.canvas.agents).toEqual({ running: 1, paused: 0 });
+  c.pauseAgents();
+  await heard();
+  expect(c.board.canvas).toMatchObject({ paused: true, agents: { running: 0, paused: 1 } });
+  // the one paused resumed on its own card: none is paused any more, and the queue runs again
+  c.act(now.id, { action: 'resume' });
+  await heard();
+  expect(c.board.canvas.paused).toBeUndefined();
+  // nor does resuming the canvas wake the snoozed one
+  c.resumeAgents();
+  expect(c.board.item(later.id)!.snoozed).toMatchObject({ by: 'owner' });
+  expect(runtime.sessions.some((s) => s.spec.resume === 's-later')).toBe(false);
 }, 30_000);
 
 test("a canvas's pause lasts while one of its paused agents cannot go on, its repository gone from the canvas", async () => {
@@ -1881,74 +1825,67 @@ test("a canvas's pause lasts while one of its paused agents cannot go on, its re
     { path: repo('front', 'Front'), clones: 1 },
     { path: repo('back', 'Back'), clones: 1 },
   ];
-  const c = await CanvasRuntime.start({ name: 'Pause', repos: both }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
-  try {
-    const [front, back] = c.repos.map((r) => r.ref.id);
-    const atWork = async (repo: string, session: string) => {
-      const card = c.board.create({ title: repo, x: 0, y: 0, repo });
-      await c.repoOf(card.id).workers.start(card.id);
-      const worker = runtime.sessions.at(-1)!;
-      worker.emit({ type: 'session', id: session });
-      worker.emit({ type: 'text', text: 'Arbeite.' });
-      return card;
-    };
-    await atWork(front!, 's-front');
-    const gone = await atWork(back!, 's-back');
-    c.pauseAgents();
-    // both end their turn at a safe point
-    for (const s of runtime.sessions.filter((s) => s.spec.resume === undefined && s.spec.role === 'worker').slice(-2)) s.emit({ type: 'idle' });
-    await heard();
-    expect(c.board.canvas.agents).toEqual({ running: 0, paused: 2 });
-    await c.apply({ name: 'Pause', repos: [both[0]!] });
-    await until(() => c.repos.length === 1);
-    const errors = quiet();
-    c.resumeAgents();
-    errors.restore();
-    expect(errors.lines.join('\n')).toContain(`the agent of ${gone.id} did not resume`);
-    expect(runtime.sessions.some((s) => s.spec.resume === 's-front')).toBe(true);
-    // the card that could not go on is still paused, and the cards let start still wait
-    expect(c.board.item(gone.id)!.paused).toBe(true);
-    await heard();
-    expect(c.board.canvas).toMatchObject({ paused: true, agents: { paused: 1 } });
-    // its repository back, it goes on, and the pause ends
-    await c.apply({ name: 'Pause', repos: both });
-    await until(() => c.repos.length === 2);
-    c.resumeAgents();
-    expect(runtime.sessions.some((s) => s.spec.resume === 's-back')).toBe(true);
-    await heard();
-    expect(c.board.canvas.paused).toBeUndefined();
-  } finally {
-    c.shutdown();
-  }
+  const c = await start({ name: 'Pause', repos: both }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+  const [front, back] = c.repos.map((r) => r.ref.id);
+  const atWork = async (repo: string, session: string) => {
+    const card = c.board.create({ title: repo, x: 0, y: 0, repo });
+    await c.repoOf(card.id).workers.start(card.id);
+    const worker = runtime.sessions.at(-1)!;
+    worker.emit({ type: 'session', id: session });
+    worker.emit({ type: 'text', text: 'Arbeite.' });
+    return card;
+  };
+  await atWork(front!, 's-front');
+  const gone = await atWork(back!, 's-back');
+  c.pauseAgents();
+  // both end their turn at a safe point
+  for (const s of runtime.sessions.filter((s) => s.spec.resume === undefined && s.spec.role === 'worker').slice(-2)) s.emit({ type: 'idle' });
+  await heard();
+  expect(c.board.canvas.agents).toEqual({ running: 0, paused: 2 });
+  await c.apply({ name: 'Pause', repos: [both[0]!] });
+  await until(() => c.repos.length === 1);
+  const errors = quiet();
+  c.resumeAgents();
+  errors.restore();
+  expect(errors.lines.join('\n')).toContain(`the agent of ${gone.id} did not resume`);
+  expect(runtime.sessions.some((s) => s.spec.resume === 's-front')).toBe(true);
+  // the card that could not go on is still paused, and the cards let start still wait
+  expect(c.board.item(gone.id)!.paused).toBe(true);
+  await heard();
+  expect(c.board.canvas).toMatchObject({ paused: true, agents: { paused: 1 } });
+  // its repository back, it goes on, and the pause ends
+  await c.apply({ name: 'Pause', repos: both });
+  await until(() => c.repos.length === 2);
+  c.resumeAgents();
+  expect(runtime.sessions.some((s) => s.spec.resume === 's-back')).toBe(true);
+  await heard();
+  expect(c.board.canvas.paused).toBeUndefined();
 }, 30_000);
 
 describe("the skills of a card's agent", () => {
   test('are those Claude Code lists in its repository, with the plugins its agent loads', async () => {
     const asked: SkillPlace[] = [];
-    const web = join(dir, 'web');
-    const c = await CanvasRuntime.start(
+    const web = repo('web', 'Web');
+    const c = await start(
       { name: 'Skills', repos: [{ path: web, clones: 1, settings: { land: 'pr' } }] },
       { store: new Store(':memory:'), home: join(dir, 'skills-home'), runtime: new FakeRuntime(), forge: noForge, skills: new Skills(async (p) => (asked.push(p), [{ name: 'review', description: 'Reviews' }])) },
     );
-    try {
-      const task = c.board.create({ title: 'Task', x: 0, y: 0 });
-      expect(await c.skillsOf(task.id)).toEqual([{ name: 'review', description: 'Reviews' }]);
-      const idea = c.board.create({ title: 'Idea', x: 0, y: 0, idea: true });
-      await c.skillsOf(idea.id);
-      const read = c.repos[0]!.read.path;
-      expect(asked).toEqual([
-        { cwd: read, plugins: [OBEYA_PLUGIN], untrusted: false },
-        // an idea's agent loads no plugins
-        { cwd: read, plugins: [], untrusted: false },
-      ]);
-      expect(await c.skillsOf('nope').catch(() => 'refused')).toEqual([]);
-    } finally {
-      c.shutdown();
-    }
+    const task = c.board.create({ title: 'Task', x: 0, y: 0 });
+    expect(await c.skillsOf(task.id)).toEqual([{ name: 'review', description: 'Reviews' }]);
+    const idea = c.board.create({ title: 'Idea', x: 0, y: 0, idea: true });
+    await c.skillsOf(idea.id);
+    const read = c.repos[0]!.read.path;
+    expect(asked).toEqual([
+      { cwd: read, plugins: [OBEYA_PLUGIN], untrusted: false },
+      // an idea's agent loads no plugins
+      { cwd: read, plugins: [], untrusted: false },
+    ]);
+    expect(await c.skillsOf('nope').catch(() => 'refused')).toEqual([]);
   });
 });
 
 test('a manual dependency holds a requested card until removed', async () => {
+  await produkt();
   const a = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
   const b = canvas.board.create({ title: 'Dependent', x: 400, y: 0 });
   canvas.board.connect(a.id, b.id);
@@ -1965,6 +1902,7 @@ test('a manual dependency holds a requested card until removed', async () => {
 });
 
 test('removing a manual dependency leaves an independently inferred wait intact', async () => {
+  await produkt();
   const a = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
   const b = canvas.board.create({ title: 'Dependent', x: 400, y: 0 });
   canvas.board.work(b.id, { queue: JSON.stringify({ behind: [a.id], buildsOn: [a.id], reason: 'plan', since: new Date().toISOString() }) });
@@ -1977,6 +1915,8 @@ test('removing a manual dependency leaves an independently inferred wait intact'
 });
 
 describe('owner-drawn dependencies in the queue', () => {
+  beforeEach(produkt);
+
   const estimate = () => runtime.withTool('scope').at(-1)!;
   /** Answers the latest estimate once its brief is written, with a likely conflict with each card it lists, or none. */
   async function judge(conflict: boolean) {

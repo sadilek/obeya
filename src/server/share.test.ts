@@ -3,8 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DemoSite } from '../adapters/types';
-import { BadRequest, Board } from './board';
-import { Store } from './db';
+import { BadRequest, type Board } from './board';
 import { EXPORT_HTML_MAX } from '../core/types';
 import type { Forge } from './forge';
 import { demoPageHtml } from './demo-page';
@@ -12,7 +11,7 @@ import { DEMO_MARKER, SHARE_CWD, Sharing, withDemoLink } from './share';
 import { siteKey } from './site';
 import { missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import type { Theme } from './theme';
-import { FakeRuntime, gitRepo, noContributions, PATIENCE, removeDir } from './testing';
+import { FakeRuntime, gitRepo, noContributions, PATIENCE, removeDir, testBoard } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -88,7 +87,7 @@ beforeEach(() => {
   theme = null;
   dir = mkdtempSync(join(tmpdir(), 'obeya-share-'));
   writeFileSync(join(dir, 'deploy.ts'), DEPLOY);
-  board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: dir, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  board = testBoard({ path: dir });
   runtime = new FakeRuntime();
   bodies = new Map();
   edits = [];

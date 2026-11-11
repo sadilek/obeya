@@ -1,63 +1,36 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { beforeEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
 import { type Notice, waitingOn } from '../core/types';
 import { inform } from './advisor';
 import { answersDir } from './answers';
-import { CanvasRuntime } from './canvas';
 import { serveAnswerFile } from './demo';
-import type { Focus } from './commands';
-import { Store } from './db';
-import { FakeRuntime, type FakeSession, fakeVoicing, gitRepo, noForge, removeDir, until } from './testing';
+import { board, canvas, dir, eachTest, main, restart, runtime, say, settle } from './canvas-fixture';
+import { type FakeSession, fakeVoicing, until } from './testing';
 import { BadRequest } from './board';
 
-let dir: string;
-let main: string;
-let store: Store;
-let runtime: FakeRuntime;
-let canvas: CanvasRuntime;
 let notices: Notice[];
 let voice: ReturnType<typeof fakeVoicing>;
 
-const open = async () => {
-  const c = await CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10, voicing: voice.voicing });
-  c.board.onNotice((n) => notices.push(n));
-  return c;
-};
-
-beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'obeya-answers-'));
-  main = join(dir, 'main');
-  gitRepo(main, { 'docs/plan/pr-loop.md': '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live im Shop. Mit dem Go des Owners.\n' });
-  store = new Store(':memory:');
-  runtime = new FakeRuntime();
+beforeEach(() => {
   notices = [];
   voice = fakeVoicing();
-  canvas = await open();
 });
-afterEach(async () => {
-  // git freeing a workspace in the background is done before its repository goes
-  await Promise.all(canvas.repos.map((r) => r.workers.freed()));
-  canvas.shutdown();
-  await removeDir(dir);
+eachTest({
+  files: { 'docs/plan/pr-loop.md': '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live im Shop. Mit dem Go des Owners.\n' },
+  deps: () => ({ permissionMode: 'acceptEdits', limitMargin: 10, voicing: voice.voicing }),
 });
+const listen = () => board().onNotice((n) => notices.push(n));
+beforeEach(listen);
+/** Obeya started anew, its notices heard. */
+const reopen = async () => {
+  await restart();
+  listen();
+};
 
-const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
-const board = () => canvas.board;
 const workstream = () => board().snapshot().items.find((i) => i.label === 'W4')!;
 const answerer = () => runtime.withTool('answer_owner').at(-1)!;
-
-/** Says `text` with `focus`; the Coordinator reads it with `tool`. */
-async function say(text: string, focus: Focus, tool: string, args: Record<string, unknown>) {
-  const heard = canvas.commander.hear(text, focus);
-  await settle();
-  const s = runtime.withTool('look_up').at(-1)!;
-  s.call(tool, args);
-  s.emit({ type: 'idle' });
-  return { heard: await heard, brief: s.inbox.at(-1)! };
-}
 
 describe('a question the Coordinator looks up', () => {
   test('looked up for an action: the answer brings what the step needs, and the Coordinator takes the step with it', async () => {
@@ -185,8 +158,7 @@ describe('a question the Coordinator looks up', () => {
 
     // a fresh session gets the newest five answers in full, older ones clipped
     for (let n = 1; n <= 4; n++) asked(`frage ${n}`, `Antwort ${n}.`);
-    canvas.shutdown();
-    canvas = await open();
+    await reopen();
     const fresh = await say('und?', {}, 'reply', { confirm: 'Ja.' });
     expect(fresh.brief).toContain(answer);
     expect(fresh.brief).toContain('Antwort 4.');
@@ -197,9 +169,8 @@ describe('a question the Coordinator looks up', () => {
   test('a question still being looked up when Obeya restarts is looked up again', async () => {
     const w4 = workstream();
     await say('was würde der agent tun?', { card: w4.id }, 'look_up', { question: 'What would the worker do?', confirm: 'Ich schaue nach.' });
-    canvas.shutdown();
     const before = runtime.sessions.length;
-    canvas = await open();
+    await reopen();
     await settle();
     expect(runtime.sessions.length).toBe(before + 1);
     expect(answerer().inbox[0]).toContain('What would the worker do?');
@@ -285,8 +256,7 @@ describe('a look-up the usage limit stops', () => {
     expect(Date.parse(talk().limitedUntil!)).toBeGreaterThan(Date.now());
     expect(a.closed).toBe(false);
     // Obeya restarts: the question is looked up again, runs into the limit again and waits anew
-    canvas.shutdown();
-    canvas = await open();
+    await reopen();
     await settle();
     expect(answerer()).not.toBe(a);
     a = answerer();
@@ -587,8 +557,7 @@ describe('a thread on a Question card', () => {
     expect(board().item(card.id)!.thread!.thinking).toBeUndefined();
     // nothing answered it: the question stands last
     expect(board().events(card.id).filter((e) => e.kind === 'talk').at(-1)!.text).toBe('und im Oktober?');
-    canvas.shutdown();
-    canvas = await open();
+    await reopen();
     await settle();
     expect(answerer()).toBe(a);
     expect(board().item(card.id)!.paused).toBe(true);
@@ -755,8 +724,7 @@ describe('a thread on a Question card', () => {
   test('what the card asked when Obeya stopped is asked again', async () => {
     const { card } = await moved();
     canvas.tell(card.id, 'und im Oktober?', [], false);
-    canvas.shutdown();
-    canvas = await open();
+    await reopen();
     await settle();
     const a = answerer();
     expect(a.inbox[0]).toContain('und im Oktober?');
@@ -887,8 +855,7 @@ describe("a question asked in a project's sheet", () => {
   test('still being answered when Obeya restarts, it is asked again; "Make it a card" puts its card beside the project', async () => {
     canvas.press(project().id, { action: 'consult', text: 'Was fehlt noch?' });
     await settle();
-    canvas.shutdown();
-    canvas = await open();
+    await reopen();
     await settle();
     const talk = board().talk().at(-1)!;
     // Obeya never read the words, so they get no reply of its own at the restart
@@ -1079,8 +1046,7 @@ describe('an answer told as a walkthrough', () => {
     answerer().call('walkthrough_slide', { slide: { type: 'title', title: 'Landen', language: 'de', narration: 'So.' } });
     const talk = board().talk().at(-1)!.id;
     expect(board().exchange(talk)!.files).toHaveLength(1);
-    canvas.shutdown();
-    canvas = await open();
+    await reopen();
     await settle();
     expect(board().exchange(talk)!.files).toBeUndefined();
     expect(answerer().inbox[0]).toContain('How does a card land?');

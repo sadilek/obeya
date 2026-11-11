@@ -1,37 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, expect, test } from 'bun:test';
 import { agentListens, type Item } from '../core/types';
-import { CanvasRuntime } from './canvas';
-import { Store } from './db';
-import { FakeRuntime, gitRepo, noForge, removeDir } from './testing';
+import { board, canvas, eachTest, restart, runtime, say as tell, settle } from './canvas-fixture';
 
-let dir: string;
-let main: string;
-let store: Store;
-let runtime: FakeRuntime;
-let canvas: CanvasRuntime;
+eachTest({ deps: () => ({ limitMargin: 10 }) });
 
-const open = () => CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, limitMargin: 10 });
-
-beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'obeya-revisions-'));
-  main = join(dir, 'main');
-  gitRepo(main);
-  store = new Store(':memory:');
-  runtime = new FakeRuntime();
-  canvas = await open();
-});
-afterEach(async () => {
-  // git freeing a workspace in the background is done before its repository goes
-  await Promise.all(canvas.repos.map((r) => r.workers.freed()));
-  canvas.shutdown();
-  await removeDir(dir);
-});
-
-const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
-const board = () => canvas.board;
 const reviser = () => runtime.withTool('revise_proposal').at(-1);
 
 /** A proposal from the agent of "Export", with one question. */
@@ -46,15 +18,14 @@ function proposal(): Item {
 }
 
 /** Says `text` with the proposal open; the Coordinator acts with `actions` (its tags looked up by title). */
-async function say(text: string, card: Item, actions: (tag: string) => Record<string, unknown>[], typed = false, images: string[] = []) {
-  const heard = canvas.commander.hear(text, { card: card.id }, images, typed ? { typed: true, field: 'revise' } : {});
-  await settle();
-  const s = runtime.withTool('look_up').at(-1)!;
-  const brief = s.inbox.at(-1)!;
-  const tag = brief.match(new RegExp(`(K\\d+) \\[proposal\\] "${card.title}"`))![1]!;
-  const result = s.call('act', { actions: actions(tag), confirm: 'Ich überarbeite den Vorschlag.' });
-  s.emit({ type: 'idle' });
-  return { heard: await heard, brief, result };
+function say(text: string, card: Item, actions: (tag: string) => Record<string, unknown>[], typed = false, images: string[] = []) {
+  return tell(
+    text,
+    { card: card.id },
+    'act',
+    (brief) => ({ actions: actions(brief.match(new RegExp(`(K\\d+) \\[proposal\\] "${card.title}"`))![1]!), confirm: 'Ich überarbeite den Vorschlag.' }),
+    { images, input: typed ? { typed: true, field: 'revise' } : {} },
+  );
 }
 
 describe('a proposal reworked by what the owner says', () => {
@@ -323,8 +294,7 @@ describe('a proposal reworked by what the owner says', () => {
   });
 
   test('with an English interface, why it ended without a text is said in English too', async () => {
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, limitMargin: 10, language: () => 'en' });
+    await restart({ deps: { language: () => 'en' } });
     const p = proposal();
     canvas.revisions.revise(p.id, 'Excel too', false);
     reviser()!.emit({ type: 'idle' });
@@ -367,8 +337,7 @@ describe('a proposal reworked by what the owner says', () => {
     const p = proposal();
     canvas.revisions.revise(p.id, 'Excel auch', false);
     const before = runtime.sessions.length;
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     expect(runtime.sessions.length).toBe(before + 1);
     expect(reviser()!.inbox[0]).toContain('Excel auch');
   });

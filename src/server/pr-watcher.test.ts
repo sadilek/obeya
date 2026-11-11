@@ -6,11 +6,11 @@ import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import type { Language } from '../core/locale';
 import { needsYou } from '../core/types';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, commit, fakeGh, FakeRuntime, gitClone, gitRepo, noContributions, PATIENCE, removeDir, until } from './testing';
+import { fakeGh, FakeRuntime, gitRepo, handedOverOn, noContributions, PATIENCE, primedClones, removeDir, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
 
@@ -41,10 +41,8 @@ beforeEach(async () => {
   gitRepo(main);
   const store = new Store(':memory:');
   language = 'de';
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => language);
-  workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
-  gitClone(main, join(dir, 'ws', '1'));
-  await workspaces.ensureClones(main, 1);
+  board = testBoard({ store, path: main, language: () => language });
+  workspaces = await primedClones(store, main, dir);
   runtime = new FakeRuntime();
   opened = [];
   settings = { ...generic, land: 'pr', workspaces: 'clones', prNoise: ['deploy-bot'] };
@@ -80,17 +78,12 @@ const state = (id: string) => {
   return i.need ? `${i.state}:${i.need}` : i.state;
 };
 
-/** Work on the card's branch, so approving it goes out as a pull request. */
-function commitOn(cardId: string) {
-  commit(board.row(cardId).workspace!, 'export.ts', '', 'Export');
-}
+/** A card handed over with work on its branch, so approving it goes out as a pull request; the worker's turn goes on. */
+const handedOver = async () => (await handedOverOn({ board, workers, runtime }, { title: 'Export', commit: 'export.ts', idle: false })).card;
 
 /** A card through review and approval, with its PR reported. */
 async function inPr() {
-  const c = board.create({ title: 'Export', x: 0, y: 0 });
-  await workers.start(c.id);
-  commitOn(c.id);
-  await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+  const c = await handedOver();
   await workers.approve(c.id);
   return c.id;
 }
@@ -119,10 +112,7 @@ describe('the PR phase', () => {
   });
 
   test('a demo shared before approval is linked in the PR by the worker; pr_opened passes the PR on', async () => {
-    const c = board.create({ title: 'Export', x: 0, y: 0 });
-    await workers.start(c.id);
-    commitOn(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    const c = await handedOver();
     board.work(c.id, { share: JSON.stringify({ slug: 'export', url: 'https://demos.example/export/', dir: '/d' }) });
     await workers.approve(c.id);
     expect(runtime.last.inbox.at(-1)).toContain('shared with the team on a page of its own: https://demos.example/export/. Link it');

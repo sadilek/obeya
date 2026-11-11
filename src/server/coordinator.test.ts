@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
-import { BadRequest, Board, type StoredContribution } from './board';
+import { BadRequest, type Board, type StoredContribution } from './board';
 import { Store } from './db';
 import { Coordinator, overlaps } from './coordinator';
 import { cardTag } from '../core/card-number';
 import { move, queueOrder, reach } from '../core/queue';
-import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir } from './testing';
+import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir, testBoard } from './testing';
 import { Workers } from './workers';
 import { git, HERE, parseChanges, Workspaces } from './workspaces';
 import { withLimitWait } from './runtime';
@@ -28,7 +28,7 @@ beforeEach(() => {
   gitRepo(main);
   const store = new Store(':memory:');
   docs = [];
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }));
+  board = testBoard({ store, docs: () => docs, path: main });
   const adapter = { ...generic, land: 'main' as const, workspaces: 'worktrees' as const, softPaths: ['docs/'] };
   workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
@@ -615,7 +615,7 @@ describe('Coordinator waits for a free workspace', () => {
   async function pool(n: number, slots?: number) {
     const main = join(dir, 'main');
     const store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }));
+    board = testBoard({ store, docs: () => docs, path: main });
     const adapter = { ...generic, land: 'main' as const, workspaces: 'clones' as const };
     workspaces = new Workspaces(store, 'c', {
       mode: 'clones',
@@ -709,7 +709,7 @@ describe('Coordinator waits for a free workspace', () => {
   test('in worktrees, a card waits for a slot only once the repository has slots', async () => {
     const main = join(dir, 'main');
     const store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }));
+    board = testBoard({ store, docs: () => docs, path: main });
     workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws'), machines: [{ host: null, slots: 1 }], busy: () => workers.busyOn(null) });
     const adapter = { ...generic, land: 'main' as const, workspaces: 'worktrees' as const };
     workers.shutdown();

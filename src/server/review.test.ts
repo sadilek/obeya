@@ -9,12 +9,12 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import { awaitsContributorNext, needsYou } from '../core/types';
-import { Board, type StoredContribution } from './board';
+import type { Board, StoredContribution } from './board';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
+import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, primedClones, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -86,10 +86,8 @@ beforeEach(async () => {
   prHead = '';
   push('poll.ts');
   const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
-  const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
-  gitClone(main, join(dir, 'ws', '1'));
-  await workspaces.ensureClones(main, 1);
+  board = testBoard({ store, path: main });
+  const workspaces = await primedClones(store, main, dir);
   runtime = new FakeRuntime();
   // the PR's branch in the contributor's repository, where Obeya pushes the worker's own commits
   fake = fakeForge(() => git(origin, 'rev-parse', 'contrib'));

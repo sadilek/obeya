@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
 import { needsYou, stopped } from '../core/types';
-import { artifact, commit, gitClone, identify, until } from './testing';
-import { Board } from './board';
+import { artifact, commit, gitClone, identify, testBoard, until } from './testing';
+import type { Board } from './board';
 import { board, dir, doc, eachTest, flush, handedOver, main, manual, merged, newWorkers, origin, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers, ws } from './workers-fixture';
 import { git } from './workspaces';
 import { type RepoAdapter } from '../adapters/types';
@@ -653,7 +653,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     /** Obeya starts again, the doc still gone, and the worker resumes. */
     const restart = () => {
       workers.shutdown();
-      const b = new Board(store, board.canvas, () => ({ docs: [], dirs: [] }));
+      const b = testBoard({ store, path: main });
       setWorkers(restarting(b));
       workers.resumeAll();
       return b;
@@ -795,7 +795,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const w = w1();
     await stoppedWithWork(w.id);
     // the doc was ticked off while an Obeya ran that did not free it; this one starts on the same database
-    const fresh = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [{ ...doc, workstreams: [{ ...ws('W1'), done: true }, ws('W2')] }], dirs: [] }));
+    const fresh = testBoard({ store, path: main, docs: () => [{ ...doc, workstreams: [{ ...ws('W1'), done: true }, ws('W2')] }] });
     newWorkers({ board: fresh }).resumeAll();
     expect(spaces.leasedBy(w.id)).toBeNull();
     expect(fresh.item(w.id)!.state).toBe('live');
@@ -1022,7 +1022,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
 
   /** An Obeya started anew on the same database, which settles the leases as it starts. */
   const restart = () => {
-    const fresh = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [doc], dirs: [] }));
+    const fresh = testBoard({ store, path: main, docs: () => [doc] });
     newWorkers({ board: fresh }).resumeAll();
     return fresh;
   };

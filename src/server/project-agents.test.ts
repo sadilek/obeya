@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { PlanDoc } from '../core/plan-doc';
-import { Board } from './board';
-import { Store } from './db';
+import type { Board } from './board';
 import { ProjectAgents } from './project-agents';
-import { FakeRuntime } from './testing';
+import { FakeRuntime, testBoard } from './testing';
 
 const doc: PlanDoc = {
   file: 'docs/plan/a.md',
@@ -19,7 +18,7 @@ let agents: ProjectAgents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
-  board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/repo', branch: 'main' }] }, () => ({ docs: [doc], dirs: [] }));
+  board = testBoard({ path: '/repo', docs: () => [doc] });
   runtime = new FakeRuntime();
   agents = new ProjectAgents(board, runtime, () => '/repo');
 });

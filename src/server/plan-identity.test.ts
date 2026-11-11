@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { placeWorkstreams } from '../core/layout';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
-import { Board, LEAVE_AFTER_MS } from './board';
+import { type Board, LEAVE_AFTER_MS } from './board';
 import { Store } from './db';
 import { planHistory } from './repo';
-import { gitRepo, removeDir } from './testing';
+import { gitRepo, removeDir, testBoard } from './testing';
 import { branchName, git } from './workspaces';
 
 const FILE = 'docs/plan/audit.md';
@@ -33,7 +33,7 @@ beforeEach(() => {
   history = [];
   asked = 0;
   gate = null;
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs, dirs: [] }));
+  board = testBoard({ store, docs: () => docs });
   board.readPlanHistory(async () => {
     asked++;
     await gate;

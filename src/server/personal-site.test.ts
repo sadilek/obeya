@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { MESSAGES } from '../core/messages';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
 import { allowedHere, allowPrivate, approvedHere, connect, connectionCode, newToken, type PersonalSite, readPersonal, shareApproved, writePersonal } from './personal-site';
 import type { SharePage, ShareSource } from './share';
@@ -13,7 +13,7 @@ import { MANIFEST, siteKey, siteTarget } from './site';
 import { cloudflareAccounts, type Exec, exec, githubPagesDeploy, setupCloudflare, setupGithub, SetupRefused } from './site-hosts';
 import { SiteSetup } from './site-setup';
 import { CanvasRuntime } from './canvas';
-import { FakeRuntime, gitRepo, identify, noForge, removeDir, until } from './testing';
+import { FakeRuntime, gitRepo, identify, noForge, removeDir, testBoard, until } from './testing';
 
 let dir: string;
 let home: string;
@@ -146,7 +146,7 @@ describe('sharing without a site of the repository', () => {
   let source: ShareSource;
   let sharing: Sharing;
   beforeEach(() => {
-    board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ path: repo });
     source = { site: null, repo, isPublic: true };
     writePersonal(home, personal());
     sharing = new Sharing({

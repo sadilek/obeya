@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
-import { alive, commit, gitClone, gitRepo, identify, leftBehind, PATIENCE, removeDir, until } from './testing';
+import { alive, commit, gitClone, gitRepo, identify, leftBehind, PATIENCE, removeDir, testBoard, until } from './testing';
 import { addTrailer, defaultBranch, git, hasCommit, isAncestor, originFetch, unlanded, Workspaces } from './workspaces';
 
 let dir: string;
@@ -91,7 +91,7 @@ describe('a leased clone', () => {
   test('git fails to make ready is given back, and not taken again at once', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     const [clone] = await spaces.ensureClones(repo, 1);
     // its origin is gone: the fetch fails
@@ -112,7 +112,7 @@ describe('a leased clone', () => {
   test('is looked at while free without git writing its index, which a card taking it meanwhile needs to write', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    testBoard({ store, path: repo });
     let looked = 0;
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws'), changed: () => looked++ });
     const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
@@ -141,7 +141,7 @@ describe("a card's workspace looked at while its agent works there", () => {
   test('is read without git writing its index, and a file whose timestamps alone changed is no change', async () => {
     const repo = gitRepo(join(dir, 'repo'), { 'README.md': 'hello\n', 'a.txt': 'a\n', 'b.txt': 'b\n', 'c.txt': 'c\n' });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     await spaces.ensureClones(repo, 1);
     const card = board.create({ title: 'A', x: 0, y: 0 }).id;
@@ -171,7 +171,7 @@ describe('a clone made ready for a card', () => {
   test('starts from main as its origin has it now, fetching only where the origin has branches or tags it lacks', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
     const fetchHead = join(clone, '.git', 'FETCH_HEAD');
@@ -202,7 +202,7 @@ describe('a clone made ready for a card', () => {
   test('a fetch rule that also writes branches of its own, and pruning, count as git has them', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
     // a branch deleted in the origin goes from the clone where its fetch prunes
@@ -275,7 +275,7 @@ describe('free clones', () => {
   const setup = async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     let changed = 0;
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws'), changed: () => changed++ });
     const clones = await spaces.ensureClones(repo, 2);
@@ -346,7 +346,7 @@ describe('a workspace git frees', () => {
   const setup = async (mode: 'clones' | 'worktrees') => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode, repoPath: repo, dir: join(dir, 'ws') });
     if (mode === 'clones') await spaces.ensureClones(repo, 1);
     return { repo, spaces, card: (title: string) => board.create({ title, x: 0, y: 0 }).id };
@@ -387,7 +387,7 @@ describe('a workspace git frees', () => {
   test("a landed card's worktree goes with what still runs from it, which its stop command did not know of", async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const log = join(dir, 'stopped.log');
     const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: repo, dir: join(dir, 'ws'), stop: `echo stopped>> ${log}` });
     const a = board.create({ title: 'A', x: 0, y: 0 }).id;
@@ -501,7 +501,7 @@ describe("a card's fork point", () => {
     const SETTINGS = '.obeya/settings.json';
     const repo = gitRepo(join(dir, 'repo'), { 'README.md': 'hello\n', [SETTINGS]: '{"land":"main"}\n' });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: repo, dir: join(dir, 'ws') });
     const card = board.create({ title: 'A', x: 0, y: 0 }).id;
     const { path: ws, ready } = spaces.lease(card, 'obeya/a');
@@ -817,7 +817,7 @@ describe('clones the configuration no longer names', () => {
     origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ store, path: join(dir, 'main') });
     ws = join(dir, 'ws');
   });
 

@@ -18,7 +18,7 @@ import { Config } from './config';
 import { Store } from './db';
 import { AGENT_DEFAULTS, type CanvasConfig, type ConfigView } from '../core/types';
 import { type AgentRuntime, sdkRuntime, withAgentSetting } from './runtime';
-import { gitRepo } from './testing';
+import { gitRepo, testBoard } from './testing';
 
 // the sessions need the machine's Claude login, which the test setup hides behind a scratch config
 const scratch = process.env.CLAUDE_CONFIG_DIR;
@@ -78,7 +78,7 @@ const CASES: [string, string, string | null, boolean, Command['do'][]][] = [
 
 /** What the Coordinator makes of one sentence, or of a request passed on with it: the actions as they run. */
 async function hear(state: string, text: string, request: string | null, typed: boolean) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const board = testBoard();
   const login = board.create({ title: 'Login', x: 0, y: 0 });
   if (state === 'queued') board.work(login.id, { state: 'working' });
   const card = board.create({ title: 'Export als CSV', x: 0, y: 0 });
@@ -160,7 +160,7 @@ const NO_CARD: [string, boolean, Command['do'][]][] = [
 
 /** What the Coordinator makes of one sentence with no card open. */
 async function noCard(text: string, typed: boolean) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const board = testBoard();
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'live' });
   board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Zählerstände nachtragen', x: 0, y: 0 });
@@ -206,7 +206,7 @@ test.skipIf(!process.env.OBEYA_LIVE)(
   async () => {
     const results = await Promise.all(
       READ_FIRST.map(async ([text, then, want]) => {
-        const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+        const board = testBoard();
         board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
         const executed: Command[] = [];
         const asked: number[] = [];
@@ -245,7 +245,7 @@ const WISHES: [string, 'cannot' | 'wish' | null][] = [
 
 /** What the Coordinator makes of one sentence with no card open: whether it says Obeya cannot do it, or opens a draft for the makers. */
 async function wishOf(text: string) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const board = testBoard();
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'live' });
   board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
   const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
@@ -276,7 +276,7 @@ const LATER: [string, Command['do'][], string | null][] = [
  * card's agent can begin: the Coordinator waits on that card, and takes the step once it is done.
  */
 async function later(text: string) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => 'en');
+  const board = testBoard({ language: () => 'en' });
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Login', x: 0, y: 0 });
   // a folder no repository is in yet, as on the owner's machine then: the Coordinator may look

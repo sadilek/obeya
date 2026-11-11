@@ -4,7 +4,7 @@ import { cardTag } from '../core/card-number';
 import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession, until } from './testing';
+import { FakeRuntime, type FakeSession, testBoard, until } from './testing';
 
 let store: Store;
 let board: Board;
@@ -29,7 +29,7 @@ async function say(k: Commander, text: string, tool: string, args: Record<string
 
 beforeEach(() => {
   store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  board = testBoard({ store });
   runtime = new FakeRuntime();
   executed = [];
 });
@@ -38,7 +38,7 @@ describe("the owner's language", () => {
   test("the Coordinator confirms in the language of the owner's words, else the conversation language; Obeya's own words follow the interface; either changed takes a new session", async () => {
     let language: 'de' | 'en' = 'en';
     let conversation: 'de' | 'en' = 'en';
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => language, () => conversation);
+    board = testBoard({ store, language: () => language, conversation: () => conversation });
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander();
     const first = await say(k, 'start the export', 'act', { actions: [{ do: 'start', card: tag(a) }], confirm: 'Starting “Export”.' });
@@ -177,7 +177,7 @@ describe('the Coordinator remembers', () => {
     expect(k.undoable()).toEqual([{ text: heard.confirm, token: heard.token!, undoMs: expect.any(Number) }]);
     expect(k.undoable()[0]!.undoMs).toBeGreaterThan(1000);
     // Obeya stops before the window is over; the next server finds the command on the same database
-    const later = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const later = testBoard({ store });
     const ran: Command[] = [];
     const next = new Commander({ board: later, runtime, cwd: '/r', execute: (c) => void ran.push(c), delayMs: 20 });
     store.db.query("UPDATE commands SET due = '2000-01-01T00:00:00.000Z'").run();
@@ -482,13 +482,13 @@ describe('the Coordinator remembers', () => {
 
   test('starting a project hands its planned workstreams to the Coordinator together', async () => {
     const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: '', done, inReview: false });
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({
-      docs: [
+    board = testBoard({
+      store,
+      docs: () => [
         { file: 'docs/plan/p.md', title: 'Export', goal: 'Ziel', workstreams: [ws('W1', true), ws('W2'), ws('W3')], markdown: '' },
         { file: 'docs/plan/q.md', title: 'Fertig', goal: 'Ziel', workstreams: [ws('W1', true)], markdown: '' },
       ],
-      dirs: [],
-    }));
+    });
     const [project] = board.snapshot().items;
     const k = commander();
     const heard = k.hear('starte alle Workstreams', { project: project!.id });

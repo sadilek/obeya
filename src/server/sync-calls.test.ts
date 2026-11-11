@@ -30,6 +30,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     why: "server path, cheap: an answer's directory made, a free plan doc name probed, a folder repository's directory checked, two paths compared by their real path after a landing",
     calls: { existsSync: 1, mkdirSync: 1, realpathSync: 2, statSync: 1 },
   },
+  'canvas-fixture.ts': { why: "the canvas tests' fixture, not the server", calls: { mkdtempSync: 1 } },
   'config.ts': {
     why: "the configuration file: read at startup, stat'ed when the configuration is asked for (one known path), written when the owner saves; on the server path otherwise only stats of known paths (a voice's key and reference clips, a repository's path) and a demo voice's sample in a temporary directory",
     calls: { existsSync: 7, mkdirSync: 1, mkdtempSync: 1, readFileSync: 2, rmSync: 1, statSync: 1, writeFileSync: 2 },

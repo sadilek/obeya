@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W2 is done; the other workstreams are open. The review, made on 2026-11-10 at commit `acfa0484`, found the code in
+W2 and W3 are done; the other workstreams are open. The review, made on 2026-11-10 at commit `acfa0484`, found the code in
 better shape than its size suggests, and found its debt in a few recurring forms.
 
 What is already good, and stays out of the workstreams:
@@ -146,7 +146,7 @@ the workstream named does it for all of them.
   T1 (one `handedOver()`), T2 (the fixture takes its adapter, so no test builds everything twice),
   T5 (one "write a file and commit it"), T7 (changing one option of `Workers`), T14 (finding a
   session by its tool).
-- [ ] **W3:** A canvas test fixture. [tests](code-cleanup/tests.md) T3 (one harness for a
+- [x] **W3:** A canvas test fixture. [tests](code-cleanup/tests.md) T3 (one harness for a
   one-repository canvas instead of 72 hand-written starts), T4 (`canvas.test.ts` starts only the
   canvas a test uses), T6 (the test canvas literal and `new Board(…)` behind a helper), and what is
   left of T1: the handover helpers of the canvas-level tests.

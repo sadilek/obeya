@@ -7,7 +7,12 @@ import { dirname, join, resolve } from 'node:path';
 import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { PATIENCE } from './patience';
-import { git } from './workspaces';
+import { git, Workspaces } from './workspaces';
+import { Board } from './board';
+import { Store } from './db';
+import type { PlanDoc } from '../core/plan-doc';
+import type { Item } from '../core/types';
+import type { Workers } from './workers';
 import { KEY_HEADER, keyOf } from './owner';
 import { Voicing } from './walkthrough';
 import type { Language } from '../core/locale';
@@ -174,6 +179,69 @@ export function commit(repo: string, file: string, text = `${file}\n`, message =
   git(repo, 'add', '-A');
   git(repo, 'commit', '--quiet', '-m', message);
   return git(repo, 'rev-parse', 'HEAD');
+}
+
+/**
+ * A board on the test canvas "C" (id `c`) with one repository "Home" (id `home`) at `path`, as tests
+ * use one without a canvas around it: plan docs from `docs`, `holds` and the languages as `Board`
+ * takes them (German where left out).
+ */
+export function testBoard({
+  store = new Store(':memory:'),
+  path = '/r',
+  docs = () => [],
+  holds,
+  language,
+  conversation,
+}: {
+  store?: Store;
+  path?: string;
+  docs?: () => PlanDoc[];
+  holds?: (repo: string, commit: string) => boolean;
+  language?: () => Language;
+  conversation?: () => Language;
+} = {}): Board {
+  return new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path, branch: 'main' }] }, () => ({ docs: docs(), dirs: [] }), undefined, holds, language, conversation);
+}
+
+/**
+ * The workspaces of the test canvas `c` for `repo`, with `n` clones under `<dir>/ws` registered,
+ * cloned from `source`, as `ensureClones` makes them but through `gitClone`, which is quicker.
+ */
+export async function primedClones(store: Store, repo: string, dir: string, { n = 1, source = repo } = {}): Promise<Workspaces> {
+  const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
+  for (let k = 1; k <= n; k++) gitClone(source, join(dir, 'ws', String(k)));
+  await spaces.ensureClones(source, n);
+  return spaces;
+}
+
+/**
+ * A card started by `workers` and handed over as a worker hands over: with `commit` (a file name) a
+ * commit of that file in its workspace, `ready_for_review` with `summary` and `demo`, and with
+ * `idle` the end of the worker's turn. The card is a new one on `board` titled `title`, or `card`.
+ */
+export async function handedOverOn(
+  { board, workers, runtime }: { board: Board; workers: Workers; runtime: FakeRuntime },
+  {
+    card,
+    title = 'Zählerstände exportieren',
+    commit: file,
+    summary = 'S',
+    demo = artifact() as object,
+    idle = true,
+  }: { card?: Item; title?: string; commit?: string; summary?: string; demo?: object; idle?: boolean } = {},
+) {
+  card ??= board.create({ title, x: 0, y: 0 });
+  await workers.start(card.id);
+  const session = runtime.last;
+  const workspace = board.row(card.id).workspace!;
+  if (file) {
+    identify(workspace);
+    commit(workspace, file);
+  }
+  await session.call('ready_for_review', { summary, demo });
+  if (idle) session.emit({ type: 'idle' });
+  return { card, session, workspace };
 }
 
 const gitDir = (repo: string) => (existsSync(join(repo, '.git')) ? join(repo, '.git') : repo);
