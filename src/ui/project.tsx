@@ -8,8 +8,8 @@ import { ProjectTalk } from './coordinator';
 import { costLabel, ProjectSpent, useCostsShown } from './costs';
 import { api } from './api';
 import { Body, Doc, Inline, plain } from './markdown';
-import { useMenuClose, waitedOn } from './queue';
-import { placeOnScreen } from './snooze';
+import { placeOnScreen, useMenuClose } from './menu';
+import { waitedOn } from './queue';
 import { CardNumber } from './cardNumber';
 import { shortDay, stateLabel, t } from './strings';
 import { ArchiveIcon, PlayIcon, sameBounds, shownState, TalkIcon } from './parts';
@@ -79,8 +79,7 @@ function useHeadFit(hasActs: boolean) {
 /** A project's "…" menu: its buttons as entries, over the canvas; a press elsewhere, Escape or moving the view closes it. */
 function HeadMenu({ acts, at, close }: { acts: HeadAct[]; at: React.RefObject<HTMLButtonElement | null>; close: () => void }) {
   const menu = useRef<HTMLDivElement>(null);
-  const both = useRef({ contains: (n: Node | null) => !!at.current?.contains(n) || !!menu.current?.contains(n) });
-  useMenuClose(true, both as unknown as React.RefObject<HTMLElement>, close, true);
+  useMenuClose(true, [at, menu], close, true);
   useLayoutEffect(() => {
     if (menu.current && at.current) placeOnScreen(menu.current, at.current.getBoundingClientRect());
     addEventListener('wheel', close, { passive: true });

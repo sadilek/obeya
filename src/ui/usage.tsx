@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PlanUsage, Usage, UsageLimit } from '../core/types';
 import { know, known } from './known';
 import { clock, countdown, snoozeWhen, t } from './strings';
+import { useMenuClose } from './menu';
 
 /** Set once the owner confirmed the line that explains the tick: it shows no more. */
 const PACE_KNOWN = 'obeya-usage-pace-known';
@@ -57,17 +58,7 @@ export function UsagePill({ usage }: { usage: Usage }) {
   const now = useNow();
   const [paceKnown, setPaceKnown] = useState(() => known(PACE_KNOWN));
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    addEventListener('pointerdown', away, true);
-    addEventListener('keydown', esc);
-    return () => {
-      removeEventListener('pointerdown', away, true);
-      removeEventListener('keydown', esc);
-    };
-  }, [open]);
+  useMenuClose(open, ref, () => setOpen(false), true);
   const plans = usage.plans.filter((p) => p.limits.length);
   if (!plans.length) return null;
   // the bar names a plan only beside another; the list names each

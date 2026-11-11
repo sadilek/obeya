@@ -13,7 +13,7 @@ import { api } from './api';
 import { archiveLabelTexts, labelOf, marked, matches, useSettled } from './archive';
 import { plain } from './markdown';
 import { shownState } from './parts';
-import { useMenuClose } from './queue';
+import { useMenuClose } from './menu';
 import { stateLabel, t } from './strings';
 
 /** Results listed per section; the rest are counted. */

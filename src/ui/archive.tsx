@@ -11,7 +11,7 @@ import { ARCHIVE_LABELS, type ArchiveLabel, fold, searchText, searchWords } from
 import { type Item, stopped } from '../core/types';
 import { api } from './api';
 import { plain } from './markdown';
-import { useMenuClose } from './queue';
+import { useMenuClose } from './menu';
 import { becomesLabel, stateLabel, t } from './strings';
 
 

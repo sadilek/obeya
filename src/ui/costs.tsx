@@ -3,9 +3,10 @@
 // bar, the canvas's, whose list names the cards that cost the most. The server counts the costs
 // whether they are shown or not, and tells every page when the owner turns them on or off.
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import type { Item } from '../core/types';
 import { money, t } from './strings';
+import { useMenuClose } from './menu';
 
 let shown = false;
 const listeners = new Set<() => void>();
@@ -60,17 +61,7 @@ export function CostsPill({ total, items, onOpen }: { total: number | undefined;
   const on = useCostsShown();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    addEventListener('pointerdown', away, true);
-    addEventListener('keydown', esc);
-    return () => {
-      removeEventListener('pointerdown', away, true);
-      removeEventListener('keydown', esc);
-    };
-  }, [open]);
+  useMenuClose(open, ref, () => setOpen(false), true);
   if (!on || !total) return null;
   // a project's figure holds its workstreams', which the list names themselves
   const top = items

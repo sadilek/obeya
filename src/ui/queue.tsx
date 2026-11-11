@@ -11,23 +11,7 @@ import { api } from './api';
 import { plain } from './markdown';
 import { type Drag, useSortable } from './sortable';
 import { failText, stateLabel, t } from './strings';
-
-/** A list under a bar's button: while it is `on`, a click anywhere beside `box` closes it, and Esc does with `esc`. */
-export function useMenuClose(on: boolean, box: RefObject<HTMLElement | null>, close: () => void, esc = false) {
-  const latest = useRef(close);
-  latest.current = close;
-  useEffect(() => {
-    if (!on) return;
-    const away = (e: PointerEvent) => box.current?.contains(e.target as Node) || latest.current();
-    const key = (e: KeyboardEvent) => esc && e.key === 'Escape' && latest.current();
-    addEventListener('pointerdown', away, true);
-    addEventListener('keydown', key);
-    return () => {
-      removeEventListener('pointerdown', away, true);
-      removeEventListener('keydown', key);
-    };
-  }, [on]);
-}
+import { useMenuClose } from './menu';
 
 /** The bar's queue button: how many cards wait; a click lists them under it, in turn, to open or move. */
 export function QueuePill({ items, onOpen }: { items: Item[]; onOpen: (i: Item) => void }) {

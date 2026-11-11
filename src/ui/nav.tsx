@@ -11,7 +11,7 @@ import { api } from './api';
 import { FoldArrow, toggleFolded, useFolded } from './fold';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal } from './forYou';
 import { PauseMark, PlayMark } from './parts';
-import { useMenuClose } from './queue';
+import { useMenuClose } from './menu';
 import { t } from './strings';
 
 /** How wide the navigation is, pinned as a sidebar. */

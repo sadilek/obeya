@@ -5,6 +5,7 @@ import type { AppUpdate, CanvasInfo, BlockedClone, ClonePool, Item, PendingResta
 import { api } from './api';
 import { Doc, Inline, plain } from './markdown';
 import { clock, shortDay, t } from './strings';
+import { useMenuClose } from './menu';
 
 /** A restart that waits for workers or the owner: for whom and until when (on hover), and a button that has it go ahead now. */
 export function RestartPill({ restart, items }: { restart: PendingRestart; items: Item[] }) {
@@ -268,17 +269,7 @@ export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsew
   // open by a click (a tap) until one elsewhere, Escape or a card opened from it
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    addEventListener('pointerdown', away, true);
-    addEventListener('keydown', esc);
-    return () => {
-      removeEventListener('pointerdown', away, true);
-      removeEventListener('keydown', esc);
-    };
-  }, [open]);
+  useMenuClose(open, ref, () => setOpen(false), true);
   const several = pools.length > 1;
   const name = (repo: string) => canvas.repos.find((r) => r.id === repo)?.name ?? repo;
   const forWorkspace = items.filter((i) => (i.queue && 'workspace' in i.queue && i.queue.workspace !== 'slots') || i.waitsForClone).length;

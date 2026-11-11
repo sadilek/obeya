@@ -4,11 +4,10 @@
 // the menu; a choice of the card's own is named beside it. One component for every button that
 // starts a card.
 
-import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
-import { useMenuClose } from './queue';
-import { placeOnScreen } from './snooze';
+import { useMenuClose, usePlaced } from './menu';
 import { api } from './api';
 import { t } from './strings';
 
@@ -44,20 +43,9 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
     agentsView().then((v) => live && setView(v), () => {});
     return () => void (live = false);
   }, []);
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => menu.current && box.current && placeOnScreen(menu.current, box.current.getBoundingClientRect());
-    place();
-    addEventListener('scroll', place, true);
-    addEventListener('resize', place);
-    return () => {
-      removeEventListener('scroll', place, true);
-      removeEventListener('resize', place);
-    };
-  }, [open, view]);
+  usePlaced(open, menu, () => box.current!.getBoundingClientRect());
   // the menu lies over the page, above the panel and the controls floating over it, and is part of the box for closing it
-  const both = useRef({ contains: (n: Node | null) => !!box.current?.contains(n) || !!menu.current?.contains(n) });
-  useMenuClose(open, both as unknown as RefObject<HTMLElement>, () => setOpen(false), true);
+  useMenuClose(open, [box, menu], () => setOpen(false), true);
   if (!view) return <>{children}</>;
   const p = t.agentPick;
   const efforts = t.config.agents.efforts;
