@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1, W2 and W3 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W4 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -151,7 +151,7 @@ the workstream named does it for all of them.
   one-repository canvas instead of 72 hand-written starts), T4 (`canvas.test.ts` starts only the
   canvas a test uses), T6 (the test canvas literal and `new Board(…)` behind a helper), and what is
   left of T1: the handover helpers of the canvas-level tests.
-- [ ] **W4:** The rest of the test infrastructure. [tests](code-cleanup/tests.md) T8 (old databases
+- [x] **W4:** The rest of the test infrastructure. [tests](code-cleanup/tests.md) T8 (old databases
   for migration tests), T9 (one harness for a long-used canvas), T10 (one `settle` and one `until`),
   T11 (`workspaces.test.ts` setup), T12 (one stand-in for a demo site's host), T15.
 - [ ] **W5:** One git module. [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E2 with

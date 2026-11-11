@@ -286,6 +286,10 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
   rewritten to insert rows in the released shape; its assertions stay and are the check.
 - Confidence: high that the lists and offsets must be kept in step by hand (read `db.ts:716-730` and
   all four call sites); medium on the effort for the first test.
+- Done by W4: `databaseBefore(path, n)` in `db.test.ts` runs `SCHEMA` (exported from `db.ts` for
+  the tests) and the first `n` migrations; each migration test names its migration by its index
+  from the start and inserts its rows by SQL in the shape of that time. The drop lists,
+  `beforeHistory` and `beforeArchivePages` are gone.
 
 ### T9. Two harnesses stage "a long-used canvas" and measure rounds against a rebuild of the canvas view
 - Principle: DRY
@@ -314,6 +318,14 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Risk: medium: the budgets were tuned per harness and need re-measuring on the owner's machine and
   CI.
 - Confidence: high for the overlap (both setups and helpers read); medium for the merge's effort.
+- Done by W4, reshaped: `appCanvas(dir)` in `fixtures/history.ts` makes the repository, store and
+  canvas with the listener for both files. The merge was left: `board-size.test.ts` staged through
+  `writeHistory` and measured in `inUnits` would need its budgets measured anew on the three CI
+  platforms, where these timing tests failed at random before. Both "sites gone" measurements stay:
+  only `board-size.test.ts` has shared prototypes of archived ideas, the batch build the other
+  cannot catch, and only `long-history.test.ts` has the history. Its per-card demo directories
+  stay too: the test that a rebuild never looks at the demos' files tells the archived cards'
+  files apart by them.
 
 ### T10. Nine `settle`s, five local `until`s, six hand-written polling loops, and `flush`/`tick` beside `heard` and `until` in `testing.ts`
 - Principle: DRY
@@ -349,6 +361,18 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Risk: low; `share.test.ts`'s `until` asserts with `expect`, the shared one throws, both fail the
   test.
 - Confidence: high; every definition read, the fixed-pause examples read in context.
+- Done by W4: `settle` (5 ms) in `testing.ts` for commands, wish, usage and work-retro; `flush`
+  and `tick` went for `heard`, whose comment now says it is one turn of the event loop. The local
+  `until`s of self-update, narration and awake and the loops in folder-processes and
+  scratch-obeya use `until`; workers-evict and the coordinator's clone tests keep a `freed` that
+  waits with it and then for the freed clone; share.test's went with T12. A positive expectation
+  after a fixed pause waits for it: in `commands.test.ts` 24 "armed, pause, executed" became `ran(k)`
+  (until `holding()` is false) and the running command is awaited by its execute; in
+  `workers.test.ts` the three limit wakes, the background wait and the forced pause. Left: the two
+  120 s loops of `commands.live.test.ts` (a batch of live cases lists each one's outcome, a throw
+  would end the batch at the first), the cleanup loop in `folder-processes.test.ts`'s `finally` (a
+  throw there would hide the test's own failure), `canvas.test.ts`'s `settle` over its own canvas,
+  and `browser.test.ts`'s `until` (Justified).
 
 ### T11. `workspaces.test.ts`: four describes repeat the same 20-line setup and `commit` helper; the global git configuration is saved and restored in seven places
 - Principle: DRY
@@ -372,6 +396,9 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Risk: low.
 - Confidence: high for the four blocks (read side by side); the other three files' save and restore
   seen by rg only.
+- Done by W4: `originAndCheckout()` in `workspaces.test.ts` (the contributor's branch is now made
+  after the clone and fetched); `ownGlobalGitConfig(text)` in `testing.ts` registers the hooks and
+  returns a writer for one test; workspaces, new-repo, git-setup and machine tests use it.
 
 ### T12. Three test files each bring their own static host and deploy stand-in for a demo site
 - Principle: DRY
@@ -395,6 +422,12 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Risk: low to medium: `share.test.ts`'s deploy records calls and waits on `hold`; the shared script
   has to take such extras as text.
 - Confidence: medium; the three headers read, the files' bodies sampled.
+- Done by W4: `fakeSiteHost(out)` (site.test.ts's host and switches, reset after each test),
+  `deployScript({ before, after })` and `videoDemo(dir)` in `testing.ts`, used by share, site,
+  personal-site and tag-proposal tests; share.test.ts's `shared(id, act?)` now serves the whole
+  file (35 inline pairs). Left: `site-stalls.test.ts`'s host, which must make no synchronous call
+  of its own as the test counts them, and the prototype's demo directory in `ideas.test.ts`, whose
+  captions hold a cue.
 
 ### T13. Tests that will have to move with a cleanup of the production code
 - Principle: KISS (a list for the cleanup agent; one change proposed)
@@ -487,6 +520,13 @@ test bodies were read, the rest compared mechanically (top-level helpers, setup 
 - Win: about 20 small definitions.
 - Risk: low.
 - Confidence: high; each pair read (the UI storages and item builders by their first lines).
+- Done by W4: `silentWav(seconds, rate)`, `refusal(act)`, `tag`, `ws(key, done?)`, `stateOn(board,
+  id)` and `bytes(n, seed)` in `testing.ts` (board.test.ts had a fourth refusal helper);
+  `src/ui/testing.ts` with `memoryStorage()` and `testItem(over)`. `canvas.test.ts` uses `quiet()`;
+  `work-retro.test.ts` builds its workers in the one test. Left: `deps.test.ts`'s card (its queue
+  lacks a `since`, which only its cast allows) and `core/types.test.ts`'s (core imports nothing
+  from the UI); the German workstreams of commands and coordinator tests, whose titles the prompts
+  they check contain.
 
 ### T16. Leftovers in the shared test infrastructure
 - Principle: KISS
