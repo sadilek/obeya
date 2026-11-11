@@ -11,10 +11,7 @@ import { Aside, SWIPED_CARD } from './aside';
 import { plain } from './markdown';
 import { ClockMark, SnoozeFor } from './snooze';
 import { CardFace, cardClass, shownTitle } from './parts';
-import { clock, shortDay, stateLabel, t } from './strings';
-
-/** When it began: the time today, else the day. */
-export const when = (iso: string | number) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
+import { stateLabel, t, when } from './strings';
 
 /**
  * One canvas's entries in Tab's order: the cards that need the owner (but none they just acted on,

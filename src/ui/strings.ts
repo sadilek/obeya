@@ -4511,6 +4511,8 @@ export const countdown = (ms: number) => {
 };
 /** A short date: day and month. */
 export const shortDay = (d: Date | string | number) => new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+/** When something began: the time today, else the day. */
+export const when = (d: string | number) => (new Date(d).toDateString() === new Date().toDateString() ? clock(d) : shortDay(d));
 /** A long date with its weekday; the year only when it is not this one. */
 const longDay = (d: Date, today: Date) =>
   d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }) });

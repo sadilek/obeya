@@ -10,7 +10,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { type CanvasInfo, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers } from '../core/types';
 import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where, failText } from './api';
 import { enterBreaksLines } from './composer';
-import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe, when } from './forYou';
+import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe } from './forYou';
 import { SWIPED_CARD, swipedOnce } from './aside';
 import { FoldArrow, toggleFolded, useFolded as useFoldedCanvases } from './fold';
 import { asideMark, changeAside, forgotten, loadAside, onAsideElsewhere, type SetAside, staysAside } from './setAside';
@@ -29,7 +29,7 @@ import { shownState, TalkIcon } from './parts';
 import { PROBE_MS, quietText, TAILSCALE_APP, useTailnet, useWhyQuiet } from './reach';
 import { videoOf } from './spot';
 import { flag, local, read, session, setFlag, write } from './stored';
-import { forTouch, t } from './strings';
+import { forTouch, t, when } from './strings';
 import { UsagePill } from './usage';
 import { agentWorks, cardTalk, coordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
 import { seenOf } from './seen';
@@ -162,8 +162,6 @@ function tapOpensKeyboard() {
     removeEventListener('touchend', end, { capture: true });
   };
 }
-
-/** When something began: the time today, else the day. */
 
 export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   keepDrafts(sessionStorage, DRAFTS);

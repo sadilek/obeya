@@ -8,7 +8,7 @@ import { encode } from 'uqr';
 import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
 import { api, failText } from './api';
 import { Field, Head } from './config';
-import { clock, shortDay, t } from './strings';
+import { clock, t, when } from './strings';
 import { Over } from './over';
 
 /** Text with `code` in backticks, as the strings write commands. */
@@ -39,9 +39,6 @@ function useAccess(on: boolean): [AccessView | null, (v: AccessView) => void] {
 
 /** The devices whose app on the home screen keeps an address other devices no longer reach Obeya at. */
 const moved = (view: AccessView): DeviceView[] => (view.address ? view.devices.filter((d) => d.app && d.app !== view.address) : []);
-
-/** A moment as the device list says it: the time today, else the day. */
-const when = (iso: string) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
 
 /** The setting "Reachable from other devices" and what the network needs for it, with one step each. */
 function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => void }) {
