@@ -84,7 +84,7 @@ export class Explorers {
     this.o.board.setIdea(cardId, { yourTurn: false, questions: [], next: undefined });
     if (text) this.o.onOwnerInput?.(card, text);
     const quoted = replyTo ? this.o.board.quoted(cardId, replyTo) : undefined;
-    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${replyNote(quoted, 'explorer')}${text}${this.o.board.numbersNote(text, card.id)}${imageNote(images)}`, images, false, [said.id], true);
+    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${replyNote(quoted, 'explorer')}${text}${this.o.board.numbersNote(text, card.id)}${imageNote(images)}`, { images, said: [said.id], owner: true });
   }
 
   /**
@@ -117,7 +117,7 @@ export class Explorers {
     if (!card.paused) throw new BadRequest('notPaused', 'the agent is not paused');
     // a reply already given left nothing unanswered: it goes on with what it did after it, its words no new reply
     const unanswered = !!this.o.board.idea(cardId).unread;
-    this.send(card, unanswered ? 'Answer them now.' : RESUMED, [], !unanswered, [], true);
+    this.send(card, unanswered ? 'Answer them now.' : RESUMED, { quiet: !unanswered, owner: true });
   }
 
   /** The owner lets the agent about to pause after its reply go on after all (`resume`, or their words to it). */
@@ -152,8 +152,8 @@ export class Explorers {
   open(cardId: string, proposed?: 'idea' | 'task', notes?: { text: string; images: string[] }) {
     const card = this.o.board.item(cardId);
     if (!card || card.state !== 'idea') return;
-    if (notes?.text) return this.send(card, `${OPENING_NOTES}\n\n---\n\n${notes.text}`, notes.images, false);
-    this.send(card, proposed === 'idea' ? OPENING_PROPOSED : proposed === 'task' ? OPENING_PROPOSED_TASK : OPENING, [], false);
+    if (notes?.text) return this.send(card, `${OPENING_NOTES}\n\n---\n\n${notes.text}`, { images: notes.images });
+    this.send(card, proposed === 'idea' ? OPENING_PROPOSED : proposed === 'task' ? OPENING_PROPOSED_TASK : OPENING);
   }
 
   /**
@@ -163,7 +163,7 @@ export class Explorers {
   tell(cardId: string, text: string, quiet = false) {
     const card = this.o.board.item(cardId);
     if (!card || card.state !== 'idea') return;
-    this.send(card, text, [], quiet);
+    this.send(card, text, { quiet });
   }
 
   /**
@@ -234,8 +234,12 @@ export class Explorers {
     this.live.clear();
   }
 
-  /** `owner`: the owner's words, which let a paused agent go on; what Obeya tells it waits with what it has not answered yet. */
-  private send(card: Item, message: string, images: string[] = [], quiet = false, said: number[] = [], owner = false) {
+  /**
+   * `quiet`: the turn's words are no reply. `said`: the owner's messages it carries. `owner`: the owner's
+   * words, which let a paused agent go on; what Obeya tells it waits with what it has not answered yet.
+   */
+  private send(card: Item, message: string, o: { images?: string[]; quiet?: boolean; said?: number[]; owner?: boolean } = {}) {
+    const { images = [], quiet = false, said = [], owner = false } = o;
     // the owner's words let an agent about to pause after its reply go on, as they do a paused one
     if (owner && this.o.board.row(card.id).pausing) this.pauseTakenBack(card.id);
     const live = this.live.get(card.id);
@@ -265,13 +269,13 @@ export class Explorers {
     this.o.board.readNow(card.id, current.flatMap((m) => m.said));
     const text = unread ? `${UNREAD_NOTE[unread.why]}\n\n${unread.messages.map((m) => m.text).join('\n\n')}\n\n---\n\n${message}` : message;
     const all = current.flatMap((m) => m.images);
-    if (row.session_id) return this.launch(card, current, text, row.session_id, all, quiet);
+    if (row.session_id) return this.launch(card, current, text, { resume: row.session_id, images: all, quiet });
     // a planned card that became an idea brings the screenshots of its task
     const shots = this.o.imageFiles?.(card.images) ?? [];
-    this.launch(card, current, `${this.briefing(card, shots, current.flatMap((m) => m.said))}\n\n${text}`, undefined, [...shots, ...all], quiet);
+    this.launch(card, current, `${this.briefing(card, shots, current.flatMap((m) => m.said))}\n\n${text}`, { images: [...shots, ...all], quiet });
   }
 
-  private launch(card: Item, current: Message[], message: string, resume: string | undefined, images: string[], quiet = false) {
+  private launch(card: Item, current: Message[], message: string, { resume, images, quiet }: { resume?: string; images: string[]; quiet: boolean }) {
     // where it reads, first: without its repository on the canvas, nothing starts
     const cwd = this.o.pathFor(card);
     const preferences = this.o.preferences?.() ?? '';
