@@ -1,7 +1,7 @@
 // An idea under discussion, and the prototypes built of it.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { type Item, type NextStep, type RepoRef } from '../core/types';
+import { archiveRefusal, type Item, type NextStep, type RepoRef } from '../core/types';
 import { Body, Inline } from './markdown';
 import { cardDraft } from './draft';
 import { Composer } from './composer';
@@ -150,8 +150,8 @@ export function IdeaView({
               </button>
             )}
             <Later item={item} act={act} />
-            {/* not while a prototype of it is on the canvas */}
-            {idea.status !== 'open' && !item.prototypes?.some((p) => !p.archivedAt) && <ArchiveButton item={item} run={run} />}
+            {/* parked or dropped, and not while a prototype of it is on the canvas */}
+            {!archiveRefusal(item) && <ArchiveButton item={item} run={run} />}
             <DeleteButton onDelete={onDelete} />
           </div>
           {fresh && <p className="hint">{fresh.hint}</p>}

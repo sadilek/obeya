@@ -76,7 +76,10 @@ export class Archive {
     private board: Pick<Board, 'items'>,
     /** The items of these rows, with the plan docs of their projects as they last stood. */
     private build: (rows: CardRow[], docs: PlanDoc[]) => Item[],
-  ) {}
+  ) {
+    // the search reads the whole archive anew the first time: what its log held before is read with it
+    store.archiveLog.drop(canvasId, store.archiveLog.at());
+  }
 
   /**
    * What a search through the archive reads of each archived card (`search`), kept while the

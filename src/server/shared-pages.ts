@@ -117,7 +117,7 @@ export function cardDemos(r: CardRow): StoredDemo[] {
  * becomes a list of one, the card's demo in that directory (the latest one rendered there) named by
  * its handover. Runs before anything reads the canvas's shares.
  */
-export function convertSingleDemoShares(store: Store, canvasId: string) {
+function convertSingleDemoShares(store: Store, canvasId: string) {
   for (const r of store.shared(canvasId)) {
     const { dir, shown, ...rest } = JSON.parse(r.share!) as StoredShare & { dir?: string; shown?: SharedDemo['shown'] };
     if (rest.demos || !dir || !shown) continue;
@@ -139,7 +139,9 @@ export class PageNotice {
     private board: Pick<Board, 'home' | 'setting' | 'setSetting' | 'changed'>,
     /** The canvas as built is out of date: a demo's file came or went (`lookAtDemos`). */
     private redraw: () => void,
-  ) {}
+  ) {
+    convertSingleDemoShares(store, canvasId);
+  }
 
   /** The canvas's shared cards (`sharedRows`) by id, with where the database's log of their writes stood when they were read. */
   private shared: { upTo: number; rows: Map<string, CardRow> } | null = null;

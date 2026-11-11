@@ -4,7 +4,7 @@
 import { memo, useRef } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
-import { answering, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, halted, type PullRequest, stoppedArchivable, titleFrom } from '../core/types';
+import { answering, archiveRefusal, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, halted, type PullRequest, titleFrom } from '../core/types';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';
@@ -62,8 +62,6 @@ interface CardProps {
   pop: boolean;
   /** Its row in the search is under the pointer or picked: it lights up where it stands. */
   lit?: boolean;
-  /** A prototype of this idea is on the canvas, which keeps the idea from the archive. */
-  prototyped: boolean;
   els: Map<string, HTMLElement>;
   /** Starts a planned card, or one queued behind others despite the likely conflict. */
   onStart: (item: Item) => void;
@@ -229,15 +227,12 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
 }
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, lit, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, lit, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
     const shape = shapeOf(item);
     // a card the Coordinator is checking has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
-    // as "Archive" in the unfolded card: a finished card of the owner's whose agent is done, a
-    // stopped task, or a parked or dropped idea without a prototype on the canvas
-    const archivable =
-      !item.archivedAt &&
-      (finishedArchivable(item) || stoppedArchivable(item) || (!!item.idea && item.idea.status !== 'open' && !prototyped));
+    // as "Archive" in the unfolded card
+    const archivable = !item.archivedAt && !archiveRefusal(item);
     const cls = [
       'item',
       cardClass(item, underway),
@@ -288,7 +283,7 @@ export const CardView = memo(
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.lit === b.lit && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.lit === b.lit && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
 );
 
 // ------------------------------------------------------------------ overlays

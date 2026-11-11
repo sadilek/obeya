@@ -33,15 +33,27 @@ export type CardState = (typeof STATES)[number];
 export const finished = (s: CardState) => s === 'live' || s === 'done';
 /** A card an agent worked on until the owner stopped it: planned again, its branch stays the card's. */
 export const stopped = (i: Pick<Item, 'state' | 'branch' | 'unstarted'>) => i.state === 'planned' && !!i.branch && !i.unstarted;
-/**
- * A stopped card of the owner's the archive may take: nothing waits to start it, and its workspace
- * holds no work (a branch with commits or changes keeps it, and archiving would leave that work
- * unseen in a clone), or its repository does not run on the canvas, where nothing shows that work anyway.
- */
-export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'unstarted' | 'source' | 'queue' | 'workspace' | 'keptIn' | 'prototypeOf' | 'kind' | 'repoDown'>) =>
-  stopped(i) && i.source === 'manual' && i.kind === 'task' && !i.prototypeOf && !i.queue && ((!i.workspace && !i.keptIn) || !!i.repoDown);
 /** A finished card of the owner's whose agent is done: the archive may take it. */
 export const finishedArchivable = (i: Pick<Item, 'state' | 'source' | 'finishing'>) => finished(i.state) && i.source === 'manual' && !i.finishing;
+/** Why the archive does not take a card (`archiveRefusal`), as the server's refusal names it. */
+export type ArchiveRefusal = 'notDone' | 'holdsWork' | 'prototypeRunning' | 'planCard';
+/**
+ * Why the archive does not take the card; nothing where it does. It takes a finished card of the
+ * owner's whose agent is done; a parked or dropped idea without a prototype on the canvas; a project
+ * whose work is done; and a stopped task of the owner's that nothing waits to start, whose workspace
+ * holds no work (a branch with commits or changes keeps it, and archiving would leave that work
+ * unseen in a clone) or whose repository does not run on the canvas, where nothing shows that work
+ * anyway. A workstream stays with its project.
+ */
+export function archiveRefusal(
+  i: Pick<Item, 'kind' | 'state' | 'source' | 'idea' | 'prototypes' | 'branch' | 'unstarted' | 'prototypeOf' | 'queue' | 'workspace' | 'keptIn' | 'repoDown' | 'finishing'>,
+): ArchiveRefusal | undefined {
+  if (i.kind === 'project') return i.state === 'done' ? undefined : 'notDone';
+  if (i.source === 'plan') return 'planCard';
+  if (i.state === 'idea') return (i.idea?.status ?? 'open') === 'open' ? 'notDone' : i.prototypes?.some((p) => !p.archivedAt) ? 'prototypeRunning' : undefined;
+  if (stopped(i) && i.kind === 'task' && !i.prototypeOf) return i.queue ? 'notDone' : (i.workspace || i.keptIn) && !i.repoDown ? 'holdsWork' : undefined;
+  return finishedArchivable(i) ? undefined : 'notDone';
+}
 /**
  * A card the canvas's "Archive finished cards" takes, and so counts on its button: a finished one the
  * archive may take, but no Question card, which is done when the owner says so, not with the work;

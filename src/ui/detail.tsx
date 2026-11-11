@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { agentListens, answering, type ApproveResult, askable, type CardPatch, finished, finishedArchivable, handedOver, type Item, plannableAsProject, type RepoRef, snoozable, stopped } from '../core/types';
+import { agentListens, answering, type ApproveResult, archiveRefusal, askable, type CardPatch, finished, handedOver, type Item, plannableAsProject, type RepoRef, snoozable, stopped } from '../core/types';
 import { ApiError, api, failText } from './api';
 import { cardPath } from './address';
 import { Naming } from './cardLink';
@@ -837,7 +837,9 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
   const prototype = item.prototypeOf && <PrototypeActions item={item} act={act} proto={proto} />;
   // work waiting for the owner's verdict: its approval, or on a prototype its decisions
   const decide = handedOver(item) ? prototype || approve : (unworked || running || (halted && !item.archivedAt)) && prototype;
-  const archive = worked && (finishedArchivable(item) || (halted && own));
+  // a stopped task whose workspace holds work shows the button, which says why it stays
+  const refusal = archiveRefusal(item);
+  const archive = worked && (!refusal || refusal === 'holdsWork');
   if (!unworked && !(running || archive || halted || onPrototype || rest || snoozable(item))) return null;
   return (
     <>

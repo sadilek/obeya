@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, onCanvas, PROJECT_COLLAPSED, sizeOf } from '../core/layout';
-import { archivedWithDone, type Item, stoppedArchivable } from '../core/types';
+import { archivedWithDone, archiveRefusal, type Item } from '../core/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, type PlanRead } from './board';
 import { pathOfRef, repoOfRef } from './plan-ref';
@@ -635,7 +635,7 @@ describe('archive', () => {
     // its repository does not run on the canvas, so the workspace it took from the prototype would not keep it
     board.work(c.id, { branch: 'obeya/gebaut-1', workspace: '/tmp/clone-1', built_on: prototype.id, repo: 'elsewhere' });
     expect(board.item(c.id)).toMatchObject({ unstarted: true, repoDown: true });
-    expect(stoppedArchivable(board.item(c.id)!)).toBe(false);
+    expect(archiveRefusal(board.item(c.id)!)).toBe('notDone');
     expect(() => board.archive([c.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
     board.work(c.id, { workspace: null });
     expect(() => board.archive([c.id])).toThrow(expect.objectContaining({ code: 'notDone' }));

@@ -44,6 +44,8 @@ import {
   type Queue,
   STATES,
   archivedWithDone,
+  archiveRefusal,
+  type ArchiveRefusal,
   finished,
   formatQuestion,
   needsYou,
@@ -62,7 +64,7 @@ import { History } from './history';
 import { Sheet } from './sheet';
 import { atWork, begun, finishing, stateOf, tickedAhead, toItems, workDone, type Worked } from './items';
 import { docOfRef, keyOfRef, repoOfRef, workstreamRef } from './plan-ref';
-import { convertSingleDemoShares, PageNotice } from './shared-pages';
+import { PageNotice } from './shared-pages';
 import { Archive } from './archive';
 import { PlanFollower } from './plan-follow';
 import { fromJson, type Shipped, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredThread, toJson } from './row';
@@ -100,6 +102,14 @@ const SETUP_CARD_SETTING = 'setup_card:';
 
 /** The setting that names the card Obeya proposed to give a repository's shared pages a theme, per repository: Obeya proposes it once. */
 const THEME_CARD_SETTING = 'theme_card:';
+
+/** What the server says where the archive does not take a card (`archiveRefusal`). */
+const ARCHIVE_REFUSED: Record<ArchiveRefusal, string> = {
+  notDone: 'only a finished or stopped card, a parked or dropped idea or a project whose work is done goes into the archive',
+  holdsWork: 'its workspace holds work that has not landed',
+  prototypeRunning: 'a prototype for this idea is still on the canvas',
+  planCard: 'a workstream stays with its project',
+};
 
 /** How long an empty card of the owner's (no title, text or screenshots) may exist before Obeya drops it on start. */
 const UNTITLED_GRACE_MS = 10 * 60_000;
@@ -214,18 +224,15 @@ export class Board {
     this.conversation = conversation ?? language;
     this.sheet = new Sheet(store.db, canvas.id, () => this.changed());
     this.history = new History(store.db, canvas.id);
-    this.archived = new Archive(store, canvas.id, this, (rows, docs) => this.withProjectSpend(this.withPrototypes(toItems(rows, docs, this.home, this.worked, this.pages.themeNow))));
-    this.follower = new PlanFollower(store, canvas.id, this, () => this.docs ?? []);
+    store.ensureCanvas(canvas.id, canvas.name);
+    // a new card whose page closed before anything was written in it was never wanted
+    store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
     this.pages = new PageNotice(store, canvas.id, this, () => {
       this.cache = null;
       this.tell();
     });
-    store.ensureCanvas(canvas.id, canvas.name);
-    // a new card whose page closed before anything was written in it was never wanted
-    store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
-    convertSingleDemoShares(store, canvas.id);
-    // the search reads the whole archive anew the first time: what its log held before is read with it
-    store.archiveLog.drop(canvas.id, store.archiveLog.at());
+    this.archived = new Archive(store, canvas.id, this, (rows, docs) => this.withProjectSpend(this.withPrototypes(toItems(rows, docs, this.home, this.worked, this.pages.themeNow))));
+    this.follower = new PlanFollower(store, canvas.id, this, () => this.docs ?? []);
   }
 
   readonly conversation: () => Language;
@@ -1088,30 +1095,17 @@ export class Board {
 
   // ---------------------------------------------------------------- archive
 
-  /** Takes finished cards, stopped tasks, parked or dropped ideas of the owner's and projects whose work is done off the canvas into its archive. */
+  /**
+   * Takes cards off the canvas into its archive, as `archiveRefusal` says it takes them; a stopped
+   * task goes with its conversation, for the owner to come back to.
+   */
   archive(ids: string[]) {
     for (const id of ids) {
-      const row = this.own(id);
-      if (row.kind === 'project' && row.plan_ref) {
-        if (this.items().find((i) => i.id === id)?.state !== 'done') throw new BadRequest('notDone', 'a project goes into the archive once its work is done');
-        continue;
-      }
-      if (row.plan_ref) throw new BadRequest('planCard', 'a workstream stays with its project');
-      if (row.state === 'idea') {
-        if (this.idea(id).status === 'open') throw new BadRequest('notDone', 'an idea under discussion cannot be archived');
-        if (this.items().some((i) => i.prototypeOf === id)) throw new BadRequest('prototypeRunning', 'a prototype for this idea is still running');
-        continue;
-      }
-      // a stopped task goes with its conversation, for the owner to come back to; work its workspace holds would be left unseen,
-      // unless its repository does not run on the canvas, where nothing could show it anyway; one built on a
-      // prototype that no agent has worked on since is planned, not stopped (`unstarted`)
-      if (row.state === 'planned' && row.branch && row.kind === 'task' && !row.prototype_of && !(row.built_on && !row.session_id)) {
-        if (row.queue) throw new BadRequest('notDone', 'the card waits to be started');
-        if ((row.workspace || row.kept_in) && !this.item(id)?.repoDown) throw new BadRequest('holdsWork', 'its workspace holds work that has not landed');
-        continue;
-      }
-      if (!row.state || !finished(row.state)) throw new BadRequest('notDone', 'only a finished or stopped card can be archived');
-      if (finishing(row)) throw new BadRequest('notDone', 'its agent still finishes what remains after the landing');
+      this.own(id);
+      const card = this.card(id);
+      // a plan card the canvas does not show
+      const refusal = card ? archiveRefusal(card) : 'planCard';
+      if (refusal) throw new BadRequest(refusal, ARCHIVE_REFUSED[refusal]);
     }
     const at = new Date().toISOString();
     // a stopped card snoozed to start later starts no more: brought back, it is the owner's to start

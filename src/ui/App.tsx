@@ -301,8 +301,6 @@ function Canvas({
     return m;
   }, [items]);
   const repliesIn = useMemo(() => unreadPerProject(snapshot.talk), [snapshot.talk]);
-  // ideas with a prototype on the canvas, which stay out of the archive until it ends
-  const prototyped = useMemo(() => new Set(items.flatMap((i) => (i.prototypeOf ? [i.prototypeOf] : []))), [items]);
   const [noteHidden, hideNote] = useHiddenEmptyNotes(snapshot.canvas.id);
   // where notes on plan directories were moved here, by repository, until the server echoes it back
   const [notesMoved, setNotesMoved] = useState<Record<string, Pos>>({});
@@ -1974,7 +1972,6 @@ function Canvas({
                   dragging={item.id === dragId || dragWith.includes(item.id)}
                   pop={item.id === popId}
                   lit={item.id === litId}
-                  prototyped={prototyped.has(item.id)}
                   showRepo={snapshot.canvas.repos.length > 1}
                   els={els}
                   onStart={startCard}

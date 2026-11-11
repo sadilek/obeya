@@ -2,7 +2,7 @@
 // boxes and buttons several kinds of card have.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { type CardAction, type CardPatch, finishingUp, type Item, snoozable, stopped, stoppedArchivable } from '../core/types';
+import { archiveRefusal, type CardAction, type CardPatch, finishingUp, type Item, snoozable } from '../core/types';
 import { api, type Field } from './api';
 import { Naming } from './cardLink';
 import { plain } from './markdown';
@@ -161,7 +161,7 @@ export const DeleteButton = ({ onDelete }: { onDelete: () => void }) => (
 export function ArchiveButton({ item, run, className = 'btn', label = t.archive.archive, hint }: { item: Item; run: Run; className?: string; label?: string; hint?: string }) {
   const title = plain(item.title);
   // a stopped task whose workspace holds work stays on the canvas; the button says why
-  const held = stopped(item) && !stoppedArchivable(item);
+  const held = archiveRefusal(item) === 'holdsWork';
   return item.archivedAt ? (
     <button className="btn" onClick={() => run(() => api.unarchive(item.id), { close: true, ack: t.archive.unarchived(title) })}>
       {t.archive.unarchive}

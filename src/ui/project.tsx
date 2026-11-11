@@ -3,7 +3,7 @@
 import { memo, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
-import { finished, type Item, needsYou, type ProjectHistory } from '../core/types';
+import { archiveRefusal, finished, type Item, needsYou, type ProjectHistory } from '../core/types';
 import { ProjectTalk } from './coordinator';
 import { costLabel, ProjectSpent, useCostsShown } from './costs';
 import { api } from './api';
@@ -151,7 +151,7 @@ export const ProjectView = memo(
       acts.push({ key: 'arrange', icon: <ColumnsIcon size={11} />, label: item.arranging ? t.plan.arranging : t.plan.arrange, title: `${t.plan.arrangeLong}. ${t.plan.arrangeHint}`, disabled: item.arranging, run: () => onArrange(item) });
     if (startable > 0)
       acts.push({ key: 'start-all', icon: <PlayIcon size={10} />, label: t.plan.startAllShort(startable), title: `${t.plan.startAll(startable)}. ${t.plan.startAllHint}`, run: () => onStartAll(item, startable) });
-    if (item.state === 'done') acts.push({ key: 'archive', icon: <ArchiveIcon size={11} />, label: t.plan.archive, title: `${t.plan.archiveLong}. ${t.plan.archiveHint}`, run: () => onArchive(item) });
+    if (!archiveRefusal(item)) acts.push({ key: 'archive', icon: <ArchiveIcon size={11} />, label: t.plan.archive, title: `${t.plan.archiveLong}. ${t.plan.archiveHint}`, run: () => onArchive(item) });
     const { head, ttl, meta, row, moreBtn, roomy, menu, setMenu } = useHeadFit(acts.length > 0);
     return (
       <div className={`item project s-${item.state}${collapsed ? ' collapsed' : ''}${lit ? ' lit' : ''}`} data-id={item.id} style={{ left: b.x, top: b.y, width: b.w, height: b.h, zIndex: 0 }}>
