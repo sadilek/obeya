@@ -15,9 +15,9 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W7 and W13 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
-`acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
-recurring forms.
+W1 to W7, W13 to W18 and W20 are done; the other workstreams are open. The review, made on
+2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
+its debt in a few recurring forms.
 
 What is already good, and stays out of the workstreams:
 
@@ -223,7 +223,7 @@ the workstream named does it for all of them.
   H7 (log lines recognised from the message table), J4 (button labels single-sourced), J7, J9 with
   [ui-small-modules](code-cleanup/ui-small-modules.md) I8, J11. It changes imports across the
   repository, so run it while few other workstreams are open.
-- [ ] **W20:** The UI's shared mechanisms. [ui-small-modules](code-cleanup/ui-small-modules.md) I1 (a
+- [x] **W20:** The UI's shared mechanisms. [ui-small-modules](code-cleanup/ui-small-modules.md) I1 (a
   value the browser remembers), I2 (a module store with listeners), I4, I5, I6, I7, I9, I10, I12,
   I13, I14; [ui-card](code-cleanup/ui-card.md) G8 (`parts.tsx` by subject), G10 with I3 and
   [ui-panels](code-cleanup/ui-panels.md) H10 (one click-away closer), G11 (first-use flags), G17.

@@ -263,6 +263,8 @@ parts.tsx has become five unrelated modules in one file.
 - Confidence: high.
 - Bug fixed: the minimap colours a card by `shownState`, as the card and the collapsed project's
   marks do.
+- Done by W20 as moves: `links.tsx` (with `links.test.ts`), `pills.tsx`, `project.tsx`,
+  `CanvasAgents` in `nav.tsx`, `Body` in `markdown.tsx`, `useReportedHeight` in `frame.ts`.
 
 ### G9. Drawing waits by hand lives inside `Canvas` as loose state and 60 lines of one-line JSX
 - Principle: KISS
@@ -305,6 +307,7 @@ parts.tsx has become five unrelated modules in one file.
 - Risk: low; identical behaviour (the hook reads `close` through a ref, the copies close over
   `setOpen`).
 - Confidence: high; compared line by line.
+- Done by W20 with I3 and H10: `menu.ts`.
 
 ### G11. Eleven hand-rolled first-use flags
 - Principle: DRY
@@ -324,6 +327,7 @@ parts.tsx has become five unrelated modules in one file.
 - Win: about 25 lines and six `useState` in `Canvas`.
 - Risk: low.
 - Confidence: high; all eleven read.
+- Done by W20: `useKnown` in `stored.ts` (`known.ts` went with I1).
 
 ### G12. Ten "try, act, acknowledge, else fail" wrappers in `Canvas`
 - Principle: DRY
@@ -447,6 +451,8 @@ parts.tsx has become five unrelated modules in one file.
 - Confidence: high.
 - Bug fixed: `useCopy` copies through `copyText`, which runs `copyOrSelect` on an element of its own
   out of sight, so its callers copy on an insecure origin too.
+- Done by W20: `useCopied` in `copy.ts`, `CopyPath` shared. `useCopy` stays for texts that are not
+  on the page (it copies from an element of its own).
 
 ### G18. Start, Dequeue and Delete are written out once per situation in `Detail`
 - Principle: DRY

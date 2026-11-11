@@ -59,6 +59,13 @@ finding is major.
   pass fake stores and cover the rewritten modules.
 - Confidence: high; read every module named, listed every `localStorage`/`sessionStorage` access
   in `src/ui` by grep (81 lines in 17 files).
+- Done by W20: `stored.ts` reads, writes and takes a value (`read`/`write`/`take`, the `Json`
+  variants, `flag`/`setFlag`) through `local` and `session`, which reach the storage only inside the
+  guard, so a storage that refuses even being reached breaks nothing. `writeJson` removes the key
+  for `null` only: the sites that drop an empty map pass `null` themselves, since for
+  `useStoredState` an empty value written and the fallback differ. `known.ts` went; `known`/`know`
+  live in `stored.ts`. The modules that take a store as a parameter (for their tests) keep taking
+  one.
 
 ### I2. Seven hand-rolled "module state with listeners" stores, and five listener sets in `api.ts`
 - Principle: DRY
@@ -88,6 +95,8 @@ finding is major.
 - Confidence: high for the duplication (all read; grepped `new Set<() => void>()` and
   `useSyncExternalStore(` across `src/ui`); medium that a helper is wanted for something this
   small, since each copy is short.
+- Done by W20: `signal.ts`; also the cite button's frame mark and a walkthrough's `Playback`. `emit`
+  says whether anyone listened, which is all `onNotice`'s held notices needed.
 
 ### I3. "Close on a click elsewhere or Esc" written out three more times beside `useMenuClose`
 - Principle: DRY
@@ -109,6 +118,7 @@ finding is major.
 - Win: about 33 lines, and one definition of the behaviour.
 - Risk: low; behaviour is identical (capture phase, same events). No test covers the pills' closing.
 - Confidence: high; read all four, grepped `addEventListener('pointerdown'` across `src/ui`.
+- Done by W20 with G10 and H10: `menu.ts`.
 
 ### I4. Three dialogs over the greyed page each restate the overlay, the box and the ✕, in CSS and in TSX
 - Principle: DRY
@@ -139,6 +149,12 @@ finding is major.
   behave the same for the owner) or take it as a prop. No tests; check by screenshot.
 - Confidence: high; compared the rules mechanically (identical declaration sets) and read the four
   components.
+- Done by W20: `Over` in `over.tsx` and the `.dimmed` rules (the class `over` was taken by the setup
+  assistant). It closes on a click that starts and ends beside the box: a press that starts in the
+  box (selecting text in the draft) and ends beside it no longer closes Help or the draft for
+  Obeya's makers, and Connect a phone closes on the release instead of the press. `HowToHint` keeps
+  `id="help"`: `zoom.ts` tells by it that a dialog is open. The `.remove`, `.from` and `.dot` twins
+  are one rule each.
 
 ### I5. The dark palette is written twice, and nothing keeps the copies in step
 - Principle: DRY
@@ -163,6 +179,9 @@ finding is major.
 - Risk: medium for (a): the page's first paint and the pages shown in frames must still follow the
   system before the script runs; no test covers it. Low for the test alone.
 - Confidence: high that the blocks are identical (compared mechanically); medium on the best fix.
+- Changed by W20 to the test: `styles.test.ts` checks that the system's and the owner's dark blocks
+  are the same. Option (a) moves the first paint's look into a script that has to run before the
+  stylesheet paints, which nothing tests; the test removes the drift at no risk.
 
 ### I6. `api.ts`: the canvas prefix, the raw fetches and the socket sends are each spelled out many times
 - Principle: DRY
@@ -191,6 +210,8 @@ finding is major.
 - Confidence: high; read the file completely. For the record: `api.ts` restates no type of
   `src/core/types.ts` (its own `Heard`, `Where`, `Field`, `SiteHow`, `CanvasFeed`, `EveryCanvas`
   have no twin there), and every method of `api` has a caller (each checked by grep).
+- Done by W20: `canvasApi`, `raw`, `tell`, `mainSocket`, `filePath`. The stall report still falls
+  back to any open socket (it only goes into the server's log).
 
 ### I7. `stateLabel` is one conditional expression of 67 lines, nested five deep
 - Principle: KISS
@@ -211,6 +232,8 @@ finding is major.
 - Risk: low to medium; `strings.test.ts` checks two of the branches only, so the rewrite needs a
   table test of the labels first.
 - Confidence: high.
+- Done by W20, with a table test of every label in `strings.test.ts` written against the old
+  expression first.
 
 ### I8. How long a confirmation and its "Undo" show is defined twice, and the copies differ
 - Principle: DRY
@@ -255,6 +278,7 @@ finding is major.
 - Win: one of three lists, and about 6 lines.
 - Risk: low; `draft.test.ts` covers keeping and taking back drafts.
 - Confidence: high; read the file completely.
+- Done by W20.
 
 ### I10. The string tables import the API client, in a cycle
 - Principle: KISS
@@ -273,6 +297,7 @@ finding is major.
 - Win: the cycle, and the tables' only dependency on running code.
 - Risk: low; type check and `strings.test.ts`.
 - Confidence: high; read the three import lists.
+- Done by W20.
 
 ### I11. Dead entries in the tables and the stylesheet
 - Principle: YAGNI
@@ -322,6 +347,9 @@ finding is major.
 - Risk: low; the type check finds every reader of a removed key.
 - Confidence: medium: the duplicates are exact (compared mechanically), but whether two places
   should share a text is a wording decision; the owner may prefer contextual keys.
+- Done by W20 for Cancel, Remove, Copied, Download and Close (Esc). The host labels were dropped:
+  the repository site's table names the public GitHub repository `github`, the personal site's
+  `github-public`, and their notes differ, so sharing them needs a mapping longer than the copy.
 
 ### I13. "Does this browser run on Obeya's machine" asked and held three times
 - Principle: DRY
@@ -336,6 +364,7 @@ finding is major.
 - Win: about 12 lines.
 - Risk: low; no tests on these components.
 - Confidence: high.
+- Done by W20: `useAsked` in `asked.ts`.
 
 ### I14. `useRepoChoice` spells the card's new repository out three times
 - Principle: DRY
@@ -348,6 +377,7 @@ finding is major.
 - Win: two long expressions.
 - Risk: low.
 - Confidence: high.
+- Done by W20.
 
 ## Justified (looks redundant or complex, but has a reason; leave it)
 - `src/ui/strings.ts:2305-2307` two tables of 2,100 lines each: the English one is typed `Strings =

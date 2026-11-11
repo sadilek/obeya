@@ -264,6 +264,9 @@ browser.
 - Win: about 15 lines, two casts.
 - Risk: low. No tests; check the agent menu and a project's "…" menu open, scroll, close.
 - Confidence: high. Grepped `useMenuClose(`, `placeOnScreen`, `usePlaced`.
+- Done by W20: `menu.ts` holds `useMenuClose` (it takes several boxes, so no fake ref),
+  `placeOnScreen` and `usePlaced`, which `AgentPick` uses now. A project's menu still places itself
+  once: it closes when the view moves.
 
 ### H11. How a model is named is written in four places
 - Principle: DRY
