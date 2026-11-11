@@ -72,6 +72,13 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
   no
   decision about it). Medium for step 2 being wanted: it is a judgement that async functions read
   better than the generators.
+- Done by W5, both steps: the readers are async functions that take their directory and call
+  `gitTry` (`readBranches`, `detectBranch`, `defaultBranch`, `defaultBranchCommit`, `branchCommit`
+  in `branches.ts`; `readSharedAt`, `readSettingsAt`, `hasAdapterModule` in `adapters/index.ts`;
+  `readRepo`, `readDefault` in `canvas.ts`; `readNotes` in `workers.ts`; `checkWorktree`,
+  `addWorktree` in `read-tree.ts`). `repoInfo`, `defaultBranch` and `readShared` are the async
+  ones by the plain names; the plugin scripts wait at their top level; `repoValues` takes the
+  detected branch. `defaultBranchCommit` keeps the folder check the synchronous one had.
 
 ### E2. The git runner is private to workspaces.ts, so seven modules wrote their own
 - Principle: DRY
@@ -124,6 +131,16 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
   budgets that move with the code.
 - Confidence: high (grepped every `spawnOutput(`/`Bun.spawn(`/`spawnSync(` with `GIT` or `'git'`
   under `src`; read each runner).
+- Done by W5: `git.ts` holds `GIT`, `gitRun(cwd, args, { env, stdin, timeout })` (env on this
+  machine only), `gitAsync`, `gitTry`, `gitNames` (the NUL-separated names `worktreeNames` and
+  `changedFiles` shared) and `NO_PROMPT`; `failureText` went to `spawn.ts`, since `hosts.ts` (which
+  `git.ts` imports) has three copies of it too. `shared-settings.ts` keeps `must` on `gitRun` with
+  `NO_PROMPT`; `source-update.ts` keeps its `{ ok, out }` closure on `gitRun`; `read-tree.ts`,
+  `forgejo.ts`'s `originOf`, `forge.ts`'s `originRepo` and `site.ts` call `gitRun`/`gitTry`;
+  `new-repo.ts` calls `gitOrNull`, whose `git` now passes `env: process.env` as the two did.
+  `git-setup.ts` keeps its `run`: it needs the untrimmed output and a working directory. The
+  prompt rule stays per call (`NO_PROMPT` where a call reaches a remote): giving it to every call
+  would change what a landing push does in a terminal.
 
 ### E3. A git remote URL is taken apart in seven places, each with its own regex
 - Principle: DRY
@@ -162,6 +179,12 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - Confidence: high that they parse the same input (read all); medium that one shape serves all
   without a special case or two (Forgejo's base keeps `http:` and a path prefix, `githubRepo`
   maps `ssh.github.com` to `github.com`).
+- Done by W5, reshaped: `parseRemote` in `repo.ts` serves `sameRemote`, `sameRepo`, `landedUrl`,
+  `githubRepo` and `cloneName`. Forgejo's `remoteRepo` keeps `new URL`: its API base wants what
+  URL normalises (host case, default port), which the web address for people does not.
+  `repoName` keeps its own split: a canvas without an id or name takes its id from it, and a
+  remote with a trailing slash would name it anew. `scripts/gh.ts` and `githubToken`'s host
+  (E9) stay.
 
 ### E4. Synchronous git over SSH has no caller outside one test
 - Principle: YAGNI
@@ -198,6 +221,9 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - Confidence: high on "no production caller" (grepped `runSync(`, imports of `git` and `gitOrNull`
   from `workspaces`, callers of `gitStepsSync`); medium on the design sentence being stale rather
   than a decision to keep the door open.
+- Done by W5: `git()` runs locally; `runSync`, `RECHECK_DOWN_MS` and `down.asking` went (`down`
+  is a flag). `hosts.test.ts`'s "a host that stops answering" shows that the pool's looks bring a
+  host back. The design sentence in `agents-and-workspaces.md` is rewritten.
 
 ### E5. workspaces.ts is three modules; most importers want only the smallest one
 - Principle: KISS
@@ -227,6 +253,9 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - Risk: low (moves; typecheck finds every import). `sync-calls.test.ts` keys its budgets by file
   and needs the new files entered.
 - Confidence: high (import list taken with grep over `src`, `scripts`, `plugin`, `app`).
+- Done by W5: a commit of moves alone, then the reshaping. `WorkspaceError` moved to `git.ts`
+  with the runner, since git's failures are workspace errors to the workers; `remoteWorkspace`
+  is exported for `workspaces.ts`.
 
 ### E6. "Is A an ancestor of B" is defined eight times
 - Principle: DRY
@@ -255,6 +284,10 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
   where git cannot tell; `workers.ts` (`ownCommits`) and `replay.ts` (`descends`) use it and decide
   themselves what that means. The six sites in `workspaces.ts` can move to it, keeping `:1369`'s
   explicit "no".
+- Done by W5: `isAncestor(cwd, a, b, unsure?)` answers `unsure` where the caller gives it, else
+  throws; the five sites in `workspaces.ts`, `branches.ts`'s `branchCommit` and `read-tree.ts`'s
+  `holds` use it, `:1369` as `!isAncestor(…, true)`. `source-update.ts` keeps its own call, on its
+  runner with a timeout.
 
 ### E7. PrWatcher.react does five jobs in 130 lines and resets four "ready" fields by hand per branch
 - Principle: KISS
@@ -328,6 +361,11 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - Confidence: high (read every site; differences listed above).
 - Bug fixed (W1 of the bug plan): `unlanded`'s `landedOn` now asks in batches under 24,000
   characters, a third copy of the batching loop for `pathspecBatches` to take over.
+- Done by W5: `pathspecBatches`, `untracked`, `fetchedMain`, `ensureOnBase`, `deleteBranch`,
+  `removeWorktree` and `AS_OBEYA` (in `git.ts`, also used by `site-hosts.ts`). The batches now
+  share one limit: a file goes into the next batch where it would take the command line over
+  24,000 characters. The "wait out a restored card's clone" pair stays: both sites need `making`
+  again after it, so a helper would not shorten them.
 
 ### E9. Three caches of a login, each "ten minutes, asked once for calls side by side"
 - Principle: DRY
@@ -456,6 +494,8 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - Risk: low.
 - Confidence: high (read all three; `demo.ts:34` returns `undefined` instead and is another
   function).
+- Done by W5: `realPath` in `path.ts` (whose header now names it), used by `read-tree.ts`,
+  `workers.ts` and `canvas.ts`.
 
 ### E15. forge.ts holds two subjects: the forges, and what a PR's review means
 - Principle: KISS
@@ -540,6 +580,3 @@ only two plugin scripts and tests still use. Below that, a tail of small idioms 
 - `src/server/read-tree.ts:42-110` `refsSeal`/`headSeal` read git's files without git: a few stats
   instead of a process per look, by design (`sync-calls.test.ts:85`).
 
-## Bugs noticed in passing
-- `src/server/forge.ts:276`, `src/server/site.ts:230`, `:258` run bare `'git'` instead of `GIT`
-  (slower on macOS and Windows, see `workspaces.ts:75-81`); fixed by E2.

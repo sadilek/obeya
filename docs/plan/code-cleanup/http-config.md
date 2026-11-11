@@ -452,6 +452,9 @@ test for "these commits change code" (F16).
   own) and `source-update.test.ts` run real git.
 - Confidence: high on the three places (read each). `hosts.ts:669` and `forgejo.ts:330` set the same
   variable for `git credential fill`, a different call that I would leave.
+- Done by W5 with E2: `gitRun` in `git.ts` takes `env`, `stdin` and `timeout`, and `NO_PROMPT` is
+  the environment of a call that reaches a remote; `shared-settings.ts`, `source-update.ts` and
+  `read-tree.ts` call it.
 
 ## Justified (looks redundant or complex, but has a reason; leave it)
 - `src/server/self-update.ts`, `source-update.ts`, `app-update.ts`: three modules, three jobs

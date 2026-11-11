@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W4 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W5 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -154,7 +154,7 @@ the workstream named does it for all of them.
 - [x] **W4:** The rest of the test infrastructure. [tests](code-cleanup/tests.md) T8 (old databases
   for migration tests), T9 (one harness for a long-used canvas), T10 (one `settle` and one `until`),
   T11 (`workspaces.test.ts` setup), T12 (one stand-in for a demo site's host), T15.
-- [ ] **W5:** One git module. [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E2 with
+- [x] **W5:** One git module. [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E2 with
   [http-config](code-cleanup/http-config.md) F19 (a `git.ts` every module runs git through), E1 (the
   synchronous twins go, then the generator protocol), E4 (synchronous git over SSH; rewrite the
   sentence in `docs/design/agents-and-workspaces.md` in the same change), E5 (`workspaces.ts` as
