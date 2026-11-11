@@ -7,6 +7,7 @@ import { lstat, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { DemoSpaceView } from '../core/types';
+import { alive } from './spawn';
 import { type DemoSettings, demoDirectory } from '../../plugin/skills/demo/lib/settings.ts';
 
 /** Days after a demo's last render that its frames are kept, where the demo settings name nothing. */
@@ -76,15 +77,8 @@ export async function lastRender(work: string): Promise<number> {
 
 /** A render that still runs holds `render.pid` with its process (the director's `holdRenderLock`). */
 async function rendering(work: string): Promise<boolean> {
-  try {
-    const pid = Number(await readFile(join(work, 'render.pid'), 'utf8'));
-    if (!pid) return false;
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    // a process of another user still runs
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
+  const pid = Number(await readFile(join(work, 'render.pid'), 'utf8').catch(() => 0));
+  return !!pid && alive(pid);
 }
 
 /** A file is there, or a link to one. */

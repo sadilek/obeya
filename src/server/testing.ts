@@ -481,15 +481,7 @@ export async function leftBehind(cwd: string): Promise<number> {
   return pid;
 }
 
-/** Whether the process `pid` runs (one this process may not signal runs too). */
-export const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
-};
+export { alive } from './spawn';
 
 /**
  * Waits until `done` holds. A request reaches the server only after a round trip, which on a

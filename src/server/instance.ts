@@ -5,6 +5,7 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ownerHeaders } from './owner';
+import { alive } from './spawn';
 
 /** What a running Obeya writes into its home. */
 export interface Instance {
@@ -64,16 +65,6 @@ export function recorded(home: string): Instance | null {
     return null;
   }
 }
-
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    // the process is there but belongs to someone else
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
-};
 
 const answers = async (url: string, home: string) => {
   try {
