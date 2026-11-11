@@ -7,7 +7,8 @@
 
 import type { RepoAdapter } from '../adapters/types';
 import { type Board, contributionOf, type PrState, type StoredContribution } from './board';
-import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf, type Forge, type PrStatus } from './forge';
+import type { Forge, PrStatus } from './forge';
+import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf } from './pr-review';
 import type { PrWait } from '../core/types';
 import type { Workers } from './workers';
 import { messageOf } from '../core/text';

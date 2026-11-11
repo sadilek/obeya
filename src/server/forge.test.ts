@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, reviewOf, reviewStale, routedForge, waitsOf, type PrStatus } from './forge';
+import { type Forge, ghCli, githubRepo, landedUrl, makeGhForge, parsePrUrl, routedForge, type PrStatus } from './forge';
+import { confidence, lastAsked, readable, reviewOf, reviewStale, waitsOf } from './pr-review';
 import { onGitHub } from './repo';
 import { fakeGh, noContributions, removeDir } from './testing';
 

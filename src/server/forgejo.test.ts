@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { reviewOf, waitsOf } from './forge';
+import { reviewOf, waitsOf } from './pr-review';
 import { ForgeError, makeForgejoForge, remoteRepo, type Api } from './forgejo';
 
 const URL_ = 'https://codeberg.org/acme/app/pulls/12';
