@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { type KnownChange, missedChanges, type OutdatedBy, PAGE_CHANGES, pagesVersion, THEME_CHANGED } from '../core/page-changes';
 import { pageTags, untagged } from '../core/page-tags';
 import type { DemoKind, PageTags, Reshare } from '../core/types';
+import type { Board } from './board';
 import type { CardRow, Store } from './db';
 import { repoOfRow } from './plan-ref';
 import { type DemoRef, fromJson, type SharedDemo, type StoredDemo, type StoredShare, toJson } from './row';
@@ -135,7 +136,7 @@ export class PageNotice {
   constructor(
     private store: Store,
     private canvasId: string,
-    private board: { readonly home: string; setting(key: string): string | null; setSetting(key: string, value: string): void; changed(): void },
+    private board: Pick<Board, 'home' | 'setting' | 'setSetting' | 'changed'>,
     /** The canvas as built is out of date: a demo's file came or went (`lookAtDemos`). */
     private redraw: () => void,
   ) {}

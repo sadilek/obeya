@@ -4,6 +4,7 @@
 import type { PlanDoc } from '../core/plan-doc';
 import { type ArchiveLabel, archiveLabel, fold, inTitle, searchText, searchWords } from '../core/search';
 import type { ArchivePage, Item } from '../core/types';
+import type { Board } from './board';
 import type { ArchiveCursor, CardRow, Store } from './db';
 import { workDone } from './items';
 import { fromJson } from './row';
@@ -72,7 +73,7 @@ export class Archive {
     private store: Store,
     private canvasId: string,
     /** The board's cards on the canvas: building them reads the docs as they are now, which decides what is archived. */
-    private board: { items(): Item[] },
+    private board: Pick<Board, 'items'>,
     /** The items of these rows, with the plan docs of their projects as they last stood. */
     private build: (rows: CardRow[], docs: PlanDoc[]) => Item[],
   ) {}
