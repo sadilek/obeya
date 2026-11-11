@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W8, W13 to W18, W20, W24 and W25 are done; the other workstreams are open. The review, made on
+W1 to W8, W13 to W18, W20, W22, W24 and W25 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -232,9 +232,11 @@ the workstream named does it for all of them.
   six extraction steps the finding names), G9, G12, G13, G21; G3 with
   [ui-panels](code-cleanup/ui-panels.md) H1 (the open card's plumbing shared by desktop and phone);
   H3 (`Phone()` by job), H15, H16, H17. After W20.
-- [ ] **W22:** The card. [ui-card](code-cleanup/ui-card.md) G2 (`Detail` as a dispatcher with a view
+- [x] **W22:** The card. [ui-card](code-cleanup/ui-card.md) G2 (`Detail` as a dispatcher with a view
   per card kind), G4 (the card's diff read once), G5 (head, state line and text block shared by the
   kinds), G6 (the log followed once), G7 (`DemoView`), G14, G15, G16, G18, G19, G22. After W20.
+  `detail.tsx` went by subject first, as moves (`cardSheet.tsx`, `conversation.tsx`, `demo.tsx`,
+  `share.tsx`, `pr.tsx`, `review.tsx`, `idea.tsx`); what came of each finding stands under it.
 - [ ] **W23:** The settings sheets and panels. [ui-panels](code-cleanup/ui-panels.md) H2 (`useAct`
   promoted and a `useLoaded` for "load, call, show the error"), H4 (the canvases as one array of
   rows), H5 (one segmented control), H6, H8, H9, H11, H12, H14, H18, H19, H20, H21, H22. After W20.

@@ -253,7 +253,8 @@ parts.tsx has become five unrelated modules in one file.
   The player is not keyed by the demo shown: a remount on each version change would release the
   comments held back (going to another demo is no sign the owner has finished watching) and restart
   the stood timer. One effect on the shown demo's mark (`demoMark`, exported from `demoSeen.ts`)
-  replaces the two refs and two effects.
+  replaces the two refs and two effects; it also takes a comment's place where the player mounts in
+  place of an HTML artifact, and only the demo the card opened to starts by itself.
 
 ### G8. parts.tsx is five modules in one file
 - Principle: KISS
