@@ -3,12 +3,14 @@
 // button, or stays pinned as a sidebar docked on the left, the canvas the rest. An entry opens its
 // card, on this canvas or on its own; a canvas's section folds away under its head, which keeps its count.
 
-import { useRef, useState } from 'react';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CanvasInfo, Item, Waiting } from '../core/types';
 import { canvasPath } from './address';
+import { api } from './api';
 import { FoldArrow, toggleFolded, useFolded } from './fold';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal } from './forYou';
-import { CanvasAgents } from './parts';
+import { PauseMark, PlayMark } from './parts';
 import { useMenuClose } from './queue';
 import { t } from './strings';
 
@@ -186,5 +188,53 @@ function CanvasIcon() {
       <circle cx="18" cy="8" r="2.5" />
       <path d="M6 8.5v7M18 10.5c0 4-6 3-10 6" />
     </svg>
+  );
+}
+
+/**
+ * A canvas's agents on its row in the switcher (design: Pausing a canvas's agents): while one works
+ * there, the moving line of a card at work, which turns into a pause for all of them while the
+ * pointer is on the row; with none at work but some paused, a play that resumes them, on the same
+ * hover. Where nothing hovers (touch), the button shows throughout.
+ */
+export function CanvasAgents({ canvas }: { canvas: CanvasInfo }) {
+  const [asked, setAsked] = useState(false);
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  // a scroll moves the button from under the tip
+  useEffect(() => {
+    if (!tip) return;
+    const hide = () => setTip(null);
+    document.addEventListener('scroll', hide, true);
+    return () => document.removeEventListener('scroll', hide, true);
+  }, [tip]);
+  const a = canvas.agents;
+  if (!a) return null;
+  const pause = a.running > 0;
+  const label = pause ? t.canvasPause.pause(a.running) : t.canvasPause.resume(a.paused);
+  const click = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setAsked(true);
+    setTip(null);
+    (pause ? api.pauseAgents(canvas.id) : api.resumeAgents(canvas.id)).catch(console.error).finally(() => setAsked(false));
+  };
+  const show = (e: { currentTarget: Element }) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setTip({ x: r.right + 10, y: r.top + r.height / 2 });
+  };
+  const hide = () => setTip(null);
+  return (
+    <span className={pause ? 'canvas-agents running' : 'canvas-agents'}>
+      <button type="button" className="agents-turn" aria-label={`${label}: ${canvas.name}`} disabled={asked} onClick={click} onPointerEnter={show} onPointerLeave={hide} onFocus={(e) => e.currentTarget.matches(':focus-visible') && show(e)} onBlur={hide}>
+        {pause ? <PauseMark /> : <PlayMark />}
+      </button>
+      {tip &&
+        createPortal(
+          <span className="agents-tip" style={{ left: tip.x, top: tip.y }}>
+            {label}
+          </span>,
+          document.body,
+        )}
+    </span>
   );
 }

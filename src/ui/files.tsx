@@ -11,7 +11,7 @@ import type { DemoKind, Item } from '../core/types';
 import { api, cardFile } from './api';
 import { ChangeNote, DiffView, FileDiff, Lines, MARK } from './diff';
 import { Doc, DocImages } from './markdown';
-import { useReportedHeight } from './message';
+import { useReportedHeight } from './frame';
 import { PdfPages } from './pdf';
 import { phoneView } from './phone';
 import { t } from './strings';

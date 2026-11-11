@@ -673,7 +673,7 @@ ol.p-list > li::before { content: none; }
 .p-table :is(th, td) { text-align: left; vertical-align: top; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--line); }
 .p-table th { font-weight: 600; }
 .p-code { margin: 10px 0 0; padding: 8px 10px; background: var(--chip); border-radius: 2px; overflow: auto; font: 12.5px/1.5 var(--mono); }
-/* a code block's copy button (message.tsx), in its corner: at the desk while the pointer is on the
+/* a code block's copy button (markdown.tsx), in its corner: at the desk while the pointer is on the
    block (and until used once), on a touch screen always */
 .p-code-box { position: relative; margin: 10px 0 0; }
 /* a conversation's code block is often prose to send on (a message): it wraps, to be read without scrolling sideways */

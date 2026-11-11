@@ -4,7 +4,10 @@
 // An asterisk opens emphasis only before a non-space and closes it only after one, so `5 * 3` and
 // a list's `* ` stay as they are; neither may touch a word outside, so `a*b*c` stays too.
 
-import { createContext, type ReactNode, useContext } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import { CopyIcon } from './cardNumber';
+import { copyOrSelect } from './copy';
+import { t } from './strings';
 import { FENCE, HEADING, LIST_ITEM, RULE, TOKEN } from '../core/plain';
 
 export { excerpt, plain } from '../core/plain';
@@ -300,4 +303,95 @@ export function sourceAt(md: string, text: string, nth: number, offset: number):
     if (at < 0) return md.length;
   }
   return at + Math.min(offset, text.length);
+}
+
+/**
+ * Text from a plan doc or an agent, as markdown: each line a paragraph, a blank line one empty line,
+ * lists (list items as a checklist), tables, code, quotes, and headings as bold lines.
+ */
+export function Body({ md }: { md: string }) {
+  const nodes = (bs: Block[]): ReactNode[] =>
+    bs.map((b, i) => {
+      switch (b.t) {
+        case 'p':
+          return (
+            <p key={i} className="p-lead">
+              <Inline md={b.text} />
+            </p>
+          );
+        case 'h':
+          return (
+            <p key={i} className="p-lead">
+              <b>
+                <Inline md={b.text} />
+              </b>
+            </p>
+          );
+        case 'list':
+          return <ListTree key={i} list={b.list} className="p-list" />;
+        case 'table':
+          return (
+            <div key={i} className="p-table">
+              <Table head={b.head} rows={b.rows} />
+            </div>
+          );
+        case 'code':
+          return <Code key={i} text={b.text} />;
+        case 'quote':
+          return (
+            <blockquote key={i} className="p-quote">
+              {nodes(b.blocks)}
+            </blockquote>
+          );
+        case 'hr':
+          return <hr key={i} className="p-hr" />;
+        case 'blank':
+          return (
+            <p key={i} className="p-lead p-blank" aria-hidden="true">
+              {'\u00a0'}
+            </p>
+          );
+      }
+    });
+  return <>{nodes(blocks(md, { breaks: true }))}</>;
+}
+
+/**
+ * A code block, with a button in its corner that puts its text on the clipboard as it is (a command,
+ * a message the owner is to send on) and says so for a moment; where the page may not write the
+ * clipboard, it selects the text instead. At the desk the button shows while the pointer is on the
+ * block, on a touch screen always.
+ */
+function Code({ text }: { text: string }) {
+  const pre = useRef<HTMLPreElement>(null);
+  const [done, setDone] = useState<'copied' | 'selected' | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    const how = await copyOrSelect(text, pre.current!);
+    setDone(how);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setDone(null), how === 'copied' ? 2000 : 4000);
+  };
+  const label = done === 'copied' ? t.talk.copied : done === 'selected' ? t.talk.selected : t.talk.copy;
+  return (
+    <div className="p-code-box">
+      <pre ref={pre} className="p-code">
+        {text}
+      </pre>
+      <button
+        className={['p-copy', done].filter(Boolean).join(' ')}
+        title={t.talk.copy}
+        aria-label={label}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => void copy()}
+      >
+        {done ? (
+          <span>{label}</span>
+        ) : (
+          <CopyIcon />
+        )}
+      </button>
+    </div>
+  );
 }
