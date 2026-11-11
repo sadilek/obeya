@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { holdPidLock } from '../../plugin/lib/process.ts';
-import { demoDirectory } from '../../plugin/skills/demo/lib/settings.ts';
+import { demoDirectory, obeyaHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { measure, quiet, reasons, warning } from './load.ts';
 
 const VOICE = 'IErGHDQU4vPqicCi8dwR';
@@ -81,7 +81,7 @@ const settings = qwen
   ? { language: 'en', voice: 'qwen3', ownVoice: true, reference }
   : { language: 'en', voice: 'elevenlabs', ownVoice: true, voiceName: VOICE, keyFile };
 fs.writeFileSync(path.join(home, 'demo.json'), JSON.stringify({ ...settings, directory: DEMOS }, null, 2));
-const voices = path.join(process.env.OBEYA_HOME ?? path.join(os.homedir(), '.obeya'), 'voices');
+const voices = path.join(obeyaHome(), 'voices');
 if (fs.existsSync(voices) && !fs.existsSync(path.join(home, 'voices'))) fs.symlinkSync(voices, path.join(home, 'voices'));
 
 const r = spawnSync('node', [path.join(import.meta.dirname, 'demo.ts'), ...process.argv.slice(2).filter((a) => !own.has(a) && !own.has(path.resolve(a)))], {

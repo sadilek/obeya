@@ -14,10 +14,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DemoSettings } from '../plugin/skills/demo/lib/settings.ts';
 import { installState, installVoice, sample } from '../plugin/skills/demo/lib/voices.ts';
-import { check, expect, failed } from './check-harness';
+import { check, expect, finish } from './check-harness';
+import { script } from './common';
 
-const args = process.argv.slice(2);
-const wanted = args.filter((a) => !a.startsWith('--'));
+const { values: options, positionals: wanted } = script('check-voice').args({ keep: { type: 'boolean' } });
 const voices = (wanted.length ? wanted : ['kokoro:en', 'piper:de']).map((v) => {
   const [voice, language] = v.split(':');
   return { voice, language } as DemoSettings;
@@ -81,6 +81,6 @@ for (const s of voices) {
   });
 }
 
-if (args.includes('--keep')) console.log(`scratch: ${dir}`);
+if (options.keep) console.log(`scratch: ${dir}`);
 else rmSync(dir, { recursive: true, force: true });
-process.exit(failed ? 1 : 0);
+finish();

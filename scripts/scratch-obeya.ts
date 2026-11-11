@@ -190,7 +190,7 @@ import { loginLink, ownerHeaders } from '../src/server/owner';
 import { findTailscale, type NamedEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';
 import { branchName } from '../src/server/branches';
-import { opt, scratchBase, scratchDir } from './common';
+import { ROOT, scratchBase, scratchDir, script } from './common';
 import { waitUp } from './wait-up';
 
 type StageEvent = NonNullable<StageCard['events']>[number];
@@ -318,12 +318,30 @@ interface Stage {
   }[];
 }
 
-const ROOT = resolve(import.meta.dir, '..');
-const args = process.argv.slice(2);
-const fail = (msg: string): never => {
-  console.error(`scratch-obeya: ${msg}`);
-  process.exit(1);
-};
+const { fail, args } = script('scratch-obeya');
+const argv = process.argv.slice(2);
+// --say and --artifact take a text's words as given, those that start with `--` too: only the
+// command, its port and --dir are options there
+const command = argv.findIndex((a) => a === '--say' || a === '--artifact');
+const words = command < 0 ? [] : argv.slice(command + 2).filter((a, i, all) => a !== '--dir' && all[i - 1] !== '--dir');
+const { values: options, positionals } = args(
+  {
+    stop: { type: 'string' },
+    login: { type: 'string' },
+    say: { type: 'string' },
+    artifact: { type: 'string' },
+    sweep: { type: 'boolean' },
+    dir: { type: 'string' },
+    port: { type: 'string' },
+    code: { type: 'string' },
+    binary: { type: 'string' },
+    'real-workers': { type: 'boolean' },
+    record: { type: 'string' },
+    replay: { type: 'string' },
+    restarts: { type: 'boolean' },
+  },
+  command < 0 ? argv : argv.filter((a, i) => i < command + 2 || a === '--dir' || argv[i - 1] === '--dir'),
+);
 /** What --say has the card's agent do for each kind of its lines in the conversation (as in a stage file's `events`). */
 const SAYS = {
   say: (text: string) => ({ say: text }),
@@ -336,15 +354,15 @@ const SAYS = {
   end: () => ({ end: true as const }),
 };
 
-const stopPort = opt('stop');
+const stopPort = options.stop;
 if (stopPort) {
-  const d = opt('dir') ?? scratchDir(Number(stopPort));
+  const d = options.dir ?? scratchDir(Number(stopPort));
   if (!stop(d)) fail(`the server of ${d} (process ${pidIn(d)}) still runs after the stop`);
   process.exit(0);
 }
-const loginPort = opt('login');
+const loginPort = options.login;
 if (loginPort) {
-  const d = opt('dir') ?? scratchDir(Number(loginPort));
+  const d = options.dir ?? scratchDir(Number(loginPort));
   const canvas = existsSync(join(d, 'staged.json')) ? (JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas?: string }).canvas : undefined;
   const link = await loginLink(`http://127.0.0.1:${loginPort}`, join(d, 'home'), canvas ? `/c/${canvas}` : '/');
   if (!link) fail(silent(d, Number(loginPort)));
@@ -352,47 +370,44 @@ if (loginPort) {
   process.exit(0);
 }
 
-/** What follows `--<command> <port>`, but for `--dir` and its value: a text's words as given, those that start with `--` too. */
-const wordsOf = (command: string) => args.slice(args.indexOf(`--${command}`) + 2).filter((a, i, all) => a !== '--dir' && all[i - 1] !== '--dir');
-
-const sayPort = opt('say');
+const sayPort = options.say;
 if (sayPort) {
-  const [key, kind, ...words] = wordsOf('say');
-  const text = words.join(' ');
+  const [key, kind, ...said] = words;
+  const text = said.join(' ');
   const act = SAYS[kind as keyof typeof SAYS];
   if (!key || !act || (!text.trim() && kind !== 'end')) fail(`usage: bun scripts/scratch-obeya.ts --say <port> <card key> <${Object.keys(SAYS).join('|')}> <text>`);
   console.log(await standIn(Number(sayPort), key!, act!(text)));
   process.exit(0);
 }
-if (args.includes('--sweep')) {
+if (options.sweep) {
   await sweep();
   process.exit(0);
 }
-const artifactPort = opt('artifact');
+const artifactPort = options.artifact;
 if (artifactPort) {
-  const [key, from, ...words] = wordsOf('artifact');
+  const [key, from, ...summaryWords] = words;
   if (!key || !from || !existsSync(from)) fail('usage: bun scripts/scratch-obeya.ts --artifact <port> <card key> <file> [<summary>]');
-  const d = opt('dir') ?? scratchDir(Number(artifactPort));
+  const d = options.dir ?? scratchDir(Number(artifactPort));
   const to = artifactDir(d, key!);
   mkdirSync(to, { recursive: true });
   copyFileSync(from!, join(to, basename(from!)));
   // the page it may be shared on stays as the card's demo had it
   const { page } = (await stagedCard(Number(artifactPort), key!)).demo ?? {};
-  const summary = words.join(' ').trim() || 'Updated the artifact.';
+  const summary = summaryWords.join(' ').trim() || 'Updated the artifact.';
   console.log(await standIn(Number(artifactPort), key!, { tool: 'ready_for_review', args: { summary, demo: { kind: 'html', dir: to, ...(page ? { page } : {}) } } }));
   process.exit(0);
 }
 
-const file = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.match(/^--(port|code|dir|binary|record|replay)$/));
+const file = positionals.length === 1 ? positionals[0] : undefined;
 if (!file) fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit> | --binary <obeya>] [--real-workers | --record <dir> | --replay <dir>] [--restarts] | --stop <port> | --login <port> | --say <port> … | --artifact <port> …');
 const stage = JSON.parse(readFileSync(file!, 'utf8')) as Stage;
 // what a scratch Obeya was staged from: staging afresh from it replaces that one
-const from = { stage: realpathSync(file!), ...(opt('code') || opt('binary') ? { code: opt('code') ?? opt('binary') } : {}) };
+const from = { stage: realpathSync(file!), ...(options.code || options.binary ? { code: options.code ?? options.binary } : {}) };
 // scratch Obeyas from code that does not end them by itself, which this one does not wait for
 spawn(process.execPath, [import.meta.path, '--sweep'], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true }).unref();
-const given = opt('port') ?? stage.port;
-const port = given !== undefined ? Number(given) : await pickPort(opt('dir') ?? stage.dir);
-const dir = resolve(opt('dir') ?? stage.dir ?? scratchDir(port));
+const given = options.port ?? stage.port;
+const port = given !== undefined ? Number(given) : await pickPort(options.dir ?? stage.dir);
+const dir = resolve(options.dir ?? stage.dir ?? scratchDir(port));
 const base = `http://127.0.0.1:${port}`;
 
 stop(dir);
@@ -501,7 +516,7 @@ for (const h of stage.hosts ?? []) {
 
 // the code it runs
 let code = ROOT;
-const commit = opt('code');
+const commit = options.code;
 if (commit) {
   code = join(dir, 'code');
   mkdirSync(code);
@@ -513,10 +528,10 @@ if (commit) {
   // a junction on Windows, which needs no developer mode; other systems ignore the type
   symlinkSync(join(ROOT, 'node_modules'), join(code, 'node_modules'), 'junction');
 }
-const binary = opt('binary') && resolve(opt('binary')!);
+const binary = options.binary && resolve(options.binary);
 if (binary && !existsSync(binary)) fail(`${binary} does not exist`);
-const record = opt('record') && resolve(opt('record')!);
-const replay = opt('replay') && resolve(opt('replay')!);
+const record = options.record && resolve(options.record);
+const replay = options.replay && resolve(options.replay);
 if (record && replay) fail('--record or --replay, not both');
 if (record && !mayRecordInto(record)) fail(`${record} holds something other than a recording; record into an empty or new directory`);
 if (replay && !existsSync(join(replay, 'meta.json'))) fail(`${replay} holds no recording (record one with --record)`);
@@ -527,14 +542,14 @@ if (record) rmSync(record, { recursive: true, force: true });
 const takeCuts = replay && join(dirname(replay), '.work', 'cuts.json');
 if (replay && takeCuts && !existsSync(join(replay, 'cuts.json')) && existsSync(takeCuts) && statSync(takeCuts).mtimeMs >= statSync(join(replay, 'meta.json')).mtimeMs)
   copyFileSync(takeCuts, join(replay, 'cuts.json'));
-const idle = !args.includes('--real-workers') && !record && !replay;
+const idle = !options['real-workers'] && !record && !replay;
 
 // the server, in its own process group so --stop ends it with everything it started (on Windows,
 // which has none, its process tree)
 const log = join(dir, 'server.log');
 const out = openSync(log, 'a');
 // not supervised: a scratch Obeya restarts itself only when asked to
-const supervised = args.includes('--restarts');
+const supervised = !!options.restarts;
 // whether the server ends by itself once of no more use (src/server/scratch.ts); code from before that ignores OBEYA_SCRATCH
 const endsItself = (binary ? readFileSync(binary) : readFileSync(join(code, 'src/server/main.ts'))).includes('OBEYA_SCRATCH');
 const env = {
@@ -1187,7 +1202,7 @@ function copyArtifact(from: string, to: string) {
 
 /** The card of `key` in the scratch Obeya on `port`, as its staged.json has it: its id, the API of the canvas it is on, and the owner's key of the home. */
 function cardOf(port: number, key: string) {
-  const d = opt('dir') ?? scratchDir(port);
+  const d = options.dir ?? scratchDir(port);
   if (!existsSync(join(d, 'staged.json'))) fail(`no scratch Obeya staged in ${d}`);
   const staged = JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas: string; cards: Record<string, string>; canvasOf?: Record<string, string> };
   const id = staged.cards[key] ?? fail(`no card ${key} staged (${Object.keys(staged.cards).join(', ')})`);
@@ -1198,7 +1213,7 @@ function cardOf(port: number, key: string) {
 
 async function stagedCard(port: number, key: string): Promise<Item> {
   const { base, headers, id } = cardOf(port, key);
-  const r = await fetch(`${base}/canvas`, { headers }).catch(() => fail(silent(opt('dir') ?? scratchDir(port), port)));
+  const r = await fetch(`${base}/canvas`, { headers }).catch(() => fail(silent(options.dir ?? scratchDir(port), port)));
   return ((await r.json()) as CanvasSnapshot).items.find((i) => i.id === id) ?? fail(`card ${key} is not on the canvas`);
 }
 
@@ -1206,7 +1221,7 @@ async function stagedCard(port: number, key: string): Promise<Item> {
 async function standIn(port: number, key: string, act: { say: string } | { tool: string; args: Record<string, unknown> } | { end: true }): Promise<string> {
   const { base, headers, id } = cardOf(port, key);
   const r = await fetch(`${base}/cards/${id}/stand-in`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(act) }).catch(() =>
-    fail(silent(opt('dir') ?? scratchDir(port), port)),
+    fail(silent(options.dir ?? scratchDir(port), port)),
   );
   const body = (await r.json()) as { result?: string; error?: string };
   if (!r.ok) fail(`card ${key}: ${body.error ?? r.status}`);

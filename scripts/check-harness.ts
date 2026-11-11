@@ -1,8 +1,10 @@
-// What the check scripts (check-*.ts) share: one line per check, the failures counted, and waiting
-// for something to happen.
+// What the check scripts (check-*.ts) share: one line per check, the failures counted, waiting for
+// something to happen, a scratch repository, and the summary they end with.
 
 import { type Subprocess } from 'bun';
+import { spawnSync } from 'node:child_process';
 import { messageOf } from '../src/core/text';
+import { writeFiles } from './common';
 
 /** How many checks failed so far; a script exits 1 when any did. */
 export let failed = 0;
@@ -48,3 +50,19 @@ export async function until<T>(what: string, ms: number, fn: () => T | undefined
 
 /** The process's exit code once it ended, null when it did not within `ms`. */
 export const exited = (p: Subprocess, ms: number) => Promise.race([p.exited, sleep(ms).then(() => null)]);
+
+/** A git repository in `dir` holding `files`, committed on `main` as the checks' author. */
+export function scratchRepo(dir: string, files: Record<string, string>) {
+  writeFiles(dir, files);
+  for (const a of [['init', '-q', '-b', 'main'], ['add', '-A'], ['commit', '-qm', 'init']]) {
+    const r = spawnSync('git', ['-c', 'user.name=Check', '-c', 'user.email=check@example.com', '-C', dir, ...a], { encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr}`);
+  }
+  return dir;
+}
+
+/** Ends the script with how its checks went, and `note` when some failed: exit 1 when any did. */
+export function finish(note = ''): never {
+  console.log(failed ? `${failed} check(s) failed${note}` : 'all checks passed');
+  process.exit(failed ? 1 : 0);
+}
