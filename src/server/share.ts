@@ -11,8 +11,6 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { z } from 'zod';
-import { LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented, type DemoSite } from '../core/types';
 import { BadRequest, type Board, cardDemos, contributionOf, type DemoRef, pageTagsOf, type PrState, sameDemo, type SharedDemo, sharedDemos, type Shipped, type StoredDemo, type StoredReshare, type StoredShare } from './board';
@@ -28,13 +26,13 @@ import { ARTIFACT_DIR, artifactPageHtml, type DemoPageParts, day, demoPageHtml, 
 import type { Theme } from './theme';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
-import { readSession } from './coordinator';
+import { chooseTags, type TagAsk, writePage } from './page-session';
 import type { CardRow } from './db';
 import { branchName } from './branches';
 import { gitAsync } from './git';
 import { originOf } from './forgejo';
 import { zip } from './zip';
-import { messageOf, plainText } from '../core/text';
+import { messageOf } from '../core/text';
 
 /**
  * Where a repository's demos may go: the site its settings name (none without one), its checkout,
@@ -466,7 +464,7 @@ export class Sharing {
   /** Tags a batch of `tagSome` on its site, noting each page as done, failed, or no longer lacking tags (`dropped`). */
   private async tagBatch(target: ShareTarget, pages: Tagging[], done: string[], failed: string[], dropped: string[]) {
     const t = this.o.board.t.share;
-    const chosen = await this.chooseTags(target.repo, pages);
+    const chosen = await chooseTags(this.o.runtime, target.repo, pages);
     // the owner may have chosen some meanwhile: the session's choice stands only where the page still lacks
     const going = pages.flatMap((p) => {
       const lacking = this.missingTags(p.card);
@@ -612,7 +610,7 @@ export class Sharing {
     const vocabulary = this.vocabulary(card);
     const lacking = this.missingTags(card);
     if (lacking) {
-      const tags = (await this.chooseTags(target.repo, [{ id: cardId, card, slug: pathOf(s), demos, lacking }])).get(cardId);
+      const tags = (await chooseTags(this.o.runtime, target.repo, [{ id: cardId, demos, lacking }])).get(cardId);
       if (tags) this.chosen(cardId, tags);
     }
     const tags = tagsOf(pageTagsOf(this.o.board.row(cardId)), vocabulary);
@@ -811,7 +809,9 @@ export class Sharing {
    */
   private async page(card: Item, demo: Demo & { dir: string }, lacking: PageTags | null = null): Promise<DemoPage> {
     if (demo.page) return demo.page;
-    const { tags, ...page } = await this.writePage(card, demo, this.languageOf(demo.dir, card), lacking);
+    // a card's summary goes with its approval; the log keeps every handover
+    const summary = this.o.board.summary(card.id) ?? this.o.board.events(card.id).filter((e) => e.kind === 'review' && e.author === 'worker').at(-1)?.text ?? '';
+    const { tags, ...page } = await writePage(this.o.runtime, { cwd: this.target(card)?.repo ?? this.o.home, card, summary, demo, language: this.languageOf(demo.dir, card), lacking });
     if (tags) this.chosen(card.id, tags);
     const row = this.o.board.row(card.id);
     const latest = this.demo(card.id);
@@ -819,94 +819,6 @@ export class Sharing {
     else if (row.demos)
       this.o.board.work(card.id, { demos: JSON.stringify((JSON.parse(row.demos) as StoredDemo[]).map((d) => (sameDemo(d, demo) ? { ...d, page } : d))) });
     return page;
-  }
-
-  /**
-   * The page's text for a demo handed over without one (its repository did not share then): a short
-   * session writes it from the worker's summary. Without one, the card's title and the summary's start stand in.
-   */
-  private async writePage(card: Item, demo: Demo, language: PageLanguage, lacking: PageTags | null): Promise<DemoPage> {
-    // a card's summary goes with its approval; the log keeps every handover
-    const summary = this.o.board.summary(card.id) ?? this.o.board.events(card.id).filter((e) => e.kind === 'review' && e.author === 'worker').at(-1)?.text ?? '';
-    const fallback: DemoPage = { title: plainText(card.title), text: plainText(summary).split(/(?<=[.!?])\s+/).slice(0, 4).join(' ') || plainText(card.title) };
-    let page: DemoPage | null = null;
-    await readSession(this.o.runtime, {
-      cwd: this.target(card)?.repo ?? this.o.home,
-      role: 'chores',
-      system: pageSystem(LANGUAGE_NAMES[language], lacking),
-      tools: (finish) => [
-        {
-          name: 'page',
-          description: `The page's title and text, in ${LANGUAGE_NAMES[language]}${lacking ? `, and its tags: ${TAGS_FIELD}` : ''}.`,
-          schema: { title: z.string(), text: z.string(), ...(lacking ? { tags: tagsSchema(lacking) } : {}) },
-          run: ({ title, text, tags }) => {
-            if (page) return 'Already written.';
-            page = {
-              title: String(title).trim().slice(0, 200) || fallback.title,
-              text: String(text).trim().slice(0, 2000) || fallback.text,
-              ...(lacking ? { tags: picked(tags, lacking) } : {}),
-            };
-            return finish('Recorded. End your turn now.');
-          },
-        },
-      ],
-      brief: [
-        `The card: “${plainText(card.title)}”.`,
-        card.body.trim() ? `Its task:\n${card.body.trim().slice(0, 3000)}` : '',
-        summary ? `What its worker handed over:\n${summary.slice(0, 4000)}` : '',
-        demo.kind === 'html'
-          ? 'The demo is a page to look at (an HTML artifact: charts, a comparison, an analysis), not a video.'
-          : demo.chapters.length
-            ? `The demo video's chapters: ${demo.chapters.map(([, t]) => t).join(' · ')}`
-            : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-    });
-    return page ?? fallback;
-  }
-
-  /**
-   * The tags the pages lack for the site's vocabulary (each such dimension with its values), chosen
-   * by one short session from the title and text of their demos; it chooses only those, so what the
-   * owner or a worker chose stays. A page it gave no answer for is missing from the result.
-   */
-  private async chooseTags(cwd: string, pages: Tagging[]): Promise<Map<string, PageTags>> {
-    const got = new Map<string, PageTags>();
-    const all: PageTags = {};
-    for (const p of pages) for (const [d, v] of dimensions(p.lacking)) all[d] = v;
-    const asked = (p: Tagging) => Object.keys(p.lacking);
-    const left = () => pages.flatMap((p, i) => (got.has(p.id) ? [] : [i + 1]));
-    await readSession(this.o.runtime, {
-      cwd,
-      role: 'chores',
-      system: TAGS_SYSTEM,
-      tools: (finish) => [
-        {
-          name: 'tags',
-          description: `A page's tags: its number (\`page\`${pages.length === 1 ? ', 1' : ''}), and ${TAGS_FIELD}.`,
-          schema: { page: z.number().int().optional(), tags: tagsSchema(all) },
-          run: ({ page, tags }) => {
-            const p = pages[(Number(page) || 1) - 1];
-            if (!p) return `There is no page ${String(page)}.`;
-            if (got.has(p.id)) return 'Already chosen.';
-            got.set(p.id, picked(tags, p.lacking));
-            return left().length ? `Recorded. Still to tag: page ${left().join(', ')}.` : finish('Recorded. End your turn now.');
-          },
-        },
-      ],
-      brief: [
-        `The dimensions to choose for, each with its values:\n${dimensions(all)
-          .map(([d, v]) => `- ${d}: ${v.join(', ')}`)
-          .join('\n')}`,
-        ...pages.map((p, i) => {
-          const only = asked(p).length < Object.keys(all).length ? ` (only ${asked(p).join(', ')})` : '';
-          const head = pages.length > 1 ? `Page ${i + 1}${only}:\n` : '';
-          return head + p.demos.map((d, j) => `${j ? 'A later demo on the page' : 'The page'}: “${d.shown.title}”\n${d.shown.text}`).join('\n\n');
-        }),
-      ].join('\n\n'),
-    });
-    return got;
   }
 
   /**
@@ -1168,21 +1080,6 @@ export class Sharing {
   }
 }
 
-const pageSystem = (language: string, lacking: PageTags | null) => `You write the page on which the demo of a change (a video, or a page with charts or an analysis) is shared with colleagues of the team. They have never seen the tool the change was planned in, its cards or plan docs; they know the product. Read the card's task and its worker's summary, and call the tool page once with:
-- title: what changes, for a user of the product, in a few words (not the card's internal wording).
-- text: two to five sentences in ${language}: what changes for the user and why. No findings, no test details, no internal process (cards, workers, demos, reviews), no markdown.${
-  lacking
-    ? `
-- tags: for each of these dimensions, the values that fit the change (an empty list where none does), from these alone:
-${dimensions(lacking)
-  .map(([d, v]) => `  - ${d}: ${v.join(', ')}`)
-  .join('\n')}`
-    : ''
-}
-Then end your turn. Read code only if the summary leaves unclear what the change does for the user.`;
-
-const TAGS_SYSTEM = `You tag pages on which the demos of changes are shared with colleagues, so they find them among many by their tags. For each page the brief names, read its title and text, and call the tool tags once with its number: for each dimension the brief names (or the page's own, where it names some), the values that fit the change (an empty list where none does), from its values alone. Then end your turn.`;
-
 /** How many pages the run tagging pages tags with one session and one deploy. */
 const TAG_BATCH = 20;
 
@@ -1197,31 +1094,11 @@ interface SharedCard {
 }
 
 /** A page the reading session chooses tags for. */
-interface Tagging {
-  id: string;
+interface Tagging extends TagAsk {
   card: Item;
   /** Its place on its site (`pathOf`). */
   slug: string;
   demos: SharedDemo[];
-  /** The dimensions it lacks, each with its values. */
-  lacking: PageTags;
-}
-
-const TAGS_FIELD = 'for each dimension, the values that fit (an empty list where none does), only from the values given for it';
-
-const tagsSchema = (lacking: PageTags) =>
-  z
-    .record(z.string(), z.array(z.string()))
-    .describe(
-      dimensions(lacking)
-        .map(([d, v]) => `${d}: ${v.join(', ')}`)
-        .join('; '),
-    );
-
-/** The tags a session gave, kept to the dimensions and values asked for; a dimension it left out has none. */
-function picked(given: unknown, lacking: PageTags): PageTags {
-  const g = (given && typeof given === 'object' ? given : {}) as Record<string, unknown>;
-  return Object.fromEntries(dimensions(lacking).map(([d, values]) => [d, values.filter((v) => Array.isArray(g[d]) && (g[d] as unknown[]).includes(v))]));
 }
 
 /** A share at rest: neither held, nor publishing, nor withdrawing. */
