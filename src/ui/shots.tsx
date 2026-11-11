@@ -392,7 +392,7 @@ function MarkLayer({ marks, w, h, drawing }: { marks: Mark[]; w: number; h: numb
 
 /**
  * One image over the whole page, outside the panel, which the camera transforms. Like the demo
- * video's zoom (detail.tsx useZoom) it grows out of its thumbnail and goes back into it, wherever
+ * video's zoom (demo.tsx useZoom) it grows out of its thumbnail and goes back into it, wherever
  * that stands by then; Esc or a click closes it. With `marking` a drag on the image frames a
  * region and a click sets a numbered pin; Undo (⌘Z) takes back the last mark, and Done, Esc or a
  * click beside the image closes it with the marks.

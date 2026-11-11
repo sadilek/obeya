@@ -7,7 +7,7 @@ import { type CardDiff, diffSize, shownChanges } from '../core/diff';
 import { changeRows } from '../core/files';
 import type { CardAction, Item } from '../core/types';
 import { api } from './api';
-import type { ActDone } from './detail';
+import type { ActDone } from './cardSheet';
 import { CopyPath, DiffView, Lines } from './diff';
 import { atWork, ChangeList } from './files';
 import { t } from './strings';

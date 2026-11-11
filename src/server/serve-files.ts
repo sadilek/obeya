@@ -205,7 +205,7 @@ function framed(title: string): Response {
 }
 
 /**
- * The frame an idea's mock is shown in (`MockFrame` in src/ui/detail.tsx): empty, sandboxed and
+ * The frame an idea's mock is shown in (`MockFrame` in src/ui/conversation.tsx): empty, sandboxed and
  * connecting to nothing, until the page around it sends the mock's page (`{ obeyaPage }`), which it
  * writes into itself; the policy stays with the document. A mock given as `srcdoc` would get no
  * `Connection-Allowlist`, which only a response can carry.

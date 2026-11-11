@@ -754,7 +754,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
 .demo-view .player { position: relative; }
-/* zoomed (detail.tsx useZoom): fixed over the greyed window, above the panel's ✕, with its caption and controls; the player keeps its height in the card */
+/* zoomed (demo.tsx useZoom): fixed over the greyed window, above the panel's ✕, with its caption and controls; the player keeps its height in the card */
 .demo-view .dp.zoomed { position: fixed; z-index: 4; transform-origin: 0 0; box-shadow: var(--lift); }
 .demo-zoom { position: fixed; inset: 0; z-index: 3; background: rgba(15, 12, 8, .78); cursor: zoom-out; animation: fade .38s ease-out; transition: opacity .38s; }
 .demo-zoom.closing { opacity: 0; }
@@ -918,7 +918,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .msg > .quote { margin: 5px 0 4px; }
 .composer .c-field .quote { flex: 1 1 100%; margin: 0 0 2px; }
 .composer .c-field .quote-text { -webkit-line-clamp: 2; }
-/* the place in the demo video the words are about (detail.tsx PlaceChip, SpotLink) */
+/* the place in the demo video the words are about (conversation.tsx PlaceChip, SpotLink) */
 .quote.place { --q: var(--working); align-items: center; gap: 8px; padding: 4px 0 4px 6px; }
 .place-frame { flex: none; width: 48px; border-radius: 2px; background: #222; display: block; }
 .place-text { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); }

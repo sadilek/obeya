@@ -12,7 +12,8 @@ import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edge
 import { plain } from './markdown';
 import { CardNumber } from './cardNumber';
 import { clip } from '../core/text';
-import { type ActDone, Detail, type Pending } from './detail';
+import type { ActDone, Pending } from './cardSheet';
+import { Detail } from './detail';
 import { Cards } from './message';
 import type { Heard, Where } from './api';
 import { replyOn, setReply } from './reply';

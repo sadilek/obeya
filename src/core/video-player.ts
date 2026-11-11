@@ -1,6 +1,6 @@
 // A demo video's player in the look of the walkthroughs' (player.css): under the picture the sentence
 // being spoken as a caption, the word being spoken marked (where the cue says its words start, else by estimate), two lines at a time, switched with CC or
-// C, and under that the controls, the progress bar in a segment per chapter. The card (src/ui/detail.tsx) and the shared demo pages
+// C, and under that the controls, the progress bar in a segment per chapter. The card (src/ui/demo.tsx) and the shared demo pages
 // (src/server/demo-page.ts) play their videos in it. A page carries it as its source
 // (`(${videoPlayer})(…)`), so the function holds all it needs; what it takes from elsewhere comes in
 // `lib`, each piece as self-contained.

@@ -557,7 +557,7 @@ export const result = (i: Laid) =>
   i.source === 'plan';
 
 /**
- * A card laid out with its conversation beside what it is about (`Split` in detail.tsx): an idea, a
+ * A card laid out with its conversation beside what it is about (`Split` in conversation.tsx): an idea, a
  * proposal, a task waiting for its first start (its text beside the conversation, where notes wait
  * for its agent), a task an agent worked on once there is a result.
  */
