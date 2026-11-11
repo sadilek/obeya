@@ -354,7 +354,7 @@ function bunProgram(dir: string, name: string, script: string): string {
 let sh: string | undefined;
 
 /** Git for Windows' sh: git's exec path is `<root>/mingw64/libexec/git-core`, sh is in `<root>/usr/bin`. */
-function gitSh(): string {
+export function gitSh(): string {
   if (sh) return sh;
   const exec = Bun.spawnSync(['git', '--exec-path'], { stdout: 'pipe' }).stdout.toString().trim();
   const root = resolve(exec, '..', '..', '..');

@@ -897,7 +897,7 @@ describe('a worktree per card', () => {
     expect(workers.busyCards()).toEqual([]);
     expect(board.item(c.id)!.finishing).toBe(true);
     expect(board.item(c.id)!.statusLine).toStartWith('Nutzungslimit · weiter um ');
-    await Bun.sleep(60);
+    await until(() => s.inbox.length > sent);
     expect(s.inbox).toHaveLength(sent + 1);
     expect(s.inbox.at(-1)).toContain('usage limit');
     expect(workers.busyCards().length).toBeGreaterThan(0);

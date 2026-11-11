@@ -830,7 +830,7 @@ describe('an idea', () => {
     expect(s.closed).toBe(false);
     canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
     expect(s.inbox).toHaveLength(1);
-    await settle(60);
+    await until(() => s.inbox.length > 1);
     expect(item(i.id).limitedUntil).toBeUndefined();
     expect(s.inbox[1]).toContain('The usage limit that stopped your last turn has reset');
     s.call('reply', { text: 'Zu erstens.' });

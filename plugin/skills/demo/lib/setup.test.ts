@@ -93,7 +93,8 @@ describe('demo setup', () => {
     expect(by.ffmpeg).toMatchObject({ state: 'missing', found: '6.1', need: 'libx264' });
     expect(by.uv).toMatchObject({ state: 'ok', found: '0.8.0' });
     expect(by.voice).toMatchObject({ state: 'ok', found: 'say' });
-  }, 30_000);
+    // longer than a probe's own 30 s: one that hangs (once on a macOS runner) shows as what it leaves missing
+  }, 40_000);
 
   test.skipIf(process.platform === 'win32')('takes a current Node and an ffmpeg with libx264', async () => {
     const env = fakePath({ node: 'v24.1.0', ffmpeg: 'ffmpeg version 7.1 Copyright\n V....D libx264  H.264', uv: 'uv 0.8.0' });

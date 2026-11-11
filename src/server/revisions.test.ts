@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { agentListens, type Item } from '../core/types';
 import { board, canvas, eachTest, restart, runtime, say as tell, settle } from './canvas-fixture';
+import { until } from './testing';
 
 eachTest({ deps: () => ({ limitMargin: 10 }) });
 
@@ -313,8 +314,7 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().item(p.id)!.proposal?.revising).toMatchObject({ words: 'Excel auch' });
     expect(board().item(p.id)!.limitedUntil).toBeDefined();
     expect(board().events(p.id).some((e) => e.kind === 'error')).toBe(false);
-    await settle(60);
-    expect(board().item(p.id)!.limitedUntil).toBeUndefined();
+    await until(() => board().item(p.id)!.limitedUntil === undefined);
     expect(r.inbox.at(-1)).toContain('usage limit');
     r.call('revise_proposal', { title: 'CSV- und Excel-Export prüfen', task: 'Beide schreiben Umlaute falsch.', questions: [], reply: 'Excel ist drin.' });
     r.emit({ type: 'idle' });

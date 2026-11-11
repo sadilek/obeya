@@ -448,8 +448,7 @@ describe('Coordinator', () => {
     expect(item(b.id)).toMatchObject({ state: 'planned', queue: { checking: true } });
     expect(item(b.id).limitedUntil).toBeDefined();
     expect(board.events(b.id).some((e) => e.kind === 'error')).toBe(false);
-    await new Promise((r) => setTimeout(r, 60));
-    expect(item(b.id).limitedUntil).toBeUndefined();
+    await until(() => item(b.id).limitedUntil === undefined);
     expect(s.inbox.at(-1)).toContain('usage limit');
     await scope(['src/a.ts'], [tag(a)]);
     expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
@@ -581,8 +580,7 @@ describe('Coordinator names a card the owner left without a title', () => {
     await settle();
     expect(item(a.id).title).toBe('');
     expect(item(a.id).limitedUntil).toBeDefined();
-    await new Promise((r) => setTimeout(r, 60));
-    expect(item(a.id).limitedUntil).toBeUndefined();
+    await until(() => item(a.id).limitedUntil === undefined);
     s.call('title', { title: 'Zeilen zählen' });
     await naming;
     expect(item(a.id).title).toBe('Zeilen zählen');

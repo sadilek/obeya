@@ -11,7 +11,7 @@ import { claudeToken } from './hosts';
 import { Harnesses } from './harnesses';
 import { cloneName, codexManager, machineHint, MachineSetup, runnable, updateCodex, WELCOME_FILE, welcome } from './machine';
 import { claudeExecutable, runClaudeHere } from './claude';
-import { fakeProgram, gitRepo, ownGlobalGitConfig, removeDir } from './testing';
+import { fakeProgram, gitRepo, gitSh, ownGlobalGitConfig, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
 import { git } from './git';
 
@@ -284,9 +284,12 @@ describe('the first canvas', () => {
     const origin = gitRepo(join(dir, 'origin', 'shop'));
     // git for the clone, and none of the runner's other programs: each view looks at the whole
     // machine, whose Claude Code (the Agent SDK's, where none is installed) once took a busy runner
-    // past the test's limit
+    // past the test's limit. On Windows also git's sh, which a local clone starts git-upload-pack
+    // with: git puts it on the PATH by itself only where MSYSTEM is unset, and the runner's Git Bash
+    // sets it
     const machine = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^path$/i.test(k))) as Record<string, string>;
-    const s = setup({ env: { ...machine, PATH: [bin, dirname(Bun.which('git')!)].join(delimiter), OBEYA_CLAUDE: join(dir, 'none', 'claude') } });
+    const tools = [dirname(Bun.which('git')!), ...(process.platform === 'win32' ? [dirname(gitSh())] : [])];
+    const s = setup({ env: { ...machine, PATH: [bin, ...tools].join(delimiter), OBEYA_CLAUDE: join(dir, 'none', 'claude') } });
     await s.canvas({ clone: origin, into: join(dir, 'code') });
     await s.done();
     const v = await s.view();

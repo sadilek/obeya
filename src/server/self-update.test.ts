@@ -79,10 +79,11 @@ test('docs, the site and its workflow alone change nothing that runs', async () 
   expect(calls).toEqual([head]);
 }, 20_000);
 
-test('docs whose file names git would quote (non-ASCII, a space) change nothing that runs either', async () => {
+test('docs whose file names git would quote (non-ASCII, a quote) change nothing that runs either', async () => {
   const start = git(repo, 'rev-parse', 'HEAD');
   commit(repo, 'docs/Übersicht.md', 'Überblick');
-  const to = commit(repo, 'design/a "quoted" name.txt', 'x');
+  // Windows allows no quote in a file name
+  const to = commit(repo, process.platform === 'win32' ? 'design/a name.txt' : 'design/a "quoted" name.txt', 'x');
   expect(await changesCode(repo, [start, to])).toBe(false);
   expect(await changesCode(repo, [start, commit(repo, 'src/ä.ts', 'b')])).toBe(true);
 });

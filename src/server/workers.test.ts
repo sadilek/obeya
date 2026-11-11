@@ -745,7 +745,7 @@ describe('workers', () => {
     expect(board.item(c.id)!.statusLine).toStartWith('Nutzungslimit · weiter um ');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya' });
     expect(board.events(c.id).at(-1)!.text).toContain('automatisch weiter');
-    await Bun.sleep(60);
+    await until(() => runtime.last.inbox.length > sent);
     expect(runtime.last.inbox.length).toBe(sent + 1);
     expect(runtime.last.inbox.at(-1)).toContain('usage limit');
     expect(workers.busyCards().length).toBeGreaterThan(0);
@@ -773,7 +773,7 @@ describe('workers', () => {
     expect(needsYou(board.item(c.id)!)).toBe(false);
     expect(board.item(c.id)!.statusLine).toStartWith('Nutzungslimit · weiter um ');
     expect(workers.busyCards()).toEqual([]);
-    await Bun.sleep(60);
+    await until(() => runtime.last.inbox.length > sent);
     expect(runtime.last.inbox.length).toBe(sent + 1);
     expect(runtime.last.inbox.at(-1)).toContain('usage limit');
     runtime.last.emit({ type: 'text', text: 'Weiter mit der Rechnung.' });
@@ -795,7 +795,7 @@ describe('workers', () => {
     // the render still runs in the session: a restart waits for it
     expect(workers.busyCards().length).toBeGreaterThan(0);
     // the owner's words the limit cut off need not wait for the render to end
-    await Bun.sleep(60);
+    await until(() => runtime.last.inbox.length > sent);
     expect(runtime.last.inbox.length).toBe(sent + 1);
     expect(runtime.last.inbox.at(-1)).toContain('usage limit');
     await workers.stop(c.id);
@@ -810,8 +810,7 @@ describe('workers', () => {
     runtime.last.emit({ type: 'idle', background: 1 });
     expect(workers.busyCards().length).toBeGreaterThan(0);
     // the session never says the work ended: after the wait for it, the worker only waits for the limit
-    await Bun.sleep(40);
-    expect(workers.busyCards()).toEqual([]);
+    await until(() => workers.busyCards().length === 0);
     expect(board.item(c.id)!.statusLine).toStartWith('Nutzungslimit · weiter um ');
     await workers.stop(c.id);
   });
