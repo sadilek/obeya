@@ -108,14 +108,18 @@ export function serveAnswerFile(dir: string, asked: string, download: boolean, r
  * on): only the address it was served from, so neither a `preconnect` nor WebRTC reaches another
  * server. It holds for the document, also once the page writes another into it.
  */
-export const OWN_CONNECTIONS = '(response-origin)';
+const OWN_CONNECTIONS = '(response-origin)';
 
-/** The headers of a page that loads nothing from the internet, nor files of its own where `own` (the address they are served from) is missing; see `pagePolicy`. */
-function sealedHeaders(own?: string): Record<string, string> {
+/**
+ * The headers of a page that loads nothing from the internet, nor files of its own where `own` (the
+ * address they are served from) is missing; see `pagePolicy`. A demo site's `_headers` file sends
+ * them with an artifact's files too (`artifactHeaders`).
+ */
+export function sealedHeaders(own?: string): Record<string, string> {
   return {
-    'content-security-policy': `sandbox allow-scripts; ${pagePolicy(own)}`,
-    'connection-allowlist': own ? OWN_CONNECTIONS : '()',
-    'x-dns-prefetch-control': 'off',
+    'Content-Security-Policy': `sandbox allow-scripts; ${pagePolicy(own)}`,
+    'Connection-Allowlist': own ? OWN_CONNECTIONS : '()',
+    'X-DNS-Prefetch-Control': 'off',
   };
 }
 

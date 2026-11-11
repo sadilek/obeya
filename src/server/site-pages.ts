@@ -11,9 +11,9 @@ import { createHash } from 'node:crypto';
 import { dimensions } from '../core/page-tags';
 import type { DemoSite, PageTags } from '../core/types';
 import { ARTIFACT_DIR, artifactPageHtml, credit, day, demoPageHtml, esc, OBEYA_URL, pageHead, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml } from './demo-page';
-import { jsonInScript, pagePolicy, sealed, withHeightReport } from '../core/frame';
+import { jsonInScript, sealed, withHeightReport } from '../core/frame';
 import { type CaptionTrack } from './demo-files';
-import { OWN_CONNECTIONS } from './serve-files';
+import { sealedHeaders } from './serve-files';
 
 /** The site's root, the overview's address. */
 export const siteRoot = (site: DemoSite) => `${site.url.replace(/\/+$/, '')}/`;
@@ -125,13 +125,7 @@ export function artifactHeaders(site: DemoSite, unlisted = false): string {
   const path = u.pathname.replace(/\/+$/, '') + (unlisted ? '/:token' : '');
   // an artifact as the page's first version, and as a later one in a directory of its own
   return [`${path}/:slug/${ARTIFACT_DIR}/*`, `${path}/:slug/:n/${ARTIFACT_DIR}/*`]
-    .map(
-      (at) => `${at}
-  Content-Security-Policy: sandbox allow-scripts; ${pagePolicy(u.origin)}
-  Connection-Allowlist: ${OWN_CONNECTIONS}
-  X-DNS-Prefetch-Control: off
-`,
-    )
+    .map((at) => `${at}\n${Object.entries(sealedHeaders(u.origin)).map(([name, value]) => `  ${name}: ${value}\n`).join('')}`)
     .join('');
 }
 
