@@ -320,7 +320,7 @@ export class CanvasRuntime {
       { id, name, repos: [] },
       () => this.planDocs(),
       images,
-      (repo, commit) => !!this.repos.find((r) => r.ref.id === repo)?.read.holds(commit, () => this.board.docsChanged()),
+      (repo, commit) => !!this.repo(repo)?.read.holds(commit, () => this.board.docsChanged()),
       deps.language,
       deps.conversation,
     );
@@ -331,9 +331,9 @@ export class CanvasRuntime {
     this.workRetro = new WorkRetro({
       board,
       runtime: deps.runtime,
-      pathFor: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).read.path,
+      pathFor: (repo) => (this.repo(repo) ?? this.repos[0]!).read.path,
       settingsFor: this.settingsNow,
-      repoLanguage: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).adapter.language,
+      repoLanguage: (repo) => (this.repo(repo) ?? this.repos[0]!).adapter.language,
     });
     this.learner = new Learner({
       board,
@@ -343,7 +343,7 @@ export class CanvasRuntime {
     });
     board.showSettings(this.settingsNow);
     board.readPlanHistory((ref) => {
-      const repo = this.repos.find((r) => r.ref.id === repoOfRef(ref, board.home));
+      const repo = this.repo(repoOfRef(ref, board.home));
       const path = pathOfRef(ref);
       // a plan folder outside the repository has no history in git
       return repo && !outsidePlanDir(path) ? planHistory(repo.read.path, path) : Promise.resolve([]);
@@ -498,12 +498,12 @@ export class CanvasRuntime {
     this.sharing.resume();
     // the pages without tags the Coordinator's sheet offers to tag, by each repository's site
     board.showVocabulary((repo) => {
-      const site = this.repos.find((r) => r.ref.id === repo)?.site;
+      const site = this.repo(repo)?.site;
       return site && dimensions(site.tags).length ? site.tags : undefined;
     });
     // the pages a repository's new theme leaves outdated
     board.showThemes((repo) => {
-      const r = this.repos.find((x) => x.ref.id === repo);
+      const r = this.repo(repo);
       if (!r) return undefined;
       const theme = this.reads.themeKnown(r.info.path);
       return theme === undefined ? undefined : (theme?.hash ?? null);
@@ -620,7 +620,7 @@ export class CanvasRuntime {
 
   /** The settings of a repository the work retrospective may propose a value for, as they apply now. */
   private settingsNow = (repo: string): Record<ProposedSetting, string | string[]> | undefined => {
-    const a = this.repos.find((r) => r.ref.id === repo)?.adapter;
+    const a = this.repo(repo)?.adapter;
     return a && { checks: a.checks ?? [], setup: a.setup ?? '', softPaths: a.softPaths, run: a.app?.run ?? '' };
   };
 
@@ -867,14 +867,22 @@ export class CanvasRuntime {
     console.error(`Obeya: ${r.info.path}: its clones cannot be made, left out of the canvas ${this.id}; its cards are kept: ${messageOf(e)}`);
     this.stopRepo(r);
     this.repos.splice(at, 1);
-    this.board.canvas.repos.splice(0, this.board.canvas.repos.length, ...this.repos.map((x) => x.ref));
+    this.showRepos();
     this.fail(r.ref.id, e);
-    if (at === 0) {
-      this.stopped = true;
-      this.shutdown();
-      this.deps.stopped?.(this, messageOf(e));
-    }
+    if (at === 0) this.homeDown(e);
     this.board.changed();
+  }
+
+  /** Its home repository does not run: the canvas stops, its cards kept, and is left out of those Obeya serves. */
+  private homeDown(e: unknown) {
+    this.stopped = true;
+    this.shutdown();
+    this.deps.stopped?.(this, messageOf(e));
+  }
+
+  /** The board lists the repositories that run, the home one first. */
+  private showRepos() {
+    this.board.canvas.repos.splice(0, this.board.canvas.repos.length, ...this.repos.map((r) => r.ref));
   }
 
   /**
@@ -1069,8 +1077,13 @@ export class CanvasRuntime {
     if (!p) return;
     this.pending = null;
     p.stop();
-    for (const r of this.repos) if (p.paths.has(r.info.path)) r.workers.restartDue(this.obeyaDue);
+    this.undue(p);
     this.emitPending();
+  }
+
+  /** The restart of `p`'s repositories' agents does not happen: their workers hear that only one of all of Obeya may be due. */
+  private undue(p: RepoRestart) {
+    for (const r of this.repos) if (p.paths.has(r.info.path)) r.workers.restartDue(this.obeyaDue);
   }
 
   /**
@@ -1122,7 +1135,7 @@ export class CanvasRuntime {
       resolved = this.resolve(config, reads);
     } catch (e) {
       console.error(`Obeya: the configuration of the canvas ${this.id} does not resolve; its repositories run on as they were: ${messageOf(e)}`);
-      for (const r of this.repos) if (p.paths.has(r.info.path)) r.workers.restartDue(this.obeyaDue);
+      this.undue(p);
       this.emitPending();
       return;
     }
@@ -1173,14 +1186,12 @@ export class CanvasRuntime {
     }
     if (homeDown) {
       // without its home repository the canvas does not run: it stops, its cards kept
-      this.stopped = true;
-      this.shutdown();
       console.error(`Obeya: the home repository of the canvas ${this.id} does not start; the canvas stopped, its cards are kept`);
       this.emitPending();
-      this.deps.stopped?.(this, messageOf(homeDown));
+      this.homeDown(homeDown);
       return;
     }
-    this.board.canvas.repos.splice(0, this.board.canvas.repos.length, ...this.repos.map((r) => r.ref));
+    this.showRepos();
     for (const r of started) {
       this.watch(r);
       if (this.obeyaDue) r.workers.restartDue(this.obeyaDue);
@@ -1401,6 +1412,11 @@ export class CanvasRuntime {
     this.board.docsChanged();
   }
 
+  /** The canvas's repository of that id, where it runs here. */
+  private repo(id: string | undefined): Repo | undefined {
+    return this.repos.find((r) => r.ref.id === id);
+  }
+
   /**
    * The repository a card belongs to. One that does not run on the canvas (it left the
    * configuration, or did not start) has no agents to take the card: it waits for it, rather than
@@ -1409,7 +1425,7 @@ export class CanvasRuntime {
   repoOf(card: Pick<Item, 'repo'> | string): RepoRuntime {
     const item = typeof card === 'string' ? this.board.item(card) : card;
     if (!item) throw new BadRequest('unknownCard', 'unknown card');
-    const r = this.repos.find((x) => x.ref.id === item.repo);
+    const r = this.repo(item.repo);
     if (!r) throw repoDown(item);
     return r;
   }
@@ -1448,7 +1464,7 @@ export class CanvasRuntime {
   /** Whether the card's repository runs on the canvas. */
   private runs(card: Pick<Item, 'repo'> | string): boolean {
     const item = typeof card === 'string' ? this.board.card(card) : card;
-    return !!item && this.repos.some((r) => r.ref.id === item.repo);
+    return !!item && !!this.repo(item.repo);
   }
 
   /** What the card's work changes (`Workers.diff`), for an archived card too. */
@@ -1545,7 +1561,7 @@ export class CanvasRuntime {
     const p = this.board.settingProposal(id);
     const v = value === undefined ? p.value : typeof p.value === 'string' ? (typeof value === 'string' && value.trim() ? value.trim() : null) : Array.isArray(value) ? value.map(String).map((x) => x.trim()).filter(Boolean) : null;
     if (v === null || (Array.isArray(v) && !v.length)) throw new BadRequest('invalid', 'the value is missing');
-    const r = this.repos.find((x) => x.ref.id === p.repo);
+    const r = this.repo(p.repo);
     if (!r || !this.deps.config) throw new BadRequest('invalid', 'no configuration to set it in');
     const done = await this.deps.config.takeSetting(resolve(r.config.path), p.field, v, where);
     this.board.decideSetting(id, where, v);
@@ -1691,7 +1707,7 @@ export class CanvasRuntime {
       case 'start':
         if (card?.newRepo) return this.ideas.intoNewRepo(cardId);
         // one snoozed to start later starts now
-        if (this.board.item(cardId)?.snoozed?.start) return this.wake(cardId, false);
+        if (card?.snoozed?.start) return this.wake(cardId, false);
         return this.coordinator.request(cardId);
       case 'stayHere':
         return this.ideas.stayHere(cardId);
@@ -1727,18 +1743,13 @@ export class CanvasRuntime {
         return this.board.startAt(cardId, a.at === null ? null : this.until(a.at));
       case 'message':
         // a note to a Question card is a question to its agent
-        if (this.board.item(cardId)?.kind === 'question') return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
+        if (card?.kind === 'question') return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
         return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken, replyTo, this.spot(a.spot), this.decisions(a.findings));
       case 'release':
         return this.repoOf(cardId).workers.released(cardId, !!a.now);
-      case 'unsay': {
+      case 'unsay':
         // words the card's agent has not read yet, whichever agent it is
-        const card = this.board.item(cardId);
-        if (card?.kind === 'question') return this.answers.unsay(cardId, a.id);
-        if (card?.state === 'idea') return this.explorers.unsay(cardId, a.id);
-        if (card?.state === 'proposal') return this.revisions.unsay(cardId, a.id);
-        return this.repoOf(cardId).workers.unsay(cardId, a.id);
-      }
+        return (card?.state === 'proposal' ? this.revisions : this.agentOf(cardId)).unsay(cardId, a.id);
       case 'answer':
         return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken, replyTo, picks, this.spot(a.spot));
       case 'approve':
@@ -1759,14 +1770,14 @@ export class CanvasRuntime {
         return this.ideas.unaccept(cardId);
       case 'dismiss':
         // a card its agent withdrew or replaced goes like a deleted one, its worker stopped
-        if (this.board.item(cardId)?.superseded) return this.remove(cardId);
+        if (card?.superseded) return this.remove(cardId);
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return this.board.remove(cardId);
       case 'keep':
         return this.board.keep(cardId);
       case 'revise': {
         // said while it is reworked, they wait for the next rework, unread until then
-        const later = !!this.board.item(cardId)?.proposal?.revising;
+        const later = !!card?.proposal?.revising;
         const said = log ? this.board.log(cardId, 'say', 'owner', text.trim(), { images, replyTo, unread: later }).id : undefined;
         return this.revisions.revise(cardId, `${replyNote(this.board.quoted(cardId, replyTo), 'coordinator')}${text.trim()}`, !!a.spoken, said, images);
       }
@@ -1907,7 +1918,7 @@ export class CanvasRuntime {
    * It goes right of everything on the canvas, at the top.
    */
   adapterSetupCard(repo: string): Item {
-    const r = this.repos.find((x) => x.ref.id === repo);
+    const r = this.repo(repo);
     if (!r) throw new BadRequest('invalid', 'unknown repository');
     const open = this.board.openSetupCard(repo, r.ref.name);
     if (open?.state === 'proposal') this.ideas.accept(open.id, [], false);
@@ -1973,29 +1984,25 @@ export class CanvasRuntime {
 
   /** A card the Coordinator of another canvas makes here for the owner, following up on a card of its own. */
   followUp(c: Extract<Command, { do: 'newCard' }>, from: string): string {
-    const card = this.board.create({ title: c.title, body: c.body, ...(c.images?.length ? { images: c.images } : {}), ...this.board.freeSpot(this.inView) }, from);
-    this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
-    if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
-    else if (c.start || c.until) this.coordinator.request(card.id);
-    return card.id;
+    return this.created(this.board.create({ title: c.title, body: c.body, ...(c.images?.length ? { images: c.images } : {}), ...this.board.freeSpot(this.inView) }, from).id, c);
+  }
+
+  /**
+   * A card the owner's command made: one for later waits until then, a time that passed in the undo
+   * window starting it now; one to start goes to the Coordinator. Its id.
+   */
+  private created(cardId: string, c: Pick<Extract<Command, { do: 'newCard' }>, 'until' | 'start'>): string {
+    this.board.log(cardId, 'state', 'owner', this.board.t.voice.created);
+    if (c.until && Date.parse(c.until) > Date.now()) this.snooze(cardId, c.until);
+    else if (c.start || c.until) this.coordinator.request(cardId);
+    return cardId;
   }
 
   /** A voice (or typed) command, once its undo window has passed; a new card's id, for a wait on it in the same command. */
   run(c: Command) {
     switch (c.do) {
-      case 'newCard':
-      case 'newIdea':
-        if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
-        break;
-      case 'newRepo': {
-        const card = this.board.item(c.card);
-        if (!card) throw new BadRequest('unknownCard', 'unknown card');
-        this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, by: 'owner' });
-        return this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' });
-      }
-    }
-    switch (c.do) {
       case 'newCard': {
+        if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
         const at = c.from ? { from: c.from } : this.board.freeSpot(c.place ?? this.inView);
         const card = this.board.create({
           title: c.title,
@@ -2004,49 +2011,45 @@ export class CanvasRuntime {
           ...(c.images?.length ? { images: c.images } : {}),
           ...at,
         });
-        this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
-        // one for later waits until then; a time that passed in the undo window starts it now
-        if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
-        else if (c.start || c.until) this.coordinator.request(card.id);
-        return card.id;
+        return this.created(card.id, c);
       }
-      case 'reviewPr':
-        return this.reviewPr(c);
       case 'newIdea': {
+        if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
         const card = this.board.create({ idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot(c.place ?? this.inView) });
         this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
         // the agent opens the discussion with what the owner said
         this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));
         return;
       }
+      case 'newRepo': {
+        const card = this.board.item(c.card);
+        if (!card) throw new BadRequest('unknownCard', 'unknown card');
+        this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, by: 'owner' });
+        return this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' });
+      }
+      case 'reviewPr':
+        return this.reviewPr(c);
       case 'discuss':
-        return this.act(c.card, { action: 'discuss', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
+      case 'note':
+      case 'feedback':
+      case 'answer':
+      case 'revise':
+        return this.act(c.card, { action: c.do === 'note' || c.do === 'feedback' ? 'message' : c.do, text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
       case 'prototype':
         return this.act(c.card, { action: 'prototype', text: c.text });
+      case 'accept':
+        return this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) });
+      case 'snooze':
+        return this.act(c.card, { action: 'snooze', until: c.until });
+      case 'start':
+      case 'force':
       case 'buildPrototype':
-        return this.act(c.card, { action: 'buildPrototype' });
       case 'discard':
-        return this.act(c.card, { action: 'discard' });
       case 'build':
       case 'splitOff':
       case 'planDoc':
       case 'park':
       case 'drop':
-        return this.act(c.card, { action: c.do });
-      case 'start':
-      case 'force':
-        // screenshots said with the start belong to the task, so the worker gets them with it
-        if (c.images?.length) this.ideas.addTaskImages(c.card, c.images);
-        return this.act(c.card, { action: c.do });
-      case 'note':
-      case 'feedback':
-        return this.act(c.card, { action: 'message', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
-      case 'answer':
-        return this.act(c.card, { action: 'answer', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
-      case 'revise':
-        return this.act(c.card, { action: 'revise', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
-      case 'accept':
-        return this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) });
       case 'approve':
       case 'dismiss':
       case 'keep':
@@ -2055,11 +2058,10 @@ export class CanvasRuntime {
       case 'pause':
       case 'resume':
       case 'wake':
-        return this.act(c.card, { action: c.do });
-      case 'snooze':
-        return this.act(c.card, { action: 'snooze', until: c.until });
       case 'awaitContributor':
-        return this.act(c.card, { action: 'awaitContributor' });
+        // screenshots said with the start belong to the task, so the worker gets them with it
+        if ((c.do === 'start' || c.do === 'force') && c.images?.length) this.ideas.addTaskImages(c.card, c.images);
+        return this.act(c.card, { action: c.do });
       case 'configure':
         return this.deps.config?.save(c.canvases);
       case 'remember':
@@ -2102,7 +2104,7 @@ export class CanvasRuntime {
    * the words go to its worker. What goes wrong (no such PR, one closed) the owner hears.
    */
   async reviewPr(c: Extract<Command, { do: 'reviewPr' }>): Promise<string | undefined> {
-    const repo = c.repo ? this.repos.find((r) => r.ref.id === c.repo) : this.repos[0];
+    const repo = c.repo ? this.repo(c.repo) : this.repos[0];
     const t = this.board.t;
     const fail = (why: string) => void this.board.notify({ text: t.review.failed(c.pr, why) });
     if (!repo) return fail('no repository');

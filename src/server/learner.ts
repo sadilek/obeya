@@ -97,15 +97,12 @@ export class Learner {
           description: `Propose a rule to the owner: one short rule in ${this.language}, and why (one short sentence in ${this.language}, under 150 characters, naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
           schema: { rule: z.string(), why: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
           run: ({ rule, why, replaces, repos }) => {
-            const r = String(rule).trim().slice(0, 500);
+            const r = ruleText(rule);
             if (!r) return 'Empty rule ignored.';
             if (proposed >= REVIEW_PROPOSALS) return finish(`At most ${REVIEW_PROPOSALS} proposals. End your turn now.`);
-            const targets = this.targets(repos);
-            if (typeof targets === 'string') return targets;
-            const fresh = targets.filter((t) => !this.o.board.preferences('proposed').some((p) => p.text === r && p.target === t));
-            if (!fresh.length) return 'Already proposed.';
-            const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-            for (const t of fresh) this.o.board.proposePreference(r, { review: true, quote: String(why ?? '') }, old?.id, t);
+            const made = this.proposeRule(r, repos, replaces, rules, this.o.board.preferences('proposed'), { review: true, quote: String(why ?? '') });
+            if (typeof made === 'string') return made;
+            if (!made) return 'Already proposed.';
             proposed++;
             return proposed < REVIEW_PROPOSALS ? 'Proposed.' : finish('Proposed. That was the last one; end your turn now.');
           },
@@ -183,6 +180,20 @@ export class Learner {
     ];
   }
 
+  /**
+   * Proposes `rule` to the owner for the repositories of `repos` (none: the preference memory), each
+   * where `open` does not hold it yet, as a change of the rule numbered `replaces` among `rules`.
+   * Says for how many it proposed it, or why `repos` are not the canvas's.
+   */
+  private proposeRule(rule: string, repos: unknown, replaces: unknown, rules: Preference[], open: Preference[], occasion: Parameters<Board['proposePreference']>[1]): number | string {
+    const targets = this.targets(repos);
+    if (typeof targets === 'string') return targets;
+    const fresh = targets.filter((t) => !open.some((p) => p.text === rule && p.target === t));
+    const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
+    for (const t of fresh) this.o.board.proposePreference(rule, occasion, old?.id, t);
+    return fresh.length;
+  }
+
   /** The repositories a proposal is for (none: the preference memory), or why they are not the canvas's. */
   private targets(repos: unknown): (string | undefined)[] | string {
     const ids = Array.isArray(repos) ? [...new Set(repos.map(String).filter(Boolean))] : [];
@@ -230,15 +241,12 @@ export class Learner {
           description: `Propose a lasting preference to the owner as one short rule in ${this.language}. Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
           schema: { rule: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
           run: ({ rule, replaces, repos }) => {
-            const r = String(rule).trim().slice(0, 500);
+            const r = ruleText(rule);
             if (!r) return finish('Empty rule ignored.');
             if (proposed) return finish('One proposal per input. End your turn now.');
-            const targets = this.targets(repos);
-            if (typeof targets === 'string') return targets;
-            const fresh = targets.filter((t) => !open.some((p) => p.text === r && p.target === t));
-            if (!fresh.length) return finish('Already proposed. End your turn now.');
-            const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-            for (const t of fresh) this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id, t);
+            const made = this.proposeRule(r, repos, replaces, rules, open, { ...(card ? { cardId: card.id } : {}), quote: text });
+            if (typeof made === 'string') return made;
+            if (!made) return finish('Already proposed. End your turn now.');
             proposed = true;
             if (card) this.o.board.log(card.id, 'state', 'coordinator', this.o.board.t.coordinator.proposes(r));
             return finish('Proposed. End your turn now.');
@@ -347,6 +355,9 @@ const UTTERED: Record<Utterance['kind'], string> = {
   talk: "in an idea's discussion",
   say: 'to you',
 };
+
+/** A rule as an agent proposes it, cut to the length a rule may have; empty where it wrote none. */
+const ruleText = (rule: unknown) => String(rule).trim().slice(0, 500);
 
 /** How the learner hears each kind of input. */
 const INPUTS: Record<OwnerInput, string> = {
