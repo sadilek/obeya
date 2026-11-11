@@ -115,7 +115,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'settings.ts': { why: "the agents' settings file: small, read when used and written when the owner saves", calls: { mkdirSync: 1, readFileSync: 1, writeFileSync: 1 } },
   'share.ts': {
     why: "server path: a demo exported as a ZIP or HTML file reads its video whole, a page reshared reads its HTML, demo files are stat'ed; a candidate for fs/promises",
-    calls: { existsSync: 1, readFileSync: 7, statSync: 4 },
+    calls: { readFileSync: 7, statSync: 3 },
   },
   'shared-settings.ts': { why: "server path, cheap: a temporary index for committing a repository's settings", calls: { mkdtempSync: 1, rmSync: 1 } },
   'site-hosts.ts': {

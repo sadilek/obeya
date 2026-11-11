@@ -9,7 +9,7 @@
 // the demo instead: the same page as a ZIP with its files, or as one HTML file.
 // Pages of one target are on one site, so each publish names the others.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented, type DemoSite } from '../core/types';
@@ -21,7 +21,7 @@ import { type Gone, siteBase, siteMissing, type SiteOptions, type SharePage, sit
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
 import { rereadChapters } from './demo';
-import { artifactFiles, captionTracks, demoFile, keepDemo, silentVideo, videoFacts } from './demo-files';
+import { artifactFiles, captionTracksAsync, demoFile, keepDemo, silentVideoAsync, videoFacts } from './demo-files';
 import { ARTIFACT_DIR, artifactPageHtml, type DemoPageParts, day, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage } from './demo-page';
 import type { Theme } from './theme';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
@@ -183,7 +183,7 @@ export class Sharing {
   onApproval(cardId: string, on: boolean) {
     const card = this.card(cardId);
     if (card.prototypeOf) throw new BadRequest('noShare', 'prototypes are not shared');
-    const { notOnApproval: _, ...s } = this.stored(cardId) ?? { slug: slugOf(card) };
+    const { notOnApproval: _, ...s } = this.shareOf(card);
     this.set(cardId, on ? s : { ...s, notOnApproval: true });
   }
 
@@ -200,7 +200,7 @@ export class Sharing {
     if (!allowed) throw new BadRequest('invalid', `the site has no tags of the dimension ${dimension}`);
     const wrong = values.filter((v) => !allowed.includes(v));
     if (wrong.length) throw new BadRequest('invalid', `not in the site's tags of ${dimension}: ${wrong.join(', ')}`);
-    const s = this.stored(cardId) ?? { slug: slugOf(card) };
+    const s = this.shareOf(card);
     const chosen = allowed.filter((v) => values.includes(v));
     this.setTagFields(cardId, card, { tags: { ...s.tags, [dimension]: chosen } });
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.tagsSet(dimension, chosen));
@@ -711,14 +711,24 @@ export class Sharing {
   async export(cardId: string, as: 'zip' | 'html', handover?: number): Promise<{ name: string; type: string; data: Uint8Array<ArrayBuffer> }> {
     const card = this.card(cardId);
     const demo = handover === undefined ? this.demo(cardId) : this.cardDemo(cardId, { handover, dir: '' });
-    if (demo?.kind === 'html' && !card.prototypeOf) return this.exportArtifact(card, demo, as);
-    const video = demo && demoFile(demo.dir, 'demo.mp4');
-    if (card.prototypeOf || !demo || !video || !existsSync(video)) throw new BadRequest('noShare', 'the card has no demo');
+    if (card.prototypeOf || !demo) throw new BadRequest('noShare', 'the card has no demo');
+    const made = demo.kind === 'html' ? await this.artifactExport(card, demo, as) : await this.videoExport(card, demo, as);
+    const slug = this.shareOf(card).slug;
+    const out =
+      'html' in made
+        ? { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(made.html) }
+        : { name: `${slug}.zip`, type: 'application/zip', data: zip(made.entries.map((e) => ({ name: `${slug}/${e.name}`, data: e.data }))) };
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
+    return out;
+  }
+
+  /** A video demo's export: its page as one file, or with its video, poster and captions beside it (`entries`, by their place in the ZIP's directory). */
+  private async videoExport(card: Item, demo: StoredDemo, as: 'zip' | 'html'): Promise<Exported> {
+    const video = demoFile(demo.dir, 'demo.mp4');
+    if (!video) throw new BadRequest('noShare', 'the card has no demo');
     const size = statSync(video).size;
     if (as === 'html' && size > EXPORT_HTML_MAX)
       throw new BadRequest('exportTooLarge', `the video is ${(size / 1024 / 1024).toFixed(1)} MiB; one HTML file takes at most ${EXPORT_HTML_MAX / 1024 / 1024} MiB`);
-    const page = await this.page(card, demo);
-    const slug = this.stored(cardId)?.slug ?? slugOf(card);
     const file = (f: string) => {
       const path = demoFile(demo.dir, f);
       return path ? new Uint8Array(readFileSync(path)) : null;
@@ -726,75 +736,72 @@ export class Sharing {
     const poster = file('poster.jpg');
     // the narration's text, whether or not it is a track: what a player outside Obeya reads where it knows one file only
     const narration = file('captions.vtt');
-    const language = this.languageOf(demo.dir, card);
+    const shared = await this.exportParts(card, demo, video);
     // every caption track goes with it; one from before the tracks is in the demo's language
-    const tracks = captionTracks(demo.dir).flatMap((t) => {
+    const tracks = (await captionTracksAsync(demo.dir)).flatMap((t) => {
       const data = file(t.file);
-      return data ? [{ file: t.file, language: t.language ?? language, data }] : [];
+      return data ? [{ file: t.file, language: t.language ?? shared.language, data }] : [];
     });
     const parts: Omit<DemoPageParts, 'video' | 'poster'> = {
-      title: page.title,
-      text: page.text,
+      ...shared,
       chapters: demo.chapters,
-      pr: this.prOf(cardId),
-      commit: await this.commitOf(card),
-      when: PAGE_WORDS[language].demoOf(day(statSync(video).mtime, language)),
-      tabTitle: page.title,
-      language,
-      ...(await this.themeOf(card)),
       // a page opened from disk may not load a caption file
       tracks: tracks.map((t) => ({ language: t.language, vtt: new TextDecoder().decode(t.data) })),
-      ...(silentVideo(video) ? { silent: true } : {}),
+      ...((await silentVideoAsync(video)) ? { silent: true } : {}),
     };
-    let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
-    if (as === 'html') {
-      const html = demoPageHtml({
-        ...parts,
-        video: { base64: Buffer.from(readFileSync(video)).toString('base64') },
-        ...(poster ? { poster: `data:image/jpeg;base64,${Buffer.from(poster).toString('base64')}` } : {}),
-      });
-      out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(html) };
-    } else {
-      const html = demoPageHtml({ ...parts, video: { src: 'demo.mp4' }, ...(poster ? { poster: 'poster.jpg' } : {}) });
-      const entries = [
-        { name: `${slug}/index.html`, data: new TextEncoder().encode(html) },
-        { name: `${slug}/demo.mp4`, data: new Uint8Array(readFileSync(video)) },
-        ...(poster ? [{ name: `${slug}/poster.jpg`, data: poster }] : []),
-        ...tracks.map((t) => ({ name: `${slug}/${t.file}`, data: t.data })),
-        ...(narration && !tracks.some((t) => t.file === 'captions.vtt') ? [{ name: `${slug}/captions.vtt`, data: narration }] : []),
-      ];
-      out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
-    }
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
-    return out;
+    if (as === 'html')
+      return {
+        html: demoPageHtml({
+          ...parts,
+          video: { base64: Buffer.from(readFileSync(video)).toString('base64') },
+          ...(poster ? { poster: `data:image/jpeg;base64,${Buffer.from(poster).toString('base64')}` } : {}),
+        }),
+      };
+    const html = demoPageHtml({ ...parts, video: { src: 'demo.mp4' }, ...(poster ? { poster: 'poster.jpg' } : {}) });
+    return {
+      entries: [
+        { name: 'index.html', data: new TextEncoder().encode(html) },
+        { name: 'demo.mp4', data: new Uint8Array(readFileSync(video)) },
+        ...(poster ? [{ name: 'poster.jpg', data: poster }] : []),
+        ...tracks.map((t) => ({ name: t.file, data: t.data })),
+        ...(narration && !tracks.some((t) => t.file === 'captions.vtt') ? [{ name: 'captions.vtt', data: narration }] : []),
+      ],
+    };
   }
 
-  private async exportArtifact(card: Item, demo: Demo & { dir: string }, as: 'zip' | 'html') {
+  /** An HTML artifact's export: its page with the artifact inside, where it is its `index.html` alone, or with the artifact's files beside it. */
+  private async artifactExport(card: Item, demo: StoredDemo, as: 'zip' | 'html'): Promise<Exported> {
     const files = artifactFiles(demo.dir);
     if (!files.includes('index.html')) throw new BadRequest('noShare', 'the card has no demo');
     if (as === 'html' && files.length > 1) throw new BadRequest('exportNotAlone', 'the artifact loads files beside its index.html; it goes out as a ZIP only');
-    const page = await this.page(card, demo);
-    const slug = this.stored(card.id)?.slug ?? slugOf(card);
-    const index = readFileSync(join(demo.dir, 'index.html'), 'utf8');
-    const language = this.languageOf(demo.dir, card);
-    const when = PAGE_WORDS[language].demoOf(day(statSync(join(demo.dir, 'index.html')).mtime, language));
-    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), commit: await this.commitOf(card), when, tabTitle: page.title, language, ...(await this.themeOf(card)) };
-    let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
-    if (as === 'html') {
-      out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { html: index } })) };
-    } else {
-      const copy = await artifactCopy(demo.dir, files, ON_DISK);
-      const entries = [
-        { name: `${slug}/index.html`, data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` }, disk: true })) },
+    const parts = await this.exportParts(card, demo, join(demo.dir, 'index.html'));
+    if (as === 'html') return { html: artifactPageHtml({ ...parts, artifact: { html: readFileSync(join(demo.dir, 'index.html'), 'utf8') } }) };
+    const copy = await artifactCopy(demo.dir, files, ON_DISK);
+    return {
+      entries: [
+        { name: 'index.html', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` }, disk: true })) },
         ...files.map((f) => ({
-          name: `${slug}/${ARTIFACT_DIR}/${f}`,
+          name: `${ARTIFACT_DIR}/${f}`,
           data: copy.has(f) ? new TextEncoder().encode(copy.get(f)) : new Uint8Array(readFileSync(join(demo.dir, f))),
         })),
-      ];
-      out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
-    }
-    this.o.board.log(card.id, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
-    return out;
+      ],
+    };
+  }
+
+  /** What an exported page shows of every demo: its words, the link to the change, and the day the demo was made, that of the file `dated`. */
+  private async exportParts(card: Item, demo: StoredDemo, dated: string) {
+    const page = await this.page(card, demo);
+    const language = this.languageOf(demo.dir, card);
+    return {
+      title: page.title,
+      text: page.text,
+      pr: this.prOf(card.id),
+      commit: await this.commitOf(card),
+      when: PAGE_WORDS[language].demoOf(day(statSync(dated).mtime, language)),
+      tabTitle: page.title,
+      language,
+      ...(await this.themeOf(card)),
+    };
   }
 
   /** The theme of the card's repository for an exported page, as the page's parts take it. */
@@ -1053,6 +1060,11 @@ export class Sharing {
     });
   }
 
+  /** The card's share, or what a new one starts from: the slug its page keeps for good. */
+  private shareOf(card: Item): StoredShare {
+    return this.stored(card.id) ?? { slug: slugOf(card) };
+  }
+
   private stored(cardId: string): StoredShare | null {
     if (!this.find(cardId)) return null;
     const s = this.o.board.row(cardId).share;
@@ -1075,7 +1087,7 @@ export class Sharing {
 
   /** Changes the page's tags the owner set by hand, or the reading session chose. */
   private setTagFields(cardId: string, card: Item, fields: Pick<StoredShare, 'tags' | 'auto'>) {
-    const s = this.stored(cardId) ?? { slug: slugOf(card) };
+    const s = this.shareOf(card);
     this.o.board.work(cardId, { share: JSON.stringify({ ...s, ...fields }) });
   }
 }
@@ -1092,6 +1104,9 @@ interface SharedCard {
   s: StoredShare;
   card: CardPlace;
 }
+
+/** An exported page: one HTML file, or the files of its ZIP, each by its place in the page's directory. */
+type Exported = { html: string } | { entries: { name: string; data: Uint8Array<ArrayBuffer> }[] };
 
 /** A page the reading session chooses tags for. */
 interface Tagging extends TagAsk {
