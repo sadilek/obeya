@@ -1587,7 +1587,7 @@ describe('freeing and discarding workspaces', () => {
     });
     expect(discarded.ok).toBe(true);
     expect(Date.now() - discarding).toBeLessThan(1000);
-    expect(shop.board.archived().find((i) => i.id === prototype.id)).toMatchObject({ prototypeEnd: 'discarded' });
+    expect(shop.board.archived.all().find((i) => i.id === prototype.id)).toMatchObject({ prototypeEnd: 'discarded' });
     await until(() => existsSync(join(marks, 'checkout')));
     await answers();
     // half cleaned, the clone is no other card's yet

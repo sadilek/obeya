@@ -891,7 +891,7 @@ describe('a prototype', () => {
     board()
       .snapshot()
       .items.filter((x) => x.prototypeOf === ideaId);
-  const archived = (id: string) => board().archived().find((i) => i.id === id);
+  const archived = (id: string) => board().archived.all().find((i) => i.id === id);
   /** The prototype's worker commits something on its branch, as a real one would. */
   const commitOn = (cardId: string, file: string) => {
     const ws = board().row(cardId).workspace!;

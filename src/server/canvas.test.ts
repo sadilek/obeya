@@ -1709,10 +1709,10 @@ describe('plan docs that are not projects, and projects whose work is done', () 
     expect(project('API')).toMatchObject({ id: before.id, state: 'done' });
     canvas.board.archive([before.id]);
     expect(project('API')).toBeUndefined();
-    expect(canvas.board.archived().map((i) => i.title)).toEqual(['API', 'Erster Schritt']);
+    expect(canvas.board.archived.all().map((i) => i.title)).toEqual(['API', 'Erster Schritt']);
     await land('docs/plan/plan.md', '# API\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** Erster Schritt.\n- [ ] **W2:** Zweiter.\n');
     expect(project('API')).toMatchObject({ id: before.id, x: before.x, y: before.y });
-    expect(canvas.board.archived()).toEqual([]);
+    expect(canvas.board.archived.all()).toEqual([]);
   });
 });
 

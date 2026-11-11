@@ -3223,7 +3223,7 @@ export class Workers {
     };
     await list(unlisted(this.o.board.items()));
     // the archive a page at a time, the server answering between them
-    for await (const page of this.o.board.archivedPages()) await list(unlisted(page));
+    for await (const page of this.o.board.archived.pages()) await list(unlisted(page));
   }
 
   /** Whether the card's change has files its left column shows (`shownFiles`), beside the ones its worker named. */
@@ -5317,7 +5317,7 @@ ${idea.idea.brief}` : '',
     if (card.mocks?.length) parts.push(mocksText(card.mocks));
     if (card.builtOn) parts.push(this.builtOnPrototype(card.builtOn, !!card.parent));
     // the card it follows up on may be on another canvas (a proposal from a worker there)
-    const fromOn = (b: Board) => b.item(card.from!) ?? b.archiveEntry(card.from!).find((i) => i.id === card.from);
+    const fromOn = (b: Board) => b.item(card.from!) ?? b.archived.entry(card.from!).find((i) => i.id === card.from);
     const fromBoard = card.from && !card.prototypeOf ? this.proposalBoards().find(fromOn) : undefined;
     const from = fromBoard && fromOn(fromBoard);
     if (fromBoard && from) {

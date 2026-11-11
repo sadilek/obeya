@@ -96,7 +96,7 @@ describe('a workstream card keeps its workstream', () => {
     work(g!.id, '1G Testlücken schließen', { state: 'done' });
     work(c!.id, 'Gleichzeitige Bearbeitung', { state: 'working' });
     await read(parse([NEW[0]!]));
-    expect(board.archived().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
+    expect(board.archived.all().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
     expect(board.events(g!.id).at(-1)!.text).toBe('Hat das Projekt „Audit“ verlassen: Das Plan-Doc führt diesen Workstream nicht mehr.');
     // at work, it stands beside the project
     const items = board.snapshot().items;
@@ -105,7 +105,7 @@ describe('a workstream card keeps its workstream', () => {
     expect(items.find((i) => i.id === c!.id)!.x).toBeGreaterThan(project.x);
     // nobody worked on it: it just goes
     expect(items.some((i) => i.id === b!.id)).toBe(false);
-    expect(board.archived().some((i) => i.id === b!.id)).toBe(false);
+    expect(board.archived.all().some((i) => i.id === b!.id)).toBe(false);
   });
 });
 
@@ -115,7 +115,7 @@ describe('a sibling dropped or added changes no card’s workstream', () => {
     work(a!.id, '4A Sitzungen', { state: 'planned' });
     const after = await read(parse(['[ ] **4A Sitzungen.** Revoke.']));
     expect(after.map((k) => [k.id, k.title])).toEqual([[a!.id, '4A Sitzungen']]);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     // and back: a second code makes it a label again
     expect((await read(parse(['[ ] **4A Sitzungen.** Revoke.', '[ ] **5C Neu.** New.']))).map((k) => [k.label, k.id === a!.id])).toEqual([
       ['4A', true],
@@ -133,7 +133,7 @@ describe('a sibling dropped or added changes no card’s workstream', () => {
       ['Upload', false],
       ['Download', true],
     ]);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     expect(up).toBeDefined();
   });
 });
@@ -178,17 +178,17 @@ describe('a doc in a plan folder outside the repository', () => {
     work(b!.id, '3B Auth zusammenführen', { state: 'planned' });
     // the doc is saved in two edits: 3B is missing for a moment
     await read(outside([OLD[0]!, OLD[2]!]));
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     expect((await read(outside(OLD))).find((k) => k.label === '3B')!.id).toBe(b!.id);
     // now 1G goes for good
     const t = Date.now();
     await read(outside(OLD.slice(1)));
     await read(outside(OLD.slice(1)));
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     setSystemTime(new Date(t + LEAVE_AFTER_MS + 1000));
     board.changed();
     await settled();
-    expect(board.archived().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
+    expect(board.archived.all().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
   });
 
   test('a stopped card leaves once it gave its workspace back, under the title and text the doc had', async () => {
@@ -219,7 +219,7 @@ describe('a doc in a plan folder outside the repository', () => {
     const [g] = await kids();
     work(g!.id, '1G Testlücken schließen', { state: 'planned' });
     await read(outside(OLD.slice(1)));
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     expect(board.snapshot().items.some((i) => i.id === g!.id)).toBe(false);
     expect((await read(outside(OLD))).find((k) => k.label === '1G')!.id).toBe(g!.id);
   });
@@ -231,7 +231,7 @@ describe('a doc in a plan folder outside the repository', () => {
     work(s1!.id, 'S1: Foundation', { state: 'live' });
     const after = await read(outside(['[x] **S1: Foundation layer.** Base', '[ ] **S2: Sign-in.** Rest']));
     expect(after[0]!.id).toBe(s1!.id);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
   });
 });
 
@@ -260,7 +260,7 @@ describe('cards of a doc read by an older Obeya', () => {
     expect(after.map((k) => ({ x: k.x, y: k.y }))).toEqual(placeWorkstreams(parse(NEW).workstreams));
     expect(board.events(after[1]!.id)).toEqual([]);
     // the card with 1G's log is done, in the archive, under 1G's title
-    expect(board.archived().find((i) => i.id === b!.id)).toMatchObject({ title: '1G Testlücken schließen', state: 'done', source: 'manual' });
+    expect(board.archived.all().find((i) => i.id === b!.id)).toMatchObject({ title: '1G Testlücken schließen', state: 'done', source: 'manual' });
     expect(board.events(b!.id).at(-1)!.text).toContain('Dieser Verlauf gehört zu einem Workstream, den das Plan-Doc nicht mehr führt');
   });
 
@@ -293,7 +293,7 @@ describe('cards of a doc read by an older Obeya, as workers left it', () => {
       ['S1', s1!.id],
       ['S2', expect.any(String)],
     ]);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     // no card the move dropped reads as one the owner deleted
     expect(board.history.removed(since)).toEqual([]);
   });
@@ -316,13 +316,13 @@ describe('while git reads a doc’s history', () => {
     const through = slowGit();
     const waiting = await read(parse(NEW));
     expect(asked).toBe(1);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     expect(waiting.map((k) => k.label)).toEqual(['4A', '3B', '3C']);
     expect(waiting.some((k) => k.id === g!.id)).toBe(false);
     expect(store.card(g!.id)!.plan_ref).toBe(`${FILE}#1G`);
     through();
     await kids();
-    expect(board.archived().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
+    expect(board.archived.all().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
   });
 
   test('a project whose repair needs the history shows the doc as last read until then', async () => {
@@ -338,12 +338,12 @@ describe('while git reads a doc’s history', () => {
       [b!.id, '3B Auth zusammenführen'],
       [c!.id, '3C Gleichzeitige Bearbeitung'],
     ]);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     through();
     const after = await kids();
     expect(after.map((k) => k.label)).toEqual(['4A', '3B', '3C']);
     expect(after[1]!.id).not.toBe(b!.id);
-    expect(board.archived().find((i) => i.id === b!.id)).toMatchObject({ title: '1G Testlücken schließen', state: 'done' });
+    expect(board.archived.all().find((i) => i.id === b!.id)).toMatchObject({ title: '1G Testlücken schließen', state: 'done' });
   });
 
   test('a history read for a doc that changed meanwhile is read again', async () => {
@@ -358,12 +358,12 @@ describe('while git reads a doc’s history', () => {
     const edited = parse([...NEW, '[ ] **5D Neu.** New.']);
     expect((await read(edited)).map((k) => k.label)).toEqual(['4A', '3B', '3C', '5D']);
     expect(asked).toBe(2);
-    expect(board.archived().map((i) => [i.id, i.title])).toEqual([[g!.id, '1G Testlücken schließen']]);
+    expect(board.archived.all().map((i) => [i.id, i.title])).toEqual([[g!.id, '1G Testlücken schließen']]);
     // the read of the doc before comes in late and changes nothing
     through();
     await kids();
     expect(asked).toBe(2);
-    expect(board.archived().map((i) => [i.id, i.title])).toEqual([[g!.id, '1G Testlücken schließen']]);
+    expect(board.archived.all().map((i) => [i.id, i.title])).toEqual([[g!.id, '1G Testlücken schließen']]);
   });
 });
 

@@ -155,7 +155,7 @@ describe('the read tree', () => {
     await until(() => projects(c).includes('Billing'));
     expect(projects(c)).toEqual(['Billing', 'Import']);
     expect(project()).toBeUndefined();
-    expect(c.board.archived().some((i) => i.title === 'Export')).toBe(true);
+    expect(c.board.archived.all().some((i) => i.title === 'Export')).toBe(true);
   });
 
   test('takes the local main where it has everything of origin, else origin', async () => {

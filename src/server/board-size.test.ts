@@ -151,7 +151,7 @@ test('an archived card looked up on its own is the card the archive lists, with 
   const alone = [board.card(idea), board.card(prototype)];
   expect(alone[0]!.prototypes!.map((p) => p.title)).toEqual([0, 1, 2, 3].map((v) => `Idea 3, variant ${v}`));
   expect(alone[1]!.ideaTitle).toBe('Idea 3');
-  const archive = board.archived();
+  const archive = board.archived.all();
   expect(alone).toEqual([archive.find((i) => i.id === idea), archive.find((i) => i.id === prototype)]);
 });
 

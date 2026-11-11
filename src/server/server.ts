@@ -667,16 +667,16 @@ function canvasRoutes(x: Routing) {
         const p = new URL(req.url).searchParams;
         const count = Math.min(ARCHIVE_PAGE_MAX, Math.max(1, Number(p.get('count')) || ARCHIVE_PAGE_MAX));
         const ids = p.get('ids');
-        if (ids !== null) return { items: c.board.archiveEntries(ids.split(',').filter(Boolean).slice(0, ARCHIVE_PAGE_MAX)) };
+        if (ids !== null) return { items: c.board.archived.entries(ids.split(',').filter(Boolean).slice(0, ARCHIVE_PAGE_MAX)) };
         const code = p.get('code');
-        if (code) return { items: c.board.archiveEntry(code) };
+        if (code) return { items: c.board.archived.entry(code) };
         const q = p.get('q')?.trim();
-        if (!q) return c.board.archivePage(count, p.get('after') ?? undefined);
+        if (!q) return c.board.archived.page(count, p.get('after') ?? undefined);
         let labels: Record<string, string> = {};
         try {
           labels = JSON.parse(p.get('labels') ?? '{}') as Record<string, string>;
         } catch {}
-        return c.board.archiveSearch(q, { count, from: Number(p.get('from')) || 0, labels, everywhere: p.has('everywhere') });
+        return c.board.archived.search(q, { count, from: Number(p.get('from')) || 0, labels, everywhere: p.has('everywhere') });
       }),
       POST: on((c) => ({ ids: c.board.archiveDone() })),
     },

@@ -230,7 +230,7 @@ describe('a worktree per card', () => {
     expect(spaces.leasedBy(idea.id)).toBe(path);
     expect(spaces.leasedBy(prototype.id)).toBeNull();
     expect(board.item(prototype.id)).toBeUndefined();
-    expect(board.archived().find((i) => i.id === prototype.id)).toMatchObject({ prototypeEnd: 'built' });
+    expect(board.archived.all().find((i) => i.id === prototype.id)).toMatchObject({ prototypeEnd: 'built' });
 
     board.work(idea.id, { state: 'planned', workspace: moved.path, branch: moved.branch, built_on: prototype.id });
     await workers.start(idea.id);
@@ -930,7 +930,7 @@ describe('a worktree per card', () => {
     expect(board.item(i.id)).toMatchObject({ finishing: true });
     runtime.last.emit({ type: 'idle' });
     expect(board.item(i.id)).toBeUndefined();
-    expect(board.archived().map((a) => a.id)).toContain(i.id);
+    expect(board.archived.all().map((a) => a.id)).toContain(i.id);
   });
 
   test('a stopped card keeps its worktree and picks it up again', async () => {

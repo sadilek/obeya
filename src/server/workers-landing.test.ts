@@ -619,7 +619,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     expect(state(w.id)).toBe('live');
     runtime.last.emit({ type: 'idle' });
     expect(board.item(project.id)!.state).toBe('done');
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
   });
 
   test('the last workstream lands and its doc goes: the project stays at work while its worker finishes, then its work is done', async () => {
@@ -634,7 +634,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     runtime.last.emit({ type: 'idle' });
     expect(spaces.leasedBy(w.id)).toBeNull();
     expect(board.item(project.id)!.state).toBe('done');
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
   });
 
   describe('awaiting a restart', () => {
@@ -670,7 +670,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
       runtime.last.emit({ type: 'idle' });
       expect(spaces.leasedBy(w.id)).toBeNull();
       expect(after.item(project.id)!.state).toBe('done');
-      expect(after.archived()).toEqual([]);
+      expect(after.archived.all()).toEqual([]);
     });
 
     test('a project archived while its workstream finished comes back, its work done once its worker is', async () => {
@@ -684,7 +684,7 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
       runtime.last.emit({ type: 'idle' });
       expect(spaces.leasedBy(w.id)).toBeNull();
       expect(after.item(project.id)!.state).toBe('done');
-      expect(after.archived()).toEqual([]);
+      expect(after.archived.all()).toEqual([]);
     });
   });
 

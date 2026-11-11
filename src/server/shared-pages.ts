@@ -33,7 +33,7 @@ const demoFile = (d: { dir: string; kind: DemoKind }) => join(d.dir, d.kind === 
 /** The file that shows a demo is there. */
 export const demoThere = (d: { dir: string; kind: DemoKind }) => existsSync(demoFile(d));
 
-/** How often Obeya looks again whether the demos of outdated pages are still on disk (`Board.lookAtDemos`): the owner deletes them outside it. */
+/** How often Obeya looks again whether the demos of outdated pages are still on disk (`PageNotice.lookAtDemos`): the owner deletes them outside it. */
 export const DEMO_LOOK_MS = 60_000;
 
 /** Sharing many outdated pages again at once (share.ts), kept so a restart goes on with it. */

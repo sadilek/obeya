@@ -540,7 +540,7 @@ export class CanvasRuntime {
 
   /** Looks for snoozed cards whose time has come. */
   private waker: ReturnType<typeof setInterval>;
-  /** Looks whether the demos of outdated pages are still on disk (`Board.lookAtDemos`). */
+  /** Looks whether the demos of outdated pages are still on disk (`PageNotice.lookAtDemos`). */
   private demoLook: ReturnType<typeof setInterval>;
   /** A look for snoozed cards to wake after the board changed, and the subscription to its changes. */
   private wakeSoon: ReturnType<typeof setTimeout> | undefined;
@@ -1456,7 +1456,7 @@ export class CanvasRuntime {
     // the archive a page at a time, only as far back as the brief has room for
     const cards = tagCards(this.board.items().filter(mine), summary);
     for (let after: string | undefined, first = true; (first || after) && !briefFull(cards); first = false) {
-      const page = this.board.archivePage(TAG_ARCHIVE_PAGE, after);
+      const page = this.board.archived.page(TAG_ARCHIVE_PAGE, after);
       cards.push(...tagCards(page.items.filter(mine), summary));
       after = page.next;
     }

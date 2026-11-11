@@ -99,7 +99,7 @@ describe('plan docs', () => {
     docs = [];
     board.docsChanged();
     expect(board.snapshot().items).toEqual([]);
-    expect(board.archived().map((i) => [i.title, i.parent ?? null])).toEqual([
+    expect(board.archived.all().map((i) => [i.title, i.parent ?? null])).toEqual([
       ['A', null],
       ['Title W1', p.id],
       ['Title W2', p.id],
@@ -108,7 +108,7 @@ describe('plan docs', () => {
     docs = [docA];
     board.docsChanged();
     expect(board.snapshot().items[0]).toMatchObject({ id: p.id, x: -500, y: 42 });
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
   });
 
   test('one card of the archive is as the archive shows it, also asked for first after its doc went', () => {
@@ -118,7 +118,7 @@ describe('plan docs', () => {
     // nothing looked at the canvas since the doc went
     expect(board.card(p!.id)).toMatchObject({ kind: 'project', title: 'A', archivedAt: expect.any(String) });
     board.changed();
-    expect(board.card(w1!.id)).toEqual(board.archived()[1]!);
+    expect(board.card(w1!.id)).toEqual(board.archived.all()[1]!);
   });
 
   test('every workstream ticked off ends the project, which stays on the canvas until the owner archives it; an open one added later brings it back', () => {
@@ -133,13 +133,13 @@ describe('plan docs', () => {
       ['W2', 'live'],
       ['W3', 'live'],
     ]);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     // read again, it still stands
     board.docsChanged();
     expect(board.item(p.id)!.state).toBe('done');
     board.archive([p.id]);
     expect(board.snapshot().items).toEqual([]);
-    expect(board.archived().map((i) => [i.title, i.state])).toEqual([
+    expect(board.archived.all().map((i) => [i.title, i.state])).toEqual([
       ['A', 'done'],
       ['Title W1', 'live'],
       ['Title W2', 'live'],
@@ -156,7 +156,7 @@ describe('plan docs', () => {
     board.docsChanged();
     expect(board.snapshot().items.map((i) => i.label ?? i.title)).toEqual(['A', 'W1', 'W2', 'W3', 'W4']);
     expect(board.snapshot().items[0]).toMatchObject({ id: p.id, state: 'planned', x: -500, y: 42 });
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
   });
 
   test('a project with work still open is not archived, and "Archive finished" takes a project whose work is done', () => {
@@ -182,7 +182,7 @@ describe('plan docs', () => {
     // its worker done, the project's work is done without reading the doc again
     board.work(w2.id, { state: 'live' });
     expect(board.snapshot().items[0]).toMatchObject({ title: 'A', state: 'done' });
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
   });
 
   test('a doc gone once all its work landed leaves its project on the canvas, as the doc last stood, until the owner archives it', () => {
@@ -200,7 +200,7 @@ describe('plan docs', () => {
     expect(board.planDoc(p!.id).markdown).toBe(docA.markdown);
     board.archive([p!.id]);
     expect(board.snapshot().items).toEqual([]);
-    expect(board.archived()[0]).toMatchObject({ id: p!.id, state: 'done' });
+    expect(board.archived.all()[0]).toMatchObject({ id: p!.id, state: 'done' });
     board.unarchive(p!.id);
     expect(board.snapshot().items[0]).toMatchObject({ id: p!.id, state: 'done' });
   });
@@ -209,7 +209,7 @@ describe('plan docs', () => {
     const [p] = board.snapshot().items;
     docs = [];
     board.docsChanged();
-    expect(board.archived()[0]).toMatchObject({ id: p!.id, state: 'planned' });
+    expect(board.archived.all()[0]).toMatchObject({ id: p!.id, state: 'planned' });
     expect(() => board.unarchive(p!.id)).toThrow(BadRequest);
   });
 
@@ -219,22 +219,22 @@ describe('plan docs', () => {
     docs = [];
     board.docsChanged();
     expect(board.snapshot().items.map((i) => i.label ?? i.title)).toEqual(['A', 'W1', 'W2', 'W3']);
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
     // its worker done, the docs read again
     board.work(w2.id, { landed: null, workspace: null });
     board.docsChanged();
     expect(board.snapshot().items).toEqual([]);
-    expect(board.archived()[0]!.title).toBe('A');
+    expect(board.archived.all()[0]!.title).toBe('A');
   });
 
   test('a doc whose work was done before Obeya first read it goes straight into the archive', () => {
     docs = [docA, { ...docB, workstreams: [ws('W1', true)] }];
     board.docsChanged();
     expect(board.snapshot().items.filter((i) => i.kind === 'project').map((i) => i.title)).toEqual(['A']);
-    expect(board.archived().map((i) => i.title)).toEqual(['B', 'Title W1']);
+    expect(board.archived.all().map((i) => i.title)).toEqual(['B', 'Title W1']);
     // and stays there, read again
     board.docsChanged();
-    expect(board.archived().map((i) => i.title)).toEqual(['B', 'Title W1']);
+    expect(board.archived.all().map((i) => i.title)).toEqual(['B', 'Title W1']);
     expect(store.projects('shop')).toHaveLength(2);
   });
 
@@ -331,7 +331,7 @@ describe('the archive of projects', () => {
     docs = [];
     board.docsChanged();
     board.snapshot();
-    const [p, ...kids] = board.archived();
+    const [p, ...kids] = board.archived.all();
     expect(p).toMatchObject({ kind: 'project', title: 'A', plan: { file: 'docs/plan/a.md', goal: 'Neues Ziel' }, archivedAt: expect.any(String) });
     expect(kids.map((k) => [k.label, k.state, k.body, k.archivedAt])).toEqual([
       ['W1', 'live', 'Body W1', p!.archivedAt],
@@ -367,7 +367,7 @@ describe('the archive of projects', () => {
     // and so does the archived project
     docs = [docA];
     board.docsChanged();
-    expect(board.archived().find((i) => i.id === b.id)!.origin).toBe(idea.id);
+    expect(board.archived.all().find((i) => i.id === b.id)!.origin).toBe(idea.id);
     expect(board.projectHistory(b.id).decisions).toHaveLength(2);
     expect(board.projectHistory(board.snapshot().items[0]!.id)).toEqual({ decisions: [], origin: null, talk: [] });
   });
@@ -399,7 +399,7 @@ describe('the archive of projects', () => {
     board.work(idea.id, { landed: null, workspace: null });
     board.workDone(idea.id);
     expect(board.item(idea.id)).toBeUndefined();
-    expect(board.archived().find((i) => i.id === idea.id)).toMatchObject({ title: 'Idee B' });
+    expect(board.archived.all().find((i) => i.id === idea.id)).toMatchObject({ title: 'Idee B' });
     expect(board.events(idea.id).at(-1)!.text).toContain('an der Stelle der Idee');
     // put back on the canvas, it stays
     board.unarchive(idea.id);
@@ -509,13 +509,13 @@ describe('archive', () => {
     await Bun.sleep(2);
     board.archive([b.id]);
     expect(board.snapshot().items.some((i) => i.id === a.id || i.id === b.id)).toBe(false);
-    expect(board.archived().map((i) => [i.title, i.state, typeof i.archivedAt])).toEqual([
+    expect(board.archived.all().map((i) => [i.title, i.state, typeof i.archivedAt])).toEqual([
       ['B', 'live', 'string'],
       ['A', 'live', 'string'],
     ]);
     board.unarchive(b.id);
     expect(board.snapshot().items.find((i) => i.id === b.id)).toMatchObject({ x: 10, y: 20, state: 'live' });
-    expect(board.archived().map((i) => i.title)).toEqual(['A']);
+    expect(board.archived.all().map((i) => i.title)).toEqual(['A']);
   });
 
   test("the archive's mark changes with what it lists, not with the cards on the canvas", async () => {
@@ -544,27 +544,27 @@ describe('archive', () => {
     docs = [];
     board.docsChanged();
     const titles = (items: Item[]) => items.map((i) => [i.title, i.parent ?? null]);
-    const first = board.archivePage(1);
+    const first = board.archived.page(1);
     expect(titles(first.items)).toEqual([
       ['A', null],
       ['Title W1', p.id],
       ['Title W2', p.id],
       ['Title W3', p.id],
     ]);
-    const second = board.archivePage(1, first.next);
+    const second = board.archived.page(1, first.next);
     expect(titles(second.items)).toEqual([['Task', null]]);
     expect(second.next).toBeUndefined();
-    expect([...first.items, ...second.items]).toEqual(board.archived());
+    expect([...first.items, ...second.items]).toEqual(board.archived.all());
     // a card archived in between comes at the start, not again on the next page
     const late = done('Late');
     board.archive([late.id]);
-    expect(titles(board.archivePage(1, first.next).items)).toEqual([['Task', null]]);
-    expect(titles(board.archivePage(1).items)).toEqual([['Late', null]]);
+    expect(titles(board.archived.page(1, first.next).items)).toEqual([['Task', null]]);
+    expect(titles(board.archived.page(1).items)).toEqual([['Late', null]]);
     // an entry by a workstream's address is its project's, with all its workstreams
     const w2 = first.items[2]!;
-    expect(board.archiveEntry(w2.short!)).toEqual(first.items);
-    expect(board.archiveEntries([task.id, p.id])).toEqual([...first.items, ...second.items]);
-    expect(board.archiveEntry(board.create({ title: 'Open', x: 0, y: 0 }).id)).toEqual([]);
+    expect(board.archived.entry(w2.short!)).toEqual(first.items);
+    expect(board.archived.entries([task.id, p.id])).toEqual([...first.items, ...second.items]);
+    expect(board.archived.entry(board.create({ title: 'Open', x: 0, y: 0 }).id)).toEqual([]);
   });
 
   test('a search through the archive finds what holds every word, its label in the owner’s words too', async () => {
@@ -574,7 +574,7 @@ describe('archive', () => {
     board.archive([a.id]);
     await Bun.sleep(2);
     board.archive([b.id]);
-    const found = async (q: string, o: Partial<Parameters<Board['archiveSearch']>[1]> = {}) => (await board.archiveSearch(q, { count: 10, ...o })).items.map((i) => i.title);
+    const found = async (q: string, o: Partial<Parameters<Board['archived']['search']>[1]> = {}) => (await board.archived.search(q, { count: 10, ...o })).items.map((i) => i.title);
     expect(await found('klon')).toEqual(['Klon löschen', 'Über den Klon warten']);
     expect(await found('uber KARTE')).toEqual(['Über den Klon warten']);
     expect(await found('gestoppt')).toEqual([]);
@@ -585,13 +585,13 @@ describe('archive', () => {
     expect(await found('klon')).toEqual(['Über den Klon warten']);
     // a page at a time
     board.archive([b.id]);
-    const page = await board.archiveSearch('klon', { count: 1 });
+    const page = await board.archived.search('klon', { count: 1 });
     expect([page.items.length, page.found, page.next]).toEqual([1, 2, '1']);
-    expect((await board.archiveSearch('klon', { count: 1, from: 1 })).next).toBeUndefined();
+    expect((await board.archived.search('klon', { count: 1, from: 1 })).next).toBeUndefined();
     // the search across canvas and archive: the title's words first, with what it found by id
     const c = done('Karte');
     board.archive([c.id]);
-    const everywhere = await board.archiveSearch('karte', { count: 10, everywhere: true });
+    const everywhere = await board.archived.search('karte', { count: 10, everywhere: true });
     expect(everywhere.hits).toEqual([c.id, a.id]);
     // a label, as the owner's language says it
     const s = board.create({ title: 'Halted', x: 0, y: 0 });
@@ -607,7 +607,7 @@ describe('archive', () => {
     expect(() => board.archive([open.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
     expect(() => board.archive([w1.id])).toThrow(expect.objectContaining({ code: 'planCard' }));
     expect(() => board.unarchive(open.id)).toThrow(expect.objectContaining({ code: 'notArchived' }));
-    expect(board.archived()).toEqual([]);
+    expect(board.archived.all()).toEqual([]);
   });
 
   test('a stopped task goes into the archive with its conversation, unless its workspace holds work or it waits to start', () => {
@@ -623,7 +623,7 @@ describe('archive', () => {
     expect(board.archiveDone()).toEqual([]);
     board.archive([c.id]);
     expect(board.snapshot().items.some((i) => i.id === c.id)).toBe(false);
-    expect(board.archived()).toMatchObject([{ id: c.id, state: 'planned', branch: 'obeya/frage-1' }]);
+    expect(board.archived.all()).toMatchObject([{ id: c.id, state: 'planned', branch: 'obeya/frage-1' }]);
     expect(board.events(c.id).map((e) => e.text)).toEqual(['Sie stimmt.', 'Gestoppt.']);
     board.unarchive(c.id);
     expect(board.snapshot().items.find((i) => i.id === c.id)).toMatchObject({ x: 50, y: 60, state: 'planned' });
@@ -642,7 +642,7 @@ describe('archive', () => {
     // once an agent has worked on it, it is a stopped one
     board.work(c.id, { session_id: 's' });
     board.archive([c.id]);
-    expect(board.archived().map((a) => a.id)).toEqual([c.id]);
+    expect(board.archived.all().map((a) => a.id)).toEqual([c.id]);
   });
 
   test('a dropped idea goes into the archive with its brief, an open one does not', () => {
@@ -654,7 +654,7 @@ describe('archive', () => {
     board.remove(board.snapshot().items.find((i) => i.prototypeOf === idea.id)!.id);
     board.archive([idea.id]);
     expect(board.snapshot().items.some((i) => i.id === idea.id)).toBe(false);
-    expect(board.archived()).toMatchObject([{ id: idea.id, state: 'idea', idea: { status: 'dropped', brief: '**Ziel:** nichts' } }]);
+    expect(board.archived.all()).toMatchObject([{ id: idea.id, state: 'idea', idea: { status: 'dropped', brief: '**Ziel:** nichts' } }]);
     // archiving everything finished leaves ideas alone
     expect(board.archiveDone()).toEqual([]);
     board.unarchive(idea.id);
@@ -668,7 +668,7 @@ describe('archive', () => {
     expect(() => board.archive([idea.id])).toThrow(expect.objectContaining({ code: 'prototypeRunning' }));
     board.remove(board.snapshot().items.find((i) => i.prototypeOf === idea.id)!.id);
     board.archive([idea.id]);
-    expect(board.archived()).toMatchObject([{ id: idea.id, state: 'idea', idea: { status: 'parked', brief: '**Ziel:** ein Post' } }]);
+    expect(board.archived.all()).toMatchObject([{ id: idea.id, state: 'idea', idea: { status: 'parked', brief: '**Ziel:** ein Post' } }]);
     expect(board.archiveDone()).toEqual([]);
     board.unarchive(idea.id);
     expect(board.snapshot().items.find((i) => i.id === idea.id)).toMatchObject({ x: 30, y: 40, idea: { status: 'parked' } });
@@ -680,7 +680,7 @@ describe('archive', () => {
     const open = board.create({ title: 'Open', x: 0, y: 0 });
     expect(board.archiveDone().sort()).toEqual([a.id, b.id].sort());
     expect(board.snapshot().items.some((i) => i.id === open.id)).toBe(true);
-    expect(board.archived()).toHaveLength(2);
+    expect(board.archived.all()).toHaveLength(2);
     expect(board.archiveDone()).toEqual([]);
   });
 
@@ -806,7 +806,7 @@ describe('groups', () => {
     const gone = board.deleteGroup(g.id);
     expect(gone).toEqual({ group: g, cards: [a.id, b.id] });
     expect(board.snapshot().groups).toEqual([other]);
-    const archived = (id: string) => board.archived().find((i) => i.id === id)!.group;
+    const archived = (id: string) => board.archived.all().find((i) => i.id === id)!.group;
     expect([groupOf(a.id), archived(b.id), groupOf(c.id)]).toEqual([undefined, undefined, other.id]);
     expect(() => board.deleteGroup(g.id)).toThrow(BadRequest);
     // back, as the undo brings it
