@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
 import { launchChromium } from '../../../lib/chromium.ts';
-import { paintTimes } from './director.ts';
+import { paintTimes } from './screencast.ts';
 import type { Frame } from './timeline.ts';
 
 // The overlay in a real browser, on a page with iframes as a card's HTML artifact has them.
