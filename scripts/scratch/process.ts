@@ -210,7 +210,7 @@ export async function sweep() {
   for (const p of servers) {
     // a supervised server's child goes with its supervisor
     if (servers.some((q) => q.pid === p.ppid)) continue;
-    const d = staged.get(p.pid) ?? scratchDir(Number(scratchPortIn(`${p.cmd} ${p.cwd}`) !== undefined));
+    const d = staged.get(p.pid) ?? scratchDir(scratchPortIn(`${p.cmd} ${p.cwd}`)!);
     if (staged.get(p.pid) && stagedIn(d)?.endsItself) continue;
     const started = startOf(p.pid);
     const why = p.cwd && !existsSync(p.cwd) ? `${p.cwd}, which it ran from, is gone` : started !== undefined && Date.now() - started > UNTOLD_MS ? `it ran for ${Math.round((Date.now() - started) / 3600_000)} hours` : null;

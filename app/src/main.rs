@@ -145,7 +145,8 @@ fn say(de: &str, en: &str) -> String {
 /// A request to the server that names the owner's key and waits up to `patience` for its answer:
 /// its status and its JSON (null where it has none), or none when it does not answer.
 fn request(port: u16, method: &str, path: &str, body: Option<&serde_json::Value>, patience: Duration) -> Option<(u16, serde_json::Value)> {
-  let agent = ureq::AgentBuilder::new().timeout_connect(Duration::from_millis(500)).timeout(patience).build();
+  // a redirect is an answer of its own, not followed: what answers on the port is Obeya or not
+  let agent = ureq::AgentBuilder::new().timeout_connect(Duration::from_millis(500)).timeout(patience).redirects(0).build();
   let req = agent.request(method, &format!("http://127.0.0.1:{port}{path}"));
   let req = match key() {
     Some(key) => req.set(KEY_HEADER, &key),
@@ -153,12 +154,15 @@ fn request(port: u16, method: &str, path: &str, body: Option<&serde_json::Value>
   };
   let res = match body {
     Some(body) => req.set("content-type", "application/json").send_string(&body.to_string()),
+    // an empty POST says so (Content-Length: 0)
+    None if method == "POST" => req.send_string(""),
     None => req.call(),
   };
   match res {
+    // the status counts as the answer, whether or not its body arrives whole
     Ok(res) => {
       let status = res.status();
-      Some((status, serde_json::from_str(&res.into_string().ok()?).unwrap_or(serde_json::Value::Null)))
+      Some((status, res.into_string().ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or(serde_json::Value::Null)))
     }
     // ureq takes a status from 400 up for an error
     Err(ureq::Error::Status(status, _)) => Some((status, serde_json::Value::Null)),

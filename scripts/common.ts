@@ -3,7 +3,7 @@
 // Plain Node, so that the hero video's scripts, which Node runs, can import it too.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
@@ -73,7 +73,9 @@ export function writeFiles(dir: string, files: Record<string, string | { from: s
   for (const [path, what] of Object.entries(files)) {
     const to = join(dir, path);
     mkdirSync(dirname(to), { recursive: true });
-    writeFileSync(to, typeof what === 'string' ? what : readFileSync(what.from));
+    if (typeof what === 'string') writeFileSync(to, what);
+    // copied with its mode: an executable stays one
+    else copyFileSync(what.from, to);
   }
 }
 

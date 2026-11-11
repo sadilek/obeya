@@ -59,7 +59,7 @@ export const TARGETS = {
 
 export type Target = keyof typeof TARGETS;
 
-export const isTarget = (t: string): t is Target => t in TARGETS;
+export const isTarget = (t: string): t is Target => Object.hasOwn(TARGETS, t);
 
 /** What `t` is not, for a script that was given it: the targets there are. */
 export const unknownTarget = (t: string) => `unknown target ${t} (known: ${Object.keys(TARGETS).join(', ')})`;
