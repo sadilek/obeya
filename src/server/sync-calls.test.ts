@@ -31,6 +31,10 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 1, mkdirSync: 1, realpathSync: 2, statSync: 1 },
   },
   'canvas-fixture.ts': { why: "the canvas tests' fixture, not the server", calls: { mkdtempSync: 1 } },
+  'claude.ts': {
+    why: "server path at an agent's start: Claude Code's ~/.claude.json read whole to tell whether Chrome is paired (it grows with Claude's history; a candidate for fs/promises), a message's images",
+    calls: { readFileSync: 2 },
+  },
   'config.ts': {
     why: "the configuration file: read at startup, stat'ed when the configuration is asked for (one known path), written when the owner saves; on the server path otherwise only stats of known paths (a voice's key and reference clips, a repository's path) and a demo voice's sample in a temporary directory",
     calls: { existsSync: 7, mkdirSync: 1, mkdtempSync: 1, readFileSync: 2, rmSync: 1, statSync: 1, writeFileSync: 2 },
@@ -97,10 +101,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 5, readFileSync: 2, readdirSync: 3, statSync: 3 },
   },
   'resources.ts': { why: 'startup: where the bundled resources are', calls: { existsSync: 2 } },
-  'runtime.ts': {
-    why: "server path at an agent's start: Claude Code's ~/.claude.json read whole to tell whether Chrome is paired (it grows with Claude's history; a candidate for fs/promises), a repository's trust notes, a message's images",
-    calls: { existsSync: 1, readFileSync: 3 },
-  },
+  'runtime.ts': { why: "server path at an agent's start: a repository's trust notes", calls: { existsSync: 1, readFileSync: 1 } },
   'scratch.ts': { why: "server path, cheap: a scratch Obeya's look once a minute whether its checkout is there and which branch its HEAD names (a stat and a small read)", calls: { existsSync: 1, readFileSync: 1 } },
   'self-update.ts': {
     why: "server path, cheap: the seal of the checkout's HEAD every two seconds (a few stats); bun install runs after the server stopped, before it restarts",

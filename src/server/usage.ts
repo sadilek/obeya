@@ -11,7 +11,8 @@ import { query, type SDKControlGetUsageResponse } from '@anthropic-ai/claude-age
 import type { Harness, Usage, UsageLimit } from '../core/types';
 import { withTimeout } from '../core/late';
 import { Listeners, Watched } from '../core/watched';
-import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+import { claudeExecutable, spawnHere } from './claude';
+import { cleanEnv } from './runtime';
 import { messageOf } from '../core/text';
 
 /** How often the limits are fetched while the bar shows them: just over the minute Claude Code keeps an answer. */

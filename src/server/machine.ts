@@ -28,7 +28,7 @@ import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
 import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
 import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
-import { claudeExecutable, machineClaude, runClaudeHere } from './runtime';
+import { claudeExecutable, machineClaude, runClaudeHere } from './claude';
 import { codexExecutable, CodexLogins, type CodexLoginState, runCodex, spawnOptions, startArgv } from './codex';
 import { findCodex, type HarnessFound, type Harnesses } from './harnesses';
 import { extendPath, freshPath, which } from './path';

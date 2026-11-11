@@ -26,7 +26,8 @@ import { AGENT_EFFORTS, codexFamily, codexFamilyName, nearestEffort, resolveCode
 import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
-import { BOUNDED_WAITS, carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, FOREGROUND_SLEEP_LIMIT, foregroundSleep, trackHere, withStderr } from './runtime';
+import { carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, trackHere, withStderr } from './runtime';
+import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, foregroundSleep } from './shell';
 import { codexCost, type CodexTokens } from './prices';
 import { OWN_GROUP } from './spawn';
 import type { PlanLimits, UsageSource } from './usage';

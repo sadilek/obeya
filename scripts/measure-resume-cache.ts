@@ -22,7 +22,8 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { codexRuntime } from '../src/server/codex';
 import { OBEYA_PLUGIN } from '../src/server/demo';
-import { type AgentEvent, type AgentRuntime, type AgentSession, CODEX_SESSION, sdkRuntime, withRest } from '../src/server/runtime';
+import { sdkRuntime } from '../src/server/claude';
+import { type AgentEvent, type AgentRuntime, type AgentSession, CODEX_SESSION, withRest } from '../src/server/runtime';
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(name);

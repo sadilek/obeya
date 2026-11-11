@@ -7,7 +7,8 @@ import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { Skill } from '../core/types';
 import { Kept } from '../core/kept';
 import { withTimeout } from '../core/late';
-import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+import { claudeExecutable, spawnHere } from './claude';
+import { cleanEnv } from './runtime';
 import { messageOf } from '../core/text';
 
 /** Where an agent works, as far as its skills go. */

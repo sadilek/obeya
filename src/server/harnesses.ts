@@ -18,7 +18,8 @@ import { Kept } from '../core/kept';
 import { Listeners } from '../core/watched';
 import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex';
 import type { SshHost } from './hosts';
-import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+import { claudeExecutable, spawnHere } from './claude';
+import { cleanEnv } from './runtime';
 import { messageOf } from '../core/text';
 
 /** What a look at a harness found. */

@@ -15,7 +15,8 @@ import { HostError, hostName, onHost, registerHost, remote, sessionFiles, type S
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
 import { claudeModels } from './harnesses';
-import { type AgentEvent, sdkRuntime } from './runtime';
+import { sdkRuntime } from './claude';
+import type { AgentEvent } from './runtime';
 import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { HERE, RECHECK_MS, Workspaces } from './workspaces';

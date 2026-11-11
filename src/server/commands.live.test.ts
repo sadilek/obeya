@@ -17,7 +17,8 @@ import { type Command, Commander } from './commands';
 import { Config } from './config';
 import { Store } from './db';
 import { AGENT_DEFAULTS, type CanvasConfig, type ConfigView } from '../core/types';
-import { type AgentRuntime, sdkRuntime, withAgentSetting } from './runtime';
+import { sdkRuntime } from './claude';
+import { type AgentRuntime, withAgentSetting } from './runtime';
 import { gitRepo, testBoard } from './testing';
 
 // the sessions need the machine's Claude login, which the test setup hides behind a scratch config

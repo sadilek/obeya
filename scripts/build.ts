@@ -11,7 +11,7 @@
 // (`obeya.exe`) and `resources/`. Bun compiles for another platform too, fetching that platform's
 // Bun once. A macOS binary is signed ad hoc on a Mac: as Bun writes it, macOS kills it at start.
 // Claude Code is not part of it: the binary runs the machine's own installation
-// (`claudeExecutable` in src/server/runtime.ts).
+// (`claudeExecutable` in src/server/claude.ts).
 
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';

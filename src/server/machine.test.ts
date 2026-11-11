@@ -10,7 +10,7 @@ import { Store } from './db';
 import { claudeToken } from './hosts';
 import { Harnesses } from './harnesses';
 import { cloneName, codexManager, machineHint, MachineSetup, runnable, updateCodex, WELCOME_FILE, welcome } from './machine';
-import { claudeExecutable, runClaudeHere } from './runtime';
+import { claudeExecutable, runClaudeHere } from './claude';
 import { fakeProgram, gitRepo, ownGlobalGitConfig, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
 import { git } from './git';
