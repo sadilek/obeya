@@ -1,44 +1,49 @@
 // An idea under discussion, and the prototypes built of it.
 
-import { useEffect, useRef, useState } from 'react';
-import { type CardAction, finishingUp, type Item, type NextStep, type RepoRef } from '../core/types';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type Item, type NextStep, type RepoRef } from '../core/types';
 import { Body, Inline } from './markdown';
 import { cardDraft } from './draft';
 import { Composer } from './composer';
 import { newRepoWords, type RepoChoice, RepoPick } from './repoPick';
 import { snoozeWho } from './snooze';
 import { stateLabel, t } from './strings';
-import { type ActDone, ArchiveButton, Armed, Later, Limited, type Run, type Tell, archivedOn } from './cardSheet';
-import { Mocks, Split, Talk } from './conversation';
+import { type Act, ArchiveButton, Armed, DeleteButton, Later, RepoDownBox, type Run, StateLine, SupersededBox, type Tell } from './cardSheet';
+import { Mocks, Split, Talk, wordsField } from './conversation';
 import { DemoView } from './demo';
 
 /**
  * An idea under discussion: the brief its agent keeps on top, a prototype's demo when there is one,
- * then the conversation, and the owner's decisions. `prototypes`: the idea's repository can have
- * them (a folder without git has no branch to build one on).
+ * then the conversation, and the owner's decisions.
  */
 export function IdeaView({
   item,
+  all,
+  repo,
   act,
   run,
   listener,
   onDelete,
   onTell,
-  prototypes,
   choice,
   repos,
+  error,
 }: {
   item: Item;
-  act: (a: CardAction, done: ActDone) => Promise<void>;
+  all: Item[];
+  repo: RepoRef | undefined;
+  act: Act;
   run: Run;
-  listener?: string;
+  listener?: string | undefined;
   onDelete: () => void;
   onTell: Tell;
-  prototypes: boolean;
   choice: RepoChoice;
   repos: RepoRef[];
+  error: ReactNode;
 }) {
   const idea = item.idea!;
+  // a folder without git has no branch to build a prototype on
+  const prototypes = !repo?.folder;
   // a new repository building creates first: the button names it, a line under it says what it does
   const fresh = newRepoWords(choice, true);
   const [prototyping, setPrototyping] = useState(false);
@@ -47,13 +52,12 @@ export function IdeaView({
   const btn = (step: NextStep['step']) => (next ? (next.step === step ? 'btn primary suggested' : 'btn') : step === 'build' ? 'btn primary' : 'btn');
   return (
     <>
-      <div className={['p-state', finishingUp(item) && 'finishing', item.snoozed && 'paused'].filter(Boolean).join(' ')}>
-        ● {stateLabel(item)}
+      <SupersededBox item={item} all={all} act={act} onDelete={onDelete} />
+      <RepoDownBox item={item} />
+      <StateLine item={item} paused={!!item.snoozed}>
         {item.snoozed && <span className="p-status"> · {snoozeWho(item.snoozed)}</span>}
         {idea.thinking && <span className="p-status"> · {t.author.explorer} {t.idea.thinking}</span>}
-        <Limited item={item} />
-        {archivedOn(item)}
-      </div>
+      </StateLine>
       {/* the brief is what stays; the conversation beside it is how it came about */}
       <Split
         cite={!item.archivedAt && cardDraft(item.id)}
@@ -75,23 +79,8 @@ export function IdeaView({
             <PrototypeDemos item={item} />
           </>
         }
-        talk={
-          // an archived idea is read only: it comes back onto the canvas before anyone talks to it again
-          item.archivedAt ? (
-            <Talk item={item} past />
-          ) : (
-            <Talk
-              item={item}
-              field={{
-                placeholder: t.idea.compose,
-                listener,
-                quote: true,
-                onWords: async (words, images, replyTo) => onTell(words, images, 'discuss', replyTo),
-                onPicked: (text, _, images, replyTo) => act({ action: 'discuss', text, images, ...(replyTo ? { replyTo } : {}) }, { close: false }),
-              }}
-            />
-          )
-        }
+        // an archived idea is read only: it comes back onto the canvas before anyone talks to it again
+        talk={<Talk item={item} past={!!item.archivedAt} field={item.archivedAt ? undefined : wordsField(t.idea.compose, onTell, 'discuss', act, 'discuss', listener)} />}
       />
       {idea.status !== 'open' && !item.archivedAt && <p className="hint">{t.idea.reopen}</p>}
       {item.archivedAt ? (
@@ -163,13 +152,12 @@ export function IdeaView({
             <Later item={item} act={act} />
             {/* not while a prototype of it is on the canvas */}
             {idea.status !== 'open' && !item.prototypes?.some((p) => !p.archivedAt) && <ArchiveButton item={item} run={run} />}
-            <button className="btn danger" onClick={onDelete}>
-              {t.delete}
-            </button>
+            <DeleteButton onDelete={onDelete} />
           </div>
           {fresh && <p className="hint">{fresh.hint}</p>}
         </>
       )}
+      {error}
     </>
   );
 }
@@ -178,7 +166,7 @@ export function IdeaView({
  * "Have a prototype built": the variants the idea's agent planned, each chosen unless its prototype
  * runs already, and an approach of the owner's own; one prototype each starts at once.
  */
-function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+function PrototypeStart({ item, act }: { item: Item; act: Act }) {
   const variants = item.idea!.variants;
   const running = new Set((item.prototypes ?? []).flatMap((p) => (!p.archivedAt && p.variant ? [p.variant] : [])));
   const [chosen, setChosen] = useState(() => variants.filter((v) => !running.has(v.approach)).map((v) => v.approach));

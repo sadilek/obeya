@@ -7,7 +7,7 @@ import { type Language, languageOf } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
-import { type AgentEffort, type AgentModel, type AgentRole, type Harness, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
+import { type AgentEffort, type AgentModel, type AgentRole, type Harness, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Item, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
 
 /** A list in a sentence: „a, b und c“. */
 const listOf = (items: string[], and: string) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ${and} ${items.at(-1)}`);
@@ -4527,6 +4527,10 @@ function queueLabel(q: Queue): string {
 
 /** An idea or a task decided as a project, until the project takes its place; a card that was an idea has the brief it was decided on. */
 export const becomesLabel = (i: { brief?: string }) => (i.brief !== undefined ? t.kind.becomesProject : t.kind.taskBecomesProject);
+
+/** What kind of card it is, in a word or two, on its face and in its head; a plain task says nothing of its kind. */
+export const kindLabel = (i: Pick<Item, 'kind' | 'idea' | 'proposal' | 'becomesProject' | 'brief' | 'prototypeOf'>) =>
+  i.kind === 'question' ? t.kind.question : i.idea || i.proposal?.idea ? t.kind.idea : i.becomesProject ? becomesLabel(i) : i.prototypeOf ? t.kind.prototype : i.kind === 'project' ? t.kind.project : '';
 
 /** The owner's text for a refused request or a logged error code; the generic one for anything unknown. */
 export const errorText = (code: string | undefined) => (code && Object.hasOwn(t.error, code) ? t.error[code as ErrorCode] : t.error.invalid);

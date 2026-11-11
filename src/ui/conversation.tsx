@@ -7,7 +7,8 @@ import { type BackgroundTask, type ChangeRoute, type CardEvent, type Demo, finis
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
-import { api, onCardEvent, onCardEventGone, onReconnect } from './api';
+import { api, type Field, onCardEvent, onCardEventGone, onReconnect } from './api';
+import type { Act, Tell } from './cardSheet';
 import { PauseMark, PlayMark } from './parts';
 import { holdsNotes } from '../core/queue';
 import { Body, Inline } from './markdown';
@@ -596,6 +597,19 @@ interface TalkField {
   /** On a review card: the owner's decisions on its findings go to the agent with the words. */
   onDecided?: (text: string, findings: Record<string, ChangeRoute>, images?: string[], replyTo?: number) => Promise<void>;
 }
+
+/**
+ * The field of an idea, a question card or a proposal: words alone go through `onTell` as typed into
+ * `field`, to the card's agent or to the Coordinator `listener` names; words with options picked go
+ * to the agent as the kind's `action`, the picks named in them.
+ */
+export const wordsField = (placeholder: string, onTell: Tell, field: Field, act: Act, action: 'discuss' | 'ask' | 'revise', listener?: string): TalkField => ({
+  placeholder,
+  listener,
+  quote: true,
+  onWords: async (words, images, replyTo) => onTell(words, images, field, replyTo),
+  onPicked: (text, _, images, replyTo) => act({ action, text, images, ...(replyTo ? { replyTo } : {}) }, { close: false }),
+});
 
 /**
  * The right column of every card with a conversation: the conversation with the questions it waits

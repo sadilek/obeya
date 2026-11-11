@@ -1,7 +1,7 @@
 // Sharing a card's demo with colleagues: on a page of the repository's demo site, or as a file.
 
 import { useEffect, useRef, useState } from 'react';
-import { type CardAction, type Demo, type EarlierDemo, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented } from '../core/types';
+import { type CardAction, type Demo, type EarlierDemo, EXPORT_HTML_MAX, type Item, type PageTags, type RepoRef, withSupplemented } from '../core/types';
 import { api } from './api';
 import { useCopy } from './copy';
 import { useMenuClose } from './menu';
@@ -9,7 +9,36 @@ import { dimensions, shownTags } from '../core/page-tags';
 import { ACK_MS } from './tell';
 import { t } from './strings';
 import { PageChangeList } from './page-changes';
-import { type ActDone, type Run } from './cardSheet';
+import type { Act, Run } from './cardSheet';
+
+/**
+ * Sharing the demo shown (`demo`, the latest or an earlier one): on a page where the card's
+ * repository has a share target, else as a file to pass on.
+ */
+export function DemoShare({ item, demo, repo, act, run, onDemoSites }: { item: Item; demo: Demo; repo: RepoRef | undefined; act: Act; run: Run; onDemoSites?: (() => void) | undefined }) {
+  if (!repo?.share && !item.share)
+    return <ExportBox item={item} demo={demo} run={run} needs={repo?.shareNeeds} personal={repo?.sharePersonal} repoPath={repo?.path} onDemoSites={onDemoSites} />;
+  return (
+    <ShareBox
+      item={item}
+      demo={demo}
+      act={act}
+      onApproval={!!repo?.shareOnApproval}
+      // on the personal site, the tick that is not there yet turns sharing with the approval on for the whole repository
+      approveAll={
+        repo?.shareOnPersonal && !repo.shareOnApproval
+          ? () =>
+              run(async () => {
+                await api.shareApprovedRepo(repo.path, true);
+                if (item.notOnApproval) await api.act(item.id, { action: 'shareOnApproval', on: true });
+              }, { close: false })
+          : undefined
+      }
+      vocabulary={repo?.shareTags}
+      unlisted={item.share ? !!item.share.unlisted : !!repo?.shareUnlisted}
+    />
+  );
+}
 
 /**
  * Sharing the demo shown with colleagues: "Share" publishes it right away, then the page's link with
@@ -20,7 +49,7 @@ import { type ActDone, type Run } from './cardSheet';
  * the latest demo not on the page has "Share on approval" until the card is approved, and
  * "Share" reads "Share now": the owner may share it before approving, or not on approving.
  */
-export function ShareBox({ item, demo, act, onApproval, approveAll, vocabulary, unlisted }: { item: Item; demo: Demo; act: (a: CardAction, done: ActDone) => Promise<void>; onApproval: boolean; approveAll?: (() => Promise<void>) | undefined; vocabulary?: PageTags | undefined; unlisted: boolean }) {
+function ShareBox({ item, demo, act, onApproval, approveAll, vocabulary, unlisted }: { item: Item; demo: Demo; act: Act; onApproval: boolean; approveAll?: (() => Promise<void>) | undefined; vocabulary?: PageTags | undefined; unlisted: boolean }) {
   const [copied, copy] = useCopy(2000);
   const s = item.share;
   const all = [...(item.demos ?? []), ...(item.demo ? [item.demo] : [])];
@@ -284,7 +313,7 @@ export function ShareIcon() {
  * (short videos, artifacts that are their index.html alone). Where its site lacks its credentials
  * on this machine, a line under the buttons names the file.
  */
-export function ExportBox({
+function ExportBox({
   item,
   demo,
   run,

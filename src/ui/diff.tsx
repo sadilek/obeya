@@ -39,6 +39,9 @@ export function useCardDiff(item: Item, { on, poll }: { on: boolean; poll: boole
   return { diff, set: setDiff, reload: () => setAsked((n) => n + 1) };
 }
 
+/** The card's change as `useCardDiff` reads it. */
+export type CardChange = ReturnType<typeof useCardDiff>;
+
 /** The card's whole change with its patch, read once; null while it loads. */
 export function useFullDiff(id: string): CardDiff | null | 'failed' {
   const [diff, setDiff] = useState<CardDiff | null | 'failed'>(null);

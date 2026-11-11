@@ -13,7 +13,7 @@ import { waitReason } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
 import { cardTag } from '../core/card-number';
 import { CardNumber } from './cardNumber';
-import { becomesLabel, clock, snoozeWhen, stateLabel, t } from './strings';
+import { clock, kindLabel, snoozeWhen, stateLabel, t } from './strings';
 
 /** The first line of a card's text that says something (not a bare "Goal" label (or its German "Ziel"), as briefs start). */
 const firstLine = (md: string) =>
@@ -165,7 +165,7 @@ export const cardClass = (item: Item, underway?: string) =>
 export function CardFace({ item, where, underway, since, chip, inButton }: { item: Item; where?: string; underway?: string; since?: string; chip?: boolean; inButton?: boolean }) {
   const kind =
     item.label ??
-    (item.contribution ? t.review.kind(item.contribution.number, item.contribution.author) : item.parent ? t.kind.workstream : item.kind === 'question' ? t.kind.question : item.idea || item.proposal?.idea ? t.kind.idea : item.becomesProject ? becomesLabel(item) : item.prototypeOf ? t.kind.prototype : item.kind === 'project' ? t.kind.project : '');
+    (item.contribution ? t.review.kind(item.contribution.number, item.contribution.author) : item.parent ? t.kind.workstream : kindLabel(item));
   // a plain task says nothing of its kind: that it is one shows
   const label = [item.state === 'proposal' && t.proposalMark, where, kind].filter(Boolean).join(' · ');
   // a card whose agent finishes after the landing, opens its PR or takes in the owner's words on its handover shows its line like one at work: the usage limit it waits on, its reports
