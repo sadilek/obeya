@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { LANGUAGES } from '../core/locale';
-import type { SharedSettings } from '../core/types';
+import { type RepoSettings, SHARED_FIELDS, type SharedSettings } from '../core/types';
 
 const strings = z.array(z.string());
 
@@ -53,6 +53,12 @@ export const settingsShape = z
   })
   .strict();
 
+/** Whether A and B have the same fields, and a value of each is one of the other. */
+type Same<A, B> = [A, keyof A] extends [B, keyof B] ? ([B, keyof B] extends [A, keyof A] ? true : false) : false;
+// the shape and the interface the UI reads name the same settings: a field added to one alone is a type error
+const sameSettings: Same<z.infer<typeof settingsShape>, RepoSettings> = true;
+void sameSettings;
+
 /**
  * What a repository's `.obeya/settings.json` may hold (`SharedSettings`): the settings for this
  * machine but the main branch, which says where the file is read from.
@@ -61,7 +67,7 @@ export const sharedShape = settingsShape.omit({ branch: true });
 
 // the fields each object knows, for a guess at what a misspelt one meant
 const KNOWN: Record<string, string[]> = {
-  '': Object.keys(sharedShape.shape),
+  '': [...SHARED_FIELDS],
   planDocs: Object.keys(planDocs.shape),
   demo: Object.keys(demo.shape),
   'demo.site': Object.keys(site.shape),

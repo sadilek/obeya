@@ -7,11 +7,18 @@ export function repoName(repo: RepoInfo): string {
   return fromRemote || basename(repo.path);
 }
 
-/** Obeya's defaults, for what a repository's settings leave out: plan docs under `docs/plan/`, English in git. */
+/**
+ * Obeya's defaults, for what a repository's settings leave out: plan docs under `docs/plan/`, English
+ * in git, no checks and no setup, pull requests merged by Obeya.
+ */
 export const generic: RepoAdapter = {
   planDocs: { dir: 'docs/plan', exclude: ['TEMPLATE.md'] },
   language: 'en',
   land: 'pr',
+  autoMerge: true,
+  checks: [],
+  setup: '',
   workspaces: 'worktrees',
   softPaths: ['docs/plan/'],
+  prNoise: [],
 };

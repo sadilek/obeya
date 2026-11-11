@@ -54,23 +54,21 @@ function tidySettings(s: z.infer<typeof settingsShape> | undefined): RepoSetting
   const dir = s.planDocs?.dir.trim().replace(/\/+$/, '');
   const site = tidySite(s.demo?.site);
   const demo = { ...(site ? { site } : {}), ...(s.demo?.language ? { language: s.demo.language } : {}) };
-  const app = tidyApp(s.app);
+  // what is not normalised here goes as it came
   const out: RepoSettings = {
-    ...(s.branch?.trim() ? { branch: s.branch.trim() } : {}),
-    ...(s.land ? { land: s.land } : {}),
-    ...(s.direct !== undefined ? { direct: s.direct } : {}),
-    ...(s.autoMerge !== undefined ? { autoMerge: s.autoMerge } : {}),
-    ...(s.checks ? { checks: list(s.checks)! } : {}),
-    ...(s.setup !== undefined ? { setup: s.setup.trim() } : {}),
-    ...(dir ? { planDocs: { dir, exclude: list(s.planDocs!.exclude)! } } : {}),
-    ...(s.softPaths ? { softPaths: list(s.softPaths)! } : {}),
-    ...(s.workspaces ? { workspaces: s.workspaces } : {}),
-    ...(s.prNoise ? { prNoise: list(s.prNoise)! } : {}),
-    ...(s.language ? { language: s.language } : {}),
-    ...(app ? { app } : {}),
-    ...(Object.keys(demo).length ? { demo } : {}),
+    ...s,
+    branch: s.branch?.trim() || undefined,
+    checks: list(s.checks),
+    setup: s.setup?.trim(),
+    planDocs: dir ? { dir, exclude: list(s.planDocs!.exclude)! } : undefined,
+    softPaths: list(s.softPaths),
+    prNoise: list(s.prNoise),
+    app: tidyApp(s.app),
+    demo: Object.keys(demo).length ? demo : undefined,
   };
-  return Object.keys(out).length ? out : undefined;
+  // in the dialog's order, without what is left unset
+  const kept = (['branch', ...SHARED_FIELDS] as const).filter((k) => out[k] !== undefined).map((k) => [k, out[k]]);
+  return kept.length ? (Object.fromEntries(kept) as RepoSettings) : undefined;
 }
 
 /**

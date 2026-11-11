@@ -36,7 +36,7 @@ export class PrWatcher {
      * The repository's settings, asked each round since they may change while the watcher runs:
      * accounts whose comments are not review feedback (`prNoise`), and whether Obeya merges (`autoMerge`).
      */
-    private settings: () => Pick<RepoAdapter, 'prNoise' | 'autoMerge'> = () => ({}),
+    private settings: () => Partial<Pick<RepoAdapter, 'prNoise' | 'autoMerge'>> = () => ({}),
     /** On a canvas with several repositories: the one whose pull requests this watches. */
     private repo?: string,
     /** Called at the end of every round (the read tree fetches then). */

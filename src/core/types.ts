@@ -2074,6 +2074,9 @@ export type CardLanding = Partial<Pick<RepoSettings, 'land' | 'direct'>>;
 
 /** The fields of `SharedSettings`, in the dialog's order. */
 export const SHARED_FIELDS = ['land', 'direct', 'autoMerge', 'checks', 'setup', 'planDocs', 'softPaths', 'workspaces', 'prNoise', 'language', 'app', 'demo'] as const satisfies readonly (keyof SharedSettings)[];
+// every field of `SharedSettings` is in the list: one left out would be neither taken over nor read live
+const everyShared: [Exclude<keyof SharedSettings, (typeof SHARED_FIELDS)[number]>] extends [never] ? true : false = true;
+void everyShared;
 
 /** The settings made of fields that are each set, layered and taken over on their own, and their fields. */
 export const NESTED_SETTINGS = { app: ['run', 'stop', 'keep'], demo: ['site', 'language'] } as const satisfies { [K in keyof RepoSettings]?: readonly (keyof NonNullable<RepoSettings[K]>)[] };
@@ -2144,22 +2147,14 @@ export function commandLines(c: RepoCommands | undefined, g: TrustGroup): string
   return Object.entries(v).map(([k, x]) => `${g === 'app' ? 'app' : 'demo.site'}.${k}: ${typeof x === 'string' ? x : JSON.stringify(x)}`);
 }
 
-/** A repository's settings as they stand without this machine's: what the dialog shows where the owner set nothing. */
-export interface RepoValues {
-  branch: SettingValue<string>;
-  land: SettingValue<'main' | 'pr'>;
-  direct: SettingValue<boolean>;
-  autoMerge: SettingValue<boolean>;
-  checks: SettingValue<string[]>;
-  setup: SettingValue<string>;
-  planDocs: SettingValue<{ dir: string; exclude: string[] }>;
-  softPaths: SettingValue<string[]>;
-  workspaces: SettingValue<'clones' | 'worktrees'>;
-  prNoise: SettingValue<string[]>;
-  language: SettingValue<Language>;
-  app: { run: SettingValue<string>; stop: SettingValue<string>; keep: SettingValue<string> };
+/**
+ * A repository's settings as they stand without this machine's: what the dialog shows where the owner
+ * set nothing. Each field has a value; a demo has no site or language of its own where none is set (`null`).
+ */
+export type RepoValues = { [K in Exclude<keyof RepoSettings, NestedSetting>]-?: SettingValue<NonNullable<RepoSettings[K]>> } & {
+  app: { [F in keyof AppSettings]-?: SettingValue<NonNullable<AppSettings[F]>> };
   demo: { site: SettingValue<DemoSite | null>; language: SettingValue<NarrationLanguage | null> };
-}
+};
 
 /**
  * A repository's entry in the configuration without what applies as it is read (its settings but
