@@ -1,9 +1,12 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { AnswerFile, AnswerRef, CardEvent, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, ProposedSetting, RepoCommands, SettingProposal, SettingProposalState, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
+import type { AnswerFile, AnswerRef, CardAgent, CardEvent, ChangeSize, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, RepoCommands, SettingProposal, SettingProposalState, Snooze, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
 import type { Place } from '../core/layout';
 import type { Wish } from '../core/wish';
+import type { CardFile } from '../core/files';
+import type { PlanDoc } from '../core/plan-doc';
+import type { Detail, HeldComment, Json, LandedState, PageHeard, PausedState, PrState, Scope, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread, Unheard } from './row';
 
 /** Where a page of the archive ends (`Store.archivePage`): the last card's archiving, creation and id. */
 export interface ArchiveCursor {
@@ -12,6 +15,7 @@ export interface ArchiveCursor {
   id: string;
 }
 
+/** A card as stored. A JSON column's type names what it holds (`Json` in row.ts), so `fromJson` reads it typed. */
 export interface CardRow {
   id: string;
   canvas_id: string;
@@ -39,98 +43,98 @@ export interface CardRow {
   session_id: string | null;
   /** The model that session runs on, as its harness reported it at the start (`claude-opus-5-5`); its harness is the session's (`sessionHarness`). */
   model: string | null;
-  /** The size of its change as the server last read it (JSON `ChangeSize`), for the page to lay out before it reads the change. */
-  change_size: string | null;
+  /** The size of its change as the server last read it, for the page to lay out before it reads the change. */
+  change_size: Json<ChangeSize> | null;
   /** The effort that session runs with, as Obeya started it (`high`). */
   effort: string | null;
   /** What its agents' sessions cost so far in US dollars, as their harnesses estimated it (`Store.spend`); null before any reported a cost. */
   spent: number | null;
-  /** JSON: the harness, model and effort the owner chose for the card's agent (`CardAgent`), over its group's. */
-  agent: string | null;
+  /** The harness, model and effort the owner chose for the card's agent, over its group's. */
+  agent: Json<CardAgent> | null;
   /** Leased clone and branch while a worker has the card. */
   workspace: string | null;
   branch: string | null;
   /** The worker's latest `report`. */
   status_line: string | null;
-  /** JSON: the open question (`{ text, options }`) or the review summary (`{ summary }`). */
-  detail: string | null;
+  /** The open question, or the handover's summary. */
+  detail: Json<Detail> | null;
   /** A proposal's source card. */
   from_id: string | null;
-  /** JSON: the Coordinator's estimate of the files the card changes (`{ files, reason }`). */
-  scope: string | null;
-  /** JSON: set while the Coordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`), with `since`. */
-  queue: string | null;
-  /** JSON: the card's pull request once approval opened the PR phase (`PrState`); on a review card, the one it reviews from the start. */
-  pr: string | null;
-  /** JSON, review cards only: the contributor's pull request the card reviews (`StoredContribution` in board.ts). */
-  contribution: string | null;
+  /** The Coordinator's estimate of the files the card changes. */
+  scope: Json<Scope> | null;
+  /** Set while the Coordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`), with `since`. */
+  queue: Json<Queue> | null;
+  /** The card's pull request once approval opened the PR phase; on a review card, the one it reviews from the start. */
+  pr: Json<PrState> | null;
+  /** Review cards only: the contributor's pull request the card reviews. */
+  contribution: Json<StoredContribution> | null;
   /** The owner's card's repository on a canvas with several; null is the home repository. */
   repo: string | null;
-  /** JSON: the card's latest demo (`{ kind, dir, chapters, question? }`; no `kind` is a video). */
-  demo: string | null;
-  /** JSON: the demos of earlier handovers a later one replaced, the oldest first, each as `demo` was; append only. */
-  demos: string | null;
+  /** The card's latest demo (no `kind` is a video). */
+  demo: Json<StoredDemo> | null;
+  /** The demos of earlier handovers a later one replaced, the oldest first, each as `demo` was; append only. */
+  demos: Json<StoredDemo[]> | null;
   /** When the owner took the finished card off the canvas into the archive. */
   archived_at: string | null;
-  /** JSON: an idea's status and brief (`{ status, brief }`). */
-  idea: string | null;
+  /** An idea's status and brief. */
+  idea: Json<StoredIdea> | null;
   /** A prototype's idea. */
   prototype_of: string | null;
   /** When the owner approved work that could not land yet; its next handover lands without asking again. */
   approved_at: string | null;
   /**
-   * JSON, while the card's work is on main and its worker finishes what remains (its workspace and
-   * session are kept until then): `{ commit?, restart? }`, `restart` when it waits for Obeya to run the change.
+   * While the card's work is on main and its worker finishes what remains (its workspace and
+   * session are kept until then).
    */
-  landed: string | null;
-  /** JSON: ids of the screenshots the owner attached to the card's task. */
-  images: string | null;
-  /** JSON, projects only: the plan doc as last read (`PlanDoc`), kept for the archive once the doc is gone. */
-  plan: string | null;
+  landed: Json<LandedState> | null;
+  /** Ids of the screenshots the owner attached to the card's task. */
+  images: Json<string[]> | null;
+  /** Projects only: the plan doc as last read, kept for the archive once the doc is gone. */
+  plan: Json<PlanDoc> | null;
   /** A card the work retrospective proposed: what it rests on. */
   retro: string | null;
-  /** JSON, while a worker's proposal waits: `Proposal` (an idea or a task, why, the questions to decide). */
-  proposal: string | null;
-  /** JSON: the plan docs (plan references) the landed work of a card that was an idea added. */
-  plan_docs: string | null;
-  /** JSON, prototypes only: how it ended (`end`, once archived) and its worker's proposal to build the idea on it (`proposal`). */
-  prototype: string | null;
+  /** While a worker's proposal waits: an idea or a task, why, the questions to decide. */
+  proposal: Json<Proposal> | null;
+  /** The plan docs (plan references) the landed work of a card that was an idea added. */
+  plan_docs: Json<string[]> | null;
+  /** Prototypes only: how it ended (`end`, once archived) and its worker's proposal to build the idea on it (`proposal`). */
+  prototype: Json<StoredPrototype> | null;
   /** A card that was an idea and is built on the branch of one of its prototypes: that prototype. */
   built_on: string | null;
-  /** JSON: the demo's page for colleagues (`StoredShare` in share.ts); its slug stays once it was shared. */
-  share: string | null;
+  /** The demo's page for colleagues (share.ts); its slug stays once it was shared. */
+  share: Json<StoredShare> | null;
   /** The group the card belongs to; a project's covers its workstreams, whose own stays null. */
   group_id: string | null;
   /**
-   * JSON, once the card's work landed (`Shipped` in board.ts): the commit it landed with and its
+   * Once the card's work landed: the commit it landed with and its
    * pull request. Kept after its worker is done: a workstream whose plan doc keeps it open is
    * planned again once the read tree holds that commit.
    */
-  shipped: string | null;
+  shipped: Json<Shipped> | null;
   /** When Obeya stopped the app in the card's workspace while the card waited (Parking); gone once its worker heard so. */
   parked: string | null;
-  /** JSON: the owner's comments on places in the demo video Obeya holds back while they watch (event ids, `Item.held`). */
-  held: string | null;
+  /** The owner's comments on places in the demo video Obeya holds back while they watch (event ids, `Item.held`). */
+  held: Json<HeldComment[]> | null;
   /** 1 once the owner decided the card (an idea or a task of theirs) becomes a project: its worker writes the plan doc, and the project takes its place. */
   becomes_project: number;
-  /** JSON, a Question card (and an idea that was one): the thread of looked-up answers it holds (`StoredThread` in board.ts). */
-  thread: string | null;
-  /** JSON, while the owner has paused the card's agent: for a worker what came for it meanwhile (`PausedState` in workers.ts), `{}` for an idea's or a Question card's agent, which keep what waits for them with the idea or the thread. */
-  paused: string | null;
+  /** A Question card (and an idea that was one): the thread of looked-up answers it holds. */
+  thread: Json<StoredThread> | null;
+  /** While the owner has paused the card's agent: for a worker what came for it meanwhile, `{}` for an idea's or a Question card's agent, which keep what waits for them with the idea or the thread. */
+  paused: Json<PausedState> | null;
   /** Since when (ISO) the owner has asked the card's agent to pause once it has brought its work to a safe point; null once it paused, went on or stopped. */
   pausing: string | null;
-  /** JSON: the owner's words Obeya holds for the card's worker until it takes them in, at its next tool step or turn (`Unheard` in workers.ts). */
-  unheard: string | null;
+  /** The owner's words Obeya holds for the card's worker until it takes them in, at its next tool step or turn. */
+  unheard: Json<Unheard[]> | null;
   /** The address its worker opens the app in the card's workspace at, while it runs (`app_running`); gone once Obeya stops the app or the workspace goes. */
   app: string | null;
   /** Since when the card waits for the owner (`needsYou`), kept while it does; null while it does not. */
   waiting_since: string | null;
-  /** JSON, while the card is snoozed until a point in time (`Snooze`): Obeya wakes it then. */
-  snoozed: string | null;
-  /** JSON: the files its worker named as the result at its latest handover that named any (`CardFile[]`). */
-  files: string | null;
-  /** JSON, projects only: which workstream builds on which, as the Coordinator read it from the plan doc (`StoredDeps` in board.ts). */
-  deps: string | null;
+  /** While the card is snoozed until a point in time: Obeya wakes it then. */
+  snoozed: Json<Snooze> | null;
+  /** The files its worker named as the result at its latest handover that named any. */
+  files: Json<CardFile[]> | null;
+  /** Projects only: which workstream builds on which, as the Coordinator read it from the plan doc. */
+  deps: Json<StoredDeps> | null;
   /** 1 while the owner has a project folded to its head: its workstreams are not shown on the canvas. */
   collapsed: number;
   /**
@@ -140,12 +144,12 @@ export interface CardRow {
    */
   kept_in: string | null;
   /**
-   * JSON: a repository to create for the card before work begins (`NewRepo`); once Obeya made it,
-   * `{ path, canvas, made: true }`, so its worker hears that the repository is new.
+   * A repository to create for the card before work begins; once Obeya made it, with `made`, so its
+   * worker hears that the repository is new.
    */
-  new_repo: string | null;
-  /** What the card's worker last heard of its demo's page (`PageHeard` in workers.ts), so it hears of a change with its next step. */
-  page_heard: string | null;
+  new_repo: Json<StoredNewRepo> | null;
+  /** What the card's worker last heard of its demo's page, so it hears of a change with its next step. */
+  page_heard: Json<PageHeard> | null;
   /** The card's code in addresses (`/c/<canvas>/card/<code>`): the start of its id's hex digits, unique among all cards (`SHORT`). */
   short: string;
   /** The card's number (`K42`): counting across all canvases, given once and never again. */
@@ -467,10 +471,10 @@ export const MIGRATIONS = [
   'ALTER TABLE cards ADD COLUMN kept_in TEXT;',
   // a review card: the pull request of someone outside it reviews (JSON `StoredContribution`)
   'ALTER TABLE cards ADD COLUMN contribution TEXT;',
-  // a repository to create for a card before work begins, and that Obeya made it (JSON `StoredNewRepo` in board.ts);
+  // a repository to create for a card before work begins, and that Obeya made it (JSON `StoredNewRepo` in row.ts);
   // an exchange of no one's in the sheet that says a card moved to another canvas (JSON `TalkMoved`)
   'ALTER TABLE cards ADD COLUMN new_repo TEXT; ALTER TABLE talk ADD COLUMN moved TEXT;',
-  // what a card's worker last heard of its demo's page (JSON `PageHeard` in workers.ts)
+  // what a card's worker last heard of its demo's page (JSON `PageHeard` in row.ts)
   'ALTER TABLE cards ADD COLUMN page_heard TEXT;',
   // Obeya's reply on a card to what its agent passed on from the owner's words (`to_obeya`)
   'ALTER TABLE events ADD COLUMN forwarded INTEGER;',

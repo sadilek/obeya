@@ -6,8 +6,8 @@
 // them are merged.
 
 import type { RepoAdapter } from '../adapters/types';
-import { type Board, contributionOf } from './board';
-import type { PrState, StoredContribution } from './row';
+import type { Board } from './board';
+import { fromJson, type PrState, type StoredContribution } from './row';
 import type { Forge, PrStatus } from './forge';
 import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf } from './pr-review';
 import type { PrWait } from '../core/types';
@@ -141,7 +141,7 @@ export class PrWatcher {
   /** The card's first pull request as stored, with the further ones in `more`. */
   private stored(cardId: string): PrState | null {
     const row = this.board.row(cardId);
-    return row.pr ? (JSON.parse(row.pr) as PrState) : null;
+    return fromJson(row.pr);
   }
 
   /** Each of the card's pull requests on its own (the first without `more`), the first first. */
@@ -183,7 +183,7 @@ export class PrWatcher {
   }
 
   private async react(cardId: string, state: string, pr: PrState, s: PrStatus) {
-    const contribution = contributionOf(this.board.row(cardId));
+    const contribution = fromJson(this.board.row(cardId).contribution);
     if (s.state === 'MERGED') return contribution ? this.workers.merged(cardId, s.mergeCommit) : this.mergedPr(cardId, pr, s.mergeCommit);
     const settings = this.settings();
     const noise = settings.prNoise ?? [];

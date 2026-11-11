@@ -12,7 +12,6 @@ import { access } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import { cardNumbersIn, cardTag } from '../core/card-number';
-import type { CardFile } from '../core/files';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
 import { type KnownChange, missedChanges, type OutdatedBy, PAGE_CHANGES, pagesVersion, THEME_CHANGED } from '../core/page-changes';
@@ -27,7 +26,6 @@ import {
   type CardEvent,
   type CardAgent,
   type CardPatch,
-  type ChangeSize,
   type ClonePool,
   type Decision,
   type Demo,
@@ -54,7 +52,6 @@ import {
   type CardState,
   type Revising,
   type Question,
-  type Queue,
   type PlanDir,
   type Reshare,
   type TalkQuote,
@@ -79,7 +76,7 @@ import {
   storedModel,
 } from '../core/types';
 import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
-import type { DemoRef, PrState, SharedDemo, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread } from './row';
+import { fromJson, type DemoRef, type PrState, type SharedDemo, type Shipped, type StoredContribution, type StoredDemo, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredPrototype, type StoredShare, type StoredThread } from './row';
 import type { Images } from './images';
 import { sessionHarness } from './runtime';
 import { branchName, CARD_BRANCH } from './branches';
@@ -88,12 +85,9 @@ import type { Wish } from '../core/wish';
 
 /** A card's place in the queue where it waits behind other cards; none otherwise. */
 const waitOf = (r: Pick<CardRow, 'queue'>) => {
-  const q = r.queue ? (JSON.parse(r.queue) as Queue) : null;
+  const q = fromJson(r.queue);
   return q && 'behind' in q ? q : null;
 };
-
-/** A review card's pull request as the card shows it. */
-export const contributionOf = (r: Pick<CardRow, 'contribution'>): StoredContribution | null => (r.contribution ? (JSON.parse(r.contribution) as StoredContribution) : null);
 
 /** The workstreams of a plan doc as what builds on what is read from them: a reading holds while this is the same. */
 export const depsSig = (doc: PlanDoc) =>
@@ -110,8 +104,8 @@ export const sameDemo = (a: DemoRef, b: DemoRef) => (a.handover !== undefined &&
  * newest demo whose worker gave it, the reading session's. They belong to the page, not to a version.
  */
 export function pageTagsOf(r: CardRow): PageTags {
-  const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
-  const demos = [...storedDemos(r), ...(r.demo ? [JSON.parse(r.demo) as StoredDemo] : [])].reverse();
+  const s = fromJson(r.share);
+  const demos = [...(fromJson(r.demos) ?? []), ...(r.demo ? [fromJson(r.demo)] : [])].reverse();
   return pageTags([s?.tags, ...demos.map((d) => d.page?.tags), s?.auto]);
 }
 
@@ -170,16 +164,14 @@ export function missedBy(s: StoredShare): KnownChange[] {
 /** A demo as the UI gets it: without its directories, and saying whether a video has a poster. */
 const shownDemo = ({ dir, kept: _, ...d }: StoredDemo): Demo => (d.kind !== 'html' && !existsSync(join(dir, 'poster.jpg')) ? { ...d, noPoster: true } : d);
 
-const storedDemos = (r: CardRow): StoredDemo[] => (r.demos ? (JSON.parse(r.demos) as StoredDemo[]) : []);
-
 /**
  * The card's earlier demos the owner can still go back to: their files are on disk (demos are
  * deleted to free space) and no later demo was rendered into the same directory over them, as it
  * was for one from before Obeya kept copies (`StoredDemo`).
  */
 function earlierDemos(r: CardRow): EarlierDemo[] {
-  const all = storedDemos(r);
-  const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(r.demo ? [(JSON.parse(r.demo) as StoredDemo).dir] : [])];
+  const all = fromJson(r.demos) ?? [];
+  const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(r.demo ? [fromJson(r.demo).dir] : [])];
   return all.flatMap((d, n) => (!later(n).includes(d.dir) && existsSync(join(d.dir, d.kind === 'html' ? 'index.html' : 'demo.mp4')) ? [{ ...shownDemo(d), n }] : []));
 }
 
@@ -189,7 +181,7 @@ function earlierDemos(r: CardRow): EarlierDemo[] {
  * deleted to free space; a page whose files are gone stays as it is, with nothing to offer).
  */
 export function reshareable(r: CardRow, theme?: string | null, there = demoThere): OutdatedBy[] {
-  const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
+  const s = fromJson(r.share);
   const missed: OutdatedBy[] = s ? [...missedBy(s).map((c) => c.id), ...(themeChanged(s, theme) ? [THEME_CHANGED as OutdatedBy] : [])] : [];
   const demos = s ? sharedDemos(s) : [];
   if (!missed.length || !demos.length || !demos.every((d) => there({ dir: d.dir, kind: d.shown.kind }))) return [];
@@ -201,8 +193,8 @@ export function reshareable(r: CardRow, theme?: string | null, there = demoThere
  * `earlierDemos` says), then the one on the card.
  */
 export function cardDemos(r: CardRow): StoredDemo[] {
-  const all = storedDemos(r);
-  const latest = r.demo ? (JSON.parse(r.demo) as StoredDemo) : null;
+  const all = fromJson(r.demos) ?? [];
+  const latest = fromJson(r.demo);
   const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
   // drafts a question brought are not the work's result: no page shows them
   return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])].filter((d) => !d.asked);
@@ -574,7 +566,7 @@ export class Board {
    */
   readTreeMoved(repo: string, commit: string) {
     for (const r of this.store.cards(this.canvas.id)) {
-      const s = r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
+      const s = fromJson(r.shipped);
       if (!commit || !s?.fetch || (r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home)) !== repo) continue;
       const { fetch: _, ...rest } = s;
       this.store.update(r.id, { shipped: JSON.stringify({ ...rest, commit } satisfies Shipped) });
@@ -597,9 +589,9 @@ export class Board {
       const hash = r.plan_ref.indexOf('#');
       const w = byFile.get(r.plan_ref.slice(0, hash))?.workstreams.find((x) => x.key === r.plan_ref!.slice(hash + 1));
       if (!w || w.done) continue;
-      const s = r.shipped ? (JSON.parse(r.shipped) as Shipped) : {};
+      const s = fromJson(r.shipped) ?? {};
       if (s.fetch || (s.commit && this.holds && !this.holds(repoOfRef(r.plan_ref, this.home), s.commit))) continue;
-      const pr = r.pr ? (JSON.parse(r.pr) as PrState) : null;
+      const pr = fromJson(r.pr);
       const shipped: Shipped = { ...s, ...(!s.pr && pr?.url && pr.number ? { pr: { url: pr.url, number: pr.number } } : {}) };
       // a new run starts on a fresh branch: the old one is merged, perhaps squashed
       this.store.update(r.id, { state: 'planned', need: null, pr: null, branch: null, shipped: JSON.stringify(shipped) });
@@ -724,9 +716,9 @@ export class Board {
   /** The directory and kind of the card's latest demo, or of the `n`th of its earlier ones; it stays with the card after approval. */
   demoFiles(id: string, n?: number): { dir: string; kind: DemoKind } | null {
     const r = this.own(id);
-    const stored = n === undefined ? r.demo : storedDemos(r)[n];
+    const stored = n === undefined ? fromJson(r.demo) : (fromJson(r.demos) ?? [])[n];
     if (!stored) return null;
-    const { dir, kind } = (typeof stored === 'string' ? JSON.parse(stored) : stored) as StoredDemo;
+    const { dir, kind } = stored;
     return { dir, kind };
   }
 
@@ -735,7 +727,7 @@ export class Board {
     const row = this.own(id);
     const ref = row.plan_ref;
     // a doc gone from a project whose work is done, as it last stood
-    const doc = ref && !ref.includes('#') ? ((this.docs ??= this.read()).find((d) => d.file === ref) ?? (row.plan ? (JSON.parse(row.plan) as PlanDoc) : undefined)) : undefined;
+    const doc = ref && !ref.includes('#') ? ((this.docs ??= this.read()).find((d) => d.file === ref) ?? fromJson(row.plan) ?? undefined) : undefined;
     if (!doc) throw new BadRequest('invalid', 'not a project with a plan doc');
     return { file: doc.file, markdown: doc.markdown };
   }
@@ -820,7 +812,7 @@ export class Board {
   /** The page stored with a shared card's row, read once per row (`sharedRows`). */
   storedShare(r: CardRow): StoredShare {
     let s = this.shares.get(r);
-    if (!s) this.shares.set(r, (s = JSON.parse(r.share!) as StoredShare));
+    if (!s) this.shares.set(r, (s = fromJson(r.share!)));
     return s;
   }
 
@@ -848,7 +840,7 @@ export class Board {
     };
     // an archived project shows its doc as it last stood
     const docOf = (r: CardRow) => {
-      const doc = r.plan ? (JSON.parse(r.plan) as PlanDoc) : null;
+      const doc = fromJson(r.plan);
       return doc?.file === r.plan_ref ? doc : null;
     };
     for (const read of rows) {
@@ -924,7 +916,7 @@ export class Board {
   /** The worker's last summary of a card; it stays with the card until work on it starts again. */
   summary(id: string): string | undefined {
     const r = this.own(id);
-    return r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
+    return fromJson(r.detail)?.summary;
   }
 
   /**
@@ -968,7 +960,7 @@ export class Board {
     const mine = this.store.proposalsFrom(this.canvas.id, fromId).filter((r) => r.id !== s.by);
     const row = mine.findLast((r) => titleKey(r.title ?? '') === titleKey(title));
     if (!row) return { kind: 'unknown', mine: mine.map((r) => ({ title: r.title ?? '', state: r.state ?? 'planned', gone: !!r.deleted_at })) };
-    const proposal = storedProposal(row)!;
+    const proposal = fromJson(row.proposal)!;
     const was = { title: row.title ?? '', state: row.state ?? 'planned' };
     if (row.deleted_at) return { kind: proposal.superseded ? 'already' : was.state === 'proposal' ? 'dismissed' : 'removed', ...was };
     if (row.archived_at || finished(was.state)) return { kind: 'finished', ...was };
@@ -986,7 +978,7 @@ export class Board {
   /** The owner keeps a card whose agent withdrew or replaced it: the mark goes. */
   keep(id: string) {
     const row = this.own(id);
-    const { superseded, ...proposal } = storedProposal(row) ?? { questions: [] };
+    const { superseded, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
     if (!superseded) throw new BadRequest('notSuperseded', 'its agent has not withdrawn or replaced this card');
     this.store.update(id, { proposal: JSON.stringify(proposal satisfies Proposal) });
     this.changed();
@@ -1099,7 +1091,7 @@ export class Board {
   private withdrawOwn(id: string) {
     const row = this.store.card(id);
     if (!row || row.deleted_at || row.state !== 'proposal') return;
-    this.store.update(id, { proposal: JSON.stringify({ ...storedProposal(row)!, superseded: {} } satisfies Proposal), deleted_at: new Date().toISOString() });
+    this.store.update(id, { proposal: JSON.stringify({ ...fromJson(row.proposal)!, superseded: {} } satisfies Proposal), deleted_at: new Date().toISOString() });
     this.changed();
   }
 
@@ -1328,7 +1320,7 @@ export class Board {
   idea(id: string): StoredIdea {
     const r = this.own(id);
     if (r.state !== 'idea') throw new BadRequest('notIdea', 'the card is not an idea');
-    return r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open', brief: '' };
+    return r.idea ? fromJson(r.idea) : { status: 'open', brief: '' };
   }
 
   setIdea(id: string, fields: Partial<StoredIdea>) {
@@ -1339,7 +1331,7 @@ export class Board {
   thread(id: string): StoredThread {
     const r = this.own(id);
     if (!r.thread) throw new BadRequest('notQuestion', 'the card holds no thread of answers');
-    return JSON.parse(r.thread) as StoredThread;
+    return fromJson(r.thread);
   }
 
   setThread(id: string, fields: Partial<StoredThread>) {
@@ -1388,7 +1380,7 @@ export class Board {
   proposeBuild(id: string, reason: string) {
     const row = this.own(id);
     if (!row.prototype_of) throw new BadRequest('notPrototype', 'not a prototype');
-    this.work(id, { prototype: JSON.stringify({ ...storedPrototype(row), proposal: reason } satisfies StoredPrototype) });
+    this.work(id, { prototype: JSON.stringify({ ...(fromJson(row.prototype) ?? {}), proposal: reason } satisfies StoredPrototype) });
   }
 
   /**
@@ -1398,7 +1390,7 @@ export class Board {
   endPrototype(id: string, end: 'discarded' | 'built', into?: string) {
     const row = this.own(id);
     if (!row.prototype_of) throw new BadRequest('notPrototype', 'not a prototype');
-    const { proposal: _, ...kept } = storedPrototype(row);
+    const { proposal: _, ...kept } = fromJson(row.prototype) ?? {};
     this.work(id, { prototype: JSON.stringify({ ...kept, end, ...(into ? { into } : {}) } satisfies StoredPrototype), archived_at: new Date().toISOString(), need: null, status_line: null, workspace: null, queue: null });
   }
 
@@ -1580,7 +1572,7 @@ export class Board {
   accept(id: string, picks: string[][] = [], asIdea = false) {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    const proposal = storedProposal(row);
+    const proposal = fromJson(row.proposal);
     if (proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
     // an agent's proposal keeps that it was one: its task is not the owner's words; Obeya's setup card is as if the owner made it
     const kept = proposal && !proposal.setup && JSON.stringify({ ...(proposal.idea ? { idea: true } : {}), questions: [] } satisfies Proposal);
@@ -1622,7 +1614,7 @@ export class Board {
   revising(id: string, words: string, spoken: boolean, said?: number, images: string[] = []): boolean {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    const proposal = storedProposal(row) ?? { questions: [] };
+    const proposal = fromJson(row.proposal) ?? { questions: [] };
     const these: Revising = {
       words: words.slice(0, BODY_MAX),
       ...(spoken ? { spoken } : {}),
@@ -1638,7 +1630,7 @@ export class Board {
   /** The owner takes back words that wait for the proposal's next rework; false when none of them are these. */
   unrevise(id: string, said: number): boolean {
     const row = this.own(id);
-    const proposal = storedProposal(row);
+    const proposal = fromJson(row.proposal);
     const next = proposal?.revising?.next;
     if (!proposal?.revising || !next?.some((r) => r.said?.includes(said))) return false;
     const rest = next.filter((r) => !r.said?.includes(said));
@@ -1652,7 +1644,7 @@ export class Board {
   startAt(id: string, at: string | null) {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    const { startAt: _, ...proposal } = storedProposal(row) ?? { questions: [] };
+    const { startAt: _, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
     this.store.update(id, { proposal: JSON.stringify({ ...proposal, ...(at ? { startAt: at } : {}) } satisfies Proposal) });
     this.changed();
   }
@@ -1661,7 +1653,7 @@ export class Board {
   acceptAfterRevision(id: string, on: boolean | 'idea'): boolean {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    const { acceptAfterRevision: was, ...proposal } = storedProposal(row) ?? { questions: [] };
+    const { acceptAfterRevision: was, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
     if ((was ?? false) === on) return false;
     this.store.update(id, { proposal: JSON.stringify({ ...proposal, ...(on ? { acceptAfterRevision: on } : {}) } satisfies Proposal) });
     this.changed();
@@ -1677,7 +1669,7 @@ export class Board {
   revised(id: string, p?: { title: string; task: string; reason?: string; idea?: boolean; questions: Question[]; images?: string[] }): boolean {
     const row = this.store.card(id);
     if (!row || row.canvas_id !== this.canvas.id || row.deleted_at || row.state !== 'proposal') return false;
-    const { revising: done, ...was } = storedProposal(row) ?? { questions: [] };
+    const { revising: done, ...was } = fromJson(row.proposal) ?? { questions: [] };
     // what the owner said meanwhile is the next rework's
     const next = done?.next?.length ? { revising: merged(done.next) } : {};
     // when it starts is the owner's to change, not the reviser's
@@ -1739,7 +1731,7 @@ export class Board {
     const row = this.own(id);
     if (!row.archived_at) throw new BadRequest('notArchived', 'the card is not archived');
     if (row.kind === 'project' && row.plan_ref) {
-      const doc = (this.docs ??= this.read()).find((d) => d.file === row.plan_ref) ?? (row.plan ? (JSON.parse(row.plan) as PlanDoc) : null);
+      const doc = (this.docs ??= this.read()).find((d) => d.file === row.plan_ref) ?? fromJson(row.plan);
       if (!doc || !workDone(doc, this.store.cards(this.canvas.id))) throw new BadRequest('planCard', 'a project comes back when its plan doc does');
     } else if (row.plan_ref) throw new BadRequest('planCard', 'a workstream comes back with its project');
     // a new attempt is a new prototype
@@ -1905,7 +1897,7 @@ export class Board {
   /** The archive's items for these of its cards, each project followed by its workstreams. */
   private archiveOf(rows: CardRow[]): Item[] {
     const projects = rows.filter((r) => r.plan_ref);
-    const docs = projects.map((r) => JSON.parse(r.plan!) as PlanDoc);
+    const docs = projects.map((r) => fromJson(r.plan!));
     const kids = this.store.children(projects.map((r) => r.id));
     // a project whose work is done may come back to the canvas
     const done = new Set(projects.flatMap((r, n) => (workDone(docs[n]!, kids) ? [r.id] : [])));
@@ -2217,7 +2209,7 @@ export class Board {
    */
   private withoutStaleSnoozes(items: Item[], rows: CardRow[]): Item[] {
     const shown = new Set(items.map((i) => i.id));
-    for (const r of rows) if (r.snoozed && !shown.has(r.id) && (JSON.parse(r.snoozed) as Snooze).start) this.store.update(r.id, { snoozed: null });
+    for (const r of rows) if (r.snoozed && !shown.has(r.id) && fromJson(r.snoozed).start) this.store.update(r.id, { snoozed: null });
     return items.map((i) => {
       if (!i.snoozed?.waiting && !i.snoozed?.start) return i;
       const { snoozed: _, ...awake } = i;
@@ -2229,8 +2221,7 @@ export class Board {
 
   /** The card's snooze, or null when it is not snoozed. */
   snoozedOf(cardId: string): Snooze | null {
-    const s = this.own(cardId).snoozed;
-    return s ? (JSON.parse(s) as Snooze) : null;
+    return fromJson(this.own(cardId).snoozed);
   }
 
   /** Snoozes the card until `until` (ISO) or the card it waits on, as `s` says, with the line in its conversation by whoever snoozed it (or changed the time). */
@@ -2298,7 +2289,7 @@ export class Board {
     for (const d of done) ended.add(d.file);
     const gone = this.projectsOf(rows).flatMap((r) => {
       if (!r.plan || files.has(r.plan_ref!)) return [];
-      const doc = JSON.parse(r.plan) as PlanDoc;
+      const doc = fromJson(r.plan);
       if (busy.has(r.plan_ref!)) return [doc];
       if (!standing.has(r.plan_ref!) || !workDone(doc, rows)) return [];
       ended.add(r.plan_ref!);
@@ -2491,7 +2482,7 @@ export class Board {
     });
     const title = (id: string) => rows.find((r) => r.id === id)?.title ?? '';
     const first = run?.queue[0] ? rows.find((r) => r.id === run.queue[0]) : undefined;
-    const current = first?.share && (JSON.parse(first.share) as StoredShare).state === 'publishing' ? first.title : undefined;
+    const current = first?.share && fromJson(first.share).state === 'publishing' ? first.title : undefined;
     return {
       outdated: left.length,
       ...(untagged ? { untagged } : {}),
@@ -2852,8 +2843,7 @@ export class Board {
 
   /** The repository to create for a card, as stored (`StoredNewRepo`); none where there is none. */
   newRepo(id: string): StoredNewRepo | null {
-    const r = this.store.card(id)?.new_repo;
-    return r ? (JSON.parse(r) as StoredNewRepo) : null;
+    return fromJson(this.store.card(id)?.new_repo ?? null);
   }
 
   /**
@@ -2887,9 +2877,9 @@ export class Board {
     const section = (r: CardRow) => `## ${r.title ?? ""}\n\n${r.body ?? ''}`.trim();
     const body = [first, ...rest].map(section).filter(Boolean).join('\n\n');
     checkText(body, 'the merged text', BODY_MAX);
-    const list = (r: CardRow) => (r.images ? (JSON.parse(r.images) as string[]) : []);
+    const list = (r: CardRow) => (fromJson(r.images) ?? []);
     const images = [...new Set([first, ...rest].flatMap(list))];
-    const notes = [first, ...rest].flatMap((r) => (r.unheard ? (JSON.parse(r.unheard) as unknown[]) : []));
+    const notes = [first, ...rest].flatMap((r) => (fromJson(r.unheard) ?? []));
     const gone = new Set(others);
     // started ones waiting in the queue: the merged task waits for what any of them waited for, in the place of the one queued first
     const queued = [first, ...rest].map(waitOf).filter((q) => !!q);
@@ -2912,7 +2902,7 @@ export class Board {
         const manualWait = to(w.manualWait ?? []).filter((id) => !inferred.includes(id));
         this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }), manualWait: manualWait.length ? manualWait : undefined }) });
       }
-      const c = contributionOf(r);
+      const c = fromJson(r.contribution);
       if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: JSON.stringify({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) } satisfies StoredContribution) });
     }
     this.log(keep, 'state', 'obeya', this.t.voice.merged(rest.map((r) => r.title ?? '')));
@@ -2970,7 +2960,7 @@ export class Board {
         const archived_at = shown.has(r.plan_ref!) ? null : (r.archived_at ?? at);
         if (r.plan !== plan || r.archived_at !== archived_at) this.store.update(r.id, { plan, archived_at });
         // a workstream the doc rewrote, ticked off or put in review changed, as an edit of a card does
-        const before = r.plan && doc && r.plan !== plan ? (JSON.parse(r.plan) as PlanDoc) : null;
+        const before = r.plan && doc && r.plan !== plan ? fromJson(r.plan) : null;
         for (const w of doc?.workstreams ?? []) {
           const was = before?.workstreams.find((x) => x.key === w.key);
           if (was && (was.title !== w.title || was.body !== w.body || was.done !== w.done || was.inReview !== w.inReview)) this.store.touch(this.canvas.id, `${r.plan_ref}#${w.key}`);
@@ -2985,8 +2975,8 @@ export class Board {
     this.items();
     const row = this.own(projectId);
     if (row.kind !== 'project' || !row.plan) throw new BadRequest('invalid', 'not a project');
-    const d = row.deps ? (JSON.parse(row.deps) as StoredDeps) : {};
-    return { ...d, current: !!d.on && d.sig === depsSig(JSON.parse(row.plan) as PlanDoc) };
+    const d = fromJson(row.deps) ?? {};
+    return { ...d, current: !!d.on && d.sig === depsSig(fromJson(row.plan)) };
   }
 
   /**
@@ -2994,15 +2984,15 @@ export class Board {
    * (`arranging` on the canvas), from their rows: asked on every change, this builds no snapshot.
    */
   arranging(): string[] {
-    return this.store.projectDeps(this.canvas.id).flatMap((r) => (r.deps && (JSON.parse(r.deps) as StoredDeps).reading ? [r.id] : []));
+    return this.store.projectDeps(this.canvas.id).flatMap((r) => (r.deps && fromJson(r.deps).reading ? [r.id] : []));
   }
 
   /** The Coordinator starts reading which workstream builds on which (`reading`), or has read it (`on`, for the doc as it stands now). */
   setDeps(projectId: string, d: { reading: NonNullable<StoredDeps['reading']> } | { on: Record<string, string[]> } | { failed: true }) {
     const row = this.own(projectId);
-    const was = row.deps ? (JSON.parse(row.deps) as StoredDeps) : {};
+    const was = fromJson(row.deps) ?? {};
     const next: StoredDeps =
-      'reading' in d ? { ...was, reading: d.reading } : 'on' in d ? { sig: depsSig(JSON.parse(row.plan!) as PlanDoc), on: d.on } : { ...was, reading: undefined };
+      'reading' in d ? { ...was, reading: d.reading } : 'on' in d ? { sig: depsSig(fromJson(row.plan!)), on: d.on } : { ...was, reading: undefined };
     this.store.update(projectId, { deps: JSON.stringify(next) });
     this.changed();
   }
@@ -3015,7 +3005,7 @@ export class Board {
   /** Whether none of the project's workstreams stands anywhere but where it was placed when the project came (`placeNew`). */
   untouched(projectId: string): boolean {
     const row = this.own(projectId);
-    const doc = JSON.parse(row.plan!) as PlanDoc;
+    const doc = fromJson(row.plan!);
     const first = placeWorkstreams(doc.workstreams);
     const kids = this.store.children([projectId]);
     return kids.every((k) => {
@@ -3109,7 +3099,7 @@ export class Board {
     const projects = this.store.projects(this.canvas.id).filter((p) => byFile.has(p.plan_ref!));
     // the doc as last read, with its whole text: only parsed where a card needs it
     const lastOf = new Map<string, PlanDoc | null>();
-    const last = (p: CardRow) => (lastOf.has(p.id) ? lastOf.get(p.id)! : lastOf.set(p.id, p.plan ? (JSON.parse(p.plan) as PlanDoc) : null).get(p.id)!);
+    const last = (p: CardRow) => (lastOf.has(p.id) ? lastOf.get(p.id)! : lastOf.set(p.id, fromJson(p.plan)).get(p.id)!);
     // a project whose repair waits for its doc's history keeps the doc as last read until it is there,
     // also for the passes between reads, whose docs are the ones this pass returns
     if (read) this.heldBack = new Set(projects.filter((p) => last(p) && !this.rekey(p, last(p)!, byFile.get(p.plan_ref!)!)).map((p) => p.plan_ref!));
@@ -3249,7 +3239,7 @@ export class Board {
         });
       }
       // what the Coordinator read of which workstream builds on which goes with the cards
-      const deps = project.deps ? (JSON.parse(project.deps) as StoredDeps) : null;
+      const deps = fromJson(project.deps);
       if (deps?.on) {
         const keyOf = new Map(moving.flatMap((k) => (to.has(k.id) ? [[keyOfRef(k.plan_ref)!, to.get(k.id)!] as const] : [])));
         const on = Object.fromEntries(
@@ -3396,7 +3386,7 @@ export class Board {
   private linkOrigins(docs: PlanDoc[], rows: CardRow[]): boolean {
     const origin = new Map<string, string>();
     // a card writing its doc in a plan folder outside the repository names it from the start: it is its origin once approved
-    for (const r of this.withPlanDocsOf(rows)) if (r.landed || r.state === 'live' || r.state === 'done') for (const ref of JSON.parse(r.plan_docs!) as string[]) origin.set(ref, r.id);
+    for (const r of this.withPlanDocsOf(rows)) if (r.landed || r.state === 'live' || r.state === 'done') for (const ref of fromJson(r.plan_docs!)) origin.set(ref, r.id);
     if (!origin.size) return false;
     let linked = false;
     for (const r of this.projectsOf(rows)) {
@@ -3507,7 +3497,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
   // a project's group covers its workstreams
   const groupOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.group_id ? [[r.id, r.group_id]] : [])));
   // what each workstream builds on, by its project's reading of the doc
-  const depsOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.deps ? [[r.id, JSON.parse(r.deps) as StoredDeps]] : [])));
+  const depsOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.deps ? [[r.id, fromJson(r.deps)]] : [])));
   const idOfRef = new Map(rows.flatMap((r) => (r.plan_ref ? [[r.plan_ref, r.id]] : [])));
   const projects: Item[] = [];
   const workstreams: { item: Item; order: number }[] = [];
@@ -3534,9 +3524,9 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.becomes_project ? { becomesProject: true } : {}),
         ...(r.prototype_of ? { prototypeOf: r.prototype_of, ...prototypeOf(r) } : {}),
         ...(r.built_on ? { builtOn: r.built_on, ...(r.session_id ? {} : { unstarted: true as const }) } : {}),
-        ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
+        ...(r.images ? { images: fromJson(r.images) } : {}),
         ...(r.retro ? { retro: r.retro } : {}),
-        ...(r.proposal ? (r.state === 'proposal' ? { proposal: storedProposal(r)! } : { proposed: true as const, ...supersededOf(r) }) : {}),
+        ...(r.proposal ? (r.state === 'proposal' ? { proposal: fromJson(r.proposal)! } : { proposed: true as const, ...supersededOf(r) }) : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
         ...newRepoOf(r),
       });
@@ -3577,7 +3567,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
     // does a stopped one whose box a plan folder outside the repository ticked
     const state = r.state && (ACTIVE.includes(r.state) || tickedAhead(r)) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
     // what landed of a workstream planned again, also while a new run does the rest; once that lands, the card is live
-    const shipped = (state === 'planned' || ACTIVE.includes(state)) && r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
+    const shipped = state === 'planned' || ACTIVE.includes(state) ? fromJson(r.shipped) : null;
     const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(`${doc.file}#${k}`) ?? []);
     workstreams.push({
       order,
@@ -3665,7 +3655,7 @@ const below = (b: Bounds, n = 0) => ({ x: b.x + 35 + n * (CARD_SIZE.task[0] + GA
 
 /** A card's new repository while it is still to be made, before work on the card begins. */
 function newRepoOf(r: CardRow): Pick<Item, 'newRepo'> {
-  const n = r.new_repo ? (JSON.parse(r.new_repo) as StoredNewRepo) : null;
+  const n = fromJson(r.new_repo);
   if (!n || n.made || n.none || (r.state !== 'idea' && (r.state ?? 'planned') !== 'planned') || r.workspace) return {};
   const { made: _, ...newRepo } = n;
   return { newRepo };
@@ -3704,21 +3694,21 @@ const pullRequest = (pr: PrState): PullRequest => ({
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
-  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noChange?: boolean; lands?: Item['lands']; answering?: boolean; answered?: boolean }) : {};
-  const demo = r.demo ? shownDemo(JSON.parse(r.demo) as StoredDemo) : undefined;
+  const detail = fromJson(r.detail) ?? {};
+  const demo = r.demo ? shownDemo(fromJson(r.demo)) : undefined;
   const earlier = demo ? earlierDemos(r) : [];
   const handed = r.need === 'review' || r.need === 'demo';
   const answering = detail.answering && handed;
-  const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
-  const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
-  const contribution = contributionOf(r);
+  const scope = fromJson(r.scope)?.files;
+  const pr = fromJson(r.pr) ?? undefined;
+  const contribution = fromJson(r.contribution);
   const share = shareOf(r, themeNow);
-  const notOnApproval = r.share ? (JSON.parse(r.share) as StoredShare).notOnApproval : undefined;
+  const notOnApproval = fromJson(r.share)?.notOnApproval;
   const tags = demo && !r.prototype_of ? pageTagsOf(r) : {};
-  const landed = r.landed ? (JSON.parse(r.landed) as { followUp?: boolean; needsClone?: boolean; resolve?: object }) : null;
+  const landed = fromJson(r.landed);
   return {
     ...(scope?.length ? { scope } : {}),
-    ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
+    ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: fromJson(r.queue) } : {}),
     ...(pr?.url ? { pr: pullRequest(pr) } : {}),
     ...(pr?.more?.some((m) => m.url) ? { morePrs: pr.more.filter((m) => m.url).map(pullRequest) } : {}),
     ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
@@ -3729,13 +3719,13 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(detail.summary && handed ? { summary: detail.summary } : {}),
     ...(answering ? { answering: true } : {}),
     ...(detail.answered && !answering && handed ? { answered: true } : {}),
-    ...(r.held ? { held: (JSON.parse(r.held) as { id: number }[]).map((h) => h.id) } : {}),
+    ...(r.held ? { held: fromJson(r.held).map((h) => h.id) } : {}),
     // approved work is held for its next handover while the card is at work or asks the owner; on a waiting card it is landing
     ...(r.approved_at && r.state === 'waiting' && r.need !== 'question' ? { landing: true } : {}),
     ...(demo ? { demo } : {}),
     ...(earlier.length ? { demos: earlier } : {}),
-    ...(r.files ? { files: JSON.parse(r.files) as CardFile[] } : {}),
-    ...(r.change_size ? { changeSize: JSON.parse(r.change_size) as ChangeSize } : {}),
+    ...(r.files ? { files: fromJson(r.files) } : {}),
+    ...(r.change_size ? { changeSize: fromJson(r.change_size) } : {}),
     ...(share ? { share } : {}),
     ...(notOnApproval ? { notOnApproval } : {}),
     ...(Object.keys(tags).length ? { tags } : {}),
@@ -3749,7 +3739,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(detail.lands && handed ? { lands: detail.lands } : {}),
     ...(r.paused ? { paused: true } : {}),
     ...(r.pausing && !r.paused ? { pausing: true } : {}),
-    ...(r.snoozed ? { snoozed: JSON.parse(r.snoozed) as Snooze } : {}),
+    ...(r.snoozed ? { snoozed: fromJson(r.snoozed) } : {}),
     ...(r.app && r.workspace && !r.parked ? { app: r.app } : {}),
     ...(r.session_id && r.model ? { runsOn: { harness: sessionHarness(r.session_id), model: r.model, ...(r.effort ? { effort: r.effort as AgentEffort } : {}) } } : {}),
     ...(r.agent ? { agent: cardAgentOf(r.agent) } : {}),
@@ -3759,12 +3749,12 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
 
 /** The card's shared page as the UI sees it: none when it is not shared and not about to be. */
 function shareOf(r: CardRow, themeNow?: ThemeNow): Item['share'] {
-  const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
+  const s = fromJson(r.share);
   if (!s || (!s.state && !s.url)) return undefined;
   // asked of a page at rest alone, so the cards never shared ask nothing
   const theme = s.url && !s.state ? themeNow?.(r) : undefined;
   // the newest demo of a handover: drafts shown with a question since are not what the page lacks
-  const latest = r.demo ? [...storedDemos(r), JSON.parse(r.demo) as StoredDemo].findLast((d) => !d.asked) : undefined;
+  const latest = r.demo ? [...(fromJson(r.demos) ?? []), fromJson(r.demo)].findLast((d) => !d.asked) : undefined;
   const shared = s.url ? sharedDemos(s) : [];
   // the card's demos on the page, by their handovers
   const on = cardDemos(r).flatMap((d) => (d.handover !== undefined && shared.some((x) => sameDemo(x, d)) ? [d.handover] : []));
@@ -3794,12 +3784,10 @@ export function withQuestions(text: string, questions: Question[], picks: string
     .join('\n\n');
 }
 
-const storedPrototype = (r: CardRow): StoredPrototype => (r.prototype ? (JSON.parse(r.prototype) as StoredPrototype) : {});
-
 /** A prototype's end and proposal; an ended one keeps the summary it was handed over with. */
 function prototypeOf(r: CardRow): Partial<Item> {
-  const p = storedPrototype(r);
-  const summary = p.end && r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
+  const p = fromJson(r.prototype) ?? {};
+  const summary = p.end && r.detail ? fromJson(r.detail).summary : undefined;
   return { ...(p.variant ? { variant: p.variant } : {}), ...(p.end ? { prototypeEnd: p.end } : {}), ...(p.into ? { builtInto: p.into } : {}), ...(p.proposal && !p.end ? { buildProposal: p.proposal } : {}), ...(summary ? { summary } : {}) };
 }
 
@@ -3811,11 +3799,9 @@ const merged = (said: Revising[]): Revising => ({
   ...(said.some((r) => r.images?.length) ? { images: said.flatMap((r) => r.images ?? []) } : {}),
 });
 
-const storedProposal = (r: CardRow): Proposal | undefined => (r.proposal ? (JSON.parse(r.proposal) as Proposal) : undefined);
-
 /** The mark of an accepted proposal its agent withdrew or replaced, while the card is not finished. */
 const supersededOf = (r: CardRow): { superseded?: Superseded } => {
-  const superseded = storedProposal(r)?.superseded;
+  const superseded = fromJson(r.proposal)?.superseded;
   return superseded && !r.archived_at && !finished(r.state ?? 'planned') ? { superseded } : {};
 };
 
@@ -3846,17 +3832,17 @@ const toDecision = (d: DecisionRow): Decision => ({ id: d.id, cardId: d.card_id,
 
 /** A card that was an idea, as decided: the brief with its mocks. */
 function decided(r: CardRow): Pick<Item, 'brief' | 'mocks'> {
-  const i = JSON.parse(r.idea!) as StoredIdea;
+  const i = fromJson(r.idea!);
   return { brief: i.brief, ...(i.mocks?.length ? { mocks: i.mocks } : {}) };
 }
 
 function threadOf(r: CardRow): Thread {
-  const t = JSON.parse(r.thread!) as StoredThread;
+  const t = fromJson(r.thread!);
   return { talk: t.talk, ...(t.thinking ? { thinking: true } : {}), answers: t.answers, files: t.files };
 }
 
 function ideaOf(r: CardRow): Idea {
-  const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
+  const i = r.idea ? fromJson(r.idea) : { status: 'open' as const, brief: '' };
   return { status: i.status, brief: i.brief, thinking: !!i.thinking, ...(i.buildAfterReply ? { buildAfterReply: true as const } : {}), yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}), variants: i.variants ?? [], mocks: i.mocks ?? [], ...(i.split ? { split: i.split } : {}) };
 }
 

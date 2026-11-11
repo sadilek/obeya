@@ -13,8 +13,8 @@ import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented, type DemoSite } from '../core/types';
-import { BadRequest, type Board, cardDemos, contributionOf, pageTagsOf, sameDemo, sharedDemos, type StoredReshare } from './board';
-import type { DemoRef, PrState, SharedDemo, Shipped, StoredDemo, StoredShare } from './row';
+import { BadRequest, type Board, cardDemos, pageTagsOf, sameDemo, sharedDemos, type StoredReshare } from './board';
+import { fromJson, type DemoRef, type SharedDemo, type StoredDemo, type StoredShare } from './row';
 import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -652,7 +652,7 @@ export class Sharing {
   private async linkPr(cardId: string, pr: string, url: string, cwd: string, kind: DemoKind) {
     const n = parsePrUrl(pr)?.number;
     const row = this.o.board.row(cardId);
-    const review = contributionOf(row);
+    const review = fromJson(row.contribution);
     if (review) {
       // a review card's PR is the contributor's: its description stays theirs, and the link comes as a comment, once the owner approved
       const key = `${cardId}\n${url}`;
@@ -662,7 +662,7 @@ export class Sharing {
       const t = MESSAGES[this.languageOf(this.demo(cardId)?.dir ?? '', this.card(cardId))].share;
       try {
         const at = await this.o.forge.comment(cwd, pr, t.prComment(kind === 'html', url));
-        const now = contributionOf(this.o.board.row(cardId));
+        const now = fromJson(this.o.board.row(cardId).contribution);
         if (now) this.o.board.work(cardId, { contribution: JSON.stringify({ ...now, linked: url }) });
         this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.prCommented(n, at || pr));
       } catch (e) {
@@ -823,7 +823,7 @@ export class Sharing {
     const latest = this.demo(card.id);
     if (latest && sameDemo(latest, demo)) this.o.board.work(card.id, { demo: JSON.stringify({ ...latest, page }) });
     else if (row.demos)
-      this.o.board.work(card.id, { demos: JSON.stringify((JSON.parse(row.demos) as StoredDemo[]).map((d) => (sameDemo(d, demo) ? { ...d, page } : d))) });
+      this.o.board.work(card.id, { demos: JSON.stringify(fromJson(row.demos).map((d) => (sameDemo(d, demo) ? { ...d, page } : d))) });
     return page;
   }
 
@@ -835,8 +835,8 @@ export class Sharing {
     const row = this.o.board.row(cardId);
     const without = (t: PageTags | undefined) => (t ? Object.fromEntries(Object.entries(t).filter(([d]) => !(d in tags))) : undefined);
     const page = <D extends Demo>(d: D): D => (d.page?.tags ? { ...d, page: { ...d.page, tags: without(d.page.tags) } } : d);
-    if (row.demo) this.o.board.work(cardId, { demo: JSON.stringify(page(JSON.parse(row.demo) as StoredDemo)) });
-    if (row.demos) this.o.board.work(cardId, { demos: JSON.stringify((JSON.parse(row.demos) as StoredDemo[]).map(page)) });
+    if (row.demo) this.o.board.work(cardId, { demo: JSON.stringify(page(fromJson(row.demo))) });
+    if (row.demos) this.o.board.work(cardId, { demos: JSON.stringify(fromJson(row.demos).map(page)) });
     const s = this.stored(cardId);
     this.setTagFields(cardId, this.card(cardId), { tags: without(s?.tags) ?? {}, auto: { ...s?.auto, ...tags } });
     this.o.board.log(cardId, 'activity', 'obeya', this.o.board.t.share.tagsChosen(shownTags(tags, tags).map(([d, v]) => `${d}: ${v.join(', ')}`).join(' · ') || '–'));
@@ -986,7 +986,7 @@ export class Sharing {
    */
   private async commitOf(card: Item): Promise<PageCommit | null> {
     const row = this.o.board.row(card.id);
-    const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+    const shipped = fromJson(row.shipped);
     const repo = this.o.sourceFor(card)?.repo;
     if (!shipped?.commit || shipped.pr || this.prOf(card.id) || !repo) return null;
     const remote = await originOf(repo);
@@ -999,8 +999,7 @@ export class Sharing {
 
   /** The card's pull request, once its worker opened it. */
   private prOf(cardId: string): string | null {
-    const pr = this.o.board.row(cardId).pr;
-    return pr ? ((JSON.parse(pr) as PrState).url ?? null) : null;
+    return fromJson(this.o.board.row(cardId).pr)?.url ?? null;
   }
 
   /**
@@ -1045,8 +1044,7 @@ export class Sharing {
   }
 
   private demo(cardId: string): StoredDemo | null {
-    const d = this.o.board.row(cardId).demo;
-    return d ? (JSON.parse(d) as StoredDemo) : null;
+    return fromJson(this.o.board.row(cardId).demo);
   }
 
   /** The cards of the canvas, archived ones too, that were ever shared or are about to be, with their shares. */
@@ -1071,8 +1069,7 @@ export class Sharing {
 
   private stored(cardId: string): StoredShare | null {
     if (!this.find(cardId)) return null;
-    const s = this.o.board.row(cardId).share;
-    return s ? (JSON.parse(s) as StoredShare) : null;
+    return fromJson(this.o.board.row(cardId).share);
   }
 
   /** The card's page is at rest: those waiting for it hear so, unless its latest demo goes out after it. */

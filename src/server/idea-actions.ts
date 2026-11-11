@@ -12,6 +12,7 @@ import { slug } from './canvas-config';
 import type { Config } from './config';
 import type { Coordinator } from './coordinator';
 import type { Store } from './db';
+import { fromJson } from './row';
 import type { Explorers } from './explorers';
 import { type Images, MAX_IMAGES } from './images';
 import { makeRepo, newRepoPath } from './new-repo';
@@ -292,7 +293,7 @@ export class IdeaActions {
     const shown = target.path.trim();
     // the screenshots of the task and of its conversation, which the new canvas keeps under its own name
     const row = this.board.row(cardId);
-    const shots = [...(row.images ? (JSON.parse(row.images) as string[]) : []), ...this.board.events(cardId).flatMap((e) => e.images ?? [])];
+    const shots = [...(fromJson(row.images) ?? []), ...this.board.events(cardId).flatMap((e) => e.images ?? [])];
     this.images.copyTo(there.images, shots);
     if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(shown), log: this.board.t.idea.buildLog });
     this.o.forget(cardId);
@@ -520,7 +521,7 @@ export class IdeaActions {
     const at = (file: string) => (outside ? file : join(r.info.path, file));
     const name = slug(card.title).slice(0, 60).replace(/^[.-]+|[.-]+$/g, '') || 'plan';
     // nor one another card was given and has not written yet
-    const given = new Set(this.o.store.withPlanDocs(this.id).flatMap((row) => (JSON.parse(row.plan_docs!) as string[]).map(pathOfRef)));
+    const given = new Set(this.o.store.withPlanDocs(this.id).flatMap((row) => fromJson(row.plan_docs!).map(pathOfRef)));
     let file = `${dir}/${name}.md`;
     for (let n = 2; existsSync(at(file)) || given.has(file); n++) file = `${dir}/${name}-${n}.md`;
     const ref = r.ref.id === this.repos[0]!.ref.id ? file : `${r.ref.id}:${file}`;

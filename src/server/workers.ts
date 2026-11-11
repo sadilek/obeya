@@ -14,8 +14,8 @@ import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, sh
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, laterTime, type Spot, type Superseded, type SpotInput, started, type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
-import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, titleKey, contributionOf } from './board';
-import type { AskedPermission, HeldComment, LandedState, PageHeard, PausedState, PrState, Resolving, Shipped, StoredContribution, StoredDemo, StoredNewRepo, Unheard } from './row';
+import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, titleKey } from './board';
+import { fromJson, type AskedPermission, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type StoredContribution, type StoredDemo, type Unheard } from './row';
 import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
@@ -156,9 +156,6 @@ const spotNote = (spot: Spot) => {
 /** Landed work's state once what it waited for (the restart) has happened. */
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;
 
-/** What the card's row stores while landed work's worker finishes; null while nothing has landed. */
-const landedOf = (row: { landed: string | null }): LandedState | null => (row.landed ? (JSON.parse(row.landed) as LandedState) : null);
-
 /** What the card's row becomes when it is planned again, its worker stopped (`Workers.stop`, also where its repository does not run). */
 export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null } satisfies RowUpdate;
 
@@ -172,7 +169,7 @@ export const finishedRow = (row: CardRow): RowUpdate => ({
   pausing: null,
   snoozed: null,
   app: null,
-  ...(row.state === 'waiting' ? { state: landedOf(row)?.unchanged ? 'done' : 'live', need: null, detail: null } : {}),
+  ...(row.state === 'waiting' ? { state: fromJson(row.landed)?.unchanged ? 'done' : 'live', need: null, detail: null } : {}),
 });
 
 /**
@@ -180,8 +177,7 @@ export const finishedRow = (row: CardRow): RowUpdate => ({
  * conversation as read where they go now, never shown meanwhile as words waiting for a step. Returns them.
  */
 export function releaseHeld(board: Board, cardId: string): HeldComment[] {
-  const held = board.row(cardId).held;
-  const comments = held ? (JSON.parse(held) as HeldComment[]) : [];
+  const comments = fromJson(board.row(cardId).held) ?? [];
   if (!comments.length) return [];
   board.readNow(cardId, comments.map((h) => h.id));
   board.work(cardId, { held: null });
@@ -669,14 +665,14 @@ export class Workers {
     // once work has begun the branch stays the card's, whatever the title says now
     const row = this.o.board.row(card.id);
     // a workstream planned again after a part landed: the branch of that part may still be in a clone
-    const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+    const shipped = fromJson(row.shipped);
     const branch = row.branch ?? `${branchName(card.title, card.id)}${shipped ? `-${shipped.commit?.slice(0, 7) ?? 'rest'}` : ''}`;
     const { path, ready } = asBadRequest(() => this.o.workspaces.lease(card.id, branch, { from: row.kept_in }));
     this.bump(card.id);
     // the run before is not resumed, but the work retrospective still reads it
     if (row.session_id) this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.worker.restarted(this.o.board.t.worker.earlierRun(row.session_id)));
     // a review card's pull request is watched from the start, afresh
-    const contribution = contributionOf(row);
+    const contribution = fromJson(row.contribution);
     const pr = contribution ? JSON.stringify({ url: contribution.url, number: contribution.number, seen: [], reported: [] } satisfies PrState) : null;
     // a fresh session knows of no app that was stopped
     this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
@@ -837,7 +833,7 @@ export class Workers {
    * contributor allows no maintainers' edits.
    */
   private decide(cardId: string, decisions: Record<number, ChangeRoute>): { note: string; log: string; quiet: boolean } {
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!c) throw new BadRequest('notReview', 'only a review card has findings to decide on');
     const t = this.o.board.t.worker;
     const picked = Object.entries(decisions).map(([id, route]) => {
@@ -902,7 +898,7 @@ export class Workers {
    * link one task.
    */
   private followUpTask(cardId: string, title: string, task: string, ids: number[]): string {
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!c) return 'Not made: this card reviews no pull request.';
     if (!title) return 'Not made: the title is missing.';
     if (!task) return 'Not made: the task is missing.';
@@ -929,7 +925,7 @@ export class Workers {
 
   /** The findings of a review card the owner chose as follow-up tasks that have none yet, as the worker reads them; none: undefined. */
   private owedTasks(cardId: string): string | undefined {
-    const owed = contributionOf(this.o.board.row(cardId))?.findings?.filter((f) => f.status === 'open' && f.decided === 'later') ?? [];
+    const owed = fromJson(this.o.board.row(cardId).contribution)?.findings?.filter((f) => f.status === 'open' && f.decided === 'later') ?? [];
     return owed.length ? `${owed.length === 1 ? 'finding' : 'findings'} ${owed.map((f) => `#${f.id} “${f.title}”`).join(', ')} (follow_up_task)` : undefined;
   }
 
@@ -939,7 +935,7 @@ export class Workers {
    * the findings it would make one follow-up task with, kept in both directions and across a chain.
    */
   private setFindings(cardId: string, given: { id?: number; title: string; text: string; security?: boolean; status?: FindingStatus; url?: string; with?: number[] }[]): string {
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!c) return 'Not recorded: this card reviews no pull request.';
     const had = c.findings ?? [];
     // a list written before the worker heard the owner ignore findings keeps them ignored
@@ -1075,7 +1071,7 @@ export class Workers {
    */
   private followUp(card: Item, text: string, images: string[], spoken: boolean, replyTo?: number, place?: Spot) {
     const row = this.o.board.row(card.id);
-    const commit = row.shipped ? (JSON.parse(row.shipped) as Shipped).commit : undefined;
+    const commit = fromJson(row.shipped)?.commit;
     const stills = this.stills(place);
     this.resumeFinished(
       card,
@@ -1119,7 +1115,7 @@ export class Workers {
     }
     const { path, ready } = lease;
     this.bump(card.id);
-    const commit = row.shipped ? (JSON.parse(row.shipped) as Shipped).commit : undefined;
+    const commit = fromJson(row.shipped)?.commit;
     const landed: LandedState = { ...(card.state === 'done' ? { unchanged: true } : commit ? { commit } : {}), followUp: true, ...(worktree ? { worktree } : {}), ...extra };
     this.o.board.work(card.id, { workspace: path, landed: JSON.stringify(landed), status_line: null, app: null });
     before?.();
@@ -1144,7 +1140,7 @@ export class Workers {
   /** Whether the card's follow-up waits for a full clone, its worker without a workspace. */
   private waitsForClone(cardId: string): boolean {
     const row = this.o.board.row(cardId);
-    return !row.workspace && !!landedOf(row)?.needsClone;
+    return !row.workspace && !!fromJson(row.landed)?.needsClone;
   }
 
   /**
@@ -1155,7 +1151,7 @@ export class Workers {
     this.end(cardId);
     this.bump(cardId);
     const row = this.o.board.row(cardId);
-    const { worktree: _, ...landed } = landedOf(row)!;
+    const { worktree: _, ...landed } = fromJson(row.landed)!;
     this.removeTree(row.workspace);
     this.o.board.work(cardId, { workspace: null, landed: JSON.stringify(landed), status_line: this.o.board.t.worker.waitsForWorkspace });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.waitsForClone);
@@ -1176,7 +1172,7 @@ export class Workers {
       if (!(e instanceof WorkspaceError && shortageOf(e.code))) console.error(`a clone for the follow-up on ${cardId}:`, e);
       return false;
     }
-    const { needsClone: _, ...landed } = landedOf(row)!;
+    const { needsClone: _, ...landed } = fromJson(row.landed)!;
     this.bump(cardId);
     this.o.board.work(cardId, { workspace: lease.path, landed: JSON.stringify(landed), status_line: null, app: null });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.cloneFree);
@@ -1192,7 +1188,7 @@ export class Workers {
 
   /** Whether the card's follow-up runs in a temporary worktree. */
   private inWorktree(cardId: string): boolean {
-    return !!landedOf(this.o.board.row(cardId))?.worktree;
+    return !!fromJson(this.o.board.row(cardId).landed)?.worktree;
   }
 
   /** Removes a follow-up's temporary worktree; one left behind does no harm. */
@@ -1214,7 +1210,7 @@ export class Workers {
     if (card.state === 'waiting' && card.need === 'demo' && card.question) return this.answerDemo(card, text, images, spoken, replyTo, picked);
     if (!(card.state === 'waiting' && card.need === 'question')) throw new BadRequest('noQuestion', 'the card has no open question');
     const row = this.o.board.row(cardId);
-    const detail = row.detail ? (JSON.parse(row.detail) as { question?: Question; permission?: AskedPermission }) : {};
+    const detail = fromJson(row.detail) ?? {};
     if (detail.permission) return this.answerPermission(card, detail.permission, text, images, spoken, replyTo);
     const question = detail.question;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
@@ -1275,7 +1271,7 @@ export class Workers {
   private answerDemo(card: Item, text: string, images: string[], spoken: boolean, replyTo: number | undefined, picks: string[]) {
     const q = card.question!.text;
     const held = this.takeHeld(card.id);
-    const demo = JSON.parse(this.o.board.row(card.id).demo!) as Record<string, unknown>;
+    const demo = fromJson(this.o.board.row(card.id).demo!);
     this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)' }) });
     this.takingIn(card.id);
     this.recordAnswer(card, q, text, images, replyTo, picks);
@@ -1303,8 +1299,8 @@ export class Workers {
   private place(cardId: string, spot: SpotInput): Spot {
     const at = Math.max(0, Math.round(spot.at * 10) / 10);
     const row = this.o.board.row(cardId);
-    const current = row.demo ? (JSON.parse(row.demo) as StoredDemo) : undefined;
-    const earlier = spot.demo !== undefined && spot.demo !== current?.handover ? (JSON.parse(row.demos ?? '[]') as StoredDemo[]).findLast((d) => d.handover === spot.demo) : undefined;
+    const current = fromJson(row.demo) ?? undefined;
+    const earlier = spot.demo !== undefined && spot.demo !== current?.handover ? (fromJson(row.demos) ?? []).findLast((d) => d.handover === spot.demo) : undefined;
     const d = earlier ?? current;
     return {
       at,
@@ -1321,11 +1317,11 @@ export class Workers {
    * places in it the owner's comments are about.
    */
   private earlier(cardId: string, row: CardRow): string {
-    const { kept, ...replaced } = JSON.parse(row.demo!) as StoredDemo;
+    const { kept, ...replaced } = fromJson(row.demo!);
     const e = replaced.handover === undefined ? this.o.board.events(cardId).findLast((e) => e.kind === 'review') : undefined;
     // from its copy: the new demo may have been rendered over its files
     const dir = kept && existsSync(kept) ? kept : replaced.dir;
-    return JSON.stringify([...(JSON.parse(row.demos ?? '[]') as StoredDemo[]), { ...replaced, dir, ...(e ? { handover: e.id, at: e.at } : {}) }]);
+    return JSON.stringify([...(fromJson(row.demos) ?? []), { ...replaced, dir, ...(e ? { handover: e.id, at: e.at } : {}) }]);
   }
 
   /** The demo handed over with the event `handover`, with where Obeya keeps a copy of its files (`keepDemo`) where it could make one. */
@@ -1355,8 +1351,7 @@ export class Workers {
   }
 
   private held(cardId: string): HeldComment[] {
-    const held = this.o.board.row(cardId).held;
-    return held ? (JSON.parse(held) as HeldComment[]) : [];
+    return fromJson(this.o.board.row(cardId).held) ?? [];
   }
 
   private releaseLater(cardId: string, ms: number) {
@@ -1578,7 +1573,7 @@ export class Workers {
    */
   private async mergeContribution(cardId: string, { merge = true, findings, kept = false }: { merge?: boolean; findings?: Record<number, ChangeRoute>; kept?: boolean } = {}): Promise<ApproveResult | void> {
     const forge = this.o.forge;
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!forge || !c) throw new BadRequest('notReview', 'the card reviews no pull request');
     if (!merge && !c.held) throw new BadRequest('notReady', 'nothing of the agent’s waits to be pushed');
     if (findings) {
@@ -1640,7 +1635,7 @@ export class Workers {
       }
       // the decisions the owner had not sent, and the comments held back while they watched, go with the approval
       const comments = along(decide(), this.approvalComments(cardId));
-      this.o.board.work(cardId, { contribution: JSON.stringify({ ...(contributionOf(this.o.board.row(cardId)) ?? c), approved: true } satisfies StoredContribution) });
+      this.o.board.work(cardId, { contribution: JSON.stringify({ ...(fromJson(this.o.board.row(cardId).contribution) ?? c), approved: true } satisfies StoredContribution) });
       if (!kept) this.o.board.log(cardId, 'state', 'owner', t.approvedMerge(c.number));
       this.o.onApproval?.(cardId);
       try {
@@ -1684,7 +1679,7 @@ export class Workers {
    */
   editHeld(cardId: string, body: unknown) {
     const card = this.card(cardId);
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!c?.held || !handedOver(card) || this.approving.has(cardId)) throw new BadRequest('notReady', 'no text waits for the approval on this card');
     const text = typeof body === 'string' ? clip(body.trim(), 20000) : '';
     if (!text && c.held.asks.length) throw new BadRequest('emptyText', 'the text for the pull request asks the contributor for changes and cannot be empty');
@@ -1706,7 +1701,7 @@ export class Workers {
   private conflicted(cardId: string, c: StoredContribution, head: string, comments: Comments | undefined, kept: boolean): ApproveResult {
     const t = this.o.board.t.worker;
     const row = this.o.board.row(cardId);
-    const now = contributionOf(row) ?? c;
+    const now = fromJson(row.contribution) ?? c;
     const also = comments?.text ?? '';
     if (!c.canModify) {
       this.o.board.log(cardId, 'error', 'obeya', t.mergeConflictNoEdits(c.number, c.author));
@@ -1840,7 +1835,7 @@ export class Workers {
     } catch (e) {
       failed = messageOf(e);
     }
-    const now = contributionOf(this.o.board.row(cardId)) ?? c;
+    const now = fromJson(this.o.board.row(cardId).contribution) ?? c;
     const { held: _, changing: __, ...rest } = now;
     const findings = now.findings?.map((f): Finding => {
       const { decided: ___, withChanges: ____, ...plain } = f;
@@ -1873,7 +1868,7 @@ export class Workers {
    */
   contributionClosed(cardId: string) {
     const row = this.o.board.row(cardId);
-    const c = contributionOf(row);
+    const c = fromJson(row.contribution);
     if (!c) return;
     const t = this.o.board.t.worker;
     this.refuseAsked(cardId, 'meanwhile the pull request was closed without a merge.');
@@ -1895,7 +1890,7 @@ export class Workers {
     const awaited = this.o.board.snoozedOf(cardId)?.contributor;
     if (awaited) this.o.board.unsnooze(cardId, { said: note });
     else this.o.board.log(cardId, 'state', 'obeya', note);
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (c?.requested) this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, requested: undefined } satisfies StoredContribution) });
     const state = this.o.board.row(cardId).state;
     if (state === 'inPr' || (awaited && state === 'waiting')) this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null });
@@ -1908,7 +1903,7 @@ export class Workers {
    * in its log. Returns why it was not sent, or nothing.
    */
   private async requestChanges(cardId: string, body: string, ids: number[] = []): Promise<string | undefined> {
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!this.o.forge || !c) return 'Not sent: this card reviews no pull request.';
     if (!body.trim()) return 'Not sent: the review has no text.';
     const generation = this.generation.get(cardId);
@@ -1928,7 +1923,7 @@ export class Workers {
       this.o.board.log(cardId, 'state', 'worker', `${t.changesRequested(c.number, c.author)}${url ? ` ${url}` : ''}`);
       return 'Sent, but the card was stopped meanwhile. End your turn.';
     }
-    const now = contributionOf(row) ?? c;
+    const now = fromJson(row.contribution) ?? c;
     this.o.board.work(cardId, {
       state: 'inPr',
       need: null,
@@ -1986,7 +1981,7 @@ export class Workers {
    * where the branch holds no commits of its own; why it cannot be handed over, as the worker reads it.
    */
   private heldAt(cardId: string, mine: OwnCommits, draft: string | undefined): (HeldChanges & { base: string }) | string | undefined {
-    const c = contributionOf(this.o.board.row(cardId))!;
+    const c = fromJson(this.o.board.row(cardId).contribution)!;
     const asks = (c.findings ?? []).filter((f) => f.status === 'open' && f.decided === 'contributor');
     if (!mine.commits) {
       const waiting = asks.filter((f) => f.withChanges);
@@ -2034,7 +2029,7 @@ export class Workers {
       [t.undone(report.undone.filter((p) => !p.endsWith('/')).length), report.changedSince.length ? t.undoChangedSince(files(report.changedSince)) : '', report.lost.length ? t.undoLost(files(report.lost)) : '', report.shared.length ? t.undoShared(files(report.shared)) : ''].filter(Boolean).join(' '),
     );
     const row = this.o.board.row(cardId);
-    const detail = row.detail ? (JSON.parse(row.detail) as Record<string, unknown>) : {};
+    const detail = fromJson(row.detail) ?? {};
     const told = [
       `The owner discarded your changes in the folder: Obeya put back what your card changed (${report.undone.join(', ') || 'nothing'}) as it was before.`,
       report.changedSince.length ? `Left as they are, since someone changed them after you: ${files(report.changedSince)}.` : '',
@@ -2238,7 +2233,7 @@ export class Workers {
    */
   pageSettled(cardId: string, r?: { url: string } | { why: string }) {
     if (!this.o.board.card(cardId)) return;
-    const l = landedOf(this.o.board.row(cardId));
+    const l = fromJson(this.o.board.row(cardId).landed);
     if (!l?.page) return;
     const { page: _, ...rest } = l;
     this.o.board.work(cardId, { landed: JSON.stringify(rest satisfies LandedState) });
@@ -2264,7 +2259,7 @@ export class Workers {
     if (!card || card.prototypeOf || !card.demo) return;
     const now = pageHeardOf(card.share);
     const row = this.o.board.row(cardId);
-    const before: PageHeard = row.page_heard ? (JSON.parse(row.page_heard) as PageHeard) : { page: 'none' };
+    const before: PageHeard = fromJson(row.page_heard) ?? { page: 'none' };
     if (JSON.stringify(now) === JSON.stringify(before)) return;
     this.o.board.work(cardId, { page_heard: JSON.stringify(now) });
     if (now.page === 'going') return 'The owner is sharing your demo with the team on a page of its own; it is going online right now. You hear its address once it is there.';
@@ -2273,7 +2268,7 @@ export class Workers {
       return [
         `The owner shared your demo with the team on a page of its own: ${now.url}.`,
         now.stale ? 'It shows an earlier demo of yours, not the latest.' : '',
-        contributionOf(row)
+        fromJson(row.contribution)
           ? 'Once the owner approves, Obeya comments its link on the pull request.'
           : `Obeya links it in what your work lands with: a \`${trailer}: <url>\` trailer on the commit that lands on main, or a line in the pull request's description.`,
         'Link it wherever you point people at this work (an issue you close, say).',
@@ -2323,7 +2318,7 @@ export class Workers {
       // the card is done either way; a leftover worktree does no harm
       this.whileFreeing(cardId, row.workspace, reading ? reading.catch(() => {}).then(removeLanded) : removeLanded(), 'freeing a landed workspace');
     }
-    const landed = landedOf(row);
+    const landed = fromJson(row.landed);
     this.o.board.work(cardId, finishedRow(row));
     this.o.board.workDone(cardId);
     // the work retrospective read the card's runs when its work ended
@@ -2361,7 +2356,7 @@ export class Workers {
     const { dir, exclude } = this.o.adapter.planDocs;
     const outside = outsidePlanDir(dir);
     const files = outside
-      ? (JSON.parse(row.plan_docs ?? '[]') as string[]).map(pathOfRef)
+      ? (fromJson(row.plan_docs) ?? []).map(pathOfRef)
       : (await this.o.workspaces.addedFiles(cardId, dir)).filter((f) => f.endsWith('.md') && !exclude.some((x) => f.endsWith(`/${x}`)));
     const read = async (file: string): Promise<string | null> => {
       if (outside) return Bun.file(file).text().catch(() => null);
@@ -2431,7 +2426,7 @@ export class Workers {
    */
   async diff(cardId: string, full: boolean): Promise<CardDiff | null> {
     const row = this.o.board.row(cardId);
-    const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+    const shipped = fromJson(row.shipped);
     // landed work's workspace, while its worker finishes, has nothing left against the default branch
     const diff = row.state === 'live' && shipped?.commit && shipped.base ? await this.o.workspaces.landedDiff(shipped.base, shipped.commit, full) : await this.o.workspaces.diff(cardId, full);
     // its size, for the page to lay out the card's change list before it has read the change
@@ -2447,7 +2442,7 @@ export class Workers {
   /** The files of the card's change as they are now, as `diff` reads it, by a list no file name can pass for another in (`CardWorkspaces.changedFiles`). */
   changedFiles(cardId: string): Promise<string[]> {
     const row = this.o.board.row(cardId);
-    const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+    const shipped = fromJson(row.shipped);
     if (row.state === 'live' && shipped?.commit && shipped.base) return this.o.workspaces.changedFiles(cardId, { base: shipped.base, commit: shipped.commit });
     return this.o.workspaces.changedFiles(cardId);
   }
@@ -2464,7 +2459,7 @@ export class Workers {
     const path = normalPath(asked);
     if (!path) return null;
     const row = this.o.board.row(cardId);
-    const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+    const shipped = fromJson(row.shipped);
     const landed = row.state === 'live' && shipped?.commit ? shipped.commit : undefined;
     // to open: the checkout's copy only of what landed there, never for a branch elsewhere
     const ref = landed ?? (local ? undefined : (row.branch ?? undefined));
@@ -2516,13 +2511,12 @@ export class Workers {
     this.bump(cardId);
     this.refuseAsked(cardId, 'meanwhile your pull request was merged, and the card is live.');
     // a review card's PR where work lands on the local main: the checkout gets the merge, as the owner would pull it
-    if (contributionOf(this.o.board.row(cardId)) && this.pulls()) void this.pullAfterMerge(cardId);
+    if (fromJson(this.o.board.row(cardId).contribution) && this.pulls()) void this.pullAfterMerge(cardId);
     // git reads them without blocking the server; the workspace goes only once it has (`finish`)
     const added = this.planDocsAdded(cardId).then((a) => this.o.board.planDocsLanded(cardId, a));
     this.reading.set(cardId, added);
     void added.finally(() => this.reading.get(cardId) === added && this.reading.delete(cardId));
-    const pr = this.o.board.row(cardId).pr;
-    const { url, number } = pr ? (JSON.parse(pr) as PrState) : { url: null, number: undefined };
+    const { url, number } = fromJson(this.o.board.row(cardId).pr) ?? { url: null, number: undefined };
     const shipped: Shipped = { ...(commit ? { commit, base: `${commit}^` } : { fetch: true }), ...(url && number ? { pr: { url, number } } : {}) };
     const page = this.pageNote(cardId);
     this.o.board.work(cardId, {
@@ -2536,7 +2530,7 @@ export class Workers {
     });
     this.o.board.log(cardId, 'state', 'obeya', note);
     this.o.onMerged?.(cardId);
-    const review = !!contributionOf(this.o.board.row(cardId));
+    const review = !!fromJson(this.o.board.row(cardId).contribution);
     this.afterLanding(
       cardId,
       [review ? 'The owner approved your handover, and Obeya merged the pull request; the card is live. Leave the PR as it is: Obeya comments the demo’s link on it.' : 'Your pull request was merged; the card is live.', page.text, comments?.text ?? '', AFTER_LANDING].filter(Boolean).join('\n\n'),
@@ -2581,7 +2575,7 @@ export class Workers {
    */
   private async probeClash(cardId: string): Promise<Clash | null | undefined> {
     const pulls = this.pulls();
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!pulls || !c?.reviewed) return undefined;
     let clash: Clash | null;
     try {
@@ -2591,7 +2585,7 @@ export class Workers {
       console.error(`probing ${cardId}'s pull request against the local main:`, messageOf(e));
       return undefined;
     }
-    const now = this.o.board.card(cardId) && contributionOf(this.o.board.row(cardId));
+    const now = this.o.board.card(cardId) && fromJson(this.o.board.row(cardId).contribution);
     if (!now || now.reviewed !== c.reviewed) return clash;
     if (!sameClash(now.clash, clash)) {
       const { clash: _, ...rest } = now;
@@ -2609,7 +2603,7 @@ export class Workers {
    */
   pushMainFor(cardId: string) {
     const i = this.o.board.item(cardId);
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!i || !c?.clash || !handedOver(i) || !this.pulls()) throw new BadRequest('noClash', 'the card’s pull request collides with nothing unpushed on main');
     if (this.pushingMain.has(cardId) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is busy with main already');
     this.pushingMain.set(
@@ -2639,7 +2633,7 @@ export class Workers {
     }
     this.o.onMerged?.(cardId);
     this.reprobeClashes();
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (!c) return;
     const files = c.clash?.files ?? [];
     const { clash: _, ...rest } = c;
@@ -2680,7 +2674,7 @@ export class Workers {
       .filter((i) => finished(i.state) && !i.contribution && (!this.o.repo || i.repo === this.o.repo))
       .flatMap((i) => {
         const row = this.o.board.row(i.id);
-        const s = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+        const s = fromJson(row.shipped);
         return s?.commit && s.base && !s.pr ? [{ card: i, base: s.base, commit: s.commit, at: row.updated_at }] : [];
       })
       // the cards touched last first: unpushed commits are recent
@@ -2701,14 +2695,14 @@ export class Workers {
    */
   private async resolvePull(reviewId: string, stopped: PullStopped) {
     const t = this.o.board.t.worker;
-    const c = contributionOf(this.o.board.row(reviewId));
+    const c = fromJson(this.o.board.row(reviewId).contribution);
     if (!c) return;
     const { card } = await this.landedBy(stopped.commit);
     const resolving: Resolving = { card: reviewId, pr: c.number, url: c.url, stopped };
     // a card resolving one already is busy with that
     const takes = (id: string) => {
       const i = this.o.board.item(id);
-      const l = i && landedOf(this.o.board.row(id));
+      const l = i && fromJson(this.o.board.row(id).landed);
       return !!i && i.kind === 'task' && !i.prototypeOf && !i.archivedAt && !l?.resolve && ((!!l && !!i.finishing) || askable(i));
     };
     const resolver = [card?.id, reviewId].find((id) => !!id && takes(id));
@@ -2721,7 +2715,7 @@ export class Workers {
     if (own) this.o.board.log(resolver, 'state', 'obeya', t.resolvingPull(c.number, stopped.subject));
     const message = (path: string) => this.resolveMessage(resolving, own, path);
     const item = this.card(resolver);
-    const landed = landedOf(this.o.board.row(resolver));
+    const landed = fromJson(this.o.board.row(resolver).landed);
     if (landed && item.finishing) {
       this.o.board.work(resolver, { landed: JSON.stringify({ ...landed, resolve: resolving } satisfies LandedState), status_line: t.resolvingStatus(c.number) });
       this.deliver(resolver, message(this.o.board.row(resolver).workspace ?? ''));
@@ -2765,7 +2759,7 @@ export class Workers {
     for (const i of this.o.board.items()) {
       if (this.o.repo && i.repo !== this.o.repo) continue;
       const row = this.o.board.row(i.id);
-      const s = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+      const s = fromJson(row.shipped);
       const commit = s?.commit && rewritten[s.commit];
       if (!s || !commit) continue;
       this.o.board.work(i.id, { shipped: JSON.stringify({ ...s, commit, ...(s.base && rewritten[s.base] ? { base: rewritten[s.base] } : {}) } satisfies Shipped) });
@@ -2781,7 +2775,7 @@ export class Workers {
     const t = this.o.board.t.worker;
     const row = this.o.board.row(cardId);
     const res = await this.pulls()!.landResolution(row.workspace ?? '', { main: r.stopped.main, upstream: r.stopped.upstream });
-    const landed = landedOf(this.o.board.row(cardId));
+    const landed = fromJson(this.o.board.row(cardId).landed);
     const { resolve: _, ...rest } = landed ?? {};
     const done = () => this.o.board.work(cardId, { landed: JSON.stringify(rest satisfies LandedState), status_line: null });
     if ('code' in res) {
@@ -3135,8 +3129,7 @@ export class Workers {
 
   /** What the owner's pause holds for the worker, or null when it is not paused. */
   private pausedOf(cardId: string): PausedState | null {
-    const paused = this.o.board.row(cardId).paused;
-    return paused ? (JSON.parse(paused) as PausedState) : null;
+    return fromJson(this.o.board.row(cardId).paused);
   }
 
   /** After a restart (`repo`: of this repository's agents alone): resume every card whose worker was in the middle of a turn. */
@@ -3148,9 +3141,9 @@ export class Workers {
       // the page reloaded: the owner may watch on, or have gone
       if (i.held?.length) this.releaseLater(i.id, this.o.holdGrace ?? HOLD_GRACE);
       const row = this.o.board.row(i.id);
-      const landed = landedOf(row);
+      const landed = fromJson(row.landed);
       // a snoozed worker sleeps on until its time, a restart notwithstanding
-      if (row.snoozed && !(JSON.parse(row.snoozed) as Snooze).waiting) {
+      if (row.snoozed && !fromJson(row.snoozed).waiting) {
         // the owner's snooze holds what Obeya has for the worker, as a pause does
         if (row.paused) this.pausedOverRestart(i.id, landed);
         else {
@@ -3502,7 +3495,7 @@ export class Workers {
     const plans = live.host ? null : outsidePlanDir(this.o.adapter.planDocs.dir);
     // a review card's workspace holds a stranger's code: its Claude Code settings (hooks, MCP servers) and
     // CLAUDE.md are the contributor's, so the session reads none of them, the default branch's CLAUDE.md instead
-    const review = !!contributionOf(row);
+    const review = !!fromJson(row.contribution);
     const notes = review ? this.mainNotes() : '';
     // the harness and model the owner chose for this card, over the group's; a session resumed stays on its own harness
     const agent = row.agent ? cardAgentOf(row.agent) : undefined;
@@ -3555,7 +3548,7 @@ export class Workers {
     const row = this.o.board.row(cardId);
     // it snoozed before its session ended: the snooze resumes it
     if (!card || row.snoozed) return;
-    const landed = landedOf(row);
+    const landed = fromJson(row.landed);
     const t = this.o.board.t;
     const reason = live.failed ? failureReason(clip(live.failed, 1200), t) : t.worker.stalled;
     const ended = `${reason}${/[.!?]$/.test(reason) ? '' : '.'}`;
@@ -3675,8 +3668,7 @@ export class Workers {
   }
 
   private unheard(cardId: string): Unheard[] {
-    const stored = this.o.board.row(cardId).unheard;
-    return stored ? (JSON.parse(stored) as Unheard[]) : [];
+    return fromJson(this.o.board.row(cardId).unheard) ?? [];
   }
 
   /** The owner's words Obeya held for the worker, taken out: they are read from now on. */
@@ -3909,7 +3901,7 @@ export class Workers {
    * who approves again.
    */
   private async mergeApproved(cardId: string) {
-    const c = contributionOf(this.o.board.row(cardId));
+    const c = fromJson(this.o.board.row(cardId).contribution);
     if (c) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.mergingResolved(c.number));
     try {
       await this.mergeContribution(cardId, { kept: true });
@@ -4000,7 +3992,7 @@ export class Workers {
       if (card.state === 'working' && row.approved_at) void this.landApproved(cardId);
       return;
     }
-    const landed = landedOf(row);
+    const landed = fromJson(row.landed);
     // in the PR phase a turn ends normally once the PR is open
     if (card.state === 'inPr' && card.pr) return;
     if (card.state !== 'working' && card.state !== 'inPr' && !landed) return;
@@ -4056,7 +4048,7 @@ export class Workers {
    * says what is left to do.
    */
   private unresolved(cardId: string, live: Live, r: Resolving) {
-    const landed = landedOf(this.o.board.row(cardId))!;
+    const landed = fromJson(this.o.board.row(cardId).landed)!;
     if (!r.reminded) {
       this.o.board.work(cardId, { landed: JSON.stringify({ ...landed, resolve: { ...r, reminded: true } } satisfies LandedState) });
       this.setBusy(live, true);
@@ -4101,8 +4093,7 @@ export class Workers {
    * after it answered (`woke`) works on towards that answer, which stands.
    */
   private takingIn(cardId: string, woke = false) {
-    const detail = this.o.board.row(cardId).detail;
-    const { answered, ...rest } = detail ? (JSON.parse(detail) as Record<string, unknown>) : {};
+    const { answered, ...rest } = fromJson(this.o.board.row(cardId).detail) ?? {};
     this.o.board.work(cardId, { detail: JSON.stringify({ ...rest, ...(woke && answered ? { answered } : {}), answering: true }) });
   }
 
@@ -4113,9 +4104,9 @@ export class Workers {
    * that their words went unanswered.
    */
   private answerTaken(cardId: string, spoke = false) {
-    const { detail } = this.o.board.row(cardId);
+    const detail = fromJson(this.o.board.row(cardId).detail);
     if (!detail) return;
-    const { answering, answered: before, ...rest } = JSON.parse(detail) as Record<string, unknown>;
+    const { answering, answered: before, ...rest } = detail;
     if (!answering) return;
     const answered = spoke || !!before;
     this.o.board.work(cardId, { detail: JSON.stringify({ ...rest, ...(answered ? { answered: true } : {}) }) });
@@ -4459,7 +4450,7 @@ export class Workers {
         },
       }));
     // a review card's tools to the contributor's pull request
-    const review = contributionOf(this.o.board.row(cardId));
+    const review = fromJson(this.o.board.row(cardId).contribution);
     return current([
       {
         name: 'report',
@@ -4669,7 +4660,7 @@ export class Workers {
               run: async ({ body, findings }) => {
                 const owed = this.owedTasks(cardId);
                 if (owed) return `Not sent: first make the follow-up tasks the owner chose, for ${owed}; then call request_changes again.`;
-                const own = contributionOf(this.o.board.row(cardId));
+                const own = fromJson(this.o.board.row(cardId).contribution);
                 if (own?.changing || own?.held)
                   return `Not sent: your own changes to the PR wait for the owner's approval, and a request to ${review.author} goes with them as one message. Write it into pr_draft with your handover (ready_for_review): Obeya posts it once the owner approves.`;
                 const sent = await this.requestChanges(cardId, String(body), (findings as number[] | undefined) ?? []);
@@ -4695,7 +4686,7 @@ export class Workers {
           const ref = parsePrUrl(String(url));
           if (!ref) return 'Not recorded: that is not the URL of a pull request (on GitHub or GitHub Enterprise https://<host>/<owner>/<repo>/pull/<number>, on Forgejo or Gitea such as Codeberg https://<host>/<owner>/<repo>/pulls/<number>).';
           handOver();
-          const root = JSON.parse(row.pr) as PrState;
+          const root = fromJson(row.pr);
           // the card's own is the one in its repository, which the landing is about; one in another
           // repository is watched beside it, and reported again (opened again after it was closed) as before
           const host = this.o.remote && remoteHost(this.o.remote)?.toLowerCase().replace(/^ssh\.github\.com$/, 'github.com');
@@ -4799,7 +4790,7 @@ export class Workers {
           // a stopped pull this worker resolved lands as it hands it over, without the owner
           const long = tooLong(String(summary), 6000, 'ready_for_review');
           if (long) return long;
-          const resolving = landedOf(this.o.board.row(cardId))?.resolve;
+          const resolving = fromJson(this.o.board.row(cardId).landed)?.resolve;
           if (resolving) return this.landResolved(cardId, resolving);
           type Demo = { kind?: DemoKind; dir: string; chapters?: string[]; question?: { text: string } & Omit<Asked, 'question'>; page?: DemoPage; follows?: 'replaces' | 'supplements' };
           const given = demo as Demo | undefined;
@@ -4829,7 +4820,7 @@ export class Workers {
             if (row.pr && !review) return 'Not handed over: the work is in its pull request, where Obeya follows it.';
             const checked = results as { checks: { name: string; passed: boolean }[]; mergeable: boolean } | undefined;
             if (review && !checked) return "Not handed over: a review card's handover says what the checks and the merge probe found (review). Call ready_for_review again with it.";
-            if (review && !contributionOf(row)?.findings) return 'Not handed over: record your findings first (findings; an empty list where your review found nothing), then call ready_for_review again.';
+            if (review && !fromJson(row.contribution)?.findings) return 'Not handed over: record your findings first (findings; an empty list where your review found nothing), then call ready_for_review again.';
             const owed = review && this.owedTasks(cardId);
             if (owed) return `Not handed over: first make the follow-up tasks the owner chose, for ${owed}; then call ready_for_review again.`;
             // what goes onto the PR with the owner's approval: the worker's own commits and their text, with the requests to the contributor decided meanwhile
@@ -4838,9 +4829,9 @@ export class Workers {
             // approved work that could not land comes back to be landed, not reviewed: its demo stands
             const approved = !!row.approved_at;
             // a handover in answer to the owner's words that brings no new demo is an answer to them, not a demo to watch
-            const answered = !d && !!row.detail && !!(JSON.parse(row.detail) as { answering?: boolean }).answering;
+            const answered = !d && !!row.detail && !!fromJson(row.detail).answering;
             // without a new demo, the one on the card stands, unless it only came with a question
-            const asked = !!row.demo && !!(JSON.parse(row.demo) as StoredDemo).asked;
+            const asked = !!row.demo && !!fromJson(row.demo).asked;
             const kept = !d && !!row.demo && !asked;
             // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
             if (!d && !kept && !approved && !this.folder)
@@ -4875,7 +4866,7 @@ export class Workers {
             }
             handOver();
             if (review && checked) {
-              const now = contributionOf(this.o.board.row(cardId)) ?? review;
+              const now = fromJson(this.o.board.row(cardId).contribution) ?? review;
               const { requested: _, held: __, changing: ___, ...rest } = now;
               const results = { checks: checked.checks.slice(0, 20).map((c) => ({ name: clip(c.name, 60), passed: !!c.passed })), mergeable: !!checked.mergeable };
               const findings = held && rest.findings?.map((f) => (held.asks.includes(f.id) ? { ...f, withChanges: true as const } : f));
@@ -4971,9 +4962,9 @@ export class Workers {
           const row = this.o.board.row(cardId);
           if (row.landed) return 'Not recorded: the card is finished already.';
           // a review card whose pull request was closed lands nothing, whatever its branch holds
-          if (contributionOf(row)?.closed) return [`Recorded: the card is done.`, this.close(cardId, 'worker'), AFTER_LANDING].filter(Boolean).join(' ');
+          if (fromJson(row.contribution)?.closed) return [`Recorded: the card is done.`, this.close(cardId, 'worker'), AFTER_LANDING].filter(Boolean).join(' ');
           const work = await this.o.workspaces.hasWork(cardId);
-          const pr = row.pr ? (JSON.parse(row.pr) as PrState) : null;
+          const pr = fromJson(row.pr);
           if (!row.approved_at && !(pr && !pr.url)) return 'Not recorded: only work the owner approved can be closed, and only before its pull request is open. Hand it over with ready_for_review first.';
           if (work)
             return 'Not recorded: your branch holds commits or uncommitted changes. Work that changes the repository lands (or goes out as a pull request); throw away what is not meant to land first, if nothing is.';
@@ -4986,7 +4977,7 @@ export class Workers {
         description: 'Only after your work has landed and Obeya said it starts again for it: what remains needs Obeya to run your change. Then end your turn; Obeya tells you once it runs your change.',
         schema: {},
         run: () => {
-          const l = landedOf(this.o.board.row(cardId));
+          const l = fromJson(this.o.board.row(cardId).landed);
           if (!l) return 'Not recorded: your work has not landed.';
           if (!l.restarts) return 'Not recorded: Obeya does not start again for this landing; what runs now is what you get.';
           this.o.board.work(cardId, { landed: JSON.stringify({ ...l, waits: true } satisfies LandedState) });
@@ -5058,7 +5049,7 @@ export class Workers {
               description: "Only in a follow-up in a temporary worktree: answering the owner needs a full clone (the repository's app or tooling, which may not run here). Then end your turn; Obeya resumes you in the next free clone.",
               schema: {},
               run: () => {
-                const l = landedOf(this.o.board.row(cardId));
+                const l = fromJson(this.o.board.row(cardId).landed);
                 if (!l?.worktree) return 'Not recorded: you work in a full clone already.';
                 this.o.board.work(cardId, { landed: JSON.stringify({ ...l, needsClone: true } satisfies LandedState) });
                 this.o.board.log(cardId, 'activity', 'worker', this.o.board.t.worker.needsClone);
@@ -5210,9 +5201,9 @@ export class Workers {
   /** The card's question is settled: it goes back to its work, in its pull request, or finished (`done` when nothing landed, else `live`). */
   private backToWork(cardId: string) {
     const row = this.o.board.row(cardId);
-    const landed = landedOf(row);
+    const landed = fromJson(row.landed);
     // a review card has its pull request from the start: it waits in it only for the contributor
-    const contribution = contributionOf(row);
+    const contribution = fromJson(row.contribution);
     const inPr = !!row.pr && (!contribution || !!contribution.requested);
     this.o.board.work(cardId, { state: landed ? (landed.unchanged ? 'done' : 'live') : inPr ? 'inPr' : 'working', need: null, detail: null });
   }
@@ -5291,7 +5282,7 @@ ${folder ? '- Others work in the same folder at the same time: leave what your c
    */
   private briefing(card: Item, branch: string, resumed = false, headProblem?: string | null): string {
     const parts = [`Your card: “${card.title}”.`];
-    const contribution = contributionOf(this.o.board.row(card.id));
+    const contribution = fromJson(this.o.board.row(card.id).contribution);
     if (contribution) return this.reviewBriefing(card, contribution, branch, resumed, headProblem);
     const idea = card.prototypeOf ? this.o.board.card(card.prototypeOf) : undefined;
     if (card.prototypeOf)
@@ -5329,9 +5320,8 @@ ${idea.idea.brief}` : '',
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
     const decisions = project ? this.o.board.decisions(project.id) : [];
     if (decisions.length) parts.push(`Decisions taken in this project so far:\n${decisionLog(decisions)}`);
-    const part = project?.plan && this.o.board.row(card.id).shipped;
-    if (part) {
-      const s = JSON.parse(part) as Shipped;
+    const s = project?.plan ? fromJson(this.o.board.row(card.id).shipped) : null;
+    if (s) {
       const what = [s.pr && `pull request #${s.pr.number} (${s.pr.url})`, s.commit && `commit ${s.commit.slice(0, 7)}`].filter(Boolean).join(', ');
       parts.push(
         `A part of this workstream has landed already${what ? ` (${what})` : ''}, but the plan doc keeps the workstream open. Look at what landed and do the rest.`,
@@ -5346,8 +5336,7 @@ ${idea.idea.brief}` : '',
           : `You are on branch ${branch}, fresh from the default branch.`,
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
-    const made = this.o.board.row(card.id).new_repo;
-    if (made && (JSON.parse(made) as StoredNewRepo).made)
+    if (fromJson(this.o.board.row(card.id).new_repo)?.made)
       parts.push(
         `This repository is new: Obeya created it for this card with a first commit of what its folder held (a default .gitignore, else nothing). It is local only, with no remote. Besides the task, set it up as part of your work: a CLAUDE.md with what the task says about how to work in this repository, and its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as the card “${this.o.board.t.adapterSetup.title(basename(this.o.repoPath ?? ''))}” would.`,
       );

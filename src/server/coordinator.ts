@@ -8,7 +8,8 @@ import type { RepoAdapter } from '../adapters/types';
 import { cardTag } from '../core/card-number';
 import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, startable, waitsOn } from '../core/queue';
 import { EVICT_HOLD_MS, finished, type Item, nameless, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
-import { ACTIVE, BadRequest, type Board, contributionOf, TITLE_MAX } from './board';
+import { ACTIVE, BadRequest, type Board, TITLE_MAX } from './board';
+import { fromJson } from './row';
 import { type AgentRuntime, readSession, waitQuietly } from './runtime';
 import type { Workers } from './workers';
 import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './workspaces';
@@ -191,7 +192,7 @@ export class Coordinator {
     const review = this.o.board.item(reviewId);
     if (!review || !unlanded(review)) return this.request(taskId);
     const t = this.o.board.t.coordinator;
-    const reason = t.followsReview(contributionOf(this.o.board.row(reviewId))?.number ?? 0);
+    const reason = t.followsReview(fromJson(this.o.board.row(reviewId).contribution)?.number ?? 0);
     this.setQueue(taskId, { behind: [reviewId], reason, buildsOn: [reviewId] });
     this.o.board.log(taskId, 'state', 'obeya', t.waitsFor(this.o.board.t.quote(review.title), reason));
   }
@@ -658,7 +659,7 @@ export class Coordinator {
       const q = w.queue as { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] };
       // a review card whose PR was closed without a merge leaves nothing to build on: what followed
       // up on it goes back to planned, for the owner to decide on
-      const unmerged = items.find((i) => q.buildsOn?.includes(i.id) && i.state === 'done' && contributionOf(this.o.board.row(i.id))?.closed);
+      const unmerged = items.find((i) => q.buildsOn?.includes(i.id) && i.state === 'done' && fromJson(this.o.board.row(i.id).contribution)?.closed);
       if (unmerged) {
         this.setQueue(w.id, null);
         this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.coordinator.reviewClosed(this.o.board.t.quote(unmerged.title)));

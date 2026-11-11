@@ -1,7 +1,41 @@
-// What a card's row (`CardRow` in db.ts) stores in its JSON columns: the shape of each.
+// What a card's row (`CardRow` in db.ts) stores in its JSON columns: the shape of each, and how it
+// is read.
 
-import type { Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
+import type { CardLanding, Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
 import type { PullStopped } from './workspaces';
+
+declare const holds: unique symbol;
+
+/** A JSON column's text, typed with what it holds: `fromJson` reads it as that. Any string can be written to it. */
+export type Json<T> = string & { readonly [holds]?: T };
+
+/** What a JSON column holds; null where it is empty. */
+export function fromJson<T>(text: Json<T>): T;
+export function fromJson<T>(text: Json<T> | null): T | null;
+export function fromJson<T>(text: Json<T> | null): T | null {
+  return text ? (JSON.parse(text) as T) : null;
+}
+
+/**
+ * What a card waits on or was handed over with (`CardRow.detail`): the open question (with the
+ * tool call that asked the owner's permission), or the handover's summary, whether the work changed
+ * nothing and where it lands, and whether its worker is answering the owner's words since.
+ */
+export interface Detail {
+  question?: Question;
+  permission?: AskedPermission;
+  summary?: string;
+  noChange?: boolean;
+  lands?: CardLanding;
+  answering?: boolean;
+  answered?: boolean;
+}
+
+/** The Coordinator's estimate of the files a card changes (`CardRow.scope`). */
+export interface Scope {
+  files: string[];
+  reason: string;
+}
 
 /** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
 export interface PrState {
