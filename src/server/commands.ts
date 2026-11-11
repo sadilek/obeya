@@ -1302,7 +1302,8 @@ export class Commander {
   private cardsOf(tags: string[], check?: (card: Item, tag: string) => string | undefined): Item[] | string {
     const cards: Item[] = [];
     for (const t of new Set(tags)) {
-      const card = this.o.board.item(this.cardOf(t) ?? '');
+      const id = this.cardOf(t);
+      const card = id ? this.o.board.item(id) : undefined;
       if (!card) return `no card ${t} on this canvas`;
       const why = check?.(card, t);
       if (why) return why;
