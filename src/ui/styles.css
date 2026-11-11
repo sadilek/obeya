@@ -133,7 +133,12 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .project > .head .arrange { color: var(--muted); }
 .project > .head .arrange:disabled { cursor: default; animation: arranging 1.4s ease-in-out infinite; }
 @keyframes arranging { 50% { opacity: .45; } }
-.z-far .project .head-btn, .z-far .project > .head .more { display: none; }
+/* from afar they stay, a size up, so they are still read and hit */
+.z-far .project > .head .head-btn { zoom: 1.4; }
+.z-far .project > .head .acts { top: 12px; }
+.z-far .project > .head.has-acts { padding-right: 44px; }
+.z-far .project > .head .more { top: 14px; width: 32px; height: 32px; }
+.z-far .project > .head .more svg { width: 18px; height: 18px; }
 /* folds the project to its head and back; always in sight, so it is found */
 .project > .head .fold { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; margin-right: -4px;
   border: 0; border-radius: 3px; background: none; color: var(--muted); cursor: pointer; }

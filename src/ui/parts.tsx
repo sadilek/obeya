@@ -867,7 +867,7 @@ function useHeadFit(hasActs: boolean) {
   const fit = useRef(() => {});
   fit.current = () => {
     const [h, tl, m, r] = [head.current, ttl.current, meta.current, row.current];
-    // far out the buttons are not shown and have no size
+    // a row not laid out has no size to compare
     if (!h || !tl || !m || !r || !r.offsetWidth) return;
     const zoom = h.getBoundingClientRect().width / h.offsetWidth || 1;
     const lines = tl.getClientRects();

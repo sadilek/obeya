@@ -163,7 +163,7 @@ progress and its number after the last word. Only two lines fit above the workst
 is at least as wide as its title needs for two (a collapsed one grows a line taller instead); the
 server sizes projects too, so the title's width is estimated from its length, not measured. Its
 buttons ("Arrange", "Start all N", "Archive" once done) show while the pointer is on the project,
-at all times on a touch screen: beside the title where all of them fit on its line, else all
+at all times on a touch screen, and zoomed out as well, a size larger so they stay legible: beside the title where all of them fit on its line, else all
 together in a "…" menu at the head's top right, whose room the title always leaves, so it never
 reflows. Never some beside the title and some in the menu.
 
