@@ -295,7 +295,7 @@ export function onStart(fn: (argv: string[], out: Promise<Output>) => void): () 
 }
 
 /** How a command that failed reads: what it said, else its exit code. */
-export const failureText = (r: { code: number; stdout: string; stderr: string }): string => (r.stderr || r.stdout).trim() || `exit code ${r.code}`;
+export const failureText = (r: { code: number; stdout: string; stderr: string }): string => r.stderr.trim() || r.stdout.trim() || `exit code ${r.code}`;
 
 /** Runs `argv` and waits for it: its exit code, its output, and the signal that stopped it (a timeout), if one did. */
 export function spawnOutput(argv: string[], o: Options = {}): Promise<Output> {

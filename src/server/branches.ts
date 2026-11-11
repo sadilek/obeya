@@ -135,5 +135,6 @@ export async function branchCommit(cwd: string, branch: string, branches?: Branc
   const remote = b?.remote.get(branch);
   if (!local || !remote) return local ?? remote ?? 'HEAD';
   if (local === remote) return local;
-  return (await isAncestor(cwd, remote, local, false)) ? local : remote;
+  // where git cannot be asked there, origin's
+  return (await isAncestor(cwd, remote, local, false).catch(() => false)) ? local : remote;
 }
