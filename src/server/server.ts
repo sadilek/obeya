@@ -62,15 +62,25 @@ function replyParam(p: string | null): number | TalkRef | undefined {
 }
 
 /**
- * A demo's narration clip, in the voice Obeya holds loaded across renders (narration.ts). It writes a
- * file, so only as JSON, which a page elsewhere cannot send without asking first. `remote`: for a
- * render on another machine, whose clip comes back in the reply and is written nowhere here.
+ * A narration route, which takes JSON only (a page elsewhere cannot send it without asking first):
+ * 415 for another body, 400 for one `parse` refuses, else what `run` answers to the request.
  */
-function clipRoute(narration: NarrationHost, remote = false) {
+function jsonRoute<T>(parse: (input: unknown) => T | string, run: (request: T, req: Request, srv: Bun.Server<unknown>) => Promise<Response>) {
   return async (req: Request, srv: Bun.Server<unknown>) => {
     if (!req.headers.get('content-type')?.startsWith('application/json')) return Response.json({ code: 'invalid', error: 'JSON only' }, { status: 415 });
-    const request = parseClipRequest(await req.json().catch(() => null));
+    const request = parse(await req.json().catch(() => null));
     if (typeof request === 'string') return Response.json({ code: 'invalid', error: request }, { status: 400 });
+    return run(request, req, srv);
+  };
+}
+
+/**
+ * A demo's narration clip, in the voice Obeya holds loaded across renders (narration.ts). It writes a
+ * file, so only as JSON. `remote`: for a render on another machine, whose clip comes back in the
+ * reply and is written nowhere here.
+ */
+const clipRoute = (narration: NarrationHost, remote = false) =>
+  jsonRoute(parseClipRequest, async (request, req, srv) => {
     if (remote && !request.inline) return Response.json({ code: 'invalid', error: 'inline must be true from another machine' }, { status: 400 });
     // the clip waits its turn behind other renders' clips, maybe behind loading the model
     srv.timeout(req, 0);
@@ -80,20 +90,15 @@ function clipRoute(narration: NarrationHost, remote = false) {
     const wav = Buffer.from(await file.arrayBuffer()).toString('base64');
     await file.delete();
     return Response.json({ ...reply, wav });
-  };
-}
+  });
 
 /** A render's clip heard back for the times of its words (narration.ts), the WAV in the request. */
-function hearRoute(narration: NarrationHost) {
-  return async (req: Request, srv: Bun.Server<unknown>) => {
-    if (!req.headers.get('content-type')?.startsWith('application/json')) return Response.json({ code: 'invalid', error: 'JSON only' }, { status: 415 });
-    const request = parseHearRequest(await req.json().catch(() => null));
-    if (typeof request === 'string') return Response.json({ code: 'invalid', error: request }, { status: 400 });
+const hearRoute = (narration: NarrationHost) =>
+  jsonRoute(parseHearRequest, async (request, req, srv) => {
     // the recognition may load its model first
     srv.timeout(req, 0);
     return Response.json(await narration.hear(request.wav, request.language));
-  };
-}
+  });
 
 /**
  * What a worker on another machine reaches through the port forwarded to it (design: Hosts): the
@@ -169,6 +174,12 @@ async function fields(req: Request): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
+/** A body whose fields a route reads where it may send none: anything but a JSON object reads as no fields. */
+async function someFields(req: Request): Promise<Record<string, unknown>> {
+  const body: unknown = await req.json().catch(() => null);
+  return body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+}
+
 /** A route that needs what this server may run without (its configuration, voice setup, the setup assistant); a 404 without it. */
 const needs =
   <T,>(x: T | undefined, fn: (x: T, req: Request) => unknown | Promise<unknown>) =>
@@ -180,6 +191,20 @@ function click<T>(c: CanvasRuntime, out: T): T {
   c.coordinator.noticed();
   return out;
 }
+
+/** The rest of the path after `marker`, decoded: the file a route of the workers' files serves. */
+const tail = (req: Request, marker: string) => decodeURIComponent(new URL(req.url).pathname.split(marker).slice(1).join(marker));
+
+/** A route of the workers' files: one that is not there (`null`), or a path that does not decode, is a 404. */
+const files =
+  <R extends Request>(fn: (req: R) => Response | null | Promise<Response | null>) =>
+  async (req: R): Promise<Response> => {
+    try {
+      return (await fn(req)) ?? notFound();
+    } catch {
+      return notFound();
+    }
+  };
 
 /** Routes of one area, typed as Bun types them (`req.params` from the path). */
 const area = <R extends string>(routes: Bun.Serve.RoutesWithUpgrade<Socket, R>) => routes;
@@ -204,13 +229,12 @@ function pageRoutes() {
     // a canvas, and a card open on it (`/c/<canvas>/card/<code>`): the page reads the address
     '/c/*': index,
     // the web app on a phone's home screen: the icons of its manifest (manifest.webmanifest, which the
-    // page's bundle carries), its service worker (sw.ts), and the device's push subscription (`on`:
-    // Obeya has one for this device); pushes go only to paired devices
+    // page's bundle carries), and its service worker (sw.ts)
     '/icons/180.png': { GET: () => new Response(Bun.file(icon180), { headers: { 'cache-control': 'max-age=86400' } }) },
     '/icons/512.png': { GET: () => new Response(Bun.file(icon512), { headers: { 'cache-control': 'max-age=86400' } }) },
+    '/sw.js': { GET: () => new Response(`(${worker.toString()})();\n`, { headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache' } }) },
     // pdf.js's worker, fonts and decoders, where the page draws a PDF itself (src/ui/pdf.tsx)
     '/pdfjs/*': { GET: (req) => servePdfjs(req) },
-    '/sw.js': { GET: () => new Response(`(${worker.toString()})();\n`, { headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache' } }) },
     // the frame an idea's mock is written into
     '/api/mock-frame': { GET: () => serveMockFrame() },
   });
@@ -218,27 +242,27 @@ function pageRoutes() {
 
 /** Signing in, other devices, and the pushes they get. */
 function accessRoutes(x: Routing) {
-  const { access, push } = x;
+  const { access, push, here } = x;
   return area({
     // a browser on this machine signing in with a one-time link (owner.ts)
     '/login': { GET: (req, srv) => access.loginRoute(req, srv) },
     // such a link, for whoever holds the owner's key (the app's shell, a second start, scripts); `next`: where it leads; `once`: for one browser
     '/api/login-link': {
-      POST: async (req, srv) => {
-        if (!access.isLocal(req, srv)) return onlyHere();
-        const { next, once } = ((await req.json().catch(() => null)) ?? {}) as { next?: unknown; once?: unknown };
+      POST: here(async (req) => {
+        const { next, once } = await someFields(req);
         return Response.json({ url: access.owner.link(new URL(req.url).origin, typeof next === 'string' ? next : '/', once === true) });
-      },
+      }),
     },
     // another device pairing: the address in the QR code (`?code=`), or the code typed into the page it got
     '/pair': { GET: (req, srv) => access.pairRoute(req, srv), POST: (req, srv) => access.pairRoute(req, srv) },
     // "Other devices": the setting, what the network allows, the devices; only on this machine
     '/api/access': {
       GET: async (req, srv) => (access.isLocal(req, srv) ? handle(() => access.view()) : Response.json({ local: false, tailnet: await access.tailnet() })),
-      PUT: async (req, srv) => (access.isLocal(req, srv) ? handle(async () => access.save(await req.json())) : onlyHere()),
+      PUT: here((req) => handle(async () => access.save(await req.json()))),
     },
-    '/api/access/pair': { POST: (req, srv) => (access.isLocal(req, srv) ? handle(() => access.pair()) : onlyHere()) },
-    '/api/access/devices/:id': { DELETE: (req, srv) => (access.isLocal(req, srv) ? handle(() => ({ removed: access.remove(req.params.id) })) : onlyHere()) },
+    '/api/access/pair': { POST: here(() => handle(() => access.pair())) },
+    '/api/access/devices/:id': { DELETE: here((req) => handle(() => ({ removed: access.remove(req.params.id) }))) },
+    // the device's push subscription (`on`: Obeya has one for this device); pushes go only to paired devices
     '/api/push': {
       GET: (req) => handle(async () => {
         const device = access.deviceOf(req);
@@ -285,10 +309,7 @@ function appRoutes(x: Routing) {
     '/api/canvases': { GET: () => Response.json(pages.list()) },
     // the owner has a restart that waits for workers go ahead at once
     '/api/restart': {
-      POST: () =>
-        handle(() => {
-          return { restarting: !!restarter?.now() };
-        }),
+      POST: () => handle(() => ({ restarting: !!restarter?.now() })),
     },
     // the app quitting, or anything that cannot send a signal (Windows has no SIGTERM): Ctrl-C over HTTP
     '/api/stop': {
@@ -328,7 +349,7 @@ function appRoutes(x: Routing) {
     '/api/app-rebuilt': {
       POST: (req) =>
         handle(async () => {
-          const { kept } = ((await req.json().catch(() => null)) ?? {}) as { kept?: unknown };
+          const { kept } = await someFields(req);
           return { now: !restarter?.owner().length, kept: handOver.has(kept) };
         }),
     },
@@ -399,8 +420,8 @@ function ownerSettingsRoutes(x: Routing) {
     // a harness (`{ harness }`, Claude Code where none is named) brought up to date in the background, here or on the host named (`{ host }`), at the owner's click; the view says how far it got
     '/api/agents/update': {
       POST: needs(config, async (c, req) => {
-        const body = (await req.json().catch(() => ({}))) as { harness?: unknown; host?: unknown };
-        harnesses?.update(body?.harness === 'codex' ? 'codex' : 'claude', typeof body?.host === 'string' ? body.host : undefined);
+        const { harness, host } = await someFields(req);
+        harnesses?.update(harness === 'codex' ? 'codex' : 'claude', typeof host === 'string' ? host : undefined);
         return agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred());
       }),
     },
@@ -478,7 +499,7 @@ function siteRoutes(x: Routing) {
 
 /** What this machine needs: voice in, and the setup assistant. */
 function setupRoutes(x: Routing) {
-  const { access, voiceSetup: setup, machine } = x;
+  const { access, voiceSetup: setup, machine, here } = x;
   /** The system's folder dialog, for a browser on this machine that has one. */
   const picker = (req: Request, srv: Bun.Server<unknown>) => !!machine?.picker && access.isLocal(req, srv);
   return area({
@@ -511,13 +532,13 @@ function setupRoutes(x: Routing) {
     // only on this machine, as it opens on this machine's screen
     '/api/setup/pick': {
       GET: (req, srv) => Response.json({ picker: picker(req, srv) }),
-      POST: async (req, srv) => {
-        if (!machine) return notFound();
-        if (!access.isLocal(req, srv)) return onlyHere();
-        srv.timeout(req, 0);
-        const { prompt } = ((await req.json().catch(() => ({}))) ?? {}) as { prompt?: unknown };
-        return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));
-      },
+      POST: machine
+        ? here(async (req, srv) => {
+            srv.timeout(req, 0);
+            const { prompt } = await someFields(req);
+            return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));
+          })
+        : notFound,
     },
   });
 }
@@ -592,7 +613,7 @@ function canvasRoutes(x: Routing) {
     // from the note on a plan directory: the card that prepares one of its docs as a project, started
     '/api/c/:canvas/prepare-plan-doc': {
       POST: on(async (c, req) => {
-        const { repo, file } = ((await req.json()) ?? {}) as { repo?: unknown; file?: unknown };
+        const { repo, file } = await fields(req);
         return c.preparePlanDoc(String(repo), String(file));
       }),
     },
@@ -608,17 +629,17 @@ function canvasRoutes(x: Routing) {
     // end of one, and cards put into one (`group: null`: none)
     '/api/c/:canvas/groups': {
       POST: on(async (c, req) => {
-        const { name, cards, hue } = ((await req.json()) ?? {}) as { name?: string; cards?: string[]; hue?: number };
+        const { name, cards, hue } = (await fields(req)) as { name?: string; cards?: string[]; hue?: number };
         return c.board.createGroup(name, cards, hue);
       }),
     },
     '/api/c/:canvas/groups/:id': {
-      PATCH: on(async (c, req) => c.board.renameGroup(req.params.id!, (((await req.json()) ?? {}) as { name?: string }).name)),
+      PATCH: on(async (c, req) => c.board.renameGroup(req.params.id!, (await fields(req)).name as string | undefined)),
       DELETE: on((c, req) => c.board.deleteGroup(req.params.id!)),
     },
     '/api/c/:canvas/assign': {
       POST: on(async (c, req) => {
-        const { cards, group } = ((await req.json()) ?? {}) as { cards?: string[]; group?: string | null };
+        const { cards, group } = (await fields(req)) as { cards?: string[]; group?: string | null };
         return c.board.group(cards, group ?? null);
       }),
     },
@@ -694,7 +715,7 @@ function canvasRoutes(x: Routing) {
 
 /** Screenshots and files for a message, and the files of the workers' work. */
 function fileRoutes(x: Routing) {
-  const { access, pages, on } = x;
+  const { pages, on, here } = x;
   return area({
     // a screenshot for a message: uploaded first, the message then names it by id
     '/api/c/:canvas/images': {
@@ -727,76 +748,52 @@ function fileRoutes(x: Routing) {
     },
     // an HTML artifact's page may load files from folders beside it
     '/api/c/:canvas/cards/:id/demo/*': {
-      GET: (req) => {
-        try {
-          const demo = pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id);
-          const file = decodeURIComponent(new URL(req.url).pathname.split('/demo/').slice(1).join('/demo/'));
-          return demo ? serveDemoFile(demo, file, req) : notFound();
-        } catch {
-          return notFound();
-        }
-      },
+      GET: files((req) => {
+        const demo = pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id);
+        return demo ? serveDemoFile(demo, tail(req, '/demo/'), req) : null;
+      }),
     },
     // a demo a later handover replaced, which the owner went back to
     '/api/c/:canvas/cards/:id/demos/:n/*': {
-      GET: (req) => {
-        try {
-          const n = Number(req.params.n);
-          const demo = Number.isInteger(n) && n >= 0 ? pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id, n) : null;
-          const route = `/demos/${n}/`;
-          const file = decodeURIComponent(new URL(req.url).pathname.split(route).slice(1).join(route));
-          return demo ? serveDemoFile(demo, file, req, route) : notFound();
-        } catch {
-          return notFound();
-        }
-      },
+      GET: files((req) => {
+        const n = Number(req.params.n);
+        const demo = Number.isInteger(n) && n >= 0 ? pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id, n) : null;
+        const route = `/demos/${n}/`;
+        return demo ? serveDemoFile(demo, tail(req, route), req, route) : null;
+      }),
     },
     // a file the card's work made or changed, for its left column; `?download` to save it
     '/api/c/:canvas/cards/:id/files/*': {
-      GET: (req) => {
-        try {
-          const c = pages.canvas(req.params.canvas);
-          const url = new URL(req.url);
-          const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
-          return c ? serveCardFile(file, url.searchParams.has('download'), req, (path) => c.cardFile(req.params.id, path)).catch(() => notFound()) : notFound();
-        } catch {
-          return notFound();
-        }
-      },
+      GET: files((req) => {
+        const c = pages.canvas(req.params.canvas);
+        return c ? serveCardFile(tail(req, '/files/'), new URL(req.url).searchParams.has('download'), req, (path) => c.cardFile(req.params.id, path)) : null;
+      }),
     },
     // opens a file of the card's work with the system's app (`show`: in its folder), on this machine only: from another device the browser downloads it
     '/api/c/:canvas/cards/:id/open': {
-      POST: (req, srv) =>
-        access.isLocal(req, srv)
-          ? on(async (c, req) => {
-              const { file, show } = (await req.json().catch(() => ({}))) as { file?: string; show?: boolean };
-              if (typeof file !== 'string') throw new BadRequest('invalid', 'file must be a path');
-              await c.openCardFile(req.params.id!, file, show === true);
-            })(req)
-          : onlyHere(),
+      POST: here(
+        on(async (c, req) => {
+          const { file, show } = await someFields(req);
+          if (typeof file !== 'string') throw new BadRequest('invalid', 'file must be a path');
+          await c.openCardFile(req.params.id!, file, show === true);
+        }),
+      ),
     },
     // a file a looked-up answer comes with; `?download` to save it
     '/api/c/:canvas/threads/:thread/files/*': {
-      GET: (req) => {
-        try {
-          const c = pages.canvas(req.params.canvas);
-          const url = new URL(req.url);
-          const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
-          return c ? serveAnswerFile(c.answerDir(Number(req.params.thread)), file, url.searchParams.has('download'), req) : notFound();
-        } catch {
-          return notFound();
-        }
-      },
+      GET: files((req) => {
+        const c = pages.canvas(req.params.canvas);
+        return c ? serveAnswerFile(c.answerDir(Number(req.params.thread)), tail(req, '/files/'), new URL(req.url).searchParams.has('download'), req) : null;
+      }),
     },
     // opens an answer's file (`file`), or its thread's directory, with the system's app
     '/api/c/:canvas/threads/:thread/open': {
-      POST: (req, srv) =>
-        access.isLocal(req, srv)
-          ? on(async (c, req) => {
-              const { file } = (await req.json().catch(() => ({}))) as { file?: string };
-              await c.openAnswerFile(Number(req.params.thread), file);
-            })(req)
-          : onlyHere(),
+      POST: here(
+        on(async (c, req) => {
+          const { file } = await someFields(req);
+          await c.openAnswerFile(Number(req.params.thread), typeof file === 'string' ? file : undefined);
+        }),
+      ),
     },
   });
 }
@@ -822,7 +819,7 @@ function talkRoutes(x: Routing) {
     // a wish or a bug for Obeya's makers: the issue's text as a small job writes it, for the owner to check and open on GitHub
     '/api/c/:canvas/wish': {
       POST: on(async (c, req) => {
-        const { said, answer, title, body, images, app } = ((await req.json()) ?? {}) as Record<string, unknown>;
+        const { said, answer, title, body, images, app } = await fields(req);
         if (typeof said !== 'string' || !said.trim()) throw new BadRequest('emptyText', 'said must be a non-empty string');
         const ids = Array.isArray(images) ? images.filter((i): i is string => typeof i === 'string') : [];
         const server = config?.view().server;
@@ -845,7 +842,7 @@ function talkRoutes(x: Routing) {
     },
     '/api/c/:canvas/preferences/:id/accept': {
       POST: on(async (c, req) => {
-        const { text, target } = (await req.json().catch(() => ({}))) as { text?: string; target?: string | null };
+        const { text, target } = (await someFields(req)) as { text?: string; target?: string | null };
         return click(c, c.acceptRule(Number(req.params.id), text, target));
       }),
     },
@@ -853,7 +850,7 @@ function talkRoutes(x: Routing) {
     // a value for a repository's setting the work retrospective proposed: taken on this machine or for everyone (`where`), or rejected
     '/api/c/:canvas/setting-proposals/:id/take': {
       POST: on(async (c, req) => {
-        const { where, value } = (await req.json().catch(() => ({}))) as { where?: unknown; value?: unknown };
+        const { where, value } = await someFields(req);
         return click(c, (await c.takeSetting(Number(req.params.id), where, value)) ?? {});
       }),
     },
@@ -861,7 +858,7 @@ function talkRoutes(x: Routing) {
     // "Share again" for many outdated pages at once (or, with `tags`, the pages without tags): `count` of them, the newest demos first, or all (null)
     '/api/c/:canvas/reshare': {
       POST: on(async (c, req) => {
-        const { count, tags } = (await req.json().catch(() => ({}))) as { count?: number | null; tags?: unknown };
+        const { count, tags } = (await someFields(req)) as { count?: number | null; tags?: unknown };
         if (count != null && !(Number.isInteger(count) && count > 0)) throw new BadRequest('invalid', 'count must be a positive integer or null');
         // `tags`: the pages without tags, tagged and shared again ("N pages without tags")
         c.sharing.reshareMany(count ?? null, tags === true);
@@ -875,14 +872,14 @@ function talkRoutes(x: Routing) {
     // the owner has the Coordinator's sheet in view: the answers waiting there are read; with `ids`, those a project's sheet shows
     '/api/c/:canvas/talk/read': {
       POST: on(async (c, req) => {
-        const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
+        const { ids } = await someFields(req);
         if (ids !== undefined && !(Array.isArray(ids) && ids.every((i) => Number.isInteger(i)))) throw new BadRequest('invalid', 'ids must be a list of exchange ids');
         c.board.readTalk(ids as number[] | undefined);
       }),
     },
     // the owner no longer wants the step the Coordinator waits on a card for ("Stop waiting")
     '/api/c/:canvas/talk/:id/unwait': {
-      POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String(((await req.json().catch(() => ({}))) as { card?: unknown }).card ?? '')) })),
+      POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String((await someFields(req)).card ?? '')) })),
     },
   });
 }
@@ -982,7 +979,6 @@ function voiceRoutes(x: Routing) {
     },
   });
 }
-
 export function serve(served: Served | CanvasRuntime[], port: number, deps: ServeDeps) {
   const { development = false, used, config, restarter, sources, usage, stalls } = deps;
   const updates = deps.updates ?? new AppUpdates();
