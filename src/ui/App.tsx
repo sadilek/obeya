@@ -45,7 +45,7 @@ import { CardView, shownState, Edges, Minimap, TalkIcon } from './parts';
 import { DepLinks, Links } from './links';
 import { OldBunPill, RestartPill, SourcePill, UpdatePill, WorkspacesPill } from './pills';
 import { ProjectView, Sheet } from './project';
-import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
+import { useSheetWidths } from './sheetWidth';
 import { landingLabel, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { canvasPath, cardPath, queryWithout, readAddress } from './address';
@@ -327,8 +327,7 @@ function Canvas({
   // the open project's plan doc, read in the widened sheet
   const [reading, setReading, readingRef] = useLive<{ mark?: string } | null>(null);
   // how wide the sheets are, as the owner dragged them; in effect clamped to the window
-  const [widths, setWidths] = useState<SheetWidths>(() => loadWidths(localStorage));
-  const sheetW = widthsIn(widths, innerWidth);
+  const { sheetW, resizing, gripFor } = useSheetWidths();
   const sheetWRef = useLatest(sheetW);
   const [kOn, setKOn, kOnRef] = useLive(false);
   // the archive's list and the search drop down from the bar, one at a time
@@ -997,28 +996,6 @@ function Canvas({
   // the grip at the open sheet's left edge widens or narrows it; reading a plan doc has its own width
   const gripOn = kOn || sheetOn;
   const gripKind = !!reading && sheetOn ? 'read' : 'sheet';
-  const gripRef = useRef<{ x: number; w: number; kind: 'sheet' | 'read' } | null>(null);
-  const [resizing, setResizing] = useState(false);
-  useEffect(() => {
-    if (!resizing) saveWidths(localStorage, widths);
-  }, [widths, resizing]);
-  function onGripDown(e: React.PointerEvent) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    gripRef.current = { x: e.clientX, w: sheetW[gripKind], kind: gripKind };
-    setResizing(true);
-  }
-  function onGripMove(e: React.PointerEvent) {
-    const g = gripRef.current;
-    if (!g) return;
-    const w = clampWidth(g.w + g.x - e.clientX, innerWidth, g.kind);
-    setWidths((ws) => ({ ...ws, [g.kind]: w }));
-  }
-  function onGripUp() {
-    gripRef.current = null;
-    setResizing(false);
-  }
   /** `c`, moved just far enough that the view outside the sheet shows some content. */
   const kept = (c: Cam) => keepInView(c, contentRef.current, viewNow());
   /** The view at the current zoom with a world point in the middle, as far as content stays in sight. */
@@ -1666,11 +1643,7 @@ function Canvas({
           className={gripOn ? 'on' : undefined}
           style={{ right: sheetW[gripKind] - 6 }}
           title={t.sheetGrip}
-          onPointerDown={onGripDown}
-          onPointerMove={onGripMove}
-          onPointerUp={onGripUp}
-          onPointerCancel={onGripUp}
-          onDoubleClick={() => setWidths((ws) => ({ ...ws, [gripKind]: gripKind === 'sheet' ? SHEET_W : null }))}
+          {...gripFor(gripKind)}
         />
         {/* commands on their way and confirmations, stacked above the microphone */}
         <div id="acks">
