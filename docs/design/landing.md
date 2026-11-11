@@ -253,7 +253,10 @@ is picked as well, which then comes first or not. It comes back as soon as the c
 on the PR or pushes, counting from when the card came to wait for the owner, so what they did
 between the handover and the click counts too: the line that it is back says what they did, and the
 worker hears it (and that the owner waited for it), reviews again as after a change request, and
-hands over anew; the handover before gives way to that review.
+hands over anew; the handover before gives way to that review. Closing the PR is a response too:
+the card comes back with "Pull request closed without a merge." and the owner's question whether it
+can go, and the worker gets the comments the contributor left when closing it. Merged, the card is
+live and no longer snoozed.
 
 "Merge (PR #5)" approves: Obeya reads the PR, and at a head other than the one handed over (the
 contributor pushed since) it pushes, posts and merges nothing, and the worker reviews the PR as it

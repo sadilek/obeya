@@ -1137,6 +1137,47 @@ describe('"Review PR #5" on a canvas', () => {
     expect(worker().inbox.at(-1)).toContain('pushed to the pull request');
   });
 
+  test('closed by the contributor while it waits for them, the card wakes and asks the owner, with what they wrote on closing for the worker', async () => {
+    const id = await handedOver();
+    await canvas.act(id, { action: 'awaitContributor' });
+    fake.status.comments.push({ id: 'c1', author: 'amerlander', body: 'Closing this, I will split it up.', at: new Date(Date.now() + 60_000).toISOString() });
+    fake.status.state = 'CLOSED';
+    await watcherOf(id).poll();
+    const card = canvas.board.item(id)!;
+    expect(card.snoozed).toBeUndefined();
+    expect(needsYou(card)).toBe(true);
+    expect(card.question!.text).toBe(canvas.board.t.worker.contributionClosedQuestion);
+    expect(canvas.board.events(id).some((e) => e.text === canvas.board.t.worker.woke(canvas.board.t.worker.prClosed))).toBe(true);
+    expect(worker().inbox.at(-1)).toContain('I will split it up');
+  });
+
+  test('a card asked about its closed PR while still set aside until the contributor responds wakes at the next round', async () => {
+    const id = await handedOver();
+    await canvas.act(id, { action: 'awaitContributor' });
+    fake.status.state = 'CLOSED';
+    // as a card closed before the closing woke it stands: asked, closed, and still set aside
+    const c = JSON.parse(canvas.board.row(id).contribution!);
+    canvas.board.work(id, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: { text: canvas.board.t.worker.contributionClosedQuestion } }), contribution: JSON.stringify({ ...c, closed: true }) });
+    expect(canvas.board.item(id)!.snoozed).toBeDefined();
+    const n = worker().inbox.length;
+    await watcherOf(id).poll();
+    expect(canvas.board.item(id)!.snoozed).toBeUndefined();
+    expect(needsYou(canvas.board.item(id)!)).toBe(true);
+    expect(worker().inbox.length).toBe(n);
+    await watcherOf(id).poll();
+    expect(canvas.board.events(id).filter((e) => e.text.includes(canvas.board.t.worker.prClosed))).toHaveLength(1);
+  });
+
+  test('merged while it waits for the contributor, the card is live and set aside no longer', async () => {
+    const id = await handedOver();
+    await canvas.act(id, { action: 'awaitContributor' });
+    fake.status.state = 'MERGED';
+    await watcherOf(id).poll();
+    const card = canvas.board.item(id)!;
+    expect(card.state).toBe('live');
+    expect(card.snoozed).toBeUndefined();
+  });
+
   test('only a review card handed over can wait for its contributor', async () => {
     const id = (await canvas.reviewPr({ do: 'reviewPr', pr: '5', text: '' }))!;
     await until(() => !!worker());

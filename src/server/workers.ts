@@ -1870,20 +1870,28 @@ export class Workers {
 
   /**
    * A review card's pull request was closed without a merge: the owner says whether the card can go
-   * (its worker closes it then) or stays. Asked once.
+   * (its worker closes it then) or stays. Asked once; `comments` are what the contributor wrote on it
+   * since the card came to wait for them. A card the owner set aside until the contributor responds
+   * wakes with it, also one closed before that wake existed.
    */
-  contributionClosed(cardId: string) {
+  contributionClosed(cardId: string, comments: string[] = []) {
     const row = this.o.board.row(cardId);
     const c = fromJson(row.contribution);
     if (!c) return;
     const t = this.o.board.t.worker;
+    const awaited = this.o.board.snoozedOf(cardId)?.contributor;
+    if (awaited) this.o.board.unsnooze(cardId, { said: t.prClosed });
+    if (c.closed) return;
     this.refuseAsked(cardId, 'meanwhile the pull request was closed without a merge.');
     this.o.board.work(cardId, { contribution: toJson({ ...c, closed: true }) });
-    this.o.board.log(cardId, 'state', 'obeya', t.prClosed);
+    if (!awaited) this.o.board.log(cardId, 'state', 'obeya', t.prClosed);
     this.toOwner(cardId, { text: t.contributionClosedQuestion, options: [t.closeCard, t.keepCard] });
     this.deliver(
       cardId,
-      `The pull request was closed without a merge. Obeya asked the owner whether the card can go. If they say so, close it with close_unchanged; nothing of it lands.`,
+      [
+        `The pull request was closed without a merge. Obeya asked the owner whether the card can go. If they say so, close it with close_unchanged; nothing of it lands.`,
+        ...(comments.length ? [`What ${c.author} wrote on it before:`, ...comments] : []),
+      ].join('\n\n'),
     );
   }
 

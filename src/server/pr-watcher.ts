@@ -337,16 +337,20 @@ export class PrWatcher {
     const next: PrState = { ...pr, checks: s.checks, review: reviewOf(s, noise, self) };
     if (s.mergeable === 'CONFLICTING') next.conflictHead = s.head;
     else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
-    if (s.state === 'CLOSED') {
-      this.save(cardId, next);
-      if (!c.closed) this.workers.contributionClosed(cardId);
-      return;
-    }
     // set aside by the owner until the contributor responds: what they did since the card came to wait for the owner counts
     const awaited = state === 'waiting' ? this.board.snoozedOf(cardId)?.contributor : undefined;
+    const since = awaited?.since ?? c.requested?.at ?? '';
+    const answers = () => s.comments.filter((x) => !pr.seen.includes(x.id) && x.author !== self && !noise.includes(x.author) && (x.edited ?? x.at ?? '') > since);
+    if (s.state === 'CLOSED') {
+      // what they wrote as they closed it goes to the worker with the closing
+      const said = state === 'inPr' || awaited ? answers() : [];
+      next.seen = [...pr.seen, ...said.map((x) => x.id)];
+      this.save(cardId, next);
+      this.workers.contributionClosed(cardId, said.map((x) => commentLine(x, false)));
+      return;
+    }
     if (state === 'inPr' || awaited) {
-      const since = awaited?.since ?? c.requested?.at ?? '';
-      const comments = s.comments.filter((x) => !pr.seen.includes(x.id) && x.author !== self && !noise.includes(x.author) && (x.edited ?? x.at ?? '') > since);
+      const comments = answers();
       const reviewed = c.reviewed ?? pr.headSeen ?? s.head;
       next.headSeen ??= s.head;
       const pushed = s.head !== reviewed && pr.pushedHead !== s.head;
