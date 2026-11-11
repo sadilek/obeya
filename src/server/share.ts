@@ -299,7 +299,7 @@ export class Sharing {
     this.convert();
     for (const { r, s } of this.shares()) {
       // one of many shared again goes on with the rest of them
-      if (s.state === 'publishing' && s.again && this.o.board.reshareRun()?.queue[0] === r.id) continue;
+      if (s.state === 'publishing' && s.again && this.o.board.pages.reshareRun()?.queue[0] === r.id) continue;
       if (s.state === 'publishing') void serial(() => this.publish(r.id));
       else if (s.state === 'withdrawing') void serial(() => this.withdraw(r.id));
     }
@@ -337,12 +337,12 @@ export class Sharing {
    * in place a batch at a time (`tagSome`).
    */
   reshareMany(count: number | null, tags = false) {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again already');
-    const outdated = tags ? this.o.board.untaggedRows() : this.o.board.outdatedRows().map(({ r }) => r);
+    const outdated = tags ? this.o.board.pages.untaggedRows() : this.o.board.pages.outdatedRows().map(({ r }) => r);
     const cards = this.o.board.shownCards(outdated);
     const rows = outdated
-      .map((r) => ({ r, s: this.o.board.storedShare(r), card: cards.get(r.id) }))
+      .map((r) => ({ r, s: this.o.board.pages.storedShare(r), card: cards.get(r.id) }))
       .filter(({ s, card }) => card && this.target(card, s));
     if (!rows.length) throw new BadRequest('nothingOutdated', tags ? 'no shared page lacks tags' : 'no shared page is outdated');
     const made = (dir?: string) => (dir ? (statOr(join(dir, 'demo.mp4')) ?? statOr(join(dir, 'index.html')) ?? statOr(dir) ?? 0) : 0);
@@ -352,30 +352,30 @@ export class Sharing {
       .sort((a, b) => b.at - a.at)
       .slice(0, count ?? undefined)
       .map((r) => r.id);
-    this.o.board.setReshareRun({ queue, total: queue.length, done: 0, failed: [], ...(tags ? { tags: true as const } : {}) });
+    this.o.board.pages.setReshareRun({ queue, total: queue.length, done: 0, failed: [], ...(tags ? { tags: true as const } : {}) });
     this.nextAgain();
   }
 
   /** Stops sharing many again: the page going out finishes, the rest stay as they are. */
   stopResharing() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (!run?.queue.length) return;
     const going = this.tagging.length ? run.queue.filter((id) => this.tagging.includes(id)) : this.resharing && this.stored(run.queue[0]!)?.state === 'publishing' ? [run.queue[0]!] : [];
-    this.o.board.setReshareRun({ ...run, queue: going, stopped: true });
+    this.o.board.pages.setReshareRun({ ...run, queue: going, stopped: true });
   }
 
   /** "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change. */
   dismissResharing() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again');
     // a run tagging pages leaves the notice of outdated pages as it is
-    if (run?.tags) this.o.board.setReshareRun(null);
-    else this.o.board.dismissOutdated();
+    if (run?.tags) this.o.board.pages.setReshareRun(null);
+    else this.o.board.pages.dismissOutdated();
   }
 
   /** The next page of the run sharing many again, once the site is free. */
   private nextAgain() {
-    if (this.resharing || !this.o.board.reshareRun()?.queue.length) return;
+    if (this.resharing || !this.o.board.pages.reshareRun()?.queue.length) return;
     this.resharing = true;
     void serial(() => this.again()).finally(() => {
       this.resharing = false;
@@ -384,7 +384,7 @@ export class Sharing {
   }
 
   private async again() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     const id = run?.queue[0];
     if (!id) return;
     const s = this.stored(id);
@@ -395,20 +395,20 @@ export class Sharing {
     else {
       const row = this.find(id) && this.o.board.row(id);
       // one that is up to date meanwhile no longer counts
-      if (s && row && this.o.board.outdatedBy(row).length > 0) {
+      if (s && row && this.o.board.pages.outdatedBy(row).length > 0) {
         this.set(id, { ...s, state: 'publishing', refresh: true, again: true });
         this.o.board.log(id, 'state', 'owner', this.o.board.t.share.againWithOthers);
         ok = await this.publish(id);
       }
     }
     // shared again meanwhile on its own, withdrawn or gone: it no longer counts
-    const now = this.o.board.reshareRun();
+    const now = this.o.board.pages.reshareRun();
     if (!now) return;
     const next: StoredReshare = { ...now, queue: now.queue.filter((x) => x !== id) };
     if (ok === true) next.done++;
     else if (ok === false) next.failed = [...next.failed, id];
     else next.total--;
-    this.o.board.setReshareRun(next);
+    this.o.board.pages.setReshareRun(next);
   }
 
   /**
@@ -420,9 +420,9 @@ export class Sharing {
    * failed, is counted as failed.
    */
   private async tagSome() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (!run?.queue.length) return;
-    const untaggedNow = new Set(this.o.board.untaggedRows().map((r) => r.id));
+    const untaggedNow = new Set(this.o.board.pages.untaggedRows().map((r) => r.id));
     const pages: Tagging[] = [];
     const dropped: string[] = [];
     let target: ShareTarget | null = null;
@@ -447,10 +447,10 @@ export class Sharing {
     } finally {
       this.tagging = [];
     }
-    const now = this.o.board.reshareRun();
+    const now = this.o.board.pages.reshareRun();
     if (!now) return;
     const out = new Set([...pages.map((p) => p.id), ...dropped]);
-    this.o.board.setReshareRun({
+    this.o.board.pages.setReshareRun({
       ...now,
       queue: now.queue.filter((x) => !out.has(x)),
       done: now.done + done.length,
@@ -1050,7 +1050,7 @@ export class Sharing {
 
   /** The cards of the canvas, archived ones too, that were ever shared or are about to be, with their shares. */
   private shares(): { r: CardRow; s: StoredShare }[] {
-    return this.o.board.sharedRows().map((r) => ({ r, s: this.o.board.storedShare(r) }));
+    return this.o.board.pages.sharedRows().map((r) => ({ r, s: this.o.board.pages.storedShare(r) }));
   }
 
   /** The shared cards (`shares`) the UI shows, with where each belongs (`Board.shownCards`); those gone are left out. */

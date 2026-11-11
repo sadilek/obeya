@@ -500,12 +500,12 @@ export class CanvasRuntime {
     });
     this.sharing.resume();
     // the pages without tags the Coordinator's sheet offers to tag, by each repository's site
-    board.showVocabulary((repo) => {
+    board.pages.showVocabulary((repo) => {
       const site = this.repo(repo)?.site;
       return site && dimensions(site.tags).length ? site.tags : undefined;
     });
     // the pages a repository's new theme leaves outdated
-    board.showThemes((repo) => {
+    board.pages.showThemes((repo) => {
       const r = this.repo(repo);
       if (!r) return undefined;
       const theme = this.reads.themeKnown(r.info.path);
@@ -516,7 +516,7 @@ export class CanvasRuntime {
     this.waker = setInterval(() => this.wakeDue(), WAKE_EVERY_MS);
     this.waker.unref?.();
     // the owner deletes demos outside Obeya: the notice of outdated pages offers none whose files are gone
-    this.demoLook = setInterval(() => void board.lookAtDemos(), DEMO_LOOK_MS);
+    this.demoLook = setInterval(() => void board.pages.lookAtDemos(), DEMO_LOOK_MS);
     this.demoLook.unref?.();
     // a card another waits on may pass through the state it waits for between two ticks (asked, and answered at once)
     const unwake = board.onChange(() => {

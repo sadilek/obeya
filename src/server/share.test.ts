@@ -82,8 +82,8 @@ beforeEach(() => {
   comments = [];
   settled = [];
   sharing = make();
-  board.showVocabulary(() => vocabulary);
-  board.showThemes(() => theme?.hash ?? null);
+  board.pages.showVocabulary(() => vocabulary);
+  board.pages.showThemes(() => theme?.hash ?? null);
 });
 afterEach(async () => {
   await removeDir(dir);
@@ -826,14 +826,14 @@ describe('sharing many outdated pages again at once', () => {
     // the canvas's changes do not look at the files; the notice shows it once Obeya looked at them, the server not waiting
     board.changed();
     expect(reshare()!.outdated).toBe(3);
-    await board.lookAtDemos();
+    await board.pages.lookAtDemos();
     expect(reshare()).toEqual({ outdated: 2, changes: changes(2) });
     expect(share(a!.id)).toEqual({ state: 'shared', url: expect.stringContaining(SITE_URL) });
     const before = calls().length;
     sharing.reshareMany(null);
     rmSync(join(dir, `demo-${b!.id}`, 'demo.mp4'));
     await until(() => reshare()?.run?.left === 0);
-    await board.lookAtDemos();
+    await board.pages.lookAtDemos();
     expect(reshare()).toEqual({ outdated: 0, run: { total: 1, done: 1, failed: [], left: 0 } });
     expect(wrote(before)).toEqual([slug(c!.id)]);
     sharing.dismissResharing();
@@ -877,7 +877,7 @@ describe('sharing many outdated pages again at once', () => {
     const [a, b] = await outdated(2, 1);
     // the restart came while b went out
     board.work(b!.id, { share: JSON.stringify({ ...JSON.parse(board.row(b!.id).share!), state: 'publishing', refresh: true, again: true }) });
-    board.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
+    board.pages.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
     sharing = make();
     sharing.resume();
     await until(() => reshare()?.run?.left === 0);
@@ -892,7 +892,7 @@ describe('sharing many outdated pages again at once', () => {
     sharing.share(d!.id);
     await until(() => share(d!.id)?.state === 'shared' && !share(d!.id)!.outdated);
     board.work(b!.id, { share: JSON.stringify({ ...JSON.parse(board.row(b!.id).share!), state: 'publishing', refresh: true, again: true }) });
-    board.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
+    board.pages.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
     const stored = (id: string) => board.row(id).share;
     const before = [a, c, d].map((x) => stored(x!.id));
     writeFileSync(join(dir, 'hold'), '');
@@ -1542,7 +1542,7 @@ describe('a repository’s theme', () => {
   test('is asked for of shared pages alone, not of every card the canvas shows', async () => {
     theme = THEME;
     const asked: string[] = [];
-    board.showThemes((repo) => (asked.push(repo), theme?.hash ?? null));
+    board.pages.showThemes((repo) => (asked.push(repo), theme?.hash ?? null));
     for (let i = 0; i < 5; i++) board.create({ title: `Karte ${i}`, x: 0, y: 0 });
     card();
     asked.length = 0;

@@ -112,7 +112,7 @@ test('a canvas with hundreds of archived and shared cards: a run of changes cost
 
 test('sharing looks up every shared card, archived ones with their prototypes, after a change for the cost of a few rebuilds of the canvas view', async () => {
   const board = canvas.board;
-  const shared = board.sharedRows().map((r) => r.id);
+  const shared = board.pages.sharedRows().map((r) => r.id);
   expect(shared.length).toBeGreaterThan(400);
   const rebuild = await rebuildTime();
   const rounds: number[] = [];
@@ -157,12 +157,12 @@ test('an archived card looked up on its own is the card the archive lists, with 
 
 test('a rebuild of the canvas view reads the shared cards again only after one changed, and never looks at their demos’ files', async () => {
   const board = canvas.board;
-  const shared = new Set(board.sharedRows().map((r) => r.id));
+  const shared = new Set(board.pages.sharedRows().map((r) => r.id));
   // the archived cards' pages, outdated by the newest page changes: only the notice of outdated pages looks at them
   const files = new Set(archived.filter((id) => shared.has(id)).map((id) => join(dir, 'demos', id, 'demo.mp4')));
   board.changed();
   expect(board.snapshot().reshare!.outdated).toBeGreaterThan(400);
-  await board.lookAtDemos();
+  await board.pages.lookAtDemos();
   const looked = spyOn(fs, 'existsSync');
   const read = spyOn(store, 'shared');
   const lookedAtPages = () => looked.mock.calls.filter(([path]) => files.has(String(path))).length;
@@ -189,7 +189,7 @@ test('a rebuild of the canvas view reads the shared cards again only after one c
 test('the shared cards built at once are those looked up one by one, archived ones and prototypes too', () => {
   const board = canvas.board;
   board.changed();
-  const rows = board.sharedRows();
+  const rows = board.pages.sharedRows();
   const once = board.cards(rows);
   board.changed();
   expect(rows.map((r) => once.get(r.id))).toEqual(rows.map((r) => board.card(r.id)));
