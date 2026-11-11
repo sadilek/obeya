@@ -1,4 +1,5 @@
-// HTTP and WebSocket for the UI: one API per canvas under /api/c/<canvas>/.
+// HTTP and WebSocket for the UI: one API per canvas under /api/c/<canvas>/. The routes stand below
+// by area, each area a function; the pages' WebSockets are pages.ts's, the owner's words said.ts's.
 
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
@@ -49,6 +50,9 @@ const WAITING_COUNT_HOLD_MS = 50_000;
 /** The most archived cards a page of the archive brings: about a screen's worth, a few times over. */
 const ARCHIVE_PAGE_MAX = 200;
 const notFound = () => new Response('Not found', { status: 404 });
+/** Pushes go to a paired device: the machine Obeya runs on gets none. */
+const onlyDevices = () => Response.json({ code: 'onlyDevices', error: 'only a paired device gets pushes' }, { status: 403 });
+const onlyHere = () => Response.json({ code: 'onlyHere', error: 'only on the machine Obeya runs on' }, { status: 403 });
 
 /** `?replyTo=` of a recording: a card's event (`7`), or a message of the sheet (`12.answer`). */
 function replyParam(p: string | null): number | TalkRef | undefined {
@@ -145,21 +149,267 @@ export interface ServeDeps {
   used?: () => void;
 }
 
-export function serve(served: Served | CanvasRuntime[], port: number, deps: ServeDeps) {
-  const { transcriber, voiceSetup: setup, development = false, config, demoSettings, restarter, narration, machine, stop, sources, usage, stalls, harnesses, used } = deps;
-  const updates = deps.updates ?? new AppUpdates();
-  const access = deps.access ?? new Access({ store: new Store(':memory:'), tailscale: new Tailscale(null) });
-  const push = deps.push ?? new Push({ store: access.store });
-  const gate: Gate = used
-    ? {
-        hosts: () => access.hosts(),
-        admit: (req, srv, route) => {
-          used();
-          return access.admit(req, srv, route);
-        },
-      }
-    : access;
-  const canvases = Array.isArray(served) ? { all: () => served } : served;
+/** Answers what `fn` returns: as JSON, nothing as 204; a `BadRequest` or invalid JSON as 400. */
+async function handle(fn: () => unknown | Promise<unknown>) {
+  try {
+    const out = await fn();
+    if (out instanceof Response) return out;
+    return out === undefined || out === null ? new Response(null, { status: 204 }) : Response.json(out);
+  } catch (e) {
+    if (e instanceof BadRequest) return Response.json({ code: e.code, error: e.message }, { status: 400 });
+    if (e instanceof SyntaxError) return Response.json({ code: 'invalid', error: 'invalid JSON' }, { status: 400 });
+    throw e;
+  }
+}
+
+/** A body whose fields a route reads: anything but a JSON object is refused, as invalid JSON is. */
+async function fields(req: Request): Promise<Record<string, unknown>> {
+  const body: unknown = await req.json();
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequest('invalid', 'the body must be a JSON object');
+  return body as Record<string, unknown>;
+}
+
+/** A route that needs what this server may run without (its configuration, voice setup, the setup assistant); a 404 without it. */
+const needs =
+  <T,>(x: T | undefined, fn: (x: T, req: Request) => unknown | Promise<unknown>) =>
+  (req: Request): Response | Promise<Response> =>
+    x ? handle(() => fn(x, req)) : notFound();
+
+/** A click the retrospective counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
+function click<T>(c: CanvasRuntime, out: T): T {
+  c.coordinator.noticed();
+  return out;
+}
+
+/** Routes of one area, typed as Bun types them (`req.params` from the path). */
+const area = <R extends string>(routes: Bun.Serve.RoutesWithUpgrade<Socket, R>) => routes;
+
+/** What the routes reach: what the server was given, and what it makes of it. */
+interface Routing extends ServeDeps {
+  updates: AppUpdates;
+  access: Access;
+  push: Push;
+  canvases: Served;
+  pages: Pages;
+  /** A route on one canvas; an unknown canvas is a 404. */
+  on: (fn: (c: CanvasRuntime, req: Req) => unknown | Promise<unknown>) => (req: Req) => Response | Promise<Response>;
+  /** A route only for a browser on this machine. */
+  here: <R extends Request>(route: (req: R, srv: Bun.Server<unknown>) => Response | Promise<Response>) => (req: R, srv: Bun.Server<unknown>) => Response | Promise<Response>;
+}
+
+/** The page and what it loads beside its bundle. */
+function pageRoutes() {
+  return area({
+    '/': index,
+    // a canvas, and a card open on it (`/c/<canvas>/card/<code>`): the page reads the address
+    '/c/*': index,
+    // the web app on a phone's home screen: the icons of its manifest (manifest.webmanifest, which the
+    // page's bundle carries), its service worker (sw.ts), and the device's push subscription (`on`:
+    // Obeya has one for this device); pushes go only to paired devices
+    '/icons/180.png': { GET: () => new Response(Bun.file(icon180), { headers: { 'cache-control': 'max-age=86400' } }) },
+    '/icons/512.png': { GET: () => new Response(Bun.file(icon512), { headers: { 'cache-control': 'max-age=86400' } }) },
+    // pdf.js's worker, fonts and decoders, where the page draws a PDF itself (src/ui/pdf.tsx)
+    '/pdfjs/*': { GET: (req) => servePdfjs(req) },
+    '/sw.js': { GET: () => new Response(`(${worker.toString()})();\n`, { headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache' } }) },
+    // the frame an idea's mock is written into
+    '/api/mock-frame': { GET: () => serveMockFrame() },
+  });
+}
+
+/** Signing in, other devices, and the pushes they get. */
+function accessRoutes(x: Routing) {
+  const { access, push } = x;
+  return area({
+    // a browser on this machine signing in with a one-time link (owner.ts)
+    '/login': { GET: (req, srv) => access.loginRoute(req, srv) },
+    // such a link, for whoever holds the owner's key (the app's shell, a second start, scripts); `next`: where it leads; `once`: for one browser
+    '/api/login-link': {
+      POST: async (req, srv) => {
+        if (!access.isLocal(req, srv)) return onlyHere();
+        const { next, once } = ((await req.json().catch(() => null)) ?? {}) as { next?: unknown; once?: unknown };
+        return Response.json({ url: access.owner.link(new URL(req.url).origin, typeof next === 'string' ? next : '/', once === true) });
+      },
+    },
+    // another device pairing: the address in the QR code (`?code=`), or the code typed into the page it got
+    '/pair': { GET: (req, srv) => access.pairRoute(req, srv), POST: (req, srv) => access.pairRoute(req, srv) },
+    // "Other devices": the setting, what the network allows, the devices; only on this machine
+    '/api/access': {
+      GET: async (req, srv) => (access.isLocal(req, srv) ? handle(() => access.view()) : Response.json({ local: false, tailnet: await access.tailnet() })),
+      PUT: async (req, srv) => (access.isLocal(req, srv) ? handle(async () => access.save(await req.json())) : onlyHere()),
+    },
+    '/api/access/pair': { POST: (req, srv) => (access.isLocal(req, srv) ? handle(() => access.pair()) : onlyHere()) },
+    '/api/access/devices/:id': { DELETE: (req, srv) => (access.isLocal(req, srv) ? handle(() => ({ removed: access.remove(req.params.id) })) : onlyHere()) },
+    '/api/push': {
+      GET: (req) => handle(async () => {
+        const device = access.deviceOf(req);
+        return { key: await push.key(), on: !!device && push.subscribed(device) };
+      }),
+      PUT: async (req) => {
+        const device = access.deviceOf(req);
+        if (!device) return onlyDevices();
+        return handle(async () => push.subscribe(device, await req.json()));
+      },
+      DELETE: (req) => {
+        const device = access.deviceOf(req);
+        return device ? handle(() => push.unsubscribe(device)) : onlyDevices();
+      },
+    },
+  });
+}
+
+/** Obeya itself: the canvases and what waits on them, restarting and stopping, the app's shell and its updates, the pages' WebSockets. */
+function appRoutes(x: Routing) {
+  const { pages, updates, sources, restarter, stop } = x;
+  const handOver = new HandOver();
+  return area({
+    // what waits for the owner, counted as the bar's button counts it, for the app's icon (app/src/badge.rs);
+    // `seen`: the count shown there, and the answer waits until it is another (at most 50 s)
+    '/api/waiting-count': {
+      GET: (req) => {
+        const seen = Number(new URL(req.url).searchParams.get('seen') ?? NaN);
+        if (pages.waitingCount() !== seen) return Response.json({ count: pages.waitingCount() });
+        return new Promise<Response>((resolve) => {
+          const done = () => {
+            if (pages.waitingCount() === seen && !req.signal.aborted && Date.now() < until) return;
+            off();
+            clearTimeout(timer);
+            resolve(Response.json({ count: pages.waitingCount() }));
+          };
+          const until = Date.now() + WAITING_COUNT_HOLD_MS;
+          const timer = setTimeout(done, WAITING_COUNT_HOLD_MS);
+          const off = pages.onCount(done);
+          req.signal.addEventListener('abort', done);
+        });
+      },
+    },
+    '/api/canvases': { GET: () => Response.json(pages.list()) },
+    // the owner has a restart that waits for workers go ahead at once
+    '/api/restart': {
+      POST: () =>
+        handle(() => {
+          return { restarting: !!restarter?.now() };
+        }),
+    },
+    // the app quitting, or anything that cannot send a signal (Windows has no SIGTERM): Ctrl-C over HTTP
+    '/api/stop': {
+      POST: () =>
+        handle(() => {
+          stop?.();
+          return { stopping: !!stop };
+        }),
+    },
+    // the app's shell, every few seconds while it has a newer version of the app ready
+    '/api/app-update': {
+      GET: () => Response.json(updates.current()),
+      POST: async (req) =>
+        handle(async () => {
+          const body = await req.json();
+          // a shell installed from a checkout has built itself anew there: in place as landed code is, so installed the same way, without asking
+          if (body?.rebuilt === true) {
+            restarter?.request('update');
+            return { updating: !!restarter };
+          }
+          return updates.report(body);
+        }),
+    },
+    // the Mac app's shell finds this Obeya running without the app that started it, so without the
+    // system's permissions for it (the local network): it ends once the workers paused, and the shell
+    // starts it again under itself (app/src/main.rs, `orphaned`)
+    '/api/app-takeover': {
+      POST: () =>
+        handle(() => {
+          restarter?.request('takeover');
+          return { taking: !!restarter };
+        }),
+    },
+    // a shell installed from a checkout has built itself anew while this Obeya runs on without it (started
+    // from a terminal), every few seconds until it starts again: it waits while the owner dictates or
+    // watches a video, as a restart does; `kept`: whether the page handed over when the shell asked
+    '/api/app-rebuilt': {
+      POST: (req) =>
+        handle(async () => {
+          const { kept } = ((await req.json().catch(() => null)) ?? {}) as { kept?: unknown };
+          return { now: !restarter?.owner().length, kept: handOver.has(kept) };
+        }),
+    },
+    // what a reload keeps, from the page before the shell started again to the page after
+    '/api/app-rebuilt/handover': {
+      GET: () => Response.json(handOver.take()),
+      POST: (req) => handle(async () => (handOver.give(await req.json()), { ok: true })),
+    },
+    // the owner installs it: once the workers paused, Obeya ends for the shell to install it and start again
+    '/api/app-update/install': {
+      POST: () =>
+        handle(() => {
+          const update = updates.current();
+          if (!restarter || !update || update.download) throw new BadRequest('invalid', 'no update the app can install');
+          restarter.request('update');
+          return { updating: true };
+        }),
+    },
+    // new commits on the upstream of the checkout Obeya runs from
+    '/api/source-update': { GET: () => Response.json(sources?.current() ?? null) },
+    // the owner pulls them: a fast-forward of the checkout, after which the self-update restarts Obeya once the workers paused
+    '/api/source-update/pull': { POST: needs(sources, async (s) => (await s.pull(), { source: s.current() })) },
+    // the phone view's one connection: every canvas's snapshots and changes, each naming its canvas
+    '/api/ws': (req, server) => pages.upgrade(req, server),
+    '/api/c/:canvas/ws': (req, server) => pages.upgrade(req, server, req.params.canvas),
+  });
+}
+
+/** The owner's own settings (settings.ts), read and saved in Obeya's home. */
+function ownerSettingsRoutes(x: Routing) {
+  const { pages, config, harnesses, usage } = x;
+  return area({
+    // the interface language (chosen in the settings, else the system's) and the conversation language (chosen, else the interface's)
+    '/api/language': {
+      GET: needs(config, (c) => languageView(c.home)),
+      PUT: needs(config, async (c, req) => saveLanguage(c.home, await req.json())),
+    },
+    // light or dark: chosen in the settings, else as the system
+    '/api/theme': {
+      GET: needs(config, (c) => themeView(c.home)),
+      PUT: needs(config, async (c, req) => saveTheme(c.home, await req.json())),
+    },
+    // whether the bar shows the plan's usage limits: the meter fetches them from then on, or stops
+    '/api/usage-meter': {
+      GET: needs(config, (c) => switchView(c.home, 'usageMeter')),
+      PUT: needs(config, async (c, req) => {
+        const view = saveSwitch(c.home, 'usageMeter', await req.json());
+        usage?.setOn(view.on);
+        return view;
+      }),
+    },
+    // whether the page shows what the agents cost, which Obeya counts either way: every open page follows at once
+    '/api/costs': {
+      GET: needs(config, (c) => switchView(c.home, 'costs')),
+      PUT: needs(config, async (c, req) => {
+        const view = saveSwitch(c.home, 'costs', await req.json());
+        pages.everyone({ type: 'costs', shown: view.on });
+        return view;
+      }),
+    },
+    // the harness, model and effort of each group of agents, read whenever one starts
+    '/api/agents': {
+      GET: needs(config, async (c) => agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred())),
+      PUT: needs(config, async (c, req) => {
+        return saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
+      }),
+    },
+    // a harness (`{ harness }`, Claude Code where none is named) brought up to date in the background, here or on the host named (`{ host }`), at the owner's click; the view says how far it got
+    '/api/agents/update': {
+      POST: needs(config, async (c, req) => {
+        const body = (await req.json().catch(() => ({}))) as { harness?: unknown; host?: unknown };
+        harnesses?.update(body?.harness === 'codex' ? 'codex' : 'claude', typeof body?.host === 'string' ? body.host : undefined);
+        return agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred());
+      }),
+    },
+  });
+}
+
+/** The owner's personal demo site, setting up a repository's demo site, and proposing its tags. */
+function siteRoutes(x: Routing) {
+  const { canvases, config } = x;
   const sites = config
     ? new SiteSetup({
         home: config.home,
@@ -196,46 +446,452 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       }),
     );
   };
-  const handOver = new HandOver();
-  const pages = new Pages({ canvases, access, push, updates, restarter, sources, usage, stalls, costs: () => !!config && switchView(config.home, 'costs').on });
-  /** A click the retrospective counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
-  const click = <T>(c: CanvasRuntime, out: T): T => {
-    c.coordinator.noticed();
-    return out;
-  };
+  return area({
+    // the owner's personal demo site: set up at a host, connected with another machine's code, removed
+    // from this machine; the private repositories ticked for it, and those that share there with the approval
+    '/api/personal-site': {
+      GET: needs(sites, (x) => x.view()),
+      DELETE: needs(sites, (x) => x.remove()),
+    },
+    '/api/personal-site/setup': { POST: needs(sites, async (x, req) => x.setupPersonal(await req.json())) },
+    '/api/personal-site/connect': { POST: needs(sites, async (x, req) => x.connect(await req.json())) },
+    '/api/personal-site/code': { GET: needs(sites, (x) => x.code()) },
+    '/api/personal-site/private': { POST: needs(sites, async (x, req) => x.allow(await req.json())) },
+    '/api/personal-site/approved': { POST: needs(sites, async (x, req) => x.approved(await req.json())) },
+    // "Set up a demo site" for a repository: started, followed, and taken into its settings
+    '/api/site-setup': {
+      GET: needs(sites, (x, req) => ({ job: x.repoJob(new URL(req.url).searchParams.get('path') ?? '') })),
+      POST: needs(sites, async (x, req) => ({ job: x.setupRepo(await req.json()) })),
+      DELETE: needs(sites, (x, req) => (x.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
+    },
+    // "Have an agent propose the tags" at a demo site's tags: started, followed, and taken into the field
+    '/api/tag-proposal': {
+      GET: needs(config, (_, req) => {
+        const path = new URL(req.url).searchParams.get('path') ?? '';
+        return { job: tagProposals.job(path), available: !!path && canvases.all().some((c) => c.repos.some((r) => resolve(r.info.path) === resolve(expandHome(path)))) };
+      }),
+      POST: needs(config, async (c, req) => ({ job: proposeTagsFor(c.home, await req.json()) })),
+      DELETE: needs(config, (_, req) => (tagProposals.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
+    },
+  });
+}
 
-  const handle = async (fn: () => unknown | Promise<unknown>) => {
-    try {
-      const out = await fn();
-      if (out instanceof Response) return out;
-      return out === undefined || out === null ? new Response(null, { status: 204 }) : Response.json(out);
-    } catch (e) {
-      if (e instanceof BadRequest) return Response.json({ code: e.code, error: e.message }, { status: 400 });
-      if (e instanceof SyntaxError) return Response.json({ code: 'invalid', error: 'invalid JSON' }, { status: 400 });
-      throw e;
-    }
-  };
-  /** A body whose fields a route reads: anything but a JSON object is refused, as invalid JSON is. */
-  const fields = async (req: Request): Promise<Record<string, unknown>> => {
-    const body: unknown = await req.json();
-    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new BadRequest('invalid', 'the body must be a JSON object');
-    return body as Record<string, unknown>;
-  };
-  /** A route on one canvas; an unknown canvas is a 404. */
-  const on =
-    (fn: (c: CanvasRuntime, req: Req) => unknown | Promise<unknown>) =>
-    (req: Req): Response | Promise<Response> => {
-      const c = pages.canvas(req.params.canvas!);
-      return c ? handle(() => fn(c, req)) : Response.json({ code: 'invalid', error: 'unknown canvas' }, { status: 404 });
-    };
-  /** A route that needs what this server may run without (its configuration, voice setup, the setup assistant); a 404 without it. */
-  const needs =
-    <T,>(x: T | undefined, fn: (x: T, req: Request) => unknown | Promise<unknown>) =>
-    (req: Request): Response | Promise<Response> =>
-      x ? handle(() => fn(x, req)) : notFound();
+/** What this machine needs: voice in, and the setup assistant. */
+function setupRoutes(x: Routing) {
+  const { access, voiceSetup: setup, machine } = x;
   /** The system's folder dialog, for a browser on this machine that has one. */
   const picker = (req: Request, srv: Bun.Server<unknown>) => !!machine?.picker && access.isLocal(req, srv);
+  return area({
+    // what Obeya's own voice in needs here, and installing it
+    '/api/voice-setup': { GET: needs(setup, (s) => s.view()) },
+    '/api/voice-setup/install': { POST: needs(setup, (s) => s.install()) },
+    '/api/voice-setup/measure': { POST: needs(setup, (s) => s.measure()) },
+    // a cloud service for voice in: tested and used (PUT), or back to this machine (DELETE)
+    '/api/voice-setup/cloud': {
+      PUT: needs(setup, async (s, req) => s.useCloud(await req.json())),
+      DELETE: needs(setup, (s) => s.useLocal()),
+    },
+    // the setup assistant: what Obeya needs on this machine, installed, logged in; then the first canvas
+    '/api/setup': { GET: needs(machine, (m) => m.view()) },
+    '/api/setup/install': { POST: needs(machine, async (m, req) => m.install(await req.json())) },
+    '/api/setup/login': { POST: needs(machine, async (m, req) => m.login(await req.json())) },
+    '/api/setup/token': { POST: needs(machine, async (m, req) => m.saveToken(await req.json())) },
+    // a login to Codex for a card whose session lost it, here or on a host: started, then followed
+    '/api/setup/codex-login': {
+      POST: needs(machine, async (m, req) => m.codexLogin(await req.json())),
+      GET: needs(machine, (m, req) => m.codexLoginState(new URL(req.url).searchParams.get('id') ?? '')),
+    },
+    '/api/setup/identity': { POST: needs(machine, async (m, req) => m.identity(await req.json())) },
+    '/api/setup/folder': { POST: needs(machine, async (m, req) => m.folder(await req.json())) },
+    // setting up git in a folder that has none: what the first commit holds, then the commit
+    '/api/setup/git-preview': { POST: needs(machine, async (m, req) => m.gitPreview(await req.json())) },
+    '/api/setup/git': { POST: needs(machine, async (m, req) => m.gitSetup(await req.json())) },
+    '/api/setup/canvas': { POST: needs(machine, async (m, req) => m.canvas(await req.json())) },
+    // the system's folder dialog, open as long as the owner takes; whether it is offered here (GET);
+    // only on this machine, as it opens on this machine's screen
+    '/api/setup/pick': {
+      GET: (req, srv) => Response.json({ picker: picker(req, srv) }),
+      POST: async (req, srv) => {
+        if (!machine) return notFound();
+        if (!access.isLocal(req, srv)) return onlyHere();
+        srv.timeout(req, 0);
+        const { prompt } = ((await req.json().catch(() => ({}))) ?? {}) as { prompt?: unknown };
+        return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));
+      },
+    },
+  });
+}
 
+/** The demo settings' dialog, and a render's narration clips. */
+function demoSettingsRoutes(x: Routing) {
+  const { demoSettings, narration } = x;
+  return area({
+    // the demo settings: narration language and voice, read by every render
+    '/api/demo-settings': {
+      GET: needs(demoSettings, (d) => d.demo()),
+      PUT: needs(demoSettings, async (d, req) => d.saveDemo(await req.json())),
+    },
+    // a voice as the owner chooses it: checked, installed (in the background), heard in a sample;
+    // and what else a render needs on this machine
+    '/api/demo-settings/check': { POST: needs(demoSettings, async (d, req) => d.checkDemo(await req.json())) },
+    '/api/demo-settings/setup': { POST: needs(demoSettings, async (d, req) => d.demoSetup(await req.json())) },
+    '/api/demo-settings/install': { POST: needs(demoSettings, async (d, req) => d.installDemoVoice(await req.json())) },
+    '/api/demo-settings/sample': {
+      POST: async (req) => {
+        if (!demoSettings) return notFound();
+        const input = await req.json().catch(() => null);
+        return demoSettings.sampleDemoVoice(input).then(
+          (wav) => new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } }),
+          (e) => handle(() => Promise.reject(e)),
+        );
+      },
+    },
+    // a demo's narration clip, in the voice Obeya holds loaded across renders (narration.ts)
+    '/api/narration/clip': { POST: narration ? clipRoute(narration) : notFound },
+    // and heard back for the times of its words
+    '/api/narration/hear': { POST: narration ? hearRoute(narration) : notFound },
+  });
+}
+
+/** Obeya's configuration, and its repositories' settings for everyone. */
+function configRoutes(x: Routing) {
+  const { config } = x;
+  return area({
+    // Obeya's configuration: read, checked while the owner edits it, and saved (Obeya then starts again)
+    '/api/config': {
+      GET: needs(config, (c) => c.view()),
+      PUT: needs(config, async (c, req) => c.save(await req.json())),
+    },
+    // "Take over into the repository for everyone": a repository's settings for this machine into its .obeya/settings.json
+    '/api/config/share-settings': { POST: needs(config, async (c, req) => c.shareSettings(await req.json())) },
+    // a repository's commands, new or changed on its default branch, confirmed by the owner: they count from now on
+    '/api/config/trust': { POST: needs(config, async (c, req) => (await c.trust(await req.json()), {})) },
+    // "Try again": what did not start as the configuration has it tries again
+    '/api/config/retry': { POST: needs(config, (c) => c.retry()) },
+    // what the configuration amounts to and what is wrong with it: as saved, or a draft as the owner edits it
+    '/api/config/check': {
+      GET: needs(config, (c) => c.checkSaved()),
+      POST: needs(config, async (c, req) => c.check(await req.json())),
+    },
+  });
+}
+
+/** A canvas, its cards and groups, and what a card's work did. */
+function canvasRoutes(x: Routing) {
+  const { pages, on } = x;
+  return area({
+    // the owner has the restart of a repository's agents that waits for them go ahead at once
+    '/api/c/:canvas/restart': { POST: on((c) => ({ restarting: c.restartNow() })) },
+    // the owner pauses the canvas's agents at work (and holds its queue), or resumes its paused ones
+    '/api/c/:canvas/pause': { POST: on((c) => c.pauseAgents()) },
+    '/api/c/:canvas/resume': { POST: on((c) => c.resumeAgents()) },
+    '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
+    '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await fields(req)) as unknown as NewCard)) },
+    // from "Configuration", for a repository without settings of its own: the card that writes them
+    '/api/c/:canvas/adapter-setup': { POST: on(async (c, req) => c.adapterSetupCard(String((await fields(req)).repo))) },
+    // from the note on a plan directory: the card that prepares one of its docs as a project, started
+    '/api/c/:canvas/prepare-plan-doc': {
+      POST: on(async (c, req) => {
+        const { repo, file } = ((await req.json()) ?? {}) as { repo?: unknown; file?: unknown };
+        return c.preparePlanDoc(String(repo), String(file));
+      }),
+    },
+    // the owner moved the note on a repository's plan directory
+    '/api/c/:canvas/plan-dirs/:repo': {
+      PATCH: on(async (c, req) => c.board.movePlanDirNote(req.params.repo!, await req.json())),
+    },
+    '/api/c/:canvas/cards/:id': {
+      PATCH: on(async (c, req) => c.patch(req.params.id!, (await fields(req)) as CardPatch)),
+      DELETE: on((c, req) => click(c, c.remove(req.params.id!))),
+    },
+    // groups: a new one with its first cards (and a colour, when one comes back), a new name, the
+    // end of one, and cards put into one (`group: null`: none)
+    '/api/c/:canvas/groups': {
+      POST: on(async (c, req) => {
+        const { name, cards, hue } = ((await req.json()) ?? {}) as { name?: string; cards?: string[]; hue?: number };
+        return c.board.createGroup(name, cards, hue);
+      }),
+    },
+    '/api/c/:canvas/groups/:id': {
+      PATCH: on(async (c, req) => c.board.renameGroup(req.params.id!, (((await req.json()) ?? {}) as { name?: string }).name)),
+      DELETE: on((c, req) => c.board.deleteGroup(req.params.id!)),
+    },
+    '/api/c/:canvas/assign': {
+      POST: on(async (c, req) => {
+        const { cards, group } = ((await req.json()) ?? {}) as { cards?: string[]; group?: string | null };
+        return c.board.group(cards, group ?? null);
+      }),
+    },
+    '/api/c/:canvas/dependencies': {
+      POST: on(async (c, req) => { const { from, to } = (await fields(req)) as { from: string; to: string }; c.board.connect(from, to); }),
+      DELETE: on(async (c, req) => { const { from, to } = (await fields(req)) as { from: string; to: string }; c.board.connect(from, to, true); }),
+    },
+    '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },
+    '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
+    '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },
+    // the archive, newest first, a page at a time (`count`, `after`: the page before's `next`), each project
+    // with its workstreams; `q`: those holding its words (`from`: the page before's `next`; `labels`:
+    // the archive's labels in the owner's words; `everywhere`: for the search across canvas and archive);
+    // `ids` or `code`: the entries of these cards, or the one holding the card an address names.
+    // Posting archives every finished card of the owner's.
+    '/api/c/:canvas/archive': {
+      GET: on((c, req) => {
+        const p = new URL(req.url).searchParams;
+        const count = Math.min(ARCHIVE_PAGE_MAX, Math.max(1, Number(p.get('count')) || ARCHIVE_PAGE_MAX));
+        const ids = p.get('ids');
+        if (ids !== null) return { items: c.board.archiveEntries(ids.split(',').filter(Boolean).slice(0, ARCHIVE_PAGE_MAX)) };
+        const code = p.get('code');
+        if (code) return { items: c.board.archiveEntry(code) };
+        const q = p.get('q')?.trim();
+        if (!q) return c.board.archivePage(count, p.get('after') ?? undefined);
+        let labels: Record<string, string> = {};
+        try {
+          labels = JSON.parse(p.get('labels') ?? '{}') as Record<string, string>;
+        } catch {}
+        return c.board.archiveSearch(q, { count, from: Number(p.get('from')) || 0, labels, everywhere: p.has('everywhere') });
+      }),
+      POST: on((c) => ({ ids: c.board.archiveDone() })),
+    },
+    '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.press(req.params.id!, (await fields(req)) as unknown as CardAction)) },
+    // a script acting as the card's agent, in a scratch Obeya whose workers are idle (scripts/scratch-obeya.ts --say)
+    '/api/c/:canvas/cards/:id/stand-in': { POST: on(async (c, req) => ({ result: await c.standIn(req.params.id!, (await fields(req)) as Parameters<typeof c.standIn>[1]) })) },
+    '/api/c/:canvas/cards/:id/events': { GET: on((c, req) => c.board.events(req.params.id!)) },
+    // the skills the owner can ask the card's agent for by `/name`, for the field's menu
+    '/api/c/:canvas/cards/:id/skills': { GET: on((c, req) => c.skillsOf(req.params.id!)) },
+    // what the card's work changes: its files with lines added and removed, with `?full` the diff too
+    '/api/c/:canvas/cards/:id/diff': { GET: on((c, req) => c.diff(req.params.id!, new URL(req.url).searchParams.has('full'))) },
+    // the app running in the card's workspace: whether it answers, and the owner opening it to try it by hand
+    '/api/c/:canvas/cards/:id/app': { GET: on((c, req) => c.appUp(req.params.id!)) },
+    '/api/c/:canvas/cards/:id/app/open': {
+      GET: async (req) => {
+        const c = pages.canvas(req.params.canvas);
+        if (!c) return notFound();
+        let url: string | null = null;
+        try {
+          url = await c.openApp(req.params.id);
+        } catch (e) {
+          if (!(e instanceof BadRequest)) throw e;
+        }
+        return url ? Response.redirect(url, 302) : new Response(c.board.t.worker.appGone, { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      },
+    },
+    '/api/c/:canvas/cards/:id/plan': { GET: on((c, req) => c.board.planDoc(req.params.id!)) },
+    // a project's decisions and the idea it came from
+    '/api/c/:canvas/cards/:id/history': { GET: on((c, req) => c.board.projectHistory(req.params.id!)) },
+    // a demo as a file to pass on, where the repository has no share target (`?as=zip|html`)
+    '/api/c/:canvas/cards/:id/export': {
+      GET: on(async (c, req) => {
+        const as = new URL(req.url).searchParams.get('as');
+        if (as !== 'zip' && as !== 'html') throw new BadRequest('invalid', 'as must be zip or html');
+        // which of the card's demos, by its handover (`?demo=`); the latest without
+        const demo = Number(new URL(req.url).searchParams.get('demo') ?? NaN);
+        const f = await c.sharing.export(req.params.id!, as, Number.isInteger(demo) ? demo : undefined);
+        return new Response(f.data, { headers: { 'content-type': f.type, 'content-disposition': `attachment; filename="${f.name}"`, 'cache-control': 'no-store' } });
+      }),
+    },
+  });
+}
+
+/** Screenshots and files for a message, and the files of the workers' work. */
+function fileRoutes(x: Routing) {
+  const { access, pages, on } = x;
+  return area({
+    // a screenshot for a message: uploaded first, the message then names it by id
+    '/api/c/:canvas/images': {
+      POST: on(async (c, req) => ({ id: c.images.save(new Uint8Array(await req.arrayBuffer()), req.headers.get('content-type') ?? '') })),
+    },
+    // a file of another kind for a message: Obeya keeps it, and the field gets its path (`?name`: what it was called)
+    '/api/c/:canvas/files': {
+      POST: on(async (c, req) => {
+        if (Number(req.headers.get('content-length')) > MAX_FILE_BYTES) throw new BadRequest('fileTooLarge', `a file may have at most ${MAX_FILE_BYTES} bytes`);
+        return { path: c.files.save(new Uint8Array(await req.arrayBuffer()), new URL(req.url).searchParams.get('name') ?? '') };
+      }),
+    },
+    // a file of another kind dropped in a browser: where it lies on this machine, if Obeya finds exactly one that fits
+    '/api/c/:canvas/files/find': {
+      POST: on(async (_c, req) => ({ path: await findDropped((await fields(req)) as unknown as Dropped) })),
+    },
+    // an image dropped in the app, which names it by its path: its bytes, for the page to attach it as a screenshot
+    '/api/c/:canvas/files/local': {
+      GET: on((_c, req) => {
+        const image = localImage(new URL(req.url).searchParams.get('path') ?? '');
+        if (!image) throw new BadRequest('imageType', 'no image on this machine');
+        return new Response(Bun.file(image.file), { headers: { 'content-type': image.type, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
+      }),
+    },
+    '/api/c/:canvas/images/:file': {
+      GET: (req) => {
+        const file = pages.canvas(req.params.canvas)?.images.path(req.params.file);
+        return file ? new Response(Bun.file(file), { headers: { 'cache-control': 'private, max-age=31536000, immutable' } }) : notFound();
+      },
+    },
+    // an HTML artifact's page may load files from folders beside it
+    '/api/c/:canvas/cards/:id/demo/*': {
+      GET: (req) => {
+        try {
+          const demo = pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id);
+          const file = decodeURIComponent(new URL(req.url).pathname.split('/demo/').slice(1).join('/demo/'));
+          return demo ? serveDemoFile(demo, file, req) : notFound();
+        } catch {
+          return notFound();
+        }
+      },
+    },
+    // a demo a later handover replaced, which the owner went back to
+    '/api/c/:canvas/cards/:id/demos/:n/*': {
+      GET: (req) => {
+        try {
+          const n = Number(req.params.n);
+          const demo = Number.isInteger(n) && n >= 0 ? pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id, n) : null;
+          const route = `/demos/${n}/`;
+          const file = decodeURIComponent(new URL(req.url).pathname.split(route).slice(1).join(route));
+          return demo ? serveDemoFile(demo, file, req, route) : notFound();
+        } catch {
+          return notFound();
+        }
+      },
+    },
+    // a file the card's work made or changed, for its left column; `?download` to save it
+    '/api/c/:canvas/cards/:id/files/*': {
+      GET: (req) => {
+        try {
+          const c = pages.canvas(req.params.canvas);
+          const url = new URL(req.url);
+          const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
+          return c ? serveCardFile(file, url.searchParams.has('download'), req, (path) => c.cardFile(req.params.id, path)).catch(() => notFound()) : notFound();
+        } catch {
+          return notFound();
+        }
+      },
+    },
+    // opens a file of the card's work with the system's app (`show`: in its folder), on this machine only: from another device the browser downloads it
+    '/api/c/:canvas/cards/:id/open': {
+      POST: (req, srv) =>
+        access.isLocal(req, srv)
+          ? on(async (c, req) => {
+              const { file, show } = (await req.json().catch(() => ({}))) as { file?: string; show?: boolean };
+              if (typeof file !== 'string') throw new BadRequest('invalid', 'file must be a path');
+              await c.openCardFile(req.params.id!, file, show === true);
+            })(req)
+          : onlyHere(),
+    },
+    // a file a looked-up answer comes with; `?download` to save it
+    '/api/c/:canvas/threads/:thread/files/*': {
+      GET: (req) => {
+        try {
+          const c = pages.canvas(req.params.canvas);
+          const url = new URL(req.url);
+          const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
+          return c ? serveAnswerFile(c.answerDir(Number(req.params.thread)), file, url.searchParams.has('download'), req) : notFound();
+        } catch {
+          return notFound();
+        }
+      },
+    },
+    // opens an answer's file (`file`), or its thread's directory, with the system's app
+    '/api/c/:canvas/threads/:thread/open': {
+      POST: (req, srv) =>
+        access.isLocal(req, srv)
+          ? on(async (c, req) => {
+              const { file } = (await req.json().catch(() => ({}))) as { file?: string };
+              await c.openAnswerFile(Number(req.params.thread), file);
+            })(req)
+          : onlyHere(),
+    },
+  });
+}
+
+/** The Coordinator's sheet, looked-up answers, and what the retrospective and sharing ask of the owner. */
+function talkRoutes(x: Routing) {
+  const { pages, config, on } = x;
+  return area({
+    // "Make it a card": a looked-up thread moves onto a Question card
+    '/api/c/:canvas/threads/:thread/card': { POST: on((c, req) => c.answers.toCard(Number(req.params.thread))) },
+    // "Show as walkthrough": the answer told again, as the next answer, in the sheet or in a card's conversation
+    '/api/c/:canvas/talk/:talk/walkthrough': { POST: on((c, req) => c.answers.showAsWalkthrough(Number(req.params.talk))) },
+    '/api/c/:canvas/cards/:id/events/:ev/walkthrough': { POST: on((c, req) => c.answers.showEventAsWalkthrough(req.params.id!, Number(req.params.ev))) },
+    // a walkthrough as its player reads it while it grows; `?playing=<slide>` while it plays, so the voice speaks that first
+    '/api/c/:canvas/threads/:thread/walkthroughs/:name': {
+      GET: (req) => {
+        const c = pages.canvas(req.params.canvas);
+        const playing = new URL(req.url).searchParams.get('playing');
+        const w = c?.answers.walkthrough(Number(req.params.thread), req.params.name, playing === null ? undefined : Number(playing));
+        return w ? Response.json(w, { headers: { 'cache-control': 'no-store' } }) : notFound();
+      },
+    },
+    // a wish or a bug for Obeya's makers: the issue's text as a small job writes it, for the owner to check and open on GitHub
+    '/api/c/:canvas/wish': {
+      POST: on(async (c, req) => {
+        const { said, answer, title, body, images, app } = ((await req.json()) ?? {}) as Record<string, unknown>;
+        if (typeof said !== 'string' || !said.trim()) throw new BadRequest('emptyText', 'said must be a non-empty string');
+        const ids = Array.isArray(images) ? images.filter((i): i is string => typeof i === 'string') : [];
+        const server = config?.view().server;
+        return c.writeWish(
+          { said, ...(typeof answer === 'string' ? { answer } : {}), ...(typeof title === 'string' ? { title } : {}), ...(typeof body === 'string' ? { body } : {}) },
+          footerOf(server?.version ?? VERSION, server?.commit ?? null, app === true),
+          ids,
+        );
+      }),
+    },
+    '/api/c/:canvas/preferences': {
+      POST: on(async (c, req) => {
+        const { text, target } = (await fields(req)) as { text: string; target?: string };
+        c.remember(text, target ? { repos: [target] } : {});
+      }),
+    },
+    '/api/c/:canvas/preferences/:id': {
+      PATCH: on(async (c, req) => c.board.setPreference(Number(req.params.id), (await fields(req)).text as string)),
+      DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),
+    },
+    '/api/c/:canvas/preferences/:id/accept': {
+      POST: on(async (c, req) => {
+        const { text, target } = (await req.json().catch(() => ({}))) as { text?: string; target?: string | null };
+        return click(c, c.acceptRule(Number(req.params.id), text, target));
+      }),
+    },
+    '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => click(c, c.rejectRule(Number(req.params.id)))) },
+    // a value for a repository's setting the work retrospective proposed: taken on this machine or for everyone (`where`), or rejected
+    '/api/c/:canvas/setting-proposals/:id/take': {
+      POST: on(async (c, req) => {
+        const { where, value } = (await req.json().catch(() => ({}))) as { where?: unknown; value?: unknown };
+        return click(c, (await c.takeSetting(Number(req.params.id), where, value)) ?? {});
+      }),
+    },
+    '/api/c/:canvas/setting-proposals/:id/reject': { POST: on((c, req) => click(c, c.rejectSetting(Number(req.params.id)))) },
+    // "Share again" for many outdated pages at once (or, with `tags`, the pages without tags): `count` of them, the newest demos first, or all (null)
+    '/api/c/:canvas/reshare': {
+      POST: on(async (c, req) => {
+        const { count, tags } = (await req.json().catch(() => ({}))) as { count?: number | null; tags?: unknown };
+        if (count != null && !(Number.isInteger(count) && count > 0)) throw new BadRequest('invalid', 'count must be a positive integer or null');
+        // `tags`: the pages without tags, tagged and shared again ("N pages without tags")
+        c.sharing.reshareMany(count ?? null, tags === true);
+      }),
+      // "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change
+      DELETE: on((c) => c.sharing.dismissResharing()),
+    },
+    '/api/c/:canvas/reshare/stop': { POST: on((c) => c.sharing.stopResharing()) },
+    // the card's latest demo was narrated anew in its directory (the demo skill's `--revoice`)
+    '/api/c/:canvas/cards/:id/demo-rebuilt': { POST: on((c, req) => c.sharing.rebuilt(req.params.id!)) },
+    // the owner has the Coordinator's sheet in view: the answers waiting there are read; with `ids`, those a project's sheet shows
+    '/api/c/:canvas/talk/read': {
+      POST: on(async (c, req) => {
+        const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
+        if (ids !== undefined && !(Array.isArray(ids) && ids.every((i) => Number.isInteger(i)))) throw new BadRequest('invalid', 'ids must be a list of exchange ids');
+        c.board.readTalk(ids as number[] | undefined);
+      }),
+    },
+    // the owner no longer wants the step the Coordinator waits on a card for ("Stop waiting")
+    '/api/c/:canvas/talk/:id/unwait': {
+      POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String(((await req.json().catch(() => ({}))) as { card?: unknown }).card ?? '')) })),
+    },
+  });
+}
+
+/** What the owner says or types, for the open card's agent or the Coordinator. */
+function voiceRoutes(x: Routing) {
+  const { transcriber, restarter, on } = x;
+  /** The recordings that arrived whole, for a page that lost the answer. */
+  const arrived = new Arrived();
   /**
    * A restart waits for what the owner said on the server's own count too, until its answer is
    * written, whether or not the page that sent it still holds it off: one that came while Whisper
@@ -253,9 +909,109 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
         restarter?.hold(holder);
       }
     };
+  return area({
+    // what the owner said (audio), for the open card's agent or the Coordinator; the body is the
+    // recording, or a form with it (`audio`) and the words typed in the field before it (`text`)
+    '/api/c/:canvas/voice': {
+      POST: on(holdingRestart(async (c, req) => {
+        // screenshots shown with the recording (`?image=<id>`, repeated), checked before transcribing
+        const params = new URL(req.url).searchParams;
+        const images = params.getAll('image');
+        c.images.resolve(images);
+        // `?replyTo=<event>`: said in reply to that message of the open card's conversation; with
+        // no card open, `?replyTo=<exchange>.<part>` to that message of the sheet (`TalkRef`)
+        const replyTo = replyParam(params.get('replyTo'));
+        const form = req.headers.get('content-type')?.startsWith('multipart/form-data') ? await req.formData() : null;
+        const audio = form ? form.get('audio') : await req.blob();
+        if (!(audio instanceof Blob)) throw new BadRequest('invalid', 'audio expected');
+        arrived.add(params.get('sent'));
+        // a browser sends a form's line breaks as CRLF: they go on as typed
+        const field = form?.get('text');
+        const typed = typeof field === 'string' ? field.replace(/\r\n/g, '\n') : undefined;
+        let text: string | null;
+        try {
+          text = await transcribe(transcriber, c, audio);
+        } catch (e) {
+          // the cloud service failed or refused: the owner reads why under the mic, and the words stay in the field
+          if (!(e instanceof CloudError)) throw e;
+          console.error(`voice on ${c.id}: ${e.service} failed: ${e.message}`);
+          return { confirm: c.board.t.voice.cloudFailed(e.service, e.message), unheard: true };
+        }
+        // `?listen`: dictated into a field, the words go back to it and nowhere else
+        if (params.has('listen')) {
+          console.log(`dictated on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
+          return text ? { confirm: '', quiet: true, text } : unheard(c, text);
+        }
+        // what stood in the field goes first; nothing heard sends nothing, the field keeps it
+        const words = text && typed?.trim() ? `${typed.trim()}${/\n/.test(typed.trim()) ? '\n\n' : ' '}${text}` : text;
+        // `?at=<seconds>&still=<image>&demo=<handover>`: said about that place in the open card's demo video (`demo`: an earlier one)
+        const at = params.get('at');
+        const demo = Number(params.get('demo') || NaN);
+        const spot = at !== null && at !== '' ? { at: Number(at), ...(params.get('still') ? { still: params.get('still')! } : {}), ...(Number.isInteger(demo) ? { demo } : {}) } : undefined;
+        return heard(c, words, focusOf(req, c), images, { ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) });
+      })),
+    },
+    // whether the recording the page named `?sent=<id>` arrived, for a page that lost the answer
+    '/api/c/:canvas/voice/arrived/:id': { GET: on((_c, req) => ({ arrived: arrived.has(req.params.id!) })) },
+    // the owner started speaking: transcription and the Coordinator get ready meanwhile; `?ahead=1`:
+    // the owner may speak soon (the cursor went into Obeya's field), rather than speaking now
+    '/api/c/:canvas/voice/warm': {
+      POST: on((c, req) => {
+        transcriber.warm?.(new URL(req.url).searchParams.get('ahead') === '1');
+        c.commander.warm();
+      }),
+    },
+    '/api/c/:canvas/command': {
+      POST: on(async (c, req) => {
+        // `field`: typed into that field of the open card rather than into the Coordinator's sheet
+        // `replyTo`: typed in reply to that message of the open card's conversation, or with no card open of the sheet (`TalkRef`)
+        // `spot`: typed about that place in the open card's demo video
+        const { text, images, field, replyTo, spot } = (await fields(req)) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput };
+        // a screenshot alone may speak for itself to the open card's agent
+        const card = focusOf(req).card;
+        const open = card ? c.board.item(card) : undefined;
+        const toAgent = !!open && listens(open, isField(field) ? { field } : {});
+        if (typeof text !== 'string' || (!text.trim() && !(toAgent && images?.length))) throw new BadRequest('emptyText', 'text must be a non-empty string');
+        // screenshots pasted into the typed command go to the cards it creates or concerns
+        c.images.resolve(images);
+        return heard(c, text.trim(), focusOf(req, c), images ?? [], { typed: true, ...(isField(field) ? { field } : {}), ...(typeof replyTo === 'number' || isTalkRef(replyTo) ? { replyTo } : {}), ...(spot ? { spot } : {}) });
+      }),
+    },
+    '/api/c/:canvas/command/undo': {
+      POST: on(async (c, req) => click(c, { undone: c.commander.undo((await fields(req)).token as string) })),
+    },
+  });
+}
 
-  /** The recordings that arrived whole, for a page that lost the answer. */
-  const arrived = new Arrived();
+export function serve(served: Served | CanvasRuntime[], port: number, deps: ServeDeps) {
+  const { development = false, used, config, restarter, sources, usage, stalls } = deps;
+  const updates = deps.updates ?? new AppUpdates();
+  const access = deps.access ?? new Access({ store: new Store(':memory:'), tailscale: new Tailscale(null) });
+  const push = deps.push ?? new Push({ store: access.store });
+  const gate: Gate = used
+    ? {
+        hosts: () => access.hosts(),
+        admit: (req, srv, route) => {
+          used();
+          return access.admit(req, srv, route);
+        },
+      }
+    : access;
+  const canvases = Array.isArray(served) ? { all: () => served } : served;
+  const pages = new Pages({ canvases, access, push, updates, restarter, sources, usage, stalls, costs: () => !!config && switchView(config.home, 'costs').on });
+  const x: Routing = {
+    ...deps,
+    updates,
+    access,
+    push,
+    canvases,
+    pages,
+    on: (fn) => (req) => {
+      const c = pages.canvas(req.params.canvas!);
+      return c ? handle(() => fn(c, req)) : Response.json({ code: 'invalid', error: 'unknown canvas' }, { status: 404 });
+    },
+    here: (route) => (req, srv) => (access.isLocal(req, srv) ? route(req, srv) : onlyHere()),
+  };
 
   const options = {
     port,
@@ -263,653 +1019,23 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
     // a voice command answers once transcribed and read: with Whisper on a CPU that can take longer than Bun's 10 s
     idleTimeout: 120,
     development: development && { hmr: true, console: true },
-    routes: guarded({
-      '/': index,
-      // a canvas, and a card open on it (`/c/<canvas>/card/<code>`): the page reads the address
-      '/c/*': index,
-      // a browser on this machine signing in with a one-time link (owner.ts)
-      '/login': { GET: (req, srv) => access.loginRoute(req, srv) },
-      // such a link, for whoever holds the owner's key (the app's shell, a second start, scripts); `next`: where it leads; `once`: for one browser
-      '/api/login-link': {
-        POST: async (req, srv) => {
-          if (!access.isLocal(req, srv)) return onlyHere();
-          const { next, once } = ((await req.json().catch(() => null)) ?? {}) as { next?: unknown; once?: unknown };
-          return Response.json({ url: access.owner.link(new URL(req.url).origin, typeof next === 'string' ? next : '/', once === true) });
-        },
+    routes: guarded(
+      {
+        ...pageRoutes(),
+        ...accessRoutes(x),
+        ...appRoutes(x),
+        ...ownerSettingsRoutes(x),
+        ...siteRoutes(x),
+        ...setupRoutes(x),
+        ...demoSettingsRoutes(x),
+        ...configRoutes(x),
+        ...canvasRoutes(x),
+        ...fileRoutes(x),
+        ...talkRoutes(x),
+        ...voiceRoutes(x),
       },
-      // another device pairing: the address in the QR code (`?code=`), or the code typed into the page it got
-      '/pair': { GET: (req, srv) => access.pairRoute(req, srv), POST: (req, srv) => access.pairRoute(req, srv) },
-      // "Other devices": the setting, what the network allows, the devices; only on this machine
-      '/api/access': {
-        GET: async (req, srv) => (access.isLocal(req, srv) ? handle(() => access.view()) : Response.json({ local: false, tailnet: await access.tailnet() })),
-        PUT: async (req, srv) => (access.isLocal(req, srv) ? handle(async () => access.save(await req.json())) : onlyHere()),
-      },
-      '/api/access/pair': { POST: (req, srv) => (access.isLocal(req, srv) ? handle(() => access.pair()) : onlyHere()) },
-      '/api/access/devices/:id': { DELETE: (req, srv) => (access.isLocal(req, srv) ? handle(() => ({ removed: access.remove(req.params.id) })) : onlyHere()) },
-      // the web app on a phone's home screen: the icons of its manifest (manifest.webmanifest, which the
-      // page's bundle carries), its service worker (sw.ts), and the device's push subscription (`on`:
-      // Obeya has one for this device); pushes go only to paired devices
-      '/icons/180.png': { GET: () => new Response(Bun.file(icon180), { headers: { 'cache-control': 'max-age=86400' } }) },
-      '/icons/512.png': { GET: () => new Response(Bun.file(icon512), { headers: { 'cache-control': 'max-age=86400' } }) },
-      // pdf.js's worker, fonts and decoders, where the page draws a PDF itself (src/ui/pdf.tsx)
-      '/pdfjs/*': { GET: (req) => servePdfjs(req) },
-      '/sw.js': { GET: () => new Response(`(${worker.toString()})();\n`, { headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache' } }) },
-      '/api/push': {
-        GET: (req) => handle(async () => {
-          const device = access.deviceOf(req);
-          return { key: await push.key(), on: !!device && push.subscribed(device) };
-        }),
-        PUT: async (req) => {
-          const device = access.deviceOf(req);
-          if (!device) return onlyDevices();
-          return handle(async () => push.subscribe(device, await req.json()));
-        },
-        DELETE: (req) => {
-          const device = access.deviceOf(req);
-          return device ? handle(() => push.unsubscribe(device)) : onlyDevices();
-        },
-      },
-      // what waits for the owner, counted as the bar's button counts it, for the app's icon (app/src/badge.rs);
-      // `seen`: the count shown there, and the answer waits until it is another (at most 50 s)
-      '/api/waiting-count': {
-        GET: (req) => {
-          const seen = Number(new URL(req.url).searchParams.get('seen') ?? NaN);
-          if (pages.waitingCount() !== seen) return Response.json({ count: pages.waitingCount() });
-          return new Promise<Response>((resolve) => {
-            const done = () => {
-              if (pages.waitingCount() === seen && !req.signal.aborted && Date.now() < until) return;
-              off();
-              clearTimeout(timer);
-              resolve(Response.json({ count: pages.waitingCount() }));
-            };
-            const until = Date.now() + WAITING_COUNT_HOLD_MS;
-            const timer = setTimeout(done, WAITING_COUNT_HOLD_MS);
-            const off = pages.onCount(done);
-            req.signal.addEventListener('abort', done);
-          });
-        },
-      },
-      '/api/canvases': { GET: () => Response.json(pages.list()) },
-      // Obeya's configuration: read, checked while the owner edits it, and saved (Obeya then starts again)
-      '/api/config': {
-        GET: needs(config, (c) => c.view()),
-        PUT: needs(config, async (c, req) => c.save(await req.json())),
-      },
-      // the owner has the restart of a repository's agents that waits for them go ahead at once
-      '/api/c/:canvas/restart': { POST: on((c) => ({ restarting: c.restartNow() })) },
-      // the owner pauses the canvas's agents at work (and holds its queue), or resumes its paused ones
-      '/api/c/:canvas/pause': { POST: on((c) => c.pauseAgents()) },
-      '/api/c/:canvas/resume': { POST: on((c) => c.resumeAgents()) },
-      // the owner has a restart that waits for workers go ahead at once
-      '/api/restart': {
-        POST: () =>
-          handle(() => {
-            return { restarting: !!restarter?.now() };
-          }),
-      },
-      // the app quitting, or anything that cannot send a signal (Windows has no SIGTERM): Ctrl-C over HTTP
-      '/api/stop': {
-        POST: () =>
-          handle(() => {
-            stop?.();
-            return { stopping: !!stop };
-          }),
-      },
-      // the interface language (chosen in the settings, else the system's) and the conversation language (chosen, else the interface's)
-      '/api/language': {
-        GET: needs(config, (c) => languageView(c.home)),
-        PUT: needs(config, async (c, req) => saveLanguage(c.home, await req.json())),
-      },
-      // light or dark: chosen in the settings, else as the system
-      '/api/theme': {
-        GET: needs(config, (c) => themeView(c.home)),
-        PUT: needs(config, async (c, req) => saveTheme(c.home, await req.json())),
-      },
-      // whether the bar shows the plan's usage limits: the meter fetches them from then on, or stops
-      '/api/usage-meter': {
-        GET: needs(config, (c) => switchView(c.home, 'usageMeter')),
-        PUT: needs(config, async (c, req) => {
-          const view = saveSwitch(c.home, 'usageMeter', await req.json());
-          usage?.setOn(view.on);
-          return view;
-        }),
-      },
-      // whether the page shows what the agents cost, which Obeya counts either way: every open page follows at once
-      '/api/costs': {
-        GET: needs(config, (c) => switchView(c.home, 'costs')),
-        PUT: needs(config, async (c, req) => {
-          const view = saveSwitch(c.home, 'costs', await req.json());
-          pages.everyone({ type: 'costs', shown: view.on });
-          return view;
-        }),
-      },
-      // the harness, model and effort of each group of agents, read whenever one starts
-      '/api/agents': {
-        GET: needs(config, async (c) => agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred())),
-        PUT: needs(config, async (c, req) => {
-          return saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
-        }),
-      },
-      // a harness (`{ harness }`, Claude Code where none is named) brought up to date in the background, here or on the host named (`{ host }`), at the owner's click; the view says how far it got
-      '/api/agents/update': {
-        POST: needs(config, async (c, req) => {
-          const body = (await req.json().catch(() => ({}))) as { harness?: unknown; host?: unknown };
-          harnesses?.update(body?.harness === 'codex' ? 'codex' : 'claude', typeof body?.host === 'string' ? body.host : undefined);
-          return agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred());
-        }),
-      },
-      // the owner's personal demo site: set up at a host, connected with another machine's code, removed
-      // from this machine; the private repositories ticked for it, and those that share there with the approval
-      '/api/personal-site': {
-        GET: needs(sites, (x) => x.view()),
-        DELETE: needs(sites, (x) => x.remove()),
-      },
-      '/api/personal-site/setup': { POST: needs(sites, async (x, req) => x.setupPersonal(await req.json())) },
-      '/api/personal-site/connect': { POST: needs(sites, async (x, req) => x.connect(await req.json())) },
-      '/api/personal-site/code': { GET: needs(sites, (x) => x.code()) },
-      '/api/personal-site/private': { POST: needs(sites, async (x, req) => x.allow(await req.json())) },
-      '/api/personal-site/approved': { POST: needs(sites, async (x, req) => x.approved(await req.json())) },
-      // "Set up a demo site" for a repository: started, followed, and taken into its settings
-      '/api/site-setup': {
-        GET: needs(sites, (x, req) => ({ job: x.repoJob(new URL(req.url).searchParams.get('path') ?? '') })),
-        POST: needs(sites, async (x, req) => ({ job: x.setupRepo(await req.json()) })),
-        DELETE: needs(sites, (x, req) => (x.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
-      },
-      // "Have an agent propose the tags" at a demo site's tags: started, followed, and taken into the field
-      '/api/tag-proposal': {
-        GET: needs(config, (_, req) => {
-          const path = new URL(req.url).searchParams.get('path') ?? '';
-          return { job: tagProposals.job(path), available: !!path && canvases.all().some((c) => c.repos.some((r) => resolve(r.info.path) === resolve(expandHome(path)))) };
-        }),
-        POST: needs(config, async (c, req) => ({ job: proposeTagsFor(c.home, await req.json()) })),
-        DELETE: needs(config, (_, req) => (tagProposals.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
-      },
-      // what Obeya's own voice in needs here, and installing it
-      '/api/voice-setup': { GET: needs(setup, (s) => s.view()) },
-      '/api/voice-setup/install': { POST: needs(setup, (s) => s.install()) },
-      '/api/voice-setup/measure': { POST: needs(setup, (s) => s.measure()) },
-      // a cloud service for voice in: tested and used (PUT), or back to this machine (DELETE)
-      '/api/voice-setup/cloud': {
-        PUT: needs(setup, async (s, req) => s.useCloud(await req.json())),
-        DELETE: needs(setup, (s) => s.useLocal()),
-      },
-      // the setup assistant: what Obeya needs on this machine, installed, logged in; then the first canvas
-      '/api/setup': { GET: needs(machine, (m) => m.view()) },
-      '/api/setup/install': { POST: needs(machine, async (m, req) => m.install(await req.json())) },
-      '/api/setup/login': { POST: needs(machine, async (m, req) => m.login(await req.json())) },
-      '/api/setup/token': { POST: needs(machine, async (m, req) => m.saveToken(await req.json())) },
-      // a login to Codex for a card whose session lost it, here or on a host: started, then followed
-      '/api/setup/codex-login': {
-        POST: needs(machine, async (m, req) => m.codexLogin(await req.json())),
-        GET: needs(machine, (m, req) => m.codexLoginState(new URL(req.url).searchParams.get('id') ?? '')),
-      },
-      '/api/setup/identity': { POST: needs(machine, async (m, req) => m.identity(await req.json())) },
-      '/api/setup/folder': { POST: needs(machine, async (m, req) => m.folder(await req.json())) },
-      // setting up git in a folder that has none: what the first commit holds, then the commit
-      '/api/setup/git-preview': { POST: needs(machine, async (m, req) => m.gitPreview(await req.json())) },
-      '/api/setup/git': { POST: needs(machine, async (m, req) => m.gitSetup(await req.json())) },
-      '/api/setup/canvas': { POST: needs(machine, async (m, req) => m.canvas(await req.json())) },
-      // the system's folder dialog, open as long as the owner takes; whether it is offered here (GET);
-      // only on this machine, as it opens on this machine's screen
-      '/api/setup/pick': {
-        GET: (req, srv) => Response.json({ picker: picker(req, srv) }),
-        POST: async (req, srv) => {
-          if (!machine) return notFound();
-          if (!access.isLocal(req, srv)) return onlyHere();
-          srv.timeout(req, 0);
-          const { prompt } = ((await req.json().catch(() => ({}))) ?? {}) as { prompt?: unknown };
-          return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));
-        },
-      },
-      // the demo settings: narration language and voice, read by every render
-      '/api/demo-settings': {
-        GET: needs(demoSettings, (d) => d.demo()),
-        PUT: needs(demoSettings, async (d, req) => d.saveDemo(await req.json())),
-      },
-      // a voice as the owner chooses it: checked, installed (in the background), heard in a sample;
-      // and what else a render needs on this machine
-      '/api/demo-settings/check': { POST: needs(demoSettings, async (d, req) => d.checkDemo(await req.json())) },
-      '/api/demo-settings/setup': { POST: needs(demoSettings, async (d, req) => d.demoSetup(await req.json())) },
-      '/api/demo-settings/install': { POST: needs(demoSettings, async (d, req) => d.installDemoVoice(await req.json())) },
-      '/api/demo-settings/sample': {
-        POST: async (req) => {
-          if (!demoSettings) return notFound();
-          const input = await req.json().catch(() => null);
-          return demoSettings.sampleDemoVoice(input).then(
-            (wav) => new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } }),
-            (e) => handle(() => Promise.reject(e)),
-          );
-        },
-      },
-      // a demo's narration clip, in the voice Obeya holds loaded across renders (narration.ts)
-      '/api/narration/clip': { POST: narration ? clipRoute(narration) : notFound },
-      // and heard back for the times of its words
-      '/api/narration/hear': { POST: narration ? hearRoute(narration) : notFound },
-      // "Take over into the repository for everyone": a repository's settings for this machine into its .obeya/settings.json
-      '/api/config/share-settings': { POST: needs(config, async (c, req) => c.shareSettings(await req.json())) },
-      // a repository's commands, new or changed on its default branch, confirmed by the owner: they count from now on
-      '/api/config/trust': { POST: needs(config, async (c, req) => (await c.trust(await req.json()), {})) },
-      // "Try again": what did not start as the configuration has it tries again
-      '/api/config/retry': { POST: needs(config, (c) => c.retry()) },
-      // what the configuration amounts to and what is wrong with it: as saved, or a draft as the owner edits it
-      '/api/config/check': {
-        GET: needs(config, (c) => c.checkSaved()),
-        POST: needs(config, async (c, req) => c.check(await req.json())),
-      },
-      '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
-      '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await fields(req)) as unknown as NewCard)) },
-      // from "Configuration", for a repository without settings of its own: the card that writes them
-      '/api/c/:canvas/adapter-setup': { POST: on(async (c, req) => c.adapterSetupCard(String((await fields(req)).repo))) },
-      // from the note on a plan directory: the card that prepares one of its docs as a project, started
-      '/api/c/:canvas/prepare-plan-doc': {
-        POST: on(async (c, req) => {
-          const { repo, file } = ((await req.json()) ?? {}) as { repo?: unknown; file?: unknown };
-          return c.preparePlanDoc(String(repo), String(file));
-        }),
-      },
-      // the owner moved the note on a repository's plan directory
-      '/api/c/:canvas/plan-dirs/:repo': {
-        PATCH: on(async (c, req) => c.board.movePlanDirNote(req.params.repo!, await req.json())),
-      },
-      '/api/c/:canvas/cards/:id': {
-        PATCH: on(async (c, req) => c.patch(req.params.id!, (await fields(req)) as CardPatch)),
-        DELETE: on((c, req) => click(c, c.remove(req.params.id!))),
-      },
-      // groups: a new one with its first cards (and a colour, when one comes back), a new name, the
-      // end of one, and cards put into one (`group: null`: none)
-      '/api/c/:canvas/groups': {
-        POST: on(async (c, req) => {
-          const { name, cards, hue } = ((await req.json()) ?? {}) as { name?: string; cards?: string[]; hue?: number };
-          return c.board.createGroup(name, cards, hue);
-        }),
-      },
-      '/api/c/:canvas/groups/:id': {
-        PATCH: on(async (c, req) => c.board.renameGroup(req.params.id!, (((await req.json()) ?? {}) as { name?: string }).name)),
-        DELETE: on((c, req) => c.board.deleteGroup(req.params.id!)),
-      },
-      '/api/c/:canvas/assign': {
-        POST: on(async (c, req) => {
-          const { cards, group } = ((await req.json()) ?? {}) as { cards?: string[]; group?: string | null };
-          return c.board.group(cards, group ?? null);
-        }),
-      },
-      '/api/c/:canvas/dependencies': {
-        POST: on(async (c, req) => { const { from, to } = (await fields(req)) as { from: string; to: string }; c.board.connect(from, to); }),
-        DELETE: on(async (c, req) => { const { from, to } = (await fields(req)) as { from: string; to: string }; c.board.connect(from, to, true); }),
-      },
-      '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },
-      '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
-      '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },
-      // the archive, newest first, a page at a time (`count`, `after`: the page before's `next`), each project
-      // with its workstreams; `q`: those holding its words (`from`: the page before's `next`; `labels`:
-      // the archive's labels in the owner's words; `everywhere`: for the search across canvas and archive);
-      // `ids` or `code`: the entries of these cards, or the one holding the card an address names.
-      // Posting archives every finished card of the owner's.
-      '/api/c/:canvas/archive': {
-        GET: on((c, req) => {
-          const p = new URL(req.url).searchParams;
-          const count = Math.min(ARCHIVE_PAGE_MAX, Math.max(1, Number(p.get('count')) || ARCHIVE_PAGE_MAX));
-          const ids = p.get('ids');
-          if (ids !== null) return { items: c.board.archiveEntries(ids.split(',').filter(Boolean).slice(0, ARCHIVE_PAGE_MAX)) };
-          const code = p.get('code');
-          if (code) return { items: c.board.archiveEntry(code) };
-          const q = p.get('q')?.trim();
-          if (!q) return c.board.archivePage(count, p.get('after') ?? undefined);
-          let labels: Record<string, string> = {};
-          try {
-            labels = JSON.parse(p.get('labels') ?? '{}') as Record<string, string>;
-          } catch {}
-          return c.board.archiveSearch(q, { count, from: Number(p.get('from')) || 0, labels, everywhere: p.has('everywhere') });
-        }),
-        POST: on((c) => ({ ids: c.board.archiveDone() })),
-      },
-      '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.press(req.params.id!, (await fields(req)) as unknown as CardAction)) },
-      // a script acting as the card's agent, in a scratch Obeya whose workers are idle (scripts/scratch-obeya.ts --say)
-      '/api/c/:canvas/cards/:id/stand-in': { POST: on(async (c, req) => ({ result: await c.standIn(req.params.id!, (await fields(req)) as Parameters<typeof c.standIn>[1]) })) },
-      '/api/c/:canvas/cards/:id/events': { GET: on((c, req) => c.board.events(req.params.id!)) },
-      // the skills the owner can ask the card's agent for by `/name`, for the field's menu
-      '/api/c/:canvas/cards/:id/skills': { GET: on((c, req) => c.skillsOf(req.params.id!)) },
-      // a screenshot for a message: uploaded first, the message then names it by id
-      '/api/c/:canvas/images': {
-        POST: on(async (c, req) => ({ id: c.images.save(new Uint8Array(await req.arrayBuffer()), req.headers.get('content-type') ?? '') })),
-      },
-      // a file of another kind for a message: Obeya keeps it, and the field gets its path (`?name`: what it was called)
-      '/api/c/:canvas/files': {
-        POST: on(async (c, req) => {
-          if (Number(req.headers.get('content-length')) > MAX_FILE_BYTES) throw new BadRequest('fileTooLarge', `a file may have at most ${MAX_FILE_BYTES} bytes`);
-          return { path: c.files.save(new Uint8Array(await req.arrayBuffer()), new URL(req.url).searchParams.get('name') ?? '') };
-        }),
-      },
-      // a file of another kind dropped in a browser: where it lies on this machine, if Obeya finds exactly one that fits
-      '/api/c/:canvas/files/find': {
-        POST: on(async (_c, req) => ({ path: await findDropped((await fields(req)) as unknown as Dropped) })),
-      },
-      // an image dropped in the app, which names it by its path: its bytes, for the page to attach it as a screenshot
-      '/api/c/:canvas/files/local': {
-        GET: on((_c, req) => {
-          const image = localImage(new URL(req.url).searchParams.get('path') ?? '');
-          if (!image) throw new BadRequest('imageType', 'no image on this machine');
-          return new Response(Bun.file(image.file), { headers: { 'content-type': image.type, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
-        }),
-      },
-      '/api/c/:canvas/images/:file': {
-        GET: (req) => {
-          const file = pages.canvas(req.params.canvas)?.images.path(req.params.file);
-          return file ? new Response(Bun.file(file), { headers: { 'cache-control': 'private, max-age=31536000, immutable' } }) : notFound();
-        },
-      },
-      // what the card's work changes: its files with lines added and removed, with `?full` the diff too
-      '/api/c/:canvas/cards/:id/diff': { GET: on((c, req) => c.diff(req.params.id!, new URL(req.url).searchParams.has('full'))) },
-      // the app running in the card's workspace: whether it answers, and the owner opening it to try it by hand
-      '/api/c/:canvas/cards/:id/app': { GET: on((c, req) => c.appUp(req.params.id!)) },
-      '/api/c/:canvas/cards/:id/app/open': {
-        GET: async (req) => {
-          const c = pages.canvas(req.params.canvas);
-          if (!c) return notFound();
-          let url: string | null = null;
-          try {
-            url = await c.openApp(req.params.id);
-          } catch (e) {
-            if (!(e instanceof BadRequest)) throw e;
-          }
-          return url ? Response.redirect(url, 302) : new Response(c.board.t.worker.appGone, { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
-        },
-      },
-      '/api/c/:canvas/cards/:id/plan': { GET: on((c, req) => c.board.planDoc(req.params.id!)) },
-      // a project's decisions and the idea it came from
-      '/api/c/:canvas/cards/:id/history': { GET: on((c, req) => c.board.projectHistory(req.params.id!)) },
-      // the frame an idea's mock is written into
-      '/api/mock-frame': { GET: () => serveMockFrame() },
-      // an HTML artifact's page may load files from folders beside it
-      '/api/c/:canvas/cards/:id/demo/*': {
-        GET: (req) => {
-          try {
-            const demo = pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id);
-            const file = decodeURIComponent(new URL(req.url).pathname.split('/demo/').slice(1).join('/demo/'));
-            return demo ? serveDemoFile(demo, file, req) : notFound();
-          } catch {
-            return notFound();
-          }
-        },
-      },
-      // a demo a later handover replaced, which the owner went back to
-      '/api/c/:canvas/cards/:id/demos/:n/*': {
-        GET: (req) => {
-          try {
-            const n = Number(req.params.n);
-            const demo = Number.isInteger(n) && n >= 0 ? pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id, n) : null;
-            const route = `/demos/${n}/`;
-            const file = decodeURIComponent(new URL(req.url).pathname.split(route).slice(1).join(route));
-            return demo ? serveDemoFile(demo, file, req, route) : notFound();
-          } catch {
-            return notFound();
-          }
-        },
-      },
-      // a file the card's work made or changed, for its left column; `?download` to save it
-      '/api/c/:canvas/cards/:id/files/*': {
-        GET: (req) => {
-          try {
-            const c = pages.canvas(req.params.canvas);
-            const url = new URL(req.url);
-            const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
-            return c ? serveCardFile(file, url.searchParams.has('download'), req, (path) => c.cardFile(req.params.id, path)).catch(() => notFound()) : notFound();
-          } catch {
-            return notFound();
-          }
-        },
-      },
-      // opens a file of the card's work with the system's app (`show`: in its folder), on this machine only: from another device the browser downloads it
-      '/api/c/:canvas/cards/:id/open': {
-        POST: (req, srv) =>
-          access.isLocal(req, srv)
-            ? on(async (c, req) => {
-                const { file, show } = (await req.json().catch(() => ({}))) as { file?: string; show?: boolean };
-                if (typeof file !== 'string') throw new BadRequest('invalid', 'file must be a path');
-                await c.openCardFile(req.params.id!, file, show === true);
-              })(req)
-            : onlyHere(),
-      },
-      // "Make it a card": a looked-up thread moves onto a Question card
-      '/api/c/:canvas/threads/:thread/card': { POST: on((c, req) => c.answers.toCard(Number(req.params.thread))) },
-      // "Show as walkthrough": the answer told again, as the next answer, in the sheet or in a card's conversation
-      '/api/c/:canvas/talk/:talk/walkthrough': { POST: on((c, req) => c.answers.showAsWalkthrough(Number(req.params.talk))) },
-      '/api/c/:canvas/cards/:id/events/:ev/walkthrough': { POST: on((c, req) => c.answers.showEventAsWalkthrough(req.params.id!, Number(req.params.ev))) },
-      // a walkthrough as its player reads it while it grows; `?playing=<slide>` while it plays, so the voice speaks that first
-      '/api/c/:canvas/threads/:thread/walkthroughs/:name': {
-        GET: (req) => {
-          const c = pages.canvas(req.params.canvas);
-          const playing = new URL(req.url).searchParams.get('playing');
-          const w = c?.answers.walkthrough(Number(req.params.thread), req.params.name, playing === null ? undefined : Number(playing));
-          return w ? Response.json(w, { headers: { 'cache-control': 'no-store' } }) : notFound();
-        },
-      },
-      // a file a looked-up answer comes with; `?download` to save it
-      '/api/c/:canvas/threads/:thread/files/*': {
-        GET: (req) => {
-          try {
-            const c = pages.canvas(req.params.canvas);
-            const url = new URL(req.url);
-            const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
-            return c ? serveAnswerFile(c.answerDir(Number(req.params.thread)), file, url.searchParams.has('download'), req) : notFound();
-          } catch {
-            return notFound();
-          }
-        },
-      },
-      // opens an answer's file (`file`), or its thread's directory, with the system's app
-      '/api/c/:canvas/threads/:thread/open': {
-        POST: (req, srv) =>
-          access.isLocal(req, srv)
-            ? on(async (c, req) => {
-                const { file } = (await req.json().catch(() => ({}))) as { file?: string };
-                await c.openAnswerFile(Number(req.params.thread), file);
-              })(req)
-            : onlyHere(),
-      },
-      // the app's shell, every few seconds while it has a newer version of the app ready
-      '/api/app-update': {
-        GET: () => Response.json(updates.current()),
-        POST: async (req) =>
-          handle(async () => {
-            const body = await req.json();
-            // a shell installed from a checkout has built itself anew there: in place as landed code is, so installed the same way, without asking
-            if (body?.rebuilt === true) {
-              restarter?.request('update');
-              return { updating: !!restarter };
-            }
-            return updates.report(body);
-          }),
-      },
-      // the Mac app's shell finds this Obeya running without the app that started it, so without the
-      // system's permissions for it (the local network): it ends once the workers paused, and the shell
-      // starts it again under itself (app/src/main.rs, `orphaned`)
-      '/api/app-takeover': {
-        POST: () =>
-          handle(() => {
-            restarter?.request('takeover');
-            return { taking: !!restarter };
-          }),
-      },
-      // a shell installed from a checkout has built itself anew while this Obeya runs on without it (started
-      // from a terminal), every few seconds until it starts again: it waits while the owner dictates or
-      // watches a video, as a restart does; `kept`: whether the page handed over when the shell asked
-      '/api/app-rebuilt': {
-        POST: (req) =>
-          handle(async () => {
-            const { kept } = ((await req.json().catch(() => null)) ?? {}) as { kept?: unknown };
-            return { now: !restarter?.owner().length, kept: handOver.has(kept) };
-          }),
-      },
-      // what a reload keeps, from the page before the shell started again to the page after
-      '/api/app-rebuilt/handover': {
-        GET: () => Response.json(handOver.take()),
-        POST: (req) => handle(async () => (handOver.give(await req.json()), { ok: true })),
-      },
-      // the owner installs it: once the workers paused, Obeya ends for the shell to install it and start again
-      '/api/app-update/install': {
-        POST: () =>
-          handle(() => {
-            const update = updates.current();
-            if (!restarter || !update || update.download) throw new BadRequest('invalid', 'no update the app can install');
-            restarter.request('update');
-            return { updating: true };
-          }),
-      },
-      // new commits on the upstream of the checkout Obeya runs from
-      '/api/source-update': { GET: () => Response.json(sources?.current() ?? null) },
-      // the owner pulls them: a fast-forward of the checkout, after which the self-update restarts Obeya once the workers paused
-      '/api/source-update/pull': { POST: needs(sources, async (s) => (await s.pull(), { source: s.current() })) },
-      // a demo as a file to pass on, where the repository has no share target (`?as=zip|html`)
-      '/api/c/:canvas/cards/:id/export': {
-        GET: on(async (c, req) => {
-          const as = new URL(req.url).searchParams.get('as');
-          if (as !== 'zip' && as !== 'html') throw new BadRequest('invalid', 'as must be zip or html');
-          // which of the card's demos, by its handover (`?demo=`); the latest without
-          const demo = Number(new URL(req.url).searchParams.get('demo') ?? NaN);
-          const f = await c.sharing.export(req.params.id!, as, Number.isInteger(demo) ? demo : undefined);
-          return new Response(f.data, { headers: { 'content-type': f.type, 'content-disposition': `attachment; filename="${f.name}"`, 'cache-control': 'no-store' } });
-        }),
-      },
-      // what the owner said (audio), for the open card's agent or the Coordinator; the body is the
-      // recording, or a form with it (`audio`) and the words typed in the field before it (`text`)
-      '/api/c/:canvas/voice': {
-        POST: on(holdingRestart(async (c, req) => {
-          // screenshots shown with the recording (`?image=<id>`, repeated), checked before transcribing
-          const params = new URL(req.url).searchParams;
-          const images = params.getAll('image');
-          c.images.resolve(images);
-          // `?replyTo=<event>`: said in reply to that message of the open card's conversation; with
-          // no card open, `?replyTo=<exchange>.<part>` to that message of the sheet (`TalkRef`)
-          const replyTo = replyParam(params.get('replyTo'));
-          const form = req.headers.get('content-type')?.startsWith('multipart/form-data') ? await req.formData() : null;
-          const audio = form ? form.get('audio') : await req.blob();
-          if (!(audio instanceof Blob)) throw new BadRequest('invalid', 'audio expected');
-          arrived.add(params.get('sent'));
-          // a browser sends a form's line breaks as CRLF: they go on as typed
-          const field = form?.get('text');
-          const typed = typeof field === 'string' ? field.replace(/\r\n/g, '\n') : undefined;
-          let text: string | null;
-          try {
-            text = await transcribe(transcriber, c, audio);
-          } catch (e) {
-            // the cloud service failed or refused: the owner reads why under the mic, and the words stay in the field
-            if (!(e instanceof CloudError)) throw e;
-            console.error(`voice on ${c.id}: ${e.service} failed: ${e.message}`);
-            return { confirm: c.board.t.voice.cloudFailed(e.service, e.message), unheard: true };
-          }
-          // `?listen`: dictated into a field, the words go back to it and nowhere else
-          if (params.has('listen')) {
-            console.log(`dictated on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
-            return text ? { confirm: '', quiet: true, text } : unheard(c, text);
-          }
-          // what stood in the field goes first; nothing heard sends nothing, the field keeps it
-          const words = text && typed?.trim() ? `${typed.trim()}${/\n/.test(typed.trim()) ? '\n\n' : ' '}${text}` : text;
-          // `?at=<seconds>&still=<image>&demo=<handover>`: said about that place in the open card's demo video (`demo`: an earlier one)
-          const at = params.get('at');
-          const demo = Number(params.get('demo') || NaN);
-          const spot = at !== null && at !== '' ? { at: Number(at), ...(params.get('still') ? { still: params.get('still')! } : {}), ...(Number.isInteger(demo) ? { demo } : {}) } : undefined;
-          return heard(c, words, focusOf(req, c), images, { ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) });
-        })),
-      },
-      // whether the recording the page named `?sent=<id>` arrived, for a page that lost the answer
-      '/api/c/:canvas/voice/arrived/:id': { GET: on((_c, req) => ({ arrived: arrived.has(req.params.id!) })) },
-      // the owner started speaking: transcription and the Coordinator get ready meanwhile; `?ahead=1`:
-      // the owner may speak soon (the cursor went into Obeya's field), rather than speaking now
-      '/api/c/:canvas/voice/warm': {
-        POST: on((c, req) => {
-          transcriber.warm?.(new URL(req.url).searchParams.get('ahead') === '1');
-          c.commander.warm();
-        }),
-      },
-      '/api/c/:canvas/command': {
-        POST: on(async (c, req) => {
-          // `field`: typed into that field of the open card rather than into the Coordinator's sheet
-          // `replyTo`: typed in reply to that message of the open card's conversation, or with no card open of the sheet (`TalkRef`)
-          // `spot`: typed about that place in the open card's demo video
-          const { text, images, field, replyTo, spot } = (await fields(req)) as { text: string; images?: string[]; field?: unknown; replyTo?: unknown; spot?: SpotInput };
-          // a screenshot alone may speak for itself to the open card's agent
-          const card = focusOf(req).card;
-          const open = card ? c.board.item(card) : undefined;
-          const toAgent = !!open && listens(open, isField(field) ? { field } : {});
-          if (typeof text !== 'string' || (!text.trim() && !(toAgent && images?.length))) throw new BadRequest('emptyText', 'text must be a non-empty string');
-          // screenshots pasted into the typed command go to the cards it creates or concerns
-          c.images.resolve(images);
-          return heard(c, text.trim(), focusOf(req, c), images ?? [], { typed: true, ...(isField(field) ? { field } : {}), ...(typeof replyTo === 'number' || isTalkRef(replyTo) ? { replyTo } : {}), ...(spot ? { spot } : {}) });
-        }),
-      },
-      // a wish or a bug for Obeya's makers: the issue's text as a small job writes it, for the owner to check and open on GitHub
-      '/api/c/:canvas/wish': {
-        POST: on(async (c, req) => {
-          const { said, answer, title, body, images, app } = ((await req.json()) ?? {}) as Record<string, unknown>;
-          if (typeof said !== 'string' || !said.trim()) throw new BadRequest('emptyText', 'said must be a non-empty string');
-          const ids = Array.isArray(images) ? images.filter((i): i is string => typeof i === 'string') : [];
-          const server = config?.view().server;
-          return c.writeWish(
-            { said, ...(typeof answer === 'string' ? { answer } : {}), ...(typeof title === 'string' ? { title } : {}), ...(typeof body === 'string' ? { body } : {}) },
-            footerOf(server?.version ?? VERSION, server?.commit ?? null, app === true),
-            ids,
-          );
-        }),
-      },
-      '/api/c/:canvas/command/undo': {
-        POST: on(async (c, req) => click(c, { undone: c.commander.undo((await fields(req)).token as string) })),
-      },
-      '/api/c/:canvas/preferences': {
-        POST: on(async (c, req) => {
-          const { text, target } = (await fields(req)) as { text: string; target?: string };
-          c.remember(text, target ? { repos: [target] } : {});
-        }),
-      },
-      '/api/c/:canvas/preferences/:id': {
-        PATCH: on(async (c, req) => c.board.setPreference(Number(req.params.id), (await fields(req)).text as string)),
-        DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),
-      },
-      '/api/c/:canvas/preferences/:id/accept': {
-        POST: on(async (c, req) => {
-          const { text, target } = (await req.json().catch(() => ({}))) as { text?: string; target?: string | null };
-          return click(c, c.acceptRule(Number(req.params.id), text, target));
-        }),
-      },
-      '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => click(c, c.rejectRule(Number(req.params.id)))) },
-      // a value for a repository's setting the work retrospective proposed: taken on this machine or for everyone (`where`), or rejected
-      '/api/c/:canvas/setting-proposals/:id/take': {
-        POST: on(async (c, req) => {
-          const { where, value } = (await req.json().catch(() => ({}))) as { where?: unknown; value?: unknown };
-          return click(c, (await c.takeSetting(Number(req.params.id), where, value)) ?? {});
-        }),
-      },
-      '/api/c/:canvas/setting-proposals/:id/reject': { POST: on((c, req) => click(c, c.rejectSetting(Number(req.params.id)))) },
-      // "Share again" for many outdated pages at once (or, with `tags`, the pages without tags): `count` of them, the newest demos first, or all (null)
-      '/api/c/:canvas/reshare': {
-        POST: on(async (c, req) => {
-          const { count, tags } = (await req.json().catch(() => ({}))) as { count?: number | null; tags?: unknown };
-          if (count != null && !(Number.isInteger(count) && count > 0)) throw new BadRequest('invalid', 'count must be a positive integer or null');
-          // `tags`: the pages without tags, tagged and shared again ("N pages without tags")
-          c.sharing.reshareMany(count ?? null, tags === true);
-        }),
-        // "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change
-        DELETE: on((c) => c.sharing.dismissResharing()),
-      },
-      '/api/c/:canvas/reshare/stop': { POST: on((c) => c.sharing.stopResharing()) },
-      // the card's latest demo was narrated anew in its directory (the demo skill's `--revoice`)
-      '/api/c/:canvas/cards/:id/demo-rebuilt': { POST: on((c, req) => c.sharing.rebuilt(req.params.id!)) },
-      // the owner has the Coordinator's sheet in view: the answers waiting there are read; with `ids`, those a project's sheet shows
-      '/api/c/:canvas/talk/read': {
-        POST: on(async (c, req) => {
-          const { ids } = (await req.json().catch(() => ({}))) as { ids?: unknown };
-          if (ids !== undefined && !(Array.isArray(ids) && ids.every((i) => Number.isInteger(i)))) throw new BadRequest('invalid', 'ids must be a list of exchange ids');
-          c.board.readTalk(ids as number[] | undefined);
-        }),
-      },
-      // the owner no longer wants the step the Coordinator waits on a card for ("Stop waiting")
-      '/api/c/:canvas/talk/:id/unwait': {
-        POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String(((await req.json().catch(() => ({}))) as { card?: unknown }).card ?? '')) })),
-      },
-      // the phone view's one connection: every canvas's snapshots and changes, each naming its canvas
-      '/api/ws': (req, server) => pages.upgrade(req, server),
-      '/api/c/:canvas/ws': (req, server) => pages.upgrade(req, server, req.params.canvas),
-    }, gate),
+      gate,
+    ),
     fetch: (req: Request, srv: Bun.Server<Socket>) => refusal(req, access.hosts()) ?? access.admit(req, srv, '') ?? notFound(),
     websocket: pages.websocket,
   };
@@ -928,8 +1054,3 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
     });
   return server;
 }
-
-/** Pushes go to a paired device: the machine Obeya runs on gets none. */
-const onlyDevices = () => Response.json({ code: 'onlyDevices', error: 'only a paired device gets pushes' }, { status: 403 });
-
-const onlyHere = () => Response.json({ code: 'onlyHere', error: 'only on the machine Obeya runs on' }, { status: 403 });
