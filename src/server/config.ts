@@ -40,7 +40,7 @@ import { commitShared, proposeShared, pushShared } from './shared-settings';
 import { leavingClones } from './workspaces';
 import { gitTry } from './git';
 import { VERSION } from './resources';
-import { siteProblem } from './share';
+import { siteProblem } from './site';
 import { canonical, commandsOf, heldGroups, trustHeld, trustTakenOver } from './trust';
 
 export const CONFIG_FILE = 'canvases.json';

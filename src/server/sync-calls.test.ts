@@ -110,15 +110,15 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'server.ts': { why: 'server path, cheap: a temporary directory for a recording to transcribe', calls: { mkdtempSync: 1, rmSync: 1 } },
   'settings.ts': { why: "the agents' settings file: small, read when used and written when the owner saves", calls: { mkdirSync: 1, readFileSync: 1, writeFileSync: 1 } },
   'share.ts': {
-    why: "server path: a demo exported as a ZIP or HTML file reads its video whole, a page reshared reads its HTML, a deploy program and demo files are stat'ed; a candidate for fs/promises (counted as on this branch; share.ts is changed elsewhere)",
-    calls: { existsSync: 2, readFileSync: 7, statSync: 4 },
+    why: "server path: a demo exported as a ZIP or HTML file reads its video whole, a page reshared reads its HTML, demo files are stat'ed; a candidate for fs/promises",
+    calls: { existsSync: 1, readFileSync: 7, statSync: 4 },
   },
   'shared-settings.ts': { why: "server path, cheap: a temporary index for committing a repository's settings", calls: { mkdtempSync: 1, rmSync: 1 } },
   'site-hosts.ts': {
     why: "server path, cheap: a site's env files listed for its Cloudflare account, small temporary directories for a first deployment, GitHub Pages' work tree tidied",
     calls: { existsSync: 1, mkdtempSync: 3, readFileSync: 1, readdirSync: 2, rmSync: 5, writeFileSync: 4 },
   },
-  'site.ts': { why: "server path, cheap: whether a site's env file is there, asked where the canvas cannot wait (share.ts's checks, what the UI is told of sharing)", calls: { existsSync: 1 } },
+  'site.ts': { why: "server path, cheap: whether a site's env file is there, asked where the canvas cannot wait (share.ts's checks, what the UI is told of sharing), and whether a deploy line's program is (the configuration's check)", calls: { existsSync: 2 } },
   'stalls.ts': {
     why: "the stall watcher: its own log, written at most once per stall; spawnSync is the wrapper that times Bun.spawnSync, not a call of its own",
     calls: { appendFileSync: 1, renameSync: 1, spawnSync: 1, statSync: 1 },

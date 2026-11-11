@@ -1,4 +1,5 @@
-// Setting up a demo site at a host, and the deploy Obeya builds in for GitHub Pages. Cloudflare
+// Setting up a demo site at a host, the deploy Obeya builds in for GitHub Pages, and the env files
+// under `sites/` that hold a site's credentials for its host. Cloudflare
 // Pages goes through wrangler (with the credentials of a site this machine already deploys to, else
 // the machine's own `wrangler login`), GitHub Pages through gh's login and git. Everything runs as a
 // program with its arguments, never through a shell, so it works on Windows and Linux alike.
@@ -19,6 +20,21 @@ import { messageOf } from '../core/text';
 export const GITHUB_PAGES = 'obeya:github-pages';
 /** GitHub's limit on one file (100 MiB); a site stays under about 1 GB. */
 export const GITHUB_PAGES_MAX = 100 * 1024 * 1024;
+
+/** Where the sites live under Obeya's home. */
+export const SITES_DIR = 'sites';
+
+/** `KEY=value` lines; blank lines, comments and a leading `export` are allowed, a value may be quoted. */
+export function parseEnv(text: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+    if (!m || line.trimStart().startsWith('#')) continue;
+    const v = m[2]!;
+    env[m[1]!] = /^(["']).*\1$/.test(v) ? v.slice(1, -1) : v;
+  }
+  return env;
+}
 
 /** Runs a program; a stand-in in tests. */
 export type Exec = (argv: string[], o?: { env?: Record<string, string | undefined>; timeout?: number; cwd?: string }) => Promise<{ code: number; out: string; err: string }>;
@@ -52,18 +68,16 @@ const wranglerEnv = (env: Record<string, string>) => ({ ...BUN_ENV, ...env });
  * them.
  */
 export function cloudflareAccounts(home: string): { site: string; env: Record<string, string> }[] {
-  const sites = join(home, 'sites');
+  const sites = join(home, SITES_DIR);
   if (!existsSync(sites)) return [];
   const found: { site: string; env: Record<string, string> }[] = [];
   for (const d of readdirSync(sites, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     if (!d.isDirectory()) continue;
     for (const f of readdirSync(join(sites, d.name)).sort()) {
       if (!f.endsWith('.env')) continue;
+      const all = parseEnv(readFileSync(join(sites, d.name, f), 'utf8'));
       const env: Record<string, string> = {};
-      for (const line of readFileSync(join(sites, d.name, f), 'utf8').split(/\r?\n/)) {
-        const m = /^\s*(?:export\s+)?(CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID)\s*=\s*["']?([^"'\s]+)["']?\s*$/.exec(line);
-        if (m) env[m[1]!] = m[2]!;
-      }
+      for (const key of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) if (all[key]) env[key] = all[key];
       const same = (e: Record<string, string>) => e.CLOUDFLARE_ACCOUNT_ID ? e.CLOUDFLARE_ACCOUNT_ID === env.CLOUDFLARE_ACCOUNT_ID : e.CLOUDFLARE_API_TOKEN === env.CLOUDFLARE_API_TOKEN;
       // a site may name its account alone and deploy with the machine's wrangler login
       if ((env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_ACCOUNT_ID) && !found.some((x) => same(x.env))) found.push({ site: d.name, env });

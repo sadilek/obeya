@@ -9,9 +9,9 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
-import type { SharePage, ShareTarget } from './share';
 import { Sharing } from './share';
-import { MANIFEST, NOT_FOUND, parseEnv, repoMark, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
+import { MANIFEST, NOT_FOUND, repoMark, type SharePage, type ShareTarget, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
+import { parseEnv } from './site-hosts';
 import { PAGES_HASH } from '../core/page-changes';
 import { deployScript, FakeRuntime, fakeSiteHost, gitRepo, noForge, removeDir, testBoard, videoDemo } from './testing';
 

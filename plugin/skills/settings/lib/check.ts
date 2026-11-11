@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { defaultsFor, parseShared, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE, withSettings } from '../../../../src/adapters/index.ts';
 import { allTicked, type NotAProject } from '../../../../src/core/plan-doc.ts';
 import { outsidePlanDir, readPlanDocs, repoInfo } from '../../../../src/server/repo.ts';
-import { siteProblem } from '../../../../src/server/share.ts';
+import { siteProblem } from '../../../../src/server/site.ts';
 
 const repo = await repoInfo(process.cwd());
 const settingsFile = join(repo.path, REPO_SETTINGS_FILE);

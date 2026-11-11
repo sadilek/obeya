@@ -10,7 +10,7 @@
 // Pages of one target are on one site, so each publish names the others.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { z } from 'zod';
 import { LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
@@ -18,11 +18,10 @@ import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, ty
 import { BadRequest, type Board, cardDemos, contributionOf, type DemoRef, pageTagsOf, type PrState, sameDemo, type SharedDemo, sharedDemos, type Shipped, type StoredDemo, type StoredReshare, type StoredShare } from './board';
 import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
-import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { type Gone, siteBase, siteMissing, type SiteOptions, siteTarget } from './site';
+import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { type Gone, siteBase, siteMissing, type SiteOptions, type SharePage, siteTarget, type ShareTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
-import { GITHUB_PAGES } from './site-hosts';
 import { keepDemo, rereadChapters, videoFacts } from './demo';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, captionTracks, type DemoPageParts, day, demoFile, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage, silentVideo } from './demo-page';
 import type { Theme } from './theme';
@@ -30,51 +29,11 @@ import { type Forge, landedUrl, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { readSession } from './coordinator';
 import type { CardRow } from './db';
-import { commandWords } from './folder-processes';
 import { branchName } from './branches';
 import { gitAsync } from './git';
 import { originOf } from './forgejo';
 import { zip } from './zip';
 import { messageOf, plainText } from '../core/text';
-
-/** A later demo version on a page, below the first as an addendum. */
-export interface PageDemo {
-  title: string;
-  text: string;
-  kind: DemoKind;
-  chapters: [number, string][];
-  dir: string;
-  /** When it was handed over, which its section is headed with. */
-  at?: string;
-}
-
-/** What a page on the site is made of: the first demo version shared, and the later ones below it. */
-export interface SharePage {
-  /** Stays the same for a card, so a shared link keeps working when the page is published again. */
-  slug: string;
-  title: string;
-  text: string;
-  /** A video, or an HTML artifact. */
-  kind: DemoKind;
-  /** Seconds and title of each scene; none for an artifact. */
-  chapters: [number, string][];
-  /** The card's pull request, once it has one. */
-  pr: string | null;
-  /** Without a pull request: where the card's work landed on the default branch, once it has. */
-  commit?: PageCommit | null;
-  /** The demo's language, for the page's own words (`language` of the page templates). */
-  language: PageLanguage;
-  /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`; an artifact's `index.html` and the files it loads. */
-  dir: string;
-  /** The slugs of the other pages Obeya has stored as shared on this site: the site must still hold them. */
-  shared: string[];
-  /** The later demo versions on the page, in order of handover. */
-  more?: PageDemo[];
-  /** The page's tags from the site's vocabulary, by dimension (`tagsOf`); none where the site has none. */
-  tags?: PageTags;
-  /** The theme of the card's repository (theme.ts); none where it has none. */
-  theme?: Theme;
-}
 
 /**
  * Where a repository's demos may go: the site its settings name (none without one), its checkout,
@@ -87,47 +46,6 @@ export interface ShareSource {
   /** Its theme for the pages (`.obeya/theme.css`, theme.ts), asked for once a page goes out; none where it has none. */
   theme?: () => Theme | null | Promise<Theme | null>;
 }
-
-/**
- * Where a card's pages go. Pages whose targets have the same key are on one site: a publish or
- * withdrawal names the others as shared. Keys are not stored, so they only need to stay the same
- * across a restart.
- */
-export interface ShareTarget {
-  key: string;
-  /** The card's repository checkout. */
-  repo: string;
-  /**
-   * The page's URL, or why it did not go out; what the target said on the way goes into the card's
-   * log, and what it says while it goes on (`log`). `gone`: pages another machine withdrew, found
-   * on the way.
-   */
-  publish(page: SharePage, log?: (text: string) => void): Promise<({ url: string; said: string } | { why: string; said: string }) & { gone?: Gone[] }>;
-  withdraw(slug: string, shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
-  /**
-   * The pages another machine withdrew (their cards here lose their link), and the pages shared
-   * from here (`shared`) that the live site lacks or has older, taken offline by another machine's
-   * deployment that came in between.
-   */
-  audit(shared: string[]): Promise<{ gone: Gone[]; missing: string[] }>;
-  /** Where the page of `slug` is, before it is published. */
-  pageUrl(slug: string): string;
-  /** Deploys again what this machine has, for the pages `audit` found missing. */
-  repair(shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
-  /**
-   * Gives pages on the site their tags in one deploy, in place: each keeps its video or artifact as
-   * the site has it (the demo's own files may be gone), and the page around them is written anew.
-   * `shared`: every page shared through the target, those included.
-   */
-  retag(pages: { slug: string; tags: PageTags }[], shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
-}
-
-/**
- * Where a site's deploy runs, under Obeya's home: not in the checkout, which is often a workspace
- * of the pool too, and a file a command leaves in its working directory (`wrangler pages deploy`
- * writes its cache there) would keep the workspace from being leased until someone cleans up.
- */
-export const SHARE_CWD = 'share';
 
 export interface SharingOptions {
   board: Board;
@@ -150,9 +68,6 @@ export interface SharingOptions {
    */
   onPage?: (cardId: string, r?: { url: string } | { why: string }) => void;
 }
-
-/** A site's deploy that has not finished by then is stopped (an upload of a few files takes seconds). */
-export const COMMAND_TIMEOUT = 15 * 60_000;
 
 /** The pages of all canvases go out one at a time: a site directory takes one change at a time. */
 let chain: Promise<unknown> = Promise.resolve();
@@ -1352,55 +1267,3 @@ export function withDemoLink(body: string, url: string, kind: DemoKind, t: Messa
 
 /** A card's page keeps this slug for good: a shared link stays the same, and an export is named by it. */
 const slugOf = (card: Item) => branchName(card.title, card.id).slice('obeya/'.length);
-
-/**
- * Argv whose program, given as a path, is found in the repository (`~` is the home directory), and
- * a script (`.ts`, `.js`) runs with Obeya's own Bun, on every platform.
- */
-export function scriptArgv(words: string[], repoPath: string): string[] {
-  if (!words.length) return [];
-  let [program, ...rest] = words as [string, ...string[]];
-  // bunx is Obeya's own Bun too: an installation of Obeya may have no bunx on the PATH
-  if (program === 'bunx') return [process.execPath, 'x', ...rest];
-  program = expandHome(program);
-  const script = /\.(m?[jt]sx?|cjs)$/.test(program);
-  if ((script || /[\\/]/.test(program)) && !isAbsolute(program)) program = resolve(repoPath, program);
-  return script ? [process.execPath, program, ...rest] : [program, ...rest];
-}
-
-/** What the demo site lacks to be shared on (a title, an http(s) URL, a deploy command); null where it has it. */
-export function siteIncomplete(site: DemoSite): string | null {
-  if (!site.title.trim()) return 'demo.site.title: missing';
-  if (!/^https?:\/\/[^\s/]+[^\s]*$/.test(site.url)) return 'demo.site.url: expected an http(s) URL';
-  if (!site.deploy.trim()) return 'demo.site.deploy: missing';
-  return null;
-}
-
-/**
- * Why the demo site a repository's settings name cannot be used, in English, starting with its
- * field (`demo.site.url: …`); null where it can. The configuration reports it.
- */
-export function siteProblem(site: DemoSite, repoPath: string): string | null {
-  const incomplete = siteIncomplete(site);
-  if (incomplete) return incomplete;
-  const words = commandWords(site.deploy);
-  // the deploy Obeya builds in: a GitHub repository, pushed to with gh's login
-  if (words[0] === GITHUB_PAGES) {
-    if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(words[1] ?? '')) return `demo.site.deploy: ${GITHUB_PAGES} expects <owner>/<repository>`;
-    return Bun.which('gh') ? null : `demo.site.deploy: ${GITHUB_PAGES} needs gh, which is not on the PATH`;
-  }
-  // bunx runs as Obeya's own Bun
-  if (words[0] === 'bunx') return words.length > 1 ? null : 'demo.site.deploy: bunx without a package';
-  const argv = scriptArgv(words, repoPath);
-  const program = argv[0] === process.execPath ? argv[1] : argv[0];
-  if (!program) return 'demo.site.deploy: the deploy command is empty';
-  if (isAbsolute(program)) return existsSync(program) ? null : `demo.site.deploy: the deploy command's program ${program} does not exist`;
-  return Bun.which(program) ? null : `demo.site.deploy: the deploy command's program ${program} is not on the PATH`;
-}
-
-/** The last lines of a command's output, for the card's log. */
-export function tail(s: string, lines = 20): string {
-  const all = s.trim().split('\n');
-  return (all.length > lines ? ['…', ...all.slice(-lines)] : all).join('\n').slice(-3000);
-}
-
