@@ -61,6 +61,11 @@ class (8×), the refresh-after-a-while cache (4×).
 - Risk: low; pure moves, `bun run typecheck` finds every import,
   `runtime.test.ts`/`codex.test.ts`/`shell.test.ts` cover the moved code.
 - Confidence: high; read the whole file, grepped every exported name for its importers.
+- Done by W13, by moves only: `claude.ts` holds the Claude Code runtime, `shell.ts` the
+  foreground-sleep reader (with `FOREGROUND_SLEEP_LIMIT` and `BOUNDED_WAITS`), `runtime.ts` (about
+  600 lines) the contract, its decorators and what both runtimes share; `runtime.test.ts` is split
+  the same way into `claude.test.ts` and `shell.test.ts`. The "Justified" entries below that name
+  `runtime.ts` for Claude-only code (`usageLimit`, `resetIn`) mean `claude.ts` now.
 
 ### B2. Three copies of the idle Claude Code session
 - Principle: DRY
@@ -91,6 +96,9 @@ class (8×), the refresh-after-a-while cache (4×).
   scripts/scratch-obeya.ts`) that the usage meter, the model versions in the menus and the `/` skill
   menu fill.
 - Confidence: high; read all three and the only other `query(` call (`runtime.ts:510`).
+- Done by W13: `idleClaude(cwd, options, there?)` in `claude.ts`; `claudeModels` passes the host it
+  asks over SSH. Checked in a scratch Obeya against the commit before: the usage meter fills, and the
+  skill list (44 skills) and Claude's model list are the same before and after.
 
 ### B3. The pause protocol (state write plus log line) is written out in three modules
 - Principle: DRY
@@ -257,6 +265,12 @@ class (8×), the refresh-after-a-while cache (4×).
   the names.
 - Confidence: medium; read all three, the two inputs differ enough that a full merge is not worth
   it.
+- Done by W13: `bareCommand` and `bareArgv` on one `WRAPPER`, `fileCall` and `mcpTool` in
+  `codex.ts`, used by `itemCalls`, `patchCalls` and `transcript.ts`. `SHELL` in `shell.ts` stays: it
+  names the commands that run shell code (`ksh`, `ssh` too), a different list. Whether the rollout file
+  records web searches and subagents was not checked; `codexRun` still has no case for them. An MCP
+  call that names no server now reads as Obeya's, as a dynamic tool without a namespace did; the app
+  server always names one.
 
 ### B8. The refusal of a long foreground wait is assembled twice
 - Principle: DRY
@@ -281,6 +295,9 @@ class (8×), the refresh-after-a-while cache (4×).
 - Risk: low; `runtime.test.ts` (`refuseForegroundWait`, `BOUNDED_WAITS`) and `codex.test.ts`
   (`WAIT_REFUSED`) pin both texts.
 - Confidence: high.
+- Done by W13: `waitRefusal(advice)` (the shared first sentence) and `refuseLongWait(command,
+  reason)` (the limit and the hook's deny answer) in `shell.ts`; each runtime keeps its advice. Both
+  texts the agents read are the same byte for byte as before (compared against the commit before).
 
 ### B9. "Give up after N ms" is hand-rolled five times beside a `withTimeout` helper
 - Principle: DRY
@@ -325,6 +342,8 @@ class (8×), the refresh-after-a-while cache (4×).
 - Win: no lines, but six call sites that say what they mean.
 - Risk: low; private methods, `ideas.test.ts` drives them through the public ones.
 - Confidence: high.
+- Done by W13: `send(card, message, { images, quiet, said, owner })`, `launch(card, current,
+  message, { resume, images, quiet })`.
 
 ### B11. `OWN_TOOLS` in the explorer can never match
 - Principle: YAGNI
@@ -382,6 +401,9 @@ class (8×), the refresh-after-a-while cache (4×).
   arguments (in its `THREADED` set). `codex.test.ts` and `harnesses.test.ts` (`findCodex`) cover
   version and login.
 - Confidence: medium; read all four helpers, did not run the Windows path.
+- Done by W13 as proposed; `runCodex` answers the output or null, and `updateCodex` in `machine.ts`
+  reads it so. Version, login and `update --help` gave the same answers before and after against
+  this machine's Codex; the Windows path was not run.
 
 ### B14. `messageOf` restated inline
 - Principle: DRY
@@ -415,6 +437,7 @@ class (8×), the refresh-after-a-while cache (4×).
 - Win: about 20 lines.
 - Risk: low; `replay.test.ts` covers both stubs and the refusal.
 - Confidence: high.
+- Done by W13: `stubSession`, `refusedText` and `noTurnFor` in `replay.ts`.
 
 ### B16. Runtime literals repeated between and inside the two runtimes
 - Principle: DRY
@@ -439,6 +462,11 @@ class (8×), the refresh-after-a-while cache (4×).
 - Risk: low; `core/login.ts` `codexLoginLost` matches only `notLoggedIn`'s text, which stays. Keep
   both "not installed" wordings as they are unless `codex.test.ts` shows nothing matches them.
 - Confidence: high for the repeats (grepped each literal).
+- Done by W13 in part: `stderrTail` and `lostEvent` in `runtime.ts`; `ENDED` and `NOT_INSTALLED`
+  in `codex.ts` (the start's longer wording builds on it). Dropped: a `codexBin` that throws, since
+  `codexUsage` rejects lazily and the start words it otherwise, and a `loginError`, since the three
+  mappings sit in three different flows (one throws only for a login failure and rethrows the rest,
+  one adds a second case, one maps a turn's message) and a helper would not make any shorter.
 
 ### B17. `carryImages` guards and catches what `carryTo` already guards and catches
 - Principle: YAGNI
@@ -500,6 +528,7 @@ class (8×), the refresh-after-a-while cache (4×).
   properties.
 - Confidence: high; read `advisor.ts` `inform` for how each field is read, grepped the tests'
   matchers.
+- Done by W13: `inform` spreads `more` minus `toObeya` and `rules`; `queued` is inlined.
 
 ### B20. The limit-lift timer and its margin are restated in workers
 - Principle: DRY

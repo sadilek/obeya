@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W6 and W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W6, W13 and W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -190,7 +190,7 @@ the workstream named does it for all of them.
   (`ready_for_review` as one linear method), A3 (`turnEnded` with its conditions named once), A4
   (the three endings of a card's work), A5 and A6 (the owner's words as one value), A8, A9 (the
   per-card timer maps), A10, A11, A12, A13, A14, A16, A18. After W11.
-- [ ] **W13:** The runtimes. [runtimes](code-cleanup/runtimes.md) B1 (`runtime.ts` keeps the
+- [x] **W13:** The runtimes. [runtimes](code-cleanup/runtimes.md) B1 (`runtime.ts` keeps the
   contract; the Claude Code runtime moves to a `claude.ts` beside `codex.ts`, the shell reader to
   `shell.ts`), B2 (one idle Claude Code session), B7, B8, B10, B13, B15, B16, B19.
 - [ ] **W14:** `canvas.ts` and `coordinator.ts` by subject.
