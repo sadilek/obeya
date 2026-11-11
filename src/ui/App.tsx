@@ -49,10 +49,11 @@ import { ProjectView, Sheet } from './project';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { landingLabel, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
-import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
+import { canvasPath, cardPath, queryWithout, readAddress } from './address';
 import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, showNotice, tellers, useAck, voiceTarget } from './tell';
 import { followDone, useCardEdits } from './cardHost';
+import { useCanvasAddress } from './canvasAddress';
 import { captionKey } from './walkthrough';
 import { useLatest, useLive, useStable } from './latest';
 import { type Pos, useOptimisticItems } from './optimistic';
@@ -429,16 +430,7 @@ function Canvas({
   // edits of the open card, saved shortly after typing stops, and at once on leaving for another canvas
   const edits = useCardEdits(() => focusRef.current?.id);
   const flushEdit = edits.flush;
-  // leaving for another canvas: what this canvas still had under way (a lookup, a step of the
-  // address) no longer touches the page, which shows the other
-  const gone = useRef(false);
-  useEffect(
-    () => () => {
-      gone.current = true;
-      beingWritten.clear();
-    },
-    [],
-  );
+  useEffect(() => () => beingWritten.clear(), []);
   // a call about a card goes to its canvas, even once the page shows another
   useEffect(() => cardsOn(snapshot.canvas.id, snapshot.items.map((i) => i.id)), [snapshot]);
   // what the open card holds as typed, which the snapshot may not carry yet
@@ -481,7 +473,7 @@ function Canvas({
     const panel = panelRef.current;
     // nothing to unfold from: the canvas stays as it was, open for the next card
     if (!el || !panel) return setFocus(f);
-    addressOpens(i, f ? itemOrArchived(f.id) : undefined);
+    address.opens(i, f ? itemOrArchived(f.id) : undefined);
     const r = el.getBoundingClientRect();
     flushSync(() => setOpenId(i.id));
     panel.style.setProperty('--c', `var(--${shownState(i)})`);
@@ -559,7 +551,7 @@ function Canvas({
     const f = focusRef.current;
     const panel = panelRef.current;
     if (f?.type !== 'card' || !panel) return;
-    if (!onward) addressCloses(f.project ? itemOrArchived(f.project.id) : undefined);
+    if (!onward) address.closes(f.project ? itemOrArchived(f.project.id) : undefined);
     const saved = flushEdit().catch(console.error);
     panel.querySelector('video')?.pause();
     const i = byId(f.id);
@@ -617,7 +609,7 @@ function Canvas({
   async function projectSheet(p: Item, r: { mark?: string } | null, quick: boolean, inView: boolean) {
     const f = focusRef.current;
     setFocus(f?.type === 'project' ? { ...f, id: p.id } : { type: 'project', id: p.id, prevCam: camRef.current, prevSide: camSide.current });
-    addressOpens(p, undefined);
+    address.opens(p, undefined);
     setSheetId(p.id);
     setReading(r);
     setSheetOn(true);
@@ -631,7 +623,7 @@ function Canvas({
     const f = focusRef.current;
     if (f?.type !== 'project') return;
     setFocus(null);
-    addressCloses(undefined);
+    address.closes(undefined);
     setSheetOn(false);
     // one opened from the search goes back to the search's list, which stayed open
     if (toArchive && dropRef.current !== 'search' && archived.get(f.id) && !itemsRef.current.some((i) => i.id === f.id)) setDrop('archive');
@@ -701,21 +693,14 @@ function Canvas({
     const code = !a.canvas || a.canvas === snapshot.canvas.id ? a.card : undefined;
     const talk = new URLSearchParams(location.search).has('talk');
     history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card', 'talk')}`);
-    // what comes back is what the address names already; a kept card the address left out (a
-    // restart of the app's shell, a link to the canvas) gets its address once it is open
-    addressSet.current = true;
-    const done = () => {
-      addressSet.current = false;
-      if (gone.current) return;
-      history.replaceState(history.state, '', pathOf(openNow()));
-    };
-    if (k) return void reopen(k).catch(console.error).finally(done);
+    // what comes back is what the address names already
+    if (k) return address.load(() => reopen(k));
     if (sheetLeft || talk) {
       // beside the sheet at once, as the canvas comes back
       quickSide.current = Date.now() + 2000;
       setKOn(true);
     }
-    (code ? openAddress(code, true) : Promise.resolve()).catch(console.error).finally(done);
+    address.load(async () => code && openAddress(code, true));
   }, []);
   async function reopen(k: Kept) {
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
@@ -745,54 +730,20 @@ function Canvas({
   }
 
   // ---------------------------------------------------------------- the address
-  // the address names the open card or project (`/c/<canvas>/card/<code>`). Opening one is a step in
-  // the browser's history, so Back closes it again, as on the phone; one opened in place of another
-  // (by a link in it) takes over that one's step. Changes take effect one after the other: a step
-  // back is done once the browser says so.
-  const addressChain = useRef(Promise.resolve());
-  const address = (change: () => void | Promise<void>) => void (addressChain.current = addressChain.current.then(() => (gone.current ? undefined : change())).catch(console.error));
-  /** The step back this page asked the browser for, until it is done. */
-  const stepBack = useRef<(() => void) | null>(null);
-  /** While the page opens what the address names (as it loads, on Back or Forward): the address is set already. */
-  const addressSet = useRef(false);
-  /** The card or project open now. */
-  const openNow = () => {
-    const f = focusRef.current;
-    return f ? itemOrArchived(f.id) : undefined;
-  };
-  const pathOf = (i: Item | undefined) => `${i ? cardPath(snapshot.canvas.id, i) : canvasPath(snapshot.canvas.id)}${location.search}`;
-  /** `i` opens over `under` (the project it is opened from, else the canvas). */
-  function addressOpens(i: Item, under: Item | undefined) {
-    if (addressSet.current) return;
-    address(() => {
-      const at = readAddress().card;
-      if (at && named([i], at)) return;
-      if (!at || (under && named([under], at))) history.pushState({ step: true }, '', pathOf(i));
-      else history.replaceState(history.state, '', pathOf(i));
-    });
-  }
-  /** What is open closes down to `under` (the project still open, else the canvas). */
-  function addressCloses(under: Item | undefined) {
-    if (addressSet.current) return;
-    address(() => {
-      if (!(history.state as { step?: true } | null)?.step) return history.replaceState(history.state, '', pathOf(under));
-      return new Promise<void>((done) => {
-        stepBack.current = () => {
-          // the step before may name what is no longer open (a card opened over its project, then reloaded without it)
-          const at = readAddress().card;
-          if (at && !(under && named([under], at))) history.replaceState(history.state, '', pathOf(under));
-          done();
-        };
-        history.back();
-      });
-    });
-  }
+  const address = useCanvasAddress(
+    snapshot.canvas.id,
+    () => {
+      const f = focusRef.current;
+      return f ? itemOrArchived(f.id) : undefined;
+    },
+    followAddress,
+  );
   /** Opens what the address names; a code no card has leaves the canvas, at its address. */
   async function openAddress(code: string, quick: boolean) {
     const i = await archived.namedBy(code);
-    if (gone.current) return;
+    if (address.gone.current) return;
     // by its short code, where it was named by its id
-    history.replaceState(history.state, '', pathOf(i));
+    address.replace(i);
     if (!i) return;
     if (i.kind === 'project') return openAgain({ project: i.id }, quick);
     // an archived workstream unfolds from its project's sheet, any other archived card from the
@@ -805,33 +756,16 @@ function Canvas({
   async function followAddress() {
     const code = readAddress().card;
     const i = code ? await archived.namedBy(code) : undefined;
-    if (gone.current) return;
-    addressSet.current = true;
-    try {
+    if (address.gone.current) return;
+    await address.opening(async () => {
       const f = focusRef.current;
       if (f?.type === 'card' && f.id !== i?.id) await closeCard({ keepUntitled: true });
       const p = focusRef.current;
       if (p?.type === 'project' && p.id !== i?.id && i?.parent !== p.id) await closeProject(false);
       // a code no card has any longer: openAddress leaves the canvas at its address
       if (code && (!i || focusRef.current?.id !== i.id)) await openAddress(code, false);
-    } finally {
-      addressSet.current = false;
-    }
+    });
   }
-  const follow = useLatest(followAddress);
-  useEffect(() => {
-    const pop = () => {
-      // Back or Forward to another canvas: the page switches to it (App)
-      const to = readAddress().canvas;
-      if (to && to !== snapshot.canvas.id) return;
-      const done = stepBack.current;
-      stepBack.current = null;
-      if (done) done();
-      else address(() => follow.current());
-    };
-    addEventListener('popstate', pop);
-    return () => removeEventListener('popstate', pop);
-  }, []);
 
   // ---------------------------------------------------------------- acknowledgement with undo
   const { showAck, showWait, fail, line: ackLine } = useAck();
