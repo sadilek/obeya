@@ -5,7 +5,7 @@
 
 import { useRef, useState } from 'react';
 import type { Place } from '../core/layout';
-import { agentListens, type Item, type TalkRef } from '../core/types';
+import { agentListens, type Item, type Notice, type TalkRef } from '../core/types';
 import { Aside } from './aside';
 import { api, ApiError, type Field, type Heard, type Where, failText } from './api';
 import { clip } from '../core/text';
@@ -79,6 +79,18 @@ export function useAck(aside = false) {
  * line shows it plain, on one line and cut short; the sheet or the card has it in full.
  */
 export const noticeLine = (text: string) => clip(excerpt(text), 300);
+
+/** A notice above the microphone, naming the card `i` it is about. */
+export function showNotice(told: ReturnType<typeof useTold>, i: Item | undefined, n: Notice) {
+  told.show(i ? { id: i.id, title: plain(i.title) } : undefined, {
+    confirm: noticeLine(n.text),
+    ...(n.token ? { token: n.token } : {}),
+    ...(n.undoMs ? { undoMs: n.undoMs } : {}),
+    ...(n.talk ? { talk: n.talk } : {}),
+    ...(n.project ? { project: n.project } : {}),
+    ...(n.inTalk && n.cardId ? { inCard: n.cardId } : {}),
+  });
+}
 
 /**
  * Hands words on: `byId` finds the cards they may be about, `told` keeps each command's line above

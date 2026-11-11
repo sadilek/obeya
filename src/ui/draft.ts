@@ -276,6 +276,8 @@ export const takesImages = (key: string) => !noImages.has(key);
 /** Whether the draft has its field on the page, live. */
 export const useFieldOn = (key: string | null) => useSyncExternalStore(subscribe, () => !!key && fields.has(key));
 export const fieldOn = (key: string) => fields.has(key);
+/** The draft a recording goes out with: `key`'s where its field is on the page, else the screenshots beside the microphone. */
+export const fieldOrMic = (key: string | null) => (key && fields.has(key) ? key : MIC_DRAFT);
 
 /** The draft whose field has the cursor, if any. */
 export function focusedDraft(): string | null {

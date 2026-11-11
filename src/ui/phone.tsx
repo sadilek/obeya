@@ -7,8 +7,8 @@
 // what was typed but not sent survives a reload. It holds one WebSocket for every canvas.
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type CanvasInfo, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers } from '../core/types';
-import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where, failText } from './api';
+import { type CanvasInfo, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers } from '../core/types';
+import { api, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe } from './forYou';
 import { SWIPED_CARD, swipedOnce } from './aside';
@@ -18,7 +18,7 @@ import { CardNumber } from './cardNumber';
 import type { ActDone, Pending } from './cardSheet';
 import { CardLog, TalkElsewhere, useCardLog } from './conversation';
 import { Detail } from './detail';
-import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
+import { cardDraft, fieldOrMic, focusedDraft, keepDrafts, obeyaDraft } from './draft';
 import { CoordinatorTalk } from './coordinator';
 import { Sign } from './logo';
 import { Notify, registerWorker } from './notify';
@@ -33,7 +33,8 @@ import { forTouch, t, when } from './strings';
 import { UsagePill } from './usage';
 import { agentWorks, cardTalk, coordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
 import { seenOf } from './seen';
-import { noticeLine, tellers, useAck } from './tell';
+import { showNotice, tellers, useAck } from './tell';
+import { followDone, useCardEdits } from './cardHost';
 import { HoldToTalk, PushToTalk, ToldList, usePushToTalk, useTold } from './voice';
 import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 import { useLatest } from './latest';
@@ -370,25 +371,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   for (const c of ordered) cardsOn(c.id, snaps[c.id]!.items.map((i) => i.id));
 
   // ---------------------------------------------------------------- edits of the open card
-  const edit = useRef<{ id: string; patch: CardPatch; timer?: ReturnType<typeof setTimeout> } | null>(null);
-  /** Saves what was typed into the open card; actions on it wait for this. */
-  function flushEdit(): Promise<void> {
-    const e = edit.current;
-    if (!e) return Promise.resolve();
-    clearTimeout(e.timer);
-    edit.current = null;
-    return Object.keys(e.patch).length ? api.patch(e.id, e.patch) : Promise.resolve();
-  }
-  const onEdit = (p: CardPatch) => {
-    const id = openRef.current;
-    if (!id) return;
-    if (edit.current?.id !== id) flushEdit().catch(console.error);
-    const e = (edit.current ??= { id, patch: {} });
-    Object.assign(e.patch, p);
-    clearTimeout(e.timer);
-    e.timer = setTimeout(() => flushEdit().catch(console.error), 400);
-  };
-  useEffect(() => beforeReload(() => void flushEdit().catch(console.error)), []);
+  const { onEdit, flush: flushEdit, drop: dropEdit } = useCardEdits(() => openRef.current);
 
   // ---------------------------------------------------------------- voice and confirmations
   const { showAck, showWait, fail, line: ackLine } = useAck(true);
@@ -398,10 +381,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const where = (): Where => (openRef.current ? { card: openRef.current } : null);
   /** The draft of the field that speaks to `target`: the open card's, or the one under Obeya's conversation. */
   const draftFor = (target: Where) => (target && 'card' in target ? cardDraft(target.card) : obeyaDraft(obeyaRef.current));
-  const fieldFor = (target: Where) => {
-    const key = draftFor(target);
-    return fieldOn(key) ? key : MIC_DRAFT;
-  };
+  /** The draft a recording for `target` goes out with. */
+  const fieldFor = (target: Where) => fieldOrMic(draftFor(target));
   const ptt = usePushToTalk(where, fieldFor, tellAbout, (h) => showAck(h.confirm), () => undefined);
   const pttRef = useLatest(ptt);
   /** The open card's demo video while the microphone is held: it pauses, and plays on after unless the words went into a field. */
@@ -431,8 +412,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   useEffect(
     () =>
       onNotice((n) => {
-        const i = n.cardId ? byId(n.cardId) : undefined;
-        told.show(i ? { id: i.id, title: plain(i.title) } : undefined, { confirm: noticeLine(n.text), ...(n.token ? { token: n.token } : {}), ...(n.undoMs ? { undoMs: n.undoMs } : {}), ...(n.talk ? { talk: n.talk } : {}), ...(n.inTalk && n.cardId ? { inCard: n.cardId } : {}) });
+        showNotice(told, n.cardId ? byId(n.cardId) : undefined, n);
       }),
     [],
   );
@@ -447,27 +427,13 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     return () => removeEventListener('keydown', key);
   }, []);
 
-  /** After an action on the open card: back to the list, with the confirmation; one the server is still at says so until it answered. */
-  function onDone(d: ActDone, p?: Pending) {
-    if (!d.close) return;
-    back();
-    if (!p || !d.pending) return showAck(d.ack, d.undo);
-    const card = p.card;
-    setUnderway((u) => [...u, card]);
-    showWait(`${d.pending.charAt(0).toUpperCase()}${d.pending.slice(1)}`);
-    p.answered.then(
-      (r) => showAck(d.ackFor?.(r) ?? d.ack, d.undo),
-      (e) => {
-        setUnderway((u) => u.filter((id) => id !== card));
-        showAck(t.cardError(p.title, failText(e)));
-      },
-    );
-  }
+  /** After an action on the open card: back to the list, with the confirmation. */
+  const onDone = (d: ActDone, p?: Pending) =>
+    followDone(d, p, { close: back, showAck, showWait, underway: (card, what) => setUnderway((u) => (what ? [...u, card] : u.filter((id) => id !== card))) });
   async function deleteOpen() {
     const i = opened?.item;
     if (!i) return;
-    if (edit.current) clearTimeout(edit.current.timer);
-    edit.current = null;
+    dropEdit();
     back();
     try {
       await api.remove(i.id);

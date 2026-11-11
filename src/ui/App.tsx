@@ -39,7 +39,7 @@ import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
 import { PlanDirNote, planDirBoxes, useHiddenEmptyNotes } from './planDirs';
 import { pastedShots, pastedText } from './pasteHint';
 import { filesTo, imageFiles } from './shots';
-import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
+import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, fieldOrMic, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
 import { CardView, cardClass, shownState, Edges, Minimap, TalkIcon } from './parts';
@@ -51,7 +51,8 @@ import { landingLabel, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 import { beingWritten, split, talkAlone } from './talk';
-import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
+import { ACK_MS, showNotice, tellers, useAck, voiceTarget } from './tell';
+import { followDone, useCardEdits } from './cardHost';
 import { captionKey } from './walkthrough';
 import { useLatest, useLive, useStable } from './latest';
 import { type Pos, useOptimisticItems } from './optimistic';
@@ -425,23 +426,15 @@ function Canvas({
     if (panel && inner) Object.assign(panel.style, panelRect(i, inner, sideNow()));
   };
 
-  // edits of the open card, saved shortly after typing stops
-  const edit = useRef<{ id: string; patch: CardPatch; timer?: ReturnType<typeof setTimeout> } | null>(null);
-  /** Saves what was typed into the open card; actions on it wait for this. */
-  const flushEdit = (): Promise<void> => {
-    const e = edit.current;
-    if (!e) return Promise.resolve();
-    clearTimeout(e.timer);
-    edit.current = null;
-    return Object.keys(e.patch).length ? api.patch(e.id, e.patch) : Promise.resolve();
-  };
-  // leaving for another canvas: what was typed is saved at once, and what this canvas still had
-  // under way (a lookup, a step of the address) no longer touches the page, which shows the other
+  // edits of the open card, saved shortly after typing stops, and at once on leaving for another canvas
+  const edits = useCardEdits(() => focusRef.current?.id);
+  const flushEdit = edits.flush;
+  // leaving for another canvas: what this canvas still had under way (a lookup, a step of the
+  // address) no longer touches the page, which shows the other
   const gone = useRef(false);
   useEffect(
     () => () => {
       gone.current = true;
-      flushEdit().catch(console.error);
       beingWritten.clear();
     },
     [],
@@ -451,16 +444,11 @@ function Canvas({
   // what the open card holds as typed, which the snapshot may not carry yet
   const openDraft = useRef<Pick<Item, 'kind' | 'title' | 'body' | 'images'>>({ kind: 'task', title: '', body: '' });
   const onEdit = (p: CardPatch) => {
-    const id = focusRef.current?.id;
-    if (!id) return;
+    if (!focusRef.current) return;
     if (p.title !== undefined) openDraft.current.title = p.title;
     if (p.body !== undefined) openDraft.current.body = p.body;
     if (p.images !== undefined) openDraft.current.images = p.images;
-    if (edit.current?.id !== id) flushEdit().catch(console.error);
-    const e = (edit.current ??= { id, patch: {} });
-    Object.assign(e.patch, p);
-    clearTimeout(e.timer);
-    e.timer = setTimeout(() => flushEdit().catch(console.error), 400);
+    edits.onEdit(p);
   };
 
   /**
@@ -557,23 +545,14 @@ function Canvas({
     if (openId && !openItem && focusRef.current?.type === 'card') closeCard({ keepUntitled: true });
   }, [openId, openItem]);
 
-  function onDone(d: ActDone, p?: Pending) {
-    if (!d.close) return;
-    closeCard({ keepUntitled: true });
-    if (!p || !d.pending) return showAck(d.ack, d.undo);
-    // the card says it is under way until the snapshot moves it on; a refusal puts it back as it was
-    const what = d.pending;
-    setUnderway((u) => ({ ...u, [p.card]: what }));
-    showWait(`${what.charAt(0).toUpperCase()}${what.slice(1)}`);
-    p.answered.then(
-      (r) => showAck(d.ackFor?.(r) ?? d.ack, d.undo),
-      (e) => {
-        if (!(e instanceof ApiError)) console.error(e);
-        setUnderway(({ [p.card]: _, ...rest }) => rest);
-        showAck(t.cardError(p.title, failText(e)));
-      },
-    );
-  }
+  // the card says it is under way until the snapshot moves it on
+  const onDone = (d: ActDone, p?: Pending) =>
+    followDone(d, p, {
+      close: () => closeCard({ keepUntitled: true }),
+      showAck,
+      showWait,
+      underway: (card, what) => setUnderway(({ [card]: _, ...rest }) => (what ? { ...rest, [card]: what } : rest)),
+    });
 
   /** Folds the open card; `onward` where another opens in its place next, which takes over its address. */
   async function closeCard({ keepUntitled = false, onward = false } = {}) {
@@ -665,8 +644,7 @@ function Canvas({
     if (f?.type !== 'card') return;
     const i = byId(f.id);
     const title = openDraft.current.title.trim() || titleFrom(openDraft.current.body);
-    if (edit.current) clearTimeout(edit.current.timer);
-    edit.current = null;
+    edits.drop();
     // nothing for Obeya to name: the card goes
     openDraft.current = { kind: i?.kind ?? 'task', title: '', body: '' };
     await closeCard({ keepUntitled: true });
@@ -691,7 +669,6 @@ function Canvas({
   // ---------------------------------------------------------------- kept across a restart
   // a restart reloads the page: what was open comes back as it was, without the flights
   const keepNow = useLatest(() => {
-    flushEdit().catch(console.error);
     const f = focusRef.current;
     const project = f?.type === 'project' ? f.id : f?.type === 'card' ? f.project?.id : undefined;
     const sheet: SideSheet | undefined = kOn ? 'coordinator' : drop === 'archive' ? 'archive' : undefined;
@@ -1093,17 +1070,14 @@ function Canvas({
             void open(i);
           } else openSoon.current = { id: n.cardId, until: Date.now() + 10_000 };
         }
-        told.show(i ? { id: i.id, title: plain(i.title) } : undefined, { confirm: noticeLine(n.text), ...(n.token ? { token: n.token } : {}), ...(n.undoMs ? { undoMs: n.undoMs } : {}), ...(n.talk ? { talk: n.talk } : {}), ...(n.project ? { project: n.project } : {}), ...(n.inTalk && n.cardId ? { inCard: n.cardId } : {}) });
+        showNotice(told, i, n);
       }),
     [],
   );
   /** The draft of the field that speaks to `target`, whether or not it is on the page: the open card's, or Obeya's sidebar's. */
   const draftFor = (target: Where) => (target && 'card' in target ? cardDraft(target.card) : !target && kOnRef.current ? OBEYA_DRAFT : null);
-  /** The draft a recording for `target` goes out with: its field's, or without one on the page the screenshots beside the mic. */
-  const fieldFor = (target: Where) => {
-    const key = draftFor(target);
-    return key && fieldOn(key) ? key : MIC_DRAFT;
-  };
+  /** The draft a recording for `target` goes out with. */
+  const fieldFor = (target: Where) => fieldOrMic(draftFor(target));
   const ptt = usePushToTalk(where, fieldFor, tellAbout, (h) => showAck(h.confirm), placeNow);
   const pttRef = useLatest(ptt);
   // a text field's microphone, and Space held in it
