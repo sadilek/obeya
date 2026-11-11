@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { BadRequest, Board } from './board';
-import { artifact, commit, until, ws } from './testing';
-import { board, dir, doc, eachTest, flush, main, manual, newWorkers, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
+import { artifact, commit, heard, until, ws } from './testing';
+import { board, dir, doc, eachTest, main, manual, newWorkers, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { GIT, git, gitOrNull } from './workspaces';
 
 eachTest({ ...generic, land: 'main', workspaces: 'worktrees' });
@@ -952,7 +952,7 @@ describe('a worktree per card', () => {
     commitIn(wa, 'a.ts', 'A');
     await workers.stop(a.id);
     board.remove(a.id);
-    await flush();
+    await heard();
     await workers.freed();
     expect(existsSync(wa)).toBe(false);
     expect(spaces.leasedBy(a.id)).toBeNull();
@@ -970,7 +970,7 @@ describe('a worktree per card', () => {
     writeFileSync(join(wa, 'draft.ts'), 'draft');
     await workers.stop(a.id);
     board.remove(a.id);
-    await flush();
+    await heard();
     expect(git(wa, 'status', '--porcelain')).toContain('draft.ts');
     expect(spaces.leasedBy(a.id)).toBe(wa);
   });

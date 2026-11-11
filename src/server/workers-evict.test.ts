@@ -2,15 +2,15 @@ import { describe, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BadRequest } from './board';
-import { commit, identify } from './testing';
+import { commit, identify, until } from './testing';
 import { board, eachTest, main, manual, runtime, spaces, state, workers } from './workers-fixture';
 import { git } from './workspaces';
 
 eachTest();
 
 /** Waits until `done` holds: git keeps the card's work and frees its clone in the background. */
-async function until(done: () => boolean) {
-  for (const end = Date.now() + 5000; !done() && Date.now() < end; ) await Bun.sleep(5);
+async function freed(done: () => boolean) {
+  await until(done);
   await workers.freed();
 }
 
@@ -65,7 +65,7 @@ describe("taking a card's workspace", () => {
     expect(git(second, 'ls-files', '--others', '--exclude-standard')).toBe('new.ts');
     expect(runtime.last.inbox[0]).toContain('already holds earlier work');
     // the copy in the first clone goes: the card's branch is where it works
-    await until(() => git(first!, 'branch', '--list', branch!) === '');
+    await freed(() => git(first!, 'branch', '--list', branch!) === '');
     expect(git(first!, 'branch', '--list', branch!)).toBe('');
   });
 
@@ -86,7 +86,7 @@ describe("taking a card's workspace", () => {
     void workers.start(c.id);
     const second = board.row(c.id).workspace!;
     await workers.stop(c.id);
-    await until(() => !spaces.list().some((w) => w.card_id === c.id));
+    await freed(() => !spaces.list().some((w) => w.card_id === c.id));
     expect(second).not.toBe(first);
     expect(git(second, 'status', '--porcelain')).toBe('');
     expect(board.row(c.id).kept_in).toBe(first);

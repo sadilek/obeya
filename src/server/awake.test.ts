@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { Awake, type Held, platformHold } from './awake';
+import { until } from './testing';
 
 /** A fake assertion and a clock: what was taken, what was let go. */
 function fake() {
@@ -80,18 +81,14 @@ describe('Awake', () => {
 
 describe.if(process.platform === 'darwin')('on macOS', () => {
   const assertions = () => Bun.spawnSync(['pmset', '-g', 'assertions']).stdout.toString();
-  const until = async (ok: () => boolean) => {
-    for (let i = 0; i < 50 && !ok(); i++) await Bun.sleep(100);
-    return ok();
-  };
 
   test('pmset shows the assertion while it holds, and not after', async () => {
     const held = platformHold('darwin')!();
     const pid = Bun.spawnSync(['pgrep', '-P', String(process.pid), 'caffeinate']).stdout.toString().trim();
     expect(pid).not.toBe('');
-    expect(await until(() => new RegExp(`pid ${pid}\\(caffeinate\\).*PreventUserIdleSystemSleep`).test(assertions()))).toBe(true);
+    await until(() => new RegExp(`pid ${pid}\\(caffeinate\\).*PreventUserIdleSystemSleep`).test(assertions()), 5000);
     held.release();
-    expect(await until(() => !held.alive())).toBe(true);
-    expect(await until(() => !assertions().includes(`pid ${pid}(caffeinate)`))).toBe(true);
+    await until(() => !held.alive(), 5000);
+    await until(() => !assertions().includes(`pid ${pid}(caffeinate)`), 5000);
   });
 });

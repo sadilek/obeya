@@ -10,7 +10,7 @@ import type { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { fakeGh, FakeRuntime, gitRepo, handedOverOn, noContributions, PATIENCE, primedClones, removeDir, stateOn, testBoard, until } from './testing';
+import { fakeGh, FakeRuntime, gitRepo, handedOverOn, heard, noContributions, PATIENCE, primedClones, removeDir, stateOn, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
 
@@ -541,8 +541,6 @@ describe('watching', () => {
 });
 
 describe('a tool call waiting for permission', () => {
-  const flush = () => new Promise((r) => setTimeout(r, 0));
-
   test('after the merge, a worker finishing asks for one: the card is not merged a second time, and the question stays', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
@@ -553,7 +551,7 @@ describe('a tool call waiting for permission', () => {
     const told = runtime.last.inbox.length;
     // the turn the merge started cleans up, with a command the settings want confirmed
     const answer = runtime.last.permission('Bash', { command: 'rm -rf /tmp/demo' });
-    await flush();
+    await heard();
     expect(state(id)).toBe('waiting:question');
     await watcher.poll();
     expect(state(id)).toBe('waiting:question');
@@ -567,7 +565,7 @@ describe('a tool call waiting for permission', () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
     const answer = runtime.last.permission('Bash', { command: 'git push --force' });
-    await flush();
+    await heard();
     expect(state(id)).toBe('waiting:question');
     status.state = 'MERGED';
     await watcher.poll();

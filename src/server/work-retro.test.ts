@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { Board } from './board';
 import { Store } from './db';
-import { artifact, FakeRuntime, type FakeSession, gitRepo, removeDir, testBoard, tag } from './testing';
+import { artifact, FakeRuntime, type FakeSession, gitRepo, removeDir, settle, tag, testBoard } from './testing';
 import { WorkRetro } from './work-retro';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
@@ -32,7 +32,6 @@ beforeEach(() => {
 });
 afterEach(() => removeDir(dir));
 
-const settle = () => new Promise((r) => setTimeout(r, 5));
 const noteSessions = () => runtime.withTool('note');
 const retroSessions = () => runtime.withTool('card');
 

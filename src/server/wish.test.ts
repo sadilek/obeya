@@ -1,9 +1,8 @@
 import { expect, test } from 'bun:test';
 import { withLimitWait } from './runtime';
-import { FakeRuntime } from './testing';
+import { FakeRuntime, settle } from './testing';
 import { footerOf, writeWish } from './wish';
 
-const settle = () => new Promise((r) => setTimeout(r, 5));
 
 test('a small job writes the issue in English from the owner’s words; the footer ends the body', async () => {
   const runtime = new FakeRuntime();

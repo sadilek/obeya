@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import type { PlanDoc } from '../core/plan-doc';
 import type { Board } from './board';
 import { ProjectAgents } from './project-agents';
-import { FakeRuntime, testBoard } from './testing';
+import { FakeRuntime, heard, testBoard } from './testing';
 
 const doc: PlanDoc = {
   file: 'docs/plan/a.md',
@@ -15,7 +15,6 @@ const doc: PlanDoc = {
 let board: Board;
 let runtime: FakeRuntime;
 let agents: ProjectAgents;
-const tick = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   board = testBoard({ path: '/repo', docs: () => [doc] });
@@ -30,7 +29,7 @@ describe('project agents', () => {
   test("answer the owner's question in a session with a worker's tools on the repository, with the decision log", async () => {
     board.decide({ project_id: project().id, card_id: card().id, question: 'Trennzeichen?', answer: 'Semikolon', by: 'owner' });
     const answer = agents.inform(project(), 'Was macht W1 als Nächstes?', () => {});
-    await tick();
+    await heard();
     const s = runtime.last;
     expect(s.spec).toMatchObject({ cwd: '/repo' });
     expect(s.spec.readOnly).toBeUndefined();
@@ -45,13 +44,13 @@ describe('project agents', () => {
   test('one session per project, resumed; questions wait for each other', async () => {
     const r1 = agents.inform(project(), 'Q1', () => {});
     const r2 = agents.inform(project(), 'Q2', () => {});
-    await tick();
+    await heard();
     expect(runtime.sessions).toHaveLength(1);
     runtime.last.emit({ type: 'session', id: 'p-1' });
     runtime.last.call('answer_owner', { text: 'A1' });
     runtime.last.emit({ type: 'idle' });
     await r1;
-    await tick();
+    await heard();
     expect(runtime.sessions).toHaveLength(2);
     expect(runtime.last.spec.resume).toBe('p-1');
     runtime.last.call('answer_owner', { text: 'A2' });

@@ -8,9 +8,9 @@ import { BadRequest, Board } from './board';
 import { OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { Restarter } from './self-update';
-import { artifact, commit, until } from './testing';
+import { artifact, commit, heard, until } from './testing';
 import { describeTool } from './workers';
-import { board, dir, eachTest, flush, handedOver, main, manual, newWorkers, rebuild, runtime, setConversation, setLanguage, state, store, workers } from './workers-fixture';
+import { board, dir, eachTest, handedOver, main, manual, newWorkers, rebuild, runtime, setConversation, setLanguage, state, store, workers } from './workers-fixture';
 import { git } from './workspaces';
 
 eachTest();
@@ -88,7 +88,7 @@ describe('workers', () => {
     kept.tried.set(c.id, 1);
     kept.granted.set(c.id, new Set());
     board.remove(c.id);
-    await flush();
+    await heard();
     expect(kept.generation.has(c.id)).toBe(false);
     expect(kept.tried.has(c.id)).toBe(false);
     expect(kept.granted.has(c.id)).toBe(false);
@@ -1447,7 +1447,7 @@ describe('tool calls the settings refuse or want confirmed', () => {
     const c = manual();
     await workers.start(c.id);
     const answer = runtime.last.permission('Bash', { command: 'bun scripts/remote-psql.ts -c "update meters set …"' }, 'Schreibzugriff');
-    await flush();
+    await heard();
     expect(state(c.id)).toBe('waiting:question');
     const q = board.item(c.id)!.question!;
     expect(q.options).toEqual(['Erlauben', 'Ablehnen']);
@@ -1468,11 +1468,11 @@ describe('tool calls the settings refuse or want confirmed', () => {
     const c = manual();
     await workers.start(c.id);
     const first = runtime.last.permission('Bash', { command: 'git push --force' });
-    await flush();
+    await heard();
     workers.answer(c.id, 'Ablehnen\n\nKein Force-Push, mach einen neuen Commit.');
     expect(await first).toEqual({ allow: false, message: 'Not run: the owner did not allow it:\n\nKein Force-Push, mach einen neuen Commit.' });
     const second = runtime.last.permission('Bash', { command: 'git push' });
-    await flush();
+    await heard();
     const before = runtime.last.inbox.length;
     workers.answer(c.id, 'Allow\n\nAber nur diesmal.');
     expect(await second).toEqual({ allow: true });
@@ -1483,7 +1483,7 @@ describe('tool calls the settings refuse or want confirmed', () => {
     const c = manual();
     await workers.start(c.id);
     const answer = runtime.last.permission('Write', { file_path: '/repo/.env' });
-    await flush();
+    await heard();
     expect(board.item(c.id)!.question!.text).toContain('Schreibt repo/.env');
     workers.answer(c.id, 'Schreib das lieber in .env.example');
     expect(await answer).toEqual({ allow: false, message: 'Not run: the owner did not allow it:\n\nSchreib das lieber in .env.example' });
@@ -1493,7 +1493,7 @@ describe('tool calls the settings refuse or want confirmed', () => {
     const c = manual();
     await workers.start(c.id);
     const answer = runtime.last.permission('Bash', { command: 'bun run migrate' });
-    await flush();
+    await heard();
     workers.message(c.id, 'Erst nach dem Backup.');
     const got = await answer;
     expect(got.allow).toBe(false);
@@ -1506,11 +1506,11 @@ describe('tool calls the settings refuse or want confirmed', () => {
     await workers.start(c.id);
     const a = runtime.last.permission('Bash', { command: 'one' });
     const b = runtime.last.permission('Bash', { command: 'two' });
-    await flush();
+    await heard();
     expect(board.item(c.id)!.question!.text).toContain('one');
     workers.answer(c.id, 'Erlauben');
     expect(await a).toEqual({ allow: true });
-    await flush();
+    await heard();
     expect(board.item(c.id)!.question!.text).toContain('two');
     workers.answer(c.id, 'Ablehnen');
     expect((await b).allow).toBe(false);
@@ -1521,7 +1521,7 @@ describe('tool calls the settings refuse or want confirmed', () => {
     await workers.start(c.id);
     runtime.last.emit({ type: 'session', id: 's1' });
     void runtime.last.permission('Bash', { command: 'bun run migrate' });
-    await flush();
+    await heard();
     workers.shutdown();
     workers.resumeAll();
     expect(state(c.id)).toBe('waiting:question');
@@ -1535,7 +1535,7 @@ describe('tool calls the settings refuse or want confirmed', () => {
     expect(state(c.id)).toBe('working');
     // once: the same call later is asked again
     void runtime.last.permission('Bash', { command: 'bun run migrate' });
-    await flush();
+    await heard();
     expect(state(c.id)).toBe('waiting:question');
   });
 });
@@ -1772,8 +1772,7 @@ describe('pausing: the owner halts a worker and lets it go on', () => {
     const session = runtime.last;
     workers.pauseAtSafePoint(c.id);
     expect(session.inbox.at(-1)).toContain('after at most 1 minute.');
-    await new Promise((r) => setTimeout(r, 40));
-    expect(session.closed).toBe(true);
+    await until(() => session.closed);
     expect(board.item(c.id)).toMatchObject({ paused: true });
   });
 

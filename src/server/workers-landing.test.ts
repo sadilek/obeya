@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
 import { needsYou, stopped } from '../core/types';
-import { artifact, commit, gitClone, identify, testBoard, until, ws } from './testing';
+import { artifact, commit, gitClone, heard, identify, testBoard, until, ws } from './testing';
 import type { Board } from './board';
-import { board, dir, doc, eachTest, flush, handedOver, main, manual, merged, newWorkers, origin, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
+import { board, dir, doc, eachTest, handedOver, main, manual, merged, newWorkers, origin, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { git } from './workspaces';
 import { type RepoAdapter } from '../adapters/types';
 
@@ -782,7 +782,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const branch = board.row(w.id).branch!;
     expect(spaces.leasable()).toBe(false);
     ticked();
-    await flush();
+    await heard();
     expect(spaces.leasedBy(w.id)).toBeNull();
     expect(board.row(w.id).workspace).toBeNull();
     expect(state(w.id)).toBe('live');
@@ -805,7 +805,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const w = w1();
     const clone = await stoppedWithWork(w.id);
     board.docsChanged();
-    await flush();
+    await heard();
     expect(spaces.leasedBy(w.id)).toBe(clone);
     expect(state(w.id)).toBe('planned');
   });
@@ -817,7 +817,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const taken = () => board.snapshot().workspaces![0]!.hosts[0]!.cards;
     expect(taken()).toEqual([c.id]);
     board.remove(c.id);
-    await flush();
+    await heard();
     expect(spaces.leasedBy(c.id)).toBeNull();
     expect(spaces.leasable()).toBe(true);
     // the pool the canvas shows has it free
@@ -834,11 +834,11 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const c = manual();
     await stoppedWithWork(c.id);
     board.remove(c.id);
-    await flush();
+    await heard();
     board.restore(c.id);
     workers.restored(c.id);
     board.remove(c.id);
-    await flush();
+    await heard();
     await workers.freed();
     await until(() => spaces.leasedBy(c.id) === null);
     expect(spaces.leasable()).toBe(true);
@@ -848,7 +848,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const c = manual();
     const clone = await stoppedWithWork(c.id);
     board.remove(c.id);
-    await flush();
+    await heard();
     const other = manual();
     await workers.start(other.id);
     board.restore(c.id);
@@ -871,14 +871,14 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const clone = await stoppedWithWork(c.id);
     const branch = board.row(c.id).branch!;
     board.remove(c.id);
-    await flush();
+    await heard();
     const other = board.create({ title: 'Export readings', x: 0, y: 0 });
     await workers.start(other.id);
     expect(board.row(other.id).workspace).toBe(clone);
     commit(clone, 'other.ts', 'export {}\n', 'Other');
     await workers.stop(other.id);
     board.remove(other.id);
-    await flush();
+    await heard();
     await workers.freed();
     expect(spaces.leasedBy(other.id)).toBeNull();
     board.restore(c.id);
@@ -893,13 +893,13 @@ describe('a workspace its card will not work in again goes back to the pool', ()
   const workedInByAnother = async (id: string) => {
     const clone = await stoppedWithWork(id);
     board.remove(id);
-    await flush();
+    await heard();
     const other = board.create({ title: 'Export readings', x: 0, y: 0 });
     await workers.start(other.id);
     commit(clone, 'other.ts', 'export {}\n', 'Other');
     await workers.stop(other.id);
     board.remove(other.id);
-    await flush();
+    await heard();
     await workers.freed();
     return clone;
   };
@@ -951,14 +951,14 @@ describe('a workspace its card will not work in again goes back to the pool', ()
   const leftDirtyByAnother = async (id: string) => {
     const clone = await stoppedWithWork(id);
     board.remove(id);
-    await flush();
+    await heard();
     const other = board.create({ title: 'Export readings', x: 0, y: 0 });
     await workers.start(other.id);
     expect(board.row(other.id).workspace).toBe(clone);
     writeFileSync(join(clone, 'other.ts'), 'export {}\n');
     await workers.stop(other.id);
     board.remove(other.id);
-    await flush();
+    await heard();
     await workers.freed();
     const second = join(dir, 'ws', '2');
     gitClone(main, second);
@@ -1002,7 +1002,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     const branch = board.row(w.id).branch!;
     setDocs([{ ...doc, workstreams: [ws('W2')] }]);
     board.docsChanged();
-    await flush();
+    await heard();
     expect(spaces.leasedBy(w.id)).toBeNull();
     expect(board.row(w.id).workspace).toBeNull();
     expect(board.events(w.id).at(-1)!.text).toBe('Nicht mehr im Plan-Doc auf dem Hauptbranch: Workspace freigegeben.');
@@ -1015,7 +1015,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     await stoppedWithWork(w.id);
     setDocs([]);
     board.docsChanged();
-    await flush();
+    await heard();
     expect(spaces.leasedBy(w.id)).toBeNull();
     expect(spaces.leasable()).toBe(true);
   });
@@ -1034,7 +1034,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     store.update(c.id, { state: 'done', landed: null });
     expect(spaces.leasable()).toBe(false);
     const fresh = restart();
-    await flush();
+    await heard();
     expect(spaces.leasedBy(c.id)).toBeNull();
     expect(fresh.row(c.id).workspace).toBeNull();
     expect(spaces.leasable()).toBe(true);
@@ -1057,7 +1057,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     runtime.last.emit({ type: 'idle' });
     await workers.approve(c.id);
     expect(state(c.id)).toBe('done');
-    await flush();
+    await heard();
     expect(spaces.leasedBy(c.id)).toBe(clone);
     runtime.last.emit({ type: 'idle' });
     expect(spaces.leasedBy(c.id)).toBeNull();
@@ -1076,7 +1076,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     runtime.last.emit({ type: 'idle' });
     expect(state(w.id)).toBe('inPr');
     ticked();
-    await flush();
+    await heard();
     expect(state(w.id)).toBe('live');
     expect(merged).toEqual([w.id]);
     expect(runtime.last.inbox.at(-1)).toContain('Your pull request was merged');
@@ -1103,7 +1103,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     await approvedIntoPr(w.id);
     // the worker opened the pull request without reporting it, and someone merged it by hand
     ticked();
-    await flush();
+    await heard();
     expect(state(w.id)).toBe('live');
     expect(merged).toEqual([w.id]);
   });
@@ -1118,12 +1118,12 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     // the worker ticks its box in the folder, which takes effect at once, then opens the pull request
     setDocs([{ ...outside, workstreams: [{ ...ws('W1'), done: true }] }]);
     board.docsChanged();
-    await flush();
+    await heard();
     expect(state(w.id)).toBe('inPr');
     expect(runtime.last.inbox.at(-1) ?? '').not.toContain('Your pull request was merged');
     board.work(w.id, { pr: JSON.stringify({ url: 'https://github.com/acme/app/pull/822', number: 822, seen: [], reported: [] }) });
     runtime.last.emit({ type: 'idle' });
-    await flush();
+    await heard();
     expect(state(w.id)).toBe('inPr');
     expect(merged).toEqual([]);
     expect(spaces.leasedBy(w.id)).toBe(clone);
@@ -1137,7 +1137,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     // the worker ticked its box in the folder before it was stopped, which took effect at once
     setDocs([{ ...outside, workstreams: [{ ...ws('W1'), done: true }] }]);
     board.docsChanged();
-    await flush();
+    await heard();
     expect(stopped(board.item(w.id)!)).toBe(true);
     expect(spaces.leasedBy(w.id)).toBe(clone);
     expect(board.events(w.id).map((e) => e.text)).not.toContain('Im Plan-Doc abgehakt: Workspace freigegeben.');

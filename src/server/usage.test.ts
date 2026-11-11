@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
 import { type PlanLimits, UsageMeter, UsageMeters, type UsageSource, usageOf } from './usage';
+import { settle } from './testing';
 
 const AT = new Date('2026-10-28T08:00:00Z');
 const answer = (rateLimits: Record<string, unknown> | null, available = true) =>
@@ -70,7 +71,6 @@ function fakeSource() {
   return { answers, counts, open };
 }
 const usage = (percent: number, at = new Date().toISOString()): PlanLimits => ({ at, limits: [{ kind: 'session', group: 'session', percent, severity: 'normal' }] });
-const settle = () => new Promise((r) => setTimeout(r, 5));
 
 test('fetched only while the bar shows them and a page is open; closed and forgotten once neither holds', async () => {
   const f = fakeSource();

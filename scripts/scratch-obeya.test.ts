@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanvasSnapshot } from '../src/core/types';
 import { ownerHeaders } from '../src/server/owner';
-import { PATIENCE, removeDir } from '../src/server/testing';
+import { alive, PATIENCE, removeDir, until } from '../src/server/testing';
 import { worked } from '../src/ui/talk';
 import { scratchBase } from './common';
 
@@ -212,13 +212,7 @@ test('a scratch Obeya nothing uses ends by itself, and --login says so', async (
   const staged = JSON.parse(r.stdout.toString()) as { port: number; pid: number; endsItself: boolean };
   expect(staged.endsItself).toBe(true);
   try {
-    for (const end = Date.now() + 15_000 * PATIENCE; Date.now() < end; await Bun.sleep(200))
-      try {
-        process.kill(staged.pid, 0);
-      } catch {
-        break;
-      }
-    expect(() => process.kill(staged.pid, 0)).toThrow();
+    await until(() => !alive(staged.pid), 15_000 * PATIENCE);
     const login = Bun.spawnSync([process.execPath, script, '--login', String(staged.port), '--dir', idleDir]);
     expect(login.exitCode).toBe(1);
     expect(login.stderr.toString()).toMatch(/it ended by itself \(nothing used it for \d+ seconds\); stage it afresh/);

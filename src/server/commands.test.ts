@@ -3,14 +3,15 @@ import { type AgentSetting, type CanvasConfig, type ConfigProblem, type ConfigVi
 import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession, testBoard, until, tag } from './testing';
+import { FakeRuntime, type FakeSession, settle, tag, testBoard, until } from './testing';
 
 let store: Store;
 let board: Board;
 let runtime: FakeRuntime;
 let executed: Command[];
 
-const settle = () => new Promise((r) => setTimeout(r, 5));
+/** What the commander's armed commands do has run: their undo window is over. */
+const ran = (k: Commander) => until(() => !k.holding());
 const commander = (sessionCommands?: number) =>
   new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, ...(sessionCommands ? { sessionCommands } : {}) });
 
@@ -154,7 +155,7 @@ describe('the Coordinator remembers', () => {
     });
     expect(heard.confirm).toBe('„Export“ freigegeben, „Archiv“ angelegt.');
     k.arm(heard.token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([
       { do: 'approve', card: a.id },
       { do: 'newCard', title: 'Archiv', body: 'Folge von Export', start: false },
@@ -200,16 +201,16 @@ describe('the Coordinator remembers', () => {
     expect(board.heldCommands()).toEqual([]);
     expect(k.holding()).toBe(false);
 
-    let release = () => {};
+    let release: (() => void) | undefined;
     const slow = new Commander({ board, runtime, cwd: '/r', execute: () => new Promise<void>((r) => (release = r)), delayMs: 5 });
     const again = await say(slow, 'neue Aufgabe Export', 'act', { actions: [{ do: 'new_card', title: 'Export', body: 'Export.' }], confirm: 'Neue Aufgabe „Export“.' });
     slow.arm(again.heard.token!);
-    await new Promise((r) => setTimeout(r, 20));
+    await until(() => release);
     // running: too late to take back, and a restart still waits for it
     expect(slow.undo(again.heard.token!)).toBe(false);
     expect(slow.holding()).toBe(true);
     expect(slow.undoable()).toEqual([]);
-    release();
+    release!();
     await settle();
     expect(slow.holding()).toBe(false);
   });
@@ -231,7 +232,7 @@ describe('the Coordinator remembers', () => {
       confirm: 'Neue Aufgabe „Export als PDF“, sie startet noch nicht.',
     });
     k.arm(later.token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed.map((c) => (c.do === 'newCard' ? [c.title, c.start] : c.do))).toEqual([
       ['Rechnung aufteilen', true],
       ['Trinkgeld in Prozent', true],
@@ -252,13 +253,13 @@ describe('the Coordinator remembers', () => {
     });
     expect(session.spec.tools.find((t) => t.name === 'act')!.description).toContain('until when the owner names a time for the work');
     k.arm(heard.token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'newCard', title: 'Depots einrichten', body: 'Anfang Dezember die Depots einrichten.', start: true, until: new Date(local(40)).toISOString() }]);
     // a day without an hour is 08:00 that day, local
     const day = local(40).slice(0, 10);
     const { heard: dated } = await say(k, 'und eine fürs Trinkgeld, auch Anfang Dezember', 'act', { actions: [{ do: 'new_card', title: 'Trinkgeld', body: 'Trinkgeld.', until: day }], confirm: '…' });
     k.arm(dated.token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed[1]).toMatchObject({ do: 'newCard', until: new Date(`${day}T08:00`).toISOString() });
     for (const [until, why] of [
       [local(-1), 'that time has passed'],
@@ -308,7 +309,7 @@ describe('the Coordinator remembers', () => {
     });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([
       { do: 'approve', card: a.id },
       { do: 'approve', card: c.id },
@@ -340,7 +341,7 @@ describe('the Coordinator remembers', () => {
     });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed[1]).toEqual({ do: 'newCard', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id });
   });
 
@@ -383,7 +384,7 @@ describe('the Coordinator remembers', () => {
     expect(await s.call('act', { actions: [{ do: 'answer', card: tag(a), text: 'ja' }], confirm: 'Antwort an „Archiv“.' })).toContain('Done');
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'answer', card: a.id, text: 'ja', spoken: true }]);
   });
 
@@ -397,7 +398,7 @@ describe('the Coordinator remembers', () => {
     expect(await s.call('act', { actions: [{ do: 'plan_doc', card: tag(a) }], confirm: 'Plan-Doc für „Mandanten“.' })).toContain('Done');
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'planDoc', card: a.id }]);
 
     board.work(a.id, { branch: 'obeya/mandanten' });
@@ -455,7 +456,7 @@ describe('the Coordinator remembers', () => {
     s.call('act', { actions: [{ do: 'start', card: tag(behind) }], confirm: '„Archiv“ startet trotz Überschneidung.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'force', card: behind.id }]);
   });
 
@@ -473,7 +474,7 @@ describe('the Coordinator remembers', () => {
     s.call('act', { actions: [{ do: 'dequeue', card: tag(behind) }], confirm: '„Archiv“ ist aus der Warteschlange.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'dequeue', card: behind.id }]);
   });
 
@@ -497,7 +498,7 @@ describe('the Coordinator remembers', () => {
     s.call('act', { actions: [{ do: 'start', card: tag(project!) }], confirm: 'Obeya plant alle Workstreams von „Export“ ein.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'start', card: project!.id }]);
   });
 
@@ -852,7 +853,7 @@ describe('what the agent of a card passes on from the owner\'s words', () => {
           expect(h.token).toBeDefined();
           k.arm(h.token!);
           expect(executed).toEqual([]);
-          await new Promise((r) => setTimeout(r, 40));
+          await ran(k);
           expect(executed).toEqual([command]);
           executed = [];
         }
@@ -917,7 +918,7 @@ describe('what the owner says or types to the Coordinator about a card with an a
     expect(await s.call('act', { actions: [{ do: 'feedback', card: tag(a), text: question }], confirm: 'An den Agenten von „Export“.' })).toContain('Done');
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed[0]).toMatchObject({ do: 'feedback', text: question, spoken: false });
     expect(board.lookingUp()).toEqual([]);
   });
@@ -933,7 +934,7 @@ describe('what the owner says or types to the Coordinator about a card with an a
     expect(token).toBeDefined();
     expect(executed).toEqual([]);
     k.arm(token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     // said about a card, the Coordinator's words stand
     expect(executed).toEqual([{ do: 'approve', card: a.id }, { do: 'note', card: a.id, text: 'Danke.', spoken: true }]);
   });
@@ -950,7 +951,7 @@ describe('„Merk dir“', () => {
     const { token } = await heard;
     k.arm(token!);
     expect(executed).toEqual([]);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'remember', text: 'Demos immer mit Ton.', card: a.id }]);
 
     const { heard: again } = await say(k, 'merk dir, nie mehr auf Englisch', 'act', { actions: [{ do: 'remember', text: 'Nie auf Englisch.' }], confirm: 'Gemerkt.' });
@@ -978,7 +979,7 @@ describe('„Merk dir“', () => {
     s.call('act', { actions: [{ do: 'remember', text: 'Demos mit Ton.', replaces: 2 }], confirm: 'Geändert: Demos mit Ton.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'remember', text: 'Demos mit Ton.', replaces: ton }]);
   });
 
@@ -995,7 +996,7 @@ describe('„Merk dir“', () => {
     const { token, confirm } = await heard;
     expect(confirm).toBe('Kommt in die CLAUDE.md von Home.');
     k.arm(token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'remember', text: 'Tests auf Deutsch.', repos: ['home'] }]);
   });
 });
@@ -1023,7 +1024,7 @@ describe('what the owner says to the Coordinator is offered for learning', () =>
     runtime.last.emit({ type: 'idle' });
     k.arm((await started).token!);
     expect(heard).toHaveLength(2);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(heard[2]).toBe('command on Export: mach eine Karte für den Import und fang gleich an, Tests immer zuerst → Neue Karte „Import“.');
 
     const { heard: back } = await say(k, 'stopp Export', 'act', { actions: [{ do: 'stop', card: tag(a) }], confirm: '„Export“ angehalten.' });
@@ -1033,7 +1034,7 @@ describe('what the owner says to the Coordinator is offered for learning', () =>
     k.arm(note.token!);
     const { heard: rule } = await say(k, 'merk dir: Demos mit Ton', 'act', { actions: [{ do: 'remember', text: 'Demos mit Ton.' }], confirm: 'Gemerkt.' });
     k.arm(rule.token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(heard).toHaveLength(3);
     expect(executed.map((c) => c.do)).toEqual(['newCard', 'note', 'remember']);
   });
@@ -1078,7 +1079,7 @@ describe("the Coordinator and Obeya's configuration", () => {
     expect(h.confirm).toBe('Das Repository r2 kommt dazu; Obeya startet danach neu.');
     k.arm(h.token!);
     expect(executed).toEqual([]);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([{ do: 'configure', canvases: good }]);
   });
 
@@ -1100,7 +1101,7 @@ describe('work retrospective on request', () => {
     s.call('act', { actions: [{ do: 'work_retro', repo: 'app' }, { do: 'work_retro' }], confirm: 'Ich mache die Arbeitsrückschau für App.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([
       { do: 'workRetro', repo: 'app' },
       { do: 'workRetro', repo: 'home' },
@@ -1134,7 +1135,7 @@ describe('groups by voice', () => {
     });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([
       { do: 'group', cards: [b.id], name: 'Abrechnung' },
       { do: 'group', cards: [a.id], name: 'Neu' },
@@ -1173,7 +1174,7 @@ describe('merging and deleting planned tasks by voice', () => {
     });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed).toEqual([
       { do: 'merge', card: a.id, others: [b.id], title: 'Sign in again: when and where' },
       { do: 'delete', card: c.id },
@@ -1231,7 +1232,7 @@ describe("wishes for Obeya's makers", () => {
     expect(heard.token).toBeDefined();
     expect(heard.wish).toEqual({ said: 'Der Start dauert zu lange.' });
     k.arm(heard.token!);
-    await new Promise((r) => setTimeout(r, 40));
+    await ran(k);
     expect(executed.map((c) => c.do)).toEqual(['start']);
   });
 

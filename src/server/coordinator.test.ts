@@ -8,7 +8,7 @@ import { BadRequest, type Board, type StoredContribution } from './board';
 import { Store } from './db';
 import { Coordinator, overlaps } from './coordinator';
 import { move, queueOrder, reach } from '../core/queue';
-import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir, testBoard, tag } from './testing';
+import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir, tag, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { git, HERE, parseChanges, Workspaces } from './workspaces';
 import { withLimitWait } from './runtime';
@@ -805,8 +805,8 @@ describe('Coordinator waits for a free workspace', () => {
     expect(item(b.id).state).toBe('planned');
   });
   /** Waits until `done` holds: git keeps a card's work and frees its clone in the background. */
-  async function until(done: () => boolean) {
-    for (const end = Date.now() + 5000 * PATIENCE; !done() && Date.now() < end; ) await Bun.sleep(5);
+  async function freed(done: () => boolean) {
+    await until(done, 5000 * PATIENCE);
     await settle();
   }
 
@@ -824,7 +824,7 @@ describe('Coordinator waits for a free workspace', () => {
     expect(workers.evictable(a.id)).toBe(true);
 
     k.evict(a.id);
-    await until(() => item(b.id).state === 'working');
+    await freed(() => item(b.id).state === 'working');
     expect(board.row(b.id).workspace).toBe(clones[0]!);
     expect(item(a.id)).toMatchObject({ state: 'planned', queue: { workspace: 'none' } });
     expect(board.row(a.id)).toMatchObject({ workspace: null, kept_in: clones[0]! });
@@ -834,7 +834,7 @@ describe('Coordinator waits for a free workspace', () => {
     expect(board.events(a.id).some((e) => e.text.startsWith('Workspace entzogen'))).toBe(true);
 
     await workers.stop(b.id);
-    await until(() => item(a.id).state === 'working');
+    await freed(() => item(a.id).state === 'working');
     expect(board.row(a.id)).toMatchObject({ workspace: clones[0]!, kept_in: null });
     expect(git(at, 'status', '--porcelain')).toBe('?? a.ts');
     expect(git(at, 'log', '-1', '--format=%B')).not.toContain('Obeya-Kept');
@@ -850,10 +850,10 @@ describe('Coordinator waits for a free workspace', () => {
     k.request(b.id);
     await scope(['src/b.ts']);
     k.evict(a.id);
-    await until(() => item(b.id).state === 'working');
+    await freed(() => item(b.id).state === 'working');
     expect(item(a.id)).toMatchObject({ state: 'planned', queue: { workspace: 'none', begun: true } });
     await workers.stop(b.id);
-    await until(() => item(a.id).state === 'working');
+    await freed(() => item(a.id).state === 'working');
   });
 
   test("taking a card's clone waits a few seconds, in which the owner takes it back", async () => {

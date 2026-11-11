@@ -380,8 +380,15 @@ export function asOwner(of: () => object) {
   };
 }
 
-/** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
+/**
+ * A turn of the event loop: what was set off without a wait has run, such as the board's listeners
+ * hearing of what changed so far (they hear of it once the code that changed it is through:
+ * `Board.changed`).
+ */
 export const heard = () => Bun.sleep(0);
+
+/** A few milliseconds: what timers set a moment ahead (a command's `delayMs: 1`, say) has run. */
+export const settle = () => Bun.sleep(5);
 
 /** The code of the `BadRequest` that `act` throws, if it throws one: why the action was refused. */
 export function refusal(act: () => unknown): string | undefined {

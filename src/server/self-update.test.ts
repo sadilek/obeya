@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Busy, changesCode, headSeal, installDependencies, ownCheckout, Restarter, symbolicTarget, watchOwnCode, whenIdle } from './self-update';
 import { onStart } from './spawn';
-import { commit, gitRepo } from './testing';
+import { commit, gitRepo, until } from './testing';
 import { git } from './workspaces';
 
 let repo: string;
@@ -12,9 +12,7 @@ let stop = () => {};
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Waits until `done` holds: the watch's git calls take their time, on Windows far longer than the interval (so do its tests: 20 s each). */
-const until = async (done: () => boolean) => {
-  for (const end = Date.now() + 10_000; !done() && Date.now() < end; ) await wait(10);
-};
+const watched = (done: () => boolean) => until(done, 10_000);
 
 /** Two mtimes inside one millisecond: far from 1970, the seconds a double carries keep about 100 ns. */
 const SECOND = 1_000_000_000;
@@ -52,7 +50,7 @@ test('a commit that changes code asks for a restart, once', async () => {
   const calls: [string, string][] = [];
   stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
   const head = commit(repo, 'src/a.ts', 'b');
-  await until(() => calls.length > 0);
+  await watched(() => calls.length > 0);
   commit(repo, 'src/b.ts', 'c');
   await wait(120);
   expect(calls).toEqual([[start, head]]);
@@ -63,7 +61,7 @@ test('a commit between the server starting and the watch is new code to it', asy
   const head = commit(repo, 'src/a.ts', 'b');
   const calls: [string, string][] = [];
   stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
-  await until(() => calls.length > 0);
+  await watched(() => calls.length > 0);
   expect(calls).toEqual([[start, head]]);
 }, 20_000);
 
@@ -77,7 +75,7 @@ test('docs, the site and its workflow alone change nothing that runs', async () 
   await wait(120);
   expect(calls).toEqual([]);
   const head = commit(repo, 'src/a.ts', 'b');
-  await until(() => calls.length > 0);
+  await watched(() => calls.length > 0);
   expect(calls).toEqual([head]);
 }, 20_000);
 
@@ -99,7 +97,7 @@ test('a commit while git looks at what changed has not held still: the restart w
   const calls: [string, string][] = [];
   try {
     stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
-    await until(() => calls.length > 0);
+    await watched(() => calls.length > 0);
   } finally {
     watching();
   }
@@ -119,10 +117,10 @@ test('while HEAD stands still, the watch starts no git', async () => {
   try {
     stop = watchOwnCode(repo, git(repo, 'rev-parse', 'HEAD'), (_, to) => calls.push(to), 20, () => rounds++);
     // the first round asks git: HEAD may have moved since the server started
-    await until(() => rounds >= 1);
+    await watched(() => rounds >= 1);
     started = 0;
     const from = rounds;
-    await until(() => rounds >= from + 5);
+    await watched(() => rounds >= from + 5);
     expect(rounds).toBeGreaterThanOrEqual(from + 5);
   } finally {
     watching();
@@ -131,7 +129,7 @@ test('while HEAD stands still, the watch starts no git', async () => {
   expect(started).toBe(0);
   // and it still watches
   const head = commit(repo, 'src/a.ts', 'b');
-  await until(() => calls.length > 0);
+  await watched(() => calls.length > 0);
   expect(calls).toEqual([head]);
 }, 20_000);
 
@@ -146,10 +144,10 @@ test('a round that throws ends neither the watch nor its rounds', async () => {
       rounds++;
       throw new Error('round');
     });
-    await until(() => rounds >= 3);
+    await watched(() => rounds >= 3);
     expect(rounds).toBeGreaterThanOrEqual(3);
     const head = commit(repo, 'src/a.ts', 'b');
-    await until(() => calls.length > 0);
+    await watched(() => calls.length > 0);
     expect(calls).toEqual([head]);
   } finally {
     console.error = error;
@@ -168,7 +166,7 @@ test('a restart that threw is asked for again the next round, and once it went t
       if (calls.length === 1) throw new Error('restart');
     }, 20);
     const head = commit(repo, 'src/a.ts', 'b');
-    await until(() => calls.length >= 2);
+    await watched(() => calls.length >= 2);
     await wait(120);
     expect(calls).toEqual([head, head]);
   } finally {
@@ -185,7 +183,7 @@ test('a checkout that is a worktree is watched too', async () => {
     writeFileSync(join(tree, 'src/a.ts'), 'b');
     git(tree, 'commit', '--quiet', '-am', 'a');
     const head = git(tree, 'rev-parse', 'HEAD');
-    await until(() => calls.length > 0);
+    await watched(() => calls.length > 0);
     expect(calls).toEqual([head]);
   } finally {
     rmSync(tree, { recursive: true, force: true });

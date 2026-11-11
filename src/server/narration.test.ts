@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ClipRequest, type Deadline, NarrationHost, parseClipRequest } from './narration';
 import { serve } from './server';
-import { asOwner, removeDir } from './testing';
+import { asOwner, removeDir, until } from './testing';
 
 /**
  * Logs its start, each clip and its end; `dies` as the speaker makes it die at the second clip,
@@ -58,9 +58,6 @@ const hold = (idleMs = 60_000, limits: { loadMs?: number; sentenceMs?: number; d
   (host = new NarrationHost({ argv: (voice) => ['bun', join(dir, 'voice.ts'), join(dir, 'log'), voice.speaker ?? 'clone'], idleMs, ...limits }));
 const log = () => (existsSync(join(dir, 'log')) ? readFileSync(join(dir, 'log'), 'utf8').trim().split('\n') : []);
 const clip = (text: string, speaker = 'ryan', language: ClipRequest['language'] = 'de'): ClipRequest => ({ voice: { speaker }, text, out: join(dir, `${text}.wav`), language });
-const until = async (done: () => boolean) => {
-  for (let i = 0; i < 100 && !done(); i++) await Bun.sleep(50);
-};
 
 describe('the voice Obeya holds', () => {
   test('starts once for the clips of several renders, which take turns in the order they asked', async () => {

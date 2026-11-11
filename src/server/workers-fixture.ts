@@ -125,4 +125,3 @@ export const manual = () => board.create({ title: 'Zählerstände exportieren', 
 export const handedOver = (o: Parameters<typeof handedOverOn>[1] = {}) => handedOverOn({ board, workers, runtime }, o);
 
 export const state = (id: string) => stateOn(board, id);
-export const flush = () => new Promise((r) => setTimeout(r, 0));
