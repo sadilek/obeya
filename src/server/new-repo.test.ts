@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Notice } from '../core/types';
-import { Canvases } from './canvas';
+import { Canvases } from './canvases';
 import { Config } from './config';
 import { Store } from './db';
 import { FakeRuntime, gitRepo, noForge, ownGlobalGitConfig, refusal, removeDir, until } from './testing';

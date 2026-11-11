@@ -2,21 +2,20 @@
 // workers, project agents and PR watcher), the board, the Coordinator and the voice commands.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
-import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { defaultsFor, hasAdapterModule, readSharedAt, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
+import { defaultsFor, readSharedFiles, type SharedRead } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
+import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readDefault, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, slug, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
 import { openWithSystem } from './machine';
-import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, laterTime, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, laterTime, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
 import { holdsNotes } from '../core/queue';
-import { Listeners } from '../core/watched';
 import { BadRequest, Board, DEMO_LOOK_MS, TITLE_MAX, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander } from './commands';
@@ -46,13 +45,11 @@ const sharedSkills = new Skills();
 import { OBEYA_PLUGIN } from './demo';
 import { changesCode, RESTART_PATIENCE_MS, whenIdle } from './self-update';
 import { Sharing } from './share';
-import { siteIncomplete, siteMissing, siteName } from './site';
-import { allowedHere, approvedHere, personalDemoSite, readPersonal } from './personal-site';
 import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
-import { branchCommit, branchSetting, defaultBranchCommit, detectBranch, isFolder, markFolder, readBranches, useBranchSetting } from './branches';
-import { githubToken, gitTry } from './git';
+import { isFolder, useBranchSetting } from './branches';
+import { githubToken } from './git';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, type Theme } from './theme';
 import { claudeToken, hostName, registerHost } from './hosts';
@@ -135,7 +132,7 @@ export interface StartFailure {
 }
 
 /** The home repository of a canvas did not start: the canvas does not run. */
-class HomeDown extends Error {
+export class HomeDown extends Error {
   constructor(
     readonly canvas: string,
     cause: unknown,
@@ -2914,249 +2911,6 @@ export function approachOf(what: string, max = 40): string {
   return `${(word > max / 2 ? cut.slice(0, word) : cut).replace(/[\s,;:–—-]+$/, '')}…`;
 }
 
-/**
- * Starts the canvases; one that does not start is left out, with why in Obeya's log and in
- * "Configuration" (which checks the configuration again, and shows `failed` of one whose home
- * repository did not start), and the others run.
- */
-export async function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, failed: (f: StartFailure) => void = () => {}): Promise<CanvasRuntime[]> {
-  const started = await Promise.all(
-    configs.map((c) =>
-      CanvasRuntime.start(c, deps).catch((e: unknown) => {
-        const why = e instanceof ConfigError || e instanceof HomeDown ? e.message : e instanceof Error ? (e.stack ?? e.message) : String(e);
-        console.error(`Obeya: the canvas ${c.name ?? c.id ?? c.repos[0]?.path} does not start, left out: ${why}`);
-        if (e instanceof HomeDown) failed({ canvas: e.canvas, detail: e.message });
-        return null;
-      }),
-    ),
-  );
-  return started.filter((c) => c !== null);
-}
-
-/**
- * The canvases Obeya serves, as its configuration has them while it runs (design: Live
- * configuration): a canvas new in it starts at once, one that changed takes the change
- * (`CanvasRuntime.apply`), one no longer in it stops once its agents paused, its cards kept. Its
- * listeners hear whenever a canvas starts, stops, or changes its name or repositories.
- */
-export class Canvases extends Listeners {
-  private list: CanvasRuntime[] = [];
-  /** By canvas's id: why one in the configuration does not run (its home repository did not start). */
-  private down = new Map<string, string>();
-  /** The configuration as last saved (`apply`), by canvas's id: a canvas that was starting meanwhile takes it once it runs. */
-  private saved: Map<string, CanvasConfig> | null = null;
-  /** Whether every canvas of the configuration as last saved resolved: one not among them has left it. */
-  private savedWhole = true;
-  /** The ids of canvases starting while Obeya runs. */
-  private starting = new Set<string>();
-
-  /** Starts the canvases of `configs` (`startCanvases`). */
-  static async start(configs: CanvasConfig[], deps: CanvasDeps, started?: (c: CanvasRuntime) => void): Promise<Canvases> {
-    const canvases = new Canvases(deps, started);
-    canvases.list = await canvases.start(configs);
-    return canvases;
-  }
-
-  private constructor(
-    private deps: CanvasDeps,
-    /** A canvas started while Obeya runs. */
-    private started: (c: CanvasRuntime) => void = () => {},
-  ) {
-    super();
-    this.deps = {
-      ...deps,
-      stopped: (c, why) => {
-        this.list = this.list.filter((x) => x !== c);
-        this.down.set(c.id, why);
-        this.emit();
-      },
-      canvases: () => this.list,
-    };
-  }
-
-  /** Starts canvases, keeping why one did not. */
-  private async start(configs: CanvasConfig[]): Promise<CanvasRuntime[]> {
-    const list = await startCanvases(configs, this.deps, (f) => this.down.set(f.canvas, f.detail));
-    for (const c of list) this.down.delete(c.id);
-    return list;
-  }
-
-  /** The canvases, and repositories of those that run, that do not run as the configuration has them. */
-  failures(): StartFailure[] {
-    return [...[...this.down].map(([canvas, detail]) => ({ canvas, detail })), ...this.list.flatMap((c) => c.failures())];
-  }
-
-  all(): CanvasRuntime[] {
-    return this.list;
-  }
-
-  get(id: string): CanvasRuntime | undefined {
-    return this.list.find((c) => c.id === id);
-  }
-
-  /**
-   * The configuration saved: `ids` are its canvases' ids as its check resolved them (null where one
-   * does not resolve; then no canvas leaves, since which one it is stays unknown).
-   */
-  apply(configs: CanvasConfig[], ids: (string | null)[]): Promise<void> {
-    this.saved = new Map(configs.flatMap((config, i) => (ids[i] ? [[ids[i], config] as const] : [])));
-    this.savedWhole = !ids.includes(null);
-    // settles once the running canvases took the configuration and the new ones run
-    const starting: Promise<void>[] = [];
-    configs.forEach((config, i) => {
-      const id = ids[i];
-      if (!id) return;
-      const running = this.get(id);
-      if (running) return void starting.push(running.apply(config));
-      if (this.starting.has(id)) return;
-      this.starting.add(id);
-      starting.push(this.startNew(id, config));
-    });
-    this.sort();
-    if (!ids.includes(null)) {
-      // a canvas that did not start and left the configuration is no longer wrong
-      for (const id of [...this.down.keys()]) if (!ids.includes(id)) this.down.delete(id);
-      for (const c of [...this.list])
-        if (!ids.includes(c.id))
-          c.retire(() => {
-            this.list = this.list.filter((x) => x !== c);
-            this.emit();
-          });
-    }
-    this.emit();
-    return Promise.all(starting).then(() => {});
-  }
-
-  /**
-   * Starts a canvas new in the configuration while Obeya runs, the others running on meanwhile. Once
-   * it runs, it takes the configuration saved since; one no longer in it stops again.
-   */
-  private async startNew(id: string, config: CanvasConfig) {
-    let c: CanvasRuntime | undefined;
-    let now: CanvasConfig | undefined;
-    let tried = config;
-    try {
-      // one that did not start tries again with a configuration saved meanwhile
-      for (;;) {
-        [c] = await this.start([tried]);
-        now = this.saved?.get(id);
-        if (c || !now || now === tried || this.closed) break;
-        tried = now;
-      }
-    } finally {
-      this.starting.delete(id);
-    }
-    if (!c) return;
-    if (this.closed || (!now && this.savedWhole)) {
-      c.shutdown();
-      return;
-    }
-    this.list.push(c);
-    console.log(`Obeya: the canvas ${c.board.canvas.name} (/c/${c.id}) runs now`);
-    if (now && now !== tried) void c.apply(now);
-    this.sort();
-    this.started(c);
-    this.emit();
-  }
-
-  /** The configuration's order is the order canvases are listed in (the switcher, the phone); one leaving goes last. */
-  private sort() {
-    const ids = [...(this.saved?.keys() ?? this.list.map((c) => c.id))];
-    const at = (c: CanvasRuntime) => (ids.includes(c.id) ? ids.indexOf(c.id) : ids.length);
-    this.list.sort((a, b) => at(a) - at(b));
-  }
-
-  /** Stops every canvas, for Obeya to end; one still starting stops once it runs. */
-  shutdown() {
-    this.closed = true;
-    for (const c of this.list) c.shutdown();
-  }
-
-  /** Set once Obeya ends (`shutdown`). */
-  private closed = false;
-}
-
-/** Why a canvas's configuration does not work; `repo` is the index of the repository in question. */
-export class ConfigError extends Error {
-  constructor(
-    readonly code: ConfigProblemCode,
-    message: string,
-    readonly repo?: number,
-  ) {
-    super(message);
-  }
-}
-
-/**
- * What resolving a repository reads of it with git (`readRepo`): where it is and its main
- * branch (`info`), that branch as git tells it whatever the owner set (`detected`), whether its
- * main branch still has an adapter module (`hasAdapterModule`), and its `.obeya/settings.json`
- * there (`readShared`).
- */
-export interface RepoRead {
-  info: RepoInfo;
-  detected: string;
-  adapterModule: boolean;
-  shared: SharedRead;
-}
-
-/**
- * Reads a repository for `resolveCanvas`; null where `path` is no git repository. A folder without
- * git (`folder`) is read as it is, without git: null where it is no directory. Its main branch is
- * `branch` where the owner set one, else the one detected.
- */
-async function readRepo(path: string, folder: boolean, branch: string | undefined): Promise<RepoRead | null> {
-  markFolder(path, folder);
-  if (folder) return readFolder(path);
-  const [remote, origin, branches] = await Promise.all([gitTry(path, 'remote', 'get-url', 'origin'), gitTry(path, 'config', '--get', 'remote.origin.url'), readBranches(path)]);
-  if (branches == null) return null;
-  const detected = await detectBranch(path, branches);
-  const main = branch || detected;
-  const commit = await branchCommit(path, main, branches);
-  const [adapterModule, shared] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit)]);
-  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}) }, detected, adapterModule, shared };
-}
-
-/**
- * What a configuration's repositories are read for, by absolute path, without the server waiting
- * for git: each repository (`readRepo`, under the seal its refs had before, `refsSeal`), and
- * each workspace it lists (its `origin`; null where it is no git repository). All of them at once.
- */
-export interface RepoReads {
-  repos: Map<string, { seal: string | null; read: RepoRead | null }>;
-  workspaces: Map<string, { origin: string | null } | null>;
-}
-
-/** Reads `repos` (`RepoReads`), each on the main branch `branchOf` says the owner set for it (none: the one detected). */
-export async function readRepos(repos: RepoConfig[], branchOf: (r: RepoConfig) => string | undefined = () => undefined): Promise<RepoReads> {
-  // a repository whose path is still empty is read nowhere (`resolveCanvas` finds its path missing)
-  const named = repos.filter((r) => r.path.trim());
-  const paths = new Map(named.map((r) => [resolve(r.path), r]));
-  const workspaces = new Set(named.flatMap((r) => (r.workspaces ?? []).map((w) => resolve(w))));
-  // one that is also a repository of the configuration is read as that
-  const listed = [...workspaces].filter((w) => !paths.has(w));
-  const [read, found] = await Promise.all([
-    Promise.all(
-      [...paths].map(async ([path, r]) => {
-        const folder = r.git === false;
-        const seal = folder ? null : refsSeal(path);
-        return [path, { seal, read: await readRepo(path, folder, branchOf(r)?.trim() || branchSetting(path)) }] as const;
-      }),
-    ),
-    Promise.all(
-      listed.map(async (w) => {
-        const [dir, origin] = await Promise.all([gitTry(w, 'rev-parse', '--git-dir'), gitTry(w, 'remote', 'get-url', 'origin')]);
-        return [w, dir != null ? { origin: origin ?? null } : null] as const;
-      }),
-    ),
-  ]);
-  const repoRead = new Map(read);
-  const asRepo = [...workspaces].filter((w) => paths.has(w)).map((w) => {
-    const info = repoRead.get(w)?.read?.info;
-    return [w, info && !info.folder ? { origin: info.remote } : null] as const;
-  });
-  return { repos: repoRead, workspaces: new Map([...found, ...asRepo]) };
-}
 
 /** How often `readSettings` reads a repository whose refs move while git reads it. */
 const READ_TRIES = 5;
@@ -3164,204 +2918,6 @@ const READ_TRIES = 5;
 /** What `moved` came to (`moved`). */
 type Moved = 'same' | 'follow' | 'due';
 
-/** What a repository's default branch has of its settings: its `.obeya/settings.json` and Claude Code configuration (`readShared`), and whether an adapter module is still there (`hasAdapterModule`). */
-interface DefaultRead {
-  shared: SharedRead;
-  adapterModule: boolean;
-  /** The main branch it was read on (`defaultBranch`). */
-  branch: string;
-  /** The repository's theme (theme.ts), where it was read with the rest. */
-  theme?: Theme | null;
-}
-
-/** `DefaultRead` of the git repository at `path`. */
-async function readDefault(path: string): Promise<DefaultRead> {
-  const { branch, commit } = await defaultBranchCommit(path);
-  const [adapterModule, shared] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit)]);
-  return { shared, adapterModule, branch };
-}
-
-/** A folder without git as `resolveCanvas` reads it: no remote, no branch, its `.obeya/settings.json` as the folder has it. */
-function readFolder(path: string): RepoRead | null {
-  try {
-    if (!statSync(path).isDirectory()) return null;
-  } catch {
-    return null;
-  }
-  return { info: { path, remote: null, branch: '', folder: true }, detected: '', adapterModule: false, shared: readSharedFiles(path) };
-}
-
-/**
- * What a canvas's configuration amounts to, without touching anything: its repositories (home
- * first), each with Obeya's defaults and in front of them the repository's `.obeya/settings.json`
- * (`shared`: where they are read, by the repository's path; as `read` read them when left out) and
- * this machine's settings (`settings`: where a repository's are read; its entry's when left out),
- * each with its id and its settings without this machine's (`values`), and the canvas's id and
- * name. `read` is what was read of each repository, by its absolute path (`readRepos`). Throws a
- * ConfigError.
- */
-export function resolveCanvas(
-  config: CanvasConfig,
-  store: Store,
-  settings: (r: RepoConfig) => () => RepoSettings | undefined = (r) => () => r.settings,
-  shared: ((path: string) => () => SharedSettings | undefined) | undefined,
-  read: (path: string, folder: boolean) => RepoRead | null,
-) {
-  if (!config.repos.length) throw new ConfigError('noRepo', 'a canvas needs at least one repository');
-  const reads = config.repos.map((r, i) => {
-    // an empty path names nothing: resolved, it would be the server's own working directory
-    if (!r.path.trim()) throw new ConfigError('noPath', 'a repository needs a path', i);
-    const folder = r.git === false;
-    const got = read(resolve(r.path), folder);
-    if (!got) throw folder ? new ConfigError('noFolder', `${r.path} is no folder`, i) : new ConfigError('notRepo', `${r.path} is not a git repository`, i);
-    return got;
-  });
-  // a repository runs once on a canvas: twice, it would have two of everything, its plan docs' note too
-  reads.forEach(({ info }, i) => {
-    if (reads.findIndex((x) => x.info.path === info.path) < i) throw new ConfigError('sameRepo', `${config.repos[i]!.path} is on the canvas already`, i);
-  });
-  const sharedOf =
-    shared ??
-    ((path: string) => {
-      const settings = reads.find((x) => x.info.path === path)?.shared.settings;
-      return () => settings;
-    });
-  let repos = config.repos.map((r, i) => ({ config: r, read: reads[i]!, adapter: repoAdapter(r, reads[i]!.info, settings(r), sharedOf(reads[i]!.info.path)) }));
-  const refsOf = () => uniqueRefs(repos.map((x) => x.read.info), repos.map((x) => x.adapter));
-  let refs = refsOf();
-  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : slug(repoName(reads[0]!.info));
-  // the home repository is fixed when the canvas is first served: bare plan references, cards
-  // without a repository and the home workspace directory are its, whatever the order later
-  const stored = store.setting(id, 'home_repo');
-  if (stored && stored !== refs[0]!.id) {
-    const at = refs.findIndex((r) => r.id === stored);
-    if (at < 0) throw new ConfigError('homeMissing', `canvas ${id}: its home repository "${stored}" is not configured; list it (first or anywhere)`);
-    repos = [repos[at]!, ...repos.filter((_, i) => i !== at)];
-    refs = refsOf();
-  }
-  const name = config.name ?? repoName(repos[0]!.read.info);
-  return {
-    config: { ...config, repos: repos.map((x) => x.config) },
-    id,
-    name,
-    repos: repos.map((x, i) => ({ ...x, ref: refs[i]!, values: () => repoValues(x.read.info, x.read.detected, namesClones(x.config, x.read.info, { land: x.adapter.land }), sharedOf(x.read.info.path)() ?? {}) })),
-    stored,
-  };
-}
-
-/** What `resolveCanvas` resolved. */
-type Resolved = ReturnType<typeof resolveCanvas>;
-
-/** The settings the owner set for a repository on this machine (`CanvasDeps.settings`, else its entry's), read whenever they are used. */
-const machineSettings = (deps: Pick<CanvasDeps, 'settings'>, r: RepoConfig): (() => RepoSettings | undefined) =>
-  deps.settings ? () => deps.settings!(resolve(r.path)) : () => r.settings;
-
-/**
- * Where a resolved repository's read tree is made, a worktree of its checkout under Obeya's home;
- * none where work lands on the local main (the checkout is the read tree), or in a folder without
- * git, which is read as it is.
- */
-function readTreeOf(home: string, canvas: string, x: Resolved['repos'][number]): { repoPath: string; dir: string } | null {
-  return x.read.info.folder || x.adapter.land === 'main' ? null : { repoPath: x.read.info.path, dir: join(home, 'read', canvas, x.ref.id) };
-}
-
-/**
- * How a canvas runs a repository: Obeya's defaults with the repository's `shared` settings and this
- * machine's `settings` in front, each read when it is asked for; its workers work in clones where
- * the configuration names some.
- */
-export function repoAdapter(r: RepoConfig, info: RepoInfo, settings: () => RepoSettings | undefined, shared: () => SharedSettings | undefined): RepoAdapter {
-  const layered = () => layerSettings<RepoSettings>(shared(), settings());
-  return withSettings(defaultsFor(info), layered, namesClones(r, info, layered()));
-}
-
-/**
- * The existing clones a repository's configuration lists for its workers: all of them, but for the
- * checkout itself where work lands on its main, which is always on main (see `landOnMain`).
- */
-export function listedClones(r: RepoConfig, info: RepoInfo, layered: RepoSettings | undefined): string[] {
-  const landsHere = (layered?.land ?? defaultsFor(info).land) === 'main';
-  return (r.workspaces ?? []).map((w) => resolve(w)).filter((w) => !landsHere || w !== resolve(info.path));
-}
-
-/** Whether a repository's configuration names clones for its workers (to create, existing ones, on other machines). */
-export const namesClones = (r: RepoConfig, info: RepoInfo, layered: RepoSettings | undefined) => !!r.clones || !!listedClones(r, info, layered).length || !!r.hosts?.length;
-
-/** Repository ids unique on the canvas: the repository's name, with a number when two share one. */
-function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
-  const seen = new Map<string, number>();
-  return infos.map((info, i) => {
-    const base = slug(repoName(info)) || `repo${i + 1}`;
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    return {
-      id: n === 1 ? base : `${base}${n}`,
-      name: repoName(info),
-      path: info.path,
-      ...settled(info, adapters[i]!),
-    };
-  });
-}
-
-/** The URL of the repository's `origin` as it is configured, before git's `insteadOf` rewrites it (as read with the rest, `readRepo`); null without one. */
-const originUrl = (info: RepoInfo): string | null => (info.remote ? (info.origin ?? info.remote) : null);
-
-/** Whether the repository's `origin` is on a server, as it is configured (git's `insteadOf` aside), rather than a directory on this machine. */
-function onServer(info: RepoInfo): boolean {
-  const url = originUrl(info);
-  return !!url && (/^(https?|ssh|git):\/\//i.test(url) || /^[^/\\\s:]{2,}:/.test(url));
-}
-
-/** What a repository's ref says of its settings, which may change while the canvas runs: its main branch, how work lands. */
-function settled(info: RepoInfo, adapter: RepoAdapter): Pick<RepoRef, 'branch' | 'pullRequests' | 'direct' | 'folder' | 'forge'> {
-  if (info.folder) return { branch: '', folder: true };
-  return {
-    branch: info.branch,
-    // an origin on a server (not a directory on this machine) may get pull requests of others
-    ...(onServer(info) ? { forge: true } : {}),
-    ...(adapter.land === 'pr' ? { pullRequests: true, ...(adapter.direct ? { direct: true } : {}) } : {}),
-  };
-}
-
-/** Where a repository shares demos: the site its settings name, once it is complete; null without one. */
-function siteOf(adapter: RepoAdapter): DemoSite | null {
-  const site = adapter.demo?.site;
-  return site && !siteIncomplete(site) ? site : null;
-}
-
-/** What the UI is told about sharing a repository's demos. */
-const SHARE_FIELDS = ['share', 'shareNeeds', 'shareOnApproval', 'shareTags', 'shareOnPersonal', 'shareUnlisted', 'sharePersonal'] as const;
-type ShareRef = Pick<RepoRef, (typeof SHARE_FIELDS)[number]>;
-
-/**
- * What the canvas tells the UI about it: a site to share on here (its own, where this machine has
- * its credentials, else the owner's personal one, where the repository may go there), the env file
- * its site lacks on this machine, and why the personal site does not take it (none set up, or the
- * repository is private and not ticked).
- */
-function shareRef(site: DemoSite | null, home: string, path: string, isPublic: boolean): ShareRef {
-  const missing = site && siteMissing(home, site);
-  if (site && !missing) {
-    const tags = dimensions(site.tags).length ? { shareTags: Object.fromEntries(dimensions(site.tags)) } : {};
-    return { share: true, ...(site.publish === 'approved' ? { shareOnApproval: true as const } : {}), ...tags };
-  }
-  const needs = site && missing ? { shareNeeds: { site: siteName(site), file: missing } } : {};
-  const p = readPersonal(home);
-  if (!p || siteMissing(home, personalDemoSite(p))) return { ...needs, sharePersonal: 'none' };
-  if (!allowedHere(p, path, isPublic)) return { ...needs, sharePersonal: 'private' };
-  // a repository whose site publishes each approved demo does so on the personal site too, as does one the owner ticked there for it
-  const approved = site?.publish === 'approved' || approvedHere(p, path);
-  return { share: true, shareOnPersonal: true, ...(p.secret ? { shareUnlisted: true as const } : {}), ...(approved ? { shareOnApproval: true as const } : {}) };
-}
-
-/** The canvas setting that keeps the forge's last answer on whether the repository at `path` is public. */
-const visibilityKey = (path: string) => `visibility:${path}`;
-
-/** Tells the UI about sharing on the repository what `share` says, in place of what it was told before. */
-function setShare(ref: RepoRef, share: ShareRef) {
-  for (const f of SHARE_FIELDS) delete ref[f];
-  Object.assign(ref, share);
-}
 
 /** The restart of a repository's agents that waits, as its workers hear of it. */
 const repoDue = (p: RepoRestart): DueRestart => ({ reason: p.reason, deadline: p.deadline, repo: true });
@@ -3373,15 +2929,6 @@ function sameDir(a: string, b: string): boolean {
     return false;
   }
 }
-
-const slug = (s: string) =>
-  s
-    .replace(/ß/g, 'ss')
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9.-]+/g, '-')
-    .replace(/^-|-$/g, '');
 
 /** A workspace as a directory on this machine, for a program that runs here (gh on a pull request's URL); none for one on another machine. */
 const localDir = (workspace: string | null) => (workspace && !hostName(workspace) ? workspace : null);

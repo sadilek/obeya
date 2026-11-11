@@ -27,9 +27,10 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 3 },
   },
   'canvas.ts': {
-    why: "server path, cheap: an answer's directory made, a free plan doc name probed, a folder repository's directory checked, two paths compared by their real path after a landing",
-    calls: { existsSync: 1, mkdirSync: 1, realpathSync: 2, statSync: 1 },
+    why: "server path, cheap: an answer's directory made, a free plan doc name probed, two paths compared by their real path after a landing",
+    calls: { existsSync: 1, mkdirSync: 1, realpathSync: 2 },
   },
+  'canvas-config.ts': { why: "server path, cheap: a folder repository's directory checked as its configuration resolves", calls: { statSync: 1 } },
   'canvas-fixture.ts': { why: "the canvas tests' fixture, not the server", calls: { mkdtempSync: 1 } },
   'claude.ts': {
     why: "server path at an agent's start: Claude Code's ~/.claude.json read whole to tell whether Chrome is paired (it grows with Claude's history; a candidate for fs/promises), a message's images",
