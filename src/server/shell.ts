@@ -266,6 +266,16 @@ export const BOUNDED_WAITS = [
   "timeout 30 bash -c 'until curl -sf localhost:3000; do sleep 2; done'",
 ];
 
+/** Why a command that sleeps too long in the foreground is not run, as both runtimes tell their agents, then `advice` on how to wait instead in that runtime's terms. */
+export const waitRefusal = (advice: string) =>
+  `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. ${advice}`;
+
+/** A `PreToolUse` hook's answer that refuses `command` for `reason` when it sleeps in the foreground longer than the limit; nothing when it may run. */
+export function refuseLongWait(command: string, reason: string) {
+  if (foregroundSleep(command) <= FOREGROUND_SLEEP_LIMIT) return undefined;
+  return { hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'deny' as const, permissionDecisionReason: reason } };
+}
+
 /**
  * How many seconds a shell command sleeps in the foreground, read from the command line alone:
  * `sleep` with its durations (`sleep 90`, `sleep 5m`, `sleep 1m 30s`), times the iterations of the

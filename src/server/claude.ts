@@ -25,7 +25,7 @@ import { localBin, which } from './path';
 import { mediaType } from './images';
 import { COMPILED } from './resources';
 import { OWN_GROUP } from './spawn';
-import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, foregroundSleep } from './shell';
+import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, refuseLongWait, waitRefusal } from './shell';
 import { type AgentRuntime, type AgentSpec, carryTo, cleanEnv, type DeniedBy, trackHere, withStderr } from './runtime';
 import type { ToolCall } from './folder';
 import { messageOf } from '../core/text';
@@ -403,6 +403,11 @@ export async function askOwner(
   return answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message };
 }
 
+/** Why a command that waits too long in the foreground is not run, in Claude Code's terms: its background tasks wake the session. */
+const WAIT_REFUSED = waitRefusal(
+  `Wait in the background instead: run it with run_in_background, or watch for the condition with Monitor, and end your turn; you are woken when it finishes or fires. A short wait may stay in the foreground if bounded to ${FOREGROUND_SLEEP_LIMIT} seconds, e.g. \`${BOUNDED_WAITS[0]}\` or, where \`timeout\` is installed, \`${BOUNDED_WAITS[1]}\`.`,
+);
+
 /**
  * Refuses a foreground Bash command that sleeps longer than the limit: a message sent meanwhile
  * reaches the agent only once the command is done.
@@ -410,14 +415,8 @@ export async function askOwner(
 export function refuseForegroundWait(input: HookInput): HookJSONOutput {
   if (input.hook_event_name !== 'PreToolUse') return {};
   const { command, run_in_background } = (input.tool_input ?? {}) as { command?: unknown; run_in_background?: unknown };
-  if (run_in_background || typeof command !== 'string' || foregroundSleep(command) <= FOREGROUND_SLEEP_LIMIT) return {};
-  return {
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'deny',
-      permissionDecisionReason: `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. Wait in the background instead: run it with run_in_background, or watch for the condition with Monitor, and end your turn; you are woken when it finishes or fires. A short wait may stay in the foreground if bounded to ${FOREGROUND_SLEEP_LIMIT} seconds, e.g. \`${BOUNDED_WAITS[0]}\` or, where \`timeout\` is installed, \`${BOUNDED_WAITS[1]}\`.`,
-    },
-  };
+  if (run_in_background || typeof command !== 'string') return {};
+  return refuseLongWait(command, WAIT_REFUSED) ?? {};
 }
 
 /** A tool call as the hooks of `AgentSpec.watch` hear of it. */

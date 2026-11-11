@@ -27,7 +27,7 @@ import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
 import { carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, trackHere, withStderr } from './runtime';
-import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, foregroundSleep } from './shell';
+import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, refuseLongWait, waitRefusal } from './shell';
 import { codexCost, type CodexTokens } from './prices';
 import { OWN_GROUP } from './spawn';
 import type { PlanLimits, UsageSource } from './usage';
@@ -360,7 +360,9 @@ function hookCalls(h: HookCall): ToolCall[] {
 }
 
 /** Why a command that waits too long in the foreground is not run, in Codex's terms: it has no background task that wakes the session. */
-export const WAIT_REFUSED = `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. Wait in commands that sleep ${FOREGROUND_SLEEP_LIMIT} seconds at most, e.g. \`${BOUNDED_WAITS[0]}\`, and run one again until what you wait for is there. For anything longer, snooze (snooze) and end your turn: Obeya wakes you then.`;
+export const WAIT_REFUSED = waitRefusal(
+  `Wait in commands that sleep ${FOREGROUND_SLEEP_LIMIT} seconds at most, e.g. \`${BOUNDED_WAITS[0]}\`, and run one again until what you wait for is there. For anything longer, snooze (snooze) and end your turn: Obeya wakes you then.`,
+);
 
 /**
  * Where Codex's hooks reach the session: a server on the loopback that only this session's token
@@ -672,9 +674,10 @@ class CodexSession implements AgentSession {
     if (!calls.length || this.closed) return {};
     if (h.hook_event_name === 'PreToolUse') {
       const command = h.tool_name === 'Bash' ? String(calls[0]!.input.command) : '';
-      if (command && foregroundSleep(command) > FOREGROUND_SLEEP_LIMIT) {
+      const refused = command ? refuseLongWait(command, WAIT_REFUSED) : undefined;
+      if (refused) {
         this.emit({ type: 'denied', name: 'Bash', input: { command }, by: 'obeya' });
-        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: WAIT_REFUSED } };
+        return refused;
       }
       if (!this.spec.watch) return {};
       this.hooked.add(h.tool_use_id ?? '');
