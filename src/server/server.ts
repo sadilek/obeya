@@ -1,10 +1,9 @@
 // HTTP and WebSocket for the UI: one API per canvas under /api/c/<canvas>/.
 
-import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
-import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PageTags, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn, waitingOn } from '../core/types';
+import { agentListens, type CardAction, type CardPatch, type Item, type NewCard, type PageTags, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES } from '../core/types';
 import index from '../ui/index.html';
 import { type Gate, guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
@@ -25,10 +24,10 @@ import type { MachineSetup } from './machine';
 import type { VoiceSetup } from './voice-setup';
 import { AppUpdates, HandOver } from './app-update';
 import type { SourceUpdates } from './source-update';
-import { oldLinuxBun } from './repo';
 import { Store } from './db';
 import { Access } from './remote';
-import { Push, startedWaiting } from './push';
+import { Push } from './push';
+import { Pages, type Served, type Socket } from './pages';
 import { worker } from '../ui/sw';
 import icon180 from '../ui/logo/apple-touch-icon.png' with { type: 'file' };
 import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
@@ -43,7 +42,7 @@ import type { Harnesses } from './harnesses';
 import { VERSION } from './resources';
 import { footerOf } from './wish';
 import { serving } from './owner';
-import { pageStall, type Stalls } from './stalls';
+import type { Stalls } from './stalls';
 
 type Req = Request & { params: Record<string, string> };
 
@@ -58,29 +57,6 @@ function replyParam(p: string | null): number | TalkRef | undefined {
   const m = p?.match(/^(\d+)(?:\.(said|reply|answer))?$/);
   if (!m) return;
   return m[2] ? { talk: Number(m[1]), part: m[2] as TalkRef['part'] } : Number(m[1]) || undefined;
-}
-
-/**
- * What the server knows of an open page's WebSocket: its canvas (`EVERY` for the phone view's one
- * connection to every canvas), the page, the paired device it is on, if another, and the canvases
- * whose snapshot it is owed while it is behind on a slow network.
- */
-interface Socket {
-  canvas: string;
-  page: string;
-  device?: string;
-  owed?: Set<string>;
-}
-
-/** The canvas of a connection to every canvas: each message about one names it (`canvas`). */
-const EVERY = '';
-/** What a connection may hold unsent before a newer snapshot replaces the ones it has not sent yet. */
-const BEHIND_BYTES = 256 * 1024;
-
-/** The canvases a server serves: those that run now, and word whenever one starts, stops or changes (`Canvases`). */
-export interface Served {
-  all(): CanvasRuntime[];
-  onChange?(fn: () => void): () => void;
 }
 
 /**
@@ -222,192 +198,8 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       }),
     );
   };
-  const byId = new Map<string, CanvasRuntime>();
   const handOver = new HandOver();
-  const started = crypto.randomUUID();
-  const sockets = new Map<string, Set<ServerWebSocket<Socket>>>([[EVERY, new Set()]]);
-  // a device removed loses its open pages at once
-  access.onRemoved((device) => {
-    for (const set of sockets.values()) for (const ws of set) if (ws.data.device === device) ws.close(4401, 'device removed');
-  });
-  /** The restart that waits, as canvas `id` sees it: Obeya's, else that of some of its repositories' agents. */
-  const pending = (id: string): PendingRestart | null => {
-    const due = restarter?.due();
-    if (!due) return byId.get(id)?.pendingRestart() ?? null;
-    const here = due.waiting.filter((w) => w.canvas === id);
-    // the others by canvas, named, each card by its title: a canvas's page knows only its own cards
-    const elsewhere = new Map<string, string[]>();
-    const items = new Map<string, Item[]>();
-    for (const w of due.waiting) {
-      if (w.canvas === id) continue;
-      if (!items.has(w.canvas)) items.set(w.canvas, byId.get(w.canvas)?.board.items() ?? []);
-      const title = items.get(w.canvas)!.find((i) => i.id === w.card)?.title ?? w.card;
-      elsewhere.set(w.canvas, [...(elsewhere.get(w.canvas) ?? []), title]);
-    }
-    return {
-      reason: due.reason,
-      deadline: due.deadline,
-      cards: here.map((w) => w.card),
-      elsewhere: [...elsewhere].map(([c, cards]) => ({ canvas: byId.get(c)?.board.canvas.name ?? c, cards })),
-      owner: due.owner,
-    };
-  };
-  /** What waits for the owner on each canvas: every page lists it in its navigation, the other canvases' too. */
-  const waiting: Record<string, Waiting> = {};
-  /** Each canvas's part of it as last sent, to send it again only when it changed. */
-  const waitingSent: Record<string, string> = {};
-  const waitingMessage = () => JSON.stringify({ type: 'waiting', waiting } satisfies ServerMessage);
-  /** How much waits for the owner on every canvas, counted as the bar's button counts it: the app shows it on its icon (app/src/badge.rs). */
-  const waitingCount = () => canvases.all().reduce((n, c) => n + (waiting[c.id] ? waitingOn(waiting[c.id]!) : 0), 0);
-  /** Who waits for that count to change (`/api/waiting-count`). */
-  const countWatchers = new Set<() => void>();
-  /** What waits for the owner changed: every page hears of it, and whoever waits for the count. */
-  const waitingChanged = () => {
-    // a connection to every canvas has their snapshots, which hold it already
-    everyone(waitingMessage(), EVERY);
-    for (const w of [...countWatchers]) w();
-  };
-  /** Takes in what waits on `c` now; whether that changed. */
-  const counted = (c: CanvasRuntime, snapshot = c.board.snapshot()) => {
-    const w = waitingIn(snapshot);
-    const text = JSON.stringify(w);
-    if (text === waitingSent[c.id]) return false;
-    waiting[c.id] = w;
-    waitingSent[c.id] = text;
-    return true;
-  };
-  /** To another device compressed: what Obeya sends is JSON, which shrinks to a tenth, and a phone's network may be slow. */
-  const put = (ws: ServerWebSocket<Socket>, text: string) => ws.send(text, !!ws.data.device);
-  /** To every page, but those of canvas `but`. */
-  const everyone = (text: string, but?: string) => {
-    for (const [id, set] of sockets) if (id !== but) for (const ws of set) put(ws, text);
-  };
-  /** A message about canvas `id`, as a connection to every canvas gets it: naming the canvas. */
-  const named = (id: string, text: string) => `{"canvas":${JSON.stringify(id)},${text.slice(1)}`;
-  /**
-   * A snapshot to a page that is behind (a slow network, a phone in a tunnel) does not queue up
-   * behind the ones before it: the page is owed canvas `id`'s and gets the newest once it caught
-   * up (`drain`). One that Bun dropped (past its backpressure limit) stays owed too. False when owed.
-   */
-  const deliver = (ws: ServerWebSocket<Socket>, id: string, type: ServerMessage['type'], text: string) => {
-    if (type !== 'snapshot') {
-      put(ws, text);
-      return true;
-    }
-    const sent = ws.getBufferedAmount() <= BEHIND_BYTES && put(ws, text) !== 0;
-    if (sent) ws.data.owed?.delete(id);
-    else (ws.data.owed ??= new Set()).add(id);
-    return sent;
-  };
-  /** Canvas `c`'s message as page `ws` takes it: naming the canvas on a connection to every canvas. */
-  const toward = (ws: ServerWebSocket<Socket>, c: CanvasRuntime, msg: ServerMessage) => {
-    const text = JSON.stringify(msg);
-    return deliver(ws, c.id, msg.type, ws.data.canvas === EVERY ? named(c.id, text) : text);
-  };
-  const sendTo = (id: string, msg: ServerMessage) => {
-    const text = JSON.stringify(msg);
-    for (const ws of sockets.get(id) ?? []) deliver(ws, id, msg.type, text);
-    const every = sockets.get(EVERY);
-    if (!every?.size) return;
-    const tagged = named(id, text);
-    for (const ws of every) deliver(ws, id, msg.type, tagged);
-  };
-  /** What canvas `c` sends a page as it connects: its restart, its snapshot, the notices still to undo. */
-  const greet = (ws: ServerWebSocket<Socket>, c: CanvasRuntime) => {
-    const send = (msg: ServerMessage) => toward(ws, c, msg);
-    send({ type: 'restart', restart: pending(c.id) });
-    send({ type: 'snapshot', snapshot: c.board.snapshot() });
-    if (ws.data.canvas !== EVERY) put(ws, waitingMessage());
-    // a page that reloads within a command's undo window offers "Undo" again
-    for (const n of c.commander.undoable()) send({ type: 'notice', ...n });
-  };
-  restarter?.onChange(() => {
-    for (const id of byId.keys()) sendTo(id, { type: 'restart', restart: pending(id) });
-  });
-  updates.onChange(() => everyone(JSON.stringify({ type: 'update', update: updates.current() } satisfies ServerMessage)));
-  sources?.onChange(() => everyone(JSON.stringify({ type: 'source', source: sources.current() } satisfies ServerMessage)));
-  usage?.onChange(() => everyone(JSON.stringify({ type: 'usage', usage: usage.current() } satisfies ServerMessage)));
-  /** What tells the usage meter a page closed, by page. */
-  const unwatch = new Map<string, () => void>();
-  /** What stops sending each canvas's changes to its pages. */
-  const detach = new Map<string, () => void>();
-  const attach = (c: CanvasRuntime) => {
-    byId.set(c.id, c);
-    if (!sockets.has(c.id)) sockets.set(c.id, new Set());
-    counted(c);
-    // a canvas started while Obeya runs: the connections to every canvas get it too
-    for (const ws of sockets.get(EVERY) ?? []) greet(ws, c);
-    const send = (msg: ServerMessage) => sendTo(c.id, msg);
-    /** The cards as last sent: what starts to wait for the owner after is pushed to their phone. */
-    let seen = new Map(c.board.items().map((i) => [i.id, i]));
-    const offs = [
-      c.board.onChange(() => {
-        const items = c.board.items();
-        const started = startedWaiting(seen, items);
-        seen = new Map(items.map((i) => [i.id, i]));
-        const several = canvases.all().length > 1;
-        push.waits(
-          started.map(({ item, kind }) => ({
-            card: item.id,
-            title: item.title,
-            kind,
-            ...(several ? { canvas: c.board.canvas.name } : {}),
-            still: () => {
-              const now = c.board.item(item.id);
-              return !!now && needsYou(now);
-            },
-          })),
-        );
-        const snapshot = c.board.snapshot();
-        send({ type: 'snapshot', snapshot });
-        // what the switchers show of it (its repositories, whether they run as configured) may have changed
-        relist();
-        if (counted(c, snapshot)) waitingChanged();
-      }),
-      c.board.onEvent((event) => send({ type: 'event', event })),
-      c.board.onEventGone((cardId, id) => send({ type: 'eventGone', cardId, id })),
-      c.board.onNotice((n) => send({ type: 'notice', ...n })),
-      // its repositories' agents restarted: what the switchers show of it may have changed with them
-      c.onPending(() => {
-        send({ type: 'restart', restart: pending(c.id) });
-        relist();
-      }),
-    ];
-    detach.set(c.id, () => offs.forEach((off) => off()));
-  };
-  /** The list the pages' canvas switchers show, as it was last sent. */
-  let listed = '';
-  /** Sends the canvases to every page where they changed (one started, stopped, renamed, or with other repositories). */
-  const relist = () => {
-    const now = canvases.all().map((c) => c.board.canvas);
-    const list = JSON.stringify(now);
-    if (list === listed) return;
-    const first = !listed;
-    listed = list;
-    if (first) return;
-    everyone(JSON.stringify({ type: 'canvases', canvases: now } satisfies ServerMessage));
-    waitingChanged();
-  };
-  for (const c of canvases.all()) attach(c);
-  relist();
-  // a canvas started or stopped while Obeya runs: the pages of one that stopped go to another
-  canvases.onChange?.(() => {
-    const now = canvases.all();
-    for (const [id, c] of [...byId])
-      if (!now.includes(c)) {
-        detach.get(id)?.();
-        detach.delete(id);
-        byId.delete(id);
-        delete waiting[id];
-        delete waitingSent[id];
-        // the page asks for the canvases, and goes to the first there is
-        for (const ws of sockets.get(id) ?? []) ws.close();
-        sockets.delete(id);
-      }
-    for (const c of now) if (byId.get(c.id) !== c) attach(c);
-    relist();
-  });
-
+  const pages = new Pages({ canvases, access, push, updates, restarter, sources, usage, stalls, costs: () => !!config && switchView(config.home, 'costs').on });
   /** A click the retrospective counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
   const click = <T>(c: CanvasRuntime, out: T): T => {
     c.coordinator.noticed();
@@ -435,7 +227,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
   const on =
     (fn: (c: CanvasRuntime, req: Req) => unknown | Promise<unknown>) =>
     (req: Req): Response | Promise<Response> => {
-      const c = byId.get(req.params.canvas!);
+      const c = pages.canvas(req.params.canvas!);
       return c ? handle(() => fn(c, req)) : Response.json({ code: 'invalid', error: 'unknown canvas' }, { status: 404 });
     };
   /** A route that needs what this server may run without (its configuration, voice setup, the setup assistant); a 404 without it. */
@@ -589,22 +381,22 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       '/api/waiting-count': {
         GET: (req) => {
           const seen = Number(new URL(req.url).searchParams.get('seen') ?? NaN);
-          if (waitingCount() !== seen) return Response.json({ count: waitingCount() });
+          if (pages.waitingCount() !== seen) return Response.json({ count: pages.waitingCount() });
           return new Promise<Response>((resolve) => {
             const done = () => {
-              if (waitingCount() === seen && !req.signal.aborted && Date.now() < until) return;
-              countWatchers.delete(done);
+              if (pages.waitingCount() === seen && !req.signal.aborted && Date.now() < until) return;
+              off();
               clearTimeout(timer);
-              resolve(Response.json({ count: waitingCount() }));
+              resolve(Response.json({ count: pages.waitingCount() }));
             };
             const until = Date.now() + WAITING_COUNT_HOLD_MS;
             const timer = setTimeout(done, WAITING_COUNT_HOLD_MS);
-            countWatchers.add(done);
+            const off = pages.onCount(done);
             req.signal.addEventListener('abort', done);
           });
         },
       },
-      '/api/canvases': { GET: () => Response.json(canvases.all().map((c) => c.board.canvas) satisfies CanvasInfo[]) },
+      '/api/canvases': { GET: () => Response.json(pages.list()) },
       // Obeya's configuration: read, checked while the owner edits it, and saved (Obeya then starts again)
       '/api/config': {
         GET: needs(config, (c) => c.view()),
@@ -654,7 +446,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
         GET: needs(config, (c) => switchView(c.home, 'costs')),
         PUT: needs(config, async (c, req) => {
           const view = saveSwitch(c.home, 'costs', await req.json());
-          everyone(JSON.stringify({ type: 'costs', shown: view.on } satisfies ServerMessage));
+          pages.everyone({ type: 'costs', shown: view.on });
           return view;
         }),
       },
@@ -869,7 +661,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       },
       '/api/c/:canvas/images/:file': {
         GET: (req) => {
-          const file = byId.get(req.params.canvas)?.images.path(req.params.file);
+          const file = pages.canvas(req.params.canvas)?.images.path(req.params.file);
           return file ? new Response(Bun.file(file), { headers: { 'cache-control': 'private, max-age=31536000, immutable' } }) : notFound();
         },
       },
@@ -879,7 +671,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       '/api/c/:canvas/cards/:id/app': { GET: on((c, req) => c.appUp(req.params.id!)) },
       '/api/c/:canvas/cards/:id/app/open': {
         GET: async (req) => {
-          const c = byId.get(req.params.canvas);
+          const c = pages.canvas(req.params.canvas);
           if (!c) return notFound();
           let url: string | null = null;
           try {
@@ -899,7 +691,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       '/api/c/:canvas/cards/:id/demo/*': {
         GET: (req) => {
           try {
-            const demo = byId.get(req.params.canvas)?.board.demoFiles(req.params.id);
+            const demo = pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id);
             const file = decodeURIComponent(new URL(req.url).pathname.split('/demo/').slice(1).join('/demo/'));
             return demo ? serveDemoFile(demo, file, req) : notFound();
           } catch {
@@ -912,7 +704,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
         GET: (req) => {
           try {
             const n = Number(req.params.n);
-            const demo = Number.isInteger(n) && n >= 0 ? byId.get(req.params.canvas)?.board.demoFiles(req.params.id, n) : null;
+            const demo = Number.isInteger(n) && n >= 0 ? pages.canvas(req.params.canvas)?.board.demoFiles(req.params.id, n) : null;
             const route = `/demos/${n}/`;
             const file = decodeURIComponent(new URL(req.url).pathname.split(route).slice(1).join(route));
             return demo ? serveDemoFile(demo, file, req, route) : notFound();
@@ -925,7 +717,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       '/api/c/:canvas/cards/:id/files/*': {
         GET: (req) => {
           try {
-            const c = byId.get(req.params.canvas);
+            const c = pages.canvas(req.params.canvas);
             const url = new URL(req.url);
             const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
             return c ? serveCardFile(file, url.searchParams.has('download'), req, (path) => c.cardFile(req.params.id, path)).catch(() => notFound()) : notFound();
@@ -953,7 +745,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       // a walkthrough as its player reads it while it grows; `?playing=<slide>` while it plays, so the voice speaks that first
       '/api/c/:canvas/threads/:thread/walkthroughs/:name': {
         GET: (req) => {
-          const c = byId.get(req.params.canvas);
+          const c = pages.canvas(req.params.canvas);
           const playing = new URL(req.url).searchParams.get('playing');
           const w = c?.answers.walkthrough(Number(req.params.thread), req.params.name, playing === null ? undefined : Number(playing));
           return w ? Response.json(w, { headers: { 'cache-control': 'no-store' } }) : notFound();
@@ -963,7 +755,7 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       '/api/c/:canvas/threads/:thread/files/*': {
         GET: (req) => {
           try {
-            const c = byId.get(req.params.canvas);
+            const c = pages.canvas(req.params.canvas);
             const url = new URL(req.url);
             const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
             return c ? serveAnswerFile(c.answerDir(Number(req.params.thread)), file, url.searchParams.has('download'), req) : notFound();
@@ -1182,79 +974,11 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
         POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String(((await req.json().catch(() => ({}))) as { card?: unknown }).card ?? '')) })),
       },
       // the phone view's one connection: every canvas's snapshots and changes, each naming its canvas
-      '/api/ws': (req, server) =>
-        server.upgrade(req, { data: { canvas: EVERY, page: crypto.randomUUID(), device: access.deviceOf(req) } }) ? undefined : new Response('WebSocket expected', { status: 400 }),
-      '/api/c/:canvas/ws': (req, server) =>
-        byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID(), device: access.deviceOf(req) } })
-          ? undefined
-          : new Response('WebSocket expected', { status: 400 }),
+      '/api/ws': (req, server) => pages.upgrade(req, server),
+      '/api/c/:canvas/ws': (req, server) => pages.upgrade(req, server, req.params.canvas),
     }, gate),
     fetch: (req: Request, srv: Bun.Server<Socket>) => refusal(req, access.hosts()) ?? access.admit(req, srv, '') ?? notFound(),
-    websocket: {
-      data: {} as Socket,
-      // offered to every page, used for those on another device (`put`)
-      perMessageDeflate: true,
-      open: (ws: ServerWebSocket<Socket>) => {
-        const every = ws.data.canvas === EVERY;
-        const c = byId.get(ws.data.canvas);
-        if (!c && !every) return ws.close();
-        sockets.get(ws.data.canvas)!.add(ws);
-        put(ws, JSON.stringify({ type: 'hello', server: started, ...(oldLinuxBun() ? { oldBun: Bun.version } : {}) } satisfies ServerMessage));
-        // what the bar shows comes before the snapshot, which draws the bar: it is there from the first frame
-        put(ws, JSON.stringify({ type: 'update', update: updates.current() } satisfies ServerMessage));
-        put(ws, JSON.stringify({ type: 'source', source: sources?.current() ?? null } satisfies ServerMessage));
-        put(ws, JSON.stringify({ type: 'usage', usage: usage?.current() ?? null } satisfies ServerMessage));
-        put(ws, JSON.stringify({ type: 'costs', shown: !!config && switchView(config.home, 'costs').on } satisfies ServerMessage));
-        if (usage) unwatch.set(ws.data.page, usage.watch());
-        if (every) put(ws, JSON.stringify({ type: 'canvases', canvases: canvases.all().map((x) => x.board.canvas) } satisfies ServerMessage));
-        for (const x of every ? byId.values() : [c!]) greet(ws, x);
-      },
-      // caught up after a slow stretch: the newest snapshot of each canvas it missed one of
-      drain: (ws: ServerWebSocket<Socket>) => {
-        const owed = ws.data.owed;
-        if (!owed?.size) return;
-        // Bun calls this while bytes are still buffered: what does not fit yet waits for the next call
-        for (const id of [...owed]) {
-          const c = byId.get(id);
-          if (!c) owed.delete(id);
-          else if (!toward(ws, c, { type: 'snapshot', snapshot: c.board.snapshot() })) return;
-        }
-      },
-      close: (ws: ServerWebSocket<Socket>) => {
-        sockets.get(ws.data.canvas)?.delete(ws);
-        unwatch.get(ws.data.page)?.();
-        unwatch.delete(ws.data.page);
-        restarter?.hold(ws.data.page);
-        // a phone's last page closed: it no longer holds pushes off
-        const { device } = ws.data;
-        if (device && ![...sockets.values()].some((set) => [...set].some((w) => w.data.device === device))) push.away(device);
-      },
-      // the owner watching a demo video or dictating in this page holds a restart off
-      message: (ws: ServerWebSocket<Socket>, text: string | Buffer) => {
-        try {
-          const msg = JSON.parse(String(text)) as ClientMessage;
-          if (msg.type === 'hold' && Array.isArray(msg.hold)) restarter?.hold(ws.data.page, msg.hold.filter((h) => h === 'video' || h === 'voice'));
-          if (msg.type === 'back') for (const c of ws.data.canvas === EVERY ? byId.values() : [byId.get(ws.data.canvas)]) c?.ownerBack();
-          // back from the terminal, say, where the owner committed what stood in the way of a pull, or pulled
-          if (msg.type === 'back') void sources?.check(false);
-          // the owner uses a page at the machine or on their phone: what starts waiting meanwhile is not pushed
-          const { device } = ws.data;
-          if (msg.type === 'back' || msg.type === 'here') device ? push.onDevice(device) : push.here();
-          if (msg.type === 'away' && device) push.away(device);
-          if (msg.type === 'stall') {
-            const stall = pageStall(msg);
-            const { device } = ws.data;
-            const where = `${device ? (access.devices().find((d) => d.id === device)?.name ?? 'another device') : 'this machine'}, ${ws.data.canvas === EVERY ? 'every canvas' : `canvas ${ws.data.canvas}`}`;
-            if (stall) stalls?.page(stall, where, ws.data.page);
-          }
-          if (msg.type === 'focus') {
-            const seen = parsePlace(typeof msg.place === 'string' ? msg.place : undefined);
-            const c = byId.get(ws.data.canvas);
-            if (seen && c) c.inView = seen;
-          }
-        } catch {}
-      },
-    },
+    websocket: pages.websocket,
   };
   const server = Bun.serve(options);
   serving(server, access.owner);
