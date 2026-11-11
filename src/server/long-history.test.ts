@@ -2,11 +2,11 @@ import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CanvasRuntime } from './canvas';
+import type { CanvasRuntime } from './canvas';
 import type { Session } from './commands';
-import { Store } from './db';
-import { type History, writeHistory } from './fixtures/history';
-import { cpuTime, FakeRuntime, gitRepo, heard, noForge, removeDir } from './testing';
+import type { Store } from './db';
+import { appCanvas, type History, writeHistory } from './fixtures/history';
+import { cpuTime, heard, removeDir } from './testing';
 
 // The server's rounds that ran into its history: with every change of the canvas, every command to
 // the Coordinator and every pass over the shared pages, they read whole tables, and the history
@@ -35,23 +35,13 @@ let fresh: Setup;
 
 async function setup(scale: number): Promise<Setup> {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-long-history-'));
-  // a site nobody answers at: asking it which pages are gone finds none
-  const site = { title: 'Demos', url: 'http://127.0.0.1:9/', deploy: 'true {dir}' };
-  const repo = gitRepo(join(dir, 'app'), {
-    'docs/plan/plan.md': '# App\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** One.\n- [ ] **W2:** Two.\n',
-    '.obeya/settings.json': JSON.stringify({ demo: { site } }),
-  });
-  const store = new Store(join(dir, 'obeya.db'));
-  store.trustCommands(repo, { site: { url: site.url, deploy: site.deploy } });
-  const canvas = await CanvasRuntime.start({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
+  const { store, canvas } = await appCanvas(dir);
   const history = writeHistory(store, canvas.board.canvas.id, dir, scale);
   const board = canvas.board;
   // the Coordinator waits on a card for a step, and a card is snoozed until another one is done
   const talk = store.addTalk(board.canvas.id, 'Tell me once it is done.', 'I will.', null);
   store.waitTalk(talk, [{ card: history.onCanvas[0]!, title: 'Card', state: 'done', then: 'tell the owner' }]);
   board.work(history.onCanvas[1]!, { snoozed: JSON.stringify({ by: 'owner', on: { card: history.onCanvas[2]!, state: 'done' } }) });
-  // the server sends each change to the pages that show the canvas
-  board.onChange(() => JSON.stringify(board.snapshot()));
   board.changed();
   await heard();
   return { dir, store, canvas, history };
@@ -143,8 +133,6 @@ test('what the learner reads around an input of the owner’s: what they said in
   expect(around().join('\n')).toContain('What the owner said in the last');
   expect(await inUnits(around)).toBeLessThan(1);
 });
-
-
 
 test('the archive opened and scrolled: a page of its cards, at its start and far down', async () => {
   const board = long.canvas.board;

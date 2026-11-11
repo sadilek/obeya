@@ -3,9 +3,10 @@ import * as fs from 'node:fs';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CanvasRuntime } from './canvas';
-import { Store } from './db';
-import { cpuTime, FakeRuntime, gitRepo, heard, noForge, removeDir } from './testing';
+import type { CanvasRuntime } from './canvas';
+import type { Store } from './db';
+import { appCanvas } from './fixtures/history';
+import { cpuTime, heard, removeDir } from './testing';
 
 // A canvas the size of a long-used one: hundreds of archived cards, a few hundred of them with a
 // shared page on its repository's site, a hundred on the canvas, ideas with hundreds of prototypes.
@@ -22,15 +23,7 @@ let ideas: string[];
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-board-size-'));
-  // a site nobody answers at: asking it which pages are gone finds none
-  const site = { title: 'Demos', url: 'http://127.0.0.1:9/', deploy: 'true {dir}' };
-  const repo = gitRepo(join(dir, 'app'), {
-    'docs/plan/plan.md': '# App\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** One.\n- [ ] **W2:** Two.\n',
-    '.obeya/settings.json': JSON.stringify({ demo: { site } }),
-  });
-  store = new Store(join(dir, 'obeya.db'));
-  store.trustCommands(repo, { site: { url: site.url, deploy: site.deploy } });
-  canvas = await CanvasRuntime.start({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
+  ({ store, canvas } = await appCanvas(dir));
   const c = canvas.board.canvas.id;
   const body = 'What the card asks for, in a few sentences, as the owner wrote it. '.repeat(6);
   const rows = store.insert(Array.from({ length: 900 }, (_, n) => ({ canvas_id: c, kind: 'task' as const, state: 'live' as const, title: `Card ${n}`, body, x: (n % 30) * 400, y: Math.floor(n / 30) * 300 })));
@@ -65,8 +58,6 @@ beforeAll(async () => {
     });
   });
   idea.slice(0, 70).forEach((r, n) => store.update(r.id, { archived_at: new Date(Date.now() - n * 60_000).toISOString() }));
-  // the server sends each change to the pages that show the canvas
-  canvas.board.onChange(() => JSON.stringify(canvas.board.snapshot()));
   canvas.board.changed();
   // over a thousand cards and their demo folders take more than the default 5 s on a busy machine
 }, 30_000);
