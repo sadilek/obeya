@@ -69,7 +69,8 @@ export function endTree(p: ChildProcess) {
 /** What the CLI says on stdout and stderr; null where it could not start, took too long or did not end well. */
 export async function runCodex(bin: string, args: string[], env: Env, ms = 15_000): Promise<string | null> {
   const argv = startArgv(bin, args);
-  const r = await spawnOutput(argv, { env, timeout: ms, ...spawnOptions(argv) }).catch(() => null);
+  // killed at the deadline, and not waited for past it: what it started may hold its output open
+  const r = await within(spawnOutput(argv, { env, timeout: ms, killSignal: 'SIGKILL', ...spawnOptions(argv) }).catch(() => null), ms);
   return r?.code === 0 ? `${r.stdout}${r.stderr}`.trim() : null;
 }
 

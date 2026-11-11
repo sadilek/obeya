@@ -49,10 +49,11 @@ export class ProjectAgents {
     } = {},
   ): Promise<OwnerAnswer> {
     const { toObeya, rules = '', ...passed } = more;
+    const tools = [...(more.tools ?? []), ...(toObeya ? [toObeya] : [])];
     return oneAtATime(this.queues, project.id, () =>
       inform({
         ...passed,
-        tools: [...(more.tools ?? []), ...(toObeya ? [toObeya] : [])],
+        tools,
         onLimit,
         runtime: this.runtime,
         cwd: this.repoPath(),

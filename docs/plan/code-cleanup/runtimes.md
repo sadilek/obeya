@@ -403,7 +403,10 @@ class (8×), the refresh-after-a-while cache (4×).
 - Confidence: medium; read all four helpers, did not run the Windows path.
 - Done by W13 as proposed; `runCodex` answers the output or null, and `updateCodex` in `machine.ts`
   reads it so. Version, login and `update --help` gave the same answers before and after against
-  this machine's Codex; the Windows path was not run.
+  this machine's Codex; the Windows path was not run. The deadline holds as before: the process is
+  killed then (`SIGKILL`) and not waited for past it (`within`), since what it started may keep its
+  output open. Unlike before, stdout comes before stderr rather than in the order they arrived, and
+  bytes split across chunks decode as one character.
 
 ### B14. `messageOf` restated inline
 - Principle: DRY
@@ -528,7 +531,8 @@ class (8×), the refresh-after-a-while cache (4×).
   properties.
 - Confidence: high; read `advisor.ts` `inform` for how each field is read, grepped the tests'
   matchers.
-- Done by W13: `inform` spreads `more` minus `toObeya` and `rules`; `queued` is inlined.
+- Done by W13: `inform` spreads `more` minus `toObeya` and `rules`; `queued` is inlined. An empty
+  `images` now reaches the runtime as `[]` rather than nothing, which both runtimes take alike.
 
 ### B20. The limit-lift timer and its margin are restated in workers
 - Principle: DRY
