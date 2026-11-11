@@ -946,14 +946,12 @@ export class Board {
     const was = { title: row.title ?? '', state: row.state ?? 'planned' };
     if (row.deleted_at) return { kind: proposal.superseded ? 'already' : was.state === 'proposal' ? 'dismissed' : 'removed', ...was };
     if (row.archived_at || finished(was.state)) return { kind: 'finished', ...was };
-    const superseded = toJson<Proposal>({ ...proposal, superseded: s });
     // a proposal still open goes without the owner, as if never made
-    if (was.state === 'proposal') this.store.update(row.id, { proposal: superseded, deleted_at: new Date().toISOString() });
+    if (was.state === 'proposal') this.setProposal(row.id, { ...proposal, superseded: s }, { deleted_at: new Date().toISOString() });
     else {
-      this.store.update(row.id, { proposal: superseded });
+      this.setProposal(row.id, { ...proposal, superseded: s });
       this.log(row.id, 'state', 'coordinator', this.t.worker.superseded(s.title, s.why));
     }
-    this.changed();
     return { kind: was.state === 'proposal' ? 'gone' : 'marked', ...was };
   }
 
@@ -962,7 +960,19 @@ export class Board {
     const row = this.own(id);
     const { superseded, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
     if (!superseded) throw new BadRequest('notSuperseded', 'its agent has not withdrawn or replaced this card');
-    this.store.update(id, { proposal: toJson(proposal) });
+    this.setProposal(id, proposal);
+  }
+
+  /** The open proposal `id` and what it proposes; a card that is no proposal is refused. */
+  private proposalOn(id: string): { row: CardRow; proposal: Proposal } {
+    const row = this.own(id);
+    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
+    return { row, proposal: fromJson(row.proposal) ?? { questions: [] } };
+  }
+
+  /** Stores what card `id` proposes, with the other changes to its row that go with it. */
+  private setProposal(id: string, proposal: Proposal, fields: RowUpdate = {}) {
+    this.store.update(id, { ...fields, proposal: toJson(proposal) });
     this.changed();
   }
 
@@ -1073,8 +1083,7 @@ export class Board {
   private withdrawOwn(id: string) {
     const row = this.store.card(id);
     if (!row || row.deleted_at || row.state !== 'proposal') return;
-    this.store.update(id, { proposal: toJson({ ...fromJson(row.proposal)!, superseded: {} }), deleted_at: new Date().toISOString() });
-    this.changed();
+    this.setProposal(id, { ...fromJson(row.proposal)!, superseded: {} }, { deleted_at: new Date().toISOString() });
   }
 
   /** The cards the work retrospective proposed for a repository, with what became of them. */
@@ -1552,8 +1561,7 @@ export class Board {
    * planned task. Its questions join the text, with the options picked (`picks`) as decided.
    */
   accept(id: string, picks: string[][] = [], asIdea = false) {
-    const row = this.own(id);
-    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
+    const { row } = this.proposalOn(id);
     const proposal = fromJson(row.proposal);
     if (proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
     // an agent's proposal keeps that it was one: its task is not the owner's words; Obeya's setup card is as if the owner made it
@@ -1594,9 +1602,7 @@ export class Board {
    * Words said while it is reworked wait for the rework after it. Returns whether they wait.
    */
   revising(id: string, words: string, spoken: boolean, said?: number, images: string[] = []): boolean {
-    const row = this.own(id);
-    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    const proposal = fromJson(row.proposal) ?? { questions: [] };
+    const { proposal } = this.proposalOn(id);
     const these: Revising = {
       words: words.slice(0, BODY_MAX),
       ...(spoken ? { spoken } : {}),
@@ -1604,41 +1610,32 @@ export class Board {
       ...(images.length ? { images: images.map((f) => basename(f)) } : {}),
     };
     const revising = proposal.revising ? { ...proposal.revising, next: [...(proposal.revising.next ?? []), these] } : these;
-    this.store.update(id, { proposal: toJson({ ...proposal, revising }) });
-    this.changed();
+    this.setProposal(id, { ...proposal, revising });
     return revising !== these;
   }
 
   /** The owner takes back words that wait for the proposal's next rework; false when none of them are these. */
   unrevise(id: string, said: number): boolean {
-    const row = this.own(id);
-    const proposal = fromJson(row.proposal);
+    const proposal = fromJson(this.own(id).proposal);
     const next = proposal?.revising?.next;
     if (!proposal?.revising || !next?.some((r) => r.said?.includes(said))) return false;
     const rest = next.filter((r) => !r.said?.includes(said));
     const { next: _, ...revising } = proposal.revising;
-    this.store.update(id, { proposal: toJson({ ...proposal, revising: { ...revising, ...(rest.length ? { next: rest } : {}) } }) });
-    this.changed();
+    this.setProposal(id, { ...proposal, revising: { ...revising, ...(rest.length ? { next: rest } : {}) } });
     return true;
   }
 
   /** When the proposal starts once accepted (ISO), or at once (`null`). */
   startAt(id: string, at: string | null) {
-    const row = this.own(id);
-    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    const { startAt: _, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
-    this.store.update(id, { proposal: toJson({ ...proposal, ...(at ? { startAt: at } : {}) }) });
-    this.changed();
+    const { startAt: _, ...proposal } = this.proposalOn(id).proposal;
+    this.setProposal(id, { ...proposal, ...(at ? { startAt: at } : {}) });
   }
 
   /** "Accept and start" during a revision (`on`; `idea`: "Discuss as an idea"), or taken back; false when that was so already. */
   acceptAfterRevision(id: string, on: boolean | 'idea'): boolean {
-    const row = this.own(id);
-    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    const { acceptAfterRevision: was, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
+    const { acceptAfterRevision: was, ...proposal } = this.proposalOn(id).proposal;
     if ((was ?? false) === on) return false;
-    this.store.update(id, { proposal: toJson({ ...proposal, ...(on ? { acceptAfterRevision: on } : {}) }) });
-    this.changed();
+    this.setProposal(id, { ...proposal, ...(on ? { acceptAfterRevision: on } : {}) });
     return true;
   }
 
@@ -1656,12 +1653,11 @@ export class Board {
     const next = done?.next?.length ? { revising: merged(done.next) } : {};
     // when it starts is the owner's to change, not the reviser's
     const proposal: Proposal = p ? { ...proposalOf({ ...p, startAt: was.startAt }), ...(was.acceptAfterRevision ? { acceptAfterRevision: was.acceptAfterRevision } : {}), ...(was.setup ? { setup: was.setup } : {}) } : was;
-    this.store.update(id, {
-      ...(p ? { title: p.title.slice(0, TITLE_MAX), body: p.task.slice(0, BODY_MAX) } : {}),
-      ...(p?.images ? { images: p.images.length ? toJson(p.images) : null } : {}),
-      proposal: toJson({ ...proposal, ...next }),
-    });
-    this.changed();
+    this.setProposal(
+      id,
+      { ...proposal, ...next },
+      { ...(p ? { title: p.title.slice(0, TITLE_MAX), body: p.task.slice(0, BODY_MAX) } : {}), ...(p?.images ? { images: p.images.length ? toJson(p.images) : null } : {}) },
+    );
     return true;
   }
 
