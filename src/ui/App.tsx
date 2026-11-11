@@ -1,6 +1,6 @@
 // The canvas: camera, drag, unfold-in-place and the plan sheet.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
@@ -55,6 +55,7 @@ import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 import { captionKey } from './walkthrough';
 import { useLatest, useLive, useStable } from './latest';
 import { type Pos, useOptimisticItems } from './optimistic';
+import { useArchivedCards } from './archived';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -396,48 +397,10 @@ function Canvas({
   const [configProblems, setConfigProblems] = useState(0);
   const configRevs = [...snapshot.canvas.repos.map((r) => `${r.id}:${r.configRev ?? 0}`), ...canvases.map((c) => `${c.id}:${c.configRev ?? 0}`), `${snapshot.canvas.configRev ?? 0}`].join(' ');
   useEffect(() => void api.configCheck().then((c) => setConfigProblems(c.problems.length), console.error), [configRevs]);
-  // the archived cards the page holds, as their pages, the search or an address brought them: by id,
-  // and each project's workstreams in its doc's order; archived cards unfold from their row
-  const archivedById = useRef(new Map<string, Item>()).current;
-  const archivedKids = useRef(new Map<string, Item[]>()).current;
-  const [, archivedCame] = useReducer((n: number) => n + 1, 0);
-  /** Takes in archived cards as the server sent them, each project with all its workstreams. */
-  const learnArchived = useCallback((items: Item[]) => {
-    const kids = Map.groupBy(items.filter((i) => i.parent), (i) => i.parent!);
-    for (const i of items) {
-      if (i.parent) continue;
-      for (const k of archivedKids.get(i.id) ?? []) archivedById.delete(k.id);
-      archivedKids.delete(i.id);
-      if (i.kind === 'project') archivedKids.set(i.id, kids.get(i.id) ?? []);
-    }
-    for (const i of items) archivedById.set(i.id, i);
-    if (items.length) archivedCame();
-  }, []);
-  /** Forgets an archived card no longer in the archive, with its workstreams. */
-  const forgetArchived = (id: string) => {
-    for (const k of archivedKids.get(id) ?? []) archivedById.delete(k.id);
-    archivedKids.delete(id);
-    archivedById.delete(id);
-  };
+  // the archived cards the page holds; the one open, or the project it is in, closes once it left the archive
+  const archived = useArchivedCards(snapshot.archive, itemsRef, () => [focus?.id, focus?.type === 'card' ? focus.project?.id : undefined, sheetId]);
   /** The card `id`, on the canvas or else in the archive. */
-  const itemOrArchived = (id: string) => byId(id) ?? archivedById.get(id);
-  // the archived card or project open, and the project it is in, read again once the archive changed:
-  // one that left it (deleted, say) closes, as a card gone from the canvas does
-  useEffect(() => {
-    const open = [focus?.id, focus?.type === 'card' ? focus.project?.id : undefined, sheetId].flatMap((id) => {
-      const i = id && !byId(id) ? archivedById.get(id) : undefined;
-      return i ? [i.parent ?? i.id] : [];
-    });
-    if (!open.length) return;
-    let current = true;
-    api.archiveEntries([...new Set(open)]).then((items) => {
-      if (!current) return;
-      for (const id of open) if (!items.some((i) => i.id === id)) forgetArchived(id);
-      learnArchived(items);
-      archivedCame();
-    }, console.error);
-    return () => void (current = false);
-  }, [snapshot.archive]);
+  const itemOrArchived = (id: string) => byId(id) ?? archived.get(id);
   const archiveEls = useRef(new Map<string, HTMLElement>()).current;
   // rows of the project sheet, where its archived workstreams and its idea unfold from
   const sheetEls = useRef(new Map<string, HTMLElement>()).current;
@@ -692,7 +655,7 @@ function Canvas({
     addressCloses(undefined);
     setSheetOn(false);
     // one opened from the search goes back to the search's list, which stayed open
-    if (toArchive && dropRef.current !== 'search' && archivedById.has(f.id) && !itemsRef.current.some((i) => i.id === f.id)) setDrop('archive');
+    if (toArchive && dropRef.current !== 'search' && archived.get(f.id) && !itemsRef.current.some((i) => i.id === f.id)) setDrop('archive');
     await fly(back(f), 600);
     recover();
   }
@@ -788,7 +751,7 @@ function Canvas({
   }
   /** Opens the project `k.project` (its plan doc with `reading`) and the card `k.card` in it or on the canvas; an archived one from its row in the archive or the project's sheet. */
   async function openAgain(k: Pick<Kept, 'card' | 'project' | 'reading'>, quick: boolean) {
-    const find = async (id?: string) => (id ? namedBy(id) : undefined);
+    const find = async (id?: string) => (id ? archived.namedBy(id) : undefined);
     // an archived project's sheet lists its workstreams from the archive, which this loads
     const p = await find(k.project);
     // the doc opens at its top, and the kept position puts it back where it was
@@ -847,17 +810,9 @@ function Canvas({
       });
     });
   }
-  /** The card or project an address (or an id) names, on the canvas or in the archive, which it loads where it has to. */
-  async function namedBy(code: string) {
-    const here = named(itemsRef.current, code) ?? named([...archivedById.values()], code);
-    if (here) return here;
-    const entry = await api.archiveEntry(code).catch(() => []);
-    learnArchived(entry);
-    return named(entry, code);
-  }
   /** Opens what the address names; a code no card has leaves the canvas, at its address. */
   async function openAddress(code: string, quick: boolean) {
-    const i = await namedBy(code);
+    const i = await archived.namedBy(code);
     if (gone.current) return;
     // by its short code, where it was named by its id
     history.replaceState(history.state, '', pathOf(i));
@@ -872,7 +827,7 @@ function Canvas({
   /** Back or Forward: what the address no longer names closes, what it names opens. */
   async function followAddress() {
     const code = readAddress().card;
-    const i = code ? await namedBy(code) : undefined;
+    const i = code ? await archived.namedBy(code) : undefined;
     if (gone.current) return;
     addressSet.current = true;
     try {
@@ -1793,7 +1748,7 @@ function Canvas({
   const sheetProject = sheetId ? itemOrArchived(sheetId) : undefined;
   // the archived card that unfolds or is open, whose row the archive's list brings into view
   const keptRow = focus?.type === 'card' ? focus.id : archiveKeep;
-  const sheetKids = !sheetProject ? [] : sheetProject.archivedAt ? (archivedKids.get(sheetProject.id) ?? []) : (kidsOf.get(sheetProject.id) ?? []);
+  const sheetKids = !sheetProject ? [] : sheetProject.archivedAt ? archived.kidsOf(sheetProject.id) : (kidsOf.get(sheetProject.id) ?? []);
   const deps = useMemo(() => (hoverId && !panning && !dragId ? depsOf(hoverId, items) : undefined), [hoverId, panning, dragId, items]);
   const waits = useMemo(() => waitsAmong(items), [items]);
   const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
@@ -2003,7 +1958,7 @@ function Canvas({
             held={focus?.type === 'card'}
             items={items}
             rev={snapshot.archive}
-            onArchived={learnArchived}
+            onArchived={archived.learn}
             onOpen={openFound}
             onLight={setFoundId}
             els={archiveEls}
@@ -2015,7 +1970,7 @@ function Canvas({
             onClose={() => shut('archive')}
             held={focus?.type === 'card'}
             rev={snapshot.archive}
-            onItems={learnArchived}
+            onItems={archived.learn}
             done={doneCount}
             onOpen={open}
             onArchiveDone={() => archiveDone().catch(console.error)}
