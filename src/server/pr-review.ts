@@ -127,8 +127,14 @@ export const MIN_CONFIDENCE = 0.8;
 /** Whether a reviewer's comment is a verdict that lets the PR go: an approval, or a confidence of at least 4/5. */
 export const passing = (c: PrStatus['comments'][number]) => {
   if (c.verdict === 'approved') return true;
-  const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(c.body);
-  return !!m && Number(m[1]) / Number(m[2]) >= MIN_CONFIDENCE;
+  const m = confidenceIn(c.body);
+  return !!m && m.score / m.of >= MIN_CONFIDENCE;
+};
+
+/** The confidence a comment gives, as a review bot writes it (Greptile's "Confidence Score: 3/5"); none where it gives none. */
+const confidenceIn = (body: string): { score: number; of: number } | null => {
+  const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(body);
+  return m ? { score: Number(m[1]), of: Number(m[2]) } : null;
 };
 
 /**
@@ -163,9 +169,9 @@ const mentions = (body: string) =>
 export function confidence(s: PrStatus, skip: string[] = []): { score: number; of: number; by: string } | undefined {
   let found: { score: number; of: number; by: string; at: string } | undefined;
   for (const c of reviewers(s, skip)) {
-    const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(c.body);
+    const m = confidenceIn(c.body);
     const at = c.edited ?? c.at ?? '';
-    if (m && (!found || at >= found.at)) found = { score: Number(m[1]), of: Number(m[2]), by: c.author, at };
+    if (m && (!found || at >= found.at)) found = { ...m, by: c.author, at };
   }
   return found && { score: found.score, of: found.of, by: found.by };
 }

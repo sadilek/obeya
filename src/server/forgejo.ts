@@ -2,7 +2,7 @@
 // the login git has for the host. Tests use canned answers.
 
 import { messageOf } from '../core/text';
-import { type Forge, type PrStatus, parsePrUrl, verdictOf, withBodyFile } from './forge';
+import { editedAt, type Forge, type PrStatus, parsePrUrl, reviewComment, withBodyFile } from './forge';
 import { spawnOutput } from './spawn';
 import { gitCredential, gitTry, LOGIN_TTL } from './git';
 
@@ -82,6 +82,12 @@ interface FjComment {
  */
 const utc = (t?: string) => (t && !Number.isNaN(Date.parse(t)) ? new Date(t).toISOString() : (t ?? ''));
 
+/** An account by its name; a deleted one is Forgejo's `ghost`. */
+const login = (u: FjUser | null) => u?.login ?? 'ghost';
+
+/** Open, closed or merged, in the words of `PrStatus`. */
+const stateOf = (pr: FjPr): PrStatus['state'] => (pr.merged ? 'MERGED' : pr.state === 'closed' ? 'CLOSED' : 'OPEN');
+
 /** The pull request's API path (`repos/<owner>/<repo>/pulls/<n>`) and the server it is on. */
 function where(url: string): { base: string; repo: string; pull: string; number: number } {
   const ref = parsePrUrl(url);
@@ -118,15 +124,25 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
     });
   /** By PR: the head Forgejo could not merge at the last look. */
   const unmergeable = new Map<string, string>();
-  /** Every page of a list (the server's page size may be smaller than asked). */
-  const all = async <T>(cwd: string, base: string, path: string): Promise<T[]> => {
+  /**
+   * Every page of a list (the server's page size may be smaller than asked); `pick` finds the list
+   * in an answer that wraps it.
+   */
+  const all = async <T>(cwd: string, base: string, path: string, pick = (answer: unknown) => answer as T[] | undefined): Promise<T[]> => {
     const out: T[] = [];
     for (let page = 1; page <= 20; page++) {
-      const got = (await api(cwd, base, 'GET', `${path}${path.includes('?') ? '&' : '?'}limit=50&page=${page}`)) as T[] | undefined;
+      const got = pick(await api(cwd, base, 'GET', `${path}${path.includes('?') ? '&' : '?'}limit=50&page=${page}`));
       if (!got?.length) break;
       out.push(...got);
     }
     return out;
+  };
+  /** The server and repository of the checkout's `origin`; throws where that is no repository on a server. */
+  const originRepo = async (cwd: string) => {
+    const remote = await origin(cwd);
+    const at = remote ? remoteRepo(remote) : null;
+    if (!at) throw new Error(`no Forgejo repository at origin: ${remote ?? 'none'}`);
+    return at;
   };
   return {
     async status(cwd, url) {
@@ -146,12 +162,8 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
         await Promise.all(reviews.filter((r) => r.comments_count > 0).map((r) => api(cwd, base, 'GET', `${pull}/reviews/${r.id}/comments`) as Promise<FjInline[]>))
       ).flat();
       // every page: a check on a later one that failed must not let the PR pass for ready
-      const statuses: { context: string; status: string; target_url?: string }[] = [];
-      for (let page = 1; page <= 20; page++) {
-        const got = ((await api(cwd, base, 'GET', `${repo}/commits/${pr.head.sha}/status?limit=50&page=${page}`)) as { statuses?: typeof statuses } | undefined)?.statuses;
-        if (!got?.length) break;
-        statuses.push(...got);
-      }
+      type Status = { context: string; status: string; target_url?: string };
+      const statuses = await all<Status>(cwd, base, `${repo}/commits/${pr.head.sha}/status`, (answer) => (answer as { statuses?: Status[] } | undefined)?.statuses);
       // merging the base in brings changes reviewed there: the PR's own changes are its other commits
       const changedAt = commits
         .filter((c) => (c.parents?.length ?? 1) < 2)
@@ -163,14 +175,13 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
         const key = `${c.path}:${c.position ?? 0}:${c.original_position ?? 0}`;
         threads.set(key, [...(threads.get(key) ?? []), c]);
       }
-      const login = (u: FjUser | null) => u?.login ?? 'ghost';
       // Forgejo says only whether it can merge now: not while it still checks a new head (seconds to
       // minutes), nor on a conflict; a head it still cannot merge at the next look has a conflict
       const conflict = !pr.mergeable && !pr.draft && unmergeable.get(url) === pr.head.sha;
       if (pr.mergeable || pr.draft) unmergeable.delete(url);
       else unmergeable.set(url, pr.head.sha);
       return {
-        state: pr.merged ? 'MERGED' : pr.state === 'closed' ? 'CLOSED' : 'OPEN',
+        state: stateOf(pr),
         mergeable: pr.mergeable ? 'MERGEABLE' : conflict ? 'CONFLICTING' : 'UNKNOWN',
         mergeState: pr.draft ? 'DRAFT' : pr.mergeable ? 'CLEAN' : conflict ? 'DIRTY' : 'UNKNOWN',
         head: pr.head.sha,
@@ -189,13 +200,10 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
             author: login(c.user),
             body: c.body,
             ...(c.created_at ? { at: utc(c.created_at) } : {}),
-            // an edit within a minute of writing is part of writing it
-            ...(c.created_at && c.updated_at && Date.parse(c.updated_at) - Date.parse(c.created_at) > 60_000 ? { edited: utc(c.updated_at) } : {}),
+            ...editedAt(c.created_at, utc(c.updated_at)),
             url: c.html_url,
           })),
-          ...reviews
-            .map((r) => ({ id: `r${r.id}`, author: login(r.user), body: r.body, ...(r.submitted_at ? { at: utc(r.submitted_at) } : {}), ...verdictOf(r.dismissed ? 'DISMISSED' : r.state) }))
-            .filter((r) => r.body.trim() || r.verdict),
+          ...reviews.flatMap((r) => reviewComment({ id: r.id, author: login(r.user), body: r.body, at: utc(r.submitted_at), state: r.dismissed ? 'DISMISSED' : r.state }) ?? []),
           ...[...threads.values()].flatMap(([first, ...replies]) =>
             [first!, ...replies].map((c) => ({
               id: `i${c.id}`,
@@ -245,16 +253,13 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       }
     },
     async visibility(cwd) {
-      const remote = await origin(cwd);
-      const at = remote ? remoteRepo(remote) : null;
+      const at = await originRepo(cwd).catch(() => null);
       if (!at) return null;
       const r = (await api(cwd, at.base, 'GET', at.repo)) as { private?: boolean; internal?: boolean } | undefined;
       return r && typeof r.private === 'boolean' ? (r.private || r.internal ? 'private' : 'public') : null;
     },
     async urlOf(cwd, n) {
-      const remote = await origin(cwd);
-      const at = remote ? remoteRepo(remote) : null;
-      if (!at) throw new Error(`no Forgejo repository at origin: ${remote ?? 'none'}`);
+      const at = await originRepo(cwd);
       return `${at.base}/${at.repo.slice('repos/'.length)}/pulls/${n}`;
     },
     async contribution(cwd, url) {
@@ -262,8 +267,8 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       const pr = (await api(cwd, base, 'GET', pull)) as FjPr;
       return {
         title: pr.title ?? '',
-        author: pr.user?.login ?? 'ghost',
-        state: pr.merged ? 'MERGED' : pr.state === 'closed' ? 'CLOSED' : 'OPEN',
+        author: login(pr.user),
+        state: stateOf(pr),
         head: pr.head.sha,
         canModify: !!pr.allow_maintainer_edit,
         ...(pr.head.repo?.clone_url ? { headRepo: pr.head.repo.clone_url } : {}),
@@ -279,9 +284,7 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       return ((await api(cwd, base, 'POST', `${pull}/reviews`, { body, event: 'REQUEST_CHANGES' })) as { html_url?: string } | undefined)?.html_url || undefined;
     },
     async open(cwd, pr) {
-      const remote = await origin(cwd);
-      const at = remote ? remoteRepo(remote) : null;
-      if (!at) throw new Error(`no Forgejo repository at origin: ${remote ?? 'none'}`);
+      const at = await originRepo(cwd);
       return ((await api(cwd, at.base, 'POST', `${at.repo}/pulls`, pr)) as { html_url: string }).html_url;
     },
   };
