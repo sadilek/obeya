@@ -9,7 +9,7 @@ import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
 import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
-import { addTrailer, originFetch, unlanded, Workspaces } from './workspaces';
+import { addTrailer, originFetch, statusEntries, unlanded, Workspaces } from './workspaces';
 import { defaultBranch } from './branches';
 import { git, hasCommit, isAncestor } from './git';
 
@@ -366,7 +366,23 @@ describe('free clones', () => {
     expect(git(path, 'show', `${both}~1:README.md`)).toBe('staged');
     expect(git(path, 'rev-parse', `${both}~2`)).toBe(git(path, 'rev-parse', 'HEAD'));
     expect(git(path, 'status', '--porcelain')).toBe('');
+    // git failing on the way (no branch obeya-leftovers/… beside one named obeya-leftovers): the index is put back as it was
+    for (const b of git(path, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/obeya-leftovers/').split('\n')) git(path, 'branch', '--quiet', '-D', b);
+    git(path, 'branch', 'obeya-leftovers');
+    writeFileSync(join(path, 'README.md'), 'staged again\n');
+    git(path, 'add', 'README.md');
+    writeFileSync(join(path, 'README.md'), 'worked on again\n');
+    writeFileSync(join(path, 'more.txt'), 'new\n');
+    expect(await spaces.keepLeftovers(path)).toBeNull();
+    expect(git(path, 'show', ':README.md')).toBe('staged again');
+    expect(readFileSync(join(path, 'README.md'), 'utf8')).toBe('worked on again\n');
+    expect(git(path, 'status', '--porcelain', '--', 'more.txt')).toBe('?? more.txt');
   }, 20_000);
+
+  test('status entries skip the source of a rename in either column', () => {
+    expect(statusEntries(' R a-new.txt\0old.txt\0MM z.txt\0').map((e) => e.xy)).toEqual([' R', 'MM']);
+    expect(statusEntries('R  b.txt\0a.txt\0?? c.txt\0').map((e) => `${e.xy}|${e.path}`)).toEqual(['R |b.txt', '??|c.txt']);
+  });
 
   test('a clone with files assumed unchanged stays as it is; the next blocked one is freed for the card instead', async () => {
     const { board, spaces, clones, changed } = await setup();

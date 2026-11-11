@@ -946,8 +946,8 @@ export class Workspaces implements CardWorkspaces {
         if (this.justFailed(w.path) || look?.found === 'missing' || look?.found === 'unreachable') continue;
         if (look?.found === 'dirty' || look?.found === 'broken') {
           dirty = true;
-          // one it tried already, and that stayed so, gives way to the next
-          if (look.found === 'dirty' && this.made(w.path) && this.tidyable(w.path)) leftovers ??= w.path;
+          // one it tried already and that stayed so gives way to the next; one it is at still counts
+          if (look.found === 'dirty' && this.made(w.path) && !this.triedBefore(w.path)) leftovers ??= w.path;
         } else if (look?.found === 'clean') {
           found ??= w.path;
           break;
@@ -1135,6 +1135,7 @@ export class Workspaces implements CardWorkspaces {
     const git = (...args: string[]) => gitAsync(ws, '-c', 'submodule.recurse=false', ...args);
     return this.clearing(ws, async () => {
       if (!free()) return null;
+      let index: string | null = null;
       try {
         const status = await gitRun(ws, ['status', '--porcelain', '-z']);
         if (status.code !== 0) return null;
@@ -1145,6 +1146,14 @@ export class Workspaces implements CardWorkspaces {
         if (listed.code !== 0) return null;
         if (listed.stdout.split('\0').some((l) => /^[a-z] /.test(l))) {
           console.log(`clone ${ws}: files there are assumed unchanged; its leftovers stay for the owner to keep`);
+          return null;
+        }
+        // a submodule's own changes no commit here holds, and the clone would stay dirty
+        const stagedFiles = await gitRun(ws, ['ls-files', '--stage', '-z']);
+        if (stagedFiles.code !== 0) return null;
+        const gitlinks = new Set(stagedFiles.stdout.split('\0').flatMap((l) => (l.startsWith('160000 ') ? [l.slice(l.indexOf('\t') + 1)] : [])));
+        if (entries.some((e) => gitlinks.has(e.path))) {
+          console.log(`clone ${ws}: submodules there have changes; its leftovers stay for the owner to keep`);
           return null;
         }
         const staged = entries.some((e) => e.xy[0] !== ' ' && e.xy[0] !== '?');
@@ -1160,17 +1169,21 @@ export class Workspaces implements CardWorkspaces {
         for (let n = 2; (await gitRun(ws, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`])).code === 0; n++) name = name.replace(/(-\d{6})(-\d+)?$/, `$1-${n}`);
         const commit = (tree: string, parent: string, what: string) =>
           gitAsync(ws, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', 'commit-tree', tree, '-p', parent, '-m', `${what} on ${on}, kept by Obeya as it freed the clone for other cards\n\n${LEFTOVERS}`);
+        // the index as it was, put back should git fail before the branch holds it all
+        index = await gitAsync(ws, 'write-tree');
         let parent = 'HEAD';
         // a file staged otherwise than the working tree has it: `add` would replace what was staged
-        if (entries.some((e) => e.xy[0] !== ' ' && e.xy[0] !== '?' && e.xy[1] !== ' ')) parent = await commit(await gitAsync(ws, 'write-tree'), 'HEAD', 'Staged');
+        if (entries.some((e) => e.xy[0] !== ' ' && e.xy[0] !== '?' && e.xy[1] !== ' ')) parent = await commit(index, 'HEAD', 'Staged');
         await git('add', '--all');
         const kept = await commit(await gitAsync(ws, 'write-tree'), parent, 'Left uncommitted');
         await gitAsync(ws, 'branch', name, kept);
+        index = null;
         await git('reset', '--quiet', '--hard', 'HEAD');
         console.log(`clone ${ws}: what was left uncommitted there is kept in the branch ${name}; the clone is free`);
         return name;
       } catch (e) {
         console.error(`clone ${ws}: keeping its leftovers: ${messageOf(e)}`);
+        if (index !== null) await gitRun(ws, ['read-tree', index]).catch(() => {});
         return null;
       } finally {
         // a card waiting for a clone takes it once a look finds it clean: a look begun before is of the clone as it was
@@ -1181,6 +1194,11 @@ export class Workspaces implements CardWorkspaces {
         });
       }
     });
+  }
+
+  /** Whether Obeya tried keeping the leftovers in a clone by itself (`tidy`), git is done there, and the clone still has the changes it tried them with. */
+  private triedBefore(path: string): boolean {
+    return this.tidied.get(path) === seenKey(this.looks.get(path)) && !this.clears.has(path);
   }
 
   /** Whether Obeya would keep the leftovers in a clone it made by itself (`tidy`): not while git is at it, nor again for the changes it tried them with. */
@@ -2088,8 +2106,9 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
       const commit = await run('rev-parse', `${ref}^{commit}`);
       if ((object && theirs.get(ref) === object) || (commit && (theirs.get(`${ref}^{}`) ?? theirs.get(ref)) === commit)) continue;
     }
-    // its changes are on the main branch already (squashed, rebased)
-    if (onMain && (await landedOn(path, main, ref))) continue;
+    // its changes are on the main branch already (squashed, rebased); never so for leftovers Obeya kept,
+    // whose staged snapshot beneath may differ from what their last commit leaves
+    if (onMain && !ref.startsWith('refs/heads/obeya-leftovers/') && (await landedOn(path, main, ref))) continue;
     const kind = ref === 'HEAD' ? 'head' : ref.startsWith('refs/heads/') ? 'branch' : ref.startsWith('refs/tags/') ? 'tag' : 'ref';
     const name = kind === 'head' ? 'HEAD' : kind === 'ref' ? ref.replace(/^refs\//, '') : ref.replace(/^refs\/(heads|tags)\//, '');
     lost.push({ what: 'commits', kind, name, n: Number(n) });
@@ -2170,14 +2189,14 @@ export function lostText(lost: LostWork[]): string {
 /** What a look found in a dirty clone, as `tidied` compares it: the changes Obeya tried keeping the leftovers with. */
 const seenKey = (look: Seen | undefined) => JSON.stringify([look?.files, look?.more, look?.branch]);
 
-/** `git status --porcelain -z` as entries, each with its two status letters; a rename's or copy's source, which follows it, is no entry of its own. */
-function statusEntries(out: string): { xy: string; path: string }[] {
+/** `git status --porcelain -z` as entries, each with its two status letters; a rename's or copy's source, which follows it, is no entry of its own (in either column: an intent-to-add file renamed in the working tree has it in the second). */
+export function statusEntries(out: string): { xy: string; path: string }[] {
   const parts = out.split('\0').filter(Boolean);
   const entries: { xy: string; path: string }[] = [];
   for (let i = 0; i < parts.length; i++) {
     const xy = parts[i]!.slice(0, 2);
     entries.push({ xy, path: parts[i]!.slice(3) });
-    if (xy[0] === 'R' || xy[0] === 'C') i++;
+    if (/[RC]/.test(xy)) i++;
   }
   return entries;
 }

@@ -2150,7 +2150,7 @@ const de = {
     keepLeftovers: 'Auf neuen Branch committen und Klon freigeben',
     /** Beside that button: where the changes go, and, in a clone Obeya made, that it does so by itself once a card needs the clone. */
     keepLeftoversWhat: (made: boolean) =>
-      `Alle Änderungen, auch neue Dateien, kommen als ein Commit auf einen neuen Branch obeya-leftovers/… in diesem Klon. Nichts wird gepusht oder gelöscht.${made ? ' Das macht Obeya auch von selbst, sobald eine Karte einen Klon braucht und keiner frei ist.' : ''}`,
+      `Alle Änderungen, auch neue Dateien, kommen als Commit auf einen neuen Branch obeya-leftovers/… in diesem Klon. Nichts wird gepusht oder gelöscht.${made ? ' Das macht Obeya auch von selbst, sobald eine Karte einen Klon braucht und keiner frei ist.' : ''}`,
     /** `branch`: where they are now; empty where there was nothing to keep (line endings alone). */
     leftoversKept: (branch: string) => (branch ? `Der Klon ist frei. Die Änderungen liegen als Commit im Branch ${branch} dieses Klons.` : 'Der Klon ist frei. Es gab nichts zu sichern.'),
   },
@@ -4295,7 +4295,7 @@ const en: Strings = {
     keptBack: (title: string) => `“${title}” keeps its workspace.`,
     keepLeftovers: 'Commit to a new branch and free the clone',
     keepLeftoversWhat: (made: boolean) =>
-      `All changes, new files too, go into one commit on a new branch obeya-leftovers/… in this clone. Nothing is pushed or deleted.${made ? ' Obeya also does this by itself as soon as a card needs a clone and none is free.' : ''}`,
+      `All changes, new files too, are committed on a new branch obeya-leftovers/… in this clone. Nothing is pushed or deleted.${made ? ' Obeya also does this by itself as soon as a card needs a clone and none is free.' : ''}`,
     leftoversKept: (branch: string) => (branch ? `The clone is free. The changes are committed on the branch ${branch} in that clone.` : 'The clone is free. There was nothing to keep.'),
   },
   archive: {

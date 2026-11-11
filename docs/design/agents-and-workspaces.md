@@ -391,17 +391,21 @@ changes go, puts it all (untracked files too, ignored ones aside) into a commit 
 the trailer `Obeya-Kept: leftovers`, on a branch of its own in that clone, `obeya-leftovers/<branch
 it was on>-<date>-<time>` in the machine's local time, made from the commit checked out (a file
 staged otherwise than the working tree has it first gets a commit of its own as staged, so neither
-is lost); nothing is pushed. The clone is then clean on the branch it was on (submodules' working
-trees untouched), and a confirmation names the branch. Changes of line endings alone, none of them
-staged, are dropped without a branch. A clone with files marked assume-unchanged stays as it is,
-with a message: `add` leaves those out and the reset would overwrite them. It takes effect at once,
+is lost); nothing is pushed. The clone is then clean on the branch it was on, and a confirmation
+names the branch. Changes of line endings alone, none of them staged, are dropped without a branch.
+A clone stays as it is, with a message, where files are marked assume-unchanged (`add` leaves those
+out and the reset would overwrite them) or a submodule has changes of its own (no commit here holds
+them, and the clone would stay dirty); so does one where git fails on the way, its index put back as
+it was. It takes effect at once,
 without an undo window: the work is on the branch. A clone Obeya made is freed so by itself once a
 card would take it but for the leftovers (a card starting or waiting finds no clean free clone),
 once for the changes as it found them, the first such clone not tried already, so one that could not
 be freed does not keep a card from the next; the line beside the button says so. A clone the owner
 listed is freed only by the button, since it may be one they also work in by hand. The button acts on
-the clone of the machine its line is under, never on one with the same path elsewhere. The leftovers' branch is
-work not on `origin`: a clone holding one stays on disk when it leaves the pool (see above).
+the clone of the machine its line is under, never on one with the same path elsewhere. The leftovers'
+branch is work not on `origin`, never counted as landed in another form (its staged snapshot may
+hold what its last commit undoes): a clone holding one stays on disk when it leaves the pool (see
+above).
 
 ### Folders without git
 
