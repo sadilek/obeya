@@ -22,7 +22,7 @@ import { ClockMark, SnoozeMenu, snoozeWho } from './snooze';
 import { becomesLabel, snoozeWhen, stateLabel, t } from './strings';
 import { agentWorks, ownerField, talkAlone, waitsFirstStart, worked as isWorked } from './talk';
 import { type ActDone, ArchiveButton, Armed, Later, Limited, ManualTitle, type Pending, type Run, StartOn, type Tell, archivedOn } from './cardSheet';
-import { ApproveReview, Findings, useUnsentDecisions } from './review';
+import { ApproveReview, Findings, holdsUp, useUnsentDecisions } from './review';
 import { IdeaView, PrototypeDemos } from './idea';
 import { Conversation, Fold, LastFailure, Mocks, Split, Talk, TalkColumn, useOpenQuestions } from './conversation';
 import { DemoView } from './demo';
@@ -126,7 +126,7 @@ export function Detail(p: Props) {
   const choice = useRepoChoice(item, p.onEdit);
   // on a review card, the findings decided in the field that hold the merge up until they are sent
   const heldUp = Object.entries(useUnsentDecisions(item))
-    .filter(([, route]) => route === 'contributor' || route === 'self')
+    .filter(([, route]) => holdsUp(route))
     .map(([id]) => Number(id));
   // in a folder without git the card's change list takes the place of its branch
   const inFolder = !!p.repos.find((r) => r.id === item.repo)?.folder;

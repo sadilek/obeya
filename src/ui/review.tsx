@@ -1,7 +1,7 @@
 // A review card: what its agent found in the pull request, the owner's decisions on it, and the merge.
 
 import { useContext } from 'react';
-import { type ApproveResult, type CardAction, type ChangeRoute, finished, type Item, type Finding, type Clash as ClashFound } from '../core/types';
+import { type ApproveResult, type CardAction, type ChangeRoute, type Contribution, finished, type Item, type Finding, type Clash as ClashFound } from '../core/types';
 import { Inline, plain } from './markdown';
 import { Cards } from './message';
 import { cardDraft, updateDraft, useDraft } from './draft';
@@ -18,7 +18,7 @@ export function ApproveReview({ item, act }: { item: Item; act: (a: CardAction, 
   const c = item.contribution!;
   const decided = useUnsentDecisions(item);
   // a follow-up task or an ignored finding goes with the merge; a decision that holds the PR up goes with Send first
-  const heldUp = Object.values(decided).some((route) => route === 'contributor' || route === 'self');
+  const heldUp = Object.values(decided).some(holdsUp);
   // a PR in conflict with main is not merged: the confirmation says who resolves it
   const ackFor = (r: unknown) => {
     const conflict = (r as ApproveResult)?.conflict;
@@ -105,25 +105,19 @@ export function Findings({ item, decides, onPush }: { item: Item; decides: boole
         ) : (
           decides && (
             <div className="choices single f-choices" role="group">
-              <button className={`choice${picks[f.id] === 'contributor' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'contributor'} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'contributor')}>
-                {t.review.toContributor}
-              </button>
-              <button
-                className={`choice${picks[f.id] === 'self' ? ' on' : ''}`}
-                aria-pressed={picks[f.id] === 'self'}
-                disabled={!c.canModify}
-                title={c.canModify ? t.review.selfHint : t.review.selfOff(c.author)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pick(f, 'self')}
-              >
-                {t.review.self}
-              </button>
-              <button className={`choice${picks[f.id] === 'later' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'later'} title={t.review.laterHint} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'later')}>
-                {t.review.later}
-              </button>
-              <button className={`choice${picks[f.id] === 'drop' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'drop'} title={t.review.dropHint} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'drop')}>
-                {t.review.drop}
-              </button>
+              {routes(c).map((r) => (
+                <button
+                  key={r.route}
+                  className={`choice${picks[f.id] === r.route ? ' on' : ''}`}
+                  aria-pressed={picks[f.id] === r.route}
+                  disabled={r.off}
+                  title={r.hint}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(f, r.route)}
+                >
+                  {r.label}
+                </button>
+              ))}
             </div>
           )
         )}
@@ -203,16 +197,28 @@ export function useUnsentDecisions(item: Item): Record<string, ChangeRoute> {
   return all ? Object.fromEntries(Object.entries(all).filter(([id]) => findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided))) : {};
 }
 
+/** The owner's decisions on a finding, in the order their buttons stand; "Change it myself" greyed with its reason where the contributor allows no edits by maintainers. */
+const routes = (c: Contribution): { route: ChangeRoute; label: string; hint?: string; off?: boolean }[] => [
+  { route: 'contributor', label: t.review.toContributor },
+  { route: 'self', label: t.review.self, hint: c.canModify ? t.review.selfHint : t.review.selfOff(c.author), off: !c.canModify },
+  { route: 'later', label: t.review.later, hint: t.review.laterHint },
+  { route: 'drop', label: t.review.drop, hint: t.review.dropHint },
+];
+
+/** A decision on a finding that holds the merge up until it is sent: it goes to the contributor, or the owner changes it themselves. */
+export const holdsUp = (route: ChangeRoute) => route === 'contributor' || route === 'self';
+
 /** A finding whose bundle still means something: open, or made a follow-up task. */
 const bundled = (f: Finding) => f.status === 'open' || f.status === 'later';
 
 /**
- * Above the field of a review card: what the owner decided for its findings, which goes out with the
- * words; with several made follow-up tasks, how many tasks they become as their agent bundled them.
+ * Above the field of a review card: what the owner decided for its findings (`useUnsentDecisions`),
+ * which goes out with the words; with several made follow-up tasks, how many tasks they become as
+ * their agent bundled them.
  */
 export function DecidedChip({ item, decided }: { item: Item; decided: Record<string, ChangeRoute> }) {
   const c = item.contribution!;
-  const named = Object.entries(decided).filter(([id]) => c.findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided));
+  const named = Object.entries(decided);
   if (!named.length) return null;
   const later = named.filter(([, route]) => route === 'later').map(([id]) => c.findings!.find((f) => f.id === Number(id))!);
   const tasks = new Set(later.map((f) => [f.id, ...(f.with ?? []).filter((w) => later.some((l) => l.id === w))].sort((a, b) => a - b).join())).size;
@@ -221,7 +227,7 @@ export function DecidedChip({ item, decided }: { item: Item; decided: Record<str
       <div className="decided-lines">
         {named.map(([id, route]) => (
           <span key={id} className="quote-text">
-            {t.review.decidedLine(Number(id), route === 'self' ? t.review.self : route === 'later' ? t.review.later : route === 'drop' ? t.review.drop : t.review.toContributor)}
+            {t.review.decidedLine(Number(id), routes(c).find((r) => r.route === route)!.label)}
           </span>
         ))}
         {later.length > 1 && <span className="decided-tasks">{t.review.tasks(tasks)}</span>}
