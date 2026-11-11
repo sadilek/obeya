@@ -529,7 +529,7 @@ function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items:
           </button>
         ) : (
           <button className="btn" onClick={() => setDraft(null)}>
-            {t.coordinator.cancel}
+            {t.cancel}
           </button>
         )}
         <button className="btn danger" onClick={() => decide(() => api.rejectProposal(p.id))}>
@@ -793,7 +793,7 @@ function PreferenceRow({ p }: { p: Preference }) {
       ) : (
         <RuleEdit draft={draft} setDraft={setDraft} onEnter={save} onBlur={save} />
       )}
-      <button className="pref-del" title={t.coordinator.remove} onClick={() => api.setPreference(p.id, null).catch(() => {})}>
+      <button className="pref-del" title={t.remove} onClick={() => api.setPreference(p.id, null).catch(() => {})}>
         ✕
       </button>
       {error && <span className="p-error">{error}</span>}

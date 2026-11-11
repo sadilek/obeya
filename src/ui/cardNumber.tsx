@@ -47,7 +47,7 @@ export function CardNumber({ n, className }: { n: number; className?: string }) 
       }}
     >
       <span ref={el}>{tag}</span>
-      {done ? <span className="card-no-done">{done === 'copied' ? t.cardNumber.copied : t.cardNumber.selected}</span> : <CopyIcon size={12} />}
+      {done ? <span className="card-no-done">{done === 'copied' ? t.copied : t.cardNumber.selected}</span> : <CopyIcon size={12} />}
     </button>
   );
 }

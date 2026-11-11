@@ -141,7 +141,7 @@ export function DiscardChanges({ diff, act, onDone }: { diff: CardDiff | null; a
         {counting && (
           <>
             <span className="f-count">{t.folder.seconds(left)}</span>
-            <span className="f-cancel" aria-label={t.folder.cancel}>
+            <span className="f-cancel" aria-label={t.cancel}>
               ×
             </span>
           </>

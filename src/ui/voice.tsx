@@ -544,7 +544,7 @@ function FileChips() {
       {words.map((w, i) => (
         <span key={`f${i}`} className="c-file" title={w}>
           <span className="name">{w.replace(/"/g, '').split(/[\\/]/).at(-1)}</span>
-          <button className="remove" title={t.shots.remove} onClick={() => drop(withoutWords(draft.text, [w]))}>
+          <button className="remove" title={t.remove} onClick={() => drop(withoutWords(draft.text, [w]))}>
             ×
           </button>
         </span>
@@ -552,7 +552,7 @@ function FileChips() {
       {texts.map((p, i) => (
         <span key={`t${i}`} className="c-file c-pasted" title={p.length > PASTED_TITLE ? `${p.slice(0, PASTED_TITLE)} …` : p}>
           <span className="name">{p.slice(0, 300)}</span>
-          <button className="remove" title={t.shots.remove} onClick={() => drop(withoutPasted(draft.text, [p]))}>
+          <button className="remove" title={t.remove} onClick={() => drop(withoutPasted(draft.text, [p]))}>
             ×
           </button>
         </span>

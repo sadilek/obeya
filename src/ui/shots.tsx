@@ -226,7 +226,7 @@ export function ShotStrip({ shots }: { shots: ShotInput }) {
           <button className="open" title={t.shots.markUp} onClick={(e) => enlarge.open(id, e)}>
             <img src={imageUrl(id)} alt={t.shots.alt} />
           </button>
-          <button className="remove" title={t.shots.remove} onClick={() => shots.remove(id)}>
+          <button className="remove" title={t.remove} onClick={() => shots.remove(id)}>
             ×
           </button>
         </span>
@@ -493,7 +493,7 @@ function Lightbox({ src, thumb, marking, onClose }: { src: string; thumb: HTMLIm
     // a click here is not one on the card or field the thumbnail sits in
     <div
       className={['lightbox', marking && 'marking', closing && 'closing'].filter(Boolean).join(' ')}
-      title={marking ? undefined : t.shots.close}
+      title={marking ? undefined : t.close}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();

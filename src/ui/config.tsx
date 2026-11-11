@@ -1445,7 +1445,7 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
           <Field label={p.codeLabel} hint={p.codeHint}>
             <div className="personal-actions">
               <button className="btn small" disabled={!connection} onClick={() => copy(connection)}>
-                {copied ? p.copied : p.code}
+                {copied ? t.copied : p.code}
               </button>
             </div>
           </Field>
@@ -2521,7 +2521,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
                 </button>
               )}
               <button type="button" className="btn small" disabled={busy} onClick={() => setConfirming(false)}>
-                {c.cancel}
+                {t.cancel}
               </button>
             </div>
           </div>

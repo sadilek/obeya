@@ -168,7 +168,7 @@ export function DiffView({ item, file, onClose, onRead }: { item: Item; file?: s
               </>
             )}
           </span>
-          <button className="d-close" title={t.diff.close} onClick={onClose}>
+          <button className="d-close" title={t.close} onClick={onClose}>
             ×
           </button>
         </div>

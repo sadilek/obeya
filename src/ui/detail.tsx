@@ -806,7 +806,7 @@ function SupersededBox({ item, all, act, onDelete }: { item: Item; all: Item[]; 
       {s.why && <div className="q-text">{s.why}</div>}
       <div className="actions">
         <button className="btn danger" title={t.superseded.removeHint} onClick={onDelete}>
-          {t.superseded.remove}
+          {t.remove}
         </button>
         <button className="btn" title={t.superseded.keepHint} onClick={() => act({ action: 'keep' }, { close: false })}>
           {t.superseded.keep}

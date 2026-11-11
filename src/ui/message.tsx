@@ -174,7 +174,7 @@ export function AnswerFiles({ thread, files }: { thread: number; files?: AnswerF
               <button className="file-open" title={t.answer.open(f.caption)} onMouseDown={(e) => e.preventDefault()} onClick={() => void open(f.name)}>
                 <span className="file-mark">{fileMark(f.name)}</span> {f.name}
               </button>
-              <a className="file-down" href={answerFile(thread, f.name, true)} title={t.answer.download} aria-label={t.answer.download}>
+              <a className="file-down" href={answerFile(thread, f.name, true)} title={t.download} aria-label={t.download}>
                 ↓
               </a>
             </span>

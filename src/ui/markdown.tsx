@@ -373,7 +373,7 @@ function Code({ text }: { text: string }) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setDone(null), how === 'copied' ? 2000 : 4000);
   };
-  const label = done === 'copied' ? t.talk.copied : done === 'selected' ? t.talk.selected : t.talk.copy;
+  const label = done === 'copied' ? t.copied : done === 'selected' ? t.talk.selected : t.talk.copy;
   return (
     <div className="p-code-box">
       <pre ref={pre} className="p-code">

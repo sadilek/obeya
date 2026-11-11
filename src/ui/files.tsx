@@ -359,7 +359,7 @@ function FileView({ item, file, rev, changes, onChanges }: { item: Item; file: S
             {t.files.show}
           </button>
           {' · '}
-          <a className="link" href={cardFile(item.id, file.path, true)} title={t.files.download} aria-label={t.files.download}>
+          <a className="link" href={cardFile(item.id, file.path, true)} title={t.download} aria-label={t.download}>
             ↓
           </a>
         </span>

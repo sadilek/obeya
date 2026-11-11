@@ -210,7 +210,7 @@ export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () =>
               <span className="hint">{a.pairedAt(when(d.pairedAt))}</span>
               <span className="hint">{a.seenAt(when(d.lastSeen))}</span>
               <button className="btn small" onClick={() => void remove(d.id)}>
-                {a.remove}
+                {t.remove}
               </button>
             </li>
           ))}

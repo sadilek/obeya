@@ -25,7 +25,7 @@ function Command({ text }: { text: string }) {
     <span className="c-cmd">
       <code>{text}</code>
       <button className="c-copy" onClick={() => copy(text)} title={t.setup.copy}>
-        {copied ? t.setup.copied : t.setup.copy}
+        {copied ? t.copied : t.setup.copy}
       </button>
     </span>
   );
@@ -663,7 +663,7 @@ export function GitSetup({ path, confirm, onDone, onFolder }: { path: string; co
               {s.again}
             </button>
             <button className="btn small" disabled={!!busy} onClick={() => setPreview(null)}>
-              {s.cancel}
+              {t.cancel}
             </button>
           </div>
         </>

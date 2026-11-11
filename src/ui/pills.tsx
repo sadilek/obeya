@@ -159,7 +159,7 @@ export function UpdatePill({ update }: { update: AppUpdate }) {
     <div className="pill restart update" id="update">
       <span>{t.update.pill(update.version)}</span>
       {update.download ? (
-        <button onClick={() => window.open(update.download, '_blank')}>{t.update.download}</button>
+        <button onClick={() => window.open(update.download, '_blank')}>{t.download}</button>
       ) : (
         <button onClick={install} disabled={asked}>
           {t.update.install}
