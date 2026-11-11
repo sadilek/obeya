@@ -16,6 +16,9 @@ export function fromJson<T>(text: Json<T> | null): T | null {
   return text ? (JSON.parse(text) as T) : null;
 }
 
+/** A value as the JSON column it is written to holds it: the column's type checks it. */
+export const toJson = <T>(value: NoInfer<T>): Json<T> => JSON.stringify(value);
+
 /**
  * What a card waits on or was handed over with (`CardRow.detail`): the open question (with the
  * tool call that asked the owner's permission), or the handover's summary, whether the work changed

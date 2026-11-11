@@ -9,7 +9,7 @@ import { cardTag } from '../core/card-number';
 import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, startable, waitsOn } from '../core/queue';
 import { EVICT_HOLD_MS, finished, type Item, nameless, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
 import { ACTIVE, BadRequest, type Board, TITLE_MAX } from './board';
-import { fromJson } from './row';
+import { fromJson, toJson } from './row';
 import { type AgentRuntime, readSession, waitQuietly } from './runtime';
 import type { Workers } from './workers';
 import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './workspaces';
@@ -209,7 +209,7 @@ export class Coordinator {
     // one the owner set aside to start later goes with them, so a workstream building on it waits for it
     for (const w of open) if (w.snoozed?.start) this.o.board.unsnooze(w.id, 'owner');
     const now = Date.now();
-    open.forEach((w, n) => this.o.board.work(w.id, { queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
+    open.forEach((w, n) => this.o.board.work(w.id, { queue: toJson({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
     this.o.board.log(project.id, 'state', 'owner', this.o.board.t.coordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
     setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? START_ALL_HOLD_MS);
   }
@@ -427,7 +427,7 @@ export class Coordinator {
       if (this.o.board.item(cardId)?.state !== 'working') return;
       try {
         const scope = await this.estimate(card, [], [], [], waitQuietly);
-        this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
+        this.o.board.work(cardId, { scope: toJson({ files: scope.files, reason: scope.reason }) });
       } catch {}
       return;
     }
@@ -442,7 +442,7 @@ export class Coordinator {
     if (!now?.queue) return;
     // its repository stopped running while the Coordinator read
     if (now.repoDown) return this.repoGone(now);
-    this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
+    this.o.board.work(cardId, { scope: toJson({ files: scope.files, reason: scope.reason }) });
     // the workstreams it builds on, and the cards in progress or queued ahead whose changes it
     // expects to conflict with the card's
     const behind = [...active, ...ahead, ...pending].filter((a) => scope.buildsOn.includes(a.id) || scope.conflictsWith.includes(a.id)).map((a) => a.id);
@@ -541,7 +541,7 @@ export class Coordinator {
       if (!still(id)) return before.add(id);
       const behind = p.waitsFor.filter((b) => before.has(b) && this.blocks(b));
       before.add(id);
-      this.o.board.work(id, { scope: JSON.stringify({ files: p.files, reason: p.reason }), queue: JSON.stringify({ checking: true, together: key, since: times[n] }) });
+      this.o.board.work(id, { scope: toJson({ files: p.files, reason: p.reason }), queue: toJson({ checking: true, together: key, since: times[n]! }) });
       const buildsOn = behind.filter((b) => p.buildsOn.includes(b));
       const reason = p.reason || (buildsOn.length ? t.buildsOn : t.likelyConflict);
       if (this.queueOrStart(id, behind, buildsOn, reason, `${project ? t.togetherStarts : t.freedStarts}${p.reason ? ` ${p.reason}` : ''}`, (b) => names.get(b))) started++;
@@ -968,7 +968,7 @@ export class Coordinator {
   /** A card keeps the time it came to the Coordinator for as long as it stays queued. */
   private setQueue(cardId: string, q: Wait | null, keep?: string) {
     const since = keep ?? this.o.board.item(cardId)?.queue?.since ?? new Date().toISOString();
-    this.o.board.work(cardId, { queue: q ? JSON.stringify({ ...q, since }) : null });
+    this.o.board.work(cardId, { queue: q ? toJson({ ...q, since }) : null });
   }
 
   private card(id: string): Item {

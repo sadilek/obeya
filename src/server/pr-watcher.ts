@@ -7,7 +7,7 @@
 
 import type { RepoAdapter } from '../adapters/types';
 import type { Board } from './board';
-import { fromJson, type PrState, type StoredContribution } from './row';
+import { fromJson, type PrState, type StoredContribution, toJson } from './row';
 import type { Forge, PrStatus } from './forge';
 import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf } from './pr-review';
 import type { PrWait } from '../core/types';
@@ -383,7 +383,7 @@ export class PrWatcher {
     const { more: _, ...own } = pr;
     const next: PrState =
       root.url === pr.url ? { ...own, ...(root.more ? { more: root.more } : {}) } : { ...root, more: (root.more ?? []).map((m) => (m.url === pr.url ? own : m)) };
-    if (row.pr !== JSON.stringify(next)) this.board.work(cardId, { pr: JSON.stringify(next) });
+    if (row.pr !== JSON.stringify(next)) this.board.work(cardId, { pr: toJson(next) });
   }
 }
 

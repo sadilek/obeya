@@ -53,6 +53,7 @@ import {
   type Revising,
   type Question,
   type PlanDir,
+  type Queue,
   type Reshare,
   type TalkQuote,
   type TalkAfter,
@@ -76,7 +77,7 @@ import {
   storedModel,
 } from '../core/types';
 import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
-import { fromJson, type DemoRef, type PrState, type SharedDemo, type Shipped, type StoredContribution, type StoredDemo, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredPrototype, type StoredShare, type StoredThread } from './row';
+import { fromJson, type DemoRef, type PrState, type SharedDemo, type Shipped, type StoredDemo, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredShare, type StoredThread, toJson } from './row';
 import type { Images } from './images';
 import { sessionHarness } from './runtime';
 import { branchName, CARD_BRANCH } from './branches';
@@ -211,7 +212,7 @@ function convertSingleDemoShares(store: Store, canvasId: string) {
     if (rest.demos || !dir || !shown) continue;
     const demo = cardDemos(r).findLast((d) => d.dir === dir);
     const one: SharedDemo = { ...(demo?.handover !== undefined ? { handover: demo.handover } : {}), ...(demo?.at ? { at: demo.at } : {}), dir, shown };
-    store.update(r.id, { share: JSON.stringify({ ...rest, demos: [one] } satisfies StoredShare) });
+    store.update(r.id, { share: toJson({ ...rest, demos: [one] }) });
   }
 }
 
@@ -569,7 +570,7 @@ export class Board {
       const s = fromJson(r.shipped);
       if (!commit || !s?.fetch || (r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home)) !== repo) continue;
       const { fetch: _, ...rest } = s;
-      this.store.update(r.id, { shipped: JSON.stringify({ ...rest, commit } satisfies Shipped) });
+      this.store.update(r.id, { shipped: toJson({ ...rest, commit }) });
     }
     // the docs' history is read anew
     this.readTreeAt++;
@@ -594,7 +595,7 @@ export class Board {
       const pr = fromJson(r.pr);
       const shipped: Shipped = { ...s, ...(!s.pr && pr?.url && pr.number ? { pr: { url: pr.url, number: pr.number } } : {}) };
       // a new run starts on a fresh branch: the old one is merged, perhaps squashed
-      this.store.update(r.id, { state: 'planned', need: null, pr: null, branch: null, shipped: JSON.stringify(shipped) });
+      this.store.update(r.id, { state: 'planned', need: null, pr: null, branch: null, shipped: toJson(shipped) });
       this.log(r.id, 'state', 'obeya', this.t.idea.partLanded);
     }
   }
@@ -940,7 +941,7 @@ export class Board {
         ...at,
         from_id: fromId,
         repo: this.repoColumn(p.repo ?? from?.repo),
-        proposal: JSON.stringify(proposal),
+        proposal: toJson(proposal),
         group_id: from?.group ?? null,
       },
     ]);
@@ -964,7 +965,7 @@ export class Board {
     const was = { title: row.title ?? '', state: row.state ?? 'planned' };
     if (row.deleted_at) return { kind: proposal.superseded ? 'already' : was.state === 'proposal' ? 'dismissed' : 'removed', ...was };
     if (row.archived_at || finished(was.state)) return { kind: 'finished', ...was };
-    const superseded = JSON.stringify({ ...proposal, superseded: s } satisfies Proposal);
+    const superseded = toJson<Proposal>({ ...proposal, superseded: s });
     // a proposal still open goes without the owner, as if never made
     if (was.state === 'proposal') this.store.update(row.id, { proposal: superseded, deleted_at: new Date().toISOString() });
     else {
@@ -980,7 +981,7 @@ export class Board {
     const row = this.own(id);
     const { superseded, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
     if (!superseded) throw new BadRequest('notSuperseded', 'its agent has not withdrawn or replaced this card');
-    this.store.update(id, { proposal: JSON.stringify(proposal satisfies Proposal) });
+    this.store.update(id, { proposal: toJson(proposal) });
     this.changed();
   }
 
@@ -999,7 +1000,7 @@ export class Board {
         ...this.freeSpot(),
         repo: this.repoColumn(repo),
         retro: p.basis.slice(0, NOTE_MAX),
-        proposal: JSON.stringify(proposalOf({})),
+        proposal: toJson(proposalOf({})),
       },
     ]);
     this.changed();
@@ -1045,7 +1046,7 @@ export class Board {
         body: t.body,
         ...at,
         repo: this.repoColumn(repo),
-        ...(propose ? { proposal: JSON.stringify({ ...proposalOf({ reason: t.reason(name) }), setup: true } satisfies Proposal) } : {}),
+        ...(propose ? { proposal: toJson({ ...proposalOf({ reason: t.reason(name) }), setup: true }) } : {}),
       },
     ]);
     this.setSetting(`${key}${repo}`, row!.id);
@@ -1091,7 +1092,7 @@ export class Board {
   private withdrawOwn(id: string) {
     const row = this.store.card(id);
     if (!row || row.deleted_at || row.state !== 'proposal') return;
-    this.store.update(id, { proposal: JSON.stringify({ ...fromJson(row.proposal)!, superseded: {} } satisfies Proposal), deleted_at: new Date().toISOString() });
+    this.store.update(id, { proposal: toJson({ ...fromJson(row.proposal)!, superseded: {} }), deleted_at: new Date().toISOString() });
     this.changed();
   }
 
@@ -1324,7 +1325,7 @@ export class Board {
   }
 
   setIdea(id: string, fields: Partial<StoredIdea>) {
-    this.work(id, { idea: JSON.stringify({ ...this.idea(id), ...fields }) });
+    this.work(id, { idea: toJson({ ...this.idea(id), ...fields }) });
   }
 
   /** The thread of looked-up answers a Question card (or an idea that was one) holds. */
@@ -1335,7 +1336,7 @@ export class Board {
   }
 
   setThread(id: string, fields: Partial<StoredThread>) {
-    this.work(id, { thread: JSON.stringify({ ...this.thread(id), ...fields }) });
+    this.work(id, { thread: toJson({ ...this.thread(id), ...fields }) });
   }
 
   /**
@@ -1347,7 +1348,7 @@ export class Board {
     const [row] = this.store.insert([
       { canvas_id: this.canvas.id, kind: 'question', state: 'done', title: clip(oneLine(title), 160), body: '', ...at, repo: this.repoColumn(repo), ...(near && this.item(near) ? { group_id: this.groupOf(this.own(near)) } : {}) },
     ]);
-    this.store.update(row!.id, { thread: JSON.stringify(thread), ...(session ? { session_id: session } : {}) });
+    this.store.update(row!.id, { thread: toJson(thread), ...(session ? { session_id: session } : {}) });
     this.changed();
     return this.item(row!.id)!;
   }
@@ -1368,7 +1369,7 @@ export class Board {
         from_id: ideaId,
         prototype_of: ideaId,
         group_id: idea?.group ?? null,
-        ...(variant ? { prototype: JSON.stringify({ variant } satisfies StoredPrototype) } : {}),
+        ...(variant ? { prototype: toJson({ variant }) } : {}),
         repo: this.repoColumn(idea?.repo),
       },
     ]);
@@ -1380,7 +1381,7 @@ export class Board {
   proposeBuild(id: string, reason: string) {
     const row = this.own(id);
     if (!row.prototype_of) throw new BadRequest('notPrototype', 'not a prototype');
-    this.work(id, { prototype: JSON.stringify({ ...(fromJson(row.prototype) ?? {}), proposal: reason } satisfies StoredPrototype) });
+    this.work(id, { prototype: toJson({ ...(fromJson(row.prototype) ?? {}), proposal: reason }) });
   }
 
   /**
@@ -1391,7 +1392,7 @@ export class Board {
     const row = this.own(id);
     if (!row.prototype_of) throw new BadRequest('notPrototype', 'not a prototype');
     const { proposal: _, ...kept } = fromJson(row.prototype) ?? {};
-    this.work(id, { prototype: JSON.stringify({ ...kept, end, ...(into ? { into } : {}) } satisfies StoredPrototype), archived_at: new Date().toISOString(), need: null, status_line: null, workspace: null, queue: null });
+    this.work(id, { prototype: toJson({ ...kept, end, ...(into ? { into } : {}) }), archived_at: new Date().toISOString(), need: null, status_line: null, workspace: null, queue: null });
   }
 
   // ---------------------------------------------------------------- the Coordinator's memory
@@ -1575,7 +1576,7 @@ export class Board {
     const proposal = fromJson(row.proposal);
     if (proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
     // an agent's proposal keeps that it was one: its task is not the owner's words; Obeya's setup card is as if the owner made it
-    const kept = proposal && !proposal.setup && JSON.stringify({ ...(proposal.idea ? { idea: true } : {}), questions: [] } satisfies Proposal);
+    const kept = proposal && !proposal.setup && toJson<Proposal>({ ...(proposal.idea ? { idea: true } : {}), questions: [] });
     this.store.update(id, { state: asIdea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks, this.t), proposal: kept || null });
     this.changed();
   }
@@ -1603,7 +1604,7 @@ export class Board {
         throw new BadRequest('invalid', 'agent must be a harness with a model it takes, an effort, or both');
       chosen = { ...(both ? { harness: harness as Harness, model: storedModel(harness as Harness, model as string) } : {}), ...(effort !== undefined ? { effort: effort as AgentEffort } : {}) };
     }
-    this.store.update(id, { agent: chosen && JSON.stringify(chosen) });
+    this.store.update(id, { agent: chosen && toJson(chosen) });
     this.changed();
   }
 
@@ -1622,7 +1623,7 @@ export class Board {
       ...(images.length ? { images: images.map((f) => basename(f)) } : {}),
     };
     const revising = proposal.revising ? { ...proposal.revising, next: [...(proposal.revising.next ?? []), these] } : these;
-    this.store.update(id, { proposal: JSON.stringify({ ...proposal, revising } satisfies Proposal) });
+    this.store.update(id, { proposal: toJson({ ...proposal, revising }) });
     this.changed();
     return revising !== these;
   }
@@ -1635,7 +1636,7 @@ export class Board {
     if (!proposal?.revising || !next?.some((r) => r.said?.includes(said))) return false;
     const rest = next.filter((r) => !r.said?.includes(said));
     const { next: _, ...revising } = proposal.revising;
-    this.store.update(id, { proposal: JSON.stringify({ ...proposal, revising: { ...revising, ...(rest.length ? { next: rest } : {}) } } satisfies Proposal) });
+    this.store.update(id, { proposal: toJson({ ...proposal, revising: { ...revising, ...(rest.length ? { next: rest } : {}) } }) });
     this.changed();
     return true;
   }
@@ -1645,7 +1646,7 @@ export class Board {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     const { startAt: _, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
-    this.store.update(id, { proposal: JSON.stringify({ ...proposal, ...(at ? { startAt: at } : {}) } satisfies Proposal) });
+    this.store.update(id, { proposal: toJson({ ...proposal, ...(at ? { startAt: at } : {}) }) });
     this.changed();
   }
 
@@ -1655,7 +1656,7 @@ export class Board {
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     const { acceptAfterRevision: was, ...proposal } = fromJson(row.proposal) ?? { questions: [] };
     if ((was ?? false) === on) return false;
-    this.store.update(id, { proposal: JSON.stringify({ ...proposal, ...(on ? { acceptAfterRevision: on } : {}) } satisfies Proposal) });
+    this.store.update(id, { proposal: toJson({ ...proposal, ...(on ? { acceptAfterRevision: on } : {}) }) });
     this.changed();
     return true;
   }
@@ -1676,8 +1677,8 @@ export class Board {
     const proposal: Proposal = p ? { ...proposalOf({ ...p, startAt: was.startAt }), ...(was.acceptAfterRevision ? { acceptAfterRevision: was.acceptAfterRevision } : {}), ...(was.setup ? { setup: was.setup } : {}) } : was;
     this.store.update(id, {
       ...(p ? { title: p.title.slice(0, TITLE_MAX), body: p.task.slice(0, BODY_MAX) } : {}),
-      ...(p?.images ? { images: p.images.length ? JSON.stringify(p.images) : null } : {}),
-      proposal: JSON.stringify({ ...proposal, ...next } satisfies Proposal),
+      ...(p?.images ? { images: p.images.length ? toJson(p.images) : null } : {}),
+      proposal: toJson({ ...proposal, ...next }),
     });
     this.changed();
     return true;
@@ -1979,7 +1980,7 @@ export class Board {
     const row = this.own(cardId);
     // only a card that was an idea, or a task the owner planned as a project, is a project's origin
     if ((!row.idea && !row.becomes_project) || !refs.length) return;
-    this.store.update(cardId, { plan_docs: JSON.stringify(refs) });
+    this.store.update(cardId, { plan_docs: toJson(refs) });
     this.changed();
   }
 
@@ -2226,7 +2227,7 @@ export class Board {
 
   /** Snoozes the card until `until` (ISO) or the card it waits on, as `s` says, with the line in its conversation by whoever snoozed it (or changed the time). */
   snooze(cardId: string, s: Snooze, by: 'agent' | 'owner' = s.by) {
-    this.work(cardId, { snoozed: JSON.stringify(s) });
+    this.work(cardId, { snoozed: toJson(s) });
     this.log(cardId, 'state', by === 'agent' ? 'worker' : 'owner', this.t.worker.snoozed(snoozeTerm(this.t, s), s.why));
   }
 
@@ -2788,8 +2789,8 @@ export class Board {
         ...at,
         repo: this.repoColumn(repo),
         ...(from ? { from_id: from.id, group_id: this.groupOf(from) } : elsewhere ? { from_id: elsewhere } : {}),
-        images: n.images?.length ? JSON.stringify(n.images) : null,
-        ...(n.idea ? { idea: JSON.stringify({ status: 'open', brief: '' } satisfies StoredIdea) } : {}),
+        images: n.images?.length ? toJson(n.images) : null,
+        ...(n.idea ? { idea: toJson({ status: 'open', brief: '' }) } : {}),
       },
     ]);
     this.changed();
@@ -2824,9 +2825,9 @@ export class Board {
       // a repository of the canvas picked instead of a new one: the owner's pick, which the idea's agent leaves
       ...(repo !== undefined ? { repo: this.repoColumn(repo) } : {}),
       ...(newRepo !== undefined || repo !== undefined
-        ? { new_repo: JSON.stringify(newRepo ? ({ path: newRepo.path.trim(), canvas: newRepo.canvas, by: 'owner' } satisfies NewRepo) : ({ path: '', canvas: true, by: 'owner', none: true } satisfies StoredNewRepo)) }
+        ? { new_repo: toJson(newRepo ? ({ path: newRepo.path.trim(), canvas: newRepo.canvas, by: 'owner' } satisfies NewRepo) : ({ path: '', canvas: true, by: 'owner', none: true } satisfies StoredNewRepo)) }
         : {}),
-      ...(images !== undefined ? { images: images.length ? JSON.stringify(images) : null } : {}),
+      ...(images !== undefined ? { images: images.length ? toJson(images) : null } : {}),
       ...(collapsed !== undefined ? { collapsed: collapsed ? 1 : 0 } : {}),
     });
     this.changed();
@@ -2854,7 +2855,7 @@ export class Board {
     const was = this.newRepo(id);
     // what the owner picked stands, and a repository about to be made stays as it was clicked
     if (by === 'agent' && ((was?.by === 'owner' && !was.made) || was?.due)) return false;
-    this.store.update(id, { new_repo: n && JSON.stringify(n) });
+    this.store.update(id, { new_repo: n && toJson(n) });
     this.changed();
     return true;
   }
@@ -2887,10 +2888,8 @@ export class Board {
     const behind = merged(queued.flatMap((q) => q.behind));
     const buildsOn = merged(queued.flatMap((q) => q.buildsOn ?? []));
     const manualWait = merged(queued.flatMap((q) => q.manualWait ?? []));
-    const queue = behind.length
-      ? { queue: JSON.stringify({ behind, reason: queued[0]!.reason, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }), since: queued.map((q) => q.since).sort()[0]! }) }
-      : {};
-    this.store.update(keep, { title, body, images: images.length ? JSON.stringify(images) : null, ...(notes.length ? { unheard: JSON.stringify(notes) } : {}), ...queue });
+    const queue = behind.length ? toJson<Queue>({ behind, reason: queued[0]!.reason, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }), since: queued.map((q) => q.since).sort()[0]! }) : null;
+    this.store.update(keep, { title, body, images: images.length ? toJson(images) : null, ...(notes.length ? { unheard: toJson(notes) } : {}), ...(queue ? { queue } : {}) });
     for (const r of this.store.cards(this.canvas.id)) {
       if (r.from_id && gone.has(r.from_id) && r.id !== keep) this.store.update(r.id, { from_id: keep });
       // a card that waited for one that goes waits for the merged task instead
@@ -2900,10 +2899,10 @@ export class Board {
         // a card it waited for by an inferred wait stays waited for so, also where an arrow named another merged into it
         const inferred = to(w.behind.filter((id) => !w.manualWait?.includes(id)));
         const manualWait = to(w.manualWait ?? []).filter((id) => !inferred.includes(id));
-        this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }), manualWait: manualWait.length ? manualWait : undefined }) });
+        this.store.update(r.id, { queue: toJson({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }), manualWait: manualWait.length ? manualWait : undefined }) });
       }
       const c = fromJson(r.contribution);
-      if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: JSON.stringify({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) } satisfies StoredContribution) });
+      if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: toJson({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) }) });
     }
     this.log(keep, 'state', 'obeya', this.t.voice.merged(rest.map((r) => r.title ?? '')));
     this.changed();
@@ -2956,7 +2955,7 @@ export class Board {
     this.store.db.transaction(() => {
       for (const r of this.store.projects(this.canvas.id)) {
         const doc = byFile.get(r.plan_ref!);
-        const plan = doc ? JSON.stringify(doc) : r.plan;
+        const plan = doc ? toJson<PlanDoc>(doc) : r.plan;
         const archived_at = shown.has(r.plan_ref!) ? null : (r.archived_at ?? at);
         if (r.plan !== plan || r.archived_at !== archived_at) this.store.update(r.id, { plan, archived_at });
         // a workstream the doc rewrote, ticked off or put in review changed, as an edit of a card does
@@ -2993,7 +2992,7 @@ export class Board {
     const was = fromJson(row.deps) ?? {};
     const next: StoredDeps =
       'reading' in d ? { ...was, reading: d.reading } : 'on' in d ? { sig: depsSig(fromJson(row.plan!)), on: d.on } : { ...was, reading: undefined };
-    this.store.update(projectId, { deps: JSON.stringify(next) });
+    this.store.update(projectId, { deps: toJson(next) });
     this.changed();
   }
 
@@ -3248,7 +3247,7 @@ export class Board {
             return key ? [[key, by.flatMap((b) => keyOf.get(b) ?? (positional(b) ? [] : [b]))]] : [];
           }),
         );
-        this.store.update(project.id, { deps: JSON.stringify({ ...deps, on } satisfies StoredDeps) });
+        this.store.update(project.id, { deps: toJson({ ...deps, on }) });
       }
     })();
     return true;
@@ -3370,7 +3369,7 @@ export class Board {
     layouts.forEach(({ doc, pos }, n) => {
       const [project] = this.store.insert([{ canvas_id: c, kind: 'project', plan_ref: doc.file, ...at[n]! }]);
       // a project just come stands arranged by what builds on what, once the Coordinator has read that
-      if (docs.includes(doc) && doc.workstreams.filter((w) => !w.done).length > 1) this.store.update(project!.id, { deps: JSON.stringify({ reading: 'auto' } satisfies StoredDeps) });
+      if (docs.includes(doc) && doc.workstreams.filter((w) => !w.done).length > 1) this.store.update(project!.id, { deps: toJson({ reading: 'auto' }) });
       this.store.insert(
         doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'task' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
       );

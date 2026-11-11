@@ -17,7 +17,7 @@ import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, type CanvasConfig, type CardAction, untouched, type CardPatch, finished, type Item, layerSettings, nameless, needsYou, pausable, halted, snoozable, laterTime, type PendingRestart, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type Skill, type SpotInput, type DemoSite } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, DEMO_LOOK_MS, TITLE_MAX, pathOfRef, repoOfRef, replyNote } from './board';
-import type { StoredContribution } from './row';
+import { toJson, type StoredContribution } from './row';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander, reaches } from './commands';
 import type { Config } from './config';
@@ -1869,7 +1869,7 @@ export class CanvasRuntime {
     if (card.thread?.thinking) throw new BadRequest('ideaThinking', 'its agent is still reading; discuss it as an idea once the answer is there');
     if (!this.runs(card)) throw repoDown(card);
     // a paused agent's question goes into the discussion with the rest of the thread
-    this.board.work(cardId, { kind: 'task', state: 'idea', idea: JSON.stringify({ status: 'open', brief: '' }), session_id: null, paused: null, pausing: null });
+    this.board.work(cardId, { kind: 'task', state: 'idea', idea: toJson({ status: 'open', brief: '' }), session_id: null, paused: null, pausing: null });
     this.board.log(cardId, 'state', 'owner', this.board.t.answer.asIdea);
     this.explorers.tell(cardId, this.answers.opening(cardId));
   }
@@ -2153,7 +2153,7 @@ export class CanvasRuntime {
       ...(info.headRepo ? { headRepo: info.headRepo } : {}),
       ...(info.headRef ? { headRef: info.headRef } : {}),
     };
-    this.board.work(card.id, { contribution: JSON.stringify(stored) });
+    this.board.work(card.id, { contribution: toJson(stored) });
     this.board.log(card.id, 'state', 'owner', t.voice.created);
     this.watchPrs(repo);
     this.coordinator.request(card.id);

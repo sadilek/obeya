@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented, type DemoSite } from '../core/types';
 import { BadRequest, type Board, cardDemos, pageTagsOf, sameDemo, sharedDemos, type StoredReshare } from './board';
-import { fromJson, type DemoRef, type SharedDemo, type StoredDemo, type StoredShare } from './row';
+import { fromJson, type DemoRef, type SharedDemo, type StoredDemo, type StoredShare, toJson } from './row';
 import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -267,7 +267,7 @@ export class Sharing {
     const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = demo;
     // the copy Obeya keeps of it is of what it is now
     const keeps = kept && keepDemo({ dir: demo.dir, kind: 'video' }, kept);
-    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters, ...videoFacts(demo.dir), ...(keeps ? { kept } : {}) }) });
+    this.o.board.work(cardId, { demo: toJson({ ...rest, chapters, ...videoFacts(demo.dir), ...(keeps ? { kept } : {}) }) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.rebuilt(this.languageOf(demo.dir, this.card(cardId))));
   }
 
@@ -663,7 +663,7 @@ export class Sharing {
       try {
         const at = await this.o.forge.comment(cwd, pr, t.prComment(kind === 'html', url));
         const now = fromJson(this.o.board.row(cardId).contribution);
-        if (now) this.o.board.work(cardId, { contribution: JSON.stringify({ ...now, linked: url }) });
+        if (now) this.o.board.work(cardId, { contribution: toJson({ ...now, linked: url }) });
         this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.prCommented(n, at || pr));
       } catch (e) {
         this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.share.prNotCommented(n, messageOf(e)));
@@ -821,9 +821,9 @@ export class Sharing {
     if (tags) this.chosen(card.id, tags);
     const row = this.o.board.row(card.id);
     const latest = this.demo(card.id);
-    if (latest && sameDemo(latest, demo)) this.o.board.work(card.id, { demo: JSON.stringify({ ...latest, page }) });
+    if (latest && sameDemo(latest, demo)) this.o.board.work(card.id, { demo: toJson({ ...latest, page }) });
     else if (row.demos)
-      this.o.board.work(card.id, { demos: JSON.stringify(fromJson(row.demos).map((d) => (sameDemo(d, demo) ? { ...d, page } : d))) });
+      this.o.board.work(card.id, { demos: toJson(fromJson(row.demos).map((d) => (sameDemo(d, demo) ? { ...d, page } : d))) });
     return page;
   }
 
@@ -835,8 +835,8 @@ export class Sharing {
     const row = this.o.board.row(cardId);
     const without = (t: PageTags | undefined) => (t ? Object.fromEntries(Object.entries(t).filter(([d]) => !(d in tags))) : undefined);
     const page = <D extends Demo>(d: D): D => (d.page?.tags ? { ...d, page: { ...d.page, tags: without(d.page.tags) } } : d);
-    if (row.demo) this.o.board.work(cardId, { demo: JSON.stringify(page(fromJson(row.demo))) });
-    if (row.demos) this.o.board.work(cardId, { demos: JSON.stringify(fromJson(row.demos).map(page)) });
+    if (row.demo) this.o.board.work(cardId, { demo: toJson(page(fromJson(row.demo))) });
+    if (row.demos) this.o.board.work(cardId, { demos: toJson(fromJson(row.demos).map(page)) });
     const s = this.stored(cardId);
     this.setTagFields(cardId, this.card(cardId), { tags: without(s?.tags) ?? {}, auto: { ...s?.auto, ...tags } });
     this.o.board.log(cardId, 'activity', 'obeya', this.o.board.t.share.tagsChosen(shownTags(tags, tags).map(([d, v]) => `${d}: ${v.join(', ')}`).join(' · ') || '–'));
@@ -1083,13 +1083,13 @@ export class Sharing {
    */
   private set(cardId: string, { tags: _, auto: __, ...s }: StoredShare) {
     const now = this.stored(cardId);
-    this.o.board.work(cardId, { share: JSON.stringify({ ...s, ...(now?.tags ? { tags: now.tags } : {}), ...(now?.auto ? { auto: now.auto } : {}) }) });
+    this.o.board.work(cardId, { share: toJson({ ...s, ...(now?.tags ? { tags: now.tags } : {}), ...(now?.auto ? { auto: now.auto } : {}) }) });
   }
 
   /** Changes the page's tags the owner set by hand, or the reading session chose. */
   private setTagFields(cardId: string, card: Item, fields: Pick<StoredShare, 'tags' | 'auto'>) {
     const s = this.shareOf(card);
-    this.o.board.work(cardId, { share: JSON.stringify({ ...s, ...fields }) });
+    this.o.board.work(cardId, { share: toJson({ ...s, ...fields }) });
   }
 }
 

@@ -12,7 +12,7 @@ import { slug } from './canvas-config';
 import type { Config } from './config';
 import type { Coordinator } from './coordinator';
 import type { Store } from './db';
-import { fromJson } from './row';
+import { fromJson, type StoredDemo, toJson } from './row';
 import type { Explorers } from './explorers';
 import { type Images, MAX_IMAGES } from './images';
 import { makeRepo, newRepoPath } from './new-repo';
@@ -298,7 +298,7 @@ export class IdeaActions {
     if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(shown), log: this.board.t.idea.buildLog });
     this.o.forget(cardId);
     const at = there.board.freeSpot(there.inView);
-    this.o.store.moveCard(cardId, there.id, at, { new_repo: JSON.stringify({ path: target.path, canvas: true, by: target.by, made: true }) });
+    this.o.store.moveCard(cardId, there.id, at, { new_repo: toJson({ path: target.path, canvas: true, by: target.by, made: true }) });
     this.o.store.dropEmptyGroups(this.id);
     there.board.log(cardId, 'state', 'obeya', there.board.t.newRepo.movedHere(this.board.canvas.name, shown, made));
     const moved = { card: cardId, title: card.title, canvas: there.id, canvasName: there.board.canvas.name };
@@ -525,7 +525,7 @@ export class IdeaActions {
     let file = `${dir}/${name}.md`;
     for (let n = 2; existsSync(at(file)) || given.has(file); n++) file = `${dir}/${name}-${n}.md`;
     const ref = r.ref.id === this.repos[0]!.ref.id ? file : `${r.ref.id}:${file}`;
-    return { file, row: { plan_docs: JSON.stringify([ref]) } };
+    return { file, row: { plan_docs: toJson([ref]) } };
   }
 
   /** Parked or dropped, the idea stays on the canvas with its brief; what its agent has not answered yet waits for the conversation to go on. */
@@ -594,7 +594,7 @@ export class IdeaActions {
   }
 
   /** A prototype handed over: its demo shows on the idea beside those of the other prototypes, and the idea's agent hears what it found. */
-  prototypeReady(prototype: Item, summary: string, demo: string | undefined) {
+  prototypeReady(prototype: Item, summary: string, demo: StoredDemo | undefined) {
     const idea = this.board.item(prototype.prototypeOf!);
     if (!idea) return;
     this.board.log(idea.id, 'state', 'worker', this.board.t.idea.prototypeReady(prototype.title, !!demo));
@@ -638,7 +638,7 @@ export class IdeaActions {
   /** Adds screenshots to a card's task, keeping the latest when there are more than a message takes. */
   addTaskImages(cardId: string, images: string[]) {
     const had = this.board.item(cardId)?.images ?? [];
-    this.board.work(cardId, { images: JSON.stringify([...had.filter((i) => !images.includes(i)), ...images].slice(-MAX_IMAGES)) });
+    this.board.work(cardId, { images: toJson([...had.filter((i) => !images.includes(i)), ...images].slice(-MAX_IMAGES)) });
   }
 
   /** The owner discards a prototype: it goes into the archive as discarded. */
