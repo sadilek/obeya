@@ -54,6 +54,14 @@ clean apart from two small items (D13, D15).
   `CanvasRuntime.start`.
 - Confidence: medium. I read the whole file and tallied the `this.` uses of lines 1701-2839 and
   2086-2657 with grep. I did not try the split.
+- Done by W14, in all three steps: `canvas-config.ts` (the configuration's resolution) and
+  `canvases.ts` (the set of canvases) by moves only; `IdeaActions` in `idea-actions.ts` (proposals,
+  ideas, prototypes and the new repository, with their state), which `CanvasRuntime` constructs
+  right after the explorers, since their resume may report a reply; and `SettingsReads` in
+  `settings-reads.ts` (what the canvas last read of each default branch: settings, held commands,
+  adapter module, themes), the canvas keeping `moved`, `movedTo` and `follow`. `canvas.ts` went
+  from 3,387 lines to about 2,240. The rest of the repositories' life (`startRepo`, `apply`,
+  `due`, the restart) stays in the class: it works on the canvas's own state throughout.
 
 ### D2. `coordinator.ts` holds the queue, the learner and card naming, and exports the generic `readSession`
 - Principle: KISS
@@ -80,6 +88,8 @@ clean apart from two small items (D13, D15).
   `Coordinator`, which move to a `Learner`.
 - Confidence: high. I read every learner method for the fields it uses and grepped the importers
   and callers.
+- Done by W14: `Learner` in `learner.ts`, constructed by the canvas; `readSession` is in
+  `runtime.ts`. `coordinator.ts` went from 1,487 lines to about 1,100.
 
 ### D3. `Commander.command()` is one 240-line chain for 35 actions
 - Principle: KISS
@@ -151,6 +161,7 @@ clean apart from two small items (D13, D15).
 - Win: about 25 lines.
 - Risk: low. `canvas.test.ts` and `commands.test.ts` run commands through `canvas.run`.
 - Confidence: high.
+- Done by W14: one switch, and `created(cardId, c)` for the tail `followUp` shares.
 
 ### D6. The learner and the retrospective each define the `propose` tool
 - Principle: DRY
@@ -169,6 +180,10 @@ clean apart from two small items (D13, D15).
 - Win: about 12 lines.
 - Risk: low. `coordinator.test.ts` covers both tools.
 - Confidence: high.
+- Done by W14 in `learner.ts`: `proposeRule` (targets, what is proposed already, the rule it
+  replaces) and `ruleText` (the cap). Each tool keeps its order of checks, its cap, its words, and
+  the open proposals it checks against: the retrospective the live list, the learner the list as
+  its turn began, since the work retrospective may propose meanwhile.
 
 ### D7. `tagOf` scans a map backwards for a tag the call site can compute
 - Principle: KISS
@@ -225,6 +240,8 @@ clean apart from two small items (D13, D15).
 - Risk: low.
 - Confidence: high. `info.path` equals `resolve(config.path)` because `readRepos` reads each
   repository under that path, so `:706` and `settingsOf` agree.
+- Done by W14: `private repo(id)`; `claudeHeld` reads this machine's settings through
+  `settingsOf`.
 
 ### D10. Three sequences of the repository restart written twice each
 - Principle: DRY
@@ -242,6 +259,9 @@ clean apart from two small items (D13, D15).
 - Risk: low. The two callers of the home-down sequence log and emit around it in different
   order, which stays with the callers.
 - Confidence: high.
+- Done by W14: `homeDown(e)` (stopped, shut down, left out), `showRepos()`, `undue(p)`. In the
+  restart, the log line and `emitPending` now come before the canvas shuts down rather than
+  between that and its leaving the list: neither reads what the shutdown changes.
 
 ### D11. `act` reads the card it already holds five more times
 - Principle: KISS
@@ -260,6 +280,7 @@ clean apart from two small items (D13, D15).
 - Risk: low. `written(cardId)` runs before `:1804` and is the only call ahead of the switch that
   could touch the card.
 - Confidence: high.
+- Done by W14.
 
 ### D12. The rule for a time to wait until is checked in three places, one of them incomplete
 - Principle: DRY

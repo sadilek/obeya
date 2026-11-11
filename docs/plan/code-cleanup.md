@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W6, W13 and W16 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W6, W13, W14 and W16 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -193,7 +193,7 @@ the workstream named does it for all of them.
 - [x] **W13:** The runtimes. [runtimes](code-cleanup/runtimes.md) B1 (`runtime.ts` keeps the
   contract; the Claude Code runtime moves to a `claude.ts` beside `codex.ts`, the shell reader to
   `shell.ts`), B2 (one idle Claude Code session), B7, B8, B10, B13, B15, B16, B19.
-- [ ] **W14:** `canvas.ts` and `coordinator.ts` by subject.
+- [x] **W14:** `canvas.ts` and `coordinator.ts` by subject.
   [canvas-coordinator](code-cleanup/canvas-coordinator.md) D1 (configuration, the set of canvases,
   the repository lifecycle and the owner's card actions as modules), D2 (the learner out of the
   coordinator, `readSession` to the runtime), D5, D6, D9, D10, D11. After W3.
