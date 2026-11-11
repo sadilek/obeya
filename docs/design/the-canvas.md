@@ -354,7 +354,8 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
 
 - *The card*: off-white card stock on a warm dotted board, nearly square corners, a short hard
   shadow, the state as a rule across the top in its ink (a band when zoomed out). No ruled lines.
-  The owner's turn is an orange frame and a pulsing pushpin with "!" (the pulse, a halo growing and
+  The owner's turn is an orange frame (thicker zoomed out, but on the same cards at every zoom: none
+  on a snoozed card, 2026-11-11) and a pulsing pushpin with "!" (the pulse, a halo growing and
   fading, changes nothing but size and opacity: an animation the browser has to repaint makes the
   whole card under it shimmer on a zoomed-out canvas, 2026-10-30); an idea is on rose stock; a
   proposal only pencilled in (dashed, no stock); a queued card's rule dashed; done and live cards

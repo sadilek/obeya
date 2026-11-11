@@ -268,7 +268,8 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .z-far .card { padding-top: 18px; }
 .z-far .card::before { height: 8px; }
 .z-far .card.task .ttl { font-size: 26px; line-height: 1.1; -webkit-line-clamp: 3; }
-.z-far .card.s-waiting:not(.underway):not(.answering), .z-far .card.s-idea.your-turn { box-shadow: 0 0 0 5px var(--waiting), var(--shadow); }
+/* the owner's turn framed a size up, and only where the near view frames it too (not underway, answering or snoozed) */
+.z-far .card.s-waiting:not(.underway):not(.answering):not(.snoozed), .z-far .card.s-idea.your-turn:not(.snoozed) { box-shadow: 0 0 0 5px var(--waiting), var(--shadow); }
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
