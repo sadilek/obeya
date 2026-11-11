@@ -11,7 +11,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { isMain, lib } from './here.ts';
+import { isMain } from '../../../lib/process.ts';
+import { lib } from './here.ts';
 import { type DemoSettings, demoSettingsHere, withVoice } from './settings.ts';
 import { installState, voiceSpec } from './voices.ts';
 

@@ -20,7 +20,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { assemble, type Clip, holdRenderLock, type Mark, type Report, synthesize } from './director.ts';
-import { isMain } from './here.ts';
+import { isMain } from '../../../lib/process.ts';
 import { LANGUAGE_NAMES, LANGUAGES, type Language } from './locale.ts';
 import { inLanguage, readDemoSettings, silent, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';

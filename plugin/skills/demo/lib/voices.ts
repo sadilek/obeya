@@ -19,7 +19,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isMain, lib } from './here.ts';
+import { isMain } from '../../../lib/process.ts';
+import { lib } from './here.ts';
 import { type DemoSettings, demoSettingsHere, expandHome, type NarrationLanguage, obeyaHome, referenceOf, SERVICES } from './settings.ts';
 
 /** Piper's voices: one per language unless the settings name another. */

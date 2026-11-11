@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isMain } from './here.ts';
+import { isMain } from '../../../lib/process.ts';
 import { conversationLanguageIn } from './language.ts';
 import { knownLanguage, type Language, LANGUAGE_NAMES, LANGUAGES } from './locale.ts';
 
