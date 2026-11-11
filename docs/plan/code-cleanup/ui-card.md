@@ -95,6 +95,13 @@ parts.tsx has become five unrelated modules in one file.
   prototype gets, say); nothing renders `Detail` in a test. Check each card state in a scratch Obeya
   (`scripts/scratch-obeya.ts` stages them).
 - Confidence: high; read completely. Not tried.
+- Done by W22: `Detail` owns `error`, `run`, `act`, the repository lookup and the head, and hands over
+  to `QuestionView`, `IdeaView` (`idea.tsx`), `EndedPrototypeView`, `ProposalView` (a view of its own
+  now) and `TaskView`, which holds `QueueBox`, `TaskResult`, `TaskActions`, `ApproveButton`,
+  `PrototypeActions` (with `prototypeState`) and `Where` (the branch and plan-doc line). One action row:
+  on an unstarted prototype, its Build and Discard now stand before "Later", as on a worked one. The
+  file went by subject first, as moves: `cardSheet.tsx` (what the views share), `conversation.tsx`,
+  `demo.tsx`, `share.tsx`, `pr.tsx`, `review.tsx`, `idea.tsx`.
 
 ### G3. The host side of an open card is written twice, for the canvas and for the phone
 - Principle: DRY
@@ -155,6 +162,8 @@ parts.tsx has become five unrelated modules in one file.
   worker runs.
 - Confidence: high for the duplication (all five read); medium that the union of dependencies is
   harmless (it re-reads slightly more often for `ResultFiles`).
+- Done by W22: `useCardDiff` (the union of the dependencies, the poll for folders) called once in
+  `TaskView`, and `useFullDiff`; `useChange` and `useFolderDiff` went.
 
 ### G5. Head, state line and text block of a card are written out per kind
 - Principle: DRY
@@ -182,6 +191,8 @@ parts.tsx has become five unrelated modules in one file.
 - Risk: low; markup stays identical if the differences are passed as children. `styles.test.ts` does
   not cover it; compare screenshots of the four kinds.
 - Confidence: high; all sites read.
+- Done by W22: `CardHead` and `StateLine` in `cardSheet.tsx`, the kind's own status as children; the
+  differences between the lines are now arguments (`paused`, `label`); `CardText` for the read-only text.
 
 ### G6. An open card loads and follows its log two or three times
 - Principle: KISS
@@ -207,6 +218,9 @@ parts.tsx has become five unrelated modules in one file.
   `Detail`, so the provider goes one level up there.
 - Confidence: high; grep for `useEvents` over `src`, `scripts`, `plugin` finds these three callers
   only.
+- Done by W22: `CardLog` in `conversation.tsx`, provided by the hosts (App around `Detail`, the phone
+  around `Detail` and its talk button); `useEvents` drops another card's list in the render its id
+  changes, so a log kept above a keyed `Detail` never shows a moment of the previous card's.
 
 ### G7. `DemoView` mixes versions, the player, zoom, full screen, comments and autoplay in 300 lines
 - Principle: KISS
@@ -235,6 +249,11 @@ parts.tsx has become five unrelated modules in one file.
   has tests, the component has none) must be checked in the browser with a visible page (CLAUDE.md:
   a hidden tab never autoplays).
 - Confidence: medium; read completely, the keyed-remount simplification is untested.
+- Done by W22, reshaped: `DemoView` with `useShownDemo`, `DemoVersions`, `Artifact` and `DemoPlayer`.
+  The player is not keyed by the demo shown: a remount on each version change would release the
+  comments held back (going to another demo is no sign the owner has finished watching) and restart
+  the stood timer. One effect on the shown demo's mark (`demoMark`, exported from `demoSeen.ts`)
+  replaces the two refs and two effects.
 
 ### G8. parts.tsx is five modules in one file
 - Principle: KISS
@@ -386,6 +405,8 @@ parts.tsx has become five unrelated modules in one file.
 - Risk: low to medium: the two idea tests must be reconciled, which is a visible (if tiny) decision;
   keep both behaviours behind a parameter if in doubt.
 - Confidence: medium; I did not establish whether a card can have `item.idea` outside state `idea`.
+- Done by W22: `kindLabel` in `strings.ts`. The two idea tests were the same: a card has `idea` only in
+  state `idea` (`board.ts` sets it so).
 
 ### G15. The field under a conversation is configured per card kind in three near-identical literals
 - Principle: DRY
@@ -407,6 +428,8 @@ parts.tsx has become five unrelated modules in one file.
 - Win: about 25 lines; one place for the rule.
 - Risk: low.
 - Confidence: high.
+- Done by W22: `wordsField` in `conversation.tsx`; the views pass `past` and no field for an
+  archived card.
 
 ### G16. A review card's four decisions and the "unsent" filter are each written several times
 - Principle: DRY
@@ -427,6 +450,7 @@ parts.tsx has become five unrelated modules in one file.
 - Win: about 20 lines.
 - Risk: low; `self` keeps its `disabled`/`selfOff` special case.
 - Confidence: high; `DecidedChip` has one caller (grep).
+- Done by W22: `routes(c)` and `holdsUp` in `review.tsx`; the second filter went.
 
 ### G17. "Copied, for a moment" exists three times, and the path button twice
 - Principle: DRY
@@ -470,6 +494,8 @@ parts.tsx has become five unrelated modules in one file.
 - Win: about 35 lines.
 - Risk: low.
 - Confidence: high.
+- Done by W22 with G2: `QueueBox` renders `QueuePlace` and Dequeue once, `StartButton` and
+  `DeleteButton` in `cardSheet.tsx`. The queue's "Start anyway" stays its own (not primary, `force`).
 
 ### G19. A project's actions are decided twice, on its card and in its sheet
 - Principle: DRY
@@ -485,6 +511,9 @@ parts.tsx has become five unrelated modules in one file.
 - Risk: low; the sheet's extra conditions (`!project.archivedAt`, the "done" paragraph, Unarchive)
   stay in the sheet.
 - Confidence: high.
+- Done by W22, reshaped: `arrangeable(project, kids)` holds the condition both use. A `projectActs` list
+  would be more than the copies: the sheet lays its three out differently (blocks with hints, its own
+  order and button styles).
 
 ### G20. Leftovers in detail.tsx, App.tsx and parts.tsx
 - Principle: YAGNI
@@ -546,6 +575,7 @@ parts.tsx has become five unrelated modules in one file.
 - Win: about 6 lines; one format.
 - Risk: low.
 - Confidence: high.
+- Done by W22: `changePath` and `hasLines` in `diff.tsx`.
 
 ## Justified (looks redundant or complex, but has a reason; leave it)
 - `src/ui/message.tsx:124-169` and `src/ui/markdown.tsx:246-288` `Body` and `Doc` both switch over
