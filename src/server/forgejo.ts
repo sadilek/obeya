@@ -137,7 +137,7 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
     }
     return out;
   };
-  /** The server and repository of the checkout's `origin`; throws where that is no repository on a server. */
+  /** The server and repository of the checkout's `origin`, for a call that needs one: throws where there is none. */
   const originRepo = async (cwd: string) => {
     const remote = await origin(cwd);
     const at = remote ? remoteRepo(remote) : null;
@@ -253,7 +253,8 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       }
     },
     async visibility(cwd) {
-      const at = await originRepo(cwd).catch(() => null);
+      const remote = await origin(cwd);
+      const at = remote ? remoteRepo(remote) : null;
       if (!at) return null;
       const r = (await api(cwd, at.base, 'GET', at.repo)) as { private?: boolean; internal?: boolean } | undefined;
       return r && typeof r.private === 'boolean' ? (r.private || r.internal ? 'private' : 'public') : null;

@@ -278,32 +278,26 @@ export class PrWatcher {
     // ready only while the worker has nothing in hand: what it was told may still change the PR
     const busy = told || this.workers.busyCards().includes(cardId);
     const waits: PrWait[] = [...waitsOf(s, noise), ...(busy ? (['agent'] as const) : [])];
-    if (waits.length) next.waits = waits;
-    else delete next.waits;
-    delete next.readyHead;
-    delete next.held;
-    delete next.manual;
-    if (waits.length) {
-      delete next.mergeError;
-      return this.save(cardId, next);
-    }
-    next.readyHead = s.head;
-    const low = confidence(s, noise);
-    if (low && low.score / low.of < MIN_CONFIDENCE) {
-      // the reviewer doubts it: the owner decides, and merges or tells the worker what is missing
-      const held = { score: `${low.score}/${low.of}`, by: low.by };
-      if (pr.readyHead !== s.head || pr.held?.score !== held.score) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.held(held.by, held.score));
-      next.held = held;
-      delete next.mergeError;
-      return this.save(cardId, next);
-    }
-    if (!autoMerge) {
-      // the repository leaves the merge to the people on the forge: the owner merges there
-      if (pr.readyHead !== s.head || pr.held || !pr.manual) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.readyManual);
-      next.manual = true;
-      delete next.mergeError;
-      return this.save(cardId, next);
-    }
+    const ready = !waits.length;
+    if (ready) delete next.waits;
+    else next.waits = waits;
+    // the reviewer doubts it: the owner decides, and merges or tells the worker what is missing
+    const low = ready ? confidence(s, noise) : undefined;
+    const held = low && low.score / low.of < MIN_CONFIDENCE ? { score: `${low.score}/${low.of}`, by: low.by } : undefined;
+    // the repository leaves the merge to the people on the forge: the owner merges there
+    const manual = ready && !held && !autoMerge;
+    // set or cleared in place, so a round that changes nothing stores nothing
+    if (ready) next.readyHead = s.head;
+    else delete next.readyHead;
+    if (held) next.held = held;
+    else delete next.held;
+    if (manual) next.manual = true;
+    else delete next.manual;
+    // a failed merge stays on the card until a merge succeeds
+    if (!ready || held || manual) delete next.mergeError;
+    if (held && (pr.readyHead !== s.head || pr.held?.score !== held.score)) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.held(held.by, held.score));
+    if (manual && (pr.readyHead !== s.head || pr.held || !pr.manual)) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.readyManual);
+    if (!ready || held || manual) return this.save(cardId, next);
     if (pr.readyHead !== s.head || pr.held || pr.manual) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.ready);
     // the owner's approval covered the merge: Obeya merges, and tries again each round while the forge refuses
     let commit: string | void;

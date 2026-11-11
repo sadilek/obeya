@@ -1036,8 +1036,10 @@ export class FolderWorkspaces implements CardWorkspaces {
       ...(!t.dir && t.kind !== 'deleted' && !(await lstat(join(this.root, t.path)).then(() => true, () => false)) ? { gone: true as const } : {}),
     });
     for (const t of rec.changes) {
+      // what undo would do first: whether the file is gone is looked at after it
+      const why = undo ? await this.undoable(cardId, t) : undefined;
       const c: FolderChange = { ...(await view(t)), ...(t.changed ? { changed: true as const } : {}) };
-      if (undo) c.undo = await this.undoable(cardId, t);
+      if (undo) c.undo = why;
       if (!t.dir) {
         const patch = await this.filePatch(cardId, t);
         patches.push(patch.text);

@@ -425,10 +425,12 @@ describe('watching', () => {
     expect(board.item(id)!.pr).toMatchObject({ ready: true, mergeError: refuse });
     expect(needsYou(board.item(id)!)).toBe(true);
     expect(board.events(id).at(-1)!.text).toBe(`Obeya konnte nicht mergen: ${refuse}`);
-    // said once
+    // said once, and a round that finds it as before stores nothing anew
     const events = board.events(id).length;
+    const stored = board.row(id).pr;
     await watcher.poll();
     expect(board.events(id).length).toBe(events);
+    expect(board.row(id).pr).toBe(stored);
     // a new comment is work for the worker again
     status.comments.push({ id: 'i3', author: 'lead', body: 'One more thing.', at: '2026-10-02T09:00:00Z' });
     await watcher.poll();
