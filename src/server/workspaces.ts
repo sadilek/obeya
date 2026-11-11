@@ -1154,9 +1154,12 @@ export class Workspaces implements CardWorkspaces {
         console.error(`clone ${ws}: keeping its leftovers: ${messageOf(e)}`);
         return null;
       } finally {
-        // a card waiting for a clone takes it once the look finds it clean
-        this.looks.delete(ws);
-        if (free()) void this.look(ws);
+        // a card waiting for a clone takes it once a look finds it clean: a look begun before is of the clone as it was
+        const before = this.looking.get(ws);
+        void (before ?? Promise.resolve()).then(() => {
+          this.looks.delete(ws);
+          if (free()) void this.look(ws);
+        });
       }
     });
   }
