@@ -54,6 +54,7 @@ import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 import { captionKey } from './walkthrough';
 import { useLatest, useLive, useStable } from './latest';
+import { type Pos, useOptimisticItems } from './optimistic';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -203,7 +204,12 @@ function Live({ canvases: loaded, start, seen }: { canvases: CanvasInfo[]; start
 
 /** What is open, and the view to go back to: `prevCam` laid out beside the panels `prevSide`. */
 type Focus = { type: 'project'; id: string; prevCam: Cam; prevSide: Sides } | { type: 'card'; id: string; prevCam: Cam; prevSide: Sides; project: Focus | null };
-type Pos = { x: number; y: number };
+/**
+ * A card dragged (or the note on a plan directory, by its repository, with where it is now);
+ * `with`: the other marked cards, which move by as much; `shift`: a Shift + click marks the card
+ * instead of opening it.
+ */
+type Drag = { id: string; note?: string; to?: Pos; with: { id: string; start: Pos }[]; shift: boolean; x: number; y: number; px: number; py: number; grab: Pos; start: Pos; limit: Bounds; moved: boolean; frame: number; last: number };
 
 // opening a card takes FLY_MS + UNFOLD_MS (300 ms) and closing the same: fast, yet still a visible move
 const FLY_MS = 130;
@@ -247,49 +253,10 @@ function Canvas({
   oldBun: string | null;
 }) {
   // ---------------------------------------------------------------- items
-  // Local positions win over the snapshot until the server echoes them back.
-  const [moved, setMoved] = useState<Record<string, Pos>>({});
-  // Projects collapsed or expanded here, until the server echoes it back.
-  const [folded, setFolded] = useState<Record<string, boolean>>({});
-  // Cards created here, until the snapshot carries them.
-  const [pending, setPending] = useState<Item[]>([]);
-  // Approved cards the server is still landing, with what the card says meanwhile, until it moves on.
-  const [underway, setUnderway] = useState<Record<string, string>>({});
+  // a dragged card follows the world point it was picked up at, also while the view scrolls under it
+  const dragRef = useRef<Drag | null>(null);
+  const { items, itemsRef, setMoved, setFolded, setPending, underway, setUnderway, notesMoved, setNotesMoved } = useOptimisticItems(snapshot, dragRef);
   const snapshotRef = useLatest(snapshot);
-  useEffect(() => {
-    const byId = new Map(snapshot.items.map((i) => [i.id, i]));
-    setMoved((m) => {
-      const keep = Object.entries(m).filter(([id, p]) => {
-        const i = byId.get(id);
-        const d = dragRef.current;
-        return i && (d?.id === id || d?.with.some((w) => w.id === id) || i.x !== p.x || i.y !== p.y);
-      });
-      return keep.length === Object.keys(m).length ? m : Object.fromEntries(keep);
-    });
-    setFolded((f) => {
-      const keep = Object.entries(f).filter(([id, c]) => byId.has(id) && !!byId.get(id)!.collapsed !== c);
-      return keep.length === Object.keys(f).length ? f : Object.fromEntries(keep);
-    });
-    setPending((p) => (p.some((i) => byId.has(i.id)) ? p.filter((i) => !byId.has(i.id)) : p));
-    setUnderway((u) => {
-      const keep = Object.entries(u).filter(([id]) => byId.get(id)?.state === 'waiting');
-      return keep.length === Object.keys(u).length ? u : Object.fromEntries(keep);
-    });
-  }, [snapshot]);
-
-  const items = useMemo((): Item[] => {
-    // the snapshot may carry a new card before its creation answers: then it is there once
-    const ids = new Set(snapshot.items.map((i) => i.id));
-    const all = [...snapshot.items, ...pending.filter((i) => !ids.has(i.id))];
-    return all.map((i) => {
-      const at = moved[i.id] ? { ...i, ...moved[i.id] } : i;
-      const c = folded[i.id];
-      if (c === undefined) return at;
-      const { collapsed: _, ...open } = at;
-      return c ? { ...open, collapsed: true as const } : open;
-    });
-  }, [snapshot, pending, moved, folded]);
-  const itemsRef = useLatest(items);
   // the workstreams of a collapsed project are not on the canvas: its marks stand for them
   const placed = useMemo(() => onCanvas(items).map((item) => ({ item, b: boundsOf(item, items) })), [items]);
   const territories = useTerritories(placed, snapshot.groups);
@@ -300,15 +267,6 @@ function Canvas({
   }, [items]);
   const repliesIn = useMemo(() => unreadPerProject(snapshot.talk), [snapshot.talk]);
   const [noteHidden, hideNote] = useHiddenEmptyNotes(snapshot.canvas.id);
-  // where notes on plan directories were moved here, by repository, until the server echoes it back
-  const [notesMoved, setNotesMoved] = useState<Record<string, Pos>>({});
-  useEffect(() => {
-    const at = new Map(snapshot.planDirs?.map((d) => [d.repo, d.at]));
-    setNotesMoved((m) => {
-      const keep = Object.entries(m).filter(([repo, p]) => dragRef.current?.note === repo || at.get(repo)?.x !== p.x || at.get(repo)?.y !== p.y);
-      return keep.length === Object.keys(m).length ? m : Object.fromEntries(keep);
-    });
-  }, [snapshot]);
   // a fresh array only when what is shown changes: the camera keeps the notes in sight
   const planDirs = useMemo(() => {
     const shown = snapshot.planDirs?.filter((d) => !noteHidden(d)).map((d) => (notesMoved[d.repo] ? { ...d, at: notesMoved[d.repo] } : d));
@@ -1262,11 +1220,6 @@ function Canvas({
   const viewportRef = useRef<HTMLDivElement>(null);
   // `from`: where the press began; one that went nowhere is a click on the empty canvas
   const panRef = useRef<{ x: number; y: number; from: Pos } | null>(null);
-  // a dragged card follows the world point it was picked up at, also while the view scrolls under it
-  // (or the note on a plan directory, by its repository, with where it is now)
-  // `with`: the other marked cards, which move by as much; `shift`: a Shift + click marks the card instead of opening it
-  type Drag = { id: string; note?: string; to?: Pos; with: { id: string; start: Pos }[]; shift: boolean; x: number; y: number; px: number; py: number; grab: Pos; start: Pos; limit: Bounds; moved: boolean; frame: number; last: number };
-  const dragRef = useRef<Drag | null>(null);
   const [panning, setPanning] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragWith, setDragWith] = useState<string[]>([]);
