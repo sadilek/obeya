@@ -237,11 +237,8 @@ const restarter = new Restarter({
   busy,
   // a command in its undo window holds a restart off even when the page that said it reloads
   held: () => (live().some((c) => c.commander.holding()) ? ['voice'] : []),
-  go: (reason) => {
-    // the app that asked hears the answer first, which may be the request that goes at once
-    if (reason === 'takeover') return void setTimeout(() => leave(reason), 100);
-    leave(reason);
-  },
+  // a request that has it go at once (a restart, a stop, an update, the app taking over) gets its answer out first
+  go: (reason) => void setTimeout(() => leave(reason), 100),
 });
 // workers in the middle of a turn hear of a restart that waits for them, and pause for it
 restarter.onChange(() => {
@@ -306,8 +303,7 @@ const config = new Config({
         restart: () => {
           // canvases from the command line come from the saved file from now on
           exitCode = RESTART_FROM_FILE;
-          // after the answer is out: a restart with no worker to wait for stops this server at once
-          setTimeout(() => restart('config', 'the configuration changed'), 100);
+          restart('config', 'the configuration changed');
         },
       }
     : {}),

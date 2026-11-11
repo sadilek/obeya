@@ -614,20 +614,15 @@ export function serve(
       '/api/restart': {
         POST: () =>
           handle(() => {
-            const due = !!restarter?.due();
-            // after the answer is out: the restart stops this server
-            if (due) setTimeout(() => restarter!.now(), 100);
-            return { restarting: due };
+            return { restarting: !!restarter?.now() };
           }),
       },
       // the app quitting, or anything that cannot send a signal (Windows has no SIGTERM): Ctrl-C over HTTP
       '/api/stop': {
         POST: () =>
           handle(() => {
-            if (!stop) return { stopping: false };
-            // after the answer is out: when no worker is busy, the stop ends this server
-            setTimeout(stop, 100);
-            return { stopping: true };
+            stop?.();
+            return { stopping: !!stop };
           }),
       },
       // the interface language (chosen in the settings, else the system's) and the conversation language (chosen, else the interface's)
@@ -990,8 +985,7 @@ export function serve(
             const body = await req.json();
             // a shell installed from a checkout has built itself anew there: in place as landed code is, so installed the same way, without asking
             if (body?.rebuilt === true) {
-              // after the answer is out: with no worker to wait for, the update ends this server at once
-              if (restarter) setTimeout(() => restarter.request('update'), 100);
+              restarter?.request('update');
               return { updating: !!restarter };
             }
             return updates.report(body);
@@ -1003,7 +997,6 @@ export function serve(
       '/api/app-takeover': {
         POST: () =>
           handle(() => {
-            // with no worker to wait for, this server ends right after the answer
             restarter?.request('takeover');
             return { taking: !!restarter };
           }),
@@ -1029,8 +1022,7 @@ export function serve(
           handle(() => {
             const update = updates.current();
             if (!restarter || !update || update.download) throw new BadRequest('invalid', 'no update the app can install');
-            // after the answer is out: with no worker to wait for, the update ends this server at once
-            setTimeout(() => restarter.request('update'), 100);
+            restarter.request('update');
             return { updating: true };
           }),
       },

@@ -1055,14 +1055,13 @@ describe('a newer version of the app', () => {
     expect(gone).toEqual(['update']);
   });
 
-  test('with no worker busy, a shell that built itself anew gets its answer before the update ends this server', async () => {
+  // that it gets its answer before the server ends is main.ts's `go`, which waits a moment for every request
+  test('with no worker busy, a shell that built itself anew has the update go ahead at once', async () => {
     const gone: string[] = [];
     const restarter = new Restarter({ busy: () => [], go: (reason) => gone.push(reason) });
     server.stop(true);
     server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, new AppUpdates());
     expect(await (await post('/api/app-update', JSON.stringify({ rebuilt: true }))).json()).toEqual({ updating: true });
-    expect(gone).toEqual([]);
-    await until(() => gone.length === 1);
     expect(gone).toEqual(['update']);
   });
 
