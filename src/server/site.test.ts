@@ -871,7 +871,7 @@ test("a repository whose settings name a site: the canvas says the env file it l
   rmSync(join(home, 'sites/demos/deploy.env'));
   // the owner trusted the site
   const store = new Store(':memory:');
-  store.trustCommands(shop, commandsOf(readShared(shop)));
+  store.trustCommands(shop, commandsOf(await readShared(shop)));
   const canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), forge: noForge });
   try {
     expect(canvas.repos[0]!.site).toEqual(SITE());

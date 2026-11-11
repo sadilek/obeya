@@ -12,7 +12,7 @@ import { allTicked, type NotAProject } from '../../../../src/core/plan-doc.ts';
 import { outsidePlanDir, readPlanDocs, repoInfo } from '../../../../src/server/repo.ts';
 import { siteProblem } from '../../../../src/server/share.ts';
 
-const repo = repoInfo(process.cwd());
+const repo = await repoInfo(process.cwd());
 const settingsFile = join(repo.path, REPO_SETTINGS_FILE);
 if (!existsSync(settingsFile)) {
   console.log(`No ${settingsFile}: write the repository's settings first.`);

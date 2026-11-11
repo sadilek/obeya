@@ -21,8 +21,8 @@ import { messageOf } from '../core/text';
 import { oneAtATime } from '../core/one-at-a-time';
 import { demoFile } from './demo-page';
 import { sameRemote } from './repo';
-import { branchSetting, type Branches, CARD_BRANCH, detectingBranch, readingBranches } from './branches';
-import { GIT, gitAsync, gitRun, gitSteps, LOOK, remoteWorkspace, WorkspaceError } from './git';
+import { branchSetting, type Branches, CARD_BRANCH, detectBranch, readBranches } from './branches';
+import { GIT, gitAsync, gitRun, LOOK, remoteWorkspace, WorkspaceError } from './git';
 
 /** A restored card's branch is no longer in the clone it takes back (`retake`). */
 export class BranchGone extends WorkspaceError {}
@@ -1250,7 +1250,7 @@ export class Workspaces implements CardWorkspaces {
     let switched: { branch: string | null; commit: string } | undefined;
     for (let attempt = 0; ; attempt++) {
       try {
-        const refs = this.cloned(ws) ? await gitSteps(ws, readingBranches()) : undefined;
+        const refs = this.cloned(ws) ? await readBranches(ws) : undefined;
         const base = await this.mainAsync(ws, refs);
         // a clone goes onto main as the checkout has it: its origin may be the remote, which lacks what landed here since
         const onto = refs !== undefined ? () => mainInClone(repo, ws, base, refs) : async () => base;
@@ -1439,7 +1439,7 @@ export class Workspaces implements CardWorkspaces {
   /** The default branch of the Obeya checkout. */
   private async checkoutBase(): Promise<string> {
     const repo = this.o.repoPath;
-    return branchSetting(repo) || (await gitSteps(repo, detectingBranch()));
+    return branchSetting(repo) || (await detectBranch(repo));
   }
 
   /**
@@ -1726,11 +1726,11 @@ export class Workspaces implements CardWorkspaces {
     const set = branchSetting(this.o.repoPath);
     if (set) return set;
     const at = this.cloned(ws) ? ws : this.o.repoPath;
-    if (refs !== undefined) return gitSteps(at, detectingBranch(refs));
+    if (refs !== undefined) return detectBranch(at, refs);
     // asked again while git still answers (whether the card has work and where it lands, side by side): one answer
     let asked = this.mains.get(at);
     if (!asked) {
-      const now = gitSteps(at, detectingBranch());
+      const now = detectBranch(at);
       this.mains.set(at, (asked = now));
       void now.finally(() => this.mains.get(at) === now && this.mains.delete(at)).catch(() => {});
     }
@@ -1774,7 +1774,7 @@ export class Workspaces implements CardWorkspaces {
           this.take(next.path, cardId);
           path = next.path;
         }
-        const refs = await gitSteps(path, readingBranches(true));
+        const refs = await readBranches(path, true);
         const [base, how] = await Promise.all([this.mainAsync(path, refs), originFetch(path)]);
         const fetched = !(await nothingToFetch(refs, how));
         if (fetched) await gitAsync(path, 'fetch', '--quiet', 'origin');

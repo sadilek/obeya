@@ -114,40 +114,10 @@ export async function gitRun(cwd: string, args: string[]): Promise<{ code: numbe
 export const LOOK = ['--no-optional-locks', '-c', 'diff.autoRefreshIndex=false'];
 
 /**
- * What Obeya reads of a repository with git, written once for both ways it runs: batches of git
- * calls (their arguments) that do not depend on one another, each answered with the calls' output
- * (trimmed; null where git failed) before the next batch is asked.
+ * `git` in `cwd` without blocking, its output trimmed; null where git fails (no repository there, a
+ * ref that does not exist) or cannot be run there.
  */
-export type GitSteps<T> = Generator<string[][], T, (string | null)[]>;
-
-/** Runs git steps in `cwd` one call after the other, the server waiting: for code that cannot wait otherwise. */
-export function gitStepsSync<T>(cwd: string, steps: GitSteps<T>): T {
-  for (let step = steps.next([]); ; step = steps.next(step.value.map((args) => gitOrNull(cwd, ...args)))) if (step.done) return step.value;
-}
-
-/** Runs git steps in `cwd` without blocking the server, the calls of each batch at once. */
-export async function gitSteps<T>(cwd: string, steps: GitSteps<T>): Promise<T> {
-  const one = async (args: string[]) => {
-    const r = await gitRun(cwd, args).catch(() => null);
-    return r?.code === 0 ? r.stdout.trim() : null;
-  };
-  for (let step = steps.next([]); ; step = steps.next(await Promise.all(step.value.map(one)))) if (step.done) return step.value;
-}
-
-/** Git steps of their own that run beside each other: each batch holds the next calls of both. */
-export function* together<A, B>(a: GitSteps<A>, b: GitSteps<B>): GitSteps<[A, B]> {
-  let x = a.next([]);
-  let y = b.next([]);
-  while (!x.done || !y.done) {
-    const asked = x.done ? 0 : x.value.length;
-    const got = yield [...(x.done ? [] : x.value), ...(y.done ? [] : y.value)];
-    if (!x.done) x = a.next(got.slice(0, asked));
-    if (!y.done) y = b.next(got.slice(asked));
-  }
-  return [x.value, y.value];
-}
-
-/** Git steps of one batch: these calls. */
-export function* gitCalls(...calls: string[][]): GitSteps<(string | null)[]> {
-  return yield calls;
+export async function gitTry(cwd: string, ...args: string[]): Promise<string | null> {
+  const r = await gitRun(cwd, args).catch(() => null);
+  return r?.code === 0 ? r.stdout.trim() : null;
 }

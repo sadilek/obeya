@@ -26,7 +26,7 @@ import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
 import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
-import { repoInfoAsync } from './repo';
+import { repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable, machineClaude, runClaudeHere } from './runtime';
 import { codexExecutable, CodexLogins, type CodexLoginState, runCodex, spawnOptions, startArgv } from './codex';
@@ -604,7 +604,7 @@ export class MachineSetup {
   async folder(input: unknown): Promise<SetupFolder> {
     const path = folderOf(input);
     try {
-      return { repo: true, branch: (await repoInfoAsync(path)).branch };
+      return { repo: true, branch: (await repoInfo(path)).branch };
     } catch {
       return withoutGit(path) ? { repo: false, folder: true } : { repo: false };
     }
@@ -663,6 +663,6 @@ export class MachineSetup {
     const canvas = resolved.at(-1)!.id;
     writeFileSync(join(this.o.home, WELCOME_FILE), canvas);
     const { restarting, applied } = await this.o.config.save(next);
-    return { canvas, branch: folder ? '' : (await repoInfoAsync(path)).branch, opens: restarting || !!applied };
+    return { canvas, branch: folder ? '' : (await repoInfo(path)).branch, opens: restarting || !!applied };
   }
 }

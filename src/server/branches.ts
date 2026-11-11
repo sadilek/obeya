@@ -2,7 +2,7 @@
 // the folders without git, which have none; and the branches Obeya names for cards.
 
 import { resolve } from 'node:path';
-import { type GitSteps, gitSteps, gitStepsSync } from './git';
+import { gitTry } from './git';
 
 /**
  * The main branches the owner set for repositories on this machine (`RepoSettings.branch`), by
@@ -22,16 +22,10 @@ export function useBranchSetting(repoPath: string, branch: () => string | undefi
 /** The main branch the owner set on this machine for the repository at `path`; none where they set none. */
 export const branchSetting = (path: string): string | undefined => branchSettings.get(resolve(path))?.()?.trim() || undefined;
 
-/** The repository's main branch: the one the owner set for it on this machine, else the one detected (`detectedBranch`); none in a folder without git. */
-export function defaultBranch(path: string): string {
+/** The repository's main branch: the one the owner set for it on this machine, else the one git tells (`detectBranch`); none in a folder without git. */
+export async function defaultBranch(path: string): Promise<string> {
   if (isFolder(path)) return '';
-  return branchSetting(path) || detectedBranch(path);
-}
-
-/** `defaultBranch` without the server waiting for git. */
-export async function defaultBranchAsync(path: string): Promise<string> {
-  if (isFolder(path)) return '';
-  return branchSetting(path) || (await gitSteps(path, detectingBranch()));
+  return branchSetting(path) || (await detectBranch(path));
 }
 
 /**
@@ -51,24 +45,22 @@ export function markFolder(path: string, folder: boolean) {
 export const isFolder = (path: string): boolean => folders.has(resolve(path));
 
 /**
- * The repository's main branch as git tells it, where cards start from and work lands: `origin`'s HEAD where the
- * checkout knows one. Else its only branch that is not a card's; else the one of them named as
- * git's `init.defaultBranch`, `main` or `master`, so that a branch the owner checks out for a
- * while does not take its place; else the branch the checkout is on, unless that is a card's;
- * else `init.defaultBranch`, else `main`.
+ * The main branch of the repository at `cwd` as git tells it, where cards start from and work
+ * lands: `origin`'s HEAD where the checkout knows one. Else its only branch that is not a card's;
+ * else the one of them named as git's `init.defaultBranch`, `main` or `master`, so that a branch the
+ * owner checks out for a while does not take its place; else the branch the checkout is on, unless
+ * that is a card's; else `init.defaultBranch`, else `main`. From `branches` where they were read
+ * already.
  */
-export const detectedBranch = (path: string): string => gitStepsSync(path, detectingBranch());
-
-/** `detectedBranch` as git steps, from `branches` where they were read already. */
-export function* detectingBranch(branches?: Branches | null): GitSteps<string> {
-  const b = branches !== undefined ? branches : yield* readingBranches();
+export async function detectBranch(cwd: string, branches?: Branches | null): Promise<string> {
+  const b = branches !== undefined ? branches : await readBranches(cwd);
   if (b?.originHead) return b.originHead;
   const own = [...(b?.local.keys() ?? [])].filter((name) => !name.startsWith(CARD_BRANCH));
   if (own.length === 1) return own[0]!;
-  const [init] = yield [['config', '--get', 'init.defaultBranch']];
+  const init = await gitTry(cwd, 'config', '--get', 'init.defaultBranch');
   const usual = [init, 'main', 'master'].find((name) => name && own.includes(name));
   if (usual) return usual;
-  const [current] = yield [['symbolic-ref', '--short', '-q', 'HEAD']];
+  const current = await gitTry(cwd, 'symbolic-ref', '--short', '-q', 'HEAD');
   if (current && !current.startsWith(CARD_BRANCH)) return current;
   return init || 'main';
 }
@@ -86,12 +78,12 @@ export interface Branches {
 }
 
 /**
- * Reads `Branches` as git steps, all with one call: Obeya reads them each time it needs the main
- * branch, and each call of git takes a few milliseconds. Null where there is no git repository.
- * `tags`: with the names of the tags.
+ * Reads the `Branches` of the repository at `cwd`, all with one call: Obeya reads them each time it
+ * needs the main branch, and each call of git takes a few milliseconds. Null where there is no git
+ * repository. `tags`: with the names of the tags.
  */
-export function* readingBranches(tags = false): GitSteps<Branches | null> {
-  const [refs] = yield [['for-each-ref', '--format=%(refname)%00%(objectname)%00%(symref)', 'refs/heads/', 'refs/remotes/origin/', ...(tags ? ['refs/tags/'] : [])]];
+export async function readBranches(cwd: string, tags = false): Promise<Branches | null> {
+  const refs = await gitTry(cwd, 'for-each-ref', '--format=%(refname)%00%(objectname)%00%(symref)', 'refs/heads/', 'refs/remotes/origin/', ...(tags ? ['refs/tags/'] : []));
   if (refs == null) return null;
   const b: Branches = { local: new Map(), remote: new Map(), ...(tags ? { tags: new Set<string>() } : {}) };
   const ORIGIN = 'refs/remotes/origin/';
@@ -124,30 +116,25 @@ export function branchName(title: string, cardId: string): string {
 }
 
 /**
- * The default branch (`defaultBranch`) and its commit as Obeya reads it: the local branch where it
- * has everything `origin`'s has (work lands there first), else `origin`'s; HEAD in a repository
- * with neither.
+ * The default branch (`defaultBranch`) of the repository at `repoPath` and its commit as Obeya
+ * reads it: the local branch where it has everything `origin`'s has (work lands there first), else
+ * `origin`'s; HEAD in a repository with neither.
  */
-export function defaultBranchCommit(repoPath: string): { branch: string; commit: string } {
+export async function defaultBranchCommit(repoPath: string): Promise<{ branch: string; commit: string }> {
   // a folder without git has neither
   if (isFolder(repoPath)) return { branch: '', commit: '' };
-  return gitStepsSync(repoPath, readingDefaultBranch(repoPath));
+  const branches = await readBranches(repoPath);
+  const branch = branchSetting(repoPath) || (await detectBranch(repoPath, branches));
+  return { branch, commit: await branchCommit(repoPath, branch, branches) };
 }
 
-/** `defaultBranchCommit` as git steps. */
-export function* readingDefaultBranch(repoPath: string): GitSteps<{ branch: string; commit: string }> {
-  const branches = yield* readingBranches();
-  const branch = branchSetting(repoPath) || (yield* detectingBranch(branches));
-  return { branch, commit: yield* branchCommit(branch, branches) };
-}
-
-/** The commit of the default branch `branch` by `defaultBranchCommit`'s rule, as git steps, from `branches` where they were read already. */
-export function* branchCommit(branch: string, branches?: Branches | null): GitSteps<string> {
-  const b = branches !== undefined ? branches : yield* readingBranches();
+/** The commit of the default branch `branch` by `defaultBranchCommit`'s rule, from `branches` where they were read already. */
+export async function branchCommit(cwd: string, branch: string, branches?: Branches | null): Promise<string> {
+  const b = branches !== undefined ? branches : await readBranches(cwd);
   const local = b?.local.get(branch);
   const remote = b?.remote.get(branch);
   if (!local || !remote) return local ?? remote ?? 'HEAD';
   if (local === remote) return local;
-  const [ahead] = yield [['merge-base', '--is-ancestor', remote, local]];
+  const ahead = await gitTry(cwd, 'merge-base', '--is-ancestor', remote, local);
   return ahead != null ? local : remote;
 }

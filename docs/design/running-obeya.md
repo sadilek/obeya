@@ -899,15 +899,16 @@ beside the scratch dirs.
   `CreateProcess` ourselves).
 - **Synchronous file and process calls in the server's code are counted against a list with reasons**
   (2026-11-09): a test lists, per file, how many calls of each synchronous API (every function
-  ending in `Sync`: `Bun.spawnSync`, `existsSync`, Obeya's `gitStepsSync`) the file may make and
+  ending in `Sync`: `Bun.spawnSync`, `existsSync`) the file may make and
   why they may stay (startup before the server listens, the plugin's scripts, the stall watcher's
   own log, a stat of a known path where the caller cannot wait). A new one fails it until it is
   made asynchronous or listed with its reason, and a list that allows more than the code has fails
   too, so the list only shrinks. It counts names, not callers: a synchronous helper of Obeya's own
   whose name does not end in `Sync` (the git calls of `gitOrNull`) counts once, by what it calls.
   Rejected: a lint rule (the repository has no linter); forbidding every synchronous call (startup,
-  scripts and a stat of a known path are fine). Where a function serves both the plugin's scripts
-  and the server, the server has an asynchronous sibling of it and the scripts keep theirs. With
+  scripts and a stat of a known path are fine). What the plugin's scripts read of a repository
+  (its main branch, its settings) they read with the server's asynchronous functions, waiting at
+  their top level: no function has a synchronous twin for them (2026-11-11). With
   it, what still waited on the server's thread went asynchronous: a canvas's repository settings
   and adapter module are only ever those read when the canvas resolved or its repository moved
   (no fallback read with git), the first canvas's folder is read without waiting, a demo site's

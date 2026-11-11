@@ -17,7 +17,7 @@ const git = (cwd: string, ...args: string[]) => {
   return r.stdout.toString().trim();
 };
 const b64 = (s: string) => Buffer.from(s).toString('base64');
-const themeOf = (repo: string) => readingTheme(repo, readShared(repo).obeyaTree);
+const themeOf = async (repo: string) => readingTheme(repo, (await readShared(repo)).obeyaTree);
 
 const LOGO = '<svg xmlns="http://www.w3.org/2000/svg"/>';
 const CSS = `@import "fonts.css";
@@ -71,7 +71,7 @@ describe('a repository’s theme', () => {
     };
     const waited = (await themeOf(gitRepo(join(root, 'waited'), files)));
     const repo = gitRepo(join(root, 'not-waited'), files);
-    expect(await readingTheme(repo, readShared(repo).obeyaTree)).toEqual(waited);
+    expect(await readingTheme(repo, (await readShared(repo)).obeyaTree)).toEqual(waited);
     expect(await readingTheme(gitRepo(join(root, 'not-waited-plain')), undefined)).toBeNull();
   }, 30_000);
 

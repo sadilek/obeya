@@ -765,7 +765,7 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     expect(runtime.last.spec).toMatchObject({ untrusted: true, system: expect.stringContaining("The repository's CLAUDE.md:\n\nRun the tests with bun test.") });
     const rev = canvas.board.canvas.repos[0]!.configRev ?? 0;
 
-    store.trustCommands(shop, commandsOf(readShared(shop)));
+    store.trustCommands(shop, commandsOf(await readShared(shop)));
     await canvas.settingsChanged();
     expect(r.adapter.app).toEqual({ run: 'bun dev', stop: 'pkill -F .dev.pid' });
     expect(r.site).toEqual(site);

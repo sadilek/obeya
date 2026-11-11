@@ -43,42 +43,42 @@ function originAndCheckout() {
   return { origin, checkout, spaces: new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') }) };
 }
 
-describe('the main branch', () => {
-  test("is origin's HEAD where the checkout knows one, whatever branch it is on", () => {
+describe('the main branch', async () => {
+  test("is origin's HEAD where the checkout knows one, whatever branch it is on", async () => {
     const origin = gitRepo(join(dir, 'origin'));
     git(origin, 'branch', '-m', 'trunk');
     gitClone(origin, join(dir, 'clone'));
     git(join(dir, 'clone'), 'checkout', '--quiet', '-b', 'feature');
-    expect(defaultBranch(join(dir, 'clone'))).toBe('trunk');
+    expect(await defaultBranch(join(dir, 'clone'))).toBe('trunk');
   });
 
-  test("is the only branch of a repository without a remote, cards' branches aside", () => {
+  test("is the only branch of a repository without a remote, cards' branches aside", async () => {
     const repo = gitRepo(join(dir, 'repo'));
     git(repo, 'branch', '-m', 'develop');
-    expect(defaultBranch(repo)).toBe('develop');
+    expect(await defaultBranch(repo)).toBe('develop');
     git(repo, 'checkout', '--quiet', '-b', 'obeya/export-abc123');
-    expect(defaultBranch(repo)).toBe('develop');
+    expect(await defaultBranch(repo)).toBe('develop');
     git(repo, 'checkout', '--quiet', '--detach');
-    expect(defaultBranch(repo)).toBe('develop');
+    expect(await defaultBranch(repo)).toBe('develop');
   });
 
-  test('stays master or main while the owner has another branch checked out', () => {
+  test('stays master or main while the owner has another branch checked out', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     git(repo, 'branch', '-m', 'master');
     git(repo, 'checkout', '--quiet', '-b', 'experiment');
-    expect(defaultBranch(repo)).toBe('master');
+    expect(await defaultBranch(repo)).toBe('master');
     git(repo, 'config', 'init.defaultBranch', 'experiment');
-    expect(defaultBranch(repo)).toBe('experiment');
+    expect(await defaultBranch(repo)).toBe('experiment');
   });
 
-  test("is the branch the checkout is on where none of its branches is the usual one, else git's init.defaultBranch", () => {
+  test("is the branch the checkout is on where none of its branches is the usual one, else git's init.defaultBranch", async () => {
     const repo = gitRepo(join(dir, 'repo'));
     git(repo, 'branch', '-m', 'develop');
     git(repo, 'checkout', '--quiet', '-b', 'release');
-    expect(defaultBranch(repo)).toBe('release');
+    expect(await defaultBranch(repo)).toBe('release');
     git(repo, 'checkout', '--quiet', '--detach');
     git(repo, 'config', 'init.defaultBranch', 'trunk');
-    expect(defaultBranch(repo)).toBe('trunk');
+    expect(await defaultBranch(repo)).toBe('trunk');
   });
 });
 

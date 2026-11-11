@@ -8,8 +8,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSyn
 import { rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { spawnOutput } from './spawn';
-import { branchSetting, CARD_BRANCH, readingDefaultBranch } from './branches';
-import { GIT, gitCalls, type GitSteps, gitSteps } from './git';
+import { branchSetting, CARD_BRANCH, defaultBranchCommit } from './branches';
+import { GIT, gitTry } from './git';
 import { detachedTree } from './workspaces';
 
 /**
@@ -276,7 +276,7 @@ export class ReadTree {
 
   /** The commit the read tree is on. */
   async head(): Promise<string> {
-    return (await gitSteps(this.path, gitCalls(['rev-parse', 'HEAD'])))[0] ?? '';
+    return (await gitTry(this.path, 'rev-parse', 'HEAD')) ?? '';
   }
 
   /**
@@ -298,7 +298,7 @@ export class ReadTree {
     const known = this.held.get(commit);
     if (typeof known === 'boolean') return known;
     if (!known) {
-      const asked = gitSteps(this.path, gitCalls(['merge-base', '--is-ancestor', commit, 'HEAD'])).then(([r]) => r !== null);
+      const asked = gitTry(this.path, 'merge-base', '--is-ancestor', commit, 'HEAD').then((r) => r !== null);
       this.held.set(commit, asked);
       void asked.then((held) => {
         // the read tree moved meanwhile: what it holds now is asked afresh
@@ -330,7 +330,7 @@ export class ReadTree {
 
   private async fetch() {
     if (!this.o.remote) return;
-    const { branch } = await gitSteps(this.o.repoPath, readingDefaultBranch(this.o.repoPath));
+    const { branch } = await defaultBranchCommit(this.o.repoPath);
     // only the default branch, and no FETCH_HEAD: what a lease fetching in the same clone touches stays its own
     const r = await spawnOutput([GIT, '-C', this.o.repoPath, 'fetch', '--quiet', '--no-write-fetch-head', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], {
       stdin: 'ignore',
@@ -389,7 +389,7 @@ export class ReadTree {
  * commit.
  */
 async function putWorktree(repoPath: string, dir: string): Promise<'same' | 'moved' | 'made' | 'failed' | 'none'> {
-  const found = await gitSteps(repoPath, checking(repoPath, dir));
+  const found = await checkWorktree(repoPath, dir);
   if (found.state !== 'afresh') return found.state;
   try {
     await rm(dir, { recursive: true, force: true });
@@ -399,7 +399,7 @@ async function putWorktree(repoPath: string, dir: string): Promise<'same' | 'mov
     return 'failed';
   }
   mkdirSync(dirname(dir), { recursive: true });
-  if (await gitSteps(repoPath, making(dir, found.target))) return 'made';
+  if (await addWorktree(repoPath, dir, found.target)) return 'made';
   console.error(`Read tree: no worktree of ${repoPath} at ${dir}; reading the checkout`);
   return 'failed';
 }
@@ -416,35 +416,34 @@ function real(path: string): string {
 }
 
 /**
- * Where the worktree at `dir` stands against the commit the default branch of `repoPath` has now,
- * as git steps in `repoPath`: on it already (`same`), moved onto it (`moved`), or to be made afresh
- * (missing, broken, another repository's, or the checkout failed); `none` where there is no such commit.
+ * Where the worktree at `dir` stands against the commit the default branch of `repoPath` has now:
+ * on it already (`same`), moved onto it (`moved`), or to be made afresh (missing, broken, another
+ * repository's, or the checkout failed); `none` where there is no such commit.
  */
-function* checking(repoPath: string, dir: string): GitSteps<{ state: 'same' | 'moved' | 'none' } | { state: 'afresh'; target: string }> {
-  const { commit } = yield* readingDefaultBranch(repoPath);
-  const [target] = yield [['rev-parse', '--verify', '--quiet', `${commit}^{commit}`]];
+async function checkWorktree(repoPath: string, dir: string): Promise<{ state: 'same' | 'moved' | 'none' } | { state: 'afresh'; target: string }> {
+  const { commit } = await defaultBranchCommit(repoPath);
+  const target = await gitTry(repoPath, 'rev-parse', '--verify', '--quiet', `${commit}^{commit}`);
   if (!target) return { state: 'none' };
   if (existsSync(dir)) {
-    const [top, common, own, head] = yield [
-      ['-C', dir, 'rev-parse', '--show-toplevel'],
-      ['-C', dir, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-      ['-C', dir, 'rev-parse', 'HEAD'],
-    ];
+    const [top, common, own, head] = await Promise.all([
+      gitTry(dir, 'rev-parse', '--show-toplevel'),
+      gitTry(dir, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
+      gitTry(repoPath, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
+      gitTry(dir, 'rev-parse', 'HEAD'),
+    ]);
     // a worktree of the checkout's repository, at its top
     if (top && common && own && real(top) === real(dir) && real(common) === real(own)) {
       if (head === target) return { state: 'same' };
       // the hooks are the checkout's (a post-checkout installing dependencies, say), not the read tree's
-      const [checkedOut] = yield [['-C', dir, '-c', 'core.hooksPath=/dev/null', 'checkout', '--quiet', '--detach', '--force', target]];
+      const checkedOut = await gitTry(dir, '-c', 'core.hooksPath=/dev/null', 'checkout', '--quiet', '--detach', '--force', target);
       if (checkedOut !== null) return { state: 'moved' };
     }
   }
   return { state: 'afresh', target };
 }
 
-/** Adds the worktree at `dir` detached at `target`, as git steps in the checkout's repository; whether git could. */
-function* making(dir: string, target: string): GitSteps<boolean> {
-  yield [['worktree', 'prune']];
-  const [added] = yield [detachedTree(dir, target)];
-  return added !== null;
+/** Adds the worktree at `dir` detached at `target` to the checkout `repoPath`'s repository; whether git could. */
+async function addWorktree(repoPath: string, dir: string, target: string): Promise<boolean> {
+  await gitTry(repoPath, 'worktree', 'prune');
+  return (await gitTry(repoPath, ...detachedTree(dir, target))) !== null;
 }

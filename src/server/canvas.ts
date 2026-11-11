@@ -4,7 +4,7 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { defaultsFor, readingAdapterModule, readingShared, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
+import { defaultsFor, hasAdapterModule, readSharedAt, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -30,7 +30,6 @@ import { Coordinator } from './coordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
 import { prepareReadTree, ReadTree, refsSeal } from './read-tree';
-import { branchCommit, readingDefaultBranch } from './branches';
 import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
@@ -50,8 +49,8 @@ import { allowedHere, approvedHere, personalDemoSite, readPersonal } from './per
 import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
-import { branchSetting, detectingBranch, isFolder, markFolder, readingBranches, useBranchSetting } from './branches';
-import { gitCalls, type GitSteps, gitSteps, together } from './git';
+import { branchCommit, branchSetting, defaultBranchCommit, detectBranch, isFolder, markFolder, readBranches, useBranchSetting } from './branches';
+import { gitTry } from './git';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, type Theme } from './theme';
 import { claudeToken, githubToken, hostName, registerHost } from './hosts';
@@ -1448,7 +1447,7 @@ export class CanvasRuntime {
    */
   private readSettings(path: string, tries = READ_TRIES): Promise<DefaultRead> {
     const seal = refsSeal(path);
-    const read = gitSteps(path, readingSettings(path)).then(async (r): Promise<DefaultRead> => (seal && tries > 1 && refsSeal(path) !== seal ? this.readSettings(path, tries - 1) : { ...r, theme: await readingTheme(path, r.shared.obeyaTree) }));
+    const read = readDefault(path).then(async (r): Promise<DefaultRead> => (seal && tries > 1 && refsSeal(path) !== seal ? this.readSettings(path, tries - 1) : { ...r, theme: await readingTheme(path, r.shared.obeyaTree) }));
     if (seal) this.readAt(path, seal, read);
     return read;
   }
@@ -3096,9 +3095,9 @@ export class ConfigError extends Error {
 }
 
 /**
- * What resolving a repository reads of it with git (`readingRepo`): where it is and its main
+ * What resolving a repository reads of it with git (`readRepo`): where it is and its main
  * branch (`info`), that branch as git tells it whatever the owner set (`detected`), whether its
- * main branch still has an adapter module (`readingAdapterModule`), and its `.obeya/settings.json`
+ * main branch still has an adapter module (`hasAdapterModule`), and its `.obeya/settings.json`
  * there (`readShared`).
  */
 export interface RepoRead {
@@ -3109,25 +3108,25 @@ export interface RepoRead {
 }
 
 /**
- * Reads a repository for `resolveCanvas`, as git steps; null where `path` is no git repository. A
- * folder without git (`folder`) is read as it is, without git: null where it is no directory. Its
- * main branch is `branch` where the owner set one, else the one detected.
+ * Reads a repository for `resolveCanvas`; null where `path` is no git repository. A folder without
+ * git (`folder`) is read as it is, without git: null where it is no directory. Its main branch is
+ * `branch` where the owner set one, else the one detected.
  */
-export function* readingRepo(path: string, folder = false, branch = branchSetting(path)): GitSteps<RepoRead | null> {
+async function readRepo(path: string, folder: boolean, branch: string | undefined): Promise<RepoRead | null> {
   markFolder(path, folder);
   if (folder) return readFolder(path);
-  const [[remote, origin], branches] = yield* together(gitCalls(['remote', 'get-url', 'origin'], ['config', '--get', 'remote.origin.url']), readingBranches());
+  const [remote, origin, branches] = await Promise.all([gitTry(path, 'remote', 'get-url', 'origin'), gitTry(path, 'config', '--get', 'remote.origin.url'), readBranches(path)]);
   if (branches == null) return null;
-  const detected = yield* detectingBranch(branches);
+  const detected = await detectBranch(path, branches);
   const main = branch || detected;
-  const commit = yield* branchCommit(main, branches);
-  const [adapterModule, shared] = yield* together(readingAdapterModule(commit), readingShared(commit));
+  const commit = await branchCommit(path, main, branches);
+  const [adapterModule, shared] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit)]);
   return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}) }, detected, adapterModule, shared };
 }
 
 /**
  * What a configuration's repositories are read for, by absolute path, without the server waiting
- * for git: each repository (`readingRepo`, under the seal its refs had before, `refsSeal`), and
+ * for git: each repository (`readRepo`, under the seal its refs had before, `refsSeal`), and
  * each workspace it lists (its `origin`; null where it is no git repository). All of them at once.
  */
 export interface RepoReads {
@@ -3148,12 +3147,12 @@ export async function readRepos(repos: RepoConfig[], branchOf: (r: RepoConfig) =
       [...paths].map(async ([path, r]) => {
         const folder = r.git === false;
         const seal = folder ? null : refsSeal(path);
-        return [path, { seal, read: await gitSteps(path, readingRepo(path, folder, branchOf(r)?.trim() || branchSetting(path))) }] as const;
+        return [path, { seal, read: await readRepo(path, folder, branchOf(r)?.trim() || branchSetting(path)) }] as const;
       }),
     ),
     Promise.all(
       listed.map(async (w) => {
-        const [dir, origin] = await gitSteps(w, gitCalls(['rev-parse', '--git-dir'], ['remote', 'get-url', 'origin']));
+        const [dir, origin] = await Promise.all([gitTry(w, 'rev-parse', '--git-dir'), gitTry(w, 'remote', 'get-url', 'origin')]);
         return [w, dir != null ? { origin: origin ?? null } : null] as const;
       }),
     ),
@@ -3172,7 +3171,7 @@ const READ_TRIES = 5;
 /** What `moved` came to (`moved`). */
 type Moved = 'same' | 'follow' | 'due';
 
-/** What a repository's default branch has of its settings: its `.obeya/settings.json` and Claude Code configuration (`readShared`), and whether an adapter module is still there (`readingAdapterModule`). */
+/** What a repository's default branch has of its settings: its `.obeya/settings.json` and Claude Code configuration (`readShared`), and whether an adapter module is still there (`hasAdapterModule`). */
 interface DefaultRead {
   shared: SharedRead;
   adapterModule: boolean;
@@ -3182,10 +3181,10 @@ interface DefaultRead {
   theme?: Theme | null;
 }
 
-/** `DefaultRead` of the git repository at `path` as git steps. */
-function* readingSettings(path: string): GitSteps<DefaultRead> {
-  const { branch, commit } = yield* readingDefaultBranch(path);
-  const [adapterModule, shared] = yield* together(readingAdapterModule(commit), readingShared(commit));
+/** `DefaultRead` of the git repository at `path`. */
+async function readDefault(path: string): Promise<DefaultRead> {
+  const { branch, commit } = await defaultBranchCommit(path);
+  const [adapterModule, shared] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit)]);
   return { shared, adapterModule, branch };
 }
 
@@ -3252,7 +3251,7 @@ export function resolveCanvas(
     config: { ...config, repos: repos.map((x) => x.config) },
     id,
     name,
-    repos: repos.map((x, i) => ({ ...x, ref: refs[i]!, values: () => repoValues(x.read.info, namesClones(x.config, x.read.info, { land: x.adapter.land }), sharedOf(x.read.info.path)() ?? {}, x.read.detected) })),
+    repos: repos.map((x, i) => ({ ...x, ref: refs[i]!, values: () => repoValues(x.read.info, x.read.detected, namesClones(x.config, x.read.info, { land: x.adapter.land }), sharedOf(x.read.info.path)() ?? {}) })),
     stored,
   };
 }
@@ -3311,7 +3310,7 @@ function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
   });
 }
 
-/** The URL of the repository's `origin` as it is configured, before git's `insteadOf` rewrites it (as read with the rest, `readingRepo`); null without one. */
+/** The URL of the repository's `origin` as it is configured, before git's `insteadOf` rewrites it (as read with the rest, `readRepo`); null without one. */
 const originUrl = (info: RepoInfo): string | null => (info.remote ? (info.origin ?? info.remote) : null);
 
 /** Whether the repository's `origin` is on a server, as it is configured (git's `insteadOf` aside), rather than a directory on this machine. */

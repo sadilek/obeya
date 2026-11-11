@@ -25,14 +25,13 @@ import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, 
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
-import { readingSettings, REPO_SETTINGS_FILE } from '../adapters';
+import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
 import { BranchGone, type CardWorkspaces, type FileAt, type Landed, type Lease, type PullStopped, shortageOf, type Workspaces } from './workspaces';
-import { branchName, isFolder } from './branches';
-import { gitSteps, together, WorkspaceError, gitAsync, type GitSteps, hasCommit, isAncestor } from './git';
+import { branchName, defaultBranchCommit, isFolder } from './branches';
+import { WorkspaceError, gitAsync, gitTry, hasCommit, isAncestor } from './git';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { headSeal, refsSeal } from './read-tree';
-import { readingDefaultBranch } from './branches';
 import type { CardRow, RowUpdate } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf, tooLong } from '../core/text';
@@ -885,7 +884,7 @@ export class Workers {
     const seal = refs && head ? `${refs}\n${head}` : null;
     const known = this.notesRead;
     if (seal && known?.seal === seal) return known.notes;
-    const read = gitSteps(path, readingNotes(path)).catch(() => '');
+    const read = readNotes(path).catch(() => '');
     if (seal) {
       const entry: { seal: string; notes: string | Promise<string> } = { seal, notes: read };
       this.notesRead = entry;
@@ -2136,7 +2135,7 @@ export class Workers {
     const repo = { land: this.o.adapter.land, direct: !!this.o.adapter.direct };
     const fork = await this.o.workspaces.forkPoint(cardId, REPO_SETTINGS_FILE);
     if (!fork) return repo;
-    const [now, before] = await gitSteps(fork.ws, together(readingSettings('HEAD'), readingSettings(fork.base)));
+    const [now, before] = await Promise.all([readSettingsAt(fork.ws, 'HEAD'), readSettingsAt(fork.ws, fork.base)]);
     const machine = this.o.machineSettings?.();
     const own: CardLanding = {};
     for (const field of ['land', 'direct'] as const) {
@@ -5600,9 +5599,8 @@ const code = (text: string) =>
 
 const permissionKey = (p: AskedPermission) => JSON.stringify([p.name, p.input]);
 
-/** The CLAUDE.md of the default branch of the repository at `path`, as git steps; empty where it has none. */
-function* readingNotes(path: string): GitSteps<string> {
-  const { commit } = yield* readingDefaultBranch(path);
-  const [notes] = yield [['show', `${commit}:CLAUDE.md`]];
-  return notes ?? '';
+/** The CLAUDE.md of the default branch of the repository at `path`; empty where it has none. */
+async function readNotes(path: string): Promise<string> {
+  const { commit } = await defaultBranchCommit(path);
+  return (await gitTry(path, 'show', `${commit}:CLAUDE.md`)) ?? '';
 }

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmdirSync, rmSync, unlinkSync, watch, writeFile
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
-import { ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, remoteHost, repoInfo, repoInfoAsync, sameRemote, watchPlanDocs } from './repo';
+import { ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, remoteHost, repoInfo, sameRemote, watchPlanDocs } from './repo';
 import { gitRepo } from './testing';
 import { git } from './git';
 
@@ -32,18 +32,17 @@ describe('readPlanDocs', () => {
   });
 });
 
-describe('repoInfoAsync', () => {
-  test('reads a repository as repoInfo does, without the server waiting for git; a folder without git is refused', async () => {
+describe('repoInfo', () => {
+  test('reads where a repository is, its origin and its main branch; a folder without git is refused', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'obeya-repo-info-'));
     try {
       const repo = gitRepo(join(dir, 'shop'));
-      expect(await repoInfoAsync(repo)).toEqual({ path: repo, remote: null, branch: 'main' });
+      expect(await repoInfo(repo)).toEqual({ path: repo, remote: null, branch: 'main' });
       git(repo, 'remote', 'add', 'origin', 'https://example.com/acme/shop.git');
       git(repo, 'branch', '-m', 'trunk');
-      expect(await repoInfoAsync(repo)).toEqual(repoInfo(repo));
-      expect(await repoInfoAsync(repo)).toEqual({ path: repo, remote: 'https://example.com/acme/shop.git', branch: 'trunk' });
+      expect(await repoInfo(repo)).toEqual({ path: repo, remote: 'https://example.com/acme/shop.git', branch: 'trunk' });
       mkdirSync(join(dir, 'plain'));
-      await expect(repoInfoAsync(join(dir, 'plain'))).rejects.toThrow('is not a git repository');
+      await expect(repoInfo(join(dir, 'plain'))).rejects.toThrow('is not a git repository');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

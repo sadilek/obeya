@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 // The server runs on one JavaScript thread: while a synchronous call of a file or process API
-// runs (`Bun.spawnSync`, `readFileSync`, `existsSync`, Obeya's own `gitStepsSync`), it answers no
+// runs (`Bun.spawnSync`, `readFileSync`, `existsSync`), it answers no
 // page, hears no agent and starts nothing. Every such call in the server's code is counted here
 // against a list of what each file may call, with the reason it may stay. A new call fails this
 // test until it is made asynchronous or listed with its reason; a call that goes has to leave the
@@ -25,10 +25,6 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'board.ts': {
     why: "server path, a stat per card's demo while the board's items are built (whether its files are still there); cheap each, and kept with the card's row while it stays the same",
     calls: { existsSync: 3 },
-  },
-  'branches.ts': {
-    why: "detectedBranch's and defaultBranchCommit's gitStepsSync serve scripts and startup (repoInfo, adapters' readShared without a commit); the server reads with gitSteps",
-    calls: { gitStepsSync: 2 },
   },
   'canvas.ts': {
     why: "server path, cheap: an answer's directory made, a free plan doc name probed, a folder repository's directory checked, two paths compared by their real path after a landing",
@@ -60,7 +56,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'forge.ts': { why: "server path, cheap: a pull request's body in a temporary file for gh", calls: { mkdtempSync: 1, rmSync: 1, writeFileSync: 1 } },
   'git.ts': {
-    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync, runSync) serves scripts, tests and startup (self-update's headOf); the server's own git goes through gitAsync and gitSteps",
+    why: "the git binary is found once as the module loads; the synchronous git() (spawnSync, runSync) serves scripts, tests and startup (self-update's headOf); the server's own git goes through gitRun and the async runners on it",
     calls: { existsSync: 2, runSync: 1, spawnSync: 3 },
   },
   'git-setup.ts': {
@@ -68,7 +64,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 2, mkdtempSync: 1, rmSync: 3, spawnSync: 1, statSync: 2, writeFileSync: 2 },
   },
   'hosts.ts': {
-    why: "runSync's spawnSync is reached only through workspaces.ts's synchronous git() for a workspace on another machine, which no server path calls (they use gitAsync/gitSteps); the rest is cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",
+    why: "runSync's spawnSync is reached only through workspaces.ts's synchronous git() for a workspace on another machine, which no server path calls (they use gitAsync/gitTry); the rest is cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",
     calls: { chmodSync: 2, existsSync: 3, lstatSync: 1, mkdirSync: 3, readFileSync: 1, readdirSync: 1, rmSync: 1, spawnSync: 1, statSync: 1, writeFileSync: 2 },
   },
   'images.ts': { why: "server path, cheap: a pasted image written, looked up and copied to another canvas", calls: { copyFileSync: 1, existsSync: 1, mkdirSync: 2, writeFileSync: 1 } },
@@ -334,7 +330,7 @@ describe('synchronous calls on the server', () => {
       }
     if (over.length)
       throw new Error(
-        `Synchronous calls block the server's only thread while they run:\n  ${over.join('\n  ')}\nMake the call asynchronous (node:fs/promises, Bun.file, spawnOutput, gitAsync or gitSteps), or, where it may block the server, add it to ALLOWED in src/server/sync-calls.test.ts with the reason.`,
+        `Synchronous calls block the server's only thread while they run:\n  ${over.join('\n  ')}\nMake the call asynchronous (node:fs/promises, Bun.file, spawnOutput, gitAsync or gitTry), or, where it may block the server, add it to ALLOWED in src/server/sync-calls.test.ts with the reason.`,
       );
   });
 

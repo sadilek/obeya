@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { readSharedAsync, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
+import { readShared, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
 import { settingsShape, withoutGone as goneSettings } from '../adapters/schema';
 import { LANGUAGES } from '../core/locale';
 import { blocksSaving, type CanvasConfig, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type DemoSettingsProblem, type DemoSettingsView, type DemoVoiceCheck, type ResolvedCanvas, type VoiceInstallJob, layerSettings, type ProposedSetting, type RepoTrust, type RepoValues, settingPatch, commandLines } from '../core/types';
@@ -38,7 +38,7 @@ import type { DemoSpace } from './demo-space';
 import type { Forge } from './forge';
 import { commitShared, proposeShared, pushShared } from './shared-settings';
 import { leavingClones } from './workspaces';
-import { gitCalls, gitSteps } from './git';
+import { gitTry } from './git';
 import { VERSION } from './resources';
 import { siteProblem } from './share';
 import { canonical, commandsOf, heldGroups, trustHeld, trustTakenOver } from './trust';
@@ -240,7 +240,7 @@ export interface ConfigOptions {
 
 /** Whether the repository has the branch, locally or as `origin`'s. */
 async function hasBranch(path: string, branch: string): Promise<boolean> {
-  const found = await gitSteps(path, gitCalls(...['refs/heads/', 'refs/remotes/origin/'].map((ref) => ['rev-parse', '--verify', '--quiet', `${ref}${branch}^{commit}`])));
+  const found = await Promise.all(['refs/heads/', 'refs/remotes/origin/'].map((ref) => gitTry(path, 'rev-parse', '--verify', '--quiet', `${ref}${branch}^{commit}`)));
   return found.some((x) => x !== null);
 }
 
@@ -456,7 +456,7 @@ export class Config {
       const { after, ...done } = await pushShared(repoPath, mine);
       console.log(`Obeya: settings of ${repoPath} for everyone, ${'unchanged' in done ? 'which origin\'s ' + done.branch + ' had already' : `pushed onto origin's ${done.branch}`}`);
       // origin's had them already: only what the main branch Obeya reads has goes (the local one may be ahead of origin's)
-      this.takenOver(repoPath, undefined, 'unchanged' in done ? (await readSharedAsync(repoPath)).settings : after);
+      this.takenOver(repoPath, undefined, 'unchanged' in done ? (await readShared(repoPath)).settings : after);
       this.o.onSettings?.();
       return done;
     }
@@ -481,7 +481,7 @@ export class Config {
       }
       console.log(`Obeya: ${what} of ${path} for everyone, which origin's ${'branch' in done ? done.branch : ''} had already`);
       // only what the main branch Obeya reads has: the local one may be ahead of origin's
-      this.takenOver(path, undefined, (await readSharedAsync(path)).settings);
+      this.takenOver(path, undefined, (await readShared(path)).settings);
       return done;
     }
     const { before: _, after, ...done } = await commitShared(path, patch);
@@ -502,7 +502,7 @@ export class Config {
     if (!parsed.success) throw new BadRequest('invalid', 'expected { path, seen, held }');
     const repoPath = resolve(expandHome(parsed.data.path));
     if (!existsSync(repoPath)) throw new BadRequest('invalid', `no repository at ${parsed.data.path}`);
-    const now = commandsOf(await readSharedAsync(repoPath));
+    const now = commandsOf(await readShared(repoPath));
     if (canonical(now) !== canonical(parsed.data.seen)) throw new BadRequest('trustChanged', `${repoPath}: its commands changed on the default branch since they were shown`);
     // only the groups the dialog showed: one this machine's values (saved or in the draft) stand in for it did not
     this.o.store.trustCommands(repoPath, trustHeld(this.o.store.trustedCommands(repoPath), now, parsed.data.held.filter((g) => now[g] !== undefined)));
