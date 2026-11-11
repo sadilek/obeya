@@ -5,7 +5,7 @@ import { pagePolicy } from '../core/frame';
 import { type Notice, waitingOn } from '../core/types';
 import { inform } from './advisor';
 import { answersDir } from './answers';
-import { serveAnswerFile } from './demo';
+import { serveAnswerFile } from './serve-files';
 import { board, canvas, dir, eachTest, main, restart, runtime, say, settle } from './canvas-fixture';
 import { type FakeSession, fakeVoicing, until } from './testing';
 import { BadRequest } from './board';

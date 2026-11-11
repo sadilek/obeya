@@ -15,7 +15,7 @@ import { parsePlace } from '../core/layout';
 import { type Focus, type Heard, type Input, isField } from './commands';
 import { holdsNotes } from '../core/queue';
 import type { Config } from './config';
-import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './demo';
+import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './serve-files';
 import { type NarrationHost, parseClipRequest, parseHearRequest } from './narration';
 import type { Restarter } from './self-update';
 import { looping, silence, type Transcriber } from './voice';

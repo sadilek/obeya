@@ -10,9 +10,10 @@
 import { createHash } from 'node:crypto';
 import { dimensions } from '../core/page-tags';
 import type { DemoSite, PageTags } from '../core/types';
-import { ARTIFACT_DIR, artifactPageHtml, type CaptionTrack, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
+import { ARTIFACT_DIR, artifactPageHtml, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
-import { OWN_CONNECTIONS } from './demo';
+import { type CaptionTrack } from './demo-files';
+import { OWN_CONNECTIONS } from './serve-files';
 
 /** The site's root, the overview's address. */
 export const siteRoot = (site: DemoSite) => `${site.url.replace(/\/+$/, '')}/`;

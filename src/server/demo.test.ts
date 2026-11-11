@@ -4,8 +4,9 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
-import { artifactFiles, captionTracks, captionTracksAsync, silentVideo, silentVideoAsync, videoSize } from './demo-page';
-import { checkPlugin, DEMO_SKILL, DEMO_SKILL_FILE, demoFiles, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, serveDemoFile, serveMockFrame, videoFacts } from './demo';
+import { artifactFiles, captionTracks, captionTracksAsync, demoFiles, silentVideo, silentVideoAsync, videoFacts, videoSize } from './demo-files';
+import { checkPlugin, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
+import { serveDemoFile, serveMockFrame } from './serve-files';
 import { removeDir } from './testing';
 
 const dir = mkdtempSync(join(tmpdir(), 'obeya-demo-'));

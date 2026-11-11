@@ -185,7 +185,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGES } from '../src/core/locale';
 import type { CanvasSnapshot, Item } from '../src/core/types';
-import { videoFacts } from '../src/server/demo';
+import { videoFacts } from '../src/server/demo-files';
 import { loginLink, ownerHeaders } from '../src/server/owner';
 import { findTailscale, type NamedEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';

@@ -40,13 +40,13 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 7, mkdirSync: 1, mkdtempSync: 1, readFileSync: 2, rmSync: 1, statSync: 1, writeFileSync: 2 },
   },
   'db.ts': { why: 'startup: the database directory made before the database opens', calls: { mkdirSync: 1 } },
-  'demo-page.ts': {
-    why: "server path: a demo's files resolved by their real path (serving, sharing), its caption tracks and the start of its video read where a caller needs them at once (share.ts's export, demo.ts's facts); the demo site reads them with captionTracksAsync and silentVideoAsync",
-    calls: { closeSync: 1, existsSync: 2, openSync: 1, readFileSync: 1, readSync: 1, readdirSync: 1, realpathSync: 2, statSync: 1 },
+  'demo-files.ts': {
+    why: "server path: a demo's files resolved by their real path (serving, sharing), its caption tracks and the start of its video read where a caller needs them at once (share.ts's export, a demo's facts at its handover); the demo site reads them with captionTracksAsync and silentVideoAsync; a demo handed over is kept (copyFileSync clones on APFS; elsewhere it copies the video, a candidate for fs/promises)",
+    calls: { closeSync: 1, copyFileSync: 1, existsSync: 2, mkdirSync: 1, openSync: 1, readFileSync: 1, readSync: 1, readdirSync: 1, realpathSync: 2, rmSync: 2, statSync: 2, utimesSync: 1 },
   },
   'demo.ts': {
-    why: "server path: a demo video's byte ranges are read at once, 8 MB at most (docs/design/demos.md, \"Demo files are read at once\"); a demo handed over is checked and kept (copyFileSync clones on APFS; elsewhere it copies the video, a candidate for fs/promises); the plugin's demo skill looked up by a stat",
-    calls: { closeSync: 1, copyFileSync: 1, existsSync: 5, fstatSync: 2, mkdirSync: 1, openSync: 1, readFileSync: 2, readSync: 1, readdirSync: 1, realpathSync: 1, rmSync: 2, statSync: 2, utimesSync: 1 },
+    why: "server path, cheap: a demo handed over is checked (its files there, its chapters read from a small WebVTT file); the plugin's demo skill looked up by a stat",
+    calls: { existsSync: 5, readFileSync: 1, readdirSync: 1, realpathSync: 1, statSync: 1 },
   },
   'file-forge.ts': { why: 'the file-backed forge of tests and recorded demos (OBEYA_FORGE_FILE), not a real forge', calls: { readFileSync: 1, writeFileSync: 1 } },
   'files.ts': {
@@ -108,6 +108,10 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 1, readFileSync: 1, spawnSync: 1, statSync: 1 },
   },
   'server.ts': { why: 'server path, cheap: a temporary directory for a recording to transcribe', calls: { mkdtempSync: 1, rmSync: 1 } },
+  'serve-files.ts': {
+    why: "server path: a demo video's byte ranges are read at once, 8 MB at most (docs/design/demos.md, \"Demo files are read at once\"); a worker's page read to add its height report",
+    calls: { closeSync: 1, fstatSync: 2, openSync: 1, readFileSync: 1, readSync: 1 },
+  },
   'settings.ts': { why: "the agents' settings file: small, read when used and written when the owner saves", calls: { mkdirSync: 1, readFileSync: 1, writeFileSync: 1 } },
   'share.ts': {
     why: "server path: a demo exported as a ZIP or HTML file reads its video whole, a page reshared reads its HTML, demo files are stat'ed; a candidate for fs/promises",

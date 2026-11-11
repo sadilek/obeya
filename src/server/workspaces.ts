@@ -20,7 +20,7 @@ import { endProcessesIn } from './folder-processes';
 import { messageOf } from '../core/text';
 import { oneAtATime, shared } from '../core/one-at-a-time';
 import { failureText } from './spawn';
-import { demoFile } from './demo-page';
+import { demoFile } from './demo-files';
 import { sameRemote } from './repo';
 import { branchSetting, type Branches, CARD_BRANCH, detectBranch, readBranches } from './branches';
 import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, isAncestor, LOOK, remoteWorkspace, WorkspaceError } from './git';

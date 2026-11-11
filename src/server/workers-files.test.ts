@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
-import { serveCardFile } from './demo';
+import { serveCardFile } from './serve-files';
 import { artifact, commit } from './testing';
 import { board, eachTest, main, manual, runtime, spaces, workers } from './workers-fixture';
 

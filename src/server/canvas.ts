@@ -8,7 +8,7 @@ import { defaultsFor, hasAdapterModule, readSharedAt, readSharedFiles, repoValue
 import { Answers, answersDir, answerTag } from './answers';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { demoFile } from './demo-page';
+import { demoFile } from './demo-files';
 import { openWithSystem } from './machine';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';

@@ -17,8 +17,8 @@ import { answering, askable, type Awaited, AWAITED_STATES, awaited, type Backgro
 import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, type StoredDemo, titleKey, contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
 import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
-import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, keepDemo, OBEYA_PLUGIN, placeIn, readChapters, videoFacts } from './demo';
-import { artifactFiles } from './demo-page';
+import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
+import { artifactFiles, keepDemo, videoFacts } from './demo-files';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
 import type { InputContext } from './coordinator';
