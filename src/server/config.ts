@@ -214,6 +214,13 @@ export interface ConfigOptions {
   forge?: Forge;
 }
 
+/** Where settings for everyone went, for the log: `origin` where they went to `origin`'s main branch, or would have. */
+function sharedHow(done: SettingsShared, origin: boolean): string {
+  if ('pr' in done) return `as a pull request: ${done.pr}`;
+  if ('unchanged' in done) return `which ${origin ? "origin's " : ''}${done.branch} had already`;
+  return origin ? `pushed onto origin's ${done.branch}` : `committed on ${done.branch}`;
+}
+
 /** Whether the repository has the branch, locally or as `origin`'s. */
 async function hasBranch(path: string, branch: string): Promise<boolean> {
   const found = await Promise.all(['refs/heads/', 'refs/remotes/origin/'].map((ref) => gitTry(path, 'rev-parse', '--verify', '--quiet', `${ref}${branch}^{commit}`)));
@@ -339,7 +346,7 @@ export class Config {
       await onMachine();
       return null;
     }
-    const to = (await this.check(canvases)).resolved[at.canvas]?.repos[at.repo]?.shareTo ?? 'main';
+    const to = (await this.landing(canvases, at))?.shareTo ?? 'main';
     const done = await this.share(path, patch, to, field);
     if ('pr' in done) {
       await onMachine();
@@ -370,12 +377,12 @@ export class Config {
     const { branch: _, ...mine } = at.r.settings ?? {};
     if (!Object.keys(mine).length) throw new BadRequest('noSettings', `${at.r.path}: nothing set on this machine to take over`);
     const repoPath = resolve(expandHome(at.r.path));
-    const resolved = (await this.check(canvases)).resolved[at.canvas];
-    const to = resolved?.repos[at.repo]?.shareTo ?? 'main';
+    const landing = await this.landing(canvases, at);
+    const to = landing?.shareTo ?? 'main';
     if (to === 'pr' && parsed.data.direct) {
-      if (!resolved?.repos[at.repo]?.shareDirect) throw new BadRequest('noDirect', `${repoPath}: work goes to main only through pull requests`);
+      if (!landing?.shareDirect) throw new BadRequest('noDirect', `${repoPath}: work goes to main only through pull requests`);
       const { after, ...done } = await pushShared(repoPath, mine);
-      console.log(`Obeya: settings of ${repoPath} for everyone, ${'unchanged' in done ? 'which origin\'s ' + done.branch + ' had already' : `pushed onto origin's ${done.branch}`}`);
+      console.log(`Obeya: settings of ${repoPath} for everyone, ${sharedHow(done, true)}`);
       // origin's had them already: only what the main branch Obeya reads has goes (the local one may be ahead of origin's)
       this.takenOver(repoPath, undefined, 'unchanged' in done ? (await readShared(repoPath)).settings : after);
       this.o.onSettings?.();
@@ -384,6 +391,11 @@ export class Config {
     const done = await this.share(repoPath, mine, to, 'settings');
     if (!('pr' in done)) this.o.onSettings?.();
     return done;
+  }
+
+  /** The repository `at` of the configuration as it resolves: where its work lands, so where settings for everyone go. */
+  private async landing(canvases: CanvasConfig[], at: { canvas: number; repo: number }) {
+    return (await this.check(canvases)).resolved[at.canvas]?.repos[at.repo];
   }
 
   /**
@@ -396,17 +408,14 @@ export class Config {
     if (to === 'pr') {
       if (!this.o.forge) throw new BadRequest('settingsShare', 'no forge to open a pull request with');
       const done = await proposeShared(path, patch, this.o.forge);
-      if ('pr' in done) {
-        console.log(`Obeya: ${what} of ${path} for everyone, as a pull request: ${done.pr}`);
-        return done;
-      }
-      console.log(`Obeya: ${what} of ${path} for everyone, which origin's ${'branch' in done ? done.branch : ''} had already`);
+      console.log(`Obeya: ${what} of ${path} for everyone, ${sharedHow(done, true)}`);
+      if ('pr' in done) return done;
       // only what the main branch Obeya reads has: the local one may be ahead of origin's
       this.takenOver(path, undefined, (await readShared(path)).settings);
       return done;
     }
     const { before: _, after, ...done } = await commitShared(path, patch);
-    console.log(`Obeya: ${what} of ${path} for everyone, ${'unchanged' in done ? 'which ' + done.branch + ' had already' : `committed on ${'branch' in done ? done.branch : ''}`}`);
+    console.log(`Obeya: ${what} of ${path} for everyone, ${sharedHow(done, false)}`);
     // all of it is in the file now, also what it held already
     this.takenOver(path, undefined, after);
     return done;
@@ -514,6 +523,8 @@ export class Config {
         const { id, name, repos } = resolveCanvas(c, this.o.store, undefined, undefined, read);
         // the repositories in the order given, though the home one runs first
         const given = c.repos.map((r) => repos.find((x) => x.config === r)!);
+        // the commands each repository holds until the owner confirms them, read once
+        const trusts = given.map(({ config: r, read: got }) => trustOf(got.info.path, got.shared, r.settings, this.o.store));
         // what is wrong in a repository's settings for everyone is fixed there, not here: it keeps nothing from being saved
         c.repos.forEach((r, repo) => {
           const { adapter, read: got } = given[repo]!;
@@ -527,15 +538,15 @@ export class Config {
           const wrong = site && siteProblem(site, resolve(r.path));
           if (wrong) problems.push({ code: 'demoSite', canvas, repo, detail: wrong });
           for (const detail of got.shared.problems) problems.push({ code: 'repoSettings', canvas, repo, detail });
-          const trust = trustOf(got.info.path, got.shared, r.settings, this.o.store);
+          const trust = trusts[repo];
           if (trust)
             problems.push({ code: 'untrusted', canvas, repo, detail: `held until the owner confirms them: ${trust.held.flatMap((g) => commandLines(trust.now, g)).join('; ')}` });
         });
         return {
           id,
           name,
-          repos: given.map(({ config: r, ref, adapter, read: got, values }) => {
-            const trust = trustOf(got.info.path, got.shared, r.settings, this.o.store);
+          repos: given.map(({ config: r, ref, adapter, read: got, values }, repo) => {
+            const trust = trusts[repo];
             const leaving = got.info.folder ? [] : this.leaving(id, ref.id === repos[0]!.ref.id ? null : ref.id, r, adapter.workspaces);
             return {
             id: ref.id,
@@ -594,6 +605,11 @@ export class Config {
     return this.o.server.home;
   }
 
+  /** The running canvases take `canvases` over, each by the id it resolved to. */
+  private async applyNow(canvases: CanvasConfig[], resolved: (ResolvedCanvas | null)[]) {
+    await this.o.apply?.(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
+  }
+
   /**
    * "Try again": the running canvases take the saved configuration over again, as after a
    * save, so what did not start as it has them tries again.
@@ -601,7 +617,7 @@ export class Config {
   async retry(): Promise<{}> {
     if (!this.o.apply) throw new BadRequest('config', 'this Obeya does not apply its configuration while it runs');
     const { canvases, resolved } = await this.check(this.current());
-    await this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
+    await this.applyNow(canvases, resolved);
     return {};
   }
 
@@ -620,7 +636,7 @@ export class Config {
     if (this.o.source === 'file' && !this.restarting && this.o.apply) {
       console.log(`Obeya: configuration saved to ${this.o.file}; it applies at once`);
       // settles once the canvases took it over, git read without the server waiting
-      await this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
+      await this.applyNow(canvases, resolved);
       return { restarting: false, applied: true };
     }
     console.log(`Obeya: configuration saved to ${this.o.file}`);
