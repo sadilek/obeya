@@ -77,7 +77,13 @@ export async function lastRender(work: string): Promise<number> {
 
 /** A render that still runs holds `render.pid` with its process (the director's `holdRenderLock`). */
 async function rendering(work: string): Promise<boolean> {
-  const pid = Number(await readFile(join(work, 'render.pid'), 'utf8').catch(() => 0));
+  let pid: number;
+  try {
+    pid = Number(await readFile(join(work, 'render.pid'), 'utf8'));
+  } catch (e) {
+    // a pid file of another user's render
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
   return !!pid && alive(pid);
 }
 
