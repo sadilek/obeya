@@ -1,14 +1,21 @@
 // What of each card's conversation the owner has had in view, in this browser: its messages after
 // that are new to them (counted on the phone's button, marked in the conversation).
 import { useEffect, useRef, useState } from 'react';
-import { local, readJson, write, writeJson } from './stored';
+import { local, read, write, writeJson } from './stored';
 
 /** The last event of each card's conversation the owner had in view, by card. */
 const SEEN = 'obeya-seen';
 // until 2026-10-17 only the phone kept it, under its own name
 const BEFORE = 'obeya-phone-seen';
 
-const all = (): Record<string, number> => readJson<Record<string, number>>(local, SEEN) ?? readJson<Record<string, number>>(local, BEFORE) ?? {};
+function all(): Record<string, number> {
+  // the former key counts only while the current one is missing, not where it is broken
+  try {
+    return JSON.parse(read(local, SEEN) ?? read(local, BEFORE) ?? '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
 
 /** The last event of the card's conversation the owner had in view; -1 before they ever had it. */
 export const seenOf = (card: string): number => all()[card] ?? -1;

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { cameInView, follow, type Spans } from './seen';
+import { cameInView, follow, seenOf, type Spans } from './seen';
+import { memoryStorage } from './testing';
 
 test('what comes while the conversation is in view counts as seen, what came while the page was hidden not', () => {
   // opened with 7 as its last event: what came before stays as it was
@@ -14,4 +15,17 @@ test('what comes while the conversation is in view counts as seen, what came whi
   expect([10, 11, 12].map((id) => cameInView(came, id))).toEqual([false, false, true]);
   // the events loading after the conversation opened are not new arrivals
   expect(follow([], undefined, 12, true)).toEqual([]);
+});
+
+test("the phone's former key counts only while the current one is missing, not where it is broken", () => {
+  const store = memoryStorage();
+  Object.assign(globalThis, { localStorage: store });
+  try {
+    store.setItem('obeya-phone-seen', JSON.stringify({ card: 42 }));
+    expect(seenOf('card')).toBe(42);
+    store.setItem('obeya-seen', '{');
+    expect(seenOf('card')).toBe(-1);
+  } finally {
+    delete (globalThis as Record<string, unknown>).localStorage;
+  }
 });

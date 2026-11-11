@@ -201,7 +201,12 @@ const KEPT_FRESH_MS = 5 * 60_000;
 /** The places the reload before this page kept, taken once. */
 const keptPlaces: Map<string, KeptPlace> = (() => {
   const k = takeJson<{ at: number; places: [string, KeptPlace][] }>(session, KEPT_KEY);
-  return new Map(k && Date.now() - k.at < KEPT_FRESH_MS ? k.places : []);
+  // what a page wrote differently, or broken, keeps no place rather than the page from loading
+  try {
+    return new Map(k && Date.now() - k.at < KEPT_FRESH_MS ? k.places : []);
+  } catch {
+    return new Map();
+  }
 })();
 
 class Playback {
