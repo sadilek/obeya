@@ -7,15 +7,14 @@
 // leaves its doc stays stored but is not shown.
 
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { access } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import { cardNumbersIn, cardTag } from '../core/card-number';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
-import { type KnownChange, missedChanges, type OutdatedBy, PAGE_CHANGES, pagesVersion, THEME_CHANGED } from '../core/page-changes';
-import { pageTags, untagged } from '../core/page-tags';
+import { type OutdatedBy, PAGE_CHANGES, pagesVersion, THEME_CHANGED } from '../core/page-changes';
+import { untagged } from '../core/page-tags';
 import { allTicked, type OtherDoc, type PlanDoc, parsePlanDoc, withoutReference, type Workstream, workstreamAliases } from '../core/plan-doc';
 import { type ArchiveLabel, archiveLabel, fold, inTitle, searchText, searchWords } from '../core/search';
 import {
@@ -27,15 +26,12 @@ import {
   type CardPatch,
   type ClonePool,
   type Decision,
-  type Demo,
   type DemoKind,
   type PageTags,
-  type EarlierDemo,
   type ErrorCode,
   type Group,
   type Snooze,
   type Woke,
-  type Idea,
   type Item,
   type NewCard,
   type NewRepo,
@@ -44,7 +40,6 @@ import {
   type ProposedSetting,
   type SettingProposal,
   type SettingProposalState,
-  type PullRequest,
   type ProjectHistory,
   type Proposal,
   type Superseded,
@@ -54,7 +49,6 @@ import {
   type PlanDir,
   type Queue,
   type Reshare,
-  type Thread,
   STATES,
   archivedWithDone,
   finished,
@@ -68,15 +62,16 @@ import {
   type Harness,
   HARNESSES,
   modelFits,
-  cardAgentOf,
   storedModel,
 } from '../core/types';
 import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewEvent, NewRow, RowUpdate, Store } from './db';
 import { History } from './history';
 import { Sheet } from './sheet';
-import { fromJson, type DemoRef, type PrState, type SharedDemo, type Shipped, type StoredDemo, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredShare, type StoredThread, toJson } from './row';
+import { atWork, begun, finishing, stateOf, tickedAhead, toItems, workDone, worked, type Worked } from './items';
+import { docOfRef, keyOfRef, outsideRef, repoOfRef, repoOfRow, workstreamRef } from './plan-ref';
+import { convertSingleDemoShares, demoFile, pageTagsOf, RESHARE_DISMISSED, RESHARE_DISMISSED_THEMES, RESHARE_SETTING, reshareable, type StoredReshare, type ThemeNow, type ThemePair } from './shared-pages';
+import { fromJson, type Shipped, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredShare, type StoredThread, toJson } from './row';
 import type { Images } from './images';
-import { sessionHarness } from './runtime';
 import { branchName, CARD_BRANCH } from './branches';
 import { clip, messageOf, oneLine } from '../core/text';
 
@@ -93,126 +88,6 @@ export const depsSig = (doc: PlanDoc) =>
     .digest('hex')
     .slice(0, 16);
 
-/** Whether two references name the same demo of a card. */
-export const sameDemo = (a: DemoRef, b: DemoRef) => (a.handover !== undefined && b.handover !== undefined ? a.handover === b.handover : a.dir === b.dir);
-
-/**
- * The tags of a card's page, each dimension from the first that has it: the owner's by hand, the
- * newest demo whose worker gave it, the reading session's. They belong to the page, not to a version.
- */
-export function pageTagsOf(r: CardRow): PageTags {
-  const s = fromJson(r.share);
-  const demos = [...(fromJson(r.demos) ?? []), ...(r.demo ? [fromJson(r.demo)] : [])].reverse();
-  return pageTags([s?.tags, ...demos.map((d) => d.page?.tags), s?.auto]);
-}
-
-/** The demo versions on a stored page, in order of handover. */
-export const sharedDemos = (s: StoredShare): SharedDemo[] => s.demos ?? [];
-
-/** The file that shows a demo: its video, or its artifact's page. */
-const demoFile = (d: { dir: string; kind: DemoKind }) => join(d.dir, d.kind === 'html' ? 'index.html' : 'demo.mp4');
-
-/** The file that shows a demo is there. */
-export const demoThere = (d: { dir: string; kind: DemoKind }) => existsSync(demoFile(d));
-
-/** How often Obeya looks again whether the demos of outdated pages are still on disk (`Board.lookAtDemos`): the owner deletes them outside it. */
-export const DEMO_LOOK_MS = 60_000;
-
-/** Sharing many outdated pages again at once (share.ts), kept so a restart goes on with it. */
-export interface StoredReshare {
-  /** The cards still to go, in order; the first is the one going out. */
-  queue: string[];
-  total: number;
-  done: number;
-  failed: string[];
-  stopped?: true;
-  /** It tags pages without tags and shares them again, rather than sharing outdated ones again. */
-  tags?: true;
-}
-
-const RESHARE_SETTING = 'reshare';
-/** The newest page change when the owner put the notice of outdated pages away: it shows again for pages a newer one leaves outdated. */
-const RESHARE_DISMISSED = 'reshare_dismissed';
-/**
- * The pages a theme left outdated when the owner put the notice away, by card: the theme each was
- * published with and the one its repository had then (hashes, null for none). Such a page shows
- * again once either differs: its repository's theme changed anew, or it was shared again since.
- */
-const RESHARE_DISMISSED_THEMES = 'reshare_dismissed_themes';
-
-/** A page's theme and its repository's, as `RESHARE_DISMISSED_THEMES` keeps them. */
-type ThemePair = [published: string | null, now: string | null];
-
-/** The current theme's hash of a card's repository (theme.ts): null where it has none, undefined while that is not known (the repository does not run). */
-export type ThemeNow = (r: CardRow) => string | null | undefined;
-
-/** Whether the theme of a stored page's repository (`now`, see `ThemeNow`) differs from the one it was published with; not while it is not at rest. */
-const themeChanged = (s: StoredShare, now: string | null | undefined) => !!s.url && !s.state && now !== undefined && (s.theme ?? null) !== now;
-
-/** The changes since a stored page was published that show on its kinds of page (a video, an artifact, or both on one page); none while it is not at rest. */
-export function missedBy(s: StoredShare): KnownChange[] {
-  if (!s.url || s.state) return [];
-  const kinds = new Set(sharedDemos(s).map((d) => d.shown.kind));
-  if (!kinds.size) kinds.add('video');
-  const missed = new Set([...kinds].flatMap((k) => missedChanges(s.version, k, PAGE_CHANGES)));
-  return PAGE_CHANGES.filter((c) => missed.has(c));
-}
-
-/** A demo as the UI gets it: without its directories, and saying whether a video has a poster. */
-const shownDemo = ({ dir, kept: _, ...d }: StoredDemo): Demo => (d.kind !== 'html' && !existsSync(join(dir, 'poster.jpg')) ? { ...d, noPoster: true } : d);
-
-/**
- * The card's earlier demos the owner can still go back to: their files are on disk (demos are
- * deleted to free space) and no later demo was rendered into the same directory over them, as it
- * was for one from before Obeya kept copies (`StoredDemo`).
- */
-function atHand(r: CardRow): { d: StoredDemo; n: number }[] {
-  const all = fromJson(r.demos) ?? [];
-  const latest = fromJson(r.demo);
-  const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
-  return all.flatMap((d, n) => (!later(n).includes(d.dir) && demoThere(d) ? [{ d, n }] : []));
-}
-
-/** The earlier demos at hand (`atHand`) as the UI gets them, each with its place among them. */
-const earlierDemos = (r: CardRow): EarlierDemo[] => atHand(r).map(({ d, n }) => ({ ...shownDemo(d), n }));
-
-/**
- * The changes a page at rest lacks, where its demo is still at hand to share it again: the one on
- * the card, or the one it showed, kept with the share, and its files still on disk (demos are
- * deleted to free space; a page whose files are gone stays as it is, with nothing to offer).
- */
-export function reshareable(r: CardRow, theme?: string | null, there = demoThere): OutdatedBy[] {
-  const s = fromJson(r.share);
-  const missed: OutdatedBy[] = s ? [...missedBy(s).map((c) => c.id), ...(themeChanged(s, theme) ? [THEME_CHANGED as OutdatedBy] : [])] : [];
-  const demos = s ? sharedDemos(s) : [];
-  if (!missed.length || !demos.length || !demos.every((d) => there({ dir: d.dir, kind: d.shown.kind }))) return [];
-  return missed;
-}
-
-/**
- * The card's demos a page may show, the oldest first: its earlier ones that are still at hand (as
- * `atHand` says), then the one on the card.
- */
-export function cardDemos(r: CardRow): StoredDemo[] {
-  const latest = fromJson(r.demo);
-  // drafts a question brought are not the work's result: no page shows them
-  return [...atHand(r).map(({ d }) => d), ...(latest ? [latest] : [])].filter((d) => !d.asked);
-}
-
-/**
- * Pages from before several versions (until 2026-10-16) showed one demo (`dir`, `shown`): each
- * becomes a list of one, the card's demo in that directory (the latest one rendered there) named by
- * its handover. Runs before anything reads the canvas's shares.
- */
-function convertSingleDemoShares(store: Store, canvasId: string) {
-  for (const r of store.shared(canvasId)) {
-    const { dir, shown, ...rest } = JSON.parse(r.share!) as StoredShare & { dir?: string; shown?: SharedDemo['shown'] };
-    if (rest.demos || !dir || !shown) continue;
-    const demo = cardDemos(r).findLast((d) => d.dir === dir);
-    const one: SharedDemo = { ...(demo?.handover !== undefined ? { handover: demo.handover } : {}), ...(demo?.at ? { at: demo.at } : {}), dir, shown };
-    store.update(r.id, { share: toJson({ ...rest, demos: [one] }) });
-  }
-}
 
 /** The most characters of a card's title: the owner's are refused beyond it, agents' cut. */
 export const TITLE_MAX = 200;
@@ -221,8 +96,6 @@ export const BODY_MAX = 20_000;
 /** The most characters of a note beside a card or rule: a proposal's reason, a setting's basis, a rule's quote. */
 export const NOTE_MAX = 2000;
 
-/** States a worker or the owner's decision is still part of. */
-export const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
 
 /** Exchanges with the Coordinator its sheet shows. */
 const SHEET_TALK = 30;
@@ -3268,46 +3141,6 @@ export class Board {
   }
 }
 
-/**
- * The repository a plan reference belongs to: `<repo>:<path>` for the canvas's other repositories,
- * a bare path for its home repository. The path is in the repository, or an absolute one of a plan
- * folder outside it (`/…`, or `C:/…` on Windows, which is no repository `C`).
- */
-export function repoOfRef(ref: string, home: string): string {
-  const m = REPO_PREFIX.exec(ref);
-  return m ? m[1]! : home;
-}
-
-/** The repository a card belongs to, by its id: the one it names, else its plan doc's, else the home repository. */
-export const repoOfRow = (r: CardRow, home: string): string => r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, home) : home);
-
-/** A plan reference's path, without the repository before it. */
-export function pathOfRef(ref: string): string {
-  return ref.replace(REPO_PREFIX, '');
-}
-
-const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
-/** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
-const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
-
-/** Whether the work of a project's doc is done: each workstream ticked, or its card (among `rows`) finished. */
-function workDone(doc: PlanDoc, rows: Pick<CardRow, 'plan_ref' | 'state'>[]): boolean {
-  const states = new Map(rows.flatMap((r) => (r.plan_ref && keyOfRef(r.plan_ref) !== null && docOfRef(r.plan_ref) === doc.file && r.state ? [[r.plan_ref, r.state]] : [])));
-  return doc.workstreams.every((w) => {
-    const state = states.get(workstreamRef(doc.file, w.key));
-    return w.done || (!!state && finished(state));
-  });
-}
-
-/**
- * A workstream card with work not landed yet that a box in a plan folder outside the repository says
- * nothing of: the worker ticks it there at once, in no commit, so it may be ticked while the card is
- * in its pull request (before it is even open) or stopped with its branch.
- */
-function tickedAhead(r: Pick<CardRow, 'plan_ref' | 'state' | 'branch'>): boolean {
-  if (!r.plan_ref || !OUTSIDE_PATH.test(pathOfRef(r.plan_ref))) return false;
-  return r.state === 'inPr' || (r.state === 'planned' && !!r.branch);
-}
 
 /** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
 type Prototypes = {
@@ -3319,120 +3152,6 @@ type Prototypes = {
 };
 type PrototypeRef = Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>;
 
-/** Visible items: projects first, their workstreams in doc order, then manual cards. */
-export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?: Worked, themeNow?: ThemeNow): Item[] {
-  const work = (r: CardRow) => workOf(r, worked, themeNow);
-  const docByFile = new Map(docs.map((d) => [d.file, d]));
-  // a project's group covers its workstreams
-  const groupOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.group_id ? [[r.id, r.group_id]] : [])));
-  // what each workstream builds on, by its project's reading of the doc
-  const depsOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.deps ? [[r.id, fromJson(r.deps)]] : [])));
-  const idOfRef = new Map(rows.flatMap((r) => (r.plan_ref ? [[r.plan_ref, r.id]] : [])));
-  const projects: Item[] = [];
-  const workstreams: { item: Item; order: number }[] = [];
-  const manual: Item[] = [];
-  for (const r of rows) {
-    if (!r.plan_ref) {
-      manual.push({
-        id: r.id,
-        short: r.short,
-        number: r.number,
-        kind: r.kind,
-        state: stateOf(r),
-        ...(r.need ? { need: r.need } : {}),
-        title: r.title ?? '',
-        body: r.body ?? '',
-        x: r.x,
-        y: r.y,
-        source: 'manual',
-        repo: r.repo ?? home,
-        changedAt: r.changed_at,
-        ...work(r),
-        ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? decided(r) : {}),
-        ...(r.thread ? { thread: threadOf(r) } : {}),
-        ...(r.becomes_project ? { becomesProject: true } : {}),
-        ...(r.prototype_of ? { prototypeOf: r.prototype_of, ...prototypeOf(r) } : {}),
-        ...(r.built_on ? { builtOn: r.built_on, ...(r.session_id ? {} : { unstarted: true as const }) } : {}),
-        ...(r.images ? { images: fromJson(r.images) } : {}),
-        ...(r.retro ? { retro: r.retro } : {}),
-        ...(r.proposal ? (r.state === 'proposal' ? { proposal: fromJson(r.proposal)! } : { proposed: true as const, ...supersededOf(r) }) : {}),
-        ...(r.group_id ? { group: r.group_id } : {}),
-        ...newRepoOf(r),
-      });
-      continue;
-    }
-    const key = keyOfRef(r.plan_ref);
-    const doc = docByFile.get(docOfRef(r.plan_ref));
-    if (!doc) continue;
-    if (key === null) {
-      projects.push({
-        id: r.id,
-        short: r.short,
-        number: r.number,
-        kind: 'project',
-        state: 'planned',
-        title: doc.title,
-        body: '',
-        x: r.x,
-        y: r.y,
-        source: 'plan',
-        repo: repoOfRef(doc.file, home),
-        changedAt: r.changed_at,
-        plan: { file: doc.file, goal: doc.goal },
-        ...(depsOf.get(r.id)?.reading ? { arranging: true as const } : {}),
-        ...(r.collapsed ? { collapsed: true } : {}),
-        ...(r.from_id ? { origin: r.from_id } : {}),
-        ...(r.group_id ? { group: r.group_id } : {}),
-        ...(r.spent ? { spent: r.spent } : {}),
-      });
-      continue;
-    }
-    const order = doc.workstreams.findIndex((w) => w.key === key);
-    const w = doc.workstreams[order];
-    if (!w || !r.parent_id) continue;
-    const derived = w.done ? 'live' : w.inReview ? 'inPr' : 'planned';
-    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge, and so
-    // does a stopped one whose box a plan folder outside the repository ticked
-    const state = r.state && (ACTIVE.includes(r.state) || tickedAhead(r)) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
-    // what landed of a workstream planned again, also while a new run does the rest; once that lands, the card is live
-    const shipped = state === 'planned' || ACTIVE.includes(state) ? fromJson(r.shipped) : null;
-    const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(workstreamRef(doc.file, k)) ?? []);
-    workstreams.push({
-      order,
-      item: {
-        id: r.id,
-        short: r.short,
-        number: r.number,
-        kind: r.kind,
-        state,
-        ...(r.need ? { need: r.need } : {}),
-        title: w.title,
-        body: w.body,
-        x: r.x,
-        y: r.y,
-        parent: r.parent_id,
-        source: 'plan',
-        repo: repoOfRef(r.plan_ref, home),
-        changedAt: r.changed_at,
-        ...(w.label ? { label: w.label } : {}),
-        ...work(r),
-        ...(shipped ? { landedPart: { ...(shipped.commit ? { commit: shipped.commit } : {}), ...(shipped.pr ? { pr: shipped.pr } : {}) } } : {}),
-        ...(r.built_on ? { builtOn: r.built_on, ...(r.session_id ? {} : { unstarted: true as const }) } : {}),
-        ...(buildsOn.length ? { buildsOn } : {}),
-        ...(groupOf.get(r.parent_id) ? { group: groupOf.get(r.parent_id)! } : {}),
-      },
-    });
-  }
-  const shown = new Set(projects.map((p) => p.id));
-  const kids = workstreams.filter((w) => shown.has(w.item.parent!));
-  const ordered = projects.flatMap((p) =>
-    kids
-      .filter((k) => k.item.parent === p.id)
-      .sort((a, b) => a.order - b.order)
-      .map((k) => k.item),
-  );
-  return [...projects, ...ordered, ...manual];
-}
 
 /** How long a workstream stays away from a doc in a plan folder outside the repository before its card leaves the project: such a doc is written in place, an item moved in two edits. */
 export const LEAVE_AFTER_MS = 5 * 60_000;
@@ -3450,8 +3169,6 @@ function unreadAs<T>(fn: () => T): T | undefined {
   }
 }
 
-/** Whether a plan reference is to a doc in a plan folder outside the repository. */
-const outsideRef = (ref: string) => OUTSIDE_PATH.test(pathOfRef(ref));
 
 /**
  * The doc's workstream that a card keyed `key` had under another key: the doc dropped or added a
@@ -3465,29 +3182,6 @@ function sameWorkstream(key: string, doc: PlanDoc, was?: Pick<Workstream, 'label
   return same.length === 1 ? same[0] : undefined;
 }
 
-/** A workstream's plan reference: its doc's file, then its key (`<doc>#<key>`). A project's is its doc's file alone. */
-const workstreamRef = (file: string, key: string) => `${file}#${key}`;
-
-/** The doc's file of a plan reference, a project's or a workstream's. */
-const docOfRef = (ref: string) => (ref.includes('#') ? ref.slice(0, ref.indexOf('#')) : ref);
-
-/** The workstream key of a plan reference; null for a project's or a card's without one. */
-const keyOfRef = (ref: string | null): string | null => (ref?.includes('#') ? ref.slice(ref.indexOf('#') + 1) : null);
-
-/** Whether an agent worked on the card: it was started, or its work landed or ended. */
-const worked = (r: CardRow) => !!(r.session_id || r.branch || r.shipped || r.landed || (r.state && r.state !== 'planned'));
-
-/** A card's state as its row holds it; a plan card's, which its plan doc gives, reads as planned. */
-const stateOf = (r: Pick<CardRow, 'state'>): CardState => r.state ?? 'planned';
-
-/** Whether work on the card has begun: it is no idea and planned no more, or it has a workspace. */
-const begun = (r: CardRow) => (r.state !== 'idea' && stateOf(r) !== 'planned') || !!r.workspace;
-
-/** Whether the card's agent finishes what remains after its work landed. */
-const finishing = (r: CardRow) => !!(r.landed && r.workspace);
-
-/** Whether an agent is at work on the card: in progress, or finishing after the landing. */
-const atWork = (r: CardRow) => !!(r.state && ACTIVE.includes(r.state)) || finishing(r);
 
 /** Whether a branch named after a title (`branchName`, its `slug`) was named after the workstream's, with or without its label before it. */
 const named = (w: Pick<Workstream, 'label' | 'title'>, slug: string) =>
@@ -3496,123 +3190,6 @@ const named = (w: Pick<Workstream, 'label' | 'title'>, slug: string) =>
 /** Where a card goes below the card with bounds `b`: the `n`th of those there, each beside the one before. */
 const below = (b: Bounds, n = 0) => ({ x: b.x + 35 + n * (CARD_SIZE.task[0] + GAP), y: b.y + b.h + 60 });
 
-/** A card's new repository while it is still to be made, before work on the card begins. */
-function newRepoOf(r: CardRow): Pick<Item, 'newRepo'> {
-  const n = fromJson(r.new_repo);
-  if (!n || n.made || n.none || begun(r)) return {};
-  const { made: _, ...newRepo } = n;
-  return { newRepo };
-}
-
-/** What `toItems` made of cards' rows: the fields a worker adds, by card, with the row they came from. */
-type Worked = Map<string, { row: CardRow; work: Partial<Item> }>;
-
-/** The fields a worker adds to the card, as `worked` holds them while its row is the same. */
-function workOf(r: CardRow, worked?: Worked, themeNow?: ThemeNow): Partial<Item> {
-  const had = worked?.get(r.id);
-  if (had && sameRow(had.row, r)) return had.work;
-  const made = work(r, themeNow);
-  worked?.set(r.id, { row: r, work: made });
-  return made;
-}
-
-const sameRow = (a: CardRow, b: CardRow) => {
-  for (const k in b) if (a[k as keyof CardRow] !== b[k as keyof CardRow]) return false;
-  return true;
-};
-
-/** A pull request of the card as the card shows it. */
-const pullRequest = (pr: PrState): PullRequest => ({
-  url: pr.url!,
-  number: pr.number!,
-  ...(pr.repo ? { repo: pr.repo } : {}),
-  ...(pr.merged ? { merged: true } : {}),
-  ...(pr.closed ? { closed: true } : {}),
-  checks: pr.checks ?? [],
-  conflict: !!pr.conflictHead,
-  ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}),
-  ...(pr.waits?.length && !pr.merged && !pr.closed ? { waits: pr.waits } : {}),
-  ...(pr.review?.length ? { review: pr.review } : {}),
-});
-
-/** The fields a worker adds to a card. */
-function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
-  const detail = fromJson(r.detail) ?? {};
-  const demo = r.demo ? shownDemo(fromJson(r.demo)) : undefined;
-  const earlier = demo ? earlierDemos(r) : [];
-  const handed = r.need === 'review' || r.need === 'demo';
-  const answering = detail.answering && handed;
-  const scope = fromJson(r.scope)?.files;
-  const pr = fromJson(r.pr) ?? undefined;
-  const contribution = fromJson(r.contribution);
-  const share = shareOf(r, themeNow);
-  const notOnApproval = fromJson(r.share)?.notOnApproval;
-  const tags = demo && !r.prototype_of ? pageTagsOf(r) : {};
-  const landed = fromJson(r.landed);
-  return {
-    ...(scope?.length ? { scope } : {}),
-    ...(r.queue && stateOf(r) === 'planned' ? { queue: fromJson(r.queue) } : {}),
-    ...(pr?.url ? { pr: pullRequest(pr) } : {}),
-    ...(pr?.more?.some((m) => m.url) ? { morePrs: pr.more.filter((m) => m.url).map(pullRequest) } : {}),
-    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
-    ...(r.status_line ? { statusLine: r.status_line } : {}),
-    ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
-    // a demo's question is as open as a worker's: the owner answers it on the card or by voice
-    ...(demo?.question && !demo.answer && r.need === 'demo' ? { question: { text: demo.question, options: demo.options ?? [], ...(demo.multiple ? { multiple: true } : {}), ...(demo.pick ? { pick: demo.pick } : {}) } } : {}),
-    ...(detail.summary && handed ? { summary: detail.summary } : {}),
-    ...(answering ? { answering: true } : {}),
-    ...(detail.answered && !answering && handed ? { answered: true } : {}),
-    ...(r.held ? { held: fromJson(r.held).map((h) => h.id) } : {}),
-    // approved work is held for its next handover while the card is at work or asks the owner; on a waiting card it is landing
-    ...(r.approved_at && r.state === 'waiting' && r.need !== 'question' ? { landing: true } : {}),
-    ...(demo ? { demo } : {}),
-    ...(earlier.length ? { demos: earlier } : {}),
-    ...(r.files ? { files: fromJson(r.files) } : {}),
-    ...(r.change_size ? { changeSize: fromJson(r.change_size) } : {}),
-    ...(share ? { share } : {}),
-    ...(notOnApproval ? { notOnApproval } : {}),
-    ...(Object.keys(tags).length ? { tags } : {}),
-    ...(r.from_id ? { from: r.from_id } : {}),
-    ...(r.branch ? { branch: r.branch } : {}),
-    // a workspace on another machine as ssh and scp write it
-    ...(r.workspace ? { workspace: r.workspace.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
-    ...(r.kept_in ? { keptIn: r.kept_in.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
-    ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp && !landed.resolve ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
-    ...(detail.noChange && handed ? { noChange: true } : {}),
-    ...(detail.lands && handed ? { lands: detail.lands } : {}),
-    ...(r.paused ? { paused: true } : {}),
-    ...(r.pausing && !r.paused ? { pausing: true } : {}),
-    ...(r.snoozed ? { snoozed: fromJson(r.snoozed) } : {}),
-    ...(r.app && r.workspace && !r.parked ? { app: r.app } : {}),
-    ...(r.session_id && r.model ? { runsOn: { harness: sessionHarness(r.session_id), model: r.model, ...(r.effort ? { effort: r.effort as AgentEffort } : {}) } } : {}),
-    ...(r.agent ? { agent: cardAgentOf(r.agent) } : {}),
-    ...(r.spent ? { spent: r.spent } : {}),
-  };
-}
-
-/** The card's shared page as the UI sees it: none when it is not shared and not about to be. */
-function shareOf(r: CardRow, themeNow?: ThemeNow): Item['share'] {
-  const s = fromJson(r.share);
-  if (!s || (!s.state && !s.url)) return undefined;
-  // asked of a page at rest alone, so the cards never shared ask nothing
-  const theme = s.url && !s.state ? themeNow?.(r) : undefined;
-  // the newest demo of a handover: drafts shown with a question since are not what the page lacks
-  const latest = r.demo ? [...(fromJson(r.demos) ?? []), fromJson(r.demo)].findLast((d) => !d.asked) : undefined;
-  const shared = s.url ? sharedDemos(s) : [];
-  // the card's demos on the page, by their handovers
-  const on = cardDemos(r).flatMap((d) => (d.handover !== undefined && shared.some((x) => sameDemo(x, d)) ? [d.handover] : []));
-  const stale = !!s.url && !!latest && !shared.some((x) => sameDemo(x, latest));
-  const outdated = reshareable(r, theme);
-  return {
-    state: s.refresh ? 'shared' : (s.state ?? 'shared'),
-    ...(s.url ? { url: s.url } : {}),
-    ...(on.length ? { on } : {}),
-    ...(stale ? { stale: true } : {}),
-    // shown with each version on the page; the latest, not on it, brings the changes with "Replace on the page" or "Add to the page"
-    ...(outdated.length ? { outdated } : {}),
-    ...(s.personal && s.token ? { unlisted: true as const } : {}),
-  };
-}
 
 /**
  * A proposal's text with its questions, once the owner took it: those they picked options for as
@@ -3627,12 +3204,6 @@ export function withQuestions(text: string, questions: Question[], picks: string
     .join('\n\n');
 }
 
-/** A prototype's end and proposal; an ended one keeps the summary it was handed over with. */
-function prototypeOf(r: CardRow): Partial<Item> {
-  const p = fromJson(r.prototype) ?? {};
-  const summary = p.end && r.detail ? fromJson(r.detail).summary : undefined;
-  return { ...(p.variant ? { variant: p.variant } : {}), ...(p.end ? { prototypeEnd: p.end } : {}), ...(p.into ? { builtInto: p.into } : {}), ...(p.proposal && !p.end ? { buildProposal: p.proposal } : {}), ...(summary ? { summary } : {}) };
-}
 
 /** The owner's words said one after the other while a proposal was reworked, as one rework's. */
 const merged = (said: Revising[]): Revising => ({
@@ -3642,11 +3213,6 @@ const merged = (said: Revising[]): Revising => ({
   ...(said.some((r) => r.images?.length) ? { images: said.flatMap((r) => r.images ?? []) } : {}),
 });
 
-/** The mark of an accepted proposal its agent withdrew or replaced, while the card is not finished. */
-const supersededOf = (r: CardRow): { superseded?: Superseded } => {
-  const superseded = fromJson(r.proposal)?.superseded;
-  return superseded && !r.archived_at && !finished(stateOf(r)) ? { superseded } : {};
-};
 
 /** A title as an agent may name it: without case, quotes, markdown marks or extra spaces. */
 export const titleKey = (title: string) =>
@@ -3673,21 +3239,6 @@ const proposalOf = (p: { reason?: string; idea?: boolean; questions?: Question[]
 
 const toDecision = (d: DecisionRow): Decision => ({ id: d.id, cardId: d.card_id, question: d.question, answer: d.answer, by: d.by, at: d.at });
 
-/** A card that was an idea, as decided: the brief with its mocks. */
-function decided(r: CardRow): Pick<Item, 'brief' | 'mocks'> {
-  const i = fromJson(r.idea!);
-  return { brief: i.brief, ...(i.mocks?.length ? { mocks: i.mocks } : {}) };
-}
-
-function threadOf(r: CardRow): Thread {
-  const t = fromJson(r.thread!);
-  return { talk: t.talk, ...(t.thinking ? { thinking: true } : {}), answers: t.answers, files: t.files };
-}
-
-function ideaOf(r: CardRow): Idea {
-  const i = r.idea ? fromJson(r.idea) : { status: 'open' as const, brief: '' };
-  return { status: i.status, brief: i.brief, thinking: !!i.thinking, ...(i.buildAfterReply ? { buildAfterReply: true as const } : {}), yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}), variants: i.variants ?? [], mocks: i.mocks ?? [], ...(i.split ? { split: i.split } : {}) };
-}
 
 function checkPreference(v: unknown): string {
   if (typeof v !== 'string' || !v.trim() || v.length > 500) throw new BadRequest('emptyText', 'a preference is a non-empty string of at most 500 characters');

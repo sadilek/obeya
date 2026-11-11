@@ -22,10 +22,6 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     why: "server path: an artifact's own files read by their real path while its copy is put together (a share, an export); small files, a candidate for fs/promises",
     calls: { readFileSync: 1, realpathSync: 2 },
   },
-  'board.ts': {
-    why: "server path, a stat per card's demo while the board's items are built (whether its files are still there); cheap each, and kept with the card's row while it stays the same",
-    calls: { existsSync: 2 },
-  },
   'canvas.ts': {
     why: "server path, cheap: an answer's directory made, two paths compared by their real path after a landing",
     calls: { mkdirSync: 1, realpathSync: 2 },
@@ -78,6 +74,10 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'idea-actions.ts': { why: "server path, cheap: a free name probed for the plan doc of a card planned as a project", calls: { existsSync: 1 } },
   'images.ts': { why: "server path, cheap: a pasted image written, looked up and copied to another canvas", calls: { copyFileSync: 1, existsSync: 1, mkdirSync: 2, writeFileSync: 1 } },
+  'items.ts': {
+    why: "server path, a stat per card's demo while the board's items are built (whether its video has a poster); cheap each, and kept with the card's row while it stays the same",
+    calls: { existsSync: 1 },
+  },
   'instance.ts': { why: "startup and shutdown: the running instance's file", calls: { readFileSync: 1, renameSync: 1, rmSync: 1, writeFileSync: 1 } },
   'machine.ts': {
     why: "server path, cheap: the setup's checks of known paths (Claude's binary, a clone's target), the first canvas's welcome marker",
@@ -122,6 +122,10 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'share.ts': {
     why: "server path: a demo exported as a ZIP or HTML file reads its video whole, a page reshared reads its HTML, demo files are stat'ed; a candidate for fs/promises",
     calls: { readFileSync: 7, statSync: 3 },
+  },
+  'shared-pages.ts': {
+    why: "server path, a stat per card's demo while the board's items are built (whether its files are still there to share again); cheap each, and kept with the card's row while it stays the same",
+    calls: { existsSync: 1 },
   },
   'shared-settings.ts': { why: "server path, cheap: a temporary index for committing a repository's settings", calls: { mkdtempSync: 1, rmSync: 1 } },
   'site-hosts.ts': {

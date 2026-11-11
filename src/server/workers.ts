@@ -14,7 +14,8 @@ import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, sh
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type ChangeSize, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, laterTime, type Spot, type Superseded, type SpotInput, started, type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
-import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, titleKey } from './board';
+import { BadRequest, type Board, replyNote, type Retracted, titleKey } from './board';
+import { pathOfRef } from './plan-ref';
 import { fromJson, type AskedPermission, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type StoredContribution, type Json, type StoredDemo, type Unheard, toJson } from './row';
 import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';

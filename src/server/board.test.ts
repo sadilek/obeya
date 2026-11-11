@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { boundsOf, onCanvas, PROJECT_COLLAPSED, sizeOf } from '../core/layout';
 import { archivedWithDone, type Item, stoppedArchivable } from '../core/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
-import { BadRequest, Board, pathOfRef, type PlanRead, repoOfRef } from './board';
+import { BadRequest, Board, type PlanRead } from './board';
+import { pathOfRef, repoOfRef } from './plan-ref';
 import { Store } from './db';
 import { heard, refusal, ws } from './testing';
 
