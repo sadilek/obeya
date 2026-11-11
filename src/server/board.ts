@@ -167,11 +167,15 @@ const shownDemo = ({ dir, kept: _, ...d }: StoredDemo): Demo => (d.kind !== 'htm
  * deleted to free space) and no later demo was rendered into the same directory over them, as it
  * was for one from before Obeya kept copies (`StoredDemo`).
  */
-function earlierDemos(r: CardRow): EarlierDemo[] {
+function atHand(r: CardRow): { d: StoredDemo; n: number }[] {
   const all = fromJson(r.demos) ?? [];
-  const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(r.demo ? [fromJson(r.demo).dir] : [])];
-  return all.flatMap((d, n) => (!later(n).includes(d.dir) && existsSync(join(d.dir, d.kind === 'html' ? 'index.html' : 'demo.mp4')) ? [{ ...shownDemo(d), n }] : []));
+  const latest = fromJson(r.demo);
+  const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
+  return all.flatMap((d, n) => (!later(n).includes(d.dir) && demoThere(d) ? [{ d, n }] : []));
 }
+
+/** The earlier demos at hand (`atHand`) as the UI gets them, each with its place among them. */
+const earlierDemos = (r: CardRow): EarlierDemo[] => atHand(r).map(({ d, n }) => ({ ...shownDemo(d), n }));
 
 /**
  * The changes a page at rest lacks, where its demo is still at hand to share it again: the one on
@@ -188,14 +192,12 @@ export function reshareable(r: CardRow, theme?: string | null, there = demoThere
 
 /**
  * The card's demos a page may show, the oldest first: its earlier ones that are still at hand (as
- * `earlierDemos` says), then the one on the card.
+ * `atHand` says), then the one on the card.
  */
 export function cardDemos(r: CardRow): StoredDemo[] {
-  const all = fromJson(r.demos) ?? [];
   const latest = fromJson(r.demo);
-  const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
   // drafts a question brought are not the work's result: no page shows them
-  return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])].filter((d) => !d.asked);
+  return [...atHand(r).map(({ d }) => d), ...(latest ? [latest] : [])].filter((d) => !d.asked);
 }
 
 /**

@@ -24,7 +24,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'board.ts': {
     why: "server path, a stat per card's demo while the board's items are built (whether its files are still there); cheap each, and kept with the card's row while it stays the same",
-    calls: { existsSync: 3 },
+    calls: { existsSync: 2 },
   },
   'canvas.ts': {
     why: "server path, cheap: an answer's directory made, two paths compared by their real path after a landing",
