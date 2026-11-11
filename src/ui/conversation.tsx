@@ -61,7 +61,7 @@ export function Conversation({
   /** The field under the conversation, which text marked in it can be quoted into. */
   draft?: string;
 }) {
-  const events = useEvents(item.id);
+  const events = useCardLog();
   const box = useRef<HTMLDivElement>(null);
   const idea = item.state === 'idea' && !!item.idea;
   const question = item.kind === 'question';
@@ -763,10 +763,31 @@ function Questions(p: { questions: Question[]; picks: string[][]; choose: (i: nu
   );
 }
 
+/** The open card's log, as the `CardLog` around it reads it. */
+const Log = createContext<CardEvent[] | null>(null);
+
+/**
+ * Loads and follows the log of the open card `id` once for everything inside that reads it
+ * (`useCardLog`): its conversation, the failure above it, the phone's button for its conversation.
+ */
+export function CardLog({ id, children }: { id: string | undefined; children: ReactNode }) {
+  return <Log.Provider value={useEvents(id)}>{children}</Log.Provider>;
+}
+
+/** The open card's log, live; null while the history loads. */
+export const useCardLog = () => useContext(Log);
+
 /** A card's log, live; null while the history loads. It loads anew once the connection is back: what was pushed meanwhile never came. */
-export function useEvents(cardId: string): CardEvent[] | null {
+function useEvents(cardId: string | undefined): CardEvent[] | null {
   const [events, setEvents] = useState<CardEvent[] | null>(null);
+  // another card's log is not shown for a moment while this one loads
+  const [of, setOf] = useState(cardId);
+  if (of !== cardId) {
+    setOf(cardId);
+    setEvents(null);
+  }
   useEffect(() => {
+    if (!cardId) return;
     let alive = true;
     // lines pushed while the history loads are merged in afterwards, without those taken out meanwhile
     let loading: { early: CardEvent[]; gone: Set<number> } | null = null;
@@ -826,7 +847,7 @@ const explainedFailure = (item: Item, events: CardEvent[] | null | undefined) =>
  * the card back to planned, and the reason is the last entry of its log.
  */
 export function LastFailure({ item }: { item: Item }) {
-  const last = explainedFailure(item, useEvents(item.id));
+  const last = explainedFailure(item, useCardLog());
   if (!last) return null;
   return (
     <div className="question failed">
