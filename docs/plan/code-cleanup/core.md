@@ -222,6 +222,9 @@ sites.
 - Win: 13 restated lines; a forgotten field becomes a type error.
 - Risk: low (types only).
 - Confidence: high (all uses of the three lists read).
+- Done by W16 with F5: `RepoValues` is mapped from `RepoSettings`, `SHARED_FIELDS` is checked
+  complete in `core/types.ts`, and the zod shape is checked to name the same fields as the interface
+  (`adapters/schema.ts`), whose unknown-field guesses read `SHARED_FIELDS`.
 
 ### J7. The player's storage keys stand twice in one file and its icon paths twice across files, though `lib` exists to hand such things in
 - Principle: DRY

@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W6, W13, W17 and W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W6, W13 and W16 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -137,7 +137,7 @@ the workstream named does it for all of them.
   what they describe: [workers](code-cleanup/workers.md) A17; [runtimes](code-cleanup/runtimes.md)
   B11, B12, B17, B21; [board-db](code-cleanup/board-db.md) C10, C11, C16, C17, C18;
   workspaces-git-hosts E13;
-  [http-config](code-cleanup/http-config.md) F13, F14, F15;
+  http-config F13, F14, F15;
   share-site-demo S16, S17, S22; [ui-card](code-cleanup/ui-card.md)
   G20; [ui-panels](code-cleanup/ui-panels.md) H13; [ui-small-modules](code-cleanup/ui-small-modules.md)
   I11; [core](code-cleanup/core.md) J8, J10; [plugin](code-cleanup/plugin.md) P15;
@@ -155,13 +155,13 @@ the workstream named does it for all of them.
   for migration tests), T9 (one harness for a long-used canvas), T10 (one `settle` and one `until`),
   T11 (`workspaces.test.ts` setup), T12 (one stand-in for a demo site's host), T15.
 - [x] **W5:** One git module. workspaces-git-hosts E2 with
-  [http-config](code-cleanup/http-config.md) F19 (a `git.ts` every module runs git through), E1 (the
+  http-config F19 (a `git.ts` every module runs git through), E1 (the
   synchronous twins go, then the generator protocol), E4 (synchronous git over SSH; rewrite the
   sentence in `docs/design/agents-and-workspaces.md` in the same change), E5 (`workspaces.ts` as
   three modules), E3 (one parser for a remote URL), E6 ("is A an ancestor of B"), E8, E14. Update
   `sync-calls.test.ts` with it.
 - [x] **W6:** Small shared server helpers, each written once. A value with listeners
-  ([runtimes](code-cleanup/runtimes.md) B5, [http-config](code-cleanup/http-config.md) F6); kept a
+  ([runtimes](code-cleanup/runtimes.md) B5, http-config F6); kept a
   while and asked once (B6, workspaces-git-hosts E9, E10); a
   promise against a timer (B9, [canvas-coordinator](code-cleanup/canvas-coordinator.md) D15); "does
   this pid run" (B18); core's text helpers at their call sites ([core](code-cleanup/core.md) J5,
@@ -200,7 +200,7 @@ the workstream named does it for all of them.
 - [ ] **W15:** The commands. [canvas-coordinator](code-cleanup/canvas-coordinator.md) D3
   (`Commander.command()` with a method per action instead of one chain of 240 lines), D4 (the notice
   for a late reply and the open-card check once), D7, D8, D14, D16.
-- [ ] **W16:** The HTTP server and the configuration. [http-config](code-cleanup/http-config.md) F1
+- [x] **W16:** The HTTP server and the configuration. http-config F1
   (`serve()` split into the pages' fan-out, the voice pipeline and route groups), F2 (`serve(served,
   port, deps)` instead of 17 positional parameters), F3 (the demo-settings dialog out of `Config`),
   F4 (`Restarter` tracks its reason once), F5 with [core](code-cleanup/core.md) J6 (a repository's
@@ -255,7 +255,7 @@ the workstream named does it for all of them.
 | [board-db.md](code-cleanup/board-db.md) | C: board and database | 19 | 3 | 4 | 12 |
 | [canvas-coordinator.md](code-cleanup/canvas-coordinator.md) | D: canvas, commands, coordinator | 16 | 1 | 3 | 12 |
 | workspaces-git-hosts.md (all done, deleted) | E: workspaces, git, forges, hosts | 17 | 3 | 5 | 9 |
-| [http-config.md](code-cleanup/http-config.md) | F: HTTP server, startup, configuration | 19 | 1 | 4 | 14 |
+| http-config.md (all done, deleted) | F: HTTP server, startup, configuration | 19 | 1 | 4 | 14 |
 | share-site-demo.md (done, deleted) | S: sharing, demo sites, demo pages | 22 | 0 | 5 | 17 |
 | [ui-card.md](code-cleanup/ui-card.md) | G: the app shell and the card | 22 | 2 | 7 | 13 |
 | [ui-panels.md](code-cleanup/ui-panels.md) | H: panels and the phone | 22 | 1 | 7 | 14 |
