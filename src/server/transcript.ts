@@ -8,6 +8,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { clip } from '../core/text';
+import { bareArgv, fileCall, mcpTool } from './codex';
+import type { ToolCall } from './folder';
 import { CODEX_SESSION } from './runtime';
 
 /** One tool call of the run, with what came of it and the agent's words around it. */
@@ -188,17 +190,17 @@ function claudeRun(lines: unknown[]): Run | null {
 
 /**
  * A Codex thread's run, from the items it completed (`event_msg` `item_completed`), each named as
- * Claude Code's tool calls are (as the card's log names them): a command as `Bash`, a file added as
- * `Write` and changed as `Edit`, Obeya's tools as `mcp__obeya__…`. A command failed when it ended
- * with another exit code than 0 or was refused.
+ * Claude Code's tool calls are, by the names the card's log gives the live session's (codex.ts): a
+ * command as `Bash`, a file added as `Write` and changed as `Edit`, Obeya's tools as `mcp__obeya__…`.
+ * A command failed when it ended with another exit code than 0 or was refused.
  */
 function codexRun(lines: unknown[]): Run | null {
   const entries: Entry[] = [];
   const results = new Map<string, { failed: boolean; output: string }>();
   let recognised = false;
-  const call = (id: string, tool: string, input: Record<string, unknown>, failed: boolean, output: string) => {
+  const call = ({ id, name, input }: ToolCall, failed: boolean, output: string) => {
     recognised = true;
-    entries.push({ kind: 'call', id, tool, input });
+    entries.push({ kind: 'call', id, tool: name, input });
     results.set(id, { failed, output });
   };
   for (const d of lines) {
@@ -213,24 +215,22 @@ function codexRun(lines: unknown[]): Run | null {
         break;
       }
       case 'CommandExecution': {
-        const argv = Array.isArray(item.command) ? item.command.map(str) : [str(item.command)];
-        // the shell's own wrapper (`/bin/zsh -lc '…'`) is no part of what the agent ran
-        const command = argv.length === 3 && /(?:^|\/)(?:ba|z|da)?sh$/.test(argv[0]!) && /^-l?c$/.test(argv[1]!) ? argv[2]! : argv.join(' ');
+        const command = bareArgv(Array.isArray(item.command) ? item.command.map(str) : [str(item.command)]);
         const code = typeof item.exit_code === 'number' ? item.exit_code : null;
         const output = str(item.aggregated_output) || [str(item.stdout), str(item.stderr)].filter(Boolean).join('\n');
-        call(id, 'Bash', { command }, unfinished || (code !== null && code !== 0), code !== null && code !== 0 ? `Exit code ${code}\n${output}` : output);
+        call({ id, name: 'Bash', input: { command } }, unfinished || (code !== null && code !== 0), code !== null && code !== 0 ? `Exit code ${code}\n${output}` : output);
         break;
       }
       case 'FileChange': {
         const changes = isObject(item.changes) ? Object.entries(item.changes) : [];
-        changes.forEach(([path, c], i) => call(`${id}:${i}`, isObject(c) && c.type === 'add' ? 'Write' : 'Edit', { file_path: path }, unfinished, str(item.stderr) || str(item.stdout)));
+        changes.forEach(([path, c], i) => call(fileCall(id, i, path, isObject(c) && c.type === 'add'), unfinished, str(item.stderr) || str(item.stdout)));
         break;
       }
       case 'DynamicToolCall':
-        call(id, `mcp__${str(item.namespace) || 'obeya'}__${str(item.tool)}`, isObject(item.arguments) ? item.arguments : {}, unfinished || item.success === false, resultText(Array.isArray(item.content_items) ? item.content_items : []));
+        call({ id, name: mcpTool(str(item.namespace), str(item.tool)), input: isObject(item.arguments) ? item.arguments : {} }, unfinished || item.success === false, resultText(Array.isArray(item.content_items) ? item.content_items : []));
         break;
       case 'McpToolCall':
-        call(id, `mcp__${str(item.server)}__${str(item.tool)}`, isObject(item.arguments) ? item.arguments : {}, unfinished, isObject(item.error) ? str(item.error.message) : '');
+        call({ id, name: mcpTool(str(item.server), str(item.tool)), input: isObject(item.arguments) ? item.arguments : {} }, unfinished, isObject(item.error) ? str(item.error.message) : '');
         break;
     }
   }

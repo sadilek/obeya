@@ -240,11 +240,25 @@ interface Item {
   prompt?: string | null;
 }
 
-/** A shell's own wrapper around a command (`/bin/zsh -lc 'git status'`), which the log line leaves out. */
+/** A shell's own wrapper around a command (`/bin/zsh -lc 'git status'`), which the log line leaves out: the shell, then its flag. */
+const WRAPPER = { shell: /(?:^|\/)(?:ba|z|da)?sh$/, flag: /^-l?c$/ };
+
+/** A command as the app server reports it, a line, without its shell's wrapper. */
 export function bareCommand(command: string): string {
-  const m = /^(?:\S*\/)?(?:ba|z|da)?sh\s+-l?c\s+(['"])([^]*)\1$/.exec(command.trim());
-  return m ? m[2]!.replace(/'\\''/g, "'") : command;
+  const m = /^(\S+)\s+(\S+)\s+(['"])([^]*)\3$/.exec(command.trim());
+  return m && WRAPPER.shell.test(m[1]!) && WRAPPER.flag.test(m[2]!) ? m[4]!.replace(/'\\''/g, "'") : command;
 }
+
+/** A command as a thread's rollout file records it, an argv, without its shell's wrapper. */
+export function bareArgv(argv: string[]): string {
+  return argv.length === 3 && WRAPPER.shell.test(argv[0]!) && WRAPPER.flag.test(argv[1]!) ? argv[2]! : argv.join(' ');
+}
+
+/** A file a step added (`Write`) or changed, moved or deleted (`Edit`), as Claude Code's tool call would be: one per file, `index` its place in the step. */
+export const fileCall = (step: string, index: number, path: string, added: boolean): ToolCall => ({ id: `${step}:${index}`, name: added ? 'Write' : 'Edit', input: { file_path: path } });
+
+/** A tool of an MCP server, or of a dynamic tool's namespace (Obeya's own where it names none), as Claude Code names it. */
+export const mcpTool = (server: string | null | undefined, tool: string | undefined) => `mcp__${server || 'obeya'}__${tool}`;
 
 /** The tool calls an item stands for, named as Claude Code's are, so the card's log and a folder's watch read them alike. */
 export function itemCalls(item: Item): ToolCall[] {
@@ -252,14 +266,11 @@ export function itemCalls(item: Item): ToolCall[] {
     case 'commandExecution':
       return [{ id: item.id, name: 'Bash', input: { command: bareCommand(item.command ?? '') } }];
     case 'fileChange':
-      return (item.changes ?? []).map((c, i) => {
-        const kind = typeof c.kind === 'string' ? c.kind : (c.kind?.type ?? '');
-        return { id: `${item.id}:${i}`, name: kind === 'add' ? 'Write' : 'Edit', input: { file_path: c.path } };
-      });
+      return (item.changes ?? []).map((c, i) => fileCall(item.id, i, c.path, (typeof c.kind === 'string' ? c.kind : c.kind?.type) === 'add'));
     case 'dynamicToolCall':
-      return [{ id: item.id, name: `mcp__${item.namespace ?? 'obeya'}__${item.tool}`, input: (item.arguments ?? {}) as Record<string, unknown> }];
+      return [{ id: item.id, name: mcpTool(item.namespace, item.tool), input: (item.arguments ?? {}) as Record<string, unknown> }];
     case 'mcpToolCall':
-      return [{ id: item.id, name: `mcp__${item.server}__${item.tool}`, input: (item.arguments ?? {}) as Record<string, unknown> }];
+      return [{ id: item.id, name: mcpTool(item.server, item.tool), input: (item.arguments ?? {}) as Record<string, unknown> }];
     case 'webSearch':
       return [{ id: item.id, name: 'WebSearch', input: { query: item.query ?? '' } }];
     case 'collabAgentToolCall':
@@ -326,8 +337,7 @@ function jsonSchema(shape: z.ZodRawShape): unknown {
 export function patchCalls(id: string, patch: string): ToolCall[] {
   const calls: ToolCall[] = [];
   for (const m of patch.matchAll(/^\*\*\* (Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$/gm)) {
-    const path = (m[2] ?? m[3])!.trim();
-    calls.push({ id: `${id}:${calls.length}`, name: m[1] === 'Add' || m[3] ? 'Write' : 'Edit', input: { file_path: path } });
+    calls.push(fileCall(id, calls.length, (m[2] ?? m[3])!.trim(), m[1] === 'Add' || !!m[3]));
   }
   return calls;
 }
