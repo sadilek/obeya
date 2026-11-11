@@ -1,24 +1,22 @@
 // HTTP and WebSocket for the UI: one API per canvas under /api/c/<canvas>/.
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir, userInfo } from 'node:os';
-import { join, resolve } from 'node:path';
-import { agentListens, type CardAction, type CardPatch, type Item, type NewCard, type PageTags, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES } from '../core/types';
+import { userInfo } from 'node:os';
+import { resolve } from 'node:path';
+import { type CardAction, type CardPatch, type NewCard, type PageTags, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES } from '../core/types';
 import index from '../ui/index.html';
 import { type Gate, guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
 import { type Dropped, findDropped, localImage } from './files';
 import type { CanvasRuntime } from './canvas';
 import { SiteSetup } from './site-setup';
-import { parsePlace } from '../core/layout';
-import { type Focus, type Heard, type Input, isField } from './commands';
-import { holdsNotes } from '../core/queue';
+import { isField } from './commands';
 import type { Config } from './config';
 import type { DemoSettingsDialog } from './demo-settings';
 import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './serve-files';
 import { type NarrationHost, parseClipRequest, parseHearRequest } from './narration';
 import type { Restarter } from './self-update';
-import { looping, silence, type Transcriber } from './voice';
+import type { Transcriber } from './voice';
+import { Arrived, focusOf, heard, listens, transcribe, unheard } from './said';
 import { CloudError } from './voice-cloud';
 import type { MachineSetup } from './machine';
 import type { VoiceSetup } from './voice-setup';
@@ -237,8 +235,6 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       x ? handle(() => fn(x, req)) : notFound();
   /** The system's folder dialog, for a browser on this machine that has one. */
   const picker = (req: Request, srv: Bun.Server<unknown>) => !!machine?.picker && access.isLocal(req, srv);
-  /** Nothing the owner said came through: Whisper understood nothing (`null`), or heard nothing. */
-  const unheard = (c: CanvasRuntime, text: string | null) => ({ confirm: text === null ? c.board.t.voice.notUnderstood : c.board.t.voice.nothingHeard, unheard: true });
 
   /**
    * A restart waits for what the owner said on the server's own count too, until its answer is
@@ -258,71 +254,8 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       }
     };
 
-  /**
-   * The recordings that arrived whole (`?sent=<id>`, the page's name for one): a page whose
-   * connection broke before the answer asks here whether Obeya has the command, and gives the field
-   * its words and screenshots back only when it has not. The newest few hundred; a restart forgets them.
-   */
-  const arrived = new Set<string>();
-  const ARRIVED_KEPT = 500;
-  const arrive = (id: string | null) => {
-    if (!id) return;
-    arrived.add(id);
-    for (const old of arrived) if (arrived.size > ARRIVED_KEPT) arrived.delete(old);
-  };
-
-  /** The card or project in view, and where on the canvas the owner was: as the page says, else what it last had in view. */
-  const focusOf = (req: Request, c?: CanvasRuntime): Focus => {
-    const q = new URL(req.url).searchParams;
-    const place = parsePlace(q.get('place')) ?? c?.inView;
-    return { ...(q.get('card') ? { card: q.get('card')! } : {}), ...(q.get('project') ? { project: q.get('project')! } : {}), ...(place ? { place } : {}) };
-  };
-  const transcribe = async (c: CanvasRuntime, audio: Blob) => {
-    const dir = mkdtempSync(join(tmpdir(), 'obeya-voice-'));
-    // by what the browser recorded: a cloud service tells the format by the file's name
-    const file = join(dir, `speech.${/mp4|m4a|aac/.test(audio.type) ? 'mp4' : /wav/.test(audio.type) ? 'wav' : /ogg/.test(audio.type) ? 'ogg' : 'webm'}`);
-    try {
-      await Bun.write(file, audio);
-      const first = await transcriber.transcribe(file, c.commander.vocabulary());
-      const text = first.text.trim();
-      if (silence(text)) return console.log(`voice on ${c.id}: ${text}`), '';
-      if (!looping(text) && !first.doubtful) return text;
-      if (first.unprompted) return console.log(`voice ${looping(text) ? 'looped' : 'was unsure'} on ${c.id}: ${text.slice(0, 80)}`), null;
-      // the card titles talk Whisper into loops or guesses on a recording without speech: once more without them
-      console.log(`whisper ${looping(text) ? 'looped' : 'was unsure'} on ${c.id}: ${text.slice(0, 80)}; once more without the card titles`);
-      const again = await transcriber.transcribe(file, '');
-      const second = again.text.trim();
-      if (!looping(second) && !again.doubtful && !silence(second)) return second;
-      console.log(`whisper on ${c.id} without the card titles${again.doubtful ? ', unsure' : ''}: ${second.slice(0, 80)}`);
-      return silence(second) ? '' : null;
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  };
-  // a planned card takes what is typed into its field for the agent that will take it on; spoken
-  // words go to the Coordinator, which starts it, snoozes it or takes it out of the queue
-  const listens = (card: Item, input: Input) => agentListens(card) || (input.field === 'note' && holdsNotes(card));
-  /**
-   * What the owner said or typed: with an agent on the open card, straight to that agent (which
-   * passes on what asks Obeya for something); else the Coordinator reads it. `null`: Whisper heard
-   * nothing it could write down, which nobody should guess from.
-   */
-  const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = [], input: Input = {}) => {
-    // the owner sees only the confirmation; the transcript is for whoever reads the server's log
-    console.log(`heard on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
-    // nothing heard or understood: screenshots shown with it stay in the browser for the next try
-    if (text === null || (!text && !(input.typed && images.length))) return unheard(c, text);
-    const card = focus.card ? c.board.item(focus.card) : undefined;
-    if (card && listens(card, input)) {
-      c.tell(card.id, text, images, !input.typed, typeof input.replyTo === 'number' ? input.replyTo : undefined, input.spot);
-      // the card's conversation shows the words
-      return { confirm: '', quiet: true } satisfies Heard;
-    }
-    const h = await c.commander.hear(text, focus, images, input);
-    // the written confirmation goes out now, so the undo window starts now
-    if (h.token) c.commander.arm(h.token);
-    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}) };
-  };
+  /** The recordings that arrived whole, for a page that lost the answer. */
+  const arrived = new Arrived();
 
   const options = {
     port,
@@ -852,13 +785,13 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
           const form = req.headers.get('content-type')?.startsWith('multipart/form-data') ? await req.formData() : null;
           const audio = form ? form.get('audio') : await req.blob();
           if (!(audio instanceof Blob)) throw new BadRequest('invalid', 'audio expected');
-          arrive(params.get('sent'));
+          arrived.add(params.get('sent'));
           // a browser sends a form's line breaks as CRLF: they go on as typed
           const field = form?.get('text');
           const typed = typeof field === 'string' ? field.replace(/\r\n/g, '\n') : undefined;
           let text: string | null;
           try {
-            text = await transcribe(c, audio);
+            text = await transcribe(transcriber, c, audio);
           } catch (e) {
             // the cloud service failed or refused: the owner reads why under the mic, and the words stay in the field
             if (!(e instanceof CloudError)) throw e;

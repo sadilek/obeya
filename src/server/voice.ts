@@ -52,6 +52,26 @@ export function looping(text: string): boolean {
 export const silence = (text: string) =>
   /^[[(*]?(vielen dank|danke fürs zuschauen|musik|untertitel(ung)? (im auftrag )?des zdf.*|thank you|thanks for watching|music)[.!]?[\])*]?$/i.test(text.trim());
 
+/**
+ * What the owner said in the recording at `file`: the words, `''` where they said nothing, `null`
+ * where the recognition understood nothing it could write down. The card titles (`vocabulary`) talk
+ * Whisper into loops or guesses on a recording without speech, so it hears such a one once more
+ * without them. `on`: where it was said, for the log.
+ */
+export async function hear(transcriber: Transcriber, file: string, vocabulary: string, on: string): Promise<string | null> {
+  const first = await transcriber.transcribe(file, vocabulary);
+  const text = first.text.trim();
+  if (silence(text)) return console.log(`voice on ${on}: ${text}`), '';
+  if (!looping(text) && !first.doubtful) return text;
+  if (first.unprompted) return console.log(`voice ${looping(text) ? 'looped' : 'was unsure'} on ${on}: ${text.slice(0, 80)}`), null;
+  console.log(`whisper ${looping(text) ? 'looped' : 'was unsure'} on ${on}: ${text.slice(0, 80)}; once more without the card titles`);
+  const again = await transcriber.transcribe(file, '');
+  const second = again.text.trim();
+  if (!looping(second) && !again.doubtful && !silence(second)) return second;
+  console.log(`whisper on ${on} without the card titles${again.doubtful ? ', unsure' : ''}: ${second.slice(0, 80)}`);
+  return silence(second) ? '' : null;
+}
+
 const VOICE = resource('voice');
 
 /**

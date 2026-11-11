@@ -106,12 +106,12 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'resources.ts': { why: 'startup: where the bundled resources are', calls: { existsSync: 2 } },
   'runtime.ts': { why: "server path at an agent's start: a repository's trust notes", calls: { existsSync: 1, readFileSync: 1 } },
+  'said.ts': { why: 'server path, cheap: a temporary directory for a recording to transcribe', calls: { mkdtempSync: 1, rmSync: 1 } },
   'scratch.ts': { why: "server path, cheap: a scratch Obeya's look once a minute whether its checkout is there and which branch its HEAD names (a stat and a small read)", calls: { existsSync: 1, readFileSync: 1 } },
   'self-update.ts': {
     why: "server path, cheap: the seal of the checkout's HEAD every two seconds (a few stats); bun install runs after the server stopped, before it restarts",
     calls: { existsSync: 1, readFileSync: 1, spawnSync: 1, statSync: 1 },
   },
-  'server.ts': { why: 'server path, cheap: a temporary directory for a recording to transcribe', calls: { mkdtempSync: 1, rmSync: 1 } },
   'serve-files.ts': {
     why: "server path: a demo video's byte ranges are read at once, 8 MB at most (docs/design/demos.md, \"Demo files are read at once\"); a worker's page read to add its height report",
     calls: { closeSync: 1, fstatSync: 2, openSync: 1, readFileSync: 1, readSync: 1 },
