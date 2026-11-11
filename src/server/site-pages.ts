@@ -10,8 +10,8 @@
 import { createHash } from 'node:crypto';
 import { dimensions } from '../core/page-tags';
 import type { DemoSite, PageTags } from '../core/types';
-import { ARTIFACT_DIR, artifactPageHtml, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
-import { pagePolicy, sealed, withHeightReport } from '../core/frame';
+import { ARTIFACT_DIR, artifactPageHtml, credit, day, demoPageHtml, esc, OBEYA_URL, pageHead, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml } from './demo-page';
+import { jsonInScript, pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { type CaptionTrack } from './demo-files';
 import { OWN_CONNECTIONS } from './serve-files';
 
@@ -253,11 +253,7 @@ ${dims.map(([d, values]) => `<div class="dim" role="group" aria-label="${esc(d)}
 </div>
 <div class="bar"><span id="count">${esc(w.shown.replace('{n}', String(pages.length)).replace('{m}', String(pages.length)))}</span><button class="copy-all" title="${esc(w.copyLinksHint)}">${COPY_ICON}<span>${esc(w.copyLinks)}</span></button></div>
 `;
-  return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(site.title)}</title><link rel="canonical" href="${esc(siteRoot(site))}"><link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="${FEED}"><style>${PAGE_STYLE}${OVERVIEW_STYLE}</style>${themeStyle(theme)}</head>
-<body><main>
-<h1>${esc(site.title)}</h1>
+  return `${pageHead({ language, title: site.title, theme, links: `<link rel="canonical" href="${esc(siteRoot(site))}"><link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="${FEED}">`, style: OVERVIEW_STYLE })}<h1>${esc(site.title)}</h1>
 <div class="when">${esc(w.overview)} · <a href="${FEED}">${esc(w.feed)}</a></div>
 ${
   pages.length
@@ -277,11 +273,7 @@ ${credit(language)}</main></body></html>
  */
 export function notFoundHtml(site: DemoSite, language: PageLanguage, theme?: string): string {
   const w = PAGE_WORDS[language];
-  return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>${esc(`${w.notFound} · ${site.title}`)}</title><style>${PAGE_STYLE} .text { margin-top: 14px; }</style>${themeStyle(theme)}</head>
-<body><main>
-<div class="top"><a href="${esc(siteRoot(site))}">${esc(w.allDemos)}</a></div>
+  return `${pageHead({ language, title: `${w.notFound} · ${site.title}`, theme, meta: '<meta name="robots" content="noindex">', style: ' .text { margin-top: 14px; }' })}<div class="top"><a href="${esc(siteRoot(site))}">${esc(w.allDemos)}</a></div>
 <h1>${esc(w.notFound)}</h1>
 <div class="text"><p>${esc(w.notFoundText)}</p></div>
 ${credit(language)}</main></body></html>
@@ -294,7 +286,7 @@ ${credit(language)}</main></body></html>
  * `text/html` and as a Markdown list (`text/plain`), as text alone where the browser has no `ClipboardItem`.
  */
 const overviewScript = (w: (typeof PAGE_WORDS)[PageLanguage]) => `
-  const words = ${JSON.stringify({ shown: w.shown, copied: w.copied, copyLinks: w.copyLinks }).replace(/</g, '\\u003c')};
+  const words = ${jsonInScript({ shown: w.shown, copied: w.copied, copyLinks: w.copyLinks })};
   const q = document.getElementById('q'), chips = [...document.querySelectorAll('.chip')], items = [...document.querySelectorAll('ul.demos li')];
   const count = document.getElementById('count'), none = document.querySelector('.none'), all = document.querySelector('.copy-all');
   const params = new URLSearchParams(location.search);

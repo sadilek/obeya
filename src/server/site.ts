@@ -22,13 +22,14 @@
 // own (Cloudflare Pages serves the overview for a site without a `404.html`, as one deployed before
 // Obeya wrote it): a manifest answered that way is missing, not unreadable.
 //
-// The pages come from Obeya's own templates (`demo-page.ts`, `site-pages.ts`), each in its demo's language, the
-// overview in the site's. A call writes only its own page and the overview: a page shared earlier
-// keeps the template it was written with until it is published again (the page changes since,
-// page-changes.ts, say what that would bring). A page published again with the same video, or the same artifact
-// files, keeps its date, so the overview keeps its order when pages are brought up to date or get
-// their pull request's link. What counts is the demo's own files (`source` in meta.json), not the
-// copies on the site, which carry what Obeya adds to an artifact (artifact-copy.ts).
+// The pages come from Obeya's own templates (`demo-page.ts`, `site-pages.ts`), each in its demo's
+// language, the overview in the site's. A call writes only its own page and the overview: a page
+// shared earlier keeps the template it was written with until it is published again (the page
+// changes since, page-changes.ts, say what that would bring). A page published again with the same
+// video, or the same artifact files, keeps its date, so the overview keeps its order when pages are
+// brought up to date or get their pull request's link. What counts is the demo's own files
+// (`source` in meta.json), not the copies on the site, which carry what Obeya adds to an artifact
+// (artifact-copy.ts).
 //
 // A repository's theme (theme.ts) goes into each page of its cards, after Obeya's style, and beside
 // it as `theme.css`; each page names its repository (`repoMark`). The overview carries a theme only

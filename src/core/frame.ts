@@ -19,6 +19,18 @@ export function pagePolicy(own?: string): string {
   return `default-src ${here}data: blob:; script-src ${here}'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; style-src ${here}'unsafe-inline' data: blob:; form-action 'none'`;
 }
 
+/**
+ * Text for a `<script>` element that cannot close it: a `</script` in it (in a string, a regular
+ * expression, a comment, a caption) written `<\/script`, which JavaScript reads as the same.
+ */
+export const inScript = (text: string) => text.replace(/<\/(script)/gi, '<\\/$1');
+
+/** A value as JSON for a `<script>` element: each `<` written `\u003c`, so nothing in it closes the element or opens a comment. */
+export const jsonInScript = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
+
+/** CSS for a `<style>` element that cannot close it: a `</style` in it written `<\/style`. */
+export const inStyle = (css: string) => css.replace(/<\/(style)/gi, '<\\/$1');
+
 /** What Obeya's page (`src/ui/index.html`) may show in its frames: its own addresses, where the workers' pages are served, and nothing a frame navigates to elsewhere. */
 export const FRAMES_POLICY = "frame-src 'self' data: blob:";
 

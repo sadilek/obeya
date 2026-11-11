@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
 import { AS_OBEYA } from './git';
+import { UNLISTED_META } from './demo-page';
 import { messageOf } from '../core/text';
 
 /** The deploy line's word for the deploy Obeya builds in: `obeya:github-pages <owner>/<repository>`. */
@@ -229,7 +230,7 @@ const NEEDS_PRO = 'GitHub Pages from a private repository needs GitHub Pro, whic
 
 /** A page that says nothing: the root of an unlisted site, and its answer to every address it lacks. */
 export const BLANK_PAGE = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><title></title></head><body></body></html>
+<html><head><meta charset="utf-8">${UNLISTED_META}<title></title></head><body></body></html>
 `;
 
 /**

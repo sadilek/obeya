@@ -12,6 +12,7 @@
 import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
+import { jsonInScript } from '../core/frame';
 import type { Language } from '../core/locale';
 import { MESSAGES } from '../core/messages.ts';
 
@@ -100,7 +101,7 @@ const same = (a: string, b: string) => {
  */
 function onward(next: string, headers: Record<string, string> = {}): Response {
   const attr = next.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  const html = `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${attr}"><title>Obeya</title><script>location.replace(${JSON.stringify(next).replace(/</g, '\\u003c')})</script>`;
+  const html = `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${attr}"><title>Obeya</title><script>location.replace(${jsonInScript(next)})</script>`;
   return new Response(html, { headers: { ...headers, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }
 

@@ -19,7 +19,7 @@
 
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { sealed, withHeightReport } from '../core/frame';
+import { inScript, jsonInScript, sealed, withHeightReport } from '../core/frame';
 import { demoFile } from './demo-files';
 import { DATA_BUDGET, dataUrl, type Inlining, inside, withStyleData } from './css-references';
 
@@ -133,8 +133,6 @@ function withData(html: string, dir: string, from: string): string {
   return rewriter.transform(withStyleData(html, at, from));
 }
 
-/** Text inside a `<script>` element must not close it. */
-const inScript = (s: string) => s.replace(/<\/(script)/gi, '<\\/$1');
 
 /**
  * The page with each module script that loads files of the directory bundled into it: one with a
@@ -237,7 +235,7 @@ function withFiles(html: string, dir: string, files: string[]): string {
     }),
   );
   const script = `<script>(() => {
-  const files = ${inScript(JSON.stringify(table))};
+  const files = ${jsonInScript(table)};
   const base = new URL('.', location.href);
   const file = (url, method) => {
     if (String(method || 'GET').toUpperCase() !== 'GET') return null;
