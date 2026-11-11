@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanvasSnapshot } from '../src/core/types';
@@ -50,6 +50,7 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
         { key: 'D', title: 'Folge', from: 'C' },
         { key: 'H', title: 'Entwürfe', state: 'waiting', need: 'demo', summary: 'Zwei Entwürfe.', demo: { kind: 'html', dir: artifact, chapters: [] } },
         { key: 'S', title: 'Startseite', canvas: 'Website', state: 'working' },
+        { key: 'T', title: 'Footer', canvas: 'Website', state: 'working', workspace: true },
       ],
     }),
   );
@@ -88,6 +89,13 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
   const website = (await (await fetch(`http://127.0.0.1:${port}/api/c/${canvasOf.S}/canvas`, { headers })).json()) as CanvasSnapshot;
   expect(website.items.find((i) => i.id === staged.cards.S)).toMatchObject({ title: 'Startseite', state: 'working' });
   const db = new Database(join(dir, 'home/obeya.db'), { readonly: true });
+  // a card on another canvas with a workspace works in a worktree of that canvas's repository, registered under it
+  const space = db.query<{ path: string; canvas_id: string; repo: string | null }, [string]>('SELECT path, canvas_id, repo FROM workspaces WHERE card_id = ?').get(staged.cards.T!)!;
+  expect(space).toMatchObject({ canvas_id: canvasOf.T, repo: null });
+  expect(canvasOf.T).toBe(canvasOf.S!);
+  expect(website.items.find((i) => i.id === staged.cards.T)!.workspace).toBe(space.path);
+  const common = Bun.spawnSync(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: space.path }).stdout.toString().trim();
+  expect(realpathSync(common)).toBe(realpathSync(join(dir, 'repo-2', '.git')));
   const created = db.query<{ created_at: string }, [string]>('SELECT created_at FROM cards WHERE id = ?').get(staged.cards.A!)!.created_at;
   db.close();
   expect(Date.now() - Date.parse(created)).toBeGreaterThan(7000_000);

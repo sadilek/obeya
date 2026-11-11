@@ -158,7 +158,8 @@
 // directory (<dir>/repo by default), and so its id; `repos` adds further repositories to that canvas,
 // `[{ "name": "promo", "files": { … } }]`, each in <dir>/<name> with that id, which a card's `repo`
 // names; `canvases` adds further ones by
-// name, each over a repository of its own (<dir>/repo-2, …); a card goes on one of them by its `canvas` (the name). Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
+// name, each over a repository of its own (<dir>/repo-2, …); a card goes on one of them by its `canvas` (the name), and
+// works there, with `workspace`, in a worktree of that canvas's repository. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
 // `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
 // What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
 // Groups are created through the API with their cards (keys; a workstream stands for its project),
@@ -727,19 +728,21 @@ for (const [i, c] of stage.cards.entries()) {
       s: JSON.stringify({ held: true, undo: null, changes: c.changes ?? [] }),
     });
   } else if (c.workspace) {
-    // a card on a further repository of the canvas (`repos`) works in a workspace of that one
-    const other = c.repo && c.repo !== (stage.repoName ?? 'repo') ? c.repo : null;
-    const checkout = other ? join(dir, other) : repo;
-    const free = db.query('SELECT path FROM workspaces WHERE card_id IS NULL AND repo IS $r ORDER BY path').get({ r: other }) as { path: string } | null;
-    // no clones: the repository works in worktrees, one per card under Obeya's home
-    const tree = !free && !!branch && !stage.clones;
+    // a card on a further canvas (`canvases`) works in a workspace of that canvas's repository, a card
+    // on a further repository of the first canvas (`repos`) in a workspace of that one
+    const on = canvasOf[c.key ?? String(i)]!;
+    const elsewhere = on !== canvas ? further.find((f) => f.name === c.canvas)! : null;
+    const other = c.repo && c.repo !== (elsewhere ? basename(elsewhere.repos[0]!.path) : (stage.repoName ?? 'repo')) ? c.repo : null;
+    const checkout = other ? join(dir, other) : elsewhere ? elsewhere.repos[0]!.path : repo;
+    const free = db.query('SELECT path FROM workspaces WHERE card_id IS NULL AND canvas_id = $c AND repo IS $r ORDER BY path').get({ c: on, r: other }) as { path: string } | null;
+    // no clones: the repository works in worktrees, one per card under Obeya's home (`clones` are the first canvas's)
+    const tree = !free && !!branch && (!stage.clones || !!elsewhere);
     if (!free && !tree) fail(`card ${c.key ?? i}: no free clone for it ("clones" in the stage, settings that say clones), nor a branch for a worktree`);
-    const path = tree ? join(home, 'workspaces', canvas, id.slice(0, 8)) : free!.path;
+    const path = tree ? join(home, 'workspaces', on, id.slice(0, 8)) : free!.path;
     if (tree) {
       mkdirSync(dirname(path), { recursive: true });
       run('git', ['worktree', 'add', '-q', '-b', branch!, path, mainBranch], checkout);
-      if (other) db.query('INSERT INTO workspaces (path, canvas_id, card_id, repo) VALUES ($path, $c, $id, $r)').run({ path, c: canvas, id, r: other });
-      else db.query('INSERT INTO workspaces (path, canvas_id, card_id) VALUES ($path, $c, $id)').run({ path, c: canvas, id });
+      db.query('INSERT INTO workspaces (path, canvas_id, card_id, repo) VALUES ($path, $c, $id, $r)').run({ path, c: on, id, r: other });
     } else {
       db.query('UPDATE workspaces SET card_id = $id WHERE path = $path').run({ id, path });
       if (branch) run('git', ['checkout', '-q', '-b', branch], path);
