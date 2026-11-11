@@ -1032,7 +1032,7 @@ function Canvas({
       showAck(e instanceof ApiError && e.code === 'notEvictable' ? t.voice.tooLate : failText(e));
     }
   }, []);
-  /** "Save leftovers and free it" on a clone uncommitted changes block: it takes effect at once, the leftovers on a branch of their own. */
+  /** "Commit to a new branch and free the clone" on a clone uncommitted changes block: it takes effect at once, the leftovers on a branch of their own. */
   const keepLeftovers = useCallback(async (repo: string, host: string, path: string) => {
     try {
       showAck(t.workspaces.leftoversKept((await api.keepLeftovers(repo, host, path)).branch));

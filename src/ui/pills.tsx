@@ -255,7 +255,7 @@ export function OldBunPill({ version }: { version: string }) {
  * and what to do about it. While every clone is taken and a card waits for one, a faint "⋯" beside
  * a card opens what gives its clone to the one waiting longest (`onTake`); during the undo window
  * the row offers "Undo" (`onKeep`). A clone blocked by uncommitted changes names the card they come
- * from and offers "Save leftovers and free it" (`onLeftovers`).
+ * from and offers "Save "Commit to a new branch and free the clone" (`onLeftovers`).
  */
 export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsewhere, onTake, onKeep, onLeftovers }: {
   pools: ClonePool[];
@@ -461,7 +461,7 @@ function WorkspaceRows({ host, items, canvases, onOpen, onElsewhere, onTake, onK
  * Why each of a machine's blocked clones goes to no card, and what the owner can do: a line per
  * clone, one for all of an unreachable machine's. One blocked by uncommitted changes names the card
  * whose branch it is on (a link, as in the rows) and whether its work has landed, and offers "Save
- * leftovers and free it" (`onLeftovers`).
+ * "Commit to a new branch and free the clone" (`onLeftovers`).
  */
 function BlockedClones({ host, items, canvases, onOpen, onElsewhere, onLeftovers }: {
   host: PoolHost;
@@ -493,11 +493,14 @@ function BlockedClones({ host, items, canvases, onOpen, onElsewhere, onLeftovers
       case 'dirty':
         return (
           <>
-            {tb.dirty(b.path, b.files ?? [], b.more ?? 0, !!b.made)}
+            {tb.dirty(b.path, b.files ?? [], b.more ?? 0)}
             {by(b)}
-            <button className="btn ws-take ws-leftovers" title={t.workspaces.keepLeftoversWhat} onClick={() => onLeftovers(b.path)}>
-              {t.workspaces.keepLeftovers}
-            </button>
+            <span className="ws-leftovers">
+              <button className="btn ws-take" onClick={() => onLeftovers(b.path)}>
+                {t.workspaces.keepLeftovers}
+              </button>
+              <span className="hint">{t.workspaces.keepLeftoversWhat(!!b.made)}</span>
+            </span>
           </>
         );
       case 'broken':

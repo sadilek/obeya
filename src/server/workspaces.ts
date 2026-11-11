@@ -946,7 +946,8 @@ export class Workspaces implements CardWorkspaces {
         if (this.justFailed(w.path) || look?.found === 'missing' || look?.found === 'unreachable') continue;
         if (look?.found === 'dirty' || look?.found === 'broken') {
           dirty = true;
-          if (look.found === 'dirty' && this.made(w.path)) leftovers ??= w.path;
+          // one it tried already, and that stayed so, gives way to the next
+          if (look.found === 'dirty' && this.made(w.path) && this.tidyable(w.path)) leftovers ??= w.path;
         } else if (look?.found === 'clean') {
           found ??= w.path;
           break;
@@ -1117,37 +1118,55 @@ export class Workspaces implements CardWorkspaces {
   /**
    * Frees a free clone that uncommitted changes block, losing nothing: what is uncommitted there
    * (untracked files too, ignored ones aside) goes into a commit of Obeya's (`LEFTOVERS`) on a branch
-   * of its own, `obeya-leftovers/<branch checked out>-<time>`, made from the commit checked out, and
-   * the clone is clean on the branch it was on. Changes of line endings alone are dropped, keeping
-   * nothing. `path` is a clone of the pool, or its path there with the machine's name as the pool
-   * names it. Settles with that branch, '' where nothing needed keeping, null where the clone is not a
-   * free one or git failed (the clone then stays as it was).
+   * of its own, `obeya-leftovers/<branch checked out>-<local time>`, made from the commit checked
+   * out (a file staged otherwise than it is in the working tree first gets a commit of its own, as
+   * staged), and the clone is clean on the branch it was on. Changes of line endings alone, none of
+   * them staged, are dropped, keeping nothing. A clone with files git is told to assume unchanged is
+   * left as it is: the reset would overwrite them unsaved. `path` is a clone of the pool by its full
+   * path, or, with `host` (the machine's name as the pool names it), by its path there. Settles with
+   * that branch, '' where nothing needed keeping, null where the clone is not a free one, holds what
+   * cannot be kept, or git failed (the clone then stays as it was).
    */
   keepLeftovers(path: string, host?: string): Promise<string | null> {
-    const ws = this.list().find((w) => w.path === path || (host !== undefined && pathThere(w.path) === path && (hostName(w.path) ?? HERE) === host))?.path;
+    const ws = this.list().find((w) => (host === undefined ? w.path === path : pathThere(w.path) === path && (hostName(w.path) ?? HERE) === host))?.path;
     const free = () => !!ws && this.list().some((w) => w.path === ws && !w.card_id);
     if (!ws || !free() || !this.cloned(ws)) return Promise.resolve(null);
+    // a reset into submodules would discard what is uncommitted in them, which the commit does not hold
+    const git = (...args: string[]) => gitAsync(ws, '-c', 'submodule.recurse=false', ...args);
     return this.clearing(ws, async () => {
       if (!free()) return null;
       try {
         const status = await gitRun(ws, ['status', '--porcelain', '-z']);
         if (status.code !== 0) return null;
         if (!status.stdout) return '';
-        const untracked = status.stdout.split('\0').some((e) => e.startsWith('??'));
+        const entries = statusEntries(status.stdout);
+        // an assumed-unchanged file the reset would overwrite, though `add` leaves it out (`ls-files -v` tags it in lower case)
+        const listed = await gitRun(ws, ['ls-files', '-v', '-z']);
+        if (listed.code !== 0) return null;
+        if (listed.stdout.split('\0').some((l) => /^[a-z] /.test(l))) {
+          console.log(`clone ${ws}: files there are assumed unchanged; its leftovers stay for the owner to keep`);
+          return null;
+        }
+        const staged = entries.some((e) => e.xy[0] !== ' ' && e.xy[0] !== '?');
         // line endings a tool wrote otherwise than the checkout did: nothing to keep
-        if (!untracked && (await gitRun(ws, ['diff', 'HEAD', '--quiet', '--ignore-cr-at-eol', '--no-ext-diff', '--no-textconv'])).code === 0) {
-          await gitAsync(ws, 'reset', '--quiet', '--hard', 'HEAD');
+        if (!staged && !entries.some((e) => e.xy === '??') && (await gitRun(ws, ['diff', 'HEAD', '--quiet', '--ignore-cr-at-eol', '--no-ext-diff', '--no-textconv'])).code === 0) {
+          await git('reset', '--quiet', '--hard', 'HEAD');
           console.log(`clone ${ws}: changes of line endings alone dropped; the clone is free`);
           return '';
         }
         const on = (await gitAsync(ws, 'branch', '--show-current')) || 'detached';
-        const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
-        const name = `obeya-leftovers/${on}-${stamp}`;
-        await gitAsync(ws, 'add', '--all');
-        const tree = await gitAsync(ws, 'write-tree');
-        const commit = await gitAsync(ws, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', 'commit-tree', tree, '-p', 'HEAD', '-m', `Left uncommitted on ${on}, kept by Obeya as it freed the clone for other cards\n\n${LEFTOVERS}`);
-        await gitAsync(ws, 'branch', name, commit);
-        await gitAsync(ws, 'reset', '--quiet', '--hard', 'HEAD');
+        // kept twice in the same second: the second gets a number
+        let name = `obeya-leftovers/${on}-${stampOf(new Date())}`;
+        for (let n = 2; (await gitRun(ws, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`])).code === 0; n++) name = name.replace(/(-\d{6})(-\d+)?$/, `$1-${n}`);
+        const commit = (tree: string, parent: string, what: string) =>
+          gitAsync(ws, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', 'commit-tree', tree, '-p', parent, '-m', `${what} on ${on}, kept by Obeya as it freed the clone for other cards\n\n${LEFTOVERS}`);
+        let parent = 'HEAD';
+        // a file staged otherwise than the working tree has it: `add` would replace what was staged
+        if (entries.some((e) => e.xy[0] !== ' ' && e.xy[0] !== '?' && e.xy[1] !== ' ')) parent = await commit(await gitAsync(ws, 'write-tree'), 'HEAD', 'Staged');
+        await git('add', '--all');
+        const kept = await commit(await gitAsync(ws, 'write-tree'), parent, 'Left uncommitted');
+        await gitAsync(ws, 'branch', name, kept);
+        await git('reset', '--quiet', '--hard', 'HEAD');
         console.log(`clone ${ws}: what was left uncommitted there is kept in the branch ${name}; the clone is free`);
         return name;
       } catch (e) {
@@ -1164,16 +1183,19 @@ export class Workspaces implements CardWorkspaces {
     });
   }
 
+  /** Whether Obeya would keep the leftovers in a clone it made by itself (`tidy`): not while git is at it, nor again for the changes it tried them with. */
+  private tidyable(path: string): boolean {
+    return this.tidied.get(path) !== seenKey(this.looks.get(path)) && !this.clears.has(path);
+  }
+
   /**
    * A clone Obeya made that a card would take but for its uncommitted changes: Obeya keeps them
    * (`keepLeftovers`) by itself, once for the changes it was found with, so that a card does not
    * wait for the owner to clean up after another.
    */
   private tidy(path: string) {
-    const look = this.looks.get(path);
-    const seen = JSON.stringify([look?.files, look?.more, look?.branch]);
-    if (this.tidied.get(path) === seen || this.clears.has(path)) return;
-    this.tidied.set(path, seen);
+    if (!this.tidyable(path)) return;
+    this.tidied.set(path, seenKey(this.looks.get(path)));
     void this.keepLeftovers(path);
   }
 
@@ -2077,9 +2099,12 @@ export async function unlanded(path: string, o: { origins?: string[]; main?: str
 
 /**
  * Whether the changes of `ref` since it left `main` are on `main` already, as a squashed or rebased
- * pull request leaves them: at `main`'s head, or at one of its last commits that changed the files
- * `ref` changes (where `main` changed them again since), merging `ref` in changes nothing
- * (`merge-tree`, git 2.38 on), or, with an older git, each of those files is as `ref` has it.
+ * pull request leaves them: at `main`'s head, or, where merging `ref` into the head conflicts (`main`
+ * changed its files again since), at one of its last commits that changed them, merging `ref` in
+ * changes nothing (`merge-tree`, git 2.38 on), or, with an older git, each of those files is as
+ * `ref` has it. A merge into the head that is clean but changes something ends the search: `ref`
+ * holds changes `main` never had, the common case of work not landed, which over SSH would
+ * otherwise cost a git call per commit looked at.
  */
 async function landedOn(path: string, main: string, ref: string): Promise<boolean> {
   const run = (...args: string[]) => gitTry(path, ...args);
@@ -2098,10 +2123,15 @@ async function landedOn(path: string, main: string, ref: string): Promise<boolea
     for (const line of (listed ?? '').split('\n').filter(Boolean)) since.set(line.split(' ')[1]!, Number(line.split(' ')[0]));
   }
   const candidates = [...since].sort((a, b) => b[1] - a[1]).slice(0, LANDED_LOOKBACK).map(([c]) => c);
-  for (const at of [main, ...candidates]) {
+  const all = [main, ...candidates];
+  // their trees, asked at once
+  const trees = (await run('rev-parse', ...all.map((c) => `${c}^{tree}`)))?.split('\n') ?? [];
+  for (const [i, at] of all.entries()) {
     const merged = await gitRun(path, ['merge-tree', '--write-tree', '--no-messages', at, ref]);
     if (merged.code === 0) {
-      if (merged.stdout.trim().split('\n')[0] === (await run('rev-parse', `${at}^{tree}`))) return true;
+      if (merged.stdout.trim().split('\n')[0] === trees[i]) return true;
+      // merged cleanly into the head, yet changing it: changes the main branch does not have
+      if (i === 0) return false;
       continue;
     }
     // they conflict: not all its changes are there
@@ -2135,6 +2165,27 @@ export function lostText(lost: LostWork[]): string {
       }
     })
     .join('; ');
+}
+
+/** What a look found in a dirty clone, as `tidied` compares it: the changes Obeya tried keeping the leftovers with. */
+const seenKey = (look: Seen | undefined) => JSON.stringify([look?.files, look?.more, look?.branch]);
+
+/** `git status --porcelain -z` as entries, each with its two status letters; a rename's or copy's source, which follows it, is no entry of its own. */
+function statusEntries(out: string): { xy: string; path: string }[] {
+  const parts = out.split('\0').filter(Boolean);
+  const entries: { xy: string; path: string }[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const xy = parts[i]!.slice(0, 2);
+    entries.push({ xy, path: parts[i]!.slice(3) });
+    if (xy[0] === 'R' || xy[0] === 'C') i++;
+  }
+  return entries;
+}
+
+/** A moment as a branch name holds it, in the machine's local time: `20261111-182014`. */
+function stampOf(d: Date): string {
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`;
 }
 
 /** How many of a dirty clone's files a look keeps, for the pill to name. */

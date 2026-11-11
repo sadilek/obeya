@@ -617,7 +617,7 @@ function canvasRoutes(x: Routing) {
         return c.preparePlanDoc(String(repo), String(file));
       }),
     },
-    // "Save leftovers and free it" on a clone that uncommitted changes block, in the Workspaces list
+    // "Commit to a new branch and free the clone" on a clone that uncommitted changes block, in the Workspaces list
     '/api/c/:canvas/workspaces/leftovers': {
       POST: on(async (c, req) => {
         const { repo, host, path } = await fields(req);

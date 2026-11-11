@@ -1953,23 +1953,24 @@ export class CanvasRuntime {
   }
 
   /**
+   * "Commit to a new branch and free the clone" in the Workspaces list: what is uncommitted in a
+   * free clone of the repository (`path` there, on the machine the pool names `host`) goes into a
+   * branch of its own, and the clone is free for the cards. Settles with that branch, '' where
+   * nothing needed keeping.
+   */
+  async keepLeftovers(repo: string, host: string, path: string): Promise<{ branch: string }> {
+    const r = this.repos.find((x) => x.ref.id === repo);
+    const branch = r ? await r.workspaces.keepLeftovers(path, host) : null;
+    if (branch === null) throw new BadRequest('notFreed', 'the clone is not a free one, holds what cannot be kept, or git failed there');
+    return { branch };
+  }
+
+  /**
    * A doc in the plan directory that is not a project: a card whose worker adds the workstream
    * checklist, started at once; once its change lands, the doc is a project. It goes right of
    * everything on the canvas, at the top, clear of the note on the plan directory at the left (and
    * of a note the owner put elsewhere).
    */
-  /**
-   * "Keep the leftovers and free it" in the Workspaces list: what is uncommitted in a free clone of
-   * the repository (`path` there, on the machine the pool names `host`) goes into a branch of its
-   * own, and the clone is free for the cards. Settles with that branch, '' where nothing needed keeping.
-   */
-  async keepLeftovers(repo: string, host: string, path: string): Promise<{ branch: string }> {
-    const r = this.repos.find((x) => x.ref.id === repo);
-    const branch = r ? await r.workspaces.keepLeftovers(path, host) : null;
-    if (branch === null) throw new BadRequest('notFreed', 'the clone is not a free one, or git could not keep what lies in it');
-    return { branch };
-  }
-
   preparePlanDoc(repo: string, file: string): Item {
     const dir = this.board.snapshot().planDirs?.find((d) => d.repo === repo);
     const doc = dir?.others.find((o) => o.file === file);

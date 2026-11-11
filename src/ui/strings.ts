@@ -641,7 +641,7 @@ const de = {
     queued: 'Die Aufgabe liegt schon bei Obeya.',
     notQueued: 'Die Aufgabe wartet nicht in der Warteschlange.',
     notEvictable: 'Diesen Workspace kann die Karte nicht abgeben.',
-    notFreed: 'Obeya konnte die Reste in diesem Klon nicht sichern; er bleibt, wie er ist.',
+    notFreed: 'Obeya konnte die Änderungen in diesem Klon nicht committen (git schlug fehl, oder Dateien dort sind als unverändert markiert); er bleibt, wie er ist.',
     evicting: 'Die Aufgabe gibt gerade ihren Workspace ab; starte sie gleich noch einmal.',
     newRepoDue: 'Obeya legt das neue Repository gerade an.',
     newRepoPath: 'Für das neue Repository fehlt der Ordner.',
@@ -2116,8 +2116,8 @@ const de = {
     },
     /** A free clone no new card gets now: why, and what the owner can do about it. */
     blocked: {
-      dirty: (path: string, files: string[], more: number, made: boolean) =>
-        `${path} hat nicht committete Änderungen: ${files.join(', ')}${more ? ` und ${more} weitere` : ''}. Keine Karte bekommt den Klon, solange sie dort liegen${made ? '; braucht eine Karte einen Klon, sichert Obeya sie selbst und gibt ihn frei' : ''}.`,
+      dirty: (path: string, files: string[], more: number) =>
+        `${path} hat nicht committete Änderungen: ${files.join(', ')}${more ? ` und ${more} weitere` : ''}. Keine Karte bekommt den Klon, solange sie dort liegen.`,
       /** After the dirty line: the card whose branch the clone is on, as a link between these, and whether its work has landed. */
       leftBy: 'Sie stammen von ',
       leftWork: (work: 'landed' | 'open' | 'none'): string =>
@@ -2147,10 +2147,12 @@ const de = {
     taken: (title: string) => `„${title}“ gibt ihren Workspace ab.`,
     keptBack: (title: string) => `„${title}“ behält ihren Workspace.`,
     /** On a clone uncommitted changes block: what is there goes into a branch of its own, and the clone is free. */
-    keepLeftovers: 'Reste sichern und freigeben',
-    keepLeftoversWhat: 'Obeya legt die Änderungen als Commit auf einen eigenen Branch in diesem Klon (obeya-leftovers/…) und gibt den Klon für die Karten frei.',
+    keepLeftovers: 'Auf neuen Branch committen und Klon freigeben',
+    /** Beside that button: where the changes go, and, in a clone Obeya made, that it does so by itself once a card needs the clone. */
+    keepLeftoversWhat: (made: boolean) =>
+      `Alle Änderungen, auch neue Dateien, kommen als ein Commit auf einen neuen Branch obeya-leftovers/… in diesem Klon. Nichts wird gepusht oder gelöscht.${made ? ' Das macht Obeya auch von selbst, sobald eine Karte einen Klon braucht und keiner frei ist.' : ''}`,
     /** `branch`: where they are now; empty where there was nothing to keep (line endings alone). */
-    leftoversKept: (branch: string) => (branch ? `Der Klon ist frei. Die Reste liegen dort im Branch ${branch}.` : 'Der Klon ist frei. Es gab nichts zu sichern.'),
+    leftoversKept: (branch: string) => (branch ? `Der Klon ist frei. Die Änderungen liegen als Commit im Branch ${branch} dieses Klons.` : 'Der Klon ist frei. Es gab nichts zu sichern.'),
   },
   archive: {
     button: 'Archiv',
@@ -2868,7 +2870,7 @@ const en: Strings = {
     queued: 'The task is already with Obeya.',
     notQueued: 'The task is not waiting in the queue.',
     notEvictable: 'This card cannot give up this workspace.',
-    notFreed: 'Obeya could not keep the leftovers in this clone; it stays as it is.',
+    notFreed: 'Obeya could not commit the changes in this clone (git failed, or files there are marked as unchanged); it stays as it is.',
     evicting: 'The task is giving up its workspace right now; start it again in a moment.',
     newRepoDue: 'Obeya is creating the new repository right now.',
     newRepoPath: 'The new repository has no folder yet.',
@@ -4267,8 +4269,8 @@ const en: Strings = {
       }
     },
     blocked: {
-      dirty: (path: string, files: string[], more: number, made: boolean) =>
-        `${path} has uncommitted changes: ${files.join(', ')}${more ? ` and ${more} more` : ''}. No card gets the clone while they are there${made ? '; when a card needs a clone, Obeya keeps them itself and frees it' : ''}.`,
+      dirty: (path: string, files: string[], more: number) =>
+        `${path} has uncommitted changes: ${files.join(', ')}${more ? ` and ${more} more` : ''}. No card gets the clone while they are there.`,
       leftBy: 'They come from ',
       leftWork: (work: 'landed' | 'open' | 'none'): string =>
         work === 'landed' ? ', whose work has landed already.' : work === 'none' ? ', which finished without a change to the code.' : ', whose work has not landed yet.',
@@ -4291,9 +4293,10 @@ const en: Strings = {
     leaving: 'giving it up',
     taken: (title: string) => `“${title}” gives up its workspace.`,
     keptBack: (title: string) => `“${title}” keeps its workspace.`,
-    keepLeftovers: 'Save leftovers and free it',
-    keepLeftoversWhat: 'Obeya puts the changes into a commit on a branch of its own in this clone (obeya-leftovers/…) and frees the clone for the cards.',
-    leftoversKept: (branch: string) => (branch ? `The clone is free. The leftovers are in its branch ${branch}.` : 'The clone is free. There was nothing to keep.'),
+    keepLeftovers: 'Commit to a new branch and free the clone',
+    keepLeftoversWhat: (made: boolean) =>
+      `All changes, new files too, go into one commit on a new branch obeya-leftovers/… in this clone. Nothing is pushed or deleted.${made ? ' Obeya also does this by itself as soon as a card needs a clone and none is free.' : ''}`,
+    leftoversKept: (branch: string) => (branch ? `The clone is free. The changes are committed on the branch ${branch} in that clone.` : 'The clone is free. There was nothing to keep.'),
   },
   archive: {
     button: 'Archive',

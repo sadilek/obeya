@@ -1798,7 +1798,7 @@ export type ErrorCode =
   | 'dirtyWorkspaces'
   /** Taking a card's workspace from it: it holds no clone that may be taken (worktrees, its work landed, a prototype's), or one is being taken already. */
   | 'notEvictable'
-  /** Saving the leftovers in a clone: it is no free clone of the repository, or git failed there. */
+  /** Committing the leftovers in a clone: it is no free clone of the repository, holds files marked assume-unchanged, or git failed there. */
   | 'notFreed'
   /** Starting a card while its workspace is being given to another. */
   | 'evicting'
