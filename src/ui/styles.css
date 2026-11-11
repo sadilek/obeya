@@ -453,7 +453,7 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.workspaces .ws-card .from:hover, .pill.workspaces .tip p.warn .from:hover { text-decoration-color: currentColor; }
 .pill.workspaces .btn.ws-take { margin-left: 8px; padding: 2px 9px; font-size: 12px; font-weight: 500; vertical-align: 1px; }
 /* under a clone its leftovers block: the button that commits them to a branch and frees it, and what it does */
-.pill.workspaces .ws-leftovers { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; }
+.pill.workspaces .ws-leftovers { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin: 8px 0 2px; }
 .pill.workspaces .ws-leftovers .btn.ws-take { margin-left: 0; flex: none; }
 .pill.workspaces .ws-leftovers .hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
 /* the rare action of giving a card's clone away sits behind a faint "⋯" */
