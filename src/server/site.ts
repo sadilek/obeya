@@ -63,6 +63,7 @@ import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
 import { HERE } from './workspaces';
 import { isFolder } from './branches';
+import { gitTry } from './git';
 import { BLANK_PAGE, GITHUB_PAGES, githubPagesDeploy } from './site-hosts';
 import { commandWords } from './folder-processes';
 import { COMMAND_TIMEOUT, SHARE_CWD, type SharePage, type ShareTarget, scriptArgv, tail } from './share';
@@ -228,10 +229,7 @@ const gitNames = new Map<string, Promise<string | undefined>>();
 function gitName(repo: string): Promise<string | undefined> {
   let name = gitNames.get(repo);
   if (!name) {
-    name = spawnOutput(['git', '-C', repo, 'config', '--get', 'user.name'], { stdin: 'ignore' }).then(
-      (r) => (r.code === 0 ? r.stdout.trim() || undefined : undefined),
-      () => undefined,
-    );
+    name = gitTry(repo, 'config', '--get', 'user.name').then((r) => r || undefined);
     gitNames.set(repo, name);
   }
   return name;
@@ -256,8 +254,8 @@ export function repoMark(repo: string): Promise<string> {
       let root = '';
       if (!isFolder(key)) {
         try {
-          const r = await spawnOutput(['git', '-C', key, 'rev-list', '--max-parents=0', 'HEAD'], { stdin: 'ignore' });
-          if (r.code === 0) root = r.stdout.trim().split('\n').sort()[0] ?? '';
+          const roots = await gitTry(key, 'rev-list', '--max-parents=0', 'HEAD');
+          if (roots !== null) root = roots.split('\n').sort()[0] ?? '';
         } catch {}
       }
       return createHash('sha256').update(root ? `commit:${root}` : `path:${key}`).digest('hex').slice(0, 16);

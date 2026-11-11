@@ -4,7 +4,7 @@
 import { messageOf } from '../core/text';
 import { type Forge, type PrStatus, parsePrUrl, verdictOf, withBodyFile } from './forge';
 import { spawnOutput } from './spawn';
-import { GIT } from './git';
+import { GIT, gitTry } from './git';
 
 /**
  * One call of the API below `<base>/api/v1/`; returns the parsed answer (undefined for an empty one)
@@ -387,9 +387,6 @@ const curlApi: Api = async (cwd, base, method, path, body) => {
 };
 
 /** The URL of a repository's `origin`; null without one. */
-export async function originOf(cwd: string): Promise<string | null> {
-  const r = await spawnOutput([GIT, '-C', cwd, 'remote', 'get-url', 'origin'], { stdin: 'ignore' });
-  return r.code === 0 ? r.stdout.trim() : null;
-}
+export const originOf = (cwd: string): Promise<string | null> => gitTry(cwd, 'remote', 'get-url', 'origin');
 
 export const forgejoForge = makeForgejoForge(curlApi, originOf);

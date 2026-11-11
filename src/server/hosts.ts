@@ -13,7 +13,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { SpawnedProcess, SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { resource } from './resources';
-import { OWN_GROUP, spawnOutput } from './spawn';
+import { failureText, OWN_GROUP, spawnOutput } from './spawn';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 
 /** Where a workspace on another machine says which machine it is on. */
@@ -204,7 +204,7 @@ export class SshHost {
   async resolveDir(dir: string): Promise<string> {
     const at = dir === '~' ? '"$HOME"' : dir.startsWith('~/') ? `"$HOME"/${sh(dir.slice(2))}` : sh(dir);
     const r = await this.run(`mkdir -p ${at} && cd ${at} && pwd -P`);
-    if (r.code !== 0) throw new HostError(`${this.name}: ${dir}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+    if (r.code !== 0) throw new HostError(`${this.name}: ${dir}: ${failureText(r)}`);
     return r.stdout.trim();
   }
 
@@ -273,7 +273,7 @@ export class SshHost {
   async claude(): Promise<{ version: string; channel: 'latest' | 'stable' } | null> {
     const r = await this.run('v=$(claude --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"; cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; true', { timeout: 30_000 });
     if (r.code === 3) return null;
-    if (r.code !== 0) throw new HostError(`${this.name}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+    if (r.code !== 0) throw new HostError(`${this.name}: ${failureText(r)}`);
     const [first = '', ...rest] = r.stdout.split('\n');
     const version = first.match(/^(\d+\.\d+\.\d+)/)?.[1];
     if (!version) return null;
@@ -296,7 +296,7 @@ export class SshHost {
   async codex(): Promise<{ version: string } | null> {
     const r = await this.run('v=$(codex --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"', { timeout: 30_000 });
     if (r.code === 3) return null;
-    if (r.code !== 0) throw new HostError(`${this.name}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+    if (r.code !== 0) throw new HostError(`${this.name}: ${failureText(r)}`);
     const version = r.stdout.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
     return version ? { version } : null;
   }

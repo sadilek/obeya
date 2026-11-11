@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { PrReviewEntry, PrThread, PrWait } from '../core/types';
 import { enterpriseServer, ghHosts, onGitHub, remoteHost } from './repo';
 import { spawnOutput } from './spawn';
+import { gitTry } from './git';
 
 export interface PrStatus {
   state: 'OPEN' | 'MERGED' | 'CLOSED';
@@ -273,8 +274,8 @@ export const ghCli =
 
 /** The host and owner of the GitHub repository a checkout's `origin` is, where it is one. */
 async function originRepo(cwd: string): Promise<{ host: string; owner: string } | undefined> {
-  const r = await spawnOutput(['git', '-C', cwd, 'remote', 'get-url', 'origin'], { stdin: 'ignore' });
-  return r.code === 0 ? githubRepo(r.stdout) : undefined;
+  const remote = await gitTry(cwd, 'remote', 'get-url', 'origin');
+  return remote !== null ? githubRepo(remote) : undefined;
 }
 
 /** A pull request URL read as GitHub's, whatever its host: `routedForge` sent it to gh. */

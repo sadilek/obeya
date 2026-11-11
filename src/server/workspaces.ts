@@ -19,10 +19,11 @@ import { runAppCommand } from './app-command';
 import { endProcessesIn } from './folder-processes';
 import { messageOf } from '../core/text';
 import { oneAtATime } from '../core/one-at-a-time';
+import { failureText } from './spawn';
 import { demoFile } from './demo-page';
 import { sameRemote } from './repo';
 import { branchSetting, type Branches, CARD_BRANCH, detectBranch, readBranches } from './branches';
-import { GIT, gitAsync, gitRun, LOOK, remoteWorkspace, WorkspaceError } from './git';
+import { GIT, gitAsync, gitNames, gitRun, gitTry, LOOK, remoteWorkspace, WorkspaceError } from './git';
 
 /** A restored card's branch is no longer in the clone it takes back (`retake`). */
 export class BranchGone extends WorkspaceError {}
@@ -127,11 +128,7 @@ export function statusPaths(out: string): string[] {
  * the rest git tells apart by their content, which `--numstat` compares.
  */
 export async function worktreeNames(ws: string, base: string, args: string[] = []): Promise<string[]> {
-  const names = async (more: string[]) => {
-    const r = await gitRun(ws, [...LOOK, '-c', 'core.quotePath=false', 'diff', '-z', ...more]);
-    if (r.code !== 0) throw new WorkspaceError(`git diff in ${ws}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-    return r.stdout.split('\0');
-  };
+  const names = (more: string[]) => gitNames(ws, [...LOOK, '-c', 'core.quotePath=false', 'diff', '-z', ...more]);
   const [all, indexed] = await Promise.all([names(['--name-only', ...args, base]), names(['--name-only', '--cached', ...args, base])]);
   const staged = new Set(indexed);
   const unsure = all.filter((f) => f && !staged.has(f));
@@ -160,7 +157,7 @@ export function gitDiff(cwd: string, base: string, to?: string): Promise<string>
  * Windows seconds under load.
  */
 async function mainInClone(repo: string, ws: string, base: string, refs: Branches | null): Promise<string> {
-  const commit = await gitAsync(repo, 'rev-parse', '--verify', '-q', `refs/heads/${base}^{commit}`).catch(() => null);
+  const commit = await gitTry(repo, 'rev-parse', '--verify', '-q', `refs/heads/${base}^{commit}`);
   if (!commit) {
     // the fetch tells what is wrong
     await gitAsync(ws, 'fetch', '--quiet', repo, `refs/heads/${base}`);
@@ -267,7 +264,7 @@ async function backOnBase(repo: string, base: string, on: string): Promise<LandP
   if (busy) return blocked(`a ${busy} is under way there`);
   // untrimmed: a line's first column may be a space
   const status = await gitRun(repo, [...LOOK, '-c', 'core.quotePath=false', 'status', '--porcelain']);
-  if (status.code !== 0) throw new WorkspaceError(`git status in ${repo}: ${status.stderr.trim()}`);
+  if (status.code !== 0) throw new WorkspaceError(`git status in ${repo}: ${failureText(status)}`);
   const files = status.stdout.split('\n').filter(Boolean).map((l) => l.slice(3));
   if (files.length) return blocked(`has uncommitted changes (${[...files.slice(0, 10), ...(files.length > 10 ? [`${files.length - 10} more`] : [])].join(', ')})`, files);
   const head = await gitAsync(repo, 'rev-parse', '--short', 'HEAD');
@@ -290,10 +287,7 @@ async function pullMode(repo: string, base: string, upstream: string): Promise<s
 
 /** How the owner's git configuration pulls `base`, where it says: by a merge or by a rebase; null where it sets no way. */
 async function pullSet(repo: string, base: string): Promise<'merge' | 'rebase' | null> {
-  const get = async (key: string) => {
-    const r = await gitRun(repo, ['config', '--get', key]);
-    return r.code === 0 ? r.stdout.trim() : null;
-  };
+  const get = (key: string) => gitTry(repo, 'config', '--get', key);
   const [own, rebase, ff] = await Promise.all([get(`branch.${base}.rebase`), get('pull.rebase'), get('pull.ff')]);
   const set = own ?? rebase;
   if (set !== null) return set === 'false' ? 'merge' : 'rebase';
@@ -346,7 +340,7 @@ async function replayClash(repo: string, base: string, upstream: string, onto: s
       mergesTreesAsCommits = true;
       r = await run(await asCommit(repo, a), await asCommit(repo, b));
     }
-    if (r.code > 1 || (r.code === 1 && !r.stdout.trim())) throw new WorkspaceError(`git merge-tree in ${repo}: ${r.stderr.trim()}`);
+    if (r.code > 1 || (r.code === 1 && !r.stdout.trim())) throw new WorkspaceError(`git merge-tree in ${repo}: ${failureText(r)}`);
     const [tree, ...files] = r.stdout.trim().split('\n');
     return { tree: tree!, files: r.code === 1 ? files.filter(Boolean) : null };
   };
@@ -754,7 +748,7 @@ export class Workspaces implements CardWorkspaces {
     const there = remote(path);
     if (there) {
       const r = await there.host.run(`mv ${shWord(there.path)} ${shWord(trash)} && rm -rf ${shWord(trash)}`);
-      if (r.code !== 0) return console.error(`clone ${path}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+      if (r.code !== 0) return console.error(`clone ${path}: ${failureText(r)}`);
     } else {
       if (taken()) return;
       renameSync(path, trash);
@@ -1147,9 +1141,9 @@ export class Workspaces implements CardWorkspaces {
         return true;
       }
       if (existsSync(path)) {
-        if ((await gitAsync(path, ...LOOK, 'status', '--porcelain').catch(() => null)) !== '') return false;
+        if ((await gitTry(path, ...LOOK, 'status', '--porcelain')) !== '') return false;
         await this.quiet(path);
-        if ((await gitAsync(this.o.repoPath, 'worktree', 'remove', path).catch(() => null)) === null) return false;
+        if ((await gitTry(this.o.repoPath, 'worktree', 'remove', path)) === null) return false;
       }
       this.store.removeWorkspace(path);
       return true;
@@ -1640,11 +1634,7 @@ export class Workspaces implements CardWorkspaces {
    * cannot tell.
    */
   async changedFiles(cardId: string, landed?: { base: string; commit: string }): Promise<string[]> {
-    const names = async (cwd: string, args: string[]) => {
-      const r = await gitRun(cwd, ['-c', 'core.quotePath=false', ...args]);
-      if (r.code !== 0) throw new WorkspaceError(r.stderr);
-      return r.stdout.split('\0').filter(Boolean);
-    };
+    const names = (cwd: string, args: string[]) => gitNames(cwd, ['-c', 'core.quotePath=false', ...args]);
     try {
       if (landed) return await names(this.o.repoPath, ['diff', '--name-only', '-z', '-M', '--diff-filter=d', landed.base, landed.commit]);
       const ws = this.leasedBy(cardId);
@@ -1949,10 +1939,7 @@ export function leavingClones(
  * no clone of `origins` (a worktree's `.git` is a file, a clone of another repository).
  */
 export async function unlanded(path: string, o: { origins?: string[]; main?: string } = {}): Promise<string[] | 'gone' | null> {
-  const run = async (...args: string[]) => {
-    const r = await gitRun(path, args);
-    return r.code === 0 ? r.stdout.trim() : null;
-  };
+  const run = (...args: string[]) => gitTry(path, ...args);
   let there: ReturnType<typeof remote>;
   try {
     there = remote(path);
@@ -2055,7 +2042,7 @@ async function cloneState(path: string): Promise<Seen> {
     } else if (!existsSync(path)) return { found: 'missing' };
     // not `gitAsync`, which trims the first entry's status letters; `LOOK`, since a card may take the clone meanwhile
     const r = await gitRun(path, [...LOOK, 'status', '--porcelain', '-z']);
-    if (r.code !== 0) return { found: 'broken', error: (r.stderr || r.stdout).trim() || `exit code ${r.code}` };
+    if (r.code !== 0) return { found: 'broken', error: failureText(r) };
     if (r.stdout === '') return { found: 'clean' };
     const files = statusPaths(r.stdout);
     return { found: 'dirty', files: files.slice(0, SEEN_FILES), ...(files.length > SEEN_FILES ? { more: files.length - SEEN_FILES } : {}) };
@@ -2067,7 +2054,7 @@ async function cloneState(path: string): Promise<Seen> {
 /** Removes the worktree at `path` and its entry in the repository it was made from. */
 async function removeTree(path: string) {
   if (!existsSync(path)) return;
-  const common = await gitAsync(path, 'rev-parse', '--path-format=absolute', '--git-common-dir').catch(() => null);
+  const common = await gitTry(path, 'rev-parse', '--path-format=absolute', '--git-common-dir');
   await rm(path, { recursive: true, force: true });
   if (common) await gitAsync(common, 'worktree', 'prune');
 }

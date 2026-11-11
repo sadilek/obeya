@@ -7,7 +7,8 @@ import type { RepoAdapter } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import { type Language, LANGUAGE_NAMES, LANGUAGES, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { realPath } from './path';
 import { basename, isAbsolute, join } from 'node:path';
 import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
@@ -224,15 +225,6 @@ export function releaseHeld(board: Board, cardId: string): HeldComment[] {
   board.work(cardId, { held: null });
   return comments;
 }
-
-/** A path with its links resolved, or as it is where it cannot be (gone). */
-const realpathOr = (path: string) => {
-  try {
-    return realpathSync(path);
-  } catch {
-    return path;
-  }
-};
 
 /** What `f` returns; a workspace it cannot have is the request's error. */
 function asBadRequest<T>(f: () => T): T {
@@ -2564,7 +2556,7 @@ export class Workers {
    */
   private async namedFiles(cardId: string, files: { path: string; caption: string }[]): Promise<{ named?: CardFile[]; left?: string }> {
     const ws = (this.o.board.row(cardId).workspace ?? '').replace(/^ssh:\/\/[^/]+/, '');
-    const roots = [ws, ...(ws && !hostName(this.o.board.row(cardId).workspace) ? [realpathOr(ws)] : [])].filter(Boolean);
+    const roots = [ws, ...(ws && !hostName(this.o.board.row(cardId).workspace) ? [realPath(ws)] : [])].filter(Boolean);
     const changed = await this.changedFiles(cardId);
     const out: CardFile[] = [];
     const outside: string[] = [];

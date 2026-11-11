@@ -1,13 +1,23 @@
 // The PATH the programs Obeya checks and starts are looked up on: what a process started from the
 // desktop may lack, and on Windows what an installer added since Obeya started (an installation
 // Obeya ran, or one the owner ran by hand), which only a new process would get from the registry.
+// And a path as the file system resolves it.
 
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { output } from '../../plugin/skills/demo/lib/setup.ts';
 
 type Env = Record<string, string | undefined>;
+
+/** A path as the file system resolves it (links followed); as given where it does not exist. */
+export function realPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
 
 /** Where the official installers of Claude Code and uv put their programs. */
 export const localBin = () => join(homedir(), '.local', 'bin');

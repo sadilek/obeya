@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { messageOf } from '../core/text';
 import { remote, TOKEN_HELPER_ARGS } from './hosts';
-import { spawnOutput } from './spawn';
+import { failureText, spawnOutput } from './spawn';
 
 export class WorkspaceError extends Error {
   constructor(
@@ -46,9 +46,90 @@ export function remoteWorkspace(path: string) {
   }
 }
 
-/** `git` in `cwd` on this machine, the caller waiting: for scripts, tests and startup. */
+/** What a git call answered: its exit code and its output, untrimmed. */
+export interface GitResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** The error of a git call that failed, naming the call and where it ran. */
+const failed = (cwd: string, args: string[], r: GitResult) => new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${failureText(r)}`);
+
+/**
+ * The environment of a git call that may reach a remote (a fetch, a push) and that no one is there
+ * to answer: a remote that asks for a password asks no one, and the call fails instead of waiting.
+ */
+export const NO_PROMPT = { GIT_TERMINAL_PROMPT: '0' };
+
+/**
+ * `git` in `cwd` without blocking the server, with its exit code: the one runner the others are
+ * built on. `cwd` may be a workspace on another machine (`ssh://<host>/…`), where git runs over SSH
+ * with the repository's GitHub login; `env` (on top of the server's) applies on this machine only.
+ * `stdin`: the call's input; `timeout`: how long it may take, in ms.
+ */
+export async function gitRun(cwd: string, args: string[], o: { env?: Record<string, string>; stdin?: string; timeout?: number } = {}): Promise<GitResult> {
+  const there = remoteWorkspace(cwd);
+  if (there) return there.host.run(['git', ...TOKEN_HELPER_ARGS, '-C', there.path, ...args], { cwd: there.path, ...(o.stdin !== undefined ? { input: o.stdin } : {}), ...(o.timeout ? { timeout: o.timeout } : {}) });
+  return spawnOutput([GIT, '-C', cwd, ...args], {
+    ...(o.stdin !== undefined ? { stdin: new Blob([o.stdin]) } : {}),
+    ...(o.env ? { env: { ...process.env, ...o.env } } : {}),
+    ...(o.timeout ? { timeout: o.timeout } : {}),
+  });
+}
+
+/**
+ * `git` without blocking the server while it runs, its output trimmed; throws where it fails.
+ * Landing approved work fetches, rebases and pushes, over the network seconds in which the server
+ * would answer nothing else.
+ */
+export async function gitAsync(cwd: string, ...args: string[]): Promise<string> {
+  const r = await gitRun(cwd, args);
+  if (r.code !== 0) throw failed(cwd, args, r);
+  return r.stdout.trim();
+}
+
+/**
+ * `git` in `cwd` without blocking, its output trimmed; null where git fails (no repository there, a
+ * ref that does not exist) or cannot be run there.
+ */
+export async function gitTry(cwd: string, ...args: string[]): Promise<string | null> {
+  const r = await gitRun(cwd, args).catch(() => null);
+  return r?.code === 0 ? r.stdout.trim() : null;
+}
+
+/** What a git call whose exit code 1 is an answer (no) answered: whether it exited 0; throws where it failed otherwise. */
+async function yesOrNo(cwd: string, args: string[]): Promise<boolean> {
+  const r = await gitRun(cwd, args);
+  if (r.code === 0 || r.code === 1) return r.code === 0;
+  throw failed(cwd, args, r);
+}
+
+/**
+ * Whether commit `a` is an ancestor of `b` in `cwd`. Throws where git cannot tell (an unknown commit,
+ * a broken repository): each caller decides what that means for it.
+ */
+export const isAncestor = (cwd: string, a: string, b: string): Promise<boolean> => yesOrNo(cwd, ['merge-base', '--is-ancestor', a, b]);
+
+/** Whether `cwd` has the commit `c`. Throws where git cannot tell (a broken repository, a configuration it cannot read). */
+export const hasCommit = (cwd: string, c: string): Promise<boolean> => yesOrNo(cwd, ['rev-parse', '--verify', '--quiet', `${c}^{commit}`]);
+
+/**
+ * The names a git call lists separated by NUL (`-z`), as they are: a name with a tab or a space at
+ * its end is no other file's. Throws where it fails.
+ */
+export async function gitNames(cwd: string, args: string[]): Promise<string[]> {
+  const r = await gitRun(cwd, args);
+  if (r.code !== 0) throw failed(cwd, args, r);
+  return r.stdout.split('\0').filter(Boolean);
+}
+
+/**
+ * `git` in `cwd` on this machine, the caller waiting: for scripts, tests and startup. With the
+ * environment as it is now: on Windows each check reads PATH afresh (path.ts).
+ */
 export function git(cwd: string, ...args: string[]): string {
-  const r = Bun.spawnSync([GIT, '-C', cwd, ...args], { stderr: 'pipe' });
+  const r = Bun.spawnSync([GIT, '-C', cwd, ...args], { env: process.env, stderr: 'pipe' });
   if (r.exitCode !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${r.stderr.toString().trim()}`);
   return r.stdout.toString().trim();
 }
@@ -63,42 +144,6 @@ export function gitOrNull(cwd: string, ...args: string[]): string | null {
 }
 
 /**
- * `git` without blocking the server while it runs: landing approved work fetches, rebases and
- * pushes, over the network seconds in which the server would answer nothing else.
- */
-export async function gitAsync(cwd: string, ...args: string[]): Promise<string> {
-  const r = await gitRun(cwd, args);
-  if (r.code !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-  return r.stdout.trim();
-}
-
-/**
- * Whether commit `a` is an ancestor of `b` in `cwd`. Throws where git cannot tell (an unknown commit,
- * a broken repository): each caller decides what that means for it.
- */
-export async function isAncestor(cwd: string, a: string, b: string): Promise<boolean> {
-  const args = ['merge-base', '--is-ancestor', a, b];
-  const r = await gitRun(cwd, args);
-  if (r.code === 0 || r.code === 1) return r.code === 0;
-  throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-}
-
-/** Whether `cwd` has the commit `c`. Throws where git cannot tell (a broken repository, a configuration it cannot read). */
-export async function hasCommit(cwd: string, c: string): Promise<boolean> {
-  const args = ['rev-parse', '--verify', '--quiet', `${c}^{commit}`];
-  const r = await gitRun(cwd, args);
-  if (r.code === 0 || r.code === 1) return r.code === 0;
-  throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
-}
-
-/** `git` in `cwd` without blocking, with its exit code: for commands whose exit code is an answer (`diff --no-index`). */
-export async function gitRun(cwd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-  const there = remoteWorkspace(cwd);
-  if (there) return there.host.run(['git', ...TOKEN_HELPER_ARGS, '-C', there.path, ...args], { cwd: there.path });
-  return spawnOutput([GIT, '-C', cwd, ...args]);
-}
-
-/**
  * Put before a git command that only looks (`status`, `diff` against the working tree): git then
  * refreshes the index in memory without writing it. Writing it takes git's index lock, and a git
  * command that needs the lock meanwhile (a commit or checkout of the owner's or an agent's, Obeya's
@@ -106,12 +151,3 @@ export async function gitRun(cwd: string, args: string[]): Promise<{ code: numbe
  * changed as well (`worktreeNames`); its patches leave such a file out.
  */
 export const LOOK = ['--no-optional-locks', '-c', 'diff.autoRefreshIndex=false'];
-
-/**
- * `git` in `cwd` without blocking, its output trimmed; null where git fails (no repository there, a
- * ref that does not exist) or cannot be run there.
- */
-export async function gitTry(cwd: string, ...args: string[]): Promise<string | null> {
-  const r = await gitRun(cwd, args).catch(() => null);
-  return r?.code === 0 ? r.stdout.trim() : null;
-}

@@ -9,9 +9,8 @@
 import { inert } from '../core/inert';
 import type { SourceUpdate } from '../core/types';
 import { BadRequest } from './board';
-import { spawnOutput } from './spawn';
 import { worktreeNames } from './workspaces';
-import { GIT } from './git';
+import { gitRun, NO_PROMPT } from './git';
 
 /** How often the upstream is fetched. */
 export const FETCH_EVERY_MS = 60 * 60_000;
@@ -35,12 +34,8 @@ export class SourceUpdates {
     private o: { fetchEveryMs?: number } = {},
   ) {
     this.git = async (...args) => {
-      const r = await spawnOutput([GIT, '-C', checkout, ...args], {
-        stdin: 'ignore',
-        // a remote that asks for a password asks no one: the fetch fails and is tried again next time
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-        timeout: FETCH_TIMEOUT_MS,
-      });
+      // a remote that asks for a password asks no one: the fetch fails and is tried again next time
+      const r = await gitRun(checkout, args, { env: NO_PROMPT, timeout: FETCH_TIMEOUT_MS });
       return { ok: r.code === 0, out: (r.code === 0 ? r.stdout : r.stderr || r.stdout).trim() };
     };
   }
