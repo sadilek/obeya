@@ -6,34 +6,13 @@ import { useEffect, useState } from 'react';
 import { type CardDiff, diffSize, shownChanges } from '../core/diff';
 import { changeRows } from '../core/files';
 import type { CardAction, Item } from '../core/types';
-import { api } from './api';
 import type { ActDone } from './cardSheet';
 import { CopyPath, DiffView, Lines } from './diff';
 import { atWork, ChangeList } from './files';
 import { t } from './strings';
 
-/** How often an open card at work reads its change list again: its agent changes the folder as it goes. */
-const LOOK_MS = 5000;
 /** How long "Discard changes" waits for a second click that calls it off before it goes ahead: putting the files back cannot be taken back. */
 const DISCARD_WAIT_S = 8;
-
-/** The card's change list in its folder, read again as the card moves on, while its agent works, and on `reload`. */
-export function useFolderDiff(item: Item, on: boolean): { diff: CardDiff | null; reload: () => void } {
-  const [diff, setDiff] = useState<CardDiff | null>(null);
-  const [asked, setAsked] = useState(0);
-  useEffect(() => {
-    if (!on) return;
-    let gone = false;
-    const look = () => api.diff(item.id).then((d) => !gone && setDiff(d), () => {});
-    void look();
-    const timer = item.state === 'working' ? setInterval(look, LOOK_MS) : undefined;
-    return () => {
-      gone = true;
-      clearInterval(timer);
-    };
-  }, [on, item.id, item.state, item.need, item.statusLine, item.summary, item.noChange, asked]);
-  return { diff, reload: () => setAsked((n) => n + 1) };
-}
 
 /** Which undo the card has, with what it means on hover. */
 function UndoKind({ undo }: { undo: 'full' | 'partial' }) {
@@ -86,7 +65,7 @@ export function FolderLine({ item, diff, sizeBelow }: { item: Item; diff: CardDi
           <CopyPath path={item.workspace} />
         </>
       )}
-      {open && <DiffView item={item} onClose={() => setOpen(false)} onRead={() => {}} />}
+      {open && <DiffView item={item} onClose={() => setOpen(false)} />}
     </>
   );
 }

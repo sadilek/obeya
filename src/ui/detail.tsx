@@ -6,9 +6,9 @@ import { ApiError, api, type Field, failText } from './api';
 import { cardPath } from './address';
 import { Naming } from './cardLink';
 import { arrivedOnOpenCard, held, openedWith } from './demoSeen';
-import { Branch } from './diff';
+import { Branch, useCardDiff } from './diff';
 import { ResultFiles } from './files';
-import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
+import { DiscardChanges, FolderBox, FolderLine } from './folder';
 import { landedRef, shownTitle } from './parts';
 import { holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
@@ -130,7 +130,8 @@ export function Detail(p: Props) {
     .map(([id]) => Number(id));
   // in a folder without git the card's change list takes the place of its branch
   const inFolder = !!p.repos.find((r) => r.id === item.repo)?.folder;
-  const changes = useFolderDiff(item, inFolder && item.kind === 'task' && !!item.branch);
+  // what the card changed, read once for its branch line and its files; in a folder without git its change list takes the branch's place
+  const change = useCardDiff(item, { on: isWorked(item), poll: inFolder });
   // the tab the left column shows: a file picked there or in the change list beside the handover
   const [tab, setTab] = useState<string | null>(null);
   // Obeya reads what is typed here when no agent listens on the card: the field says so, as the microphone does
@@ -270,7 +271,7 @@ export function Detail(p: Props) {
       <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.folder.approved })}>
         {item.noChange ? t.approveNoChange : t.approve}
       </button>
-      <DiscardChanges diff={changes.diff} act={act} onDone={changes.reload} />
+      <DiscardChanges diff={change.diff} act={act} onDone={change.reload} />
     </>
   ) : (
     <>
@@ -309,7 +310,7 @@ export function Detail(p: Props) {
           {worked && ' · '}
         </>
       )}
-      {worked && (inFolder ? <FolderLine item={item} diff={changes.diff} sizeBelow={!talkAlone(item)} /> : item.branch && <Branch item={item} sizeBelow={!talkAlone(item)} />)}
+      {worked && (inFolder ? <FolderLine item={item} diff={change.diff} sizeBelow={!talkAlone(item)} /> : item.branch && <Branch item={item} diff={change.diff} onRead={change.set} sizeBelow={!talkAlone(item)} />)}
       {parent?.plan && (
         <>
           {worked && item.branch && ' · '}
@@ -465,7 +466,7 @@ export function Detail(p: Props) {
       )}
 
       {/* what the card changed in a folder without git stays in view: in its left column, or above its conversation where it has none */}
-      {worked && inFolder && talkAlone(item) && <FolderBox item={item} diff={changes.diff} />}
+      {worked && inFolder && talkAlone(item) && <FolderBox item={item} diff={change.diff} />}
       {waits ? (
         <Split
           main={
@@ -529,7 +530,7 @@ export function Detail(p: Props) {
                   item={item}
                   tab={tab}
                   onTab={setTab}
-                  {...(inFolder ? { diff: changes.diff } : {})}
+                  diff={change.diff}
                   demo={
                     item.demo && (
                       <DemoView
