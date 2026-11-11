@@ -14,6 +14,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { CardDiff, DiffFile, FolderChange, FolderChanges } from '../core/diff';
 import { cardDiff } from '../core/diff';
 import type { PoolHost } from '../core/types';
+import { shared } from '../core/one-at-a-time';
 import { messageOf } from '../core/text';
 import type { Store } from './db';
 import { spawnOutput } from './spawn';
@@ -892,12 +893,7 @@ export class FolderWorkspaces implements CardWorkspaces {
    * left; its undo goes and is made afresh before its next change.
    */
   undo(cardId: string): Promise<UndoReport> {
-    let p = this.undoing.get(cardId);
-    if (!p) {
-      p = this.serial(() => this.undoNow(cardId)).finally(() => this.undoing.delete(cardId));
-      this.undoing.set(cardId, p);
-    }
-    return p;
+    return shared(this.undoing, cardId, () => this.serial(() => this.undoNow(cardId)));
   }
 
   private async undoNow(cardId: string): Promise<UndoReport> {

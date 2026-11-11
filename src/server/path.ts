@@ -6,6 +6,7 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { shared } from '../core/one-at-a-time';
 import { output } from '../../plugin/skills/demo/lib/setup.ts';
 
 type Env = Record<string, string | undefined>;
@@ -61,10 +62,5 @@ const reading = new WeakMap<Env, Promise<void>>();
 /** On Windows, the PATH as the registry has it now: before every check, so what was installed meanwhile, by Obeya or by hand, is found. */
 export function freshPath(env: Env = process.env, platform: string = process.platform): Promise<void> {
   if (platform !== 'win32') return Promise.resolve();
-  let read = reading.get(env);
-  if (!read) {
-    read = windowsPath(env).finally(() => reading.delete(env));
-    reading.set(env, read);
-  }
-  return read;
+  return shared(reading, env, () => windowsPath(env));
 }

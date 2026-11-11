@@ -18,7 +18,7 @@ import { type GithubLogin, HostError, hostName, LOST, onHost, remote, sh as shWo
 import { runAppCommand } from './app-command';
 import { endProcessesIn } from './folder-processes';
 import { messageOf } from '../core/text';
-import { oneAtATime } from '../core/one-at-a-time';
+import { oneAtATime, shared } from '../core/one-at-a-time';
 import { failureText } from './spawn';
 import { demoFile } from './demo-page';
 import { sameRemote } from './repo';
@@ -446,16 +446,6 @@ const claimed = new Set<string>();
 /** What runs on a clone's folder now, by path: `ensureHostClones` making it, `clearAway` removing it; each waits for the other. */
 const busyPaths = new Map<string, Promise<unknown>>();
 
-/** Runs `fn` once what runs on `path` (`busyPaths`) is through, and keeps others off it meanwhile. */
-function onPath<T>(path: string, fn: () => Promise<T>): Promise<T> {
-  const before = busyPaths.get(path) ?? Promise.resolve();
-  const run = before.catch(() => {}).then(fn);
-  const settled = run.catch(() => {});
-  busyPaths.set(path, settled);
-  void settled.then(() => busyPaths.get(path) === settled && busyPaths.delete(path));
-  return run;
-}
-
 /**
  * The trailer of the commit in which Obeya keeps the work a card had not committed when its
  * workspace was taken from it (`evict`); the card's next lease takes that commit apart again.
@@ -624,7 +614,7 @@ export class Workspaces implements CardWorkspaces {
     const missing = paths.filter((path) => !existsSync(path));
     for (const path of paths) if (!missing.includes(path)) this.register(path);
     // a folder being removed is made afresh once it is gone
-    const made = missing.map((path) => onPath(path, async () => void (existsSync(path) || (await gitAsync(this.o.dir, 'clone', '--quiet', source, path)))));
+    const made = missing.map((path) => oneAtATime(busyPaths, path, async () => void (existsSync(path) || (await gitAsync(this.o.dir, 'clone', '--quiet', source, path)))));
     return Promise.all(made).then(() => {
       if (wanted()) for (const path of missing) this.register(path);
       return paths;
@@ -724,7 +714,7 @@ export class Workspaces implements CardWorkspaces {
     claimed.delete(path);
     retiring.set(
       path,
-      onPath(path, () => this.clearAway(path))
+      oneAtATime(busyPaths, path, () => this.clearAway(path))
         .catch((e) => console.error(`clone ${path}: ${messageOf(e)}`))
         .finally(() => {
           retiring.delete(path);
@@ -791,7 +781,7 @@ export class Workspaces implements CardWorkspaces {
       for (let i = 1; i <= n; i++) {
         const path = `${dir}/${i}`;
         // a folder being removed is made afresh once it is gone; one being made is not removed meanwhile
-        await onPath(onHost(host.name, path), async () => {
+        await oneAtATime(busyPaths, onHost(host.name, path), async () => {
           if ((await host.run(['test', '-d', `${path}/.git`])).code !== 0) {
             const r = await host.run(['git', ...TOKEN_HELPER_ARGS, 'clone', '--quiet', source, path], { cwd: dir });
             if (r.code !== 0) throw new HostError(`cloning ${source} on ${host.name}: ${(r.stderr || r.stdout).trim()}`);
@@ -965,20 +955,19 @@ export class Workspaces implements CardWorkspaces {
    * otherwise than the one before changes the board: a card waiting for a clean clone may take it now.
    */
   private look(path: string): Promise<Seen> {
-    let looking = this.looking.get(path);
-    if (looking) return looking;
-    looking = cloneState(path).then((seen) => {
-      this.looking.delete(path);
-      const before = this.looks.get(path);
-      // taken meanwhile: the card it went to looks again before it works in it
-      if (!this.list().some((w) => w.path === path && !w.card_id)) return seen;
-      this.looks.set(path, { ...seen, at: Date.now() });
-      // the pill names what it found, the files in a dirty clone too
-      if (!before || !sameSeen(before, seen)) this.o.changed?.();
-      return seen;
-    });
-    this.looking.set(path, looking);
-    return looking;
+    return shared(this.looking, path, () =>
+      cloneState(path).then((seen) => {
+        // over before the board hears of it
+        this.looking.delete(path);
+        const before = this.looks.get(path);
+        // taken meanwhile: the card it went to looks again before it works in it
+        if (!this.list().some((w) => w.path === path && !w.card_id)) return seen;
+        this.looks.set(path, { ...seen, at: Date.now() });
+        // the pill names what it found, the files in a dirty clone too
+        if (!before || !sameSeen(before, seen)) this.o.changed?.();
+        return seen;
+      }),
+    );
   }
 
   /** Whether git failed making the clone ready for a card less than RECHECK_MS ago. */
@@ -1725,13 +1714,7 @@ export class Workspaces implements CardWorkspaces {
     const at = this.cloned(ws) ? ws : this.o.repoPath;
     if (refs !== undefined) return detectBranch(at, refs);
     // asked again while git still answers (whether the card has work and where it lands, side by side): one answer
-    let asked = this.mains.get(at);
-    if (!asked) {
-      const now = detectBranch(at);
-      this.mains.set(at, (asked = now));
-      void now.finally(() => this.mains.get(at) === now && this.mains.delete(at)).catch(() => {});
-    }
-    return asked;
+    return shared(this.mains, at, () => detectBranch(at));
   }
 
   /** The branch the workspace's work goes onto as the workspace has it: the main branch itself in a worktree, `origin`'s copy in a clone. */
