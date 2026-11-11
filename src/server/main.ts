@@ -87,7 +87,7 @@ import { qwen3Serve, speak, voiceSpec } from '../../plugin/skills/demo/lib/voice
 import { Voicing } from './walkthrough';
 import { ScratchEnd } from './scratch';
 import type { Language } from '../core/locale';
-import { agentSetting, conversationLanguage, ownerLanguage, usageMeterView } from './settings';
+import { agentSetting, conversationLanguage, ownerLanguage, switchView } from './settings';
 import { loginLink } from './owner';
 import { Stalls } from './stalls';
 import { hideConsoleWindows, oneStartAtATime } from './spawn';
@@ -385,7 +385,7 @@ const usage = new UsageMeters(
     { harness: 'claude', meter: new UsageMeter(() => claudeUsage(home)) },
     { harness: 'codex', meter: new UsageMeter(() => codexUsage(home)) },
   ],
-  { on: usageMeterView(home).on, ready: (h) => harnesses.ready(h) },
+  { on: switchView(home, 'usageMeter').on, ready: (h) => harnesses.ready(h) },
 );
 harnesses.onChange(() => (usage.update(), usage.changed()));
 const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses });

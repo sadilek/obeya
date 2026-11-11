@@ -6,7 +6,7 @@ import { languageOf } from '../core/locale';
 import { AGENT_DEFAULTS, type AgentSetting } from '../core/types';
 import { byHarness, withAgentSetting } from './runtime';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
-import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView, costsView, saveCosts } from './settings';
+import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveSwitch, switchView, themeView } from './settings';
 import { FakeRuntime } from './testing';
 
 const homes: string[] = [];
@@ -219,28 +219,28 @@ test('light or dark: as the system until chosen, beside the other settings, and 
 
 test('the usage limits in the bar: shown until turned off, which alone stands in the file', () => {
   const home = scratchHome();
-  expect(usageMeterView(home).on).toBe(true);
+  expect(switchView(home, 'usageMeter').on).toBe(true);
   saveLanguage(home, { language: 'en' });
-  expect(saveUsageMeter(home, { on: false }).on).toBe(false);
+  expect(saveSwitch(home, 'usageMeter', { on: false }).on).toBe(false);
   expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en', usageMeter: false });
-  expect(saveUsageMeter(home, { on: true }).on).toBe(true);
+  expect(saveSwitch(home, 'usageMeter', { on: true }).on).toBe(true);
   expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en' });
-  for (const bad of [{ on: 'no' }, {}, null]) expect(() => saveUsageMeter(home, bad)).toThrow();
+  for (const bad of [{ on: 'no' }, {}, null]) expect(() => saveSwitch(home, 'usageMeter', bad)).toThrow();
   // anything else in the file shows them
   writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ usageMeter: 'off' }));
-  expect(usageMeterView(home).on).toBe(true);
+  expect(switchView(home, 'usageMeter').on).toBe(true);
 });
 
 test('costs: not shown until turned on, which alone stands in the file', () => {
   const home = scratchHome();
-  expect(costsView(home).on).toBe(false);
+  expect(switchView(home, 'costs').on).toBe(false);
   saveLanguage(home, { language: 'en' });
-  expect(saveCosts(home, { on: true }).on).toBe(true);
+  expect(saveSwitch(home, 'costs', { on: true }).on).toBe(true);
   expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en', costs: true });
-  expect(saveCosts(home, { on: false }).on).toBe(false);
+  expect(saveSwitch(home, 'costs', { on: false }).on).toBe(false);
   expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en' });
-  for (const bad of [{ on: 'yes' }, {}, null]) expect(() => saveCosts(home, bad)).toThrow();
+  for (const bad of [{ on: 'yes' }, {}, null]) expect(() => saveSwitch(home, 'costs', bad)).toThrow();
   // anything else in the file shows none
   writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ costs: 'on' }));
-  expect(costsView(home).on).toBe(false);
+  expect(switchView(home, 'costs').on).toBe(false);
 });

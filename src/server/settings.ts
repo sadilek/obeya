@@ -24,11 +24,25 @@ interface Settings {
   agents?: Partial<Record<AgentRole, Chosen>>;
   /** How other devices reach Obeya; absent, they do not. */
   remote?: RemoteSetting;
-  /** `false`: the bar does not show the plan's usage limits; absent, it does. */
-  usageMeter?: false;
-  /** `true`: the page shows what the agents cost; absent, it does not (they are counted either way). */
-  costs?: true;
+  /** The on/off choices (`SWITCHES`), each only where it differs from its default. */
+  usageMeter?: boolean;
+  costs?: boolean;
 }
+
+/**
+ * The owner's on/off choices: each is on or off by default (`byDefault`), and the file holds it only
+ * where the owner chose otherwise, so anything else there counts as the default. `usageMeter`: whether
+ * the bar shows the plan's usage limits; `costs`: whether the page shows what the agents cost (they
+ * are counted either way).
+ */
+const SWITCHES = {
+  usageMeter: { byDefault: true, said: (on: boolean) => `usage limits ${on ? 'shown' : 'not shown'} in the bar,` },
+  costs: { byDefault: false, said: (on: boolean) => `costs ${on ? 'shown' : 'not shown'},` },
+};
+export type Switch = keyof typeof SWITCHES;
+
+/** The switches the file holds: those that differ from their default, as `true` or `false`. */
+const switchesOf = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(SWITCHES).map(([key, { byDefault }]) => [key, o[key] === !byDefault ? !byDefault : undefined])) as Pick<Settings, Switch>;
 
 function read(home: string): Settings {
   try {
@@ -36,7 +50,7 @@ function read(home: string): Settings {
     const language = LANGUAGES.find((l) => l === o.language);
     const conversationLanguage = LANGUAGES.find((l) => l === o.conversationLanguage);
     const theme = THEMES.find((x) => x === o.theme);
-    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), remote: remoteOf(o.remote) ?? undefined, usageMeter: o.usageMeter === false ? false : undefined, costs: o.costs === true ? true : undefined };
+    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), remote: remoteOf(o.remote) ?? undefined, ...switchesOf(o) };
   } catch {
     return {};
   }
@@ -81,24 +95,14 @@ export function saveTheme(home: string, input: unknown): ThemeView {
   return themeView(home);
 }
 
-export const usageMeterView = (home: string): UsageMeterView => ({ file: join(home, SETTINGS_FILE), on: read(home).usageMeter !== false });
+export const switchView = (home: string, key: Switch): UsageMeterView & CostsView => ({ file: join(home, SETTINGS_FILE), on: read(home)[key] ?? SWITCHES[key].byDefault });
 
-/** Saves whether the bar shows the plan's usage limits (`{ on }`). Other settings in the file stay. */
-export function saveUsageMeter(home: string, input: unknown): UsageMeterView {
+/** Saves one of the owner's on/off choices (`{ on }`). Other settings in the file stay. */
+export function saveSwitch(home: string, key: Switch, input: unknown): UsageMeterView & CostsView {
   const on = (input as { on?: unknown } | null)?.on;
   if (typeof on !== 'boolean') throw new BadRequest('invalid', 'on must be true or false');
-  save(home, 'usageMeter', on ? null : false, `usage limits ${on ? 'shown' : 'not shown'} in the bar,`);
-  return usageMeterView(home);
-}
-
-export const costsView = (home: string): CostsView => ({ file: join(home, SETTINGS_FILE), on: read(home).costs === true });
-
-/** Saves whether the page shows what the agents cost (`{ on }`). Other settings in the file stay. */
-export function saveCosts(home: string, input: unknown): CostsView {
-  const on = (input as { on?: unknown } | null)?.on;
-  if (typeof on !== 'boolean') throw new BadRequest('invalid', 'on must be true or false');
-  save(home, 'costs', on ? true : null, `costs ${on ? 'shown' : 'not shown'},`);
-  return costsView(home);
+  save(home, key, on === SWITCHES[key].byDefault ? null : on, SWITCHES[key].said(on));
+  return switchView(home, key);
 }
 
 /** Saves one of the owner's choices, or with `null` takes it out; the other settings in the file stay. */

@@ -33,7 +33,7 @@ import icon180 from '../ui/logo/apple-touch-icon.png' with { type: 'file' };
 import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
 import { servePdfjs } from './pdfjs';
 import { Tailscale } from './tailscale';
-import { agentsView, costsView, languageView, ownerLanguage, saveAgents, saveCosts, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentsView, languageView, ownerLanguage, saveAgents, saveLanguage, saveSwitch, saveTheme, switchView, themeView } from './settings';
 import { proposeTags, TagProposals } from './tag-proposal';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -637,18 +637,18 @@ export function serve(
       },
       // whether the bar shows the plan's usage limits: the meter fetches them from then on, or stops
       '/api/usage-meter': {
-        GET: needs(config, (c) => usageMeterView(c.home)),
+        GET: needs(config, (c) => switchView(c.home, 'usageMeter')),
         PUT: needs(config, async (c, req) => {
-          const view = saveUsageMeter(c.home, await req.json());
+          const view = saveSwitch(c.home, 'usageMeter', await req.json());
           usage?.setOn(view.on);
           return view;
         }),
       },
       // whether the page shows what the agents cost, which Obeya counts either way: every open page follows at once
       '/api/costs': {
-        GET: needs(config, (c) => costsView(c.home)),
+        GET: needs(config, (c) => switchView(c.home, 'costs')),
         PUT: needs(config, async (c, req) => {
-          const view = saveCosts(c.home, await req.json());
+          const view = saveSwitch(c.home, 'costs', await req.json());
           everyone(JSON.stringify({ type: 'costs', shown: view.on } satisfies ServerMessage));
           return view;
         }),
@@ -1199,7 +1199,7 @@ export function serve(
         put(ws, JSON.stringify({ type: 'update', update: updates.current() } satisfies ServerMessage));
         put(ws, JSON.stringify({ type: 'source', source: sources?.current() ?? null } satisfies ServerMessage));
         put(ws, JSON.stringify({ type: 'usage', usage: usage?.current() ?? null } satisfies ServerMessage));
-        put(ws, JSON.stringify({ type: 'costs', shown: !!config && costsView(config.home).on } satisfies ServerMessage));
+        put(ws, JSON.stringify({ type: 'costs', shown: !!config && switchView(config.home, 'costs').on } satisfies ServerMessage));
         if (usage) unwatch.set(ws.data.page, usage.watch());
         if (every) put(ws, JSON.stringify({ type: 'canvases', canvases: canvases.all().map((x) => x.board.canvas) } satisfies ServerMessage));
         for (const x of every ? byId.values() : [c!]) greet(ws, x);
