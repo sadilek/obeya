@@ -36,8 +36,12 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { readFileSync: 2 },
   },
   'config.ts': {
-    why: "the configuration file: read at startup, stat'ed when the configuration is asked for (one known path), written when the owner saves; on the server path otherwise only stats of known paths (a voice's key and reference clips, a repository's path) and a demo voice's sample in a temporary directory",
-    calls: { existsSync: 7, mkdirSync: 1, mkdtempSync: 1, readFileSync: 2, rmSync: 1, statSync: 1, writeFileSync: 2 },
+    why: "the configuration file: read at startup, stat'ed when the configuration is asked for (one known path), written when the owner saves; on the server path otherwise only stats of known paths (a repository's path)",
+    calls: { existsSync: 4, mkdirSync: 1, readFileSync: 1, statSync: 1, writeFileSync: 2 },
+  },
+  'demo-settings.ts': {
+    why: "server path, cheap: stats of known paths (a voice's key and reference clips), and a demo voice's sample in a temporary directory",
+    calls: { existsSync: 3, mkdtempSync: 1, readFileSync: 1, rmSync: 1 },
   },
   'db.ts': { why: 'startup: the database directory made before the database opens', calls: { mkdirSync: 1 } },
   'demo-files.ts': {

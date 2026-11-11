@@ -51,6 +51,7 @@ import { type RestartReason } from '../core/types';
 import { within } from '../core/late';
 import { messageOf } from '../core/text';
 import { type CanvasConfig, Canvases } from './canvas';
+import { DemoSettingsDialog } from './demo-settings';
 import { Config, CONFIG_FILE, expandConfig, readConfigFile } from './config';
 import { checkPlugin } from './demo';
 import { Store, UnusableDatabase } from './db';
@@ -284,6 +285,7 @@ const voicing = new Voicing({
 });
 // the disk space demos take, and the frames of old renders deleted (demo-space.ts)
 const demoSpace = new DemoSpace({ home, settings: () => readDemoSettings(home), file: join(home, DEMO_SETTINGS_FILE), log: (line) => console.log(line) }).start();
+const demoSettings = new DemoSettingsDialog({ home, space: demoSpace, narrationUrl });
 const config = new Config({
   file: configFile,
   source,
@@ -291,9 +293,7 @@ const config = new Config({
   store,
   running: () => live().map((c) => c.id),
   server: { port: Number(values.port), home, permissionMode: values['permission-mode'], commit: commitOf() },
-  narrationUrl,
   forge,
-  space: demoSpace,
   onSettings: () => {
     for (const c of live()) c.settingsChanged();
   },
@@ -454,6 +454,7 @@ server = serve(canvases, Number(values.port), {
   voiceSetup,
   development: values.dev,
   config,
+  demoSettings,
   restarter,
   narration,
   machine,

@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { blocksSaving, type CanvasConfig, type ConfigView, type DemoSettingsView, type LanguageView } from '../core/types';
 import { Board } from './board';
 import { CanvasRuntime, type StartFailure } from './canvas';
-import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './config';
+import { Config, readConfigFile } from './config';
+import { DemoSettingsDialog } from './demo-settings';
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
@@ -35,8 +36,6 @@ const config = (source: 'file' | 'args', started: CanvasConfig[], running: strin
     store,
     running: () => running,
     server: { port: 4417, home: dir, permissionMode: 'auto' },
-    // not the machine's lock: a demo another agent renders meanwhile would hold up the sample
-    ttsLock: join(dir, 'tts.lock'),
     restart: () => void restarts++,
     apply: (_, ids) => void taken.push(ids),
     onSettings: () => void applied++,
@@ -635,7 +634,9 @@ describe('the configuration over HTTP', () => {
   beforeEach(async () => {
     const c = config('args', [{ repos: [{ path: web }] }], ['web']);
     canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c });
-    server = serve([canvas], 0, { transcriber: silent, config: c });
+    // not the machine's lock: a demo another agent renders meanwhile would hold up the sample
+    const demoSettings = new DemoSettingsDialog({ home: dir, ttsLock: join(dir, 'tts.lock') });
+    server = serve([canvas], 0, { transcriber: silent, config: c, demoSettings });
   });
   afterEach(() => {
     server.stop(true);
@@ -827,33 +828,5 @@ describe('a change the Coordinator makes', () => {
     } finally {
       canvas.shutdown();
     }
-  });
-});
-
-describe('the demo settings', () => {
-  test('say what keeps a voice from speaking', () => {
-    const missing = join(dir, 'nowhere');
-    expect(demoSettingsProblems({ language: 'de', voice: 'piper' }, {})).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'command' }, {})).toEqual(['noCommand']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'http' }, {})).toEqual(['noUrl']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'http', url: 'http://localhost:9' }, {})).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'say' }, {}, 'linux')).toEqual(['notHere']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'say' }, {}, 'darwin')).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'gemini' }, {})).toEqual(['noKey']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'gemini' }, { GEMINI_API_KEY: 'k' })).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'azure', url: 'westeurope' }, {})).toEqual(['noKey']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'openai', keyFile: missing }, {})).toEqual(['keyFileMissing']);
-    writeFileSync(join(dir, 'key'), 'k');
-    expect(demoSettingsProblems({ language: 'en', voice: 'elevenlabs', keyFile: join(dir, 'key') }, {})).toEqual([]);
-  });
-
-  test("say which of Qwen3's clips to clone does not work, by its language", () => {
-    writeFileSync(join(dir, 'me.wav'), '');
-    const s = { language: 'de', voice: 'qwen3', references: { de: join(dir, 'me.wav'), en: join(dir, 'me-en.wav') } } as const;
-    expect(clipProblems(s)).toEqual({ de: 'noTranscript', en: 'referenceMissing' });
-    writeFileSync(join(dir, 'me.txt'), 'Hallo.');
-    expect(clipProblems(s)).toEqual({ en: 'referenceMissing' });
-    // another voice clones nothing
-    expect(clipProblems({ ...s, voice: 'piper' })).toEqual({});
   });
 });

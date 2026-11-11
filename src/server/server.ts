@@ -15,6 +15,7 @@ import { parsePlace } from '../core/layout';
 import { type Focus, type Heard, type Input, isField } from './commands';
 import { holdsNotes } from '../core/queue';
 import type { Config } from './config';
+import type { DemoSettingsDialog } from './demo-settings';
 import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './serve-files';
 import { type NarrationHost, parseClipRequest, parseHearRequest } from './narration';
 import type { Restarter } from './self-update';
@@ -146,6 +147,7 @@ export interface ServeDeps {
   /** Bun's hot reloading of the page, for `--dev`. */
   development?: boolean;
   config?: Config;
+  demoSettings?: DemoSettingsDialog;
   restarter?: Restarter;
   narration?: NarrationHost;
   machine?: MachineSetup;
@@ -170,7 +172,7 @@ export interface ServeDeps {
 }
 
 export function serve(served: Served | CanvasRuntime[], port: number, deps: ServeDeps) {
-  const { transcriber, voiceSetup: setup, development = false, config, restarter, narration, machine, stop, sources, usage, stalls, harnesses, used } = deps;
+  const { transcriber, voiceSetup: setup, development = false, config, demoSettings, restarter, narration, machine, stop, sources, usage, stalls, harnesses, used } = deps;
   const updates = deps.updates ?? new AppUpdates();
   const access = deps.access ?? new Access({ store: new Store(':memory:'), tailscale: new Tailscale(null) });
   const push = deps.push ?? new Push({ store: access.store });
@@ -736,19 +738,19 @@ export function serve(served: Served | CanvasRuntime[], port: number, deps: Serv
       },
       // the demo settings: narration language and voice, read by every render
       '/api/demo-settings': {
-        GET: needs(config, (c) => c.demo()),
-        PUT: needs(config, async (c, req) => c.saveDemo(await req.json())),
+        GET: needs(demoSettings, (d) => d.demo()),
+        PUT: needs(demoSettings, async (d, req) => d.saveDemo(await req.json())),
       },
       // a voice as the owner chooses it: checked, installed (in the background), heard in a sample;
       // and what else a render needs on this machine
-      '/api/demo-settings/check': { POST: needs(config, async (c, req) => c.checkDemo(await req.json())) },
-      '/api/demo-settings/setup': { POST: needs(config, async (c, req) => c.demoSetup(await req.json())) },
-      '/api/demo-settings/install': { POST: needs(config, async (c, req) => c.installDemoVoice(await req.json())) },
+      '/api/demo-settings/check': { POST: needs(demoSettings, async (d, req) => d.checkDemo(await req.json())) },
+      '/api/demo-settings/setup': { POST: needs(demoSettings, async (d, req) => d.demoSetup(await req.json())) },
+      '/api/demo-settings/install': { POST: needs(demoSettings, async (d, req) => d.installDemoVoice(await req.json())) },
       '/api/demo-settings/sample': {
         POST: async (req) => {
-          if (!config) return notFound();
+          if (!demoSettings) return notFound();
           const input = await req.json().catch(() => null);
-          return config.sampleDemoVoice(input).then(
+          return demoSettings.sampleDemoVoice(input).then(
             (wav) => new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } }),
             (e) => handle(() => Promise.reject(e)),
           );
