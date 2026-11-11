@@ -2,11 +2,11 @@
 // workers, project agents and PR watcher), the board, the Coordinator and the voice commands.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
-import { existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor, readSharedFiles, type SharedRead } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
-import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readDefault, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, slug, visibilityKey } from './canvas-config';
+import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readDefault, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
@@ -14,7 +14,7 @@ import { openWithSystem } from './machine';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, laterTime, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, type CanvasConfig, type CardAction, untouched, type CardPatch, finished, type Item, layerSettings, nameless, needsYou, pausable, halted, snoozable, laterTime, type PendingRestart, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, DEMO_LOOK_MS, TITLE_MAX, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
@@ -23,9 +23,8 @@ import type { Config } from './config';
 import type { Store } from './db';
 import { Explorers } from './explorers';
 import { Files } from './files';
-import { Images, MAX_IMAGES } from './images';
-import { makeRepo, newRepoPath } from './new-repo';
-import { realPath } from './path';
+import { IdeaActions } from './idea-actions';
+import { Images } from './images';
 import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge';
 import { Coordinator } from './coordinator';
 import { WorkRetro } from './work-retro';
@@ -53,7 +52,7 @@ import { githubToken } from './git';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, type Theme } from './theme';
 import { claudeToken, hostName, registerHost } from './hosts';
-import { clip, messageOf, oneLine, plainText } from '../core/text';
+import { messageOf } from '../core/text';
 import { type WishDraft, type WishInput, writeWish } from './wish';
 
 export type { CanvasConfig, RepoConfig };
@@ -208,12 +207,6 @@ const BOARD_ONLY: CardAction['action'][] = ['agent', 'name', 'dequeue', 'reorder
 /** The card's repository does not run on the canvas: nothing goes to its agents (`Item.repoDown`). */
 const repoDown = (card: Pick<Item, 'repo'>) => new BadRequest('repoDown', `the repository ${card.repo} of the card does not run on this canvas`);
 
-/** New repositories being made, one after the other (`makeNewRepo`). */
-let making: Promise<unknown> = Promise.resolve();
-
-/** How often handing a prototype to its workstream is tried, git failing, before it is left to the owner. */
-const SETTLE_TRIES = 3;
-
 export class CanvasRuntime {
   readonly board: Board;
   readonly coordinator: Coordinator;
@@ -227,6 +220,8 @@ export class CanvasRuntime {
   readonly files: Files;
   readonly answers: Answers;
   readonly revisions: Revisions;
+  /** What the owner decides on proposals, ideas and their prototypes, and on a card's new repository. */
+  private readonly ideas: IdeaActions;
   /** The skills of the cards' agents, by repository. */
   private readonly skills: Skills;
   /** Demos shared with colleagues, on the demo site of the card's repository. */
@@ -385,9 +380,27 @@ export class CanvasRuntime {
       repoLanguage: (card) => this.repoOf(card).adapter.language,
       onOwnerInput: (card, text) => coordinator.learn(card, 'idea', text),
       imageFiles: this.imageFiles,
-      onReplied: (cardId, replied) => this.replied(cardId, replied),
+      onReplied: (cardId, replied) => this.ideas.replied(cardId, replied),
       toObeya: this.toObeya,
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
+    });
+    this.ideas = new IdeaActions({
+      board,
+      store: deps.store,
+      explorers: this.explorers,
+      coordinator,
+      images,
+      tell: (text) => this.commander.tell(text),
+      repos: () => this.repos,
+      repoOf: (card) => this.repoOf(card),
+      ...(deps.canvases ? { canvases: deps.canvases } : {}),
+      ...(deps.config ? { config: deps.config } : {}),
+      ...(deps.newRepoHoldMs !== undefined ? { newRepoHoldMs: deps.newRepoHoldMs } : {}),
+      forget: (cardId) => {
+        clearTimeout(this.writing.get(cardId)?.timer);
+        this.writing.delete(cardId);
+        this.said.delete(cardId);
+      },
     });
     this.explorers.resumeAll();
     this.answers = new Answers({
@@ -442,7 +455,7 @@ export class CanvasRuntime {
       pathFor: (card) => this.repoOf(card).read.path,
       imageFiles: this.imageFiles,
       toObeya: this.toObeya,
-      onRevised: (cardId, revised) => this.revised(cardId, revised),
+      onRevised: (cardId, revised) => this.ideas.revised(cardId, revised),
     });
     this.revisions.resume();
     this.sharing = new Sharing({
@@ -495,24 +508,11 @@ export class CanvasRuntime {
       }, 0);
     });
     const uncount = board.onChange(() => this.countAgents());
-    // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
-    const unsettle = board.onChange(() => this.settleLater());
     this.unwatch = () => {
       unwake();
       uncount();
-      unsettle();
     };
     this.countAgents();
-    this.settleLater();
-  }
-
-  /** Looks for prototypes whose idea's project now stands (`settlePrototypes`), once what changed the board is through. */
-  private settleLater() {
-    if (this.settleSoon) return;
-    this.settleSoon = setTimeout(() => {
-      this.settleSoon = undefined;
-      if (!this.shutDown) this.settlePrototypes();
-    }, 0);
   }
 
   /** Looks for snoozed cards whose time has come. */
@@ -521,10 +521,6 @@ export class CanvasRuntime {
   private demoLook: ReturnType<typeof setInterval>;
   /** A look for snoozed cards to wake after the board changed, and the subscription to its changes. */
   private wakeSoon: ReturnType<typeof setTimeout> | undefined;
-  /** A look for prototypes whose idea's project now stands (`settlePrototypes`), and the ideas whose prototype is being handed to its workstream. */
-  private settleSoon: ReturnType<typeof setTimeout> | undefined;
-  private settling = new Set<string>();
-  private settleTries = new Map<string, number>();
   private unwatch: () => void;
 
   /** Wakes the snoozed cards whose time has come by `now`, and those whose card they wait on got there (or no longer can); so too the steps the Coordinator waits on cards for. */
@@ -591,7 +587,7 @@ export class CanvasRuntime {
     if (card.snoozed.start) {
       this.repoOf(cardId).workers.startsNow(cardId, timeUp);
       // one to be started in a new repository makes it first
-      if (card.newRepo) return this.intoNewRepo(cardId);
+      if (card.newRepo) return this.ideas.intoNewRepo(cardId);
       return this.coordinator.request(cardId);
     }
     this.repoOf(cardId).workers.wake(cardId, timeUp, met);
@@ -907,8 +903,8 @@ export class CanvasRuntime {
       onLanded: (cardId) => void this.sharing.landed(cardId),
       onMerged: () => void read.refresh(),
       onFollowUpTask: (taskId, reviewId) => this.coordinator.followUp(taskId, reviewId),
-      onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
-      onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
+      onPrototype: (prototype, summary, demo) => this.ideas.prototypeReady(prototype, summary, demo),
+      onPrototypeAnswer: (prototype, question, answer) => this.ideas.prototypeAnswered(prototype, question, answer),
       // where work lands on the local main, the read tree is the checkout and moves with the landing;
       // a push leaves the checkout as it is: what it changes applies once the read tree fetches it
       restartsFor: async (l: Landed, pushedFrom?: string) => {
@@ -1824,12 +1820,12 @@ export class CanvasRuntime {
       throw new BadRequest('emptyText', 'text must be a non-empty string');
     switch (a.action) {
       case 'start':
-        if (card?.newRepo) return this.intoNewRepo(cardId);
+        if (card?.newRepo) return this.ideas.intoNewRepo(cardId);
         // one snoozed to start later starts now
         if (this.board.item(cardId)?.snoozed?.start) return this.wake(cardId, false);
         return this.coordinator.request(cardId);
       case 'stayHere':
-        return this.stayHere(cardId);
+        return this.ideas.stayHere(cardId);
       case 'name':
         return void this.coordinator.name(cardId);
       case 'force':
@@ -1889,9 +1885,9 @@ export class CanvasRuntime {
       case 'editHeld':
         return this.repoOf(cardId).workers.editHeld(cardId, a.body);
       case 'accept':
-        return this.accept(cardId, a.picks, a.start !== false, a.idea);
+        return this.ideas.accept(cardId, a.picks, a.start !== false, a.idea);
       case 'unaccept':
-        return this.unaccept(cardId);
+        return this.ideas.unaccept(cardId);
       case 'dismiss':
         // a card its agent withdrew or replaced goes like a deleted one, its worker stopped
         if (this.board.item(cardId)?.superseded) return this.remove(cardId);
@@ -1908,24 +1904,24 @@ export class CanvasRuntime {
       case 'discuss':
         return this.explorers.discuss(cardId, text.trim(), !!a.spoken, images, replyTo);
       case 'build':
-        return this.build(cardId);
+        return this.ideas.build(cardId);
       case 'unbuild':
-        return this.unbuild(cardId);
+        return this.ideas.unbuild(cardId);
       case 'splitOff':
-        return this.splitOff(cardId);
+        return this.ideas.splitOff(cardId);
       case 'planDoc':
-        return this.planDoc(cardId);
+        return this.ideas.planDoc(cardId);
       case 'park':
       case 'drop':
-        return this.shelve(cardId, a.action);
+        return this.ideas.shelve(cardId, a.action);
       case 'prototype':
         if (a.variants !== undefined && (!Array.isArray(a.variants) || a.variants.length > 20 || a.variants.some((v) => typeof v !== 'string')))
           throw new BadRequest('invalid', 'variants must be a list of the planned approaches');
-        return this.prototype(cardId, text.trim(), a.variants);
+        return this.ideas.prototype(cardId, text.trim(), a.variants);
       case 'buildPrototype':
-        return this.buildOnPrototype(cardId);
+        return this.ideas.buildOnPrototype(cardId);
       case 'discard':
-        return this.repoOf(this.prototypeCard(cardId)).workers.endPrototype(cardId, 'discarded');
+        return this.ideas.discard(cardId);
       case 'ask':
         return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
       case 'consult': {
@@ -1998,7 +1994,7 @@ export class CanvasRuntime {
   remove(cardId: string) {
     clearTimeout(this.writing.get(cardId)?.timer);
     this.writing.delete(cardId);
-    this.keepHere(cardId);
+    this.ideas.keepHere(cardId);
     const { state, landed, workspace, prototype_of } = this.board.row(cardId);
     if (prototype_of) return this.repoOf(cardId).workers.endPrototype(cardId, 'discarded');
     if ((state === 'working' || state === 'waiting' || (landed && workspace)) && this.runs(cardId)) void this.repoOf(cardId).workers.stop(cardId);
@@ -2045,7 +2041,7 @@ export class CanvasRuntime {
     const r = this.repos.find((x) => x.ref.id === repo);
     if (!r) throw new BadRequest('invalid', 'unknown repository');
     const open = this.board.openSetupCard(repo, r.ref.name);
-    if (open?.state === 'proposal') this.accept(open.id, [], false);
+    if (open?.state === 'proposal') this.ideas.accept(open.id, [], false);
     return open ? this.board.card(open.id)! : this.board.setupCard(repo, r.ref.name);
   }
 
@@ -2091,548 +2087,6 @@ export class CanvasRuntime {
     return this.board.card(card.id)!;
   }
 
-  // ---------------------------------------------------------------- proposals
-
-  /**
-   * Accepting a proposal is the owner's go unless they keep it to edit first (`start` false): the
-   * card goes to the Coordinator like a started one, a proposed idea, or a task the owner takes as
-   * one (`asIdea`), to its exploration agent. Clicked while the proposal is reworked, it is accepted
-   * once the new text is there, unless that asks questions.
-   */
-  private accept(cardId: string, picks: string[][] | undefined, start: boolean, asIdea?: boolean) {
-    const card = this.board.item(cardId);
-    if (card?.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    // one the work retrospective made before it stored proposal data has none
-    const proposal = card.proposal ?? { questions: [] };
-    if ((start || asIdea) && proposal.revising) {
-      // the owner knows what comes; the new text still may ask what must be settled first
-      if (this.board.acceptAfterRevision(cardId, asIdea ? 'idea' : true))
-        this.board.log(cardId, 'state', 'owner', this.board.t.proposal.acceptAfterRevision(asIdea ? 'asIdea' : proposal.idea ? 'discuss' : 'start'));
-      return;
-    }
-    const idea = !!asIdea || (start && !!proposal.idea);
-    this.board.accept(cardId, picks, idea);
-    if (idea) this.explorers.open(cardId, proposal.idea ? 'idea' : 'task');
-    // one its agent proposed to start later waits until then, unless that time has passed
-    else if (start && proposal.startAt && Date.parse(proposal.startAt) > Date.now())
-      this.board.snooze(cardId, { until: proposal.startAt, by: 'agent', start: true, ...(proposal.reason ? { why: clip(oneLine(proposal.reason), 200) } : {}) });
-    else if (start) {
-      if (proposal.startAt) this.repoOf(cardId).workers.startsAt(cardId, proposal.startAt, 'agent', true);
-      this.coordinator.request(cardId);
-    }
-  }
-
-  /** Accepting after the revision is taken back: the proposal stays one. */
-  private unaccept(cardId: string) {
-    if (this.board.acceptAfterRevision(cardId, false)) this.board.log(cardId, 'state', 'owner', this.board.t.proposal.notAccepting);
-  }
-
-  /** The revision is over (`revised`, or the agent ended without a text): a proposal accepted meanwhile is accepted now, unless it asks questions. */
-  private revised(cardId: string, revised: boolean) {
-    const card = this.board.item(cardId);
-    // words the owner said meanwhile are reworked in first
-    const armed = card?.proposal?.acceptAfterRevision;
-    if (card?.state !== 'proposal' || !armed || card.proposal!.revising) return;
-    this.board.acceptAfterRevision(cardId, false);
-    const asks = card.proposal!.questions.length;
-    if (revised && !asks) return this.accept(cardId, [], true, armed === 'idea');
-    const t = this.board.t.proposal;
-    this.board.log(cardId, 'state', 'obeya', !revised ? t.notAcceptedNoRevision : asks > 1 ? t.notAcceptedQuestions : t.notAcceptedQuestion);
-  }
-
-  // ---------------------------------------------------------------- ideas
-
-  /**
-   * The idea is built as it stands: its brief becomes the card's task, and the card goes to the
-   * Coordinator to start. A prototype still running for it is discarded: what is built now is the brief.
-   */
-  private build(cardId: string) {
-    const card = this.ideaCard(cardId);
-    if (card.idea?.thinking) {
-      // the owner knows what comes; the reply still may ask what must be settled first
-      if (card.idea.buildAfterReply) return;
-      this.board.setIdea(cardId, { buildAfterReply: true });
-      this.board.log(cardId, 'state', 'owner', this.board.t.idea.buildAfterReply);
-      return;
-    }
-    if (card.newRepo) return this.intoNewRepo(cardId);
-    this.decided(card, { answer: this.board.t.idea.buildAnswer, log: this.board.t.idea.buildLog });
-    this.coordinator.request(cardId);
-  }
-
-  // ---------------------------------------------------------------- a new repository
-
-  /** Cards whose new repository Obeya makes once the undo window is through (`NewRepo.due`). */
-  private newRepos = new Map<string, ReturnType<typeof setTimeout>>();
-
-  /**
-   * "Build it like this" or "Start agent" on a card to be built in a repository that does not exist yet:
-   * after a few seconds in which `stayHere` takes it back, Obeya makes that repository and builds or
-   * starts the card there (`makeNewRepo`). What it cannot do is refused at once where it can tell.
-   */
-  private intoNewRepo(cardId: string) {
-    const card = this.board.item(cardId);
-    const target = card?.newRepo;
-    if (!card || !target) throw new BadRequest('invalid', 'the card has no new repository');
-    if (target.due) return;
-    const t = this.board.t.newRepo;
-    const path = newRepoPath(target.path, t);
-    if (this.deps.config && this.deps.config.view().source !== 'file') throw new BadRequest('newRepoPath', t.fromCommandLine);
-    this.taken(path);
-    const due = Date.now() + (this.deps.newRepoHoldMs ?? NEW_REPO_HOLD_MS);
-    this.board.setNewRepo(cardId, { ...target, due: new Date(due).toISOString() });
-    this.newRepos.set(
-      cardId,
-      setTimeout(() => {
-        this.newRepos.delete(cardId);
-        // one after the other, on any canvas: each adds to the configuration as the one before left it
-        making = making.then(() => this.makeNewRepo(cardId));
-      }, due - Date.now()),
-    );
-  }
-
-  /** The owner takes back building or starting the card in its new repository while the undo window runs. */
-  private stayHere(cardId: string) {
-    if (!this.keepHere(cardId)) throw new BadRequest('newRepoGone', 'the new repository is being made already');
-    this.board.log(cardId, 'state', 'owner', this.board.t.newRepo.stayed);
-  }
-
-  /** Building or starting the card in its new repository does not happen after all, if its undo window still runs; whether it did. */
-  private keepHere(cardId: string): boolean {
-    const timer = this.newRepos.get(cardId);
-    const target = this.board.newRepo(cardId);
-    if (!timer || !target?.due) return false;
-    clearTimeout(timer);
-    this.newRepos.delete(cardId);
-    this.board.setNewRepo(cardId, { ...target, due: undefined });
-    return true;
-  }
-
-  /** Refuses a folder that is a repository of a canvas already: the card is to be built there instead. */
-  private taken(path: string) {
-    const real = realPath(path);
-    for (const c of this.deps.canvases?.() ?? [this]) {
-      const r = c.repos.find((x) => realPath(x.info.path) === real);
-      if (r) throw new BadRequest('newRepoPath', this.board.t.newRepo.taken(path, c.board.canvas.name));
-    }
-  }
-
-  /**
-   * Makes the card's new repository and builds or starts the card there, one step after the other:
-   * the folder and git (`makeRepo`), the configuration with a canvas of its own named after it (or
-   * the repository on this canvas), then the card: an idea is decided as "Build it like this" decides it, and
-   * moves, with its history and decisions, to the new canvas, where it starts. A step that fails takes
-   * back those before it, and the card says why.
-   */
-  private async makeNewRepo(cardId: string) {
-    const t = this.board.t.newRepo;
-    const target = this.board.newRepo(cardId);
-    const card = this.board.item(cardId);
-    if (!card || !target?.due) return;
-    const undo: (() => unknown)[] = [];
-    try {
-      const path = newRepoPath(target.path, t);
-      this.taken(path);
-      const config = this.deps.config;
-      if (!config) throw new Error('no configuration to add the repository to');
-      const repo = makeRepo(path, t);
-      undo.push(repo.undo);
-      const { resolved } = await config.check(config.current());
-      const here = resolved.findIndex((r) => r?.id === this.id);
-      if (here < 0) throw new Error(`the canvas ${this.id} is not in the configuration`);
-      // on the configuration as it is now, and taken back from it as it is then: changes meanwhile stay
-      const added = { path: target.path.trim() };
-      const now = config.current();
-      const after = target.canvas ? [...now, { repos: [added] }] : now.map((c, i) => (i === here ? { ...c, repos: [...c.repos, added] } : c));
-      await config.save(after);
-      const without = () =>
-        config.current().flatMap((c) => {
-          const repos = c.repos.filter((r) => r.path !== added.path);
-          return repos.length ? [{ ...c, repos }] : [];
-        });
-      undo.push(() => config.save(without()));
-      if (!target.canvas) return this.joined(cardId, path, repo.made);
-      const checked = await config.check(after);
-      const id = checked.resolved.at(-1)?.id;
-      const there = id ? this.deps.canvases?.().find((c) => c.id === id) : undefined;
-      if (!there) throw new Error(t.notStarted(checked.problems.filter((p) => p.canvas === after.length - 1).map((p) => p.detail).join('; ') || path));
-      this.moveTo(cardId, there, repo.made);
-    } catch (e) {
-      for (const step of undo.reverse()) {
-        try {
-          await step();
-        } catch (u) {
-          console.error(`Obeya: taking back a step of the new repository of ${cardId}:`, u);
-        }
-      }
-      if (!this.board.item(cardId)) return;
-      this.board.setNewRepo(cardId, { ...target, due: undefined });
-      this.board.log(cardId, 'error', 'obeya', t.failed(messageOf(e)), { code: e instanceof BadRequest ? e.code : undefined });
-    }
-  }
-
-  /** The new repository joined this canvas: the card works in it, an idea built as "Build it like this" builds it. */
-  private joined(cardId: string, path: string, made: boolean) {
-    const r = this.repos.find((x) => x.info.path === path);
-    if (!r) throw new Error(`${path} does not run on the canvas`);
-    const card = this.board.item(cardId)!;
-    const target = this.board.newRepo(cardId)!;
-    this.board.patch(cardId, { repo: r.ref.id });
-    this.board.setNewRepo(cardId, { path: target.path, canvas: false, by: target.by, made: true });
-    this.board.log(cardId, 'state', 'obeya', this.board.t.newRepo.joined(target.path.trim(), made));
-    if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(target.path.trim()), log: this.board.t.idea.buildLog });
-    this.coordinator.request(cardId);
-  }
-
-  /**
-   * The card leaves for the canvas `there`, whose home repository was made for it: an idea is
-   * decided here first (its agent's session ends, its prototypes are discarded), then the card goes
-   * with its history, decisions and screenshots, out of its group, and starts there. This canvas's
-   * sheet says where it went, and a page that has it open follows it.
-   */
-  private moveTo(cardId: string, there: CanvasRuntime, made: boolean) {
-    const card = this.board.item(cardId)!;
-    const target = this.board.newRepo(cardId)!;
-    const shown = target.path.trim();
-    // the screenshots of the task and of its conversation, which the new canvas keeps under its own name
-    const row = this.board.row(cardId);
-    const shots = [...(row.images ? (JSON.parse(row.images) as string[]) : []), ...this.board.events(cardId).flatMap((e) => e.images ?? [])];
-    this.images.copyTo(there.images, shots);
-    if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(shown), log: this.board.t.idea.buildLog });
-    clearTimeout(this.writing.get(cardId)?.timer);
-    this.writing.delete(cardId);
-    this.said.delete(cardId);
-    const at = there.board.freeSpot(there.inView);
-    this.deps.store.moveCard(cardId, there.id, at, { new_repo: JSON.stringify({ path: target.path, canvas: true, by: target.by, made: true }) });
-    this.deps.store.dropEmptyGroups(this.id);
-    there.board.log(cardId, 'state', 'obeya', there.board.t.newRepo.movedHere(this.board.canvas.name, shown, made));
-    const moved = { card: cardId, title: card.title, canvas: there.id, canvasName: there.board.canvas.name };
-    this.board.moved(moved);
-    this.commander.tell(`The card "${card.title}" moved to the canvas "${there.board.canvas.name}", in its new repository ${shown}, and is built there.`);
-    this.board.notify({ cardId, text: this.board.t.newRepo.movedAway(card.title, there.board.canvas.name), movedTo: there.id });
-    there.board.changed();
-    there.coordinator.request(cardId);
-  }
-
-  /**
-   * "Split off a task": the part its agent marked as settled becomes a task of its own beside the idea,
-   * in its group and linked to it, with the screenshots of the discussion, and starts at once. The
-   * idea stays open with its conversation and its prototypes; its agent hears what became of the part.
-   * Not while the agent works on a reply, which may change the split.
-   */
-  private splitOff(cardId: string) {
-    const idea = this.settledIdea(cardId);
-    const { split } = this.board.idea(cardId);
-    if (!split) throw new BadRequest('noSplit', 'the idea’s agent has marked no task to split off');
-    const t = this.board.t.idea;
-    const shown = this.board.events(cardId).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
-    const images = [...new Set([...(idea.images ?? []), ...shown])].slice(-MAX_IMAGES);
-    const task = this.board.create({ title: split.title, body: `${split.brief}\n\n${t.settledTask(idea.title)}`, from: cardId, ...(images.length ? { images } : {}) });
-    this.board.log(task.id, 'state', 'owner', t.settledFrom(idea.title));
-    this.board.setIdea(cardId, { split: undefined });
-    this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(idea.title), answer: t.splitOffAnswer(split.title), by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', t.splitOffLog(split.title));
-    this.coordinator.request(task.id);
-    this.explorers.tell(
-      cardId,
-      `The owner clicked "${t.splitOffButton}": the part you marked as settled is now the task “${split.title}”, on a card of its own beside this idea, and a worker starts on it. Obeya has cleared the split. This idea stays open, with this conversation and its prototypes, planned and running, for what is still open. Trim the brief to what is open (the built part a line under decisions, as the task “${split.title}”), then reply to the owner in a sentence or two.`,
-    );
-  }
-
-  /** Building after the reply is taken back: the idea stays in its discussion. */
-  private unbuild(cardId: string) {
-    if (!this.ideaCard(cardId).idea?.buildAfterReply) return;
-    this.board.setIdea(cardId, { buildAfterReply: false });
-    this.board.log(cardId, 'state', 'owner', this.board.t.idea.unbuild);
-  }
-
-  /**
-   * The idea's agent has answered all it was told (`replied`), or its turn ended without (an error,
-   * a restart): an idea to build after the reply is built now, unless the reply asks questions.
-   */
-  private replied(cardId: string, replied: boolean) {
-    const card = this.board.item(cardId);
-    if (card?.state !== 'idea' || !card.idea?.buildAfterReply) return;
-    this.board.setIdea(cardId, { buildAfterReply: false });
-    const asks = card.idea.questions.length;
-    if (replied && !asks && card.idea.status === 'open') return this.build(cardId);
-    const t = this.board.t.idea;
-    this.board.log(cardId, 'state', 'obeya', !replied ? t.notBuiltNoReply : asks > 1 ? t.notBuiltQuestions : t.notBuiltQuestion);
-  }
-
-  /**
-   * The idea is built on this prototype: the prototype's workspace and branch become the idea's,
-   * whose worker goes on from there with the brief, the prototype's handover and the owner's answers
-   * on it. The prototype goes into the archive as built, the idea's other prototypes as discarded.
-   * What stands in the way is thrown at once; git renames the branch in the background.
-   */
-  private buildOnPrototype(prototypeId: string) {
-    const prototype = this.prototypeCard(prototypeId);
-    const planning = this.board.item(prototype.prototypeOf!);
-    if (this.board.projectOf(prototype.prototypeOf!) || planning?.becomesProject)
-      throw new BadRequest('projectPending', 'the idea becomes a project: the workstream its plan doc builds on the prototype gets its branch once the project stands');
-    if (!planning) throw new BadRequest('ideaGone', 'the prototype’s idea is no longer on the canvas, and no project of it is');
-    const idea = this.settledIdea(prototype.prototypeOf!);
-    const { workers } = this.repoOf(prototype);
-    return workers.buildOn(prototype.id, idea).then(() => {
-      this.decided(idea, { answer: this.board.t.idea.buildOnAnswer(prototype.title), log: this.board.t.idea.buildOnLog(prototype.title) });
-      this.coordinator.request(idea.id);
-    });
-  }
-
-  /**
-   * Once an idea has become a project, its plan doc settles the prototypes still on the canvas: the
-   * one it builds on goes, with its workspace and branch, to the workstream that builds on it, which
-   * starts on it like any other workstream; the others are discarded. Where the doc builds on none,
-   * or does not say clearly which (or that workstream has been started meanwhile), all are discarded.
-   */
-  private settlePrototypes() {
-    const items = this.board.items();
-    const ideas = new Set(items.flatMap((i) => (i.prototypeOf && !this.settling.has(i.prototypeOf) ? [i.prototypeOf] : [])));
-    for (const ideaId of ideas) {
-      const project = this.board.projectOf(ideaId);
-      if (!project) continue;
-      const prototypes = items.filter((i) => i.prototypeOf === ideaId);
-      // a repository still starting settles them once it is up
-      if (prototypes.some((p) => !this.repos.some((r) => r.ref.id === p.repo))) continue;
-      const open = items.filter((i) => i.parent === project.id && i.kind === 'task' && i.state !== 'live' && i.state !== 'done');
-      const build = prototypeBuild(open, prototypes);
-      const t = this.board.t.idea;
-      const decide = (answer: string, cardId = project.id) => this.board.decide({ project_id: project.id, card_id: cardId, question: t.whichPrototype, answer, by: 'owner' });
-      if (!('workstream' in build) || !buildableOn(build.workstream) || !this.board.row(build.prototype.id).workspace) {
-        decide(t.onNoPrototype(!('none' in build)));
-        this.discardPrototypes(ideaId);
-        continue;
-      }
-      const { workstream: ws, prototype } = build;
-      const named = `${ws.label ? `${ws.label} ` : ''}${this.board.t.quote(ws.title)}`;
-      this.settling.add(ideaId);
-      let built: Promise<unknown>;
-      try {
-        built = this.repoOf(prototype).workers.buildOn(prototype.id, ws, named, 'obeya');
-      } catch (e) {
-        built = Promise.reject(e);
-      }
-      // git still preparing a workspace refuses it: tried again once that is done; where git keeps failing, the prototype stays for the owner to see why
-      void built.then(
-        () => {
-          decide(t.onPrototype(named, prototype.title), ws.id);
-          this.board.log(ws.id, 'state', 'obeya', t.workstreamOnLog(prototype.title));
-          this.discardPrototypes(ideaId);
-          this.settling.delete(ideaId);
-        },
-        (e: unknown) => {
-          const tries = (this.settleTries.get(ideaId) ?? 0) + 1;
-          this.settleTries.set(ideaId, tries);
-          if (tries < SETTLE_TRIES)
-            return void this.repoOf(prototype).workers.prepared().then(() => {
-              this.settling.delete(ideaId);
-              this.settleLater();
-            });
-          this.board.log(ws.id, 'error', 'obeya', messageOf(e));
-          for (const p of this.board.items().filter((i) => i.prototypeOf === ideaId && i.id !== prototype.id)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
-        },
-      );
-    }
-  }
-
-  /** The idea's prototypes still on the canvas go into the archive as discarded. */
-  private discardPrototypes(ideaId: string) {
-    for (const p of this.board.items().filter((i) => i.prototypeOf === ideaId)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
-  }
-
-  /** The idea is decided for building: its agent's conversation ends, the brief becomes the task, the other prototypes are discarded. */
-  private decided(idea: Item, how: { answer: string; log: string }) {
-    const { brief } = this.board.idea(idea.id);
-    this.explorers.close(idea.id);
-    this.discardPrototypes(idea.id);
-    this.board.work(idea.id, { state: 'planned', ...(brief.trim() ? { body: brief.trim() } : {}) });
-    // the screenshots the owner showed in the discussion belong to what is built
-    const shown = this.board.events(idea.id).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
-    if (shown.length) this.addTaskImages(idea.id, shown);
-    this.board.decide({ project_id: null, card_id: idea.id, question: this.board.t.idea.howOn(idea.title), answer: how.answer, by: 'owner' });
-    this.board.log(idea.id, 'state', 'owner', how.log);
-  }
-
-  /**
-   * A big idea becomes a project: a worker writes its plan doc on the idea's card at once, and once
-   * the doc lands, the project takes the idea's place. Its prototypes stay until then: the worker
-   * hears what they showed, and the doc names the one a workstream builds on (`settlePrototypes`).
-   */
-  private planDoc(cardId: string) {
-    const task = this.board.item(cardId);
-    if (task && task.state !== 'idea') return this.planTaskDoc(task);
-    const card = this.settledIdea(cardId);
-    const idea = this.board.idea(cardId);
-    const dir = this.repoOf(card).adapter.planDocs.dir;
-    const outside = this.outsidePlanDoc(card);
-    const prototypes = this.board.items().filter((i) => i.prototypeOf === cardId);
-    const t = this.board.t.idea;
-    this.explorers.close(cardId);
-    this.board.work(cardId, {
-      state: 'planned',
-      becomes_project: 1,
-      ...outside?.row,
-      body: [
-        t.planDocTask(dir, false, outside?.file),
-        t.planDocIdea(card.title),
-        idea.brief.trim() || card.body.trim(),
-        prototypes.length
-          ? [
-              t.planDocPrototypes(prototypes.map(prototypeName)),
-              ...prototypes.map((p) => {
-                const summary = this.board.summary(p.id)?.trim();
-                return summary ? t.planDocHandedOver(prototypeName(p), summary) : t.planDocInProgress(prototypeName(p));
-              }),
-            ].join('\n\n')
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-    });
-    this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(card.title), answer: t.planDocAnswer, by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', t.planDocLog);
-    this.coordinator.request(cardId);
-  }
-
-  /**
-   * A planned task of the owner's that nobody has worked on becomes a project the same way: its
-   * worker writes the plan doc from the task, with its screenshots, on the task's card.
-   */
-  private planTaskDoc(card: Item) {
-    if (!plannableAsProject(card))
-      throw new BadRequest('notPlannable', 'only an idea, or a planned task of your own nobody has worked on yet, can be planned as a project');
-    const t = this.board.t.idea;
-    const dir = this.repoOf(card).adapter.planDocs.dir;
-    const outside = this.outsidePlanDoc(card);
-    this.board.work(card.id, { becomes_project: 1, ...outside?.row, body: [t.planDocTask(dir, true, outside?.file), t.planDocCard(card.title), card.body.trim()].filter(Boolean).join('\n\n') });
-    this.board.decide({ project_id: null, card_id: card.id, question: t.howOnTask(card.title), answer: t.planDocAnswer, by: 'owner' });
-    this.board.log(card.id, 'state', 'owner', t.planDocTaskLog);
-    this.coordinator.request(card.id);
-  }
-
-  /**
-   * The doc a card planned as a project writes where the plan directory is a folder outside the
-   * repository: named after the card, beside the docs there. Nothing of that folder lands, so the
-   * card names its doc from the start (`plan_docs`), and the project takes its place once the
-   * owner has approved the card (`linkOrigins`). None for a plan directory in the repository.
-   */
-  private outsidePlanDoc(card: Item): { file: string; row: { plan_docs: string } } | undefined {
-    const r = this.repoOf(card);
-    const outside = outsidePlanDir(r.adapter.planDocs.dir);
-    // in a folder without git nothing lands either: the doc is there as soon as it is written
-    const dir = outside ?? (r.info.folder ? r.adapter.planDocs.dir.replace(/[/\\]+$/, '') : null);
-    if (!dir) return;
-    const at = (file: string) => (outside ? file : join(r.info.path, file));
-    const name = slug(card.title).slice(0, 60).replace(/^[.-]+|[.-]+$/g, '') || 'plan';
-    // nor one another card was given and has not written yet
-    const given = new Set(this.deps.store.withPlanDocs(this.id).flatMap((row) => (JSON.parse(row.plan_docs!) as string[]).map(pathOfRef)));
-    let file = `${dir}/${name}.md`;
-    for (let n = 2; existsSync(at(file)) || given.has(file); n++) file = `${dir}/${name}-${n}.md`;
-    const ref = r.ref.id === this.repos[0]!.ref.id ? file : `${r.ref.id}:${file}`;
-    return { file, row: { plan_docs: JSON.stringify([ref]) } };
-  }
-
-  /** Parked or dropped, the idea stays on the canvas with its brief; what its agent has not answered yet waits for the conversation to go on. */
-  private shelve(cardId: string, how: 'park' | 'drop') {
-    const card = this.ideaCard(cardId);
-    // parked or dropped in the undo window of its new repository: it is not built there
-    this.keepHere(cardId);
-    this.explorers.interrupt(cardId, how === 'park' ? 'parked' : 'dropped');
-    this.board.setIdea(cardId, { status: how === 'park' ? 'parked' : 'dropped', buildAfterReply: false });
-    const t = this.board.t.idea;
-    if (how === 'drop') this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(card.title), answer: t.dropped, by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', how === 'park' ? t.parked : t.dropped);
-  }
-
-  /**
-   * Workers build throwaway prototypes for the idea, each in its own workspace; they never land
-   * themselves. One per planned variant chosen, each with its approach in its title, and one for
-   * what the owner wrote. Neither chosen nor written: the planned variants that have no prototype
-   * on the canvas, or, with none planned, the idea as it stands.
-   */
-  private prototype(cardId: string, what: string, chosen?: string[]) {
-    const card = this.ideaCard(cardId);
-    // a prototype is a branch thrown away or built on: a folder without git has none
-    if (this.repoOf(card).info.folder) throw new BadRequest('inFolder', 'a folder without git has no prototypes: its cards change the folder itself');
-    const { variants = [] } = this.board.idea(cardId);
-    const t = this.board.t.idea;
-    const running = new Set(this.board.items().flatMap((i) => (i.prototypeOf === cardId && i.variant ? [i.variant] : [])));
-    const picked = chosen ? variants.filter((v) => chosen.includes(v.approach)) : what ? [] : variants.filter((v) => !running.has(v.approach));
-    if (chosen?.length && !picked.length && !what) throw new BadRequest('invalid', 'none of the chosen variants is planned');
-    if (!chosen && !what && variants.length && !picked.length) throw new BadRequest('variantsRunning', 'every planned variant has its prototype on the canvas');
-    const runs = picked.map((v) => {
-      const others = variants.filter((o) => o !== v).map((o) => o.approach);
-      return { approach: v.approach, task: others.length ? `${v.show}\n\n${t.onlyThisVariant(others.join(', '))}` : v.show, variant: v.approach };
-    });
-    if (what || !runs.length) runs.push({ approach: approachOf(what), task: what || t.showAsItStands, variant: '' });
-    const taken = new Set((this.board.item(cardId)?.prototypes ?? []).map((p) => p.title));
-    const started: string[] = [];
-    try {
-      for (const run of runs) {
-        const base = t.prototypeTitle(`${card.title}${run.approach ? ` – ${run.approach}` : ''}`);
-        let title = base;
-        for (let n = 2; taken.has(title); n++) title = `${base} (${n})`;
-        taken.add(title);
-        const prototype = this.board.addPrototype(cardId, title, run.task, run.variant || undefined);
-        try {
-          void this.repoOf(prototype).workers.start(prototype.id).catch((e: unknown) => this.board.log(prototype.id, 'error', 'obeya', messageOf(e)));
-        } catch (e) {
-          this.board.remove(prototype.id);
-          throw e;
-        }
-        started.push(title);
-      }
-    } finally {
-      if (started.length) {
-        // the owner now waits for the prototypes, not the other way round; the agent's reply to a result gives the turn back.
-        // Its suggestion was for the idea before they started: acted on or passed over, it goes
-        this.board.setIdea(cardId, { yourTurn: false, next: undefined });
-        this.board.log(
-          cardId,
-          'state',
-          'owner',
-          started.length > 1 ? t.prototypesStarted(started.map((s) => this.board.t.quote(s)).join(', ')) : t.prototypeStarted(started[0]!, what && !picked.length ? what.replace(/[.!?]$/, '') : ''),
-        );
-      }
-    }
-  }
-
-  /** A prototype handed over: its demo shows on the idea beside those of the other prototypes, and the idea's agent hears what it found. */
-  private prototypeReady(prototype: Item, summary: string, demo: string | undefined) {
-    const idea = this.board.item(prototype.prototypeOf!);
-    if (!idea) return;
-    this.board.log(idea.id, 'state', 'worker', this.board.t.idea.prototypeReady(prototype.title, !!demo));
-    if (idea.state === 'idea')
-      this.explorers.tell(
-        idea.id,
-        `A worker built the throwaway prototype “${prototype.title}” for this idea. Its summary:\n\n${summary}\n\nTake what it showed and what it means for the idea into the brief, then reply to the owner in a sentence or two.`,
-      );
-  }
-
-  /** A question on a prototype was answered: the idea's agent takes it into the brief, so the idea does not ask it again. */
-  private prototypeAnswered(prototype: Item, question: string, answer: string) {
-    this.explorers.tell(
-      prototype.prototypeOf!,
-      `On the prototype “${prototype.title}”, its worker asked: “${question}”\n\nThe owner answered: ${answer}\n\nTake what this settles into the brief (decisions, open questions), so it is not asked again. Do not reply to the owner for it; end your turn without a reply unless it raises something they must decide now.`,
-      true,
-    );
-  }
-
-  private prototypeCard(cardId: string): Item {
-    const card = this.board.item(cardId);
-    if (!card) throw new BadRequest('unknownCard', 'unknown card');
-    if (!card.prototypeOf) throw new BadRequest('notPrototype', 'the card is not a prototype');
-    return card;
-  }
-
-  private ideaCard(cardId: string): Item {
-    const card = this.board.item(cardId);
-    if (!card) throw new BadRequest('unknownCard', 'unknown card');
-    if (card.state !== 'idea') throw new BadRequest('notIdea', 'the card is not an idea');
-    return card;
-  }
-
   /**
    * A new card or idea the owner asked for on another canvas: made there as there, its screenshots
    * copied over; a follow-up of a card here goes there in no group and names that card. Its id, for
@@ -2655,13 +2109,6 @@ export class CanvasRuntime {
     if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
     else if (c.start || c.until) this.coordinator.request(card.id);
     return card.id;
-  }
-
-  /** An idea to build or plan: not while its agent works on a reply, which will change the brief the owner decides on. */
-  private settledIdea(cardId: string): Item {
-    const card = this.ideaCard(cardId);
-    if (card.idea?.thinking) throw new BadRequest('ideaThinking', 'the idea’s agent is still working on its reply; decide once it is there');
-    return card;
   }
 
   /** A voice (or typed) command, once its undo window has passed; a new card's id, for a wait on it in the same command. */
@@ -2720,7 +2167,7 @@ export class CanvasRuntime {
       case 'start':
       case 'force':
         // screenshots said with the start belong to the task, so the worker gets them with it
-        if (c.images?.length) this.addTaskImages(c.card, c.images);
+        if (c.images?.length) this.ideas.addTaskImages(c.card, c.images);
         return this.act(c.card, { action: c.do });
       case 'note':
       case 'feedback':
@@ -2840,12 +2287,6 @@ export class CanvasRuntime {
     return card.id;
   }
 
-  /** Adds screenshots to a card's task, keeping the latest when there are more than a message takes. */
-  private addTaskImages(cardId: string, images: string[]) {
-    const had = this.board.item(cardId)?.images ?? [];
-    this.board.work(cardId, { images: JSON.stringify([...had.filter((i) => !images.includes(i)), ...images].slice(-MAX_IMAGES)) });
-  }
-
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */
   busy(): string[] {
     return this.repos.flatMap((r) => r.workers.busyCards());
@@ -2888,7 +2329,7 @@ export class CanvasRuntime {
     clearInterval(this.waker);
     clearInterval(this.demoLook);
     clearTimeout(this.wakeSoon);
-    clearTimeout(this.settleSoon);
+    this.ideas.shutdown();
     this.unwatch();
     this.pending?.stop();
     this.pending = null;
@@ -2901,15 +2342,6 @@ export class CanvasRuntime {
   }
 }
 
-/** A prototype's approach, for its title: the first sentence of what it is to show, kept short. */
-export function approachOf(what: string, max = 40): string {
-  const text = plainText(what);
-  const first = (text.match(/^.+?[.!?;:](?=\s|$)/)?.[0] ?? text).replace(/[.;:]$/, '');
-  if (first.length <= max) return first;
-  const cut = first.slice(0, max - 1);
-  const word = cut.lastIndexOf(' ');
-  return `${(word > max / 2 ? cut.slice(0, word) : cut).replace(/[\s,;:–—-]+$/, '')}…`;
-}
 
 
 /** How often `readSettings` reads a repository whose refs move while git reads it. */

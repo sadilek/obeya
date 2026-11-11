@@ -27,8 +27,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     calls: { existsSync: 3 },
   },
   'canvas.ts': {
-    why: "server path, cheap: an answer's directory made, a free plan doc name probed, two paths compared by their real path after a landing",
-    calls: { existsSync: 1, mkdirSync: 1, realpathSync: 2 },
+    why: "server path, cheap: an answer's directory made, two paths compared by their real path after a landing",
+    calls: { mkdirSync: 1, realpathSync: 2 },
   },
   'canvas-config.ts': { why: "server path, cheap: a folder repository's directory checked as its configuration resolves", calls: { statSync: 1 } },
   'canvas-fixture.ts': { why: "the canvas tests' fixture, not the server", calls: { mkdtempSync: 1 } },
@@ -76,6 +76,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     why: "cheap: the ssh socket directory checked per command, a session's files listed and stamped before it starts there, a host's copy replaced, Claude's token file",
     calls: { chmodSync: 2, existsSync: 3, lstatSync: 1, mkdirSync: 3, readFileSync: 1, readdirSync: 1, rmSync: 1, statSync: 1, writeFileSync: 2 },
   },
+  'idea-actions.ts': { why: "server path, cheap: a free name probed for the plan doc of a card planned as a project", calls: { existsSync: 1 } },
   'images.ts': { why: "server path, cheap: a pasted image written, looked up and copied to another canvas", calls: { copyFileSync: 1, existsSync: 1, mkdirSync: 2, writeFileSync: 1 } },
   'instance.ts': { why: "startup and shutdown: the running instance's file", calls: { readFileSync: 1, renameSync: 1, rmSync: 1, writeFileSync: 1 } },
   'machine.ts': {
