@@ -7,7 +7,7 @@ import type { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
-import { alive, commit, gitClone, gitRepo, identify, leftBehind, PATIENCE, removeDir, testBoard, until } from './testing';
+import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
 import { addTrailer, defaultBranch, git, hasCommit, isAncestor, originFetch, unlanded, Workspaces } from './workspaces';
 
 let dir: string;
@@ -32,6 +32,14 @@ const rejection = (p: Promise<unknown>) =>
 
 /** A commit in `repo` that writes `text` into `file`, named after both ("notes.md: mine"). */
 const edit = (repo: string, file: string, text: string) => commit(repo, file, text, `${file}: ${text.trim()}`);
+
+/** A remote with `README.md` and `notes.md` on main, the checkout cloned from it, and the workspaces of its cards. */
+function originAndCheckout() {
+  const origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
+  const checkout = gitClone(origin, join(dir, 'checkout'));
+  identify(checkout);
+  return { origin, checkout, spaces: new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') }) };
+}
 
 describe('the main branch', () => {
   test("is origin's HEAD where the checkout knows one, whatever branch it is on", () => {
@@ -536,24 +544,11 @@ describe("a card's fork point", () => {
 
 describe('the pull after a merge', () => {
   // the machine's own git configuration may set a way of pulling: none is set unless a test sets one
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let spaces: Workspaces;
-  beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
-  });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  });
+  beforeEach(() => ({ origin, checkout, spaces } = originAndCheckout()));
 
   test('rebases a main with commits of its own where git sets no way of pulling', async () => {
     const own = edit(checkout, 'notes.md', 'mine\n');
@@ -616,25 +611,14 @@ describe('the pull after a merge', () => {
 });
 
 describe('pushing main', () => {
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let spaces: Workspaces;
   beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
+    ({ origin, checkout, spaces } = originAndCheckout());
     // a remote one can push to
     git(origin, 'config', 'receive.denyCurrentBranch', 'updateInstead');
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
-  });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   });
 
   test('puts the unpushed commits on the remote, after what the remote has of its own', async () => {
@@ -656,31 +640,18 @@ describe('pushing main', () => {
 });
 
 describe('before a merge, the clash with unpushed commits', () => {
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let spaces: Workspaces;
   let pr: string;
   beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
+    ({ origin, checkout, spaces } = originAndCheckout());
     // the contributor's pull request, on the remote's main as it is
     git(origin, 'checkout', '--quiet', '-b', 'contrib');
-    writeFileSync(join(origin, 'README.md'), 'theirs\n');
-    git(origin, 'commit', '--quiet', '-am', 'theirs');
-    pr = git(origin, 'rev-parse', 'HEAD');
+    pr = commit(origin, 'README.md', 'theirs\n', 'theirs');
     git(origin, 'checkout', '--quiet', 'main');
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
     git(checkout, 'fetch', '--quiet', 'origin', 'contrib');
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
-  });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   });
 
   test('names the unpushed commit the pull would stop at, and touches nothing', async () => {
@@ -706,27 +677,15 @@ describe('before a merge, the clash with unpushed commits', () => {
 });
 
 describe('a resolved pull lands', () => {
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let ws: string;
   let spaces: Workspaces;
   beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
-    ws = join(dir, 'ws', 'clone');
-    gitClone(origin, ws);
+    ({ origin, checkout, spaces } = originAndCheckout());
+    ws = gitClone(origin, join(dir, 'ws', 'clone'));
     identify(ws);
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
-  });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   });
   /** The local main stopped at the merge; the worker rebases it in its workspace, the conflict resolved. */
   async function resolved() {

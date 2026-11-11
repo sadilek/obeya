@@ -11,7 +11,7 @@ import { claudeToken } from './hosts';
 import { Harnesses } from './harnesses';
 import { cloneName, codexManager, machineHint, MachineSetup, runnable, updateCodex, WELCOME_FILE, welcome } from './machine';
 import { claudeExecutable, runClaudeHere } from './runtime';
-import { fakeProgram, gitRepo, removeDir } from './testing';
+import { fakeProgram, gitRepo, ownGlobalGitConfig, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
 import { git } from './workspaces';
 
@@ -225,6 +225,8 @@ describe('what Obeya needs on this machine', () => {
 });
 
 describe('the first canvas', () => {
+  const globalGit = ownGlobalGitConfig();
+
   test('a repository folder becomes a canvas whose workers use worktrees, and Obeya runs it at once', async () => {
     const repo = gitRepo(join(dir, 'shop'));
     git(repo, 'branch', '-m', 'master');
@@ -271,18 +273,11 @@ describe('the first canvas', () => {
     writeFileSync(join(shop, 'node_modules', 'x.js'), '');
     writeFileSync(join(shop, 'app.ts'), '');
     // the name and e-mail the assistant's step for them set
-    const before = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '[user]\n\tname = Ada\n\temail = ada@example.com\n[init]\n\tdefaultBranch = main\n');
-    try {
-      const s = setup();
-      expect(s.gitPreview({ path: shop })).toMatchObject({ files: 2, ignored: ['node_modules/'] });
-      expect(s.gitSetup({ path: shop })).toEqual({ branch: 'main' });
-      expect(await s.canvas({ path: shop })).toMatchObject({ canvas: 'shop', branch: 'main' });
-    } finally {
-      if (before === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-      else process.env.GIT_CONFIG_GLOBAL = before;
-    }
+    globalGit('[user]\n\tname = Ada\n\temail = ada@example.com\n[init]\n\tdefaultBranch = main\n');
+    const s = setup();
+    expect(s.gitPreview({ path: shop })).toMatchObject({ files: 2, ignored: ['node_modules/'] });
+    expect(s.gitSetup({ path: shop })).toEqual({ branch: 'main' });
+    expect(await s.canvas({ path: shop })).toMatchObject({ canvas: 'shop', branch: 'main' });
   });
 
   test('a clone goes into a folder of its name and becomes the canvas', async () => {

@@ -1,6 +1,7 @@
 // Test doubles, and git repositories for tests.
 
 import { dlopen, FFIType, ptr } from 'bun:ffi';
+import { afterEach, beforeEach } from 'bun:test';
 import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -167,6 +168,28 @@ export function gitClone(source: string, path: string, { bare = false } = {}): s
   writeFileSync(config, text.replace(url, (_, section: string) => `${section}\turl = ${quoted}\n`));
   copies.set(resolve(path), clone);
   return path;
+}
+
+/**
+ * Git's global configuration for each test of the scope this is called in: a file of its own that
+ * holds `text`, in place of the machine's (which may set a name, a way of pulling, signing), and
+ * the machine's again after the test. What it returns writes the file anew, for one test.
+ */
+export function ownGlobalGitConfig(text = '') {
+  let before: string | undefined;
+  let file = '';
+  beforeEach(() => {
+    before = process.env.GIT_CONFIG_GLOBAL;
+    file = join(mkdtempSync(join(tmpdir(), 'obeya-gitconfig-')), 'gitconfig');
+    writeFileSync(file, text);
+    process.env.GIT_CONFIG_GLOBAL = file;
+  });
+  afterEach(() => {
+    if (before === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = before;
+    rmSync(dirname(file), { recursive: true, force: true });
+  });
+  return (again: string) => writeFileSync(file, again);
 }
 
 /**

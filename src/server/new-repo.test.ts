@@ -6,11 +6,10 @@ import type { Notice } from '../core/types';
 import { Canvases } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
-import { FakeRuntime, gitRepo, noForge, refusal, removeDir, until } from './testing';
+import { FakeRuntime, gitRepo, noForge, ownGlobalGitConfig, refusal, removeDir, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
-let globalConfig: string | undefined;
 let store: Store;
 let runtime: FakeRuntime;
 let set: Canvases;
@@ -19,12 +18,11 @@ let notices: Notice[];
 
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 
+// git's name and e-mail, which the first commit of a new repository is made under
+ownGlobalGitConfig('[user]\n\tname = Ada Lovelace\n\temail = ada@example.com\n');
+
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-new-repo-'));
-  // git's name and e-mail, which the first commit of a new repository is made under
-  globalConfig = process.env.GIT_CONFIG_GLOBAL;
-  process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-  writeFileSync(join(dir, 'gitconfig'), '[user]\n\tname = Ada Lovelace\n\temail = ada@example.com\n');
   const docs = gitRepo(join(dir, 'docs'));
   const configs = [{ name: 'Docs', repos: [{ path: docs }] }];
   writeFileSync(join(dir, 'canvases.json'), JSON.stringify(configs));
@@ -45,8 +43,6 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   set.shutdown();
-  if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-  else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   await removeDir(dir);
 });
 
