@@ -548,7 +548,7 @@ export class Workspaces implements CardWorkspaces {
   private looks = new Map<string, Seen & { at: number }>();
   /** The looks at free clones under way, by path. */
   private looking = new Map<string, Promise<Seen>>();
-  /** The changes, as a look found them, whose clone Obeya freed by itself (`tidy`) last, by path: those it does not try again. */
+  /** The changes, as a look found them, whose clone Obeya freed by itself (`tidy`) last, by path: those it does not try again until the clone is clean or taken. */
   private tidied = new Map<string, string>();
   /** The main branch per workspace (or the checkout) as git finds it now (`mainAsync`), while git is at it. */
   private mains = new Map<string, Promise<string>>();
@@ -975,6 +975,8 @@ export class Workspaces implements CardWorkspaces {
         // taken meanwhile: the card it went to looks again before it works in it
         if (!this.list().some((w) => w.path === path && !w.card_id)) return seen;
         this.looks.set(path, { ...seen, at: Date.now() });
+        // leftovers found again once it was clean are new ones
+        if (seen.found === 'clean') this.tidied.delete(path);
         // the pill names what it found, the files in a dirty clone too
         if (!before || !sameSeen(before, seen)) this.o.changed?.();
         return seen;
@@ -1859,6 +1861,7 @@ export class Workspaces implements CardWorkspaces {
   private take(path: string, cardId: string) {
     this.store.setLease(path, cardId);
     this.looks.delete(path);
+    this.tidied.delete(path);
   }
 
   /**
