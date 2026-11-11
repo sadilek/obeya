@@ -938,9 +938,9 @@ export class Board {
     // the proposal that replaces it is not among those it may replace
     const mine = this.store.proposalsFrom(this.canvas.id, fromId).filter((r) => r.id !== s.by);
     const row = mine.findLast((r) => titleKey(r.title ?? '') === titleKey(title));
-    if (!row) return { kind: 'unknown', mine: mine.map((r) => ({ title: r.title ?? '', state: r.state ?? 'planned', gone: !!r.deleted_at })) };
+    if (!row) return { kind: 'unknown', mine: mine.map((r) => ({ title: r.title ?? '', state: stateOf(r), gone: !!r.deleted_at })) };
     const proposal = fromJson(row.proposal)!;
-    const was = { title: row.title ?? '', state: row.state ?? 'planned' };
+    const was = { title: row.title ?? '', state: stateOf(row) };
     if (row.deleted_at) return { kind: proposal.superseded ? 'already' : was.state === 'proposal' ? 'dismissed' : 'removed', ...was };
     if (row.archived_at || finished(was.state)) return { kind: 'finished', ...was };
     // a proposal still open goes without the owner, as if never made
@@ -1681,7 +1681,7 @@ export class Board {
         continue;
       }
       if (!row.state || !finished(row.state)) throw new BadRequest('notDone', 'only a finished or stopped card can be archived');
-      if (row.landed && row.workspace) throw new BadRequest('notDone', 'its agent still finishes what remains after the landing');
+      if (finishing(row)) throw new BadRequest('notDone', 'its agent still finishes what remains after the landing');
     }
     const at = new Date().toISOString();
     // a stopped card snoozed to start later starts no more: brought back, it is the owner's to start
@@ -1973,7 +1973,7 @@ export class Board {
     if (row.landed) return null;
     if (row.deleted_at) return 'deleted';
     // a stopped task the archive took with its workspace, while its repository did not run on the canvas
-    if (row.archived_at && (row.state ?? 'planned') === 'planned') return 'archived';
+    if (row.archived_at && stateOf(row) === 'planned') return 'archived';
     // what remained after the landing is done: the worker that did it gave the workspace up
     if (row.state && finished(row.state)) return 'stale';
     const hash = row.plan_ref?.indexOf('#') ?? -1;
@@ -2251,7 +2251,7 @@ export class Board {
   private openDocs(all: PlanDoc[], rows: CardRow[]): { docs: PlanDoc[]; ended: Set<string> } {
     const busy = new Set(
       rows
-        .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace) || tickedAhead(r)))
+        .filter((r) => r.plan_ref?.includes('#') && (atWork(r) || tickedAhead(r)))
         .map((r) => r.plan_ref!.slice(0, r.plan_ref!.indexOf('#'))),
     );
     // the projects on the canvas, as just read: an archived one is not among the rows
@@ -2277,7 +2277,7 @@ export class Board {
    */
   private planDirs(docs: PlanDoc[], rows: CardRow[]): PlanDir[] {
     const projects = this.projectsOf(rows);
-    const preparing = rows.filter((r) => !r.plan_ref && r.title && !finished(r.state ?? 'planned'));
+    const preparing = rows.filter((r) => !r.plan_ref && r.title && !finished(stateOf(r)));
     return this.dirs.flatMap(({ repo, dir, others }) => {
       const empty = !others.length && !docs.some((d) => repoOfRef(d.file, this.home) === repo) && !projects.some((p) => repoOfRef(p.plan_ref!, this.home) === repo);
       if (!empty && !others.length) return [];
@@ -2785,12 +2785,12 @@ export class Board {
     const { repo, images, collapsed, newRepo, ...fields } = p;
     if (newRepo !== undefined) this.checkNewRepo(row, newRepo);
     // a planned card of the owner's may become an idea again, to be discussed first
-    if (p.state === 'idea' && row.state !== 'idea' && (row.plan_ref || (row.state ?? 'planned') !== 'planned' || row.workspace))
+    if (p.state === 'idea' && row.state !== 'idea' && (row.plan_ref || begun(row)))
       throw new BadRequest('invalid', 'only a planned card of your own that has not been worked on can become an idea');
     if (repo !== undefined) {
       this.checkRepo(repo);
       // its workspace and branch belong to the repository it started in
-      if ((row.state !== 'idea' && (row.state ?? 'planned') !== 'planned') || row.workspace) throw new BadRequest('invalid', 'a card changes repository only before work begins');
+      if (begun(row)) throw new BadRequest('invalid', 'a card changes repository only before work begins');
     }
     this.store.update(id, {
       ...fields,
@@ -2809,7 +2809,7 @@ export class Board {
     if (n !== null && (typeof n !== 'object' || typeof (n as NewRepo).path !== 'string' || typeof (n as NewRepo).canvas !== 'boolean'))
       throw new BadRequest('invalid', 'newRepo must be { path, canvas } or null');
     if (n && (n as NewRepo).path.length > 1000) throw new BadRequest('invalid', 'the path is too long');
-    if (row.prototype_of || (row.state !== 'idea' && (row.state ?? 'planned') !== 'planned') || row.workspace)
+    if (row.prototype_of || begun(row))
       throw new BadRequest('invalid', 'a card gets a new repository only before work on it begins');
     if (this.newRepo(row.id)?.due) throw new BadRequest('newRepoDue', 'the new repository is being made');
   }
@@ -3275,7 +3275,7 @@ export class Board {
    */
   private leave(row: CardRow, project: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>, why: string) {
     // a workstream planned again after part of it landed is done now that the doc asks no more of it
-    const state = row.state === 'planned' && row.shipped ? 'live' : (row.state ?? 'planned');
+    const state = row.state === 'planned' && row.shipped ? 'live' : stateOf(row);
     const done = finished(state) && !atWork(row);
     const at = done ? { x: row.x, y: row.y } : this.besideProject(project);
     this.store.replan(row.id, null, null);
@@ -3402,7 +3402,7 @@ export class Board {
   private retire(ideaId: string): boolean {
     const r = this.store.card(ideaId);
     // `done`: approved without a change, its doc written in a plan folder outside the repository
-    if (!r || r.deleted_at || r.archived_at || (r.state !== 'live' && r.state !== 'done') || (r.landed && r.workspace)) return false;
+    if (!r || r.deleted_at || r.archived_at || (r.state !== 'live' && r.state !== 'done') || finishing(r)) return false;
     if (!this.store.projects(this.canvas.id).some((p) => p.from_id === ideaId && !p.archived_at)) return false;
     this.store.update(ideaId, { archived_at: new Date().toISOString() });
     this.log(ideaId, 'state', 'obeya', r.idea ? this.t.idea.becameProject : this.t.idea.taskBecameProject);
@@ -3480,7 +3480,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         short: r.short,
         number: r.number,
         kind: r.kind,
-        state: r.state ?? 'planned',
+        state: stateOf(r),
         ...(r.need ? { need: r.need } : {}),
         title: r.title ?? '',
         body: r.body ?? '',
@@ -3614,8 +3614,17 @@ const keyOfRef = (ref: string | null): string | null => (ref?.includes('#') ? re
 /** Whether an agent worked on the card: it was started, or its work landed or ended. */
 const worked = (r: CardRow) => !!(r.session_id || r.branch || r.shipped || r.landed || (r.state && r.state !== 'planned'));
 
+/** A card's state as its row holds it; a plan card's, which its plan doc gives, reads as planned. */
+const stateOf = (r: Pick<CardRow, 'state'>): CardState => r.state ?? 'planned';
+
+/** Whether work on the card has begun: it is no idea and planned no more, or it has a workspace. */
+const begun = (r: CardRow) => (r.state !== 'idea' && stateOf(r) !== 'planned') || !!r.workspace;
+
+/** Whether the card's agent finishes what remains after its work landed. */
+const finishing = (r: CardRow) => !!(r.landed && r.workspace);
+
 /** Whether an agent is at work on the card: in progress, or finishing after the landing. */
-const atWork = (r: CardRow) => !!((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace));
+const atWork = (r: CardRow) => !!(r.state && ACTIVE.includes(r.state)) || finishing(r);
 
 /** Whether a branch named after a title (`branchName`, its `slug`) was named after the workstream's, with or without its label before it. */
 const named = (w: Pick<Workstream, 'label' | 'title'>, slug: string) =>
@@ -3627,7 +3636,7 @@ const below = (b: Bounds, n = 0) => ({ x: b.x + 35 + n * (CARD_SIZE.task[0] + GA
 /** A card's new repository while it is still to be made, before work on the card begins. */
 function newRepoOf(r: CardRow): Pick<Item, 'newRepo'> {
   const n = fromJson(r.new_repo);
-  if (!n || n.made || n.none || (r.state !== 'idea' && (r.state ?? 'planned') !== 'planned') || r.workspace) return {};
+  if (!n || n.made || n.none || begun(r)) return {};
   const { made: _, ...newRepo } = n;
   return { newRepo };
 }
@@ -3679,7 +3688,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   const landed = fromJson(r.landed);
   return {
     ...(scope?.length ? { scope } : {}),
-    ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: fromJson(r.queue) } : {}),
+    ...(r.queue && stateOf(r) === 'planned' ? { queue: fromJson(r.queue) } : {}),
     ...(pr?.url ? { pr: pullRequest(pr) } : {}),
     ...(pr?.more?.some((m) => m.url) ? { morePrs: pr.more.filter((m) => m.url).map(pullRequest) } : {}),
     ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
@@ -3773,7 +3782,7 @@ const merged = (said: Revising[]): Revising => ({
 /** The mark of an accepted proposal its agent withdrew or replaced, while the card is not finished. */
 const supersededOf = (r: CardRow): { superseded?: Superseded } => {
   const superseded = fromJson(r.proposal)?.superseded;
-  return superseded && !r.archived_at && !finished(r.state ?? 'planned') ? { superseded } : {};
+  return superseded && !r.archived_at && !finished(stateOf(r)) ? { superseded } : {};
 };
 
 /** A title as an agent may name it: without case, quotes, markdown marks or extra spaces. */
