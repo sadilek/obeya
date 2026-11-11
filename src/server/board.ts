@@ -809,43 +809,27 @@ export class Board {
    * a pass over every shared page needs of them, found without building the archived ones' cards.
    */
   shownCards(rows: CardRow[]): Map<string, Pick<Item, 'id' | 'repo' | 'title'>> {
-    const shown = new Map(this.items().map((i) => [i.id, i]));
+    this.items();
     // reading the docs for the items may have moved a shared card to another workstream since its row was read
     const now = new Map(this.sharedRows().map((r) => [r.id, r]));
-    const out = new Map<string, Pick<Item, 'id' | 'repo' | 'title'>>();
-    const mine = (r: CardRow | null): r is CardRow => !!r && r.canvas_id === this.canvas.id && !r.deleted_at;
-    const parents = new Map<string, CardRow | null>();
-    const parent = (id: string) => {
-      if (!parents.has(id)) parents.set(id, this.store.card(id));
-      return parents.get(id)!;
-    };
+    const { shown, archived } = this.bringers(rows.map((r) => now.get(r.id) ?? r));
+    const out = new Map<string, Pick<Item, 'id' | 'repo' | 'title'>>([...shown].map(([id, i]) => [id, { id, repo: i.repo, title: i.title }]));
     // an archived project shows its doc as it last stood
     const docOf = (r: CardRow) => {
       const doc = fromJson(r.plan);
       return doc?.file === r.plan_ref ? doc : null;
     };
-    for (const read of rows) {
-      const given = now.get(read.id) ?? read;
-      if (!mine(given)) continue;
-      const item = shown.get(given.id);
-      if (item) {
-        out.set(given.id, { id: item.id, repo: item.repo, title: item.title });
-        continue;
-      }
-      // as `cards` finds it in the archive: a card archived itself, or a workstream with its project
-      const r = given.archived_at || (given.parent_id && parent(given.parent_id)?.archived_at) ? given : this.store.card(given.id);
-      if (!mine(r)) continue;
-      if (r.archived_at) {
+    for (const { row: r, by } of archived.values()) {
+      if (by === r) {
         const doc = r.plan_ref && keyOfRef(r.plan_ref) === null ? docOf(r) : null;
         if (!r.plan_ref) out.set(r.id, { id: r.id, repo: r.repo ?? this.home, title: r.title ?? '' });
         else if (doc) out.set(r.id, { id: r.id, repo: repoOfRef(doc.file, this.home), title: doc.title });
         continue;
       }
-      const project = r.parent_id ? parent(r.parent_id) : null;
-      if (!r.plan_ref || !mine(project) || !project.archived_at) continue;
-      const doc = docOf(project);
-      const w = doc && docOfRef(r.plan_ref) === doc.file ? doc.workstreams.find((x) => x.key === keyOfRef(r.plan_ref)) : undefined;
-      if (w) out.set(r.id, { id: r.id, repo: repoOfRef(r.plan_ref, this.home), title: w.title });
+      // a workstream of an archived project
+      const doc = docOf(by);
+      const w = r.plan_ref && doc && docOfRef(r.plan_ref) === doc.file ? doc.workstreams.find((x) => x.key === keyOfRef(r.plan_ref)) : undefined;
+      if (w) out.set(r.id, { id: r.id, repo: repoOfRef(r.plan_ref!, this.home), title: w.title });
     }
     return out;
   }
@@ -1899,11 +1883,29 @@ export class Board {
    * A row of a card deleted, of another canvas or of none the UI shows is left out.
    */
   cards(rows: CardRow[]): Map<string, Item> {
-    const shown = new Map(this.items().map((i) => [i.id, i]));
-    const out = new Map<string, Item>();
+    const { shown, archived } = this.bringers(rows);
+    if (!archived.size) return shown;
+    // only the cards asked for (a workstream with its project)
+    const bringing = new Map([...archived.values()].map(({ by }) => [by.id, by]));
+    const archive = new Map(this.archiveOf([...bringing.values()]).map((i) => [i.id, i]));
+    for (const id of archived.keys()) {
+      const item = archive.get(id);
+      if (item) shown.set(id, item);
+    }
+    return shown;
+  }
+
+  /**
+   * Of these rows, the cards the UI shows (`cards`): those on the canvas, and those the archive
+   * brings, each with its row and the row of the archive that brings it (its own, or its project's
+   * for a workstream). A row of a card deleted, of another canvas or of none the UI shows is left out.
+   */
+  private bringers(rows: CardRow[]): { shown: Map<string, Item>; archived: Map<string, { row: CardRow; by: CardRow }> } {
+    const items = new Map(this.items().map((i) => [i.id, i]));
+    const shown = new Map<string, Item>();
+    const archived = new Map<string, { row: CardRow; by: CardRow }>();
     const mine = (r: CardRow | null): r is CardRow => !!r && r.canvas_id === this.canvas.id && !r.deleted_at;
     const parents = new Map<string, CardRow | null>();
-    // the row of the archive that brings the card: its own, or its project's for a workstream
     const archivedOf = (r: CardRow) => {
       if (r.archived_at) return r;
       if (!r.parent_id) return null;
@@ -1911,29 +1913,19 @@ export class Board {
       const parent = parents.get(r.parent_id)!;
       return mine(parent) && parent.archived_at ? parent : null;
     };
-    const archived = new Map<string, CardRow>();
-    const wanted: string[] = [];
     for (const given of rows.filter(mine)) {
-      const item = shown.get(given.id);
+      const item = items.get(given.id);
       if (item) {
-        out.set(given.id, item);
+        shown.set(given.id, item);
         continue;
       }
       // neither on the canvas nor archived as read: a project whose doc went may be archived by the canvas reading the docs
-      const r = archivedOf(given) ? given : this.store.card(given.id);
-      const brings = mine(r) ? archivedOf(r) : null;
-      if (!brings) continue;
-      archived.set(brings.id, brings);
-      wanted.push(given.id);
+      const row = archivedOf(given) ? given : this.store.card(given.id);
+      if (!mine(row)) continue;
+      const by = archivedOf(row);
+      if (by) archived.set(given.id, { row, by });
     }
-    if (!wanted.length) return out;
-    // only the cards asked for (a workstream with its project)
-    const archive = new Map(this.archiveOf([...archived.values()]).map((i) => [i.id, i]));
-    for (const id of wanted) {
-      const item = archive.get(id);
-      if (item) out.set(id, item);
-    }
-    return out;
+    return { shown, archived };
   }
 
   /** What a project's sheet shows besides the doc: its decisions and those of the idea or task it came from. */
