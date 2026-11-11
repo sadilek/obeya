@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { themeData } from './artifact-copy';
+import { themeData } from './css-references';
 import { demoFile } from './demo-files';
 import { isFolder } from './branches';
 import { GIT } from './git';

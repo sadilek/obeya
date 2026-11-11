@@ -19,7 +19,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'answers.ts': { why: "server path, cheap: creates an answer's directory before its agent starts", calls: { mkdirSync: 2 } },
   'app-command.ts': { why: "server path, cheap: whether the script an app command names is there, before it starts", calls: { existsSync: 1 } },
   'artifact-copy.ts': {
-    why: "server path: an artifact's own files read by their real path while its copy or the theme's data is put together (a share, a page served); small files, a candidate for fs/promises",
+    why: "server path: an artifact's own files read by their real path while its copy is put together (a share, an export); small files, a candidate for fs/promises",
     calls: { readFileSync: 1, realpathSync: 2 },
   },
   'board.ts': {
