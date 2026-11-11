@@ -5,25 +5,28 @@ import { elapsed } from './usage';
 
 const HOUR = 3600_000;
 const now = Date.parse('2026-11-10T12:00:00Z');
-const limit = (group: string, resetsIn?: number): UsageLimit => ({
-  kind: group,
-  group,
+const limit = (windowMinutes: number | undefined, resetsIn?: number): UsageLimit => ({
+  kind: 'session',
+  group: 'session',
   percent: 10,
   severity: 'normal',
+  ...(windowMinutes === undefined ? {} : { windowMinutes }),
   ...(resetsIn === undefined ? {} : { resetsAt: new Date(now + resetsIn).toISOString() }),
 });
 
 test("how much of a limit's window has gone by", () => {
   // an hour of the five-hour session gone: 20 %
-  expect(elapsed(limit('session', 4 * HOUR), now)).toBeCloseTo(20);
+  expect(elapsed(limit(300, 4 * HOUR), now)).toBeCloseTo(20);
   // a day and a half of the week left
-  expect(elapsed(limit('weekly', 42 * HOUR), now)).toBeCloseTo(75);
+  expect(elapsed(limit(10_080, 42 * HOUR), now)).toBeCloseTo(75);
+  // a window of another length, as Codex may report one: half of an hour gone
+  expect(elapsed(limit(60, HOUR / 2), now)).toBeCloseTo(50);
   // a reset already past, or further off than a window: held to the meter's ends
-  expect(elapsed(limit('session', -HOUR), now)).toBe(100);
-  expect(elapsed(limit('session', 6 * HOUR), now)).toBe(0);
+  expect(elapsed(limit(300, -HOUR), now)).toBe(100);
+  expect(elapsed(limit(300, 6 * HOUR), now)).toBe(0);
   // no reset, or a window of unknown length: no mark
-  expect(elapsed(limit('session'), now)).toBeUndefined();
-  expect(elapsed(limit('monthly', HOUR), now)).toBeUndefined();
+  expect(elapsed(limit(300), now)).toBeUndefined();
+  expect(elapsed(limit(undefined, HOUR), now)).toBeUndefined();
 });
 
 test('the time until a reset, in its two largest units', () => {

@@ -931,7 +931,7 @@ export function codexUsageOf(r: { rateLimits?: RateSnapshot | null; rateLimitsBy
     return [b.primary, b.secondary].flatMap((w) => {
       if (!w) return [];
       const { kind, group } = windowKind(w.windowDurationMins);
-      return [{ kind: scope ? 'weekly_scoped' : kind, group, ...(scope ? { scope } : {}), percent: w.usedPercent, ...(w.resetsAt ? { resetsAt: new Date(w.resetsAt * 1000).toISOString() } : {}), severity: severity(w.usedPercent) }];
+      return [{ kind: scope ? 'weekly_scoped' : kind, group, ...(scope ? { scope } : {}), percent: w.usedPercent, ...(w.resetsAt ? { resetsAt: new Date(w.resetsAt * 1000).toISOString() } : {}), ...(w.windowDurationMins ? { windowMinutes: w.windowDurationMins } : {}), severity: severity(w.usedPercent) }];
     });
   });
   return limits.length ? { limits, at: now.toISOString() } : null;

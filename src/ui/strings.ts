@@ -2064,6 +2064,8 @@ const de = {
     days: (n: number) => `${n} ${n === 1 ? 'Tag' : 'Tage'}`,
     hours: (n: number) => `${n} Std.`,
     minutes: (n: number) => `${n} Min.`,
+    /** Under the list: what the tick on each meter means. */
+    pace: 'Der Strich auf jedem Balken zeigt, wie viel vom Zeitfenster schon vergangen ist: grün, solange der Verbrauch dahinter bleibt, rot, sobald er der Zeit vorausläuft und das Limit vor dem Neustart ausgehen könnte.',
     source: (harness: string, time: string) => `Von ${harness} auf diesem Rechner, jede Minute neu; Stand ${time}.`,
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
@@ -4213,6 +4215,7 @@ const en: Strings = {
     days: (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`,
     hours: (n: number) => `${n} h`,
     minutes: (n: number) => `${n} min`,
+    pace: 'The tick on each meter marks how much of its window has gone by: green while usage stays behind it, red once usage runs ahead of the time and the limit may run out before it resets.',
     source: (harness: string, time: string) => `From ${harness} on this machine, every minute; as of ${time}.`,
     setting: {
       title: 'Usage limits in the bar',

@@ -50,14 +50,16 @@ machine are logged in with, every limit of a plan as a thin meter, one above the
 order of the list below, without labels or numbers (the session's, five hours, above the week's for
 all models and the week's for a single model), coloured in the grade the plan's usage endpoint gives
 it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). A tick on each meter
-marks how much of its window has gone by (the session's five hours, the week's seven days, counted
-back from when it starts anew): green while the usage is at or under it, red once the usage runs
-ahead of the time, so a glance tells whether the limit lasts until it starts anew. The bar shows
+marks how much of its window has gone by (Claude's session five hours, its week seven days, a Codex
+window as long as Codex says it is, counted back from when it starts anew; no tick where the length
+or the reset is unknown): green while the usage is at or under it, red once the usage runs ahead of
+the time, so a glance tells whether the limit lasts until it starts anew. The bar shows
 every plan with a login, whether agents run on it or not, each beside its name ("Claude", "Codex")
 when it shows two, without one when it shows one. A click lists every limit of
 every plan (the session, the week for all models, the week for a single model) with its meter and
 percentage, when it starts anew and how long until then ("in 3 h 12 min", counting down while the
-list is open), and where the numbers come from and as of when. "Usage limits in
+list is open), and where the numbers come from and as of when; a line under it says what the tick
+means, for whoever sees it the first time. "Usage limits in
 the bar" under Configuration → General turns them off and on (on until then). The phone view shows
 the same at the right of its bar; its list hangs from the bar as wide as the screen.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which

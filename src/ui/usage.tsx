@@ -9,12 +9,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { PlanUsage, Usage, UsageLimit } from '../core/types';
 import { clock, countdown, snoozeWhen, t } from './strings';
 
-/** How long each group's window lasts: the session five hours, the week seven days. */
-const WINDOW_MS: Record<string, number> = { session: 5 * 3600_000, weekly: 7 * 24 * 3600_000 };
-
 /** How much of a limit's window has gone by at `now`, 0–100; none for a window of unknown length or reset. */
 export function elapsed(l: UsageLimit, now: number): number | undefined {
-  const length = WINDOW_MS[l.group];
+  const length = (l.windowMinutes ?? 0) * 60_000;
   if (!length || !l.resetsAt) return undefined;
   const left = Date.parse(l.resetsAt) - now;
   if (Number.isNaN(left)) return undefined;
@@ -89,6 +86,7 @@ export function UsagePill({ usage }: { usage: Usage }) {
         {plans.map((p) => (
           <PlanList key={p.harness} plan={p} now={now} />
         ))}
+        {plans.some((p) => p.limits.some((l) => elapsed(l, now) !== undefined)) && <p className="hint pace-key">{t.usage.pace}</p>}
       </div>
     </div>
   );
