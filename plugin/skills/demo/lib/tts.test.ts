@@ -39,7 +39,8 @@ beforeAll(() => {
 /**
  * A voice that serves until its stdin ends, writing a short silent WAV per request. Given a second
  * argument, it is loaded only once that file exists. `FAKE_HANG_AT` gives no answer to that
- * request, as a stuck Qwen3 voice did; it reports a sentence done first. Given the script as
+ * request, as a stuck Qwen3 voice did; it reports a sentence done first. It logs the reference
+ * clip a request names. Given the script as
  * written, it says it heard the text as said; with `FAKE_TIMED`, it gives the times of its words.
  */
 const FAKE_VOICE = String.raw`
@@ -67,6 +68,8 @@ while line := sys.stdin.readline():
     with wave.open(request["out"], "wb") as fh:
         fh.setnchannels(1); fh.setsampwidth(2); fh.setframerate(24000); fh.writeframes(b"\0\0" * 2400)
     open(log, "a").write(request["language"] + ":" + request["text"] + "\n")
+    if "reference" in request:
+        open(log, "a").write("reference:" + request["reference"] + "\n")
     heard = {"heard": [{"script": request["script"], "heard": request["text"]}]} if "script" in request else {}
     if os.environ.get("FAKE_TIMED"):
         heard["timed"] = [[" " + request["text"], 0.01]]
@@ -78,7 +81,7 @@ let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-tts-'));
   writeFileSync(join(dir, 'voice.py'), FAKE_VOICE);
-  writeFileSync(join(dir, 'spec.json'), JSON.stringify({ kind: 'command', argv: ['false'], serve: ['python', join(dir, 'voice.py')], tag: 'fake', heavy: true }));
+  writeFileSync(join(dir, 'spec.json'), JSON.stringify({ kind: 'command', serve: ['python', join(dir, 'voice.py')], tag: 'fake', heavy: true }));
   writeFileSync(join(dir, 'jobs.json'), JSON.stringify(['Eins.', 'Zwei.', 'Drei.'].map((text, i) => ({ id: `s${i}`, text }))));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -119,6 +122,15 @@ describe('a voice that stays loaded', () => {
     expect(clip.seconds).toBeCloseTo(2.3, 2);
     // the times of the words heard in each part, from where the part starts in the clip
     expect(clip.timed).toEqual([[' Eins.', 0.01], [' Zwei drei.', 0.61], [' Vier.', 2.21]]);
+  });
+
+  test('gets the clip to clone with each request, as Obeya sends it, not on its command line', () => {
+    const spec = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8'));
+    writeFileSync(join(dir, 'spec.json'), JSON.stringify({ ...spec, host: { reference: '/x/me.wav' } }));
+    writeFileSync(join(dir, 'jobs.json'), JSON.stringify([{ id: 's0', text: 'Eins.' }]));
+    // without Obeya: the render serves the voice itself
+    expect(narrate({ OBEYA_URL: '' }).status).toBe(0);
+    expect(log()).toEqual(['start', 'de:Eins.', 'reference:/x/me.wav', 'end']);
   });
 
   test('a sample starts it once and ends it', () => {

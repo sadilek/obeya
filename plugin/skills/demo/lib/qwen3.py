@@ -1,14 +1,13 @@
-"""Narration clips with Qwen3-TTS: one clip, or as many as asked while the model stays loaded.
+"""Narration clips with Qwen3-TTS, as many as asked while the model stays loaded.
 
 Runs in the environment Obeya installs for the voice (`voices.ts`): MLX through mlx-audio on
 Apple Silicon, PyTorch through qwen-tts elsewhere.
 
-    python qwen3.py --model <repo> --language de (--speaker ryan | --reference clip.wav) --out x.wav
     python qwen3.py --model <repo> [--language de] [--speaker ryan | --reference clip.wav] --serve
 
-With `--out`, the text comes on stdin and one WAV goes out. With `--serve`, the model loads once
-and the process answers requests until its stdin ends, one JSON object per line each way (what
-`tts.py` speaks with a voice whose spec has `serve`):
+The model loads once and the process answers requests until its stdin ends, one JSON object per
+line each way (what `tts.py` speaks with a voice whose spec has `serve`, and Obeya with the voice it
+holds):
 
     → {"ready": true}                                      once the model is loaded
     ← {"text": "...", "script": "...", "out": "/x/clip.wav", "language": "de", "reference": "/x/me.wav", "id": 7}
@@ -476,30 +475,14 @@ def serve(args) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
-    # with --serve, each request may say its language instead
+    # each request may say its language instead
     parser.add_argument("--language", choices=sorted(LANGUAGES))
     parser.add_argument("--speaker")
     parser.add_argument("--reference")
-    parser.add_argument("--out")
-    parser.add_argument("--serve", action="store_true")
+    parser.add_argument("--serve", action="store_true", required=True)
     args = parser.parse_args()
-    if args.serve:
-        sys.stdin.reconfigure(encoding="utf-8")
-        serve(args)
-        return
-    if not args.out:
-        parser.error("--out or --serve is required")
-    if not args.language:
-        parser.error("--language is required with --out")
-    text = sys.stdin.read()
-    speak, rate = load(args)
-    ear = Ear()
-    ear.load()
-    try:
-        heard, timed = clip(speak, rate, ear, text, args.language, args.out)
-    except ValueError as failed:
-        sys.exit(str(failed))
-    print(json.dumps(hearing(ear, heard, timed), ensure_ascii=False), file=sys.stderr)
+    sys.stdin.reconfigure(encoding="utf-8")
+    serve(args)
 
 
 if __name__ == "__main__":

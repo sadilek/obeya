@@ -1,20 +1,19 @@
 // Checks that the local demo voices Obeya installs on request work on this machine: each is
 // installed as the settings' "Install" does, into a scratch home and a scratch Hugging Face cache
-// (so everything is downloaded afresh), and then speaks the settings' sample sentence through the
-// command `tts.py` runs it with, its text on stdin as UTF-8. A clip counts when it is a 16-bit WAV
-// of a few seconds that is not silence. Runs on macOS, Linux and Windows; needs uv.
+// (so everything is downloaded afresh), and then speaks the settings' sample sentence through
+// `tts.py --sample`, as the settings' sample does. A clip counts when it is a 16-bit WAV of a few
+// seconds that is not silence. Runs on macOS, Linux and Windows; needs uv and ffmpeg.
 //
 //   bun scripts/check-voice.ts [<voice>:<language> …] [--keep]
 //
 // Without arguments: Kokoro in English and Piper in German (umlauts on stdin). Prints one line per
 // check; exits 1 when one failed. --keep leaves the scratch directory.
 
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DemoSettings } from '../plugin/skills/demo/lib/settings.ts';
-import { installState, installVoice, SAMPLE_TEXT, voiceSpec } from '../plugin/skills/demo/lib/voices.ts';
+import { installState, installVoice, sample } from '../plugin/skills/demo/lib/voices.ts';
 import { check, expect, failed } from './check-harness';
 
 const args = process.argv.slice(2);
@@ -28,6 +27,8 @@ const dir = mkdtempSync(join(tmpdir(), 'obeya-check-voice-'));
 const home = join(dir, 'home');
 process.env.HF_HOME = join(dir, 'hf');
 delete process.env.HF_HUB_CACHE;
+// the voice of the scratch home, not one a running Obeya holds
+delete process.env.OBEYA_URL;
 
 /** Seconds of sound in a 16-bit PCM WAV, and its loudness (RMS, 0 to 1). */
 function wavStats(file: string) {
@@ -68,20 +69,10 @@ for (const s of voices) {
     return `${before.missing.join(', ')} (about ${before.mb} MB)`;
   });
   if (!installed) continue;
-  await check(`${name}: speaks the sample sentence`, () => {
-    const spec = voiceSpec(s, home);
-    expect(spec.kind === 'command' && spec.argv, `not a command voice: ${JSON.stringify(spec)}`);
-    if (spec.kind !== 'command' || !spec.argv) return;
+  await check(`${name}: speaks the sample sentence`, async () => {
     const out = join(dir, `${s.voice}-${s.language}.wav`);
     const started = performance.now();
-    // as tts.py runs it: UTF-8 on stdin, which a Python voice on Windows would otherwise read in the code page
-    const done = spawnSync(spec.argv[0]!, spec.argv.slice(1).map((a) => a.replace('{out}', out)), {
-      input: SAMPLE_TEXT[s.language],
-      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
-      encoding: 'utf8',
-      windowsHide: true,
-    });
-    expect(done.status === 0, `exit ${done.status}: ${(done.stderr || done.stdout || String(done.error ?? '')).slice(-1500)}`);
+    await sample(s, out, home);
     const took = (performance.now() - started) / 1000;
     const wav = wavStats(out);
     expect(wav.seconds > 3, `only ${wav.seconds.toFixed(1)} s of audio`);
