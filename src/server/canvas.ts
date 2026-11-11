@@ -524,11 +524,15 @@ export class CanvasRuntime {
       }, 0);
     });
     const uncount = board.onChange(() => this.countAgents());
+    // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
+    const unsettle = board.onChange(() => this.ideas.settleLater());
     this.unwatch = () => {
       unwake();
       uncount();
+      unsettle();
     };
     this.countAgents();
+    this.ideas.settleLater();
   }
 
   /** Looks for snoozed cards whose time has come. */

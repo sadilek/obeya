@@ -58,16 +58,12 @@ export class IdeaActions {
   private settleTries = new Map<string, number>();
   /** Set once the canvas shut down. */
   private stopped = false;
-  private unwatch: () => void;
 
   constructor(private o: IdeaActionsOptions) {
     this.board = o.board;
     this.explorers = o.explorers;
     this.coordinator = o.coordinator;
     this.images = o.images;
-    // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
-    this.unwatch = o.board.onChange(() => this.settleLater());
-    this.settleLater();
   }
 
   private get id() {
@@ -83,7 +79,7 @@ export class IdeaActions {
   }
 
   /** Looks for prototypes whose idea's project now stands (`settlePrototypes`), once what changed the board is through. */
-  private settleLater() {
+  settleLater() {
     if (this.settleSoon) return;
     this.settleSoon = setTimeout(() => {
       this.settleSoon = undefined;
@@ -652,7 +648,6 @@ export class IdeaActions {
   shutdown() {
     this.stopped = true;
     clearTimeout(this.settleSoon);
-    this.unwatch();
   }
 }
 
