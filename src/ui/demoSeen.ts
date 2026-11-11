@@ -8,15 +8,15 @@ type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 const key = (cardId: string) => `obeya-demo-seen-${cardId}`;
 const heldKey = (cardId: string) => `obeya-demo-held-${cardId}`;
 /** One demo, by its handover and its render: a later handover counts as new even where its chapters fall at the same times. */
-const mark = (demo: Demo) => JSON.stringify([demo.handover ?? null, demo.chapters]);
+export const demoMark = (demo: Demo) => JSON.stringify([demo.handover ?? null, demo.chapters]);
 
-export const sameDemo = (a: Demo | undefined, b: Demo | undefined) => !!a && !!b && mark(a) === mark(b);
+export const sameDemo = (a: Demo | undefined, b: Demo | undefined) => !!a && !!b && demoMark(a) === demoMark(b);
 
 /** This browser has not played the demo yet (a new render counts as new). */
-export const unseen = (store: Pick<Storage, 'getItem'>, cardId: string, demo: Demo): boolean => read(store, key(cardId)) !== mark(demo);
+export const unseen = (store: Pick<Storage, 'getItem'>, cardId: string, demo: Demo): boolean => read(store, key(cardId)) !== demoMark(demo);
 
 /** The demo played, by itself or on a click: the next opening of the card leaves it behind its play button. */
-export const markSeen = (store: Store, cardId: string, demo: Demo) => void write(store, key(cardId), mark(demo));
+export const markSeen = (store: Store, cardId: string, demo: Demo) => void write(store, key(cardId), demoMark(demo));
 
 /**
  * A demo that arrived on the open card waits behind its play button. The page a restart reloads
@@ -25,8 +25,8 @@ export const markSeen = (store: Store, cardId: string, demo: Demo) => void write
  * starts it.
  */
 export const held = {
-  set: (store: Store, cardId: string, demo: Demo) => void write(store, heldKey(cardId), mark(demo)),
-  is: (store: Pick<Storage, 'getItem'>, cardId: string, demo: Demo): boolean => read(store, heldKey(cardId)) === mark(demo),
+  set: (store: Store, cardId: string, demo: Demo) => void write(store, heldKey(cardId), demoMark(demo)),
+  is: (store: Pick<Storage, 'getItem'>, cardId: string, demo: Demo): boolean => read(store, heldKey(cardId)) === demoMark(demo),
   clear: (store: Store, cardId: string) => void write(store, heldKey(cardId), null),
 };
 

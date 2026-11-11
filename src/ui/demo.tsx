@@ -6,7 +6,7 @@ import { chapterAt, type Demo, type EarlierDemo, type Item } from '../core/types
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
 import { api, cardAt, holdRestart } from './api';
-import { markSeen, sameDemo, unseen } from './demoSeen';
+import { demoMark, markSeen, unseen } from './demoSeen';
 import { know } from './stored';
 import { Body } from './markdown';
 import { useReportedHeight } from './frame';
@@ -24,9 +24,10 @@ import { ShareIcon } from './share';
 const ARTIFACT_CAP = 30000;
 
 /**
- * The narrated demo with its chapters and the report beside it. `comments`: the card's agent hears the
- * owner, whose words may be about a place in the video. Once a later handover replaced a demo, the
- * owner may step back to it and forth again; a comment on a place in it takes them there too.
+ * The narrated demo with its chapters and the report beside it, or the HTML artifact. `comments`: the
+ * card's agent hears the owner, whose words may be about a place in the video. Once a later handover
+ * replaced a demo, the owner may step back to it and forth again; a comment on a place in it takes
+ * them there too.
  */
 export function DemoView({
   item,
@@ -48,79 +49,58 @@ export function DemoView({
   comments?: boolean;
 }) {
   const cardId = item.id;
-  const video = useRef<HTMLVideoElement>(null);
-  // on the phone the field is in a panel of its own, which a comment brings up
-  const elsewhere = useContext(TalkElsewhere);
-  const artifact = useRef<HTMLIFrameElement>(null);
-  const artifactHeight = useReportedHeight(artifact, ARTIFACT_CAP);
-  const [now, setNow] = useState(0);
-  // the video's shape once its metadata is in, where the handover did not read it: until it first plays, Chrome sizes the
-  // element by its poster, and by its default 300 × 150 when the poster does not load, a flat strip at full width
-  const [shape, setShape] = useState<string>();
-  // the earlier demo shown (its `n`), or the latest; a new handover leaves the owner where they are
+  const shown = useShownDemo(item, latest);
+  const { demo } = shown;
+  // start once the card has unfolded, like the mock, until it has played once; a demo kept on a finished card waits to be played.
+  // A page out of sight (a tab in the background, an agent's browser) does not start it: nobody would see it, only hear it
+  const [autostart] = useState(() => autoplay && latest.kind !== 'html' && !document.hidden && unseen(localStorage, cardId, latest));
+  // a new handover often renders into the same directory: its handover in the address makes a card left open load it afresh
+  const src = (f: string) => cardAt(cardId, `${shown.latest ? `/demo/${f}` : `/demos/${(demo as EarlierDemo).n}/${f}`}${demo.handover === undefined ? '' : `?v=${demo.handover}`}`);
+  return (
+    <>
+      <div className="demo-view">
+        {/* which of the card's demos is shown, in the line with sharing */}
+        {(shown.all.length > 1 || top) && (
+          <div className="demo-top">
+            {shown.all.length > 1 && <DemoVersions item={item} shown={shown} />}
+            {top && top(demo, shown.latest)}
+          </div>
+        )}
+        {demo.kind === 'html' ? (
+          <Artifact src={src('index.html')} />
+        ) : (
+          <DemoPlayer cardId={cardId} demo={demo} src={src} latest={shown.latest} autoplay={autostart && !shown.moved} comments={comments} playFrom={shown.playFrom} />
+        )}
+        {/* its report's question stands in the conversation, where it is answered */}
+        {children}
+      </div>
+      <Body md={summary} />
+    </>
+  );
+}
+
+/**
+ * Which of the card's demos shows: the latest, or an earlier one the owner stepped back to (a new
+ * handover leaves them where they are), or the one a comment on a place in it took them to, which
+ * then plays from that place (`playFrom`, which the player takes once). `moved`: the owner went to
+ * another of the card's demos since it opened.
+ */
+function useShownDemo(item: Item, latest: Demo) {
+  // the earlier demo shown (its `n`), or the latest
   const [shownN, setShownN] = useState<number | null>(null);
+  const [moved, setMoved] = useState(false);
+  const playFrom = useRef<number | null>(null);
   const earlier = item.demos ?? [];
   const demo = earlier.find((d) => d.n === shownN) ?? latest;
   const all = [...earlier, latest];
-  const shownAt = all.indexOf(demo);
-  // a new handover often renders into the same directory: its handover in the address makes a card left open load it afresh
-  const src = (f: string) => cardAt(cardId, `${demo === latest ? `/demo/${f}` : `/demos/${(demo as EarlierDemo).n}/${f}`}${demo.handover === undefined ? '' : `?v=${demo.handover}`}`);
-  // where the demo shown next plays from, when a comment on a place in it took the owner there
-  const playFrom = useRef<number | null>(null);
-  const show = (d: Demo) => setShownN(d === latest ? null : (d as EarlierDemo).n);
-  // start once the card has unfolded, like the mock, until it has played once; a demo kept on a finished card waits to be played.
-  // A page out of sight (a tab in the background, an agent's browser) does not start it: nobody would see it, only hear it
-  const [autostart] = useState(() => autoplay && demo.kind !== 'html' && !document.hidden && unseen(localStorage, cardId, demo));
-  // a video that does not start on its own shows a big play button over it until it first plays
-  const [started, setStarted] = useState(autostart);
-  useEffect(() => {
-    if (!autostart) return;
-    const h = setTimeout(() => (document.hidden ? setStarted(false) : video.current?.play().catch(() => setStarted(false))), 300);
-    return () => clearTimeout(h);
-  }, []);
-  useEffect(() => () => holdRestart('video', null), []);
-  // a later handover on the open card waits behind the play button too, unless the owner is on an earlier demo
-  const shownLatest = useRef(latest);
-  useEffect(() => {
-    if (sameDemo(shownLatest.current, latest)) return;
-    shownLatest.current = latest;
-    if (shownN === null) setStarted(false);
-  }, [latest]);
-  const zoom = useZoom<HTMLElement>({
-    // the picture as large as fits with the caption, while it shows, and the controls under it
-    box: (w, h) => {
-      const v = video.current;
-      const r = v?.getBoundingClientRect();
-      return zoomedBox(v?.videoWidth ? v.videoWidth / v.videoHeight : r?.height ? r.width / r.height : 16 / 9, w, h, !!v?.closest('.dp')?.hasAttribute('data-captions'));
-    },
-    playing: () => !!video.current && !video.current.paused,
-  });
-  // the phone view, which puts the conversation elsewhere, puts the video into full screen itself (fullscreen.ts)
-  const fullscreen = useFullscreen(zoom.screen, video, !!elsewhere);
-  useSeekKeys(video);
-  // the player's caption and controls (src/core/video-player.ts), and the end of their row for the zoom and the full screen
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    const root = zoom.screen.current;
-    const v = video.current;
-    if (demo.kind === 'html' || !root || !v) return;
-    const player = videoPlayer(root, v, { chapters: demo.chapters, words: playerWords(), silent: !!demo.silent, prefer: [uiLanguage()] }, { captionPages, pageOf, cueWords, spokenWord, preferredTrack });
-    setSlot(player.slot);
-    // captions switched while zoomed: the zoomed player grows or shrinks to stay in the window, once the caption has
-    const refit = () => requestAnimationFrame(() => zoom.refit());
-    addEventListener(CAPTIONS_CHANGED, refit);
-    return () => {
-      removeEventListener(CAPTIONS_CHANGED, refit);
-      player.destroy();
-      setSlot(null);
-    };
-  }, [demo.kind, shownN, demo.handover, JSON.stringify(demo.chapters), demo.tracks?.join(), demo.silent]);
-  const watching = useWatching(cardId, video, comments && demo.kind !== 'html' ? demo.chapters : null, demo.handover);
-  const current = chapterAt(demo.chapters, now);
+  const show = (d: Demo) => {
+    setMoved(true);
+    setShownN(d === latest ? null : (d as EarlierDemo).n);
+  };
   useEffect(() => {
     if (!earlier.length) return;
     return showsVersions({
-      cardId,
+      cardId: item.id,
       shown: demo.handover,
       show: (handover, from) => {
         const d = all.find((d) => d.handover === handover);
@@ -131,10 +111,95 @@ export function DemoView({
       },
     });
   }, [demo, latest, item.demos]);
-  // another demo shown: it starts from the beginning, or from the place a comment took the owner to
-  const firstShown = useRef(true);
+  return { demo, all, at: all.indexOf(demo), latest: demo === latest, show, playFrom, moved };
+}
+
+/** The line above a demo that a later handover replaced: which of the card's demos shows, with steps back and forth. */
+function DemoVersions({ item, shown }: { item: Item; shown: ReturnType<typeof useShownDemo> }) {
+  const { demo, all, at, latest, show } = shown;
+  return (
+    <div className={latest ? 'demo-versions' : 'demo-versions earlier'} title={latest ? undefined : t.demo.earlierHint}>
+      <button className="step" disabled={at === 0} title={t.demo.older} aria-label={t.demo.older} onClick={() => show(all[at - 1]!)}>
+        ‹
+      </button>
+      <span>
+        {t.demo.version(at + 1, all.length, latest)}
+        {demo.at && ` · ${handedAt(demo.at)}`}
+        {demo.handover !== undefined && item.share?.on?.includes(demo.handover) && (
+          <span className="on-page" title={t.share.onPageMark} aria-label={t.share.onPageMark}>
+            <ShareIcon />
+          </span>
+        )}
+      </span>
+      <button className="step" disabled={latest} title={t.demo.newer} aria-label={t.demo.newer} onClick={() => show(all[at + 1]!)}>
+        ›
+      </button>
+      {at < all.length - 2 && (
+        <button className="link" onClick={() => show(all.at(-1)!)}>
+          {t.demo.toLatest}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The worker's HTML artifact: scripts run, but in an origin of its own, away from Obeya's API. Once
+ * the frame has the page's height, the page stops scrolling up and down by itself
+ * (`withHeightReport`); sideways it still scrolls, where it is wider than the frame.
+ */
+function Artifact({ src }: { src: string }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const height = useReportedHeight(frame, ARTIFACT_CAP);
+  return <iframe ref={frame} className="artifact" sandbox="allow-scripts" src={src} title={t.demo.artifact} style={{ height }} />;
+}
+
+/**
+ * The demo video in the player (src/core/video-player.ts) with its chapters under it, zoom and full
+ * screen; `latest`: the card's latest demo, which counts as played once it runs. Another demo of the
+ * card shown in it waits behind the play button, or plays from the place a comment took the owner
+ * to (`playFrom`).
+ */
+function DemoPlayer({
+  cardId,
+  demo,
+  src,
+  latest,
+  autoplay,
+  comments,
+  playFrom,
+}: {
+  cardId: string;
+  demo: Demo;
+  src: (file: string) => string;
+  latest: boolean;
+  autoplay: boolean;
+  comments: boolean;
+  playFrom: RefObject<number | null>;
+}) {
+  const video = useRef<HTMLVideoElement>(null);
+  // on the phone the field is in a panel of its own, which a comment brings up
+  const elsewhere = useContext(TalkElsewhere);
+  const [now, setNow] = useState(0);
+  // the video's shape once its metadata is in, where the handover did not read it: until it first plays, Chrome sizes the
+  // element by its poster, and by its default 300 × 150 when the poster does not load, a flat strip at full width
+  const [shape, setShape] = useState<string>();
+  // a video that does not start on its own shows a big play button over it until it first plays
+  const [started, setStarted] = useState(autoplay);
   useEffect(() => {
-    if (firstShown.current) return void (firstShown.current = false);
+    if (!autoplay) return;
+    const h = setTimeout(() => (document.hidden ? setStarted(false) : video.current?.play().catch(() => setStarted(false))), 300);
+    return () => clearTimeout(h);
+  }, []);
+  useEffect(() => () => holdRestart('video', null), []);
+  // which demo it is: an earlier one by its place, the latest by its handover and render
+  const mark = latest ? demoMark(demo) : `n${(demo as EarlierDemo).n}`;
+  // another demo shown, or a later handover of the latest: it starts from the beginning behind the
+  // play button, or from the place a comment took the owner to
+  const shownMark = useRef(mark);
+  useEffect(() => {
+    if (shownMark.current === mark) return;
+    shownMark.current = mark;
     setNow(0);
     const v = video.current;
     const from = playFrom.current;
@@ -152,178 +217,167 @@ export function DemoView({
     const top = v.getBoundingClientRect().top;
     if (column && (top < column.top || top > column.bottom - 80)) v.closest('.demo-view')?.querySelector('.demo-versions')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     return () => v.removeEventListener('loadedmetadata', go);
-  }, [shownN]);
+  }, [mark]);
+  const zoom = useZoom<HTMLElement>({
+    // the picture as large as fits with the caption, while it shows, and the controls under it
+    box: (w, h) => {
+      const v = video.current;
+      const r = v?.getBoundingClientRect();
+      return zoomedBox(v?.videoWidth ? v.videoWidth / v.videoHeight : r?.height ? r.width / r.height : 16 / 9, w, h, !!v?.closest('.dp')?.hasAttribute('data-captions'));
+    },
+    playing: () => !!video.current && !video.current.paused,
+  });
+  // the phone view, which puts the conversation elsewhere, puts the video into full screen itself (fullscreen.ts)
+  const fullscreen = useFullscreen(zoom.screen, video, !!elsewhere);
+  useSeekKeys(video);
+  // the player's caption and controls (src/core/video-player.ts), and the end of their row for the zoom and the full screen
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const root = zoom.screen.current;
+    const v = video.current;
+    if (!root || !v) return;
+    const player = videoPlayer(root, v, { chapters: demo.chapters, words: playerWords(), silent: !!demo.silent, prefer: [uiLanguage()] }, { captionPages, pageOf, cueWords, spokenWord, preferredTrack });
+    setSlot(player.slot);
+    // captions switched while zoomed: the zoomed player grows or shrinks to stay in the window, once the caption has
+    const refit = () => requestAnimationFrame(() => zoom.refit());
+    addEventListener(CAPTIONS_CHANGED, refit);
+    return () => {
+      removeEventListener(CAPTIONS_CHANGED, refit);
+      player.destroy();
+      setSlot(null);
+    };
+  }, [mark, JSON.stringify(demo.chapters), demo.tracks?.join(), demo.silent]);
+  const watching = useWatching(cardId, video, comments ? demo.chapters : null, demo.handover);
+  const current = chapterAt(demo.chapters, now);
   return (
     <>
-      <div className="demo-view">
-        {/* which of the card's demos is shown, in the line with sharing */}
-        {(earlier.length > 0 || top) && (
-          <div className="demo-top">
-            {earlier.length > 0 && (
-              <div className={demo === latest ? 'demo-versions' : 'demo-versions earlier'} title={demo === latest ? undefined : t.demo.earlierHint}>
-                <button className="step" disabled={shownAt === 0} title={t.demo.older} aria-label={t.demo.older} onClick={() => show(all[shownAt - 1]!)}>
-                  ‹
-                </button>
-                <span>
-                  {t.demo.version(shownAt + 1, all.length, demo === latest)}
-                  {demo.at && ` · ${handedAt(demo.at)}`}
-                  {demo.handover !== undefined && item.share?.on?.includes(demo.handover) && (
-                    <span className="on-page" title={t.share.onPageMark} aria-label={t.share.onPageMark}>
-                      <ShareIcon />
-                    </span>
-                  )}
-                </span>
-                <button className="step" disabled={demo === latest} title={t.demo.newer} aria-label={t.demo.newer} onClick={() => show(all[shownAt + 1]!)}>
-                  ›
-                </button>
-                {shownAt < all.length - 2 && (
-                  <button className="link" onClick={() => show(latest)}>
-                    {t.demo.toLatest}
-                  </button>
-                )}
-              </div>
-            )}
-            {top && top(demo, demo === latest)}
-          </div>
-        )}
-        {demo.kind === 'html' ? (
-          // the worker's page: scripts run, but in an origin of its own, away from Obeya's API. Once
-          // the frame has the page's height, the page stops scrolling up and down by itself
-          // (`withHeightReport`); sideways it still scrolls, where it is wider than the frame
-          <iframe ref={artifact} className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} style={{ height: artifactHeight }} />
-        ) : (
-          <div className="player" ref={zoom.player} style={zoom.box ? { height: zoom.box.from.height } : undefined}>
-            {zoom.box && <div className={zoom.box.closing ? 'demo-zoom closing' : 'demo-zoom'} ref={zoom.backdrop} title={t.demo.unzoom} onClick={zoom.toggle} />}
-            <figure
-              className={zoom.box ? 'dp zoomed' : fullscreen.full ? 'dp full' : 'dp'}
-              ref={zoom.screen}
-              style={zoom.box ? { left: zoom.box.to.left, top: zoom.box.to.top, width: zoom.box.to.width } : undefined}
+      <div className="player" ref={zoom.player} style={zoom.box ? { height: zoom.box.from.height } : undefined}>
+        {zoom.box && <div className={zoom.box.closing ? 'demo-zoom closing' : 'demo-zoom'} ref={zoom.backdrop} title={t.demo.unzoom} onClick={zoom.toggle} />}
+        <figure
+          className={zoom.box ? 'dp zoomed' : fullscreen.full ? 'dp full' : 'dp'}
+          ref={zoom.screen}
+          style={zoom.box ? { left: zoom.box.to.left, top: zoom.box.to.top, width: zoom.box.to.width } : undefined}
+        >
+          <div className="dp-screen">
+            <video
+              ref={video}
+              preload="metadata"
+              poster={demo.noPoster ? undefined : src('poster.jpg')}
+              src={src('demo.mp4')}
+              style={demo.size || shape ? { aspectRatio: demo.size ? `${demo.size[0]} / ${demo.size[1]}` : shape } : undefined}
+              onLoadedMetadata={(e) => {
+                const v = e.currentTarget;
+                if (v.videoWidth && v.videoHeight) setShape(`${v.videoWidth} / ${v.videoHeight}`);
+              }}
+              onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
+              // a restart waits while the owner watches
+              onPlay={() => {
+                setStarted(true);
+                holdRestart('video', 'video');
+              }}
+              // played once it runs, not while it still loads after the click: closed before that, it starts at the next opening
+              onPlaying={() => latest && markSeen(localStorage, cardId, demo)}
+              onPause={() => holdRestart('video', null)}
+              onEnded={() => {
+                holdRestart('video', null);
+                watching.ended();
+              }}
             >
-              <div className="dp-screen">
-                <video
-                  ref={video}
-                  preload="metadata"
-                  poster={demo.noPoster ? undefined : src('poster.jpg')}
-                  src={src('demo.mp4')}
-                  style={demo.size || shape ? { aspectRatio: demo.size ? `${demo.size[0]} / ${demo.size[1]}` : shape } : undefined}
-                  onLoadedMetadata={(e) => {
-                    const v = e.currentTarget;
-                    if (v.videoWidth && v.videoHeight) setShape(`${v.videoWidth} / ${v.videoHeight}`);
-                  }}
-                  onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
-                  // a restart waits while the owner watches
-                  onPlay={() => {
-                    setStarted(true);
-                    holdRestart('video', 'video');
-                  }}
-                  // played once it runs, not while it still loads after the click: closed before that, it starts at the next opening
-                  onPlaying={() => demo === latest && markSeen(localStorage, cardId, demo)}
-                  onPause={() => holdRestart('video', null)}
-                  onEnded={() => {
-                    holdRestart('video', null);
-                    watching.ended();
-                  }}
-                >
-                  {demo.tracks ? (
-                    // a track per language, named in the interface's (none: no subtitles); the player picks the one it shows
-                    demo.tracks.map((l) => <track key={src(`captions.${l}.vtt`)} kind="captions" src={src(`captions.${l}.vtt`)} srcLang={l} label={languageName(l, uiLanguage())} />)
-                  ) : (
-                    <track key={src('captions.vtt')} kind="captions" src={src('captions.vtt')} label={t.demo.captions} />
-                  )}
-                </video>
-                {!started && (
-                  // a click anywhere on the video starts it, like on a shared page
-                  <button className="start" aria-label={t.demo.play} onClick={() => video.current?.play().catch(() => {})}>
-                    <span>
-                      <svg viewBox="0 0 24 24">
-                        <path d="M6 4l15 8-15 8z" />
-                      </svg>
-                    </span>
-                  </button>
-                )}
-                {comments && started && (
-                  <button
-                    className="comment-here"
-                    title={t.demo.commentHint}
-                    onClick={() => {
-                      video.current?.pause();
-                      if (zoom.box) zoom.toggle();
-                      fullscreen.leave();
-                      if (elsewhere) elsewhere.open(true);
-                      else document.querySelector<HTMLTextAreaElement>('.card-sheet .split-talk .composer textarea')?.focus();
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24">
-                      <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" />
-                    </svg>
-                    {t.demo.comment}
-                  </button>
-                )}
-              </div>
-            </figure>
-            {slot &&
-              createPortal(
-                <>
-                  {fullscreen.can && (
-                    <button
-                      className="btn small wt-full"
-                      title={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen}
-                      aria-label={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={fullscreen.toggle}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path className="s" d={fullscreen.full ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'} />
-                      </svg>
-                    </button>
-                  )}
-                  <button
-                    className="btn small wt-key wt-zoom"
-                    title={zoom.keyKnown ? (zoom.box ? t.demo.unzoom : t.demo.zoom) : undefined}
-                    aria-label={zoom.box ? t.demo.unzoom : t.demo.zoom}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={zoom.toggle}
-                  >
-                    {/* the key beside the magnifier until the owner first zoomed with it */}
-                    {!zoom.keyKnown && (
-                      <span className="zoom-hint">
-                        {zoom.box ? t.demo.unzoomHint : t.demo.zoomHint} <kbd>Z</kbd>
-                      </span>
-                    )}
-                    <svg viewBox="0 0 24 24">
-                      <circle cx="10.5" cy="10.5" r="6.5" />
-                      <path d={zoom.box ? 'M7.5 10.5h6M15.5 15.5L21 21' : 'M7.5 10.5h6M10.5 7.5v6M15.5 15.5L21 21'} />
-                    </svg>
-                  </button>
-                </>,
-                slot,
+              {demo.tracks ? (
+                // a track per language, named in the interface's (none: no subtitles); the player picks the one it shows
+                demo.tracks.map((l) => <track key={src(`captions.${l}.vtt`)} kind="captions" src={src(`captions.${l}.vtt`)} srcLang={l} label={languageName(l, uiLanguage())} />)
+              ) : (
+                <track key={src('captions.vtt')} kind="captions" src={src('captions.vtt')} label={t.demo.captions} />
               )}
+            </video>
+            {!started && (
+              // a click anywhere on the video starts it, like on a shared page
+              <button className="start" aria-label={t.demo.play} onClick={() => video.current?.play().catch(() => {})}>
+                <span>
+                  <svg viewBox="0 0 24 24">
+                    <path d="M6 4l15 8-15 8z" />
+                  </svg>
+                </span>
+              </button>
+            )}
+            {comments && started && (
+              <button
+                className="comment-here"
+                title={t.demo.commentHint}
+                onClick={() => {
+                  video.current?.pause();
+                  if (zoom.box) zoom.toggle();
+                  fullscreen.leave();
+                  if (elsewhere) elsewhere.open(true);
+                  else document.querySelector<HTMLTextAreaElement>('.card-sheet .split-talk .composer textarea')?.focus();
+                }}
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" />
+                </svg>
+                {t.demo.comment}
+              </button>
+            )}
           </div>
-        )}
-        {demo.chapters.length > 0 && (
-          <ol className="chapters">
-            {demo.chapters.map(([at, title], i) => (
-              <li key={i}>
+        </figure>
+        {slot &&
+          createPortal(
+            <>
+              {fullscreen.can && (
                 <button
-                  className={i === current ? 'on' : ''}
-                  onClick={() => {
-                    const v = video.current;
-                    if (!v) return;
-                    v.currentTime = at;
-                    v.play().catch(() => {});
-                  }}
+                  className="btn small wt-full"
+                  title={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen}
+                  aria-label={fullscreen.full ? t.demo.fullscreenOff : t.demo.fullscreen}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={fullscreen.toggle}
                 >
-                  <span className="t">{mmss(at)}</span>
-                  {title}
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path className="s" d={fullscreen.full ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'} />
+                  </svg>
                 </button>
-              </li>
-            ))}
-          </ol>
-        )}
-        {/* its report's question stands in the conversation, where it is answered */}
-        {children}
+              )}
+              <button
+                className="btn small wt-key wt-zoom"
+                title={zoom.keyKnown ? (zoom.box ? t.demo.unzoom : t.demo.zoom) : undefined}
+                aria-label={zoom.box ? t.demo.unzoom : t.demo.zoom}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={zoom.toggle}
+              >
+                {/* the key beside the magnifier until the owner first zoomed with it */}
+                {!zoom.keyKnown && (
+                  <span className="zoom-hint">
+                    {zoom.box ? t.demo.unzoomHint : t.demo.zoomHint} <kbd>Z</kbd>
+                  </span>
+                )}
+                <svg viewBox="0 0 24 24">
+                  <circle cx="10.5" cy="10.5" r="6.5" />
+                  <path d={zoom.box ? 'M7.5 10.5h6M15.5 15.5L21 21' : 'M7.5 10.5h6M10.5 7.5v6M15.5 15.5L21 21'} />
+                </svg>
+              </button>
+            </>,
+            slot,
+          )}
       </div>
-      <Body md={summary} />
+      {demo.chapters.length > 0 && (
+        <ol className="chapters">
+          {demo.chapters.map(([at, title], i) => (
+            <li key={i}>
+              <button
+                className={i === current ? 'on' : ''}
+                onClick={() => {
+                  const v = video.current;
+                  if (!v) return;
+                  v.currentTime = at;
+                  v.play().catch(() => {});
+                }}
+              >
+                <span className="t">{mmss(at)}</span>
+                {title}
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
     </>
   );
 }
