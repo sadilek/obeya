@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TagProposalJob } from '../core/types';
 import { canvas, dir, eachTest, main, runtime, store } from './canvas-fixture';
 import { Config } from './config';
 import { serve } from './server';
-import { asOwner, until } from './testing';
+import { asOwner, until, videoDemo } from './testing';
 
 let server: ReturnType<typeof serve>;
 let configured: Config;
@@ -36,9 +36,7 @@ beforeEach(() => {
     { canvas_id: c, kind: 'task', state: 'working', title: 'Coupons in the cart', body: 'A coupon code field in the cart.', x: 400, y: 0 },
     { canvas_id: c, kind: 'question', state: 'done', title: 'How many orders last week?', body: '', x: 800, y: 0 },
   ]);
-  const demo = join(dir, 'demos', done!.id);
-  mkdirSync(demo, { recursive: true });
-  writeFileSync(join(demo, 'demo.mp4'), 'video');
+  const demo = videoDemo(join(dir, 'demos', done!.id));
   store.update(done!.id, {
     demo: JSON.stringify({ dir: demo, kind: 'video', chapters: [[0, 'Download']], page: { title: 'Invoices to download', text: 'Customers get their invoice as a PDF from the order page.' } }),
     archived_at: new Date().toISOString(),

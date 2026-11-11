@@ -1,6 +1,6 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { DemoSite } from '../core/types';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MESSAGES } from '../core/messages';
@@ -13,7 +13,7 @@ import type { SharePage, ShareTarget } from './share';
 import { Sharing } from './share';
 import { MANIFEST, NOT_FOUND, parseEnv, repoMark, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
 import { PAGES_HASH } from '../core/page-changes';
-import { FakeRuntime, gitRepo, noForge, removeDir, testBoard } from './testing';
+import { deployScript, FakeRuntime, fakeSiteHost, gitRepo, noForge, removeDir, testBoard, videoDemo } from './testing';
 
 let dir: string;
 let home: string;
@@ -21,55 +21,28 @@ let repo: string;
 let demo: string;
 let target: ShareTarget;
 
-// the deploy line's stand-in, a script in the repository: copies the site's directory to `deployed/`
-// (a host's snapshot), records it with the env file's TOKEN, and fails while the file `fail` exists.
-// While `lag` exists the host keeps serving the deployment before; each line of `race` is another
-// machine's snapshot, deployed right after this one (one per deploy)
-const DEPLOY = `
-const { appendFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
-const [site, out, ...more] = process.argv.slice(2);
+// the deploy line's stand-in, a script in the repository: records the deploy with the env file's
+// TOKEN and fails while the file `fail` exists. While `lag` exists the host keeps serving the
+// deployment before; each line of `race` is another machine's snapshot, deployed right after this
+// one (one per deploy)
+const DEPLOY = deployScript({
+  before: `
 if (more.length) writeFileSync(out + '/args', JSON.stringify(more));
 appendFileSync(out + '/deploys', readdirSync(site).sort().join(' ') + ' token=' + (process.env.TOKEN ?? '') + '\\n');
 console.log('Uploaded ' + readdirSync(site).length + ' entries');
 if (existsSync(out + '/fail')) { console.error('upload refused: token expired'); process.exit(3); }
-if (existsSync(out + '/lag')) process.exit(0);
-rmSync(out + '/deployed', { recursive: true, force: true });
-cpSync(site, out + '/deployed', { recursive: true });
+if (existsSync(out + '/lag')) process.exit(0);`,
+  after: `
 if (existsSync(out + '/race')) {
   const [other, ...rest] = readFileSync(out + '/race', 'utf8').trim().split('\\n');
   if (rest.length) writeFileSync(out + '/race', rest.join('\\n'));
   else rmSync(out + '/race');
   rmSync(out + '/deployed', { recursive: true, force: true });
   cpSync(other, out + '/deployed', { recursive: true });
-}
-`;
-
-// the host: serves what was deployed last, and a missing file with its 404.html (HTTP 404) where it has one,
-// as Cloudflare Pages, GitHub Pages and Netlify do; `down` answers 503, `token` sends a request without it to a login;
-// `onManifest` runs before a read of the manifest is answered; `fallback` answers a missing file with the
-// root's index.html (as Cloudflare Pages does for a site without a 404.html), `garbled` the manifest with it;
-// `pretty`: as Cloudflare Pages, `…/index.html` redirects (308) to `…/`
-const host: { down?: boolean; token?: string; onManifest?: () => void; fallback?: boolean; garbled?: boolean; pretty?: boolean } = {};
-const server = Bun.serve({
-  port: 0,
-  fetch(req) {
-    if (host.down) return new Response('down', { status: 503 });
-    if (host.token && req.headers.get('X-Token') !== host.token) return Response.redirect('https://login.example.dev/', 302);
-    let path = decodeURIComponent(new URL(req.url).pathname);
-    if (path === `/${MANIFEST}`) host.onManifest?.();
-    if (host.pretty && path.endsWith('/index.html')) return new Response(null, { status: 308, headers: { location: path.slice(0, -'index.html'.length) } });
-    if (path.endsWith('/')) path += 'index.html';
-    const file = join(dir, 'deployed', path);
-    const root = join(dir, 'deployed', 'index.html');
-    if (host.garbled && path === `/${MANIFEST}`) return new Response(Bun.file(root));
-    if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
-    const missing = join(dir, 'deployed', NOT_FOUND);
-    if (existsSync(missing)) return new Response(Bun.file(missing), { status: 404 });
-    return host.fallback && existsSync(root) ? new Response(Bun.file(root)) : new Response('not found', { status: 404 });
-  },
+}`,
 });
-afterAll(() => server.stop(true));
-const URL_ = `http://localhost:${server.port}/`;
+
+const { url: URL_, host, deployed } = fakeSiteHost(() => dir);
 
 const SITE = (extra: Partial<DemoSite> = {}): DemoSite => ({
   title: 'Team demos',
@@ -84,7 +57,6 @@ const SITE = (extra: Partial<DemoSite> = {}): DemoSite => ({
 const make = (site: DemoSite, at = home, machine = 'a', language: 'de' | 'en' = 'de', by = 'Ada Lovelace') =>
   siteTarget({ ...site, deploy: site.deploy.replace('__OUT__', dir) }, repo, at, MESSAGES.en.share, { machine, checkWaits: [0, 10, 10], language, by });
 const siteDir = (at = home) => join(at, 'sites', siteKey(URL_), 'site');
-const deployed = () => join(dir, 'deployed');
 const deploys = () => readFileSync(join(dir, 'deploys'), 'utf8').trim().split('\n');
 
 beforeEach(() => {
@@ -95,23 +67,12 @@ beforeEach(() => {
   writeFileSync(join(repo, 'deploy.ts'), DEPLOY);
   mkdirSync(join(home, 'sites/demos'), { recursive: true });
   writeFileSync(join(home, 'sites/demos/deploy.env'), '# for the host\nexport TOKEN="secret-1"\nOTHER=x\n');
-  demo = join(dir, 'demo');
-  mkdirSync(demo);
-  writeFileSync(join(demo, 'demo.mp4'), 'video');
+  demo = videoDemo(join(dir, 'demo'));
   writeFileSync(join(demo, 'poster.jpg'), 'poster');
-  writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n');
   writeFileSync(join(demo, 'report.html'), 'not for colleagues');
   target = make(SITE());
 });
-afterEach(async () => {
-  await removeDir(dir);
-  delete host.down;
-  delete host.token;
-  delete host.onManifest;
-  delete host.fallback;
-  delete host.garbled;
-  delete host.pretty;
-});
+afterEach(() => removeDir(dir));
 
 const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({
   slug,

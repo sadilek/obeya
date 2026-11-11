@@ -1,5 +1,5 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -13,42 +13,21 @@ import { MANIFEST, siteKey, siteTarget } from './site';
 import { cloudflareAccounts, type Exec, exec, githubPagesDeploy, setupCloudflare, setupGithub, SetupRefused } from './site-hosts';
 import { SiteSetup } from './site-setup';
 import { CanvasRuntime } from './canvas';
-import { FakeRuntime, gitRepo, identify, noForge, removeDir, testBoard, until } from './testing';
+import { deployScript, FakeRuntime, fakeSiteHost, gitRepo, identify, noForge, removeDir, testBoard, until, videoDemo } from './testing';
 
 let dir: string;
 let home: string;
 let repo: string;
 let demo: string;
 
-// the deploy line's stand-in: copies the site's directory to `deployed/`, the host's snapshot
-const DEPLOY = `
-const { cpSync, rmSync } = require('node:fs');
-const [site, out] = process.argv.slice(2);
-rmSync(out + '/deployed', { recursive: true, force: true });
-cpSync(site, out + '/deployed', { recursive: true });
-`;
-
-// the host: serves what was deployed last, `404.html` for what it lacks (as Cloudflare and GitHub Pages do)
-const server = Bun.serve({
-  port: 0,
-  fetch(req) {
-    let path = decodeURIComponent(new URL(req.url).pathname);
-    if (path.endsWith('/')) path += 'index.html';
-    const file = join(dir, 'deployed', path);
-    if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
-    const missing = join(dir, 'deployed', '404.html');
-    return new Response(existsSync(missing) ? Bun.file(missing) : 'not found', { status: 404 });
-  },
-});
-afterAll(() => server.stop(true));
-const URL_ = `http://localhost:${server.port}/`;
+const DEPLOY = deployScript();
+const { url: URL_, deployed } = fakeSiteHost(() => dir);
 
 const personal = (extra: Partial<PersonalSite> = {}): PersonalSite => ({ host: 'cloudflare', url: URL_, project: 'obeya-ada', secret: 's3cr3tdirectory000000000', ...extra });
 /** The personal site as a target, deploying with the stand-in in place of wrangler. */
 const unlisted = (at = home, machine = 'a') =>
   siteTarget({ title: 'Demos', url: URL_, deploy: `deploy.ts {dir} ${dir}` }, repo, at, MESSAGES.en.share, { machine, checkWaits: [0, 10, 10], by: 'Ada Lovelace', unlisted: { secret: personal().secret! } });
 const siteDir = (at = home) => join(at, 'sites', siteKey(URL_), 'site');
-const deployed = () => join(dir, 'deployed');
 const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({ slug, title: `Title ${slug}`, text: 'One sentence.', kind: 'video', chapters: [[0, 'Before']], pr: null, language: 'en', dir: demo, shared: [], ...extra });
 
 beforeEach(() => {
@@ -58,10 +37,7 @@ beforeEach(() => {
   mkdirSync(repo);
   mkdirSync(home);
   writeFileSync(join(repo, 'deploy.ts'), DEPLOY);
-  demo = join(dir, 'demo');
-  mkdirSync(demo);
-  writeFileSync(join(demo, 'demo.mp4'), 'video');
-  writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n');
+  demo = videoDemo(join(dir, 'demo'));
 });
 afterEach(() => removeDir(dir));
 

@@ -1,8 +1,8 @@
 // Test doubles, and git repositories for tests.
 
 import { dlopen, FFIType, ptr } from 'bun:ffi';
-import { afterEach, beforeEach } from 'bun:test';
-import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { afterAll, afterEach, beforeEach } from 'bun:test';
+import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { Forge } from './forge';
@@ -12,6 +12,7 @@ import { git, Workspaces } from './workspaces';
 import { BadRequest, Board } from './board';
 import { cardTag } from '../core/card-number';
 import { Store } from './db';
+import { MANIFEST, NOT_FOUND } from './site';
 import type { PlanDoc } from '../core/plan-doc';
 import type { Item } from '../core/types';
 import type { Workers } from './workers';
@@ -581,6 +582,79 @@ export function artifact(): { kind: 'html'; dir: string } {
   writeFileSync(join(dir, 'index.html'), '<p>Ergebnis</p>\n');
   return { kind: 'html', dir };
 }
+
+/** A video demo's directory as a worker hands it over, with its video and captions: `dir`, made where it is not there yet. */
+export function videoDemo(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'demo.mp4'), 'video');
+  writeFileSync(join(dir, 'captions.vtt'), 'WEBVTT\n');
+  return dir;
+}
+
+/** What the stand-in for a demo site's host does besides serving the files (`fakeSiteHost`): all off unless a test turns them on. */
+export interface SiteHostSwitches {
+  /** It answers 503. */
+  down?: boolean;
+  /** It sends a request without this `X-Token` header to a login. */
+  token?: string;
+  /** Runs before a read of the manifest is answered. */
+  onManifest?: () => void;
+  /** A missing file gets the root's `index.html`, as Cloudflare Pages answers for a site without a `404.html`. */
+  fallback?: boolean;
+  /** The manifest gets the root's `index.html`. */
+  garbled?: boolean;
+  /** `…/index.html` redirects (308) to `…/`, as Cloudflare Pages does. */
+  pretty?: boolean;
+}
+
+/**
+ * The host of a demo site, for the tests of a file: it serves what the deploy line's stand-in
+ * (`deployScript`) copied to `<out()>/deployed` last, and a missing file with that deployment's
+ * `404.html` (HTTP 404) where it has one, as Cloudflare Pages, GitHub Pages and Netlify do. Its
+ * switches (`host`) go off after each test.
+ */
+export function fakeSiteHost(out: () => string) {
+  const host: SiteHostSwitches = {};
+  const deployed = () => join(out(), 'deployed');
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      if (host.down) return new Response('down', { status: 503 });
+      if (host.token && req.headers.get('X-Token') !== host.token) return Response.redirect('https://login.example.dev/', 302);
+      let path = decodeURIComponent(new URL(req.url).pathname);
+      if (path === `/${MANIFEST}`) host.onManifest?.();
+      if (host.pretty && path.endsWith('/index.html')) return new Response(null, { status: 308, headers: { location: path.slice(0, -'index.html'.length) } });
+      if (path.endsWith('/')) path += 'index.html';
+      const file = join(deployed(), path);
+      const root = join(deployed(), 'index.html');
+      if (host.garbled && path === `/${MANIFEST}`) return new Response(Bun.file(root));
+      if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
+      const missing = join(deployed(), NOT_FOUND);
+      if (existsSync(missing)) return new Response(Bun.file(missing), { status: 404 });
+      return host.fallback && existsSync(root) ? new Response(Bun.file(root)) : new Response('not found', { status: 404 });
+    },
+  });
+  afterEach(() => {
+    for (const key of Object.keys(host) as (keyof SiteHostSwitches)[]) delete host[key];
+  });
+  afterAll(() => server.stop(true));
+  return { url: `http://localhost:${server.port}/`, host, deployed };
+}
+
+/**
+ * The deploy line's stand-in, a script for Bun called with the site's directory, `out` and more
+ * arguments (`more`): it copies the site's directory to `<out>/deployed`, the host's snapshot
+ * (`fakeSiteHost`). `before` and `after` are code that runs before and after the copy, with
+ * node:fs's functions at hand; `before` may end the script first.
+ */
+export const deployScript = ({ before = '', after = '' } = {}) => `
+const { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const [site, out, ...more] = process.argv.slice(2);
+${before}
+rmSync(out + '/deployed', { recursive: true, force: true });
+cpSync(site, out + '/deployed', { recursive: true });
+${after}
+`;
 
 /**
  * A stand-in for GitHub's CLI, in `dir`, slow as GitHub can be: it answers a call on pull request
