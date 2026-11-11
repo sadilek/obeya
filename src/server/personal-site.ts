@@ -84,14 +84,17 @@ export function personalDemoSite(p: PersonalSite): DemoSite {
   return {
     title: 'Demos',
     url: p.url,
-    deploy: p.host === 'cloudflare' ? cloudflareDeploy(p.project) : `${GITHUB_PAGES} ${p.project}`,
+    ...hostDeploy(p.host, p.project),
     ...(p.env ? { env: p.env } : {}),
-    ...(p.host === 'github' ? { maxFile: GITHUB_PAGES_MAX } : {}),
   };
 }
 
-/** The deploy line of a Cloudflare Pages project, as Obeya's own site has it. */
-export const cloudflareDeploy = (project: string) => `bunx wrangler@4 pages deploy {dir} --project-name ${project} --branch main --commit-dirty=true`;
+/** How a site set up at a host is deployed: a Cloudflare Pages project as Obeya's own site is, a GitHub repository by the deploy Obeya builds in, with GitHub's file limit. */
+export function hostDeploy(host: SiteHost, project: string): Pick<DemoSite, 'deploy' | 'maxFile'> {
+  return host === 'cloudflare'
+    ? { deploy: `bunx wrangler@4 pages deploy {dir} --project-name ${project} --branch main --commit-dirty=true` }
+    : { deploy: `${GITHUB_PAGES} ${project}`, maxFile: GITHUB_PAGES_MAX };
+}
 
 /** Whether the repository at `path` may share on the personal site: a public one always, a private one once ticked. */
 export const allowedHere = (p: PersonalSite, path: string, isPublic: boolean) => isPublic || (p.private ?? []).some((x) => resolve(x) === resolve(path));
