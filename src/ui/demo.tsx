@@ -6,7 +6,7 @@ import { chapterAt, type Demo, type EarlierDemo, type Item } from '../core/types
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
 import { api, cardAt, holdRestart } from './api';
-import { demoMark, markSeen, unseen } from './demoSeen';
+import { demoMark, markSeen, sameDemo, unseen } from './demoSeen';
 import { know } from './stored';
 import { Body } from './markdown';
 import { useReportedHeight } from './frame';
@@ -53,6 +53,8 @@ export function DemoView({
   const { demo } = shown;
   // start once the card has unfolded, like the mock, until it has played once; a demo kept on a finished card waits to be played.
   // A page out of sight (a tab in the background, an agent's browser) does not start it: nobody would see it, only hear it
+  // the demo the card opened to: a later handover on the open card never starts by itself
+  const [opened] = useState(latest);
   const [autostart] = useState(() => autoplay && latest.kind !== 'html' && !document.hidden && unseen(localStorage, cardId, latest));
   // a new handover often renders into the same directory: its handover in the address makes a card left open load it afresh
   const src = (f: string) => cardAt(cardId, `${shown.latest ? `/demo/${f}` : `/demos/${(demo as EarlierDemo).n}/${f}`}${demo.handover === undefined ? '' : `?v=${demo.handover}`}`);
@@ -69,7 +71,7 @@ export function DemoView({
         {demo.kind === 'html' ? (
           <Artifact src={src('index.html')} />
         ) : (
-          <DemoPlayer cardId={cardId} demo={demo} src={src} latest={shown.latest} autoplay={autostart && !shown.moved} comments={comments} playFrom={shown.playFrom} />
+          <DemoPlayer cardId={cardId} demo={demo} src={src} latest={shown.latest} autoplay={autostart && !shown.moved && sameDemo(opened, latest)} comments={comments} playFrom={shown.playFrom} />
         )}
         {/* its report's question stands in the conversation, where it is answered */}
         {children}
@@ -195,15 +197,18 @@ function DemoPlayer({
   // which demo it is: an earlier one by its place, the latest by its handover and render
   const mark = latest ? demoMark(demo) : `n${(demo as EarlierDemo).n}`;
   // another demo shown, or a later handover of the latest: it starts from the beginning behind the
-  // play button, or from the place a comment took the owner to
-  const shownMark = useRef(mark);
+  // play button, or from the place a comment took the owner to (also where that put the player in
+  // place of an HTML artifact)
+  const shownMark = useRef<string | null>(null);
   useEffect(() => {
+    const first = shownMark.current === null;
     if (shownMark.current === mark) return;
     shownMark.current = mark;
-    setNow(0);
-    const v = video.current;
     const from = playFrom.current;
     playFrom.current = null;
+    if (first && from === null) return;
+    setNow(0);
+    const v = video.current;
     if (!v) return;
     if (from === null) return setStarted(false);
     const go = () => {
