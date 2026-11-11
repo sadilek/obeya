@@ -646,7 +646,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     // the deploy Obeya builds in for GitHub Pages
     if (words[0] === GITHUB_PAGES) {
       try {
-        return tail(await githubPagesDeploy(dir, words[1] ?? '', join(base, 'git'), undefined, { private: unlisted }));
+        return tail(await githubPagesDeploy(dir, words[1] ?? '', join(base, 'git'), { private: unlisted }));
       } catch (e) {
         throw new Refused(t.deployFailed(1), { cause: messageOf(e) });
       }
@@ -680,18 +680,26 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
    * machine has as shared that the live site lacks, and checks those. A change another machine's
    * deployment came in between with (seen before the deploy, or after it without the change) is
    * undone here and made once more; a failed deploy is undone too. Each page's directory is set
-   * aside meanwhile in `backup/`; with `inPlace`, only the files `apply` rewrites are copied
-   * there, and the page's own files (its video, its artifact) stay where they are.
+   * aside meanwhile (`wholeBackup`); with `inPlace`, only the files `apply` rewrites are
+   * (`inPlaceBackup`).
    */
-  const change = async (
-    slugs: string[],
-    shared: string[],
-    apply: ((slug: string, rev: number, before: Entry | undefined) => Promise<Entry>) | null,
-    log: (text: string) => void,
-    gone: Gone[],
+  const change = async ({
+    slugs,
+    shared,
+    apply,
+    log,
+    gone,
     inPlace = false,
-  ): Promise<string> => {
+  }: {
+    slugs: string[];
+    shared: string[];
+    apply?: (slug: string, rev: number, before: Entry | undefined) => Promise<Entry>;
+    log: (text: string) => void;
+    gone: Gone[];
+    inPlace?: boolean;
+  }): Promise<string> => {
     const env = await deployEnv();
+    const backup = inPlace ? inPlaceBackup : wholeBackup;
     for (let round = 1; ; round++) {
       const live = await readLive(env);
       const local = await readLocal();
@@ -702,20 +710,13 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       await checkSite(kept, inPlace ? [] : slugs);
       const before = new Map(slugs.map((s) => [s, local.pages[s]]));
       const rev = new Map(slugs.map((s) => [s, Math.max(local.pages[s]?.rev ?? 0, live.pages[s]?.rev ?? 0) + 1]));
-      const backup = new Map<string, string | null>();
-      for (const s of slugs) backup.set(s, await setAside(s, inPlace ? REWRITTEN : undefined));
+      const aside = new Map<string, string | null>();
+      for (const s of slugs) aside.set(s, await backup.setAside(s));
       const undo = async () => {
         if (!slugs.length) return;
         for (const s of slugs) {
-          const b = backup.get(s);
           forget(s);
-          if (inPlace) {
-            if (b) for (const f of await readdir(b)) await copyFile(join(b, f), join(dir, s, f));
-            if (b) await rm(b, { recursive: true, force: true });
-          } else {
-            await rm(join(dir, s), { recursive: true, force: true });
-            if (b) await rename(b, join(dir, s));
-          }
+          await backup.restore(s, aside.get(s) ?? null);
           const was = before.get(s);
           if (was) local.pages[s] = was;
           else delete local.pages[s];
@@ -753,24 +754,51 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         log(t.cameBetween);
         continue;
       }
-      for (const b of backup.values()) if (b) await rm(b, { recursive: true, force: true });
+      for (const b of aside.values()) if (b) await rm(b, { recursive: true, force: true });
       return [said, seen === null ? t.notSeenYet : ''].filter(Boolean).join('\n');
     }
   };
 
-  /** Moves a page's directory out of the site, or copies only the files named (`only`), so a change can be undone. */
-  const setAside = async (slug: string, only?: string[]): Promise<string | null> => {
+  /** A new directory in `backup/` for the page's, where it is there; null where it is not. */
+  const backupFor = async (slug: string): Promise<string | null> => {
     if (!(await exists(join(dir, slug)))) return null;
     const backup = join(base, 'backup', `${slug}-${Date.now()}`);
     await mkdir(dirname(backup), { recursive: true });
-    if (!only) {
+    return backup;
+  };
+
+  /**
+   * How a change keeps a page's directory, so it can be undone: `setAside` before it (where the
+   * backup is; null for a page not there), `restore` to undo it, which takes the backup back.
+   * A page written anew or withdrawn: its whole directory moved out of the site.
+   */
+  const wholeBackup: Backup = {
+    setAside: async (slug) => {
+      const backup = await backupFor(slug);
+      if (!backup) return null;
       forget(slug);
       await rename(join(dir, slug), backup);
       return backup;
-    }
-    await mkdir(backup, { recursive: true });
-    for (const f of only) if (await exists(join(dir, slug, f))) await copyFile(join(dir, slug, f), join(backup, f));
-    return backup;
+    },
+    restore: async (slug, backup) => {
+      await rm(join(dir, slug), { recursive: true, force: true });
+      if (backup) await rename(backup, join(dir, slug));
+    },
+  };
+  /** A page retagged in place: only the files that rewrites copied, the page's own files (its video, its artifact) staying where they are. */
+  const inPlaceBackup: Backup = {
+    setAside: async (slug) => {
+      const backup = await backupFor(slug);
+      if (!backup) return null;
+      await mkdir(backup, { recursive: true });
+      for (const f of REWRITTEN) if (await exists(join(dir, slug, f))) await copyFile(join(dir, slug, f), join(backup, f));
+      return backup;
+    },
+    restore: async (slug, backup) => {
+      if (!backup) return;
+      for (const f of await readdir(backup)) await copyFile(join(backup, f), join(dir, slug, f));
+      await rm(backup, { recursive: true, force: true });
+    },
   };
 
   /** Runs a change of the site, its reason in Obeya's words where it was refused, with the pages another machine withdrew. */
@@ -808,10 +836,12 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
           }),
         );
         const target = join(dir, slug);
-        const said = await change(
-          [slug],
-          p.shared,
-          async (_, rev, entry) => {
+        const said = await change({
+          slugs: [slug],
+          shared: p.shared,
+          log,
+          gone,
+          apply: async (_, rev, entry) => {
             const before = entry?.withdrawn ? null : entry?.meta;
             // a version keeps its date while its demo's own files stay the same, wherever it was on the page
             const dated = new Map<string, string>(before ? [[before.source, before.at], ...(before.more ?? []).map((m) => [m.source, m.at] as [string, string])] : []);
@@ -862,18 +892,16 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             };
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             if (p.theme) await writeFile(join(target, PAGE_THEME), p.theme.css);
-            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), undefined, unlisted, p.theme?.css));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), { unlisted, ...(p.theme ? { theme: p.theme.css } : {}) }));
             return { ...(await entryOf(slug)), rev };
           },
-          log,
-          gone,
-        );
+        });
         return { url: pageUrl(site, slug), said };
       }),
     withdraw: async (slugArg, shared, log = () => {}) => {
       const r = await attempt(async (gone) => {
         const slug = checkSlug(slugArg, unlisted);
-        const said = await change([slug], shared, async (_, rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }), log, gone);
+        const said = await change({ slugs: [slug], shared, log, gone, apply: async (_, rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }) });
         return { said };
       });
       return 'why' in r ? { ...r, why: t.notWithdrawn(r.why) } : r;
@@ -900,10 +928,13 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     retag: (pages, shared, log = () => {}) =>
       attempt(async (gone) => {
         const want = new Map(pages.map((p) => [checkSlug(p.slug, unlisted), p.tags]));
-        const said = await change(
-          [...want.keys()],
+        const said = await change({
+          slugs: [...want.keys()],
           shared,
-          async (slug, rev) => {
+          log,
+          gone,
+          inPlace: true,
+          apply: async (slug, rev) => {
             const target = join(dir, slug);
             let text: string;
             try {
@@ -917,17 +948,20 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             // the page around its files in today's template, with the theme it went out with
             const theme = await readFile(join(target, PAGE_THEME), 'utf8').catch(() => undefined);
-            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), undefined, unlisted, theme));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), { unlisted, ...(theme ? { theme } : {}) }));
             return { ...(await entryOf(slug)), rev };
           },
-          log,
-          gone,
-          true,
-        );
+        });
         return { said };
       }),
-    repair: async (shared, log = () => {}) => attempt(async (gone) => ({ said: await change([], shared, null, log, gone) })),
+    repair: async (shared, log = () => {}) => attempt(async (gone) => ({ said: await change({ slugs: [], shared, log, gone }) })),
   };
+}
+
+/** How a change sets a page's directory aside, and puts it back to undo the change (`change`). */
+interface Backup {
+  setAside: (slug: string) => Promise<string | null>;
+  restore: (slug: string, backup: string | null) => Promise<void>;
 }
 
 /** What retagging a page in place rewrites of its directory. */

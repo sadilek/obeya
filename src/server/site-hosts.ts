@@ -190,7 +190,7 @@ export async function setupGithub(o: { name: string; private: boolean; log: (lin
   try {
     writeFileSync(join(first, 'index.html'), BLANK_PAGE);
     o.log('Pushing a first, empty page…');
-    await githubPagesDeploy(first, project, join(first, '..', `${name}.git-${Date.now()}`), x, { private: o.private });
+    await githubPagesDeploy(first, project, join(first, '..', `${name}.git-${Date.now()}`), { private: o.private, x });
   } finally {
     rmSync(first, { recursive: true, force: true });
   }
@@ -239,10 +239,10 @@ export const BLANK_PAGE = `<!doctype html>
  * repository of its own made afresh each time (`gitDir`), with nothing of the machine's git
  * configuration that could leave files out or stop the commit (ignores, hooks, signing).
  */
-export async function githubPagesDeploy(dir: string, repo: string, gitDir: string, x: Exec = exec, o: { private?: boolean } = {}): Promise<string> {
+export async function githubPagesDeploy(dir: string, repo: string, gitDir: string, { private: unlisted = false, x = exec }: { private?: boolean; x?: Exec } = {}): Promise<string> {
   if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repo)) throw new Error(`${GITHUB_PAGES}: expected <owner>/<repository>, got ${repo || 'nothing'}`);
   // an unlisted site goes only into a private repository: a public one lists every page's address
-  if (o.private) {
+  if (unlisted) {
     const v = await x(['gh', 'repo', 'view', repo, '--json', 'visibility', '--jq', '.visibility']);
     const visibility = v.out.trim().toUpperCase();
     if (v.code !== 0 || visibility !== 'PRIVATE') throw new Error(`${repo} is ${v.code === 0 ? visibility.toLowerCase() || 'of unknown visibility' : `not readable (${lastLine(v)})`}, not private: Obeya puts no unlisted page there`);

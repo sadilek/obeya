@@ -333,7 +333,7 @@ test('the deploy of an unlisted site to GitHub Pages refuses a repository that i
     calls.push(argv);
     return argv.includes('view') ? { code: 0, out: 'PUBLIC\n', err: '' } : { code: 0, out: 'tok\n', err: '' };
   };
-  await expect(githubPagesDeploy(join(dir, 'site'), 'ada/obeya-demos', join(dir, 'git'), x, { private: true })).rejects.toThrow('not private');
+  await expect(githubPagesDeploy(join(dir, 'site'), 'ada/obeya-demos', join(dir, 'git'), { private: true, x })).rejects.toThrow('not private');
   expect(calls.some((c) => c[0] === 'git')).toBe(false);
 });
 
@@ -358,7 +358,7 @@ test('the deploy to GitHub Pages pushes one commit without history, with gh’s 
     return exec(argv, { ...o, env: { ...o?.env, GIT_CONFIG_GLOBAL: join(dir, 'gitconfig') } });
   };
   writeFileSync(join(dir, 'gitconfig'), `[core]\n\texcludesFile = ${JSON.stringify(join(dir, 'ignore'))}\n[commit]\n\tgpgsign = true\n`);
-  const said = await githubPagesDeploy(site, 'ada/obeya-demos', join(dir, 'git'), x);
+  const said = await githubPagesDeploy(site, 'ada/obeya-demos', join(dir, 'git'), { x });
   expect(said).toContain('a/b/demo.mp4');
   expect(said).toContain('.nojekyll');
   expect(said).toContain('commits 1');
@@ -368,7 +368,7 @@ test('the deploy to GitHub Pages pushes one commit without history, with gh’s 
   expect(push!.env.GIT_CONFIG_VALUE_0).toBe(`AUTHORIZATION: basic ${Buffer.from('x-access-token:gho_secret').toString('base64')}`);
   // its repository is made afresh each time and goes afterwards
   expect(existsSync(join(dir, 'git'))).toBe(false);
-  await expect(githubPagesDeploy(site, 'not a repository', join(dir, 'git'), x)).rejects.toThrow('expected <owner>/<repository>');
+  await expect(githubPagesDeploy(site, 'not a repository', join(dir, 'git'), { x })).rejects.toThrow('expected <owner>/<repository>');
 });
 
 describe('setting up at Cloudflare', () => {

@@ -98,7 +98,7 @@ export function pagesHash(): { video: string; html: string; stacked: string } {
     { title: 'Third', text: 'Another detail.', chapters: [[0, 'Only']], dir: '3', handed: at, at, source: '' },
   ];
   // the same on every machine: the time of an addendum is said in the machine's time zone
-  const stacked = hash(languages.flatMap((language) => [pageHtml(site, 'title-1', { ...sample, language, more }, files, 'UTC'), pageHtml(site, 'title-1', { ...sample, language, more, pr: null, commit: commits }, files, 'UTC')]));
+  const stacked = hash(languages.flatMap((language) => [pageHtml(site, 'title-1', { ...sample, language, more }, files, { timeZone: 'UTC' }), pageHtml(site, 'title-1', { ...sample, language, more, pr: null, commit: commits }, files, { timeZone: 'UTC' })]));
   return { video, html, stacked };
 }
 
@@ -148,7 +148,7 @@ export interface VersionFiles {
  * site links no overview and no tags, and keeps itself out of search engines. `theme`: the CSS of
  * the card's repository's theme.
  */
-export function pageHtml(site: DemoSite, slug: string, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
+export function pageHtml(site: DemoSite, slug: string, m: Meta, files: (dir: string) => VersionFiles, { unlisted = false, theme, timeZone }: { unlisted?: boolean; theme?: string; timeZone?: string } = {}): string {
   const { language } = m;
   const w = PAGE_WORDS[language];
   const parts = {

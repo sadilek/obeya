@@ -126,7 +126,7 @@ for (const [dir, css] of [
       if (video) copyFileSync(video, join(at, 'demo.mp4'));
       writeFileSync(join(at, 'captions.vtt'), 'WEBVTT\n');
     }
-    writeFileSync(join(dir, p.slug, 'index.html'), pageHtml(site, p.slug, p, () => ({ poster: false, tracks: [] }), undefined, false, css));
+    writeFileSync(join(dir, p.slug, 'index.html'), pageHtml(site, p.slug, p, () => ({ poster: false, tracks: [] }), { theme: css }));
   }
 }
 const url = (path: string) => `file:///${path.replace(/\\/g, '/').replace(/^\/+/, '')}`;
