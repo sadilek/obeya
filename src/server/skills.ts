@@ -3,12 +3,11 @@
 // session loads, and the skills Claude Code brings. Claude Code tells without a session doing any work
 // (no message, no tokens): a process starts, answers, and ends.
 
-import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
+import type { SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { Skill } from '../core/types';
 import { Kept } from '../core/kept';
 import { withTimeout } from '../core/late';
-import { claudeExecutable, spawnHere } from './claude';
-import { cleanEnv } from './runtime';
+import { idleClaude } from './claude';
 import { messageOf } from '../core/text';
 
 /** Where an agent works, as far as its skills go. */
@@ -65,30 +64,16 @@ const DESCRIPTION_MAX = 200;
 
 /** Asks Claude Code on this machine, with the machine's login and the user's settings. */
 export const sdkSkills: SkillLister = async (place) => {
-  const abort = new AbortController();
-  const claude = claudeExecutable();
-  // no message ever comes: the session answers its control requests and ends with the abort
-  const prompt = (async function* () {
-    await new Promise((r) => abort.signal.addEventListener('abort', r));
-  })() as AsyncIterable<never>;
-  const q = query({
-    prompt,
-    options: {
-      cwd: place.cwd,
-      abortController: abort,
-      ...(claude ? { pathToClaudeCodeExecutable: claude } : {}),
-      spawnClaudeCodeProcess: spawnHere(() => {}),
-      env: cleanEnv(),
-      ...(place.plugins.length ? { plugins: place.plugins.map((path) => ({ type: 'local' as const, path })) } : {}),
-      ...(place.untrusted ? { settingSources: ['user' as const] } : {}),
-    },
+  const { q, close } = idleClaude(place.cwd, {
+    ...(place.plugins.length ? { plugins: place.plugins.map((path) => ({ type: 'local' as const, path })) } : {}),
+    ...(place.untrusted ? { settingSources: ['user' as const] } : {}),
   });
   try {
     // which of Claude Code's own commands are skills, only the skill list says
     const [commands, skills] = await withTimeout(Promise.all([q.supportedCommands(), q.reloadSkills().then((r) => r.skills)]), ANSWER_MS, 'Claude Code did not list its skills');
     return skillsOf(commands, new Set(skills.map((s) => s.name)));
   } finally {
-    abort.abort();
+    close();
   }
 };
 

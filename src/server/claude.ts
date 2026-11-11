@@ -5,7 +5,9 @@ import {
   createSdkMcpServer,
   type HookInput,
   type HookJSONOutput,
+  type Options,
   query,
+  type Query,
   type SDKRateLimitInfo,
   type SDKResultMessage,
   type SDKUserMessage,
@@ -18,7 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { LOST, remote, sessionFiles } from './hosts';
+import { LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { localBin, which } from './path';
 import { mediaType } from './images';
 import { COMPILED } from './resources';
@@ -262,6 +264,38 @@ export function spawnHere(stderr: (text: string) => void): (o: SpawnOptions) => 
     p.stderr!.setEncoding('utf8').on('data', stderr);
     return p as SpawnedProcess;
   };
+}
+
+/**
+ * A Claude Code session in `cwd` that waits for a prompt that never comes, for what its control
+ * requests answer (the plan's usage, the models, the skills): no message, no tokens. `there`: the
+ * session on a host, started over its connection. What it says unasked is not needed. It runs until
+ * `close`.
+ */
+export function idleClaude(cwd: string, options: Options = {}, there?: SshHost): { q: Query; close: () => void } {
+  const abort = new AbortController();
+  const prompt = (async function* () {
+    await new Promise((resolve) => abort.signal.addEventListener('abort', resolve, { once: true }));
+  })() as AsyncIterable<never>;
+  const claude = there ? 'claude' : claudeExecutable();
+  const q = query({
+    prompt,
+    options: {
+      ...options,
+      cwd,
+      abortController: abort,
+      // on another machine only what the session itself needs: that machine has its own PATH and home
+      env: there ? {} : cleanEnv(),
+      ...(claude ? { pathToClaudeCodeExecutable: claude } : {}),
+      spawnClaudeCodeProcess: there ? there.session({}) : spawnHere(() => {}),
+    },
+  });
+  void (async () => {
+    try {
+      for await (const _ of q);
+    } catch {}
+  })();
+  return { q, close: () => abort.abort() };
 }
 
 /**

@@ -12,14 +12,12 @@
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { query } from '@anthropic-ai/claude-agent-sdk';
 import { AGENT_MODELS, type AgentModel, HARNESSES, type Harness, type HarnessHost, type HarnessUpdate, type HarnessModel, type HarnessView, modelName, modelVersion, newestOfFamilies } from '../core/types';
 import { Kept } from '../core/kept';
 import { Listeners } from '../core/watched';
 import { codexExecutable, codexLogin, codexModels, codexVersion } from './codex';
 import type { SshHost } from './hosts';
-import { claudeExecutable, spawnHere } from './claude';
-import { cleanEnv } from './runtime';
+import { idleClaude } from './claude';
 import { messageOf } from '../core/text';
 
 /** What a look at a harness found. */
@@ -425,35 +423,13 @@ export async function findCodex(env: Record<string, string | undefined> = proces
  * a host, started over its connection.
  */
 export async function claudeModels(cwd: string, there?: SshHost): Promise<ClaudeListed[]> {
-  const abort = new AbortController();
-  // the session waits for a prompt that never comes, until it is closed
-  const idle = (async function* () {
-    await new Promise((resolve) => abort.signal.addEventListener('abort', resolve, { once: true }));
-  })();
-  const claude = there ? 'claude' : claudeExecutable();
-  const q = query({
-    prompt: idle as AsyncIterable<never>,
-    options: {
-      cwd,
-      abortController: abort,
-      settingSources: [],
-      // on another machine only what the session itself needs: that machine has its own PATH and home
-      env: there ? {} : cleanEnv(),
-      ...(claude ? { pathToClaudeCodeExecutable: claude } : {}),
-      spawnClaudeCodeProcess: there ? there.session({}) : spawnHere(() => {}),
-    },
-  });
-  void (async () => {
-    try {
-      for await (const _ of q);
-    } catch {}
-  })();
-  const timer = setTimeout(() => abort.abort(), 30_000);
+  const { q, close } = idleClaude(cwd, { settingSources: [] }, there);
+  const timer = setTimeout(close, 30_000);
   try {
     return (await q.supportedModels()).map((m) => ({ value: m.value, ...(m.resolvedModel ? { resolvedModel: m.resolvedModel } : {}) }));
   } finally {
     clearTimeout(timer);
-    abort.abort();
+    close();
   }
 }
 

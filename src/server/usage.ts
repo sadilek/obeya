@@ -7,12 +7,11 @@
 // one. Codex's come from an idle app server's `account/rateLimits/read` (codex.ts). A login without
 // plan limits (an API key, a cloud provider) and a harness too old to answer show nothing.
 
-import { query, type SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
 import type { Harness, Usage, UsageLimit } from '../core/types';
 import { withTimeout } from '../core/late';
 import { Listeners, Watched } from '../core/watched';
-import { claudeExecutable, spawnHere } from './claude';
-import { cleanEnv } from './runtime';
+import { idleClaude } from './claude';
 import { messageOf } from '../core/text';
 
 /** How often the limits are fetched while the bar shows them: just over the minute Claude Code keeps an answer. */
@@ -207,33 +206,8 @@ export class UsageMeters extends Listeners {
  * settings, hooks and MCP servers, which it needs none of, and without a prompt.
  */
 export function claudeUsage(cwd: string): UsageSource {
-  const abort = new AbortController();
-  // the session waits for a prompt that never comes, until it is closed
-  const idle = (async function* () {
-    await new Promise((resolve) => abort.signal.addEventListener('abort', resolve, { once: true }));
-  })();
-  const claude = claudeExecutable();
-  const q = query({
-    prompt: idle as AsyncIterable<never>,
-    options: {
-      cwd,
-      abortController: abort,
-      settingSources: [],
-      env: cleanEnv(),
-      ...(claude ? { pathToClaudeCodeExecutable: claude } : {}),
-      spawnClaudeCodeProcess: spawnHere(() => {}),
-    },
-  });
-  // what the session says unasked (its start, say) is not needed
-  void (async () => {
-    try {
-      for await (const _ of q);
-    } catch {}
-  })();
-  return {
-    fetch: async () => usageOf(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })),
-    close: () => abort.abort(),
-  };
+  const { q, close } = idleClaude(cwd, { settingSources: [] });
+  return { fetch: async () => usageOf(await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })), close };
 }
 
 /** How long the windows of Claude's groups last, in minutes: the session five hours, the week seven days. */
