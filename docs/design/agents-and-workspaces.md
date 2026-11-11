@@ -19,6 +19,11 @@ Obeya's environment without the marks of a Claude Code session that may have sta
 such a machine `claude-token` in Obeya's home, once there, takes the variable's place: it holds the
 newest token the owner gave Obeya, which the variable Obeya was started with may not.
 
+On Windows, program lookup and additions to the search path preserve the environment's
+case-insensitive variable names even in copies of the environment: `Path` and `PATH` name the
+same search path. Where a copy holds several spellings, the one that sorts first counts (`PATH`
+before `Path`), the one a started program gets. Unix environment names remain case sensitive.
+
 A worker is one session per card with streaming input, permission mode `auto`, and the repository's
 Claude Code settings and CLAUDE.md (only once the owner trusted them, see Trusting a repository's
 commands); after a restart it resumes by session id. A project agent is one session per project in
