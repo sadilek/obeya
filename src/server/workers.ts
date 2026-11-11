@@ -14,7 +14,8 @@ import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, sh
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, laterTime, type Spot, type Superseded, type SpotInput, started, type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
-import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, type StoredDemo, titleKey, contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
+import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, titleKey, contributionOf } from './board';
+import type { AskedPermission, HeldComment, LandedState, PageHeard, PausedState, PrState, Resolving, Shipped, StoredContribution, StoredDemo, StoredNewRepo, Unheard } from './row';
 import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
@@ -147,50 +148,10 @@ interface OwnCommits {
   commits: number;
 }
 
-/** A comment on a place in the demo video held back while the owner watches (`CardRow.held`). */
-interface HeldComment {
-  id: number;
-  spoken?: true;
-}
-
 /** Where in the demo video the owner's words are, as the worker reads it above them. */
 const spotNote = (spot: Spot) => {
   return `[${spot.earlier ? 'Earlier demo video, one a later handover of yours replaced,' : 'Demo video'} at ${mmss(spot.at)}${spot.chapter ? `, chapter “${spot.chapter}”` : ''}${spot.narration ? `, narration: “${spot.narration}”` : ''}]`;
 };
-
-/** What is stored while landed work's worker finishes (`CardRow.landed`). */
-interface LandedState {
-  commit?: string;
-  /** Nothing landed: the work changed nothing in the repository, and the card is `done` rather than `live`. */
-  unchanged?: boolean;
-  /** Obeya starts again for the landing. */
-  restarts?: boolean;
-  /** The worker waits for that restart. */
-  waits?: boolean;
-  /** The card's demo is going out on its page: the worker waits to hear the page's address (`pageSettled`). */
-  page?: boolean;
-  /** Not a landing: the owner asked about the finished card, and its worker was resumed to answer. */
-  followUp?: boolean;
-  /** The follow-up runs in a temporary worktree (`followUpTree`), no clone being free: it goes once the follow-up ends. */
-  worktree?: boolean;
-  /** The follow-up's worker needs a full clone: without a workspace, it waits for the next free one (`takeClone`). */
-  needsClone?: boolean;
-  /**
-   * Not a landing of its own: pulling a review card's merged PR (`card`, PR `pr`) into the local
-   * main stopped on a conflict (`stopped`), and this card's worker resolves it (`resolvePull`).
-   */
-  resolve?: Resolving;
-}
-
-/** A pull after a review card's merge that a worker resolves (`LandedState.resolve`). */
-interface Resolving {
-  card: string;
-  pr: number;
-  url: string;
-  stopped: PullStopped;
-  /** The worker was reminded once that its turn ended with the pull unresolved. */
-  reminded?: true;
-}
 
 /** Landed work's state once what it waited for (the restart) has happened. */
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;
@@ -302,33 +263,10 @@ const CONFLICT = /cannot be cleanly created|merge conflict/i;
 /** How the worker hears that its approved work could not land for something that is not its own to fix. */
 const NOT_LANDED = 'Since you handed over, the owner approved your work, but Obeya could not land it on main:';
 
-/**
- * The owner's words Obeya holds for the worker while it is in a turn (`CardRow.unheard`), each with
- * the lines of the log it carries: it takes them in with its next tool step's result, or, should
- * the turn end before one, as the message that starts the next.
- */
-interface Unheard {
-  said: number[];
-  text: string;
-  images: string[];
-}
-
-/**
- * Where the card's demo page stood when its worker last heard of it (`CardRow.page_heard`): going
- * online, online at its address (showing an earlier demo than the latest), or on no page.
- */
-type PageHeard = { page: 'none' } | { page: 'going' } | { page: 'online'; url: string; stale?: true };
-
 function pageHeardOf(share: Share | undefined): PageHeard {
   if (share?.state === 'publishing') return { page: 'going' };
   if (share?.state === 'shared' && share.url) return { page: 'online', url: share.url, ...(share.stale ? { stale: true as const } : {}) };
   return { page: 'none' };
-}
-
-/** What is stored while the owner has paused the card's worker (`CardRow.paused`). */
-interface PausedState {
-  /** What Obeya had for the worker meanwhile (its pull request's review, the landing), and a message it had not taken in yet: it hears them once it goes on. */
-  held?: { text: string; images: string[] }[];
 }
 
 /**
@@ -428,12 +366,6 @@ interface Live {
   asking?: Promise<unknown>;
   /** The message that started the current turn, until the worker shows it has taken it: a session on another machine that is cut off before gets it again. */
   pending?: { text: string; images: string[] };
-}
-
-/** What a tool call that needs the owner's permission was (`detail.permission`): a call allowed after its session was gone runs once it comes again. */
-interface AskedPermission {
-  name: string;
-  input: Record<string, unknown>;
 }
 
 /** A restart that waits for workers to finish their turns: why, and when it goes ahead at the latest. */

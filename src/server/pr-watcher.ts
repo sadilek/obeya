@@ -6,7 +6,8 @@
 // them are merged.
 
 import type { RepoAdapter } from '../adapters/types';
-import { type Board, contributionOf, type PrState, type StoredContribution } from './board';
+import { type Board, contributionOf } from './board';
+import type { PrState, StoredContribution } from './row';
 import type { Forge, PrStatus } from './forge';
 import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf } from './pr-review';
 import type { PrWait } from '../core/types';

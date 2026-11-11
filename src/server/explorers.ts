@@ -10,7 +10,8 @@ import { type Language, ownersLanguage, repositoryLanguage } from '../core/local
 import { MESSAGES } from '../core/messages';
 import { type CardEvent, formatQuestion, type Item, type Mock, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question, type SettledPart } from '../core/types';
 import { type Asked, decisionLog, withPick } from './advisor';
-import { BadRequest, type Board, type Message, replyNote, type Unread } from './board';
+import { BadRequest, type Board, replyNote } from './board';
+import type { Message, Unread } from './row';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BackgroundWait } from './runtime';
 import { imageNote } from './images';
 import { describeTool, SPOKEN } from './workers';
