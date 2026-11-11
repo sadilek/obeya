@@ -130,6 +130,17 @@ across the server.
   `store`, `log`); `board.test.ts`, `share.test.ts` and `workers.test.ts` are broad.
 - Confidence: medium-high. Field use per group read; the cut of `follow` (it calls `this.store`,
   `this.log`, `this.besideProject`, `this.t`) needs an explicit interface.
+- Done by W9, moves first: the free functions went to `items.ts` (`toItems` and what a row says of
+  the card's work, the row predicates), `shared-pages.ts` (a page's demos, tags and missed changes)
+  and `plan-ref.ts` (the plan reference's format). Then three classes, each with the fields and
+  caches of its subject and reaching its board through a `Pick<Board, …>` and a callback or two:
+  `PageNotice` (shared-pages.ts, the thirteen fields, Board's `pages`), `Archive` (archive.ts, the
+  index and the cursors, Board's `archived`, its methods named `page`, `pages`, `all`, `entries`,
+  `entry`, `search`, `of`) and `PlanFollower` (plan-follow.ts, private; Board keeps
+  `readPlanHistory` and `readTreeMoved`, which call it). The single-demo conversion and the archive
+  log's first drop run in the constructors of their classes. `board.ts` went from 4,101 lines at the
+  review to 2,397, not 2,000: what stays is the cards and their transitions, the snapshot,
+  proposals, rules, groups and placement, which the finding left with it.
 
 ### C4. An event's optional fields are listed in seven places
 - Principle: DRY

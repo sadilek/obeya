@@ -105,6 +105,17 @@ sites.
   no agent has worked on since (`built_on` without `session_id`) as `notDone`, as core's `stopped`
   does; a direct request reached it where the card's repository did not run on the canvas. Merging
   into `archiveRefusal` keeps that.
+- Done by W9: `archiveRefusal(i)` in `types.ts`, over the card as the UI sees it, with its reason;
+  `stoppedArchivable` went, `finishedArchivable` stays as its last case (the phone's "done" list and
+  `archivedWithDone` read it). `Board.archive` refuses with the reason it gives over `card(id)`, so a
+  card in the archive is judged as the archive builds it. The canvas card, the open card's buttons,
+  the idea and the project ask it; an idea's prototypes come with its card (`Item.prototypes`), so the
+  canvas no longer collects which ideas have one. `unstarted` keeps the server's behaviour (the bug
+  fix had aligned both). Two cases differ from the old request: a card whose worker waits for a clone
+  to finish after the landing (`finishing` without a workspace) is refused, as its button already
+  was not shown; a project already in the archive whose work is done is taken again (its time in
+  the archive renewed, as a card's always was) rather than refused; and the refusal's English
+  detail is one per reason. Codex's second review found these three and no other difference.
 
 ### J3. Log lines are recognised by hand-typed copies of their words, beside a mechanism that derives them from the table
 - Principle: DRY

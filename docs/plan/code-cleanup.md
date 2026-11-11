@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W8, W13 to W18, W20, W22, W24 and W25 are done; the other workstreams are open. The review, made on
+W1 to W9, W13 to W18, W20, W22, W24 and W25 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -174,10 +174,12 @@ the workstream named does it for all of them.
   C13, C14.
 - [x] **W8:** The sheet as an object of its own. [board-db](code-cleanup/board-db.md) C1: `Board`
   stops repeating 36 `Store` methods; a canvas-scoped `Sheet` holds the talk and history API once.
-- [ ] **W9:** `board.ts` holds the board. [board-db](code-cleanup/board-db.md) C3 (the notice of
+- [x] **W9:** `board.ts` holds the board. [board-db](code-cleanup/board-db.md) C3 (the notice of
   outdated pages, the archive's paging and search index and the plan-doc follower move to modules
   of their own) and [core](code-cleanup/core.md) J2 (the archive's rule stated once). After W7 and
-  W8.
+  W8. `board.ts` keeps the cards and their transitions (2,397 lines); `items.ts`, `shared-pages.ts`
+  (`PageNotice`), `archive.ts` (`Archive`), `plan-follow.ts` (`PlanFollower`) and `plan-ref.ts` hold
+  the rest; what came of each finding stands under it.
 - [ ] **W10:** The pause protocol once for every kind of agent. [runtimes](code-cleanup/runtimes.md)
   B3 with [board-db](code-cleanup/board-db.md) C5: the four transitions and their log lines are
   written in `workers.ts`, `answers.ts` and `explorers.ts`, against the house rule on interactions
