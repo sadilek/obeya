@@ -1,4 +1,5 @@
-import { type RefObject, useLayoutEffect, useRef } from 'react';
+import { type RefObject, useLayoutEffect } from 'react';
+import { useLatest } from './latest';
 
 /** The scroll positions of the panes `el` stands in, as they are now: called, it puts them back. */
 export function keepScroll(el: Element) {
@@ -46,8 +47,7 @@ export function useFitHeight(
   on = true,
   fit: (el: HTMLTextAreaElement) => void = (el) => setHeight(el, textHeight(el)),
 ) {
-  const fitting = useRef(fit);
-  fitting.current = fit;
+  const fitting = useLatest(fit);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || !on) return;

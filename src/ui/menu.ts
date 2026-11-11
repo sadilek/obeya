@@ -1,15 +1,15 @@
 // A menu or list over the page, opened by a button: closing it on a press beside it, and keeping it
 // on the screen beside its button.
 
-import { type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
+import { type RefObject, useEffect, useLayoutEffect } from 'react';
+import { useLatest } from './latest';
 
 /**
  * A list under a bar's button: while it is `on`, a press anywhere beside `box` (beside each of them,
  * for a menu in a portal apart from its button) closes it, and Esc does with `esc`.
  */
 export function useMenuClose(on: boolean, box: RefObject<HTMLElement | null> | RefObject<HTMLElement | null>[], close: () => void, esc = false) {
-  const latest = useRef(close);
-  latest.current = close;
+  const latest = useLatest(close);
   useEffect(() => {
     if (!on) return;
     const boxes = Array.isArray(box) ? box : [box];

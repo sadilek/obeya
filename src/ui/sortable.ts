@@ -8,6 +8,7 @@
 // once and keeps it until the keys it is given change, or puts the row back if the move fails.
 
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type RefObject, useEffect, useRef, useState } from 'react';
+import { useLatest } from './latest';
 
 /** How far a row may move: places earlier and places later. */
 export interface Reach {
@@ -65,8 +66,7 @@ export function useSortable(keys: string[], o: Options) {
   const [drag, setDrag] = useState<Drag & { dy: number; room: number }>();
   const at = useRef<Drag>(undefined);
   const rows = useRef(new Map<string, HTMLElement>());
-  const latest = useRef(o);
-  latest.current = o;
+  const latest = useLatest(o);
   // a drag that has just ended: the click it ends with opens nothing
   const dragged = useRef(false);
   const stop = useRef<() => void>(undefined);

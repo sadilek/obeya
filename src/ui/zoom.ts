@@ -7,6 +7,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useKnown } from './stored';
 import { type Box, onto, ZOOM_EASE, ZOOM_MS } from './zoomBox';
+import { useLatest } from './latest';
 
 /** Set once the owner zoomed with Z: the magnifier stops showing the key beside it. */
 const ZOOM_KEY_KNOWN = 'obeya-zoom-key-known';
@@ -79,10 +80,8 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
   const backdrop = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ from: Box; to: Box; closing?: boolean } | null>(null);
   const [keyKnown, knowKey] = useKnown(ZOOM_KEY_KNOWN);
-  const boxRef = useRef(box);
-  boxRef.current = box;
-  const opts = useRef(o);
-  opts.current = o;
+  const boxRef = useLatest(box);
+  const opts = useLatest(o);
   const toggle = () => {
     const cur = boxRef.current;
     const el = screen.current;
@@ -98,8 +97,7 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
     setBox({ ...cur, closing: true });
     el.animate([{ transform: 'none' }, { transform: onto(back, cur.to) }], { duration: ZOOM_MS, easing: ZOOM_EASE, fill: 'forwards' }).onfinish = () => setBox(null);
   };
-  const toggleRef = useRef(toggle);
-  toggleRef.current = toggle;
+  const toggleRef = useLatest(toggle);
   useEffect(() => {
     const z: Zoomable = {
       el: () => screen.current,
@@ -125,8 +123,7 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
     const cur = boxRef.current;
     if (cur && !cur.closing) setBox({ ...cur, to: opts.current.box(innerWidth, innerHeight) });
   };
-  const refitRef = useRef(refit);
-  refitRef.current = refit;
+  const refitRef = useLatest(refit);
   // a resized window resizes the zoomed one; a wheel over it does not scroll what is behind
   useEffect(() => {
     if (!zoomed) return;
