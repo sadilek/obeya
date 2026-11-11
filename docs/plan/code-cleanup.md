@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W6 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W6 and W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -136,7 +136,7 @@ the workstream named does it for all of them.
 - [x] **W1:** Dead code and stray comments. Remove what nothing uses and move doc comments back to
   what they describe: [workers](code-cleanup/workers.md) A17; [runtimes](code-cleanup/runtimes.md)
   B11, B12, B17, B21; [board-db](code-cleanup/board-db.md) C10, C11, C16, C17, C18;
-  [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E13;
+  workspaces-git-hosts E13;
   [http-config](code-cleanup/http-config.md) F13, F14, F15;
   [share-site-demo](code-cleanup/share-site-demo.md) S16, S17, S22; [ui-card](code-cleanup/ui-card.md)
   G20; [ui-panels](code-cleanup/ui-panels.md) H13; [ui-small-modules](code-cleanup/ui-small-modules.md)
@@ -154,7 +154,7 @@ the workstream named does it for all of them.
 - [x] **W4:** The rest of the test infrastructure. [tests](code-cleanup/tests.md) T8 (old databases
   for migration tests), T9 (one harness for a long-used canvas), T10 (one `settle` and one `until`),
   T11 (`workspaces.test.ts` setup), T12 (one stand-in for a demo site's host), T15.
-- [x] **W5:** One git module. [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E2 with
+- [x] **W5:** One git module. workspaces-git-hosts E2 with
   [http-config](code-cleanup/http-config.md) F19 (a `git.ts` every module runs git through), E1 (the
   synchronous twins go, then the generator protocol), E4 (synchronous git over SSH; rewrite the
   sentence in `docs/design/agents-and-workspaces.md` in the same change), E5 (`workspaces.ts` as
@@ -162,7 +162,7 @@ the workstream named does it for all of them.
   `sync-calls.test.ts` with it.
 - [x] **W6:** Small shared server helpers, each written once. A value with listeners
   ([runtimes](code-cleanup/runtimes.md) B5, [http-config](code-cleanup/http-config.md) F6); kept a
-  while and asked once (B6, [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E9, E10); a
+  while and asked once (B6, workspaces-git-hosts E9, E10); a
   promise against a timer (B9, [canvas-coordinator](code-cleanup/canvas-coordinator.md) D15); "does
   this pid run" (B18); core's text helpers at their call sites ([core](code-cleanup/core.md) J5,
   D13, B14); a time within the coming year ([workers](code-cleanup/workers.md) A15, D12); text
@@ -210,8 +210,8 @@ the workstream named does it for all of them.
   import each other), S3, S4, S5 (module seams), S6 to S10, S12 to S15, S18 to S21, and one WebVTT
   cue parser beside the writer (S11, [plugin](code-cleanup/plugin.md) P4,
   [scripts-app](code-cleanup/scripts-app.md) R12).
-- [ ] **W18:** Forges, the PR watcher, hosts and folders.
-  [workspaces-git-hosts](code-cleanup/workspaces-git-hosts.md) E7 (`PrWatcher.react` by job), E11
+- [x] **W18:** Forges, the PR watcher, hosts and folders.
+  workspaces-git-hosts E7 (`PrWatcher.react` by job), E11
   (rules about PR comments above the forge interface), E12, E15, E16, E17. After W5.
 - [ ] **W19:** `src/core`. [core](code-cleanup/core.md) J1 (`types.ts` keeps the shapes; the
   agents-and-models block, the configuration block and the card predicates become modules, and
@@ -251,7 +251,7 @@ the workstream named does it for all of them.
 | [runtimes.md](code-cleanup/runtimes.md) | B: the agent runtimes | 21 | 1 | 5 | 15 |
 | [board-db.md](code-cleanup/board-db.md) | C: board and database | 19 | 3 | 4 | 12 |
 | [canvas-coordinator.md](code-cleanup/canvas-coordinator.md) | D: canvas, commands, coordinator | 16 | 1 | 3 | 12 |
-| [workspaces-git-hosts.md](code-cleanup/workspaces-git-hosts.md) | E: workspaces, git, forges, hosts | 17 | 3 | 5 | 9 |
+| workspaces-git-hosts.md (all done, deleted) | E: workspaces, git, forges, hosts | 17 | 3 | 5 | 9 |
 | [http-config.md](code-cleanup/http-config.md) | F: HTTP server, startup, configuration | 19 | 1 | 4 | 14 |
 | [share-site-demo.md](code-cleanup/share-site-demo.md) | S: sharing, demo sites, demo pages | 22 | 0 | 5 | 17 |
 | [ui-card.md](code-cleanup/ui-card.md) | G: the app shell and the card | 22 | 2 | 7 | 13 |
