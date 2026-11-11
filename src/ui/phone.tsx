@@ -26,6 +26,7 @@ import { glide, type Mark, settle, speed, THROWN, thrown } from './panelHeight';
 import { shownState, TalkIcon } from './parts';
 import { PROBE_MS, quietText, TAILSCALE_APP, useTailnet, useWhyQuiet } from './reach';
 import { videoOf } from './spot';
+import { flag, local, read, session, setFlag, write } from './stored';
 import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
 import { agentWorks, cardTalk, coordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
@@ -356,7 +357,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
 
   // the canvas whose Obeya is spoken to without a card open
   const [obeyaCanvas, setObeyaCanvasState] = useState(() => {
-    const wanted = readAddress().canvas ?? localStorage.getItem(OBEYA_CANVAS);
+    const wanted = readAddress().canvas ?? read(local, OBEYA_CANVAS);
     return (canvases.find((c) => c.id === wanted) ?? canvases[0]!).id;
   });
   const obeyaId = canvases.some((c) => c.id === obeyaCanvas) ? obeyaCanvas : canvases[0]!.id;
@@ -366,9 +367,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     // at once, for the address of the conversation opened next
     obeyaRef.current = id;
     setObeyaCanvasState(id);
-    try {
-      localStorage.setItem(OBEYA_CANVAS, id);
-    } catch {}
+    write(local, OBEYA_CANVAS, id);
   };
   // every call goes to the API of the canvas in view: the open card's, else Obeya's
   setCanvas(opened?.canvas.id ?? obeyaId);
@@ -851,13 +850,10 @@ const plannedLater = (i: Item) => i.kind === 'task' && i.state === 'planned' && 
 
 /** Whether a folded list is open, kept in this tab under `key`, and the toggle that opens and closes it. */
 function useFolded(key: string): [boolean, () => void] {
-  const [open, setOpen] = useState(() => sessionStorage.getItem(key) === '1');
+  const [open, setOpen] = useState(() => flag(session, key));
   const toggle = () =>
     setOpen((o) => {
-      try {
-        if (o) sessionStorage.removeItem(key);
-        else sessionStorage.setItem(key, '1');
-      } catch {}
+      setFlag(session, key, !o);
       return !o;
     });
   return [open, toggle];

@@ -12,7 +12,7 @@ import { cardPath } from './address';
 import { Naming } from './cardLink';
 import { useCopy } from './copy';
 import { arrivedOnOpenCard, held, markSeen, openedWith, sameDemo, unseen } from './demoSeen';
-import { know } from './known';
+import { know } from './stored';
 import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';

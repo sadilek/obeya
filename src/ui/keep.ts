@@ -2,6 +2,8 @@
 // to, where the demo video stood, and what was typed but not sent. Written down just before the
 // reload (sessionStorage, per tab), and taken once by the page that loads.
 
+import { setFlag, type Store, take, takeJson, writeJson } from './stored';
+
 /** A sheet on the right that is not a project's, or the archive's list under its button. */
 export type SideSheet = 'coordinator' | 'archive';
 
@@ -29,24 +31,12 @@ export const ROOTS = ['panel', 'sheet', 'ksheet', 'nav', 'amenu', 'config'];
 const FRESH_MS = 5 * 60_000;
 const key = (canvas: string) => `obeya-kept-${canvas}`;
 
-type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-
-export function keep(store: Store, canvas: string, kept: Kept) {
-  try {
-    store.setItem(key(canvas), JSON.stringify(kept));
-  } catch {}
-}
+export const keep = (store: Store, canvas: string, kept: Kept) => void writeJson(store, key(canvas), kept);
 
 /** What the reload before this page kept, once. */
 export function takeKept(store: Store, canvas: string, now = Date.now()): Kept | null {
-  try {
-    const raw = store.getItem(key(canvas));
-    store.removeItem(key(canvas));
-    const k = raw ? (JSON.parse(raw) as Kept) : null;
-    return k && now - k.at < FRESH_MS ? k : null;
-  } catch {
-    return null;
-  }
+  const k = takeJson<Kept>(store, key(canvas));
+  return k && now - k.at < FRESH_MS ? k : null;
 }
 
 const kindOf = (el: Element) =>
@@ -135,20 +125,7 @@ const sheetKey = (canvas: string) => `obeya-sheet-left-open-${canvas}`;
  * something typed in its field: back on it, the sheet is open again. An empty field, or a sheet
  * closed as they left, leaves it closed.
  */
-export function leaveSheet(store: Store, canvas: string, openWithDraft: boolean) {
-  try {
-    if (openWithDraft) store.setItem(sheetKey(canvas), '1');
-    else store.removeItem(sheetKey(canvas));
-  } catch {}
-}
+export const leaveSheet = (store: Store, canvas: string, openWithDraft: boolean) => setFlag(store, sheetKey(canvas), openWithDraft);
 
 /** Whether the owner left the canvas with Obeya's sheet open over a draft, once. */
-export function takeSheetLeft(store: Store, canvas: string): boolean {
-  try {
-    const open = store.getItem(sheetKey(canvas)) === '1';
-    store.removeItem(sheetKey(canvas));
-    return open;
-  } catch {
-    return false;
-  }
-}
+export const takeSheetLeft = (store: Store, canvas: string): boolean => take(store, sheetKey(canvas)) === '1';

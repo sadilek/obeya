@@ -8,7 +8,7 @@
 import { type RefObject, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cite } from './draft';
-import { know, known } from './known';
+import { useKnown } from './stored';
 import { t } from './strings';
 import { oneLine } from '../core/text';
 
@@ -116,7 +116,8 @@ function hearFrames() {
  */
 export function CiteButton({ box, draft, anywhere, onCite }: { box: RefObject<HTMLElement | null>; draft: string; anywhere?: boolean; onCite?: () => void }) {
   const [marked, setMarked] = useState<Marked | null>(null);
-  const [named, setNamed] = useState(() => !known(KNOWN));
+  const [citeKnown, knowCite] = useKnown(KNOWN);
+  const named = !citeKnown;
   useEffect(() => {
     hearFrames();
     const touch = matchMedia('(pointer: coarse)').matches;
@@ -201,8 +202,7 @@ export function CiteButton({ box, draft, anywhere, onCite }: { box: RefObject<HT
         setMarked(null);
         cite(draft, t.talk.cited(marked.text));
         onCite?.();
-        know(KNOWN);
-        setNamed(false);
+        knowCite();
       }}
     >
       <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">

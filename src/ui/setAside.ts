@@ -3,6 +3,7 @@
 // how the owner sorts the phone's lists, and the canvas at the desk shows every card as before.
 
 import { type Item, needsYou } from '../core/types';
+import { local, readJson, writeJson } from './stored';
 
 /**
  * Each card set aside: its canvas, and since when it waited for the owner as it was set aside
@@ -17,15 +18,11 @@ let unsaved: SetAside | null = null;
 /** What this browser keeps set aside, as it stands now: every tab of the phone view changes the same. */
 export function loadAside(): SetAside {
   if (unsaved) return unsaved;
-  try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
-    return Object.fromEntries(
-      Object.entries(v).filter(([, x]) => !!x && typeof x === 'object' && typeof (x as { canvas?: unknown }).canvas === 'string' && ((x as { since?: unknown }).since === null || typeof (x as { since?: unknown }).since === 'string')),
-    ) as SetAside;
-  } catch {
-    return {};
-  }
+  const v = readJson<unknown>(local, KEY);
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  return Object.fromEntries(
+    Object.entries(v).filter(([, x]) => !!x && typeof x === 'object' && typeof (x as { canvas?: unknown }).canvas === 'string' && ((x as { since?: unknown }).since === null || typeof (x as { since?: unknown }).since === 'string')),
+  ) as SetAside;
 }
 
 /**
@@ -34,13 +31,7 @@ export function loadAside(): SetAside {
  */
 export function changeAside(change: (a: SetAside) => SetAside): SetAside {
   const next = change(loadAside());
-  try {
-    if (Object.keys(next).length) localStorage.setItem(KEY, JSON.stringify(next));
-    else localStorage.removeItem(KEY);
-    unsaved = null;
-  } catch {
-    unsaved = next;
-  }
+  unsaved = writeJson(local, KEY, Object.keys(next).length ? next : null) ? null : next;
   return next;
 }
 

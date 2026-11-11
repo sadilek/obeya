@@ -31,7 +31,7 @@ import { depsOf, handleAt, holdsAmong, loopsAmong, nearestHandle, type Side, SID
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, HowToHint, SEARCH_KEY_KNOWN } from './help';
-import { know, known } from './known';
+import { local, readJson, writeJson, useKnown } from './stored';
 import { addAll, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, movesWith, shifted, toggle } from './selection';
 import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
 import { PlanDirNote, planDirBoxes, useHiddenEmptyNotes } from './planDirs';
@@ -174,18 +174,10 @@ function NoCanvas() {
 const KEPT_CANVASES = 'obeya-phone-canvases';
 /** Set once the owner has drawn their first arrow between cards: what an arrow does no longer shows while drawing. */
 const DEP_KNOWN = 'obeya-dep-known';
-function keepCanvases(list: CanvasInfo[]) {
-  try {
-    localStorage.setItem(KEPT_CANVASES, JSON.stringify(list));
-  } catch {}
-}
+const keepCanvases = (list: CanvasInfo[]) => void writeJson(local, KEPT_CANVASES, list);
 function keptCanvases(): CanvasInfo[] | null {
-  try {
-    const list = JSON.parse(localStorage.getItem(KEPT_CANVASES) ?? 'null') as CanvasInfo[] | null;
-    return list?.length ? list : null;
-  } catch {
-    return null;
-  }
+  const list = readJson<CanvasInfo[]>(local, KEPT_CANVASES);
+  return list?.length ? list : null;
 }
 
 /** While the page loads, and after a restart until the canvas is back: the sign in the middle, above "offline" when the server cannot be reached. */
@@ -341,11 +333,9 @@ function Canvas({
 
   // ---------------------------------------------------------------- camera
   const [cam, setCam, camRef] = useLive<Cam>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(camKey(snapshot.canvas.id)) ?? 'null');
-      // saved as it would be without a sheet, which none is before the page opens one
-      if (saved && [saved.x, saved.y, saved.s].every(Number.isFinite)) return keepInView(saved, content, { left: 0, top: TOP, right: innerWidth, bottom: innerHeight - BOTTOM });
-    } catch {}
+    const saved = readJson<Cam>(local, camKey(snapshot.canvas.id));
+    // saved as it would be without a sheet, which none is before the page opens one
+    if (saved && [saved.x, saved.y, saved.s].every(Number.isFinite)) return keepInView(saved, content, { left: 0, top: TOP, right: innerWidth, bottom: innerHeight - BOTTOM });
     return centreOn(all, 1);
   });
   // the panels docked at the window's edges that the camera is laid out for: a sheet that opens,
@@ -362,11 +352,7 @@ function Canvas({
   useEffect(() => {
     document.documentElement.style.setProperty('--s', String(cam.s));
     if (focusRef.current) return;
-    const h = setTimeout(() => {
-      try {
-        localStorage.setItem(camKey(snapshot.canvas.id), JSON.stringify(besideSheet(cam, camSide.current, NO_SIDES)));
-      } catch {}
-    }, 300);
+    const h = setTimeout(() => writeJson(local, camKey(snapshot.canvas.id), besideSheet(cam, camSide.current, NO_SIDES)), 300);
     return () => clearTimeout(h);
   }, [cam, snapshot.canvas.id]);
   const [tick, setTick] = useState(0);
@@ -439,13 +425,13 @@ function Canvas({
   const [phoneOn, setPhoneOn] = useState(false);
   const wishOn = useWish().open;
   // the bar's `?` button stays until the owner opened the legend with the key; the legend's foot says so
-  const [helpKnown, setHelpKnown] = useState(() => known(HELP_KEY_KNOWN));
+  const [helpKnown, knowHelp] = useKnown(HELP_KEY_KNOWN);
   const [helpNote, setHelpNote] = useState<'button' | 'gone'>();
   // the bar's button for a new task stays until the owner created one by double-click; it only says how
-  const [dblKnown, setDblKnown] = useState(() => known(DOUBLE_CLICK_KNOWN));
+  const [dblKnown, knowDbl] = useKnown(DOUBLE_CLICK_KNOWN);
   const [newHintOn, setNewHintOn] = useState(false);
   // the bar's button that teaches `/`, until the owner used it, and the hint it opens
-  const [searchKnown, setSearchKnown] = useState(() => known(SEARCH_KEY_KNOWN));
+  const [searchKnown, knowSearch] = useKnown(SEARCH_KEY_KNOWN);
   const [searchHintOn, setSearchHintOn] = useState(false);
   const [setupOn, setSetupOn] = useState(false);
   // what is wrong in the configuration as saved, marked on its button; read when the page loads,
@@ -1309,7 +1295,7 @@ function Canvas({
     return clip(i ? plain(i.title) || titleFrom(i.body) || t.titlePlaceholder : '…', 50);
   };
   // what an arrow does shows while the owner draws one, until they have drawn their first
-  const [depKnown, setDepKnown] = useState(() => known(DEP_KNOWN));
+  const [depKnown, knowDep] = useKnown(DEP_KNOWN);
   // arrows the owner removed that the server may still have: one holding a queued card goes there only
   // once "Undo" has run out (`sent` from then on), so that taking it back never leaves the card started
   const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
@@ -1345,13 +1331,12 @@ function Canvas({
   const [selection, setSelection] = useState<string[]>([]);
   const marked = selection.filter((id) => placed.some((p) => p.item.id === id));
   // how to mark shows after a card was moved alone, until the owner has marked cards; how to move them beside them, until they have
-  const [markKnown, setMarkKnown] = useState(() => known(MARK_KNOWN));
-  const [moveKnown, setMoveKnown] = useState(() => known(MOVE_MARKED_KNOWN));
+  const [markKnown, knowMark] = useKnown(MARK_KNOWN);
+  const [moveKnown, knowMove] = useKnown(MOVE_MARKED_KNOWN);
   const [markHint, setMarkHint] = useState<{ at: Pos; key: number } | null>(null);
   useEffect(() => {
     if (!marked.length || markKnown) return;
-    know(MARK_KNOWN);
-    setMarkKnown(true);
+    knowMark();
     setMarkHint(null);
   }, [marked.length]);
   useEffect(() => {
@@ -1514,10 +1499,7 @@ function Canvas({
           const { from, target } = connection;
           api.dependency(from, target).catch((err) => showAck(err instanceof ApiError && err.code === 'dependencyCycle' ? t.deps.cycle(titleOf(from), titleOf(target)) : failText(err)));
         }
-        if (!depKnown) {
-          know(DEP_KNOWN);
-          setDepKnown(true);
-        }
+        knowDep();
       }
       setConnection(null);
       return;
@@ -1681,10 +1663,7 @@ function Canvas({
             console.error(err);
             setMoved(({ [x.id]: _, ...rest }) => rest);
           });
-        if (d.with.length && !moveKnown) {
-          know(MOVE_MARKED_KNOWN);
-          setMoveKnown(true);
-        }
+        if (d.with.length) knowMove();
         if (!d.with.length && !markKnown) setMarkHint({ at: { x: e.clientX, y: e.clientY }, key: Date.now() });
       } else if (d.shift) setSelection((sel) => toggle(sel, markable(i)));
       else open(i);
@@ -1702,8 +1681,7 @@ function Canvas({
     if (focusRef.current || document.elementFromPoint(e.clientX, e.clientY)?.closest('.item, .plan-dir')) return;
     createAt(toWorld(camRef.current, e.clientX, e.clientY));
     if (!dblKnown) {
-      know(DOUBLE_CLICK_KNOWN);
-      setDblKnown(true);
+      knowDbl();
       setNewHintOn(false);
     }
   }
@@ -1811,10 +1789,7 @@ function Canvas({
       e.preventDefault();
       setHelpNote(helpKnown ? undefined : 'gone');
       setHelpOn(true);
-      if (!helpKnown) {
-        know(HELP_KEY_KNOWN);
-        setHelpKnown(true);
-      }
+      knowHelp();
       return;
     }
     // C over a walkthrough (zoomed, playing or under the pointer) switches its captions, not to the conversation with Obeya
@@ -1859,10 +1834,7 @@ function Canvas({
       else if (e.key === 'c') talkCoordinator();
       else if (e.key === '/') {
         toggleSearch();
-        if (!searchKnown) {
-          know(SEARCH_KEY_KNOWN);
-          setSearchKnown(true);
-        }
+        knowSearch();
       } else toggleArchive();
     }
   };

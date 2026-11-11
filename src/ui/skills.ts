@@ -6,7 +6,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Skill } from '../core/types';
 import { api } from './api';
-import { know, known } from './known';
+import { know, known } from './stored';
 
 /** Set once the owner has used the menu (moved through it with the arrow keys, or picked a skill): its hint under the field goes. */
 export const SKILLS_KNOWN = 'obeya-skills-known';

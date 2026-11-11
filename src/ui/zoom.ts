@@ -5,7 +5,7 @@
 // until the owner first used it.
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { know, known } from './known';
+import { useKnown } from './stored';
 import { type Box, onto, ZOOM_EASE, ZOOM_MS } from './zoomBox';
 
 /** Set once the owner zoomed with Z: the magnifier stops showing the key beside it. */
@@ -66,7 +66,6 @@ if (typeof window !== 'undefined') window.addEventListener('keydown', (e: Keyboa
   e.preventDefault();
   z.toggle();
   z.keyed();
-  know(ZOOM_KEY_KNOWN);
 });
 
 /**
@@ -79,7 +78,7 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
   const screen = useRef<T>(null);
   const backdrop = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<{ from: Box; to: Box; closing?: boolean } | null>(null);
-  const [keyKnown, setKeyKnown] = useState(() => known(ZOOM_KEY_KNOWN));
+  const [keyKnown, knowKey] = useKnown(ZOOM_KEY_KNOWN);
   const boxRef = useRef(box);
   boxRef.current = box;
   const opts = useRef(o);
@@ -107,7 +106,7 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
       zoomed: () => !!boxRef.current && !boxRef.current.closing,
       playing: () => opts.current.playing(),
       toggle: () => toggleRef.current(),
-      keyed: () => setKeyKnown(true),
+      keyed: knowKey,
     };
     zoomables.add(z);
     return () => void zoomables.delete(z);

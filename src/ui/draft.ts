@@ -10,6 +10,7 @@ import type { ChangeRoute } from '../core/types';
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Mark } from './marks';
 import type { Reply } from './reply';
+import { readJson, type Store, writeJson } from './stored';
 
 export interface Draft {
   text: string;
@@ -87,9 +88,8 @@ const subscribe = (fn: () => void) => {
   return () => void listeners.delete(fn);
 };
 
-type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 /** The drafts that last beyond their field: the cards', the sidebar's (the phone view's per canvas) and the microphone's, not those of a field of its own. */
-const lasting = (key: string) => key.startsWith('card:') || key === OBEYA_DRAFT || key.startsWith(`${OBEYA_DRAFT}:`) || key === MIC_DRAFT || key === WISH_DRAFT;
+const lasting = (key: string) => key.startsWith('card:') || toObeya(key) || key === MIC_DRAFT || key === WISH_DRAFT;
 const storeKey = (canvas: string) => `obeya-drafts-${canvas}`;
 const markupsKey = (canvas: string) => `obeya-markups-${canvas}`;
 /** The store and canvas the drafts are written down for. */
@@ -117,11 +117,7 @@ export function setMarkup(id: string, markup: Markup | null) {
   markups.delete(id);
   if (markup) markups.set(id, markup);
   for (const old of markups.keys()) if (markups.size > KEPT_MARKUPS) markups.delete(old);
-  if (!kept) return;
-  try {
-    if (markups.size) kept.store.setItem(markupsKey(kept.canvas), JSON.stringify(Object.fromEntries(markups)));
-    else kept.store.removeItem(markupsKey(kept.canvas));
-  } catch {}
+  if (kept) writeJson(kept.store, markupsKey(kept.canvas), markups.size ? Object.fromEntries(markups) : null);
 }
 
 /**
@@ -139,15 +135,9 @@ export function keepDrafts(store: Store, canvas: string) {
     markups.clear();
   }
   kept = { store, canvas };
-  try {
-    const saved = JSON.parse(store.getItem(storeKey(canvas)) ?? '{}') as Record<string, Kept>;
-    for (const [key, { text, images, picks, reply, files, pasted, findings }] of Object.entries(saved))
-      if (!drafts.has(key)) drafts.set(key, { ...EMPTY, text, images, ...(picks ? { picks } : {}), ...(reply ? { reply } : {}), ...(files ? { files } : {}), ...(pasted ? { pasted } : {}), ...(findings ? { findings } : {}) });
-  } catch {}
-  try {
-    const saved = JSON.parse(store.getItem(markupsKey(canvas)) ?? '{}') as Record<string, Markup>;
-    for (const [id, m] of Object.entries(saved)) if (!markups.has(id)) markups.set(id, m);
-  } catch {}
+  // what was written down is pruned by `keptOf` already
+  for (const [key, saved] of Object.entries(readJson<Record<string, Kept>>(store, storeKey(canvas)) ?? {})) if (!drafts.has(key)) drafts.set(key, { ...EMPTY, ...saved });
+  for (const [id, m] of Object.entries(readJson<Record<string, Markup>>(store, markupsKey(canvas)) ?? {})) if (!markups.has(id)) markups.set(id, m);
   listeners.add(writeDown);
   if (switched) changed();
 }
@@ -159,10 +149,7 @@ function writeDown() {
     const k = lasting(key) && keptOf(d);
     if (k) out[key] = k;
   }
-  try {
-    if (Object.keys(out).length) kept.store.setItem(storeKey(kept.canvas), JSON.stringify(out));
-    else kept.store.removeItem(storeKey(kept.canvas));
-  } catch {}
+  writeJson(kept.store, storeKey(kept.canvas), Object.keys(out).length ? out : null);
 }
 
 export const draftOf = (key: string): Draft => drafts.get(key) ?? EMPTY;
@@ -188,15 +175,12 @@ const keptAt = (home: NonNullable<DraftsHome>) => home.store === kept?.store && 
 export function updateDraftAt(home: DraftsHome, key: string, change: Partial<Draft> | ((d: Draft) => Partial<Draft>)) {
   if (!home || keptAt(home)) return updateDraft(key, change);
   if (!lasting(key)) return;
-  try {
-    const saved = JSON.parse(home.store.getItem(storeKey(home.canvas)) ?? '{}') as Record<string, Kept>;
-    const d = { ...EMPTY, ...saved[key] };
-    const k = keptOf({ ...d, ...(typeof change === 'function' ? change(d) : change) });
-    if (k) saved[key] = k;
-    else delete saved[key];
-    if (Object.keys(saved).length) home.store.setItem(storeKey(home.canvas), JSON.stringify(saved));
-    else home.store.removeItem(storeKey(home.canvas));
-  } catch {}
+  const saved = readJson<Record<string, Kept>>(home.store, storeKey(home.canvas)) ?? {};
+  const d = { ...EMPTY, ...saved[key] };
+  const k = keptOf({ ...d, ...(typeof change === 'function' ? change(d) : change) });
+  if (k) saved[key] = k;
+  else delete saved[key];
+  writeJson(home.store, storeKey(home.canvas), Object.keys(saved).length ? saved : null);
 }
 
 /**
@@ -343,8 +327,7 @@ export function dictate(key: string, words: string) {
   const piece = spaced(before, words, after);
   if (focused) typeInto(el, piece);
   else if (el) {
-    el.setRangeText(piece, start, end, 'end');
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    setText(el, piece, start, end);
   } else updateDraft(key, { text: before + piece + after });
 }
 
@@ -394,10 +377,7 @@ export function insertPasted(key: string, texts: string[]) {
   const el = fields.get(key);
   const before = el?.value ?? draftOf(key).text;
   const after = texts.reduce(paragraphAfter, before);
-  if (el) {
-    el.setRangeText(after.slice(before.length), before.length, before.length, 'end');
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }
+  if (el) setText(el, after.slice(before.length), before.length, before.length);
   updateDraft(key, (d) => ({ ...(el ? {} : { text: after }), pasted: [...(d.pasted ?? []), ...texts] }));
 }
 
@@ -488,7 +468,12 @@ export function cite(key: string, quote: string) {
 /** Types `s` into the focused field at its cursor, as a keystroke would: React hears it, ⌘Z takes it back. */
 export function typeInto(el: HTMLTextAreaElement, s: string) {
   if (document.execCommand('insertText', false, s)) return;
-  // a browser without it: set the text the way React notices
-  el.setRangeText(s, el.selectionStart, el.selectionEnd, 'end');
+  // a browser without it
+  setText(el, s, el.selectionStart, el.selectionEnd);
+}
+
+/** Puts `s` in place of the field's text from `start` to `end`, the way React notices, with the cursor after it. */
+function setText(el: HTMLTextAreaElement, s: string, start: number, end: number) {
+  el.setRangeText(s, start, end, 'end');
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }

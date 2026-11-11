@@ -4,6 +4,7 @@
 // under its button and its sidebar).
 
 import { useSyncExternalStore } from 'react';
+import { local, readJson, writeJson } from './stored';
 
 interface Store {
   ids: string[];
@@ -15,11 +16,8 @@ const stores = new Map<string, Store>();
 function storeOf(key: string): Store {
   let s = stores.get(key);
   if (s) return s;
-  let ids: string[] = [];
-  try {
-    const v = JSON.parse(localStorage.getItem(key) ?? '[]');
-    if (Array.isArray(v)) ids = v.filter((x) => typeof x === 'string');
-  } catch {}
+  const v = readJson<unknown>(local, key);
+  const ids = Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
   s = { ids, listeners: new Set() };
   stores.set(key, s);
   return s;
@@ -29,10 +27,7 @@ function storeOf(key: string): Store {
 export function toggleFolded(key: string, id: string) {
   const s = storeOf(key);
   s.ids = s.ids.includes(id) ? s.ids.filter((x) => x !== id) : [...s.ids, id];
-  try {
-    if (s.ids.length) localStorage.setItem(key, JSON.stringify(s.ids));
-    else localStorage.removeItem(key);
-  } catch {}
+  writeJson(local, key, s.ids.length ? s.ids : null);
   for (const l of s.listeners) l();
 }
 

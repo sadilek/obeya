@@ -22,6 +22,7 @@ import { failText, fileSize, snoozeWhen, t } from './strings';
 import { applyTheme } from './theme';
 import { WishLink } from './wish';
 import { canvasPath } from './address';
+import { flag, read, session, setFlag, takeJson, write, writeJson } from './stored';
 
 declare global {
   interface Window {
@@ -51,30 +52,30 @@ const CANVAS_KEY = 'obeya-config-canvas';
 
 /** Opens the dialog at the canvases next time, at the one the page shows, as from the note on a plan directory. */
 export const showCanvasesSection = () => {
-  sessionStorage.setItem(SECTION_KEY, 'canvases');
-  sessionStorage.removeItem(CANVAS_KEY);
+  write(session, SECTION_KEY, 'canvases');
+  write(session, CANVAS_KEY, null);
 };
 
 /** The canvas this tab showed last in the dialog, if any. */
 const keptCanvas = () => {
-  const n = Number(sessionStorage.getItem(CANVAS_KEY) ?? NaN);
+  const n = Number(read(session, CANVAS_KEY) ?? NaN);
   return Number.isInteger(n) && n >= 0 ? n : null;
 };
 
 /** Opens the dialog at the demos next time, as from the hint on a card to set up a personal demo site. */
 export const showDemosSection = () => {
-  sessionStorage.setItem(SECTION_KEY, 'demos');
-  sessionStorage.setItem(PERSONAL_SHOW_KEY, '1');
+  write(session, SECTION_KEY, 'demos');
+  setFlag(session, PERSONAL_SHOW_KEY, true);
 };
 /** The personal demo site is to be scrolled to once the dialog shows it. */
 const PERSONAL_SHOW_KEY = 'obeya-config-personal';
 
 /** Opens the dialog at "Other devices" next time, as from "Connect a phone". */
-export const showDevicesSection = () => sessionStorage.setItem(SECTION_KEY, 'devices');
+export const showDevicesSection = () => write(session, SECTION_KEY, 'devices');
 
 /** The section this tab showed last, if any. */
 const keptSection = () => {
-  const s = sessionStorage.getItem(SECTION_KEY) as Section | null;
+  const s = read(session, SECTION_KEY) as Section | null;
   return s && SECTIONS.includes(s) ? s : null;
 };
 
@@ -91,7 +92,7 @@ const FOCUS_KEY = 'obeya-config-focus';
 /** Opens the dialog next time at a repository's clone count or slots, as from a card waiting for a free clone or slot. */
 export const showRepoClones = (f: ConfigFocus) => {
   showCanvasesSection();
-  sessionStorage.setItem(FOCUS_KEY, JSON.stringify(f));
+  writeJson(session, FOCUS_KEY, f);
 };
 
 /** The canvases' draft as written down, with the id each canvas had when loaded. */
@@ -144,7 +145,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   const [json, setJson] = useState(false);
   const [section, setSectionState] = useState<Section>(() => keptSection() ?? 'canvases');
   const setSection = (s: Section) => {
-    sessionStorage.setItem(SECTION_KEY, s);
+    write(session, SECTION_KEY, s);
     setSectionState(s);
   };
   // the id each canvas of the draft had when loaded: renaming a running canvas keeps it, and its cards
@@ -186,8 +187,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   // the canvas Canvases shows, by its place in the draft; until one is chosen, the field to show's or the page's, once their ids are known
   const [pick, setPickState] = useState<number | null>(keptCanvas);
   const setPick = (i: number | null) => {
-    if (i === null) sessionStorage.removeItem(CANVAS_KEY);
-    else sessionStorage.setItem(CANVAS_KEY, String(i));
+    write(session, CANVAS_KEY, i === null ? null : String(i));
     setPickState(i);
   };
   const idAt = (i: number) => origin[i] ?? checked?.resolved[i]?.id ?? null;
@@ -224,9 +224,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
     sharedDone.clear();
     const s = keptSection();
     if (s) setSectionState(s);
-    const f = sessionStorage.getItem(FOCUS_KEY);
-    sessionStorage.removeItem(FOCUS_KEY);
-    const fo = f ? (JSON.parse(f) as ConfigFocus) : null;
+    const fo = takeJson<ConfigFocus>(session, FOCUS_KEY);
     setFocus(fo);
     // the canvas with the field to show, else the one this tab showed last, else the page's
     const kept = keptCanvas();
@@ -1292,10 +1290,10 @@ const PERSONAL_CODE_KEY = 'obeya-personal-code';
  */
 function PersonalSiteBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<PersonalSiteView | null>(null);
-  const [host, setHost] = useState<PersonalHost>(() => PERSONAL_HOSTS.find((h) => h === sessionStorage.getItem(PERSONAL_HOST_KEY)) ?? PERSONAL_HOSTS[0]!);
+  const [host, setHost] = useState<PersonalHost>(() => PERSONAL_HOSTS.find((h) => h === read(session, PERSONAL_HOST_KEY)) ?? PERSONAL_HOSTS[0]!);
   const [way, setWay] = useState<CloudflareWay | null>(null);
-  const [code, setCode] = useState(() => sessionStorage.getItem(PERSONAL_CODE_KEY) ?? '');
-  const [connecting, setConnecting] = useState(() => !!sessionStorage.getItem(PERSONAL_CODE_KEY));
+  const [code, setCode] = useState(() => read(session, PERSONAL_CODE_KEY) ?? '');
+  const [connecting, setConnecting] = useState(() => !!read(session, PERSONAL_CODE_KEY));
   const [copied, copy] = useCopy(1500);
   // the connection code, at hand before the click: the clipboard takes it within the click
   const [connection, setConnection] = useState('');
@@ -1308,8 +1306,8 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
   }, [on]);
   // opened from a card's hint: it comes into view
   useEffect(() => {
-    if (!on || !view || !sessionStorage.getItem(PERSONAL_SHOW_KEY)) return;
-    sessionStorage.removeItem(PERSONAL_SHOW_KEY);
+    if (!on || !view || !flag(session, PERSONAL_SHOW_KEY)) return;
+    setFlag(session, PERSONAL_SHOW_KEY, false);
     // the demo settings above load meanwhile and push it down: scrolled once they stand
     const at = setTimeout(() => box.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 400);
     return () => clearTimeout(at);
@@ -1324,8 +1322,8 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
   useEffect(() => {
     if (view?.site) api.personalSiteCode().then((c) => setConnection(c.code), console.error);
   }, [view?.site?.url]);
-  useEffect(() => sessionStorage.setItem(PERSONAL_HOST_KEY, host), [host]);
-  useEffect(() => (code ? sessionStorage.setItem(PERSONAL_CODE_KEY, code) : sessionStorage.removeItem(PERSONAL_CODE_KEY)), [code]);
+  useEffect(() => void write(session, PERSONAL_HOST_KEY, host), [host]);
+  useEffect(() => void write(session, PERSONAL_CODE_KEY, code || null), [code]);
   if (!view) return null;
   const act = async (fn: () => Promise<PersonalSiteView>) => {
     setStatus('');

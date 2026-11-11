@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { PlanUsage, Usage, UsageLimit } from '../core/types';
-import { know, known } from './known';
+import { useKnown } from './stored';
 import { clock, countdown, snoozeWhen, t } from './strings';
 import { useMenuClose } from './menu';
 
@@ -56,7 +56,7 @@ export function UsagePill({ usage }: { usage: Usage }) {
   // open by a click (a tap) until one elsewhere or Escape
   const [open, setOpen] = useState(false);
   const now = useNow();
-  const [paceKnown, setPaceKnown] = useState(() => known(PACE_KNOWN));
+  const [paceKnown, knowPace] = useKnown(PACE_KNOWN);
   const ref = useRef<HTMLDivElement>(null);
   useMenuClose(open, ref, () => setOpen(false), true);
   const plans = usage.plans.filter((p) => p.limits.length);
@@ -86,10 +86,7 @@ export function UsagePill({ usage }: { usage: Usage }) {
             {t.usage.pace}{' '}
             <button
               className="link"
-              onClick={() => {
-                know(PACE_KNOWN);
-                setPaceKnown(true);
-              }}
+              onClick={knowPace}
             >
               {t.gotIt}
             </button>

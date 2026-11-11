@@ -14,7 +14,7 @@ import { estimatedStarts, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthroug
 import { answerFile, api, at, beforeReload } from './api';
 import { captionPages, pageOf } from '../core/caption-pages';
 import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF } from '../core/video-player';
-import { known, know } from './known';
+import { know, known, local, session, setFlag, takeJson, writeJson, useKnown } from './stored';
 import { t } from './strings';
 import { plainKey, useZoom } from './zoom';
 import { zoomBox } from './zoomBox';
@@ -45,10 +45,7 @@ let captionsOn = !known(CAPTIONS_OFF);
 let captionsKeyKnown = known(CAPTIONS_KEY_KNOWN);
 
 function setCaptions(on: boolean) {
-  try {
-    if (on) localStorage.removeItem(CAPTIONS_OFF);
-    else know(CAPTIONS_OFF);
-  } catch {}
+  setFlag(local, CAPTIONS_OFF, !on);
   dispatchEvent(new Event(CAPTIONS_CHANGED));
 }
 
@@ -202,14 +199,8 @@ const KEPT_FRESH_MS = 5 * 60_000;
 
 /** The places the reload before this page kept, taken once. */
 const keptPlaces: Map<string, KeptPlace> = (() => {
-  try {
-    const raw = sessionStorage.getItem(KEPT_KEY);
-    sessionStorage.removeItem(KEPT_KEY);
-    const k = raw ? (JSON.parse(raw) as { at: number; places: [string, KeptPlace][] }) : null;
-    return new Map(k && Date.now() - k.at < KEPT_FRESH_MS ? k.places : []);
-  } catch {
-    return new Map();
-  }
+  const k = takeJson<{ at: number; places: [string, KeptPlace][] }>(session, KEPT_KEY);
+  return new Map(k && Date.now() - k.at < KEPT_FRESH_MS ? k.places : []);
 })();
 
 class Playback {
@@ -506,9 +497,7 @@ beforeReload(() => {
     const at = p.place();
     return at ? [[url, at]] : [];
   });
-  try {
-    if (places.length) sessionStorage.setItem(KEPT_KEY, JSON.stringify({ at: Date.now(), places }));
-  } catch {}
+  if (places.length) writeJson(session, KEPT_KEY, { at: Date.now(), places });
 });
 
 function usePlayback(thread: number, name: string): Playback {
@@ -855,7 +844,7 @@ export type Tellable = { talk: number } | { card: string; ev: number };
  */
 export function WalkthroughButton({ of, hint }: { of: Tellable; hint?: boolean }) {
   const [busy, setBusy] = useState(false);
-  const [used, setUsed] = useState(() => known(WALKTHROUGH_KNOWN));
+  const [used, knowUsed] = useKnown(WALKTHROUGH_KNOWN);
   return (
     <button
       className={`msg-act msg-walk${hint && !used ? ' shown' : ''}`}
@@ -864,8 +853,7 @@ export function WalkthroughButton({ of, hint }: { of: Tellable; hint?: boolean }
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         setBusy(true);
-        know(WALKTHROUGH_KNOWN);
-        setUsed(true);
+        knowUsed();
         // asked once: the walkthrough comes as the next answer
         ('talk' in of ? api.walkthrough(of.talk) : api.cardWalkthrough(of.card, of.ev))
           .then(({ thread, file }) => {

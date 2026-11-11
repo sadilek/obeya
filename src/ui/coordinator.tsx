@@ -21,10 +21,9 @@ import { usePageVisible } from './seen';
 import { useStickToEnd } from './stickToEnd';
 import { useFitHeight } from './fitHeight';
 import { PageChangeList } from './page-changes';
-import { useStoredState } from './stored';
 import { WishReplyLink } from './wish';
 import { ClockMark } from './snooze';
-import { know, known } from './known';
+import { know, read, session, useStoredState, write, useKnown } from './stored';
 import { cardPath } from './address';
 import { CardLink, Naming } from './cardLink';
 
@@ -133,7 +132,7 @@ const REVIEW_KNOWN = 'obeya-review-pr-known';
  */
 function ReviewHint({ items, repos }: { items: Item[]; repos: RepoRef[] }) {
   const used = items.some((i) => i.contribution);
-  const [closed, setClosed] = useState(() => known(REVIEW_KNOWN));
+  const [closed, close] = useKnown(REVIEW_KNOWN);
   useEffect(() => {
     if (used) know(REVIEW_KNOWN);
   }, [used]);
@@ -146,8 +145,7 @@ function ReviewHint({ items, repos }: { items: Item[]; repos: RepoRef[] }) {
         title={t.review.hideHint}
         aria-label={t.review.hideHint}
         onClick={() => {
-          know(REVIEW_KNOWN);
-          setClosed(true);
+          close();
         }}
       >
         ×
@@ -559,15 +557,12 @@ function GearIcon() {
  */
 function useSettingDraft(id: number, proposed: string): [string, (v: string) => void] {
   const key = `obeya-setting-draft-${id}`;
-  const [draft, setDraft] = useState(() => sessionStorage.getItem(key) ?? proposed);
+  const [draft, setDraft] = useState(() => read(session, key) ?? proposed);
   return [
     draft,
     (v) => {
       setDraft(v);
-      try {
-        if (v === proposed) sessionStorage.removeItem(key);
-        else sessionStorage.setItem(key, v);
-      } catch {}
+      write(session, key, v === proposed ? null : v);
     },
   ];
 }

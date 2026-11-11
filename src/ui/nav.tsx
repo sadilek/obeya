@@ -12,6 +12,7 @@ import { FoldArrow, toggleFolded, useFolded } from './fold';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal } from './forYou';
 import { PauseMark, PlayMark } from './parts';
 import { useMenuClose } from './menu';
+import { flag, local, setFlag } from './stored';
 import { t } from './strings';
 
 /** How wide the navigation is, pinned as a sidebar. */
@@ -20,19 +21,8 @@ export const NAV_W = 340;
 export const NAV_CANVAS_MIN = 480;
 const PIN_KEY = 'obeya-nav-pinned';
 
-export const loadPinned = () => {
-  try {
-    return localStorage.getItem(PIN_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-export const savePinned = (on: boolean) => {
-  try {
-    if (on) localStorage.setItem(PIN_KEY, '1');
-    else localStorage.removeItem(PIN_KEY);
-  } catch {}
-};
+export const loadPinned = () => flag(local, PIN_KEY);
+export const savePinned = (on: boolean) => setFlag(local, PIN_KEY, on);
 
 interface ListProps {
   canvas: CanvasInfo;

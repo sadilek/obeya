@@ -12,6 +12,7 @@ import { Composer } from './composer';
 import { WISH_DRAFT } from './draft';
 import { useFitHeight } from './fitHeight';
 import { imageUrl, Shots } from './shots';
+import { readJson, type Store, writeJson } from './stored';
 import { clock, errorText, t } from './strings';
 import { oneLine } from '../core/text';
 
@@ -43,17 +44,13 @@ interface WishState {
 
 let state: WishState = { open: false, issue: null, writing: false, error: '' };
 const listeners = new Set<() => void>();
-let kept: { store: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>; key: string } | null = null;
+let kept: { store: Store; key: string } | null = null;
 
 function set(change: Partial<WishState>) {
   const before = state.issue;
   state = { ...state, ...change };
   if (state.issue !== before) {
-    if (kept)
-      try {
-        if (state.issue) kept.store.setItem(kept.key, JSON.stringify(state.issue));
-        else kept.store.removeItem(kept.key);
-      } catch {}
+    if (kept) writeJson(kept.store, kept.key, state.issue);
     writeAgain();
   }
   for (const fn of listeners) fn();
@@ -76,16 +73,13 @@ function writeAgain() {
  * for the same canvas, it changes nothing; for another (a switch of canvas in the same page), that
  * canvas's draft takes the place of the one's before, which is written down already.
  */
-export function keepWish(store: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>, canvas: string) {
+export function keepWish(store: Store, canvas: string) {
   const key = `obeya-wish-${canvas}`;
   if (kept?.store === store && kept.key === key) return;
   const switched = !!kept;
   kept = { store, key };
-  let issue: Issue | null = null;
-  try {
-    const saved = JSON.parse(store.getItem(key) ?? 'null') as Issue | null;
-    if (saved && typeof saved.title === 'string' && typeof saved.body === 'string') issue = { ...saved, images: saved.images ?? [] };
-  } catch {}
+  const saved = readJson<Issue>(store, key);
+  const issue = saved && typeof saved.title === 'string' && typeof saved.body === 'string' ? { ...saved, images: saved.images ?? [] } : null;
   // a wish still being written for the canvas before goes into that canvas's draft (`write`)
   if (switched) state = { open: false, issue, writing: false, error: '' };
   else if (issue) state = { ...state, issue };

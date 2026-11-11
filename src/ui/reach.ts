@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { t } from './strings';
+import { local, read, write } from './stored';
 
 /** The likely cause; null until something tells. */
 export type Why = 'noNetwork' | 'noObeya' | 'answers' | 'pushed' | 'unreachable' | 'noAnswer' | null;
@@ -40,12 +41,8 @@ export function tailnet(host: string): boolean {
 /** Whether this page reaches Obeya through Tailscale: as Obeya said while it answered, else as the address looks. */
 export function useTailnet(connected: boolean): boolean {
   const [said, setSaid] = useState<boolean | null>(() => {
-    try {
-      const v = localStorage.getItem(TAILNET);
-      return v === null ? null : v === 'true';
-    } catch {
-      return null;
-    }
+    const v = read(local, TAILNET);
+    return v === null ? null : v === 'true';
   });
   useEffect(() => {
     if (!connected) return;
@@ -54,9 +51,7 @@ export function useTailnet(connected: boolean): boolean {
       (v) => {
         const yes = !v.local && v.tailnet;
         if (!gone) setSaid(yes);
-        try {
-          localStorage.setItem(TAILNET, String(yes));
-        } catch {}
+        write(local, TAILNET, String(yes));
       },
       () => {},
     );
