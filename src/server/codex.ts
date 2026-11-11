@@ -26,7 +26,7 @@ import { AGENT_EFFORTS, codexFamily, codexFamilyName, nearestEffort, resolveCode
 import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
-import { carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, trackHere, withStderr } from './runtime';
+import { carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, lostEvent, stderrTail, trackHere, withStderr } from './runtime';
 import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, refuseLongWait, waitRefusal } from './shell';
 import { codexCost, type CodexTokens } from './prices';
 import { OWN_GROUP } from './spawn';
@@ -112,8 +112,11 @@ export class CodexError extends Error {
   }
 }
 
-/** How much of what the app server said last on stderr a session that ended reports. */
-const STDERR_TAIL = 2000;
+/** What a request to an app server that has ended fails with. */
+const ENDED = 'the Codex app server ended';
+
+/** What a start fails with where Codex is not on this machine. */
+const NOT_INSTALLED = 'Codex is not installed on this machine';
 
 /**
  * A `codex app-server` process and the JSON-RPC connection over its stdio: requests out and their
@@ -154,11 +157,11 @@ export class AppServer {
     });
     void this.exited.then(() => {
       this.dead = true;
-      for (const p of this.pending.values()) p.reject(new CodexError(withStderr('the Codex app server ended', this.stderr)));
+      for (const p of this.pending.values()) p.reject(new CodexError(withStderr(ENDED, this.stderr)));
       this.pending.clear();
     });
     this.proc.stdout!.setEncoding('utf8').on('data', (d: string) => this.take(d));
-    this.proc.stderr?.setEncoding('utf8').on('data', (d: string) => (this.stderr = (this.stderr + d).slice(-STDERR_TAIL)));
+    this.proc.stderr?.setEncoding('utf8').on('data', (d: string) => (this.stderr = stderrTail(this.stderr, d)));
     // a closed pipe as the process ends is no error of Obeya's
     this.proc.stdin!.on('error', () => {});
   }
@@ -170,7 +173,7 @@ export class AppServer {
   }
 
   request<T = Record<string, unknown>>(method: string, params: unknown = {}): Promise<T> {
-    if (this.dead) return Promise.reject(new CodexError(withStderr('the Codex app server ended', this.stderr)));
+    if (this.dead) return Promise.reject(new CodexError(withStderr(ENDED, this.stderr)));
     const id = ++this.next;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
@@ -514,7 +517,7 @@ class CodexSession implements AgentSession {
     this.done = (unknownHost ? Promise.reject(unknownHost) : this.run())
       .catch((e) => {
         if (this.closed) return;
-        if (this.there && (this.lost || e instanceof HostError)) this.emit({ type: 'lost', message: `the connection to ${this.there!.host.name} was lost` });
+        if (this.there && (this.lost || e instanceof HostError)) this.emit(lostEvent(this.there!.host.name));
         else this.emit({ type: 'error', message: withStderr(messageOf(e), this.server?.stderr ?? '') });
         // a start that failed leaves no app server behind (nor a host's session with it)
         this.server?.close();
@@ -577,7 +580,7 @@ class CodexSession implements AgentSession {
     const there = this.there;
     const cwd = there ? there.path : spec.cwd;
     const bin = there ? 'codex' : codexExecutable({ ...process.env, ...spec.env });
-    if (!bin) throw new Error('Codex is not installed on this machine: no `codex` on the PATH');
+    if (!bin) throw new Error(`${NOT_INSTALLED}: no \`codex\` on the PATH`);
     const hooks = (this.hooks = new Hooks((h) => this.hook(h)));
     const writable = [...(spec.dirs ?? []), ...(there ? [] : [tmpdir()])];
     const common = spec.readOnly ? undefined : await gitCommonDir(cwd, there?.host);
@@ -601,7 +604,7 @@ class CodexSession implements AgentSession {
         login: false,
         forwards: [`127.0.0.1:${port}:127.0.0.1:${hooks.port}`],
         onExit: (code) => (this.lost = code === LOST && !this.closed),
-        onStderr: (text) => this.server && (this.server.stderr = (this.server.stderr + text).slice(-STDERR_TAIL)),
+        onStderr: (text) => this.server && (this.server.stderr = stderrTail(this.server.stderr, text)),
       });
       server = new AppServer({ process: start({ command: bin, args: ['app-server', ...hooks.args(port, !!spec.watch, false)], cwd, env: { ...spec.env }, signal: new AbortController().signal }) });
     } else {
@@ -660,7 +663,7 @@ class CodexSession implements AgentSession {
     this.pump();
     const code = await exited;
     if (this.closed) return;
-    if (this.lost) this.emit({ type: 'lost', message: `the connection to ${there!.host.name} was lost` });
+    if (this.lost) this.emit(lostEvent(there!.host.name));
     else if (there && code === 127) this.emit({ type: 'error', message: withStderr(`Codex is not installed on ${there.host.name}: no \`codex\` on its PATH`, server.stderr) });
     else this.emit({ type: 'error', message: ended(code, server.stderr) });
   }
@@ -889,7 +892,7 @@ export function modelsOf(listed: ListedModel[]): HarnessModel[] {
 /** Asks a short-lived app server `ask` and closes it. */
 async function once<T>(cwd: string, ask: (s: AppServer) => Promise<T>, env: Env = process.env): Promise<T> {
   const bin = codexExecutable(env);
-  if (!bin) throw new Error('Codex is not installed on this machine');
+  if (!bin) throw new Error(NOT_INSTALLED);
   const server = new AppServer({ bin, cwd, env: cleanEnv(env) });
   const timer = setTimeout(() => server.close(), 30_000);
   try {
@@ -952,7 +955,7 @@ export function codexUsage(cwd: string): UsageSource {
   let server: AppServer | undefined;
   let ready: Promise<AppServer> | undefined;
   const open = () => {
-    if (!bin) return Promise.reject(new Error('Codex is not installed on this machine'));
+    if (!bin) return Promise.reject(new Error(NOT_INSTALLED));
     server = new AppServer({ bin, cwd, env: cleanEnv() });
     const s = server;
     return s.init().then(() => s);
@@ -996,7 +999,7 @@ export class CodexLogins {
       server = new AppServer({ process: spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }) });
     } else {
       const bin = codexExecutable(this.env);
-      if (!bin) throw new Error('Codex is not installed on this machine');
+      if (!bin) throw new Error(NOT_INSTALLED);
       server = new AppServer({ bin, cwd: tmpdir(), env: cleanEnv(this.env) });
     }
     const id = randomBytes(9).toString('base64url');
@@ -1012,7 +1015,7 @@ export class CodexLogins {
       if (!r.authUrl) throw new Error('Codex gave no sign-in page');
       loginId = r.loginId;
       this.logins.set(id, login);
-      void server.exited.then(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: withStderr('the Codex app server ended', server.stderr) }));
+      void server.exited.then(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: withStderr(ENDED, server.stderr) }));
       setTimeout(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: 'nobody signed in' }), LOGIN_WAIT).unref?.();
       return { id, url: r.authUrl };
     } catch (e) {

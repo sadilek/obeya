@@ -65,6 +65,9 @@ export type AgentEvent =
    */
   | { type: 'error'; message: string; limit?: { resetsAt?: number }; token?: true };
 
+/** The session's host (`AgentEvent` `lost`) is out of reach. */
+export const lostEvent = (host: string): AgentEvent => ({ type: 'lost', message: `the connection to ${host} was lost` });
+
 /** Who refused a tool call (`SDKPermissionDeniedMessage.decision_reason_type`, sorted). */
 export type DeniedBy = 'rule' | 'classifier' | 'mode' | 'hook' | 'obeya' | 'other';
 
@@ -418,7 +421,10 @@ export function trackHere(p: ChildProcess) {
   p.once('exit', () => here.delete(p));
 }
 
-/** A session's error with what Claude Code said last on stderr, unless the error names it already. */
+/** What a harness said last on stderr, `more` added to what was `kept`: as much as a session that ends with an error reports. */
+export const stderrTail = (kept: string, more: string) => (kept + more).slice(-2000);
+
+/** A session's error with what its harness said last on stderr, unless the error names it already. */
 export function withStderr(message: string, stderr: string): string {
   const tail = stderr.trim();
   return tail && !message.includes(tail) ? `${message}. stderr: ${tail}` : message;

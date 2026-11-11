@@ -26,7 +26,7 @@ import { mediaType } from './images';
 import { COMPILED } from './resources';
 import { OWN_GROUP } from './spawn';
 import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, refuseLongWait, waitRefusal } from './shell';
-import { type AgentRuntime, type AgentSpec, carryTo, cleanEnv, type DeniedBy, trackHere, withStderr } from './runtime';
+import { type AgentRuntime, type AgentSpec, carryTo, cleanEnv, type DeniedBy, lostEvent, stderrTail, trackHere, withStderr } from './runtime';
 import type { ToolCall } from './folder';
 import { messageOf } from '../core/text';
 import { within } from '../core/late';
@@ -126,7 +126,7 @@ export const sdkRuntime: AgentRuntime = {
                 files,
                 onExit: (code) => (lost = code === LOST && !abort.signal.aborted),
               })
-            : spawnHere((text) => (stderr = (stderr + text).slice(-STDERR_TAIL))),
+            : spawnHere((text) => (stderr = stderrTail(stderr, text))),
         systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.system },
         mcpServers: { obeya },
         ...(spec.plugins?.length ? { plugins: spec.plugins.map((path) => ({ type: 'local' as const, path })) } : {}),
@@ -214,7 +214,7 @@ export const sdkRuntime: AgentRuntime = {
       } catch (e) {
         if (!abort.signal.aborted && !lost) spec.onEvent({ type: 'error', message: withStderr(messageOf(e), stderr), ...token });
       }
-      if (lost && !abort.signal.aborted) spec.onEvent({ type: 'lost', message: `the connection to ${there!.host.name} was lost` });
+      if (lost && !abort.signal.aborted) spec.onEvent(lostEvent(there!.host.name));
     })();
     return {
       send: (text, images) => inbox.push(text, images),
@@ -248,9 +248,6 @@ export async function mcpSettled(q: { mcpServerStatus(): Promise<{ name: string;
     await new Promise((r) => setTimeout(r, 250));
   }
 }
-
-/** How much of what Claude Code said last on stderr a session that ended with an error reports. */
-const STDERR_TAIL = 2000;
 
 /**
  * Starts Claude Code on this machine as the SDK would, but out of the terminal's process group
