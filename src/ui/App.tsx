@@ -372,8 +372,10 @@ function Canvas({
   const sheetW = widthsIn(widths, innerWidth);
   const sheetWRef = useLatest(sheetW);
   const [kOn, setKOn, kOnRef] = useLive(false);
-  const [aOn, setAOn, aOnRef] = useLive(false);
-  const [sOn, setSOn, sOnRef] = useLive(false);
+  // the archive's list and the search drop down from the bar, one at a time
+  const [drop, setDrop, dropRef] = useLive<'archive' | 'search' | null>(null);
+  /** Closes the archive's list or the search, where that is what is down. */
+  const shut = (d: 'archive' | 'search') => dropRef.current === d && setDrop(null);
   // the card whose row in the search is under the pointer or picked by the arrow keys
   const [foundId, setFoundId] = useState<string | null>(null);
   // where the search's list stands while open: a card behind it is out of sight
@@ -406,9 +408,8 @@ function Canvas({
     toggleCoordinator();
     if (!kOn) requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#ksheet .tell textarea')?.focus({ preventScroll: true }));
   };
-  // the archive and the search drop down from the bar one at a time
-  const toggleArchive = () => (setSOn(false), setAOn(!aOnRef.current));
-  const toggleSearch = () => (setAOn(false), setSOn(!sOnRef.current));
+  const toggleArchive = () => setDrop(dropRef.current === 'archive' ? null : 'archive');
+  const toggleSearch = () => setDrop(dropRef.current === 'search' ? null : 'search');
   // the configuration is a dialog over the page: what is open behind it stays as it was
   const toggleConfig = () => setCOn(!cOnRef.current);
   // asking Obeya about the configuration: its conversation in place of the dialog, ready to type into
@@ -551,7 +552,7 @@ function Canvas({
       (document.activeElement as HTMLElement | null)?.blur();
       return open(i);
     }
-    setSOn(false);
+    shut('search');
     const p = i.parent ? byId(i.parent) : undefined;
     return open(p?.collapsed ? p : i);
   }
@@ -721,7 +722,7 @@ function Canvas({
     setReading(r);
     setSheetOn(true);
     setKOn(false);
-    setAOn(false);
+    shut('archive');
     if (inView) await flyOrJump(camFor(bounds(p), sideNow()), 700, quick);
   }
 
@@ -732,8 +733,8 @@ function Canvas({
     setFocus(null);
     addressCloses(undefined);
     setSheetOn(false);
-    // one opened from the search goes back to the search's list, which stayed open; the two never show at once
-    if (toArchive && !sOnRef.current && archivedById.has(f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
+    // one opened from the search goes back to the search's list, which stayed open
+    if (toArchive && dropRef.current !== 'search' && archivedById.has(f.id) && !itemsRef.current.some((i) => i.id === f.id)) setDrop('archive');
     await fly(back(f), 600);
     recover();
   }
@@ -772,7 +773,7 @@ function Canvas({
     flushEdit().catch(console.error);
     const f = focusRef.current;
     const project = f?.type === 'project' ? f.id : f?.type === 'card' ? f.project?.id : undefined;
-    const sheet: SideSheet | undefined = kOn ? 'coordinator' : aOn ? 'archive' : undefined;
+    const sheet: SideSheet | undefined = kOn ? 'coordinator' : drop === 'archive' ? 'archive' : undefined;
     keep(sessionStorage, snapshot.canvas.id, {
       at: Date.now(),
       ...(f?.type === 'card' ? { card: f.id } : {}),
@@ -822,7 +823,7 @@ function Canvas({
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
     quickSide.current = Date.now() + 2000;
     if (k.sheet === 'coordinator') setKOn(true);
-    else if (k.sheet === 'archive') setAOn(true);
+    else if (k.sheet === 'archive') setDrop('archive');
     if (k.config) setCOn(true);
     await openAgain(k, true);
     restore(k);
@@ -905,9 +906,9 @@ function Canvas({
     if (!i) return;
     if (i.kind === 'project') return openAgain({ project: i.id }, quick);
     // an archived workstream unfolds from its project's sheet, any other archived card from the
-    // archive's list, which takes the search's place: the two never show at once
+    // archive's list, which takes the search's place
     const project = i.archivedAt ? i.parent : undefined;
-    if (i.archivedAt && !project) setSOn(false), setAOn(true);
+    if (i.archivedAt && !project) setDrop('archive');
     await openAgain({ card: i.id, project }, quick);
   }
   /** Back or Forward: what the address no longer names closes, what it names opens. */
@@ -1799,9 +1800,8 @@ function Canvas({
       // so does the quote of a message the owner was replying to: in the field with the cursor, the open card's, the sidebar's
       const quoting = [focusedDraft(), f?.type === 'card' || f?.type === 'project' ? cardDraft(f.id) : null, kOnRef.current ? OBEYA_DRAFT : null].find((k) => k && fieldOn(k) && replyOn(k));
       if (quoting) return setReply(quoting, null);
-      // the archive's list closes after a card unfolded from it
-      if (f?.type !== 'card' && aOnRef.current) return setAOn(false);
-      if (f?.type !== 'card' && sOnRef.current) return setSOn(false);
+      // the archive's list or the search closes after a card unfolded from it
+      if (f?.type !== 'card' && dropRef.current) return setDrop(null);
       // what is marked lets go before a sheet closes, once the colour ring for it has closed
       if (f?.type !== 'card' && !typing && !ring && marked.length) return setSelection([]);
       if (typing) (e.target as HTMLElement).blur();
@@ -2027,7 +2027,7 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} lit={litEdge?.item.id} cover={sOn ? searchCover : undefined} />}
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} lit={litEdge?.item.id} cover={drop === 'search' ? searchCover : undefined} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
@@ -2043,10 +2043,10 @@ function Canvas({
             <NavPill {...nav} />
           )}
           <SearchPill
-            on={sOn}
+            on={drop === 'search'}
             teach={!searchKnown && items.length > 5}
             onTeach={() => focusRef.current?.type !== 'card' && setSearchHintOn(true)}
-            onClose={() => setSOn(false)}
+            onClose={() => shut('search')}
             held={focus?.type === 'card'}
             items={items}
             rev={snapshot.archive}
@@ -2057,9 +2057,9 @@ function Canvas({
             onCover={setSearchCover}
           />
           <ArchivePill
-            on={aOn}
+            on={drop === 'archive'}
             onToggle={toggleArchive}
-            onClose={() => setAOn(false)}
+            onClose={() => shut('archive')}
             held={focus?.type === 'card'}
             rev={snapshot.archive}
             onItems={learnArchived}
