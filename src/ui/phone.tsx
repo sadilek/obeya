@@ -6,7 +6,7 @@
 // demo, approve buttons), its conversation in the same panel, and Back returns to the list. The microphone is held by touch; Enter breaks the line, only Send sends;
 // what was typed but not sent survives a reload. It holds one WebSocket for every canvas.
 
-import { type ComponentProps, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type CanvasInfo, type CanvasSnapshot, finishedArchivable, type Item, needsYou, openQuestions, type RepoRef, type TalkRef, unreadAnswers, type Usage } from '../core/types';
 import { api, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
@@ -379,19 +379,22 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           onTell={(text, images, replyTo) => void tellTyped(text, images, null, undefined, replyTo)}
         />
       )}
-      <div id="acks">
-        <ToldList told={told.told} open={open ?? undefined} onUndo={told.undo} aside onGone={told.drop} />
-        {ackLine}
-      </div>
-      <PushToTalk
-        phase={ptt.phase}
-        level={ptt.level}
-        flat={ptt.flat}
-        // what is in view fills the screen: whom the microphone speaks to goes without saying, and the room is short
-        target={null}
-        field={draftFor(where())}
-        onDown={press}
-      />
+      {/* made afresh as a card opens or closes: what waits beside the microphone for Obeya stays in Obeya's draft */}
+      <Fragment key={open ? 'card' : 'home'}>
+        <div id="acks">
+          <ToldList told={told.told} open={open ?? undefined} onUndo={told.undo} aside onGone={told.drop} />
+          {ackLine}
+        </div>
+        <PushToTalk
+          phase={ptt.phase}
+          level={ptt.level}
+          flat={ptt.flat}
+          // what is in view fills the screen: whom the microphone speaks to goes without saying, and the room is short
+          target={null}
+          field={draftFor(where())}
+          onDown={press}
+        />
+      </Fragment>
     </HoldToTalk.Provider>
   );
 }

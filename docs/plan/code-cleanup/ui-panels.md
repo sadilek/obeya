@@ -119,6 +119,12 @@ browser.
   scrolls, since the list is a component of its own that goes while a card is open. Checked in the
   headless browser (Back, Forward, reload on a card and on its conversation, the panel's button,
   dragging it down and up); not in the emulator.
+- Codex's review of W21 found that the microphone and the confirmations no longer started afresh
+  between the list and a card, so screenshots waiting for Obeya moved beside the microphone of a
+  card; they are keyed to the page again. Left as they are: a conversation panel no longer carries the
+  height dragged on a card's conversation over to Obeya's when Back returns to it (two panels used
+  to share one element by accident), and "Planned", "Set aside" and "Done" read their open state from
+  the tab's storage when the list shows again, so a tab whose storage refuses writes forgets it.
 
 ### H4. `ConfigDialog` keeps the canvases in three parallel arrays
 - Principle: KISS
