@@ -49,6 +49,12 @@ const skipped = (name: string) => SKIPPED.has(name) || name.startsWith('~$') || 
  */
 const dataless = (s: Stats) => process.platform === 'darwin' && s.isFile() && s.size > 0 && s.blocks === 0;
 
+/** Whether a file's contents changed between two looks at it, by its size and modification time. */
+const differs = (a: Entry, b: Entry) => a.size !== b.size || a.mtime !== b.mtime;
+
+/** Whether `a` and `b` have the same size and, to within a millisecond, the same modification time. */
+const sameStamp = (a: Entry, b: Entry) => a.size === b.size && Math.abs(a.mtime - b.mtime) < 1;
+
 async function entryAt(path: string): Promise<Entry | null> {
   try {
     const s = await lstat(path);
@@ -143,7 +149,7 @@ export function compare(last: Manifest, next: Manifest, only?: Iterable<string>)
     const a = last.get(path);
     const b = next.get(path);
     if (a && b && !!a.dir === !!b.dir) {
-      if (!b.dir && (a.size !== b.size || a.mtime !== b.mtime)) out.push({ kind: 'modified', path, before: a, after: b, at: b.ctime });
+      if (!b.dir && differs(a, b)) out.push({ kind: 'modified', path, before: a, after: b, at: b.ctime });
       continue;
     }
     if (a) deleted.push({ kind: 'deleted', path, ...(a.dir ? { dir: true as const } : {}), before: a, at: when(path) });
@@ -164,16 +170,15 @@ export function compare(last: Manifest, next: Manifest, only?: Iterable<string>)
   // a copy that kept its time and size, then the original deleted (a sync client's move, say)
   for (const add of [...added]) {
     if (add.dir || !add.after!.size) continue;
-    const same = (d: RawChange) => !d.dir && d.before!.size === add.after!.size && d.before!.mtime === add.after!.mtime;
-    const dels = deleted.filter(same);
-    if (dels.length === 1 && added.filter((x) => !x.dir && x.after!.size === add.after!.size && x.after!.mtime === add.after!.mtime).length === 1) take(add, dels[0]!);
+    const dels = deleted.filter((d) => !d.dir && !differs(d.before!, add.after!));
+    if (dels.length === 1 && added.filter((x) => !x.dir && !differs(x.after!, add.after!)).length === 1) take(add, dels[0]!);
   }
   const dirMoves = moves.filter((m) => m.dir);
   const along = (m: RawChange) => dirMoves.some((d) => d !== m && under(m.from!, d.from!) && m.path === d.path + m.from!.slice(d.from!.length));
   // what a moved directory took along is its move; what changed in it besides is a change of its own, where it is now
   const carried = moves.filter(along);
   for (const m of carried)
-    if (!m.dir && (m.before!.size !== m.after!.size || m.before!.mtime !== m.after!.mtime)) out.push({ kind: 'modified', path: m.path, was: m.from!, before: m.before!, after: m.after!, at: m.at });
+    if (!m.dir && differs(m.before!, m.after!)) out.push({ kind: 'modified', path: m.path, was: m.from!, before: m.before!, after: m.after!, at: m.at });
   return [...moves.filter((m) => !carried.includes(m)), ...out, ...added, ...deleted];
 }
 
@@ -345,7 +350,7 @@ function mergeOne(list: Tracked[], c: RawChange) {
         }
     const i = at(from);
     const t = list[i];
-    const changed = !c.dir && (c.before!.size !== c.after!.size || c.before!.mtime !== c.after!.mtime);
+    const changed = !c.dir && differs(c.before!, c.after!);
     if (!t) list.push({ kind: 'moved', path: c.path, from, ...dir, ...(changed ? { changed: true as const } : {}), before: c.before!, after: c.after! });
     else if (t.kind === 'added') Object.assign(t, { path: c.path, after: c.after! });
     else if (t.kind === 'moved') {
@@ -365,7 +370,7 @@ async function unchanged(path: string, e: Entry | undefined, now: Entry | null):
   if (now.ctime === e.ctime && now.ino === e.ino) return true;
   // touched: its contents tell, where they were read; else its size and time
   if (e.hash && !now.cloud) return e.size === now.size && (await hashFile(path, now.size)) === e.hash;
-  return e.size === now.size && Math.abs(e.mtime - now.mtime) < 1;
+  return sameStamp(e, now);
 }
 
 /** A tool call of an agent, as the session's hooks see it before and after it runs. */
@@ -862,7 +867,7 @@ export class FolderWorkspaces implements CardWorkspaces {
         if (!p) continue;
         const copy = join(base, kind, p);
         const e = await entryAt(copy);
-        if (e && !e.dir && e.size === before.size && Math.abs(e.mtime - before.mtime) < 1) return copy;
+        if (e && !e.dir && sameStamp(e, before)) return copy;
       }
     return null;
   }
@@ -916,6 +921,13 @@ export class FolderWorkspaces implements CardWorkspaces {
       left.push(t);
       report[why].push(t.kind === 'moved' ? `${t.from} → ${t.path}` : t.path);
     };
+    /** Whether undo leaves `t` as it is now (kept, with the reason). */
+    const refused = async (t: Tracked) => {
+      const why = await this.undoable(cardId, t);
+      if (why === 'yes') return false;
+      keep(t, why!);
+      return true;
+    };
     // what undo changes, and the directories it makes on the way
     const touch = (...paths: string[]) => {
       for (const p of paths) for (const x of [p, ...ancestors(p)]) if (x) this.quiet.add(x);
@@ -932,21 +944,13 @@ export class FolderWorkspaces implements CardWorkspaces {
     const depth = (t: Tracked) => t.path.split('/').length;
     const rest = rec.changes.filter((t) => t.kind !== 'moved');
     for (const t of rest.filter((x) => x.kind === 'added' && !x.dir)) {
-      const why = await this.undoable(cardId, t);
-      if (why !== 'yes') {
-        keep(t, why!);
-        continue;
-      }
+      if (await refused(t)) continue;
       touch(t.path);
       await unlink(join(this.root, t.path)).catch(() => {});
       report.undone.push(t.path);
     }
     for (const t of rest.filter((x) => (x.kind === 'deleted' && x.dir) || (x.kind !== 'added' && !x.dir)).sort((a, b) => depth(a) - depth(b))) {
-      const why = await this.undoable(cardId, t);
-      if (why !== 'yes') {
-        keep(t, why!);
-        continue;
-      }
+      if (await refused(t)) continue;
       try {
         touch(t.path);
         if (t.dir) await mkdir(join(this.root, t.path), { recursive: true });
@@ -1023,11 +1027,18 @@ export class FolderWorkspaces implements CardWorkspaces {
     const undo = rec.done ? null : (rec.undo ?? (rec.held ? (await this.ready.get(cardId), this.rec(cardId)?.undo ?? null) : null));
     const changes: FolderChange[] = [];
     const patches: string[] = [];
+    // a change as the card shows it, and whether its file is gone from the folder since
+    const view = async (t: Tracked): Promise<FolderChange> => ({
+      kind: t.kind,
+      path: t.path,
+      ...(t.from ? { from: t.from } : {}),
+      ...(t.dir ? { dir: true as const } : {}),
+      ...(!t.dir && t.kind !== 'deleted' && !(await lstat(join(this.root, t.path)).then(() => true, () => false)) ? { gone: true as const } : {}),
+    });
     for (const t of rec.changes) {
-      const c: FolderChange = { kind: t.kind, path: t.path, ...(t.from ? { from: t.from } : {}), ...(t.dir ? { dir: true as const } : {}), ...(t.changed ? { changed: true as const } : {}) };
+      const c: FolderChange = { ...(await view(t)), ...(t.changed ? { changed: true as const } : {}) };
       if (undo) c.undo = await this.undoable(cardId, t);
       if (!t.dir) {
-        if (t.kind !== 'deleted' && !(await lstat(join(this.root, t.path)).then(() => true, () => false))) c.gone = true;
         const patch = await this.filePatch(cardId, t);
         patches.push(patch.text);
         if (patch.lines) Object.assign(c, patch.lines);
@@ -1035,11 +1046,7 @@ export class FolderWorkspaces implements CardWorkspaces {
       changes.push(c);
     }
     const uncertain: FolderChange[] = [];
-    for (const t of rec.uncertain ?? []) {
-      const c: FolderChange = { kind: t.kind, path: t.path, ...(t.from ? { from: t.from } : {}), ...(t.dir ? { dir: true as const } : {}) };
-      if (!t.dir && t.kind !== 'deleted' && !(await lstat(join(this.root, t.path)).then(() => true, () => false))) c.gone = true;
-      uncertain.push(c);
-    }
+    for (const t of rec.uncertain ?? []) uncertain.push(await view(t));
     const folder: FolderChanges = { undo, changes, ...(uncertain.length ? { uncertain } : {}) };
     return { ...cardDiff('folder', patches.join('\n'), full), folder };
   }
