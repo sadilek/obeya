@@ -50,7 +50,7 @@ export const THEME_CHANGED = 'theme';
 /** What leaves a page outdated: a change of Obeya's pages, or its repository's theme. */
 export type OutdatedBy = PageChangeId | typeof THEME_CHANGED;
 
-/** The sample pages' hash (`pagesHash` in site.ts) the changes above account for. */
+/** The sample pages' hash (`pagesHash` in site-pages.ts) the changes above account for. */
 export const PAGES_HASH = { video: '0f84a715dade', html: '4e295b5fc68d', stacked: '37947625c81c' };
 
 /** The version a page published now gets: the newest change; '' while there is none. */

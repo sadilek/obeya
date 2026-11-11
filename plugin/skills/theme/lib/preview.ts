@@ -18,7 +18,7 @@ import { repoName } from '../../../../src/adapters/generic.ts';
 import { parseShared, REPO_SETTINGS_FILE } from '../../../../src/adapters/index.ts';
 import type { DemoSite } from '../../../../src/core/types.ts';
 import type { PageLanguage } from '../../../../src/server/demo-page.ts';
-import { type Meta, overviewHtml, pageHtml } from '../../../../src/server/site.ts';
+import { type Meta, overviewHtml, pageHtml } from '../../../../src/server/site-pages.ts';
 import { THEME_DIR, THEME_FILE, workingTheme } from '../../../../src/server/theme.ts';
 import { demoSettingsHere } from '../../demo/lib/settings.ts';
 

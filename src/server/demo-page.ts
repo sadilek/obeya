@@ -30,7 +30,7 @@ export const PAGE_WORDS: Record<
     commits: string;
     ownWindow: string;
     demoOf: (day: string) => string;
-    /** A page on a site (`site.ts`): when it was shared and by whom (git's name of the one whose Obeya shared it), the link to the overview; the overview's own words. */
+    /** A page on a site (`site-pages.ts`): when it was shared and by whom (git's name of the one whose Obeya shared it), the link to the overview; the overview's own words. */
     sharedOn: (day: string, by?: string) => string;
     allDemos: string;
     /** On the overview, after a page's date: who shared it. */
