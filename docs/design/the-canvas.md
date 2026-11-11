@@ -409,8 +409,9 @@ Assigning: "Group …", or a right click on a card (that card, a workstream's pr
 them), opens a ring of colour balls: the groups, "+" (a new group, named in place) and "∅" (none).
 Each group's name stands beside its ball with its count of cards still to be done (not finished, archived or a dropped idea; a project by its workstreams); a group at 0 goes
 pale, a candidate for deleting. Behind the ring the canvas steps back under a frosted halo and holds
-still. Moving towards a ball picks it, a click takes it, Esc closes the ring. The picked group's ×
-deletes it (its cards, archived ones too, belong to none), with "Undo".
+still. A ball or a group's name lights up while the pointer is on it and a click on it takes it; a
+click anywhere else (the halo, the canvas, the middle) or Esc closes the ring and changes nothing.
+The lit group's name carries a × that deletes it (its cards, archived ones too, belong to none), with "Undo".
 
 The Coordinator has the tools `group` (by name; a new name creates the group), `ungroup` and
 `rename_group`, and sees each card's group.
@@ -513,6 +514,13 @@ code, a generic one otherwise.
 - **The lasso marks cards rather than opening the colour ring** (owner, 2026-10-21): marking first,
   as in Figma or Miro, grouping a click away. Rejected: the ring on every lasso, closed by dragging a
   marked card.
+- **The colour ring picks only what is clicked; a click beside it closes it** (issue #88, 2026-11-11). A
+  click on the canvas meant to dismiss the ring had put the cards into whichever group lay in its
+  direction. Rejected: aiming across the whole screen, as a marking menu does, and aiming only inside
+  the halo. A marking menu pays off through muscle memory (press, flick, release without looking),
+  but the ring opens with one click and picks with a second, and it spaces its balls by the number
+  of groups, so a group's direction moves whenever one is added or deleted; what stays is a
+  slightly larger target, not worth an interaction found nowhere else in Obeya.
 - **A group ends with its last card** (2026-10-06): no empty groups to clean up. Deleting exists for
   groups whose last cards sit in the archive, out of the ring's reach.
 - **A project the owner does not work on collapses** (2026-10-21): it stays in sight and needs no
