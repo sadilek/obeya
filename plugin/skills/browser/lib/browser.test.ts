@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeDir } from '../../../../src/server/testing';
-import { alive } from './browser.ts';
+import { alive } from '../../../lib/process.ts';
 
 // Real browsers, run with plain Node as the skill's commands are; each start takes about a second.
 const SCRIPT = join(import.meta.dir, 'browser.ts');
