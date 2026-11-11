@@ -142,6 +142,19 @@ export const depHead = (s: number) => 6 * depWidth(s);
 const stepOpacity = (step: number) => [1, 1, 0.6, 0.42][step] ?? 0.3;
 
 /**
+ * The head of a wait's arrow, measured in the line's width as `depHead` is. By default the line stops
+ * at the head's base (`refX` a hair inside 0, so no seam shows) and the head points on to the card;
+ * `refX` 9 puts the tip at the line's end.
+ */
+export function ArrowMarker({ id, className, refX = 0.3 }: { id: string; className?: string; refX?: number }) {
+  return (
+    <marker id={id} className={className} viewBox="0 0 9 8" refX={refX} refY="4" markerUnits="strokeWidth" markerWidth={6} markerHeight={(6 * 8) / 9} orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" />
+    </marker>
+  );
+}
+
+/**
  * Every direct wait between cards on the canvas as a faint line, from the card waited for to the
  * card waiting, fading in towards its arrow head, so that the end it points to shows even where lines
  * meet; while the pointer is on a card, the waits around it (`lit`) in the waiting colour instead,
@@ -200,12 +213,8 @@ export function DepLinks({
   return (
     <svg id="deps" width="1" height="1">
       <defs>
-        {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points
-            on to the card; measured in the line's width, as `depHead` is. */}
         {['lit', 'faint', 'loop'].map((cls) => (
-          <marker key={cls} id={`${cls}-arrow`} className={cls} viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={6} markerHeight={(6 * 8) / 9} orient="auto">
-            <path d="M0,0 L9,4 L0,8 z" />
-          </marker>
+          <ArrowMarker key={cls} id={`${cls}-arrow`} className={cls} />
         ))}
         {lines.map(({ k, cls, i, p0, p3 }) => (
           <linearGradient key={k} id={`dep-fade-${i}`} className={cls} gradientUnits="userSpaceOnUse" x1={p0.x} y1={p0.y} x2={p3.x} y2={p3.y}>

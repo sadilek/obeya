@@ -5,13 +5,12 @@ import { flushSync } from 'react-dom';
 import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
-import { api, ApiError, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas, failText } from './api';
+import { api, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { goTo, onSwitch } from './switch';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { CardNumber } from './cardNumber';
-import { clip } from '../core/text';
 import type { ActDone, Pending } from './cardSheet';
 import { CardLog } from './conversation';
 import { Detail } from './detail';
@@ -29,7 +28,7 @@ import { Phone, phoneView } from './phone';
 import { CoordinatorSheet } from './coordinator';
 import { QueuePill } from './queue';
 import { SearchPill } from './search';
-import { depsOf, handleAt, holdsAmong, loopsAmong, nearestHandle, type Side, SIDES, waitKinds, waitsAmong } from './deps';
+import { depsOf, holdsAmong, loopsAmong, waitKinds, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, HowToHint, SEARCH_KEY_KNOWN } from './help';
@@ -42,8 +41,8 @@ import { filesTo, imageFiles } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, fieldOrMic, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
-import { CardView, cardClass, shownState, Edges, Minimap, TalkIcon } from './parts';
-import { DepLinks, depHead, depWidth, linkPath, linkSpot, Links } from './links';
+import { CardView, shownState, Edges, Minimap, TalkIcon } from './parts';
+import { DepLinks, Links } from './links';
 import { OldBunPill, RestartPill, SourcePill, UpdatePill, WorkspacesPill } from './pills';
 import { ProjectView, Sheet } from './project';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
@@ -51,10 +50,11 @@ import { landingLabel, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { canvasPath, cardPath, queryWithout, readAddress } from './address';
 import { beingWritten, split, talkAlone } from './talk';
-import { ACK_MS, showNotice, tellers, useAck, voiceTarget } from './tell';
+import { showNotice, tellers, useAck, voiceTarget } from './tell';
 import { followDone, useCardEdits } from './cardHost';
 import { useCanvasAddress } from './canvasAddress';
 import { useCanvasActions } from './canvasActions';
+import { ConnectionDots, ConnectionGhost, ConnectionHint, ManualEdges, useDepDrawing } from './depDraw';
 import { captionKey } from './walkthrough';
 import { useLatest, useLive, useStable } from './latest';
 import { type Pos, useOptimisticItems } from './optimistic';
@@ -180,7 +180,6 @@ function NoCanvas() {
 /** The canvases the phone view last had, for when the machine does not answer. */
 const KEPT_CANVASES = 'obeya-phone-canvases';
 /** Set once the owner has drawn their first arrow between cards: what an arrow does no longer shows while drawing. */
-const DEP_KNOWN = 'obeya-dep-known';
 const keepCanvases = (list: CanvasInfo[]) => void writeJson(local, KEPT_CANVASES, list);
 function keptCanvases(): CanvasInfo[] | null {
   const list = readJson<CanvasInfo[]>(local, KEPT_CANVASES);
@@ -961,53 +960,7 @@ function Canvas({
   const [dragWith, setDragWith] = useState<string[]>([]);
   // the card the pointer is on, for the waits around it
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [connection, setConnection] = useState<{ from: string; side: Side; x: number; y: number; target?: string } | null>(null);
-  // the dot under the pointer: the canvas renders again only when it changes
-  const [handle, setHandle] = useState<{ id: string; side: Side } | null>(null);
-  const handleRef = useRef(handle);
-  const showHandle = (h: { id: string; side: Side } | null) => {
-    const was = handleRef.current;
-    if (was?.id === h?.id && was?.side === h?.side) return;
-    handleRef.current = h;
-    setHandle(h);
-  };
-  const connectable = (item: Item) => item.source !== 'plan' && item.kind !== 'project';
-  // what covers an arrow's trash button: the cards, which lie above the arrows
-  const cardBoxes = useMemo(() => placed.flatMap(({ item, b }) => (item.kind === 'project' ? [] : [b])), [placed]);
-  const titleOf = (id: string) => {
-    const i = byId(id);
-    return clip(i ? plain(i.title) || titleFrom(i.body) || t.titlePlaceholder : '…', 50);
-  };
-  // what an arrow does shows while the owner draws one, until they have drawn their first
-  const [depKnown, knowDep] = useKnown(DEP_KNOWN);
-  // arrows the owner removed that the server may still have: one holding a queued card goes there only
-  // once "Undo" has run out (`sent` from then on), so that taking it back never leaves the card started
-  const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
-  // those removals while "Undo" runs, each with its timer and what sends it
-  const pendingRemovals = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; send: (keepalive?: boolean) => void }>());
-  // what the owner removed goes to the server even when the page goes before "Undo" has run out
-  useEffect(() => {
-    const away = () => {
-      for (const p of pendingRemovals.current.values()) {
-        clearTimeout(p.timer);
-        p.send(true);
-      }
-      pendingRemovals.current.clear();
-    };
-    addEventListener('pagehide', away);
-    return () => {
-      removeEventListener('pagehide', away);
-      away();
-    };
-  }, []);
-  /** A removal still waiting for "Undo" to run out is taken back: the arrow stays. */
-  function keepDependency(key: string) {
-    const p = pendingRemovals.current.get(key);
-    if (!p) return;
-    clearTimeout(p.timer);
-    pendingRemovals.current.delete(key);
-    setRemoving((r) => r.filter((x) => x.key !== key));
-  }
+  const dep = useDepDrawing({ placed, byId, cam: camRef, showAck, fail });
   // Shift + drag on the canvas draws a lasso, Shift + click on a card takes it in or out: what is marked
   // moves together and goes into a group at once through the colour ring
   const lassoRef = useRef<Pos[] | null>(null);
@@ -1058,41 +1011,11 @@ function Canvas({
    */
   function resolveLoop(loop: { cards: string[]; edges: [string, string][] }) {
     // each card by its number too, which tells Obeya the card where titles are alike
-    const named = (id: string) => t.deps.loopCard(cardTag(byId(id)!.number), titleOf(id));
+    const named = (id: string) => t.deps.loopCard(cardTag(byId(id)!.number), dep.titleOf(id));
     const waits = loop.edges.map(([from, to]) => t.deps.loopWait(named(to), named(from), byId(to) ? waitKinds(byId(to)!, from, items) : []));
     if (!kOn) toggleCoordinator();
     void tellTyped(t.deps.loopAsk(loop.cards.map(named), waits), undefined, null);
   }
-  /** The trash button on an owner-drawn arrow: it goes at once, with "Undo". */
-  function removeDependency(from: string, to: Item) {
-    const key = `${from}:${to.id}`;
-    if (!(to.queue && 'behind' in to.queue && to.queue.behind.includes(from))) {
-      api.dependency(from, to.id, true).then(
-        () => showAck(t.deps.removed, () => api.dependency(from, to.id).catch(fail)),
-        fail,
-      );
-      return;
-    }
-    setRemoving((r) => [...r, { key }]);
-    const send = (keepalive = false) => {
-      setRemoving((r) => r.map((x) => (x.key === key ? { key, sent: true } : x)));
-      api.dependency(from, to.id, true, keepalive).catch((e) => {
-        setRemoving((r) => r.filter((x) => x.key !== key));
-        fail(e);
-      });
-    };
-    const timer = setTimeout(() => {
-      pendingRemovals.current.delete(key);
-      send();
-    }, ACK_MS);
-    pendingRemovals.current.set(key, { timer, send });
-    showAck(t.deps.removed, () => keepDependency(key));
-  }
-  // a removal the server has done is shown by the snapshot from then on
-  useEffect(() => {
-    const drawn = new Set(placed.flatMap(({ item }) => (item.manualDependsOn ?? []).map((from) => `${from}:${item.id}`)));
-    if (removing.some((x) => x.sent && !drawn.has(x.key))) setRemoving((r) => r.filter((x) => !x.sent || drawn.has(x.key)));
-  }, [placed, removing]);
   /** The × on a group's name in the colour ring: its cards belong to none, with a moment to undo. */
   async function deleteGroup(g: Group) {
     setRing(null);
@@ -1174,20 +1097,7 @@ function Canvas({
 
   function onPointerDown(e: React.PointerEvent) {
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
-    if (connection) {
-      e.stopPropagation();
-      if (connection.target) {
-        // the arrow drawn again while its removal waits for "Undo" to run out: it simply stays
-        if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
-        else {
-          const { from, target } = connection;
-          api.dependency(from, target).catch((err) => showAck(err instanceof ApiError && err.code === 'dependencyCycle' ? t.deps.cycle(titleOf(from), titleOf(target)) : failText(err)));
-        }
-        knowDep();
-      }
-      setConnection(null);
-      return;
-    }
+    if (dep.down(e)) return;
     stopFlight();
     // a text selection left from before would make this press drag the selected text instead of the card
     const sel = getSelection();
@@ -1264,20 +1174,8 @@ function Canvas({
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (connection) {
-      const p = toWorld(camRef.current, e.clientX, e.clientY);
-      const near = placed.filter(({ item }) => item.id !== connection.from && connectable(item)).map(({ item, b }) => ({ id: item.id, area: b.w * b.h, d: Math.hypot(Math.max(b.x - p.x, 0, p.x - b.x - b.w), Math.max(b.y - p.y, 0, p.y - b.y - b.h)) })).filter((x) => x.d <= 8 / camRef.current.s).sort((a, b) => a.d - b.d || a.area - b.area)[0];
-      setConnection({ ...connection, x: p.x, y: p.y, target: near?.id });
-      return;
-    }
     // the dots stay hidden while something is dragged, lassoed or panned, and while a card is open
-    const busy = lassoRef.current || dragRef.current || panRef.current || focusRef.current?.type === 'card';
-    if (busy) showHandle(null);
-    else {
-      const c = camRef.current;
-      const near = placed.flatMap(({ item, b }) => (connectable(item) ? [{ id: item.id, b }] : []));
-      showHandle(nearestHandle(near, toWorld(c, e.clientX, e.clientY), 16 / c.s));
-    }
+    if (dep.move(e, !!(lassoRef.current || dragRef.current || panRef.current || focusRef.current?.type === 'card'))) return;
     if (lassoRef.current) {
       lassoRef.current = [...lassoRef.current, { x: e.clientX, y: e.clientY }];
       setLasso(lassoRef.current);
@@ -1478,7 +1376,7 @@ function Canvas({
       if (!e.repeat) press(true);
       return;
     }
-    if (e.key === 'Escape' && connection) { setConnection(null); return; }
+    if (e.key === 'Escape' && dep.cancel()) return;
     if (e.key === 'Escape') {
       // a screenshot or demo shown large closes first, a card's diff, the queue's list, the navigation's and the menu of what a card's agent runs on; the card stays open
       if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .nav-menu, .diff-view, .agent-menu')) return;
@@ -1530,9 +1428,9 @@ function Canvas({
   const waits = useMemo(() => waitsAmong(items), [items]);
   const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
   // the waits shown as lines: those the owner is removing go at once
-  const shownWaits = waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`));
+  const shownWaits = waits.filter(([from, to]) => !dep.removed(from, to));
   // a loop only of the waits that hold its cards back: one through a card at work stalls nothing
-  const loops = useMemo(() => loopsAmong(holdsAmong(items).filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))), [items, removing]);
+  const loops = useMemo(() => loopsAmong(holdsAmong(items).filter(([from, to]) => !dep.removed(from, to))), [items, dep.removing]);
   const standsForId = (id: string) => (byId(id) ? standsFor(byId(id)!).id : id);
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : loops.some((l) => l.cards.includes(hoverId!) && l.cards.includes(id)) ? 'loop' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
@@ -1596,39 +1494,9 @@ function Canvas({
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} waits={shownWaits} standsFor={standsForId} />
             <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} steps={deps?.steps} loops={loops.flatMap((l) => l.edges)} standsFor={standsForId} s={cam.s}>
-              {(shift) => [
-                /* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
-                   covers it; the button and the band that shows it keep their size on screen at every zoom */
-                ...placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
-                  const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
-                  if (!a) return [];
-                  const r = 13 / cam.s;
-                  const { x, y } = linkSpot(a, b, depHead(cam.s), cardBoxes, r, shift(from, item.id));
-                  return [<g className="manual-edge" key={`${from}:${item.id}`}>
-                    <path className="manual-hit" d={linkPath(a, b, depHead(cam.s), shift(from, item.id))} strokeWidth={22 / cam.s} />
-                    <foreignObject x={x - r} y={y - r} width={2 * r} height={2 * r}><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
-                  </g>];
-                })),
-                /* a loop of waits: on one of its lines, where no card covers it, a button that has Obeya resolve it */
-                ...loops.flatMap((loop) => {
-                  const at = (id: string) => placed.find((p) => p.item.id === standsForId(id))?.b;
-                  const edge = loop.edges.find(([from, to]) => at(from) && at(to) && at(from) !== at(to));
-                  if (!edge) return [];
-                  const [w, h] = [LOOP_W / cam.s, LOOP_H / cam.s];
-                  const { x, y } = linkSpot(at(edge[0])!, at(edge[1])!, depHead(cam.s), cardBoxes, w / 2, shift(edge[0], edge[1]));
-                  return [<foreignObject key={`loop ${loop.cards.join(' ')}`} className="loop-fix" x={x - w / 2} y={y - h / 2} width={w} height={h}>
-                    <button style={{ transform: `scale(${1 / cam.s})` }} title={t.deps.loopTitle(loop.cards.map(titleOf))} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); resolveLoop(loop); }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" /></svg>
-                      {t.deps.loopFix}
-                    </button>
-                  </foreignObject>];
-                }),
-              ]}
+              {(shift) => <ManualEdges dep={dep} placed={placed} waitKeys={waitKeys} loops={loops} standsFor={standsForId} s={cam.s} shift={shift} onLoop={resolveLoop} />}
             </DepLinks>
-            <svg className="manual-deps" width="1" height="1">
-              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
-              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = handleAt(a, connection.side); const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, depHead(cam.s)) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} strokeWidth={depWidth(cam.s)} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
-            </svg>
+            <ConnectionGhost dep={dep} placed={placed} s={cam.s} />
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
                 <ProjectView key={item.id} item={item} b={b} lit={item.id === litId} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} onArchive={archiveProject} />
@@ -1651,9 +1519,7 @@ function Canvas({
                 />
               ),
             )}
-            {placed.filter(({ item }) => connectable(item)).map(({ item, b }) => <div key={`handles:${item.id}`} data-id={item.id} className={`connection-handles ${cardClass(item, underway[item.id]).replace(/^card\s*/, '')}${depOf(item.id) ? ' dep-highlight' : ''}${connection?.target === item.id ? ' target' : ''}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-              {SIDES.map((side) => <button key={side} className={`connection-dot ${side}${!connection && handle?.id === item.id && handle.side === side ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
-            </div>)}
+            <ConnectionDots dep={dep} placed={placed} underway={underway} depOf={depOf} />
             {planDirs?.map((d, n) => (
               <PlanDirNote
                 key={d.repo}
@@ -1695,11 +1561,7 @@ function Canvas({
           />
         )}
         {markHint && <MarkHint key={markHint.key} at={markHint.at} />}
-        {connection && !depKnown && (
-          <p id="dephint" style={{ left: cam.x + connection.x * cam.s, top: cam.y + connection.y * cam.s }}>
-            {connection.target ? t.deps.waits(titleOf(connection.from), titleOf(connection.target)) : t.deps.pick(titleOf(connection.from))}
-          </p>
-        )}
+        <ConnectionHint dep={dep} cam={cam} />
         {ring && (
           <Ring
             at={ring.at}
@@ -1992,9 +1854,6 @@ function panelRect(i: Item, inner: HTMLElement, side: Sides) {
 const TALK_W = 640;
 /** Below this the split's columns stack (styles.css) and the panel scrolls as a whole. */
 const NARROW = '(max-width: 760px)';
-/** The size of a loop's button on screen, at every zoom. */
-const LOOP_W = 132;
-const LOOP_H = 26;
 
 /** Where a panel starts at the top: below the bar. */
 const PANEL_TOP = 64;
