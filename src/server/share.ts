@@ -105,10 +105,8 @@ export class Sharing {
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     const now: DemoRef[] = s?.url ? sharedDemos(s) : [];
-    const ref = refOf(demo);
-    const on = now.some((d) => sameDemo(d, ref));
-    // with no page yet or beside the versions there, it takes along the demos it supplements
-    const next = on ? now : add || !now.length ? this.beside(cardId, now, ref) : [ref];
+    const on = shows(s, demo);
+    const next = on ? now : this.versionsWith(cardId, now, refOf(demo), add);
     this.set(cardId, { ...this.fresh(card, s), state: 'publishing', next: next.map(refOf) });
     const t = this.o.board.t.share;
     const said = !s?.url ? t.share : on ? t.again : add ? t.added : t.newDemo;
@@ -211,7 +209,7 @@ export class Sharing {
   private notOnPage(cardId: string) {
     const demo = this.demo(cardId);
     const s = this.stored(cardId);
-    if (!demo || (s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo))))) return;
+    if (!demo || shows(s, demo)) return;
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.notOnApproval);
   }
 
@@ -220,12 +218,10 @@ export class Sharing {
     const card = this.find(cardId);
     const demo = this.demo(cardId);
     const s = this.stored(cardId);
-    if (!card || !demo || s?.state) return;
+    if (!card || !demo || s?.state || shows(s, demo)) return;
     const now: DemoRef[] = s?.url ? sharedDemos(s) : [];
-    const ref = refOf(demo);
-    if (now.some((d) => sameDemo(d, ref))) return;
     const add = demo.follows === 'supplements';
-    this.set(cardId, { ...this.fresh(card, s), state: 'publishing', next: (add ? this.beside(cardId, now, ref) : [ref]).map(refOf) });
+    this.set(cardId, { ...this.fresh(card, s), state: 'publishing', next: this.versionsWith(cardId, now, refOf(demo), add).map(refOf) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.approved(!now.length ? 'share' : add ? 'add' : 'replace'));
     void serial(() => this.publish(cardId));
   }
@@ -264,7 +260,7 @@ export class Sharing {
     const demo = this.demo(cardId);
     if (!demo || demo.kind === 'html') throw new BadRequest('noShare', 'the card has no demo video');
     const s = this.stored(cardId);
-    if (s?.state || (s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo))))) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
+    if (s?.state || shows(s, demo)) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
     const chapters = rereadChapters(demo.dir);
     if (typeof chapters === 'string') throw new BadRequest('invalid', chapters);
     const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = demo;
@@ -483,7 +479,7 @@ export class Sharing {
       this.lost(target.key, r.gone ?? []);
       for (const p of going) {
         if (r.why) {
-          this.o.board.log(p.id, 'error', 'obeya', [`${t.notShared}: ${r.why}`, r.said].filter(Boolean).join('\n\n'));
+          this.o.board.log(p.id, 'error', 'obeya', withOutput(`${t.notShared}: ${r.why}`, r.said));
           failed.push(p.id);
           continue;
         }
@@ -536,7 +532,7 @@ export class Sharing {
     const t = this.o.board.t.share;
     const r = await target.repair(shared, (text) => log('activity', text));
     this.lost(target.key, r.gone);
-    if (r.why) return log('error', [t.notRestored(r.why), r.said].filter(Boolean).join('\n\n'));
+    if (r.why) return log('error', withOutput(t.notRestored(r.why), r.said));
     if (r.said) log('activity', r.said);
     log('state', t.restored);
   }
@@ -566,10 +562,12 @@ export class Sharing {
     const card = this.find(cardId);
     if (s?.state !== 'publishing' || !card) return null;
     const t = this.o.board.t.share;
-    const failed = s.again ? t.notAgain : s.retag ? t.notShared : s.refresh ? t.notLinked : t.notShared;
+    // why the page goes out: shared again with many, its tags changed, a link to its change added, or the owner shared it
+    const why = s.again ? 'again' : s.retag ? 'retag' : s.refresh ? 'link' : 'share';
+    const failed = { again: t.notAgain, retag: t.notShared, link: t.notLinked, share: t.notShared }[why];
     const back = (why: string, out = '') => {
       this.set(cardId, atRest(s));
-      this.o.board.log(cardId, 'error', 'obeya', [`${failed}: ${why}`, out].filter(Boolean).join('\n\n'));
+      this.o.board.log(cardId, 'error', 'obeya', withOutput(`${failed}: ${why}`, out));
       this.settled(cardId, { why });
       return false;
     };
@@ -616,7 +614,7 @@ export class Sharing {
     const tags = tagsOf(pageTagsOf(this.o.board.row(cardId)), vocabulary);
     const pr = this.prOf(cardId);
     const commit = pr ? null : await this.commitOf(card);
-    const theme = await this.o.sourceFor(card)?.theme?.();
+    const theme = await this.themeOf(card);
     const input: SharePage = {
       slug: pathOf(s),
       ...first.shown,
@@ -635,7 +633,8 @@ export class Sharing {
     const { url } = r;
     this.set(cardId, { slug: s.slug, url, demos, ...(pr ? { pr } : {}), ...(commit ? { commit: commit.url } : {}), version: pagesVersion(), ...(theme ? { theme: theme.hash } : {}), ...kept(s), ...(s.personal ? { personal: true as const } : {}) });
     if (r.said) this.o.board.log(cardId, 'activity', 'obeya', r.said);
-    this.o.board.log(cardId, 'state', 'obeya', s.again ? t.sharedAgain(url) : s.retag ? t.retagged(url) : s.refresh ? (pr ? t.linksPr(url) : t.linksCommit(url)) : t.shared(url));
+    const out = { again: t.sharedAgain, retag: t.retagged, link: pr ? t.linksPr : t.linksCommit, share: t.shared }[why];
+    this.o.board.log(cardId, 'state', 'obeya', out(url));
     this.settled(cardId, { url });
     if (pr) await this.linkPr(cardId, pr, url, target.repo, first.shown.kind);
     // the pull request was opened or the work landed while the page went out, or the owner changed its tags: once more, with them
@@ -689,7 +688,7 @@ export class Sharing {
     if (s?.state !== 'withdrawing' || !card) return;
     const back = (why: string, out = '') => {
       this.set(cardId, atRest(s));
-      this.o.board.log(cardId, 'error', 'obeya', [why, out].filter(Boolean).join('\n\n'));
+      this.o.board.log(cardId, 'error', 'obeya', withOutput(why, out));
     };
     const target = this.target(card);
     const t = this.o.board.t.share;
@@ -791,6 +790,7 @@ export class Sharing {
   /** What an exported page shows of every demo: its words, the link to the change, and the day the demo was made, that of the file `dated`. */
   private async exportParts(card: Item, demo: StoredDemo, dated: string) {
     const page = await this.page(card, demo);
+    const theme = await this.themeOf(card);
     const language = this.languageOf(demo.dir, card);
     return {
       title: page.title,
@@ -800,14 +800,13 @@ export class Sharing {
       when: PAGE_WORDS[language].demoOf(day(statSync(dated).mtime, language)),
       tabTitle: page.title,
       language,
-      ...(await this.themeOf(card)),
+      ...(theme ? { theme: theme.css } : {}),
     };
   }
 
-  /** The theme of the card's repository for an exported page, as the page's parts take it. */
-  private async themeOf(card: Item): Promise<{ theme?: string }> {
-    const theme = await this.o.sourceFor(card)?.theme?.();
-    return theme ? { theme: theme.css } : {};
+  /** The theme of the card's repository for its page; none where it has none. */
+  private async themeOf(card: Item): Promise<Theme | null | undefined> {
+    return this.o.sourceFor(card)?.theme?.();
   }
 
   /**
@@ -1017,8 +1016,13 @@ export class Sharing {
     return this.o.languageFor?.(card) ?? readDemoSettings(this.o.home).language;
   }
 
-  /** The versions on the page, the demo and the ones it supplements (`withSupplemented`), in order of handover. */
-  private beside(cardId: string, now: DemoRef[], ref: DemoRef): DemoRef[] {
+  /**
+   * The versions a page shows with the demo `ref` going on it: in place of those on it, the demo
+   * alone; beside them (`add`), or on a page without any, the demo and the ones it supplements
+   * (`withSupplemented`) with them, in order of handover.
+   */
+  private versionsWith(cardId: string, now: DemoRef[], ref: DemoRef, add: boolean): DemoRef[] {
+    if (now.length && !add) return [ref];
     const all = cardDemos(this.o.board.row(cardId));
     const i = all.findLastIndex((d) => sameDemo(d, ref));
     const along = i < 0 ? [ref] : withSupplemented(all, i).map(refOf);
@@ -1115,6 +1119,12 @@ interface Tagging extends TagAsk {
   slug: string;
   demos: SharedDemo[];
 }
+
+/** Whether the demo is on the share's page. */
+const shows = (s: StoredShare | null, demo: DemoRef) => !!s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo)));
+
+/** A line for the card's log with what the deploy said below it, where it said something. */
+const withOutput = (head: string, said: string) => [head, said].filter(Boolean).join('\n\n');
 
 /** A share at rest: neither held, nor publishing, nor withdrawing. */
 function atRest({ state: _, refresh: __, again: ___, next: ____, retag: _____, ...s }: StoredShare): StoredShare {
