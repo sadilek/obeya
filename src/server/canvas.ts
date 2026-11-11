@@ -17,7 +17,7 @@ import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, laterTime, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup, type DemoSite } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { Listeners } from '../core/watched';
-import { BadRequest, Board, DEMO_LOOK_MS, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
+import { BadRequest, Board, DEMO_LOOK_MS, TITLE_MAX, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -2824,7 +2824,7 @@ export class CanvasRuntime {
       return fail(messageOf(e));
     }
     if (info.state !== 'OPEN') return fail(t.review.notOpen(info.state === 'MERGED'));
-    const card = this.board.create({ title: `PR #${ref.number}: ${info.title}`.slice(0, 200), body: c.text, repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
+    const card = this.board.create({ title: `PR #${ref.number}: ${info.title}`.slice(0, TITLE_MAX), body: c.text, repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
     const stored: StoredContribution = {
       url,
       number: ref.number,

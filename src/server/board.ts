@@ -384,6 +384,13 @@ function convertSingleDemoShares(store: Store, canvasId: string) {
   }
 }
 
+/** The most characters of a card's title: the owner's are refused beyond it, agents' cut. */
+export const TITLE_MAX = 200;
+/** The most characters of a card's text (and of the owner's words a proposal is revised by). */
+export const BODY_MAX = 20_000;
+/** The most characters of a note beside a card or rule: a proposal's reason, a setting's basis, a rule's quote. */
+export const NOTE_MAX = 2000;
+
 /** States a worker or the owner's decision is still part of. */
 export const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
 
@@ -1097,8 +1104,8 @@ export class Board {
         canvas_id: this.canvas.id,
         kind: 'task',
         state: 'proposal',
-        title: p.title.slice(0, 200),
-        body: p.task.slice(0, 20000),
+        title: p.title.slice(0, TITLE_MAX),
+        body: p.task.slice(0, BODY_MAX),
         ...at,
         from_id: fromId,
         repo: this.repoColumn(p.repo ?? from?.repo),
@@ -1156,11 +1163,11 @@ export class Board {
         canvas_id: this.canvas.id,
         kind: 'task',
         state: 'proposal',
-        title: p.title.slice(0, 200),
-        body: p.body.slice(0, 20000),
+        title: p.title.slice(0, TITLE_MAX),
+        body: p.body.slice(0, BODY_MAX),
         ...this.freeSpot(),
         repo: this.repoColumn(repo),
-        retro: p.basis.slice(0, 2000),
+        retro: p.basis.slice(0, NOTE_MAX),
         proposal: JSON.stringify(proposalOf({})),
       },
     ]);
@@ -1265,7 +1272,7 @@ export class Board {
   /** A value for a repository's setting the work retrospective proposes: it waits in Obeya's sheet beside the rules. */
   proposeSetting(p: { repo: string; field: ProposedSetting; value: string | string[]; basis: string; cards: string[] }): number {
     this.checkRepo(p.repo);
-    const id = this.store.addSettingProposal(this.canvas.id, { ...p, basis: p.basis.slice(0, 2000) });
+    const id = this.store.addSettingProposal(this.canvas.id, { ...p, basis: p.basis.slice(0, NOTE_MAX) });
     this.changed();
     return id;
   }
@@ -1524,8 +1531,8 @@ export class Board {
         canvas_id: this.canvas.id,
         kind: 'task',
         state: 'planned',
-        title: title.slice(0, 200),
-        body: body.slice(0, 20000),
+        title: title.slice(0, TITLE_MAX),
+        body: body.slice(0, BODY_MAX),
         ...at,
         from_id: ideaId,
         prototype_of: ideaId,
@@ -1778,7 +1785,7 @@ export class Board {
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     const proposal = storedProposal(row) ?? { questions: [] };
     const these: Revising = {
-      words: words.slice(0, 20000),
+      words: words.slice(0, BODY_MAX),
       ...(spoken ? { spoken } : {}),
       ...(said ? { said: [said] } : {}),
       ...(images.length ? { images: images.map((f) => basename(f)) } : {}),
@@ -1837,7 +1844,7 @@ export class Board {
     // when it starts is the owner's to change, not the reviser's
     const proposal: Proposal = p ? { ...proposalOf({ ...p, startAt: was.startAt }), ...(was.acceptAfterRevision ? { acceptAfterRevision: was.acceptAfterRevision } : {}), ...(was.setup ? { setup: was.setup } : {}) } : was;
     this.store.update(id, {
-      ...(p ? { title: p.title.slice(0, 200), body: p.task.slice(0, 20000) } : {}),
+      ...(p ? { title: p.title.slice(0, TITLE_MAX), body: p.task.slice(0, BODY_MAX) } : {}),
       ...(p?.images ? { images: p.images.length ? JSON.stringify(p.images) : null } : {}),
       proposal: JSON.stringify({ ...proposal, ...next } satisfies Proposal),
     });
@@ -2748,7 +2755,7 @@ export class Board {
     const clean = checkPreference(text);
     if (target !== undefined) this.checkRepo(target);
     const id = this.store.addPreference(this.canvas.id, clean, occasion.cardId ?? null, {
-      quote: occasion.quote?.trim().slice(0, 2000) || undefined,
+      quote: occasion.quote?.trim().slice(0, NOTE_MAX) || undefined,
       review: occasion.review,
       replaces,
       target,
@@ -2928,8 +2935,8 @@ export class Board {
    * goes where `x` and `y` say, in no group.
    */
   create(n: NewCard, elsewhere?: string): Item {
-    checkText(n.title, 'title', 200);
-    if (n.body !== undefined) checkText(n.body, 'body', 20000);
+    checkText(n.title, 'title', TITLE_MAX);
+    if (n.body !== undefined) checkText(n.body, 'body', BODY_MAX);
     if (n.repo !== undefined) this.checkRepo(n.repo);
     const from = n.from !== undefined ? this.own(n.from) : undefined;
     if (from && n.idea) throw new BadRequest('invalid', 'an idea follows up on no card');
@@ -2967,8 +2974,8 @@ export class Board {
     if (p.x !== undefined) checkNumber(p.x, 'x');
     if (p.y !== undefined) checkNumber(p.y, 'y');
     if (p.collapsed !== undefined && typeof p.collapsed !== 'boolean') throw new BadRequest('invalid', 'collapsed must be true or false');
-    if (p.title !== undefined) checkText(p.title, 'title', 200);
-    if (p.body !== undefined) checkText(p.body, 'body', 20000);
+    if (p.title !== undefined) checkText(p.title, 'title', TITLE_MAX);
+    if (p.body !== undefined) checkText(p.body, 'body', BODY_MAX);
     if (p.images !== undefined) this.checkImages(p.images);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
@@ -3040,7 +3047,7 @@ export class Board {
     const rest = others.map((id) => this.own(id));
     const section = (r: CardRow) => `## ${r.title ?? ""}\n\n${r.body ?? ''}`.trim();
     const body = [first, ...rest].map(section).filter(Boolean).join('\n\n');
-    checkText(body, 'the merged text', 20000);
+    checkText(body, 'the merged text', BODY_MAX);
     const list = (r: CardRow) => (r.images ? (JSON.parse(r.images) as string[]) : []);
     const images = [...new Set([first, ...rest].flatMap(list))];
     const notes = [first, ...rest].flatMap((r) => (r.unheard ? (JSON.parse(r.unheard) as unknown[]) : []));
@@ -4051,7 +4058,7 @@ export type Retracted =
 /** A proposal as an agent made it: whether it is an idea, why, and at most five questions. */
 const proposalOf = (p: { reason?: string; idea?: boolean; questions?: Question[]; startAt?: string }): Proposal => ({
   ...(p.idea ? { idea: true } : {}),
-  ...(p.reason?.trim() ? { reason: p.reason.trim().slice(0, 2000) } : {}),
+  ...(p.reason?.trim() ? { reason: p.reason.trim().slice(0, NOTE_MAX) } : {}),
   questions: (p.questions ?? []).slice(0, 5),
   ...(p.startAt ? { startAt: p.startAt } : {}),
 });

@@ -77,7 +77,8 @@ export const serving = (server: object, owner: Owner) => void keys.set(server, o
 /** The key a server `serving` noted wants. */
 export const keyOf = (server: object) => keys.get(server)!;
 
-const cookie = (req: Request, name: string) =>
+/** The value of the cookie `name` the request brings. */
+export const cookie = (req: Request, name: string) =>
   req.headers
     .get('cookie')
     ?.split(';')

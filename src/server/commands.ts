@@ -6,7 +6,7 @@ import { type AgentSetting, agentListens, answering, askable, type Awaited, awai
 import { holdsNotes, notStarted } from '../core/queue';
 import { answerTag, fromAnswerTag } from './answers';
 import { cardNumbersIn, cardTag, NUMBERS_SINCE, numberOfTag } from '../core/card-number';
-import { BadRequest, type Board, excerpt, replyNote } from './board';
+import { BadRequest, type Board, excerpt, replyNote, TITLE_MAX } from './board';
 import type { Place } from '../core/layout';
 import { type Config, configShape } from './config';
 import { parsePrUrl } from './forge';
@@ -1088,7 +1088,7 @@ export class Commander {
       if (new Set(cards.map((c) => c.repo)).size > 1) return `only tasks of one repository can be merged: ${cards.map((c) => `"${c.title}" is in ${c.repo}`).join(', ')}`;
       const title = oneLine(a.title || a.text || '');
       if (!title) return "the merged task's title is missing (title)";
-      if (title.length > 200) return 'a title has at most 200 characters';
+      if (title.length > TITLE_MAX) return `a title has at most ${TITLE_MAX} characters`;
       return { do: 'merge', card: cards[0]!.id, others: cards.slice(1).map((c) => c.id), title };
     }
     if (a.do === 'review_pr') {

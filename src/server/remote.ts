@@ -21,7 +21,7 @@ import { LOCAL_HOSTS, hostname, type Gate } from './access';
 import { BadRequest } from './board';
 import type { Store } from './db';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE } from '../../plugin/skills/demo/lib/language.ts';
-import { Owner } from './owner';
+import { cookie, Owner } from './owner';
 import { remoteOf, remoteSetting, saveRemote } from './settings';
 import { type NamedEntry, Tailscale } from './tailscale';
 
@@ -341,12 +341,7 @@ export class Access implements Gate {
 
   /** The paired device a request's cookie names; one unused for too long is removed. */
   device(req: Request): DeviceView | null {
-    const token = req.headers
-      .get('cookie')
-      ?.split(';')
-      .map((c) => c.trim())
-      .find((c) => c.startsWith(`${DEVICE_COOKIE}=`))
-      ?.slice(DEVICE_COOKIE.length + 1);
+    const token = cookie(req, DEVICE_COOKIE);
     if (!token) return null;
     const d = this.store.deviceByToken(sha256(token));
     if (!d) return null;
@@ -444,8 +439,8 @@ export class Access implements Gate {
     if (!paired) return this.notPairedPage(true);
     // over HTTPS the cookie goes with what a worker's HTML artifact loads in its sandboxed frame too, which counts as another site
     const https = (req.headers.get('x-forwarded-proto') ?? new URL(req.url).protocol.replace(':', '')) === 'https';
-    const cookie = `${DEVICE_COOKIE}=${paired.token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; ${https ? 'SameSite=None; Secure' : 'SameSite=Lax'}`;
-    return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': cookie } });
+    const given = `${DEVICE_COOKIE}=${paired.token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; ${https ? 'SameSite=None; Secure' : 'SameSite=Lax'}`;
+    return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': given } });
   }
 
   private notPairedPage(wrong: boolean): Response {

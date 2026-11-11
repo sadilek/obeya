@@ -8,7 +8,7 @@ import type { RepoAdapter } from '../adapters/types';
 import { cardTag } from '../core/card-number';
 import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
 import { type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
-import { ACTIVE, BadRequest, type Board, contributionOf } from './board';
+import { ACTIVE, BadRequest, type Board, contributionOf, TITLE_MAX } from './board';
 import type { Utterance } from './db';
 import { type AgentRuntime, type AgentTool, waitQuietly } from './runtime';
 import type { Workers } from './workers';
@@ -987,7 +987,7 @@ export class Coordinator {
           schema: { title: z.string() },
           run: (a) => {
             if (title !== null) return 'Already named.';
-            title = oneLine(String(a.title)).slice(0, 200);
+            title = oneLine(String(a.title)).slice(0, TITLE_MAX);
             return finish('Recorded. End your turn now.');
           },
         },
