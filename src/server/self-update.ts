@@ -77,9 +77,6 @@ export interface RestarterOptions {
  */
 export class Restarter extends Listeners {
   private current: Due | null = null;
-  private stopping = false;
-  private updating = false;
-  private taking = false;
   private gone = false;
   private stopWaiting = () => {};
   /** What the owner does in each open page (by connection), as the page last said, and in each request the server answers. */
@@ -112,15 +109,10 @@ export class Restarter extends Listeners {
    */
   request(reason: RestartReason) {
     if (this.gone) return;
-    if (reason === 'stop') this.stopping = true;
-    if (reason === 'update' && !this.stopping) this.updating = true;
-    if (reason === 'takeover') this.taking = true;
     if (this.current) {
-      if (reason === 'stop' && this.current.reason !== 'stop') {
-        this.current = { ...this.current, reason, owner: [] };
-        this.emit();
-      } else if (OUTRANKS[reason] > OUTRANKS[this.current.reason]) {
-        this.current = { ...this.current, reason };
+      if (OUTRANKS[reason] > OUTRANKS[this.current.reason]) {
+        // a stop no longer waits for the owner
+        this.current = { ...this.current, reason, ...(reason === 'stop' ? { owner: [] } : {}) };
         this.emit();
       }
       return;
@@ -128,7 +120,7 @@ export class Restarter extends Listeners {
     const patience = this.o.patienceMs ?? RESTART_PATIENCE_MS;
     const since = Date.now();
     let waiting = this.o.busy();
-    const owner = this.owner();
+    const owner = reason === 'stop' ? [] : this.owner();
     if (!waiting.length && !owner.length) return this.go(reason);
     this.current = { reason, since, deadline: since + patience, waiting, owner };
     this.emit();
@@ -159,17 +151,19 @@ export class Restarter extends Listeners {
 
   /** What the owner does that a restart waits for: watching a demo video, dictating; nothing while Obeya stops. */
   owner(): OwnerHold[] {
-    if (this.stopping) return [];
+    if (this.current?.reason === 'stop') return [];
     const all = new Set([...this.holds.values(), this.o.held?.() ?? []].flat());
     return (['video', 'voice'] as const).filter((h) => all.has(h));
   }
 
-  private go(reason: RestartReason) {
+  /** Ends as the reason that waits, which outranks the one it was first asked for (`OUTRANKS`). */
+  private go(asked: RestartReason) {
     if (this.gone) return;
     this.gone = true;
     this.stopWaiting();
+    const reason = this.current?.reason ?? asked;
     this.current = null;
-    this.o.go(this.stopping ? 'stop' : this.updating ? 'update' : this.taking ? 'takeover' : reason);
+    this.o.go(reason);
   }
 }
 
