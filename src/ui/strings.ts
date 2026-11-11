@@ -4496,74 +4496,60 @@ export const money = (usd: number) => usd.toLocaleString(locale, { style: 'curre
 /** What an approved card says while Obeya lands it: a review card's agent's commits being pushed onto its PR, its merge, any other's landing. */
 export const landingLabel = (i: { contribution?: { held?: unknown } }) => (i.contribution ? (i.contribution.held ? t.review.pushingHeld : t.review.merging) : t.approving);
 
-export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: { held?: unknown }; landing?: true; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
-  i.snoozed
-    ? i.snoozed.on
-      ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))
-      : i.snoozed.contributor
-        ? t.snooze.contributor(i.snoozed.contributor.author, i.snoozed.until && snoozeWhen(i.snoozed.until))
-        : t.snooze.until(snoozeWhen(i.snoozed.until!))
-    : i.pausing
-    ? t.pause.pausing
-    : i.kind === 'question'
-    ? i.paused
-      ? t.pause.working
-      : i.thread?.thinking
-      ? t.question.reading
-      : t.question.ready
-    : i.prototypeEnd
-    ? t.idea.ended[i.prototypeEnd]
-    : i.paused
-    ? i.idea
-      ? t.pause.idea
-      : i.state === 'waiting' && i.need
-      ? t.pause.waiting(t.need[i.need])
-      : i.finishing
-      ? i.state === 'done' ? t.pause.done : t.pause.live
-      : i.state === 'inPr' ? t.pause.inPr : t.pause.working
-    : i.restartPaused
-    ? i.state === 'waiting' && i.need
-      ? t.restartPause.waiting(t.need[i.need])
-      : i.state === 'live' || i.state === 'done'
-      ? t.restartPause[i.state]
-      : i.state === 'inPr' ? t.restartPause.inPr : t.restartPause.working
-    : i.finishing && (i.state === 'live' || i.state === 'done')
-    ? i.followUp
-      ? i.state === 'done' ? t.followingUpDone : t.followingUp
-      : i.state === 'done' ? t.finishingDone : t.finishing
-    : i.idea
-    ? i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking
-      ? t.idea.yourTurn
-      : t.idea.status[i.idea.status]
-    : i.queue
-    ? 'checking' in i.queue
-      ? t.queue.checking
-      : 'paused' in i.queue
-        ? t.queue.paused
-      : 'workspace' in i.queue
-        ? i.queue.workspace === 'slots'
-          ? t.queue.slot
-          : t.queue.workspace
-        : t.queue.waiting
-    : i.state === 'waiting' && i.need
-      ? i.landing
-        ? landingLabel(i)
-        : i.answering
-        ? t.answering
-        : i.need === 'demo' && i.question
-          ? t.demoWithQuestion
-          : i.answered
-            ? t.agentAnswered
-            : t.need[i.need]
-      : i.state === 'inPr' && i.contribution
-        ? t.review.waits
-      : i.state === 'inPr' && !i.pr
-        ? t.openingPr
-        : i.state === 'proposal' && (i.retro || i.proposal?.setup)
-          ? t.proposalByObeya
-          : stopped(i)
-            ? t.stoppedState
-            : t.state[i.state];
+/** What a card's state line says: the first that holds of what is listed, in this order. */
+export function stateLabel(i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: { held?: unknown }; landing?: true; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }): string {
+  if (i.snoozed) {
+    const { on, contributor, until } = i.snoozed;
+    if (on) return t.snooze.on(on.title, on.state, until && snoozeWhen(until));
+    if (contributor) return t.snooze.contributor(contributor.author, until && snoozeWhen(until));
+    return t.snooze.until(snoozeWhen(until!));
+  }
+  if (i.pausing) return t.pause.pausing;
+  if (i.kind === 'question') return i.paused ? t.pause.working : i.thread?.thinking ? t.question.reading : t.question.ready;
+  if (i.prototypeEnd) return t.idea.ended[i.prototypeEnd];
+  if (i.paused) return pausedLabel(i);
+  if (i.restartPaused) return restartPausedLabel(i);
+  if (i.finishing && (i.state === 'live' || i.state === 'done')) {
+    if (i.followUp) return i.state === 'done' ? t.followingUpDone : t.followingUp;
+    return i.state === 'done' ? t.finishingDone : t.finishing;
+  }
+  if (i.idea) return i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking ? t.idea.yourTurn : t.idea.status[i.idea.status];
+  if (i.queue) return queueLabel(i.queue);
+  if (i.state === 'waiting' && i.need) {
+    if (i.landing) return landingLabel(i);
+    if (i.answering) return t.answering;
+    if (i.need === 'demo' && i.question) return t.demoWithQuestion;
+    return i.answered ? t.agentAnswered : t.need[i.need];
+  }
+  if (i.state === 'inPr' && i.contribution) return t.review.waits;
+  if (i.state === 'inPr' && !i.pr) return t.openingPr;
+  if (i.state === 'proposal' && (i.retro || i.proposal?.setup)) return t.proposalByObeya;
+  if (stopped(i)) return t.stoppedState;
+  return t.state[i.state];
+}
+
+/** A card whose agent the owner paused: what it was at. */
+function pausedLabel(i: { state: CardState; need?: Need; idea?: Idea; finishing?: boolean }): string {
+  if (i.idea) return t.pause.idea;
+  if (i.state === 'waiting' && i.need) return t.pause.waiting(t.need[i.need]);
+  if (i.finishing) return i.state === 'done' ? t.pause.done : t.pause.live;
+  return i.state === 'inPr' ? t.pause.inPr : t.pause.working;
+}
+
+/** A card whose agent waits for Obeya's restart: what it was at. */
+function restartPausedLabel(i: { state: CardState; need?: Need }): string {
+  if (i.state === 'waiting' && i.need) return t.restartPause.waiting(t.need[i.need]);
+  if (i.state === 'live' || i.state === 'done') return t.restartPause[i.state];
+  return i.state === 'inPr' ? t.restartPause.inPr : t.restartPause.working;
+}
+
+/** A card in the queue: what it waits for. */
+function queueLabel(q: Queue): string {
+  if ('checking' in q) return t.queue.checking;
+  if ('paused' in q) return t.queue.paused;
+  if ('workspace' in q) return q.workspace === 'slots' ? t.queue.slot : t.queue.workspace;
+  return t.queue.waiting;
+}
 
 /** An idea or a task decided as a project, until the project takes its place; a card that was an idea has the brief it was decided on. */
 export const becomesLabel = (i: { brief?: string }) => (i.brief !== undefined ? t.kind.becomesProject : t.kind.taskBecomesProject);
