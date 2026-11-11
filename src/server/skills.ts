@@ -5,6 +5,7 @@
 
 import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { Skill } from '../core/types';
+import { withTimeout } from '../core/late';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
 
 /** Where an agent works, as far as its skills go. */
@@ -79,14 +80,11 @@ export const sdkSkills: SkillLister = async (place) => {
       ...(place.untrusted ? { settingSources: ['user' as const] } : {}),
     },
   });
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const late = new Promise<never>((_, fail) => (timer = setTimeout(() => fail(new Error('Claude Code did not list its skills')), ANSWER_MS)));
     // which of Claude Code's own commands are skills, only the skill list says
-    const [commands, skills] = await Promise.race([Promise.all([q.supportedCommands(), q.reloadSkills().then((r) => r.skills)]), late]);
+    const [commands, skills] = await withTimeout(Promise.all([q.supportedCommands(), q.reloadSkills().then((r) => r.skills)]), ANSWER_MS, 'Claude Code did not list its skills');
     return skillsOf(commands, new Set(skills.map((s) => s.name)));
   } finally {
-    clearTimeout(timer);
     abort.abort();
   }
 };

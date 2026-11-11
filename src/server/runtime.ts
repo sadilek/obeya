@@ -30,6 +30,7 @@ import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
 import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type CardAgent, type Harness, storedModel } from '../core/types';
 import { messageOf } from '../core/text';
+import { within } from '../core/late';
 import { claudeLoginFailed, codexLoginLost } from '../core/login';
 
 export interface AgentTool {
@@ -635,9 +636,7 @@ const MCP_WAIT_MS = 15_000;
 export async function mcpSettled(q: { mcpServerStatus(): Promise<{ name: string; status: string }[]> }, own = 'obeya', ms = MCP_WAIT_MS): Promise<void> {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), deadline - Date.now())));
-    const servers = await Promise.race([q.mcpServerStatus().catch(() => null), late]).finally(() => clearTimeout(timer));
+    const servers = await within(q.mcpServerStatus().catch(() => null), deadline - Date.now());
     // a CLI that does not answer holds the message no longer
     if (!servers) return;
     if (servers.some((s) => s.name === own) && !servers.some((s) => s.status === 'pending')) return;

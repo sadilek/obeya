@@ -36,6 +36,7 @@ import { headSeal, refsSeal } from './read-tree';
 import type { CardRow, RowUpdate } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf, tooLong } from '../core/text';
+import { within } from '../core/late';
 import { holdsNotes } from '../core/queue';
 
 export interface WorkerOptions {
@@ -2967,7 +2968,7 @@ export class Workers {
       }
       this.bump(cardId);
       this.o.board.work(cardId, { status_line: this.o.board.t.worker.evicting });
-      await Promise.race([session?.done.catch(() => {}), Bun.sleep(EVICT_SESSION_WAIT)]);
+      await within(session?.done.catch(() => {}) ?? Promise.resolve(), EVICT_SESSION_WAIT);
       // parking the app may be under way already: it is through before the clone changes hands
       await this.stopping.get(cardId)?.catch(() => {});
       const stop = this.o.adapter.app?.stop;

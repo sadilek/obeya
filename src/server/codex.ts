@@ -20,6 +20,7 @@ import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { messageOf } from '../core/text';
+import { within, withTimeout } from '../core/late';
 import type { AgentEffort, HarnessModel, UsageLimit } from '../core/types';
 import { AGENT_EFFORTS, codexFamily, codexFamilyName, nearestEffort, resolveCodexModel } from '../core/types';
 import type { ToolCall } from './folder';
@@ -434,10 +435,8 @@ const MODELS_WAIT_MS = 30_000;
  * and a turn that starts before has the next one add the whole list again, the change from the one
  * the conversation last saw: some 2,500 tokens the cache does not hold, at each start or resume.
  */
-function pluginsListed(server: AppServer): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, 15_000)));
-  return Promise.race([server.request('plugin/list', {}).then(() => {}, () => {}), late]).finally(() => clearTimeout(timer));
+async function pluginsListed(server: AppServer): Promise<void> {
+  await within(server.request('plugin/list', {}).then(() => {}, () => {}), 15_000);
 }
 /** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
 const hookPortThere = () => 30_000 + Math.floor(Math.random() * 30_000);
@@ -542,17 +541,13 @@ class CodexSession implements AgentSession {
   private async model(server: AppServer): Promise<string> {
     const family = codexFamily(this.spec.model ?? 'default');
     const where = this.there?.host.name ?? 'this machine';
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer in ${MODELS_WAIT_MS / 1000} seconds`)), MODELS_WAIT_MS)));
     let catalog: HarnessModel[];
     try {
-      catalog = await Promise.race([listModels(server), late]);
+      catalog = await withTimeout(listModels(server), MODELS_WAIT_MS, `no answer in ${MODELS_WAIT_MS / 1000} seconds`);
     } catch (e) {
       if (e instanceof CodexError && codexLoginFailed(undefined, e.message)) throw new Error(notLoggedIn(this.there?.host.name ?? null, e.message));
       if (e instanceof CodexError && tooOld(e)) throw new Error(`Codex on ${where} is too old to list its models, so the agent did not start. Update Codex there.`);
       throw new Error(`Codex on ${where} did not list its models, so the agent did not start. (${messageOf(e)})`);
-    } finally {
-      clearTimeout(timer);
     }
     const model = resolveCodexModel(catalog, family);
     if (!model) throw new Error(`Codex on ${where} lists no model of the family ${codexFamilyName(family)} and no default, so the agent did not start.`);

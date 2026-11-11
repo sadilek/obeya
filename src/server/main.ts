@@ -48,6 +48,8 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { type RestartReason } from '../core/types';
+import { within } from '../core/late';
+import { messageOf } from '../core/text';
 import { type CanvasConfig, Canvases } from './canvas';
 import { Config, CONFIG_FILE, expandConfig, readConfigFile } from './config';
 import { checkPlugin } from './demo';
@@ -329,7 +331,7 @@ const harnesses = new Harnesses({
   },
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
-await Promise.race([harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${e instanceof Error ? e.message : e}`)), Bun.sleep(5000)]);
+await within(harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${messageOf(e)}`)), 5000);
 canvases = await Canvases.start(
   configs,
   {

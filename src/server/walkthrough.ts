@@ -18,6 +18,7 @@ import { LANGUAGES, type Language } from '../core/locale';
 import type { AnswerFile } from '../core/types';
 import { type Clip, estimatedStarts, heardStarts, itemsOf, type Slide, type SlideContent, type Walkthrough, WALKTHROUGH_SUFFIX } from '../core/walkthrough';
 import { clip, messageOf } from '../core/text';
+import { within } from '../core/late';
 import type { AgentTool } from './runtime';
 import { readsOut, tooFull } from './slide-checks';
 import { sentencesOf } from '../../plugin/skills/demo/lib/subtitles.ts';
@@ -205,19 +206,12 @@ export class Voicing {
     const sentence = w.data.slides[slide]!.parts[part]!;
     let words = estimatedStarts(sentence, seconds);
     if (this.o.hear) {
-      let expire = () => {};
-      const late = new Promise<undefined>((resolve) => {
-        const timer = setTimeout(() => resolve(undefined), this.o.hearMs ?? HEAR_MS);
-        expire = () => clearTimeout(timer);
-      });
       try {
-        const heard = await Promise.race([this.o.hear(wav, w.language), late]);
+        const heard = await within(this.o.hear(wav, w.language), this.o.hearMs ?? HEAR_MS);
         if (heard?.length) words = heardStarts(sentence, heard, seconds);
         else if (!heard) this.o.log?.(`Obeya: hearing a sentence of the walkthrough ${w.file} back took too long; its words start by their length`);
       } catch (e) {
         this.o.log?.(`Obeya: hearing a sentence of the walkthrough ${w.file} back failed: ${messageOf(e)}`);
-      } finally {
-        expire();
       }
     }
     w.timed(slide, part, words);

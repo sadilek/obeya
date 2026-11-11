@@ -9,6 +9,7 @@
 
 import { query, type SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
 import type { Harness, Usage, UsageLimit } from '../core/types';
+import { withTimeout } from '../core/late';
 import { Listeners, Watched } from '../core/watched';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
 
@@ -197,16 +198,6 @@ export class UsageMeters extends Listeners {
   stop() {
     for (const { meter } of this.meters) meter.stop();
   }
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`no answer after ${ms / 1000} s`)), ms);
-    p.then(
-      (v) => (clearTimeout(t), resolve(v)),
-      (e) => (clearTimeout(t), reject(e)),
-    );
-  });
 }
 
 /**
