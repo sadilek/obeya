@@ -604,7 +604,7 @@ export const MIGRATIONS = [
    CREATE INDEX talk_at ON talk (canvas_id, at);
    CREATE INDEX talk_waiting ON talk (canvas_id) WHERE waits IS NOT NULL;
    CREATE INDEX cards_parent ON cards (parent_id) WHERE parent_id IS NOT NULL;`,
-  // which shared cards were written, come or went (`Store.sharedChanges`), so a canvas keeps its
+  // which shared cards were written, come or went (`Store.sharedLog`), so a canvas keeps its
   // shared cards up to date by reading those again rather than all of them with every change
   `CREATE TABLE shared_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -629,7 +629,7 @@ export const MIGRATIONS = [
    UPDATE talk SET answer_by = 'coordinator' WHERE answer_by = 'koordinator';
    UPDATE decisions SET by = 'coordinator' WHERE by = 'koordinator';`,
   // the archive in its order, read a page at a time (`Store.archivePage`); and which of its rows were
-  // written, came or went (`Store.archiveChanges`), as the mark of the archive moves with them, so a
+  // written, came or went (`Store.archiveLog`), as the mark of the archive moves with them, so a
   // canvas keeps its search through the archive up to date by reading those again
   `CREATE INDEX cards_archive_order ON cards (canvas_id, archived_at, created_at, id) WHERE deleted_at IS NULL AND archived_at IS NOT NULL;
   CREATE TABLE archive_changes (
@@ -738,6 +738,19 @@ export class OlderDatabase extends UnusableDatabase {
 export class Store {
   readonly db: Database;
 
+  /**
+   * The log of shared cards' writes (`shared_changes`): which of a canvas's cards were written, came
+   * or went while they were shared or about to be.
+   */
+  readonly sharedLog = this.changeLog('shared_changes');
+
+  /**
+   * The log of the archive's writes (`archive_changes`): which of a canvas's cards may have changed
+   * archive entries, an archived card written, come or gone, and the archived project or idea of a
+   * workstream or prototype written.
+   */
+  readonly archiveLog = this.changeLog('archive_changes');
+
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path, { strict: true });
@@ -804,30 +817,29 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND share IS NOT NULL').all({ c: canvasId }) as CardRow[];
   }
 
-  /**
-   * The canvas's cards that were written, came or went since the log of shared cards' writes stood
-   * at `after` (`sharedLog`), while they were shared or about to be; and where the log stands now.
-   * The database keeps that log as the rows are written.
-   */
-  sharedChanges(canvasId: string, after: number): { upTo: number; ids: string[] } {
-    const rows = this.db.query('SELECT id, canvas_id AS canvas, card_id AS card FROM shared_changes WHERE id > $after').all({ after }) as { id: number; canvas: string; card: string }[];
-    return { upTo: rows.reduce((m, r) => Math.max(m, r.id), after), ids: [...new Set(rows.flatMap((r) => (r.canvas === canvasId ? [r.card] : [])))] };
-  }
-
   /** Which of these cards are on the canvas: neither deleted nor archived. */
   openIds(canvasId: string, ids: string[]): Set<string> {
     const rows = this.db.query('SELECT id FROM cards WHERE id IN (SELECT value FROM json_each($ids)) AND canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId, ids: JSON.stringify(ids) }) as { id: string }[];
     return new Set(rows.map((r) => r.id));
   }
 
-  /** Where the log of shared cards' writes stands now (`sharedChanges`); its entries' ids are never taken again. */
-  sharedLog(): number {
-    return (this.db.query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'shared_changes'), 0) AS n").get() as { n: number }).n;
-  }
-
-  /** The canvas read its shared cards' writes up to `upTo`: they leave the log. */
-  dropSharedChanges(canvasId: string, upTo: number) {
-    this.db.query('DELETE FROM shared_changes WHERE canvas_id = $c AND id <= $upTo').run({ c: canvasId, upTo });
+  /**
+   * A log the database keeps as cards are written: `changes`, the canvas's cards written since it
+   * stood at `after`, and where it stands now; `at`, where it stands now (its entries' ids are never
+   * taken again); `drop`, the canvas read its entries up to `upTo`, which leave it.
+   */
+  private changeLog(table: 'shared_changes' | 'archive_changes') {
+    const at = () => (this.db.query(`SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = '${table}'), 0) AS n`).get() as { n: number }).n;
+    return {
+      changes: (canvasId: string, after: number): { upTo: number; ids: string[] } => {
+        const rows = this.db.query(`SELECT card_id AS card FROM ${table} WHERE canvas_id = $c AND id > $after`).all({ c: canvasId, after }) as { card: string }[];
+        return { upTo: Math.max(after, at()), ids: [...new Set(rows.map((r) => r.card))] };
+      },
+      at,
+      drop: (canvasId: string, upTo: number) => {
+        this.db.query(`DELETE FROM ${table} WHERE canvas_id = $c AND id <= $upTo`).run({ c: canvasId, upTo });
+      },
+    };
   }
 
   /**
@@ -858,27 +870,6 @@ export class Store {
     return this.db
       .query('SELECT * FROM cards WHERE id IN (SELECT value FROM json_each($ids)) AND canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL')
       .all({ c: canvasId, ids: JSON.stringify(ids) }) as CardRow[];
-  }
-
-  /**
-   * The canvas's cards whose archive entries may have changed since the log of the archive's writes
-   * stood at `after` (`archiveLog`): an archived card written, come or gone, and the archived project
-   * or idea of a workstream or prototype written; and where the log stands now. The database keeps
-   * that log as the rows are written.
-   */
-  archiveChanges(canvasId: string, after: number): { upTo: number; ids: string[] } {
-    const rows = this.db.query('SELECT id, card_id AS card FROM archive_changes WHERE canvas_id = $c AND id > $after').all({ c: canvasId, after }) as { id: number; card: string }[];
-    return { upTo: Math.max(after, this.archiveLog()), ids: [...new Set(rows.map((r) => r.card))] };
-  }
-
-  /** Where the log of the archive's writes stands now (`archiveChanges`); its entries' ids are never taken again. */
-  archiveLog(): number {
-    return (this.db.query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'archive_changes'), 0) AS n").get() as { n: number }).n;
-  }
-
-  /** The canvas read its archive's writes up to `upTo`: they leave the log. */
-  dropArchiveChanges(canvasId: string, upTo: number) {
-    this.db.query('DELETE FROM archive_changes WHERE canvas_id = $c AND id <= $upTo').run({ c: canvasId, upTo });
   }
 
   /**

@@ -446,7 +446,7 @@ export class Board {
     store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
     convertSingleDemoShares(store, canvas.id);
     // the search reads the whole archive anew the first time: what its log held before is read with it
-    store.dropArchiveChanges(canvas.id, store.archiveLog());
+    store.archiveLog.drop(canvas.id, store.archiveLog.at());
   }
 
   readonly conversation: () => Language;
@@ -766,16 +766,16 @@ export class Board {
 
   /**
    * The cards of the canvas, archived ones too, that were ever shared or are about to be: read once,
-   * then kept up to date by reading again those the database logged a write of (`Store.sharedChanges`).
+   * then kept up to date by reading again those the database logged a write of (`Store.sharedLog`).
    * A row stays the same object while it is not written, so what is made of it can be kept with it.
    */
   sharedRows(): CardRow[] {
     if (!this.shared) {
-      const upTo = this.store.sharedLog();
+      const upTo = this.store.sharedLog.at();
       this.shared = { upTo, rows: new Map(this.store.shared(this.canvas.id).map((r) => [r.id, r])) };
-      this.store.dropSharedChanges(this.canvas.id, upTo);
+      this.store.sharedLog.drop(this.canvas.id, upTo);
     } else {
-      const { upTo, ids } = this.store.sharedChanges(this.canvas.id, this.shared.upTo);
+      const { upTo, ids } = this.store.sharedLog.changes(this.canvas.id, this.shared.upTo);
       if (ids.length) {
         const rows = new Map(this.store.shared(this.canvas.id, ids).map((r) => [r.id, r]));
         for (const id of ids) {
@@ -783,7 +783,7 @@ export class Board {
           if (r) this.shared.rows.set(id, r);
           else this.shared.rows.delete(id);
         }
-        this.store.dropSharedChanges(this.canvas.id, upTo);
+        this.store.sharedLog.drop(this.canvas.id, upTo);
       }
       this.shared.upTo = upTo;
     }
@@ -1811,13 +1811,13 @@ export class Board {
       this.archiveIndex = await this.indexing;
     }
     const index = this.archiveIndex;
-    const { upTo, ids } = this.store.archiveChanges(this.canvas.id, index.upTo);
+    const { upTo, ids } = this.store.archiveLog.changes(this.canvas.id, index.upTo);
     if (ids.length) {
       const rows = this.store.archivedRows(this.canvas.id, ids);
       for (const id of ids) index.byTop.delete(id);
       for (const [top, entries] of this.indexEntries(rows)) index.byTop.set(top, entries);
       index.order = null;
-      this.store.dropArchiveChanges(this.canvas.id, upTo);
+      this.store.archiveLog.drop(this.canvas.id, upTo);
     }
     index.upTo = upTo;
     return index;
@@ -1826,8 +1826,8 @@ export class Board {
   /** The whole archive as the search reads it, a slice at a time. */
   private async indexArchive(): Promise<ArchiveIndex> {
     // the writes from here on are read again after
-    const upTo = this.store.archiveLog();
-    this.store.dropArchiveChanges(this.canvas.id, upTo);
+    const upTo = this.store.archiveLog.at();
+    this.store.archiveLog.drop(this.canvas.id, upTo);
     const byTop = new Map<string, Indexed[]>();
     for (let after: ArchiveCursor | undefined, first = true; first || after; first = false) {
       const rows = this.store.archivePage(this.canvas.id, INDEX_SLICE, after);
