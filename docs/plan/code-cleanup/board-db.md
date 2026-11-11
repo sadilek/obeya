@@ -45,6 +45,17 @@ across the server.
   these; covered by `db.test.ts`, `board.test.ts`, `commands.test.ts`, `answers.test.ts`.
 - Confidence: high. Every listed method read on both sides; none does anything but delegate. Callers
   counted by grep.
+- Done by W8, in the first shape: `Sheet` in `sheet.ts` holds the talk table's operations, its row
+  mapping and the commands waiting for "Undo", calling `changed()` after the writes the Board's twins
+  did; `History` in `history.ts` holds the read-only queries (`timeline`, `mark`, `utterances`,
+  `decidedProposals`, `removed`) with `Mark`, `Moment` and `Utterance`. `Board` exposes both as
+  `sheet` and `history` and keeps `interruptTalk`, `followTalk` and `moved`, which add logic of their
+  own. Of the 36, eleven stay on `Board`: `event` reads the card's log; `friction`, `addFriction`,
+  `decide`, `decisions`, `decisionsOn`, `setting`, `setSetting`, `retroProposals`,
+  `settingProposals` and `preferences` belong to other subjects of the board (the retrospective,
+  decisions, settings, rules), and four of them add logic (`repoColumn`, the empty-notes guard,
+  `toDecision`, the states as rest arguments). Putting them into the `Sheet` would make it a grab-bag;
+  an object per subject would be more machinery than the two-line pass-throughs it replaces.
 
 ### C2. What a card row's JSON columns hold is cast by hand at about ninety places
 - Principle: DRY
@@ -221,8 +232,7 @@ across the server.
 - Win: seven call sites that read without counting; no `undefined` placeholders.
 - Risk: low; type-checked. Tests call `addTalk` 14 times.
 - Confidence: high. All call sites read.
-- Done by W7 on its own, ahead of C1 (W8): `NewTalk` and `TalkReply` in `db.ts`, taken by both
-  `Store` and `Board`, and `ask`'s options; the question looked up is a named `TalkLookUp`. The
+- Done by W7 on its own, ahead of C1 (W8): `NewTalk` and `TalkReply` (now in `sheet.ts`), and `ask`'s options; the question looked up is a named `TalkLookUp`. The
   Commander's local `reply` takes `TalkReply` too.
 
 ### C8. State predicates are restated inline beside their helpers

@@ -437,7 +437,7 @@ export class CanvasRuntime {
         // looked up for an action: the Coordinator takes it now, hearing the answer with it
         if (this.commander.answerIn(talk)) return;
         // asked in a project's sheet, the question went to its project agent without Obeya reading it
-        const sheet = board.exchange(talk)?.askedIn;
+        const sheet = board.sheet.exchange(talk)?.askedIn;
         const project = sheet ? board.item(sheet)?.title : undefined;
         this.commander.tell(
           project !== undefined
@@ -1833,7 +1833,7 @@ export class CanvasRuntime {
 
   /** The output directory of a looked-up thread of this canvas. */
   answerDir(thread: number): string {
-    if (!Number.isInteger(thread) || !this.board.threadTalk(thread).length) throw new BadRequest('invalid', 'unknown thread');
+    if (!Number.isInteger(thread) || !this.board.sheet.thread(thread).length) throw new BadRequest('invalid', 'unknown thread');
     return answersDir(this.deps.home, this.id, thread);
   }
 

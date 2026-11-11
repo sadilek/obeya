@@ -184,7 +184,7 @@ describe('the Coordinator remembers', () => {
     await settle();
     expect(ran).toEqual([{ do: 'newCard', title: 'Hinweis „unten“ korrigieren', body: 'Die Demo-Einstellungen stehen links.', start: true }]);
     expect(next.holding()).toBe(false);
-    expect(later.heldCommands()).toEqual([]);
+    expect(later.sheet.heldCommands()).toEqual([]);
     // it runs once: a third start finds nothing
     const third = new Commander({ board: later, runtime, cwd: '/r', execute: (c) => void ran.push(c), delayMs: 20 });
     third.resume();
@@ -196,9 +196,9 @@ describe('the Coordinator remembers', () => {
     const k = commander();
     const { heard } = await say(k, 'neue Aufgabe Archiv', 'act', { actions: [{ do: 'new_card', title: 'Archiv', body: 'Archiv.' }], confirm: 'Neue Aufgabe „Archiv“.' });
     k.arm(heard.token!);
-    expect(board.heldCommands()).toHaveLength(1);
+    expect(board.sheet.heldCommands()).toHaveLength(1);
     expect(k.undo(heard.token!)).toBe(true);
-    expect(board.heldCommands()).toEqual([]);
+    expect(board.sheet.heldCommands()).toEqual([]);
     expect(k.holding()).toBe(false);
 
     let release: (() => void) | undefined;
@@ -571,7 +571,7 @@ describe('the Coordinator remembers', () => {
     await say(k, 'wie zerlegt Obeya Anforderungen?', 'reply', { confirm: 'In Stufen: Idee, Plan-Doc, Projekt.' });
     expect(board.snapshot().talk.at(-1)).toMatchObject({ reply: 'In Stufen: Idee, Plan-Doc, Projekt.', unread: true });
     expect(waitingOn(board.snapshot())).toBe(1);
-    board.readTalk();
+    board.sheet.read();
     expect(board.snapshot().talk.at(-1)!.unread).toBeUndefined();
     await say(k, 'starte Export', 'act', { actions: [{ do: 'start', card: tag(a) }], confirm: '„Export“ startet.' });
     expect(board.snapshot().talk.at(-1)!.unread).toBeUndefined();
@@ -580,7 +580,7 @@ describe('the Coordinator remembers', () => {
     runtime.last.call('reply', { confirm: 'Er wartet.' });
     runtime.last.emit({ type: 'idle' });
     await heard;
-    expect(board.talk().at(-1)!.unread).toBeUndefined();
+    expect(board.sheet.latest().at(-1)!.unread).toBeUndefined();
   });
 
   test('words in reply to a message of the sheet stand with its quote, and the Coordinator reads the message whole', async () => {
@@ -602,12 +602,12 @@ describe('the Coordinator remembers', () => {
     expect(board.snapshot().talk.at(-1)!.replyTo).toEqual({ talk: first!.id, part: 'reply', by: 'coordinator', text: 'Zwei: „Export“ und „Login“.' });
     expect(await reply('nochmal', { talk: first!.id, part: 'said' })).toContain('[In reply to their own earlier message: “wie viele Karten laufen?”]');
     // a looked-up answer goes by its tag, to follow up on it
-    store.answerTalk(first!.id, 'Export wartet auf dich.', 'project');
+    board.sheet.answer(first!.id, 'Export wartet auf dich.', 'project');
     expect(await reply('warum?', { talk: first!.id, part: 'answer' })).toContain(`[In reply to the answer A${first!.id} the project's agent looked up: “Export wartet auf dich.”]`);
     // what is no message of the sheet is dropped, and the words go alone
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     await say(k, 'hallo', 'reply', { confirm: 'Hallo.' });
-    const onCard = board.addTalk('starte ihn', 'Startet.', { card: a.id });
+    const onCard = board.sheet.add('starte ihn', 'Startet.', { card: a.id });
     for (const ref of [{ talk: first!.id + 99, part: 'reply' }, { talk: onCard, part: 'reply' }, { talk: first!.id, part: 'nothing' }, 7]) {
       expect(await reply('so?', ref)).not.toContain('In reply to');
       expect(board.snapshot().talk.at(-1)!.replyTo).toBeUndefined();
@@ -641,8 +641,8 @@ describe('the Coordinator remembers', () => {
 
   test('words being read when Obeya stopped get a reply that says so, in the sheet and on the card', () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
-    board.addTalk('hallo', '');
-    board.addTalk('starte ihn', '', { card: a.id });
+    board.sheet.add('hallo', '');
+    board.sheet.add('starte ihn', '', { card: a.id });
     board.log(a.id, 'say', 'owner', 'starte ihn');
     board.interruptTalk();
     expect(board.snapshot().talk.map((t) => t.reply)).toEqual(['Obeya startete neu, bevor ich das gelesen hatte. Bitte noch einmal.']);
@@ -765,7 +765,7 @@ describe('the usage limit', () => {
     // not tried itself: the limit held the words before it
     expect(runtime.sessions).toHaveLength(2);
     expect(board.snapshot().talk.map((t) => !!t.heldUntil)).toEqual([true]);
-    expect(store.heldTalk('c').map((t) => t.said)).toEqual(['hallo', 'starte ihn']);
+    expect(board.sheet.held().map((t) => t.said)).toEqual(['hallo', 'starte ihn']);
     expect(board.events(a.id).map((e) => [e.author, e.text.slice(0, 30)])).toEqual([
       ['owner', 'starte ihn'],
       ['coordinator', 'Das Nutzungslimit ist erreicht'],
@@ -782,7 +782,7 @@ describe('the usage limit', () => {
     runtime.last.emit({ type: 'idle' });
     await until(() => board.events(a.id).length === 3);
     expect(board.events(a.id).at(-1)).toMatchObject({ author: 'coordinator', text: '„Export“ startet.' });
-    expect(store.heldTalk('c')).toEqual([]);
+    expect(board.sheet.held()).toEqual([]);
   });
 
   test('held words survive a restart and are read once the limit lifts', async () => {
@@ -793,8 +793,8 @@ describe('the usage limit', () => {
     await heard;
     // Obeya restarts, shortly before the limit lifts: the words are not cut off, and a new Commander reads them
     k.shutdown();
-    const [x] = store.heldTalk('c');
-    store.holdTalk(x!.id, { ...x!.held, until: new Date(Date.now() + 30).toISOString() });
+    const [x] = board.sheet.held();
+    board.sheet.hold(x!.id, { ...x!.held, until: new Date(Date.now() + 30).toISOString() });
     board.interruptTalk();
     expect(board.snapshot().talk[0]!.reply).toBeUndefined();
     limited().resume();
@@ -802,7 +802,7 @@ describe('the usage limit', () => {
     runtime.last.call('reply', { confirm: 'Nichts.' });
     runtime.last.emit({ type: 'idle' });
     await until(() => board.snapshot().talk[0]!.reply === 'Nichts.');
-    expect(store.heldTalk('c')).toEqual([]);
+    expect(board.sheet.held()).toEqual([]);
   });
 });
 
@@ -920,7 +920,7 @@ describe('what the owner says or types to the Coordinator about a card with an a
     k.arm((await heard).token!);
     await ran(k);
     expect(executed[0]).toMatchObject({ do: 'feedback', text: question, spoken: false });
-    expect(board.lookingUp()).toEqual([]);
+    expect(board.sheet.lookingUp()).toEqual([]);
   });
 
   test('a note together with a command waits with it', async () => {
@@ -1399,7 +1399,7 @@ describe('a step the Coordinator takes once a card gets somewhere', () => {
     expect(executed[1]).toEqual({ do: 'start', card: other.id });
     expect(board.snapshot().talk).toHaveLength(3);
     // the owner said none of it: nothing to learn from
-    expect(store.utterances('c', '2000-01-01', 10).map((u) => u.text)).toEqual(['Leg eine Aufgabe an, die das Repo erstellt, und dann die Leinwand', 'was läuft?']);
+    expect(board.history.utterances('2000-01-01', 10).map((u) => u.text)).toEqual(['Leg eine Aufgabe an, die das Repo erstellt, und dann die Leinwand', 'was läuft?']);
   });
 
   test('a card that no longer gets there wakes it too, to tell the owner; a fresh session remembers the exchange', async () => {
@@ -1555,7 +1555,7 @@ describe('a step the Coordinator takes once it has looked something up', () => {
     // no answer yet: nothing to take up
     expect(k.answerIn(asking!.id)).toBe(false);
 
-    board.answerTalk(asking!.id, '- #27 Skills per „/“ (https://github.com/o/r/issues/27)\n- #25 Freigabe scheitert (https://github.com/o/r/issues/25)', 'coordinator');
+    board.sheet.answer(asking!.id, '- #27 Skills per „/“ (https://github.com/o/r/issues/27)\n- #25 Freigabe scheitert (https://github.com/o/r/issues/25)', 'coordinator');
     expect(k.answerIn(asking!.id)).toBe(true);
     // a second call while it is taken up takes it up once
     expect(k.answerIn(asking!.id)).toBe(false);
@@ -1579,11 +1579,11 @@ describe('a step the Coordinator takes once it has looked something up', () => {
     expect(notices[0]).toMatchObject({ text: 'Zwei neue Aufgaben: „Skills per „/““ und „Freigabe scheitert“.', talk: after.id, undoMs: 20 });
     // decided: the step is no longer to take
     expect(board.snapshot().talk[0]!.then).toBeUndefined();
-    expect(board.answeredSteps()).toEqual([]);
+    expect(board.sheet.answeredSteps()).toEqual([]);
     await until(() => executed.length === 2);
     expect(executed.map((c) => c.do === 'newCard' && c.title)).toEqual(['Skills per „/“', 'Freigabe scheitert']);
     // the owner said it once: nothing more to learn from
-    expect(store.utterances('c', '2000-01-01', 10).map((u) => u.text)).toEqual(['Es gibt drei offene Issues bei GitHub, erstelle für jedes eine eigene Karte.']);
+    expect(board.history.utterances('2000-01-01', 10).map((u) => u.text)).toEqual(['Es gibt drei offene Issues bei GitHub, erstelle für jedes eine eigene Karte.']);
 
     // a fresh session reads the exchange as one it took up by itself
     const fresh = looking();
@@ -1600,7 +1600,7 @@ describe('a step the Coordinator takes once it has looked something up', () => {
     runtime.last.emit({ type: 'idle' });
     await heard;
     const [asking] = board.snapshot().talk;
-    board.answerTalk(asking!.id, '#3 Login\n#4 Logout', 'coordinator');
+    board.sheet.answer(asking!.id, '#3 Login\n#4 Logout', 'coordinator');
     // the server stops before it takes the step up; the next one takes it up where the owner was
     looking().resume();
     await until(() => runtime.last.inbox.length === 1);
@@ -1612,7 +1612,7 @@ describe('a step the Coordinator takes once it has looked something up', () => {
       { do: 'newCard', title: 'Logout', place },
     ]);
     expect(board.snapshot().talk[0]!.then).toBeUndefined();
-    expect(board.exchange(asking!.id)!.thenPlace).toBeUndefined();
+    expect(board.sheet.exchange(asking!.id)!.thenPlace).toBeUndefined();
   });
 
   test('a question looked up without a step is only answered', async () => {
@@ -1620,7 +1620,7 @@ describe('a step the Coordinator takes once it has looked something up', () => {
     await say(k, 'welche Issues sind offen?', 'look_up', { question: 'Welche Issues sind offen?', confirm: 'Ich schaue nach.' });
     const [asking] = board.snapshot().talk;
     expect(asking!.then).toBeUndefined();
-    board.answerTalk(asking!.id, 'Zwei.', 'coordinator');
+    board.sheet.answer(asking!.id, 'Zwei.', 'coordinator');
     expect(k.answerIn(asking!.id)).toBe(false);
   });
 
@@ -1628,8 +1628,8 @@ describe('a step the Coordinator takes once it has looked something up', () => {
     const k = looking();
     await say(k, 'leg für jedes offene Issue eine Aufgabe an', 'look_up', { question: 'Welche Issues sind offen?', then: 'Create a task for each.', confirm: 'Ich lese nach und lege sie dann an.' });
     const [asking] = board.snapshot().talk;
-    board.answerTalk(asking!.id, '#3 Login', 'coordinator');
-    expect(board.answeredSteps().map((x) => x.id)).toEqual([asking!.id]);
+    board.sheet.answer(asking!.id, '#3 Login', 'coordinator');
+    expect(board.sheet.answeredSteps().map((x) => x.id)).toEqual([asking!.id]);
     // the server stops before it takes the step up; the next one does
     looking().resume();
     await until(() => runtime.last.inbox.length === 1);
@@ -1696,7 +1696,7 @@ describe('card numbers', () => {
   });
 
   test('its memory of exchanges from before cards had numbers says that a K-number said then names another card now', async () => {
-    board.addTalk('archiviere K7', 'K7 „Alt“ ist archiviert.');
+    board.sheet.add('archiviere K7', 'K7 „Alt“ ist archiviert.');
     store.setSetting('c', 'card_numbers_since', new Date(Date.now() + 1000).toISOString());
     const { brief } = await say(commander(), 'hallo', 'reply', { confirm: 'Hallo.' });
     expect(brief).toContain("a card's K-number held for one session only, so one said then names another card than the same number now");

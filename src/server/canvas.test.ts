@@ -1432,15 +1432,15 @@ test('a canvas that stops reads no words the usage limit held and runs no comman
   expect(coordinators()).toHaveLength(1);
   expect(item(a.id).state).toBe('planned');
   // both are kept, as a restart leaves them
-  expect(s.heldTalk(canvas.id).map((x) => x.said)).toEqual(['was läuft?']);
-  expect(canvas.board.heldCommands()).toHaveLength(1);
+  expect(canvas.board.sheet.held().map((x) => x.said)).toEqual(['was läuft?']);
+  expect(canvas.board.sheet.heldCommands()).toHaveLength(1);
 
   // the canvas runs again: it runs the command and reads the words
   canvas = await start({ repos: [{ path: web, settings: { land: 'pr' } }] }, deps);
   await until(() => coordinators().length === 2);
   expect(coordinators()[1]!.inbox.at(-1)).toContain('"was läuft?"');
   await until(() => item(a.id).state !== 'planned');
-  expect(canvas.board.heldCommands()).toEqual([]);
+  expect(canvas.board.sheet.heldCommands()).toEqual([]);
 });
 
 test('what the owner writes in a card, or says to the Coordinator without one, reaches the learner', async () => {

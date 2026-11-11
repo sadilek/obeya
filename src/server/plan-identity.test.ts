@@ -295,7 +295,7 @@ describe('cards of a doc read by an older Obeya, as workers left it', () => {
     ]);
     expect(board.archived()).toEqual([]);
     // no card the move dropped reads as one the owner deleted
-    expect(store.removed('c', since)).toEqual([]);
+    expect(board.history.removed(since)).toEqual([]);
   });
 });
 

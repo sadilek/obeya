@@ -19,7 +19,6 @@ import { pageTags, untagged } from '../core/page-tags';
 import { allTicked, type OtherDoc, type PlanDoc, parsePlanDoc, withoutReference, type Workstream, workstreamAliases } from '../core/plan-doc';
 import { type ArchiveLabel, archiveLabel, fold, inTitle, searchText, searchWords } from '../core/search';
 import {
-  type AnswerFile,
   type ArchivePage,
   type CanvasInfo,
   type CanvasSnapshot,
@@ -55,9 +54,7 @@ import {
   type PlanDir,
   type Queue,
   type Reshare,
-  type TalkQuote,
   type Thread,
-  isTalkRef,
   STATES,
   archivedWithDone,
   finished,
@@ -74,7 +71,9 @@ import {
   cardAgentOf,
   storedModel,
 } from '../core/types';
-import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewEvent, NewRow, NewTalk, RowUpdate, Store, TalkReply, TalkWaitRow } from './db';
+import type { ArchiveCursor, CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewEvent, NewRow, RowUpdate, Store } from './db';
+import { History } from './history';
+import { Sheet } from './sheet';
 import { fromJson, type DemoRef, type PrState, type SharedDemo, type Shipped, type StoredDemo, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredShare, type StoredThread, toJson } from './row';
 import type { Images } from './images';
 import { sessionHarness } from './runtime';
@@ -441,6 +440,8 @@ export class Board {
     conversation?: () => Language,
   ) {
     this.conversation = conversation ?? language;
+    this.sheet = new Sheet(store.db, canvas.id, () => this.changed());
+    this.history = new History(store.db, canvas.id);
     store.ensureCanvas(canvas.id, canvas.name);
     // a new card whose page closed before anything was written in it was never wanted
     store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
@@ -450,6 +451,10 @@ export class Board {
   }
 
   readonly conversation: () => Language;
+  /** The Coordinator's memory of the canvas: its exchanges with the owner, the questions it looks up, the commands waiting for "Undo". */
+  readonly sheet: Sheet;
+  /** What happened on the canvas, as the Coordinator and the learner read it back. */
+  readonly history: History;
 
   /** What Obeya says to the owner, in the interface language. */
   get t(): Messages {
@@ -667,9 +672,9 @@ export class Board {
     return !!this.store.event(cardId, id)?.unread;
   }
 
-  /** The message of the sheet `ref` names, if it is one the owner can reply to there. */
-  quotedTalk(ref: unknown): TalkQuote | undefined {
-    return isTalkRef(ref) ? this.store.sheetQuote(this.canvas.id, ref) : undefined;
+  /** A message of the card's log, by its id. */
+  event(cardId: string, id: number) {
+    return this.store.event(cardId, id);
   }
 
   /** The message of the card's conversation the owner's words reply to, if `id` is one: what someone said, not a step or a state change. */
@@ -1371,170 +1376,18 @@ export class Board {
   // ---------------------------------------------------------------- the Coordinator's memory
 
   /**
-   * Records an exchange with the Coordinator, without its reply (`''`) while it reads the words;
-   * returns its id. `replyTo`: the message of the sheet the words reply to.
-   */
-  addTalk(said: string, reply: string, talk: NewTalk = {}): number {
-    const id = this.store.addTalk(this.canvas.id, said, reply, talk);
-    this.changed();
-    return id;
-  }
-
-  /**
-   * The Coordinator's reply to words it has read (`TalkReply`).
-   */
-  replyTalk(id: number, reply: string, how: TalkReply = {}) {
-    this.store.replyTalk(id, reply, how);
-    this.changed();
-  }
-
-  /**
    * After a restart: words the Coordinator was reading when Obeya stopped are not read any more;
    * they get a reply that says so, in the sheet or on the card that was open.
    */
   interruptTalk() {
-    const lost = this.store.interruptTalk(this.canvas.id, this.t.voice.interrupted);
-    for (const x of lost) if (x.cardId && this.item(x.cardId)) this.log(x.cardId, 'say', 'coordinator', this.t.voice.interrupted, { reply: true });
-    if (lost.length) this.changed();
-  }
-
-  /** Words the usage limit keeps the Coordinator from reading, until it lifts; `null` once it reads them. */
-  holdTalk(id: number, held: HeldTalk | null) {
-    this.store.holdTalk(id, held);
-    this.changed();
-  }
-
-  /** The words the usage limit holds, oldest first: after a restart, the Coordinator reads them once it lifts. */
-  heldTalk() {
-    return this.store.heldTalk(this.canvas.id);
-  }
-
-  /** The cards the Coordinator waits on after the exchange's reply, to take a step once each gets there. */
-  waitTalk(id: number, waits: TalkWaitRow[]) {
-    this.store.waitTalk(id, waits);
-    this.changed();
-  }
-
-  /** The exchanges whose reply said the Coordinator waits on a card. */
-  waitingTalk() {
-    return this.store.waitingTalk(this.canvas.id);
-  }
-
-  /** The step the Coordinator takes once the exchange's looked-up answer is in, and where the owner was then; `null` once it has decided it. */
-  thenTalk(id: number, then: string | null, place?: Place) {
-    this.store.thenTalk(id, then, place);
-  }
-
-  /** Looked-up answers that are in whose step the Coordinator has not decided yet: after a restart, it takes them up. */
-  answeredSteps() {
-    return this.store.answeredSteps(this.canvas.id);
-  }
-
-  undoTalk(id: number) {
-    this.store.undoTalk(id);
-    this.changed();
-  }
-
-  /** A command waiting for "Undo" until `due`, kept across a restart (`Commander`). */
-  holdCommand(token: string, due: number, body: unknown) {
-    this.store.holdCommand(this.canvas.id, token, new Date(due).toISOString(), JSON.stringify(body));
-  }
-
-  dropCommand(token: string) {
-    this.store.dropCommand(token);
-  }
-
-  heldCommands(): { token: string; due: number; body: unknown }[] {
-    return this.store.heldCommands(this.canvas.id).map((r) => ({ token: r.token, due: Date.parse(r.due), body: JSON.parse(r.body) as unknown }));
-  }
-
-  talk(limit?: number) {
-    return this.store.talk(this.canvas.id, limit);
-  }
-
-  /** The answer to a question the Coordinator looked up, with the files it comes with. */
-  answerTalk(id: number, answer: string, by: 'coordinator' | 'project', files: AnswerFile[] = []) {
-    this.store.answerTalk(id, answer, by, files);
-    this.changed();
-  }
-
-  /** The files an exchange shows while its answer is still being looked up: the walkthrough it plays meanwhile. */
-  talkFiles(id: number, files: AnswerFile[]) {
-    this.store.talkFiles(id, files);
-    this.changed();
+    for (const x of this.sheet.interrupt(this.t.voice.interrupted)) if (x.cardId && this.item(x.cardId)) this.log(x.cardId, 'say', 'coordinator', this.t.voice.interrupted, { reply: true });
   }
 
   /** The exchange follows up on the answer of `follows`: it goes on in that one's thread. */
   followTalk(id: number, follows: number) {
-    const f = this.store.exchange(follows);
+    const f = this.sheet.exchange(follows);
     if (!f?.thread) throw new BadRequest('invalid', 'the exchange followed up on was not looked up');
-    this.store.followTalk(id, f.thread, follows);
-    this.changed();
-  }
-
-  /** The session of the agent that looks the exchange's question up. */
-  talkSession(id: number, session: string) {
-    this.store.talkSession(id, session);
-  }
-
-  /** The exchanges of a looked-up thread, oldest first. */
-  threadTalk(thread: number) {
-    return this.store.thread(this.canvas.id, thread);
-  }
-
-  /** The thread is on a Question card from now on. */
-  moveThread(thread: number, card: string) {
-    this.store.moveThread(this.canvas.id, thread, card);
-    this.changed();
-  }
-
-  /** The owner has Obeya's sheet in view, or (`ids`) those exchanges in a project's sheet. */
-  readTalk(ids?: number[]) {
-    if (this.store.readTalk(this.canvas.id, ids)) this.changed();
-  }
-
-  exchange(id: number) {
-    return this.store.exchange(id);
-  }
-
-  /** The exchange a reply of the Coordinator's in the card's log stands for. */
-  cardReply(cardId: string, reply: string) {
-    return this.store.cardReply(cardId, reply);
-  }
-
-  /** A message of the card's log, by its id. */
-  event(cardId: string, id: number) {
-    return this.store.event(cardId, id);
-  }
-
-  /** Questions the Coordinator is still looking up. */
-  lookingUp(): number[] {
-    return this.store.lookingUp(this.canvas.id);
-  }
-
-  /** The cards' history after `since` (ISO time, or a `mark`), oldest first, at most the latest `limit` steps. */
-  timeline(since: string | Mark, limit: number) {
-    return this.store.timeline(this.canvas.id, since, limit);
-  }
-
-  /** Where the cards' history stands now. */
-  mark() {
-    return this.store.mark();
-  }
-
-  /** What the owner said after `since` (ISO time), oldest first, at most the latest `limit`. */
-  utterances(since: string, limit: number) {
-    return this.store.utterances(this.canvas.id, since, limit);
-  }
-
-  /** Rule proposals the owner accepted or rejected after `since` (ISO time), oldest first. */
-  decidedProposals(since: string) {
-    return this.store.decidedProposals(this.canvas.id, since);
-  }
-
-  /** The owner's cards deleted after `since` (ISO time), oldest first. */
-  removed(since: string) {
-    return this.store.removed(this.canvas.id, since);
+    this.sheet.follow(id, f.thread, follows);
   }
 
   /**
@@ -1937,7 +1790,7 @@ export class Board {
     const fromOrigin = origin && !origin.deleted_at ? this.store.cardDecisions(this.canvas.id, origin.id) : [];
     const decisions = [...fromOrigin, ...own].sort((a, b) => a.at.localeCompare(b.at) || a.id - b.id).map(toDecision);
     // what its project agent answered: about the project or one of its workstreams
-    const talk = this.store.talkAbout(this.canvas.id, [id, ...this.store.children([id]).map((c) => c.id)]);
+    const talk = this.sheet.about([id, ...this.store.children([id]).map((c) => c.id)]);
     return { decisions, origin: origin && !origin.deleted_at ? (this.card(origin.id) ?? null) : null, talk };
   }
 
@@ -2027,7 +1880,7 @@ export class Board {
   snapshot(): CanvasSnapshot {
     const items = this.items();
     if (this.cache) return this.cache;
-    const talk = this.store.talk(this.canvas.id, SHEET_TALK, true);
+    const talk = this.sheet.latest(SHEET_TALK, true);
     const reshare = this.reshare();
     const pools = this.clonePools();
     const planDirs = this.planDirs(this.docs!, this.rows!);
@@ -2828,8 +2681,7 @@ export class Board {
 
   /** The owner's history of the canvas, in Obeya's sheet: the card left for another canvas. */
   moved(m: TalkMoved) {
-    this.store.addMoved(this.canvas.id, m, this.t.newRepo.movedAway(m.title, m.canvasName));
-    this.changed();
+    this.sheet.addMoved(m, this.t.newRepo.movedAway(m.title, m.canvasName));
   }
 
   /**

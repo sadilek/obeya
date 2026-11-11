@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MIGRATIONS, NewerDatabase, OlderDatabase, RELEASED, SCHEMA, SHORT, Store } from './db';
+import { Sheet } from './sheet';
 
 /**
  * A database as an Obeya left it that knew the first `n` migrations: the released schema and those,
@@ -262,7 +263,7 @@ test('the migration gives what the Coordinator said, looked up and decided as `k
     db.close();
     const after = new Store(path);
     expect(after.event('card', 1)!.author).toBe('coordinator');
-    expect(after.talk('c').find((t) => t.id === 1)!.answerBy).toBe('coordinator');
+    expect(new Sheet(after.db, 'c', () => {}).latest().find((t) => t.id === 1)!.answerBy).toBe('coordinator');
     expect(after.cardDecisions('c', 'card').map((d) => d.by)).toEqual(['coordinator']);
     after.db.close();
   }));

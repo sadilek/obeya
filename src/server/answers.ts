@@ -87,21 +87,21 @@ export class Answers {
   /** Looks up the question of an exchange with the Coordinator; a follow-up goes on in its thread. */
   lookUp(talkId: number) {
     if (this.busy.has(talkId)) return;
-    const t = this.o.board.exchange(talkId);
+    const t = this.o.board.sheet.exchange(talkId);
     if (!t?.question || t.answer !== undefined) return;
     const thread = t.thread ?? t.id;
-    const root = thread === t.id ? t : (this.o.board.exchange(thread) ?? t);
+    const root = thread === t.id ? t : (this.o.board.sheet.exchange(thread) ?? t);
     // a thread on a Question card goes on there, with the card's agent
     const card = root.movedTo ? this.o.board.item(root.movedTo) : undefined;
     if (card?.kind === 'question') {
-      if (!t.movedTo) this.o.board.moveThread(thread, card.id);
+      if (!t.movedTo) this.o.board.sheet.moveThread(thread, card.id);
       if (!(this.o.board.thread(card.id).pending ?? []).some((p) => p.talk === talkId)) this.ask(card.id, t.said, { images: this.o.imageFiles?.(t.images), spoken: true, talk: talkId });
       return;
     }
     this.busy.add(talkId);
     // a walkthrough the look-up began before a restart: the one it tells now takes its place
     const prepared = this.prepared.get(talkId);
-    if (t.files?.length && !prepared) this.o.board.talkFiles(talkId, []);
+    if (t.files?.length && !prepared) this.o.board.sheet.showFiles(talkId, []);
     const { by, about, project } = this.agentFor(root);
     const reading = t.cardId && this.o.board.item(t.cardId) ? t.cardId : undefined;
     // what it reads shows on the open card, as an exploration agent's reading does
@@ -110,7 +110,7 @@ export class Answers {
     };
     const follow = t.id !== thread;
     // the session of the answer it continues, else the thread's latest; a thread moved onto a card that is gone has the card's
-    const resume = follow ? (this.o.board.threadTalk(thread).findLast((x) => x.session && x.id <= (t.follows ?? t.id))?.session ?? this.cardSession(root)) : undefined;
+    const resume = follow ? (this.o.board.sheet.thread(thread).findLast((x) => x.session && x.id <= (t.follows ?? t.id))?.session ?? this.cardSession(root)) : undefined;
     // looked up for an action: Obeya takes it with the answer, which brings what it needs
     const step = t.then ? `\n\nObeya takes this step itself once your answer is in: ${t.then}\nYour answer gives what the step needs.` : '';
     const fresh = `${this.message(root.said, root.question!, about, project, root.askedIn)}${follow ? '' : step}`;
@@ -124,10 +124,10 @@ export class Answers {
         project,
         ...(asked ? { asked } : {}),
         onTool,
-        onSession: (id) => this.o.board.talkSession(talkId, id),
+        onSession: (id) => this.o.board.sheet.lookedUpIn(talkId, id),
         // under the question while the agent tells on, and in the log of the card it was asked on
         onShown: (files) => {
-          this.o.board.talkFiles(talkId, files);
+          this.o.board.sheet.showFiles(talkId, files);
           if (reading) this.showLive(reading, 'say', by, thread, files);
         },
         ...(prepared ? { prepared } : {}),
@@ -160,9 +160,9 @@ export class Answers {
   askProject(projectId: string, text: string, images: string[], replyTo?: TalkRef): number {
     const project = this.o.board.item(projectId);
     if (project?.kind !== 'project' || !project.plan) throw new BadRequest('invalid', 'not a project with a plan doc');
-    const quoted = this.o.board.quotedTalk(replyTo);
-    const talk = this.o.board.addTalk(text, '', { lookUp: { question: text, about: projectId }, images, replyTo: quoted, askedIn: projectId });
-    if (quoted && this.o.board.exchange(quoted.talk)?.thread) this.o.board.followTalk(talk, quoted.talk);
+    const quoted = this.o.board.sheet.quote(replyTo);
+    const talk = this.o.board.sheet.add(text, '', { lookUp: { question: text, about: projectId }, images, replyTo: quoted, askedIn: projectId });
+    if (quoted && this.o.board.sheet.exchange(quoted.talk)?.thread) this.o.board.followTalk(talk, quoted.talk);
     this.lookUp(talk);
     return talk;
   }
@@ -184,7 +184,7 @@ export class Answers {
     const thread = this.o.board.thread(cardId);
     if (walkthrough) {
       this.preparedOn.set(e.id, walkthrough.prepared);
-      if (!this.reading.has(cardId)) this.showLive(cardId, 'talk', this.agentFor(this.o.board.exchange(thread.talk)!).by, thread.talk, walkthrough.files);
+      if (!this.reading.has(cardId)) this.showLive(cardId, 'talk', this.agentFor(this.o.board.sheet.exchange(thread.talk)!).by, thread.talk, walkthrough.files);
     }
     const pending = [...(thread.pending ?? []), { text: spoken ? `(${SPOKEN}:) ${said}` : said, images, said: [e.id], ...(talk ? { talk } : {}) }];
     // the owner's words let a paused agent go on, with what it had not answered yet, and one about to pause read on
@@ -278,7 +278,7 @@ export class Answers {
       if (this.o.board.thread(i.id).pending?.length) this.queue(i.thread.talk, () => this.cardTurn(i.id));
       else this.o.board.setThread(i.id, { thinking: false });
     }
-    for (const id of this.o.board.lookingUp()) this.lookUp(id);
+    for (const id of this.o.board.sheet.lookingUp()) this.lookUp(id);
   }
 
   /**
@@ -289,30 +289,30 @@ export class Answers {
    * soon after its first slide.
    */
   showAsWalkthrough(talkId: number, on?: { card: string; ev: number }): Asked {
-    const t = this.o.board.exchange(talkId);
+    const t = this.o.board.sheet.exchange(talkId);
     const follow = !!t?.thread && t.answer !== undefined;
     const direct = !!t && !t.question && !!t.replyOnly && !!t.reply && !t.undone;
     if (!t || !(follow || direct) || !this.o.voicing) throw new BadRequest('invalid', 'no text answer to tell as a walkthrough');
     // a thread on a Question card goes on there: its answers are asked for there
-    if (follow && this.o.board.exchange(t.thread!)?.movedTo) throw new BadRequest('invalid', 'the thread goes on on its Question card');
+    if (follow && this.o.board.sheet.exchange(t.thread!)?.movedTo) throw new BadRequest('invalid', 'the thread goes on on its Question card');
     const words = this.o.board.t.answer;
     const told = follow ? t.answer! : t.reply!;
     const question = follow ? asWalkthrough(t.question ?? t.said, told) : asWalkthroughOf(t.said, told);
     const about = follow ? (t.about ?? null) : (t.about ?? t.cardId ?? null);
     // in the sheet, quoting the direct answer it tells; a follow-up shows the answer it continues
     const quote = !on && direct ? { talk: talkId, part: 'reply' as const } : undefined;
-    const talk = this.o.board.addTalk(words.walkthroughAsked, words.walkthroughReply, { card: on?.card, lookUp: { question, about }, replyTo: quote });
+    const talk = this.o.board.sheet.add(words.walkthroughAsked, words.walkthroughReply, { card: on?.card, lookUp: { question, about }, replyTo: quote });
     if (follow) this.o.board.followTalk(talk, talkId);
     if (on) {
       this.o.board.log(on.card, 'say', 'owner', words.walkthroughAsked, { replyTo: on.ev });
       this.o.board.log(on.card, 'say', 'coordinator', words.walkthroughReply);
     }
     const thread = follow ? t.thread! : talk;
-    const { by } = this.agentFor(this.o.board.exchange(thread)!);
+    const { by } = this.agentFor(this.o.board.sheet.exchange(thread)!);
     // its player stands there at once, at full size, until the first slide comes
     const { prepared, files } = this.prepare(thread, follow ? (t.question ?? t.said) : t.said || told, told);
     this.prepared.set(talk, prepared);
-    this.o.board.talkFiles(talk, files);
+    this.o.board.sheet.showFiles(talk, files);
     if (on) this.showLive(on.card, 'say', by, thread, files);
     this.lookUp(talk);
     return { thread, file: files[0]!.name };
@@ -329,9 +329,9 @@ export class Answers {
     if (!card || !e || e.author === 'owner' || !e.text || e.answer?.live) throw new BadRequest('invalid', 'no text answer to tell as a walkthrough');
     if (card.kind === 'question' && e.answer && e.answer.thread === card.thread?.talk) return this.showOnQuestionCard(card, e);
     const talk = e.answer
-      ? this.o.board.threadTalk(e.answer.thread).findLast((r) => r.answer === e.text)?.id
+      ? this.o.board.sheet.thread(e.answer.thread).findLast((r) => r.answer === e.text)?.id
       : e.author === 'coordinator' && e.reply
-        ? this.o.board.cardReply(cardId, e.text)
+        ? this.o.board.sheet.cardReply(cardId, e.text)
         : undefined;
     if (talk === undefined) throw new BadRequest('invalid', 'no text answer to tell as a walkthrough');
     return this.showAsWalkthrough(talk, { card: cardId, ev });
@@ -342,7 +342,7 @@ export class Answers {
     if (!this.o.voicing) throw new BadRequest('invalid', 'no voice to tell a walkthrough');
     const thread = this.o.board.thread(card.id);
     // the words it answered: the owner's last before it, else the thread's question
-    const question = this.o.board.events(card.id).findLast((x) => x.id < e.id && x.author === 'owner' && x.kind === 'talk')?.text ?? this.o.board.exchange(thread.talk)?.question ?? card.title;
+    const question = this.o.board.events(card.id).findLast((x) => x.id < e.id && x.author === 'owner' && x.kind === 'talk')?.text ?? this.o.board.sheet.exchange(thread.talk)?.question ?? card.title;
     const { prepared, files } = this.prepare(thread.talk, question, e.text);
     this.ask(card.id, this.o.board.t.answer.walkthroughAsked, { replyTo: e.id, walkthrough: { heard: asWalkthrough(question, e.text), prepared, files } });
     return { thread: thread.talk, file: files[0]!.name };
@@ -387,7 +387,7 @@ export class Answers {
    * moved before has its card, put back from the archive if need be.
    */
   toCard(thread: number): Item {
-    const rows = this.o.board.threadTalk(thread);
+    const rows = this.o.board.sheet.thread(thread);
     const root = rows[0];
     if (!root?.question || root.id !== thread) throw new BadRequest('invalid', 'no looked-up thread');
     if (root.movedTo && this.o.board.card(root.movedTo)) {
@@ -404,7 +404,7 @@ export class Answers {
       this.o.board.log(card.id, 'talk', 'owner', r.said, { images: r.images, at: r.at });
       if (r.answer !== undefined) this.o.board.log(card.id, 'talk', r.answerBy ?? by, r.answer, { answer: answerRef(thread, r.files, r.continues), at: r.at });
     }
-    this.o.board.moveThread(thread, card.id);
+    this.o.board.sheet.moveThread(thread, card.id);
     return this.o.board.item(card.id)!;
   }
 
@@ -432,7 +432,7 @@ export class Answers {
     const taken = [...(stored?.pending ?? [])];
     // paused while it waited for its turn: it goes on once the owner lets it
     if (!card || !stored || !taken.length || card.paused) return;
-    const root = this.o.board.exchange(stored.talk);
+    const root = this.o.board.sheet.exchange(stored.talk);
     if (!root?.question) return;
     const { by, about, project } = this.agentFor(root);
     const words = taken.map((p) => p.text).join('\n\n');
@@ -623,10 +623,10 @@ export class Answers {
   /** `project`: the project whose agent answered, whose sheet shows the answer in full too. */
   private deliver(talkId: number, thread: number, by: By, question: string, a: OwnerAnswer, card: string | undefined, project: Item | undefined) {
     const text = clip(a.text, 12000);
-    const t = this.o.board.exchange(talkId);
+    const t = this.o.board.sheet.exchange(talkId);
     // in the log of the card that was open; with the thread moved onto a Question card meanwhile, there too
     const moved = t?.movedTo && this.o.board.item(t.movedTo)?.kind === 'question' ? t.movedTo : undefined;
-    this.o.board.answerTalk(talkId, text, by, a.files);
+    this.o.board.sheet.answer(talkId, text, by, a.files);
     const ref = answerRef(thread, a.files, t?.continues);
     if (card) {
       this.dropLive(card, thread);
@@ -645,7 +645,7 @@ export class Answers {
 
   /** An exchange from the sheet answered on its thread's Question card. */
   private answer(talkId: number, question: string, text: string, by: By, files: AnswerFile[] = []) {
-    this.o.board.answerTalk(talkId, text, by, files);
+    this.o.board.sheet.answer(talkId, text, by, files);
     this.o.onAnswer?.(talkId, question, text);
   }
 
@@ -657,8 +657,8 @@ export class Answers {
           // words not read yet come with a later turn
           .filter((e) => inConversation(e) && !e.unread)
           .map((e) => said(e))
-      : this.o.board
-          .threadTalk(thread)
+      : this.o.board.sheet
+          .thread(thread)
           .flatMap((r) => [`The owner: "${r.said}"`, ...(r.answer !== undefined ? [`You: ${r.answer}${fileList(r.files)}`] : [])]);
     // the words being asked now come after it
     return `You answered the owner before, in a session that cannot be resumed. The conversation so far, oldest first:\n\n${lines.join('\n\n')}`;

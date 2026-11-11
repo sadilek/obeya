@@ -874,7 +874,7 @@ function talkRoutes(x: Routing) {
       POST: on(async (c, req) => {
         const { ids } = await someFields(req);
         if (ids !== undefined && !(Array.isArray(ids) && ids.every((i) => Number.isInteger(i)))) throw new BadRequest('invalid', 'ids must be a list of exchange ids');
-        c.board.readTalk(ids as number[] | undefined);
+        c.board.sheet.read(ids as number[] | undefined);
       }),
     },
     // the owner no longer wants the step the Coordinator waits on a card for ("Stop waiting")

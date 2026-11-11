@@ -11,7 +11,8 @@ import type { Place } from '../core/layout';
 import { type Config, configShape } from './config';
 import { parsePrUrl } from './forge';
 import { folderPath } from './new-repo';
-import type { Mark, Moment, TalkReply, TalkWaitRow } from './db';
+import type { Mark, Moment } from './history';
+import type { TalkReply, TalkWaitRow } from './sheet';
 import { type AgentRuntime, type AgentSession, failureReason, limitLifts } from './runtime';
 import { type Language, LANGUAGES, ownersLanguage } from '../core/locale';
 import { MESSAGES } from '../core/messages';
@@ -359,9 +360,9 @@ export class Commander {
     // passed on by the card's agent: the owner's words stand in the card's conversation already
     const said = input.forwarded ? undefined : transcript;
     const replyTo = card ? this.o.board.quoted(card, input.replyTo)?.id : undefined;
-    const quoted = card ? undefined : this.o.board.quotedTalk(input.replyTo);
+    const quoted = card ? undefined : this.o.board.sheet.quote(input.replyTo);
     // the owner's words stand in the conversation at once, the Coordinator's reply follows once it has read them
-    const talk = this.o.board.addTalk(transcript, '', { card, images, replyTo: quoted });
+    const talk = this.o.board.sheet.add(transcript, '', { card, images, replyTo: quoted });
     if (card && said) this.o.board.log(card, 'say', 'owner', said, { images, replyTo });
     const held: Held = { transcript, images, focus, input, at: new Date().toISOString() };
     // what the usage limit held is read first, in the order it was said; while the limit holds, these words wait with it
@@ -403,7 +404,7 @@ export class Commander {
     // until the owner sees it, as a looked-up answer does: it may come once the sheet is closed; on a
     // card it stands in the conversation, where a confirmation folds away
     const reply = (confirm: string, how: TalkReply = {}) => {
-      this.o.board.replyTalk(talk, confirm, how);
+      this.o.board.sheet.reply(talk, confirm, how);
       if (card) this.o.board.log(card, 'say', 'coordinator', confirm, { ...(how.wish ? { wish: how.wish } : {}), ...(how.waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
     };
     let decision: Decision;
@@ -447,7 +448,7 @@ export class Commander {
       const about = lookUp.about ?? card ?? (focus.project && this.o.board.item(focus.project) ? focus.project : undefined);
       reply(confirm, { lookUp: { question: lookUp.question, about: about ?? null } });
       if (lookUp.follows) this.o.board.followTalk(talk, lookUp.follows);
-      if (lookUp.then) this.o.board.thenTalk(talk, lookUp.then, focus.place);
+      if (lookUp.then) this.o.board.sheet.step(talk, lookUp.then, focus.place);
       this.o.lookUp?.(talk);
       if (said) this.o.onOwnerInput?.(card, 'talk', said, confirm);
       return { confirm };
@@ -480,7 +481,7 @@ export class Commander {
     if (!this.held.has(talk) && card) this.o.board.log(card, 'say', 'coordinator', confirm, { reply: true, ...(h.input.forwarded ? { forwarded: true as const } : {}) });
     this.held.set(talk, h);
     const until = new Date(this.heldUntil).toISOString();
-    for (const [id, { focus, input }] of this.held) this.o.board.holdTalk(id, { until, reading: { focus, input } });
+    for (const [id, { focus, input }] of this.held) this.o.board.sheet.hold(id, { until, reading: { focus, input } });
     this.waitForLimit();
     return { confirm };
   }
@@ -503,7 +504,7 @@ export class Commander {
       for (const [talk, h] of [...this.held]) {
         if (this.stopped) return;
         // read now: "is reading …" under the words
-        this.o.board.holdTalk(talk, null);
+        this.o.board.sheet.hold(talk, null);
         const heard = await this.answer(talk, { ...h, input: { ...h.input, heldSince: h.at } });
         if (!heard) {
           this.hold(talk, h);
@@ -536,7 +537,7 @@ export class Commander {
     if (!w || w.timer) return;
     const due = Date.now() + this.delayMs;
     const { commands, said, talk, confirm, card } = w;
-    this.o.board.holdCommand(token, due, { commands, ...(said ? { said } : {}), talk, confirm, ...(card ? { card } : {}) } satisfies Waiting);
+    this.o.board.sheet.holdCommand(token, due, { commands, ...(said ? { said } : {}), talk, confirm, ...(card ? { card } : {}) } satisfies Waiting);
     this.schedule(token, w, due);
   }
 
@@ -545,20 +546,20 @@ export class Commander {
    * over, at once when it is over already. The owner had their confirmation.
    */
   resume() {
-    for (const { token, due, body } of this.o.board.heldCommands()) {
+    for (const { token, due, body } of this.o.board.sheet.heldCommands()) {
       const w = body as Waiting;
       this.waiting.set(token, w);
       this.schedule(token, w, due);
     }
     // and the words the usage limit held are read once it lifts
-    for (const x of this.o.board.heldTalk()) {
+    for (const x of this.o.board.sheet.held()) {
       const { focus, input } = x.held.reading as Pick<Held, 'focus' | 'input'>;
       this.held.set(x.id, { transcript: x.said, images: x.images ?? [], focus, input, at: x.at });
       this.heldUntil = Math.max(this.heldUntil, Date.parse(x.held.until));
     }
     if (this.held.size) this.waitForLimit();
     // and the steps whose answer came in before the stop, but were not decided yet
-    for (const x of this.o.board.answeredSteps()) this.answerIn(x.id);
+    for (const x of this.o.board.sheet.answeredSteps()) this.answerIn(x.id);
   }
 
   private schedule(token: string, w: Waiting & { due?: number; timer?: ReturnType<typeof setTimeout>; running?: boolean }, due: number) {
@@ -568,7 +569,7 @@ export class Commander {
     w.timer = setTimeout(async () => {
       w.running = true;
       // a restart while they run cuts them off rather than running them twice
-      this.o.board.dropCommand(token);
+      this.o.board.sheet.dropCommand(token);
       // what the owner takes back is not learned from either
       if (w.said) this.o.onOwnerInput?.(w.card, 'command', w.said, w.confirm);
       // in the order the owner said them; one that fails does not hold up the others
@@ -636,8 +637,8 @@ export class Commander {
     if (!w || w.running) return false;
     clearTimeout(w.timer);
     this.waiting.delete(token);
-    this.o.board.dropCommand(token);
-    this.o.board.undoTalk(w.talk);
+    this.o.board.sheet.dropCommand(token);
+    this.o.board.sheet.undo(w.talk);
     if (w.card && this.o.board.item(w.card)) this.o.board.log(w.card, 'state', 'owner', this.o.board.t.voice.undone);
     this.news.push(`The owner took back what you confirmed with “${w.confirm}”; it did not happen.`);
     return true;
@@ -650,7 +651,7 @@ export class Commander {
 
   /** The cards the Coordinator waits on, each with the exchange whose reply said so. */
   private waits(): { talk: Talk; wait: TalkWaitRow }[] {
-    return this.o.board.waitingTalk().flatMap(({ waiting, ...talk }) => waiting.map((wait) => ({ talk, wait })));
+    return this.o.board.sheet.waiting().flatMap(({ waiting, ...talk }) => waiting.map((wait) => ({ talk, wait })));
   }
 
   /** The steps the Coordinator waits to take once the card gets somewhere. */
@@ -663,22 +664,22 @@ export class Commander {
     const id = c.card ?? (c.newCard !== undefined ? made.get(c.newCard) : undefined);
     const card = id ? this.o.board.item(id) : undefined;
     if (talk === undefined || !card) throw new Error(`the card to wait on is not there: ${c.then}`);
-    const before = this.o.board.waitingTalk().find((x) => x.id === talk)?.waiting ?? [];
+    const before = this.o.board.sheet.waiting().find((x) => x.id === talk)?.waiting ?? [];
     // several steps on one card each stand
-    this.o.board.waitTalk(talk, [...before, { card: card.id, title: card.title, state: c.state, then: c.then }]);
+    this.o.board.sheet.wait(talk, [...before, { card: card.id, title: card.title, state: c.state, then: c.then }]);
   }
 
   /** It no longer waits on the card, after whichever exchange it said so. */
   private stopWaiting(card: string) {
-    for (const x of this.o.board.waitingTalk()) if (x.waiting.some((w) => w.card === card)) this.o.board.waitTalk(x.id, x.waiting.filter((w) => w.card !== card));
+    for (const x of this.o.board.sheet.waiting()) if (x.waiting.some((w) => w.card === card)) this.o.board.sheet.wait(x.id, x.waiting.filter((w) => w.card !== card));
   }
 
   /** The owner no longer wants the step the Coordinator waits on the card for, after exchange `talk` ("Stop waiting"); false when it no longer waits. */
   unwait(talk: number, card: string): boolean {
-    const x = this.o.board.waitingTalk().find((t) => t.id === talk);
+    const x = this.o.board.sheet.waiting().find((t) => t.id === talk);
     const dropped = x?.waiting.filter((y) => y.card === card) ?? [];
     if (!x || !dropped.length) return false;
-    this.o.board.waitTalk(talk, x.waiting.filter((y) => y.card !== card));
+    this.o.board.sheet.wait(talk, x.waiting.filter((y) => y.card !== card));
     this.news.push(`The owner told you to stop waiting on “${dropped[0]!.title}”: you do not take the step you would have taken then (${dropped.map((w) => w.then).join('; ')}).`);
     return true;
   }
@@ -716,12 +717,12 @@ export class Commander {
     const after: TalkAfter = { title: w.title, state: reached, met, from: x.id };
     /** Takes the wait off its exchange; false when the owner dropped it meanwhile. */
     const consume = () => {
-      const now = this.o.board.waitingTalk().find((t) => t.id === x.id)?.waiting ?? [];
+      const now = this.o.board.sheet.waiting().find((t) => t.id === x.id)?.waiting ?? [];
       const n = now.findIndex((y) => y.card === w.card && y.then === w.then);
-      if (n >= 0) this.o.board.waitTalk(x.id, now.filter((_, i) => i !== n));
+      if (n >= 0) this.o.board.sheet.wait(x.id, now.filter((_, i) => i !== n));
       return n >= 0;
     };
-    const talk = this.o.board.addTalk('', '', { card, after });
+    const talk = this.o.board.sheet.add('', '', { card, after });
     const h: Held = {
       transcript: '',
       images: [],
@@ -734,8 +735,8 @@ export class Commander {
       // dropped while it was read: what it decided does not happen
       if (heard?.token) this.undo(heard.token);
       else if (!heard) {
-        this.o.board.replyTalk(talk, this.o.board.t.voice.undone);
-        this.o.board.undoTalk(talk);
+        this.o.board.sheet.reply(talk, this.o.board.t.voice.undone);
+        this.o.board.sheet.undo(talk);
       }
       return;
     }
@@ -754,7 +755,7 @@ export class Commander {
    * notice, with "Undo" where it has actions. Returns whether a step was taken up.
    */
   answerIn(id: number): boolean {
-    const x = this.o.board.exchange(id);
+    const x = this.o.board.sheet.exchange(id);
     if (!x?.then || x.answer === undefined || x.question === undefined || this.takingUp.has(id)) return false;
     this.takingUp.add(id);
     void this.takeUp({ ...x, then: x.then, answer: x.answer, question: x.question })
@@ -765,7 +766,7 @@ export class Commander {
 
   private async takeUp(x: Talk & { then: string; answer: string; question: string; thenPlace?: Place }) {
     const card = this.openCard(x.cardId);
-    const talk = this.o.board.addTalk('', '', { card, images: x.images, answered: x.id });
+    const talk = this.o.board.sheet.add('', '', { card, images: x.images, answered: x.id });
     const h: Held = {
       transcript: '',
       // the screenshots of the owner's words go with the cards the step creates
@@ -776,7 +777,7 @@ export class Commander {
       at: new Date().toISOString(),
     };
     const heard = await this.readAfterHeld(talk, h);
-    this.o.board.thenTalk(x.id, null);
+    this.o.board.sheet.step(x.id, null);
     if (!heard) return void this.hold(talk, h);
     this.announce(heard, card, talk);
   }
@@ -941,7 +942,7 @@ export class Commander {
             const q = String(question).trim();
             if (!q) return 'The question is missing.';
             const followed = follows ? fromAnswerTag(String(follows)) : undefined;
-            if (follows && (!followed || !this.o.board.exchange(followed)?.thread))
+            if (follows && (!followed || !this.o.board.sheet.exchange(followed)?.thread))
               return `Unknown answer ${String(follows)}; call look_up again with the tag of an answer you looked up (A12), or without follows.`;
             const about = card ? this.cardOf(String(card)) : undefined;
             if (card && (!about || !this.o.board.item(about))) return `No card ${String(card)} on this canvas; call look_up again with the number of one, or without card.`;
@@ -1400,14 +1401,14 @@ export class Commander {
     };
     const now = new Date().toISOString();
     // what is written from here on comes with the next command
-    const mark = this.o.board.mark();
+    const mark = this.o.board.history.mark();
     const first = s.read === 0;
     let history: string[];
     if (first) {
       // without the words being read now
-      const talk = this.o.board.talk(REMEMBERED_EXCHANGES).filter((t) => t.reply !== undefined);
+      const talk = this.o.board.sheet.latest(REMEMBERED_EXCHANGES).filter((t) => t.reply !== undefined);
       const full = new Set(talk.filter((t) => t.answer !== undefined).slice(-FULL_ANSWERS));
-      const steps = this.o.board.timeline(new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString(), HISTORY_STEPS);
+      const steps = this.o.board.history.timeline(new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString(), HISTORY_STEPS);
       // before cards had numbers, the Coordinator tagged them afresh in each session (K1, K2, …)
       const numbered = this.o.board.setting(NUMBERS_SINCE);
       const before = numbered && talk.some((t) => t.at < numbered) ? `; until ${when(numbered)} a card's K-number held for one session only, so one said then names another card than the same number now` : '';
@@ -1435,7 +1436,7 @@ export class Commander {
         `What happened on the canvas in the last ${HISTORY_DAYS} days (oldest first):\n${steps.flatMap(step).join('\n') || '(nothing)'}`,
       ];
     } else {
-      const steps = this.o.board.timeline(s.since!, NEWS_STEPS + 1);
+      const steps = this.o.board.history.timeline(s.since!, NEWS_STEPS + 1);
       const more = steps.length > NEWS_STEPS ? steps.splice(0, steps.length - NEWS_STEPS).length : 0;
       history = steps.length ? [`What happened on the canvas since the owner's last command:\n${more ? `- (${more} earlier steps left out)\n` : ''}${steps.flatMap(step).join('\n')}`] : [];
     }
@@ -1493,7 +1494,7 @@ export class Commander {
               ? `The owner typed${focused && input.field ? ` into ${FIELDS[input.field]}` : ''} (as written, no recognition errors): "${transcript}"`
               : `The owner said (speech recognition, may contain errors): "${transcript}"`,
             // in reply to a message of the open card's conversation, or of the sheet
-            (focused ? replyNote(this.o.board.quoted(focused.id, input.replyTo), 'coordinator') : focus.card ? '' : talkReplyNote(this.o.board.quotedTalk(input.replyTo))).trim(),
+            (focused ? replyNote(this.o.board.quoted(focused.id, input.replyTo), 'coordinator') : focus.card ? '' : talkReplyNote(this.o.board.sheet.quote(input.replyTo))).trim(),
           ].filter(Boolean)),
       ...(input.heldSince
         ? [`The owner said this ${when(input.heldSince)}, but the account's usage limit kept you from reading it until now; the canvas may have changed since. Obeya told them it would read it once the limit lifted.`]

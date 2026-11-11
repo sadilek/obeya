@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W7, W13 to W18, W20 and W24 are done; the other workstreams are open. The review, made on
+W1 to W8, W13 to W18, W20 and W24 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -172,7 +172,7 @@ the workstream named does it for all of them.
   C2 with [workers](code-cleanup/workers.md) A7 (one typed reader per JSON column), C4 (an event's
   optional fields), C6 (a proposal's stored JSON), C7 (optional arguments by name), C8, C9, C12,
   C13, C14.
-- [ ] **W8:** The sheet as an object of its own. [board-db](code-cleanup/board-db.md) C1: `Board`
+- [x] **W8:** The sheet as an object of its own. [board-db](code-cleanup/board-db.md) C1: `Board`
   stops repeating 36 `Store` methods; a canvas-scoped `Sheet` holds the talk and history API once.
 - [ ] **W9:** `board.ts` holds the board. [board-db](code-cleanup/board-db.md) C3 (the notice of
   outdated pages, the archive's paging and search index and the plan-doc follower move to modules

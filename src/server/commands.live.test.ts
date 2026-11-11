@@ -216,7 +216,7 @@ test.skipIf(!process.env.OBEYA_LIVE)(
         const heard = await k.hear(text, {}, [], { typed: true });
         if (heard.token) k.arm(heard.token);
         await new Promise((r) => setTimeout(r, 20));
-        const step = asked.length ? board.exchange(asked[0]!)?.then : undefined;
+        const step = asked.length ? board.sheet.exchange(asked[0]!)?.then : undefined;
         return { text, then, want, did: executed.map((c) => c.do), step, confirm: heard.confirm };
       }),
     );
@@ -282,7 +282,7 @@ async function later(text: string) {
   board.create({ title: 'Login', x: 0, y: 0 });
   // a folder no repository is in yet, as on the owner's machine then: the Coordinator may look
   const place = join(cwd(), 'recipes');
-  board.addTalk(
+  board.sheet.add(
     `Kannst du mir ein neues Repo in ${place} und einen entsprechenden Obeya canvas anlegen? Privater Account, erstmal nicht nach GitHub.`,
     `I can't create a repository myself; Obeya can only put a canvas on one that already exists. Run \`mkdir -p ${place} && cd ${place} && git init -b main && git commit --allow-empty -m "Start"\`. Tell me once it's there, and I'll add the canvas “Recipes”.`,
   );
@@ -305,7 +305,7 @@ async function later(text: string) {
   if (heard.token) k.arm(heard.token);
   await new Promise((r) => setTimeout(r, 20));
   // a wait is the Coordinator's own: it stands on the exchange rather than running
-  const wait = board.waitingTalk()[0]?.waiting[0];
+  const wait = board.sheet.waiting()[0]?.waiting[0];
   const made = executed.length;
   const now = [...executed.map((c) => c.do), ...(wait ? ['waitFor' as const] : [])];
   if (!wait) return { now, confirm: heard.confirm };
@@ -355,11 +355,11 @@ async function reviews(text: string) {
   board.work(board.create({ title: 'Checkout button looks disabled', x: 0, y: 0 }).id, { state: 'live' });
   const contribution = { url: 'https://github.com/acme/shop/pull/4', number: 4, author: 'alice', title: 'Round totals to cents', canModify: true };
   board.work(board.create({ title: 'PR #4: Round totals to cents', x: 0, y: 0 }).id, { state: 'done', contribution: JSON.stringify(contribution) });
-  board.addTalk('Review bitte Pull Request Nummer 4.', 'Neue Aufgabe für das Review von Pull Request 4, der Agent prüft ihn.');
+  board.sheet.add('Review bitte Pull Request Nummer 4.', 'Neue Aufgabe für das Review von Pull Request 4, der Agent prüft ihn.');
   // tasks made for reviews before, which only look like review cards
   board.work(board.create({ title: 'Review PR #2', body: 'Review Pull Request 2.', x: 0, y: 0 }).id, { state: 'done' });
   board.work(board.create({ title: 'Review PR #3', body: 'Review Pull Request 3.', x: 0, y: 0 }).id, { state: 'waiting', need: 'demo', demo: DEMO });
-  board.addTalk('Review Pull Requests 2 und 3, jeweils auf ihrer eigenen Karte.', 'Neue Aufgaben „Review PR #2“ und „Review PR #3“, die Agenten starten.');
+  board.sheet.add('Review Pull Requests 2 und 3, jeweils auf ihrer eigenen Karte.', 'Neue Aufgaben „Review PR #2“ und „Review PR #3“, die Agenten starten.');
   board.addPreference('When a request of mine contains several separate tasks (e.g. a release and a website update), create a separate card for each instead of one card for all.');
   board.addPreference("When I ask for a review of a pull request, the review checks the changes (including anything hidden that doesn't belong there) and records no demo video if the PR already contains one.");
   const executed: Command[] = [];
@@ -370,7 +370,7 @@ async function reviews(text: string) {
   if (heard.token) k.arm(heard.token);
   // the open pull requests, looked up: the Coordinator takes the step it looked them up for
   if (asked.length) {
-    board.answerTalk(asked[0]!, 'Three open pull requests are newer than PR #4:\n- #5 "Empty cart shows a hint" by bob: https://github.com/acme/shop/pull/5\n- #6 "Discount codes" by carol: https://github.com/acme/shop/pull/6\n- #7 "Currency symbol per locale" by dave: https://github.com/acme/shop/pull/7', 'coordinator');
+    board.sheet.answer(asked[0]!, 'Three open pull requests are newer than PR #4:\n- #5 "Empty cart shows a hint" by bob: https://github.com/acme/shop/pull/5\n- #6 "Discount codes" by carol: https://github.com/acme/shop/pull/6\n- #7 "Currency symbol per locale" by dave: https://github.com/acme/shop/pull/7', 'coordinator');
     k.answerIn(asked[0]!);
     for (const end = Date.now() + 120_000; !executed.length && Date.now() < end; ) await new Promise((r) => setTimeout(r, 100));
   }

@@ -7,7 +7,7 @@ import { LANGUAGE_NAMES } from '../core/locale';
 import { clip } from '../core/text';
 import type { CardEvent, Item, Preference } from '../core/types';
 import type { Board } from './board';
-import type { Utterance } from './db';
+import type { Utterance } from './history';
 import { type AgentRuntime, type AgentTool, readSession, waitQuietly } from './runtime';
 
 /**
@@ -123,19 +123,19 @@ export class Learner {
     const b = this.o.board;
     const title = (id?: string) => (id ? b.item(id)?.title : undefined);
     const lines: { at: string; text: string }[] = [
-      ...b.timeline(since, REVIEW_HISTORY).flatMap((m) => {
+      ...b.history.timeline(since, REVIEW_HISTORY).flatMap((m) => {
         const t = title(m.cardId);
         if (!t) return [];
         const who = m.kind === 'answer' && m.author !== 'owner' ? `${WHO[m.author]}, in the owner's name,` : WHO[m.author];
         const what = m.kind === 'created' ? (m.author === 'owner' ? 'the owner created the card' : 'an agent proposed the card') : `${who}${STEPS[m.kind] ?? ' '}${clip(m.text, 300)}`;
         return [{ at: m.at, text: `"${t}": ${what}` }];
       }),
-      ...b
+      ...b.history
         .utterances(since, REVIEW_HISTORY)
         .filter((u) => u.kind === 'talk')
         .map((u) => ({ at: u.at, text: `"${u.title ?? ''}": the owner in the idea's discussion: ${clip(u.text, 300)}` })),
-      ...b
-        .talk(REVIEW_HISTORY)
+      ...b.sheet
+        .latest(REVIEW_HISTORY)
         .filter((t) => t.at > since && t.reply !== undefined)
         .map((t) => {
           const open = title(t.cardId);
@@ -144,11 +144,11 @@ export class Learner {
             text: `the owner to you${open ? ` (with "${open}" open)` : ''}: ${clip(t.said, 300)} → ${clip(t.reply!, 200)}${t.undone ? ' (the owner took it back)' : ''}`,
           };
         }),
-      ...b.removed(since).map((r) => ({
+      ...b.history.removed(since).map((r) => ({
         at: r.at,
         text: r.state === 'proposal' ? `the owner dismissed the card an agent proposed: "${r.title}"` : `the owner deleted the card "${r.title}" (${r.state})`,
       })),
-      ...b.decidedProposals(since).map((p) => ({
+      ...b.history.decidedProposals(since).map((p) => ({
         at: p.at,
         text: `the owner ${p.state === 'rejected' ? 'rejected' : 'accepted'} the proposed rule "${p.text}"${p.state === 'filed' ? ` for the CLAUDE.md of ${p.target}` : ''}${p.quote ? ` (its occasion: ${clip(p.quote, 200)})` : ''}`,
       })),
@@ -209,7 +209,7 @@ export class Learner {
     const events = card && this.o.board.item(card.id) ? this.o.board.events(card.id) : [];
     // the newest first; a question the owner answered is shown as such
     const said = question ? undefined : events.find((e) => AGENTS.includes(e.author) && SAYS.includes(e.kind));
-    const recent = this.o.board.utterances(new Date(Date.now() - RECENT_DAYS * 86_400_000).toISOString(), RECENT_UTTERANCES + 1);
+    const recent = this.o.board.history.utterances(new Date(Date.now() - RECENT_DAYS * 86_400_000).toISOString(), RECENT_UTTERANCES + 1);
     // the input itself is among them, as the newest with its words (a card's text is not)
     const self = recent.findLastIndex((u) => u.text === text);
     if (self >= 0) recent.splice(self, 1);

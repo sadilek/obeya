@@ -1249,8 +1249,8 @@ describe('preference memory', () => {
   test('the learner reads an input with the card, what the owner said in the last days and the agent\'s last message, and proposes once', async () => {
     const before = card('Import');
     board.log(before.id, 'hint', 'owner', 'Frag nicht nach jedem Dateinamen.');
-    board.undoTalk(board.addTalk('Starte alles.', 'Gestartet.'));
-    board.addTalk('Wie weit ist der Export?', 'Fast fertig.');
+    board.sheet.undo(board.sheet.add('Starte alles.', 'Gestartet.'));
+    board.sheet.add('Wie weit ist der Export?', 'Fast fertig.');
     const a = board.create({ title: 'Export', body: 'CSV-Export der Rechnungen.', x: 0, y: 0 });
     board.log(a.id, 'say', 'worker', 'Soll die Datei rechnungen.csv oder export.csv heißen?');
     board.log(a.id, 'activity', 'worker', 'Liest src/export.ts');
@@ -1321,7 +1321,7 @@ describe('retrospective', () => {
     board.log(a.id, 'state', 'owner', 'Trotz Überschneidung gestartet.');
     const p = board.propose(a.id, { title: 'Emoji-Picker', task: 'S.', reason: 'R.' });
     board.remove(p.id);
-    board.undoTalk(board.addTalk('Lösch die Karte Export.', 'Mache ich.', { card: a.id }));
+    board.sheet.undo(board.sheet.add('Lösch die Karte Export.', 'Mache ich.', { card: a.id }));
     board.rejectProposal(board.proposePreference('Commits auf Englisch.', { cardId: a.id, quote: 'Englisch bitte.' }));
     l1.noticed();
     expect(board.setting('review_inputs')).toBe('2');
