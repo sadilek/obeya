@@ -231,6 +231,10 @@ prompt sentences). `stalls.ts`, `workers-fixture.ts` and `patience.ts` are clean
 - Win: about 40 shorter lines; four stored shapes get one typed reader and writer each.
 - Risk: low (pure helpers; types check every site).
 - Confidence: high (counts by grep, each `shipped` site read).
+- Done by W7 with C2: reads go through `fromJson`, writes through `toJson`, both typed by the
+  column (`Json<T>` on `CardRow`), so no per-column writer was needed (`setContribution`,
+  `setLanded`); `detail` has one type, `Detail`. `landedAt(row)` serves `diff` and `changedFiles`;
+  `file` needs only the commit and keeps its own test.
 
 ### A8. "Tell the worker with its next step" is rebuilt at eleven places
 - Principle: DRY

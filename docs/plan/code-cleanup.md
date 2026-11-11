@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W6 and W13 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
+W1 to W7 and W13 to W18 are done; the other workstreams are open. The review, made on 2026-11-10 at commit
 `acfa0484`, found the code in better shape than its size suggests, and found its debt in a few
 recurring forms.
 
@@ -168,7 +168,7 @@ the workstream named does it for all of them.
   D13, B14); a time within the coming year ([workers](code-cleanup/workers.md) A15, D12); text
   limits and two small registries ([board-db](code-cleanup/board-db.md) C15, C19); "answer first,
   then go" (F11).
-- [ ] **W7:** A card's row and its events typed in one place. [board-db](code-cleanup/board-db.md)
+- [x] **W7:** A card's row and its events typed in one place. [board-db](code-cleanup/board-db.md)
   C2 with [workers](code-cleanup/workers.md) A7 (one typed reader per JSON column), C4 (an event's
   optional fields), C6 (a proposal's stored JSON), C7 (optional arguments by name), C8, C9, C12,
   C13, C14.

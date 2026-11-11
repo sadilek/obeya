@@ -78,6 +78,15 @@ across the server.
 - Risk: low. Type-checked and mechanical; `board.test.ts` and `workers.test.ts` exercise every
   column.
 - Confidence: high. Counted per column with grep over `src` (non-test); existing accessors read.
+- Done by W7, in another form than proposed: rather than a named reader per column, each JSON
+  column of `CardRow` is typed `Json<T>` (in `row.ts`), a string that carries what it holds, and
+  one `fromJson` reads any of them as that type; `toJson` writes them, its type taken from the
+  column, so writes are checked as reads are and the `satisfies` at about forty writes went (the
+  seventy without one are checked now too). The column types moved to `row.ts` first, unchanged;
+  `detail` and `scope` got named types (`Detail`, `Scope`). `contributionOf`, `landedOf`,
+  `storedProposal`, `storedDemos` and `storedPrototype` went, each being `fromJson` on its column;
+  `waitOf` stays, as it picks a kind of queue. The legacy share shape in
+  `convertSingleDemoShares` keeps its own cast.
 
 ### C3. board.ts holds three subsystems that are not the board
 - Principle: KISS
@@ -133,6 +142,10 @@ across the server.
 - Risk: low to medium. The event `log` returns and broadcasts must stay normalised (no `images: []`,
   no `unread: false`); `db.test.ts` and `board.test.ts` compare events.
 - Confidence: high. All seven places read side by side.
+- Done by W7: `EVENT_FIELDS` in `db.ts` names each optional field with how it is stored (the
+  column is the field's name in snake case); `EVENT_COLUMNS`, the INSERT, `EventRow` and
+  `eventOf` derive from it, and `addEvent` returns the line as `eventOf` reads it back, so
+  `Board.log` passes its fields through (`NewEvent`) and keeps only the `basename` of images.
 
 ### C5. The pause protocol is written three times, once per kind of agent
 - Principle: DRY
@@ -181,6 +194,10 @@ across the server.
 - Win: about 30 lines; the guard and the default exist once.
 - Risk: low; `board.test.ts`, `revisions.test.ts`.
 - Confidence: high. All nine read.
+- Done by W7: `proposalOn` (the guard and the default) and `setProposal` (the write and
+  `changed()`), as proposed. `accept` takes the guard from `proposalOn` but reads the stored
+  proposal without the default, since a card proposed without one keeps none once accepted;
+  `unrevise` stays without the guard and answers false, as before.
 
 ### C7. Optional arguments passed by position
 - Principle: KISS
@@ -204,6 +221,9 @@ across the server.
 - Win: seven call sites that read without counting; no `undefined` placeholders.
 - Risk: low; type-checked. Tests call `addTalk` 14 times.
 - Confidence: high. All call sites read.
+- Done by W7 on its own, ahead of C1 (W8): `NewTalk` and `TalkReply` in `db.ts`, taken by both
+  `Store` and `Board`, and `ask`'s options; the question looked up is a named `TalkLookUp`. The
+  Commander's local `reply` takes `TalkReply` too.
 
 ### C8. State predicates are restated inline beside their helpers
 - Principle: KISS
@@ -224,6 +244,8 @@ across the server.
 - Win: about ten boolean expressions become four names.
 - Risk: low; `board.test.ts`.
 - Confidence: high. Each expression compared character by character.
+- Done by W7: `stateOf`, `begun` and `finishing` beside `worked` and `atWork`; the filter that
+  restated `atWork` uses it.
 
 ### C9. Two change logs with the same three methods each
 - Principle: DRY
@@ -249,6 +271,8 @@ across the server.
 - Bug fixed (W1 of the bug plan): the `Store` empties `shared_changes` and `archive_changes` as it
   opens the database (a canvas reads both afresh when it opens), so a canvas never opened again
   leaves no rows for good; the readers stay as they were.
+- Done by W7: `changeLog(table)` gives `Store.sharedLog` and `Store.archiveLog`, each
+  `{ changes, at, drop }`, in the SQL-filtered form with the cursor from the log's sequence.
 
 ### C10. `changed_at` cannot be null, but is read as if it could
 - Principle: YAGNI
@@ -312,6 +336,8 @@ across the server.
 - Risk: low.
 - Confidence: high. Grepped `indexOf('#')`, `includes('#')` and `}#${` over `src`: only board.ts
   does this.
+- Done by W7: `workstreamRef`, `docOfRef` and `keyOfRef` beside `repoOfRef`; "a project's
+  reference" reads `keyOfRef(ref) === null`.
 
 ### C13. "An earlier demo still at hand" is computed twice
 - Principle: DRY
@@ -330,6 +356,8 @@ across the server.
 - Win: about 6 lines and one rule.
 - Risk: low; `board.test.ts`, `share.test.ts`.
 - Confidence: high.
+- Done by W7: `atHand(r)`; `earlierDemos` maps it to the shown form, `cardDemos` to the stored
+  one plus the latest.
 
 ### C14. "Which archived row brings this card" is written twice
 - Principle: DRY
@@ -350,6 +378,10 @@ across the server.
 - Risk: low to medium; `share.test.ts` covers `shownCards`, `board.test.ts` covers `cards`.
 - Confidence: medium-high. Both read; the two differ slightly in when they re-read the row, which
   the shared helper must keep.
+- Done by W7: `bringers(rows)` returns the cards shown and, for the rest, `{ row, by }`; it
+  holds `mine`, the parent cache and the re-read. `shownCards` re-reads a row with the same rule
+  as `cards` now (also where its archived project is not the canvas's), which reaches the same
+  result; the map it returns lists the shown cards before the archived ones.
 
 ### C15. Text limits are literals at fourteen places
 - Principle: DRY
