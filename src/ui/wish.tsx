@@ -16,6 +16,7 @@ import { readJson, type Store, writeJson } from './stored';
 import { clock, errorText, t } from './strings';
 import { oneLine } from '../core/text';
 import { signal } from './signal';
+import { Over } from './over';
 
 /** The issue as it will go out; `raw`: the job wrote nothing, the owner's words stand as they are. */
 interface Issue {
@@ -196,64 +197,59 @@ export function WishDialog() {
   if (!w.open) return null;
   const { issue } = w;
   return (
-    <div id="wish" onClick={closeWish}>
-      <div className="box" role="dialog" aria-label={t.wish.title} onClick={(e) => e.stopPropagation()}>
-        <button className="close" title={t.close} onClick={closeWish}>
-          ✕
-        </button>
-        <h2>{t.wish.title}</h2>
-        {w.sent ? (
-          <div className="w-sent">
-            {w.sent.map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-            <button className="btn primary" autoFocus onClick={closeWish}>
-              {t.gotIt}
-            </button>
-          </div>
-        ) : (
-          <>
-            {w.pending && (
-              <div className="w-pending">
-                <p>{t.wish.pending}</p>
-                <blockquote>{short(w.pending.said)}</blockquote>
-                <p>{t.wish.pendingThen}</p>
-                <button className="btn small" disabled={w.writing} onClick={discard}>
-                  {t.wish.replace}
+    <Over id="wish" label={t.wish.title} onClose={closeWish}>
+      <h2>{t.wish.title}</h2>
+      {w.sent ? (
+        <div className="w-sent">
+          {w.sent.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+          <button className="btn primary" autoFocus onClick={closeWish}>
+            {t.gotIt}
+          </button>
+        </div>
+      ) : (
+        <>
+          {w.pending && (
+            <div className="w-pending">
+              <p>{t.wish.pending}</p>
+              <blockquote>{short(w.pending.said)}</blockquote>
+              <p>{t.wish.pendingThen}</p>
+              <button className="btn small" disabled={w.writing} onClick={discard}>
+                {t.wish.replace}
+              </button>
+            </div>
+          )}
+          {issue && <IssueFields issue={issue} disabled={w.writing} />}
+          {w.writing && <p className="hint w-writing">{t.wish.writing}</p>}
+          {w.error && <p className="p-error">{w.error}</p>}
+          <Composer
+            className="w-compose"
+            draft={WISH_DRAFT}
+            placeholder={issue ? t.wish.add : t.wish.placeholder}
+            {...(issue ? { label: t.wish.rework } : { action: t.wish.write })}
+            onSend={(text, images) => write({ said: text || '(see the screenshot)' }, images ?? [])}
+          />
+          {issue && (
+            <>
+              <p className="w-public">
+                {t.wish.public}
+                {issue.images.length > 0 && ` ${t.wish.shots(issue.images.length)}`}
+                {issueUrl(issue.title, issue.body, t.wish.cut).trimmed && ` ${t.wish.long(issue.images.length > 0)}`}
+              </p>
+              <div className="w-actions">
+                <button className="w-discard" onClick={discard}>
+                  {t.wish.discard}
+                </button>
+                <button className="btn primary" disabled={w.writing || !issue.title.trim() || !issue.body.trim()} onClick={() => void send(issue)}>
+                  {t.wish.open}
                 </button>
               </div>
-            )}
-            {issue && <IssueFields issue={issue} disabled={w.writing} />}
-            {w.writing && <p className="hint w-writing">{t.wish.writing}</p>}
-            {w.error && <p className="p-error">{w.error}</p>}
-            <Composer
-              className="w-compose"
-              draft={WISH_DRAFT}
-              placeholder={issue ? t.wish.add : t.wish.placeholder}
-              {...(issue ? { label: t.wish.rework } : { action: t.wish.write })}
-              onSend={(text, images) => write({ said: text || '(see the screenshot)' }, images ?? [])}
-            />
-            {issue && (
-              <>
-                <p className="w-public">
-                  {t.wish.public}
-                  {issue.images.length > 0 && ` ${t.wish.shots(issue.images.length)}`}
-                  {issueUrl(issue.title, issue.body, t.wish.cut).trimmed && ` ${t.wish.long(issue.images.length > 0)}`}
-                </p>
-                <div className="w-actions">
-                  <button className="w-discard" onClick={discard}>
-                    {t.wish.discard}
-                  </button>
-                  <button className="btn primary" disabled={w.writing || !issue.title.trim() || !issue.body.trim()} onClick={() => void send(issue)}>
-                    {t.wish.open}
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+            </>
+          )}
+        </>
+      )}
+    </Over>
   );
 }
 

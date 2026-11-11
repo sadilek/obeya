@@ -448,7 +448,7 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.workspaces .ws-path { grid-column: 2; font: 12px/1.4 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   direction: rtl; text-align: left; }
 .pill.workspaces .ws-card { grid-column: 2; overflow-wrap: anywhere; }
-.pill.workspaces .ws-card .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.pill.workspaces .ws-card .from, .prefs .occasion .from, .proposals .setting-edit .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .pill.workspaces .ws-card .from:hover { text-decoration-color: currentColor; }
 .pill.workspaces .btn.ws-take { margin-left: 8px; padding: 2px 9px; font-size: 12px; font-weight: 500; vertical-align: 1px; }
 /* the rare action of giving a card's clone away sits behind a faint "⋯" */
@@ -495,7 +495,6 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .prefs .pref-del:hover { color: var(--error); }
 .prefs .p-error { flex-basis: 100%; margin: 0; }
 .prefs .occasion { flex-basis: 100%; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.prefs .occasion .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .prefs .occasion q { font-style: italic; }
 .prefs .target, .pref-new .target { flex-basis: 100%; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .prefs .target select, .pref-new .target select { font: inherit; color: var(--ink); padding: 3px 6px; border: 1px solid var(--line); border-radius: 2px; background: var(--card); }
@@ -511,7 +510,6 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .proposals .setting-new textarea.setting-value { flex: none; border: 1px solid var(--line); resize: none; overflow: hidden; outline: none; color: var(--ink); }
 .proposals .setting-new textarea.setting-value:focus { border-color: var(--proposal); }
 .proposals .setting-edit { color: var(--muted); font-size: 11.5px; }
-.proposals .setting-edit .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .proposals .setting-diff { flex-basis: 100%; display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: start; }
 .proposals .setting-label { color: var(--muted); font-size: 12px; padding-top: 6px; }
 .proposals .setting-diff .setting-value.was { color: var(--muted); background: transparent; border: 1px dashed var(--line); }
@@ -538,10 +536,12 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .hint { color: var(--muted); font-size: 12px; }
 button.pill.help { width: 32px; height: 32px; padding: 0; justify-content: center; font-weight: 700; font-size: 15px; color: var(--muted); }
 button.pill.help:hover, button.pill.help.on { color: var(--ink); }
-#help { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
-#help .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 24px; width: 860px; max-width: 100%; max-height: 100%; overflow: auto; }
+/* a dialog over the greyed page (over.tsx): each keeps by its id what is its own */
+.dimmed { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
+.dimmed > .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 24px; max-width: 100%; max-height: 100%; overflow: auto; }
+.dimmed .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
+#help .box { width: 860px; }
 #help h2 { margin: 0 0 14px; font-size: 23px; }
-#help .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
 #help .sections { columns: 2 340px; column-gap: 36px; }
 #help section { break-inside: avoid; margin-bottom: 18px; }
 #help section:last-child { margin-bottom: 0; }
@@ -560,11 +560,9 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 #help .w-legend { font-size: 12px; color: var(--muted); }
 
 /* the draft of a wish or a bug for Obeya's makers: over the page, as tall as its text needs; the box scrolls, its fields never */
-#wish { position: fixed; inset: 0; z-index: 61; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
-#wish .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 22px; width: 760px; max-width: 100%; max-height: 100%; overflow: auto;
-  display: flex; flex-direction: column; gap: 12px; }
+#wish { z-index: 61; }
+#wish .box { padding-bottom: 22px; width: 760px; display: flex; flex-direction: column; gap: 12px; }
 #wish h2 { margin: 0 0 2px; font-size: 21px; }
-#wish .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
 #wish .w-issue { display: flex; flex-direction: column; gap: 10px; }
 #wish .w-issue label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 #wish .w-issue input, #wish .w-issue textarea { font: inherit; font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; }
@@ -1333,7 +1331,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .qlist { list-style: none; padding: 0; margin: 0; }
 .qlist li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px; border-radius: 2px; cursor: pointer; font-size: 13px; }
 .qlist li:hover { background: var(--chip); }
-.qlist li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
+.qlist li .dot, .sheet > ol > li .dot, .s-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .qlist li .q-what { flex: 1; min-width: 0; }
 .qlist li .why { display: block; margin-top: 2px; }
 .qlist li .x { flex: none; padding: 0 4px; font-size: 17px; line-height: 22px; color: var(--muted); background: none; border: 0; cursor: pointer; }
@@ -1417,7 +1415,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
   display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); }
 .c-shot img { height: 100%; max-width: 160px; object-fit: cover; border-radius: 2px; display: block; }
 .c-shot .open { all: unset; height: 100%; cursor: zoom-in; }
-.c-shot .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
+.c-shot .remove, .c-file .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
   background: var(--card); color: var(--ink); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 .c-shot.loading { padding: 0 10px; }
 /* after the first screenshot picked from disk: pasting works too, until confirmed */
@@ -1545,7 +1543,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .sheet > ol { list-style: none; padding: 0; margin: 16px 0 0; }
 .sheet > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 3px; cursor: pointer; font-size: 13px; }
 .sheet > ol > li:hover { background: var(--chip); }
-.sheet > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .sheet > ol > li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
 /* a workstream's text from the plan doc under its title, so the list says what each one is */
 .sheet > ol > li .ws { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -1605,7 +1602,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .s-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 7px 8px; text-align: left; font: inherit; color: var(--ink);
   background: none; border: 0; border-radius: 2px; cursor: pointer; }
 .s-row.active { background: var(--chip); }
-.s-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .s-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .s-ttl { font-size: 14.5px; line-height: 1.3; }
 .s-text { font-size: 12.5px; line-height: 1.4; color: var(--ink); opacity: .8; overflow-wrap: anywhere; }
@@ -1945,8 +1941,6 @@ button.link:hover { text-decoration: underline; }
 /* a text pasted outside a field: its first words, on up to two lines */
 .c-file.c-pasted { width: 220px; max-width: none; white-space: normal; font-style: italic; }
 .c-file.c-pasted .name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.35; overflow-wrap: anywhere; }
-.c-file .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
-  background: var(--card); color: var(--ink); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 #ptt.dropping #mic { outline: 2px dashed var(--working); outline-offset: 5px; }
 .ptt-error { font-size: 12px; color: var(--error); background: var(--card); box-shadow: var(--shadow); border-radius: 2px; padding: 4px 10px; max-width: calc((100vw - var(--left, 0px) - var(--side, 0px)) * .6); }
 .tell { margin: 4px 0 6px; }
@@ -2214,10 +2208,8 @@ button.link:hover { text-decoration: underline; }
 .setup .c-how code { padding: 2px 6px; border-radius: 2px; background: var(--card); border: 1px solid var(--line); -webkit-user-select: all; user-select: all; }
 
 /* "Connect a phone" (access.tsx): the QR code beside the address and the code to type */
-#phone { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
-#phone .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 20px; width: 680px; max-width: 100%; max-height: 100%; overflow: auto; font-size: 14px; }
+#phone .box { padding-bottom: 20px; width: 680px; font-size: 14px; }
 #phone h2 { margin: 0 0 16px; font-size: 23px; }
-#phone .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
 #phone .cfg-field { grid-template-columns: 150px minmax(0, 1fr); }
 .acc-pair { display: flex; gap: 26px; align-items: flex-start; }
 .acc-pair p { margin: 0 0 10px; line-height: 1.45; }

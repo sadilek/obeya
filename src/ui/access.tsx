@@ -9,6 +9,7 @@ import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
 import { api, failText } from './api';
 import { Field, Head } from './config';
 import { clock, shortDay, t } from './strings';
+import { Over } from './over';
 
 /** Text with `code` in backticks, as the strings write commands. */
 function Coded({ text }: { text: string }) {
@@ -308,20 +309,15 @@ export function PhoneDialog({ onClose, onSection }: { onClose: () => void; onSec
     );
   }
   return (
-    <div id="phone" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="box" role="dialog" aria-modal="true" aria-label={a.connect}>
-        <button className="close" title={t.close} onClick={onClose}>
-          ✕
+    <Over id="phone" label={a.connect} onClose={onClose} modal>
+      <h2>{a.connect}</h2>
+      {view && <Moved devices={moved(view)} />}
+      {body}
+      <div className="acc-foot">
+        <button className="btn small" onClick={onSection}>
+          {a.toSection}
         </button>
-        <h2>{a.connect}</h2>
-        {view && <Moved devices={moved(view)} />}
-        {body}
-        <div className="acc-foot">
-          <button className="btn small" onClick={onSection}>
-            {a.toSection}
-          </button>
-        </div>
       </div>
-    </div>
+    </Over>
   );
 }

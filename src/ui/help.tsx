@@ -1,6 +1,7 @@
 // The legend of mouse and keys: a box over the greyed page, opened by `?` or the button in the bar.
 
 import { Fragment } from 'react';
+import { Over } from './over';
 import { t } from './strings';
 import { WishLink } from './wish';
 
@@ -20,47 +21,42 @@ export function HelpButton({ on, onClick }: { on: boolean; onClick: () => void }
  */
 export function Help({ onClose, note }: { onClose: () => void; note?: 'button' | 'gone' }) {
   return (
-    <div id="help" onClick={onClose}>
-      <div className="box" role="dialog" aria-label={t.help.title} onClick={(e) => e.stopPropagation()}>
-        <button className="close" title={t.close} onClick={onClose}>
-          ✕
-        </button>
-        <h2>{t.help.title}</h2>
-        <div className="sections">
-          {t.help.sections.map((s) => (
-            <section key={s.title}>
-              <h3>{s.title}</h3>
-              <ul>
-                {s.rows.map((r) => (
-                  <li key={r.text}>
-                    <span>{r.text}</span>
-                    <span className="keys">
-                      {r.keys.map((combo, i) => (
-                        <Fragment key={i}>
-                          {i > 0 && <span className="or">{t.help.or}</span>}
-                          {combo.map((k, j) => (
-                            <Fragment key={j}>
-                              {j > 0 && <span className="plus">+</span>}
-                              <kbd>{k}</kbd>
-                            </Fragment>
-                          ))}
-                        </Fragment>
-                      ))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-        {/* what the owner misses goes to Obeya's makers; the legend closes for the draft */}
-        <p className="wish-line">
-          <WishLink onOpen={onClose} />
-          <span className="w-legend">{t.wish.legend}</span>
-        </p>
-        {note && <p className="key-note">{note === 'button' ? t.help.keyNote.button : t.help.keyNote.gone}</p>}
+    <Over id="help" label={t.help.title} onClose={onClose}>
+      <h2>{t.help.title}</h2>
+      <div className="sections">
+        {t.help.sections.map((s) => (
+          <section key={s.title}>
+            <h3>{s.title}</h3>
+            <ul>
+              {s.rows.map((r) => (
+                <li key={r.text}>
+                  <span>{r.text}</span>
+                  <span className="keys">
+                    {r.keys.map((combo, i) => (
+                      <Fragment key={i}>
+                        {i > 0 && <span className="or">{t.help.or}</span>}
+                        {combo.map((k, j) => (
+                          <Fragment key={j}>
+                            {j > 0 && <span className="plus">+</span>}
+                            <kbd>{k}</kbd>
+                          </Fragment>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
-    </div>
+      {/* what the owner misses goes to Obeya's makers; the legend closes for the draft */}
+      <p className="wish-line">
+        <WishLink onOpen={onClose} />
+        <span className="w-legend">{t.wish.legend}</span>
+      </p>
+      {note && <p className="key-note">{note === 'button' ? t.help.keyNote.button : t.help.keyNote.gone}</p>}
+    </Over>
   );
 }
 
@@ -79,13 +75,11 @@ export const SEARCH_KEY_KNOWN = 'obeya-search-key-known';
  */
 export function HowToHint({ label, text, onClose }: { label: string; text: string; onClose: () => void }) {
   return (
-    <div id="help" onClick={onClose}>
-      <div className="box hint-box" role="dialog" aria-label={label} onClick={(e) => e.stopPropagation()}>
-        <p>{text}</p>
-        <button className="btn primary" autoFocus onClick={onClose}>
-          {t.gotIt}
-        </button>
-      </div>
-    </div>
+    <Over id="help" label={label} onClose={onClose} boxClass="hint-box" close={false}>
+      <p>{text}</p>
+      <button className="btn primary" autoFocus onClick={onClose}>
+        {t.gotIt}
+      </button>
+    </Over>
   );
 }
