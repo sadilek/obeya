@@ -193,7 +193,7 @@ export async function updateCodex(log: (line: string) => void = () => {}, env: E
   const bin = codexExecutable(env);
   if (!bin) throw new Error('Codex is not installed on this machine');
   const help = await runCodex(bin, ['update', '--help'], env);
-  if (help?.ok && /^Update Codex/m.test(help.out)) return runLogged(startArgv(bin, ['update']), env, log);
+  if (help && /^Update Codex/m.test(help)) return runLogged(startArgv(bin, ['update']), env, log);
   const real = await realpath(bin).catch(() => bin);
   const argv = codexManager(real.replace(/\\/g, '/'));
   if (!argv) throw new Error(`Codex at ${bin} is too old to update itself; update it as it was installed`);

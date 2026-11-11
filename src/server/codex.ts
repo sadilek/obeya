@@ -29,7 +29,7 @@ import { which } from './path';
 import { carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, lostEvent, stderrTail, trackHere, withStderr } from './runtime';
 import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, refuseLongWait, waitRefusal } from './shell';
 import { codexCost, type CodexTokens } from './prices';
-import { OWN_GROUP } from './spawn';
+import { OWN_GROUP, spawnOutput } from './spawn';
 import type { PlanLimits, UsageSource } from './usage';
 import { z } from 'zod';
 
@@ -66,36 +66,23 @@ export function endTree(p: ChildProcess) {
 }
 
 
-/** What the CLI says on stdout and stderr, and whether it ended well; null where it could not start or took too long. */
-export function runCodex(bin: string, args: string[], env: Env, ms = 15_000): Promise<{ ok: boolean; out: string } | null> {
-  return new Promise((done) => {
-    const argv = startArgv(bin, args);
-    let out = '';
-    let p: ChildProcess;
-    try {
-      p = spawn(argv[0]!, argv.slice(1), { env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...spawnOptions(argv) });
-    } catch {
-      return done(null);
-    }
-    const timer = setTimeout(() => (p.kill(), done(null)), ms);
-    p.stdout!.on('data', (d) => (out += d));
-    p.stderr!.on('data', (d) => (out += d));
-    p.on('error', () => (clearTimeout(timer), done(null)));
-    p.on('close', (code) => (clearTimeout(timer), done({ ok: code === 0, out: out.trim() })));
-  });
+/** What the CLI says on stdout and stderr; null where it could not start, took too long or did not end well. */
+export async function runCodex(bin: string, args: string[], env: Env, ms = 15_000): Promise<string | null> {
+  const argv = startArgv(bin, args);
+  const r = await spawnOutput(argv, { env, timeout: ms, ...spawnOptions(argv) }).catch(() => null);
+  return r?.code === 0 ? `${r.stdout}${r.stderr}`.trim() : null;
 }
 
 /** The CLI's version (`codex-cli 0.159.2`), or null where it does not answer. */
 export async function codexVersion(bin: string, env: Env): Promise<string | null> {
-  const r = await runCodex(bin, ['--version'], env);
-  return r?.ok ? (r.out.match(/(\d+\.\d+\.\d+\S*)/)?.[1] ?? null) : null;
+  return (await runCodex(bin, ['--version'], env))?.match(/(\d+\.\d+\.\d+\S*)/)?.[1] ?? null;
 }
 
 /** Whether the CLI is logged in, and how it says so ("Logged in using ChatGPT"). */
 export async function codexLogin(bin: string, env: Env): Promise<{ loggedIn: boolean; how?: string }> {
-  const r = await runCodex(bin, ['login', 'status'], env);
-  if (!r?.ok) return { loggedIn: false };
-  const how = r.out.match(/logged in using (.+)/i)?.[1]?.trim();
+  const out = await runCodex(bin, ['login', 'status'], env);
+  if (out === null) return { loggedIn: false };
+  const how = out.match(/logged in using (.+)/i)?.[1]?.trim();
   return { loggedIn: true, ...(how ? { how } : {}) };
 }
 
