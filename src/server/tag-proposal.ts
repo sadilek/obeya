@@ -10,8 +10,7 @@ import { dimensions, parseTagLines, tagLines } from '../core/page-tags';
 import { messageOf, plainText } from '../core/text';
 import { finished, type Item, type PageTags, type TagProposalJob } from '../core/types';
 import { BadRequest } from './board';
-import { readSession } from './coordinator';
-import type { AgentRuntime } from './runtime';
+import { type AgentRuntime, readSession } from './runtime';
 
 /** A card as the session reads it. */
 export interface TagCard {

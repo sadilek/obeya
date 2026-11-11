@@ -7,6 +7,7 @@ import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, type Board, type StoredContribution } from './board';
 import { Store } from './db';
 import { Coordinator, overlaps } from './coordinator';
+import { Learner } from './learner';
 import { move, queueOrder, reach } from '../core/queue';
 import { artifact, commit, FakeRuntime, type FakeSession, gitClone, gitRepo, PATIENCE, removeDir, tag, testBoard, until } from './testing';
 import { Workers } from './workers';
@@ -1106,6 +1107,10 @@ describe('Coordinator starts all workstreams of a project', () => {
 });
 
 describe('preference memory', () => {
+  let l: Learner;
+  beforeEach(() => {
+    l = new Learner({ board, runtime, home: () => board.canvas.repos[0]!.path, pathFor: () => board.canvas.repos[0]!.path });
+  });
   const learnSession = () => runtime.withTool('propose').at(-1)!;
   const learn = async (tool: string, args: Record<string, unknown>) => {
     learnSession().call(tool, args);
@@ -1116,7 +1121,7 @@ describe('preference memory', () => {
 
   test('a lasting preference is proposed with its occasion and applies once the owner accepts it; a one-off is not', async () => {
     const a = card('Labels');
-    k.learn(item(a.id), 'answer', 'Präzise, auch wenn es länger wird. Das gilt immer.', { question: 'Kurz oder präzise?' });
+    l.learn(item(a.id), 'answer', 'Präzise, auch wenn es länger wird. Das gilt immer.', { question: 'Kurz oder präzise?' });
     await settle();
     expect(learnSession().inbox[0]).toContain('Kurz oder präzise?');
     await learn('propose', { rule: 'Beschriftungen: präzise vor kurz.' });
@@ -1132,7 +1137,7 @@ describe('preference memory', () => {
     expect(texts('active')).toEqual(['Beschriftungen: präzise vor kurz.']);
     expect(board.preferencesText()).toContain('- Beschriftungen: präzise vor kurz.');
 
-    k.learn(item(a.id), 'answer', 'Donnerstag.', { question: 'Wann ist der Termin?' });
+    l.learn(item(a.id), 'answer', 'Donnerstag.', { question: 'Wann ist der Termin?' });
     await settle();
     await learn('nothing', {});
     expect(board.preferences()).toHaveLength(1);
@@ -1142,7 +1147,7 @@ describe('preference memory', () => {
     board.addPreference('Tests immer auf Deutsch benennen.');
     const old = board.addPreference('Beschriftungen: präzise vor kurz.');
     const a = card('Labels');
-    k.learn(item(a.id), 'feedback', 'Und immer mit Einheit.');
+    l.learn(item(a.id), 'feedback', 'Und immer mit Einheit.');
     await settle();
     expect(learnSession().inbox[0]).toContain('2. Beschriftungen: präzise vor kurz.');
     await learn('propose', { rule: 'Beschriftungen: präzise vor kurz, mit Einheit.', replaces: 2 });
@@ -1159,7 +1164,7 @@ describe('preference memory', () => {
 
   test('a rejected proposal is kept but applies nowhere; a rule the owner writes applies at once', async () => {
     const a = card('A');
-    k.learn(item(a.id), 'note', 'Bitte nie wieder Emojis.');
+    l.learn(item(a.id), 'note', 'Bitte nie wieder Emojis.');
     await settle();
     await learn('propose', { rule: 'Keine Emojis in Texten.' });
     const [p] = board.preferences('proposed');
@@ -1167,7 +1172,7 @@ describe('preference memory', () => {
     expect(texts('rejected')).toEqual(['Keine Emojis in Texten.']);
     // the learner sees it, and the proposals still waiting, so neither comes back
     board.proposePreference('Commits auf Englisch.', { cardId: a.id });
-    k.learn(item(a.id), 'note', 'Wirklich keine Emojis, und Commits auf Englisch.');
+    l.learn(item(a.id), 'note', 'Wirklich keine Emojis, und Commits auf Englisch.');
     await settle();
     expect(learnSession().inbox[0]).toContain('rejected (do not propose them again):\n- Keine Emojis in Texten.');
     expect(learnSession().inbox[0]).toContain('waiting for the owner (do not propose them again):\n- Commits auf Englisch.');
@@ -1183,7 +1188,7 @@ describe('preference memory', () => {
   });
 
   test('what the owner says without a card is read in the home checkout and proposed without one', async () => {
-    k.learn(null, 'talk', 'Warum fragt der Agent immer nach Kleinkram?', { reply: 'Weil die Karte offen lässt, wie weit er gehen soll.' });
+    l.learn(null, 'talk', 'Warum fragt der Agent immer nach Kleinkram?', { reply: 'Weil die Karte offen lässt, wie weit er gehen soll.' });
     await settle();
     const brief = learnSession().inbox[0]!;
     expect(learnSession().spec.cwd).toBe(board.canvas.repos[0]!.path);
@@ -1196,7 +1201,7 @@ describe('preference memory', () => {
 
   test('a rule about a repository is proposed for its CLAUDE.md, accepted into its card "Add to CLAUDE.md", and reaches no agent', async () => {
     const a = card('Export');
-    k.learn(item(a.id), 'note', 'Tests schreiben wir hier immer auf Deutsch.');
+    l.learn(item(a.id), 'note', 'Tests schreiben wir hier immer auf Deutsch.');
     await settle();
     expect(learnSession().inbox[0]).toContain(`The canvas's repositories (ids for repos):\n- home: Home, at ${board.canvas.repos[0]!.path} (the card's)`);
     expect(learnSession().spec.system).toContain("A repository's CLAUDE.md, for anything about a repository");
@@ -1215,7 +1220,7 @@ describe('preference memory', () => {
     expect(collect.body).toEndWith('\n\n- Tests auf Deutsch benennen.');
 
     // the next learner knows it is on its way; a rule for the preferences can be moved to a CLAUDE.md, and back
-    k.learn(item(a.id), 'note', 'Und Commits auf Englisch, immer.');
+    l.learn(item(a.id), 'note', 'Und Commits auf Englisch, immer.');
     await settle();
     expect(learnSession().inbox[0]).toContain("Rules the owner accepted for a repository's CLAUDE.md (in it or on their way; do not propose them again):\n- Tests auf Deutsch benennen. (for the CLAUDE.md of home)");
     await learn('propose', { rule: 'Commits auf Englisch.' });
@@ -1236,7 +1241,7 @@ describe('preference memory', () => {
 
   test('the learner sees the text a card had before the owner wrote in it', async () => {
     const a = card('Export');
-    k.learn(item(a.id), 'card', 'Befund: Datum fehlt.\n\nImmer ISO-Datum.', { before: 'Befund: Datum fehlt.' });
+    l.learn(item(a.id), 'card', 'Befund: Datum fehlt.\n\nImmer ISO-Datum.', { before: 'Befund: Datum fehlt.' });
     await settle();
     expect(learnSession().inbox[0]).toContain("Before the owner wrote in it, the card's text read:\nBefund: Datum fehlt.");
     expect(learnSession().inbox[0]).toContain("The owner's text of a card they wrote, the task for an agent: Befund: Datum fehlt.");
@@ -1251,7 +1256,7 @@ describe('preference memory', () => {
     board.log(a.id, 'say', 'worker', 'Soll die Datei rechnungen.csv oder export.csv heißen?');
     board.log(a.id, 'activity', 'worker', 'Liest src/export.ts');
     board.log(a.id, 'hint', 'owner', 'Schon wieder: entscheide Dateinamen selbst.');
-    k.learn(item(a.id), 'note', 'Schon wieder: entscheide Dateinamen selbst.');
+    l.learn(item(a.id), 'note', 'Schon wieder: entscheide Dateinamen selbst.');
     // the worker answers before the learner's turn: the learner still reads what the note answered
     board.log(a.id, 'say', 'worker', 'Gut, export.csv.');
     await settle();
@@ -1306,11 +1311,11 @@ describe('preference memory', () => {
 describe('retrospective', () => {
   const texts = (state: 'proposed' | 'active') => board.preferences(state).map((p) => p.text);
   const reviews = () => runtime.withTool('done');
-  const coordinator = () => new Coordinator({ board, runtime, home: () => board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });
+  const newLearner = () => new Learner({ board, runtime, home: () => board.canvas.repos[0]!.path, pathFor: () => board.canvas.repos[0]!.path, reviewEvery: 4 });
 
   test('after enough inputs, counted across a restart, it reads the history since the last one and proposes rules from it', async () => {
-    let k1 = coordinator();
-    k1.noticed();
+    let l1 = newLearner();
+    l1.noticed();
     // what the owner said and clicked meanwhile
     const a = card('Export');
     board.log(a.id, 'hint', 'owner', 'Bitte ohne Emojis.');
@@ -1319,16 +1324,16 @@ describe('retrospective', () => {
     board.remove(p.id);
     board.undoTalk(board.addTalk('Lösch die Karte Export.', 'Mache ich.', a.id));
     board.rejectProposal(board.proposePreference('Commits auf Englisch.', { cardId: a.id, quote: 'Englisch bitte.' }));
-    k1.noticed();
+    l1.noticed();
     expect(board.setting('review_inputs')).toBe('2');
 
     // Obeya starts again: the count goes on
-    k1 = coordinator();
-    k1.noticed();
+    l1 = newLearner();
+    l1.noticed();
     expect(reviews()).toHaveLength(0);
     // the input that completes the count is read on its own first
     board.log(a.id, 'hint', 'owner', 'Wieder Emojis. Lass das.');
-    k1.learn(item(a.id), 'note', 'Wieder Emojis. Lass das.');
+    l1.learn(item(a.id), 'note', 'Wieder Emojis. Lass das.');
     await settle();
     expect(reviews()).toHaveLength(0);
     const learner = runtime.sessions.at(-1)!;
@@ -1360,10 +1365,10 @@ describe('retrospective', () => {
     expect(board.preferences('proposed')).toEqual([{ id: 2, text: 'Keine Emojis in Texten.', state: 'proposed', quote: 'Auf „Export“ zweimal gesagt, den Emoji-Picker verworfen.', review: true }]);
 
     // the next one reads only what came after
-    for (let n = 0; n < 3; n++) k1.noticed();
+    for (let n = 0; n < 3; n++) l1.noticed();
     expect(reviews()).toHaveLength(1);
     board.log(a.id, 'hint', 'owner', 'Und kürzer.');
-    k1.noticed();
+    l1.noticed();
     await settle();
     expect(reviews()).toHaveLength(2);
     expect(reviews()[1]!.inbox[0]).toContain('Und kürzer.');
@@ -1372,13 +1377,13 @@ describe('retrospective', () => {
   });
 
   test('it proposes at most three rules, and nothing when nothing happened', async () => {
-    const k1 = coordinator();
-    for (let n = 0; n < 4; n++) k1.noticed();
+    const l1 = newLearner();
+    for (let n = 0; n < 4; n++) l1.noticed();
     await settle();
     // nothing on the canvas since: no session
     expect(reviews()).toHaveLength(0);
     board.log(card('A').id, 'hint', 'owner', 'X.');
-    for (let n = 0; n < 4; n++) k1.noticed();
+    for (let n = 0; n < 4; n++) l1.noticed();
     await settle();
     const s = reviews()[0]!;
     for (const rule of ['Eins.', 'Zwei.', 'Drei.', 'Vier.']) s.call('propose', { rule, why: 'W.' });
@@ -1386,10 +1391,10 @@ describe('retrospective', () => {
   });
 
   test('it proposes a rule about a repository for its CLAUDE.md, and reads an accepted one as such', async () => {
-    const k1 = coordinator();
+    const l1 = newLearner();
     const a = card('A');
     board.acceptProposal(board.proposePreference('Tests auf Deutsch.', { cardId: a.id }, undefined, 'home'));
-    for (let n = 0; n < 4; n++) k1.noticed();
+    for (let n = 0; n < 4; n++) l1.noticed();
     await settle();
     const s = reviews()[0]!;
     expect(s.inbox[0]).toContain('the owner accepted the proposed rule "Tests auf Deutsch." for the CLAUDE.md of home');

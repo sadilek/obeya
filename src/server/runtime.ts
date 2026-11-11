@@ -576,3 +576,57 @@ export async function carryTo(host: SshHost, dir: string | Promise<string>, text
     return { text, images };
   }
 }
+/**
+ * A read-only session that reads `brief` (and `images`) and answers through its tools: it ends with
+ * its turn, or once a tool calls `finish`. It settles with the error that ended it before a tool
+ * called `finish`, if one did. With `onLimit` it waits for the account's usage limit instead of
+ * failing on it (`AgentSpec.onLimit`).
+ */
+export function readSession(
+  runtime: AgentRuntime,
+  o: {
+    cwd: string;
+    system: string;
+    tools: (finish: (r: string) => string) => AgentTool[];
+    brief: string;
+    role: AgentRole;
+    images?: string[];
+    onLimit?: (until: number | undefined) => void;
+    /** The card it reads for, whose cost it counts to (`AgentSpec.spendOn`). */
+    spendOn?: string;
+  },
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (error?: string) => {
+      if (!done) {
+        done = true;
+        resolve(error);
+      }
+    };
+    const finish = (r: string) => {
+      end();
+      return r;
+    };
+    const session = runtime.start(
+      {
+        cwd: o.cwd,
+        readOnly: true,
+        role: o.role,
+        system: o.system,
+        tools: o.tools(finish),
+        ...(o.onLimit ? { onLimit: o.onLimit } : {}),
+        ...(o.spendOn ? { spendOn: o.spendOn } : {}),
+        onEvent: (e) => {
+          if (e.type === 'idle' || e.type === 'error') {
+            session.close();
+            end(e.type === 'error' ? e.message : undefined);
+          }
+        },
+      },
+      o.brief,
+      o.images,
+    );
+  });
+}
+

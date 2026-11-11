@@ -21,7 +21,7 @@ import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN
 import { artifactFiles, keepDemo, videoFacts } from './demo-files';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
-import type { InputContext } from './coordinator';
+import type { InputContext } from './learner';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';

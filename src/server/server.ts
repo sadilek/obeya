@@ -188,7 +188,7 @@ const needs =
 
 /** A click the retrospective counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
 function click<T>(c: CanvasRuntime, out: T): T {
-  c.coordinator.noticed();
+  c.learner.noticed();
   return out;
 }
 

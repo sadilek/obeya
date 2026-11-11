@@ -129,7 +129,7 @@ test('the Coordinator’s brief for a command: its first in a session, with the 
 });
 
 test('what the learner reads around an input of the owner’s: what they said in the last days', async () => {
-  const around = () => long.canvas.coordinator['around'](null, 'talk', 'Start it.', {});
+  const around = () => long.canvas.learner['around'](null, 'talk', 'Start it.', {});
   expect(around().join('\n')).toContain('What the owner said in the last');
   expect(await inUnits(around)).toBeLessThan(1);
 });

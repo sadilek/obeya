@@ -6,9 +6,8 @@ import { LANGUAGE_NAMES } from '../core/locale';
 import { dimensions } from '../core/page-tags';
 import { plainText } from '../core/text';
 import type { Demo, DemoPage, Item, PageTags } from '../core/types';
-import { readSession } from './coordinator';
 import type { PageLanguage } from './demo-page';
-import type { AgentRuntime } from './runtime';
+import { type AgentRuntime, readSession } from './runtime';
 
 /** What the session writing a page's words reads: the card, what its worker handed over, the demo, and where it reads code. */
 export interface PageAsk {

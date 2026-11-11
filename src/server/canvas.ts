@@ -25,6 +25,7 @@ import { Explorers } from './explorers';
 import { Files } from './files';
 import { IdeaActions } from './idea-actions';
 import { Images } from './images';
+import { Learner } from './learner';
 import { SettingsReads } from './settings-reads';
 import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge';
 import { Coordinator } from './coordinator';
@@ -211,6 +212,8 @@ export class CanvasRuntime {
   readonly coordinator: Coordinator;
   /** The work retrospective: friction in the workers' runs, made into proposals. */
   readonly workRetro: WorkRetro;
+  /** The learner and the retrospective: rules proposed from what the owner says and does. */
+  readonly learner: Learner;
   readonly commander: Commander;
   readonly explorers: Explorers;
   /** Screenshots the owner attaches to what they write. */
@@ -332,6 +335,12 @@ export class CanvasRuntime {
       settingsFor: this.settingsNow,
       repoLanguage: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).adapter.language,
     });
+    this.learner = new Learner({
+      board,
+      runtime: deps.runtime,
+      home: () => this.repos[0]!.read.path,
+      pathFor: (card) => this.repoOf(card).read.path,
+    });
     board.showSettings(this.settingsNow);
     board.readPlanHistory((ref) => {
       const repo = this.repos.find((r) => r.ref.id === repoOfRef(ref, board.home));
@@ -385,7 +394,7 @@ export class CanvasRuntime {
       preferences: this.preferences,
       pathFor: (card) => this.repoOf(card).read.path,
       repoLanguage: (card) => this.repoOf(card).adapter.language,
-      onOwnerInput: (card, text) => coordinator.learn(card, 'idea', text),
+      onOwnerInput: (card, text) => this.learner.learn(card, 'idea', text),
       imageFiles: this.imageFiles,
       onReplied: (cardId, replied) => this.ideas.replied(cardId, replied),
       toObeya: this.toObeya,
@@ -443,7 +452,7 @@ export class CanvasRuntime {
       execute: (c) => this.run(c),
       imageFiles: this.imageFiles,
       lookUp: (talk) => this.answers.lookUp(talk),
-      onOwnerInput: (card, kind, text, reply) => this.coordinator.learn((card && board.item(card)) || null, kind, text, { reply }),
+      onOwnerInput: (card, kind, text, reply) => this.learner.learn((card && board.item(card)) || null, kind, text, { reply }),
       ...(deps.config ? { config: deps.config } : {}),
       canvases: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => ({ id: c.id, name: c.board.canvas.name })),
       agentSetting: () => agents('coordinator'),
@@ -806,7 +815,7 @@ export class CanvasRuntime {
       repo: ref.id,
       otherBoards: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => c.board),
       preferences: this.preferences,
-      onOwnerInput: (card, kind, text, context) => this.coordinator.learn(card, kind, text, context),
+      onOwnerInput: (card, kind, text, context) => this.learner.learn(card, kind, text, context),
       onPrOpened: (cardId) => {
         // a card whose own branch has its work go out as a pull request, where the repository's does not yet
         this.watchPrs(repo);
@@ -1498,7 +1507,7 @@ export class CanvasRuntime {
     this.writing.delete(cardId);
     const card = this.board.item(cardId);
     const [text, before] = [card?.body.trim() ?? '', w.before.trim()];
-    if (card && text && text !== before) this.coordinator.learn(card, 'card', text, before ? { before } : {});
+    if (card && text && text !== before) this.learner.learn(card, 'card', text, before ? { before } : {});
   }
 
   /** The owner accepts a rule proposal, maybe in their words or for another place (a repository's CLAUDE.md, or none). */
@@ -1582,7 +1591,7 @@ export class CanvasRuntime {
     if (card.kind === 'question') return this.act(cardId, { action: 'ask', ...said });
     if (card.state === 'idea') return this.act(cardId, { action: 'discuss', ...said });
     if (card.state === 'proposal') {
-      this.coordinator.learn(card, 'note', text.trim());
+      this.learner.learn(card, 'note', text.trim());
       return this.act(cardId, { action: 'revise', ...said }, true);
     }
     if (card.state === 'waiting' && card.need === 'question') return this.act(cardId, { action: 'answer', ...said, ...(spot ? { spot } : {}) });
@@ -1634,7 +1643,7 @@ export class CanvasRuntime {
     // the options picked on a proposal go to its reviser without the Coordinator, which would have logged them
     const r = this.act(cardId, a, true);
     // the end of watching a demo is no click of the owner's
-    if (a.action !== 'release' && a.action !== 'unsay' && a.action !== 'name' && !(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.coordinator.noticed();
+    if (a.action !== 'release' && a.action !== 'unsay' && a.action !== 'name' && !(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.learner.noticed();
     return r;
   }
 
