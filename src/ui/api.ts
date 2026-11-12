@@ -142,10 +142,6 @@ export interface Heard {
   /** The card whose conversation shows the reply in full. */
   inCard?: string;
 }
-/** How long "Undo" shows: until shortly before the command stops waiting. */
-export const undoShownMs = (undoMs: number) => Math.max(0, undoMs - 400);
-/** How long a confirmation stays above the microphone: 7 s, unless its undo window is longer. */
-export const confirmShownMs = (undoMs = 0) => Math.max(7000, undoMs + 1500);
 
 /**
  * How a new site is set up at its host: in the Cloudflare account of a site this machine deploys to

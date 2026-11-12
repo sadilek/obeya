@@ -7,7 +7,7 @@ import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { cardTag } from '../core/card-number';
 import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, startable, waitsOn } from '../core/queue';
-import { EVICT_HOLD_MS, type Item, START_ALL_HOLD_MS, type Wait } from '../core/types';
+import { type Item, UNDO_HOLD_MS, type Wait } from '../core/types';
 import { finished, nameless, titleFrom } from '../core/card';
 import { BadRequest, type Board, TITLE_MAX } from './board';
 import { ACTIVE } from './items';
@@ -57,7 +57,7 @@ export interface CoordinatorOptions {
   home: () => string;
   /** Whether the owner paused the canvas's agents: a card the Coordinator lets start waits until they resume them (`{ paused }` in its queue). */
   paused?: () => boolean;
-  /** How long a project's start, or taking a card's workspace, waits for the owner to take it back; START_ALL_HOLD_MS and EVICT_HOLD_MS by default. */
+  /** How long a project's start, or taking a card's workspace, waits for the owner to take it back; UNDO_HOLD_MS by default. */
   holdMs?: number;
   /** The files of screenshots by their ids. */
   imageFiles?: (ids?: string[]) => string[];
@@ -155,7 +155,7 @@ export class Coordinator {
           this.scheduleDrain();
         });
     };
-    this.evictions.set(cardId, setTimeout(go, this.o.holdMs ?? EVICT_HOLD_MS));
+    this.evictions.set(cardId, setTimeout(go, this.o.holdMs ?? UNDO_HOLD_MS));
     this.o.board.changed();
   }
 
@@ -213,7 +213,7 @@ export class Coordinator {
     const now = Date.now();
     open.forEach((w, n) => this.o.board.work(w.id, { queue: toJson({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
     this.o.board.log(project.id, 'state', 'owner', this.o.board.t.coordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
-    setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? START_ALL_HOLD_MS);
+    setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? UNDO_HOLD_MS);
   }
 
   /**

@@ -106,7 +106,7 @@ export interface WorkerOptions {
    * the pull, and where that stops, the landing of the rebase a worker resolved.
    */
   pulls?: Pick<Workspaces, 'pullMain' | 'pushMain' | 'clashBeforeMerge' | 'landResolution' | 'landingOf'>;
-  /** How long pushing main for a review card waits for the owner's "Undo"; PUSH_HOLD_MS when left out. */
+  /** How long pushing main for a review card waits for the owner's "Undo"; UNDO_HOLD_MS when left out. */
   pushHold?: number;
   /** How long Obeya waits between looks at whether the forge shows a review card's pushed commits as the PR's head; a second when left out. */
   pushSettle?: number;

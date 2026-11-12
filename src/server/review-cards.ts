@@ -3,7 +3,7 @@
 // with their text, the merge on the forge, and the local main pulled after it (design: Review cards).
 
 import { isAbsolute } from 'node:path';
-import { type Item, type Question, type ApproveResult, type ChangeRoute, type Clash, type Finding, type FindingStatus, type HeldChanges, PUSH_HOLD_MS } from '../core/types';
+import { type Item, type Question, type ApproveResult, type ChangeRoute, type Clash, type Finding, type FindingStatus, type HeldChanges, UNDO_HOLD_MS } from '../core/types';
 import { answering, askable, finished, handedOver } from '../core/card';
 import { BadRequest } from './board';
 import { fromJson, type HeldComment, type Json, type LandedState, type Resolving, type StoredContribution, type Unheard, toJson } from './row';
@@ -828,7 +828,7 @@ export class ReviewCards {
       setTimeout(() => {
         this.pushingMain.set(cardId, true);
         void this.pushMainNow(cardId).finally(() => this.pushingMain.delete(cardId));
-      }, this.o.pushHold ?? PUSH_HOLD_MS),
+      }, this.o.pushHold ?? UNDO_HOLD_MS),
     );
   }
 

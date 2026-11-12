@@ -3,7 +3,7 @@
 // confirms it, often with "Undo", or says what went wrong.
 
 import { useMemo } from 'react';
-import { EVICT_HOLD_MS, type Item, type PlanDir, START_ALL_HOLD_MS } from '../core/types';
+import { type Item, type PlanDir, UNDO_HOLD_MS } from '../core/types';
 import { api, ApiError, failText } from './api';
 import { useLatest } from './latest';
 import { plain } from './markdown';
@@ -89,7 +89,7 @@ export function useCanvasActions(host: Host) {
               showAck(e instanceof ApiError && e.code === 'notQueued' ? t.voice.tooLate : t.offlineError);
             }
           };
-          showAck(t.plan.startedAll(n), takeBack, START_ALL_HOLD_MS);
+          showAck(t.plan.startedAll(n), takeBack, UNDO_HOLD_MS);
         }),
       keepWorkspace,
       /** "Commit to a new branch and free the clone" on a clone uncommitted changes block: it takes effect at once, the leftovers on a branch of their own. */
@@ -100,7 +100,7 @@ export function useCanvasActions(host: Host) {
       takeWorkspace: (i: Item) =>
         attempt(async () => {
           await api.act(i.id, { action: 'takeWorkspace' });
-          showAck(t.workspaces.taken(plain(i.title)), () => keepWorkspace(i), EVICT_HOLD_MS);
+          showAck(t.workspaces.taken(plain(i.title)), () => keepWorkspace(i), UNDO_HOLD_MS);
         }),
       /**
        * The project's "Arrange", on its card and in its sheet: its workstreams in columns by what builds

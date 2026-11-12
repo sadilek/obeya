@@ -666,16 +666,12 @@ export interface PrThread extends PrComment {
 export type PrReviewEntry = { author: string; mine?: boolean; at: string; threads: PrThread[] } | PrComment;
 
 /**
- * How long a project's workstreams, started together, wait before the Coordinator plans them: the
- * owner can take the start back until then (a button on the project card is easily hit).
+ * How long a click that is easily hit and sets a lot in motion waits for the owner's "Undo" before it
+ * takes effect: a project's workstreams started together, a card's workspace taken from it (the
+ * Workspaces list), main pushed for a review card whose PR collides with unpushed commits, a card
+ * built or started in a new repository.
  */
-export const START_ALL_HOLD_MS = 8000;
-
-/** How long taking a card's workspace from it (the Workspaces list) waits for the owner's "Undo". */
-export const EVICT_HOLD_MS = 8000;
-
-/** How long pushing main for a review card whose PR collides with unpushed commits waits for the owner's "Undo". */
-export const PUSH_HOLD_MS = 8000;
+export const UNDO_HOLD_MS = 8000;
 
 /**
  * `since`: when the card came to the Coordinator; of the cards whose turn comes, the one waiting
@@ -1252,7 +1248,7 @@ export interface NewCard {
  * not named one yet) and whether it gets a canvas of its own, which the card moves to, or joins the
  * card's canvas. `by`: who chose it; what the owner chose, the idea's agent does not change.
  * `due`: building or starting the card was clicked, and Obeya creates the repository then (ISO),
- * unless the owner takes it back meanwhile (`NEW_REPO_HOLD_MS`).
+ * unless the owner takes it back meanwhile (`UNDO_HOLD_MS`).
  */
 export interface NewRepo {
   path: string;
@@ -1260,9 +1256,6 @@ export interface NewRepo {
   by: 'owner' | 'agent';
   due?: string;
 }
-
-/** How long building a card in a new repository waits for the owner to take it back. */
-export const NEW_REPO_HOLD_MS = 8000;
 
 /** A card on another canvas, as a card that refers to it shows it. */
 export interface Elsewhere {
@@ -1329,7 +1322,7 @@ export type CardAction =
   | { action: 'unsay'; id: number }
   /**
    * A review card whose PR collides with unpushed commits on the local main: main is pushed, once
-   * the undo window (PUSH_HOLD_MS) is through, and the card's agent brings the PR up to date with it;
+   * the undo window (`UNDO_HOLD_MS`) is through, and the card's agent brings the PR up to date with it;
    * `keepMain` takes it back within the window.
    */
   | { action: 'pushMain' }
@@ -1354,7 +1347,7 @@ export type CardAction =
   | { action: 'agent'; agent: CardAgent | null }
   /**
    * The Workspaces list: the card's clone goes to the cards waiting for one, after the undo window
-   * (EVICT_HOLD_MS); its worker stops, its uncommitted work is kept on its branch, and it goes on
+   * (`UNDO_HOLD_MS`); its worker stops, its uncommitted work is kept on its branch, and it goes on
    * there once it has a workspace again. `keepWorkspace` takes it back within the window.
    */
   | { action: 'takeWorkspace' }

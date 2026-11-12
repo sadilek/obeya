@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { ACK_MS, ackLasts, noticeLine } from './tell';
+import { ACK_MS, confirmShownMs, noticeLine } from './tell';
 
 describe('the line above the microphone', () => {
   test('an answer in Markdown shows plain, on one line, cut short', () => {
@@ -17,10 +17,10 @@ describe('the line above the microphone', () => {
 
 describe('the confirmation above the microphone', () => {
   test('stays while its "Undo" shows, also when the action waits longer than a confirmation stays', () => {
-    expect(ackLasts(false)).toBe(ACK_MS);
-    expect(ackLasts(true)).toBe(ACK_MS);
-    expect(ackLasts(true, 8000)).toBe(8000);
+    expect(confirmShownMs()).toBe(ACK_MS);
+    // a moment past the wait, so the owner sees the action go ahead
+    expect(confirmShownMs(8000)).toBe(9500);
     // a shorter wait takes "Undo" away early; the line stays as long as any confirmation
-    expect(ackLasts(true, 3000)).toBe(ACK_MS);
+    expect(confirmShownMs(3000)).toBe(ACK_MS);
   });
 });

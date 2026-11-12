@@ -4,7 +4,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Item, NEW_REPO_HOLD_MS } from '../core/types';
+import { type Item, UNDO_HOLD_MS } from '../core/types';
 import { buildableOn, plannableAsProject } from '../core/card';
 import { clip, messageOf, oneLine, plainText } from '../core/text';
 import { BadRequest, type Board } from './board';
@@ -84,7 +84,7 @@ export interface IdeaActionsOptions {
   canvases?: () => CanvasRuntime[];
   /** Obeya's configuration, which a new repository is added to. */
   config?: Config;
-  /** How long building or starting a card in a new repository waits for undo; NEW_REPO_HOLD_MS when left out. */
+  /** How long building or starting a card in a new repository waits for undo; UNDO_HOLD_MS when left out. */
   newRepoHoldMs?: number;
   /** The card left for another canvas: what the canvas kept of the owner's words on it goes. */
   forget: (cardId: string) => void;
@@ -218,7 +218,7 @@ export class IdeaActions {
     const path = newRepoPath(target.path, t);
     if (this.o.config && this.o.config.view().source !== 'file') throw new BadRequest('newRepoPath', t.fromCommandLine);
     this.taken(path);
-    const due = Date.now() + (this.o.newRepoHoldMs ?? NEW_REPO_HOLD_MS);
+    const due = Date.now() + (this.o.newRepoHoldMs ?? UNDO_HOLD_MS);
     this.board.setNewRepo(cardId, { ...target, due: new Date(due).toISOString() });
     this.newRepos.set(
       cardId,

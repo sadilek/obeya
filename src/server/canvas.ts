@@ -85,7 +85,7 @@ export interface CanvasDeps {
   setupProposals?: boolean;
   /** How long a voice command waits for undo. */
   commandDelayMs?: number;
-  /** How long building or starting a card in a new repository waits for undo; NEW_REPO_HOLD_MS when left out. */
+  /** How long building or starting a card in a new repository waits for undo; UNDO_HOLD_MS when left out. */
   newRepoHoldMs?: number;
   /** The checkout this Obeya runs from, when it starts again for new code there (self-update.ts). */
   ownCheckout?: string | null;
