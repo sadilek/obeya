@@ -195,7 +195,7 @@ across the server.
   `canvas.test.ts`.
 - Confidence: high for answers.ts and explorers.ts (read in full); the workers.ts sites were read in
   context at the lines named, not the whole file.
-- Done by W10 with [runtimes](runtimes.md) B3: `Board.pausing`, `paused(id, state = {})`,
+- Done by W10 with runtimes B3: `Board.pausing`, `paused(id, state = {})`,
   `pauseTakenBack` and `resumed(id, said = true)` (the last without its line where the waking's line
   says why), each the row write with its line, beside `snooze`/`unsnooze`. The guard became the
   refusal alone, `pauseRefused(card, now)` beside `notPaused()` in `board.ts`: Explorers test for a

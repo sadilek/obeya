@@ -63,6 +63,23 @@ prompt sentences). `stalls.ts`, `workers-fixture.ts` and `patience.ts` are clean
 - Confidence: high on the diagnosis (whole file read; imports of `./workers` grepped across `src`,
   `scripts`); medium on the exact cut of (4), whose host interface I listed from reading, not from
   compiling.
+- Done by W11 in five moves, a commit each, the bodies as they were but for what they now ask of
+  the workers through a small host interface: (1) `worker-texts.ts`, `agent-lines.ts`
+  (`describeTool`, `permissionWhat` and `SPOKEN`: one neutral module rather than `tool-lines.ts`,
+  since `SPOKEN` is no tool line) and `proposals.ts`; (2) `WorkerBriefing` in `worker-briefing.ts`,
+  with `WorkerOptions`, `folderOf` and `sharesOf` in `worker-options.ts` (`workers.ts` re-exports the
+  type); (3) `CardApps` in `card-app.ts`; (4) `ReviewCards` in `review-cards.ts` behind `ReviewHost`
+  (the card's run, `shut`, `approving`, `deliver`, the unheard words, the held comments, `merged`,
+  `resumeFinished`, `toOwner`, `refuseAsked`); (5) `WorkerTools` in `worker-tools.ts` behind
+  `ToolsHost`, with what only the tools use (the proposals' boards and repositories, `retract`,
+  `cardTitled`, `keep`, `earlier`, `demoHere`, `report`, `namedFiles`, `prototypesUnclear`) and
+  `Live` in `worker-live.ts`. `tools()` became `WorkerTools.for`, still one method: naming its
+  handlers is A2's. The leases (e) stayed in `Workers`, as they share `preparing`, `evicting` and
+  `freeing` with `start`, `evict` and `busyCards`; so did "owner actions" as one banner, the
+  "parking" one went with the parking. `workers.ts` went from 5,527 to 2,903 lines. Three tests
+  that reach into internals moved with them: `workers.test.ts` reads `apps.tried`, `review.test.ts`
+  calls `reviews.probeClash`, `sync-calls.test.ts` counts the kept demo's `existsSync` in
+  `worker-tools.ts`.
 
 ### A2. `ready_for_review` is 165 lines of nested continuations inside a 670-line `tools()`
 - Principle: KISS

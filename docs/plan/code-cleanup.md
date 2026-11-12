@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W10, W13 to W18 and W20 to W25 are done; the other workstreams are open. The review, made on
+W1 to W11, W13 to W18 and W20 to W25 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -134,7 +134,7 @@ the workstream named does it for all of them.
 ## Workstreams
 
 - [x] **W1:** Dead code and stray comments. Remove what nothing uses and move doc comments back to
-  what they describe: [workers](code-cleanup/workers.md) A17; [runtimes](code-cleanup/runtimes.md)
+  what they describe: [workers](code-cleanup/workers.md) A17; runtimes
   B11, B12, B17, B21; [board-db](code-cleanup/board-db.md) C10, C11, C16, C17, C18;
   workspaces-git-hosts E13;
   http-config F13, F14, F15;
@@ -161,7 +161,7 @@ the workstream named does it for all of them.
   three modules), E3 (one parser for a remote URL), E6 ("is A an ancestor of B"), E8, E14. Update
   `sync-calls.test.ts` with it.
 - [x] **W6:** Small shared server helpers, each written once. A value with listeners
-  ([runtimes](code-cleanup/runtimes.md) B5, http-config F6); kept a
+  (runtimes B5, http-config F6); kept a
   while and asked once (B6, workspaces-git-hosts E9, E10); a
   promise against a timer (B9, canvas-coordinator D15); "does
   this pid run" (B18); core's text helpers at their call sites ([core](code-cleanup/core.md) J5,
@@ -180,20 +180,26 @@ the workstream named does it for all of them.
   W8. `board.ts` keeps the cards and their transitions (2,397 lines); `items.ts`, `shared-pages.ts`
   (`PageNotice`), `archive.ts` (`Archive`), `plan-follow.ts` (`PlanFollower`) and `plan-ref.ts` hold
   the rest; what came of each finding stands under it.
-- [x] **W10:** The pause protocol once for every kind of agent. [runtimes](code-cleanup/runtimes.md)
+- [x] **W10:** The pause protocol once for every kind of agent. runtimes
   B3 with [board-db](code-cleanup/board-db.md) C5: the four transitions and their log lines were
   written in `workers.ts`, `answers.ts` and `explorers.ts`, against the house rule on interactions
   that card kinds share; `Board` now writes each step with its line, and one refusal serves all
   three. What came of it stands under C5.
-- [ ] **W11:** `workers.ts` split along its seams, by moves only. [workers](code-cleanup/workers.md)
+- [x] **W11:** `workers.ts` split along its seams, by moves only. [workers](code-cleanup/workers.md)
   A1 (texts, briefings, the card's app, review cards and the tools leave the `Workers` class behind
-  its unchanged public API), with [runtimes](code-cleanup/runtimes.md) B4 and B20 (workers' own
-  copies of `BackgroundWait` and of the limit-lift timer). After W2 and W7.
+  its unchanged public API), with runtimes B4 and B20 (workers' own copies of `BackgroundWait` and
+  of the limit-lift timer). After W2 and W7. What came of A1 stands under it. B4: the worker's
+  ended turn waits through a `BackgroundWait` (`Live.work`) instead of a timer of its own beside
+  `Live.background`; `BACKGROUND_GRACE` and `BACKGROUND_LIMIT` are no longer exported. The one
+  difference: when the wait runs out, the board hears of a change twice (the wait's end, then the
+  turn's), where it heard once. B20: `LIMIT_MARGIN` and `atTime` in `runtime.ts`, used by
+  `withLimitWait`, the workers and the Coordinator, which had a third copy. With them the
+  runtimes' findings file went, every finding in it done.
 - [ ] **W12:** The long functions of the workers. [workers](code-cleanup/workers.md) A2
   (`ready_for_review` as one linear method, with A19), A3 (`turnEnded` with its conditions named once), A4
   (the three endings of a card's work), A5 and A6 (the owner's words as one value), A8, A9 (the
   per-card timer maps), A10, A11, A12, A13, A14, A16, A18. After W11.
-- [x] **W13:** The runtimes. [runtimes](code-cleanup/runtimes.md) B1 (`runtime.ts` keeps the
+- [x] **W13:** The runtimes. runtimes B1 (`runtime.ts` keeps the
   contract; the Claude Code runtime moves to a `claude.ts` beside `codex.ts`, the shell reader to
   `shell.ts`), B2 (one idle Claude Code session), B7, B8, B10, B13, B15, B16, B19.
 - [x] **W14:** `canvas.ts` and `coordinator.ts` by subject.
@@ -280,7 +286,7 @@ the workstream named does it for all of them.
 | File | Area | Findings | Major | Moderate | Minor |
 | --- | --- | ---: | ---: | ---: | ---: |
 | [workers.md](code-cleanup/workers.md) | A: `workers.ts` and its small neighbours | 18 | 1 | 7 | 10 |
-| [runtimes.md](code-cleanup/runtimes.md) | B: the agent runtimes | 21 | 1 | 5 | 15 |
+| runtimes.md (all done, deleted) | B: the agent runtimes | 21 | 1 | 5 | 15 |
 | [board-db.md](code-cleanup/board-db.md) | C: board and database | 19 | 3 | 4 | 12 |
 | canvas-coordinator.md (done, deleted) | D: canvas, commands, coordinator | 16 | 1 | 3 | 12 |
 | workspaces-git-hosts.md (all done, deleted) | E: workspaces, git, forges, hosts | 17 | 3 | 5 | 9 |
