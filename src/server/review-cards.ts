@@ -15,7 +15,7 @@ import { parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
 import type { WorkerOptions } from './worker-options';
 import { IN_WORKTREE } from './worker-texts';
-import type { Comments } from './workers';
+import type { Comments, Delivery } from './workers';
 
 /** A review card's branch against its pull request: its `head`, the PR's head on the forge (`base`), and the worker's own commits between them. */
 export interface OwnCommits {
@@ -45,7 +45,7 @@ export interface ReviewHost {
   /** Cards approved while git or the forge tells what the approval does (`Workers.approving`): a restart waits for them. */
   approving: Set<string>;
   card(id: string): Item;
-  deliver(cardId: string, text: string, images?: string[], owner?: boolean): void;
+  deliver(cardId: string, text: string, images?: string[], o?: Delivery): void;
   unheard(cardId: string): Unheard[];
   unheardBut(cardId: string, prefix: string): Unheard[];
   unheardWith(cardId: string, text: string, o?: { replaces?: string }): Json<Unheard[]>;
@@ -380,7 +380,7 @@ export class ReviewCards {
         await this.postHeld(cardId, c);
         if (c.held.asks.length || !merge) {
           const decided = decide();
-          if (decided) this.w.deliver(cardId, decided.text, [], true);
+          if (decided) this.w.deliver(cardId, decided.text, [], { owner: true });
           return;
         }
       }
@@ -398,7 +398,7 @@ export class ReviewCards {
         if (!still()) return;
         if (after?.mergeable === 'CONFLICTING' || (after?.mergeable !== 'MERGEABLE' && CONFLICT.test(reason))) return this.conflicted(cardId, c, after?.head || c.reviewed, comments, kept);
         this.o.board.log(cardId, 'error', 'obeya', t.mergeRefused(reason));
-        if (comments) this.w.deliver(cardId, comments.text, comments.images, true);
+        if (comments) this.w.deliver(cardId, comments.text, comments.images, { owner: true });
         throw new BadRequest('mergeRefused', reason);
       }
       if (!still()) return;
@@ -466,7 +466,7 @@ export class ReviewCards {
           .filter(Boolean)
           .join('\n\n'),
         comments?.images,
-        !kept,
+        { owner: !kept },
       );
       return { conflict: 'contributor' };
     }
@@ -495,7 +495,7 @@ export class ReviewCards {
         .filter(Boolean)
         .join('\n\n'),
       comments?.images,
-      !kept,
+      { owner: !kept },
     );
     return { conflict: 'agent' };
   }
@@ -523,7 +523,7 @@ export class ReviewCards {
         .filter(Boolean)
         .join('\n\n'),
       comments?.images,
-      true,
+      { owner: true },
     );
     return new BadRequest('prMoved', `the pull request is at ${head.slice(0, 7)} now, not at the commit handed over`);
   }
@@ -871,7 +871,7 @@ export class ReviewCards {
           : `${c.author} does not allow maintainers' edits: ask them with request_changes, in the PR's language, to bring the PR up to date with main${files.length ? ` (the conflict is in ${files.join(', ')})` : ''}. The card then waits for them, and you review their push as any other.`,
       ].join('\n\n'),
       [],
-      true,
+      { owner: true },
     );
   }
 
