@@ -228,7 +228,8 @@ test('a rebuild of the canvas view costs about as much as reading the canvas’s
       JSON.stringify(canvas.board.snapshot());
     }));
   }
-  // three to five reads' worth; going over the archive for its revision and reading the cards and projects again for each part of the view cost seven or eight
-  // on Windows the view's look for each demo's files costs several times as much: six to eleven reads' worth there
-  expect(Math.min(...rebuilds) / Math.min(...reads)).toBeLessThan(process.platform === 'win32' ? 14 : 6);
+  // three to four reads' worth on an idle machine; going over the archive for its revision and reading the cards and projects again for each part of the view cost seven or eight
+  // (the test above counts those reads). A busy machine slows the rebuild, which goes over far more memory, more than the read: four to five reads'
+  // worth with a test file on every core, eight on a CI runner. On Windows the view's look for each demo's files costs several times as much: six to eleven reads' worth there
+  expect(Math.min(...rebuilds) / Math.min(...reads)).toBeLessThan(process.platform === 'win32' ? 14 : 12);
 });
