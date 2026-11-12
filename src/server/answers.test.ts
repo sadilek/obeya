@@ -349,6 +349,8 @@ describe('a looked-up answer goes on', () => {
     expect(board().sheet.exchange(first)).toMatchObject({ joinedInto: second });
     expect(board().sheet.exchange(first)!.answer).toBeUndefined();
     expect(board().sheet.latest().at(-1)).toMatchObject({ id: second, thread: first, follows: first, continues: 'Which open issues could we fix?', addsTo: true });
+    // the agent writes its answer once it has them
+    a.emit({ type: 'tool', name: 'mcp__obeya__answer_owner', input: {} });
     a.call('answer_owner', { text: '1. #42 Dark mode …' });
     a.emit({ type: 'idle' });
     await settle();
@@ -588,6 +590,7 @@ describe('a thread on a Question card', () => {
     expect(board().events(card.id).find((e) => e.id === november!.id)).toMatchObject({ readAfter: step.id });
     expect(() => canvas.press(card.id, { action: 'unsay', id: november!.id })).toThrow('read these words already');
     // one answer answers both, in the same turn
+    a.emit({ type: 'tool', name: 'mcp__obeya__answer_owner', input: {} });
     a.call('answer_owner', { text: 'Oktober: 12 ct. November: noch nichts.' });
     a.emit({ type: 'idle' });
     await settle();
@@ -621,6 +624,25 @@ describe('a thread on a Question card', () => {
     await settle();
     expect(runtime.sessions.length).toBe(sessions);
     expect(board().item(card.id)!.thread!.thinking).toBeFalsy();
+    expect(board().thread(card.id).pending).toEqual([]);
+  });
+
+  test('an answer written in the same message as the step that brought the words is refused with them', async () => {
+    const { card } = await moved();
+    canvas.tell(card.id, 'und im Oktober?', [], false);
+    const a = answerer();
+    canvas.tell(card.id, 'und November?', [], false);
+    // the agent calls a tool and answer_owner at once; the tool's step brings the words, and the answer comes after it
+    a.emit({ type: 'tool', name: 'Bash', input: { command: 'ls' } });
+    a.emit({ type: 'tool', name: 'mcp__obeya__answer_owner', input: {} });
+    expect(a.toolStep()).toContain('und November?');
+    expect(String(a.call('answer_owner', { text: 'Oktober: 12 ct.' }))).toContain('und November?');
+    // written after it had them, the answer counts
+    a.emit({ type: 'tool', name: 'mcp__obeya__answer_owner', input: {} });
+    a.call('answer_owner', { text: 'Oktober: 12 ct. November: noch nichts.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(board().events(card.id).filter((e) => e.kind === 'talk').at(-1)!.text).toBe('Oktober: 12 ct. November: noch nichts.');
     expect(board().thread(card.id).pending).toEqual([]);
   });
 

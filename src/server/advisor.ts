@@ -112,6 +112,14 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
       for (const w of now) w.heard?.();
       return now.map((w) => w.words).join('\n\n');
     };
+    // words a step brought that the agent wrote nothing after yet: an answer_owner it called in the
+    // same message as that step (tools run in parallel) was written before it had them
+    let unseen: string | undefined;
+    const stepTakes = () => {
+      const words = answer ? undefined : take();
+      if (words) unseen = unseen ? `${unseen}\n\n${words}` : words;
+      return words;
+    };
     const hear: Hear = (words, heard) => {
       if (answer || closed) return false;
       const w = { words, ...(heard ? { heard } : {}) };
@@ -144,7 +152,8 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
             description: `Your answer to the owner, in the owner's language: text in full (markdown, short paragraphs or a list; it stands in the card's log).${b.dir ? ` files: files of yours in ${b.dir} the answer comes with (in the owner's language too), each with its path and a one-line caption in the owner's language; the owner sees them under the text (a page or an image shown inline, any other file to open).` : ''}`,
             schema: b.dir ? { text: z.string(), files: z.array(z.object({ path: z.string(), caption: z.string() })).max(MAX_FILES).optional() } : { text: z.string() },
             run: ({ text, files }) => {
-              const unheard = answer ? undefined : take();
+              const unheard = answer ? undefined : [unseen, take()].filter(Boolean).join('\n\n');
+              unseen = undefined;
               if (unheard) return `Nothing was shown yet: ${unheard}\n\nCall answer_owner again with an answer that answers this too.`;
               if (!b.dir || files === undefined) return settle({ text: String(text).trim() });
               const checked = answerFiles(b.dir, files);
@@ -154,7 +163,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
           },
           ...(b.tools ?? []),
         ],
-        ...(b.onHearing ? { contextUpdate: () => (answer ? undefined : take()) } : {}),
+        ...(b.onHearing ? { contextUpdate: stepTakes } : {}),
         onEvent: (e) => {
           // what a failed session still reports after its error
           if (closed) return;
@@ -165,6 +174,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
           }
           // a turn may also start without a message (finished background work)
           work.stop();
+          if (e.type === 'text' || e.type === 'tool') unseen = undefined;
           if (e.type === 'session') b.onSession?.(e.id, e.model);
           else if (e.type === 'text') last = e.text;
           else if (e.type === 'tool') b.onTool?.(e.name, e.input);
