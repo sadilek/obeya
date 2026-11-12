@@ -26,6 +26,7 @@ import { clip, messageOf } from '../core/text';
 import { within } from '../core/late';
 import { holdsNotes } from '../core/queue';
 import { CardApps } from './card-app';
+import { CardTimers } from './card-timers';
 import { ReviewCards } from './review-cards';
 import { WorkerBriefing } from './worker-briefing';
 import { appRunning, type Live, onlyApp } from './worker-live';
@@ -151,9 +152,9 @@ export class Workers {
   /** The restart that waits for workers, if one does. */
   private restart: DueRestart | null = null;
   /** Cards whose session on another machine was cut off, waiting for that machine to answer again. */
-  private reconnecting = new Map<string, ReturnType<typeof setTimeout>>();
+  private reconnecting = new CardTimers();
   /** When Obeya pauses at once a worker that the owner asked to pause at a safe point, by card. */
-  private pausing = new Map<string, ReturnType<typeof setTimeout>>();
+  private pausing = new CardTimers();
   /** Tool calls the owner allowed after the session that asked was gone (a restart), by card: each runs once, without asking again. */
   private granted = new Map<string, Set<string>>();
   /** Whether settling the leases is due once the change at hand is through (`settleLater`). */
@@ -168,7 +169,7 @@ export class Workers {
   /** Cards whose clone the owner is taking from them (`evict`) while git keeps their work there: they do not start meanwhile. */
   private evicting = new Set<string>();
   /** Cards with comments on places in the demo video held back: when they go to the worker without the owner's sign. */
-  private holding = new Map<string, ReturnType<typeof setTimeout>>();
+  private holding = new CardTimers();
 
   /** Ends the subscription to the board's changes. */
   private unwatch: () => void;
@@ -194,10 +195,7 @@ export class Workers {
       unheardWith: (id, text, o) => this.unheardWith(id, text, o),
       untell: (id, prefix) => this.untell(id, prefix),
       held: (id) => this.held(id),
-      holdOff: (id) => {
-        clearTimeout(this.holding.get(id));
-        this.holding.delete(id);
-      },
+      holdOff: (id) => this.holding.clear(id),
       releaseSoon: (id) => this.releaseLater(id, this.o.releaseDelay ?? RELEASE_DELAY),
       approvalComments: (id) => this.approvalComments(id),
       merged: (id, commit, note, comments) => this.merged(id, commit, note, comments),
@@ -713,19 +711,14 @@ export class Workers {
   }
 
   private releaseLater(cardId: string, ms: number) {
-    clearTimeout(this.holding.get(cardId));
-    this.holding.set(
-      cardId,
-      setTimeout(() => {
-        this.holding.delete(cardId);
-        // no request to answer with the error: it goes into the card's log
-        try {
-          this.release(cardId);
-        } catch (e) {
-          if (this.o.board.item(cardId)) this.o.board.log(cardId, 'error', 'obeya', messageOf(e));
-        }
-      }, ms),
-    );
+    this.holding.set(cardId, ms, () => {
+      // no request to answer with the error: it goes into the card's log
+      try {
+        this.release(cardId);
+      } catch (e) {
+        if (this.o.board.item(cardId)) this.o.board.log(cardId, 'error', 'obeya', messageOf(e));
+      }
+    });
   }
 
   /**
@@ -760,10 +753,7 @@ export class Workers {
     if (!held.some((h) => h.id === id)) throw new BadRequest('notHeld', 'the comment is not held back: the worker has it already');
     const rest = held.filter((h) => h.id !== id);
     this.o.board.work(cardId, { held: rest.length ? toJson(rest) : null });
-    if (!rest.length) {
-      clearTimeout(this.holding.get(cardId));
-      this.holding.delete(cardId);
-    }
+    if (!rest.length) this.holding.clear(cardId);
     this.o.board.unlog(cardId, id);
   }
 
@@ -796,8 +786,7 @@ export class Workers {
 
   /** The comments held back as the worker reads them, each with its place, and their frames and screenshots; none are held afterwards. */
   private takeHeld(cardId: string): { text: string; images: string[] } | null {
-    clearTimeout(this.holding.get(cardId));
-    this.holding.delete(cardId);
+    this.holding.clear(cardId);
     const held = releaseHeld(this.o.board, cardId);
     if (!held.length) return null;
     const events = new Map(this.o.board.events(cardId).map((e) => [e.id, e]));
@@ -857,8 +846,7 @@ export class Workers {
     }
     // git tells where the work lands and whether there is any, without blocking the server; the click ends the owner's turn meanwhile,
     // and the comments held back wait for the approval
-    clearTimeout(this.holding.get(cardId));
-    this.holding.delete(cardId);
+    this.holding.clear(cardId);
     const before = this.o.board.row(cardId).approved_at;
     this.o.board.work(cardId, { approved_at: new Date().toISOString() });
     this.approving.add(cardId);
@@ -1550,14 +1538,9 @@ export class Workers {
     const limit = this.o.pauseLimit ?? PAUSE_LIMIT;
     this.o.board.pausing(cardId);
     live.session.send(pauseNotice(limit));
-    clearTimeout(this.pausing.get(cardId));
-    this.pausing.set(
-      cardId,
-      setTimeout(() => {
-        this.pausing.delete(cardId);
-        if (this.o.board.item(cardId)?.pausing) this.halt(cardId);
-      }, limit),
-    );
+    this.pausing.set(cardId, limit, () => {
+      if (this.o.board.item(cardId)?.pausing) this.halt(cardId);
+    });
   }
 
   /**
@@ -1568,10 +1551,8 @@ export class Workers {
     const pending = this.live.get(cardId)?.pending;
     this.end(cardId);
     this.bump(cardId);
-    clearTimeout(this.reconnecting.get(cardId));
-    this.reconnecting.delete(cardId);
-    clearTimeout(this.pausing.get(cardId));
-    this.pausing.delete(cardId);
+    this.reconnecting.clear(cardId);
+    this.pausing.clear(cardId);
     this.o.board.paused(cardId, pending ? { held: [pending] } : {});
     this.apps.parkLater(cardId);
   }
@@ -1604,8 +1585,7 @@ export class Workers {
 
   /** The owner lets the worker about to pause at a safe point go on after all (`resume`, or their words to it). */
   private pauseTakenBack(cardId: string) {
-    clearTimeout(this.pausing.get(cardId));
-    this.pausing.delete(cardId);
+    this.pausing.clear(cardId);
     this.o.board.pauseTakenBack(cardId);
     const live = this.live.get(cardId);
     if (live) live.pauseHeld = false;
@@ -1671,10 +1651,8 @@ export class Workers {
     const held = this.pausedOf(cardId)?.held ?? [];
     this.end(cardId);
     this.bump(cardId);
-    clearTimeout(this.reconnecting.get(cardId));
-    this.reconnecting.delete(cardId);
-    clearTimeout(this.pausing.get(cardId));
-    this.pausing.delete(cardId);
+    this.reconnecting.clear(cardId);
+    this.pausing.clear(cardId);
     this.o.board.work(cardId, { paused: toJson({ held: [...held, ...(pending ? [pending] : [])] }), pausing: null });
     this.o.board.snooze(cardId, { until, by: 'owner' });
     this.apps.parkLater(cardId);
@@ -2031,13 +2009,10 @@ export class Workers {
     this.unwatch();
     this.shut = true;
     for (const id of [...this.live.keys()]) this.end(id);
-    for (const timer of this.reconnecting.values()) clearTimeout(timer);
-    this.reconnecting.clear();
-    for (const timer of this.pausing.values()) clearTimeout(timer);
-    this.pausing.clear();
+    this.reconnecting.clearAll();
+    this.pausing.clearAll();
     // comments held back go from the new workers, which hold them again as they resume
-    for (const timer of this.holding.values()) clearTimeout(timer);
-    this.holding.clear();
+    this.holding.clearAll();
     // a "Push main" still in its undo window goes undone: the new workers could not take it back
     this.reviews.shutdown();
     this.apps.shutdown();
@@ -2744,11 +2719,10 @@ export class Workers {
     const generation = this.generation.get(cardId);
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.hostLost(there.host.name));
     const again = async () => {
-      this.reconnecting.delete(cardId);
       const current = () => this.generation.get(cardId) === generation && !this.live.has(cardId);
       if (!current()) return;
       if (!(await there.host.reachable())) {
-        if (current()) this.reconnecting.set(cardId, setTimeout(again, this.o.reconnectMs ?? RECONNECT_MS));
+        if (current()) this.reconnecting.set(cardId, this.o.reconnectMs ?? RECONNECT_MS, again);
         return;
       }
       const row = this.o.board.row(cardId);
@@ -2760,7 +2734,7 @@ export class Workers {
       if (pending) this.launch(cardId, pending.text, row.session_id ?? undefined, pending.images);
       else this.launch(cardId, hostResumed(there.host.name), row.session_id!);
     };
-    this.reconnecting.set(cardId, setTimeout(again, this.o.reconnectMs ?? RECONNECT_MS));
+    this.reconnecting.set(cardId, this.o.reconnectMs ?? RECONNECT_MS, again);
   }
 
   /**

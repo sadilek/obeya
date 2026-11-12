@@ -7,6 +7,7 @@ import { clip } from '../core/text';
 import { runAppCommand } from './app-command';
 import { type Forward, remote } from './hosts';
 import type { WorkerOptions } from './worker-options';
+import { CardTimers } from './card-timers';
 
 /** A quick reply from the owner should not pay for starting the stack again. */
 const PARK_GRACE = 5 * 60_000;
@@ -27,7 +28,7 @@ export interface CardAppsHost {
 
 export class CardApps {
   /** Cards that wait for the owner, until their grace runs out and Obeya stops their app. */
-  private parking = new Map<string, ReturnType<typeof setTimeout>>();
+  private parking = new CardTimers();
   /** When the owner last opened a card's app to try it by hand, by card. */
   readonly tried = new Map<string, number>();
   /** The forwards to the apps of cards whose workspace is on another machine, by card: the address forwarded, from which workspace, and the port here it had last. */
@@ -64,16 +65,11 @@ export class CardApps {
   /** A card that waits for the owner has its app stopped once a quick reply has not come (`app.stop`). */
   parkLater(cardId: string) {
     if (!this.o.adapter.app?.stop || !this.waitsForOwner(cardId)) return;
-    clearTimeout(this.parking.get(cardId));
-    this.parking.set(
-      cardId,
-      setTimeout(() => {
-        this.parking.delete(cardId);
-        if (!this.waitsForOwner(cardId) || this.stopping.has(cardId)) return;
-        const stopping = this.park(cardId).finally(() => this.stopping.delete(cardId));
-        this.stopping.set(cardId, stopping);
-      }, Math.max(this.o.parkGrace ?? PARK_GRACE, (this.tried.get(cardId) ?? 0) + (this.o.tryGrace ?? TRY_GRACE) - Date.now())),
-    );
+    this.parking.set(cardId, Math.max(this.o.parkGrace ?? PARK_GRACE, (this.tried.get(cardId) ?? 0) + (this.o.tryGrace ?? TRY_GRACE) - Date.now()), () => {
+      if (!this.waitsForOwner(cardId) || this.stopping.has(cardId)) return;
+      const stopping = this.park(cardId).finally(() => this.stopping.delete(cardId));
+      this.stopping.set(cardId, stopping);
+    });
   }
 
   /**
@@ -149,8 +145,7 @@ export class CardApps {
 
   /** A card that is no longer left waiting keeps its app. */
   unpark(cardId: string) {
-    clearTimeout(this.parking.get(cardId));
-    this.parking.delete(cardId);
+    this.parking.clear(cardId);
   }
 
   /** Stops the app in the card's workspace, unless it holds what must stay (`app.keep`). */
@@ -185,8 +180,7 @@ export class CardApps {
 
   /** The workers shut down: no app is parked or forwarded any more. */
   shutdown() {
-    for (const timer of this.parking.values()) clearTimeout(timer);
-    this.parking.clear();
+    this.parking.clearAll();
     for (const id of [...this.forwards.keys()]) this.unforward(id);
   }
 }
