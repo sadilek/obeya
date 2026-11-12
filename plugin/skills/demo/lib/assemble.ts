@@ -154,7 +154,7 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
     '-f', 'concat', '-safe', '0', '-i', list,
     ...(clips ? ['-i', narration] : []),
     // the clock strip, painted over from the pixels around it
-    '-vf', `fps=30,scale=${viewport.width * scale}:${viewport.height * scale},delogo=x=${scale}:y=${(viewport.height - CLOCK.bottom - CLOCK.cell - 2) * scale}:w=${(CLOCK.bits * CLOCK.cell + 2) * scale}:h=${(CLOCK.cell + 4) * scale},format=yuv420p`,
+    '-vf', `fps=30,scale=${viewport.width * scale}:${viewport.height * scale},delogo=x=${scale}:y=${(CLOCK.top - 2) * scale}:w=${(CLOCK.bits * CLOCK.cell + 2) * scale}:h=${(CLOCK.cell + 4) * scale},format=yuv420p`,
     // Screen content: CRF 30 keeps text sharp at about 2.5 MB per minute; a public video (`sharp`)
     // gets CRF 18, where no compression shows on the page's flat colours and fine type.
     '-c:v', 'libx264', '-preset', 'slow', '-crf', sharp ? '18' : '30', '-tune', 'stillimage',

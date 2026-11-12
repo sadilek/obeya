@@ -187,7 +187,7 @@ export async function startScreencast(ctx: BrowserContext, page: Page, dir: stri
  */
 export function paintTimes(frames: Frame[], dir: string, size: { width: number; height: number }): (number | null)[] {
   const width = CLOCK.bits * CLOCK.cell;
-  const y = size.height - CLOCK.bottom - Math.ceil(CLOCK.cell / 2);
+  const y = CLOCK.top + Math.floor(CLOCK.cell / 2);
   // in the frame's pixels (iw/ih), read back at one pixel per point
   const [sx, sy] = [`iw/${size.width}`, `ih/${size.height}`];
   const crop = `crop=w=${width}*${sx}:h=1:x=${CLOCK.left}*${sx}:y=${y}*${sy},scale=${width}:1:flags=neighbor`;

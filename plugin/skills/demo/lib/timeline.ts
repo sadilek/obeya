@@ -40,7 +40,7 @@ export function untagged(say: string) {
 }
 
 /** The clock strip `overlay.js` paints: its cells, their size and where it sits. */
-export const CLOCK = { bits: 24, cell: 3, left: 2, bottom: 3 };
+export const CLOCK = { bits: 24, cell: 3, left: 2, top: 3 };
 
 /**
  * The time a frame was painted, from one row of gray pixels across its clock strip (`CLOCK.cell`
