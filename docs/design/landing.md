@@ -233,7 +233,8 @@ one from it in `origin`'s repository, else one from it against the repository `o
 The workspace starts on the branch as it stands: `origin`'s copy fetched first, the checkout's own
 brought forward to it where it is behind and not checked out (never forced), the newer of the two
 taken; where both have commits of their own, the checkout's, and the worker hears that `origin`'s
-must be merged in before a push. The worker hears that the branch holds earlier work and, where
+must be merged in before a push. A workspace that cannot have the branch (a clone on another
+machine, a branch only in the checkout) fails to start rather than start from the main branch. The worker hears that the branch holds earlier work and, where
 `origin` has it, that its commits there are published: nothing of them is rewritten (no rebase,
 amend or force push), the main branch comes in by a merge, and a push goes onto `origin`'s branch
 fast-forward only. Where it has a pull request, the worker pushes nothing before the approval.
@@ -251,7 +252,10 @@ Approved, the work goes the way the branch does:
   `origin`'s branch moved (pushed from elsewhere) goes back to the worker with the approval kept, to
   merge it in; any other refusal goes to the owner. The approve button reads "Push to the PR branch",
   with no "Straight to main" beside it; taking back the approval is not offered, the pull request
-  being the owner's from before.
+  being the owner's from before. A pull request the worker reports in that repository later takes
+  its place, its maintainers' as well; a "Straight to main" approval is refused once the approval's
+  look finds a pull request opened on the branch since. Fixes after the approval the worker pushes
+  onto the branch at the checkout's `origin` (a clone's own `origin` may be the checkout).
 - Without one: as any task of the repository (see How work lands). With `pr` the worker opens the
   pull request from the branch under its name; with `main` it lands rebased like a card's own
   branch, and the copy on `origin` stays as it was, since nothing is force-pushed.

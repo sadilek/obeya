@@ -944,9 +944,14 @@ export class Workers {
     // a branch of the owner's: whether it has an open pull request now, which the work goes onto then
     let branchPr: AdoptedPr | null;
     try {
-      [lands, work, branchPr] = await Promise.all([this.landingOf(cardId), this.o.workspaces.hasWork(cardId), direct ? null : this.adopted.lookUp(cardId)]);
+      [lands, work, branchPr] = await Promise.all([this.landingOf(cardId), this.o.workspaces.hasWork(cardId), this.adopted.lookUp(cardId)]);
     } finally {
       this.approving.delete(cardId);
+    }
+    // a pull request opened on the branch since: the work goes there, not straight to main
+    if (direct && branchPr) {
+      this.o.board.work(cardId, { approved_at: before });
+      throw new BadRequest('branchPr', `the branch ${card.adopted?.branch ?? ''} has an open pull request, which the work goes onto`);
     }
     // stopped meanwhile (and perhaps started and handed over anew: that is not what the owner approved)
     if (!handedOver(this.card(cardId)) || !still()) throw new BadRequest('notReady', 'the card is not ready for review');
@@ -977,7 +982,7 @@ export class Workers {
       cardId,
       [
         `The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it (its own skills and conventions): from now on you may push this branch. Whoever reads the pull request has not seen Obeya, the card or the plan doc. Do not merge it: ${this.o.adapter.autoMerge === false ? 'the people on the forge merge it' : 'Obeya merges it'} once its checks have passed and its review is through.`,
-        card.adopted ? `Your branch ${card.adopted.branch} is the owner's and existed before this card: open the pull request from it under that name${card.adopted.remote ? `, pushing onto origin's ${card.adopted.branch} fast-forward only (never force: what is there is published)` : ''}.` : '',
+        card.adopted ? `Your branch ${card.adopted.branch} is the owner's and existed before this card: open the pull request from it under that name${card.adopted.remote ? `, pushing onto ${card.adopted.branch}${this.o.remote ? ` at ${this.o.remote}` : ''} fast-forward only (never force: what is there is published)` : ''}.` : '',
         shared ? `Your demo video is shared with the team on a page of its own: ${shared}. Link it in the pull request's description.` : '',
         'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask). Where the work also needs a pull request in another repository, report that one with pr_opened too: Obeya watches each, and the card is live once all are merged.',
         comments?.text ?? '',
@@ -1111,7 +1116,7 @@ export class Workers {
       cardId,
       [
         `${by === 'owner' ? 'The owner approved your work, and Obeya' : 'Obeya'} pushed it onto ${branch}, the branch of the open pull request ${name} (${found.url})${result.from === result.to ? ', which had it already' : ''}. Do not merge it: ${merger}.`,
-        `From now on Obeya passes you review comments, failed checks and conflicts on it; handle them on your branch the way the repository does, and push them onto ${branch} yourself. Its commits are published: never rewrite them (no rebase, amend or force push); to bring its base in, merge it. End your turn after each round instead of handing over.`,
+        `From now on Obeya passes you review comments, failed checks and conflicts on it; handle them on your branch the way the repository does, and push them onto ${branch} yourself${this.o.remote ? ` there, at ${this.o.remote} (git push ${this.o.remote} HEAD:${branch}; your workspace's origin may be the local checkout instead)` : ''}. Its commits are published: never rewrite them (no rebase, amend or force push); to bring its base in, merge it. End your turn after each round instead of handing over.`,
         shared ? `Your demo video is shared on a page of its own: ${shared}. Link it on the pull request where it helps its readers.` : '',
         comments?.text ?? '',
       ]

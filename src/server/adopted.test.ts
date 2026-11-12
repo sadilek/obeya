@@ -209,6 +209,25 @@ describe('approving a task whose branch has an open pull request', () => {
     expect(await workers.approve(id, { direct: true }).catch((e: Error) => e.message)).toContain('has an open pull request');
   });
 
+  test('opened after the branch was taken, still refuses a direct approval', async () => {
+    settings = { ...settings, land: 'pr', direct: true };
+    workersOn(new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws3') }));
+    const pr82 = found;
+    found = null;
+    const { id } = await handedOver();
+    found = pr82;
+    expect(await workers.approve(id, { direct: true }).catch((e: Error) => e.message)).toContain('has an open pull request');
+    expect(state(id)).toBe('waiting:demo');
+  });
+
+  test('one the worker opens against the original in its place is its maintainers’ too', async () => {
+    const { id, session } = await handedOver();
+    await workers.approve(id);
+    await session.call('pr_opened', { url: 'https://github.com/acme/app/pull/90' });
+    expect(pr(id)).toMatchObject({ number: 90, repo: 'acme/app', maintainers: true });
+    expect(pr(id).more).toBeUndefined();
+  });
+
   test('in the owner’s own repository, Obeya merges it once it is ready, as any', async () => {
     found = { url: 'https://github.com/owner/app/pull/5', number: 5 };
     const { id, head, session } = await handedOver();
@@ -255,5 +274,5 @@ test('without a pull request, where work goes out as one, the worker opens it fr
   const { id, session } = await handedOver();
   await workers.approve(id);
   expect(state(id)).toBe('inPr');
-  expect(session.inbox.at(-1)).toContain(`open the pull request from it under that name, pushing onto origin's ${BRANCH} fast-forward only`);
+  expect(session.inbox.at(-1)).toContain(`open the pull request from it under that name, pushing onto ${BRANCH} fast-forward only`);
 });

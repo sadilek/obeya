@@ -2135,6 +2135,8 @@ export class Workspaces implements CardWorkspaces {
         const exists = kept || (fetched && !how?.plain ? !!(await gitAsync(path, 'branch', '--list', branch)) : !!refs?.local.has(branch));
         // a branch of the owner's, at the commit the checkout or origin has it
         const adopted = adopt ? await this.startIn(path, adopt) : null;
+        // the owner's branch never becomes a branch of the main branch's: a clone that cannot have it (on another machine, a branch only in the checkout) fails
+        if (adopt && !adopted && !exists) throw new WorkspaceError(`the branch ${branch} is not on origin, and this clone cannot fetch it from the checkout`);
         if (exists) {
           await gitAsync(path, 'checkout', '--quiet', branch);
           // a copy left in this clone that is behind the owner's branch goes forward to it; one with commits of its own stays
@@ -2247,6 +2249,7 @@ export class Workspaces implements CardWorkspaces {
         mkdirSync(this.o.dir, { recursive: true });
         // a branch of the owner's: the checkout's copy, brought forward to origin's on the way, or origin's where it has none
         const adopted = adopt ? await adopt().catch(() => null) : null;
+        if (adopt && !adopted) throw new WorkspaceError(`the branch ${branch} is neither in the checkout nor on origin`);
         if ((await gitAsync(this.o.repoPath, 'branch', '--list', branch)) !== '') await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch);
         else await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, adopted ?? (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath)));
         return path;

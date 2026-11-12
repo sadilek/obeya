@@ -49,11 +49,8 @@ export class AdoptedBranches {
    * is looked up afterwards, without the owner waiting for the forge.
    */
   async adopt(cardId: string, branch: string | null) {
-    const card = this.o.board.item(cardId);
+    this.unbegun(cardId);
     const row = this.o.board.row(cardId);
-    if (!card) throw new BadRequest('unknownCard', 'unknown card');
-    if (card.kind !== 'task' || card.state !== 'planned' || row.branch || row.workspace || card.prototypeOf || card.contribution || card.builtOn)
-      throw new BadRequest('invalid', 'a task takes a branch of yours only before work on it begins');
     if (branch === null) {
       if (row.adopted) this.o.board.work(cardId, { adopted: null });
       return;
@@ -62,11 +59,23 @@ export class AdoptedBranches {
     const name = branch.trim();
     const choice = (await this.read()).find((b) => b.name === name);
     if (!choice) throw new BadRequest('noBranch', `there is no branch ${name} of yours here (the main branch and Obeya's own are not taken, nor one you have checked out)`);
-    if (choice.card && choice.card.id !== cardId) throw new BadRequest('branchOnCard', `the card “${choice.card.title}” works on ${name} already`);
+    // what git was asked meanwhile: the card may have started, or another card taken the branch, since
+    this.unbegun(cardId);
+    const holder = this.claims().get(name) ?? choice.card;
+    if (holder && holder.id !== cardId) throw new BadRequest('branchOnCard', `the card “${holder.title}” works on ${name} already`);
     // the start point of a fork's task is the branch now, not the original's main
     this.o.board.work(cardId, { adopted: toJson<AdoptedBranch>({ branch: name, ...(choice.remote ? { remote: true } : {}) }), upstream: null });
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.adopted(name));
     void this.lookUp(cardId);
+  }
+
+  /** Refuses unless the card is a task nobody has begun to work on. */
+  private unbegun(cardId: string) {
+    const card = this.o.board.item(cardId);
+    const row = this.o.board.row(cardId);
+    if (!card) throw new BadRequest('unknownCard', 'unknown card');
+    if (card.kind !== 'task' || card.state !== 'planned' || row.branch || row.workspace || card.prototypeOf || card.contribution || card.builtOn)
+      throw new BadRequest('invalid', 'a task takes a branch of yours only before work on it begins');
   }
 
   /**

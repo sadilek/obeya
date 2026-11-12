@@ -428,8 +428,10 @@ export class WorkerTools {
           // a fork's pull request to the original is the card's own there, not one in origin's repository
           const up = root.upstream;
           const upUrl = up ? this.o.upstream?.()?.url : undefined;
-          // the pull request the card's work went onto (a branch of the owner's) is its own, wherever it is
-          const elsewhere = parsePrUrl(root.url ?? '')?.url === ref.url ? false : up
+          // the pull request the card's work went onto (a branch of the owner's) is its own, wherever it is, and its repository the card's there
+          const named = `${ref.owner}/${ref.repo}`;
+          const theirs = root.adopted && root.repo ? root.repo : undefined;
+          const elsewhere = parsePrUrl(root.url ?? '')?.url === ref.url ? false : theirs ? theirs.toLowerCase() !== named.toLowerCase() : up
             ? upUrl
               ? !sameRepo(upUrl, ref.owner, ref.repo)
               : `${ref.owner}/${ref.repo}`.toLowerCase() !== up.name.toLowerCase()
@@ -441,13 +443,23 @@ export class WorkerTools {
             pr =
               parsePrUrl(root.url ?? '')?.url === ref.url || !root.url
                 ? { ...root, url: ref.url, number: ref.number, ...(up ? { repo: `${ref.owner}/${ref.repo}` } : {}) }
-                : { url: ref.url, number: ref.number, seen: [], reported: [], ...(root.more ? { more: root.more } : {}), ...(up ? { upstream: up, repo: `${ref.owner}/${ref.repo}` } : {}) };
+                : {
+                    url: ref.url,
+                    number: ref.number,
+                    seen: [],
+                    reported: [],
+                    ...(root.more ? { more: root.more } : {}),
+                    ...(up ? { upstream: up, repo: named } : {}),
+                    // in its place in the original: its maintainers merge it, as they would have the one before
+                    ...(theirs ? { repo: named } : {}),
+                    ...(root.maintainers ? { maintainers: true as const } : {}),
+                  };
           else if (known) {
             const { closed: _, ...open } = known;
             pr = { ...root, more: root.more!.map((m) => (m === known ? { ...open, url: ref.url } : m)) };
-          } else pr = { ...root, more: [...(root.more ?? []), { url: ref.url, number: ref.number, repo: `${ref.owner}/${ref.repo}`, seen: [], reported: [] }] };
+          } else pr = { ...root, more: [...(root.more ?? []), { url: ref.url, number: ref.number, repo: named, seen: [], reported: [] }] };
           this.o.board.work(cardId, { pr: toJson(pr) });
-          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(elsewhere || up ? `${up && !elsewhere ? `${ref.owner}/${ref.repo}` : ref.repo} #${ref.number}` : `#${ref.number}`));
+          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(elsewhere || up || theirs ? `${(up || theirs) && !elsewhere ? named : ref.repo} #${ref.number}` : `#${ref.number}`));
           this.o.onPrOpened?.(cardId);
           return ending('Recorded. End your turn now; Obeya watches the pull request.', 'Recorded: Obeya watches the pull request.', 'a change to the work goes onto the pull request');
         },
