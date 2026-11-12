@@ -526,6 +526,9 @@ export interface Lease {
 /** A file of a card's work: where it lies on this machine, or what it holds (read from a commit). */
 export type FileAt = { path: string } | { data: Uint8Array<ArrayBuffer> };
 
+/** A file's text, wherever it is. */
+export const textOf = (at: FileAt): Promise<string> => ('path' in at ? Bun.file(at.path).text() : Promise.resolve(new TextDecoder().decode(at.data)));
+
 /**
  * The file at `path` in `root` itself, null where it is a link (or lies in a linked directory): a
  * link the card made could otherwise stand for any file of the root it did not change.

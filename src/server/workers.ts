@@ -12,12 +12,12 @@ import { fromJson, type AskedPermission, type Json, type HeldComment, type Lande
 import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
-import { outsidePlanDir } from './repo';
+import { isPlanDoc, outsidePlanDir } from './repo';
 import { type AgentEvent, type AgentSpec, BackgroundWait, atTime, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
-import { BranchGone, type FileAt, type Lease, shortageOf } from './workspaces';
+import { BranchGone, type FileAt, type Lease, shortageOf, textOf } from './workspaces';
 import { branchName } from './branches';
 import { WorkspaceError } from './git';
 import type { FolderWorkspaces, UndoReport } from './folder';
@@ -29,7 +29,7 @@ import { CardApps } from './card-app';
 import { CardTimers } from './card-timers';
 import { ReviewCards } from './review-cards';
 import { WorkerBriefing } from './worker-briefing';
-import { appRunning, type Live, onlyApp } from './worker-live';
+import { appRunning, type Live, newLive, onlyApp } from './worker-live';
 import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
@@ -1216,7 +1216,7 @@ export class Workers {
     if (!this.o.board.row(cardId).idea || outsidePlanDir(this.o.adapter.planDocs.dir)) return [];
     const home = !this.o.repo || this.o.repo === this.o.board.home;
     return (await this.o.workspaces.addedFiles(cardId, this.o.adapter.planDocs.dir))
-      .filter((f) => f.endsWith('.md') && !this.o.adapter.planDocs.exclude.some((x) => f.endsWith(`/${x}`)))
+      .filter((f) => isPlanDoc(f, this.o.adapter.planDocs.exclude))
       .map((f) => (home ? f : `${this.o.repo}:${f}`));
   }
 
@@ -1309,7 +1309,7 @@ export class Workers {
     if (!isImage(path)) return null;
     for (const doc of changed.filter((p) => fileKind(p) === 'markdown')) {
       const md = await at(doc, false);
-      const text = md && ('path' in md ? await Bun.file(md.path).text() : new TextDecoder().decode(md.data));
+      const text = md && (await textOf(md));
       if (text && docImages(doc, text).includes(path)) return at(path);
     }
     return null;
@@ -1623,20 +1623,7 @@ export class Workers {
       else this.o.board.log(cardId, 'say', 'worker', clip(text, 12000));
       return 'Shown on the card.';
     }
-    const stand: Live = live ?? {
-      session: undefined!,
-      host: null,
-      handedOver: false,
-      acted: true,
-      nudged: false,
-      lastText: '',
-      busy: false,
-      work: new BackgroundWait(() => {}),
-      tasks: new Map(),
-      stalled: false,
-      preferences: '',
-      standIn: true,
-    };
+    const stand: Live = live ?? newLive({ host: null, acted: true, busy: false, work: new BackgroundWait(() => {}), preferences: '', standIn: true });
     const tool = this.tools.for(cardId, stand, !!card.prototypeOf).find((t) => t.name === act.tool);
     if (!tool) throw new BadRequest('invalid', `the card's agent has no tool ${act.tool}`);
     // as the SDK checks a call against the tool's schema
@@ -2028,12 +2015,13 @@ export class Workers {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
     const preferences = this.o.preferences?.() ?? '';
-    const live: Live = { session: undefined!, host: hostName(row.workspace), handedOver: false, acted: false, nudged: false, lastText: '', busy: true,
+    const live: Live = newLive({
+      host: hostName(row.workspace),
+      acted: false,
+      busy: true,
       work: new BackgroundWait(() => this.waitedOut(cardId, live), { grace: this.o.backgroundGrace, limit: this.o.backgroundLimit }, (waiting) => this.waitChanged(live, waiting)),
-      tasks: new Map(),
-      stalled: false,
       preferences,
-    };
+    });
     const project = this.o.board.item(cardId)?.parent;
     if (project) live.project = { id: project, decision: this.o.board.decisions(project).at(-1)?.id ?? 0 };
     this.live.set(cardId, live);

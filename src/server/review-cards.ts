@@ -134,6 +134,14 @@ export class ReviewCards {
     return read;
   }
 
+  /** The head of the review card's pull request as the forge tells it now; empty where it does not. */
+  private prHead(cardId: string, c: StoredContribution): Promise<string> {
+    return this.o.forge!.status(this.forgeCwd(cardId), c.url).then(
+      (s) => s.head,
+      () => '',
+    );
+  }
+
   /** Where a review card's forge calls run: its workspace on this machine, else the repository's checkout. */
   private forgeCwd(cardId: string): string {
     const ws = this.o.board.row(cardId).workspace;
@@ -541,20 +549,14 @@ export class ReviewCards {
     } catch (e) {
       const why = messageOf(e);
       if (/non-fast-forward|fetch first|\[rejected\]|stale info/.test(why)) {
-        const head = await this.o.forge!.status(this.forgeCwd(cardId), c.url).then(
-          (s) => s.head,
-          () => '',
-        );
+        const head = await this.prHead(cardId, c);
         throw this.moved(cardId, c, head || 'another commit');
       }
       throw refuse(why);
     }
     // the forge shows the new head a moment after the push; the merge is pinned to it
     for (let i = 0; i < 10; i++) {
-      const head = await this.o.forge!.status(this.forgeCwd(cardId), c.url).then(
-        (s) => s.head,
-        () => '',
-      );
+      const head = await this.prHead(cardId, c);
       if (head === c.reviewed) break;
       await new Promise((r) => setTimeout(r, this.o.pushSettle ?? 1000));
     }

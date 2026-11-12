@@ -34,6 +34,17 @@ export function onlyApp(live: Live): boolean {
   return live.tasks.size > 0 && [...live.tasks.values()].every((t) => t.app);
 }
 
+/** A session's state as it starts, with what differs between sessions. */
+export const newLive = (o: Pick<Live, 'host' | 'acted' | 'busy' | 'work' | 'preferences'> & Partial<Live>): Live => ({
+  session: undefined!,
+  handedOver: false,
+  nudged: false,
+  lastText: '',
+  tasks: new Map(),
+  stalled: false,
+  ...o,
+});
+
 export interface Live {
   session: AgentSession;
   /** The machine its workspace is on (null: the one Obeya runs on), where it holds a slot while in a turn. */

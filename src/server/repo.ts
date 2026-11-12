@@ -111,6 +111,9 @@ function planDirOf(repoPath: string, adapter: RepoAdapter): { dir: string; root:
   return outside ? { dir: outside, root: parse(outside).root } : { dir: join(repoPath, adapter.planDocs.dir), root: repoPath };
 }
 
+/** Whether a file of the plan directory, by its name there or its path, is a plan doc: Markdown, and not one the settings exclude. */
+export const isPlanDoc = (file: string, exclude: string[]) => file.endsWith('.md') && !exclude.some((x) => file === x || file.endsWith(`/${x}`));
+
 /**
  * The docs in the plan directory of the working tree, or of the folder outside the repository it
  * names: those that describe a project, and the others with the reason they are not one (none
@@ -123,7 +126,7 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): { docs: Pl
   const others: OtherDoc[] = [];
   if (!existsSync(dir)) return { docs, others };
   for (const f of readdirSync(dir)
-    .filter((f) => f.endsWith('.md') && !adapter.planDocs.exclude.includes(f))
+    .filter((f) => isPlanDoc(f, adapter.planDocs.exclude))
     .sort()) {
     const file = `${named}/${f}`;
     let markdown: string;

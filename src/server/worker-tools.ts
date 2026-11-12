@@ -16,7 +16,8 @@ import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, withPick } from './advisor';
 import { checkArtifact, readChapters } from './demo';
 import { artifactFiles, keepDemo, videoFacts } from './demo-files';
-import { outsidePlanDir, remoteHost } from './repo';
+import { isPlanDoc, outsidePlanDir, remoteHost } from './repo';
+import { textOf } from './workspaces';
 import type { AgentTool } from './runtime';
 import { toObeyaTool } from './to-obeya';
 import { hostName, remote } from './hosts';
@@ -913,11 +914,11 @@ export class WorkerTools {
     const outside = outsidePlanDir(dir);
     const files = outside
       ? (fromJson(row.plan_docs) ?? []).map(pathOfRef)
-      : (await this.o.workspaces.addedFiles(cardId, dir)).filter((f) => f.endsWith('.md') && !exclude.some((x) => f.endsWith(`/${x}`)));
+      : (await this.o.workspaces.addedFiles(cardId, dir)).filter((f) => isPlanDoc(f, exclude));
     const read = async (file: string): Promise<string | null> => {
       if (outside) return Bun.file(file).text().catch(() => null);
       const at = await this.o.workspaces.fileOf(cardId, file, row.branch ?? undefined);
-      return at && ('path' in at ? Bun.file(at.path).text() : new TextDecoder().decode(at.data));
+      return at && textOf(at);
     };
     const docs = await Promise.all(files.map(async (file) => ({ file, markdown: await read(file) })));
     return docs.flatMap((d) => (d.markdown === null ? [] : [{ file: d.file, markdown: d.markdown }]));
