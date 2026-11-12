@@ -481,7 +481,6 @@ function TaskView(v: View) {
 
       {/* the decisions below what the card shows, as on every card */}
       <TaskActions v={v} worked={worked} proto={proto} approve={<ApproveButton item={item} act={act} lands={lands} change={change} upstream={upstreamOf(item, repo, lands)} />} />
-      {review && upstreamOf(item, repo, lands) && <p className="hint">{(item.upstream ? t.upstream.hint : t.upstream.hintPort)(repo!.upstream!.into, repo!.upstream!.name, item.upstreamNew)}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
       {review && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
       {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
@@ -793,15 +792,14 @@ function UpstreamPick({ item, repo, onEdit }: { item: Item; repo: RepoRef | unde
     <div className="upstream-pick">
       <span className="hint">{t.upstream.startOn}</span>
       <div className="seg">
-        <button className={on ? '' : 'on'} onClick={() => pick(false)}>
+        {/* what each start point means, on the button: the card stays calm */}
+        <button className={on ? '' : 'on'} title={t.upstream.pickMine(up.into, up.name)} onClick={() => pick(false)}>
           {t.upstream.mine(up.into)}
         </button>
-        <button className={on ? 'on' : ''} onClick={() => pick(true)}>
+        <button className={on ? 'on' : ''} title={t.upstream.pickPr(up.into, up.name, up.branch)} onClick={() => pick(true)}>
           {t.upstream.pr(up.branch, up.name)}
         </button>
       </div>
-      {/* what the choice decides: the base the task is built and tested on, which the approval can no longer change */}
-      <p className="hint">{on ? t.upstream.pickPr(up.into, up.name, up.branch) : t.upstream.pickMine(up.into, up.name)}</p>
     </div>
   );
 }
@@ -825,11 +823,13 @@ function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act
     );
   // in a fork: the card's choice is the first button, the other one beside it
   if (upstream) {
+    // what sending it to the original means, on that button: built on the original, or applied to it untested
+    const hint = (item.upstream ? t.upstream.hint : t.upstream.hintPort)(upstream.into, upstream.name, item.upstreamNew);
     const toOriginal = () => act({ action: 'approve', upstream: true }, { close: true, ack: t.upstream.approved(upstream.name), pending: t.upstream.approving });
     const mine = () => act({ action: 'approve', upstream: false }, { close: true, ack: t.approved, pending: t.approving });
     return item.upstream ? (
       <>
-        <button className="btn primary" onClick={toOriginal}>
+        <button className="btn primary" title={hint} onClick={toOriginal}>
           {t.upstream.approve(upstream.name)}
         </button>
         <button className="btn" onClick={mine}>
@@ -841,7 +841,7 @@ function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act
         <button className="btn primary" onClick={mine}>
           {t.approve}
         </button>
-        <button className="btn" onClick={toOriginal}>
+        <button className="btn" title={hint} onClick={toOriginal}>
           {t.upstream.approve(upstream.name)}
         </button>
       </>

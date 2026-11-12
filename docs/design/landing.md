@@ -174,10 +174,11 @@ has a start point, picked on the unstarted card beside the repository picker: th
 branch ("team", say: built and tested with the fork's own features, landing there alone) or the
 original's main ("main of <owner/repo>": built on the original, going to it as a pull request and
 onto the fork's main branch too). The pick names the base rather than where the work goes, since
-that is what decides what it was tested on, and a line under it says so. The approval may still
+that is what decides what it was tested on; each of its buttons says what it means in its tooltip.
+The approval may still
 send any card to the original: a card started on the original shows "Approve + PR to
 <owner/repo>" first and "Approve, for me only" beside it, any other card "Approve" first and
-"Approve + PR to <owner/repo>" beside it. The line under the approve buttons says how many commits
+"Approve + PR to <owner/repo>" beside it. The tooltip of "Approve + PR to …" says how many commits
 of the original the fork's main branch does not hold yet and gets with the work (counted at the
 handover), and on a card started on the fork's main branch that its change is applied to the
 original for the pull request, where it has not been tested. Approving by word goes the card's
@@ -670,7 +671,9 @@ A card no agent worked on, a prototype or an archived card has no field.
   cherry-picking review fixes into the fork (copies of each commit, the history the owner wanted
   gone); a setting per repository instead of per card (in a fork most cards are the fork's own,
   some go upstream); naming the pick by where the work goes ("For me only", "Also as PR"), which
-  hid that the two differ in what is tested.
+  hid that the two differ in what is tested. The explanations are tooltips on the buttons, not
+  lines on the card (the owner: always-visible text made the card restless and took the height of
+  the approval).
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every
