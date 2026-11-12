@@ -134,7 +134,9 @@ export class Answers {
     // words that go on with what is being looked up now go into that look-up
     if (follow && this.join(talkId, t, thread)) return;
     // words that go on with a look-up the owner stopped let it go on: its answer answers both
-    const stopped = follow && t.follows !== undefined ? this.o.board.sheet.exchange(t.follows) : undefined;
+    // (the look-up the followed words went into, if they went into another)
+    let stopped = follow && t.follows !== undefined ? this.o.board.sheet.exchange(t.follows) : undefined;
+    while (stopped?.joinedInto) stopped = this.o.board.sheet.exchange(stopped.joinedInto);
     if (stopped?.stopped && !stopped.joinedInto) this.absorb([stopped.id], talkId, t, stopped.session);
     this.busy.add(talkId);
     // a walkthrough the look-up began before a restart: the one it tells now takes its place
@@ -267,9 +269,10 @@ export class Answers {
     const t = this.o.board.sheet.exchange(talkId);
     if (!t?.question || t.answer !== undefined || t.joinedInto || t.stopped || t.movedTo) throw new BadRequest('notLookingUp', 'nothing is being looked up for these words');
     const run = [...this.running.values()].find((r) => r.talks.includes(talkId));
-    if (run) return run.end.abort();
-    // not begun yet (its turn waits for another of its thread, or the usage limit holds it): it never starts
-    this.o.board.sheet.stop(talkId, true);
+    // at once, also where its agent has not begun (a project's agent busy with another thread, a turn
+    // of its thread before it): it never starts then, and a restart meanwhile does not look it up again
+    this.o.board.sheet.stop(run?.talks.at(-1) ?? talkId, true);
+    run?.end.abort();
   }
 
   /** "Resume" on a look-up the owner stopped: it goes on where it stopped, in the session it read in. */

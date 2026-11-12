@@ -439,6 +439,8 @@ describe('a looked-up answer goes on', () => {
     a.emit({ type: 'session', id: 'look-1' });
     canvas.answers.stop(first);
     expect(a.closed).toBe(true);
+    // stopped at once, before its turn has wound down
+    expect(board().sheet.exchange(first)).toMatchObject({ stopped: true });
     await settle();
     expect(board().sheet.exchange(first)).toMatchObject({ stopped: true });
     expect(board().sheet.exchange(first)!.answer).toBeUndefined();
@@ -489,6 +491,21 @@ describe('a looked-up answer goes on', () => {
     await settle();
     expect(board().sheet.exchange(second)!.answer).toBe('2024: 3.');
     expect(board().sheet.exchange(first)!.answer).toBeUndefined();
+  });
+
+  test('words that follow up on a question whose look-up went into a stopped one let that one go on', async () => {
+    await say('frage', {}, 'look_up', { question: 'Q?', confirm: 'Moment.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    answerer().emit({ type: 'session', id: 'look-1' });
+    await say('als liste', {}, 'look_up', { question: 'Q as a list?', follows: `A${first}`, confirm: 'Moment.' });
+    const second = board().sheet.latest().at(-1)!.id;
+    canvas.answers.stop(second);
+    await settle();
+    expect(board().sheet.exchange(second)).toMatchObject({ stopped: true });
+    await say('mach weiter', {}, 'look_up', { question: 'Q as a list?', follows: `A${first}`, confirm: 'Moment.' });
+    const third = board().sheet.latest().at(-1)!.id;
+    expect(answerer().inbox[0]).toContain('The owner stopped you before you had answered');
+    expect(board().sheet.exchange(second)).toMatchObject({ joinedInto: third });
   });
 
   test('a look-up stopped before its turn began never starts', async () => {
