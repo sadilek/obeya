@@ -559,8 +559,8 @@ start resumes every worker that was in a turn or had paused for the restart when
 stopped, whatever its card's state: one at work on its pull request (review comments, a failed
 check) goes on with what it left for after the restart, while one idle on its pull request sleeps on.
 A restart called off before it happened (a repository's agents whose new configuration does not
-resolve) lets the workers that paused for it go on at once, and one due later is announced to them
-anew.
+resolve) lets the workers that paused for it go on at once (not one that asked or handed over before it
+paused: its card waits for the owner), and one due later is announced to them anew.
 
 While the restart is due, a card whose worker paused for it, with no background work left that the
 restart waits for, says so in place of "Agent at work" ("Agent waits for restart", "Done ·

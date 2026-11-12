@@ -7,7 +7,7 @@ import { LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { type Awaited, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute } from '../core/types';
-import { answering, askable, pausable, pausableNow, formatQuestion, handedOver } from '../core/card';
+import { answering, askable, pausable, pausableNow, formatQuestion, handedOver, needsYou } from '../core/card';
 import { cardAgentOf } from '../core/agents';
 import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
@@ -1997,10 +1997,12 @@ export class Workers {
         live.toldRestart = false;
       }
       if (paused.length) this.o.board.changed();
-      // a worker that paused for it goes on, with the owner's words that waited meanwhile
+      // a worker that paused for it goes on, with the owner's words that waited meanwhile; one that
+      // asked or handed over before it paused waits for the owner
       for (const cardId of this.live.keys()) {
         if (this.takesLater(cardId)) continue;
-        if (paused.includes(cardId)) this.deliver(cardId, RESTART_OFF);
+        const card = this.o.board.item(cardId);
+        if (paused.includes(cardId) && card && !needsYou(card)) this.deliver(cardId, RESTART_OFF);
         else if (this.unheard(cardId).length) this.deliver(cardId, '');
       }
       return;

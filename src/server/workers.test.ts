@@ -292,6 +292,20 @@ describe('workers', () => {
     expect(s.inbox.at(-1)).toContain('Obeya is about to restart (new code landed on main)');
   });
 
+  test('a restart called off leaves a worker that asked before it paused waiting for the answer', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const s = runtime.last;
+    workers.restartDue({ reason: 'config', deadline: Date.now() + 15 * 60_000, repo: true });
+    s.call('ask', { question: 'CSV oder Excel?' });
+    s.emit({ type: 'idle' });
+    const before = s.inbox.length;
+    workers.restartDue(null);
+    expect(s.inbox.length).toBe(before);
+    expect(state(c.id)).toBe('waiting:question');
+    expect(workers.inTurn()).toEqual([]);
+  });
+
   test('an answer tells the worker the options picked apart from the owner’s own words', async () => {
     const c = manual();
     await workers.start(c.id);
