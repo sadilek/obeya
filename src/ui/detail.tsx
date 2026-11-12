@@ -824,7 +824,8 @@ function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act
   // in a fork: the card's choice is the first button, the other one beside it
   if (upstream) {
     // what sending it to the original means, on that button: built on the original, or applied to it untested
-    const hint = (item.upstream ? t.upstream.hint : t.upstream.hintPort)(upstream.into, upstream.name, item.upstreamNew);
+    const hint = (item.upstream ? t.upstream.hint : t.upstream.hintPort)(upstream.into, upstream.name, upstream.branch, item.upstreamNew);
+    const mineHint = t.upstream.mineHint(upstream.into, upstream.name);
     const toOriginal = () => act({ action: 'approve', upstream: true }, { close: true, ack: t.upstream.approved(upstream.name), pending: t.upstream.approving });
     const mine = () => act({ action: 'approve', upstream: false }, { close: true, ack: t.approved, pending: t.approving });
     return item.upstream ? (
@@ -832,13 +833,13 @@ function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act
         <button className="btn primary" title={hint} onClick={toOriginal}>
           {t.upstream.approve(upstream.name)}
         </button>
-        <button className="btn" onClick={mine}>
+        <button className="btn" title={mineHint} onClick={mine}>
           {t.upstream.approveMine}
         </button>
       </>
     ) : (
       <>
-        <button className="btn primary" onClick={mine}>
+        <button className="btn primary" title={mineHint} onClick={mine}>
           {t.approve}
         </button>
         <button className="btn" title={hint} onClick={toOriginal}>

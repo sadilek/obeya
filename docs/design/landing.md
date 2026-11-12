@@ -178,11 +178,11 @@ that is what decides what it was tested on; each of its buttons says what it mea
 The approval may still
 send any card to the original: a card started on the original shows "Approve + PR to
 <owner/repo>" first and "Approve, for me only" beside it, any other card "Approve" first and
-"Approve + PR to <owner/repo>" beside it. The tooltip of "Approve + PR to …" says how many commits
-of the original the fork's main branch does not hold yet and gets with the work (counted at the
-handover), and on a card started on the fork's main branch that its change is applied to the
-original for the pull request, where it has not been tested. Approving by word goes the card's
-way.
+"Approve + PR to <owner/repo>" beside it. The tooltips say what each does in one line: "Catches
+up team with main, lands the change on team, and opens a PR to <owner/repo>" (the catching up only
+where the original has commits the fork's main branch lacks, counted at the handover), on a card
+started on the fork's main branch "… applies it to main untested …", and for the fork alone "Lands
+the change on team, without a PR to <owner/repo>". Approving by word goes the card's way.
 
 A card started on the original starts from the newest commit of its main branch, fetched first.
 On the way Obeya brings the fork's copy of that branch (the local branch of the same name, and

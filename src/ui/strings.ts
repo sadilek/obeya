@@ -556,19 +556,20 @@ const de = {
   upstream: {
     approve: (name: string) => `Freigeben + PR an ${name}`,
     approveMine: 'Freigeben, nur für mich',
-    hint: (into: string, name: string, brings?: number) =>
-      `Mit PR an ${name}: Die Arbeit landet auf ${into}${brings ? `, zusammen mit ${brings === 1 ? 'einem Commit' : `${brings} Commits`} von ${name}, die ${into} noch nicht hat` : ''}, und der Agent öffnet einen Pull Request ans Original. Obeya verfolgt ihn (Review-Kommentare, Checks), bis die Maintainer ihn mergen, und mergt Nachbesserungen auch in ${into}.`,
-    hintPort: (into: string, name: string, brings?: number) =>
-      `Mit PR an ${name}: Diese Aufgabe wurde auf ${into} entwickelt und getestet. Für den Pull Request wird die Änderung auf den neuesten Stand von ${name} angewendet, wo sie noch nicht getestet ist. Auf ${into} landet sie wie gewohnt${brings ? `; mit dem Pull Request kommen später ${brings === 1 ? 'ein Commit' : `${brings} Commits`} von ${name} dazu, die ${into} noch nicht hat` : ''}.`,
+    hint: (into: string, name: string, branch: string, brings?: number) =>
+      `${brings ? `Holt ${into} auf den Stand von ${branch}, landet` : 'Landet'} die Änderung auf ${into} und öffnet einen PR an ${name}.`,
+    hintPort: (into: string, name: string, branch: string, brings?: number) =>
+      `Landet die Änderung auf ${into}, wendet sie ungetestet auf ${branch} an und öffnet einen PR an ${name}${brings ? `; holt ${into} später auf den Stand von ${branch}` : ''}.`,
+    mineHint: (into: string, name: string) => `Landet die Änderung auf ${into}, ohne PR an ${name}.`,
     approved: (name: string) => `Freigegeben; geht auch als PR an ${name}.`,
     approving: 'landet und geht als PR ans Original …',
     startOn: 'Startpunkt',
     mine: (into: string) => into,
     pr: (branch: string, name: string) => `${branch} von ${name}`,
     pickMine: (into: string, name: string) =>
-      `Entwickelt auf ${into}, mit den eigenen Features des Forks; landet dort. Soll sie bei der Freigabe doch auch an ${name}, wird sie dafür auf das Original angewendet, wo sie nicht getestet ist.`,
+      `Entwickelt auf ${into}, mit den eigenen Features des Forks; landet standardmäßig dort. Soll sie bei der Freigabe stattdessen an ${name}, wird sie dort angewendet, ohne dort getestet worden zu sein.`,
     pickPr: (into: string, name: string, branch: string) =>
-      `Entwickelt auf dem neuesten ${branch} von ${name}; Obeya aktualisiert ${branch} vor dem Start von dort. Geht als Pull Request ans Original und landet auch auf ${into}, zusammen mit dem, was ${name} neu hat.`,
+      `Entwickelt auf dem neuesten ${branch} von ${name}; Obeya aktualisiert ${branch} vor dem Start von dort. Geht als Pull Request an ${name} und landet auch auf ${into}.`,
   },
   cardError: (title: string, why: string) => `„${title}“: ${why}`,
   approvedNoChange: 'Beendet.',
@@ -2855,19 +2856,20 @@ const en: Strings = {
   upstream: {
     approve: (name: string) => `Approve + PR to ${name}`,
     approveMine: 'Approve, for me only',
-    hint: (into: string, name: string, brings?: number) =>
-      `With a PR to ${name}: the work lands on ${into}${brings ? `, together with ${brings === 1 ? 'a commit' : `${brings} commits`} of ${name} that ${into} does not have yet` : ''}, and the agent opens a pull request to the original. Obeya follows it (review comments, checks) until its maintainers merge it, and merges the fixes into ${into} too.`,
-    hintPort: (into: string, name: string, brings?: number) =>
-      `With a PR to ${name}: this task was built and tested on ${into}. For the pull request, the change is applied to the newest state of ${name}, where it has not been tested. It lands on ${into} as usual${brings ? `; with the pull request, ${brings === 1 ? 'a commit' : `${brings} commits`} of ${name} that ${into} does not have yet come along later` : ''}.`,
+    hint: (into: string, name: string, branch: string, brings?: number) =>
+      `${brings ? `Catches up ${into} with ${branch}, lands` : 'Lands'} the change on ${into}, and opens a PR to ${name}.`,
+    hintPort: (into: string, name: string, branch: string, brings?: number) =>
+      `Lands the change on ${into}, applies it to ${branch} untested, and opens a PR to ${name}${brings ? `; catches up ${into} with ${branch} later` : ''}.`,
+    mineHint: (into: string, name: string) => `Lands the change on ${into}, without a PR to ${name}.`,
     approved: (name: string) => `Approved; goes to ${name} as a PR too.`,
     approving: 'landing, and going to the original as a PR …',
     startOn: 'Start point',
     mine: (into: string) => into,
     pr: (branch: string, name: string) => `${branch} of ${name}`,
     pickMine: (into: string, name: string) =>
-      `Built on ${into}, with the fork's own features; lands there. Should it go to ${name} too at the approval after all, it is applied to the original for that, where it has not been tested.`,
+      `Built on ${into}, with the fork's own features; lands there by default. Should it go to ${name} at the approval instead, it is applied there without having been tested there.`,
     pickPr: (into: string, name: string, branch: string) =>
-      `Built on the newest ${branch} of ${name}; Obeya updates ${branch} from there before the start. Goes to the original as a pull request and lands on ${into} too, together with what ${name} has new.`,
+      `Built on the newest ${branch} of ${name}; Obeya updates ${branch} from there before the start. Goes to ${name} as a pull request and lands on ${into} too.`,
   },
   cardError: (title: string, why: string) => `“${title}”: ${why}`,
   approvedNoChange: 'Closed.',
