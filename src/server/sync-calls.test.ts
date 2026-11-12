@@ -148,8 +148,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
     why: "server path: a walkthrough's code slide reads one file of the repository (size-capped), its clips and state are small files renamed into place",
     calls: { existsSync: 1, lstatSync: 2, mkdirSync: 2, readFileSync: 3, realpathSync: 4, renameSync: 2, statSync: 3, writeFileSync: 1 },
   },
+  'worker-tools.ts': { why: "server path, cheap: whether a kept demo copy is still there", calls: { existsSync: 1 } },
   'workers-fixture.ts': { why: "the workers' tests' fixture, not the server", calls: { mkdtempSync: 1 } },
-  'workers.ts': { why: "server path, cheap: whether a kept demo copy is still there", calls: { existsSync: 1 } },
   'workspaces.ts': {
     why: "server path, cheap: stats of known workspace paths as cards start, land and are cleaned up",
     calls: { existsSync: 17, mkdirSync: 3, readdirSync: 1, realpathSync: 1, renameSync: 1, statSync: 2 },
