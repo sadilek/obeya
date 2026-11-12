@@ -234,6 +234,64 @@ describe('workers', () => {
     expect(gone).toBe(1);
   });
 
+  /** The card in its pull request #7, its worker (session `sess-1`) idle. */
+  const inPr = async () => {
+    const c = manual();
+    await workers.start(c.id);
+    runtime.last.emit({ type: 'session', id: 'sess-1' });
+    board.work(c.id, { state: 'inPr', pr: JSON.stringify({ url: 'https://github.com/acme/app/pull/7', number: 7, seen: [], reported: [] }) });
+    runtime.last.emit({ type: 'idle' });
+    return c;
+  };
+
+  test('a worker that paused for the restart while at work on its pull request goes on once Obeya runs again', async () => {
+    const c = await inPr();
+    workers.prEvent(c.id, 'Kommentar.', 'A review comment on your pull request: use CSV.');
+    const s = runtime.last;
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 15 * 60_000 });
+    expect(s.inbox.at(-1)).toContain('Obeya is about to restart');
+    s.emit({ type: 'idle' });
+    expect(board.item(c.id)).toMatchObject({ state: 'inPr', restartPaused: true });
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
+    // the new server's workers, with no restart due
+    workers.shutdown();
+    const n = runtime.sessions.length;
+    rebuild().resumeAll();
+    expect(runtime.sessions.length).toBe(n + 1);
+    expect(runtime.last.spec.resume).toBe('sess-1');
+    expect(runtime.last.inbox[0]).toContain('Obeya was restarted.');
+    expect(board.row(c.id).resumes).toBeNull();
+    // the restart after that finds it idle on its pull request again
+    runtime.last.emit({ type: 'text', text: 'Pushed; I answered the comment.' });
+    runtime.last.emit({ type: 'idle' });
+    workers.shutdown();
+    rebuild().resumeAll();
+    expect(runtime.sessions.length).toBe(n + 1);
+  });
+
+  test('a worker idle on its pull request sleeps on over a restart', async () => {
+    const c = await inPr();
+    const n = runtime.sessions.length;
+    workers.shutdown();
+    workers.resumeAll();
+    expect(runtime.sessions.length).toBe(n);
+    expect(state(c.id)).toBe('inPr');
+  });
+
+  test('a restart called off lets the worker that paused for it go on, and one due later is announced to it again', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const s = runtime.last;
+    workers.restartDue({ reason: 'config', deadline: Date.now() + 15 * 60_000, repo: true });
+    s.emit({ type: 'idle' });
+    expect(board.item(c.id)!.restartPaused).toBe(true);
+    workers.restartDue(null);
+    expect(s.inbox.at(-1)).toBe('The restart you paused for is off: nothing was stopped. Go on from where you paused.');
+    expect(board.item(c.id)).toMatchObject({ state: 'working', inTurn: true });
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 15 * 60_000 });
+    expect(s.inbox.at(-1)).toContain('Obeya is about to restart (new code landed on main)');
+  });
+
   test('an answer tells the worker the options picked apart from the owner’s own words', async () => {
     const c = manual();
     await workers.start(c.id);

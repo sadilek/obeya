@@ -36,7 +36,7 @@ import { appRunning, type Live, newLive, onlyApp } from './worker-live';
 import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
-import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTARTED, RESUMED, restartNotice, restartWaits, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
 
@@ -1702,6 +1702,9 @@ export class Workers {
       // the page reloaded: the owner may watch on, or have gone
       if (i.held?.length) this.releaseLater(i.id, this.o.holdGrace ?? HOLD_GRACE);
       const row = this.o.board.row(i.id);
+      // its worker was at work when the workers stopped (`shutdown`)
+      const cutOff = !!row.resumes;
+      if (cutOff) this.o.board.work(i.id, { resumes: null });
       const landed = fromJson(row.landed);
       // a snoozed worker sleeps on until its time, a restart notwithstanding
       if (row.snoozed && !fromJson(row.snoozed).waiting) {
@@ -1730,7 +1733,9 @@ export class Workers {
       }
       // a landing the restart cut off: the card waits for the owner's approval again
       if (i.landing) this.o.board.work(i.id, { approved_at: null });
-      if (this.apps.waitsForOwner(i.id)) {
+      // a pull request waits for its reviewers, but a worker that was at work on it (review comments,
+      // a failed check) and paused for the restart goes on with what it left for after it
+      if (this.apps.waitsForOwner(i.id) && !(cutOff && i.state === 'inPr')) {
         this.apps.parkLater(i.id);
         continue;
       }
@@ -1985,12 +1990,19 @@ export class Workers {
   restartDue(due: DueRestart | null) {
     this.restart = due;
     if (!due) {
-      // a card whose worker paused for it showed so while it was due
-      const paused = [...this.live.values()].filter((l) => l.restartPaused);
-      for (const live of paused) live.restartPaused = false;
+      // a card whose worker paused for it showed so while it was due; a later restart is told anew
+      const paused = [...this.live].filter(([, l]) => l.restartPaused).map(([id]) => id);
+      for (const live of this.live.values()) {
+        live.restartPaused = false;
+        live.toldRestart = false;
+      }
       if (paused.length) this.o.board.changed();
-      // a worker that paused for it goes on with the owner's words that waited meanwhile
-      for (const cardId of this.live.keys()) if (!this.takesLater(cardId) && this.unheard(cardId).length) this.deliver(cardId, '');
+      // a worker that paused for it goes on, with the owner's words that waited meanwhile
+      for (const cardId of this.live.keys()) {
+        if (this.takesLater(cardId)) continue;
+        if (paused.includes(cardId)) this.deliver(cardId, RESTART_OFF);
+        else if (this.unheard(cardId).length) this.deliver(cardId, '');
+      }
       return;
     }
     for (const [cardId, live] of this.live) {
@@ -2005,6 +2017,8 @@ export class Workers {
     // workers of a repository started afresh are its new ones: these settle no lease any more
     this.unwatch();
     this.shut = true;
+    // a worker in a turn, or paused for the restart, is resumed by the next start whatever its card's state
+    for (const [id, l] of this.live) if ((l.busy || l.restartPaused) && this.o.board.item(id)) this.o.board.work(id, { resumes: 1 });
     for (const id of [...this.live.keys()]) this.end(id);
     this.reconnecting.clearAll();
     this.pausing.clearAll();
@@ -2539,8 +2553,11 @@ export class Workers {
       if (card.state === 'working' && row.approved_at) void this.landApproved(cardId);
       return;
     }
-    // in the PR phase a turn ends normally once the PR is open
-    if (card.state === 'inPr' && card.pr) return;
+    // in the PR phase a turn ends normally once the PR is open; one that took in the restart paused for it
+    if (card.state === 'inPr' && card.pr) {
+      if (this.toldOfRestart(live)) this.pausedForRestart(cardId, live);
+      return;
+    }
     const landed = fromJson(row.landed);
     if (landed) return this.afterLandedTurn(cardId, live, card, landed);
     if (card.state !== 'working' && card.state !== 'inPr') return;

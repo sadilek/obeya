@@ -123,6 +123,12 @@ export interface CardRow {
   paused: Json<PausedState> | null;
   /** Since when (ISO) the owner has asked the card's agent to pause once it has brought its work to a safe point; null once it paused, went on or stopped. */
   pausing: string | null;
+  /**
+   * 1 when Obeya's workers stopped (a restart, a stop) while the card's worker was in a turn or had
+   * paused for the restart: the next start resumes it even where its card waits (its pull request
+   * open); null once it did.
+   */
+  resumes: number | null;
   /** The owner's words Obeya holds for the card's worker until it takes them in, at its next tool step or turn. */
   unheard: Json<Unheard[]> | null;
   /** The address its worker opens the app in the card's workspace at, while it runs (`app_running`); gone once Obeya stops the app or the workspace goes. */
@@ -599,6 +605,8 @@ export const MIGRATIONS = [
   BEGIN
     INSERT INTO archive_changes (canvas_id, card_id) SELECT OLD.canvas_id, value FROM json_each(json_array(OLD.id, OLD.parent_id, OLD.prototype_of)) WHERE value IS NOT NULL;
   END;`,
+  // a card whose worker was at work when Obeya's workers stopped: the next start resumes it (`CardRow.resumes`)
+  'ALTER TABLE cards ADD COLUMN resumes INTEGER;',
 ];
 
 /**

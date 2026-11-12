@@ -88,6 +88,9 @@ export const restartNotice = (due: DueRestart) =>
 export const restartWaits = (due: DueRestart) =>
   `${dueOpening(due)}, and this turn keeps it waiting. Take in this message, leave the work it asks for until Obeya resumes you, and end your turn, without handing over. Obeya resumes you ${dueText(due).back}, and you do that work then.`;
 
+/** Tells a worker that paused for a restart that then did not happen that it goes on now. */
+export const RESTART_OFF = 'The restart you paused for is off: nothing was stopped. Go on from where you paused.';
+
 /** Tells a worker that paused for the restart, and was woken before it (by its background work, a message), that Obeya still waits for it. */
 export const stillDue = (due: DueRestart) =>
   `Obeya still waits for the ${dueText(due).thing} you paused for, ${minutesLeft(due)}, and this turn keeps it waiting. Take in what started it (a background command that finished, a message), leave the work it leads to until Obeya resumes you, and end your turn.`;
