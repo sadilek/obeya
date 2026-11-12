@@ -10,7 +10,7 @@ import type { Item } from '../core/types';
 import { onCardEvent } from './api';
 import { fold, inTitle, searchWords } from '../core/search';
 import { api } from './api';
-import { archiveLabelTexts, labelOf, marked, matches, useSettled } from './archive';
+import { archiveLabelTexts, labelOf, marked, matches, placeIn, SearchField, useSettled } from './archive';
 import { plain } from './markdown';
 import { shownState } from './parts';
 import { useMenuClose } from './menu';
@@ -108,9 +108,6 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, rev, onAr
   const [active, setActive] = useState(0);
   // the active row lights its card up once the pointer or an arrow key picked it, until the pointer leaves the list
   const [lit, setLit] = useState(false);
-  const field = useRef<HTMLInputElement>(null);
-  // what was searched last stays, selected, so typing starts a new search
-  useEffect(() => void (on && field.current?.select()), [on]);
   useEffect(() => (setActive(0), setLit(false)), [query, on]);
   const words = useMemo(() => searchWords(query), [query]);
   // a line in a card's log comes on its own, not with a new snapshot (Board.log): its time orders the list too
@@ -196,24 +193,7 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, rev, onAr
       )}
       {on && (
         <div className="bar-menu search-menu" ref={menu} onPointerLeave={() => setLit(false)}>
-          <div className="a-search">
-            <input
-              ref={field}
-              type="text"
-              autoFocus
-              value={query}
-              placeholder={t.search.field}
-              aria-label={t.search.field}
-              spellCheck={false}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onKey}
-            />
-            {query && (
-              <button className="x" title={t.archive.clearSearch} aria-label={t.archive.clearSearch} onClick={() => (setQuery(''), field.current?.focus())}>
-                ×
-              </button>
-            )}
-          </div>
+          <SearchField value={query} label={t.search.field} onChange={setQuery} onKeyDown={onKey} />
           {/* the list scrolls under the field, which stays in sight */}
           <div className="s-list">
             {words.length > 0 && !sections.length ? (
@@ -234,7 +214,7 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, rev, onAr
                           <button
                             className={k === at ? 's-row active' : 's-row'}
                             style={{ '--c': `var(--${i.archivedAt ? 'live' : shownState(i)})` } as CSSProperties}
-                            ref={i.archivedAt ? (el) => void (el ? els.set(i.id, el) : els.delete(i.id)) : undefined}
+                            ref={i.archivedAt ? placeIn(els, i.id) : undefined}
                             onPointerEnter={() => (setActive(k), setLit(true))}
                             onClick={() => onOpen(i)}
                           >

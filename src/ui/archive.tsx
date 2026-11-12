@@ -6,7 +6,7 @@
 // and of the rows sent, only those in view and a margin around them are on the page, the rest stand
 // in as space of the height they had or will roughly have.
 
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ARCHIVE_LABELS, type ArchiveLabel, fold, searchText, searchWords } from '../core/search';
 import { type Item, stopped } from '../core/types';
 import { api } from './api';
@@ -139,9 +139,6 @@ export function ArchivePill({ on, onToggle, onClose, held, rev, onItems, done, o
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(on, box, () => held || onClose());
   const [query, setQuery] = useState('');
-  const field = useRef<HTMLInputElement>(null);
-  // what was searched last stays, selected, so typing starts a new search
-  useEffect(() => void (on && field.current?.select()), [on]);
   const words = useMemo(() => searchWords(query), [query]);
   // the whole archive, and what the words find in it, each as far as the owner scrolled
   const all = useArchiveList('', on, rev, onItems);
@@ -275,25 +272,7 @@ export function ArchivePill({ on, onToggle, onClose, held, rev, onItems, done, o
       </button>
       {on && (
         <div id="amenu" className="bar-menu archive-menu">
-          {all.items.length > 0 && (
-            <div className="a-search">
-              <input
-                ref={field}
-                type="text"
-                autoFocus
-                value={query}
-                placeholder={t.archive.search}
-                aria-label={t.archive.search}
-                spellCheck={false}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              {query && (
-                <button className="x" title={t.archive.clearSearch} aria-label={t.archive.clearSearch} onClick={() => (setQuery(''), field.current?.focus())}>
-                  ×
-                </button>
-              )}
-            </div>
-          )}
+          {all.items.length > 0 && <SearchField value={query} label={t.archive.search} onChange={setQuery} />}
           {done > 0 && (
             <button className="btn" onClick={onArchiveDone}>
               {t.archive.archiveDone(done)}
@@ -319,7 +298,7 @@ export function ArchivePill({ on, onToggle, onClose, held, rev, onItems, done, o
                     <div key={r.key} data-k={r.key} ref={row(r.key)} className={`a-row${r.first ? ' first' : ''}${r.last ? ' last' : ''}`}>
                       <time>{t.archive.time(new Date(i.archivedAt!))}</time>
                       <span className="tick" />
-                      <button className="a-card" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
+                      <button className="a-card" ref={placeIn(els, i.id)} onClick={() => onOpen(i)}>
                         <span className="a-ttl">{marked(plain(i.title), words)}</span>
                         {label && (
                           <span className="hint">
@@ -339,6 +318,28 @@ export function ArchivePill({ on, onToggle, onClose, held, rev, onItems, done, o
     </div>
   );
 }
+
+/**
+ * The field over the archive's list and over the search's: what was searched last stays, selected
+ * as the list opens, so typing starts a new search; × clears it.
+ */
+export function SearchField({ value, label, onChange, onKeyDown }: { value: string; label: string; onChange: (value: string) => void; onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void }) {
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => void field.current?.select(), []);
+  return (
+    <div className="a-search">
+      <input ref={field} type="text" autoFocus value={value} placeholder={label} aria-label={label} spellCheck={false} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} />
+      {value && (
+        <button className="x" title={t.archive.clearSearch} aria-label={t.archive.clearSearch} onClick={() => (onChange(''), field.current?.focus())}>
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** A row's ref that keeps its element in `els` under `id`, for a card to unfold from and fold back into. */
+export const placeIn = (els: Map<string, HTMLElement>, id: string) => (el: HTMLElement | null) => void (el ? els.set(id, el) : els.delete(id));
 
 /** Where each row of these heights begins, and after them where the last one ends. */
 export function offsets(heights: number[]): number[] {
