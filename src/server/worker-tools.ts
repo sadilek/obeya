@@ -89,11 +89,11 @@ export class WorkerTools {
     const others = this.otherBoards().filter((b) => b.canvas.repos.length);
     const anotherRepo = repos.length > 1 || others.length > 0;
     const handOver = () => {
-      live.handedOver = true;
+      live.turn.handedOver = true;
       live.nudged = false;
       // a question or a handover after a snooze in the same turn: the card waits for the owner instead
-      if (live.snoozed) {
-        live.snoozed = false;
+      if (live.turn.snoozed) {
+        live.turn.snoozed = false;
         this.o.board.work(cardId, { snoozed: null });
       }
     };
@@ -151,8 +151,8 @@ export class WorkerTools {
           const owed = this.w.reviews.owedTasks(cardId);
           if (owed) return `Not shown: first make the follow-up tasks the owner chose, for ${owed}; then reply.`;
           this.o.board.log(cardId, 'talk', 'worker', s);
-          live.answered = true;
-          live.spoke = true;
+          live.turn.answered = true;
+          live.turn.spoke = true;
           return 'Shown to the owner.';
         },
       },
@@ -671,7 +671,7 @@ export class WorkerTools {
         run: ({ until, why, card: title, state }) => {
           const card = this.o.board.item(cardId);
           if (!card) return 'Not snoozed: the card is gone.';
-          if (live.handedOver) return 'Not snoozed: you asked or handed over in this turn, so the card waits for the owner.';
+          if (live.turn.handedOver) return 'Not snoozed: you asked or handed over in this turn, so the card waits for the owner.';
           // taking in the owner's words on its handover, it may snooze as they ask (check again in three days): the handover stands meanwhile
           if (!(card.state === 'working' || card.state === 'inPr' || card.finishing || answering(card))) return 'Not snoozed: the card waits for the owner; their answer or approval comes as your next message.';
           if (card.pausing) return 'Not snoozed: the owner pauses you; end your turn, and once they let you go on, snooze then if it is still due.';
@@ -691,7 +691,7 @@ export class WorkerTools {
             if (now) return `Not snoozed: the card “${found.title}” cannot get there now (${now}).`;
             on = { card: found.id, title: found.title, state: awaits };
           } else if (!named) return 'Not snoozed: give until, card, or both.';
-          live.snoozed = true;
+          live.turn.snoozed = true;
           live.nudged = false;
           const s: Snooze = { ...(named ? { until: new Date(at).toISOString() } : {}), ...(on ? { on } : {}), by: 'agent', ...(String(why).trim() ? { why: clip(String(why).trim(), 200) } : {}) };
           this.o.board.snooze(cardId, s);
@@ -737,7 +737,7 @@ export class WorkerTools {
         ? [
             toObeyaTool((request) => {
               // what Obeya does or replies is shown to the owner as the answer to their words
-              live.spoke = true;
+              live.turn.spoke = true;
               return this.o.toObeya!(cardId, request);
             }),
           ]

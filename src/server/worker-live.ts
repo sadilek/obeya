@@ -35,9 +35,9 @@ export function onlyApp(live: Live): boolean {
 }
 
 /** A session's state as it starts, with what differs between sessions. */
-export const newLive = (o: Pick<Live, 'host' | 'acted' | 'busy' | 'work' | 'preferences'> & Partial<Live>): Live => ({
+export const newLive = ({ acted, ...o }: Pick<Live, 'host' | 'busy' | 'work' | 'preferences'> & Partial<Live> & { acted: boolean }): Live => ({
   session: undefined!,
-  handedOver: false,
+  turn: { handedOver: false, acted },
   nudged: false,
   lastText: '',
   tasks: new Map(),
@@ -45,25 +45,31 @@ export const newLive = (o: Pick<Live, 'host' | 'acted' | 'busy' | 'work' | 'pref
   ...o,
 });
 
-export interface Live {
-  session: AgentSession;
-  /** The machine its workspace is on (null: the one Obeya runs on), where it holds a slot while in a turn. */
-  host: string | null;
-  /** Whether the worker called `ask` or `ready_for_review` in the current turn. */
+/** What the worker did in the turn under way, as its end reads it: the next turn starts afresh. */
+export interface Turn {
+  /** Whether the worker called `ask` or `ready_for_review` (or another tool that leaves the card to the owner). */
   handedOver: boolean;
-  /** Whether the worker answered the owner with `reply` in the current turn. */
+  /** Whether the worker answered the owner with `reply`. */
   answered?: boolean;
-  /** Whether the worker had words for the owner in the current turn: said something, replied, or passed their words on to Obeya. */
+  /** Whether the worker had words for the owner: said something, replied, or passed their words on to Obeya. */
   spoke?: boolean;
-  /** Whether the worker snoozed in the current turn: its session ends with the turn, and its closing words repeat the snooze. */
+  /** Whether the worker snoozed: its session ends with the turn, and its closing words repeat the snooze. */
   snoozed?: boolean;
   /** The worker's words since its reply: its words once a step follows them, its closing words at the turn's end. */
   held?: string;
   /**
-   * Whether the worker said or did anything in the current turn. A resumed session may first end a
-   * turn of its own, over what the previous session left (a background command the restart stopped).
+   * Whether the worker said or did anything. A resumed session may first end a turn of its own, over
+   * what the previous session left (a background command the restart stopped).
    */
   acted: boolean;
+}
+
+export interface Live {
+  session: AgentSession;
+  /** The machine its workspace is on (null: the one Obeya runs on), where it holds a slot while in a turn. */
+  host: string | null;
+  /** What the worker did in the turn under way, for its end to read. */
+  turn: Turn;
   /** Whether the session said or did anything since it started: one that ends by itself after that has a conversation worth resuming. */
   ran?: boolean;
   nudged: boolean;

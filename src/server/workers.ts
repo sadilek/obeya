@@ -1636,7 +1636,7 @@ export class Workers {
     const args = z.object(tool.schema).safeParse(act.args ?? {});
     if (!args.success) throw new BadRequest('invalid', `${act.tool}: ${args.error.message}`);
     // a tool call is a step of the turn, as the agent's own calls are
-    if (live) live.acted = true;
+    if (live) live.turn.acted = true;
     return await tool.run(args.data);
   }
 
@@ -2133,7 +2133,7 @@ export class Workers {
     if (woke) {
       this.o.board.unsnooze(cardId, met ? { met } : timeUp ? 'time' : owner ? 'owner' : 'news');
       const live = this.live.get(cardId);
-      if (live) live.snoozed = false;
+      if (live) live.turn.snoozed = false;
       // snoozed on its handover, it goes on towards what it told the owner: the card is at work again
       const card = this.o.board.item(cardId);
       if (card && handedOver(card)) this.takingIn(cardId, true);
@@ -2394,13 +2394,13 @@ export class Workers {
     if (e.type === 'text' || e.type === 'tool') {
       // a turn of its own (a finished background command woke it) after it answered the owner's
       // words on its handover: it works on towards what it told them, so the card is at work again
-      if (!live.acted && this.o.board.item(cardId)?.answered) this.takingIn(cardId, true);
+      if (!live.turn.acted && this.o.board.item(cardId)?.answered) this.takingIn(cardId, true);
       this.resumed(cardId, live);
       this.unlimited(cardId, live);
       live.failed = undefined;
       live.ran = true;
     }
-    if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.acted = true;
+    if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.turn.acted = true;
     if (e.type === 'text' || e.type === 'tool' || (e.type === 'idle' && !e.more)) live.pending = undefined;
     switch (e.type) {
       case 'session': {
@@ -2415,14 +2415,14 @@ export class Workers {
         // after handing over the worker's closing words repeat the handover the card shows: the
         // conversation leaves them out; after a reply its words wait to see whether work follows them
         // or they close the turn, repeating the reply
-        if (live.handedOver || live.snoozed) break;
-        live.spoke = true;
-        if (live.answered) live.held = clip(e.text, 12000);
+        if (live.turn.handedOver || live.turn.snoozed) break;
+        live.turn.spoke = true;
+        if (live.turn.answered) live.turn.held = clip(e.text, 12000);
         else this.o.board.log(cardId, 'say', 'worker', clip(e.text, 12000));
         break;
       case 'tool':
-        if (live.held !== undefined) this.o.board.log(cardId, 'say', 'worker', live.held);
-        live.held = undefined;
+        if (live.turn.held !== undefined) this.o.board.log(cardId, 'say', 'worker', live.turn.held);
+        live.turn.held = undefined;
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input, this.o.board.t));
         else if (e.name === 'mcp__obeya__app_running') appRunning(live, String(e.input.url ?? '').trim());
         break;
@@ -2476,22 +2476,16 @@ export class Workers {
   private turnEnded(cardId: string, live: Live, background: number, waited = false, more = false) {
     // calls whose end its hooks never heard of (refused, cut off) end with the turn
     void this.folder?.settle(cardId);
-    const handedOver = live.handedOver;
-    const acted = live.acted || waited;
+    // the next turn starts afresh; a snooze holds across a turn a message from Obeya still starts (a
+    // restart notice): its session ends after that one
+    const { handedOver, snoozed, held: closing, ...turn } = live.turn;
+    live.turn = { handedOver: false, acted: false, ...(more && snoozed ? { snoozed } : {}) };
+    const acted = turn.acted || waited;
+    const spoke = !!turn.spoke;
     // what runs now was started before any later turn
     for (const t of live.tasks.values()) t.earlier = true;
-    const closing = live.held;
-    const snoozed = live.snoozed;
-    const spoke = !!live.spoke;
-    live.handedOver = false;
-    live.answered = false;
-    live.spoke = false;
-    // a snooze holds across a turn a message from Obeya still starts (a restart notice): its session ends after that one
-    if (!more) live.snoozed = false;
-    live.held = undefined;
-    live.acted = false;
     // a turn that took in the restart pauses for it, whatever else keeps the worker busy
-    if (this.restart && live.toldRestart && !more) {
+    if (this.toldOfRestart(live) && !more) {
       live.restartPaused = true;
       this.o.board.changed();
     }
@@ -2530,10 +2524,8 @@ export class Workers {
     if (answering(card)) {
       // a resumed session may first end a turn of its own before it takes in the owner's words
       if (!acted && !handedOver) return this.waitForWorker(live);
-      // it paused for the restart, which resumes it, still taking in the answer
-      if (this.restart && live.toldRestart && !handedOver) return this.pausedForRestart(cardId, live);
-      // the usage limit cut it off: it goes on by itself once the limit lifts, still taking in the answer
-      if (live.limited && !handedOver) return this.waitForLimit(cardId, live, live.limited);
+      // it goes on still taking in the answer
+      if (!handedOver && this.standsBy(cardId, live)) return;
       this.answerTaken(cardId, spoke);
     }
     if (handedOver) {
@@ -2541,30 +2533,57 @@ export class Workers {
       if (card.state === 'working' && row.approved_at) void this.landApproved(cardId);
       return;
     }
-    const landed = fromJson(row.landed);
     // in the PR phase a turn ends normally once the PR is open
     if (card.state === 'inPr' && card.pr) return;
-    if (card.state !== 'working' && card.state !== 'inPr' && !landed) return;
-    if (landed) {
-      // what remained after the landing is done, unless the worker waits for its question, the restart, its demo's page or the usage limit
-      if (card.state === 'waiting' || landed.waits) return;
-      if (landed.page) {
-        // the page went out (or did not) without the worker hearing it (Obeya was not running, say): it hears now
-        if (card.share?.state !== 'publishing') this.pageSettled(cardId);
-        return;
-      }
-      if (landed.needsClone) return this.awaitClone(cardId);
-      if (landed.resolve && !live.failed && !live.limited && !(this.restart && live.toldRestart)) return this.unresolved(cardId, live, landed.resolve);
-      // it paused for the restart, which resumes it with its workspace
-      if (this.restart && live.toldRestart && !live.failed) return this.pausedForRestart(cardId, live);
-      if (live.limited) return this.waitForLimit(cardId, live, live.limited);
-      if (live.failed) return this.failedAfterLanding(cardId, live);
-      this.finish(cardId);
+    const landed = fromJson(row.landed);
+    if (landed) return this.afterLandedTurn(cardId, live, card, landed);
+    if (card.state !== 'working' && card.state !== 'inPr') return;
+    if (this.standsBy(cardId, live)) return;
+    this.nudgeOrStall(cardId, live, card, acted);
+  }
+
+  /** Whether the worker heard of the restart that is due, so that the end of its turn pauses for it. */
+  private toldOfRestart(live: Live): boolean {
+    return !!this.restart && !!live.toldRestart;
+  }
+
+  /**
+   * Whether the worker whose turn ended stands by: paused for the restart that is due, which resumes
+   * it, or cut off by the usage limit, after which it goes on by itself.
+   */
+  private standsBy(cardId: string, live: Live): boolean {
+    if (this.toldOfRestart(live)) this.pausedForRestart(cardId, live);
+    else if (live.limited) this.waitForLimit(cardId, live, live.limited);
+    else return false;
+    return true;
+  }
+
+  /**
+   * The turn of landed work's worker ended: what remained after the landing is done, unless the
+   * worker waits for its question, the restart, its demo's page, a clone, or the usage limit, or
+   * leaves a pull it resolves unresolved, or broke off with an error.
+   */
+  private afterLandedTurn(cardId: string, live: Live, card: Item, landed: LandedState) {
+    if (card.state === 'waiting' || landed.waits) return;
+    if (landed.page) {
+      // the page went out (or did not) without the worker hearing it (Obeya was not running, say): it hears now
+      if (card.share?.state !== 'publishing') this.pageSettled(cardId);
       return;
     }
-    // it paused for the restart, which resumes it
-    if (this.restart && live.toldRestart) return this.pausedForRestart(cardId, live);
+    if (landed.needsClone) return this.awaitClone(cardId);
+    if (landed.resolve && !live.failed && !live.limited && !this.toldOfRestart(live)) return this.unresolved(cardId, live, landed.resolve);
+    // it paused for the restart, which resumes it with its workspace (one that failed is tried again by it)
+    if (this.toldOfRestart(live) && !live.failed) return this.pausedForRestart(cardId, live);
     if (live.limited) return this.waitForLimit(cardId, live, live.limited);
+    if (live.failed) return this.failedAfterLanding(cardId, live);
+    this.finish(cardId);
+  }
+
+  /**
+   * The worker at work ended its turn without handing over: one in which it did nothing waits for its
+   * own turn; otherwise it is nudged once, and the next such turn goes to the owner as a question.
+   */
+  private nudgeOrStall(cardId: string, live: Live, card: Item, acted: boolean) {
     if (!acted && !live.nudged) {
       // the worker's own turn is still to come; should it not, it counts as ended after a while
       // (silence after a nudge, though, is the worker having stopped)
