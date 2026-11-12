@@ -50,6 +50,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   and checks results in demos and result artifacts. Source code and diffs stay in the background:
   on a card with a demo or artifact, its changed files are optional and stay collapsed until
   opened, never shown up front.
+- Explanations on cards and in the UI tell the owner what matters to them: the consequence (that a
+  change gets applied to a base it was never tested on, say), not the mechanics behind it (which
+  branches the agent creates or moves work to).
 - Obeya's UI never sends the owner to the command line: when a message suggests a step (pushing
   `main` first, say), Obeya offers it as an action right there, or the message doesn't mention it.
 - UI strings live in one place, `src/ui/strings.ts`, in German and English (two tables of one shape).
