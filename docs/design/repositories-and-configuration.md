@@ -38,6 +38,15 @@ the first is also where a page of a stopped canvas goes. A canvas without a name
 its first repository (the name in its `origin` URL, else its directory's), and its id follows, so all
 clones of a repository share one canvas. Which canvas a repository is on is this machine's alone.
 
+A repository's id on its canvas (what its cards, its plan-doc references `<repo>:<path>` and the
+canvas's home go by) is given once, when the repository first runs there: its name (the name in its
+`origin` URL, else its directory's), with a number where another repository of the canvas has that
+id already. It then stays with the repository's path, whatever its `origin` becomes later; only the
+name shown follows the `origin`. A repository at a path new on the canvas whose name a repository no
+longer configured had takes that id over with its cards, so a checkout moved to another folder keeps
+them. A repository first given an id when ids were not yet kept, whose cards still go by its
+directory's name while its `origin` names it otherwise, gets the directory's name back.
+
 ### Main branch
 
 One main branch per repository is where cards start from, where work lands, and where plan docs and
@@ -595,6 +604,12 @@ its status lines in German).
 - **A canvas may span several repositories, and one Obeya serves several canvases.** Rejected: one
   canvas per repository.
 - **A canvas belongs to a repository, not a checkout**, named after its `origin`, so clones share one.
+- **A repository's id is kept from when it first runs on the canvas** (2026-11-12): derived anew at
+  every start from the name in `origin`, it changed once an `origin` was set or pointed elsewhere (a
+  checkout given a fork as `origin`), and the cards on it no longer found their repository. Rejected:
+  moving the cards to the new id at the start (they are only one of many places holding it: plan-doc
+  references, the canvas's home, workspaces, read trees), and naming repositories by their directory
+  alone (clones in folders of their own would no longer share a name).
 - **A worker's proposal may go to a repository of another canvas** (2026-10-30): a worker in a home
   automation repository found the cause of its bug in Obeya, on another canvas; offered only its
   own canvas's repositories, it filed the fix in its own, where it would have started in the wrong

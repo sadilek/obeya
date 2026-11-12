@@ -6,7 +6,7 @@ import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
-import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
+import { type DefaultRead, keepRepoIds, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
@@ -332,6 +332,7 @@ export class CanvasRuntime {
     );
     const board = this.board;
     if (!stored) deps.store.setSetting(id, 'home_repo', repos[0]!.ref.id);
+    keepRepoIds(deps.store, id, repos.map((x) => x.ref));
     if (deps.store.setting(id, 'paused') === '1') this.showPaused(true);
 
     this.workRetro = new WorkRetro({
@@ -997,6 +998,7 @@ export class CanvasRuntime {
       console.error(`Obeya: the new configuration of the canvas ${this.id} does not resolve; it runs on as it was: ${messageOf(e)}`);
       return;
     }
+    keepRepoIds(this.deps.store, this.id, resolved.repos.map((x) => x.ref));
     this.config = resolved.config;
     if (resolved.name !== this.board.canvas.name) {
       this.board.canvas.name = resolved.name;
@@ -1157,6 +1159,7 @@ export class CanvasRuntime {
       this.emitPending();
       return;
     }
+    keepRepoIds(this.deps.store, this.id, resolved.repos.map((x) => x.ref));
     const started: Repo[] = [];
     let homeDown: unknown = null;
     for (const path of p.paths) {

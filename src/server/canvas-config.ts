@@ -3,7 +3,7 @@
 // how it runs and shares, without touching anything.
 
 import { statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { defaultsFor, hasAdapterModule, readSharedAt, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
@@ -164,9 +164,10 @@ export function resolveCanvas(
       return () => settings;
     });
   let repos = config.repos.map((r, i) => ({ config: r, read: reads[i]!, adapter: repoAdapter(r, reads[i]!.info, settings(r), sharedOf(reads[i]!.info.path)) }));
-  const refsOf = () => uniqueRefs(repos.map((x) => x.read.info), repos.map((x) => x.adapter));
-  let refs = refsOf();
   const id = config.id ? slug(config.id) : config.name ? slug(config.name) : slug(repoName(reads[0]!.info));
+  const kept = keptRepoIds(store, id);
+  const refsOf = () => uniqueRefs(repos.map((x) => x.read.info), repos.map((x) => x.adapter), kept, () => store.cardRepos(id).concat(store.setting(id, 'home_repo') ?? []));
+  let refs = refsOf();
   // the home repository is fixed when the canvas is first served: bare plan references, cards
   // without a repository and the home workspace directory are its, whatever the order later
   const stored = store.setting(id, 'home_repo');
@@ -224,20 +225,58 @@ export function listedClones(r: RepoConfig, info: RepoInfo, layered: RepoSetting
 /** Whether a repository's configuration names clones for its workers (to create, existing ones, on other machines). */
 export const namesClones = (r: RepoConfig, info: RepoInfo, layered: RepoSettings | undefined) => !!r.clones || !!listedClones(r, info, layered).length || !!r.hosts?.length;
 
-/** Repository ids unique on the canvas: the repository's name, with a number when two share one. */
-function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
-  const seen = new Map<string, number>();
-  return infos.map((info, i) => {
-    const base = slug(repoName(info)) || `repo${i + 1}`;
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    return {
-      id: n === 1 ? base : `${base}${n}`,
-      name: repoName(info),
-      path: info.path,
-      ...settled(info, adapters[i]!),
-    };
+/**
+ * Repository ids unique on the canvas: each the one it was given on the canvas before (`kept`, by
+ * its path), else its name, with a number when two share one. Where cards on the canvas (`held`)
+ * still go by its directory's name and no repository of the canvas has that id, it gets that one:
+ * its id from before ids were kept, when its `origin` came later.
+ */
+function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[], kept: Record<string, string>, held: () => string[]): RepoRef[] {
+  const ids: string[] = [];
+  const taken = new Set<string>();
+  infos.forEach((info, i) => {
+    const id = kept[info.path];
+    if (id && !taken.has(id)) taken.add((ids[i] = id));
   });
+  const bases = infos.map((info, i) => slug(repoName(info)) || `repo${i + 1}`);
+  let orphans: Set<string> | undefined;
+  infos.forEach((info, i) => {
+    if (ids[i]) return;
+    const base = bases[i]!;
+    const before = slug(basename(info.path));
+    orphans ??= new Set(held());
+    let id = base;
+    if (before && before !== base && !taken.has(before) && !bases.some((b, j) => !ids[j] && b === before) && orphans.has(before)) id = before;
+    else for (let n = 2; taken.has(id); n++) id = `${base}${n}`;
+    taken.add((ids[i] = id));
+  });
+  return infos.map((info, i) => ({ id: ids[i]!, name: repoName(info), path: info.path, ...settled(info, adapters[i]!) }));
+}
+
+/** The ids the canvas's repositories were given, by their paths (`keepRepoIds`). */
+function keptRepoIds(store: Store, canvas: string): Record<string, string> {
+  try {
+    return JSON.parse(store.setting(canvas, REPO_IDS) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+const REPO_IDS = 'repo_ids';
+
+/**
+ * Keeps the ids the canvas's repositories have now (`refs`), so a repository keeps its id (and its
+ * cards) when its name changes, with a new `origin`, say. An id another path had passes to the
+ * repository that has it now: a repository moved to another folder keeps its cards.
+ */
+export function keepRepoIds(store: Store, canvas: string, refs: Pick<RepoRef, 'id' | 'path'>[]) {
+  const kept = keptRepoIds(store, canvas);
+  const next = { ...kept };
+  for (const { id, path } of refs) {
+    for (const [p, other] of Object.entries(next)) if (other === id && p !== path) delete next[p];
+    next[path] = id;
+  }
+  if (JSON.stringify(next) !== JSON.stringify(kept)) store.setSetting(canvas, REPO_IDS, JSON.stringify(next));
 }
 
 /** The URL of the repository's `origin` as it is configured, before git's `insteadOf` rewrites it (as read with the rest, `readRepo`); null without one. */

@@ -1344,6 +1344,22 @@ export class Store {
 
   // ---------------------------------------------------------------- settings
 
+  /**
+   * The repository ids the canvas's cards go by, archived ones included: their repository, the one
+   * before the plan doc a workstream or project of another repository than the home one is of
+   * (`<repo>:<path>`), and the one of the workspaces they hold.
+   */
+  cardRepos(canvasId: string): string[] {
+    const rows = this.db
+      .query(
+        `SELECT repo FROM cards WHERE canvas_id = $c AND repo IS NOT NULL AND deleted_at IS NULL
+         UNION SELECT substr(plan_ref, 1, instr(plan_ref, ':') - 1) FROM cards WHERE canvas_id = $c AND instr(plan_ref, ':') > 1 AND deleted_at IS NULL
+         UNION SELECT repo FROM workspaces WHERE canvas_id = $c AND repo IS NOT NULL`,
+      )
+      .all({ c: canvasId }) as { repo: string }[];
+    return rows.map((r) => r.repo);
+  }
+
   setting(canvasId: string, key: string): string | null {
     return (this.db.query('SELECT value FROM settings WHERE canvas_id = $c AND key = $key').get({ c: canvasId, key }) as { value: string } | null)?.value ?? null;
   }
