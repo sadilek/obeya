@@ -84,7 +84,7 @@
 //     "hosts": [{ "name": "Workhorse", "ssh": "me@workhorse.local", "clones": 2, "slots": 2 }],
 //     "files": { "src/cli.ts": "…" },
 //     "pulls": [{ "number": 5, "title": "…", "author": "…", "files": { "src/x.ts": "…" }, "canModify": true }],
-//     "forgeClone": true,
+//     "forgeClone": true, "origin": "git@github.com:acme/shop.git",
 //     "plans": { "docs/plan/tooling.md": "# Tooling\n\n## Workstreams\n\n- [ ] **W1:** Configuration.\n" },
 //     "cards": [
 //       { "key": "A", "title": "…", "body": "…", "x": 40, "y": 300,

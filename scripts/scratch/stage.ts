@@ -175,6 +175,12 @@ export interface Stage {
   pulls?: { number: number; title: string; author: string; files: Record<string, string>; canModify?: boolean; checks?: { name: string; state: 'pending' | 'success' | 'failure' }[]; body?: string }[];
   forgeRepo?: string;
   /**
+   * The repository's `origin` where it has no forge of its own (no `pulls`, no pool checkout or
+   * hosts): a URL that names it on a forge (`git@github.com:acme/shop.git`), which nothing fetches
+   * from or pushes to but what Obeya reads of the remote (its id, its host on GitHub).
+   */
+  origin?: string;
+  /**
    * The forge's repository is a clone of the repository (<dir>/forge, the PRs' heads in it) rather
    * than the repository itself: what lands on the local main is not on the forge until pushed. The
    * contributors' repositories are that one too, so a push onto a PR's branch moves its head.
@@ -368,6 +374,7 @@ function makeRepositories(stage: Stage, dir: string) {
   }
   const forge = { slug: stage.forgeRepo ?? `acme/${basename(repo)}`, repo: stage.forgeClone ? join(dir, 'forge') : repo };
   const prHeads = makePulls(stage, dir, repo, forge);
+  if (stage.origin && !stage.pulls?.length && !stage.poolCheckout && !stage.hosts?.length) git(repo, 'remote', 'add', 'origin', stage.origin);
   const others = (stage.repos ?? []).map((r) => {
     const path = join(dir, r.name);
     writeFiles(path, r.files && Object.keys(r.files).length ? r.files : { 'README.md': `# ${r.name}\n` });
