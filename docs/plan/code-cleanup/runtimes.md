@@ -133,6 +133,10 @@ class (8×), the refresh-after-a-while cache (4×).
 - Confidence: high for the duplication (grepped `pausedByOwner|resumedByOwner|t.worker.pausing` and
   `pausing:` across `src/server`); medium for `Board` as the home (slice C may prefer a small
   `pause.ts`).
+- Done by W10 with [board-db](board-db.md) C5, on `Board` (what came of it stands under C5).
+  `Explorers.close(cardId, true)` now writes the pause with its line, so its three callers dropped
+  theirs; each agent's own `pauseTakenBack` went where it was the two lines alone (Answers,
+  Explorers); Workers keeps its own, which also clears the pause's timer and `pauseHeld`.
 
 ### B4. Workers keep their own copy of `BackgroundWait`
 - Principle: DRY

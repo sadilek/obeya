@@ -195,6 +195,12 @@ across the server.
   `canvas.test.ts`.
 - Confidence: high for answers.ts and explorers.ts (read in full); the workers.ts sites were read in
   context at the lines named, not the whole file.
+- Done by W10 with [runtimes](runtimes.md) B3: `Board.pausing`, `paused(id, state = {})`,
+  `pauseTakenBack` and `resumed(id, said = true)` (the last without its line where the waking's line
+  says why), each the row write with its line, beside `snooze`/`unsnooze`. The guard became the
+  refusal alone, `pauseRefused(card, now)` beside `notPaused()` in `board.ts`: Explorers test for a
+  live session rather than `pausable`, so a shared `checkPausable` would have changed when an idea's
+  pause is refused. The agents keep the timer, the session's end and what waits meanwhile.
 
 ### C6. A proposal's stored JSON is read, changed and written back nine times
 - Principle: DRY

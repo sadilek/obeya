@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W9, W13 to W18, W20 to W22, W24 and W25 are done; the other workstreams are open. The review, made on
+W1 to W10, W13 to W18, W20 to W22, W24 and W25 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -180,10 +180,11 @@ the workstream named does it for all of them.
   W8. `board.ts` keeps the cards and their transitions (2,397 lines); `items.ts`, `shared-pages.ts`
   (`PageNotice`), `archive.ts` (`Archive`), `plan-follow.ts` (`PlanFollower`) and `plan-ref.ts` hold
   the rest; what came of each finding stands under it.
-- [ ] **W10:** The pause protocol once for every kind of agent. [runtimes](code-cleanup/runtimes.md)
-  B3 with [board-db](code-cleanup/board-db.md) C5: the four transitions and their log lines are
+- [x] **W10:** The pause protocol once for every kind of agent. [runtimes](code-cleanup/runtimes.md)
+  B3 with [board-db](code-cleanup/board-db.md) C5: the four transitions and their log lines were
   written in `workers.ts`, `answers.ts` and `explorers.ts`, against the house rule on interactions
-  that card kinds share.
+  that card kinds share; `Board` now writes each step with its line, and one refusal serves all
+  three. What came of it stands under C5.
 - [ ] **W11:** `workers.ts` split along its seams, by moves only. [workers](code-cleanup/workers.md)
   A1 (texts, briefings, the card's app, review cards and the tools leave the `Workers` class behind
   its unchanged public API), with [runtimes](code-cleanup/runtimes.md) B4 and B20 (workers' own
