@@ -42,7 +42,7 @@ A repository's id on its canvas (what its cards, its plan-doc references `<repo>
 canvas's home go by) is given once, when the repository first runs there: its name (the name in its
 `origin` URL, else its directory's), with a number where another repository of the canvas has that
 id already. It then stays with the repository's path, whatever its `origin` becomes later; only the
-name shown follows the `origin`. A repository at a path new on the canvas whose name a repository no
+name shown (on cards, in the panel, the picker and the navigation) follows the `origin`. A repository at a path new on the canvas whose name a repository no
 longer configured had takes that id over with its cards, so a checkout moved to another folder keeps
 them. A repository first given an id when ids were not yet kept, whose cards still go by its
 directory's name while its `origin` names it otherwise, gets the directory's name back.

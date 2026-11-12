@@ -1415,7 +1415,7 @@ function Canvas({
                   dragging={item.id === dragId || dragWith.includes(item.id)}
                   pop={item.id === popId}
                   lit={item.id === litId}
-                  showRepo={snapshot.canvas.repos.length > 1}
+                  repoName={snapshot.canvas.repos.length > 1 && item.repo ? (snapshot.canvas.repos.find((r) => r.id === item.repo)?.name ?? item.repo) : undefined}
                   els={els}
                   onStart={startCard}
                   onArchive={archiveCard}

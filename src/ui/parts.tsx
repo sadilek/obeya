@@ -55,8 +55,8 @@ export function TalkIcon() {
 
 interface CardProps {
   item: Item;
-  /** On a canvas with several repositories, cards name theirs. */
-  showRepo: boolean;
+  /** On a canvas with several repositories, cards name theirs: the name of the card's repository. */
+  repoName?: string;
   b: Bounds;
   lifted: boolean;
   dragging: boolean;
@@ -228,7 +228,7 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
 }
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, lit, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, lit, repoName, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
     const shape = shapeOf(item);
     // a card the Coordinator is checking has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
@@ -249,7 +249,7 @@ export const CardView = memo(
         onPointerLeave={() => onHover(null)}
       >
         {(dep === 'before' || dep === 'after' || dep === 'loop') && <div className="dep-tag">{t.deps[dep]}</div>}
-        <CardFace item={item} where={showRepo ? item.repo : undefined} underway={underway} chip={shape === 'chip'} />
+        <CardFace item={item} where={repoName} underway={underway} chip={shape === 'chip'} />
         {!underway && <CardTurn item={item} />}
         {startable && (
           <button
@@ -284,7 +284,7 @@ export const CardView = memo(
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.lit === b.lit && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.lit === b.lit && a.repoName === b.repoName && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
 );
 
 // ------------------------------------------------------------------ overlays
