@@ -174,8 +174,11 @@ goes either to the fork alone ("For me only", as any card) or to the original as
 ("Also as PR to <owner/repo>"). The owner picks it on an unstarted card, beside the repository
 picker, and it stands until the approval: a card for the original shows "Approve + PR to
 <owner/repo>" first and "Approve, for me only" beside it, any other card "Approve" first and "Approve
-+ PR to <owner/repo>" beside it, with a line below saying what the PR approval does. Approving by
-word goes the card's way.
++ PR to <owner/repo>" beside it. Both places say what the choice decides, since the two are not
+the same: the pick on the unstarted card says where its branch starts (below); the line under the
+approve buttons, on a card that started for the fork, that its change lands as usual and the agent
+carries it over for the pull request afterwards, which is extra work and may differ from the demo.
+Approving by word goes the card's way.
 
 A card for the original starts from the newest commit of the original's main branch that the main
 branch holds (their merge base, after fetching that remote), so its branch carries neither the
@@ -650,7 +653,9 @@ A card no agent worked on, a prototype or an archived card has no field.
   main branch and the fork's, so merging it into the fork brings the card's work and nothing of the
   original the owner has not merged yet; what is pushed onto the pull request merges into the fork,
   never the fork into the pull request. The choice stands until the approval, which may still
-  change it, since the need for the pull request often shows only in the work. Rejected: branching
+  change it, since the need for the pull request often shows only in the work; the card says that
+  the earlier choice is the clean way and the later one a port (the owner, after the first demo,
+  asked why there was a choice at the start at all). Rejected: branching
   from the original's newest main (merging it into the fork would bring the original's newer
   commits along unasked); rebasing the branch onto the fork's main at the approval (it would no
   longer be the pull request's branch); cherry-picking review fixes into the fork (copies of each

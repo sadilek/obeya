@@ -558,12 +558,14 @@ const de = {
     approveMine: 'Freigeben, nur für mich',
     hint: (into: string, name: string) =>
       `Mit PR an ${name}: Die Arbeit landet auf ${into}, und der Agent öffnet einen Pull Request ans Original. Obeya verfolgt ihn (Review-Kommentare, Checks), bis die Maintainer ihn mergen, und mergt Nachbesserungen auch in ${into}.`,
+    hintPort: (into: string, name: string) =>
+      `Mit PR an ${name}: Diese Aufgabe hat auf ${into} begonnen. Sie landet dort wie gewohnt; für den Pull Request überträgt der Agent die Änderung danach auf einen eigenen Branch vom Stand des Originals, ohne was nur ${into} hat. Das ist Mehrarbeit und kann vom Gezeigten abweichen: Soll eine Aufgabe ans Original, wähle das am besten schon vor dem Start.`,
     approved: (name: string) => `Freigegeben; geht auch als PR an ${name}.`,
     approving: 'landet und geht als PR ans Original …',
     mine: 'Nur für mich',
     pr: (name: string) => `Auch als PR an ${name}`,
-    pickHint: (into: string, name: string) =>
-      `Nur für mich: zweigt von ${into} ab und landet dort. Auch als PR: zweigt vom Stand von ${name} ab, den ${into} schon hat, landet auf ${into} und geht als Pull Request ans Original. Bis zur Freigabe umstellbar.`,
+    pickMine: (into: string) => `Zweigt von ${into} ab und landet dort. Soll sie später doch ans Original, muss der Agent die Änderung erst auf einen eigenen Branch übertragen.`,
+    pickPr: (into: string, name: string) => `Zweigt vom Stand von ${name} ab, den ${into} schon hat: Ihr Branch wird so, wie er ist, der Pull Request ans Original und landet auch auf ${into}.`,
   },
   cardError: (title: string, why: string) => `„${title}“: ${why}`,
   approvedNoChange: 'Beendet.',
@@ -2852,12 +2854,14 @@ const en: Strings = {
     approveMine: 'Approve, for me only',
     hint: (into: string, name: string) =>
       `With a PR to ${name}: the work lands on ${into}, and the agent opens a pull request to the original. Obeya follows it (review comments, checks) until its maintainers merge it, and merges the fixes into ${into} too.`,
+    hintPort: (into: string, name: string) =>
+      `With a PR to ${name}: this task started on ${into}. It lands there as usual; for the pull request, the agent then carries the change over onto a branch of its own from the original’s state, leaving out what only ${into} has. That is extra work and may differ from what the demo shows: a task meant for the original is best marked so before it starts.`,
     approved: (name: string) => `Approved; goes to ${name} as a PR too.`,
     approving: 'landing, and going to the original as a PR …',
     mine: 'For me only',
     pr: (name: string) => `Also as PR to ${name}`,
-    pickHint: (into: string, name: string) =>
-      `For me only: branches off ${into} and lands there. Also as PR: branches off the state of ${name} that ${into} already has, lands on ${into} and goes to the original as a pull request. You can switch until the approval.`,
+    pickMine: (into: string) => `Branches off ${into} and lands there. Should it go to the original after all, the agent first has to carry the change over onto a branch of its own.`,
+    pickPr: (into: string, name: string) => `Branches off the state of ${name} that ${into} already has: its branch becomes the pull request to the original as it is, and lands on ${into} too.`,
   },
   cardError: (title: string, why: string) => `“${title}”: ${why}`,
   approvedNoChange: 'Closed.',

@@ -481,7 +481,7 @@ function TaskView(v: View) {
 
       {/* the decisions below what the card shows, as on every card */}
       <TaskActions v={v} worked={worked} proto={proto} approve={<ApproveButton item={item} act={act} lands={lands} change={change} upstream={upstreamOf(item, repo, lands)} />} />
-      {review && upstreamOf(item, repo, lands) && <p className="hint">{t.upstream.hint(repo!.upstream!.into, repo!.upstream!.name)}</p>}
+      {review && upstreamOf(item, repo, lands) && <p className="hint">{(item.upstream ? t.upstream.hint : t.upstream.hintPort)(repo!.upstream!.into, repo!.upstream!.name)}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
       {review && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
       {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
@@ -790,7 +790,7 @@ function UpstreamPick({ item, repo, onEdit }: { item: Item; repo: RepoRef | unde
     onEdit({ upstream: v });
   };
   return (
-    <div className="repo-pick" title={t.upstream.pickHint(up.into, up.name)}>
+    <div className="upstream-pick">
       <div className="seg">
         <button className={on ? '' : 'on'} onClick={() => pick(false)}>
           {t.upstream.mine}
@@ -799,6 +799,8 @@ function UpstreamPick({ item, repo, onEdit }: { item: Item; repo: RepoRef | unde
           {t.upstream.pr(up.name)}
         </button>
       </div>
+      {/* what the choice decides: where the branch starts, which the approval can no longer change */}
+      <p className="hint">{on ? t.upstream.pickPr(up.into, up.name) : t.upstream.pickMine(up.into)}</p>
     </div>
   );
 }
