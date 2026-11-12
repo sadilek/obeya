@@ -1124,7 +1124,7 @@ export class Commander {
         // the owner hears why rather than getting a pull request they did not want
         if (!repo.direct) return `the repository ${card.repo} lands approved work only through a pull request; it does not allow pushing it directly onto main. Tell the owner so with reply, and approve without direct only once they want the pull request`;
         // past the pull request goes only by the card's button, never by word
-        const button = MESSAGES[this.o.board.language()].quote(MESSAGES[this.o.board.language()].approveDirect);
+        const button = MESSAGES[this.o.board.language()].quote(MESSAGES[this.o.board.language()].labels.approveDirect);
         return `nothing was approved: approval by word never pushes past the pull request. Tell the owner so with reply: straight onto main goes by the button ${button} on the card; approved without direct, the work goes out as a pull request`;
       }
       case 'accept':

@@ -451,7 +451,7 @@ export class Explorers {
       },
       {
         name: 'update_brief',
-        description: `Replace the brief of the idea ("${t.briefName}"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own. mocks: how the brief's variants look, one per variant, shown under the brief; ${MOCKS}. The whole list whenever it changes; leave it out to keep the mocks as they are, an empty list removes them.`,
+        description: `Replace the brief of the idea ("${this.o.board.t.labels.brief}"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own. mocks: how the brief's variants look, one per variant, shown under the brief; ${MOCKS}. The whole list whenever it changes; leave it out to keep the mocks as they are, an empty list removes them.`,
         schema: { brief: z.string(), mocks: MOCK_SCHEMA },
         run: ({ brief, mocks }) => {
           this.o.board.setIdea(cardId, { brief: clip(String(brief).trim(), 20000), ...(mocks === undefined ? {} : { mocks: mocksOf(mocks) }) });
@@ -461,7 +461,7 @@ export class Explorers {
       },
       {
         name: 'plan_prototypes',
-        description: `The throwaway prototypes the brief plans, one per variant to be seen side by side: the whole list each time, empty when none are planned any more. When the owner clicks "${t.prototypeButton}", the card offers them, all chosen, and starts one worker per variant at once; without this list it starts one prototype of the idea as it stands. approach: the variant in a few words, in ${OWNER_LANGUAGE} (${WORDS[language].approach}); it becomes the prototype's title. show: that prototype's task, in ${OWNER_LANGUAGE}: what it builds and what its demo shows, for this variant only; its worker also reads the brief.`,
+        description: `The throwaway prototypes the brief plans, one per variant to be seen side by side: the whole list each time, empty when none are planned any more. When the owner clicks "${this.o.board.t.labels.prototype}", the card offers them, all chosen, and starts one worker per variant at once; without this list it starts one prototype of the idea as it stands. approach: the variant in a few words, in ${OWNER_LANGUAGE} (${WORDS[language].approach}); it becomes the prototype's title. show: that prototype's task, in ${OWNER_LANGUAGE}: what it builds and what its demo shows, for this variant only; its worker also reads the brief.`,
         schema: { prototypes: z.array(z.object({ approach: z.string(), show: z.string() })).max(MAX_VARIANTS) },
         run: ({ prototypes }) => {
           const variants = plannedPrototypes(prototypes);
@@ -472,7 +472,7 @@ export class Explorers {
       },
       {
         name: 'plan_split',
-        description: `When part of the idea is settled and part is still open (to be discussed further, or prototyped), the part to build now: the owner splits it off with "${t.splitOffButton}" as a task of its own, which a worker starts on at once, and the idea stays with what is open. title: that task's title, a few words in ${OWNER_LANGUAGE}. brief: its worker's task, in ${OWNER_LANGUAGE} markdown, standing on its own and holding only what is settled; what is still open is no part of it. The whole value each time; both empty when no part is settled apart from the rest any more.`,
+        description: `When part of the idea is settled and part is still open (to be discussed further, or prototyped), the part to build now: the owner splits it off with "${this.o.board.t.labels.splitOff}" as a task of its own, which a worker starts on at once, and the idea stays with what is open. title: that task's title, a few words in ${OWNER_LANGUAGE}. brief: its worker's task, in ${OWNER_LANGUAGE} markdown, standing on its own and holding only what is settled; what is still open is no part of it. The whole value each time; both empty when no part is settled apart from the rest any more.`,
         schema: { title: z.string(), brief: z.string() },
         run: ({ title, brief }) => {
           const part = settledPart(title, brief);
@@ -584,7 +584,7 @@ You are the exploration agent of one idea on Obeya, a canvas on which the owner 
 
 Your sources are the code, the repository's docs and plan docs, and what the messages give you (decisions taken so far, the owner's preferences). You have the tools a worker has: what the discussion depends on beyond the text (the git history, files on this machine and their dates, a release, pull request or CI run on GitHub with gh, a page on the web), check rather than guess. Nothing you do yourself starts work.${toObeya ? `\n\n${TO_OBEYA}` : ''}
 
-The card shows the brief ("${MESSAGES[ui].idea.briefName}") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
+The card shows the brief ("${MESSAGES[ui].labels.brief}") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
 
 How to work:
 - Put what you find and propose into the brief, not into your reply: what the code does today, variants with their trade-offs and what each would cost (what it touches, roughly how much agent work, the risks), decisions, open questions, effort.

@@ -9,6 +9,51 @@ import type { Awaited, AwaitedState, Snooze } from './types';
 /** What a worker pauses for: Obeya restarting, Obeya stopping, or only its repository's agents restarting (a change to its configuration). */
 export type Pause = 'restart' | 'stop' | 'repo';
 
+/**
+ * Labels of the UI's buttons and settings that the server's lines and prompts name. The UI's table
+ * (src/ui/strings.ts) takes them from here, since the server cannot import it, so a renamed button
+ * is renamed where the log and the agents name it too.
+ */
+const deLabels = {
+  /** The card's button that approves work past the pull request, straight onto the main branch. */
+  approveDirect: 'Direkt auf main',
+  /** An answer's button that has it told as a walkthrough. */
+  walkthrough: 'Als Walkthrough zeigen',
+  /** An idea's brief, and the idea's buttons. */
+  brief: 'Stand der Idee',
+  prototype: 'Prototyp bauen lassen',
+  splitOff: 'Teilaufgabe abtrennen',
+  /** A proposal's buttons. */
+  accept: 'Übernehmen und starten',
+  acceptIdea: 'Übernehmen und besprechen',
+  acceptAsIdea: 'Als Idee besprechen',
+  /** A demo's sharing buttons. */
+  share: 'Teilen',
+  reshare: 'Erneut teilen',
+  replace: 'Auf der Seite ersetzen',
+  add: 'Zur Seite dazunehmen',
+  unshare: 'Nicht mehr teilen',
+  /** The settings of a repository the work retrospective may propose a value for (`PROPOSED_SETTINGS`). */
+  settings: { checks: 'Prüfungen', setup: 'Einrichten', softPaths: 'Weiche Pfade', run: 'So läuft die App' },
+};
+
+const enLabels: typeof deLabels = {
+  approveDirect: 'Straight to main',
+  walkthrough: 'Show as walkthrough',
+  brief: 'Where the idea stands',
+  prototype: 'Have a prototype built',
+  splitOff: 'Split off a task',
+  accept: 'Accept and start',
+  acceptIdea: 'Accept and discuss',
+  acceptAsIdea: 'Discuss as an idea',
+  share: 'Share',
+  reshare: 'Share again',
+  replace: 'Replace on the page',
+  add: 'Add to the page',
+  unshare: 'Stop sharing',
+  settings: { checks: 'Checks', setup: 'Setup', softPaths: 'Soft paths', run: 'How to run the app' },
+};
+
 const de = {
   /** A time in the owner's words: „um 14:40“, or „am 7.10. um 14:40“ on another day. */
   when: (at: number) => {
@@ -25,6 +70,7 @@ const de = {
   },
   /** A title as the text around it quotes it. */
   quote: (s: string) => `„${s}“`,
+  labels: deLabels,
   /** The marker of a question with several answers allowed, after its text in the log. */
   multiple: 'Mehrfachauswahl',
   /** The headings of a taken proposal's questions in its text. */
@@ -57,7 +103,7 @@ const de = {
     limited: (when: string) => `Das Nutzungslimit ist erreicht. Obeya schlägt das ${when} von selbst nach.`,
     asIdea: 'Als Idee weiter besprochen.',
     /** "Show as walkthrough": the owner's words, as the button says, and Obeya's reply. */
-    walkthroughAsked: 'Als Walkthrough zeigen',
+    walkthroughAsked: deLabels.walkthrough,
     walkthroughReply: 'Ich erzähle die Antwort als Walkthrough.',
   },
   tool: {
@@ -348,10 +394,6 @@ const de = {
     /** A workstream card that left its project: the doc no longer lists it, or its log belongs to another workstream. */
     leftGone: (project: string) => `Hat das Projekt „${project}“ verlassen: Das Plan-Doc führt diesen Workstream nicht mehr.`,
     leftOther: (project: string) => `Hat das Projekt „${project}“ verlassen: Dieser Verlauf gehört zu einem Workstream, den das Plan-Doc nicht mehr führt.`,
-    /** How the brief and the prototype button are called on the card, for the idea's agent. */
-    briefName: 'Stand der Idee',
-    prototypeButton: 'Prototyp bauen lassen',
-    splitOffButton: 'Teilaufgabe abtrennen',
   },
   /** A card built or started in a repository Obeya creates for it. */
   newRepo: {
@@ -375,7 +417,7 @@ const de = {
   proposal: {
     /** `how`: the button clicked, "Übernehmen und starten", "Übernehmen und besprechen" (a proposed idea) or "Als Idee besprechen". */
     acceptAfterRevision: (how: 'start' | 'discuss' | 'asIdea') =>
-      `${{ start: 'Übernehmen und starten', discuss: 'Übernehmen und besprechen', asIdea: 'Als Idee besprechen' }[how]}, sobald der Vorschlag überarbeitet ist; hat er noch Fragen, bleibt er Vorschlag.`,
+      `${{ start: deLabels.accept, discuss: deLabels.acceptIdea, asIdea: deLabels.acceptAsIdea }[how]}, sobald der Vorschlag überarbeitet ist; hat er noch Fragen, bleibt er Vorschlag.`,
     notAccepting: 'Doch nicht übernehmen.',
     notAcceptedNoRevision: 'Nicht übernommen: Die Überarbeitung kam nicht zustande.',
     notAcceptedQuestions: 'Nicht übernommen: Der Vorschlag hat noch Fragen.',
@@ -428,8 +470,6 @@ const de = {
     reviseFailed: (why: string) => `Überarbeiten ging nicht: ${why}`,
     noRevisedText: 'der Agent hat keinen neuen Text geliefert',
   },
-  /** The card's button that approves work past the pull request, straight onto the main branch (the UI's own label). */
-  approveDirect: 'Direkt auf main',
   claudeMd: {
     title: 'CLAUDE.md ergänzen',
     task: 'Der Owner hat diese Regeln für dieses Repo festgelegt. Arbeite sie in die CLAUDE.md ein, passend zu dem, was dort steht (Abschnitt, Ton, Länge) und ohne Dopplungen; steht eine schon sinngemäß drin, schärfe nur die Stelle. Sonst nichts ändern. Statt einer Demo genügt in der Zusammenfassung der neue Wortlaut.',
@@ -442,19 +482,18 @@ const de = {
     from: (repo: string, why: string, cards: string) => `Aus der Arbeitsrückschau für ${repo}. ${why} Karten: ${cards}.`,
     done: (repo: string, made: number) =>
       `Arbeitsrückschau für ${repo}: ${made ? `${made === 1 ? 'ein Vorschlag' : `${made} Vorschläge`}, auf der Leinwand und bei Obeya.` : 'nichts, was sich auf mehreren Karten wiederholt.'}`,
-    settings: { checks: 'Prüfungen', setup: 'Einrichten', softPaths: 'Weiche Pfade', run: 'So läuft die App' },
     onMachine: (setting: string, repo: string) => `„${setting}“ für ${repo} gilt jetzt auf diesem Rechner.`,
     committed: (setting: string, repo: string, branch: string) => `„${setting}“ für ${repo} steht jetzt in .obeya/settings.json auf ${branch} und gilt für alle.`,
     opened: (setting: string, repo: string, pr: string) => `„${setting}“ für ${repo}: Pull Request geöffnet, ${pr}. Bis er gemergt ist, gilt der Wert auf diesem Rechner.`,
   },
   share: {
-    share: 'Teilen: Die Seite geht online.',
-    again: 'Erneut teilen: Die Seite wird mit dem neuen Stand erzeugt.',
-    newDemo: 'Auf der Seite ersetzen: Die Seite zeigt jetzt diese Demo statt der geteilten.',
-    added: 'Zur Seite dazunehmen: Die Seite bekommt diese Demo als Ergänzung dazu.',
-    unshare: 'Nicht mehr teilen: Die Seite wird zurückgezogen.',
-    unshareOne: 'Nicht mehr teilen: Die Seite geht ohne diese Demo wieder online.',
-    againWithOthers: 'Erneut teilen, mit anderen geteilten Demos: Die Seite wird mit dem neuen Stand erzeugt.',
+    share: `${deLabels.share}: Die Seite geht online.`,
+    again: `${deLabels.reshare}: Die Seite wird mit dem neuen Stand erzeugt.`,
+    newDemo: `${deLabels.replace}: Die Seite zeigt jetzt diese Demo statt der geteilten.`,
+    added: `${deLabels.add}: Die Seite bekommt diese Demo als Ergänzung dazu.`,
+    unshare: `${deLabels.unshare}: Die Seite wird zurückgezogen.`,
+    unshareOne: `${deLabels.unshare}: Die Seite geht ohne diese Demo wieder online.`,
+    againWithOthers: `${deLabels.reshare}, mit anderen geteilten Demos: Die Seite wird mit dem neuen Stand erzeugt.`,
     approved: (how: 'share' | 'replace' | 'add'): string =>
       how === 'share'
         ? 'Mit der Freigabe geteilt: Die Seite geht online.'
@@ -584,6 +623,7 @@ const en: Messages = {
     return `${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...year }).replace(',', '')}, ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
   },
   quote: (s: string) => `“${s}”`,
+  labels: enLabels,
   multiple: 'multiple choice',
   decided: 'Decided',
   openQuestions: 'Open questions',
@@ -608,7 +648,7 @@ const en: Messages = {
     failed: (why: string) => `I could not answer the question (${why}).`,
     limited: (when: string) => `The usage limit is reached. Obeya looks this up by itself ${when}.`,
     asIdea: 'Discussed further as an idea.',
-    walkthroughAsked: 'Show as walkthrough',
+    walkthroughAsked: enLabels.walkthrough,
     walkthroughReply: 'I’ll tell the answer as a walkthrough.',
   },
   tool: {
@@ -853,9 +893,6 @@ const en: Messages = {
     partLanded: 'Part landed; the plan doc keeps it open.',
     leftGone: (project: string) => `Left the project “${project}”: the plan doc no longer lists this workstream.`,
     leftOther: (project: string) => `Left the project “${project}”: this history belongs to a workstream the plan doc no longer lists.`,
-    briefName: 'Where the idea stands',
-    prototypeButton: 'Have a prototype built',
-    splitOffButton: 'Split off a task',
   },
   newRepo: {
     held: (path: string) => `Creating the repository ${path} …`,
@@ -874,7 +911,7 @@ const en: Messages = {
   },
   proposal: {
     acceptAfterRevision: (how: 'start' | 'discuss' | 'asIdea') =>
-      `${{ start: 'Accept and start', discuss: 'Accept and discuss', asIdea: 'Discuss as an idea' }[how]} once the proposal is revised; if it still has questions, it stays a proposal.`,
+      `${{ start: enLabels.accept, discuss: enLabels.acceptIdea, asIdea: enLabels.acceptAsIdea }[how]} once the proposal is revised; if it still has questions, it stays a proposal.`,
     notAccepting: 'Not accepting it after all.',
     notAcceptedNoRevision: 'Not accepted: the revision did not come.',
     notAcceptedQuestions: 'Not accepted: the proposal still has questions.',
@@ -924,7 +961,6 @@ const en: Messages = {
     reviseFailed: (why: string) => `Revising did not work: ${why}`,
     noRevisedText: 'the agent gave no new text',
   },
-  approveDirect: 'Straight to main',
   claudeMd: {
     title: 'Add to CLAUDE.md',
     task: 'The owner set these rules for this repository. Work them into the CLAUDE.md, fitting what is there (section, tone, length) and without repeating anything; where one is in it already in other words, only sharpen that place. Change nothing else. Instead of a demo, the new wording in the summary is enough.',
@@ -937,19 +973,18 @@ const en: Messages = {
     from: (repo: string, why: string, cards: string) => `From the work retrospective for ${repo}. ${why} Cards: ${cards}.`,
     done: (repo: string, made: number) =>
       `Work retrospective for ${repo}: ${made ? `${made === 1 ? 'one proposal' : `${made} proposals`}, on the canvas and with Obeya.` : 'nothing that recurs on several cards.'}`,
-    settings: { checks: 'Checks', setup: 'Setup', softPaths: 'Soft paths', run: 'How to run the app' },
     onMachine: (setting: string, repo: string) => `“${setting}” for ${repo} now applies on this machine.`,
     committed: (setting: string, repo: string, branch: string) => `“${setting}” for ${repo} is now in .obeya/settings.json on ${branch} and applies to everyone.`,
     opened: (setting: string, repo: string, pr: string) => `“${setting}” for ${repo}: pull request opened, ${pr}. Until it is merged, the value applies on this machine.`,
   },
   share: {
-    share: 'Share: the page goes online.',
-    again: 'Share again: the page is made anew.',
-    newDemo: 'Replace on the page: the page now shows this demo instead of the shared ones.',
-    added: 'Add to the page: the page gets this demo as an addendum.',
-    unshare: 'Stop sharing: the page is withdrawn.',
-    unshareOne: 'Stop sharing: the page goes online again without this demo.',
-    againWithOthers: 'Share again, with other shared demos: the page is made anew.',
+    share: `${enLabels.share}: the page goes online.`,
+    again: `${enLabels.reshare}: the page is made anew.`,
+    newDemo: `${enLabels.replace}: the page now shows this demo instead of the shared ones.`,
+    added: `${enLabels.add}: the page gets this demo as an addendum.`,
+    unshare: `${enLabels.unshare}: the page is withdrawn.`,
+    unshareOne: `${enLabels.unshare}: the page goes online again without this demo.`,
+    againWithOthers: `${enLabels.reshare}, with other shared demos: the page is made anew.`,
     approved: (how: 'share' | 'replace' | 'add'): string =>
       how === 'share'
         ? 'Shared with the approval: the page goes online.'

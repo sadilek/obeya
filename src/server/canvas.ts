@@ -1576,7 +1576,7 @@ export class CanvasRuntime {
     const done = await this.deps.config.takeSetting(resolve(r.config.path), p.field, v, where);
     this.board.decideSetting(id, where, v);
     const m = this.board.t.retro;
-    const name = m.settings[p.field];
+    const name = this.board.t.labels.settings[p.field];
     this.board.notify({ text: !done ? m.onMachine(name, r.ref.name) : 'pr' in done ? m.opened(name, r.ref.name, done.pr) : m.committed(name, r.ref.name, done.branch) });
     return done;
   }
