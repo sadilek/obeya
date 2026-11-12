@@ -151,7 +151,7 @@ function landedLocally(file: string, subject: string) {
 }
 
 /** Once the probes of the card's PR against the local main started so far are through. */
-const probed = (id: string) => (workers as unknown as { probeClash(id: string): Promise<unknown> }).probeClash(id);
+const probed = (id: string) => (workers as unknown as { reviews: { probeClash(id: string): Promise<unknown> } }).reviews.probeClash(id);
 
 describe('a review card', () => {
   test('starts on the PR head, its worker told to read the diff before running any of it', async () => {
