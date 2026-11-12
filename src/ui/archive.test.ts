@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
 import { searchText, searchWords } from '../core/search';
-import { matches, offsets, visible } from './archive';
+import { matches } from './archive';
+import { offsets, visible } from './windowed';
 import { testItem } from './testing';
 
 const card = (title: string, more: Partial<Item> = {}) => testItem({ id: title, state: 'done', title, ...more });
