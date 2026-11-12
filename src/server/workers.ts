@@ -1547,13 +1547,23 @@ export class Workers {
    * not taken in yet goes to it with the rest once it goes on.
    */
   private halt(cardId: string) {
+    const held = this.suspend(cardId);
+    this.o.board.paused(cardId, held.length ? { held } : {});
+    this.apps.parkLater(cardId);
+  }
+
+  /**
+   * The worker's session ends at once, with whatever it ran, for the owner's pause or snooze: what
+   * waits for it once it goes on, the message it had not taken in yet after what a pause held already.
+   */
+  private suspend(cardId: string): NonNullable<PausedState['held']> {
     const pending = this.live.get(cardId)?.pending;
+    const held = this.pausedOf(cardId)?.held ?? [];
     this.end(cardId);
     this.bump(cardId);
     this.reconnecting.clear(cardId);
     this.pausing.clear(cardId);
-    this.o.board.paused(cardId, pending ? { held: [pending] } : {});
-    this.apps.parkLater(cardId);
+    return [...held, ...(pending ? [pending] : [])];
   }
 
   /**
@@ -1645,14 +1655,7 @@ export class Workers {
   snooze(cardId: string, until: string) {
     const card = this.card(cardId);
     if (card.snoozed) return this.o.board.snooze(cardId, { ...card.snoozed, until, ...(card.snoozed.by === 'agent' ? { moved: true as const } : {}) }, 'owner');
-    // a message the worker had not taken in yet goes to it with the rest, after what a pause held already
-    const pending = this.live.get(cardId)?.pending;
-    const held = this.pausedOf(cardId)?.held ?? [];
-    this.end(cardId);
-    this.bump(cardId);
-    this.reconnecting.clear(cardId);
-    this.pausing.clear(cardId);
-    this.o.board.work(cardId, { paused: toJson({ held: [...held, ...(pending ? [pending] : [])] }), pausing: null });
+    this.o.board.work(cardId, { paused: toJson({ held: this.suspend(cardId) }), pausing: null });
     this.o.board.snooze(cardId, { until, by: 'owner' });
     this.apps.parkLater(cardId);
   }
@@ -1703,16 +1706,9 @@ export class Workers {
       const landed = fromJson(row.landed);
       // a snoozed worker sleeps on until its time, a restart notwithstanding
       if (row.snoozed && !fromJson(row.snoozed).waiting) {
-        // the owner's snooze holds what Obeya has for the worker, as a pause does
-        if (row.paused) this.pausedOverRestart(i.id, landed);
-        else {
-          this.apps.parkLater(i.id);
-          // a restart it waited for after the landing has happened: that wakes it
-          if (landed?.restarts) {
-            this.o.board.work(i.id, { landed: toJson(settled(landed)) });
-            this.deliver(i.id, RUNS_YOUR_CHANGE);
-          }
-        }
+        // the owner's snooze holds what Obeya has for the worker, as a pause does; a restart the worker
+        // waited for after the landing has happened, which wakes one that snoozed by itself
+        this.pausedOverRestart(i.id, landed);
         continue;
       }
       // about to pause at a safe point, it paused for the restart: it stays paused (an idea's or
@@ -1913,7 +1909,10 @@ export class Workers {
     this.whileFreeing(cardId, path, back, 'taking back the workspace of a restored card');
   }
 
-  /** After a restart, a paused worker stays paused: a restart it waited for has happened, which it hears once it goes on. */
+  /**
+   * After a restart, a paused or snoozed worker stays so: a restart it waited for has happened, which
+   * it hears once it goes on (`deliver`, which wakes a worker that snoozed by itself).
+   */
   private pausedOverRestart(cardId: string, l: LandedState | null) {
     this.apps.parkLater(cardId);
     if (!l?.restarts) return;
