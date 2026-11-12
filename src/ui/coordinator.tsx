@@ -15,7 +15,7 @@ import { type Reply, setReply, talkEv, talkQuote } from './reply';
 import { clock, t } from './strings';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
-import { DictationLine, useDictatedField } from './dictation';
+import { DictatedArea } from './dictation';
 import { cardDraft, OBEYA_DRAFT } from './draft';
 import { Shots } from './shots';
 import { usePageVisible } from './seen';
@@ -436,37 +436,7 @@ function TargetPick({ value, repos, onChange }: { value: string; repos: RepoRef[
 
 /** A rule's text being edited in place: Enter takes it, Escape leaves it as it was. */
 function RuleEdit({ draft, setDraft, onEnter, onBlur }: { draft: string; setDraft: (d: string | null) => void; onEnter: () => void; onBlur?: () => void }) {
-  const field = useRef<HTMLTextAreaElement>(null);
-  const talk = useDictatedField(field, true);
-  return (
-    <>
-      <textarea
-        ref={field}
-        className={talk.dictating ? 'dictating' : undefined}
-        data-esc
-        autoFocus
-        value={draft}
-        rows={2}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          talk.blur();
-          onBlur?.();
-        }}
-        onKeyUp={talk.keyUp}
-        onKeyDown={(e) => {
-          if (talk.keyDown(e)) return;
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            onEnter();
-          } else if (e.key === 'Escape') {
-            e.stopPropagation();
-            setDraft(null);
-          }
-        }}
-      />
-      <DictationLine draft={talk.key} />
-    </>
-  );
+  return <DictatedArea data-esc autoFocus value={draft} rows={2} onChange={setDraft} onEnter={onEnter} onEscape={() => setDraft(null)} {...(onBlur ? { onBlur } : {})} />;
 }
 
 /**
@@ -788,10 +758,6 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
   const [target, setTarget] = useState('');
   const [filed, setFiled] = useState('');
   const { status: error, act } = useAct();
-  const field = useRef<HTMLTextAreaElement>(null);
-  const talk = useDictatedField(field, true);
-  // as high as the rule: a dictated one is a sentence or more
-  useFitHeight(field, text);
   const add = () =>
     text.trim() &&
     act(async () => {
@@ -801,30 +767,22 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
     });
   return (
     <div className="composer pref-new">
-      <textarea
-        ref={field}
-        className={talk.dictating ? 'dictating' : undefined}
+      {/* as high as the rule: a dictated one is a sentence or more */}
+      <DictatedArea
+        fit
         value={text}
         rows={1}
         placeholder={t.coordinator.addPlaceholder}
-        onChange={(e) => {
-          setText(e.target.value);
+        onChange={(text) => {
+          setText(text);
           setFiled('');
         }}
-        onBlur={talk.blur}
-        onKeyUp={talk.keyUp}
-        onKeyDown={(e) => {
-          if (talk.keyDown(e)) return;
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            add();
-          }
-        }}
-      />
-      <button className="btn" disabled={!text.trim()} onClick={add}>
-        {t.coordinator.add}
-      </button>
-      <DictationLine draft={talk.key} />
+        onEnter={add}
+      >
+        <button className="btn" disabled={!text.trim()} onClick={add}>
+          {t.coordinator.add}
+        </button>
+      </DictatedArea>
       <TargetPick value={target} repos={repos} onChange={setTarget} />
       {filed && <span className="hint filed">{filed}</span>}
       {error && <span className="p-error">{error}</span>}

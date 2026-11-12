@@ -3,10 +3,11 @@
 // is spoken into, and a line under it says what happens. The field is a draft's (`useDraftField`),
 // so the recording knows where its words go.
 
-import { type KeyboardEvent, type RefObject, useContext, useEffect, useId, useRef } from 'react';
-import { type Draft, dropDraft, sendsWithEnter, typeInto, useDraft, useDraftField } from './draft';
+import { type KeyboardEvent, type ReactNode, type RefObject, type TextareaHTMLAttributes, useContext, useEffect, useId, useRef } from 'react';
+import { useFitHeight } from './fitHeight';
+import { type Draft, dropDraft, typeInto, useDraft, useDraftField } from './draft';
 import { t } from './strings';
-import { HoldToTalk, MicIcon, TAP_MS, useHeldByTouch } from './voice';
+import { HoldToTalk, IntoField, MicIcon, TAP_MS, useHeldByTouch } from './voice';
 
 /**
  * How long Space stays down before it is held to speak rather than typed. Typing presses it for
@@ -79,15 +80,12 @@ export const dictating = (d: Draft) => d.dictation !== '';
 
 /** The line under the field of draft `key` about its dictation, or null when there is none to show. */
 export function dictationLine({ dictation, note }: Draft, key: string) {
-  if (dictation === 'listening') {
-    const enter = sendsWithEnter(key) && t.voice.sendWithEnter;
+  if (dictation === 'listening')
     return (
       <div className="c-listener c-dictation">
-        → <b>{t.voice.intoField}</b>
-        {enter && ` · ${enter}`}
+        <IntoField draft={key} />
       </div>
     );
-  }
   if (dictation === 'writing') return <div className="c-listener c-dictation">{t.voice.writing}</div>;
   if (note) return <div className="c-listener c-note">{note}</div>;
   return null;
@@ -106,7 +104,7 @@ export function DictateButton({ draft, field }: { draft: string; field: RefObjec
   if (!talk) return null;
   return (
     <button
-      ref={mic}
+      {...mic}
       className={dictation === 'listening' ? 'c-mic on' : 'c-mic'}
       title={t.voice.dictate}
       aria-label={t.voice.dictate}
@@ -116,7 +114,6 @@ export function DictateButton({ draft, field }: { draft: string; field: RefObjec
         field.current?.focus();
         talk();
       }}
-      onContextMenu={(e) => e.preventDefault()}
     >
       <MicIcon size={18} />
     </button>
@@ -124,14 +121,54 @@ export function DictateButton({ draft, field }: { draft: string; field: RefObjec
 }
 
 /**
- * Dictation for a text field whose text is its own (a rule's, say) rather than a draft's: the field
- * gets a draft of its own for the dictation while it is on the page. `sends`: whether Enter takes
- * what is written. Its handlers go on the field, its `key` to `DictationLine`.
+ * A text field whose text is its own (a rule's, say) rather than a draft's, dictated into as every
+ * field is: it gets a draft of its own for the dictation while it is on the page, is framed while
+ * spoken into, and has the line about its dictation under it, after what stands beside it
+ * (`children`). Enter without Shift calls `onEnter`, Escape `onEscape`; `fit`: as tall as its text.
  */
-export function useDictatedField(field: RefObject<HTMLTextAreaElement | null>, sends: boolean) {
+export function DictatedArea({
+  value,
+  onChange,
+  onEnter,
+  onEscape,
+  onBlur,
+  fit = false,
+  children,
+  ...props
+}: { value: string; onChange: (text: string) => void; onEnter: () => void; onEscape?: () => void; onBlur?: () => void; fit?: boolean; children?: ReactNode } & Pick<TextareaHTMLAttributes<HTMLTextAreaElement>, 'rows' | 'placeholder' | 'autoFocus'> & { 'data-esc'?: boolean }) {
+  const field = useRef<HTMLTextAreaElement>(null);
   const key = `field:${useId()}`;
-  useDraftField(key, () => field.current, false, true, sends);
+  useDraftField(key, () => field.current, false);
   useEffect(() => () => dropDraft(key), [key]);
-  const space = useSpaceToTalk(field);
-  return { key, dictating: dictating(useDraft(key)), ...space };
+  const talk = useSpaceToTalk(field);
+  const spoken = dictating(useDraft(key));
+  useFitHeight(field, value, fit);
+  return (
+    <>
+      <textarea
+        {...props}
+        ref={field}
+        className={spoken ? 'dictating' : undefined}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => {
+          talk.blur();
+          onBlur?.();
+        }}
+        onKeyUp={talk.keyUp}
+        onKeyDown={(e) => {
+          if (talk.keyDown(e)) return;
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            onEnter();
+          } else if (e.key === 'Escape' && onEscape) {
+            e.stopPropagation();
+            onEscape();
+          }
+        }}
+      />
+      {children}
+      <DictationLine draft={key} />
+    </>
+  );
 }

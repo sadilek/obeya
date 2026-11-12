@@ -422,7 +422,8 @@ export function ToldList({ told, open, onUndo, aside = false, onGone }: { told: 
  * A microphone held by a finger: the touch is the press and nothing else. Held for half a second,
  * Chrome on Android took it for a long press on what stands around the button (the field's frame):
  * it began selecting text, which closed the keyboard and cancelled the touch, so the recording ended
- * at once. A touch whose start is cancelled makes no long press, no selection and no focus change.
+ * at once. A touch whose start is cancelled makes no long press, no selection and no focus change,
+ * and a held finger shows no menu. The props to spread on the button.
  */
 export function useHeldByTouch<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -434,8 +435,16 @@ export function useHeldByTouch<T extends HTMLElement>() {
     el.addEventListener('touchstart', hold, { passive: false });
     return () => el.removeEventListener('touchstart', hold);
   });
-  return ref;
+  return { ref, onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() };
 }
+
+/** Where what is said goes while a field has the cursor: into it, and whether Enter then sends it. */
+export const IntoField = ({ draft }: { draft: string }) => (
+  <>
+    → <b>{t.voice.intoField}</b>
+    {sendsWithEnter(draft) && t.voice.sendWithEnter && ` · ${t.voice.sendWithEnter}`}
+  </>
+);
 
 /**
  * The microphone at the bottom, and under it where what is said goes: into the field with the
@@ -485,7 +494,7 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
       <div className="ptt-row">
         <button
           id="mic"
-          ref={mic}
+          {...mic}
           title={t.voice.hold}
           style={{ ['--lvl' as string]: 1 + level * 0.45 }}
           onPointerDown={(e) => {
@@ -493,8 +502,6 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
             e.preventDefault();
             onDown();
           }}
-          // held by a finger, it shows no menu
-          onContextMenu={(e) => e.preventDefault()}
         >
           <span className="ring" />
           <MicIcon />
@@ -514,8 +521,7 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
         </div>
       ) : into ? (
         <div id="target" className="into">
-          → <b>{t.voice.intoField}</b>
-          {sendsWithEnter(into) && t.voice.sendWithEnter && ` · ${t.voice.sendWithEnter}`}
+          <IntoField draft={into} />
         </div>
       ) : (
         target !== null && (
