@@ -424,17 +424,28 @@ export class WorkerTools {
           // the card's own is the one in its repository, which the landing is about; one in another
           // repository is watched beside it, and reported again (opened again after it was closed) as before
           const host = this.o.remote && remoteHost(this.o.remote)?.toLowerCase().replace(/^ssh\.github\.com$/, 'github.com');
-          const elsewhere = !!this.o.remote && (!sameRepo(this.o.remote, ref.owner, ref.repo) || (!!host && host !== ref.host.toLowerCase()));
+          // a fork's pull request to the original is the card's own there, not one in origin's repository
+          const up = root.upstream;
+          const upUrl = up ? this.o.upstream?.()?.url : undefined;
+          const elsewhere = up
+            ? upUrl
+              ? !sameRepo(upUrl, ref.owner, ref.repo)
+              : `${ref.owner}/${ref.repo}`.toLowerCase() !== up.name.toLowerCase()
+            : !!this.o.remote && (!sameRepo(this.o.remote, ref.owner, ref.repo) || (!!host && host !== ref.host.toLowerCase()));
           const known = elsewhere ? root.more?.find((m) => parsePrUrl(m.url ?? '')?.url === ref.url) : undefined;
           let pr: PrState;
           // the card's own reported again keeps what was told of it; another in its place starts afresh
-          if (!elsewhere) pr = parsePrUrl(root.url ?? '')?.url === ref.url || !root.url ? { ...root, url: ref.url, number: ref.number } : { url: ref.url, number: ref.number, seen: [], reported: [], ...(root.more ? { more: root.more } : {}) };
+          if (!elsewhere)
+            pr =
+              parsePrUrl(root.url ?? '')?.url === ref.url || !root.url
+                ? { ...root, url: ref.url, number: ref.number, ...(up ? { repo: `${ref.owner}/${ref.repo}` } : {}) }
+                : { url: ref.url, number: ref.number, seen: [], reported: [], ...(root.more ? { more: root.more } : {}), ...(up ? { upstream: up, repo: `${ref.owner}/${ref.repo}` } : {}) };
           else if (known) {
             const { closed: _, ...open } = known;
             pr = { ...root, more: root.more!.map((m) => (m === known ? { ...open, url: ref.url } : m)) };
           } else pr = { ...root, more: [...(root.more ?? []), { url: ref.url, number: ref.number, repo: `${ref.owner}/${ref.repo}`, seen: [], reported: [] }] };
           this.o.board.work(cardId, { pr: toJson(pr) });
-          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(elsewhere ? `${ref.repo} #${ref.number}` : `#${ref.number}`));
+          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(elsewhere || up ? `${up && !elsewhere ? `${ref.owner}/${ref.repo}` : ref.repo} #${ref.number}` : `#${ref.number}`));
           this.o.onPrOpened?.(cardId);
           return ending('Recorded. End your turn now; Obeya watches the pull request.', 'Recorded: Obeya watches the pull request.', 'a change to the work goes onto the pull request');
         },

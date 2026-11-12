@@ -11,6 +11,8 @@ export function revocable(r: CardRow): Revocable | undefined {
   if (r.contribution || r.prototype_of || r.archived_at) return;
   const pr = fromJson(r.pr);
   if (pr?.rollback) return;
+  // a fork's work that went to the original as a pull request is public there, and on the main branch too
+  if (pr?.upstream || fromJson(r.shipped)?.upstream) return;
   if (r.state === 'working' && r.approved_at && !r.landed) return { how: 'approval' };
   const inPr = r.state === 'inPr' || (r.state === 'waiting' && r.need === 'question' && !!pr);
   if (inPr && !r.landed) {

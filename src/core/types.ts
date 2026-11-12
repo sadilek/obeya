@@ -184,6 +184,12 @@ export interface Item {
    */
   newRepo?: NewRepo;
   /**
+   * In a fork (`RepoRef.upstream`): the owner chose that the work goes to the original repository as
+   * a pull request too, besides onto the main branch. Its branch then starts from the newest commit
+   * of the original's main branch that the main branch holds.
+   */
+  upstream?: true;
+  /**
    * Its repository does not run on the canvas (it left the configuration, or did not start): its
    * agents take nothing until it is back, and no other repository's agents take it meanwhile.
    * Never on a Question card, whose agent reads only.
@@ -537,6 +543,12 @@ export interface PullRequest {
   closed?: boolean;
   /** What it waits for before it is merged, as last polled (`PrWait`); none once it is ready. */
   waits?: PrWait[];
+  /**
+   * A fork's pull request to the original repository: the fork's main branch, which what is pushed
+   * onto it merges into as well; whether the latest of it conflicts there (the worker resolves it),
+   * or why the checkout keeps it out (`blocked`).
+   */
+  into?: { branch: string; conflict?: true; blocked?: string };
   /** Checks on the PR's latest commit, as last seen. */
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   conflict: boolean;
@@ -562,7 +574,7 @@ export interface PullRequest {
  * commit than its newest, an answer to the
  * author's request for another look, and the worker at work on something passed to it.
  */
-export type PrWait = 'conflict' | 'behind' | 'draft' | 'protection' | 'forge' | 'checksFailed' | 'checks' | 'threads' | 'changes' | 'review' | 'answer' | 'agent';
+export type PrWait = 'conflict' | 'behind' | 'draft' | 'protection' | 'forge' | 'checksFailed' | 'checks' | 'threads' | 'changes' | 'review' | 'answer' | 'agent' | 'maintainer';
 
 /**
  * The pull request a review card reviews: opened by someone outside (the contributor), reviewed by
@@ -927,12 +939,28 @@ export interface RepoRef {
   forge?: true;
   /** With `pullRequests`: the owner may have approved work pushed directly onto the default branch instead (`direct` of its settings). */
   direct?: boolean;
+  /** A fork whose work lands on its main branch: the original repository its cards may go to as a pull request too (`upstream` of its settings). */
+  upstream?: UpstreamRef;
   /**
    * How many times what the configuration's problems of the repository are read from changed on
    * its default branch while the canvas runs (its `.obeya/settings.json`, a leftover
    * `.obeya/adapter/`): the page reads the problems again when it changes.
    */
   configRev?: number;
+}
+
+/** The original repository of a fork (`RepoRef.upstream`): its main branch as the checkout knows it (`upstream/main`), and its name (`owner/repo`). */
+export interface UpstreamRef {
+  /** `<remote>/<branch>`, as the settings name it. */
+  ref: string;
+  remote: string;
+  branch: string;
+  /** `owner/repo` of the remote's URL, else the remote's name. */
+  name: string;
+  /** The remote's URL, where the checkout has the remote. */
+  url?: string;
+  /** The fork's main branch, where cards land and what is pushed onto their pull requests merges in. */
+  into: string;
 }
 
 /** A repository's pool of clones, by the machine they are on, in the order new cards go there; or its slots for workers in worktrees. */
@@ -1303,6 +1331,8 @@ export interface CardPatch {
   images?: string[];
   /** Before work begins: a repository to create for the card (`by` is the owner's), or none (null). */
   newRepo?: Pick<NewRepo, 'path' | 'canvas'> | null;
+  /** In a fork (`RepoRef.upstream`), until the approval: whether the work goes to the original repository as a pull request too (`Item.upstream`). */
+  upstream?: boolean;
 }
 
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
@@ -1365,7 +1395,8 @@ export type CardAction =
    * `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`).
    * `findings`: on a review card, the decisions on its findings that stood unsent, which go with the merge (a follow-up task, ignored).
    */
-  | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute> }
+  /** `upstream`: in a fork, whether the work goes to the original repository as a pull request too, in place of the card's choice (`Item.upstream`). */
+  | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute>; upstream?: boolean }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before ("Discard changes"). */
   | { action: 'undo' }
   /** Start a queued card although it may collide. */
@@ -1526,6 +1557,7 @@ export type ErrorCode =
   | 'notHeld'
   /** Approving directly onto main: the card's repository lands approved work only through a pull request. */
   | 'noDirect'
+  | 'noUpstream'
   /** What only a folder without git has (discarding a card's changes), or what it has not (prototypes, pull requests). */
   | 'notFolder'
   | 'inFolder'

@@ -192,6 +192,10 @@ const de = {
     approvedMain: 'Freigegeben und auf main.',
     landedMain: 'Nach der Freigabe auf main gelandet.',
     pushedLanded: (branch: string, commit: string) => `Zu origin/${branch} gepusht (${commit}).`,
+    approvedUpstream: (into: string, name: string) => `Freigegeben: auf ${into} und als Pull Request an ${name}.`,
+    upstreamClosedQuestion: (name: string, into: string) => `${name} hat den Pull Request geschlossen, ohne ihn zu mergen. Die Arbeit ist auf ${into}. Wie geht es weiter?`,
+    keepOnMain: (into: string) => `Nur auf ${into} behalten`,
+    keptOnMain: (into: string) => `Der Pull Request bleibt geschlossen; die Arbeit bleibt auf ${into}. Live.`,
     landedPushRefused: (branch: string, reason: string) => `Gelandet, aber origin hat den Push von ${branch} abgelehnt: ${reason}. ${branch} auf origin bleibt zurück; die nächste Landung pusht wieder.`,
     landedPushMoved: (branch: string) => `Gelandet, aber nicht zu origin gepusht: ${branch} hat dort Commits, die hier fehlen, und Obeya pusht nie erzwungen. ${branch} auf origin bleibt zurück.`,
     switchedToMain: (branch: string | null, commit: string) =>
@@ -354,6 +358,11 @@ const de = {
     behind: 'Der Branch ist hinter dem Zielbranch, und das Repository mergt nur einen aktuellen. Der Agent bringt ihn auf Stand.',
     mergedOne: (pr: string, left: (string | null)[]) =>
       `Pull Request ${pr} gemergt. Live, sobald auch ${left.map((l) => (l ? `Pull Request ${l}` : 'der Pull Request dieses Repositorys')).join(' und ')} gemergt ist.`,
+    intoMain: (into: string, commit: string) => `Neuer Stand des Pull Requests in ${into} gemergt (${commit}).`,
+    portRecorded: (into: string) => `Der Pull Request trägt die Arbeit, die schon auf ${into} ist: Was später dazukommt, mergt Obeya in ${into}.`,
+    intoMainConflict: (into: string) => `Der neue Stand des Pull Requests lässt sich nicht konfliktfrei in ${into} mergen. Der Agent löst das.`,
+    intoMainBlocked: (into: string, why: string) => `Obeya kann den neuen Stand des Pull Requests nicht in ${into} mergen: ${why}`,
+    mergedUpstream: (name: string) => `${name} hat den Pull Request gemergt. Live.`,
   },
   idea: {
     buildAfterReply: 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.',
@@ -734,6 +743,10 @@ const en: Messages = {
     approvedMain: 'Approved and on main.',
     landedMain: 'Landed on main after the approval.',
     pushedLanded: (branch: string, commit: string) => `Pushed to origin/${branch} (${commit}).`,
+    approvedUpstream: (into: string, name: string) => `Approved: onto ${into}, and as a pull request to ${name}.`,
+    upstreamClosedQuestion: (name: string, into: string) => `${name} closed the pull request without merging it. The work is on ${into}. How should it go on?`,
+    keepOnMain: (into: string) => `Keep it on ${into} only`,
+    keptOnMain: (into: string) => `The pull request stays closed; the work stays on ${into}. Live.`,
     landedPushRefused: (branch: string, reason: string) => `Landed, but origin refused the push of ${branch}: ${reason}. ${branch} on origin stays behind; the next landing pushes again.`,
     landedPushMoved: (branch: string) => `Landed, but not pushed to origin: ${branch} there has commits this one lacks, and Obeya never forces a push. ${branch} on origin stays behind.`,
     switchedToMain: (branch: string | null, commit: string) =>
@@ -874,6 +887,11 @@ const en: Messages = {
     behind: 'The branch is behind the base branch, and the repository merges only an up-to-date one. The agent brings it up to date.',
     mergedOne: (pr: string, left: (string | null)[]) =>
       `Pull request ${pr} merged. Live once ${left.map((l) => (l ? `pull request ${l}` : 'the pull request of this repository')).join(' and ')} ${left.length > 1 ? 'are' : 'is'} merged too.`,
+    intoMain: (into: string, commit: string) => `Merged the pull request's new commits into ${into} (${commit}).`,
+    portRecorded: (into: string) => `The pull request carries the work that is on ${into} already: what is added to it later, Obeya merges into ${into}.`,
+    intoMainConflict: (into: string) => `The pull request's new commits do not merge into ${into} without conflicts. The agent resolves it.`,
+    intoMainBlocked: (into: string, why: string) => `Obeya cannot merge the pull request's new commits into ${into}: ${why}`,
+    mergedUpstream: (name: string) => `${name} merged the pull request. Live.`,
   },
   idea: {
     buildAfterReply: 'Build it once the reply is there; if the agent still asks something, it is not built.',

@@ -40,6 +40,7 @@ export function PrBox({ pr, held, author, card, rollbackOf }: { pr: PullRequest;
           {held.asks.length > 0 && author && <div className="pr-held-asks">{t.review.heldAsks(held.asks, author)}</div>}
         </div>
       )}
+      {pr.into && <div className="q-text">{pr.into.conflict ? t.pr.intoConflict(pr.into.branch) : pr.into.blocked ? t.pr.intoBlocked(pr.into.branch, pr.into.blocked) : t.pr.into(pr.into.branch)}</div>}
       {pr.merged && <div className="q-text">{t.pr.merged}</div>}
       {pr.closed && <div className="q-text">{t.pr.closed}</div>}
       {pr.conflict && <div className="q-text">{t.pr.conflict}</div>}

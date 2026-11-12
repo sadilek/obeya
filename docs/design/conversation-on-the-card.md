@@ -10,7 +10,7 @@ agent got them); the agent's questions with their options and the owner's pick m
 replies; its handovers (the one a demo came with carries the report's question, with its options
 and the owner's pick marked, muted once answered; a handover in the same turn as a reply stands
 under it after a dashed line as "Handover"); and what the Coordinator looked up. Small lines between
-them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, the demo's link put on the pull
+them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, a fork's pull request merged into its main branch, the demo's link put on the pull
 request, stopped, errors, usage limit); an address in them is a link (the comment on the pull
 request, say). Everything else (tool calls, each with what it acts on: the file, the command, a
 web search's query, a fetched page's address; thoughts, status lines, Obeya's notes) folds away as "History" under the agent's next message. Obeya's reply to what

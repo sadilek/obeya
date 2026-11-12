@@ -13,6 +13,7 @@ import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, 
 import type { PrWait } from '../core/types';
 import type { Workers } from './workers';
 import { messageOf } from '../core/text';
+import { mergeBranch, mergeConflictHelp } from './worker-texts';
 
 /** How long reading a PR fails before its card says so. */
 const READ_ERROR_AFTER_MS = 10 * 60_000;
@@ -186,6 +187,13 @@ export class PrWatcher {
 
   private async react(cardId: string, state: string, pr: PrState, s: PrStatus) {
     const contribution = fromJson(this.board.row(cardId).contribution);
+    // a fork's pull request to the original: what is pushed onto it goes onto the fork's main branch as well, the last of it before the card is live
+    if (pr.upstream && !contribution && (state === 'inPr' || s.state === 'MERGED')) {
+      const next = await this.intoMain(cardId, pr, s);
+      if (!next) return;
+      pr = next;
+      if (s.state === 'MERGED' && pr.upstream?.merged !== s.head) return;
+    }
     if (s.state === 'MERGED') return contribution ? this.workers.merged(cardId, s.mergeCommit) : this.mergedPr(cardId, pr, s.mergeCommit, s.head);
     const settings = this.settings();
     const noise = settings.prNoise ?? [];
@@ -207,6 +215,62 @@ export class PrWatcher {
     }
     const told = this.tell(cardId, pr, s, next, which, noise);
     return this.settle(cardId, pr, s, next, told, settings.autoMerge !== false, noise);
+  }
+
+  /**
+   * A fork's pull request to the original (`PrState.upstream`): its head, where the fork's main
+   * branch lacks it, merged into that branch, once the worker is not at it (it may push again).
+   * The head it was opened with, where its branch is a port of work on the main branch already, is
+   * recorded as merged without its changes. A conflict goes to the worker, once per head, and is
+   * tried again each round (the worker may have made the merge itself); what stands in the
+   * checkout's way is the owner's, said once. Returns the pull request as stored then; none where
+   * the card moved on meanwhile.
+   */
+  private async intoMain(cardId: string, pr: PrState, s: PrStatus): Promise<PrState | null> {
+    const up = pr.upstream!;
+    const ours = !up.merged && !!up.ported;
+    // the head a port was opened with is recorded at once, before the worker pushes more onto it; a later one waits until the worker is through
+    if (s.head === up.merged || (!ours && this.workers.busyCards().includes(cardId))) return pr;
+    const r = await this.workers.mergeUpstreamHead(cardId, s.head, pr.number, ours);
+    if (!r) return pr;
+    const now = this.current(cardId, pr.url!);
+    if (!now) return null;
+    const next: PrState = { ...now.pr, upstream: { ...now.pr.upstream!, ...up } };
+    const u = next.upstream!;
+    const t = this.board.t.pr;
+    if (!('code' in r)) {
+      u.merged = s.head;
+      delete u.conflict;
+      delete u.blocked;
+      if (!('already' in r)) {
+        this.board.log(cardId, 'state', 'obeya', ours ? t.portRecorded(u.into) : t.intoMain(u.into, r.to.slice(0, 7)));
+        const pushed = r.pushed;
+        if (pushed && !pushed.problem) this.board.log(cardId, 'state', 'obeya', this.board.t.worker.pushedLanded(pushed.branch, r.to.slice(0, 7)));
+        if (pushed?.problem) this.board.log(cardId, 'error', 'obeya', pushed.moved ? this.board.t.worker.landedPushMoved(pushed.branch) : this.board.t.worker.landedPushRefused(pushed.branch, pushed.problem));
+      }
+    } else if (r.worker) {
+      if (u.conflict !== s.head) {
+        u.conflict = s.head;
+        this.save(cardId, next);
+        this.workers.prEvent(
+          cardId,
+          t.intoMainConflict(u.into),
+          [
+            `Obeya could not merge your pull request's head (${s.head.slice(0, 7)}) into ${u.into}: ${r.detail}.`,
+            r.code === 'landConflict' && !ours ? mergeConflictHelp(this.board.row(cardId).branch ?? 'your branch', u.into, mergeBranch(this.board.row(cardId).branch ?? '', u.into), s.head.slice(0, 7)) : '',
+            'Then end your turn: Obeya tries again once you have.',
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        );
+        return next;
+      }
+    } else if (u.blocked?.head !== s.head || u.blocked.why !== r.detail) {
+      u.blocked = { head: s.head, why: r.detail };
+      this.board.log(cardId, 'error', 'obeya', t.intoMainBlocked(u.into, r.detail));
+    }
+    this.save(cardId, next);
+    return next;
   }
 
   /**
@@ -261,7 +325,8 @@ export class PrWatcher {
     }
     // a push the reviewer has not seen, and nobody asked for another look: the worker asks, once per
     // commit, and only while it has nothing else in hand
-    if (!told && !this.workers.busyCards().includes(cardId) && reviewStale(s, noise) && lastAsked(s, noise) < s.changedAt! && pr.staleHead !== s.head) {
+    // the original's maintainers review when they do: nobody is nudged
+    if (!told && !pr.upstream && !this.workers.busyCards().includes(cardId) && reviewStale(s, noise) && lastAsked(s, noise) < s.changedAt! && pr.staleHead !== s.head) {
       next.staleHead = s.head;
       told = true;
       this.workers.prEvent(
@@ -281,6 +346,14 @@ export class PrWatcher {
     // ready only while the worker has nothing in hand: what it was told may still change the PR
     const busy = told || this.workers.busyCards().includes(cardId);
     const waits: PrWait[] = [...waitsOf(s, noise), ...(busy ? (['agent'] as const) : [])];
+    // a fork's pull request to the original: its maintainers merge it, never Obeya, and it needs the owner for nothing
+    if (pr.upstream) {
+      // a review the maintainers owe is theirs, as is the merge
+      const blocking = waits.filter((w) => w !== 'review' && w !== 'answer');
+      next.waits = blocking.length ? blocking : ['maintainer'];
+      for (const k of ['readyHead', 'held', 'manual', 'mergeError'] as const) delete next[k];
+      return this.save(cardId, next);
+    }
     const ready = !waits.length;
     if (ready) delete next.waits;
     else next.waits = waits;

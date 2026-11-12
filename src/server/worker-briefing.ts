@@ -6,7 +6,7 @@ import { basename } from 'node:path';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGE_NAMES, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { dimensions } from '../core/page-tags';
-import type { Item, Mock } from '../core/types';
+import type { Item, Mock, UpstreamRef } from '../core/types';
 import { type TaskAuthor, taskAuthor } from '../core/card';
 import type { Harness } from '../core/agents';
 import { decisionLog } from './advisor';
@@ -111,7 +111,8 @@ ${folder ? '- Others work in the same folder at the same time: leave what your c
    * `headProblem`: on a review card's start, why its workspace is not on the PR's head (null where
    * it is), so the worker fetches it itself.
    */
-  briefing(card: Item, branch: string, resumed = false, headProblem?: string | null): string {
+  /** `upstream`: a fork's card that goes to the original repository as a pull request too, its branch made fresh from `start` (`upstreamStart`). */
+  briefing(card: Item, branch: string, resumed = false, headProblem?: string | null, upstream?: { up: UpstreamRef; start: string }): string {
     const parts = [`Your card: “${card.title}”.`];
     const contribution = fromJson(this.o.board.row(card.id).contribution);
     if (contribution) return this.reviewBriefing(card, contribution, branch, resumed, headProblem);
@@ -164,7 +165,9 @@ ${idea.idea.brief}` : '',
         ? `You are on branch ${branch}, which holds the prototype's commits (and any earlier work on this card): look at its log and diff first.`
         : resumed
           ? `You are on branch ${branch}, which already holds earlier work on this card, perhaps uncommitted: look at its log, \`git status\` and diff first and go on from there.`
-          : `You are on branch ${branch}, fresh from the default branch.`,
+          : upstream
+            ? upstreamStartNote(branch, upstream.up, upstream.start)
+            : `You are on branch ${branch}, fresh from the default branch.`,
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
     if (fromJson(this.o.board.row(card.id).new_repo)?.made)
@@ -273,3 +276,11 @@ function mocksText(mocks: Mock[] | undefined): string {
   if (!mocks?.length) return '';
   return ['Mocks of the brief, as the owner saw them rendered (how its variants look):', ...mocks.map((m) => `${m.title || 'Mock'}:\n\n\`\`\`html\n${m.html}\n\`\`\``)].join('\n\n');
 }
+
+/**
+ * What the worker of a fork's card that goes to the original repository as a pull request too hears
+ * of its branch: where it starts, and that it stays fit for that pull request.
+ */
+export const upstreamStartNote = (branch: string, up: UpstreamRef, start: string) =>
+  `You are on branch ${branch}, fresh from ${start.slice(0, 7)}: the newest commit of ${up.ref} (the main branch of ${up.name}, the original repository this one is a fork of) that ${up.into}, this fork's main branch, holds. ` +
+  `The owner chose that this work goes to ${up.name} as a pull request too, once they approve it, and onto ${up.into} as well. So keep the branch as it is now meant to be: carrying nothing of ${up.into}'s own work. Do not merge ${up.into} into it, and leave out what only this fork has; where the task needs that, ask the owner.`;

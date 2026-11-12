@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import type { ApproveResult, CardPatch, Item, RepoRef } from '../core/types';
+import type { ApproveResult, CardPatch, Item, RepoRef, UpstreamRef } from '../core/types';
 import { agentListens, answering, archiveRefusal, askable, finished, handedOver, plannableAsProject, snoozable, stopped } from '../core/card';
 import { ApiError, api, failText } from './api';
 import { cardPath } from './address';
@@ -290,6 +290,7 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item
   return (
     <>
       {!item.newRepo?.due && <RepoPick choice={choice} repos={repos} fresh={!!fresh} />}
+      {!choice.fresh && <UpstreamPick item={item} repo={repos.find((r) => r.id === choice.repo)} onEdit={onEdit} />}
       {/* the task's screenshots: the worker gets them with the task when it starts */}
       <div className={`p-body-field${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
         <ShotStrip shots={shots} />
@@ -479,7 +480,8 @@ function TaskView(v: View) {
       {v.error}
 
       {/* the decisions below what the card shows, as on every card */}
-      <TaskActions v={v} worked={worked} proto={proto} approve={<ApproveButton item={item} act={act} lands={lands} change={change} />} />
+      <TaskActions v={v} worked={worked} proto={proto} approve={<ApproveButton item={item} act={act} lands={lands} change={change} upstream={upstreamOf(item, repo, lands)} />} />
+      {review && upstreamOf(item, repo, lands) && <p className="hint">{t.upstream.hint(repo!.upstream!.into, repo!.upstream!.name)}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
       {review && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
       {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
@@ -690,7 +692,7 @@ function TaskResult({ v, diff, tab, onTab, autoplay }: { v: View; diff: CardDiff
         <PrBox pr={item.pr} {...(item.rollbackOf ? { rollbackOf: item.rollbackOf } : {})} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id } : {})} />
       )}
       {(item.state === 'inPr' || item.state === 'waiting') && item.morePrs?.map((pr) => <PrBox key={pr.url} pr={pr} />)}
-      {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
+      {item.state === 'inPr' && !item.pr && <p className="hint">{item.upstream && v.repo?.upstream ? t.pr.openingUpstream(v.repo.upstream.name) : t.pr.opening}</p>}
       {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.restartPaused ? (item.state === 'done' ? t.restartPause.doneLong : t.restartPause.liveLong) : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
       <Brief item={item} />
     </>
@@ -773,8 +775,41 @@ function landing(item: Item, repo: RepoRef | undefined, inFolder: boolean) {
   return { pr, direct: pr && (item.lands?.direct ?? !!repo?.direct), inFolder };
 }
 
+/**
+ * In a fork (`RepoRef.upstream`), before work begins: whether the card is for the fork alone or goes
+ * to the original as a pull request too, which decides where its branch starts. Saved as it is
+ * picked; the approve buttons offer the other way again.
+ */
+function UpstreamPick({ item, repo, onEdit }: { item: Item; repo: RepoRef | undefined; onEdit: (p: CardPatch) => void }) {
+  const [on, setOn] = useState(!!item.upstream);
+  useEffect(() => setOn(!!item.upstream), [item.upstream]);
+  const up = repo?.upstream;
+  if (!up || item.prototypeOf || item.state !== 'planned') return null;
+  const pick = (v: boolean) => {
+    setOn(v);
+    onEdit({ upstream: v });
+  };
+  return (
+    <div className="repo-pick" title={t.upstream.pickHint(up.into, up.name)}>
+      <div className="seg">
+        <button className={on ? '' : 'on'} onClick={() => pick(false)}>
+          {t.upstream.mine}
+        </button>
+        <button className={on ? 'on' : ''} onClick={() => pick(true)}>
+          {t.upstream.pr(up.name)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The original repository a fork's card may go to as a pull request too, where its work lands on the main branch and changes something there. */
+function upstreamOf(item: Item, repo: RepoRef | undefined, lands: ReturnType<typeof landing>): UpstreamRef | undefined {
+  return !lands.pr && !lands.inFolder && !item.noChange && !item.prototypeOf && !item.contribution ? repo?.upstream : undefined;
+}
+
 /** Approving the card's work: a review card's merge, in a folder without git with "Discard changes" beside it, else as the work lands. */
-function ApproveButton({ item, act, lands, change }: { item: Item; act: Act; lands: ReturnType<typeof landing>; change: CardChange }) {
+function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act: Act; lands: ReturnType<typeof landing>; change: CardChange; upstream?: UpstreamRef | undefined }) {
   if (item.contribution) return <ApproveReview item={item} act={act} />;
   if (lands.inFolder)
     return (
@@ -785,6 +820,30 @@ function ApproveButton({ item, act, lands, change }: { item: Item; act: Act; lan
         <DiscardChanges diff={change.diff} act={act} onDone={change.reload} />
       </>
     );
+  // in a fork: the card's choice is the first button, the other one beside it
+  if (upstream) {
+    const toOriginal = () => act({ action: 'approve', upstream: true }, { close: true, ack: t.upstream.approved(upstream.name), pending: t.upstream.approving });
+    const mine = () => act({ action: 'approve', upstream: false }, { close: true, ack: t.approved, pending: t.approving });
+    return item.upstream ? (
+      <>
+        <button className="btn primary" onClick={toOriginal}>
+          {t.upstream.approve(upstream.name)}
+        </button>
+        <button className="btn" onClick={mine}>
+          {t.upstream.approveMine}
+        </button>
+      </>
+    ) : (
+      <>
+        <button className="btn primary" onClick={mine}>
+          {t.approve}
+        </button>
+        <button className="btn" onClick={toOriginal}>
+          {t.upstream.approve(upstream.name)}
+        </button>
+      </>
+    );
+  }
   return (
     <>
       <button className="btn primary" onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.approved, pending: t.approving })}>

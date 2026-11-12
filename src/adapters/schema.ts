@@ -40,6 +40,8 @@ export const settingsShape = z
     branch: z.string().optional(),
     land: z.enum(['main', 'pr']).optional(),
     push: z.boolean().optional(),
+    // `<remote>/<branch>`, or empty for none
+    upstream: z.string().trim().regex(/^$|^[^/\s]+\/\S+$/, 'expected <remote>/<branch>, such as upstream/main').optional(),
     direct: z.boolean().optional(),
     autoMerge: z.boolean().optional(),
     checks: strings.optional(),

@@ -6,7 +6,7 @@ import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
-import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, visibilityKey } from './canvas-config';
+import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
@@ -22,7 +22,7 @@ import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, TITLE_MAX, replyNote } from './board';
 import { pathOfRef, repoOfRef } from './plan-ref';
 import { DEMO_LOOK_MS } from './shared-pages';
-import { toJson, type StoredContribution } from './row';
+import { fromJson, toJson, type StoredContribution } from './row';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander, reaches } from './commands';
 import type { Config } from './config';
@@ -827,12 +827,15 @@ export class CanvasRuntime {
       machineSettings: this.settingsOf(rc),
       shares: () => !!repo.ref.share,
       repo: ref.id,
+      upstream: () => upstreamOf(info, adapter),
       otherBoards: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => c.board),
       preferences: this.preferences,
       onOwnerInput: (card, kind, text, context) => this.learner.learn(card, kind, text, context),
       onPrOpened: (cardId) => {
         // a card whose own branch has its work go out as a pull request, where the repository's does not yet
         this.watchPrs(repo);
+        // a fork's pull request to the original: the head it was opened with is looked at right away, before the worker pushes more onto it
+        if (fromJson(board.row(cardId).pr)?.upstream) repo.prs?.soon(0);
         this.sharing.prOpened(cardId);
       },
       onApproval: (cardId) => this.sharing.approved(cardId),
@@ -1418,7 +1421,7 @@ export class CanvasRuntime {
    */
   private follow() {
     for (const r of this.repos) {
-      for (const k of ['pullRequests', 'direct', 'forge'] as const) delete r.ref[k];
+      for (const k of ['pullRequests', 'direct', 'forge', 'upstream'] as const) delete r.ref[k];
       Object.assign(r.ref, settled(r.info, r.adapter));
       // where work lands on the local main, the checkout is the read tree; otherwise a worktree on the default branch
       r.read.retarget(r.info.folder || r.adapter.land === 'main' ? null : join(this.deps.home, 'read', this.id, r.ref.id));
@@ -1767,7 +1770,7 @@ export class CanvasRuntime {
       case 'answer':
         return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken, replyTo, picks, this.spot(a.spot));
       case 'approve':
-        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings) });
+        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings), ...(typeof a.upstream === 'boolean' ? { upstream: a.upstream } : {}) });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
       case 'pushMain':

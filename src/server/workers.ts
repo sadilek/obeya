@@ -6,7 +6,7 @@ import type { CardDiff } from '../core/diff';
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
-import { type Awaited, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute } from '../core/types';
+import { type Awaited, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef } from '../core/types';
 import { answering, askable, pausable, pausableNow, formatQuestion, handedOver, needsYou } from '../core/card';
 import { cardAgentOf } from '../core/agents';
 import type { CardLanding } from '../core/config';
@@ -22,7 +22,7 @@ import { runAppCommand } from './app-command';
 import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
 import { BranchGone, type FileAt, type Lease, shortageOf, textOf } from './workspaces';
 import { branchName } from './branches';
-import { WorkspaceError } from './git';
+import { gitAsync, WorkspaceError } from './git';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import type { CardRow, RowUpdate } from './db';
 import { clip, messageOf } from '../core/text';
@@ -37,6 +37,7 @@ import { appRunning, type Live, newLive, onlyApp } from './worker-live';
 import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
+import { mergeBranch, mergeConflictHelp } from './worker-texts';
 import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
@@ -50,8 +51,17 @@ export const pickedAnswer = (picks: string[], words: string) => [picks.join(', '
 /** Landed work's state once what it waited for (the restart) has happened. */
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;
 
-/** Where a live card's landed work starts and ends, where both are known: `base..commit` is what it changed. */
+
+
+/**
+ * Where a live card's landed work starts and ends, where both are known: `base..commit` is what it
+ * changed. A fork's card whose work went to the original as a pull request is on the main branch
+ * since the approval: what it changed is its pull request's, from where its branch started to the
+ * head merged into the main branch last.
+ */
 function landedAt(row: CardRow): { base: string; commit: string } | undefined {
+  const up = row.state === 'inPr' || row.state === 'live' || row.state === 'waiting' ? fromJson(row.pr)?.upstream : undefined;
+  if (up?.start && up.merged) return { base: up.start, commit: up.merged };
   const s = row.state === 'live' ? fromJson(row.shipped) : null;
   return s?.commit && s.base ? { base: s.base, commit: s.commit } : undefined;
 }
@@ -333,7 +343,11 @@ export class Workers {
     // a workstream planned again after a part landed: the branch of that part may still be in a clone
     const shipped = fromJson(row.shipped);
     const branch = row.branch ?? `${branchName(card.title, card.id)}${shipped ? `-${shipped.commit?.slice(0, 7) ?? 'rest'}` : ''}`;
-    const { path, ready } = asBadRequest(() => this.o.workspaces.lease(card.id, branch, { from: row.kept_in }));
+    // a fork's card that goes to the original as a pull request starts where its branch carries nothing of the fork's own
+    const up = card.upstream && !row.branch ? this.o.upstream?.() : undefined;
+    let startedAt: string | null = null;
+    const start = up && this.o.workspaces.upstreamStart ? async () => (startedAt = await this.o.workspaces.upstreamStart!(up.ref)) : undefined;
+    const { path, ready } = asBadRequest(() => this.o.workspaces.lease(card.id, branch, { from: row.kept_in, ...(start ? { start } : {}) }));
     this.bump(card.id);
     // the run before is not resumed, but the work retrospective still reads it
     if (row.session_id) this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.worker.restarted(this.o.board.t.worker.earlierRun(row.session_id)));
@@ -344,7 +358,8 @@ export class Workers {
     this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
-    const launch = (headProblem?: string | null) => this.launch(card.id, this.brief.briefing(card, branch, !!row.branch, headProblem), undefined, this.brief.taskImages(card));
+    const launch = (headProblem?: string | null) =>
+      this.launch(card.id, this.brief.briefing(card, branch, !!row.branch, headProblem, up && startedAt ? { up, start: startedAt } : undefined), undefined, this.brief.taskImages(card));
     return this.whenReady(
       card.id,
       ready,
@@ -646,6 +661,13 @@ export class Workers {
     const at: OwnerWords = { ...w, place: spot ? this.place(cardId, spot) : undefined };
     // comments on the demo video still held back, made before the question came, go first, and stand above the answer
     const held = this.takeHeld(cardId);
+    // a fork's pull request the original closed: kept on the main branch alone, the card is live
+    const upstream = fromJson(row.pr)?.upstream;
+    if (upstream && picked.includes(this.o.board.t.worker.keepOnMain(upstream.into))) {
+      this.recordAnswer(card, q, at, picked);
+      const words = at.text.split('\n\n').slice(1).join('\n\n').trim();
+      return this.upstreamOver(cardId, this.o.board.t.worker.keptOnMain(upstream.into), `The owner keeps the work on ${upstream.into} alone: the pull request to ${upstream.name} stays closed, and the card is live.${words ? '' : ' Leave the pull request as it is.'}`, words ? { text: `Their words with it:\n\n${words}`, images } : undefined);
+    }
     this.backToWork(cardId);
     this.recordAnswer(card, q, at, picked);
     const m = heldFirst(held, this.words(cardId, at, answerNote(picked, at.text)), [...this.stills(at.place), ...images], 'answered');
@@ -863,7 +885,7 @@ export class Workers {
    * the repository's settings allow it. `findings`: on a review card, what the owner decided for its
    * findings and had not sent yet, which goes with the approval (`mergeContribution`).
    */
-  async approve(cardId: string, { direct = false, findings }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined } = {}) {
+  async approve(cardId: string, { direct = false, findings, upstream }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined; upstream?: boolean } = {}) {
     const card = this.card(cardId);
     if (!handedOver(card) || this.landing.has(cardId) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
     if (card.contribution) {
@@ -871,6 +893,7 @@ export class Workers {
       return this.reviews.mergeContribution(cardId, findings && Object.keys(findings).length ? { findings } : {});
     }
     if (findings && Object.keys(findings).length) throw new BadRequest('notReview', 'only a review card has findings to decide on');
+    if (upstream && (!this.o.upstream?.() || direct || card.prototypeOf || this.folder)) throw new BadRequest('noUpstream', 'this repository is no fork whose work lands on its main branch, with an original repository to send a pull request to');
     if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) {
@@ -907,6 +930,8 @@ export class Workers {
       throw new BadRequest('noDirect', 'this repository lands approved work only through a pull request; its settings do not allow pushing it directly');
     }
     unsnooze();
+    // in a fork, the button the owner clicked says whether the work goes to the original as a pull request too
+    if (upstream !== undefined && !!card.upstream !== upstream) this.o.board.work(cardId, { upstream: upstream ? 1 : null });
     const comments = this.approvalComments(cardId);
     // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open
     if (!work) return void this.close(cardId, 'owner', comments);
@@ -1014,7 +1039,14 @@ export class Workers {
     }
   }
 
+  /** The original repository the card's work goes to as a pull request too, where the owner chose so in a fork whose work lands on its main branch. */
+  private upstreamFor(cardId: string) {
+    return this.o.board.row(cardId).upstream ? this.o.upstream?.() : undefined;
+  }
+
   private async landNow(cardId: string, by: 'owner' | 'obeya', comments?: Comments) {
+    const up = this.upstreamFor(cardId);
+    if (up && this.o.adapter.land === 'main') return this.landUpstreamNow(cardId, by, up, comments);
     const row = this.o.board.row(cardId);
     // only a direct approval is held where work goes out as a pull request
     const direct = (await this.landingOf(cardId)).land === 'pr';
@@ -1091,6 +1123,102 @@ export class Workers {
       comments,
       by === 'owner',
     );
+  }
+
+  /**
+   * Approved work of a fork's card that goes to the original repository as a pull request too
+   * (`RepoSettings.upstream`): it lands on the main branch first, then the worker opens the pull
+   * request against the original and Obeya follows it (`PrWatcher`) until its maintainers merge
+   * it, merging what is pushed onto it into the main branch as well. A branch that carries nothing
+   * of the main branch's own (it started from `upstreamStart`) is the pull request's branch: it
+   * merges into the main branch as it is, never rebased. Any other lands as usual, and the worker
+   * carries the change over onto a branch of its own for the pull request (`ported`). What keeps
+   * it from landing goes where it does for any landing (`landNow`).
+   */
+  private async landUpstreamNow(cardId: string, by: 'owner' | 'obeya', up: UpstreamRef, comments?: Comments) {
+    const row = this.o.board.row(cardId);
+    const ws = this.o.workspaces;
+    const based = (await ws.upstreamBased?.(cardId, up.ref)) ?? false;
+    const added = await this.planDocsAdded(cardId);
+    const trailer = this.o.onApproval?.(cardId) ?? undefined;
+    const branch = row.branch!;
+    const resolved = mergeBranch(branch, up.into);
+    const push = !!this.o.adapter.push;
+    const result = based
+      ? await ws.mergeIntoMain!(cardId, { branch }, { message: [`Merge branch '${branch}' into ${up.into}`, trailer].filter(Boolean).join('\n\n'), resolved, push })
+      : await ws.landOnMain(cardId, branch, trailer, push);
+    if ('code' in result && !result.worker) {
+      const text = `${NOT_LANDED} ${result.detail}\n\nThat is not in your work: the owner sees on the card what to do, and the card waits for their approval again.`;
+      this.o.board.work(cardId, { approved_at: null, unheard: this.unheardWith(cardId, text, { replaces: NOT_LANDED }) });
+      throw new BadRequest(result.code, result.detail);
+    }
+    if ('code' in result) {
+      this.o.board.work(cardId, approvalKept(row));
+      this.o.board.log(cardId, 'error', 'obeya', result.detail, { code: result.code });
+      this.deliver(
+        cardId,
+        [
+          `The owner approved your work, to go onto ${up.into} and to ${up.name} as a pull request, but it could not land on ${up.into}: ${result.detail}`,
+          based && result.code === 'landConflict'
+            ? mergeConflictHelp(branch, up.into, resolved, 'your branch')
+            : '',
+          'The approval holds for what it takes to land the work: once you hand over again, Obeya lands it without asking the owner again, with the demo already on the card. A change to what the owner approved is theirs to decide.',
+          ...(comments ? [comments.text] : []),
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+        comments?.images,
+        { owner: by === 'owner' },
+      );
+      return;
+    }
+    this.untell(cardId, NOT_LANDED);
+    this.o.board.planDocsLanded(cardId, added);
+    const landed = 'already' in result ? { from: result.already, to: result.already } : result;
+    const start = (await ws.upstreamStart?.(up.ref)) ?? undefined;
+    const head = based ? ((await this.branchHead(cardId, branch)) ?? undefined) : undefined;
+    const pr: PrState = { url: null, seen: [], reported: [], upstream: { ref: up.ref, name: up.name, into: up.into, ...(start ? { start } : {}), ...(head ? { merged: head } : {}), ...(based ? {} : { ported: true }) } };
+    this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, status_line: null, approved_at: null, pr: toJson(pr), shipped: toJson<Shipped>({ commit: landed.to, base: landed.from, upstream: true }) });
+    const t = this.o.board.t.worker;
+    this.o.board.log(cardId, 'state', by, t.approvedUpstream(up.into, up.name));
+    if ('switched' in landed && landed.switched) this.o.board.log(cardId, 'state', 'obeya', t.switchedToMain(landed.switched.branch, landed.switched.commit));
+    const pushed = 'pushed' in landed ? landed.pushed : undefined;
+    if (pushed && !pushed.problem) this.o.board.log(cardId, 'state', 'obeya', t.pushedLanded(pushed.branch, landed.to.slice(0, 7)));
+    if (pushed?.problem) {
+      const text = pushed.moved ? t.landedPushMoved(pushed.branch) : t.landedPushRefused(pushed.branch, pushed.problem);
+      this.o.board.log(cardId, 'error', 'obeya', text);
+      this.o.board.notify({ cardId, text, inTalk: true });
+    }
+    this.o.onLanded?.(cardId);
+    const shared = this.o.board.item(cardId)?.share?.url;
+    if (shared) this.pageHeard(cardId);
+    const pushedNote = pushed?.problem ? ` Obeya could not push ${pushed.branch} to origin (${pushed.moved ? `origin's ${pushed.branch} has commits the local one lacks` : pushed.problem}); the owner sees why on the card.` : '';
+    this.deliver(
+      cardId,
+      [
+        based
+          ? `The owner approved your work, and it goes to ${up.name}, the original repository of this fork, as a pull request too. Obeya merged your branch into ${up.into} as it is (${landed.to.slice(0, 7)}), without rebasing it: your branch stays the pull request's branch.${pushedNote}`
+          : `The owner approved your work, and it goes to ${up.name}, the original repository of this fork, as a pull request too. It landed on ${up.into} as usual (${landed.to.slice(0, 7)}).${pushedNote} Your branch started from ${up.into}, so it carries ${up.into}'s own work, which does not belong in the pull request: make the pull request's branch anew from ${start ? `${start.slice(0, 7)}, the newest commit of ${up.ref} that ${up.into} holds` : `the newest commit of ${up.ref} that ${up.into} holds (git merge-base ${up.ref} ${up.into})`}, in a worktree of its own (git worktree add -b ${branch}-pr <dir> <that commit>), leaving this branch as it is, and carry the change over without what only this fork has. Run the checks there.`,
+        `Open the pull request against ${up.ref.slice(up.ref.indexOf('/') + 1)} of ${up.name} the way the repository does it (its own skills and conventions; with gh: gh pr create --repo ${up.name} --base ${up.branch} --head <owner of origin>:<branch>), after pushing its branch to origin. Whoever reads it has not seen Obeya, the card, nor ${up.into}. ${shared ? `Your demo video is shared on a page of its own: ${shared}. Link it in the description where it helps the maintainers. ` : ''}Then report it with pr_opened${based ? '' : ': what the pull request holds then counts as on ' + up.into + ' already'}.`,
+        `Its maintainers merge it, not Obeya. Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does. Every commit you push onto the pull request later, Obeya merges into ${up.into} as well: make each fix on the pull request's branch alone, and never merge ${up.into} into it, which would carry this fork's own work into the pull request. A comment that questions a decision is the owner's (ask). The card is live once the maintainers merged it.`,
+        comments?.text ?? '',
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      comments?.images,
+      { owner: by === 'owner' },
+    );
+  }
+
+  /** The commit the card's branch is at in its workspace; none where git cannot tell. */
+  private async branchHead(cardId: string, branch: string): Promise<string | null> {
+    const ws = this.o.workspaces.leasedBy(cardId);
+    if (!ws) return null;
+    try {
+      return await gitAsync(ws, 'rev-parse', `refs/heads/${branch}`);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -1350,7 +1478,8 @@ export class Workers {
     if (!path) return null;
     const row = this.o.board.row(cardId);
     const shipped = fromJson(row.shipped);
-    const landed = row.state === 'live' && shipped?.commit ? shipped.commit : undefined;
+    // a fork's pull request to the original: its head merged into the main branch last holds the work as it is now
+    const landed = row.state === 'live' ? (fromJson(row.pr)?.upstream?.merged ?? shipped?.commit) : undefined;
     // to open: the checkout's copy only of what landed there, never for a branch elsewhere
     const ref = landed ?? (local ? undefined : (row.branch ?? undefined));
     const changed = await this.changedFiles(cardId);
@@ -1372,6 +1501,9 @@ export class Workers {
   merged(cardId: string, commit?: string, note = this.o.board.t.worker.merged, comments?: Comments) {
     // the pull request that takes the card's work back: the work goes back onto its branch, for the owner to approve again
     if (fromJson(this.o.board.row(cardId).pr)?.rollback) return void this.revocations.rolledBack(cardId);
+    // a fork's pull request to the original: its work is on the main branch since the approval, and the maintainers merged it there
+    const upstream = fromJson(this.o.board.row(cardId).pr)?.upstream;
+    if (upstream) return this.upstreamOver(cardId, this.o.board.t.pr.mergedUpstream(upstream.name), `${upstream.name} merged your pull request; the card is live.`);
     this.bump(cardId);
     this.refuseAsked(cardId, 'meanwhile your pull request was merged, and the card is live.');
     // a review card's PR where work lands on the local main: the checkout gets the merge, as the owner would pull it
@@ -1447,12 +1579,48 @@ export class Workers {
 
   /** The pull request was closed without a merge: the owner decides what happens. */
   prClosed(cardId: string) {
-    if (fromJson(this.o.board.row(cardId).pr)?.rollback) return void this.revocations.rollbackClosed(cardId);
+    const pr = fromJson(this.o.board.row(cardId).pr);
+    if (pr?.rollback) return void this.revocations.rollbackClosed(cardId);
     const t = this.o.board.t.worker;
     this.o.board.log(cardId, 'state', 'obeya', t.prClosed);
+    // a fork's work is on its main branch already: it stays there, or the pull request is opened again
+    if (pr?.upstream) return this.toOwner(cardId, { text: t.upstreamClosedQuestion(pr.upstream.name, pr.upstream.into), options: [t.reopen, t.keepOnMain(pr.upstream.into)] });
     this.toOwner(cardId, {
       text: t.prClosedQuestion,
       options: [t.reopen, t.discardWork],
+    });
+  }
+
+  /**
+   * A fork's pull request to the original is over (merged by its maintainers, or closed and the
+   * owner keeps the work on the main branch alone): the card is live with what landed on the main
+   * branch since the approval, and its worker hears `told`.
+   */
+  private upstreamOver(cardId: string, note: string, told: string, comments?: Comments) {
+    this.bump(cardId);
+    this.refuseAsked(cardId, 'meanwhile the card is live.');
+    const page = this.workOver(cardId, 'live', {});
+    this.o.board.log(cardId, 'state', 'obeya', note);
+    this.tellOver(cardId, [told, page.text], comments, !!comments);
+  }
+
+  /**
+   * What is pushed onto a fork's pull request to the original (`head`, PR `number`), merged into the
+   * fork's main branch as well (`mergeIntoMain`); `ours` for the head the pull request was opened with
+   * where its branch is a port of work that landed already. Null where the card no longer goes to the
+   * original as the settings stand.
+   */
+  mergeUpstreamHead(cardId: string, head: string, number: number | undefined, ours: boolean) {
+    const up = this.o.upstream?.();
+    const pr = fromJson(this.o.board.row(cardId).pr)?.upstream;
+    const branch = this.o.board.row(cardId).branch;
+    if (!up || !pr || !branch || !this.o.workspaces.mergeIntoMain) return null;
+    return this.o.workspaces.mergeIntoMain(cardId, { commit: head }, {
+      message: `Merge ${number ? `pull request #${number} of ${pr.name}` : `the pull request to ${pr.name}`} into ${pr.into}${ours ? ' (on it already)' : ''}`,
+      resolved: mergeBranch(branch, pr.into),
+      push: !!this.o.adapter.push,
+      ...(ours ? { ours: true, upstream: pr.ref } : {}),
+      ...(number ? { fetch: { remote: up.remote, ref: `refs/pull/${number}/head` } } : {}),
     });
   }
 

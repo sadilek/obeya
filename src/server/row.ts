@@ -94,6 +94,28 @@ export interface PrState {
    * owner's again; closed unmerged, the card is live as before.
    */
   rollback?: { base: string; commit: string; of: number; head: string };
+  /**
+   * A fork's card whose work went to the original repository as a pull request, besides onto the
+   * main branch (`RepoSettings.upstream`): the original's main branch (`ref`, `upstream/main`), the
+   * fork's main branch it lands on (`into`), the PR's latest head merged into it (`merged`; none
+   * yet for a port, `ported`), and the head whose merge conflicted and went to the worker (`conflict`)
+   * or was in the owner's way (`blocked`, with why).
+   */
+  upstream?: UpstreamPr;
+}
+
+/** `PrState.upstream`. */
+export interface UpstreamPr {
+  ref: string;
+  name: string;
+  into: string;
+  /** Where its branch starts: the newest commit of `ref` the main branch held. */
+  start?: string;
+  merged?: string;
+  /** The card's branch landed rebased onto the main branch; the PR goes out from a port of it, made from `start`. */
+  ported?: true;
+  conflict?: string;
+  blocked?: { head: string; why: string };
 }
 
 /** What is stored of a review card's pull request (`CardRow.contribution`): what the card shows, and what only the server needs. */
@@ -135,6 +157,8 @@ export interface Shipped {
   direct?: true;
   /** Merged as a pull request: its head as merged, which tells the commits the merge brought (a rebase merge brings several). */
   head?: string;
+  /** Landed on a fork's main branch, and went to the original repository as a pull request too: what is pushed onto that one merges in later, so `base..commit` is not all of it. */
+  upstream?: true;
 }
 
 /**

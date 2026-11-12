@@ -129,6 +129,11 @@ export interface CardRow {
    * open); null once it did.
    */
   resumes: number | null;
+  /**
+   * 1 where the owner chose that the card's work goes to the original repository of a fork as a
+   * pull request too (`RepoRef.upstream`), not only onto the main branch; null otherwise.
+   */
+  upstream: number | null;
   /** The owner's words Obeya holds for the card's worker until it takes them in, at its next tool step or turn. */
   unheard: Json<Unheard[]> | null;
   /** The address its worker opens the app in the card's workspace at, while it runs (`app_running`); gone once Obeya stops the app or the workspace goes. */
@@ -609,6 +614,8 @@ export const MIGRATIONS = [
   'ALTER TABLE cards ADD COLUMN resumes INTEGER;',
   // a question whose look-up the owner's later words went into: the exchange whose answer answers it too
   'ALTER TABLE talk ADD COLUMN joined INTEGER;',
+  // a fork's card whose work goes to the original repository as a pull request too (`CardRow.upstream`)
+  'ALTER TABLE cards ADD COLUMN upstream INTEGER;',
 ];
 
 /**

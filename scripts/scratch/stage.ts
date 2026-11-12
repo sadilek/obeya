@@ -188,6 +188,16 @@ export interface Stage {
   forgeClone?: boolean;
   forgeViewer?: string;
   prPoll?: number;
+  /**
+   * The repository is a fork whose main branch (`mainBranch`) is an integration branch: <dir>/original
+   * plays the original repository, the remote `upstream` (`git@github.com:<name>.git`, default
+   * `acme/<repoName>`, which git of the scratch Obeya reads as that folder). The original holds the
+   * repository's first commit on `main`, then `files` as a commit the fork has not merged; the fork
+   * has `own` as a commit of its own. Pull requests to the original are played by the forge file
+   * (<dir>/forge.json, of the original), which a demo edits to play the worker opening one (pushing
+   * its branch into the original, adding the PR) and the maintainers (a comment, the merge).
+   */
+  upstream?: { name?: string; files?: Record<string, string>; own?: Record<string, string> };
   cards: StageCard[];
   /**
    * The canvas's rules, active unless `state` says otherwise; `card` and `replaces` name keys;
@@ -373,6 +383,7 @@ function makeRepositories(stage: Stage, dir: string) {
     git(repo, 'branch', '-q', '-u', `origin/${mainBranch}`);
   }
   const forge = { slug: stage.forgeRepo ?? `acme/${basename(repo)}`, repo: stage.forgeClone ? join(dir, 'forge') : repo };
+  if (stage.upstream && !folder) makeUpstream(stage.upstream, dir, repo, mainBranch);
   const prHeads = makePulls(stage, dir, repo, forge);
   if (stage.origin && !stage.pulls?.length && !stage.poolCheckout && !stage.hosts?.length) git(repo, 'remote', 'add', 'origin', stage.origin);
   const others = (stage.repos ?? []).map((r) => {
@@ -389,6 +400,33 @@ function makeRepositories(stage: Stage, dir: string) {
   });
   copyOrigin(stage, dir);
   return { repo, folder, forge, prHeads, others, further };
+}
+
+/** The original repository of a fork (`Stage.upstream`), its remote `upstream` in the repository, and the forge file of its pull requests. */
+function makeUpstream(u: NonNullable<Stage['upstream']>, dir: string, repo: string, mainBranch: string) {
+  const original = join(dir, 'original');
+  const by = ['-c', 'user.name=Scratch', '-c', 'user.email=scratch@example.com'];
+  git(dir, 'clone', '-q', '-b', mainBranch, repo, original);
+  if (mainBranch !== 'main') git(original, 'branch', '-m', mainBranch, 'main');
+  git(original, 'remote', 'remove', 'origin');
+  // a branch the worker pushes there for its pull request may be the one checked out nowhere but there
+  git(original, 'config', 'receive.denyCurrentBranch', 'updateInstead');
+  if (u.files && Object.keys(u.files).length) {
+    writeFiles(original, u.files);
+    git(original, 'add', '-A');
+    git(original, ...by, 'commit', '-qm', 'Newer work of the original');
+  }
+  const url = `git@github.com:${u.name ?? `acme/${basename(repo)}`}.git`;
+  git(repo, 'remote', 'add', 'upstream', url);
+  git(repo, 'config', `url.${original}.insteadOf`, url);
+  git(repo, 'fetch', '-q', 'upstream');
+  git(repo, 'remote', 'set-head', 'upstream', 'main');
+  if (u.own && Object.keys(u.own).length) {
+    writeFiles(repo, u.own);
+    git(repo, 'add', '-A');
+    git(repo, ...by, 'commit', '-qm', 'Own work of the fork');
+  }
+  if (!existsSync(join(dir, 'forge.json'))) writeFileSync(join(dir, 'forge.json'), `${JSON.stringify({ repo: original, viewer: 'owner', prs: [] }, null, 2)}\n`);
 }
 
 /** The pull requests of people outside, for the forge the file plays (<dir>/forge.json): each PR's head by its number. */
@@ -514,6 +552,7 @@ async function startServer(
     ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')),
     OBEYA_HOME: s.home,
     OBEYA_SCRATCH: ROOT,
+    ...(stage.upstream && !stage.pulls?.length ? { OBEYA_FORGE_FILE: join(s.dir, 'forge.json'), OBEYA_PR_POLL: String(stage.prPoll ?? 10) } : {}),
     ...(stage.pulls?.length
       ? {
           OBEYA_FORGE_FILE: join(s.dir, 'forge.json'),
@@ -713,7 +752,9 @@ function holdWorkspace(db: Database, ctx: Context, c: StageCard, i: number, bran
   const path = tree ? join(home, 'workspaces', on, id.slice(0, 8)) : free!.path;
   if (tree) {
     mkdirSync(dirname(path), { recursive: true });
-    git(checkout, 'worktree', 'add', '-q', '-b', branch!, path, ctx.mainBranch);
+    // a fork's card for the original starts where the original and the fork's main branch meet, as a start gives it
+    const start = c.row?.upstream && stage.upstream && !other && !elsewhere ? String(git(checkout, 'merge-base', 'upstream/main', ctx.mainBranch)).trim() : ctx.mainBranch;
+    git(checkout, 'worktree', 'add', '-q', '-b', branch!, path, start);
     db.query('INSERT INTO workspaces (path, canvas_id, card_id, repo) VALUES ($path, $c, $id, $r)').run({ path, c: on, id, r: other });
   } else {
     db.query('UPDATE workspaces SET card_id = $id WHERE path = $path').run({ id, path });

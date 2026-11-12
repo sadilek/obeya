@@ -156,6 +156,14 @@ export interface RepoSettings {
    */
   push?: boolean;
   /**
+   * With `land: 'main'`, in a fork: the original repository's main branch as this checkout knows
+   * it, `<remote>/<branch>` (`upstream/main`). A card may then go there as a pull request too: its
+   * branch starts from the newest commit of that branch the main branch holds, the worker opens the
+   * pull request against the original, and Obeya merges what is pushed onto it into the main
+   * branch. Detected from a remote named `upstream`; empty: none.
+   */
+  upstream?: string;
+  /**
    * With `land: 'pr'`: the owner may approve a card's work directly onto the default branch
    * instead, without a pull request. Obeya rebases it onto `origin`'s default branch and pushes it
    * there (never forced); review and the CI of a pull request are skipped.
@@ -209,7 +217,7 @@ export type SharedSettings = Omit<RepoSettings, 'branch'>;
 export type CardLanding = Partial<Pick<RepoSettings, 'land' | 'direct'>>;
 
 /** The fields of `SharedSettings`, in the dialog's order. */
-export const SHARED_FIELDS = ['land', 'push', 'direct', 'autoMerge', 'checks', 'setup', 'planDocs', 'softPaths', 'workspaces', 'prNoise', 'language', 'app', 'demo'] as const satisfies readonly (keyof SharedSettings)[];
+export const SHARED_FIELDS = ['land', 'push', 'upstream', 'direct', 'autoMerge', 'checks', 'setup', 'planDocs', 'softPaths', 'workspaces', 'prNoise', 'language', 'app', 'demo'] as const satisfies readonly (keyof SharedSettings)[];
 // every field of `SharedSettings` is in the list: one left out would be neither taken over nor read live
 const everyShared: [Exclude<keyof SharedSettings, (typeof SHARED_FIELDS)[number]>] extends [never] ? true : false = true;
 void everyShared;

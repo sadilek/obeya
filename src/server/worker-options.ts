@@ -3,7 +3,7 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { RepoAdapter } from '../adapters/types';
 import type { Language } from '../core/locale';
-import type { Item } from '../core/types';
+import type { Item, UpstreamRef } from '../core/types';
 import type { Harness } from '../core/agents';
 import type { RepoSettings } from '../core/config';
 import type { Board } from './board';
@@ -33,6 +33,8 @@ export interface WorkerOptions {
   onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, context?: InputContext) => void;
   /** On a canvas with several repositories: the one these workers work in. */
   repo?: string;
+  /** In a fork: the original repository its cards may go to as a pull request too (`RepoRef.upstream`), as the settings say now. */
+  upstream?: () => UpstreamRef | undefined;
   /** The boards of the other canvases this Obeya runs: a worker proposes a card in their repositories too. */
   otherBoards?: () => Board[];
   /** The worker reported the card's pull request: a demo shared before gets its link. */

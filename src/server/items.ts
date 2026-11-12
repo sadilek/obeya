@@ -174,6 +174,7 @@ const pullRequest = (pr: PrState): PullRequest => ({
   conflict: !!pr.conflictHead,
   ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}),
   ...(pr.waits?.length && !pr.merged && !pr.closed ? { waits: pr.waits } : {}),
+  ...(pr.upstream ? { into: { branch: pr.upstream.into, ...(pr.upstream.conflict ? { conflict: true as const } : {}), ...(pr.upstream.blocked ? { blocked: pr.upstream.blocked.why } : {}) } } : {}),
   ...(pr.review?.length ? { review: pr.review } : {}),
 });
 
@@ -194,6 +195,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   const revoke = revocable(r);
   return {
     ...(scope?.length ? { scope } : {}),
+    ...(r.upstream ? { upstream: true as const } : {}),
     ...(r.queue && stateOf(r) === 'planned' ? { queue: fromJson(r.queue) } : {}),
     ...(pr?.url ? { pr: pullRequest(pr) } : {}),
     ...(pr?.rollback ? { rollbackOf: pr.rollback.of } : {}),

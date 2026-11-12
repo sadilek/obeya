@@ -194,3 +194,14 @@ export const sentence = (text: string) => `${text}${/[.!?]$/.test(text) ? '' : '
 
 /** What a tool of a session that has ended (stopped, replaced) answers: the call changed nothing. */
 export const SESSION_ENDED = 'This session has ended. Stop working and end your turn.';
+
+/** The branch where a worker makes the merge of its pull request into the fork's main branch `into` itself, after Obeya's merge conflicted. */
+export const mergeBranch = (branch: string, into: string) => `${branch}-into-${into}`;
+
+/**
+ * How the worker of a fork's card resolves a merge into the main branch `into` that conflicted
+ * (`what`: the card's branch, or the pull request's head): on a branch of its own, so that its
+ * pull request's branch carries nothing of `into`.
+ */
+export const mergeConflictHelp = (branch: string, into: string, resolved: string, what: string) =>
+  `Make that merge yourself, never on ${branch} itself: the pull request's branch must carry nothing of ${into}. In your workspace, git switch -c ${resolved} ${into} (in a clone, from origin's ${into} or as Obeya's checkout has it: git fetch <path of the Obeya checkout> ${into}), git merge ${what === 'your branch' ? branch : what}, resolve the conflicts, run the checks, commit, then git switch ${branch} again. Obeya takes ${resolved} as the merge from there (it fast-forwards ${into} to it, or merges it where ${into} moved on meanwhile).`;

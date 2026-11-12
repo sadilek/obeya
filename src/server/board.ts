@@ -1959,7 +1959,7 @@ export class Board {
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo'];
+    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need', 'upstream']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo', 'upstream'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
@@ -1970,8 +1970,13 @@ export class Board {
     if (p.images !== undefined) this.checkImages(p.images);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
-    const { repo, images, collapsed, newRepo, ...fields } = p;
+    const { repo, images, collapsed, newRepo, upstream, ...fields } = p;
     if (newRepo !== undefined) this.checkNewRepo(row, newRepo);
+    if (upstream !== undefined) {
+      if (typeof upstream !== 'boolean') throw new BadRequest('invalid', 'upstream must be true or false');
+      // once approved, the work went where the approval sent it
+      if (!['planned', 'working', 'waiting'].includes(row.state ?? '') || row.approved_at || row.prototype_of) throw new BadRequest('invalid', 'where the work goes is chosen only until the approval');
+    }
     // a planned card of the owner's may become an idea again, to be discussed first
     if (p.state === 'idea' && row.state !== 'idea' && (row.plan_ref || begun(row)))
       throw new BadRequest('invalid', 'only a planned card of your own that has not been worked on can become an idea');
@@ -1989,6 +1994,7 @@ export class Board {
         : {}),
       ...(images !== undefined ? { images: images.length ? toJson(images) : null } : {}),
       ...(collapsed !== undefined ? { collapsed: collapsed ? 1 : 0 } : {}),
+      ...(upstream !== undefined ? { upstream: upstream ? 1 : null } : {}),
     });
     this.changed();
   }

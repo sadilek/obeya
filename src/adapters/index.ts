@@ -13,7 +13,7 @@ import { messageOf } from '../core/text';
 export const REPO_ADAPTER_DIR = '.obeya/adapter';
 
 /** Obeya's defaults for the repository: what it runs on where its settings say nothing. */
-export const defaultsFor = (repo: RepoInfo): RepoAdapter => ({ ...generic, land: detectedLand(repo) });
+export const defaultsFor = (repo: RepoInfo): RepoAdapter => ({ ...generic, land: detectedLand(repo), ...(repo.upstream ? { upstream: repo.upstream } : {}) });
 
 /**
  * How work lands where the settings do not say: through pull requests where `origin` is on GitHub
@@ -52,7 +52,9 @@ export function withSettings(a: RepoAdapter, settings: () => RepoSettings | unde
 export function repoValues(repo: RepoInfo, detected: string, clones = false, shared: SharedSettings = {}): RepoValues {
   const a = defaultsFor(repo);
   const value = <K extends Exclude<keyof SharedSettings, NestedSetting>, T>(v: T, field: K) =>
-    shared[field] !== undefined ? { value: shared[field] as T, source: 'repository' as const } : { value: v, source: field === 'land' ? ('detected' as const) : ('default' as const) };
+    shared[field] !== undefined
+      ? { value: shared[field] as T, source: 'repository' as const }
+      : { value: v, source: field === 'land' || (field === 'upstream' && !!v) ? ('detected' as const) : ('default' as const) };
   // a field of `app` or `demo` from the repository, else none
   const nested = <K extends NestedSetting, F extends (typeof NESTED_SETTINGS)[K][number], T>(k: K, f: F, none: T) => {
     const v = (shared[k] as Record<string, unknown> | undefined)?.[f];
@@ -62,6 +64,7 @@ export function repoValues(repo: RepoInfo, detected: string, clones = false, sha
     branch: { value: detected, source: 'detected' },
     land: value(a.land, 'land'),
     push: value(!!a.push, 'push'),
+    upstream: value(a.upstream ?? '', 'upstream'),
     direct: value(!!a.direct, 'direct'),
     autoMerge: value(a.autoMerge, 'autoMerge'),
     checks: value(a.checks, 'checks'),

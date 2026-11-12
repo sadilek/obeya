@@ -553,6 +553,18 @@ const de = {
   approvedDirect: 'Freigegeben; geht direkt auf main.',
   approving: 'wird freigegeben …',
   approvingDirect: 'wird direkt auf main gepusht …',
+  upstream: {
+    approve: (name: string) => `Freigeben + PR an ${name}`,
+    approveMine: 'Freigeben, nur für mich',
+    hint: (into: string, name: string) =>
+      `Mit PR an ${name}: Die Arbeit landet auf ${into}, und der Agent öffnet einen Pull Request ans Original. Obeya verfolgt ihn (Review-Kommentare, Checks), bis die Maintainer ihn mergen, und mergt Nachbesserungen auch in ${into}.`,
+    approved: (name: string) => `Freigegeben; geht auch als PR an ${name}.`,
+    approving: 'landet und geht als PR ans Original …',
+    mine: 'Nur für mich',
+    pr: (name: string) => `Auch als PR an ${name}`,
+    pickHint: (into: string, name: string) =>
+      `Nur für mich: zweigt von ${into} ab und landet dort. Auch als PR: zweigt vom Stand von ${name} ab, den ${into} schon hat, landet auf ${into} und geht als Pull Request ans Original. Bis zur Freigabe umstellbar.`,
+  },
   cardError: (title: string, why: string) => `„${title}“: ${why}`,
   approvedNoChange: 'Beendet.',
   accepted: 'Vorschlag übernommen und gestartet.',
@@ -675,6 +687,7 @@ const de = {
     notReady: 'Das ist nicht bereit zur Abnahme.',
     notHeld: 'Der Kommentar ist schon beim Agenten.',
     noDirect: 'In diesem Repository geht freigegebene Arbeit nur per Pull Request auf main.',
+    noUpstream: 'Dieses Repository ist kein Fork, dessen Arbeit auf seinem Hauptbranch landet und an ein Original gehen kann.',
     notReview: 'Diese Karte prüft keinen Pull Request.',
     noEdits: 'Der Beitragende erlaubt keine Änderungen durch Maintainer: Befunde gehen an ihn.',
     noFinding: 'Über diesen Befund ist schon entschieden.',
@@ -911,6 +924,7 @@ const de = {
               review: 'ein Review des neuesten Commits',
               answer: 'die Antwort des Reviewers auf die Bitte um ein neues Review',
               agent: 'den Agenten, der gerade daran arbeitet',
+              maintainer: 'Review und Merge durch die Maintainer des Originals',
             })[w],
         )
         .join(', ')}.`,
@@ -921,6 +935,10 @@ const de = {
       `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. ${by} gibt aber nur ${score}; unter 4/5 mergt Obeya nicht selbst. Du entscheidest: selbst mergen oder dem Agenten sagen, was noch fehlt.`,
     noChecks: 'Noch keine Checks.',
     opening: 'Der Agent öffnet den Pull Request.',
+    openingUpstream: (name: string) => `Der Agent öffnet den Pull Request an ${name}.`,
+    into: (into: string) => `Auch auf ${into}: Was auf diesen Pull Request kommt, mergt Obeya dort ebenfalls hinein.`,
+    intoConflict: (into: string) => `Der neue Stand lässt sich nicht konfliktfrei in ${into} mergen; der Agent löst das.`,
+    intoBlocked: (into: string, why: string) => `Der neue Stand ist noch nicht auf ${into}: ${why}`,
     review: 'Review',
     round: (n: number, author: string) => `Runde ${n} · ${author}`,
     threads: (n: number, open: number) =>
@@ -945,6 +963,7 @@ const de = {
       review: 'wartet auf Review',
       answer: 'wartet auf Reviewer',
       agent: 'Agent arbeitet',
+      maintainer: 'wartet auf Maintainer',
     } satisfies Record<PrWait, string>,
     short: (pr: string, failed: number, conflict: boolean, ready?: boolean, held?: string, wait?: string) =>
       [`PR ${pr}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : '', ready ? 'Bereit zum Mergen' : '', held ? `Review nur ${held}` : '', wait ?? '']
@@ -1516,6 +1535,8 @@ const de = {
       push: 'Zu origin pushen',
       pushLabel: 'Nach jeder Landung schiebt Obeya den Hauptbranch auch zu origin',
       pushHint: 'Nie erzwungen. Lehnt origin den Push ab (der Branch hat sich dort bewegt, er ist geschützt, Rechte fehlen), bleibt die Arbeit gelandet, und die Karte sagt dir, warum.',
+      upstream: 'Original (Fork)',
+      upstreamHint: 'Bei einem Fork der Hauptbranch des Originals, wie dieser Checkout ihn kennt (<remote>/<branch>). Aufgaben können dann auch als Pull Request ans Original gehen; Obeya verfolgt ihn und mergt Nachbesserungen auch in den Hauptbranch. Erkannt an einem Remote namens upstream; leer: keins.',
       direct: 'Direkt erlauben',
       directLabel: 'Freigeben darf die Arbeit auch direkt auf den Hauptbranch schieben, ohne Pull Request',
       autoMerge: 'Automatisch mergen',
@@ -2826,6 +2847,18 @@ const en: Strings = {
   approvedDirect: 'Approved; goes straight to main.',
   approving: 'being approved …',
   approvingDirect: 'being pushed straight to main …',
+  upstream: {
+    approve: (name: string) => `Approve + PR to ${name}`,
+    approveMine: 'Approve, for me only',
+    hint: (into: string, name: string) =>
+      `With a PR to ${name}: the work lands on ${into}, and the agent opens a pull request to the original. Obeya follows it (review comments, checks) until its maintainers merge it, and merges the fixes into ${into} too.`,
+    approved: (name: string) => `Approved; goes to ${name} as a PR too.`,
+    approving: 'landing, and going to the original as a PR …',
+    mine: 'For me only',
+    pr: (name: string) => `Also as PR to ${name}`,
+    pickHint: (into: string, name: string) =>
+      `For me only: branches off ${into} and lands there. Also as PR: branches off the state of ${name} that ${into} already has, lands on ${into} and goes to the original as a pull request. You can switch until the approval.`,
+  },
   cardError: (title: string, why: string) => `“${title}”: ${why}`,
   approvedNoChange: 'Closed.',
   accepted: 'Proposal accepted and started.',
@@ -2932,6 +2965,7 @@ const en: Strings = {
     notReady: 'This is not ready for review.',
     notHeld: 'The comment is with the agent already.',
     noDirect: 'In this repository, approved work reaches main only through a pull request.',
+    noUpstream: 'This repository is no fork whose work lands on its main branch and can go to an original repository.',
     notReview: 'This card reviews no pull request.',
     noEdits: 'The contributor does not allow edits by maintainers: findings go to them.',
     noFinding: 'This finding has been decided on already.',
@@ -3154,6 +3188,7 @@ const en: Strings = {
               review: 'a review of the newest commit',
               answer: 'the reviewer’s answer to the request for another review',
               agent: 'the agent, who is at work on it',
+              maintainer: 'the review and merge by the original’s maintainers',
             })[w],
         )
         .join(', ')}.`,
@@ -3164,6 +3199,10 @@ const en: Strings = {
       `Ready to merge: checks green, all comments settled, the review is through. But ${by} gives only ${score}; below 4/5 Obeya does not merge by itself. You decide: merge it yourself or tell the agent what is still missing.`,
     noChecks: 'No checks yet.',
     opening: 'The agent is opening the pull request.',
+    openingUpstream: (name: string) => `The agent is opening the pull request to ${name}.`,
+    into: (into: string) => `On ${into} too: what goes onto this pull request, Obeya merges in there as well.`,
+    intoConflict: (into: string) => `The new commits do not merge into ${into} without conflicts; the agent resolves it.`,
+    intoBlocked: (into: string, why: string) => `The new commits are not on ${into} yet: ${why}`,
     review: 'Review',
     round: (n: number, author: string) => `Round ${n} · ${author}`,
     threads: (n: number, open: number) =>
@@ -3188,6 +3227,7 @@ const en: Strings = {
       review: 'waits for review',
       answer: 'waits for reviewer',
       agent: 'agent at work',
+      maintainer: 'waits for maintainers',
     } satisfies Record<PrWait, string>,
     short: (pr: string, failed: number, conflict: boolean, ready?: boolean, held?: string, wait?: string) =>
       [`PR ${pr}`, failed ? `${failed} ${failed === 1 ? 'check red' : 'checks red'}` : '', conflict ? 'Conflict' : '', ready ? 'Ready to merge' : '', held ? `Review only ${held}` : '', wait ?? '']
@@ -3723,6 +3763,8 @@ const en: Strings = {
       push: 'Push to origin',
       pushLabel: 'After each landing, Obeya pushes the main branch to origin too',
       pushHint: 'Never forced. If origin refuses the push (the branch moved there, it is protected, rights are missing), the work stays landed and the card tells you why.',
+      upstream: 'Original (fork)',
+      upstreamHint: 'In a fork, the original repository’s main branch as this checkout knows it (<remote>/<branch>). Tasks can then go to the original as a pull request too; Obeya follows it and merges fixes into the main branch as well. Detected from a remote named upstream; empty: none.',
       direct: 'Allow direct',
       directLabel: 'Approving may also push the work directly onto the main branch, without a pull request',
       autoMerge: 'Merge automatically',

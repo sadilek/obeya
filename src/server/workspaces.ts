@@ -535,7 +535,7 @@ export interface CardWorkspaces {
   readonly pooled: boolean;
   list(): { path: string; card_id: string | null }[];
   leasedBy(cardId: string): string | null;
-  lease(cardId: string, branch: string, o?: { overSlots?: boolean; from?: string | null }): Lease;
+  lease(cardId: string, branch: string, o?: LeaseOptions): Lease;
   leasable(overSlots?: boolean, near?: string | null): boolean;
   pool(busy: string[]): PoolHost[];
   keepLeftovers(path: string, host?: string): Promise<string | null>;
@@ -548,6 +548,9 @@ export interface CardWorkspaces {
   addedFiles(cardId: string, dir: string): Promise<string[]>;
   landOnMain(cardId: string, branch: string, trailer?: string, push?: boolean): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
+  upstreamStart?(ref: string): Promise<string | null>;
+  upstreamBased?(cardId: string, ref: string): Promise<boolean>;
+  mergeIntoMain?(cardId: string, head: { branch: string } | { commit: string }, o: MergeIntoMain): Promise<Landed | { already: string } | LandProblem>;
   revertLanded(cardId: string, landed: { base: string; commit: string; head?: string }, onto: 'local' | 'origin', title: string): Promise<{ main: string; revert: string; base: string } | LandProblem>;
   reapply(cardId: string, landed: { base: string; commit: string }, onto: 'local' | 'origin'): Promise<string | null>;
   pushAs(cardId: string, name: string): Promise<void>;
@@ -562,6 +565,35 @@ export interface CardWorkspaces {
   landedDiff(base: string, commit: string, full: boolean): Promise<CardDiff | null>;
   fileOf(cardId: string, path: string, ref?: string, local?: boolean): Promise<FileAt | null>;
   changedFiles(cardId: string, landed?: { base: string; commit: string }): Promise<string[]>;
+}
+
+/**
+ * How a card gets its workspace (`lease`): `overSlots` takes one on a busy machine; `from`, the clone
+ * that holds its branch since its workspace was taken (`evict`); `start`, where a branch made new
+ * starts in place of the main branch (a fork's card that goes to the original repository as a
+ * pull request, `upstreamStart`), asked once git makes it, the main branch where it gives none.
+ */
+export interface LeaseOptions {
+  overSlots?: boolean;
+  from?: string | null;
+  start?: () => Promise<string | null>;
+}
+
+/**
+ * How `mergeIntoMain` merges: the merge commit's `message`; `ours` records the commit as merged
+ * without taking its changes (a port of work that landed on the main branch already); `resolved`, a
+ * branch of the card's workspace where its worker made the merge itself after a conflict, taken
+ * where it holds the commit; `fetch`, where the commit is fetched from when the workspace lacks it;
+ * `upstream`, the original repository's main branch (`upstream/main`), which with `ours` the commit
+ * must build on no further than the main branch holds; `push` as for `landOnMain`.
+ */
+export interface MergeIntoMain {
+  message: string;
+  ours?: boolean;
+  resolved?: string;
+  fetch?: { remote: string; ref: string };
+  upstream?: string;
+  push?: boolean;
 }
 
 /**
@@ -888,18 +920,18 @@ export class Workspaces implements CardWorkspaces {
    * `from`: the clone that holds the card's branch since its workspace was taken from it (`evict`):
    * that one, or another on its machine, which takes the branch from it.
    */
-  lease(cardId: string, branch: string, o: { overSlots?: boolean; from?: string | null } = {}): Lease {
+  lease(cardId: string, branch: string, o: LeaseOptions = {}): Lease {
     const own = this.leasedBy(cardId);
     // a worktree git is removing (its card deleted and brought back meanwhile) is added again once git is done
-    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch);
+    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch, o.start);
     if (own) {
       // given back while git was making it ready, and taken again before git was done: it stays the card's
       this.releasing.delete(cardId);
       return { path: own, ready: this.preparing.get(cardId) ?? null };
     }
-    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null);
+    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start);
     if (!o.overSlots && !this.room(null)) throw new WorkspaceError(SHORT_TEXT.slots, SHORT_CODE.slots);
-    return this.leaseWorktree(cardId, branch);
+    return this.leaseWorktree(cardId, branch, o.start);
   }
 
   /**
@@ -2013,7 +2045,7 @@ export class Workspaces implements CardWorkspaces {
    * card's branch. One that is not clean now gives way to the next `place` finds, the lease moving
    * there; where none is left, `ready` fails with the shortage.
    */
-  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null): Lease {
+  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null, start?: () => Promise<string | null>): Lease {
     const looking = new Set(this.looking.keys());
     const found = this.place(overSlots, from);
     if ('short' in found) throw new WorkspaceError(SHORT_TEXT[found.short], SHORT_CODE[found.short]);
@@ -2052,7 +2084,7 @@ export class Workspaces implements CardWorkspaces {
         // more than `origin`'s remote-tracking branches may have made it
         const exists = kept || (fetched && !how?.plain ? !!(await gitAsync(path, 'branch', '--list', branch)) : !!refs?.local.has(branch));
         if (exists) await gitAsync(path, 'checkout', '--quiet', branch);
-        else await gitAsync(path, 'checkout', '--quiet', '-b', branch, `origin/${base}`);
+        else await gitAsync(path, 'checkout', '--quiet', '-b', branch, (await this.startIn(path, start)) ?? `origin/${base}`);
         // the work it had not committed when its workspace was taken is uncommitted again, unless the
         // card was stopped meanwhile: then the clone goes back clean and the one that kept the branch keeps it
         if (from && !this.releasing.has(cardId) && (await gitAsync(path, 'log', '-1', '--format=%B')).includes(SAVED)) await gitAsync(path, 'reset', '--quiet', 'HEAD~1');
@@ -2142,7 +2174,7 @@ export class Workspaces implements CardWorkspaces {
    * The card's worktree, leased at once; added in the background, where it does not exist yet (in a
    * large repository that takes a minute), or once git has removed the one it had before.
    */
-  private leaseWorktree(cardId: string, branch: string): Lease {
+  private leaseWorktree(cardId: string, branch: string, start?: () => Promise<string | null>): Lease {
     const path = join(this.o.dir, cardId.slice(0, 8));
     this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
     this.store.setLease(path, cardId);
@@ -2159,11 +2191,129 @@ export class Workspaces implements CardWorkspaces {
         if (existsSync(path)) return path;
         mkdirSync(this.o.dir, { recursive: true });
         if ((await gitAsync(this.o.repoPath, 'branch', '--list', branch)) !== '') await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch);
-        else await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, await this.mainAsync(this.o.repoPath));
+        else await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath)));
         return path;
       },
       () => this.store.removeWorkspace(path),
     );
+  }
+
+  /**
+   * Where a new branch in `ws` starts in place of the main branch (`LeaseOptions.start`), fetched
+   * there from the checkout where a clone lacks it; none where there is none, or a clone on another
+   * machine lacks it.
+   */
+  private async startIn(ws: string, start?: () => Promise<string | null>): Promise<string | null> {
+    const at = await start?.().catch(() => null);
+    if (!at) return null;
+    if (await hasCommit(ws, at)) return at;
+    if (remote(ws)) return null;
+    await gitRun(ws, ['fetch', '--quiet', '--no-write-fetch-head', this.o.repoPath, at]);
+    return (await hasCommit(ws, at)) ? at : null;
+  }
+
+  /**
+   * Where a fork's card that goes to the original repository as a pull request starts
+   * (`RepoSettings.upstream`): the newest commit of the original's main branch (`ref`,
+   * `upstream/main`) that the main branch holds, after fetching that remote (two minutes at most;
+   * as last fetched where it does not answer). Its branch then carries nothing of the main branch's
+   * own, and nothing of the original's that the main branch lacks either, so merging it into the
+   * main branch brings only the card's work. Null where the checkout has no such branch, or the two
+   * have no commit in common.
+   */
+  async upstreamStart(ref: string): Promise<string | null> {
+    const repo = this.o.repoPath;
+    const remoteName = ref.slice(0, ref.indexOf('/'));
+    await gitRun(repo, ['fetch', '--quiet', remoteName], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch(() => {});
+    const base = await this.checkoutBase();
+    return gitTry(repo, 'merge-base', `refs/remotes/${ref}`, `refs/heads/${base}`);
+  }
+
+  /**
+   * Whether the card's branch carries nothing of the main branch's own: where it left the main
+   * branch is a commit of the original repository's (`ref`, `upstream/main`), as for a card that
+   * started from `upstreamStart`. Its branch can then go to the original as a pull request as it is.
+   */
+  async upstreamBased(cardId: string, ref: string): Promise<boolean> {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return false;
+    const repo = this.o.repoPath;
+    try {
+      const head = await gitAsync(ws, 'rev-parse', 'HEAD');
+      if (!(await hasCommit(repo, head))) await gitRun(repo, ['fetch', '--quiet', '--no-write-fetch-head', ws, head]);
+      const fork = await gitAsync(repo, 'merge-base', head, `refs/heads/${await this.checkoutBase()}`);
+      return await isAncestor(repo, fork, `refs/remotes/${ref}`, false);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Merges `head` (the card's branch, or a commit of the pull request it went out as) into the
+   * checkout's main branch with a merge commit, never rewriting it: a fork's card that goes to the
+   * original repository as a pull request keeps its branch as the pull request has it, and what is
+   * pushed onto that pull request later merges the same way. The merge is made in git's object
+   * store and the checkout fast-forwarded to it, so uncommitted changes there survive or stop it.
+   * `already` where the main branch holds it; a conflict (`landConflict`, with its files) and
+   * uncommitted work are the worker's, a checkout in the way the owner's (`MergeIntoMain`).
+   */
+  mergeIntoMain(cardId: string, head: { branch: string } | { commit: string }, o: MergeIntoMain): Promise<Landed | { already: string } | LandProblem> {
+    return oneAtATime(landings, this.o.repoPath, async () => {
+      const repo = this.o.repoPath;
+      const ws = this.leasedBy(cardId);
+      try {
+        let tip: string;
+        if ('branch' in head) {
+          if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
+          if (await gitAsync(ws, ...LOOK, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
+          tip = await gitAsync(ws, 'rev-parse', `refs/heads/${head.branch}`);
+        } else tip = head.commit;
+        // the worker's own merge, after a conflict: where it holds the commit
+        const resolved = ws && o.resolved ? await gitTry(ws, 'rev-parse', '--verify', '--quiet', `refs/heads/${o.resolved}^{commit}`) : null;
+        if (resolved && (await isAncestor(ws!, tip, resolved, false))) tip = resolved;
+        if (!(await hasCommit(repo, tip)) && ws) await gitRun(repo, ['fetch', '--quiet', '--no-write-fetch-head', ws, tip]);
+        if (!(await hasCommit(repo, tip)) && o.fetch) await gitRun(repo, ['fetch', '--quiet', '--no-write-fetch-head', o.fetch.remote, o.fetch.ref], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS });
+        if (!(await hasCommit(repo, tip))) return { code: 'land', worker: false, detail: `the commit ${tip.slice(0, 7)} is neither in the card's workspace nor${o.fetch ? ` at ${o.fetch.remote}` : ' anywhere to fetch it from'}` };
+        const base = await this.checkoutBase();
+        const back = await ensureOnBase(repo, base);
+        if (back && 'code' in back) return back;
+        const main = await gitAsync(repo, 'rev-parse', `refs/heads/${base}`);
+        if (await isAncestor(repo, tip, main, false)) return { already: main };
+        // a port marked merged must not mark the original's commits the main branch lacks as merged with it
+        if (o.ours && o.upstream) {
+          const meets = await gitTry(repo, 'merge-base', tip, `refs/remotes/${o.upstream}`);
+          if (meets && !(await isAncestor(repo, meets, main, false)))
+            return { code: 'landConflict', worker: true, detail: `${tip.slice(0, 7)} builds on commits of ${o.upstream} that ${base} does not hold yet: base the branch on the newest commit of ${o.upstream} that ${base} holds (${(await gitTry(repo, 'merge-base', `refs/remotes/${o.upstream}`, main))?.slice(0, 7) ?? 'none'})` };
+        }
+        let to: string;
+        // the worker's merge, made on top of the main branch as it is: nothing left to merge
+        if (!o.ours && (await isAncestor(repo, main, tip, false))) to = tip;
+        else {
+          let tree: string;
+          if (o.ours) tree = await gitAsync(repo, 'rev-parse', `${main}^{tree}`);
+          else {
+            const m = await gitRun(repo, ['merge-tree', '--write-tree', '--name-only', '--no-messages', main, tip]);
+            if (m.code === 1) {
+              const files = m.stdout.trim().split('\n').slice(1).filter(Boolean);
+              return { code: 'landConflict', worker: true, files, detail: `merging ${tip.slice(0, 7)} into ${base} conflicts in ${files.join(', ') || 'some files'}` };
+            }
+            if (m.code !== 0) return { code: 'land', worker: false, detail: `git merge-tree: ${failureText(m)}` };
+            tree = m.stdout.trim().split('\n')[0]!;
+          }
+          to = await gitAsync(repo, 'commit-tree', tree, '-p', main, '-p', tip, '-m', o.message);
+        }
+        try {
+          await gitAsync(repo, 'merge', '--ff-only', '--quiet', to);
+        } catch (e) {
+          // typically local changes in the checkout that the fast-forward would overwrite
+          return { code: 'landMerge', worker: false, detail: messageOf(e) };
+        }
+        const landed: Landed = { from: main, to, ...(back ? { switched: { ...back, commits: 0 } } : {}) };
+        return o.push ? { ...landed, pushed: await this.pushLanded() } : landed;
+      } catch (e) {
+        return { code: 'land', worker: false, detail: messageOf(e) };
+      }
+    });
   }
 
 }

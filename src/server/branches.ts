@@ -138,3 +138,36 @@ export async function branchCommit(cwd: string, branch: string, branches?: Branc
   // where git cannot be asked there, origin's
   return (await isAncestor(cwd, remote, local, false).catch(() => false)) ? local : remote;
 }
+
+/** The remote Obeya takes for the original repository of a fork where the settings name none (`RepoSettings.upstream`). */
+export const UPSTREAM_REMOTE = 'upstream';
+
+/**
+ * The original repository's main branch where the checkout at `cwd` has a remote named `upstream`
+ * (a fork's usual name for it): `upstream/<branch>` of the branch its `HEAD` names, else of `main`
+ * or `master` as last fetched; none otherwise, or where nothing of it was fetched yet.
+ */
+export async function detectUpstream(cwd: string): Promise<string | undefined> {
+  const refs = await gitTry(cwd, 'for-each-ref', '--format=%(refname)%00%(symref)', `refs/remotes/${UPSTREAM_REMOTE}/`);
+  if (!refs) return undefined;
+  const at = `refs/remotes/${UPSTREAM_REMOTE}/`;
+  const names = new Set<string>();
+  for (const line of refs.split('\n')) {
+    const [ref = '', symref = ''] = line.split('\0');
+    if (ref === `${at}HEAD` && symref.startsWith(at)) return `${UPSTREAM_REMOTE}/${symref.slice(at.length)}`;
+    if (ref.startsWith(at)) names.add(ref.slice(at.length));
+  }
+  const branch = ['main', 'master'].find((b) => names.has(b));
+  return branch ? `${UPSTREAM_REMOTE}/${branch}` : undefined;
+}
+
+/** The URLs of the checkout's remotes, by name. */
+export async function remoteUrls(cwd: string): Promise<Record<string, string>> {
+  const lines = (await gitTry(cwd, 'config', '--get-regexp', '^remote\\..*\\.url$')) ?? '';
+  const out: Record<string, string> = {};
+  for (const line of lines.split('\n')) {
+    const m = /^remote\.(.+)\.url (.+)$/.exec(line.trim());
+    if (m) out[m[1]!] = m[2]!;
+  }
+  return out;
+}

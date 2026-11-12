@@ -14,6 +14,10 @@ export interface RepoInfo {
   branch: string;
   /** A folder without git (`RepoConfig.git` false): cards work in it directly. */
   folder?: true;
+  /** The original repository's main branch as detected (`detectUpstream`), where the checkout is a fork with a remote `upstream`. */
+  upstream?: string;
+  /** The URLs of its remotes, by name: the original repository's, for one, which cards may go to as a pull request. */
+  remotes?: Record<string, string>;
 }
 
 /** The repository's settings in front of Obeya's defaults: a field with a default is always there. */

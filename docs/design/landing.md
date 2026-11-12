@@ -165,6 +165,49 @@ a reviewer commented in ("Round 2 · greptile-apps · 3 comments, 1 open"), each
 its first line with its thread's state and reply count, unfolded with file, comment and replies; the
 conversation between the rounds. Bots' HTML is stripped except badge names (Greptile's "P1").
 
+### Pull requests to the original
+
+A fork whose main branch is an integration branch (the original's main branch plus features of its
+own) and whose work lands on main may name the original's main branch as the checkout knows it
+(`upstream`, `<remote>/<branch>`; detected from a remote named `upstream`). Each of its cards then
+goes either to the fork alone ("For me only", as any card) or to the original as a pull request too
+("Also as PR to <owner/repo>"). The owner picks it on an unstarted card, beside the repository
+picker, and it stands until the approval: a card for the original shows "Approve + PR to
+<owner/repo>" first and "Approve, for me only" beside it, any other card "Approve" first and "Approve
++ PR to <owner/repo>" beside it, with a line below saying what the PR approval does. Approving by
+word goes the card's way.
+
+A card for the original starts from the newest commit of the original's main branch that the main
+branch holds (their merge base, after fetching that remote), so its branch carries neither the
+fork's own work nor anything of the original the fork has not merged yet; its worker hears so and
+keeps it that way. Approved:
+
+- A branch that left the main branch at a commit of the original's is the pull request's branch: it
+  merges into the main branch with a merge commit, never rebased (made in git's object store, the
+  checkout fast-forwarded to it, pushed with `push`), and the worker pushes it to `origin` and opens
+  the pull request against the original from there.
+- Any other (a card that started for the fork alone, approved with "Approve + PR to …") lands as
+  usual, rebased; the worker then makes the pull request's branch anew from that merge base, in a
+  worktree of its own, carrying the change over without what only the fork has. The head the pull
+  request is reported with counts as on the main branch already: Obeya records it there as merged
+  without taking its changes (a merge with the main branch's tree), so later fixes merge alone, and
+  refuses that where the port builds on commits of the original the main branch lacks, which the
+  record would mark as merged with it.
+
+The card is then in its pull request (`pr_opened`, the original's repository being the card's own
+there) and the watcher follows it as any (see Watching the PR), except that the original's
+maintainers merge it: Obeya never does, does not nudge them for a review of new commits, and the
+card does not need the owner while it waits ("PR #82 · waits for maintainers"). Every head pushed
+onto it, once the worker is out of its turn, is merged into the main branch as well, and the
+merged head goes there before the card goes `live`; never the other way round. A merge that
+conflicts goes to the worker, once per head: it makes the merge itself on
+`<branch>-into-<main>` (from the main branch, merging the head), which Obeya takes at its next look
+(fast-forwarding to it, or merging it where the main branch moved on); the card's PR block says so.
+What stands in the checkout's way is logged for the owner once, and tried again each round. Closed
+without a merge, the owner chooses between "Reopen it" and "Keep it on <main> only", which makes the
+card `live`. Taking back the approval is not offered: the work is public on the original and on the
+main branch alike. Dependents in the queue wait for the merge as for any PR.
+
 ### Review cards
 
 A pull request someone outside opened (a contributor's) gets a card on the owner's word only:
@@ -600,6 +643,19 @@ A card no agent worked on, a prototype or an archived card has no field.
   the merge without asking (publishes what the owner has not pushed); the review
   card's agent alone (it knows the PR, not the change it collides with); a question to the owner
   for every stopped pull (the agents can do it, and the owner works at the level of requirements).
+- **A fork's card may go to the original as a pull request too, chosen per card** (2026-11-12): a
+  fork with an integration branch knew only one main branch and one way of landing, so workers
+  carried changes to the original by hand and then synced each review fix back (commits "Sync …
+  with the PR branch" twice over). The card's branch starts from the merge base of the original's
+  main branch and the fork's, so merging it into the fork brings the card's work and nothing of the
+  original the owner has not merged yet; what is pushed onto the pull request merges into the fork,
+  never the fork into the pull request. The choice stands until the approval, which may still
+  change it, since the need for the pull request often shows only in the work. Rejected: branching
+  from the original's newest main (merging it into the fork would bring the original's newer
+  commits along unasked); rebasing the branch onto the fork's main at the approval (it would no
+  longer be the pull request's branch); cherry-picking review fixes into the fork (copies of each
+  commit, the history the owner wanted gone); a setting per repository instead of per card (in a
+  fork most cards are the fork's own, some go upstream).
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every

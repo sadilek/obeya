@@ -8,11 +8,12 @@ import { defaultsFor, hasAdapterModule, readSharedAt, readSharedFiles, repoValue
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { dimensions } from '../core/page-tags';
-import type { RepoRef } from '../core/types';
+import type { RepoRef, UpstreamRef } from '../core/types';
 import { type CanvasConfig, type ConfigProblemCode, type DemoSite, layerSettings, type RepoConfig, type RepoSettings, type SharedSettings } from '../core/config';
-import { branchCommit, branchSetting, defaultBranchCommit, detectBranch, markFolder, readBranches } from './branches';
+import { branchCommit, branchSetting, defaultBranchCommit, detectBranch, markFolder, readBranches, detectUpstream, remoteUrls } from './branches';
 import type { Store } from './db';
 import { gitTry } from './git';
+import { parseRemote } from './repo';
 import { allowedHere, approvedHere, personalDemoSite, readPersonal } from './personal-site';
 import { refsSeal } from './read-tree';
 import { siteIncomplete, siteMissing, siteName } from './site';
@@ -55,8 +56,8 @@ async function readRepo(path: string, folder: boolean, branch: string | undefine
   const detected = await detectBranch(path, branches);
   const main = branch || detected;
   const commit = await branchCommit(path, main, branches);
-  const [adapterModule, shared] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit)]);
-  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}) }, detected, adapterModule, shared };
+  const [adapterModule, shared, upstream, remotes] = await Promise.all([hasAdapterModule(path, commit), readSharedAt(path, commit), detectUpstream(path), remoteUrls(path)]);
+  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}), ...(upstream ? { upstream } : {}), ...(Object.keys(remotes).length ? { remotes } : {}) }, detected, adapterModule, shared };
 }
 
 /**
@@ -249,14 +250,31 @@ function onServer(info: RepoInfo): boolean {
 }
 
 /** What a repository's ref says of its settings, which may change while the canvas runs: its main branch, how work lands. */
-export function settled(info: RepoInfo, adapter: RepoAdapter): Pick<RepoRef, 'branch' | 'pullRequests' | 'direct' | 'folder' | 'forge'> {
+export function settled(info: RepoInfo, adapter: RepoAdapter): Pick<RepoRef, 'branch' | 'pullRequests' | 'direct' | 'folder' | 'forge' | 'upstream'> {
   if (info.folder) return { branch: '', folder: true };
+  const upstream = upstreamOf(info, adapter);
   return {
     branch: info.branch,
     // an origin on a server (not a directory on this machine) may get pull requests of others
     ...(onServer(info) ? { forge: true } : {}),
     ...(adapter.land === 'pr' ? { pullRequests: true, ...(adapter.direct ? { direct: true } : {}) } : {}),
+    ...(upstream ? { upstream } : {}),
   };
+}
+
+/**
+ * The original repository a fork's cards may go to as a pull request (`RepoSettings.upstream`):
+ * only where work lands on the local main branch, which then takes what is pushed onto that pull
+ * request. Its name is `owner/repo` of the remote's URL, else the remote's name.
+ */
+export function upstreamOf(info: RepoInfo, adapter: RepoAdapter): UpstreamRef | undefined {
+  const set = adapter.upstream?.trim();
+  if (!set || adapter.land !== 'main' || info.folder) return undefined;
+  const slash = set.indexOf('/');
+  const remote = set.slice(0, slash);
+  const url = info.remotes?.[remote];
+  const path = url ? parseRemote(url).path.split(/[/\\]/).slice(-2).join('/') : '';
+  return { ref: set, remote, branch: set.slice(slash + 1), name: path || remote, ...(url ? { url } : {}), into: info.branch };
 }
 
 /** Where a repository shares demos: the site its settings name, once it is complete; null without one. */
