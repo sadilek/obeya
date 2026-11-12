@@ -2,7 +2,7 @@
 // at OpenAI's API list prices: Codex itself names no cost, unlike Claude Code. The table needs
 // keeping up as OpenAI changes its prices and models.
 
-import { CODEX_PRESET, codexFamily, newestOfFamilies } from '../core/types';
+import { CODEX_PRESET, codexFamily, newestOfFamilies } from '../core/agents';
 
 /** US dollars per million tokens. Input tokens are each uncached, cached or written to the cache; reasoning counts as output. */
 interface Price {

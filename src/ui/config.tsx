@@ -4,7 +4,9 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_ROLES, type AgentEffort, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoVoiceCheck, type Language, type NarrationLanguage, type PageTags, type SetupCheck, type Theme, THEMES, type VoiceKind, type VoiceSetupView } from '../core/types';
+import { AGENT_ROLES, type AgentEffort, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices } from '../core/agents';
+import { blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
@@ -13,7 +15,7 @@ import { effortsOf, HarnessUpdate, modelLabel } from './agentPick';
 import { api, reload, type SiteHow, failText } from './api';
 import { useAct, useLoaded, usePoll } from './act';
 import { useLatest } from './latest';
-import { keepConfigDraft, keptConfigDraft } from './configDraft';
+import { type FilledClones, keepConfigDraft, keptConfigDraft, restartsAgents, withClones } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
 import { FolderPick } from './folderPick';

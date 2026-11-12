@@ -5,7 +5,8 @@
 
 import { type MouseEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { CanvasInfo, Item, Waiting } from '../core/types';
+import type { CanvasInfo, Item } from '../core/types';
+import type { Waiting } from '../core/card';
 import { canvasPath } from './address';
 import { api } from './api';
 import { FoldArrow, toggleFolded, useFolded } from './fold';

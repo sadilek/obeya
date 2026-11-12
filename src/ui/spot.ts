@@ -4,7 +4,8 @@
 // end of the video, the words are about the work as a whole.
 
 import { useSyncExternalStore } from 'react';
-import { chapterAt, type SpotInput } from '../core/types';
+import type { SpotInput } from '../core/types';
+import { chapterAt } from '../core/card';
 import { api } from './api';
 import { MAX_SIDE } from './shots';
 import { signal } from './signal';

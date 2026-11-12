@@ -6,7 +6,10 @@ import type { CardDiff } from '../core/diff';
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
-import { answering, askable, type Awaited, pausable, pausableNow, type WorkerTurn, type CardLanding, type ChangeSize, formatQuestion, handedOver, type Item, pickedAnswer, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, cardAgentOf, type ChangeRoute } from '../core/types';
+import { type Awaited, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute } from '../core/types';
+import { answering, askable, pausable, pausableNow, formatQuestion, handedOver } from '../core/card';
+import { cardAgentOf } from '../core/agents';
+import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
 import { fromJson, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
 import { decisionLog } from './advisor';
@@ -39,6 +42,9 @@ export type { WorkerOptions } from './worker-options';
 
 /** The owner's comments on places in the demo video that go with their approval, as the worker reads them. */
 export type Comments = { text: string; images: string[] };
+
+/** The owner's answer as the log holds it: the options picked, then their own words. */
+export const pickedAnswer = (picks: string[], words: string) => [picks.join(', '), words.trim()].filter(Boolean).join('\n\n');
 
 /** Landed work's state once what it waited for (the restart) has happened. */
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;

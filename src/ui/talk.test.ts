@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { type CardEvent, formatQuestion, type Item, needsYou, openQuestions, pausable } from '../core/types';
+import type { CardEvent, Item } from '../core/types';
+import { formatQuestion, needsYou, openQuestions, pausable } from '../core/card';
 import { answerText } from './answer';
 import { agentWorks, beingWritten, obeyaWorks, opensWithTalk, ownerField, runs, split, talkAlone } from './cardState';
 import { cardTalk, demoHandover, coordinatorReads, parseQuestion, talkTurns, unseen, unseenTurns } from './talk';

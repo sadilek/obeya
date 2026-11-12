@@ -4,7 +4,7 @@
 // that starts or builds the card names a new one, so what the click does is clear before it.
 
 import { useEffect, useRef, useState } from 'react';
-import { type CardPatch, type Item, newRepoName, type RepoRef } from '../core/types';
+import { type CardPatch, type Item, type RepoRef } from '../core/types';
 import { t } from './strings';
 
 /** A new repository as the owner picks it on the card. */
@@ -61,6 +61,9 @@ export function useRepoChoice(item: Item, onEdit: (p: CardPatch) => void): RepoC
     setFresh,
   };
 }
+
+/** The name a new repository's folder gives it (and its canvas): the last part of its path. */
+export const newRepoName = (path: string) => path.trim().replace(/[/\\]+$/, '').split(/[/\\]/).at(-1) ?? '';
 
 /** Where a new repository's folder starts out: beside the canvas's first repository. */
 const besideHome = (repos: RepoRef[]) => repos[0]?.path.replace(/[/\\][^/\\]+[/\\]?$/, '/') ?? '';

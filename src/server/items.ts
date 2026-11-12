@@ -4,7 +4,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlanDoc } from '../core/plan-doc';
-import { type AgentEffort, cardAgentOf, type CardState, type Demo, type EarlierDemo, finished, type Idea, type Item, type PullRequest, type Superseded, type Thread } from '../core/types';
+import type { CardState, Demo, EarlierDemo, Idea, Item, PullRequest, Superseded, Thread } from '../core/types';
+import { finished } from '../core/card';
+import { type AgentEffort, cardAgentOf } from '../core/agents';
 import type { CardRow } from './db';
 import { docOfRef, keyOfRef, OUTSIDE_PATH, pathOfRef, repoOfRef, workstreamRef } from './plan-ref';
 import { fromJson, type PrState, type StoredDemo } from './row';

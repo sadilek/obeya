@@ -8,7 +8,8 @@ import { defaultsFor, hasAdapterModule, readSharedAt, readSharedFiles, repoValue
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { dimensions } from '../core/page-tags';
-import { type CanvasConfig, type ConfigProblemCode, type DemoSite, layerSettings, type RepoConfig, type RepoRef, type RepoSettings, type SharedSettings } from '../core/types';
+import type { RepoRef } from '../core/types';
+import { type CanvasConfig, type ConfigProblemCode, type DemoSite, layerSettings, type RepoConfig, type RepoSettings, type SharedSettings } from '../core/config';
 import { branchCommit, branchSetting, defaultBranchCommit, detectBranch, markFolder, readBranches } from './branches';
 import type { Store } from './db';
 import { gitTry } from './git';

@@ -1,7 +1,8 @@
 // An idea under discussion, and the prototypes built of it.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { archiveRefusal, type Item, type NextStep, type RepoRef } from '../core/types';
+import type { Item, NextStep, RepoRef } from '../core/types';
+import { archiveRefusal } from '../core/card';
 import { Body, Inline } from './markdown';
 import { cardDraft } from './draft';
 import { Composer } from './composer';

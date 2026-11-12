@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { type CanvasInfo, type Item, type Talk, waitingIn } from '../core/types';
+import type { CanvasInfo, Item, Talk } from '../core/types';
+import { waitingIn } from '../core/card';
 import { forYouCount, forYouOf, forYouTotal } from './forYou';
 import { testItem } from './testing';
 

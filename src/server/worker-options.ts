@@ -3,7 +3,9 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { RepoAdapter } from '../adapters/types';
 import type { Language } from '../core/locale';
-import type { Harness, Item, RepoSettings } from '../core/types';
+import type { Item } from '../core/types';
+import type { Harness } from '../core/agents';
+import type { RepoSettings } from '../core/config';
 import type { Board } from './board';
 import type { FolderWorkspaces } from './folder';
 import type { Forge } from './forge';

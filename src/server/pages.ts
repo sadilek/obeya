@@ -5,7 +5,8 @@
 
 import type { ServerWebSocket } from 'bun';
 import { parsePlace } from '../core/layout';
-import { type CanvasInfo, type ClientMessage, type Item, needsYou, type PendingRestart, type ServerMessage, type Waiting, waitingIn, waitingOn } from '../core/types';
+import type { CanvasInfo, ClientMessage, Item, PendingRestart, ServerMessage } from '../core/types';
+import { needsYou, type Waiting, waitingIn, waitingOn } from '../core/card';
 import type { AppUpdates } from './app-update';
 import type { CanvasRuntime } from './canvas';
 import { type Push, startedWaiting } from './push';

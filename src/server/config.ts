@@ -11,7 +11,8 @@ import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { readShared, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
 import { settingsShape, withoutGone as goneSettings } from '../adapters/schema';
-import { blocksSaving, type CanvasConfig, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type ResolvedCanvas, layerSettings, type ProposedSetting, type RepoTrust, type RepoValues, settingPatch, commandLines } from '../core/types';
+import type { ProposedSetting } from '../core/types';
+import { blocksSaving, type CanvasConfig, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type ResolvedCanvas, layerSettings, type RepoTrust, type RepoValues, commandLines } from '../core/config';
 import { expandHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { BadRequest } from './board';
 import { type StartFailure } from './canvas';
@@ -97,6 +98,12 @@ function tidySite(s: DemoSite | undefined): DemoSite | undefined {
     ...(s.tags && Object.keys(s.tags).length ? { tags: s.tags } : {}),
   };
   return out.title || out.url || out.deploy || Object.keys(out).length > 3 ? out : undefined;
+}
+
+/** `value` as this machine's settings for the repository hold it (`RepoSettings`). */
+export function settingPatch(field: ProposedSetting, value: string | string[] | undefined): RepoSettings {
+  if (field === 'run') return { app: { ...(value !== undefined ? { run: value as string } : {}) } };
+  return { [field]: value } as RepoSettings;
 }
 
 /** The canvases as the configuration lists them, from the dialog, the file and the Coordinator alike. */

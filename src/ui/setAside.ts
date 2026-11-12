@@ -2,7 +2,8 @@
 // owner anew, in a list of their own meanwhile. Kept in the phone's browser, not on the server: it is
 // how the owner sorts the phone's lists, and the canvas at the desk shows every card as before.
 
-import { type Item, needsYou } from '../core/types';
+import type { Item } from '../core/types';
+import { needsYou } from '../core/card';
 import { local, readJson, writeJson } from './stored';
 
 /**

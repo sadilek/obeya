@@ -3,10 +3,11 @@
 
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
-import { type CardAction, type CardPatch, type NewCard, type PageTags, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES } from '../core/types';
+import { type CardAction, type CardPatch, type NewCard, type PageTags, type SpotInput, type TalkRef, MAX_FILE_BYTES } from '../core/types';
 import index from '../ui/index.html';
 import { type Gate, guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
+import { isTalkRef } from './sheet';
 import { type Dropped, findDropped, localImage } from './files';
 import type { CanvasRuntime } from './canvas';
 import { SiteSetup } from './site-setup';

@@ -2,7 +2,8 @@
 // boxes and buttons several kinds of card have.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { archiveRefusal, type CardAction, type CardPatch, finishingUp, type Item, snoozable } from '../core/types';
+import type { CardAction, CardPatch, Item } from '../core/types';
+import { archiveRefusal, finishingUp, snoozable } from '../core/card';
 import { api, type Field } from './api';
 import { Naming } from './cardLink';
 import { plain } from './markdown';

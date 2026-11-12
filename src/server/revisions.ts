@@ -7,7 +7,8 @@
 import { basename } from 'node:path';
 import { z } from 'zod';
 import { ownersLanguage } from '../core/locale';
-import { formatQuestion, type Item, type Question, type Revising } from '../core/types';
+import type { Item, Question, Revising } from '../core/types';
+import { formatQuestion } from '../core/card';
 import { BadRequest, type Board } from './board';
 import { imageNote, MAX_IMAGES } from './images';
 import { type AgentRuntime, readSession } from './runtime';

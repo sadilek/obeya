@@ -8,7 +8,9 @@ import { z } from 'zod';
 import { LANGUAGE_NAMES, type Language } from '../core/locale';
 import { dimensions, parseTagLines, tagLines } from '../core/page-tags';
 import { messageOf, plainText } from '../core/text';
-import { finished, type Item, type PageTags, type TagProposalJob } from '../core/types';
+import type { Item, PageTags } from '../core/types';
+import { finished } from '../core/card';
+import type { TagProposalJob } from '../core/config';
 import { BadRequest } from './board';
 import { type AgentRuntime, readSession } from './runtime';
 

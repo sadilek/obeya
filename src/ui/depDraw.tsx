@@ -4,7 +4,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Bounds } from '../core/layout';
-import { titleFrom, type Item } from '../core/types';
+import type { Item } from '../core/types';
+import { titleFrom } from '../core/card';
 import { clip } from '../core/text';
 import { api, ApiError, failText } from './api';
 import type { Cam } from './camera';

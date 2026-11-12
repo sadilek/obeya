@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
-import { awaitsContributorNext, needsYou } from '../core/types';
+import { awaitsContributorNext, needsYou } from '../core/card';
 import type { Board } from './board';
 import type { StoredContribution } from './row';
 import { CanvasRuntime } from './canvas';

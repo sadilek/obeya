@@ -4,7 +4,8 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildableOn, type Item, NEW_REPO_HOLD_MS, plannableAsProject, prototypeBuild, prototypeName } from '../core/types';
+import { type Item, NEW_REPO_HOLD_MS } from '../core/types';
+import { buildableOn, plannableAsProject } from '../core/card';
 import { clip, messageOf, oneLine, plainText } from '../core/text';
 import { BadRequest, type Board } from './board';
 import { pathOfRef } from './plan-ref';
@@ -22,6 +23,46 @@ import { outsidePlanDir } from './repo';
 
 /** New repositories being made, one after the other (`makeNewRepo`). */
 let making: Promise<unknown> = Promise.resolve();
+
+/**
+ * The name a plan doc gives a prototype by: its variant, or else its approach as its title has it
+ * after the idea's (which tells apart two prototypes of the same variant, "… (2)").
+ */
+export function prototypeName(p: Pick<Item, 'title' | 'variant'>): string {
+  const variant = p.variant?.trim();
+  if (variant && p.title.endsWith(variant)) return variant;
+  return p.title.split(' – ').slice(1).join(' – ').trim() || variant || p.title;
+}
+
+/**
+ * Which of an idea's prototypes the project it became builds on, and in which workstream, as the
+ * plan doc says it: the one open workstream that names one prototype by its name (`prototypeName`)
+ * in quotes; with a single prototype, also the one open workstream that mentions prototypes at all.
+ * `also`: the other workstreams that mention prototypes all the same. `none` where no workstream
+ * mentions a prototype; `unclear` where several name one, one names several, or one mentions a
+ * prototype without naming which, with the workstreams that do.
+ */
+export function prototypeBuild<W extends { title: string; body: string }, P extends Pick<Item, 'title' | 'variant'>>(
+  workstreams: W[],
+  prototypes: P[],
+): { workstream: W; prototype: P; also: W[] } | { none: true } | { unclear: 'several' | 'many' | 'unnamed'; workstreams: W[] } {
+  const flat = (s: string) => s.toLowerCase().replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  const quoted = (text: string, name: string) => name !== '' && new RegExp(`[„“”"‚‘’'«»‹›]\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[„“”"‚‘’'«»‹›]`).test(text);
+  const named = workstreams.flatMap((w) => {
+    const text = flat(`${w.title}\n${w.body}`);
+    const own = prototypes.filter((p) => quoted(text, flat(prototypeName(p))));
+    return own.length ? [{ w, own }] : [];
+  });
+  const mentioning = workstreams.filter((w) => /prototyp/i.test(`${w.title}\n${w.body}`));
+  if (named.length > 1) return { unclear: 'several', workstreams: named.map((n) => n.w) };
+  if (named.length === 1) {
+    const [{ w, own }] = named as [{ w: W; own: P[] }];
+    return own.length > 1 ? { unclear: 'many', workstreams: [w] } : { workstream: w, prototype: own[0]!, also: mentioning.filter((m) => m !== w) };
+  }
+  if (!mentioning.length) return { none: true };
+  if (mentioning.length === 1 && prototypes.length === 1) return { workstream: mentioning[0]!, prototype: prototypes[0]!, also: [] };
+  return { unclear: mentioning.length > 1 ? 'several' : 'unnamed', workstreams: mentioning };
+}
 
 /** How often handing a prototype to its workstream is tried, git failing, before it is left to the owner. */
 const SETTLE_TRIES = 3;

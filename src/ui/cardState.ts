@@ -3,7 +3,8 @@
 // none of its events (those are in talk.ts).
 
 import { holdsNotes } from '../core/queue';
-import { answering, askable, finishingUp, type Item, needsYou, openQuestions, pausableNow, type Talk as Exchange } from '../core/types';
+import type { Item, Talk as Exchange } from '../core/types';
+import { answering, askable, finishingUp, needsYou, openQuestions, pausableNow } from '../core/card';
 
 /**
  * The one field a card has for the owner's words, by its state: the answer to its agent's question,

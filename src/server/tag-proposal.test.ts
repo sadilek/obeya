@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TagProposalJob } from '../core/types';
+import type { TagProposalJob } from '../core/config';
 import { canvas, dir, eachTest, main, runtime, store } from './canvas-fixture';
 import { Config } from './config';
 import { serve } from './server';

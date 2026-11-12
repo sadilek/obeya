@@ -1,7 +1,8 @@
 // Sharing a card's demo with colleagues: on a page of the repository's demo site, or as a file.
 
 import { useEffect, useRef, useState } from 'react';
-import { type CardAction, type Demo, type EarlierDemo, EXPORT_HTML_MAX, type Item, type PageTags, type RepoRef, withSupplemented } from '../core/types';
+import { type CardAction, type Demo, type EarlierDemo, EXPORT_HTML_MAX, type Item, type PageTags, type RepoRef } from '../core/types';
+import { withSupplemented } from '../core/card';
 import { api } from './api';
 import { useCopy } from './copy';
 import { useMenuClose } from './menu';

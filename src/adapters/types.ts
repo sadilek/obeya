@@ -2,7 +2,7 @@
 // settings in front (`.obeya/settings.json`, then this machine's). The core only talks to this
 // interface.
 
-import type { SharedSettings } from '../core/types';
+import type { SharedSettings } from '../core/config';
 
 export interface RepoInfo {
   path: string;

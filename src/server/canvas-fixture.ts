@@ -7,7 +7,7 @@ import { afterEach, beforeEach } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CanvasConfig, RepoConfig } from '../core/types';
+import type { CanvasConfig, RepoConfig } from '../core/config';
 import { type CanvasDeps, CanvasRuntime } from './canvas';
 import type { Focus, Heard, Input } from './commands';
 import { Store } from './db';

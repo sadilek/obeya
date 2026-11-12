@@ -3,7 +3,8 @@
 // with their text, the merge on the forge, and the local main pulled after it (design: Review cards).
 
 import { isAbsolute } from 'node:path';
-import { answering, askable, finished, handedOver, type Item, type Question, type ApproveResult, type ChangeRoute, type Clash, type Finding, type FindingStatus, type HeldChanges, PUSH_HOLD_MS } from '../core/types';
+import { type Item, type Question, type ApproveResult, type ChangeRoute, type Clash, type Finding, type FindingStatus, type HeldChanges, PUSH_HOLD_MS } from '../core/types';
+import { answering, askable, finished, handedOver } from '../core/card';
 import { BadRequest } from './board';
 import { fromJson, type HeldComment, type Json, type LandedState, type Resolving, type StoredContribution, type Unheard, toJson } from './row';
 import { hostName } from './hosts';

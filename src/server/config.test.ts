@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { blocksSaving, type CanvasConfig, type ConfigView, type DemoSettingsView, type LanguageView } from '../core/types';
+import type { DemoSettingsView, LanguageView } from '../core/types';
+import { blocksSaving, type CanvasConfig, type ConfigView } from '../core/config';
 import { Board } from './board';
 import { CanvasRuntime, type StartFailure } from './canvas';
 import { Config, readConfigFile } from './config';

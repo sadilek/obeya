@@ -2,7 +2,8 @@
 
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES } from '../core/messages';
-import { type CardEvent, type Demo, type Item, openQuestions, ownWords, type Question, resumable, started } from '../core/types';
+import type { CardEvent, Demo, Item, Question } from '../core/types';
+import { openQuestions, ownWords, resumable, started } from '../core/card';
 import { readAnswer } from './answer';
 import { agentWorks } from './cardState';
 

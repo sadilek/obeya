@@ -3,7 +3,7 @@
 // background, since a login in the browser may take minutes; the dialog follows its lines.
 
 import { basename, resolve } from 'node:path';
-import type { PersonalSiteView, SiteSetupJob, DemoSite } from '../core/types';
+import type { PersonalSiteView, SiteSetupJob, DemoSite } from '../core/config';
 import { BadRequest } from './board';
 import { allowPrivate, connect, connectionCode, envFileFor, hostDeploy, newToken, type PersonalSite, personalDemoSite, readPersonal, shareApproved, type SiteHost, writeEnv, writePersonal } from './personal-site';
 import { siteMissing } from './site';

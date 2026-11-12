@@ -1,7 +1,8 @@
 // A review card: what its agent found in the pull request, the owner's decisions on it, and the merge.
 
 import { useContext } from 'react';
-import { type ApproveResult, type CardAction, type ChangeRoute, type Contribution, finished, type Item, type Finding, type Clash as ClashFound } from '../core/types';
+import type { ApproveResult, CardAction, ChangeRoute, Contribution, Item, Finding, Clash as ClashFound } from '../core/types';
+import { finished } from '../core/card';
 import { Inline, plain } from './markdown';
 import { Cards } from './message';
 import { cardDraft, updateDraft, useDraft } from './draft';

@@ -6,7 +6,8 @@
 // conversation in view.
 
 import { type ReactNode, useRef, useState } from 'react';
-import { type CanvasInfo, type Item, needsYou, snoozable, type Talk, type Waiting, waitingOn } from '../core/types';
+import type { CanvasInfo, Item, Talk } from '../core/types';
+import { needsYou, snoozable, type Waiting, waitingOn } from '../core/card';
 import { Aside, SWIPED_CARD } from './aside';
 import { plain } from './markdown';
 import { ClockMark, SnoozeFor } from './snooze';

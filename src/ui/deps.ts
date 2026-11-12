@@ -7,7 +7,8 @@
 
 import type { Bounds } from '../core/layout';
 import { drawnWaits } from '../core/queue';
-import { finished, type Item } from '../core/types';
+import type { Item } from '../core/types';
+import { finished } from '../core/card';
 
 export interface Deps {
   /** The cards the hovered one waits for, directly or through others. */

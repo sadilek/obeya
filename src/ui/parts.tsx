@@ -4,7 +4,8 @@
 import { memo, useRef } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
-import { answering, archiveRefusal, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, halted, type PullRequest, titleFrom } from '../core/types';
+import type { Item, PullRequest } from '../core/types';
+import { answering, archiveRefusal, finishingUp, handedOver, needsYou, openQuestions, pausable, halted, titleFrom } from '../core/card';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';

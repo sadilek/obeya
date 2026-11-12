@@ -4,7 +4,8 @@
 // every kind of card; a review card handed over can also wait for its contributor to respond.
 
 import { useRef, useState } from 'react';
-import { awaitsContributorNext, type CardEvent, type Item, type Snooze } from '../core/types';
+import type { CardEvent, Item, Snooze } from '../core/types';
+import { awaitsContributorNext } from '../core/card';
 import { api } from './api';
 import { useMenuClose, usePlaced } from './menu';
 import { clock, t } from './strings';

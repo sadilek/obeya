@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { languageOf } from '../core/locale';
-import { AGENT_DEFAULTS, type AgentSetting } from '../core/types';
+import { AGENT_DEFAULTS, type AgentSetting } from '../core/agents';
 import { byHarness, withAgentSetting } from './runtime';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveSwitch, switchView, themeView } from './settings';

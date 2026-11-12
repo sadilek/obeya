@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
-import { needsYou, stopped } from '../core/types';
+import { needsYou, stopped } from '../core/card';
 import { artifact, commit, gitClone, heard, identify, testBoard, until, ws } from './testing';
 import type { Board } from './board';
 import { board, dir, doc, eachTest, handedOver, main, manual, merged, newWorkers, origin, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';

@@ -3,7 +3,8 @@
 // accents aside, anywhere in the card's text.
 
 import { plain } from './plain';
-import { type CardKind, type Idea, type Item, stopped } from './types';
+import type { CardKind, Idea, Item } from './types';
+import { stopped } from './card';
 
 /** Lower case without accents, so "uber" finds "Über". */
 export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();

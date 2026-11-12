@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { MESSAGES } from '../core/messages';
-import { needsYou, pausable } from '../core/types';
+import { needsYou, pausable } from '../core/card';
 import { BadRequest, Board } from './board';
 import { OBEYA_PLUGIN } from './demo';
 import { Images } from './images';

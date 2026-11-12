@@ -21,8 +21,8 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { messageOf } from '../core/text';
 import { within, withTimeout } from '../core/late';
-import type { AgentEffort, HarnessModel, UsageLimit } from '../core/types';
-import { AGENT_EFFORTS, codexFamily, codexFamilyName, nearestEffort, resolveCodexModel } from '../core/types';
+import type { UsageLimit } from '../core/types';
+import { type AgentEffort, type HarnessModel, AGENT_EFFORTS, codexFamily, codexFamilyName, newestOfFamilies } from '../core/agents';
 import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
@@ -85,6 +85,23 @@ export async function codexLogin(bin: string, env: Env): Promise<{ loggedIn: boo
   if (out === null) return { loggedIn: false };
   const how = out.match(/logged in using (.+)/i)?.[1]?.trim();
   return { loggedIn: true, ...(how ? { how } : {}) };
+}
+
+/**
+ * The model a Codex family runs on with a catalog (`model/list`): the newest of the family, else the
+ * one the catalog marks as its default; none where the catalog has neither.
+ */
+export function resolveCodexModel<M extends { id: string; isDefault?: true }>(models: M[], family: string): M | undefined {
+  const key = codexFamily(family);
+  return newestOfFamilies(models).find((m) => codexFamily(m.id) === key) ?? models.find((m) => m.isDefault);
+}
+
+/** The effort a model takes nearest to the one chosen, the higher of two as near: the one chosen where it takes it, or says nothing. */
+export function nearestEffort(effort: AgentEffort, takes: AgentEffort[] | undefined): AgentEffort {
+  if (!takes?.length || takes.includes(effort)) return effort;
+  const at = AGENT_EFFORTS.indexOf(effort);
+  const distance = (e: AgentEffort) => Math.abs(AGENT_EFFORTS.indexOf(e) - at);
+  return takes.reduce((best, e) => (distance(e) < distance(best) || (distance(e) === distance(best) && AGENT_EFFORTS.indexOf(e) > AGENT_EFFORTS.indexOf(best)) ? e : best));
 }
 
 /** A process that runs an app server: one started here, or one over `ssh` (`SshHost.session`). */

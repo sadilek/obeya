@@ -2,7 +2,8 @@
 
 import { type ReactNode, type RefObject, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { chapterAt, type Demo, type EarlierDemo, type Item } from '../core/types';
+import type { Demo, EarlierDemo, Item } from '../core/types';
+import { chapterAt } from '../core/card';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
 import { api, cardAt, holdRestart } from './api';

@@ -4,7 +4,7 @@
 
 import { CARD_SIZE, boundsOf, freeSpotNear, GAP, placeWorkstreams } from '../core/layout';
 import { type PlanDoc, parsePlanDoc, withoutReference, type Workstream, workstreamAliases } from '../core/plan-doc';
-import { finished } from '../core/types';
+import { finished } from '../core/card';
 import type { Board } from './board';
 import { branchName, CARD_BRANCH } from './branches';
 import type { CardRow, Store } from './db';

@@ -1,7 +1,7 @@
 // A card's pull request: its checks, its review, and the text that goes onto it with the approval.
 
 import { useEffect, useState } from 'react';
-import { type HeldChanges, type PrComment, type PrReviewEntry, type PullRequest } from '../core/types';
+import type { HeldChanges, PrComment, PrReviewEntry, PullRequest } from '../core/types';
 import { api, failText } from './api';
 import { Body, Inline } from './markdown';
 import { MdField } from './mdField';

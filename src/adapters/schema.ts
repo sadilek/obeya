@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { LANGUAGES } from '../core/locale';
-import { type RepoSettings, SHARED_FIELDS, type SharedSettings } from '../core/types';
+import { type RepoSettings, SHARED_FIELDS, type SharedSettings } from '../core/config';
 
 const strings = z.array(z.string());
 

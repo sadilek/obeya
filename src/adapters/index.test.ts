@@ -6,7 +6,7 @@ import { repoInfo } from '../server/repo';
 import { gitRepo } from '../server/testing';
 import { defaultBranchCommit } from '../server/branches';
 import { git } from '../server/git';
-import { layerSettings, type RepoSettings } from '../core/types';
+import { layerSettings, type RepoSettings } from '../core/config';
 import { defaultsFor, hasAdapterModule, parseShared, readShared, repoValues, withSettings } from '.';
 import { generic } from './generic';
 

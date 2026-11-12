@@ -4,7 +4,7 @@
 // branch, or changed there, is held until the owner confirms it in "Configuration".
 
 import type { SharedRead } from '../adapters';
-import type { RepoCommands, RepoSettings, SharedSettings, TrustGroup } from '../core/types';
+import type { RepoCommands, RepoSettings, SharedSettings, TrustGroup } from '../core/config';
 
 const GROUPS: TrustGroup[] = ['app', 'site', 'claude'];
 

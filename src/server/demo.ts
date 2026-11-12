@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { chapterAt } from '../core/types';
+import { chapterAt } from '../core/card';
 import { resource } from './resources';
 import { oneLine } from '../core/text';
 import { type Cue, cuesOf } from '../../plugin/skills/demo/lib/subtitles.ts';

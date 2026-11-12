@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import type { HarnessHost } from '../core/types';
+import type { HarnessHost } from '../core/agents';
 import { aliasesOf, type HostHarness, type ClaudeListed, Harnesses, hostClaude } from './harnesses';
 import { registerHost } from './hosts';
 

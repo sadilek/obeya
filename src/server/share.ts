@@ -12,7 +12,9 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MESSAGES, type Messages } from '../core/messages';
-import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented, type DemoSite } from '../core/types';
+import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags } from '../core/types';
+import { withSupplemented } from '../core/card';
+import type { DemoSite } from '../core/config';
 import { BadRequest, type Board } from './board';
 import { cardDemos, pageTagsOf, sameDemo, sharedDemos, type StoredReshare } from './shared-pages';
 import { fromJson, type DemoRef, type SharedDemo, type StoredDemo, type StoredShare, toJson } from './row';

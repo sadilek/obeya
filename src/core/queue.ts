@@ -2,7 +2,8 @@
 // (`since`). The owner moves a waiting card earlier or later, one place or several at once, past
 // cards it has no wait with: the waits fix the order between the cards they join, the owner the rest.
 
-import { finished, type Item } from './types';
+import type { Item } from './types';
+import { finished } from './card';
 
 /** Waiting to start: being judged, behind others, or for a workspace. */
 export const inQueue = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !!i.queue;

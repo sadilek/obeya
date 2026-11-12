@@ -6,7 +6,8 @@
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, type ModelChoice, modelName } from '../core/types';
+import type { CardAction, Item } from '../core/types';
+import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, modelChoices, type ModelChoice, modelName } from '../core/agents';
 import { useMenuClose, usePlaced } from './menu';
 import { api } from './api';
 import { usePoll } from './act';

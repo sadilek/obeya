@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseShared, REPO_SETTINGS_FILE } from '../adapters';
-import { layerSettings, SHARED_FIELDS, type SettingsShared, type SharedSettings } from '../core/types';
+import { layerSettings, SHARED_FIELDS, type SettingsShared, type SharedSettings } from '../core/config';
 import { BadRequest } from './board';
 import type { Forge } from './forge';
 import { defaultBranch } from './branches';

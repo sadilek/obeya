@@ -5,7 +5,8 @@
 
 import { useRef, useState } from 'react';
 import type { Place } from '../core/layout';
-import { agentListens, type Item, type Notice, type TalkRef } from '../core/types';
+import type { Item, Notice, TalkRef } from '../core/types';
+import { agentListens } from '../core/card';
 import { Aside } from './aside';
 import { api, ApiError, type Field, type Heard, type Where, failText } from './api';
 import { clip } from '../core/text';

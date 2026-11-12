@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { needsYou } from '../core/types';
+import { needsYou } from '../core/card';
 import { board, canvas, eachTest, item, restart, runtime, settle, workers } from './canvas-fixture';
 import { type FakeSession, until } from './testing';
 

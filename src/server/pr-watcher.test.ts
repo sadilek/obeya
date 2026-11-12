@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import type { Language } from '../core/locale';
-import { needsYou } from '../core/types';
+import { needsYou } from '../core/card';
 import type { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';

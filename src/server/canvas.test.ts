@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
-import type { CardAction, RepoConfig, RepoSettings } from '../core/types';
+import type { CardAction } from '../core/types';
+import type { RepoConfig, RepoSettings } from '../core/config';
 import type { StoredContribution } from './row';
 import { CanvasRuntime } from './canvas';
 import { Canvases, startCanvases } from './canvases';

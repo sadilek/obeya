@@ -2,7 +2,10 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import { type AgentSetting, agentListens, answering, askable, type Awaited, awaited, type AwaitedState, awaitsContributorNext, blocksSaving, type CanvasConfig, finished, handedOver, type Item, type NextStep, type Notice, openQuestions, pausableNow, plannableAsProject, halted, untouched, snoozable, laterTime, type Queue, type SpotInput, type Talk, type TalkAfter, type TalkQuote, type TalkRef } from '../core/types';
+import type { Awaited, AwaitedState, Item, NextStep, Notice, Queue, SpotInput, Talk, TalkAfter, TalkQuote, TalkRef } from '../core/types';
+import { agentListens, answering, askable, awaited, awaitsContributorNext, finished, handedOver, openQuestions, pausableNow, plannableAsProject, halted, untouched, snoozable, laterTime } from '../core/card';
+import type { AgentSetting } from '../core/agents';
+import { blocksSaving, type CanvasConfig } from '../core/config';
 import { holdsNotes, notStarted, startable } from '../core/queue';
 import { answerTag, fromAnswerTag } from './answers';
 import { cardNumbersIn, cardTag, NUMBERS_SINCE, numberOfTag } from '../core/card-number';

@@ -5,7 +5,7 @@
 // repository's refs do not move (`refsSeal`).
 
 import { readSharedFiles, type SharedRead } from '../adapters';
-import type { RepoSettings, SharedSettings, TrustGroup } from '../core/types';
+import type { RepoSettings, SharedSettings, TrustGroup } from '../core/config';
 import { type DefaultRead, readDefault, type RepoRead, type RepoReads } from './canvas-config';
 import type { Store } from './db';
 import { isFolder } from './branches';

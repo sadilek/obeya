@@ -47,7 +47,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } fro
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { type RestartReason } from '../core/types';
+import type { RestartReason } from '../core/types';
 import { within } from '../core/late';
 import { messageOf } from '../core/text';
 import type { CanvasConfig } from './canvas';

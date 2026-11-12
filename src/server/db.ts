@@ -1,7 +1,9 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { CardAgent, CardEvent, ChangeSize, DeviceView, CardKind, CardState, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, RepoCommands, SettingProposal, SettingProposalState, Snooze } from '../core/types';
+import type { CardEvent, ChangeSize, DeviceView, CardKind, CardState, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, SettingProposal, SettingProposalState, Snooze } from '../core/types';
+import type { CardAgent } from '../core/agents';
+import type { RepoCommands } from '../core/config';
 import type { CardFile } from '../core/files';
 import type { PlanDoc } from '../core/plan-doc';
 import type { Detail, HeldComment, Json, LandedState, PageHeard, PausedState, PrState, Scope, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread, Unheard } from './row';

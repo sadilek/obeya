@@ -11,7 +11,7 @@
 // approved card's latest demo there by itself, as a repository's site does with `publish`. A
 // second machine joins with a connection code, which carries the site and its credentials.
 
-import type { DemoSite } from '../core/types';
+import type { DemoSite } from '../core/config';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

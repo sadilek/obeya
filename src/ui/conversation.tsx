@@ -3,7 +3,8 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type BackgroundTask, type ChangeRoute, type CardEvent, type Demo, finished, type Item, type Mock, openQuestions, pausableNow, type Question, type Spot, started, taskAuthor } from '../core/types';
+import type { BackgroundTask, ChangeRoute, CardEvent, Demo, Item, Mock, Question, Spot } from '../core/types';
+import { finished, openQuestions, pausableNow, started, taskAuthor } from '../core/card';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';

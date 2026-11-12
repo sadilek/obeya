@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { agentListens, type Item } from '../core/types';
+import type { Item } from '../core/types';
+import { agentListens } from '../core/card';
 import { board, canvas, eachTest, restart, runtime, say as tell, settle } from './canvas-fixture';
 import { until } from './testing';
 

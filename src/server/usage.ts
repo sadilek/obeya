@@ -8,7 +8,8 @@
 // plan limits (an API key, a cloud provider) and a harness too old to answer show nothing.
 
 import type { SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
-import type { Harness, Usage, UsageLimit } from '../core/types';
+import type { Usage, UsageLimit } from '../core/types';
+import type { Harness } from '../core/agents';
 import { withTimeout } from '../core/late';
 import { Listeners, Watched } from '../core/watched';
 import { idleClaude } from './claude';

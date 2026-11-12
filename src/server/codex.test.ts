@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { bareCommand, CodexLogins, codexRuntime, codexUsageOf, itemCalls, limitResets, modelsOf, notLoggedIn, patchCalls, WAIT_REFUSED } from './codex';
+import { bareCommand, CodexLogins, codexRuntime, codexUsageOf, itemCalls, limitResets, modelsOf, nearestEffort, notLoggedIn, patchCalls, resolveCodexModel, WAIT_REFUSED } from './codex';
 import type { ToolCall } from './folder';
 import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
 import { alive, until } from './testing';
@@ -357,4 +357,22 @@ test('the models Codex lists, without hidden ones, each with the efforts it take
     { id: 'gpt-6.1-sol', name: 'GPT-6.1-Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], isDefault: true },
     { id: 'gpt-6-luna', name: 'GPT-6-Luna', efforts: ['low'] },
   ]);
+});
+
+test('a family runs on its newest model in the catalog, else on the default; on none in a catalog without either', () => {
+  const catalog = [{ id: 'gpt-5.6-sol' }, { id: 'gpt-6.2-sol' }, { id: 'gpt-6.1-sol' }, { id: 'gpt-6-luna', isDefault: true as const }];
+  expect(resolveCodexModel(catalog, 'gpt-#-sol')?.id).toBe('gpt-6.2-sol');
+  // a model id stored before resolves as its family
+  expect(resolveCodexModel(catalog, 'gpt-6.1-sol')?.id).toBe('gpt-6.2-sol');
+  expect(resolveCodexModel(catalog, 'gpt-#-terra')?.id).toBe('gpt-6-luna');
+  expect(resolveCodexModel([{ id: 'gpt-6-luna' }], 'gpt-#-terra')).toBeUndefined();
+  expect(resolveCodexModel([], 'gpt-#-sol')).toBeUndefined();
+});
+
+test('an effort the model does not take becomes the nearest it takes, the higher of two as near', () => {
+  expect(nearestEffort('max', ['low', 'medium', 'high', 'xhigh'])).toBe('xhigh');
+  expect(nearestEffort('medium', ['low', 'high'])).toBe('high');
+  expect(nearestEffort('low', ['medium', 'high'])).toBe('medium');
+  expect(nearestEffort('high', ['low', 'high'])).toBe('high');
+  expect(nearestEffort('max', undefined)).toBe('max');
 });

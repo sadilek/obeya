@@ -3,7 +3,8 @@
 import { memo, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
-import { archiveRefusal, finished, type Item, needsYou, type ProjectHistory } from '../core/types';
+import type { Item, ProjectHistory } from '../core/types';
+import { archiveRefusal, finished, needsYou } from '../core/card';
 import { ProjectTalk } from './coordinator';
 import { costLabel, ProjectSpent, useCostsShown } from './costs';
 import { api } from './api';

@@ -1,7 +1,8 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { agentListens, answering, type ApproveResult, archiveRefusal, askable, type CardPatch, finished, handedOver, type Item, plannableAsProject, type RepoRef, snoozable, stopped } from '../core/types';
+import type { ApproveResult, CardPatch, Item, RepoRef } from '../core/types';
+import { agentListens, answering, archiveRefusal, askable, finished, handedOver, plannableAsProject, snoozable, stopped } from '../core/card';
 import { ApiError, api, failText } from './api';
 import { cardPath } from './address';
 import { Naming } from './cardLink';

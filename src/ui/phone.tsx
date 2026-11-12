@@ -7,7 +7,8 @@
 // what was typed but not sent survives a reload. It holds one WebSocket for every canvas.
 
 import { type ComponentProps, Fragment, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type CanvasInfo, type CanvasSnapshot, finishedArchivable, type Item, needsYou, openQuestions, type RepoRef, type TalkRef, unreadAnswers, type Usage } from '../core/types';
+import type { CanvasInfo, CanvasSnapshot, Item, RepoRef, TalkRef, Usage } from '../core/types';
+import { finishedArchivable, needsYou, openQuestions, unreadAnswers } from '../core/card';
 import { api, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe } from './forYou';

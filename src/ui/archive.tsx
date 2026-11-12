@@ -8,7 +8,8 @@
 
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { ARCHIVE_LABELS, type ArchiveLabel, fold, searchText, searchWords } from '../core/search';
-import { type Item, stopped } from '../core/types';
+import type { Item } from '../core/types';
+import { stopped } from '../core/card';
 import { api } from './api';
 import { plain } from './markdown';
 import { useMenuClose } from './menu';

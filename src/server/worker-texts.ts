@@ -5,7 +5,8 @@ import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { MESSAGES, type Messages } from '../core/messages';
 import { clip } from '../core/text';
 import { failureReason } from './runtime';
-import { type Awaited, ownWords, type RestartReason, type Snooze, type Spot } from '../core/types';
+import type { Awaited, RestartReason, Snooze, Spot } from '../core/types';
+import { ownWords } from '../core/card';
 import type { DueRestart } from './workers';
 
 /** Where in the demo video the owner's words are, as the worker reads it above them. */

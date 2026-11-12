@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type Bounds, centre, unionBounds } from '../core/layout';
 import type { Group, Item } from '../core/types';
-import { openPerGroup } from '../core/types';
+import { openPerGroup } from '../core/card';
 import { api } from './api';
 import { type Cam, type Sides, TOP, toWorld } from './camera';
 import { growFrom, inside, Lasso, MarkHint, Marked, Ring } from './groups';

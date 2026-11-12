@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
-import { type AgentSetting, type CanvasConfig, type ConfigProblem, type ConfigView, type Notice, waitingOn } from '../core/types';
+import type { Notice } from '../core/types';
+import { waitingOn } from '../core/card';
+import type { AgentSetting } from '../core/agents';
+import type { CanvasConfig, ConfigProblem, ConfigView } from '../core/config';
 import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Store } from './db';

@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { type AnswerFile, isTalkRef, type Talk, type TalkAfter, type TalkMoved, type TalkQuote, type TalkRef, type TalkWait } from '../core/types';
+import { type AnswerFile, type Talk, type TalkAfter, type TalkMoved, type TalkQuote, type TalkRef, type TalkWait } from '../core/types';
 import type { Place } from '../core/layout';
 import type { Wish } from '../core/wish';
 
@@ -31,6 +31,9 @@ export interface HeldTalk {
 export interface TalkWaitRow extends TalkWait {
   then: string;
 }
+
+export const isTalkRef = (r: unknown): r is TalkRef =>
+  !!r && typeof r === 'object' && Number.isInteger((r as TalkRef).talk) && ['said', 'reply', 'answer'].includes((r as TalkRef).part);
 
 const now = () => new Date().toISOString();
 

@@ -2,7 +2,7 @@
 // for the owner a while (`app.stop`), unless the owner opened it to try it by hand, and forwarded to
 // the owner's browser from a workspace on another machine.
 
-import { answering } from '../core/types';
+import { answering } from '../core/card';
 import { clip } from '../core/text';
 import { runAppCommand } from './app-command';
 import { type Forward, remote } from './hosts';

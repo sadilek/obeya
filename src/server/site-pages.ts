@@ -9,7 +9,8 @@
 
 import { createHash } from 'node:crypto';
 import { dimensions } from '../core/page-tags';
-import type { DemoSite, PageTags } from '../core/types';
+import type { PageTags } from '../core/types';
+import type { DemoSite } from '../core/config';
 import { ARTIFACT_DIR, artifactPageHtml, credit, day, demoPageHtml, esc, OBEYA_URL, pageHead, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml } from './demo-page';
 import { jsonInScript, sealed, withHeightReport } from '../core/frame';
 import { type CaptionTrack } from './demo-files';

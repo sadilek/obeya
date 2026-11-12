@@ -1,7 +1,8 @@
 // What a card's row (`CardRow` in db.ts) stores in its JSON columns: the shape of each, and how it
 // is read.
 
-import type { CardLanding, Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
+import type { Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
+import type { CardLanding } from '../core/config';
 import type { PullStopped } from './workspaces';
 
 declare const holds: unique symbol;
