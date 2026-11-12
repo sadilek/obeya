@@ -1003,7 +1003,7 @@ export class Workers {
     const added = await this.planDocsAdded(cardId);
     // the demo goes out with the approval, also where it holds for the worker's next handover
     const trailer = this.o.onApproval?.(cardId) ?? undefined;
-    const result = await (direct ? this.o.workspaces.pushToMain(cardId, trailer) : this.o.workspaces.landOnMain(cardId, row.branch!, trailer));
+    const result = await (direct ? this.o.workspaces.pushToMain(cardId, trailer) : this.o.workspaces.landOnMain(cardId, row.branch!, trailer, !!this.o.adapter.push));
     if ('code' in result && !result.worker) {
       // the worker hears it with its next step, so it does not tell the owner the card still waits for their approval as if nothing had happened
       const text = `${NOT_LANDED} ${result.detail}\n\nThat is not in your work: the owner sees on the card what to do, and the card waits for their approval again.`;
@@ -1037,6 +1037,14 @@ export class Workers {
     else this.o.board.log(cardId, 'state', by, by === 'owner' ? t.approvedMain : t.landedMain);
     const sw = result.switched;
     if (sw) this.o.board.log(cardId, 'state', 'obeya', t.switchedToMain(sw.branch, sw.commit));
+    const pushed = result.pushed;
+    if (pushed && !pushed.problem) this.o.board.log(cardId, 'state', 'obeya', t.pushedLanded(pushed.branch, result.to.slice(0, 7)));
+    if (pushed?.problem) {
+      // the work stays landed: the owner hears why origin is behind, on the card and above the microphone
+      const text = pushed.moved ? t.landedPushMoved(pushed.branch) : t.landedPushRefused(pushed.branch, pushed.problem);
+      this.o.board.log(cardId, 'error', 'obeya', text);
+      this.o.board.notify({ cardId, text, inTalk: true });
+    }
     if (direct) this.o.onMerged?.(cardId);
     else this.reviews.reprobeClashes();
     this.o.onLanded?.(cardId);
@@ -1045,7 +1053,9 @@ export class Workers {
       [
         direct
           ? `${by === 'owner' ? 'The owner approved your work to go directly onto main, and Obeya' : 'Obeya'} pushed it there without a pull request (${result.to.slice(0, 7)}); the card is live.`
-          : `${by === 'owner' ? 'The owner approved your work, and it' : 'Your work'} is on main now (${result.to.slice(0, 7)}); the card is live.`,
+          : `${by === 'owner' ? 'The owner approved your work, and it' : 'Your work'} is on main now (${result.to.slice(0, 7)}); the card is live.` +
+            (pushed && !pushed.problem ? ` Obeya pushed ${pushed.branch} to origin as well.` : '') +
+            (pushed?.problem ? ` Obeya could not push ${pushed.branch} to origin, so origin does not have your work yet (${pushed.moved ? `origin's ${pushed.branch} has commits the local one lacks` : pushed.problem}); the owner sees why on the card. Link no commit of it where people outside this machine would follow the link.` : ''),
         sw
           ? `The Obeya checkout was on ${sw.branch ? `the branch ${sw.branch}` : `a detached HEAD at ${sw.commit}`}, not on main: Obeya switched it to main to land your work.` +
             (sw.commits

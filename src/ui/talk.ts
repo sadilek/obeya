@@ -62,6 +62,7 @@ const milestone = lineOf(
   (m) => m.worker.tickedFreed,
   (m) => m.worker.mergedContribution(ANY),
   (m) => m.worker.landedMain,
+  (m) => m.worker.pushedLanded(ANY, ANY),
   (m) => m.worker.prClosed,
   (m) => m.worker.switchedToMain(ANY, ANY),
   (m) => m.worker.switchedToMain(null, ANY),

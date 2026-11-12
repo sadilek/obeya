@@ -39,6 +39,7 @@ export const settingsShape = z
   .object({
     branch: z.string().optional(),
     land: z.enum(['main', 'pr']).optional(),
+    push: z.boolean().optional(),
     direct: z.boolean().optional(),
     autoMerge: z.boolean().optional(),
     checks: strings.optional(),

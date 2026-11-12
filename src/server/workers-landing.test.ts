@@ -174,6 +174,82 @@ describe('landing on main from a clone of the remote', () => {
   });
 });
 
+describe('landing on main, then pushing main to origin (`push`)', () => {
+  eachTest({ ...MAIN, push: true }, true);
+  // the checkout's main is shared on origin, as a fork's
+  beforeEach(() => void git(main, 'remote', 'add', 'origin', origin));
+
+  const handedOverWith = async (file: string, msg: string) => {
+    const c = board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
+    await workers.start(c.id);
+    const session = runtime.last;
+    commit(board.row(c.id).workspace!, file, msg, msg);
+    await session.call('ready_for_review', { summary: 'S', demo: artifact() });
+    session.emit({ type: 'idle' });
+    return { c, session };
+  };
+
+  test('the approved work is on origin’s main right after the approval, with what landed before it unpushed', async () => {
+    // another card landed on the checkout's main before, which nobody pushed
+    commit(main, 'other.ts', 'other', 'Andere Karte');
+    const { c, session } = await handedOverWith('k.ts', 'Zählerstände als CSV');
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['Zählerstände als CSV', 'Andere Karte', 'init']);
+    expect(git(origin, 'rev-parse', 'main')).toBe(git(main, 'rev-parse', 'main'));
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: `Zu origin/main gepusht (${git(main, 'rev-parse', '--short=7', 'main')}).` });
+    expect(session.inbox.at(-1)).toContain('Obeya pushed main to origin as well.');
+  });
+
+  test('a push origin refuses leaves the work landed and the card live, and tells the owner and the worker why', async () => {
+    const notices: string[] = [];
+    board.onNotice((n) => void notices.push(n.text));
+    writeFileSync(join(origin, 'hooks/pre-receive'), '#!/bin/sh\necho "protected branch" >&2\nexit 1\n', { mode: 0o755 });
+    const { c, session } = await handedOverWith('k.ts', 'Zählerstände als CSV');
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(main, 'log', '--format=%s', '-1')).toBe('Zählerstände als CSV');
+    expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+    const error = board.events(c.id).find((e) => e.kind === 'error')!;
+    // the remote's own words, without git's command and paths around them
+    expect(error.text).toBe('Gelandet, aber origin hat den Push von main abgelehnt: protected branch (pre-receive hook declined). main auf origin bleibt zurück; die nächste Landung pusht wieder.');
+    expect(notices).toEqual([error.text]);
+    expect(session.inbox.at(-1)).toContain('could not push main to origin');
+    // its worker is done, and its clone free for the next card
+    session.emit({ type: 'idle' });
+    expect(session.closed).toBe(true);
+    await until(() => spaces.list().every((w) => !w.card_id));
+    // the next landing pushes what is on main, the earlier card's work with it
+    rmSync(join(origin, 'hooks/pre-receive'));
+    const d = await handedOverWith('l.ts', 'Logo');
+    await workers.approve(d.c.id);
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['Logo', 'Zählerstände als CSV', 'init']);
+  });
+
+  test('never forced: where origin’s main moved, the push is refused and origin keeps its commit', async () => {
+    const { c } = await handedOverWith('k.ts', 'Zählerstände als CSV');
+    // someone pushed onto origin's main meanwhile
+    const other = join(dir, 'other');
+    gitClone(origin, other);
+    identify(other);
+    commit(other, 'y.ts', 'y', 'Y');
+    git(other, 'push', '--quiet', 'origin', 'main');
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['Y', 'init']);
+    expect(board.events(c.id).find((e) => e.kind === 'error')!.text).toBe('Gelandet, aber nicht zu origin gepusht: main hat dort Commits, die hier fehlen, und Obeya pusht nie erzwungen. main auf origin bleibt zurück.');
+  });
+
+  test('without `push`, nothing goes to origin', async () => {
+    rebuild({ adapter: MAIN });
+    const { c } = await handedOverWith('k.ts', 'Zählerstände als CSV');
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+    expect(board.events(c.id).some((e) => e.kind === 'error' || e.text.includes('origin'))).toBe(false);
+  });
+});
+
 describe('approving directly onto main where work goes out as a pull request', () => {
   eachTest(DIRECT, true);
 

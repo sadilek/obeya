@@ -20,7 +20,15 @@ The branch goes onto `main` as the local checkout has it, also from a clone whos
 remote (one listed in the settings, or made while work went out as pull requests): what other cards
 landed there and nobody pushed yet is under it, so the fast-forward cannot fail for a diverged
 `main`; the clone fetches that commit from the checkout only where none of its branches stands on
-it. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
+it. With `push` (see Repository settings), Obeya then pushes the local `main` to `origin` within the
+same landing, never forced, so a `main` shared there is current right after the approval; the log
+says "Pushed to origin/<main>". The push carries all of the local `main`, also what landed earlier
+and was not pushed. A refused push (`main` moved on `origin`, protection, rights) does not undo the
+landing: the card stays `live`, its conversation shows why as an error (the remote's own words and
+git's reason, without the command; where `main` moved on `origin`, that it has commits the local one
+lacks, which Obeya never pushes over), a line above the microphone says it too, and the worker hears
+that its work is not on `origin` yet. The next landing pushes again. A push gets two minutes, so a
+remote that does not answer holds up no other landing for longer. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
 once more. Commits that conflict one by one but not as a whole land squashed. The last commit landed for a card
 with a shared demo carries the trailer `Demo-Video: <url>` (see Publishing on approval). Uncommitted
 work or a real conflict sends the card back to its worker with the approval kept: its next handover
@@ -446,6 +454,12 @@ A card no agent worked on, a prototype or an archived card has no field.
   the button (leaves a pull request to close).
 - **Landing problems are classified**: uncommitted work, conflicts and emptied branches go to the
   worker; a blocked checkout or refused push to the owner.
+- **Landing on `main` may push it to `origin`** (`push`, 2026-11-12), off by default, never forced:
+  a fork whose main branch is shared on `origin` fell behind there until the owner pushed by hand.
+  A refused push leaves the card `live` and tells the owner, since the work is on the local `main`
+  and other cards build on it. Rejected: the card back in review (a new approval would land nothing
+  new); pulling `origin`'s `main` first where it moved, which rewrites landed commits without the
+  owner.
 - **An approval holds through fixes to land it**; a stop or a problem for the owner takes it back.
 - **Landing does not block the server** (2026-10-10). Rejected: landing inside the request, which
   froze the server and kept the card needing the owner.

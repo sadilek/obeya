@@ -23,7 +23,7 @@ import { failureText } from './spawn';
 import { demoFile } from './demo-files';
 import { sameRemote } from './repo';
 import { branchSetting, type Branches, CARD_BRANCH, detectBranch, readBranches } from './branches';
-import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, isAncestor, LOOK, remoteWorkspace, WorkspaceError } from './git';
+import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, isAncestor, LOOK, NO_PROMPT, remoteWorkspace, WorkspaceError } from './git';
 
 /** A restored card's branch is no longer in the clone it takes back (`retake`). */
 export class BranchGone extends WorkspaceError {}
@@ -46,6 +46,12 @@ export interface Landed {
   from: string;
   to: string;
   switched?: { branch: string | null; commit: string; commits: number };
+  /**
+   * Where the landing was to push the default branch (`branch`) to `origin` too: why `origin`
+   * refused it, where it did (`pushRefusal`), and whether because `origin`'s branch has commits the
+   * local one lacks (`moved`).
+   */
+  pushed?: { branch: string; problem?: string; moved?: true };
 }
 
 /**
@@ -167,6 +173,24 @@ async function mainInClone(repo: string, ws: string, base: string, refs: Branche
   }
   if (!refs || ![...refs.local.values(), ...refs.remote.values()].includes(commit)) await gitAsync(ws, 'fetch', '--quiet', repo, commit);
   return commit;
+}
+
+/** How long a push after a landing may take before it counts as refused: a remote that does not answer holds up the landings behind it. */
+const PUSH_TIMEOUT_MS = 2 * 60_000;
+
+/**
+ * Why a remote refused a push, from what git said: the remote's own words (a protected branch, say)
+ * and git's reason for the ref, without the command and paths around them, for the owner to read on
+ * the card; `moved` where the remote's branch has commits the pushed one lacks.
+ */
+export function pushRefusal(said: string): { problem: string; moved?: true } {
+  const remote = [...said.matchAll(/^remote: ?(.*)$/gm)].map((m) => m[1]!.trim()).filter(Boolean);
+  const reason = said.match(/\[(?:remote )?rejected\][^\n(]*\(([^)\n]+)\)/)?.[1];
+  const moved = !!reason && /fetch first|non-fast-forward/.test(reason);
+  const lines = said.split('\n').map((l) => l.trim()).filter(Boolean);
+  const why = reason && !moved ? (remote.length ? `(${reason})` : reason) : '';
+  const problem = [...remote, why].filter(Boolean).join(' ') || lines.findLast((l) => /^(fatal|error):/.test(l)) || lines.at(-1) || 'git push failed';
+  return { problem, ...(moved ? { moved: true as const } : {}) };
 }
 
 /** The landing under way per Obeya checkout: landings of one repository run one after the other. */
@@ -497,7 +521,7 @@ export interface CardWorkspaces {
   retake(cardId: string, path: string, branch: string): Lease | null;
   forkPoint(cardId: string, changing?: string): Promise<{ ws: string; base: string } | null>;
   addedFiles(cardId: string, dir: string): Promise<string[]>;
-  landOnMain(cardId: string, branch: string, trailer?: string): Promise<LandProblem | Landed>;
+  landOnMain(cardId: string, branch: string, trailer?: string, push?: boolean): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
   removeLanded(cardId: string, branch: string): Promise<void>;
   discard(cardId: string, branch: string): Promise<void>;
@@ -1359,9 +1383,27 @@ export class Workspaces implements CardWorkspaces {
    * (`worker` problems are the worker's to fix, the others stop at the Obeya checkout), or how
    * the default branch moved. A checkout found off the default branch is put back on it where
    * nothing would be lost (`backOnBase`), else the worker hears what is in the way. `trailer` goes into the message of the commit that lands last.
+   * `push`: the default branch then goes to `origin` too, never forced; a refused push leaves the
+   * landing as it is and says why (`Landed.pushed`).
    */
-  landOnMain(cardId: string, branch: string, trailer?: string): Promise<LandProblem | Landed> {
-    return oneAtATime(landings, this.o.repoPath, () => this.land(cardId, branch, trailer));
+  landOnMain(cardId: string, branch: string, trailer?: string, push = false): Promise<LandProblem | Landed> {
+    return oneAtATime(landings, this.o.repoPath, async () => {
+      const landed = await this.land(cardId, branch, trailer);
+      return push && !('code' in landed) ? { ...landed, pushed: await this.pushLanded() } : landed;
+    });
+  }
+
+  /** The checkout's default branch to `origin`, never forced, after a landing on it (`landOnMain`). */
+  private async pushLanded(): Promise<NonNullable<Landed['pushed']>> {
+    const repo = this.o.repoPath;
+    let branch = '';
+    try {
+      branch = await this.checkoutBase();
+      const r = await gitRun(repo, ['push', '--quiet', 'origin', `refs/heads/${branch}:refs/heads/${branch}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS });
+      return r.code === 0 ? { branch } : { branch, ...pushRefusal(r.stderr || r.stdout) };
+    } catch (e) {
+      return { branch, problem: messageOf(e) };
+    }
   }
 
   private async land(cardId: string, branch: string, trailer?: string): Promise<LandProblem | Landed> {

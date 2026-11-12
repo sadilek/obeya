@@ -82,9 +82,19 @@ does not have. Default: none.
 How approved work lands. `pr`: the card's branch is pushed and goes out as a pull request; Obeya
 watches it, brings review comments and failing CI back to the worker and marks the card live once
 it is merged (this needs the GitHub CLI, `gh`, logged in). `main`: Obeya rebases the branch onto
-the local main branch and fast-forwards the checkout Obeya runs on, no pull request, nothing pushed.
+the local main branch and fast-forwards the checkout Obeya runs on, no pull request; it pushes
+nothing unless `push` says so.
 Default: `pr` where `origin` is on GitHub (github.com, or a host the GitHub CLI is logged into),
 else `main`, since a pull request needs somewhere to go.
+
+### `push` — boolean
+
+With `land: "main"`: after each landing, Obeya pushes the main branch to `origin` too, never forced,
+so a main branch shared there (a fork's, say) does not fall behind. The push carries whatever the
+local main holds, also what landed before and was not pushed. Where `origin` refuses it (the branch
+moved there, it is protected, the rights are missing), the work stays landed and the card live: the
+card's conversation says why, and the next landing pushes again (where the branch moved on
+`origin`, only once the local main has its commits too). Default: `false`.
 
 ### `direct` — boolean
 

@@ -241,7 +241,7 @@ repository, for everyone, and the `settings` of its entry in `canvases.json`, se
 the configuration dialog, which also holds the main branch. The reference for every field is
 `docs/settings.md`, linked from the README.
 
-The fields: `land`, `direct`, `autoMerge`, `checks`, `setup`, `planDocs`, `softPaths`, `workspaces`,
+The fields: `land`, `push`, `direct`, `autoMerge`, `checks`, `setup`, `planDocs`, `softPaths`, `workspaces`,
 `prNoise`, `language` (see Language), `app` (`run`, `stop`, `keep`) and `demo` (`language`, `site`:
 see Static sites). Only what Obeya itself acts on is a command: `stop` and `keep` park a waiting card
 (see Parking). `run` is prose, for any kind of app (a web app, a CLI, a desktop or mobile app):

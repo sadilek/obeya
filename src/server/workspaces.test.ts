@@ -9,7 +9,7 @@ import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
 import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
-import { addTrailer, originFetch, statusEntries, unlanded, Workspaces } from './workspaces';
+import { addTrailer, originFetch, pushRefusal, statusEntries, unlanded, Workspaces } from './workspaces';
 import { defaultBranch } from './branches';
 import { git, hasCommit, isAncestor } from './git';
 
@@ -80,6 +80,28 @@ describe('the main branch', async () => {
     git(repo, 'checkout', '--quiet', '--detach');
     git(repo, 'config', 'init.defaultBranch', 'trunk');
     expect(await defaultBranch(repo)).toBe('trunk');
+  });
+});
+
+describe('why a remote refused a push', () => {
+  test('the remote’s own words and git’s reason, without the command and paths', () => {
+    const github = [
+      'remote: error: GH006: Protected branch update failed for refs/heads/main.',
+      'remote: error: Changes must be made through a pull request.',
+      'To github.com:acme/station.git',
+      ' ! [remote rejected] main -> main (protected branch hook declined)',
+      "error: failed to push some refs to 'github.com:acme/station.git'",
+    ].join('\n');
+    expect(pushRefusal(github)).toEqual({ problem: 'error: GH006: Protected branch update failed for refs/heads/main. error: Changes must be made through a pull request. (protected branch hook declined)' });
+    expect(pushRefusal("remote: Permission to acme/station.git denied to mira.\nfatal: unable to access 'https://github.com/acme/station.git/': The requested URL returned error: 403")).toEqual({
+      problem: 'Permission to acme/station.git denied to mira.',
+    });
+    expect(pushRefusal("fatal: 'origin' does not appear to be a git repository\nfatal: Could not read from remote repository.")).toEqual({ problem: 'fatal: Could not read from remote repository.' });
+  });
+
+  test('a branch that moved on the remote says so, whatever git calls it', () => {
+    expect(pushRefusal("To /srv/station.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to '/srv/station.git'")).toEqual({ problem: "error: failed to push some refs to '/srv/station.git'", moved: true });
+    expect(pushRefusal(' ! [rejected]        main -> main (non-fast-forward)').moved).toBe(true);
   });
 });
 

@@ -61,6 +61,7 @@ export function repoValues(repo: RepoInfo, detected: string, clones = false, sha
   return {
     branch: { value: detected, source: 'detected' },
     land: value(a.land, 'land'),
+    push: value(!!a.push, 'push'),
     direct: value(!!a.direct, 'direct'),
     autoMerge: value(a.autoMerge, 'autoMerge'),
     checks: value(a.checks, 'checks'),

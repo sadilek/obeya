@@ -37,7 +37,8 @@ Find out, from the files rather than by guessing:
 - **Logging in and test data**: seed scripts, fixtures, test users in the docs or the seed.
 - **Landing**: the `origin` remote (Obeya detects `land`: `pr` on GitHub, else `main`; write it
   only to differ), whether the default branch is protected, which bots comment on pull requests
-  (`prNoise`).
+  (`prNoise`). Where work lands on `main` and that branch is shared on `origin` (a fork, say),
+  `push` keeps it current there.
 - **Plan docs**: where the project keeps its plans, if it does: `docs/plan/`, other directories
   under `docs/`, `rfcs/`, `adr/`, `PLAN*.md`, a `TODO.md`. What makes a doc in `planDocs.dir` a
   project is under `planDocs` in the reference; a doc without the checklist shows on the canvas
@@ -62,7 +63,7 @@ an environment variable), never itself.
 ## 3. Write `.obeya/settings.json`
 
 Start from the example in the reference and keep only the fields that differ from Obeya's
-defaults: `setup`, `checks`, `land`, `direct`, `autoMerge`, `planDocs`, `softPaths`, `workspaces`,
+defaults: `setup`, `checks`, `land`, `push`, `direct`, `autoMerge`, `planDocs`, `softPaths`, `workspaces`,
 `prNoise`, `language`, `app` with `run`, `stop` and `keep`, and `demo` with `language` and `site`.
 
 `app.run` is the part that decides whether workers can run and show their work. Write it for a

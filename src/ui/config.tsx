@@ -1981,6 +1981,7 @@ function RepoSettingsBlock({
           <h5 className="cfg-group-head">{t.config.groups.landing}</h5>
           {text('branch', c.branch, c.branchHint)}
           {choice('land', c.land, ['main', 'pr'] as const, (x) => c.lands[x], c.landHint)}
+          {land === 'main' && check('push', c.push, c.pushLabel, c.pushHint)}
           {land === 'pr' && check('direct', c.direct, c.directLabel)}
           {land === 'pr' && check('autoMerge', c.autoMerge, c.autoMergeLabel, c.autoMergeHint)}
           {land === 'pr' && list('prNoise', c.prNoise, c.prNoiseHint)}

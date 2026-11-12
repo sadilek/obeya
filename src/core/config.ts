@@ -151,6 +151,11 @@ export interface RepoSettings {
    */
   land?: 'main' | 'pr';
   /**
+   * With `land: 'main'`: after each landing, Obeya pushes the main branch to `origin` too, never
+   * forced. A refused push leaves the landing done and tells the owner on the card.
+   */
+  push?: boolean;
+  /**
    * With `land: 'pr'`: the owner may approve a card's work directly onto the default branch
    * instead, without a pull request. Obeya rebases it onto `origin`'s default branch and pushes it
    * there (never forced); review and the CI of a pull request are skipped.
@@ -204,7 +209,7 @@ export type SharedSettings = Omit<RepoSettings, 'branch'>;
 export type CardLanding = Partial<Pick<RepoSettings, 'land' | 'direct'>>;
 
 /** The fields of `SharedSettings`, in the dialog's order. */
-export const SHARED_FIELDS = ['land', 'direct', 'autoMerge', 'checks', 'setup', 'planDocs', 'softPaths', 'workspaces', 'prNoise', 'language', 'app', 'demo'] as const satisfies readonly (keyof SharedSettings)[];
+export const SHARED_FIELDS = ['land', 'push', 'direct', 'autoMerge', 'checks', 'setup', 'planDocs', 'softPaths', 'workspaces', 'prNoise', 'language', 'app', 'demo'] as const satisfies readonly (keyof SharedSettings)[];
 // every field of `SharedSettings` is in the list: one left out would be neither taken over nor read live
 const everyShared: [Exclude<keyof SharedSettings, (typeof SHARED_FIELDS)[number]>] extends [never] ? true : false = true;
 void everyShared;
