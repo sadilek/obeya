@@ -197,12 +197,14 @@ function isAbbreviation(before: string): boolean {
 }
 
 /** A pull request or issue by its number (`#12`, `PR #12`, `(#12)`, `!12`, a link on one), as an agent puts it before what it did. */
-const isReference = (text: string): boolean =>
-  /^\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?$/i.test(text.trim());
+const REFERENCE = String.raw`\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?`;
+const REFERENCE_ALONE = new RegExp(`^${REFERENCE}$`, 'i');
+const REFERENCE_LEAD = new RegExp(String.raw`^${REFERENCE}[\s.:;,—–-]*`, 'i');
+
+const isReference = (text: string): boolean => REFERENCE_ALONE.test(text.trim());
 
 /** The title without the pull request's number a worker may put before it (`#12. Title` → `Title`). */
-export const withoutReference = (title: string): string =>
-  title.replace(/^\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?[\s.:;,—–-]*/i, '');
+export const withoutReference = (title: string): string => title.replace(REFERENCE_LEAD, '');
 
 /**
  * An unlabelled workstream's key: its title in lower-case words joined by `-`, without a pull
