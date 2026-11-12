@@ -282,5 +282,5 @@ function mocksText(mocks: Mock[] | undefined): string {
  * of its branch: where it starts, and that it stays fit for that pull request.
  */
 export const upstreamStartNote = (branch: string, up: UpstreamRef, start: string) =>
-  `You are on branch ${branch}, fresh from ${start.slice(0, 7)}: the newest commit of ${up.ref} (the main branch of ${up.name}, the original repository this one is a fork of) that ${up.into}, this fork's main branch, holds. ` +
-  `The owner chose that this work goes to ${up.name} as a pull request too, once they approve it, and onto ${up.into} as well. So keep the branch as it is now meant to be: carrying nothing of ${up.into}'s own work. Do not merge ${up.into} into it, and leave out what only this fork has; where the task needs that, ask the owner.`;
+  `You are on branch ${branch}, fresh from ${start.slice(0, 7)}: the newest commit of ${up.ref}, the main branch of ${up.name}, the original repository this one is a fork of; ${up.into}, this fork's own main branch, is not under it. ` +
+  `The owner chose to build this task on the original: it goes to ${up.name} as a pull request once they approve it, and onto ${up.into} as well. So keep the branch carrying nothing of ${up.into}'s own work: do not merge ${up.into} into it, and leave out what only this fork has; where the task needs that, ask the owner.`;

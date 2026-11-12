@@ -190,6 +190,12 @@ export interface Item {
    */
   upstream?: true;
   /**
+   * Handed over in a fork (`RepoRef.upstream`): how many commits of the original's main branch the
+   * fork's main branch does not hold yet and would get with the work, should it go to the original as
+   * a pull request too.
+   */
+  upstreamNew?: number;
+  /**
    * Its repository does not run on the canvas (it left the configuration, or did not start): its
    * agents take nothing until it is back, and no other repository's agents take it meanwhile.
    * Never on a Question card, whose agent reads only.

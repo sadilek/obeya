@@ -64,6 +64,7 @@ const milestone = lineOf(
   (m) => m.worker.landedMain,
   (m) => m.worker.pushedLanded(ANY, ANY),
   (m) => m.worker.keptOnMain(ANY),
+  (m) => m.worker.upstreamStarted(ANY, ANY, ANY),
   (m) => m.pr.intoMain(ANY, ANY),
   (m) => m.pr.portRecorded(ANY),
   (m) => m.pr.mergedUpstream(ANY),

@@ -31,6 +31,8 @@ export interface Detail {
   summary?: string;
   noChange?: boolean;
   lands?: CardLanding;
+  /** A fork's card: how many commits of the original's main branch the main branch lacks and would get with its work, should it go to the original as a pull request too. */
+  upstreamNew?: number;
   answering?: boolean;
   answered?: boolean;
 }

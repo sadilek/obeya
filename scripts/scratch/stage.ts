@@ -193,7 +193,8 @@ export interface Stage {
    * plays the original repository, the remote `upstream` (`git@github.com:<name>.git`, default
    * `acme/<repoName>`, which git of the scratch Obeya reads as that folder). The original holds the
    * repository's first commit on `main`, then `files` as a commit the fork has not merged; the fork
-   * has `own` as a commit of its own. Pull requests to the original are played by the forge file
+   * has `own` as a commit of its own, and a branch `main` at its first commit, its copy of the
+   * original's. A card with `row.upstream` and a worktree starts on the original's main. Pull requests to the original are played by the forge file
    * (<dir>/forge.json, of the original), which a demo edits to play the worker opening one (pushing
    * its branch into the original, adding the PR) and the maintainers (a comment, the merge).
    */
@@ -421,6 +422,8 @@ function makeUpstream(u: NonNullable<Stage['upstream']>, dir: string, repo: stri
   git(repo, 'config', `url.${original}.insteadOf`, url);
   git(repo, 'fetch', '-q', 'upstream');
   git(repo, 'remote', 'set-head', 'upstream', 'main');
+  // the fork's copy of the original's main, as it was when the fork last took it
+  if (mainBranch !== 'main') git(repo, 'branch', 'main', mainBranch);
   if (u.own && Object.keys(u.own).length) {
     writeFiles(repo, u.own);
     git(repo, 'add', '-A');
@@ -752,8 +755,8 @@ function holdWorkspace(db: Database, ctx: Context, c: StageCard, i: number, bran
   const path = tree ? join(home, 'workspaces', on, id.slice(0, 8)) : free!.path;
   if (tree) {
     mkdirSync(dirname(path), { recursive: true });
-    // a fork's card for the original starts where the original and the fork's main branch meet, as a start gives it
-    const start = c.row?.upstream && stage.upstream && !other && !elsewhere ? String(git(checkout, 'merge-base', 'upstream/main', ctx.mainBranch)).trim() : ctx.mainBranch;
+    // a fork's card started on the original starts from its newest main, as a start gives it
+    const start = c.row?.upstream && stage.upstream && !other && !elsewhere ? 'upstream/main' : ctx.mainBranch;
     git(checkout, 'worktree', 'add', '-q', '-b', branch!, path, start);
     db.query('INSERT INTO workspaces (path, canvas_id, card_id, repo) VALUES ($path, $c, $id, $r)').run({ path, c: on, id, r: other });
   } else {

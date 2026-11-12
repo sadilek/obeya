@@ -548,9 +548,11 @@ export interface CardWorkspaces {
   addedFiles(cardId: string, dir: string): Promise<string[]>;
   landOnMain(cardId: string, branch: string, trailer?: string, push?: boolean): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
-  upstreamStart?(ref: string): Promise<string | null>;
+  upstreamStart?(ref: string): Promise<UpstreamStart | null>;
+  upstreamBase?(cardId: string, ref: string): Promise<{ base: string; brings: number } | null>;
+  upstreamAhead?(ref: string): Promise<number>;
   upstreamBased?(cardId: string, ref: string): Promise<boolean>;
-  mergeIntoMain?(cardId: string, head: { branch: string } | { commit: string }, o: MergeIntoMain): Promise<Landed | { already: string } | LandProblem>;
+  mergeIntoMain?(cardId: string, head: { branch: string } | { commit: string }, o: MergeIntoMain): Promise<(Landed & { ours?: true }) | { already: string } | LandProblem>;
   revertLanded(cardId: string, landed: { base: string; commit: string; head?: string }, onto: 'local' | 'origin', title: string): Promise<{ main: string; revert: string; base: string } | LandProblem>;
   reapply(cardId: string, landed: { base: string; commit: string }, onto: 'local' | 'origin'): Promise<string | null>;
   pushAs(cardId: string, name: string): Promise<void>;
@@ -580,8 +582,22 @@ export interface LeaseOptions {
 }
 
 /**
+ * Where a fork's card that starts on the original's main branch starts (`upstreamStart`): that
+ * branch's newest commit, and what became of the fork's own copy of it (`mirror`): the local branch
+ * of the same name brought forward to it (`updated`), left as it is since it has commits of its own
+ * (`diverged`) or is checked out (`checkedOut`), and `origin`'s copy pushed forward to it
+ * (`pushed`), or why `origin` refused (`pushProblem`).
+ */
+export interface UpstreamStart {
+  start: string;
+  mirror?: { branch: string; updated?: true; diverged?: true; checkedOut?: true; pushed?: true; pushProblem?: string };
+}
+
+/**
  * How `mergeIntoMain` merges: the merge commit's `message`; `ours` records the commit as merged
- * without taking its changes (a port of work that landed on the main branch already); `resolved`, a
+ * without taking its changes (a port of work that landed on the main branch already), unless it builds
+ * on commits of `upstream` the main branch lacks, which it then merges for real (`ours` in the result
+ * where it did not); `resolved`, a
  * branch of the card's workspace where its worker made the merge itself after a conflict, taken
  * where it holds the commit; `fetch`, where the commit is fetched from when the workspace lacks it;
  * `upstream`, the original repository's main branch (`upstream/main`), which with `ours` the commit
@@ -2213,20 +2229,66 @@ export class Workspaces implements CardWorkspaces {
   }
 
   /**
-   * Where a fork's card that goes to the original repository as a pull request starts
-   * (`RepoSettings.upstream`): the newest commit of the original's main branch (`ref`,
-   * `upstream/main`) that the main branch holds, after fetching that remote (two minutes at most;
-   * as last fetched where it does not answer). Its branch then carries nothing of the main branch's
-   * own, and nothing of the original's that the main branch lacks either, so merging it into the
-   * main branch brings only the card's work. Null where the checkout has no such branch, or the two
-   * have no commit in common.
+   * Where a fork's card that starts on the original's main branch starts (`RepoSettings.upstream`):
+   * that branch's newest commit (`ref`, `upstream/main`), after fetching that remote (two minutes at
+   * most; as last fetched where it does not answer). The fork's own copy of the branch (the local
+   * branch of the same name, and `origin`'s) is brought forward to it on the way, never forced: a
+   * copy with commits of its own stays as it is, and so does one checked out somewhere. Null where
+   * the checkout has no such branch.
    */
-  async upstreamStart(ref: string): Promise<string | null> {
+  async upstreamStart(ref: string): Promise<UpstreamStart | null> {
     const repo = this.o.repoPath;
     const remoteName = ref.slice(0, ref.indexOf('/'));
+    const branch = ref.slice(ref.indexOf('/') + 1);
     await gitRun(repo, ['fetch', '--quiet', remoteName], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch(() => {});
-    const base = await this.checkoutBase();
-    return gitTry(repo, 'merge-base', `refs/remotes/${ref}`, `refs/heads/${base}`);
+    const start = await gitTry(repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/${ref}^{commit}`);
+    if (!start) return null;
+    // the fork's main branch is its own: only a copy of the original's beside it is kept current
+    if (branch === (await this.checkoutBase())) return { start };
+    const mirror: NonNullable<UpstreamStart['mirror']> = { branch };
+    const local = await gitTry(repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`);
+    if (local && local !== start) {
+      if (!(await isAncestor(repo, local, start, false))) mirror.diverged = true;
+      else if ((await gitTry(repo, 'worktree', 'list', '--porcelain'))?.split('\n').includes(`branch refs/heads/${branch}`)) mirror.checkedOut = true;
+      else {
+        await gitAsync(repo, 'update-ref', `refs/heads/${branch}`, start, local);
+        mirror.updated = true;
+      }
+    }
+    // origin's copy, where it has one behind: pushed forward, never forced
+    const there = await gitRun(repo, ['ls-remote', '--heads', 'origin', branch], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch(() => null);
+    const at = there?.code === 0 ? there.stdout.trim().split(/\s+/)[0] : undefined;
+    if (at && at !== start && (await hasCommit(repo, at)) && (await isAncestor(repo, at, start, false))) {
+      const r = await gitRun(repo, ['push', '--quiet', 'origin', `${start}:refs/heads/${branch}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch((e) => ({ code: 1, stdout: '', stderr: messageOf(e) }));
+      if (r.code === 0) mirror.pushed = true;
+      else mirror.pushProblem = pushRefusal(r.stderr || r.stdout).problem;
+    }
+    return { start, ...(mirror.updated || mirror.diverged || mirror.checkedOut || mirror.pushed || mirror.pushProblem ? { mirror } : {}) };
+  }
+
+  /**
+   * Where the card's branch meets the original's main branch (`ref`): the commit of the original it
+   * builds on, and how many commits of the original it brings onto the main branch with it (those up
+   * to there that the main branch does not hold yet). Null where they do not meet.
+   */
+  async upstreamBase(cardId: string, ref: string): Promise<{ base: string; brings: number } | null> {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return null;
+    const repo = this.o.repoPath;
+    try {
+      const head = await gitAsync(ws, 'rev-parse', 'HEAD');
+      if (!(await hasCommit(repo, head))) await gitRun(repo, ['fetch', '--quiet', '--no-write-fetch-head', ws, head]);
+      const base = await gitTry(repo, 'merge-base', head, `refs/remotes/${ref}`);
+      if (!base) return null;
+      return { base, brings: Number(await gitAsync(repo, 'rev-list', '--count', base, '--not', `refs/heads/${await this.checkoutBase()}`)) };
+    } catch {
+      return null;
+    }
+  }
+
+  /** How many commits the original's main branch (`ref`) has that the main branch does not hold yet, as last fetched. */
+  async upstreamAhead(ref: string): Promise<number> {
+    return Number((await gitTry(this.o.repoPath, 'rev-list', '--count', `refs/remotes/${ref}`, '--not', `refs/heads/${await this.checkoutBase()}`)) ?? 0);
   }
 
   /**
@@ -2257,7 +2319,7 @@ export class Workspaces implements CardWorkspaces {
    * `already` where the main branch holds it; a conflict (`landConflict`, with its files) and
    * uncommitted work are the worker's, a checkout in the way the owner's (`MergeIntoMain`).
    */
-  mergeIntoMain(cardId: string, head: { branch: string } | { commit: string }, o: MergeIntoMain): Promise<Landed | { already: string } | LandProblem> {
+  mergeIntoMain(cardId: string, head: { branch: string } | { commit: string }, o: MergeIntoMain): Promise<(Landed & { ours?: true }) | { already: string } | LandProblem> {
     return oneAtATime(landings, this.o.repoPath, async () => {
       const repo = this.o.repoPath;
       const ws = this.leasedBy(cardId);
@@ -2279,18 +2341,18 @@ export class Workspaces implements CardWorkspaces {
         if (back && 'code' in back) return back;
         const main = await gitAsync(repo, 'rev-parse', `refs/heads/${base}`);
         if (await isAncestor(repo, tip, main, false)) return { already: main };
-        // a port marked merged must not mark the original's commits the main branch lacks as merged with it
-        if (o.ours && o.upstream) {
+        // a port marked merged must not mark the original's commits the main branch lacks as merged with it: those it merges for real
+        let ours = !!o.ours;
+        if (ours && o.upstream) {
           const meets = await gitTry(repo, 'merge-base', tip, `refs/remotes/${o.upstream}`);
-          if (meets && !(await isAncestor(repo, meets, main, false)))
-            return { code: 'landConflict', worker: true, detail: `${tip.slice(0, 7)} builds on commits of ${o.upstream} that ${base} does not hold yet: base the branch on the newest commit of ${o.upstream} that ${base} holds (${(await gitTry(repo, 'merge-base', `refs/remotes/${o.upstream}`, main))?.slice(0, 7) ?? 'none'})` };
+          if (meets && !(await isAncestor(repo, meets, main, false))) ours = false;
         }
         let to: string;
         // the worker's merge, made on top of the main branch as it is: nothing left to merge
-        if (!o.ours && (await isAncestor(repo, main, tip, false))) to = tip;
+        if (!ours && (await isAncestor(repo, main, tip, false))) to = tip;
         else {
           let tree: string;
-          if (o.ours) tree = await gitAsync(repo, 'rev-parse', `${main}^{tree}`);
+          if (ours) tree = await gitAsync(repo, 'rev-parse', `${main}^{tree}`);
           else {
             const m = await gitRun(repo, ['merge-tree', '--write-tree', '--name-only', '--no-messages', main, tip]);
             if (m.code === 1) {
@@ -2308,7 +2370,7 @@ export class Workspaces implements CardWorkspaces {
           // typically local changes in the checkout that the fast-forward would overwrite
           return { code: 'landMerge', worker: false, detail: messageOf(e) };
         }
-        const landed: Landed = { from: main, to, ...(back ? { switched: { ...back, commits: 0 } } : {}) };
+        const landed: Landed & { ours?: true } = { from: main, to, ...(back ? { switched: { ...back, commits: 0 } } : {}), ...(ours ? { ours: true as const } : {}) };
         return o.push ? { ...landed, pushed: await this.pushLanded() } : landed;
       } catch (e) {
         return { code: 'land', worker: false, detail: messageOf(e) };

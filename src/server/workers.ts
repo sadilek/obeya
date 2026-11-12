@@ -343,10 +343,18 @@ export class Workers {
     // a workstream planned again after a part landed: the branch of that part may still be in a clone
     const shipped = fromJson(row.shipped);
     const branch = row.branch ?? `${branchName(card.title, card.id)}${shipped ? `-${shipped.commit?.slice(0, 7) ?? 'rest'}` : ''}`;
-    // a fork's card that goes to the original as a pull request starts where its branch carries nothing of the fork's own
+    // a fork's card that starts on the original's main branch: its newest state, the fork's copy of it brought forward on the way
     const up = card.upstream && !row.branch ? this.o.upstream?.() : undefined;
     let startedAt: string | null = null;
-    const start = up && this.o.workspaces.upstreamStart ? async () => (startedAt = await this.o.workspaces.upstreamStart!(up.ref)) : undefined;
+    const start =
+      up && this.o.workspaces.upstreamStart
+        ? async () => {
+            const r = await this.o.workspaces.upstreamStart!(up.ref);
+            startedAt = r?.start ?? null;
+            if (r) this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.worker.upstreamStarted(up.name, up.branch, r.start.slice(0, 7), r.mirror));
+            return startedAt;
+          }
+        : undefined;
     const { path, ready } = asBadRequest(() => this.o.workspaces.lease(card.id, branch, { from: row.kept_in, ...(start ? { start } : {}) }));
     this.bump(card.id);
     // the run before is not resumed, but the work retrospective still reads it
@@ -1175,7 +1183,8 @@ export class Workers {
     this.untell(cardId, NOT_LANDED);
     this.o.board.planDocsLanded(cardId, added);
     const landed = 'already' in result ? { from: result.already, to: result.already } : result;
-    const start = (await ws.upstreamStart?.(up.ref)) ?? undefined;
+    // where its branch meets the original (the pull request's change starts there), or for a port the original's newest state, which the port is made on
+    const start = based ? (await ws.upstreamBase?.(cardId, up.ref))?.base : (await ws.upstreamStart?.(up.ref))?.start;
     const head = based ? ((await this.branchHead(cardId, branch)) ?? undefined) : undefined;
     const pr: PrState = { url: null, seen: [], reported: [], upstream: { ref: up.ref, name: up.name, into: up.into, ...(start ? { start } : {}), ...(head ? { merged: head } : {}), ...(based ? {} : { ported: true }) } };
     this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, status_line: null, approved_at: null, pr: toJson(pr), shipped: toJson<Shipped>({ commit: landed.to, base: landed.from, upstream: true }) });
@@ -1198,7 +1207,7 @@ export class Workers {
       [
         based
           ? `The owner approved your work, and it goes to ${up.name}, the original repository of this fork, as a pull request too. Obeya merged your branch into ${up.into} as it is (${landed.to.slice(0, 7)}), without rebasing it: your branch stays the pull request's branch.${pushedNote}`
-          : `The owner approved your work, and it goes to ${up.name}, the original repository of this fork, as a pull request too. It landed on ${up.into} as usual (${landed.to.slice(0, 7)}).${pushedNote} Your branch started from ${up.into}, so it carries ${up.into}'s own work, which does not belong in the pull request: make the pull request's branch anew from ${start ? `${start.slice(0, 7)}, the newest commit of ${up.ref} that ${up.into} holds` : `the newest commit of ${up.ref} that ${up.into} holds (git merge-base ${up.ref} ${up.into})`}, in a worktree of its own (git worktree add -b ${branch}-pr <dir> <that commit>), leaving this branch as it is, and carry the change over without what only this fork has. Run the checks there.`,
+          : `The owner approved your work, and it goes to ${up.name}, the original repository of this fork, as a pull request too. It landed on ${up.into} as usual (${landed.to.slice(0, 7)}).${pushedNote} Your branch started from ${up.into}, so it was built and tested on ${up.into}, with this fork's own work, which does not belong in the pull request: make the pull request's branch anew from ${start ? `${start.slice(0, 7)}, the newest commit of ${up.ref}` : `the newest commit of ${up.ref}`}, in a worktree of its own (git worktree add -b ${branch}-pr <dir> <that commit>), leaving this branch as it is, and carry the change over without what only this fork has. It has not run on the original's state yet: run the checks there and look whether it still does what the demo showed; where it does not, tell the owner (ask) before you open the pull request.`,
         `Open the pull request against ${up.ref.slice(up.ref.indexOf('/') + 1)} of ${up.name} the way the repository does it (its own skills and conventions; with gh: gh pr create --repo ${up.name} --base ${up.branch} --head <owner of origin>:<branch>), after pushing its branch to origin. Whoever reads it has not seen Obeya, the card, nor ${up.into}. ${shared ? `Your demo video is shared on a page of its own: ${shared}. Link it in the description where it helps the maintainers. ` : ''}Then report it with pr_opened${based ? '' : ': what the pull request holds then counts as on ' + up.into + ' already'}.`,
         `Its maintainers merge it, not Obeya. Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does. Every commit you push onto the pull request later, Obeya merges into ${up.into} as well: make each fix on the pull request's branch alone, and never merge ${up.into} into it, which would carry this fork's own work into the pull request. A comment that questions a decision is the owner's (ask). The card is live once the maintainers merged it.`,
         comments?.text ?? '',

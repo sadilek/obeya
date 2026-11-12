@@ -86,6 +86,7 @@ interface HandOverContext {
 interface HandedOver {
   work: boolean;
   own?: CardLanding;
+  upstreamNew?: number;
   mine?: OwnCommits;
   held?: HeldChanges & { base: string };
   demo?: StoredDemo;
@@ -687,7 +688,7 @@ export class WorkerTools {
     // whether the branch holds work and decides where it lands; a review card hands over the PR's head
     // it reviewed, which is all Obeya ever merges, with the commits of its own on top, which Obeya
     // pushes on the owner's approval
-    let git: { work: boolean; own?: CardLanding; mine?: OwnCommits; changed?: string[] };
+    let git: { work: boolean; own?: CardLanding; mine?: OwnCommits; changed?: string[]; upstreamNew?: number };
     if (review) {
       const mine = await this.w.reviews.ownCommits(cardId, review);
       if (typeof mine === 'string') return mine;
@@ -695,6 +696,13 @@ export class WorkerTools {
     } else {
       const [work, { own }] = await Promise.all([this.o.workspaces.hasWork(cardId), this.w.landingOf(cardId)]);
       git = { work, ...(own ? { own } : {}), ...(work && !this.folder ? { changed: await this.o.workspaces.changedFiles(cardId) } : {}) };
+      // in a fork: what of the original the main branch would get with the work, should it go there as a pull request too
+      const up = work ? this.o.upstream?.() : undefined;
+      if (up) {
+        const ws = this.o.workspaces;
+        const n = (await ws.upstreamBased?.(cardId, up.ref)) ? (await ws.upstreamBase?.(cardId, up.ref))?.brings : await ws.upstreamAhead?.(up.ref);
+        if (n) git.upstreamNew = n;
+      }
     }
     // reading what the change shows takes a while, in which the owner may stop or replace the session
     if (x.ended()) return SESSION_ENDED;
@@ -804,7 +812,7 @@ export class WorkerTools {
       ...(approved ? { status_line: review ? this.o.board.t.worker.mergingPr(review.number) : this.o.board.t.worker.landing } : { state: 'waiting', need: demo || kept ? 'demo' : 'review', status_line: null }),
       // approving work that changes nothing makes the card done, which the owner sees before approving; where work
       // lands that its own branch decides, likewise
-      detail: toJson({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(answered && !approved ? { answered: true } : {}) }),
+      detail: toJson({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(h.upstreamNew ? { upstreamNew: h.upstreamNew } : {}), ...(answered && !approved ? { answered: true } : {}) }),
       ...(newDemo ? { demo: toJson(newDemo) } : asked ? { demo: null } : {}),
       ...(demos ? { demos } : {}),
       // the files named stand until a later handover names others (an empty list named clears them); a folder's card handed

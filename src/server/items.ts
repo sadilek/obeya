@@ -227,6 +227,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp && !landed.resolve ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
     ...(detail.noChange && handed ? { noChange: true } : {}),
     ...(detail.lands && handed ? { lands: detail.lands } : {}),
+    ...(detail.upstreamNew && handed ? { upstreamNew: detail.upstreamNew } : {}),
     ...(r.paused ? { paused: true } : {}),
     ...(r.pausing && !r.paused ? { pausing: true } : {}),
     ...(r.snoozed ? { snoozed: fromJson(r.snoozed) } : {}),

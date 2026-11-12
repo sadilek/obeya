@@ -10,7 +10,7 @@ import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import type { UpstreamRef } from '../core/types';
 import type { Board } from './board';
-import { detectUpstream } from './branches';
+import { detectUpstream, useBranchSetting } from './branches';
 import { Store } from './db';
 import type { Forge, PrStatus } from './forge';
 import { git } from './git';
@@ -34,6 +34,7 @@ let merges: string[];
 /** The newest commit of the original that `mine` holds, and one it does not. */
 let shared: string;
 let newer: string;
+let unbranch: () => void;
 const settings: RepoAdapter = { ...generic, land: 'main', workspaces: 'worktrees' };
 const UP: UpstreamRef = { ref: 'upstream/main', remote: 'upstream', branch: 'main', name: 'acme/app', into: 'mine' };
 const URL_ = 'https://github.com/acme/app/pull/7';
@@ -46,8 +47,9 @@ beforeEach(() => {
   main = join(dir, 'main');
   git(dir, 'clone', '--quiet', '--origin', 'upstream', orig, main);
   identify(main);
+  // the fork keeps a copy of the original's main beside its own main branch, mine
   git(main, 'switch', '--quiet', '-c', 'mine');
-  git(main, 'branch', '-D', 'main');
+  unbranch = useBranchSetting(main, () => 'mine');
   commit(main, 'own.ts', 'own\n', 'The fork’s own work');
   newer = commit(orig, 'later.ts', 'later\n', 'Upstream work the fork lacks');
   git(main, 'fetch', '--quiet', 'upstream');
@@ -69,6 +71,7 @@ beforeEach(() => {
   watcher = new PrWatcher(board, workers, forge, () => main, () => settings);
 });
 afterEach(async () => {
+  unbranch();
   workers.shutdown();
   await removeDir(dir);
 });
@@ -105,15 +108,18 @@ test('a fork is told by its remote upstream', async () => {
   expect(await detectUpstream(orig)).toBeUndefined();
 });
 
-test('a card for the original starts from the newest commit of it that the main branch holds, and its worker hears why', async () => {
+test('a card on the original starts from its newest main, brings the fork’s copy of it forward, and its worker hears why', async () => {
   const c = board.create({ title: 'Fix the banner', x: 0, y: 0 });
   board.patch(c.id, { upstream: true });
   expect(board.item(c.id)!.upstream).toBe(true);
   await workers.start(c.id);
   const ws = board.row(c.id).workspace!;
-  expect(git(ws, 'rev-parse', 'HEAD')).toBe(shared);
-  expect(runtime.last.inbox[0]).toContain(`fresh from ${shared.slice(0, 7)}: the newest commit of upstream/main`);
-  expect(runtime.last.inbox[0]).toContain('Do not merge mine into it');
+  expect(git(ws, 'rev-parse', 'HEAD')).toBe(newer);
+  expect(runtime.last.inbox[0]).toContain(`fresh from ${newer.slice(0, 7)}: the newest commit of upstream/main`);
+  // the fork's copy of the original's main is current again; its own main branch is not touched
+  expect(git(main, 'rev-parse', 'main')).toBe(newer);
+  expect(board.events(c.id).some((e) => e.text.includes(`Startet auf dem neuesten main von acme/app (${newer.slice(0, 7)}). Der lokale main ist jetzt auf diesem Stand.`))).toBe(true);
+  expect(runtime.last.inbox[0]).toContain('do not merge mine into it');
   // a card for the fork alone starts from its main branch, as ever
   const own = board.create({ title: 'Kupa board', x: 0, y: 0 });
   await workers.start(own.id);
@@ -132,14 +138,16 @@ describe('approving a card for the original', () => {
   test('merges its branch into the main branch as it is and sends the worker to open the pull request there', async () => {
     const { id, ws, head, session } = await handedOver(true);
     const before = tip();
+    // the approval says beforehand what of the original comes onto the main branch with it
+    expect(board.item(id)!.upstreamNew).toBe(1);
     await workers.approve(id);
     expect(state(id)).toBe('inPr');
     // a merge commit, the branch never rebased: it is the pull request's branch
     expect(git(main, 'rev-list', '--parents', '-1', 'mine').split(' ').slice(1)).toEqual([before, head]);
     expect(git(ws, 'rev-parse', 'HEAD')).toBe(head);
-    expect(files('mine')).toEqual(expect.arrayContaining(['fix.ts', 'own.ts', 'up.ts']));
-    expect(files('mine')).not.toContain('later.ts');
-    expect(pr(id).upstream).toMatchObject({ ref: 'upstream/main', into: 'mine', merged: head, start: shared });
+    // with what the original has new, as the owner chose
+    expect(files('mine')).toEqual(expect.arrayContaining(['fix.ts', 'own.ts', 'up.ts', 'later.ts']));
+    expect(pr(id).upstream).toMatchObject({ ref: 'upstream/main', into: 'mine', merged: head, start: newer });
     expect(pr(id).upstream!.ported).toBeUndefined();
     expect(session.inbox.at(-1)).toContain('Obeya merged your branch into mine as it is');
     expect(session.inbox.at(-1)).toContain('gh pr create --repo acme/app --base main');
@@ -155,8 +163,9 @@ describe('approving a card for the original', () => {
     expect(state(id)).toBe('inPr');
     // rebased onto the main branch: no merge commit
     expect(git(main, 'rev-list', '--parents', '-1', 'mine').split(' ')).toHaveLength(2);
-    expect(pr(id).upstream).toMatchObject({ ported: true, start: shared });
-    expect(session.inbox.at(-1)).toContain(`make the pull request's branch anew from ${shared.slice(0, 7)}`);
+    expect(pr(id).upstream).toMatchObject({ ported: true, start: newer });
+    expect(session.inbox.at(-1)).toContain(`make the pull request's branch anew from ${newer.slice(0, 7)}`);
+    expect(session.inbox.at(-1)).toContain('It has not run on the original');
   });
 
   test('“for me only” on a card for the original lands it on the main branch alone', async () => {
@@ -263,18 +272,17 @@ describe('the pull request to the original', () => {
     expect(git(main, 'show', 'mine:fix.ts')).toBe('fix');
   });
 
-  test('a port that builds on commits of the original the main branch lacks is not taken as merged', async () => {
+  test('a port on the original’s newest main merges for real, bringing what the original has new', async () => {
     const { id, ws, session } = await handedOver(false);
     await workers.approve(id, { upstream: true });
-    const landed = tip();
     git(ws, 'fetch', '--quiet', orig, 'main');
     git(ws, 'switch', '--quiet', '-c', 'port', newer);
-    status.head = commit(ws, 'fix.ts', 'fix, ported\n', 'Port the fix');
+    status.head = commit(ws, 'fix.ts', 'fix\n', 'Port the fix');
     await session.call('pr_opened', { url: URL_ });
-    session.emit({ type: 'idle' });
     await watcher.poll();
-    expect(tip()).toBe(landed);
-    expect(session.inbox.at(-1)).toContain(`builds on commits of upstream/main that mine does not hold yet`);
+    expect(files('mine')).toContain('later.ts');
+    expect(git(main, 'rev-list', '--parents', '-1', 'mine').split(' ')[2]).toBe(status.head);
+    expect(board.events(id).some((e) => e.text.includes('Neuer Stand des Pull Requests in mine gemergt'))).toBe(true);
   });
 
   test('closed by the maintainers, the owner may keep the work on the main branch alone', async () => {

@@ -556,16 +556,19 @@ const de = {
   upstream: {
     approve: (name: string) => `Freigeben + PR an ${name}`,
     approveMine: 'Freigeben, nur für mich',
-    hint: (into: string, name: string) =>
-      `Mit PR an ${name}: Die Arbeit landet auf ${into}, und der Agent öffnet einen Pull Request ans Original. Obeya verfolgt ihn (Review-Kommentare, Checks), bis die Maintainer ihn mergen, und mergt Nachbesserungen auch in ${into}.`,
-    hintPort: (into: string, name: string) =>
-      `Mit PR an ${name}: Diese Aufgabe hat auf ${into} begonnen. Sie landet dort wie gewohnt; für den Pull Request überträgt der Agent die Änderung danach auf einen eigenen Branch vom Stand des Originals, ohne was nur ${into} hat. Das ist Mehrarbeit und kann vom Gezeigten abweichen: Soll eine Aufgabe ans Original, wähle das am besten schon vor dem Start.`,
+    hint: (into: string, name: string, brings?: number) =>
+      `Mit PR an ${name}: Die Arbeit landet auf ${into}${brings ? `, zusammen mit ${brings === 1 ? 'einem Commit' : `${brings} Commits`} von ${name}, die ${into} noch nicht hat` : ''}, und der Agent öffnet einen Pull Request ans Original. Obeya verfolgt ihn (Review-Kommentare, Checks), bis die Maintainer ihn mergen, und mergt Nachbesserungen auch in ${into}.`,
+    hintPort: (into: string, name: string, brings?: number) =>
+      `Mit PR an ${name}: Diese Aufgabe wurde auf ${into} entwickelt und getestet. Für den Pull Request wird die Änderung auf den neuesten Stand von ${name} angewendet, wo sie noch nicht getestet ist. Auf ${into} landet sie wie gewohnt${brings ? `; mit dem Pull Request kommen später ${brings === 1 ? 'ein Commit' : `${brings} Commits`} von ${name} dazu, die ${into} noch nicht hat` : ''}.`,
     approved: (name: string) => `Freigegeben; geht auch als PR an ${name}.`,
     approving: 'landet und geht als PR ans Original …',
-    mine: 'Nur für mich',
-    pr: (name: string) => `Auch als PR an ${name}`,
-    pickMine: (into: string) => `Zweigt von ${into} ab und landet dort. Soll sie später doch ans Original, muss der Agent die Änderung erst auf einen eigenen Branch übertragen.`,
-    pickPr: (into: string, name: string) => `Zweigt vom Stand von ${name} ab, den ${into} schon hat: Ihr Branch wird so, wie er ist, der Pull Request ans Original und landet auch auf ${into}.`,
+    startOn: 'Startpunkt',
+    mine: (into: string) => into,
+    pr: (branch: string, name: string) => `${branch} von ${name}`,
+    pickMine: (into: string, name: string) =>
+      `Entwickelt auf ${into}, mit den eigenen Features des Forks; landet dort. Soll sie bei der Freigabe doch auch an ${name}, wird sie dafür auf das Original angewendet, wo sie nicht getestet ist.`,
+    pickPr: (into: string, name: string, branch: string) =>
+      `Entwickelt auf dem neuesten ${branch} von ${name}; Obeya aktualisiert ${branch} vor dem Start von dort. Geht als Pull Request ans Original und landet auch auf ${into}, zusammen mit dem, was ${name} neu hat.`,
   },
   cardError: (title: string, why: string) => `„${title}“: ${why}`,
   approvedNoChange: 'Beendet.',
@@ -2852,16 +2855,19 @@ const en: Strings = {
   upstream: {
     approve: (name: string) => `Approve + PR to ${name}`,
     approveMine: 'Approve, for me only',
-    hint: (into: string, name: string) =>
-      `With a PR to ${name}: the work lands on ${into}, and the agent opens a pull request to the original. Obeya follows it (review comments, checks) until its maintainers merge it, and merges the fixes into ${into} too.`,
-    hintPort: (into: string, name: string) =>
-      `With a PR to ${name}: this task started on ${into}. It lands there as usual; for the pull request, the agent then carries the change over onto a branch of its own from the original’s state, leaving out what only ${into} has. That is extra work and may differ from what the demo shows: a task meant for the original is best marked so before it starts.`,
+    hint: (into: string, name: string, brings?: number) =>
+      `With a PR to ${name}: the work lands on ${into}${brings ? `, together with ${brings === 1 ? 'a commit' : `${brings} commits`} of ${name} that ${into} does not have yet` : ''}, and the agent opens a pull request to the original. Obeya follows it (review comments, checks) until its maintainers merge it, and merges the fixes into ${into} too.`,
+    hintPort: (into: string, name: string, brings?: number) =>
+      `With a PR to ${name}: this task was built and tested on ${into}. For the pull request, the change is applied to the newest state of ${name}, where it has not been tested. It lands on ${into} as usual${brings ? `; with the pull request, ${brings === 1 ? 'a commit' : `${brings} commits`} of ${name} that ${into} does not have yet come along later` : ''}.`,
     approved: (name: string) => `Approved; goes to ${name} as a PR too.`,
     approving: 'landing, and going to the original as a PR …',
-    mine: 'For me only',
-    pr: (name: string) => `Also as PR to ${name}`,
-    pickMine: (into: string) => `Branches off ${into} and lands there. Should it go to the original after all, the agent first has to carry the change over onto a branch of its own.`,
-    pickPr: (into: string, name: string) => `Branches off the state of ${name} that ${into} already has: its branch becomes the pull request to the original as it is, and lands on ${into} too.`,
+    startOn: 'Start point',
+    mine: (into: string) => into,
+    pr: (branch: string, name: string) => `${branch} of ${name}`,
+    pickMine: (into: string, name: string) =>
+      `Built on ${into}, with the fork's own features; lands there. Should it go to ${name} too at the approval after all, it is applied to the original for that, where it has not been tested.`,
+    pickPr: (into: string, name: string, branch: string) =>
+      `Built on the newest ${branch} of ${name}; Obeya updates ${branch} from there before the start. Goes to the original as a pull request and lands on ${into} too, together with what ${name} has new.`,
   },
   cardError: (title: string, why: string) => `“${title}”: ${why}`,
   approvedNoChange: 'Closed.',

@@ -196,6 +196,17 @@ const de = {
     upstreamClosedQuestion: (name: string, into: string) => `${name} hat den Pull Request geschlossen, ohne ihn zu mergen. Die Arbeit ist auf ${into}. Wie geht es weiter?`,
     keepOnMain: (into: string) => `Nur auf ${into} behalten`,
     keptOnMain: (into: string) => `Der Pull Request bleibt geschlossen; die Arbeit bleibt auf ${into}. Live.`,
+    upstreamStarted: (name: string, branch: string, commit: string, mirror?: UpstreamMirror) =>
+      [
+        `Startet auf dem neuesten ${branch} von ${name} (${commit}).`,
+        mirror?.updated ? `Der lokale ${branch} ist jetzt auf diesem Stand.` : '',
+        mirror?.diverged ? `Der lokale ${branch} hat eigene Commits; Obeya hat ihn so gelassen.` : '',
+        mirror?.checkedOut ? `Der lokale ${branch} ist ausgecheckt; Obeya hat ihn so gelassen.` : '',
+        mirror?.pushed ? `origin/${branch} ist jetzt auch auf diesem Stand.` : '',
+        mirror?.pushProblem ? `origin hat den Push von ${branch} abgelehnt: ${mirror.pushProblem}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
     landedPushRefused: (branch: string, reason: string) => `Gelandet, aber origin hat den Push von ${branch} abgelehnt: ${reason}. ${branch} auf origin bleibt zurück; die nächste Landung pusht wieder.`,
     landedPushMoved: (branch: string) => `Gelandet, aber nicht zu origin gepusht: ${branch} hat dort Commits, die hier fehlen, und Obeya pusht nie erzwungen. ${branch} auf origin bleibt zurück.`,
     switchedToMain: (branch: string | null, commit: string) =>
@@ -747,6 +758,17 @@ const en: Messages = {
     upstreamClosedQuestion: (name: string, into: string) => `${name} closed the pull request without merging it. The work is on ${into}. How should it go on?`,
     keepOnMain: (into: string) => `Keep it on ${into} only`,
     keptOnMain: (into: string) => `The pull request stays closed; the work stays on ${into}. Live.`,
+    upstreamStarted: (name: string, branch: string, commit: string, mirror?: UpstreamMirror) =>
+      [
+        `Starts on the newest ${branch} of ${name} (${commit}).`,
+        mirror?.updated ? `The local ${branch} is at that state now.` : '',
+        mirror?.diverged ? `The local ${branch} has commits of its own; Obeya left it as it is.` : '',
+        mirror?.checkedOut ? `The local ${branch} is checked out; Obeya left it as it is.` : '',
+        mirror?.pushed ? `origin/${branch} is at that state now too.` : '',
+        mirror?.pushProblem ? `origin refused the push of ${branch}: ${mirror.pushProblem}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
     landedPushRefused: (branch: string, reason: string) => `Landed, but origin refused the push of ${branch}: ${reason}. ${branch} on origin stays behind; the next landing pushes again.`,
     landedPushMoved: (branch: string) => `Landed, but not pushed to origin: ${branch} there has commits this one lacks, and Obeya never forces a push. ${branch} on origin stays behind.`,
     switchedToMain: (branch: string | null, commit: string) =>
@@ -1142,6 +1164,15 @@ const en: Messages = {
     several: (n: number) => `${n} cards wait for you`,
   },
 };
+
+/** What became of a fork's copy of the original's main branch when a card started on it (`UpstreamStart.mirror` in the server). */
+export interface UpstreamMirror {
+  updated?: true;
+  diverged?: true;
+  checkedOut?: true;
+  pushed?: true;
+  pushProblem?: string;
+}
 
 export const MESSAGES: Record<Language, Messages> = { de, en };
 

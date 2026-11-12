@@ -100,15 +100,17 @@ card's conversation says why, and the next landing pushes again (where the branc
 
 With `land: "main"`, in a fork whose main branch is an integration branch (the original's main
 branch plus features of its own): the original repository's main branch as the checkout knows it,
-`"<remote>/<branch>"`, say `"upstream/main"`. Each card may then go to the original as a pull
-request too, besides landing on the main branch: the card offers "For me only" and "Also as PR to
-<original>" before it starts, and the approve buttons offer both again. A card for the original
-starts from the newest commit of that branch which the main branch holds, so its branch carries
-nothing of the fork's own work; approved, it is merged into the main branch as it is, and its
-worker opens the pull request against the original. Obeya follows that pull request (review
-comments, checks) until the original's maintainers merge it, and merges whatever is pushed onto it
-into the main branch as well, never the other way. Default: detected where the checkout has a remote
-named `upstream` (`upstream/<its default branch>`); an empty string turns it off.
+`"<remote>/<branch>"`, say `"upstream/main"`. Each card then has a start point: the fork's main
+branch, as any card, or the original's newest main, which Obeya first brings the fork's copy of
+(the local branch of that name and `origin`'s, where they have no commits of their own) forward to.
+A card started on the original goes there as a pull request too: approved, it is merged into the
+fork's main branch as it is, with whatever the original has new, and its worker opens the pull
+request against the original. The approve buttons may still send a card started on the fork there
+(its change is then applied to the original, where it has not been tested). Obeya follows the pull
+request (review comments, checks) until the original's maintainers merge it, and merges whatever
+is pushed onto it into the fork's main branch as well, never the other way. Default: detected where
+the checkout has a remote named `upstream` (`upstream/<its default branch>`); an empty string turns
+it off.
 
 ### `direct` — boolean
 

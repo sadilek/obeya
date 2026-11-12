@@ -243,7 +243,7 @@ export class PrWatcher {
       delete u.conflict;
       delete u.blocked;
       if (!('already' in r)) {
-        this.board.log(cardId, 'state', 'obeya', ours ? t.portRecorded(u.into) : t.intoMain(u.into, r.to.slice(0, 7)));
+        this.board.log(cardId, 'state', 'obeya', 'ours' in r && r.ours ? t.portRecorded(u.into) : t.intoMain(u.into, r.to.slice(0, 7)));
         const pushed = r.pushed;
         if (pushed && !pushed.problem) this.board.log(cardId, 'state', 'obeya', this.board.t.worker.pushedLanded(pushed.branch, r.to.slice(0, 7)));
         if (pushed?.problem) this.board.log(cardId, 'error', 'obeya', pushed.moved ? this.board.t.worker.landedPushMoved(pushed.branch) : this.board.t.worker.landedPushRefused(pushed.branch, pushed.problem));

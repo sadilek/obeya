@@ -481,7 +481,7 @@ function TaskView(v: View) {
 
       {/* the decisions below what the card shows, as on every card */}
       <TaskActions v={v} worked={worked} proto={proto} approve={<ApproveButton item={item} act={act} lands={lands} change={change} upstream={upstreamOf(item, repo, lands)} />} />
-      {review && upstreamOf(item, repo, lands) && <p className="hint">{(item.upstream ? t.upstream.hint : t.upstream.hintPort)(repo!.upstream!.into, repo!.upstream!.name)}</p>}
+      {review && upstreamOf(item, repo, lands) && <p className="hint">{(item.upstream ? t.upstream.hint : t.upstream.hintPort)(repo!.upstream!.into, repo!.upstream!.name, item.upstreamNew)}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
       {review && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
       {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
@@ -776,9 +776,9 @@ function landing(item: Item, repo: RepoRef | undefined, inFolder: boolean) {
 }
 
 /**
- * In a fork (`RepoRef.upstream`), before work begins: whether the card is for the fork alone or goes
- * to the original as a pull request too, which decides where its branch starts. Saved as it is
- * picked; the approve buttons offer the other way again.
+ * In a fork (`RepoRef.upstream`), before work begins: the base the task is built on, the fork's main
+ * branch or the original's newest main, which also decides whether it goes to the original as a pull
+ * request. Saved as it is picked; the approve buttons offer the other way again.
  */
 function UpstreamPick({ item, repo, onEdit }: { item: Item; repo: RepoRef | undefined; onEdit: (p: CardPatch) => void }) {
   const [on, setOn] = useState(!!item.upstream);
@@ -791,16 +791,17 @@ function UpstreamPick({ item, repo, onEdit }: { item: Item; repo: RepoRef | unde
   };
   return (
     <div className="upstream-pick">
+      <span className="hint">{t.upstream.startOn}</span>
       <div className="seg">
         <button className={on ? '' : 'on'} onClick={() => pick(false)}>
-          {t.upstream.mine}
+          {t.upstream.mine(up.into)}
         </button>
         <button className={on ? 'on' : ''} onClick={() => pick(true)}>
-          {t.upstream.pr(up.name)}
+          {t.upstream.pr(up.branch, up.name)}
         </button>
       </div>
-      {/* what the choice decides: where the branch starts, which the approval can no longer change */}
-      <p className="hint">{on ? t.upstream.pickPr(up.into, up.name) : t.upstream.pickMine(up.into)}</p>
+      {/* what the choice decides: the base the task is built and tested on, which the approval can no longer change */}
+      <p className="hint">{on ? t.upstream.pickPr(up.into, up.name, up.branch) : t.upstream.pickMine(up.into, up.name)}</p>
     </div>
   );
 }
