@@ -13,7 +13,7 @@ import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
 import { outsidePlanDir } from './repo';
-import { type AgentEvent, type AgentSpec, BackgroundWait, atTime, failureReason, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
+import { type AgentEvent, type AgentSpec, BackgroundWait, atTime, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
@@ -32,7 +32,7 @@ import { appRunning, type Live, onlyApp } from './worker-live';
 import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
-import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, hostResumed, IN_WORKTREE, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTARTED, RESUMED, restartNotice, restartWaits, spotNote, stillDue, wokeNote } from './worker-texts';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTARTED, RESUMED, restartNotice, restartWaits, RUNS_YOUR_CHANGE, sentence, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
 
@@ -1110,8 +1110,7 @@ export class Workers {
     const card = this.card(cardId);
     if (!card.demo || card.prototypeOf) return { text: '' };
     this.pageHeard(cardId);
-    const ask = 'Before you point anyone to your demo (an issue you close, say), ask the owner for a link.';
-    if (!this.shares) return { text: `This repository has no demo site, so your demo is on no page the team can open. ${ask}` };
+    if (!this.shares) return { text: `This repository has no demo site, so your demo is on no page the team can open. ${ASK_FOR_LINK}` };
     const s = card.share;
     if (s?.state === 'publishing')
       return { text: 'Your demo is going out on a page of its own for the team right now. Obeya tells you its address once it is online: wait for that before you link the demo anywhere (an issue you close, say).', waits: true };
@@ -1119,9 +1118,9 @@ export class Workers {
       return {
         text: s.stale
           ? `Your demo's page for the team shows an earlier demo of yours, not the latest: ${s.url}. Link it wherever you point people at this work (an issue you close, say), or ask the owner to share the latest first.`
-          : `Your demo is shared with the team on a page of its own: ${s.url}. Link it wherever you point people at this work (an issue you close, say).`,
+          : `Your demo is shared with the team on a page of its own: ${s.url}. ${LINK_DEMO}`,
       };
-    return { text: `Your demo is not shared on a page the team can open. ${ask}` };
+    return { text: `Your demo is not shared on a page the team can open. ${ASK_FOR_LINK}` };
   }
 
   /**
@@ -1140,8 +1139,8 @@ export class Workers {
       !r
         ? this.pageNote(cardId).text
         : 'url' in r
-          ? `Your demo is online on a page of its own for the team: ${r.url}. Link it wherever you point people at this work (an issue you close, say).`
-          : `Your demo's page did not go out (${r.why}); the owner sees why on the card. Before you point anyone to your demo (an issue you close, say), ask the owner for a link.`,
+          ? `Your demo is online on a page of its own for the team: ${r.url}. ${LINK_DEMO}`
+          : `Your demo's page did not go out (${r.why}); the owner sees why on the card. ${ASK_FOR_LINK}`,
     );
   }
 
@@ -1168,7 +1167,7 @@ export class Workers {
         fromJson(row.contribution)
           ? 'Once the owner approves, Obeya comments its link on the pull request.'
           : `Obeya links it in what your work lands with: a \`${trailer}: <url>\` trailer on the commit that lands on main, or a line in the pull request's description.`,
-        'Link it wherever you point people at this work (an issue you close, say).',
+        LINK_DEMO,
       ]
         .filter(Boolean)
         .join(' ');
@@ -1732,7 +1731,7 @@ export class Workers {
           // a restart it waited for after the landing has happened: that wakes it
           if (landed?.restarts) {
             this.o.board.work(i.id, { landed: toJson(settled(landed)) });
-            this.deliver(i.id, 'Obeya has started again and runs main with your change now.');
+            this.deliver(i.id, RUNS_YOUR_CHANGE);
           }
         }
         continue;
@@ -1940,7 +1939,7 @@ export class Workers {
     this.apps.parkLater(cardId);
     if (!l?.restarts) return;
     this.o.board.work(cardId, { landed: toJson(settled(l)) });
-    this.deliver(cardId, 'Obeya has started again and runs main with your change now.');
+    this.deliver(cardId, RUNS_YOUR_CHANGE);
   }
 
   /** After a restart (`repo`: of this repository's agents alone): landed work's worker goes on with what remains; the restart it waited for has happened. */
@@ -2127,8 +2126,7 @@ export class Workers {
     if (!card || row.snoozed) return;
     const landed = fromJson(row.landed);
     const t = this.o.board.t;
-    const reason = live.failed ? failureReason(clip(live.failed, 1200), t) : t.worker.stalled;
-    const ended = `${reason}${/[.!?]$/.test(reason) ? '' : '.'}`;
+    const ended = sentence(live.failed ? failureText(live.failed, t) : t.worker.stalled);
     if (landed) {
       if (card.state === 'waiting' || landed.waits || landed.page || landed.needsClone) return;
       this.toOwner(cardId, { text: t.worker.remainsUndone(ended), options: [t.worker.tryAgain], stuck: true });
@@ -2592,7 +2590,7 @@ export class Workers {
     live.nudged = false;
     live.stalled = true;
     // a session that fails again after the nudge cannot go on by itself: the owner hears why, not its last words
-    const text = live.failed ? failureReason(clip(live.failed, 1200), this.o.board.t) : live.lastText ? clip(live.lastText, 1200) : this.o.board.t.worker.stalled;
+    const text = live.failed ? failureText(live.failed, this.o.board.t) : live.lastText ? clip(live.lastText, 1200) : this.o.board.t.worker.stalled;
     this.toOwner(cardId, { text, options: [], stuck: true });
   }
 
@@ -2637,8 +2635,7 @@ export class Workers {
     live.nudged = false;
     live.stalled = true;
     const t = this.o.board.t;
-    const reason = failureReason(clip(live.failed!, 1200), t);
-    this.toOwner(cardId, { text: t.worker.remainsUndone(`${reason}${/[.!?]$/.test(reason) ? '' : '.'}`), options: [t.worker.tryAgain], stuck: true });
+    this.toOwner(cardId, { text: t.worker.remainsUndone(sentence(failureText(live.failed!, t))), options: [t.worker.tryAgain], stuck: true });
   }
 
   /**

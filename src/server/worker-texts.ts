@@ -2,7 +2,9 @@
 // their own, for the `Workers` that send them.
 
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
-import { MESSAGES } from '../core/messages';
+import { MESSAGES, type Messages } from '../core/messages';
+import { clip } from '../core/text';
+import { failureReason } from './runtime';
 import { type Awaited, ownWords, type RestartReason, type Snooze, type Spot } from '../core/types';
 import type { DueRestart } from './workers';
 
@@ -24,11 +26,16 @@ export function answerNote(picks: string[], text: string): string {
 export const hostResumed = (host: string) =>
   `The connection to ${host}, the machine your workspace is on, dropped, and your session ended with it. Whatever you had running there may have been stopped with it: background commands, servers you started, and a command still running in your turn. Run again what you still need, and go on from there.`;
 
-export const RESTARTED =
-  'Obeya was restarted. Whatever you had running then was stopped with it: background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need. If you had paused for the restart, go on from there.';
+/** What a restart stopped of the worker's, and how it goes on: the tail of `RESTARTED` and `REPO_RESTARTED`. */
+const AFTER_RESTARTED =
+  'Whatever you had running then was stopped with it: background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need. If you had paused for the restart, go on from there.';
 
-export const REPO_RESTARTED =
-  "Obeya restarted this repository's agents to apply a change to its configuration. Whatever you had running then was stopped with it: background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need. If you had paused for the restart, go on from there.";
+export const RESTARTED = `Obeya was restarted. ${AFTER_RESTARTED}`;
+
+export const REPO_RESTARTED = `Obeya restarted this repository's agents to apply a change to its configuration. ${AFTER_RESTARTED}`;
+
+/** What a landed worker that waited for Obeya to run its change hears once it does. */
+export const RUNS_YOUR_CHANGE = 'Obeya has started again and runs main with your change now.';
 
 const DUE_WHY: Record<RestartReason, string> = {
   code: 'restart (new code landed on main)',
@@ -98,8 +105,11 @@ export const PAUSE_STILL =
 /** Tells a worker about to pause at a safe point that the owner let it go on after all. */
 export const PAUSE_TAKEN_BACK = 'The owner no longer wants you to pause: go on with your work.';
 
-export const RESUMED =
-  'The owner paused you and has now let you go on. Pausing ended your session at once: whatever you had running was stopped with it, background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need, and go on where you stopped.';
+/** What the owner's pause or snooze (`how`) stopped of the worker's at once, and how it goes on. */
+const cutOff = (how: 'Pausing' | 'Snoozing') =>
+  `${how} ended your session at once: whatever you had running was stopped with it, background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need, and go on where you stopped.`;
+
+export const RESUMED = `The owner paused you and has now let you go on. ${cutOff('Pausing')}`;
 
 /** Until when a worker snoozed, as it hears it: a time, or the card it waits on (and the time at the latest). */
 export function snoozedUntil(s: Snooze): string {
@@ -139,7 +149,7 @@ export function wokeNote(s: Snooze, timeUp: boolean, owner: boolean, words: bool
   const ended =
     s.by === 'agent'
       ? 'Your session ended when you snoozed, and whatever still ran in the background then was stopped with it. Run again what you still need.'
-      : 'Snoozing ended your session at once: whatever you had running was stopped with it, background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need, and go on where you stopped.';
+      : cutOff('Snoozing');
   if (met && s.on) return `${metNote(s.on, met)} You snoozed until ${until}${why}. ${ended}`;
   if (timeUp) {
     const yet = s.on ? ` The card “${s.on.title}” has not got there yet.` : '';
@@ -165,3 +175,15 @@ export const FOLLOW_UP =
 
 export const IN_WORKTREE =
   "No clone of the repository was free, so this is a temporary worktree, where the repository's app and tooling may not run. If answering needs a full clone, call need_clone and end your turn: Obeya resumes you in the next free clone.";
+
+/** Where the worker of landed work links its demo's page. */
+export const LINK_DEMO = 'Link it wherever you point people at this work (an issue you close, say).';
+
+/** What the worker of landed work does where its demo is on no page the team can open. */
+export const ASK_FOR_LINK = 'Before you point anyone to your demo (an issue you close, say), ask the owner for a link.';
+
+/** The error a worker's turn failed with, as the owner and the worker read it. */
+export const failureText = (failed: string, t: Messages) => failureReason(clip(failed, 1200), t);
+
+/** A text that ends a sentence, with a full stop where it has no closing mark of its own. */
+export const sentence = (text: string) => `${text}${/[.!?]$/.test(text) ? '' : '.'}`;
