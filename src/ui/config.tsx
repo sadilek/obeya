@@ -4,12 +4,12 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices, type ModelChoice, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_ROLES, type AgentEffort, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
-import { HarnessUpdate } from './agentPick';
+import { effortsOf, HarnessUpdate, modelLabel } from './agentPick';
 import { api, reload, type SiteHow, failText } from './api';
 import { useAct, useLoaded, usePoll } from './act';
 import { useLatest } from './latest';
@@ -822,7 +822,6 @@ function AgentsBlock({ on }: { on: boolean }) {
   const a = t.config.agents;
   const choose = (role: AgentRole, choice: Partial<AgentSetting>) => act(async () => setView(await api.saveAgents(role, choice)));
   const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  const modelName = (h: Harness, m: ModelChoice) => `${h === 'claude' ? (a.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}${m.version ? ` ${m.version}` : ''}`;
   const unready = view.harnesses.filter((h) => !h.ready);
   return (
     <>
@@ -836,7 +835,7 @@ function AgentsBlock({ on }: { on: boolean }) {
           const setting = view.agents[role];
           // Codex's families by their newest model; a model chosen that the harness no longer offers stays shown
           const listed = modelChoices(harness(setting.harness), setting.model);
-          const efforts = listed.find((m) => m.value === setting.model)?.efforts ?? AGENT_EFFORTS;
+          const efforts = effortsOf(listed, setting.model);
           return (
             <Fragment key={role}>
               <div className="cfg-agent">
@@ -856,7 +855,7 @@ function AgentsBlock({ on }: { on: boolean }) {
               <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value })}>
                 {listed.map((m) => (
                   <option key={m.value} value={m.value}>
-                    {modelName(setting.harness, m)}
+                    {`${modelLabel(setting.harness, m)}${m.version ? ` ${m.version}` : ''}`}
                   </option>
                 ))}
               </select>

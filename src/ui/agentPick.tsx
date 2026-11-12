@@ -6,7 +6,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
+import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, type ModelChoice, modelName } from '../core/types';
 import { useMenuClose, usePlaced } from './menu';
 import { api } from './api';
 import { usePoll } from './act';
@@ -16,12 +16,17 @@ import { t } from './strings';
 let last: AgentsView | null = null;
 const agentsView = () => api.agents().then((v) => (last = v));
 
+/** A model as a picker names it, without its version: Claude's by Obeya's names for them, Codex's by the name Codex gives, else its id. */
+export const modelLabel = (harness: Harness, m: Pick<ModelChoice, 'value' | 'name'>) => (harness === 'claude' ? (t.config.agents.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value));
+
+/** The efforts a model of `choices` takes; every effort for one that does not say. */
+export const effortsOf = (choices: ModelChoice[], model: string) => choices.find((m) => m.value === model)?.efforts ?? AGENT_EFFORTS;
+
 /** A harness and model as the owner knows them: "Claude Code · Opus", "Codex · Sol" (a Codex family by its name, without a version). */
 export function agentLabel(view: AgentsView | null, harness: Harness, model: string): string {
-  const a = t.config.agents;
-  if (harness === 'claude') return model === 'default' ? a.models.default : `${t.harnesses.claude} · ${a.models[model as AgentModel] ?? model}`;
-  const choice = modelChoices(view?.harnesses.find((h) => h.id === 'codex'), model).find((c) => c.value === model);
-  return `${t.harnesses.codex} · ${choice?.name ?? model}`;
+  if (harness === 'claude' && model === 'default') return t.config.agents.models.default;
+  const choice = harness === 'codex' ? modelChoices(view?.harnesses.find((h) => h.id === 'codex'), model).find((c) => c.value === model) : undefined;
+  return `${t.harnesses[harness]} · ${modelLabel(harness, choice ?? { value: model })}`;
 }
 
 /** The card's choice without what is empty; nothing left: the group's again. */
@@ -53,12 +58,13 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const group = view.agents.worker;
   const own = item.agent ?? {};
   const listed = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  const harness = own.harness && own.model ? own.harness : group.harness;
-  const model = own.harness && own.model ? own.model : group.model;
+  // the card's own choice, where it names a harness and model
+  const mine = own.harness && own.model ? { harness: own.harness, model: own.model } : null;
+  const { harness, model } = mine ?? group;
   // each harness's models as the Configuration lists them, the one checked among them even where no longer listed
   const choices = (h: Harness) => modelChoices(listed(h), harness === h ? model : undefined);
   // the efforts the model takes (Codex lists them), the one chosen among them
-  const takes = choices(harness).find((m) => m.value === model)?.efforts ?? AGENT_EFFORTS;
+  const takes = effortsOf(choices(harness), model);
   const save = (next: CardAgent | null) => {
     if (JSON.stringify(next) === JSON.stringify(item.agent ?? null)) return;
     setSaving(true);
@@ -70,12 +76,12 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const pickModel = (h: Harness, m: string) => {
     const mine = h !== group.harness || m !== group.model;
     // an effort the new model does not take goes back to the group's
-    const kept = own.effort && (choices(h).find((x) => x.value === m)?.efforts ?? AGENT_EFFORTS).includes(own.effort) ? own.effort : undefined;
+    const kept = own.effort && effortsOf(choices(h), m).includes(own.effort) ? own.effort : undefined;
     save(choice({ ...(mine ? { harness: h, model: m } : {}), ...(kept ? { effort: kept } : {}) }));
   };
-  const pickEffort = (e: AgentEffort) => save(choice({ ...(own.harness && own.model ? { harness: own.harness, model: own.model } : {}), ...(e !== group.effort ? { effort: e } : {}) }));
+  const pickEffort = (e: AgentEffort) => save(choice({ ...mine, ...(e !== group.effort ? { effort: e } : {}) }));
   const effort = own.effort ?? group.effort;
-  const chosen = [own.harness && own.model ? agentLabel(view, own.harness, own.model) : '', own.effort ? p.chosenEffort(efforts[own.effort]) : ''].filter(Boolean).join(' · ');
+  const chosen = [mine ? agentLabel(view, mine.harness, mine.model) : '', own.effort ? p.chosenEffort(efforts[own.effort]) : ''].filter(Boolean).join(' · ');
   return (
     <span className={saving ? 'agent-split saving' : 'agent-split'} ref={box}>
       {children}
@@ -118,7 +124,7 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
                     return (
                       <button key={m.value} className="snooze-opt" role="menuitemradio" aria-checked={on} onClick={() => pickModel(h, m.value)}>
                         <Check on={on} />
-                        {h === 'claude' ? (t.config.agents.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}
+                        {modelLabel(h, m)}
                         {m.version && <span className="agent-version">{m.version}</span>}
                       </button>
                     );
@@ -223,7 +229,8 @@ export function RunsOn({ item }: { item: Item }) {
   if (!starting || !view) return null;
   const group = view.agents.worker;
   const own = item.agent ?? {};
-  const label = [own.harness && own.model ? agentLabel(view, own.harness, own.model) : agentLabel(view, group.harness, group.model), t.agentPick.chosenEffort(efforts[own.effort ?? group.effort])].join(' · ');
+  const on = own.harness && own.model ? { harness: own.harness, model: own.model } : group;
+  const label = [agentLabel(view, on.harness, on.model), t.agentPick.chosenEffort(efforts[own.effort ?? group.effort])].join(' · ');
   return (
     <span className="runs-on" title={t.talk.startsOn(label)}>
       {label}
