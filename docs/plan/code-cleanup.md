@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W10, W13 to W18, W20 to W22, W24 and W25 are done; the other workstreams are open. The review, made on
+W1 to W10, W13 to W18 and W20 to W25 are done; the other workstreams are open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -240,9 +240,13 @@ the workstream named does it for all of them.
   kinds), G6 (the log followed once), G7 (`DemoView`), G14, G15, G16, G18, G19, G22. After W20.
   `detail.tsx` went by subject first, as moves (`cardSheet.tsx`, `conversation.tsx`, `demo.tsx`,
   `share.tsx`, `pr.tsx`, `review.tsx`, `idea.tsx`); what came of each finding stands under it.
-- [ ] **W23:** The settings sheets and panels. [ui-panels](code-cleanup/ui-panels.md) H2 (`useAct`
+- [x] **W23:** The settings sheets and panels. [ui-panels](code-cleanup/ui-panels.md) H2 (`useAct`
   promoted and a `useLoaded` for "load, call, show the error"), H4 (the canvases as one array of
   rows), H5 (one segmented control), H6, H8, H9, H11, H12, H14, H18, H19, H20, H21, H22. After W20.
+  `act.ts` holds `useAct`, `useLoaded` and `usePoll`, `windowed.ts` the archive's windowing,
+  `cardState.ts` the card-state predicates from `talk.ts`. Of H19 only `lastLine` was done: the two
+  forms that set up a demo site differ too much to share one. What came of each finding stands
+  under it; H7 is left for W19.
 - [x] **W24:** The plugin. plugin P1 (`director.ts` as scene API, screencast, encoding and
   report, so `revoice.ts` no longer loads Playwright), P2 (the demo `SKILL.md` without what the
   scripts print when it applies), P3 (one CDP client in `browser.ts`), P5 to P14. Its findings file

@@ -7,7 +7,7 @@ import { Fragment, type ReactNode, useEffect, useState } from 'react';
 import { encode } from 'uqr';
 import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
 import { api } from './api';
-import { useAct, usePoll } from './act';
+import { useAct } from './act';
 import { Field, Head, Seg } from './config';
 import { clock, t, when } from './strings';
 import { Over } from './over';
@@ -24,11 +24,22 @@ function Coded({ text }: { text: string }) {
 /** The view of the section while `on`, looked at again every few seconds: Tailscale logged in meanwhile, a phone paired. */
 function useAccess(on: boolean): [AccessView | null, (v: AccessView) => void] {
   const [view, setView] = useState<AccessView | null>(null);
-  const load = () => api.access().then((v) => v.local && setView(v));
   useEffect(() => {
-    if (on) load().catch(console.error);
+    if (!on) return;
+    // an answer that comes once the section closed is dropped: a later opening asks afresh
+    let live = true;
+    const load = () => api.access().then((v) => live && v.local && setView(v));
+    load().catch(console.error);
+    const poll = async () => {
+      await load().catch(console.error);
+      if (live) timer = setTimeout(poll, 2500);
+    };
+    let timer = setTimeout(poll, 2500);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [on]);
-  usePoll(on, load, 2500);
   return [view, setView];
 }
 

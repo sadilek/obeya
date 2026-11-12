@@ -85,6 +85,14 @@ browser.
 - Risk: low to medium. No tests on these components; the behaviour to keep per block is small (which
   message class shows the error: `hint c-status` or `p-error`; `failText`'s `detail` list).
 - Confidence: high. Read every block; grepped `useAct`, `failText(e`, `const act = async`.
+- Done by W23: `act.ts` holds `useAct` (`{ status, setStatus, failed, busy, act }`, `act` saying
+  whether the call succeeded and clearing the status as it starts), `useLoaded` and H6's `usePoll`;
+  the blocks of `config.tsx`, `setup.tsx`, `access.tsx` and the Coordinator's rows use them.
+  `ToggleSetting` replaces `UsageBlock` and `CostsBlock`. Of two calls in a row, the later one
+  counts: the earlier one's refusal is not shown, and the form stays busy until the later one ends.
+  Calls that never kept a form busy stay outside `act`: the demo voice's installation and sample,
+  the conversation language. Left as they were: `Identity`'s busy (it shows its error in the setup
+  assistant's line) and the folder dialog's error under a path.
 
 ### H3. `Phone()` is one 616-line component that does six jobs
 - Principle: KISS
@@ -150,6 +158,9 @@ browser.
 - Risk: medium. `configDraft.test.ts` covers the storage only; the dialog itself has no test. Check:
   add, remove, reorder canvases with a repository's settings folded open, reload mid-edit.
 - Confidence: high. Read every use of `draft`, `origin`, `keys`.
+- Done by W23: `rows: { key, origin, canvas }[]`; `draft` is derived and keeps its identity until a
+  canvas changes, so pinning an id does not check the draft again. sessionStorage keeps `{ draft,
+  origin }`.
 
 ### H5. The segmented radio control is written out ten times
 - Principle: DRY
@@ -168,6 +179,7 @@ browser.
 - Win: about 60 lines.
 - Risk: low. Pure markup; a screenshot of each section shows a slip.
 - Confidence: high. Grepped `role="radiogroup"` and `className="seg"` in `src/ui`.
+- Done by W23: `Seg` beside `Field`, used by all ten.
 
 ### H6. "Follow a job until it ends" is seven copies of one interval
 - Principle: DRY
@@ -187,6 +199,10 @@ browser.
 - Risk: low. Chaining instead of a fixed interval changes the rhythm only when the server is slower
   than the interval.
 - Confidence: high. Grepped `setInterval(` in `src/ui` and read each.
+- Done by W23: `usePoll` in `act.ts`, each poll after the last one answered, for the seven
+  intervals and the chained timeout of `RecognitionDetail`; the setup assistant's poll for the first
+  canvas too. `useAccess` keeps its own loop, now chained: it drops an answer that comes once the
+  section closed, which Codex's review showed matters (a reopened section got the old answer).
 
 ### H7. `MILESTONE` restates three dozen message starts by hand
 - Principle: DRY
@@ -234,6 +250,8 @@ browser.
 - Win: about 40 lines; the settings read as a table.
 - Risk: low. Same markup; no tests.
 - Confidence: high.
+- Done by W23: `text`, `list`, `check`, `choice` and `siteText`. The list of noise in pull requests
+  grows with its lines as the other lists do; it kept two rows before.
 
 ### H9. One upload loop twice, and the split of files into screenshots and others twice
 - Principle: DRY
@@ -257,6 +275,8 @@ browser.
 - Bug fixed: `fileTo` pins the drafts' home as `attachTo` does (`updateDraftAt`, and `insertFilesAt`
   for the path), and both compare the home by store and canvas, so a switch away and back lands in
   the draft shown.
+- Done by W23: `eachFile`; `useShotInput`'s `attach` goes through `filesTo(key, files, { added, put
+  })`. `attachTo` and `fileTo` are no longer exported.
 
 ### H10. A menu over the page is placed and closed by hand in three places
 - Principle: DRY
@@ -301,6 +321,8 @@ browser.
 - Win: about 10 lines; one rule.
 - Risk: low.
 - Confidence: high.
+- Done by W23: `modelLabel` and `effortsOf` in `agentPick.tsx`; `mine` once in `AgentPick`. `RunsOn`
+  keeps core's `modelName` for a running Claude session, a rule of its own (the id as it ran).
 
 ### H12. Archive and search share a search field, written twice
 - Principle: DRY
@@ -320,6 +342,8 @@ browser.
 - Win: about 25 lines.
 - Risk: low.
 - Confidence: high.
+- Done by W23: `SearchField` and `placeIn` in `archive.tsx`. The field is selected when it mounts, which
+  is when the list opens.
 
 ### H13. `archive.tsx` keeps pieces of the client-side archive filter it no longer has
 - Principle: YAGNI
@@ -360,6 +384,9 @@ browser.
 - Risk: low. `NewPreference` puts the line after its button; keep that order with a render slot or
   CSS order.
 - Confidence: high. Grepped `useDictatedField`.
+- Done by W23: `DictatedArea({ value, onChange, onEnter, onEscape?, onBlur?, fit?, children })`,
+  `children` standing between the field and its line (`NewPreference`'s button); `useDictatedField`
+  went into it.
 
 ### H15. `when` is defined twice, and the phone keeps the comment of a third
 - Principle: DRY
@@ -437,6 +464,8 @@ browser.
   check with a long archive.
 - Confidence: medium. One user of the windowing today (grepped `offsets(`, `visible(`), so the gain
   is separation, not reuse.
+- Done by W23: `useWindowedRows` in `windowed.ts` with `offsets` and `visible`; `ask` in
+  `useArchiveList`.
 
 ### H19. Setting up a demo site has its form twice
 - Principle: DRY
@@ -456,6 +485,10 @@ browser.
 - Confidence: medium. The two forms differ in small ways (the personal site keeps the chosen host in
   sessionStorage and offers "try Cloudflare" after a failure) that the shared form must leave to the
   callers.
+- Done by W23 in part: `lastLine` in `setup.tsx` for the three failure lines. `SiteHostForm` and
+  `JobLine` were dropped: the two forms differ in their hosts, button style, what keeps the button
+  disabled and where the failure shows, and the progress lines in their element and words, so a
+  shared form would take more parameters than either copy has lines.
 
 ### H20. `talk.ts` also holds what a card's layout and the phone's lists go by
 - Principle: KISS
@@ -473,6 +506,7 @@ browser.
 - Win: no lines; a module with one subject.
 - Risk: low. Imports only; `talk.test.ts` follows.
 - Confidence: medium. A move, so borderline taste; listed because the brief names grab-bag modules.
+- Done by W23: `cardState.ts`, by moves only; `talk.ts` imports `agentWorks` from it.
 
 ### H21. "Save first, then go" is spelled out by each user of `Takeover`
 - Principle: DRY
@@ -486,6 +520,7 @@ browser.
 - Win: a few lines; the rule in one place.
 - Risk: low.
 - Confidence: high.
+- Done by W23: `Takeover` is `{ saved, can, ready, onReload }`, built once in `CanvasBlock`.
 
 ### H22. The held microphone and its "into the field" line twice
 - Principle: DRY
@@ -500,6 +535,8 @@ browser.
 - Win: about 10 lines.
 - Risk: low.
 - Confidence: high.
+- Done by W23: `useHeldByTouch` returns `{ ref, onContextMenu }`; `IntoField` in `voice.tsx` (where
+  `dictation.tsx` imports from), used by both lines.
 
 ## Justified (looks redundant or complex, but has a reason; leave it)
 - `src/ui/talk.ts:120` `talkTurns` runs 120 lines over eight closure variables: it is one pass over

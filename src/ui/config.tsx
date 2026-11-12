@@ -725,7 +725,7 @@ const DEFAULT_DEMO_DIRECTORY = '~/demos';
  */
 function LanguageBlock({ on }: { on: boolean }) {
   const [view, setView] = useLoaded(on, api.language);
-  const { status, busy, act } = useAct();
+  const { status, setStatus, failed, busy, act } = useAct();
   if (!view) return null;
   const l = t.config.language;
   const choose = (language: Language | null) =>
@@ -734,7 +734,11 @@ function LanguageBlock({ on }: { on: boolean }) {
       // the strings are set before the first render: the page loads again, keeping what is open
       reload();
     });
-  const converse = (conversation: Language | null) => act(async () => setView(await api.saveConversationLanguage(conversation)));
+  // saved beside the interface language, which stays choosable meanwhile
+  const converse = (conversation: Language | null) => {
+    setStatus('');
+    api.saveConversationLanguage(conversation).then(setView, failed);
+  };
   return (
     <>
       <Head sub title={l.heading} file={view.file} />
@@ -884,7 +888,7 @@ function DemoBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<DemoSettingsView | null>(null);
   const [draft, setDraft] = useState<DemoSettings | null>(null);
   const [check, setCheck] = useState<DemoVoiceCheck | null>(null);
-  const { status, setStatus, busy, act } = useAct({ detail: ['voiceSample'] });
+  const { status, setStatus, failed, busy, act } = useAct({ detail: ['voiceSample'] });
   const [sampling, setSampling] = useState(false);
   // the subtitle languages as typed, separators and all, while the field has them; the draft holds their codes
   const [subtitlesText, setSubtitlesText] = useState<string | null>(null);
@@ -932,9 +936,14 @@ function DemoBlock({ on }: { on: boolean }) {
     }))
       setStatus(d.saved);
   };
-  const install = () => act(async () => setView(await api.installDemoVoice(draft)));
+  // installing and sampling leave Save as it is: the status line alone is theirs too
+  const install = () => {
+    setStatus('');
+    api.installDemoVoice(draft).then(setView, failed);
+  };
   const listen = async () => {
     setSampling(true);
+    setStatus('');
     // Safari (WebKit) lets a page sound for about 10 s after a click, and a first sample
     // takes longer: started in the click, without a sample yet, the element may play when it comes
     const before = audio.src;
@@ -943,11 +952,13 @@ function DemoBlock({ on }: { on: boolean }) {
     audio.load();
     if (before) URL.revokeObjectURL(before);
     audio.play().catch(() => {});
-    await act(async () => {
+    try {
       const wav = await api.demoVoiceSample(draft);
       audio.src = URL.createObjectURL(wav);
       await audio.play();
-    });
+    } catch (e) {
+      failed(e);
+    }
     setSampling(false);
   };
   const field = (k: (typeof VOICE_FIELDS)[VoiceKind][number]) => (
