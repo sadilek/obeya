@@ -21,7 +21,7 @@ import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
 import { type AgentEvent, type AgentSession, type AgentSpec, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { toObeyaTool } from './to-obeya';
-import { type Forward, hostName, remote } from './hosts';
+import { hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
 import { BranchGone, type FileAt, type Lease, type PullStopped, shortageOf } from './workspaces';
@@ -35,6 +35,7 @@ import { parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf, tooLong, oneLine } from '../core/text';
 import { within } from '../core/late';
 import { holdsNotes } from '../core/queue';
+import { CardApps } from './card-app';
 import { WorkerBriefing } from './worker-briefing';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
@@ -243,12 +244,6 @@ const pauseOf = (due: DueRestart): Pause => (due.reason === 'stop' ? 'stop' : du
 const HOLD_GRACE = 10 * 60_000;
 /** Closing the card with "Approve" also ends the watching: the approval takes the comments then. */
 const RELEASE_DELAY = 1500;
-/** A quick reply from the owner should not pay for starting the stack again. */
-const PARK_GRACE = 5 * 60_000;
-/** An app the owner opened to try by hand runs at least this long after, waiting card or not. */
-const TRY_GRACE = 30 * 60_000;
-/** How long Obeya waits for the app to answer when it looks whether it runs. */
-const PROBE_MS = 1500;
 /** Whether the card's status line is the one it shows while its worker waits for a usage limit, in either language. */
 const limitLine = (line: string | null | undefined) => !!line && LANGUAGES.some((l) => line.startsWith(MESSAGES[l].worker.limitStatus));
 
@@ -295,14 +290,6 @@ export class Workers {
   private runs = 0;
   /** The restart that waits for workers, if one does. */
   private restart: DueRestart | null = null;
-  /** Cards that wait for the owner, until their grace runs out and Obeya stops their app. */
-  private parking = new Map<string, ReturnType<typeof setTimeout>>();
-  /** When the owner last opened a card's app to try it by hand, by card. */
-  private tried = new Map<string, number>();
-  /** The forwards to the apps of cards whose workspace is on another machine, by card: the address forwarded, from which workspace, and the port here it had last. */
-  private forwards = new Map<string, { app: string; workspace: string; forward: Forward; port?: number }>();
-  /** Cards whose stack is being stopped: a message to their worker waits until it is. */
-  private stopping = new Map<string, Promise<void>>();
   /** Cards whose session on another machine was cut off, waiting for that machine to answer again. */
   private reconnecting = new Map<string, ReturnType<typeof setTimeout>>();
   /** When Obeya pauses at once a worker that the owner asked to pause at a safe point, by card. */
@@ -327,17 +314,18 @@ export class Workers {
   private unwatch: () => void;
   /** What the card's worker is told before it does anything: its instructions and its task. */
   private brief: WorkerBriefing;
+  /** The app in the card's workspace while its worker is away from it. */
+  private apps: CardApps;
 
   constructor(private o: WorkerOptions) {
+    this.apps = new CardApps(o, { busy: (id) => !!this.live.get(id)?.busy, run: (id) => this.generation.get(id), shut: () => this.shut });
     this.brief = new WorkerBriefing(o, { prSource: (c) => this.prSource(c), proposalBoards: () => this.proposalBoards() });
     // what a worker does shows on its card while it is in a turn, and only then can it be paused
     o.board.showTurns(() => this.turnsShown());
     // a forward to a card's app ends once the card no longer offers it: cleared, parked, its workspace gone
     this.unwatch = o.board.onChange(() => {
-      for (const [id, f] of this.forwards) {
-        const card = this.o.board.item(id);
-        if (card?.app !== f.app || this.o.board.row(id).workspace !== f.workspace) this.unforward(id);
-      }
+      // a forward to a card's app ends once the card no longer offers it: cleared, parked, its workspace gone
+      this.apps.unforwardGone();
       this.forget();
       this.settleLater();
     });
@@ -345,7 +333,7 @@ export class Workers {
 
   /** What is kept by card goes once its card is deleted or archived: the maps would otherwise grow for the life of the process. */
   private forget() {
-    const maps = [this.generation, this.tried, this.granted];
+    const maps = [this.generation, this.apps.tried, this.granted];
     const ids = [...new Set(maps.flatMap((m) => [...m.keys()]))];
     if (!ids.length) return;
     // one look at the rows alone: reading the items here would make the board's own notes on them earlier
@@ -2615,7 +2603,7 @@ export class Workers {
       this.o.board.work(cardId, { status_line: this.o.board.t.worker.evicting });
       await within(session?.done.catch(() => {}) ?? Promise.resolve(), EVICT_SESSION_WAIT);
       // parking the app may be under way already: it is through before the clone changes hands
-      await this.stopping.get(cardId)?.catch(() => {});
+      await this.apps.stopping.get(cardId)?.catch(() => {});
       const stop = this.o.adapter.app?.stop;
       if (stop) {
         const result = await runAppCommand(path, stop);
@@ -2691,7 +2679,7 @@ export class Workers {
     clearTimeout(this.pausing.get(cardId));
     this.pausing.delete(cardId);
     this.o.board.paused(cardId, pending ? { held: [pending] } : {});
-    this.parkLater(cardId);
+    this.apps.parkLater(cardId);
   }
 
   /**
@@ -2811,7 +2799,7 @@ export class Workers {
     this.pausing.delete(cardId);
     this.o.board.work(cardId, { paused: toJson({ held: [...held, ...(pending ? [pending] : [])] }), pausing: null });
     this.o.board.snooze(cardId, { until, by: 'owner' });
-    this.parkLater(cardId);
+    this.apps.parkLater(cardId);
   }
 
   /** The snoozed worker wakes and goes on: at its time (`timeUp`), as the card it waits on got there or no longer can (`met`), or because the owner wakes it now. */
@@ -2863,7 +2851,7 @@ export class Workers {
         // the owner's snooze holds what Obeya has for the worker, as a pause does
         if (row.paused) this.pausedOverRestart(i.id, landed);
         else {
-          this.parkLater(i.id);
+          this.apps.parkLater(i.id);
           // a restart it waited for after the landing has happened: that wakes it
           if (landed?.restarts) {
             this.o.board.work(i.id, { landed: toJson(settled(landed)) });
@@ -2892,8 +2880,8 @@ export class Workers {
       }
       // a landing the restart cut off: the card waits for the owner's approval again
       if (i.landing) this.o.board.work(i.id, { approved_at: null });
-      if (this.waitsForOwner(i.id)) {
-        this.parkLater(i.id);
+      if (this.apps.waitsForOwner(i.id)) {
+        this.apps.parkLater(i.id);
         continue;
       }
       if (i.state !== 'working' && i.state !== 'inPr') continue;
@@ -3072,7 +3060,7 @@ export class Workers {
 
   /** After a restart, a paused worker stays paused: a restart it waited for has happened, which it hears once it goes on. */
   private pausedOverRestart(cardId: string, l: LandedState | null) {
-    this.parkLater(cardId);
+    this.apps.parkLater(cardId);
     if (!l?.restarts) return;
     this.o.board.work(cardId, { landed: toJson(settled(l)) });
     this.deliver(cardId, 'Obeya has started again and runs main with your change now.');
@@ -3083,7 +3071,7 @@ export class Workers {
     if (!session) return this.finish(card.id);
     this.o.board.work(card.id, { landed: toJson(settled(l)) });
     // an open question waits for its answer, which resumes the session
-    if (card.state === 'waiting') return this.parkLater(card.id);
+    if (card.state === 'waiting') return this.apps.parkLater(card.id);
     const restarted = repo ? REPO_RESTARTED : RESTARTED;
     this.launch(card.id, l.restarts ? `${repo ? 'Obeya runs' : 'Obeya has started again and runs'} main with your change now. ${restarted}` : restarted, session);
   }
@@ -3167,8 +3155,6 @@ export class Workers {
     for (const id of [...this.live.keys()]) this.end(id);
     for (const timer of this.reconnecting.values()) clearTimeout(timer);
     this.reconnecting.clear();
-    for (const timer of this.parking.values()) clearTimeout(timer);
-    this.parking.clear();
     for (const timer of this.pausing.values()) clearTimeout(timer);
     this.pausing.clear();
     // comments held back go from the new workers, which hold them again as they resume
@@ -3180,7 +3166,7 @@ export class Workers {
       clearTimeout(held);
       this.pushingMain.delete(id);
     }
-    for (const id of [...this.forwards.keys()]) this.unforward(id);
+    this.apps.shutdown();
   }
 
   // ---------------------------------------------------------------- sessions
@@ -3321,8 +3307,8 @@ export class Workers {
       text = [woke ? wokeText : RESUMED, ...(held.length ? [`While you were ${woke ? 'snoozed' : 'paused'}, Obeya had this for you:\n\n${held.map((h) => h.text).join('\n\n---\n\n')}`] : []), ...(text ? [`Then:\n\n${text}`] : [])].join('\n\n');
       images = [...held.flatMap((h) => h.images), ...images];
     } else if (woke) text = [wokeText, text].filter(Boolean).join('\n\n');
-    this.unpark(cardId);
-    const stopping = this.stopping.get(cardId);
+    this.apps.unpark(cardId);
+    const stopping = this.apps.stopping.get(cardId);
     if (stopping) {
       // the worker might start the app again while the stop still runs, and lose it
       const generation = this.generation.get(cardId);
@@ -3340,7 +3326,7 @@ export class Workers {
     const parked = this.o.board.row(cardId).parked;
     if (parked) {
       this.o.board.work(cardId, { parked: null });
-      text = `${text}\n\n${this.parkedNote()}`;
+      text = `${text}\n\n${this.apps.parkedNote()}`;
     }
     const live = this.live.get(cardId);
     if (live) {
@@ -3366,7 +3352,7 @@ export class Workers {
   private takesLater(cardId: string): boolean {
     if (this.preparingFor(cardId)) return true;
     const live = this.live.get(cardId);
-    return !!live && live.busy && !live.waiting && !this.stopping.has(cardId) && !this.pausedOf(cardId);
+    return !!live && live.busy && !live.waiting && !this.apps.stopping.has(cardId) && !this.pausedOf(cardId);
   }
 
   /** Whether the card's worker waits for git to make its workspace ready, without a session yet. */
@@ -3501,7 +3487,7 @@ export class Workers {
   private bump(cardId: string) {
     // counted across cards, so a card's run forgotten (`forget`) is never taken for a later one
     this.generation.set(cardId, ++this.runs);
-    this.unpark(cardId);
+    this.apps.unpark(cardId);
   }
 
   private end(cardId: string) {
@@ -3589,7 +3575,7 @@ export class Workers {
         live.background = e.background ?? 0;
         if (!live.background) live.tasks.clear();
         this.turnEnded(cardId, live, live.background, false, this.unheardStarts(cardId, live) || e.more);
-        this.parkLater(cardId);
+        this.apps.parkLater(cardId);
         break;
     }
   }
@@ -3839,7 +3825,7 @@ export class Workers {
       this.setBusy(live, false);
       if (this.live.get(cardId) !== live) return;
       this.turnEnded(cardId, live, 0, true);
-      this.parkLater(cardId);
+      this.apps.parkLater(cardId);
     }, live.background > 0 ? (this.o.backgroundLimit ?? BACKGROUND_LIMIT) : (this.o.backgroundGrace ?? BACKGROUND_GRACE));
     // a card waiting for the owner shows nobody at work once only its background work holds the turn
     if (began && [...this.live.values()].includes(live)) this.o.board.changed();
@@ -3866,111 +3852,6 @@ export class Workers {
   }
 
   // ---------------------------------------------------------------- parking
-
-  /**
-   * Whether the card waits for the owner with its workspace and nothing of its worker's running:
-   * handed over, asked, or its pull request open, and the worker's turn over, background work included.
-   */
-  private waitsForOwner(cardId: string): boolean {
-    const card = this.o.board.item(cardId);
-    if (!card || !(card.state === 'waiting' || (card.state === 'inPr' && card.pr) || card.paused || card.snoozed)) return false;
-    // paused while taking in the owner's words on its handover, nothing of it runs either
-    if ((answering(card) && !card.paused) || this.live.get(cardId)?.busy) return false;
-    const row = this.o.board.row(cardId);
-    return !!row.workspace && !row.parked;
-  }
-
-  /** A card that waits for the owner has its app stopped once a quick reply has not come (`app.stop`). */
-  private parkLater(cardId: string) {
-    if (!this.o.adapter.app?.stop || !this.waitsForOwner(cardId)) return;
-    clearTimeout(this.parking.get(cardId));
-    this.parking.set(
-      cardId,
-      setTimeout(() => {
-        this.parking.delete(cardId);
-        if (!this.waitsForOwner(cardId) || this.stopping.has(cardId)) return;
-        const stopping = this.park(cardId).finally(() => this.stopping.delete(cardId));
-        this.stopping.set(cardId, stopping);
-      }, Math.max(this.o.parkGrace ?? PARK_GRACE, (this.tried.get(cardId) ?? 0) + (this.o.tryGrace ?? TRY_GRACE) - Date.now())),
-    );
-  }
-
-  /**
-   * Where the owner's browser reaches the app the card's worker said runs: its address, or for a
-   * workspace on another machine that address's port forwarded here (only that port: a page that
-   * talks to another port there finds nothing here). The forward is made when first asked for and
-   * made again when its connection dropped, on the port it had if that is still free (`prefer`).
-   */
-  private async appAt(cardId: string, prefer?: number): Promise<string | null> {
-    const app = this.o.board.item(cardId)?.app;
-    const workspace = this.o.board.row(cardId).workspace;
-    if (!app || !workspace) return null;
-    const there = remote(workspace);
-    if (!there) return app;
-    if (this.shut) return null;
-    let url: URL;
-    try {
-      url = new URL(app);
-    } catch {
-      return null;
-    }
-    let f = this.forwards.get(cardId);
-    if (f && !(await f.forward.live())) {
-      // unless another call made it anew meanwhile; the card may no longer offer that app either
-      const port = f.port;
-      if (this.forwards.get(cardId) === f) this.unforward(cardId);
-      return this.appAt(cardId, port);
-    }
-    if (!f) {
-      const host = url.hostname.replace(/^\[(.*)\]$/, '$1');
-      const port = Number(url.port) || (url.protocol === 'https:' ? 443 : 80);
-      f = { app, workspace, forward: there.host.forward(host === '0.0.0.0' || host === '::' ? 'localhost' : host, port, prefer), port: prefer };
-      this.forwards.set(cardId, f);
-    }
-    const local = await f.forward.ready;
-    if (!local || this.forwards.get(cardId) !== f) return null;
-    f.port = local;
-    // the browser here names it as the worker did where it can, so the page's own origin stays
-    url.hostname = url.hostname === '127.0.0.1' ? '127.0.0.1' : 'localhost';
-    url.port = String(local);
-    return url.href;
-  }
-
-  /** Ends the forward to the card's app, if it has one. */
-  private unforward(cardId: string) {
-    this.forwards.get(cardId)?.forward.close();
-    this.forwards.delete(cardId);
-  }
-
-  /** Whether the app the card's worker said runs answers at its address now: any HTTP answer counts, an error page too. */
-  async appUp(cardId: string): Promise<boolean> {
-    const url = await this.appAt(cardId);
-    if (!url) return false;
-    try {
-      await fetch(url, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(PROBE_MS), tls: { rejectUnauthorized: false } });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * The owner opens the card's app to try it by hand: its address. Obeya leaves it running for a
-   * while after (`TRY_GRACE`), so it does not stop under them once the card waits. None once it no longer runs.
-   */
-  async openApp(cardId: string): Promise<string | null> {
-    const url = await this.appAt(cardId);
-    if (!url) return null;
-    this.tried.set(cardId, Date.now());
-    if (this.parking.has(cardId)) this.parkLater(cardId);
-    return url;
-  }
-
-  /** A card that is no longer left waiting keeps its app. */
-  private unpark(cardId: string) {
-    clearTimeout(this.parking.get(cardId));
-    this.parking.delete(cardId);
-  }
 
   /**
    * The connection to the machine the card's workspace is on is gone, and the session with it (as
@@ -4027,36 +3908,6 @@ export class Workers {
     }
   }
 
-  /** Stops the app in the card's workspace, unless it holds what must stay (`app.keep`). */
-  private async park(cardId: string) {
-    const { stop, keep } = this.o.adapter.app ?? {};
-    // the settings lost the command since the grace began
-    if (!stop) return;
-    const workspace = this.o.board.row(cardId).workspace!;
-    const generation = this.generation.get(cardId);
-    const kept = keep ? await runAppCommand(workspace, keep) : null;
-    if (kept?.ok && !kept.missing) {
-      if (this.generation.get(cardId) === generation) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parkKept);
-      return;
-    }
-    const result = await runAppCommand(workspace, stop);
-    // the card's work ended or started afresh meanwhile: its row is no longer this workspace's
-    if (this.generation.get(cardId) !== generation) return;
-    // a branch older than the stop command: nothing of the app runs there to stop
-    if (result.missing) return;
-    if (!result.ok) {
-      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.parkFailed(clip(result.output, 600)));
-      return;
-    }
-    this.o.board.work(cardId, { parked: new Date().toISOString(), app: null });
-    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parked);
-  }
-
-  private parkedNote(): string {
-    const { stop, run } = this.o.adapter.app ?? {};
-    return `While the card waited, Obeya stopped the app in your workspace${stop ? ` (\`${stop}\`)` : ''} to free the machine. When you need it again, start it again${run?.trim() ? ' as the recipe in your brief says' : ''}.`;
-  }
-
   /**
    * The usage limit stopped the worker, at work, taking in the owner's words on its handover or after
    * the landing: it goes on by itself once the limit lifts. Meanwhile it is not busy (a restart need
@@ -4107,6 +3958,16 @@ export class Workers {
     const card = this.o.board.item(cardId);
     if (card?.state !== 'waiting' || card.need !== 'question') return;
     this.backToWork(cardId);
+  }
+
+  /** Whether the app the card's worker said runs answers at its address now (`CardApps.appUp`). */
+  appUp(cardId: string): Promise<boolean> {
+    return this.apps.appUp(cardId);
+  }
+
+  /** The owner opens the card's app to try it by hand: its address (`CardApps.openApp`). */
+  openApp(cardId: string): Promise<string | null> {
+    return this.apps.openApp(cardId);
   }
 
   // ---------------------------------------------------------------- the worker's tools

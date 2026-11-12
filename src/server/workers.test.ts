@@ -83,14 +83,14 @@ describe('workers', () => {
     const c = manual();
     await workers.start(c.id);
     await workers.stop(c.id);
-    const kept = workers as unknown as Record<'generation' | 'tried' | 'granted', Map<string, unknown>>;
+    const kept = workers as unknown as Record<'generation' | 'granted', Map<string, unknown>> & { apps: { tried: Map<string, unknown> } };
     expect(kept.generation.has(c.id)).toBe(true);
-    kept.tried.set(c.id, 1);
+    kept.apps.tried.set(c.id, 1);
     kept.granted.set(c.id, new Set());
     board.remove(c.id);
     await heard();
     expect(kept.generation.has(c.id)).toBe(false);
-    expect(kept.tried.has(c.id)).toBe(false);
+    expect(kept.apps.tried.has(c.id)).toBe(false);
     expect(kept.granted.has(c.id)).toBe(false);
   });
 
