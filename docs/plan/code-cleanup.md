@@ -15,7 +15,7 @@ workstream changes what the owner, the agents or a repository see of Obeya.
 
 ## Where it stands
 
-W1 to W11, W13 to W18 and W20 to W25 are done; the other workstreams are open. The review, made on
+W1 to W18 and W20 to W25 are done; W19 is open. The review, made on
 2026-11-10 at commit `acfa0484`, found the code in better shape than its size suggests, and found
 its debt in a few recurring forms.
 
@@ -134,7 +134,7 @@ the workstream named does it for all of them.
 ## Workstreams
 
 - [x] **W1:** Dead code and stray comments. Remove what nothing uses and move doc comments back to
-  what they describe: [workers](code-cleanup/workers.md) A17; runtimes
+  what they describe: workers A17; runtimes
   B11, B12, B17, B21; [board-db](code-cleanup/board-db.md) C10, C11, C16, C17, C18;
   workspaces-git-hosts E13;
   http-config F13, F14, F15;
@@ -165,11 +165,11 @@ the workstream named does it for all of them.
   while and asked once (B6, workspaces-git-hosts E9, E10); a
   promise against a timer (B9, canvas-coordinator D15); "does
   this pid run" (B18); core's text helpers at their call sites ([core](code-cleanup/core.md) J5,
-  D13, B14); a time within the coming year ([workers](code-cleanup/workers.md) A15, D12); text
+  D13, B14); a time within the coming year (workers A15, D12); text
   limits and two small registries ([board-db](code-cleanup/board-db.md) C15, C19); "answer first,
   then go" (F11).
 - [x] **W7:** A card's row and its events typed in one place. [board-db](code-cleanup/board-db.md)
-  C2 with [workers](code-cleanup/workers.md) A7 (one typed reader per JSON column), C4 (an event's
+  C2 with workers A7 (one typed reader per JSON column), C4 (an event's
   optional fields), C6 (a proposal's stored JSON), C7 (optional arguments by name), C8, C9, C12,
   C13, C14.
 - [x] **W8:** The sheet as an object of its own. [board-db](code-cleanup/board-db.md) C1: `Board`
@@ -185,7 +185,7 @@ the workstream named does it for all of them.
   written in `workers.ts`, `answers.ts` and `explorers.ts`, against the house rule on interactions
   that card kinds share; `Board` now writes each step with its line, and one refusal serves all
   three. What came of it stands under C5.
-- [x] **W11:** `workers.ts` split along its seams, by moves only. [workers](code-cleanup/workers.md)
+- [x] **W11:** `workers.ts` split along its seams, by moves only. workers
   A1 (texts, briefings, the card's app, review cards and the tools leave the `Workers` class behind
   its unchanged public API), with runtimes B4 and B20 (workers' own copies of `BackgroundWait` and
   of the limit-lift timer). After W2 and W7. What came of A1 stands under it. B4: the worker's
@@ -195,10 +195,30 @@ the workstream named does it for all of them.
   turn's), where it heard once. B20: `LIMIT_MARGIN` and `atTime` in `runtime.ts`, used by
   `withLimitWait`, the workers and the Coordinator, which had a third copy. With them the
   runtimes' findings file went, every finding in it done.
-- [ ] **W12:** The long functions of the workers. [workers](code-cleanup/workers.md) A2
+- [x] **W12:** The long functions of the workers. workers A2
   (`ready_for_review` as one linear method, with A19), A3 (`turnEnded` with its conditions named once), A4
   (the three endings of a card's work), A5 and A6 (the owner's words as one value), A8, A9 (the
-  per-card timer maps), A10, A11, A12, A13, A14, A16, A18. After W11.
+  per-card timer maps), A10, A11, A12, A13, A14, A16, A18. After W11. What came of them: A2 is
+  `WorkerTools.handOver`, which awaits what git and the demo's files tell, checks that the session
+  still runs, then refuses (`handOverRefused`, `demoOf`) and records (`record`) in the order it did;
+  with A19 the demo's facts (`videoFacts`), its files (`demoFiles`) and its kept copy (`keepDemo`) are
+  read and written with `fs/promises`, the synchronous twins and `mp4Head`'s blocking read gone, and
+  `Sharing.rebuilt` is async. The kept copy is made once the handover is recorded (its directory is
+  named by the handover's event) and named on the card before the tool answers. A14 is
+  `checkedDemo`, for `ask` and the handover. A3: the per-turn flags are `Live.turn`; `toldOfRestart`,
+  `standsBy`, `afterLandedTurn`, `nudgeOrStall`; the landed worker keeps its own order (a failed turn
+  is not paused for the restart), so `standsBy` serves the other two. A4: `workOver`, `tellOver`,
+  and the row updates `approvalKept` and `ownersAgain`. A5/A6: `OwnerWords`, `heldFirst`,
+  `leaveNote`; `message` and `answer` keep their positional signatures for the canvas and the 181
+  test calls; `deliver` takes `{ owner, said, woke }`. A8: `unheardWith`, `tellLater`, `untell`. A9:
+  `CardTimers`, also for `CardApps`' parking; `pushingMain` stays, as it also marks a push under way.
+  A10: `sameRun`, which also asks that the card is on the canvas and the workers not shut down, for
+  `Workers`, `ReviewCards` and `CardApps`; `SESSION_ENDED`. A11: `suspend`. A13: constants and
+  builders in `worker-texts.ts`. A16: `opening`, `stopWaiting`. A18: `isPlanDoc` (`repo.ts`),
+  `textOf` (`workspaces.ts`), `ReviewCards.prHead`, `newLive`. What an owner can see differ: a card
+  whose landing on main met a conflict no longer keeps the status line "Landing on main" while its
+  worker resolves it (`approvalKept` clears it, as a review card's merge did). With them the workers'
+  findings file went, every finding in it done.
 - [x] **W13:** The runtimes. runtimes B1 (`runtime.ts` keeps the
   contract; the Claude Code runtime moves to a `claude.ts` beside `codex.ts`, the shell reader to
   `shell.ts`), B2 (one idle Claude Code session), B7, B8, B10, B13, B15, B16, B19.
@@ -220,7 +240,7 @@ the workstream named does it for all of them.
   S5 (module seams), S6 to S10, S12 to S15, S18 to S21, and one WebVTT cue parser beside the writer
   (S11, plugin P4, scripts-app R12). Its
   findings file is gone: the second step of S13 (the demo's facts read asynchronously at the
-  handover) went to [workers](code-cleanup/workers.md) A19, for W12; of S21, the two `exists`
+  handover) went to workers A19, for W12; of S21, the two `exists`
   one-liners (`site.ts`, `demo-space.ts`) stayed, as a shared home for them would be a module of its
   own.
 - [x] **W18:** Forges, the PR watcher, hosts and folders.
@@ -285,7 +305,7 @@ the workstream named does it for all of them.
 
 | File | Area | Findings | Major | Moderate | Minor |
 | --- | --- | ---: | ---: | ---: | ---: |
-| [workers.md](code-cleanup/workers.md) | A: `workers.ts` and its small neighbours | 18 | 1 | 7 | 10 |
+| workers.md (all done, deleted) | A: `workers.ts` and its small neighbours | 18 | 1 | 7 | 10 |
 | runtimes.md (all done, deleted) | B: the agent runtimes | 21 | 1 | 5 | 15 |
 | [board-db.md](code-cleanup/board-db.md) | C: board and database | 19 | 3 | 4 | 12 |
 | canvas-coordinator.md (done, deleted) | D: canvas, commands, coordinator | 16 | 1 | 3 | 12 |
