@@ -15,7 +15,7 @@ import { parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
 import type { WorkerOptions } from './worker-options';
 import { IN_WORKTREE } from './worker-texts';
-import type { Comments, Delivery } from './workers';
+import { approvalKept, type Comments, type Delivery, ownersAgain } from './workers';
 
 /** A review card's branch against its pull request: its `head`, the PR's head on the forge (`base`), and the worker's own commits between them. */
 export interface OwnCommits {
@@ -473,18 +473,11 @@ export class ReviewCards {
     if (kept && now.conflict === head) {
       // handed over without a resolution: the merge is the owner's again
       this.o.board.log(cardId, 'error', 'obeya', t.conflictUnresolved(c.number));
-      this.o.board.work(cardId, { state: 'waiting', need: row.demo ? 'demo' : 'review', status_line: null, approved_at: null });
+      this.o.board.work(cardId, ownersAgain(row));
       return undefined;
     }
     this.o.board.log(cardId, 'error', 'obeya', t.mergeConflict(c.number));
-    this.o.board.work(cardId, {
-      contribution: toJson({ ...now, conflict: head }),
-      state: 'working',
-      need: null,
-      detail: null,
-      status_line: null,
-      approved_at: row.approved_at ?? new Date().toISOString(),
-    });
+    this.o.board.work(cardId, { contribution: toJson({ ...now, conflict: head }), ...approvalKept(row) });
     this.w.deliver(
       cardId,
       [
@@ -1036,7 +1029,7 @@ export class ReviewCards {
       if (e instanceof BadRequest && e.code === 'prMoved') return;
       const row = this.o.board.row(cardId);
       if (!this.o.board.item(cardId)) return;
-      if (row.state === 'working' && row.approved_at) this.o.board.work(cardId, { state: 'waiting', need: row.demo ? 'demo' : 'review', status_line: null, approved_at: null });
+      if (row.state === 'working' && row.approved_at) this.o.board.work(cardId, ownersAgain(row));
       // most refusals are in the card's log already
       const said = messageOf(e);
       if (!this.o.board.events(cardId).at(-1)?.text.includes(said)) this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.mergeRefused(said));

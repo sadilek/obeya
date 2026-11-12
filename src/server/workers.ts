@@ -65,6 +65,12 @@ export const finishedRow = (row: CardRow): RowUpdate => ({
   ...(row.state === 'waiting' ? { state: fromJson(row.landed)?.unchanged ? 'done' : 'live', need: null, detail: null } : {}),
 });
 
+/** What the card's row becomes where the owner's approval holds while its worker fixes what stands in the way of landing it. */
+export const approvalKept = (row: CardRow): RowUpdate => ({ state: 'working', need: null, detail: null, status_line: null, approved_at: row.approved_at ?? new Date().toISOString() });
+
+/** What the card's row becomes where its work is the owner's to approve again. */
+export const ownersAgain = (row: CardRow): RowUpdate => ({ state: 'waiting', need: row.demo ? 'demo' : 'review', status_line: null, approved_at: null });
+
 /**
  * The comments held back for the card's worker (`CardRow.held`) are held no more: they stand in the
  * conversation as read where they go now, never shown meanwhile as words waiting for a step. Returns them.
@@ -999,7 +1005,7 @@ export class Workers {
       throw new BadRequest(result.code, result.detail);
     }
     if ('code' in result) {
-      this.o.board.work(cardId, { state: 'working', need: null, detail: null, approved_at: row.approved_at ?? new Date().toISOString() });
+      this.o.board.work(cardId, approvalKept(row));
       this.o.board.log(cardId, 'error', 'obeya', result.detail, { code: result.code });
       this.deliver(
         cardId,
@@ -1019,16 +1025,7 @@ export class Workers {
     this.bump(cardId);
     const restartFor = (await this.o.restartsFor?.(result, direct ? (row.workspace ?? undefined) : undefined)) ?? false;
     const restarts = !!restartFor;
-    const page = this.pageNote(cardId);
-    this.o.board.work(cardId, {
-      state: 'live',
-      need: null,
-      detail: null,
-      status_line: null,
-      approved_at: null,
-      landed: toJson({ commit: result.to, ...(restarts ? { restarts } : {}), ...(page.waits ? { page: true } : {}) }),
-      shipped: toJson({ commit: result.to, base: result.from }),
-    });
+    const page = this.workOver(cardId, 'live', { commit: result.to, ...(restarts ? { restarts } : {}) }, { shipped: toJson({ commit: result.to, base: result.from }) });
     const t = this.o.board.t.worker;
     if (direct) this.o.board.log(cardId, 'state', by, by === 'owner' ? t.approvedDirect : t.landedDirect);
     else this.o.board.log(cardId, 'state', by, by === 'owner' ? t.approvedMain : t.landedMain);
@@ -1037,7 +1034,7 @@ export class Workers {
     if (direct) this.o.onMerged?.(cardId);
     else this.reviews.reprobeClashes();
     this.o.onLanded?.(cardId);
-    this.afterLanding(
+    this.tellOver(
       cardId,
       [
         direct
@@ -1055,12 +1052,8 @@ export class Workers {
             ? `Your change moves where this repository's agents work: Obeya restarts them with it as soon as none of them is in the middle of a turn, you among them, which stops whatever you run then. ${AFTER_RESTART}`
             : '',
         page.text,
-        comments?.text ?? '',
-        AFTER_LANDING,
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-      comments?.images,
+      ],
+      comments,
       by === 'owner',
     );
   }
@@ -1074,8 +1067,7 @@ export class Workers {
     // a demo, an analysis: what the approval was for goes public as any approved demo
     if (by === 'owner') this.o.onApproval?.(cardId);
     this.bump(cardId);
-    const page = this.pageNote(cardId);
-    this.o.board.work(cardId, { state: 'done', need: null, detail: null, status_line: null, approved_at: null, pr: null, landed: toJson({ unchanged: true, ...(page.waits ? { page: true } : {}) }) });
+    const page = this.workOver(cardId, 'done', { unchanged: true }, { pr: null });
     const t = this.o.board.t.worker;
     const folder = !!this.folder?.changed(cardId).length;
     // what it changed in the folder stays: nothing of it is undone any more
@@ -1083,20 +1075,33 @@ export class Workers {
     this.o.board.log(cardId, 'state', by, by === 'owner' ? (folder ? t.approvedFolder : t.approvedUnchanged) : t.doneUnchanged);
     // the worker that closed it is told by the tool's result, and its turn's end finishes it (unless it waits for its demo's page)
     if (by === 'owner')
-      this.afterLanding(
+      this.tellOver(
         cardId,
         [
           folder ? 'The owner approved your work. Your changes stay in the folder as they are, and the card is done: they can no longer be undone from the card.' : 'The owner approved your work. It changed nothing in the repository, so nothing lands and there is no pull request: the card is done.',
           page.text,
-          comments?.text ?? '',
-          this.folder ? AFTER_DONE : AFTER_LANDING,
-        ]
-          .filter(Boolean)
-          .join('\n\n'),
-        comments?.images,
+        ],
+        comments,
         true,
+        this.folder ? AFTER_DONE : AFTER_LANDING,
       );
     return page.text;
+  }
+
+  /**
+   * The card's work is over, `live` once landed or merged, `done` where it changed nothing: its row
+   * says so with what the landing leaves for the worker (`landed`, with whether it waits for its
+   * demo's page) and `more`. Returns what the worker hears of its demo's page (`pageNote`).
+   */
+  private workOver(cardId: string, state: 'live' | 'done', landed: LandedState, more: RowUpdate = {}): { text: string } {
+    const page = this.pageNote(cardId);
+    this.o.board.work(cardId, { state, need: null, detail: null, status_line: null, approved_at: null, landed: toJson({ ...landed, ...(page.waits ? { page: true } : {}) }), ...more });
+    return page;
+  }
+
+  /** The worker hears that its work is over (`lines`), the owner's comments and what it may still do (`after`) below them (`afterLanding`). */
+  private tellOver(cardId: string, lines: string[], comments: Comments | undefined, owner: boolean, after = AFTER_LANDING) {
+    this.afterLanding(cardId, [...lines, comments?.text ?? '', after].filter(Boolean).join('\n\n'), comments?.images, owner);
   }
 
   /**
@@ -1340,23 +1345,14 @@ export class Workers {
     void added.finally(() => this.reading.get(cardId) === added && this.reading.delete(cardId));
     const { url, number } = fromJson(this.o.board.row(cardId).pr) ?? { url: null, number: undefined };
     const shipped: Shipped = { ...(commit ? { commit, base: `${commit}^` } : { fetch: true }), ...(url && number ? { pr: { url, number } } : {}) };
-    const page = this.pageNote(cardId);
-    this.o.board.work(cardId, {
-      state: 'live',
-      need: null,
-      detail: null,
-      status_line: null,
-      approved_at: null,
-      landed: toJson({ ...(commit ? { commit } : {}), ...(page.waits ? { page: true } : {}) }),
-      shipped: toJson(shipped),
-    });
+    const page = this.workOver(cardId, 'live', commit ? { commit } : {}, { shipped: toJson(shipped) });
     this.o.board.log(cardId, 'state', 'obeya', note);
     this.o.onMerged?.(cardId);
     const review = !!fromJson(this.o.board.row(cardId).contribution);
-    this.afterLanding(
+    this.tellOver(
       cardId,
-      [review ? 'The owner approved your handover, and Obeya merged the pull request; the card is live. Leave the PR as it is: Obeya comments the demo’s link on it.' : 'Your pull request was merged; the card is live.', page.text, comments?.text ?? '', AFTER_LANDING].filter(Boolean).join('\n\n'),
-      comments?.images,
+      [review ? 'The owner approved your handover, and Obeya merged the pull request; the card is live. Leave the PR as it is: Obeya comments the demo’s link on it.' : 'Your pull request was merged; the card is live.', page.text],
+      comments,
       !!comments,
     );
   }
@@ -2464,7 +2460,7 @@ export class Workers {
     } catch (e) {
       // the Obeya checkout is in the way: the card waits for the owner, who approves again
       if (!(e instanceof BadRequest)) return this.o.board.log(cardId, 'error', 'obeya', messageOf(e));
-      this.o.board.work(cardId, { state: 'waiting', need: this.o.board.row(cardId).demo ? 'demo' : 'review', status_line: null });
+      this.o.board.work(cardId, ownersAgain(this.o.board.row(cardId)));
       this.o.board.log(cardId, 'error', 'obeya', e.message, { code: e.code });
     }
   }
