@@ -85,11 +85,11 @@ export interface StageCard {
    * Its conversation. An idea's reply with `mocks` needs code that has them, an error's `token`
    * (its session signed in with a token) too. `reply`: Obeya's reply that only answers the owner's
    * words, which stands in the conversation (with a `talk` entry on the card of the same reply, its
-   * exchange). With events of kind `review`, the demos in `row.demos` and then `demo` go with those
+   * exchange); `forwarded`: Obeya's reply to what the card's agent passed on (`to_obeya`). With events of kind `review`, the demos in `row.demos` and then `demo` go with those
    * handovers in order, and a `spot` (a comment's place in a demo video) names its `demo` by its
    * place in that order; earlier demos need code that has them.
    */
-  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean; reply?: boolean }[];
+  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean; reply?: boolean; forwarded?: boolean }[];
   /** Any other column of `cards`, objects stored as JSON. A review card's `contribution` naming one of `pulls` gets that PR's head as `reviewed` where it names none. */
   row?: Record<string, unknown>;
 }
@@ -779,7 +779,7 @@ function writeEvents(db: Database, c: StageCard, id: string, demo: Record<string
   for (const e of c.events ?? []) {
     // only code that has mocks (an error's token) has their column
     const at = ago(e.ago ?? '0s');
-    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}${e.reply ? ', reply' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''}${e.reply ? ', 1' : ''})`).run({
+    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}${e.reply ? ', reply' : ''}${e.forwarded ? ', forwarded' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''}${e.reply ? ', 1' : ''}${e.forwarded ? ', 1' : ''})`).run({
       c: id,
       at,
       kind: e.kind,

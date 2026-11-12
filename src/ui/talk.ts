@@ -44,11 +44,6 @@ export interface Talk {
   pending: CardEvent[];
   /** What the owner said that the agent has not read yet, in the order said: it stands below its work, until it reads it. */
   unread: CardEvent[];
-  /**
-   * Obeya's reply to what the agent at work passed on (`to_obeya`), and what Obeya said after it,
-   * while no message of the agent's came yet: it stands below the agent's work, until that message.
-   */
-  passedOn: Turn[];
   /** The questions the card waits on (`openQuestions`), each with the steps that led to it: they stand at the end, to be answered. */
   asked: Turn[];
   /** What came after the last of them, when none of it is the agents': the owner's words the agent read after asking, which stay below the questions. */
@@ -140,9 +135,9 @@ export function demoHandover(demo: Demo, shown: Turn[]): Turn | undefined {
  * `open`: the questions the card waits on, which leave where they were last asked; the others show how they ended (`ended`). `over`: no agent works on the card, so no message will
  * come for the steps without one (`settle`). `paused`: the agent is paused now, at the last line that says so.
  * `working`: the agent is at work, so the owner's last words may still get a question asked again.
- * Obeya's reply to what the agent passed on (`CardEvent.forwarded`) answers one of its steps: it
- * stands under the agent's message those steps lead to, with what Obeya said after it until then
- * (an answer it looked up), unless the owner's words or a line come first (`passedOn`).
+ * Obeya's reply to what the agent passed on (`CardEvent.forwarded`) answers its last step: the
+ * steps up to there close above it, as before the owner's words, and the agent's next message, which
+ * may build on the reply, stands below it.
  * What Obeya read to look a question up (its steps) is not the agent's work: it folds under the
  * answer it looked up, and while it still looks, under its reply that it does; `answers`: a Question
  * card, whose own agent Obeya's is, so its steps are the card's agent's.
@@ -159,8 +154,6 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
   const limitHolds = !!lastLimit && !events.slice(events.indexOf(lastLimit) + 1).some(agentAuthor);
   // the worker handed over since it started
   let handedOver = false;
-  // Obeya's replies to what the agent passed on, held for the agent's next message
-  let held: Turn[] = [];
   // the steps of Obeya's look-up, for the answer it looks up
   let looking: CardEvent[] = [];
   // Obeya's reply that it looks the question up, where it stands
@@ -172,14 +165,6 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
     looking = [];
     return run;
   };
-  const moved = new Set<Turn>();
-  const release = () => {
-    for (const x of held) moved.add(x);
-    shown.push(...held);
-    held = [];
-  };
-  // the agent's last message, past the replies of Obeya's that moved under it
-  const lastAgent = () => shown.findLast((x) => !moved.has(x));
   // the agent's steps so far, closed above what comes next
   const close = () => {
     const run = closed(steps);
@@ -195,9 +180,8 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
       shown.push({ e, steps });
       steps = [];
       open = false;
-      release();
     } else if (where === 'step' && lookUp(e)) {
-      if (!looking.length) lookingUnder = [...shown, ...held].at(-1);
+      if (!looking.length) lookingUnder = shown.at(-1);
       looking.push(e);
     }
     else if (where === 'step') steps.push(e);
@@ -205,22 +189,23 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
       // closing words after a reply or handover fold under it, the last of its steps; so do the
       // steps the agent took after it in the same turn (a card it proposed, say)
       const last = shown.findLast((x) => !x.line && agentAuthor(x.e));
-      if (last && last === lastAgent()) {
+      if (last && last === shown.at(-1)) {
         (last.then ?? last).steps.push(...steps, e);
         steps = [];
       } else if (last) (last.then ?? last).steps.push(e);
       else steps.push(e);
     }
-    else if (where === 'aside' && (e.forwarded || held.length)) held.push({ e, steps: looked(e) });
     else if (where === 'line' || where === 'aside') {
-      release();
+      // Obeya's reply to what the agent passed on answers its last step: the steps up to there stand
+      // above it, the agent's next message, which may build on the reply, below it
+      if (e.forwarded) close();
       // what the agent did until the owner or the usage limit paused it stays above that line once it
       // went on; while it is paused there, its bubble shows it
       if ((pauseLine(e) && !(opts.paused && e === lastPause)) || snoozeLine(e) || (limitLine(e) && !(limitHolds && e === lastLimit))) close();
       shown.push({ e, steps: where === 'aside' ? looked(e) : [], ...(where === 'line' ? { line: true as const } : {}) });
     }
     else if (where === 'agent') {
-      const prev = lastAgent();
+      const prev = shown.at(-1);
       // a later handover right after the worker's reply says what changed since the one before: it
       // stands under the reply
       if (e.kind === 'review' && handedOver && prev?.e.kind === 'talk' && prev.e.author === 'worker' && !prev.then) prev.then = { e, steps };
@@ -234,25 +219,16 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
       steps = [];
       open = false;
       if (e.kind === 'review') handedOver = true;
-      release();
     } else {
       // a spoken command that became a note or an answer stands once, as that
       if (e.kind === 'say' && duplicate(all, all.indexOf(e))) return;
       if (toAgent(e)) close();
-      release();
       shown.push({ e, steps: [] });
       if (toAgent(e)) open = true;
     }
   });
   // a look-up not answered yet: its steps so far under Obeya's reply that it looks it up
   if (looking.length && lookingUnder && !lookingUnder.line && lookUpAuthor(lookingUnder.e)) lookingUnder.steps.push(...looking);
-  // while the agent works, they wait below its work for its message; else its steps since stand as one
-  let passedOn: Turn[] = [];
-  if (opts.working) passedOn = held;
-  else if (held.length) {
-    if (opts.over) close();
-    release();
-  }
   // an idea's and a proposal's questions are answered in the owner's words; a worker's on their own
   named(shown);
   for (const turn of shown) if (turn.e.kind === 'question' && !turn.picks) Object.assign(turn, answered(events, turn.e));
@@ -266,7 +242,7 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
     settle(shown, steps, events);
     steps = [];
   }
-  return { shown, pending: steps, passedOn, unread: all.filter((e) => e.unread), asked, below };
+  return { shown, pending: steps, unread: all.filter((e) => e.unread), asked, below };
 }
 
 /**
@@ -490,7 +466,7 @@ function named(shown: Turn[]) {
  */
 export const unseen = (talk: Talk, events: CardEvent[], seen = -1): number => {
   const turns = new Set(unseenTurns(talk, events, seen));
-  return [...talk.shown, ...talk.passedOn].filter((x) => turns.has(x) || (x.then && turns.has(x.then))).length;
+  return talk.shown.filter((x) => turns.has(x) || (x.then && turns.has(x.then))).length;
 };
 
 /** Those messages themselves, a handover that follows its reply in the same message (`then`) on its own. */
@@ -498,7 +474,7 @@ export function unseenTurns(talk: Talk, events: CardEvent[], seen = -1): Turn[] 
   const spoke = events.findLast((e) => e.author === 'owner')?.id ?? -1;
   const from = Math.max(seen, spoke);
   const message = (x: Turn) => !x.line && !x.quiet && x.e.author !== 'owner' && x.e.id > from;
-  return [...talk.shown, ...talk.passedOn].flatMap((x) => [x, ...(x.then ? [x.then] : [])]).filter(message);
+  return talk.shown.flatMap((x) => [x, ...(x.then ? [x.then] : [])]).filter(message);
 }
 
 /**

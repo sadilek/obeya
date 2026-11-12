@@ -217,8 +217,6 @@ export function Conversation({
             {questions}
             {turns.below.map(line)}
             {bubble}
-            {/* Obeya's reply to what the agent passed on, until the agent's message it leads to */}
-            {turns.passedOn.map(line)}
           </>
         ) : (
           !paused && askedSteps([...turns.asked.flatMap((x) => x.steps), ...turns.pending])

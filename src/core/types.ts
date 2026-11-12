@@ -871,7 +871,7 @@ export interface CardEvent {
   reply?: true;
   /**
    * Obeya's reply to what the card's agent passed on from the owner's words (`to_obeya`): it answers
-   * a step of the agent's, so it stands under the agent's message that step leads to.
+   * the agent's last step, so the agent's steps up to there close above it.
    */
   forwarded?: true;
   /**
