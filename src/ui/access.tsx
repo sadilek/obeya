@@ -8,7 +8,7 @@ import { encode } from 'uqr';
 import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
 import { api } from './api';
 import { useAct, usePoll } from './act';
-import { Field, Head } from './config';
+import { Field, Head, Seg } from './config';
 import { clock, t, when } from './strings';
 import { Over } from './over';
 
@@ -50,21 +50,14 @@ function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => 
   return (
     <>
       <Field label={a.setting}>
-        <div className="seg" role="radiogroup" aria-label={a.setting}>
-          {([null, 'tailscale', 'address'] as const).map((x) => (
-            <button
-              key={x ?? 'off'}
-              type="button"
-              role="radio"
-              aria-checked={via === x}
-              className={via === x ? 'on' : undefined}
-              disabled={busy}
-              onClick={() => via !== x && save(x === 'tailscale' ? { via: 'tailscale', ...awake } : x === 'address' ? { via: 'address', address: view.addresses[0] ?? '', ...awake } : null)}
-            >
-              {x === 'tailscale' ? a.tailscale : x === 'address' ? a.address : a.off}
-            </button>
-          ))}
-        </div>
+        <Seg
+          label={a.setting}
+          options={[null, 'tailscale', 'address'] as const}
+          value={via}
+          name={(x) => (x === 'tailscale' ? a.tailscale : x === 'address' ? a.address : a.off)}
+          disabled={busy}
+          onChange={(x) => via !== x && save(x === 'tailscale' ? { via: 'tailscale', ...awake } : x === 'address' ? { via: 'address', address: view.addresses[0] ?? '', ...awake } : null)}
+        />
         <p className="hint">
           <Coded text={via === 'tailscale' ? a.tailscaleHint : via === 'address' ? a.addressHint : a.offHint} />
         </p>
@@ -117,25 +110,18 @@ function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => 
       )}
       {view.remote && (
         <Field label={a.awake}>
-          <div className="seg" role="radiogroup" aria-label={a.awake}>
-            {([false, true] as const).map((x) => (
-              <button
-                key={String(x)}
-                type="button"
-                role="radio"
-                aria-checked={always === x}
-                className={always === x ? 'on' : undefined}
-                disabled={busy}
-                onClick={() => {
-                  if (always === x || !view.remote) return;
-                  const { awake: _, ...rest } = view.remote;
-                  void save(x ? { ...rest, awake: 'always' } : rest);
-                }}
-              >
-                {x ? a.awakeAlways : a.awakeWorks}
-              </button>
-            ))}
-          </div>
+          <Seg
+            label={a.awake}
+            options={[false, true] as const}
+            value={always}
+            name={(x) => (x ? a.awakeAlways : a.awakeWorks)}
+            disabled={busy}
+            onChange={(x) => {
+              if (always === x || !view.remote) return;
+              const { awake: _, ...rest } = view.remote;
+              void save(x ? { ...rest, awake: 'always' } : rest);
+            }}
+          />
           <p className="hint">
             {always ? a.awakeAlwaysHint : a.awakeWorksHint} {a.lid}
           </p>

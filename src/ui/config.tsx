@@ -510,6 +510,19 @@ export function Field({ label, hint, className, children }: { label: ReactNode; 
   );
 }
 
+/** A choice of a few options as one row of buttons, the chosen one lit. */
+export function Seg<T>({ label, options, value, name, onChange, disabled }: { label: string; options: readonly T[]; /** None of them: a value not chosen yet. */ value: NoInfer<T> | null; name: (x: T) => ReactNode; onChange: (x: T) => void; disabled?: boolean }) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={label}>
+      {options.map((x) => (
+        <button key={String(x)} type="button" role="radio" aria-checked={value === x} className={value === x ? 'on' : undefined} disabled={disabled} onClick={() => onChange(x)}>
+          {name(x)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * What to know about a field, behind a small icon: the icon shows while the pointer is on the field or its
  * label (the nearest `.cfg-has-info` around it) or the field has the focus, so the page stays calm; the text
@@ -779,13 +792,7 @@ function ThemeBlock({ on }: { on: boolean }) {
     <>
       <Head sub title={l.title} hint={l.hint} file={view.file} />
       <Field label={l.title}>
-        <div className="seg" role="radiogroup" aria-label={l.title}>
-          {[null, ...THEMES].map((x) => (
-            <button key={x ?? 'system'} type="button" role="radio" aria-checked={view.chosen === x} className={view.chosen === x ? 'on' : undefined} onClick={() => choose(x)}>
-              {x ? l.names[x] : l.system}
-            </button>
-          ))}
-        </div>
+        <Seg label={l.title} options={[null, ...THEMES]} value={view.chosen} name={(x) => (x ? l.names[x] : l.system)} onChange={choose} />
       </Field>
       {status && <p className="hint c-status">{status}</p>}
     </>
@@ -1229,13 +1236,7 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
       <Head title={p.title} hint={p.hint} />
       {!site ? (
         <div className="cfg-narrow">
-          <div className="seg" role="radiogroup" aria-label={p.title}>
-            {PERSONAL_HOSTS.map((h) => (
-              <button key={h} type="button" role="radio" aria-checked={host === h} className={host === h ? 'on' : undefined} disabled={running} onClick={() => setHost(h)}>
-                {p.hosts[h]}
-              </button>
-            ))}
-          </div>
+          <Seg label={p.title} options={PERSONAL_HOSTS} value={host} name={(h) => p.hosts[h]} onChange={setHost} disabled={running} />
           <p className="hint">{p.notes[host]}</p>
           {host === 'cloudflare' && <CloudflareAccount accounts={view.cloudflareAccounts} way={chosen} onChange={setWay} disabled={running} />}
           <button className="btn primary" disabled={running || (host === 'cloudflare' && chosen.account === 'token' && !chosen.token.trim())} onClick={() => setUp(host)}>
@@ -1759,13 +1760,7 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
               <Info text={t.config.settings.workspacesHint} />
             </div>
             <div className="cfg-control">
-              <div className="seg" role="radiogroup" aria-label={t.config.settings.workspaces}>
-                {(['worktrees', 'clones'] as const).map((x) => (
-                  <button key={x} type="button" role="radio" aria-checked={workIn === x} className={workIn === x ? 'on' : undefined} onClick={() => setWorkIn(x)}>
-                    {t.config.settings.workIn[x]}
-                  </button>
-                ))}
-              </div>
+              <Seg label={t.config.settings.workspaces} options={['worktrees', 'clones'] as const} value={workIn} name={(x) => t.config.settings.workIn[x]} onChange={setWorkIn} />
             </div>
           </div>
           {clones ? (
@@ -1916,9 +1911,25 @@ function RepoSettingsBlock({
     const from = base[k].source;
     return field(k, label, own(k) !== undefined, base[k].held ? c.held : c.source[from], () => set(k, undefined), control, hint);
   };
+  // the kinds of control a setting has: a line of text, a list one entry a line, a box to tick, a choice of a few
+  const text = (k: SettingKey, label: string, hint: string, placeholder?: string) =>
+    row(k, label, <input className="c-path" aria-label={label} placeholder={placeholder} spellCheck={false} value={value<string>(k)} onChange={(e) => set(k, e.target.value)} />, hint);
+  const list = (k: SettingKey, label: string, hint: string) =>
+    row(k, label, <textarea rows={Math.max(2, value<string[]>(k).length + 1)} spellCheck={false} aria-label={label} value={lines(k)} onChange={(e) => set(k, e.target.value.split('\n'))} />, hint);
+  const check = (k: SettingKey, label: string, box: string, hint?: string) =>
+    row(
+      k,
+      label,
+      <label className="c-check">
+        <input type="checkbox" checked={value<boolean>(k)} onChange={(e) => set(k, e.target.checked)} />
+        {box}
+      </label>,
+      hint,
+    );
+  const choice = <T,>(k: SettingKey, label: string, options: readonly T[], name: (x: T) => string, hint: string) =>
+    row(k, label, <Seg label={label} options={options} value={value<T>(k)} name={name} onChange={(x) => set(k, x)} />, hint);
   const land = value<'main' | 'pr'>('land');
   const planDocs = value<{ dir: string; exclude: string[] }>('planDocs');
-  const language = value<Language>('language');
   const demoLanguage = value<NarrationLanguage | null>('demoLanguage');
   const site = value<DemoSite | null>('site') ?? { title: '', url: '', deploy: '' };
   const setSite = (patch: Partial<DemoSite>) => set('site', { ...site, ...patch });
@@ -1932,55 +1943,28 @@ function RepoSettingsBlock({
       {control}
     </label>
   );
+  const siteText = (k: 'title' | 'url' | 'deploy' | 'env', label: string, placeholder?: string, wide = false) =>
+    sub(label, <input className="c-path" aria-label={label} placeholder={placeholder} spellCheck={false} value={site[k] ?? ''} onChange={(e) => setSite({ [k]: e.target.value })} />, wide);
   return (
     <div className="cfg-settings" ref={box}>
       {!folder && (
         <div className="cfg-group">
           <h5 className="cfg-group-head">{t.config.groups.landing}</h5>
-          {row('branch', c.branch, <input className="c-path" aria-label={c.branch} spellCheck={false} value={value<string>('branch')} onChange={(e) => set('branch', e.target.value)} />, c.branchHint)}
-          {row(
-            'land',
-            c.land,
-            <div className="seg" role="radiogroup" aria-label={c.land}>
-              {(['main', 'pr'] as const).map((x) => (
-                <button key={x} type="button" role="radio" aria-checked={land === x} className={land === x ? 'on' : undefined} onClick={() => set('land', x)}>
-                  {c.lands[x]}
-                </button>
-              ))}
-            </div>,
-            c.landHint,
-          )}
-          {land === 'pr' &&
-            row(
-              'direct',
-              c.direct,
-              <label className="c-check">
-                <input type="checkbox" checked={value<boolean>('direct')} onChange={(e) => set('direct', e.target.checked)} />
-                {c.directLabel}
-              </label>,
-            )}
-          {land === 'pr' &&
-            row(
-              'autoMerge',
-              c.autoMerge,
-              <label className="c-check">
-                <input type="checkbox" checked={value<boolean>('autoMerge')} onChange={(e) => set('autoMerge', e.target.checked)} />
-                {c.autoMergeLabel}
-              </label>,
-              c.autoMergeHint,
-            )}
-          {land === 'pr' && row('prNoise', c.prNoise, <textarea rows={2} spellCheck={false} aria-label={c.prNoise} value={lines('prNoise')} onChange={(e) => set('prNoise', e.target.value.split('\n'))} />, c.prNoiseHint)}
-          {row('softPaths', c.softPaths, <textarea rows={Math.max(2, value<string[]>('softPaths').length + 1)} spellCheck={false} aria-label={c.softPaths} value={lines('softPaths')} onChange={(e) => set('softPaths', e.target.value.split('\n'))} />, c.softPathsHint)}
+          {text('branch', c.branch, c.branchHint)}
+          {choice('land', c.land, ['main', 'pr'] as const, (x) => c.lands[x], c.landHint)}
+          {land === 'pr' && check('direct', c.direct, c.directLabel)}
+          {land === 'pr' && check('autoMerge', c.autoMerge, c.autoMergeLabel, c.autoMergeHint)}
+          {land === 'pr' && list('prNoise', c.prNoise, c.prNoiseHint)}
+          {list('softPaths', c.softPaths, c.softPathsHint)}
         </div>
       )}
       <div className="cfg-group">
         <h5 className="cfg-group-head">{t.config.groups.app}</h5>
-        {row('setup', c.setup, <input className="c-path" aria-label={c.setup} spellCheck={false} value={value<string>('setup')} onChange={(e) => set('setup', e.target.value)} />, c.setupHint)}
-        {row('checks', c.checks, <textarea rows={Math.max(2, value<string[]>('checks').length + 1)} spellCheck={false} aria-label={c.checks} value={lines('checks')} onChange={(e) => set('checks', e.target.value.split('\n'))} />, c.checksHint)}
+        {text('setup', c.setup, c.setupHint)}
+        {list('checks', c.checks, c.checksHint)}
         {row('run', c.run, <textarea rows={Math.max(6, Math.ceil(value<string>('run').length / 70) + 1)} aria-label={c.run} placeholder={c.runPlaceholder} value={value<string>('run')} onChange={(e) => set('run', e.target.value)} />, c.runHint)}
-        {row('stop', c.stop, <input className="c-path" aria-label={c.stop} placeholder="docker compose down" spellCheck={false} value={value<string>('stop')} onChange={(e) => set('stop', e.target.value)} />, c.stopHint)}
-        {!!value<string>('stop').trim() &&
-          row('keep', c.keep, <input className="c-path" aria-label={c.keep} placeholder="grep -q PERSIST=1 .env" spellCheck={false} value={value<string>('keep')} onChange={(e) => set('keep', e.target.value)} />, c.keepHint)}
+        {text('stop', c.stop, c.stopHint, 'docker compose down')}
+        {!!value<string>('stop').trim() && text('keep', c.keep, c.keepHint, 'grep -q PERSIST=1 .env')}
       </div>
       <div className="cfg-group">
         <h5 className="cfg-group-head">{t.config.groups.plans}</h5>
@@ -1993,33 +1977,11 @@ function RepoSettingsBlock({
           </div>,
           c.planDocsHint,
         )}
-        {row(
-          'language',
-          c.language,
-          <div className="seg" role="radiogroup" aria-label={c.language}>
-            {LANGUAGES.map((x) => (
-              <button key={x} type="button" role="radio" aria-checked={language === x} className={language === x ? 'on' : undefined} onClick={() => set('language', x)}>
-                {c.languages[x]}
-              </button>
-            ))}
-          </div>,
-          c.languageHint,
-        )}
+        {choice('language', c.language, LANGUAGES, (x) => c.languages[x], c.languageHint)}
       </div>
       <div className="cfg-group">
         <h5 className="cfg-group-head">{t.config.groups.demos}</h5>
-        {row(
-          'demoLanguage',
-          c.demoLanguage,
-          <div className="seg" role="radiogroup" aria-label={c.demoLanguage}>
-            {LANGUAGES.map((x) => (
-              <button key={x} type="button" role="radio" aria-checked={demoLanguage === x} className={demoLanguage === x ? 'on' : undefined} onClick={() => set('demoLanguage', x)}>
-                {c.languages[x]}
-              </button>
-            ))}
-          </div>,
-          c.demoLanguageHint,
-        )}
+        {choice('demoLanguage', c.demoLanguage, LANGUAGES, (x) => c.languages[x], c.demoLanguageHint)}
         {row(
           'site',
           c.site,
@@ -2031,10 +1993,10 @@ function RepoSettingsBlock({
               </button>
             ) : (
               <>
-            {sub(c.siteTitle, <input className="c-path" aria-label={c.siteTitle} spellCheck={false} value={site.title} onChange={(e) => setSite({ title: e.target.value })} />)}
-            {sub(c.siteUrl, <input className="c-path" aria-label={c.siteUrl} placeholder="https://demos.example.com" spellCheck={false} value={site.url} onChange={(e) => setSite({ url: e.target.value })} />)}
-            {sub(c.siteDeploy, <input className="c-path" aria-label={c.siteDeploy} placeholder="bunx wrangler@4 pages deploy {dir} --project-name demos" spellCheck={false} value={site.deploy} onChange={(e) => setSite({ deploy: e.target.value })} />, true)}
-            {sub(c.siteEnv, <input className="c-path" aria-label={c.siteEnv} placeholder="sites/demos/deploy.env" spellCheck={false} value={site.env ?? ''} onChange={(e) => setSite({ env: e.target.value })} />, true)}
+            {siteText('title', c.siteTitle)}
+            {siteText('url', c.siteUrl, 'https://demos.example.com')}
+            {siteText('deploy', c.siteDeploy, 'bunx wrangler@4 pages deploy {dir} --project-name demos', true)}
+            {siteText('env', c.siteEnv, 'sites/demos/deploy.env', true)}
             {sub(
               c.siteHeaders,
               <textarea
@@ -2066,16 +2028,7 @@ function RepoSettingsBlock({
             {/* not a label: a click on its words would press the first button */}
             <div className="wide">
               <span className="hint">{c.sitePublish}</span>
-              <div className="seg" role="radiogroup" aria-label={c.sitePublish}>
-                {(['click', 'approved'] as const).map((x) => {
-                  const on = (site.publish ?? 'click') === x;
-                  return (
-                    <button key={x} type="button" role="radio" aria-checked={on} className={on ? 'on' : undefined} onClick={() => setSite({ publish: x === 'approved' ? x : undefined })}>
-                      {c.sitePublishes[x]}
-                    </button>
-                  );
-                })}
-              </div>
+              <Seg label={c.sitePublish} options={['click', 'approved'] as const} value={site.publish ?? 'click'} name={(x) => c.sitePublishes[x]} onChange={(x) => setSite({ publish: x === 'approved' ? x : undefined })} />
             </div>
               </>
             )}
@@ -2134,13 +2087,7 @@ function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: strin
       ) : (
         <>
           <p className="hint">{c.siteSetupHint}</p>
-          <div className="seg" role="radiogroup" aria-label={c.siteSetup}>
-            {(['github', 'cloudflare'] as const).map((h) => (
-              <button key={h} type="button" role="radio" aria-checked={host === h} className={host === h ? 'on' : undefined} disabled={running} onClick={() => setHost(h)}>
-                {c.siteSetupHosts[h]}
-              </button>
-            ))}
-          </div>
+          <Seg label={c.siteSetup} options={['github', 'cloudflare'] as const} value={host} name={(h) => c.siteSetupHosts[h]} onChange={setHost} disabled={running} />
           <p className="hint">{c.siteSetupNotes[host]}</p>
           {host === 'cloudflare' && <CloudflareAccount accounts={accounts} way={chosen} onChange={setWay} disabled={running} />}
           <button
