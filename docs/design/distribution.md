@@ -157,7 +157,7 @@ AppImage on Ubuntu 22.04 for its glibc), checks the compiled server there with
 ffmpeg for the demo voice's tests). `scripts/check-voice.ts` installs the local demo voices (Kokoro, Piper) afresh on
 Linux, Windows and macOS and has each speak a sentence through the renders' own path, which makes
 each clip a WAV with ffmpeg, so that job installs ffmpeg too. Kokoro's espeak-ng refused a data path of
-over 150 characters, which only a deep home (a temporary directory) showed (2026-11-06). A run takes about ten minutes. Tauri's DMG script now and then fails on the Intel
+over 150 characters, which only a deep home (a temporary directory) showed (2026-11-06). Under such a path a clip reads a copy of that data in the system's temporary directory, and each clip makes it complete again: macOS deletes files there that were not read for three days but keeps their directories, and a copy reused once its `phontab` was there broke every clip on that Mac (2026-11-12). A run takes about ten minutes. Tauri's DMG script now and then fails on the Intel
 Mac runner where the same commit builds on the next try (2026-11-05 and -06), so a DMG is bundled up
 to three times, the tries after the first with `--verbose`, the only way Tauri shows the script's
 output.
