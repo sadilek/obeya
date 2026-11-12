@@ -8,7 +8,7 @@ import { inScript, inStyle, pagePolicy, sealed, withHeightReport } from '../core
 import { languageName, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { captionPages, cueWords, pageOf, spokenWord } from '../core/caption-pages';
-import { type PlayerWords, videoPlayer } from '../core/video-player';
+import { PLAYER_ICONS, PLAYER_KEYS, type PlayerWords, videoPlayer } from '../core/video-player';
 import PLAYER_STYLE from '../core/player.css' with { type: 'text' };
 
 /** The languages a page speaks: those a demo is narrated in. */
@@ -305,7 +305,7 @@ const CUES = `
 `;
 
 /** What the player (src/core/video-player.ts) takes along from the modules it runs beside in Obeya, as a script's object. */
-const PLAYER_LIB = `{ captionPages: ${captionPages}, pageOf: ${pageOf}, cueWords: ${cueWords}, spokenWord: ${spokenWord}, preferredTrack: ${preferredTrack} }`;
+const PLAYER_LIB = `{ captionPages: ${captionPages}, pageOf: ${pageOf}, cueWords: ${cueWords}, spokenWord: ${spokenWord}, preferredTrack: ${preferredTrack}, keys: ${JSON.stringify(PLAYER_KEYS)}, icons: ${JSON.stringify(PLAYER_ICONS)} }`;
 
 // each video's player (src/core/video-player.ts), its chapters from its `data-chapters`, taking the page's keys; a
 // silent video shows its captions from the start, in the viewer's language where it has a track in it, else the first

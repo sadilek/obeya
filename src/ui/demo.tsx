@@ -13,7 +13,7 @@ import { Body } from './markdown';
 import { useReportedHeight } from './frame';
 import { useFullscreen } from './fullscreen';
 import { captionPages, cueWords, pageOf, spokenWord } from '../core/caption-pages';
-import { CAPTIONS_CHANGED, type PlayerWords, SEEK_KEYS_KNOWN, videoPlayer } from '../core/video-player';
+import { CAPTIONS_CHANGED, PLAYER_ICONS, PLAYER_KEYS, type PlayerWords, SEEK_KEYS_KNOWN, videoPlayer } from '../core/video-player';
 import { zoomedBox } from './walkthrough';
 import { plainKey, useZoom } from './zoom';
 import { showsVersions, watch } from './spot';
@@ -242,7 +242,7 @@ function DemoPlayer({
     const root = zoom.screen.current;
     const v = video.current;
     if (!root || !v) return;
-    const player = videoPlayer(root, v, { chapters: demo.chapters, words: playerWords(), silent: !!demo.silent, prefer: [uiLanguage()] }, { captionPages, pageOf, cueWords, spokenWord, preferredTrack });
+    const player = videoPlayer(root, v, { chapters: demo.chapters, words: playerWords(), silent: !!demo.silent, prefer: [uiLanguage()] }, { captionPages, pageOf, cueWords, spokenWord, preferredTrack, keys: PLAYER_KEYS, icons: PLAYER_ICONS });
     setSlot(player.slot);
     // captions switched while zoomed: the zoomed player grows or shrinks to stay in the window, once the caption has
     const refit = () => requestAnimationFrame(() => zoom.refit());

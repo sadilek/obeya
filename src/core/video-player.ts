@@ -50,6 +50,8 @@ export interface PlayerLib {
   cueWords: typeof cueWords;
   spokenWord: typeof spokenWord;
   preferredTrack: (tracks: readonly string[], preferred: readonly string[]) => string | undefined;
+  keys: typeof PLAYER_KEYS;
+  icons: typeof PLAYER_ICONS;
 }
 
 export interface Player {
@@ -66,6 +68,17 @@ export const CAPTIONS_KEY_KNOWN = 'obeya.walkthroughCaptionsKeyKnown';
 export const SEEK_KEYS_KNOWN = 'obeya-seek-keys-known';
 /** The event every player of the page hears when captions were switched on or off. */
 export const CAPTIONS_CHANGED = 'obeya-captions';
+/** The keys above, as a player gets them in `lib`. */
+export const PLAYER_KEYS = { CAPTIONS_OFF, CAPTIONS_KEY_KNOWN, SEEK_KEYS_KNOWN, CAPTIONS_CHANGED };
+
+/** The icons of the controls (SVG paths in a 24 × 24 box), shared with the walkthroughs' player. */
+export const PLAYER_ICONS = {
+  previous: 'M6 5h2.4v14H6zM19 5.6v12.8a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.4a.8.8 0 0 1 1.2.7z',
+  next: 'M15.6 5H18v14h-2.4zM5 5.6v12.8a.8.8 0 0 0 1.2.7l8.2-6.4a.8.8 0 0 0 0-1.4L6.2 4.9A.8.8 0 0 0 5 5.6z',
+  play: 'M7 4.9v14.2a.9.9 0 0 0 1.4.8l11.2-7.1a.9.9 0 0 0 0-1.6L8.4 4.1A.9.9 0 0 0 7 4.9z',
+  pause: 'M6.5 4.5h3.6v15H6.5zM13.9 4.5h3.6v15h-3.6z',
+  speaker: 'M3.5 9.2h3.8L12 5.3v13.4l-4.7-3.9H3.5z',
+};
 
 /**
  * Builds the caption and the controls into `root` (a `.dp`), after the picture it holds (`video`
@@ -75,23 +88,13 @@ export const CAPTIONS_CHANGED = 'obeya-captions';
  * (the start of this one, once it has played a few seconds) and after.
  */
 export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: PlayerOptions, lib: PlayerLib): Player {
-  // the keys of the browser's storage, as exported above: the function carries its own copy
-  const CAPTIONS_OFF = 'obeya.walkthroughCaptionsOff';
-  const CAPTIONS_KEY_KNOWN = 'obeya.walkthroughCaptionsKeyKnown';
-  const SEEK_KEYS_KNOWN = 'obeya-seek-keys-known';
-  const CAPTIONS_CHANGED = 'obeya-captions';
+  const { CAPTIONS_OFF, CAPTIONS_KEY_KNOWN, SEEK_KEYS_KNOWN, CAPTIONS_CHANGED } = lib.keys;
   /** The language of captions the viewer picked last. */
   const LANGUAGE = 'obeya.captionsLanguage';
   /** How far ← and → jump, in seconds; how far into a chapter "previous" goes back to its start rather than to the one before. */
   const SEEK_S = 5;
   const RESTART_S = 3;
-  const PATHS = {
-    previous: 'M6 5h2.4v14H6zM19 5.6v12.8a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.4a.8.8 0 0 1 1.2.7z',
-    next: 'M15.6 5H18v14h-2.4zM5 5.6v12.8a.8.8 0 0 0 1.2.7l8.2-6.4a.8.8 0 0 0 0-1.4L6.2 4.9A.8.8 0 0 0 5 5.6z',
-    play: 'M7 4.9v14.2a.9.9 0 0 0 1.4.8l11.2-7.1a.9.9 0 0 0 0-1.6L8.4 4.1A.9.9 0 0 0 7 4.9z',
-    pause: 'M6.5 4.5h3.6v15H6.5zM13.9 4.5h3.6v15h-3.6z',
-    speaker: 'M3.5 9.2h3.8L12 5.3v13.4l-4.7-3.9H3.5z',
-  };
+  const PATHS = lib.icons;
   const w = o.words;
   const stored = (key: string) => {
     try {

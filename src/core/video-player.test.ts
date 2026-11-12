@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { demoPageHtml, sitePlayerScript, stackedPageHtml } from '../server/demo-page';
-import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF, SEEK_KEYS_KNOWN, videoPlayer } from './video-player';
+import { PLAYER_ICONS, PLAYER_KEYS } from './video-player';
 
 /** The scripts of a page that run (not those holding captions or a video's bytes). */
 const scripts = (html: string) => [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
@@ -36,10 +36,9 @@ test('a shared page carries the player as source that parses, for a page alone a
   expect(page).toContain('<figure class="dp" data-chapters="[[0,&quot;Before&quot;],[12.5,&quot;After „quoted“ &lt;/script&gt;&quot;]]">');
 });
 
-test('the player keeps the browser settings under the keys the walkthroughs read', () => {
-  // the function carries its own copy of each, since a page has only its source
-  const source = videoPlayer.toString();
-  for (const key of [CAPTIONS_OFF, CAPTIONS_KEY_KNOWN, SEEK_KEYS_KNOWN, CAPTIONS_CHANGED]) expect(source).toContain(JSON.stringify(key));
+test('a shared page hands its player the keys the walkthroughs read, and the icons they draw', () => {
+  // a page has only the player's source, so `lib` carries them as data
+  expect(sitePlayerScript()).toContain(`keys: ${JSON.stringify(PLAYER_KEYS)}, icons: ${JSON.stringify(PLAYER_ICONS)}`);
 });
 
 test("obeya.si's script of the player parses and defines obeyaPlayer, with its keys bound to the player", () => {

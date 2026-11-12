@@ -13,7 +13,7 @@ import type { AnswerFile } from '../core/types';
 import { estimatedStarts, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
 import { answerFile, api, at, beforeReload } from './api';
 import { captionPages, pageOf } from '../core/caption-pages';
-import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF } from '../core/video-player';
+import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF, PLAYER_ICONS } from '../core/video-player';
 import { know, known, local, session, setFlag, takeJson, writeJson, useKnown } from './stored';
 import { t } from './strings';
 import { plainKey, useZoom } from './zoom';
@@ -583,17 +583,17 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
       <div className="wt-controls">
         <button className="btn small" aria-label={t.walkthrough.previous} title={t.walkthrough.previous} disabled={p.slide === 0} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide - 1)}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 5h2.4v14H6zM19 5.6v12.8a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.4a.8.8 0 0 1 1.2.7z" />
+            <path d={PLAYER_ICONS.previous} />
           </svg>
         </button>
         <button className="btn small wt-play" disabled={!slide} aria-label={p.playing ? t.walkthrough.pause : t.walkthrough.resume} title={p.playing ? t.walkthrough.pause : t.walkthrough.resume} onMouseDown={(e) => e.preventDefault()} onClick={p.toggle}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d={p.playing ? 'M6.5 4.5h3.6v15H6.5zM13.9 4.5h3.6v15h-3.6z' : 'M7 4.9v14.2a.9.9 0 0 0 1.4.8l11.2-7.1a.9.9 0 0 0 0-1.6L8.4 4.1A.9.9 0 0 0 7 4.9z'} />
+            <path d={p.playing ? PLAYER_ICONS.pause : PLAYER_ICONS.play} />
           </svg>
         </button>
         <button className="btn small" aria-label={t.walkthrough.next} title={t.walkthrough.next} disabled={!slide || p.slide >= d.slides.length - 1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide + 1)}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15.6 5H18v14h-2.4zM5 5.6v12.8a.8.8 0 0 0 1.2.7l8.2-6.4a.8.8 0 0 0 0-1.4L6.2 4.9A.8.8 0 0 0 5 5.6z" />
+            <path d={PLAYER_ICONS.next} />
           </svg>
         </button>
         {/* a segment per slide, as long as the slide plays */}
