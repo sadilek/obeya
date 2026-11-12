@@ -593,7 +593,7 @@ shared page full screen. A click on the picture plays and pauses it. "CC" switch
 off, and so does C where a demo video or walkthrough is what the owner is at; the choice is one for
 walkthroughs and demos in that browser, on until switched off. Z or the magnifier zooms the playing
 video out of the card, with its caption and controls, to as large as the window allows above the
-microphone, growing or shrinking as captions are switched; Z, Esc or a click beside it ends the
+microphone and right of the pinned navigation sidebar (which stays above the grey), growing or shrinking as captions are switched; Z, Esc or a click beside it ends the
 zoom. Z takes the zoomed video or
 walkthrough, else the one playing, else the one under the pointer, else the first in sight (a
 walkthrough's player zooms the same way, see The Coordinator → Walkthroughs).

@@ -70,8 +70,18 @@ if (typeof window !== 'undefined') window.addEventListener('keydown', (e: Keyboa
 });
 
 /**
+ * Where it zooms within: the window right of the pinned "Needs you" sidebar (App.tsx sets its width
+ * as `--left`), which stays above the grey and would cover the zoomed one's left part.
+ */
+function zoomArea(el: HTMLElement, box: (w: number, h: number) => Box): Box {
+  const left = parseFloat(getComputedStyle(el).getPropertyValue('--left')) || 0;
+  const b = box(innerWidth - left, innerHeight);
+  return { ...b, left: b.left + left };
+}
+
+/**
  * Zooms the element `screen` holds; `player` keeps its place (and its height while it is zoomed),
- * `backdrop` greys the page behind it. `box`: where it stands zoomed in a window `w`×`h`;
+ * `backdrop` greys the page behind it. `box`: where it stands zoomed in an area `w`×`h` (zoomArea);
  * `playing`: whether it plays, for which one Z takes.
  */
 export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: number, h: number) => Box; playing: () => boolean }) {
@@ -88,7 +98,7 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
     if (!el || cur?.closing) return;
     if (!cur) {
       const from = el.getBoundingClientRect();
-      setBox({ from: { left: from.left, top: from.top, width: from.width, height: from.height }, to: opts.current.box(innerWidth, innerHeight) });
+      setBox({ from: { left: from.left, top: from.top, width: from.width, height: from.height }, to: zoomArea(el, opts.current.box) });
       return;
     }
     // back into its place, wherever that is by now
@@ -121,7 +131,7 @@ export function useZoom<T extends HTMLElement = HTMLDivElement>(o: { box: (w: nu
   /** Where the zoomed one stands anew, once the window or what stands in it (a caption) changed. */
   const refit = () => {
     const cur = boxRef.current;
-    if (cur && !cur.closing) setBox({ ...cur, to: opts.current.box(innerWidth, innerHeight) });
+    if (cur && !cur.closing && screen.current) setBox({ ...cur, to: zoomArea(screen.current, opts.current.box) });
   };
   const refitRef = useLatest(refit);
   // a resized window resizes the zoomed one; a wheel over it does not scroll what is behind
