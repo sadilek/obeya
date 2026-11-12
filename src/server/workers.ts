@@ -2038,9 +2038,7 @@ export class Workers {
     if (project) live.project = { id: project, decision: this.o.board.decisions(project).at(-1)?.id ?? 0 };
     this.live.set(cardId, live);
     this.o.board.changed();
-    ({ text: message, images } = this.withUnheard(cardId, message, images));
-    message = this.withRestart(cardId, live, this.withPageNews(cardId, message));
-    live.pending = { text: message, images };
+    ({ text: message, images } = this.opening(cardId, live, message, images));
     const env = this.env();
     // a plan folder outside the repository is the worker's to tick its workstream in, on this machine
     const plans = live.host ? null : outsidePlanDir(this.o.adapter.planDocs.dir);
@@ -2182,14 +2180,10 @@ export class Workers {
     const live = this.live.get(cardId);
     if (live) {
       // the turn this starts reports the background work that is still running
-      live.work.stop();
-      clearTimeout(live.lifts);
-      live.lifts = undefined;
+      this.stopWaiting(live);
       this.setBusy(live, true);
-      ({ text, images } = this.withUnheard(cardId, text, images));
-      const message = this.withRestart(cardId, live, this.withPageNews(cardId, text));
-      live.pending = { text: message, images };
-      live.session.send(message, images);
+      const message = this.opening(cardId, live, text, images);
+      live.session.send(message.text, message.images);
       return;
     }
     const row = this.o.board.row(cardId);
@@ -2253,6 +2247,17 @@ export class Workers {
     return this.withUnheard(cardId, '', []);
   }
 
+  /**
+   * A message that starts a turn as the worker reads it, the turn's `pending` until it shows it took
+   * it: with the owner's words that waited for its next step after it, what became of its demo's
+   * page before it, and the restart that is due (`withRestart`).
+   */
+  private opening(cardId: string, live: Live, text: string, images: string[]): { text: string; images: string[] } {
+    const words = this.withUnheard(cardId, text, images);
+    live.pending = { text: this.withRestart(cardId, live, this.withPageNews(cardId, words.text)), images: words.images };
+    return live.pending;
+  }
+
   /** A message that starts a turn, with the owner's words that waited for the worker's next step after it. */
   private withUnheard(cardId: string, text: string, images: string[]): { text: string; images: string[] } {
     const unheard = this.takeUnheard(cardId);
@@ -2278,11 +2283,9 @@ export class Workers {
    */
   private unheardStarts(cardId: string, live: Live): boolean {
     if (this.restart || live.limited || !this.unheard(cardId).length) return false;
-    const { text: words, images } = this.withUnheard(cardId, '', []);
-    const text = this.withPageNews(cardId, words);
     this.setBusy(live, true);
-    live.pending = { text, images };
-    live.session.send(text, images);
+    const message = this.opening(cardId, live, '', []);
+    live.session.send(message.text, message.images);
     return true;
   }
 
@@ -2372,8 +2375,7 @@ export class Workers {
   private end(cardId: string) {
     const live = this.live.get(cardId);
     this.live.delete(cardId);
-    live?.work.stop();
-    clearTimeout(live?.lifts);
+    if (live) this.stopWaiting(live);
     live?.session.close();
     // its slot is free again
     if (live?.busy) this.o.board.changed();
@@ -2394,9 +2396,7 @@ export class Workers {
     if (e.type === 'background') return this.backgroundChanged(cardId, live, e.tasks);
     // a turn may also start without a message from Obeya (a finished background command)
     this.setBusy(live, e.type !== 'idle');
-    live.work.stop();
-    clearTimeout(live.lifts);
-    live.lifts = undefined;
+    this.stopWaiting(live);
     if (e.type === 'text' || e.type === 'tool') {
       // a turn of its own (a finished background command woke it) after it answered the owner's
       // words on its handover: it works on towards what it told them, so the card is at work again
@@ -2667,6 +2667,13 @@ export class Workers {
     if (!answered) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.unanswered);
   }
 
+  /** The worker's ended turn waits no more: neither for its background work to wake it, nor for the usage limit to lift. */
+  private stopWaiting(live: Live) {
+    live.work.stop();
+    clearTimeout(live.lifts);
+    live.lifts = undefined;
+  }
+
   /**
    * Waits for a sign of life from the worker; without one for a long while, its turn counts as ended.
    * While its background work runs (a watcher waiting for a deploy, say) that may take long: the
@@ -2718,8 +2725,7 @@ export class Workers {
     const there = remote(this.o.board.row(cardId).workspace);
     if (!there) return;
     this.live.delete(cardId);
-    live.work.stop();
-    clearTimeout(live.lifts);
+    this.stopWaiting(live);
     const pending = live.pending;
     // in a turn, or its ended turn waiting for background work that woke it: that work went with the session
     const busy = live.busy;
