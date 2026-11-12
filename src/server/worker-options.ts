@@ -114,6 +114,8 @@ export interface WorkerOptions {
   pulls?: Pick<Workspaces, 'pullMain' | 'pushMain' | 'clashBeforeMerge' | 'landResolution' | 'landingOf'>;
   /** How long pushing main for a review card waits for the owner's "Undo"; UNDO_HOLD_MS when left out. */
   pushHold?: number;
+  /** How long taking back an approval waits for the owner's "Undo"; REVOKE_HOLD_MS when left out. */
+  revokeHold?: number;
   /** How long Obeya waits between looks at whether the forge shows a review card's pushed commits as the PR's head; a second when left out. */
   pushSettle?: number;
 }

@@ -687,7 +687,7 @@ function TaskResult({ v, diff, tab, onTab, autoplay }: { v: View; diff: CardDiff
         }
       />
       {item.pr && (item.state === 'inPr' || item.state === 'waiting') && (
-        <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id } : {})} />
+        <PrBox pr={item.pr} {...(item.rollbackOf ? { rollbackOf: item.rollbackOf } : {})} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id } : {})} />
       )}
       {(item.state === 'inPr' || item.state === 'waiting') && item.morePrs?.map((pr) => <PrBox key={pr.url} pr={pr} />)}
       {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
@@ -800,6 +800,30 @@ function ApproveButton({ item, act, lands, change }: { item: Item; act: Act; lan
 }
 
 /**
+ * Taking back the owner's approval, where it can be (`Item.revocable`): the button says what it
+ * does, closing the pull request or reverting the work on main or through a rollback PR, and waits
+ * for "Undo" before Obeya does it.
+ */
+function RevokeButton({ item, act }: { item: Item; act: Act }) {
+  const r = item.revocable;
+  if (!r) return null;
+  const tr = t.revoke;
+  const [label, hint, ack] =
+    r.how === 'approval'
+      ? [tr.approval, tr.approvalHint, tr.ackApproval]
+      : r.how === 'closePr'
+        ? [tr.closePr(r.pr), tr.closePrHint, tr.ackClosePr(r.pr)]
+        : r.how === 'revert'
+          ? [tr.revert, tr.revertHint, tr.ackRevert]
+          : [tr.rollbackPr(r.pr), tr.rollbackPrHint(r.pr), tr.ackRollbackPr(r.pr)];
+  return (
+    <button className="btn" title={hint} onClick={() => act({ action: 'revoke' }, { close: true, ack, undo: () => api.act(item.id, { action: 'keepApproval' }) })}>
+      {label}
+    </button>
+  );
+}
+
+/**
  * A task's decisions, in one row below what it shows. Nobody worked on it yet: start it (a new
  * repository first, where one was picked), later, plan it as an idea or a project, delete it. Somebody
  * did: start it again (a stopped task, a workstream on a prototype's branch, the rest of a
@@ -841,13 +865,14 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
   // a stopped task whose workspace holds work shows the button, which says why it stays
   const refusal = archiveRefusal(item);
   const archive = worked && (!refusal || refusal === 'holdsWork');
-  if (!unworked && !(running || archive || halted || onPrototype || rest || snoozable(item))) return null;
+  if (!unworked && !(running || archive || halted || onPrototype || rest || snoozable(item) || item.revocable)) return null;
   return (
     <>
       <div className="actions">
         {start}
         {decide}
         <Later item={item} act={act} />
+        <RevokeButton item={item} act={act} />
         {worked && running && (
           <button className="btn" title={t.stopHint} onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
             {t.stop}

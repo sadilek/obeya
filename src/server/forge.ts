@@ -71,6 +71,8 @@ export interface Forge {
    * reason when it cannot. Returns the commit the merge put on the base branch, where GitHub says.
    */
   merge(cwd: string, url: string, head: string): Promise<string | void>;
+  /** Closes the pull request without merging it, its branch left as it is. */
+  close(cwd: string, url: string): Promise<void>;
   /** Opens a pull request from the pushed branch `head` onto `base`; returns its URL. */
   open(cwd: string, pr: { base: string; head: string; title: string; body: string }): Promise<string>;
   /** The URL of pull request `n` of the repository whose checkout `cwd` is (its `origin`). */
@@ -160,6 +162,7 @@ export const routedForge = (github: Forge, forgejo: Forge, origin: (cwd: string)
     body: (cwd, url) => of(url).body(cwd, url),
     setBody: (cwd, url, body) => of(url).setBody(cwd, url, body),
     merge: (cwd, url, head) => of(url).merge(cwd, url, head),
+    close: (cwd, url) => of(url).close(cwd, url),
     contribution: (cwd, url) => of(url).contribution(cwd, url),
     urlOf: async (cwd, n) => ((await byOrigin(cwd)) ?? github).urlOf(cwd, n),
     comment: (cwd, url, body) => of(url).comment(cwd, url, body),
@@ -407,6 +410,9 @@ export const makeGhForge = (
     },
     async setBody(cwd, url, body) {
       await withBodyFile(body, (file) => run(atPr(cwd, url), 'pr', 'edit', ghUrl(url), '--body-file', file));
+    },
+    async close(cwd, url) {
+      await run(atPr(cwd, url), 'pr', 'close', ghUrl(url));
     },
     async open(cwd, pr) {
       const at = await atOrigin(cwd);

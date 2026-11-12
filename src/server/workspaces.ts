@@ -23,7 +23,7 @@ import { failureText } from './spawn';
 import { demoFile } from './demo-files';
 import { sameRemote } from './repo';
 import { branchSetting, type Branches, CARD_BRANCH, detectBranch, readBranches } from './branches';
-import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, isAncestor, LOOK, NO_PROMPT, remoteWorkspace, WorkspaceError } from './git';
+import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, hasCommit, isAncestor, LOOK, NO_PROMPT, remoteWorkspace, WorkspaceError } from './git';
 
 /** A restored card's branch is no longer in the clone it takes back (`retake`). */
 export class BranchGone extends WorkspaceError {}
@@ -191,6 +191,31 @@ export function pushRefusal(said: string): { problem: string; moved?: true } {
   const why = reason && !moved ? (remote.length ? `(${reason})` : reason) : '';
   const problem = [...remote, why].filter(Boolean).join(' ') || lines.findLast((l) => /^(fatal|error):/.test(l)) || lines.at(-1) || 'git push failed';
   return { problem, ...(moved ? { moved: true as const } : {}) };
+}
+
+/** The patch id of the change from `a` to `b` (`git patch-id --stable`): the same for the same change, whatever commits make it. */
+async function patchId(ws: string, a: string, b: string): Promise<string> {
+  const diff = await gitRun(ws, ['diff', '--no-color', '--full-index', a, b]);
+  if (diff.code !== 0 || !diff.stdout.trim()) return '';
+  return (await gitRun(ws, ['patch-id', '--stable'], { stdin: diff.stdout })).stdout.trim().split(/\s/)[0] ?? '';
+}
+
+/**
+ * Where work a pull request brought onto the default branch starts, as the merge put it there:
+ * the commit before the change of `head` (the PR's head as merged) on the first-parent line below
+ * `commit`. A squash or a merge commit brings it as one commit; a rebase merge as several, whose
+ * last the forge names. Read where the head can be had (fetched from `origin`); else `base` stands.
+ */
+async function mergedBase(ws: string, l: { base: string; commit: string; head?: string }): Promise<string> {
+  if (!l.head) return l.base;
+  if (!(await hasCommit(ws, l.head))) await gitRun(ws, ['fetch', '--quiet', 'origin', l.head]);
+  if (!(await hasCommit(ws, l.head))) return l.base;
+  const fork = await gitTry(ws, 'merge-base', l.head, `${l.commit}^1`);
+  const want = fork && (await patchId(ws, fork, l.head));
+  if (!want) return l.base;
+  const line = (await gitAsync(ws, 'rev-list', '--first-parent', '--max-count=50', `${l.commit}^1`)).split('\n').filter(Boolean);
+  for (const at of line) if ((await patchId(ws, at, l.commit)) === want) return at;
+  return l.base;
 }
 
 /** The landing under way per Obeya checkout: landings of one repository run one after the other. */
@@ -523,6 +548,10 @@ export interface CardWorkspaces {
   addedFiles(cardId: string, dir: string): Promise<string[]>;
   landOnMain(cardId: string, branch: string, trailer?: string, push?: boolean): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
+  revertLanded(cardId: string, landed: { base: string; commit: string; head?: string }, onto: 'local' | 'origin', title: string): Promise<{ main: string; revert: string; base: string } | LandProblem>;
+  reapply(cardId: string, landed: { base: string; commit: string }, onto: 'local' | 'origin'): Promise<string | null>;
+  pushAs(cardId: string, name: string): Promise<void>;
+  resetBranch(cardId: string, commit: string): Promise<void>;
   removeLanded(cardId: string, branch: string): Promise<void>;
   discard(cardId: string, branch: string): Promise<void>;
   transfer(from: string, to: string, branch: string, rename?: string): Promise<{ path: string; branch: string }>;
@@ -1642,6 +1671,99 @@ export class Workspaces implements CardWorkspaces {
         return { code: 'landPush', worker: false, detail };
       }
     }
+  }
+
+  /**
+   * The default branch as the card's workspace has it for taking back landed work: the Obeya
+   * checkout's (`local`, fetched into a clone from the checkout, as a landing does) or the remote's
+   * (`origin`, fetched). Returns its name and commit.
+   */
+  private async mainFor(ws: string, onto: 'local' | 'origin'): Promise<{ main: string; upstream: string }> {
+    const refs = this.cloned(ws) ? await readBranches(ws) : undefined;
+    const main = await this.mainAsync(ws, refs);
+    if (onto === 'origin') {
+      await gitAsync(ws, 'fetch', '--quiet', 'origin');
+      return { main, upstream: await gitAsync(ws, 'rev-parse', `refs/remotes/origin/${main}`) };
+    }
+    return { main, upstream: refs !== undefined ? await mainInClone(this.o.repoPath, ws, main, refs) : await gitAsync(ws, 'rev-parse', `refs/heads/${main}`) };
+  }
+
+  /**
+   * Puts the card's branch, in its workspace, on a commit that takes landed work (`base..commit`)
+   * back off the default branch as `onto` has it (`mainFor`): that branch's tree without what the work
+   * changed, as `git revert` makes it (a three-way merge with `commit` as the base), whatever
+   * commits and merges the work landed as. Uncommitted changes in the workspace go. Returns the
+   * default branch and the commit, or what stands in the way: a conflict with what changed on the
+   * default branch since, or the work no longer on it.
+   */
+  async revertLanded(cardId: string, given: { base: string; commit: string; head?: string }, onto: 'local' | 'origin', title: string): Promise<{ main: string; revert: string; base: string } | LandProblem> {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
+    try {
+      const { main, upstream } = await this.mainFor(ws, onto);
+      const landed = { base: await mergedBase(ws, given), commit: given.commit };
+      if (!(await isAncestor(ws, landed.commit, upstream, false))) return { code: 'land', worker: false, detail: `${landed.commit.slice(0, 7)} is no longer on ${main}` };
+      const merged = await gitRun(ws, ['merge-tree', '--write-tree', '--name-only', '--merge-base', landed.commit, upstream, landed.base]);
+      const [tree, ...rest] = merged.stdout.trim().split('\n');
+      if (merged.code !== 0) {
+        const files = merged.code === 1 ? rest.slice(0, rest.indexOf('') < 0 ? undefined : rest.indexOf('')).filter(Boolean) : [];
+        return { code: 'landConflict', worker: false, files, detail: files.length ? `changes made on ${main} since conflict with it in ${files.join(', ')}` : merged.stderr.trim() || `git merge-tree exited with ${merged.code}` };
+      }
+      if (tree === (await gitAsync(ws, 'rev-parse', `${upstream}^{tree}`))) return { code: 'landEmpty', worker: false, detail: `${main} no longer has what the work changed` };
+      const own = (await gitAsync(ws, 'log', '--no-merges', '--format=%h %s', `${landed.base}..${landed.commit}`)).split('\n').filter(Boolean);
+      const subject = own.length === 1 ? own[0]!.slice(own[0]!.indexOf(' ') + 1) : title;
+      const what = own.length === 1 ? `commit ${landed.commit}` : `commits ${landed.base.slice(0, 12)}..${landed.commit.slice(0, 12)}`;
+      const revert = await gitAsync(ws, 'commit-tree', tree!, '-p', upstream, '-m', `Revert "${subject}"\n\nThis reverts ${what}.`);
+      await gitAsync(ws, 'reset', '--quiet', '--hard', revert);
+      return { main, revert, base: landed.base };
+    } catch (e) {
+      return { code: 'land', worker: false, detail: messageOf(e) };
+    }
+  }
+
+  /**
+   * Puts reverted work (`base..commit`) back onto the card's branch, in its workspace: one commit
+   * on the default branch as `onto` has it now (`mainFor`), with the work's commit messages. Returns
+   * it, or null where it no longer applies cleanly there: the branch then stands on the default
+   * branch alone. Uncommitted changes in the workspace go.
+   */
+  async reapply(cardId: string, landed: { base: string; commit: string }, onto: 'local' | 'origin'): Promise<string | null> {
+    const ws = this.leasedBy(cardId);
+    if (!ws) throw new WorkspaceError('the card has no workspace', 'noWorkspace');
+    const { upstream } = await this.mainFor(ws, onto);
+    await gitAsync(ws, 'reset', '--quiet', '--hard', upstream);
+    const merged = await gitRun(ws, ['merge-tree', '--write-tree', '--merge-base', landed.base, upstream, landed.commit]);
+    if (merged.code !== 0) return null;
+    const trailers: string[] = [];
+    const bodies = (await gitAsync(ws, 'log', '--reverse', '--no-merges', '--format=%B%x00', `${landed.base}..${landed.commit}`))
+      .split('\0')
+      .map((m) =>
+        m
+          .split('\n')
+          .filter((line) => !(/^[\w-]+-by: /i.test(line) && trailers.push(line)))
+          .join('\n')
+          .trim()
+          // a squash merge's subject names the pull request it came from, which this commit is not
+          .replace(/^(.*?) \(#\d+\)$/m, '$1'),
+      )
+      .filter(Boolean);
+    const message = [...bodies, [...new Set(trailers)].join('\n')].filter(Boolean).join('\n\n') || 'Reapply the reverted work';
+    const back = await gitAsync(ws, 'commit-tree', merged.stdout.trim().split('\n')[0]!, '-p', upstream, '-m', message);
+    await gitAsync(ws, 'reset', '--quiet', '--hard', back);
+    return back;
+  }
+
+  /** Puts the card's branch, in its workspace, on `commit`; uncommitted changes there go. */
+  async resetBranch(cardId: string, commit: string): Promise<void> {
+    const ws = this.leasedBy(cardId);
+    if (ws) await gitAsync(ws, 'reset', '--quiet', '--hard', commit);
+  }
+
+  /** Pushes the card's branch, as its workspace has it, to `origin` as `name`, over whatever that branch held. */
+  async pushAs(cardId: string, name: string): Promise<void> {
+    const ws = this.leasedBy(cardId);
+    if (!ws) throw new WorkspaceError('the card has no workspace', 'noWorkspace');
+    await gitAsync(ws, 'push', '--quiet', '--force', 'origin', `HEAD:refs/heads/${name}`);
   }
 
   /** Removes a card's worktree at `ws`, its processes ended first (`quiet`). */

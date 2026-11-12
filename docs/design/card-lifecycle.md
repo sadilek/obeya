@@ -147,6 +147,45 @@ a spinner stands above the microphone, which the answer turns into the confirmat
 landing is refused, into the reason, with the card waiting for review again; a restart that cut the
 landing off gives the card back the same way.
 
+### Taking back an approval
+
+An approval clicked by mistake can be taken back while it still stands for something: on a card in
+its pull request, live on the canvas, or at work on what kept its approved work from landing. The
+button says what it will do, since that differs by where the work is: "Take back approval (close PR
+#42)", "(revert on main)" or "(rollback PR for #42)"; on a card at work only "Take back approval".
+It shows only where it applies, and waits eight seconds for "Undo" before Obeya acts, since it sets
+a lot in motion.
+
+- Work held for the worker's next handover (see How work lands): the approval goes, and that
+  handover waits for the owner like any other.
+- A pull request not merged yet: Obeya closes it (and the card's further ones) without a merge, its
+  branch left as it is; the card waits for the owner again with its demo. A pull request reported
+  after that is refused.
+- Work that landed without a pull request: Obeya puts a revert commit on the default branch the way
+  the work got there, landed on the local main or pushed straight to the remote's. The commit takes
+  back exactly what the work changed (`base..commit` as the landing recorded it), whatever landed
+  since; where later changes touch the same lines, nothing is reverted and the card, still live,
+  names the files.
+- A merged pull request: Obeya pushes the revert to a branch of its own and opens a pull request
+  ("Revert …", "Reverts #42."), which it watches and merges like the card's own, its worker tending
+  review comments and failed checks; the card is in its PR meanwhile, marked as a rollback. Closed
+  without a merge, it leaves the work on main and the card live again. What it reverts is what the
+  merge brought: one commit for a squash or a merge commit, several for a rebase merge, of which the
+  forge names only the last; Obeya tells them by the pull request's head as merged (the commits
+  below the merge whose change together is the head's).
+
+Once the work is off the default branch, Obeya puts it back onto the card's branch as one commit on
+top of the default branch with the work's commit messages, and the card waits for the owner's
+approval again with its demo: approving it lands the work again, feedback reworks it. Where the work
+no longer applies there, the branch stands on the default branch alone and the worker brings it back.
+The worker hears what happened (its session resumed where it had ended) and undoes what it did after
+the landing that presents the work as done, such as closing an issue. A worker still finishing after
+the landing stops first. Review cards (the contributor's pull request), prototypes and work that
+changed nothing have no approval to take back, nor do cards whose work went out in pull requests in
+several repositories, or whose merge the forge did not name (then nothing tells what to revert).
+A restart waits for a revert under way; one Obeya was stopped in all the same finishes on the next
+start where the work was off main already, and otherwise leaves the card live, saying so.
+
 ### Live and done
 
 Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its work is
@@ -256,6 +295,13 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
   (2026-10-15, 2026-10-16): the owner has the rest in the conversation. Rejected: calling the
   summary the whole report, and a reply that told the worker to carry on; both made handovers repeat
   the reply just before them.
+- **An approval can be taken back, also after the landing, by reverting the work the way it
+  landed** (2026-11-12, GitHub issue #90): a mistaken approval is often noticed only once the work is
+  on main. The button names what it will do (closing the PR or a rollback PR, a revert on main), as
+  the owner asked, so the click is never a guess. Rejected: taking back only until the landing (the
+  issue asked for undoing the PR too); pushing a revert straight past a repository's pull requests
+  (its review and checks are what the repository wants); a "revert of the revert" commit on the
+  card's branch for the next approval, where the work's own messages read better.
 - **An approve click folds the card at once.** Rejected: the card staying open with no sign of the
   click until the push was through.
 - **Work without a change ends in `done`, not `live`** (2026-10-02). Obeya reads it from the

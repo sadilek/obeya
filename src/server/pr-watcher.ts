@@ -174,7 +174,9 @@ export class PrWatcher {
    * once the card's others are merged too, the card is live, with the first one's merge as its
    * landing; until then the card's log says what it still waits for.
    */
-  private mergedPr(cardId: string, pr: PrState, commit?: string) {
+  private mergedPr(cardId: string, pr: PrState, commit?: string, head?: string) {
+    // its head as merged tells the commits the merge brought, should the approval be taken back
+    if (head && this.prsOf(cardId)[0]?.url === pr.url) this.save(cardId, (pr = { ...pr, mergedHead: head }));
     if (this.prsOf(cardId).length === 1) return this.workers.merged(cardId, commit);
     this.save(cardId, { ...pr, merged: commit ?? true });
     if (this.allMerged(cardId)) return this.allMergedDone(cardId);
@@ -184,7 +186,7 @@ export class PrWatcher {
 
   private async react(cardId: string, state: string, pr: PrState, s: PrStatus) {
     const contribution = fromJson(this.board.row(cardId).contribution);
-    if (s.state === 'MERGED') return contribution ? this.workers.merged(cardId, s.mergeCommit) : this.mergedPr(cardId, pr, s.mergeCommit);
+    if (s.state === 'MERGED') return contribution ? this.workers.merged(cardId, s.mergeCommit) : this.mergedPr(cardId, pr, s.mergeCommit, s.head);
     const settings = this.settings();
     const noise = settings.prNoise ?? [];
     if (contribution) return this.reactToContributor(cardId, state, pr, s, contribution, noise);

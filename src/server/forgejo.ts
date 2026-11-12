@@ -228,6 +228,10 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       const { base, pull } = where(url);
       await api(cwd, base, 'PATCH', pull, { body });
     },
+    async close(cwd, url) {
+      const { base, pull } = where(url);
+      await api(cwd, base, 'PATCH', pull, { state: 'closed' });
+    },
     async merge(cwd, url, head) {
       const { base, repo, pull } = where(url);
       // the repository's own merge styles; squash first where it allows several

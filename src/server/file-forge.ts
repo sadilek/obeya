@@ -86,8 +86,21 @@ export function fileForge(path: string): Forge {
       pr(f, url).body = body;
       write(f);
     },
-    async open() {
-      throw new Error('this forge opens no pull requests');
+    async close(_cwd, url) {
+      const f = read();
+      pr(f, url).state = 'CLOSED';
+      write(f);
+    },
+    // a pull request from a branch pushed to the forge's repository, at the next number, with a URL like the others'
+    async open(_cwd, o) {
+      const f = read();
+      const head = await gitAsync(f.repo, 'rev-parse', '--verify', `refs/heads/${o.head}`);
+      const number = Math.max(0, ...f.prs.map((p) => p.number)) + 1;
+      const url = f.prs[0] ? f.prs[0].url.replace(/\d+$/, String(number)) : `https://github.com/acme/repo/pull/${number}`;
+      await gitAsync(f.repo, 'update-ref', `refs/pull/${number}/head`, head);
+      f.prs.push({ url, number, title: o.title, author: f.viewer, head, headRef: o.head, checks: [], comments: [], body: o.body });
+      write(f);
+      return url;
     },
     async urlOf(_cwd, n) {
       const p = read().prs.find((x) => x.number === n);

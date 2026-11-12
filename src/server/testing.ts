@@ -23,8 +23,8 @@ import { Voicing } from './walkthrough';
 import type { Language } from '../core/locale';
 import type { Transcriber } from './voice';
 
-/** The calls of a forge that only review cards make, for a fake forge of a test that has none. */
-export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {} };
+/** The calls of a forge that only review cards and taking back an approval make, for a fake forge of a test that has none. */
+export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges' | 'close'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {}, close: async () => {} };
 
 /** A forge for tests that never reach a pull request. */
 export const noForge: Forge = { status: async () => ({}) as never, body: async () => '', setBody: async () => {}, merge: async () => {}, open: async () => '', ...noContributions };

@@ -177,7 +177,7 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
     : item.state === 'working' || item.finishing || answering(item) || (item.state === 'inPr' && (!openPrs(item).length || item.contribution))
       ? item.statusLine && excerpt(item.statusLine)
       : item.state === 'inPr'
-        ? openPrs(item).map(prShort).join(' | ')
+        ? `${item.rollbackOf ? `${t.pr.rollbackShort} · ` : ''}${openPrs(item).map(prShort).join(' | ')}`
         : undefined;
   // a proposal being reworked says that in place of its state: the kind line above already calls it a proposal
   const revising = item.state === 'proposal' && item.proposal?.revising;

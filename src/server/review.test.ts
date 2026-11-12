@@ -31,6 +31,7 @@ function fakeForge(head: () => string) {
     status: async () => ({ ...status, head: status.head || head() }),
     body: async () => '',
     setBody: async () => {},
+    close: async () => {},
     open: async () => '',
     urlOf: async (_cwd, n) => `https://github.com/acme/app/pull/${n}`,
     contribution: async () => ({ ...info, head: head() }),

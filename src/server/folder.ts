@@ -580,6 +580,20 @@ export class FolderWorkspaces implements CardWorkspaces {
     return this.landOnMain();
   }
 
+  async revertLanded(): Promise<LandProblem> {
+    return { code: 'land', worker: false, detail: 'a folder without git lands nothing to revert' };
+  }
+
+  async reapply(): Promise<null> {
+    return null;
+  }
+
+  async pushAs(): Promise<void> {
+    throw new Error('a folder without git has no branch to push');
+  }
+
+  async resetBranch(): Promise<void> {}
+
   /** The owner approved the card: its undo goes at once, though its worker may still finish in the folder. */
   done(cardId: string) {
     const rec = this.rec(cardId);

@@ -1208,6 +1208,8 @@ export class Board {
     const key = keyOfRef(row.plan_ref);
     if (key === null || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
+    // a pull request that takes the work back: the doc ticks the workstream off until it is merged
+    if (row.state === 'inPr' && fromJson(row.pr)?.rollback) return null;
     if (row.state === 'inPr' && tickedAhead(row)) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();

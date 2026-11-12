@@ -212,6 +212,10 @@ export interface Item {
    * doc keeps it open. A new run does the rest.
    */
   landedPart?: { commit?: string; pr?: { url: string; number: number } };
+  /** What taking back the owner's approval would do now, where it can be taken back (`Revocable`). */
+  revocable?: Revocable;
+  /** In its pull request, the card's work is being taken back off the default branch: `pr` reverts its merged pull request (`rollbackOf`). */
+  rollbackOf?: number;
   /** When the owner archived the card; archived cards are not on the canvas but in its archive. */
   archivedAt?: string;
   /** Ideas only: what the discussion has settled so far. */
@@ -512,6 +516,16 @@ export interface NextStep {
   why: string;
 }
 
+/**
+ * What taking back the owner's approval of a card does (design: Taking back an approval):
+ * `approval`, an approval that holds while the worker fixes what kept the work from landing, is
+ * dropped; `closePr` closes its pull request (`pr`, once opened) unmerged; `revert` puts a commit
+ * that reverts the landed work onto the default branch, the way it got there; `rollbackPr` opens a
+ * pull request that reverts its merged pull request `pr`. Each but `approval` gives the card back
+ * to the owner with its demo.
+ */
+export type Revocable = { how: 'approval' } | { how: 'closePr'; pr?: number } | { how: 'revert' } | { how: 'rollbackPr'; pr: number };
+
 export interface PullRequest {
   url: string;
   number: number;
@@ -672,6 +686,9 @@ export type PrReviewEntry = { author: string; mine?: boolean; at: string; thread
  * built or started in a new repository.
  */
 export const UNDO_HOLD_MS = 8000;
+
+/** How long taking back an approval (closing its pull request, reverting its work) waits for the owner's "Undo". */
+export const REVOKE_HOLD_MS = 8000;
 
 /**
  * `since`: when the card came to the Coordinator; of the cards whose turn comes, the one waiting
@@ -1327,6 +1344,12 @@ export type CardAction =
    */
   | { action: 'pushMain' }
   | { action: 'keepMain' }
+  /**
+   * Takes back the owner's approval of the card's work, once the undo window (REVOKE_HOLD_MS) is
+   * through, as `Item.revocable` says; `keepApproval` takes that back within the window.
+   */
+  | { action: 'revoke' }
+  | { action: 'keepApproval' }
   /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging ("Push only"). */
   | { action: 'pushChanges' }
   /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
@@ -1483,6 +1506,9 @@ export type ErrorCode =
   | 'prMoved'
   /** "Push main, adapt the PR" on a review card whose PR collides with nothing unpushed (any more), or taking back a push that is not waiting. */
   | 'noClash'
+  /** "Take back approval" on a card whose approval cannot be taken back (any more), or "Undo" on one not waiting to be taken back. */
+  | 'notRevocable'
+  | 'notRevoking'
   /** "Merge" on a review card whose PR collides with unpushed commits on the local main, which the card had not shown yet: it shows them now. */
   | 'pullClash'
   | 'prClosed'

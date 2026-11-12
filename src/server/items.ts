@@ -10,6 +10,7 @@ import { type AgentEffort, cardAgentOf } from '../core/agents';
 import type { CardRow } from './db';
 import { docOfRef, keyOfRef, OUTSIDE_PATH, pathOfRef, repoOfRef, workstreamRef } from './plan-ref';
 import { fromJson, type PrState, type StoredDemo } from './row';
+import { revocable } from './revocable';
 import { sessionHarness } from './runtime';
 import { atHand, cardDemos, pageTagsOf, reshareable, sameDemo, sharedDemos, type ThemeNow } from './shared-pages';
 
@@ -190,10 +191,13 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   const notOnApproval = fromJson(r.share)?.notOnApproval;
   const tags = demo && !r.prototype_of ? pageTagsOf(r) : {};
   const landed = fromJson(r.landed);
+  const revoke = revocable(r);
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && stateOf(r) === 'planned' ? { queue: fromJson(r.queue) } : {}),
     ...(pr?.url ? { pr: pullRequest(pr) } : {}),
+    ...(pr?.rollback ? { rollbackOf: pr.rollback.of } : {}),
+    ...(revoke ? { revocable: revoke } : {}),
     ...(pr?.more?.some((m) => m.url) ? { morePrs: pr.more.filter((m) => m.url).map(pullRequest) } : {}),
     ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),

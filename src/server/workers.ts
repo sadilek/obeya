@@ -31,6 +31,7 @@ import { holdsNotes } from '../core/queue';
 import { CardApps } from './card-app';
 import { CardTimers } from './card-timers';
 import { ReviewCards } from './review-cards';
+import { Revocations } from './revoke';
 import { WorkerBriefing } from './worker-briefing';
 import { appRunning, type Live, newLive, onlyApp } from './worker-live';
 import { WorkerTools } from './worker-tools';
@@ -230,6 +231,8 @@ export class Workers {
   private reviews: ReviewCards;
   /** The tools the card's worker calls. */
   private tools: WorkerTools;
+  /** Taking back the owner's approval: a pull request closed, landed work reverted. */
+  private revocations: Revocations;
 
   constructor(private o: WorkerOptions) {
     this.apps = new CardApps(o, { busy: (id) => !!this.live.get(id)?.busy, sameRun: (id) => this.sameRun(id), shut: () => this.shut });
@@ -250,6 +253,22 @@ export class Workers {
       resumeFinished: (...args) => this.resumeFinished(...args),
       toOwner: (id, q) => this.toOwner(id, q),
       refuseAsked: (id, why) => this.refuseAsked(id, why),
+    });
+    this.revocations = new Revocations(o, {
+      landing: this.landing,
+      sameRun: (id) => this.sameRun(id),
+      card: (id) => this.card(id),
+      deliver: (id, text, images, o) => this.deliver(id, text, images, o),
+      tellLater: (id, text) => this.tellLater(id, text),
+      inTurn: (id) => !!this.live.get(id)?.busy,
+      end: (id) => this.end(id),
+      bump: (id) => this.bump(id),
+      removeTree: (path) => this.removeTree(path),
+      free: (id) => this.freeWorkspace(id),
+      freed: async (id) => {
+        await this.reading.get(id)?.catch(() => {});
+        await Promise.all([...this.freeing.values()].filter((f) => f.card === id).map((f) => f.done));
+      },
     });
     this.brief = new WorkerBriefing(o, { prSource: (c) => this.reviews.prSource(c), proposalBoards: () => this.tools.proposalBoards() });
     this.tools = new WorkerTools(o, {
@@ -1031,7 +1050,7 @@ export class Workers {
     this.bump(cardId);
     const restartFor = (await this.o.restartsFor?.(result, direct ? (row.workspace ?? undefined) : undefined)) ?? false;
     const restarts = !!restartFor;
-    const page = this.workOver(cardId, 'live', { commit: result.to, ...(restarts ? { restarts } : {}) }, { shipped: toJson({ commit: result.to, base: result.from }) });
+    const page = this.workOver(cardId, 'live', { commit: result.to, ...(restarts ? { restarts } : {}) }, { shipped: toJson<Shipped>({ commit: result.to, base: result.from, ...(direct ? { direct: true } : {}) }) });
     const t = this.o.board.t.worker;
     if (direct) this.o.board.log(cardId, 'state', by, by === 'owner' ? t.approvedDirect : t.landedDirect);
     else this.o.board.log(cardId, 'state', by, by === 'owner' ? t.approvedMain : t.landedMain);
@@ -1351,6 +1370,8 @@ export class Workers {
    * said: the work is live, the workspace free.
    */
   merged(cardId: string, commit?: string, note = this.o.board.t.worker.merged, comments?: Comments) {
+    // the pull request that takes the card's work back: the work goes back onto its branch, for the owner to approve again
+    if (fromJson(this.o.board.row(cardId).pr)?.rollback) return void this.revocations.rolledBack(cardId);
     this.bump(cardId);
     this.refuseAsked(cardId, 'meanwhile your pull request was merged, and the card is live.');
     // a review card's PR where work lands on the local main: the checkout gets the merge, as the owner would pull it
@@ -1359,8 +1380,8 @@ export class Workers {
     const added = this.planDocsAdded(cardId).then((a) => this.o.board.planDocsLanded(cardId, a));
     this.reading.set(cardId, added);
     void added.finally(() => this.reading.get(cardId) === added && this.reading.delete(cardId));
-    const { url, number } = fromJson(this.o.board.row(cardId).pr) ?? { url: null, number: undefined };
-    const shipped: Shipped = { ...(commit ? { commit, base: `${commit}^` } : { fetch: true }), ...(url && number ? { pr: { url, number } } : {}) };
+    const { url, number, mergedHead } = fromJson(this.o.board.row(cardId).pr) ?? { url: null, number: undefined };
+    const shipped: Shipped = { ...(commit ? { commit, base: `${commit}^` } : { fetch: true }), ...(url && number ? { pr: { url, number } } : {}), ...(mergedHead ? { head: mergedHead } : {}) };
     const page = this.workOver(cardId, 'live', commit ? { commit } : {}, { shipped: toJson(shipped) });
     this.o.board.log(cardId, 'state', 'obeya', note);
     this.o.onMerged?.(cardId);
@@ -1371,6 +1392,16 @@ export class Workers {
       comments,
       !!comments,
     );
+  }
+
+  /** "Take back approval": once its undo window is through, as `Item.revocable` says (`Revocations.revoke`). */
+  revoke(cardId: string) {
+    this.revocations.revoke(cardId);
+  }
+
+  /** The owner takes back "Take back approval" within its undo window (`Revocations.keep`). */
+  keepApproval(cardId: string) {
+    this.revocations.keep(cardId);
   }
 
   /** "Push only" on a review card (`ReviewCards.pushContribution`). */
@@ -1416,6 +1447,7 @@ export class Workers {
 
   /** The pull request was closed without a merge: the owner decides what happens. */
   prClosed(cardId: string) {
+    if (fromJson(this.o.board.row(cardId).pr)?.rollback) return void this.revocations.rollbackClosed(cardId);
     const t = this.o.board.t.worker;
     this.o.board.log(cardId, 'state', 'obeya', t.prClosed);
     this.toOwner(cardId, {
@@ -1431,6 +1463,7 @@ export class Workers {
    */
   stop(cardId: string): Promise<void> {
     const card = this.card(cardId);
+    if (this.landing.has(cardId)) throw new BadRequest('notReady', 'the card’s work is landing or being taken back');
     if (card.finishing) {
       this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.stopped);
       this.finish(cardId);
@@ -1716,6 +1749,11 @@ export class Workers {
       const cutOff = !!row.resumes;
       if (cutOff) this.o.board.work(i.id, { resumes: null });
       const landed = fromJson(row.landed);
+      // taking back its approval was cut off (a restart waits for it; a crash does not)
+      if (landed?.revoking) {
+        void this.revocations.recover(i.id).catch((e: unknown) => console.error(`taking back the approval of ${i.id} after a restart:`, e));
+        continue;
+      }
       // a snoozed worker sleeps on until its time, a restart notwithstanding
       if (row.snoozed && !fromJson(row.snoozed).waiting) {
         // the owner's snooze holds what Obeya has for the worker, as a pause does; a restart the worker
@@ -1887,6 +1925,15 @@ export class Workers {
     this.freeing.set(path, freeing);
   }
 
+  /** The card's workspace goes back (`Workspaces.removeLanded`), its session ended: it holds none any more. */
+  private freeWorkspace(cardId: string) {
+    this.end(cardId);
+    this.bump(cardId);
+    const row = this.o.board.row(cardId);
+    if (row.workspace) this.whileFreeing(cardId, row.workspace, this.o.workspaces.removeLanded(cardId, row.branch ?? ''), 'freeing a workspace');
+    this.o.board.work(cardId, { workspace: null, landed: null, app: null, status_line: null });
+  }
+
   /** Settles once the workspaces git is freeing now are free: for tests, as `prepared`. */
   async freed(): Promise<void> {
     while (this.freeing.size) await Promise.all([...this.freeing.values()].map((f) => f.done));
@@ -2036,6 +2083,8 @@ export class Workers {
     this.pausing.clearAll();
     // comments held back go from the new workers, which hold them again as they resume
     this.holding.clearAll();
+    // nor an approval still in its undo window before it is taken back
+    this.revocations.shutdown();
     // a "Push main" still in its undo window goes undone: the new workers could not take it back
     this.reviews.shutdown();
     this.apps.shutdown();

@@ -79,12 +79,21 @@ export interface PrState {
   merged?: string | true;
   /** Closed without a merge: the owner was asked, and it holds up nothing. */
   closed?: true;
+  /** Its head when the forge reported it merged. */
+  mergedHead?: string;
   /**
    * On the card's first pull request: the further ones the worker opened for the same work (in
    * other repositories, or a second in its own), each watched as the first; the card is live once
    * all are merged. The first is the one in the card's repository, which the landing is about.
    */
   more?: PrState[];
+  /**
+   * A pull request Obeya opened to take back the card's merged work (its approval taken back): what
+   * it reverts (`base..commit`, as `Shipped` had it), the merged pull request's number, and the
+   * branch it goes out from. Merged, the card's work goes back onto its branch and the card is the
+   * owner's again; closed unmerged, the card is live as before.
+   */
+  rollback?: { base: string; commit: string; of: number; head: string };
 }
 
 /** What is stored of a review card's pull request (`CardRow.contribution`): what the card shows, and what only the server needs. */
@@ -122,6 +131,10 @@ export interface Shipped {
   pr?: { url: string; number: number };
   /** The merge commit is not known: the read tree's commit after the next fetch stands in for it. */
   fetch?: true;
+  /** Pushed straight onto the remote's default branch where work otherwise goes out as a pull request. */
+  direct?: true;
+  /** Merged as a pull request: its head as merged, which tells the commits the merge brought (a rebase merge brings several). */
+  head?: string;
 }
 
 /**
@@ -283,6 +296,13 @@ export interface LandedState {
    * main stopped on a conflict (`stopped`), and this card's worker resolves it (`resolvePull`).
    */
   resolve?: Resolving;
+  /**
+   * Not a landing: the owner took back their approval, and Obeya reverts the landed work in the
+   * card's workspace (`Revocations`); `reapply` once the work is off the default branch, for it to
+   * go back onto the card's branch.
+   */
+  revoking?: true;
+  reapply?: { base: string; commit: string; onto: 'local' | 'origin' };
 }
 
 /** A pull after a review card's merge that a worker resolves (`LandedState.resolve`). */

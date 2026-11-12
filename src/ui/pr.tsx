@@ -15,14 +15,14 @@ import { clock as time, t } from './strings';
  * agent's own changes wait for the approval (`held`), first what goes onto the PR with it: how many
  * commits, the text posted with them, and the findings it asks the contributor for.
  */
-export function PrBox({ pr, held, author, card }: { pr: PullRequest; held?: HeldChanges; author?: string; card?: string }) {
+export function PrBox({ pr, held, author, card, rollbackOf }: { pr: PullRequest; held?: HeldChanges; author?: string; card?: string; rollbackOf?: number }) {
   // a conflict says so on its own line
   const waits = pr.ready ? [] : (pr.waits ?? []).filter((w) => w !== 'conflict' || !pr.conflict);
   return (
     <div className="question pr">
       <h4>
         <a href={pr.url} target="_blank" rel="noreferrer">
-          {t.pr.title(pr.number, pr.repo)} ↗
+          {rollbackOf ? t.pr.rollbackTitle(pr.number, rollbackOf) : t.pr.title(pr.number, pr.repo)} ↗
         </a>
       </h4>
       {held && (
