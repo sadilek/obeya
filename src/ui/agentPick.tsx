@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
 import { useMenuClose, usePlaced } from './menu';
 import { api } from './api';
+import { usePoll } from './act';
 import { t } from './strings';
 
 /** The harnesses and the workers' group as last heard, shown at once by the next card while it asks again. */
@@ -152,11 +153,7 @@ export function HarnessUpdate({ harness, view, onView }: { harness: Harness; vie
   const hosts = (found?.hosts ?? []).filter((h) => h.update);
   const running = !!found?.update?.running || hosts.some((h) => h.update?.running);
   const [asked, setAsked] = useState<string | null>(null);
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => agentsView().then(onView, () => {}), 1500);
-    return () => clearInterval(timer);
-  }, [running]);
+  usePoll(running, () => agentsView().then(onView, () => {}), 1500);
   const start = (host?: string) => {
     setAsked(host ?? '');
     api

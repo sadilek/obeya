@@ -4,13 +4,14 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, modelChoices, type ModelChoice, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type CostsView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices, type ModelChoice, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
 import { HarnessUpdate } from './agentPick';
 import { api, reload, type SiteHow, failText } from './api';
+import { useAct, useLoaded, usePoll } from './act';
 import { keepConfigDraft, keptConfigDraft } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
@@ -140,8 +141,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   const [checked, setChecked] = useState<Checked | null>(null);
   // the check of the configuration as saved: it reads every repository, so it comes after the configuration
   const [saved, setSaved] = useState<Checked | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { status, setStatus, busy, act } = useAct();
   const [json, setJson] = useState(false);
   const [section, setSectionState] = useState<Section>(() => keptSection() ?? 'canvases');
   const setSection = (s: Section) => {
@@ -412,9 +412,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                 onCanvas={setCanvas}
                 onMove={moveCanvas}
                 onSave={async () => {
-                  setBusy(true);
                   let applies = false;
-                  try {
+                  await act(async () => {
                     const { restarting, applied } = await api.saveConfig(draft);
                     // what is saved now is the draft as last checked; settings applied at once change what the
                     // repositories amount to (where "For everyone" goes, say), so it is read and checked again
@@ -425,10 +424,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                     checkSaved();
                     setStatus(restarting ? c.saved : applied ? (restartsAgents(view.canvases, draft) ? c.savedRestarts : c.savedApplied) : c.savedOnly);
                     applies = !restarting;
-                  } catch (e) {
-                    setStatus(failText(e));
-                  }
-                  setBusy(false);
+                  });
                   return applies;
                 }}
                 onReset={() => load(view, saved)}
@@ -446,8 +442,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
           </section>
           <section className="cfg-sec" hidden={section !== 'agents'}>
             <AgentsBlock on={on} />
-            <UsageBlock on={on} />
-            <CostsBlock on={on} />
+            <ToggleSetting on={on} load={api.usageMeter} save={api.saveUsageMeter} text={t.usage.setting} />
+            <ToggleSetting on={on} load={api.costs} save={api.saveCosts} text={t.costs.setting} />
           </section>
           <section className="cfg-sec" hidden={section !== 'voice'}>
             <VoiceBlock on={on} />
@@ -726,35 +722,17 @@ const DEFAULT_DEMO_DIRECTORY = '~/demos';
  * language, which agents write the owner in, saved on its own and taking effect with their next words.
  */
 function LanguageBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<LanguageView | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (on) api.language().then(setView, console.error);
-  }, [on]);
+  const [view, setView] = useLoaded(on, api.language);
+  const { status, busy, act } = useAct();
   if (!view) return null;
   const l = t.config.language;
-  const choose = async (language: Language | null) => {
-    setBusy(true);
-    setStatus('');
-    try {
-      const v = await api.saveLanguage(language);
-      setView(v);
+  const choose = (language: Language | null) =>
+    act(async () => {
+      setView(await api.saveLanguage(language));
       // the strings are set before the first render: the page loads again, keeping what is open
       reload();
-    } catch (e) {
-      setStatus(failText(e));
-      setBusy(false);
-    }
-  };
-  const converse = async (conversation: Language | null) => {
-    setStatus('');
-    try {
-      setView(await api.saveConversationLanguage(conversation));
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
+    });
+  const converse = (conversation: Language | null) => act(async () => setView(await api.saveConversationLanguage(conversation)));
   return (
     <>
       <Head sub title={l.heading} file={view.file} />
@@ -785,25 +763,17 @@ function LanguageBlock({ on }: { on: boolean }) {
 
 /** Light or dark, or as the system: saved on its own, and the page takes it at once. */
 function ThemeBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<ThemeView | null>(null);
-  const [status, setStatus] = useState('');
-  useEffect(() => {
-    if (on) api.theme().then(setView, console.error);
-  }, [on]);
+  const [view, setView] = useLoaded(on, api.theme);
+  const { status, act } = useAct();
   if (!view) return null;
   const l = t.config.theme;
   const choose = async (theme: Theme | null) => {
     const before = view;
     setView({ ...view, chosen: theme });
     applyTheme(theme);
-    setStatus('');
-    try {
-      setView(await api.saveTheme(theme));
-    } catch (e) {
-      setView(before);
-      applyTheme(before.chosen);
-      setStatus(failText(e));
-    }
+    if (await act(async () => setView(await api.saveTheme(theme)))) return;
+    setView(before);
+    applyTheme(before.chosen);
   };
   return (
     <>
@@ -822,61 +792,21 @@ function ThemeBlock({ on }: { on: boolean }) {
   );
 }
 
-/** Whether the bar shows the plan's usage limits: saved on its own, and the bar follows at once. */
-function UsageBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<UsageMeterView | null>(null);
-  const [status, setStatus] = useState('');
-  useEffect(() => {
-    if (on) api.usageMeter().then(setView, console.error);
-  }, [on]);
+/**
+ * A setting that is on or off, saved on its own, the page following at once: whether the bar shows
+ * the plan's usage limits, whether the page shows what the agents cost.
+ */
+function ToggleSetting({ on, load, save, text }: { on: boolean; load: () => Promise<{ file: string; on: boolean }>; save: (on: boolean) => Promise<{ file: string; on: boolean }>; text: { title: string; hint: string; label: string } }) {
+  const [view, setView] = useLoaded(on, load);
+  const { status, act } = useAct();
   if (!view) return null;
-  const l = t.usage.setting;
-  const choose = async (shown: boolean) => {
-    setStatus('');
-    try {
-      setView(await api.saveUsageMeter(shown));
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
   return (
     <>
-      <Head sub title={l.title} hint={l.hint} file={view.file} />
-      <Field label={l.title}>
+      <Head sub title={text.title} hint={text.hint} file={view.file} />
+      <Field label={text.title}>
         <label className="c-check">
-          <input type="checkbox" checked={view.on} onChange={(e) => choose(e.target.checked)} />
-          {l.label}
-        </label>
-      </Field>
-      {status && <p className="hint c-status">{status}</p>}
-    </>
-  );
-}
-
-/** Whether the page shows what the agents cost: saved on its own, and every open page follows at once. */
-function CostsBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<CostsView | null>(null);
-  const [status, setStatus] = useState('');
-  useEffect(() => {
-    if (on) api.costs().then(setView, console.error);
-  }, [on]);
-  if (!view) return null;
-  const l = t.costs.setting;
-  const choose = async (shown: boolean) => {
-    setStatus('');
-    try {
-      setView(await api.saveCosts(shown));
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
-  return (
-    <>
-      <Head sub title={l.title} hint={l.hint} file={view.file} />
-      <Field label={l.title}>
-        <label className="c-check">
-          <input type="checkbox" checked={view.on} onChange={(e) => choose(e.target.checked)} />
-          {l.label}
+          <input type="checkbox" checked={view.on} onChange={(e) => act(async () => setView(await save(e.target.checked)))} />
+          {text.label}
         </label>
       </Field>
       {status && <p className="hint c-status">{status}</p>}
@@ -890,24 +820,11 @@ function CostsBlock({ on }: { on: boolean }) {
  * the models and efforts are those of the chosen harness.
  */
 function AgentsBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<AgentsView | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (on) api.agents().then(setView, console.error);
-  }, [on]);
+  const [view, setView] = useLoaded(on, api.agents);
+  const { status, busy, act } = useAct();
   if (!view) return null;
   const a = t.config.agents;
-  const choose = async (role: AgentRole, choice: Partial<AgentSetting>) => {
-    setBusy(true);
-    setStatus('');
-    try {
-      setView(await api.saveAgents(role, choice));
-    } catch (e) {
-      setStatus(failText(e));
-    }
-    setBusy(false);
-  };
+  const choose = (role: AgentRole, choice: Partial<AgentSetting>) => act(async () => setView(await api.saveAgents(role, choice)));
   const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
   const modelName = (h: Harness, m: ModelChoice) => `${h === 'claude' ? (a.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}${m.version ? ` ${m.version}` : ''}`;
   const unready = view.harnesses.filter((h) => !h.ready);
@@ -972,8 +889,7 @@ function DemoBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<DemoSettingsView | null>(null);
   const [draft, setDraft] = useState<DemoSettings | null>(null);
   const [check, setCheck] = useState<DemoVoiceCheck | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { status, setStatus, busy, act } = useAct({ detail: ['voiceSample'] });
   const [sampling, setSampling] = useState(false);
   // the subtitle languages as typed, separators and all, while the field has them; the draft holds their codes
   const [subtitlesText, setSubtitlesText] = useState<string | null>(null);
@@ -1003,11 +919,7 @@ function DemoBlock({ on }: { on: boolean }) {
   }, [draft, installing]);
   // an installation runs on the server, or it counts the demos' space: follow it until it ends
   const counting = !!view?.space?.busy;
-  useEffect(() => {
-    if (!on || !(installing || counting)) return;
-    const timer = setInterval(() => api.demoSettings().then(setView, console.error), 1500);
-    return () => clearInterval(timer);
-  }, [on, installing, counting]);
+  usePoll(on && (installing || counting), () => api.demoSettings().then(setView), 1500);
   useEffect(() => () => audio.pause(), [audio]);
   if (!view || !draft) return null;
   const d = t.config.demo;
@@ -1016,31 +928,18 @@ function DemoBlock({ on }: { on: boolean }) {
   const shown = check ?? view.check;
   const job = view.job?.voice === draft.voice ? view.job : undefined;
   const unknownCodes = (draft.subtitles ?? []).filter((c) => !knownLanguage(c));
-  const failed = (e: unknown) => setStatus(failText(e, { detail: ['voiceSample'] }));
   const save = async () => {
-    setBusy(true);
-    try {
+    if (await act(async () => {
       const v = await api.saveDemoSettings(draft);
       setView(v);
       setDraft(v.settings);
       setSubtitlesText(null);
+    }))
       setStatus(d.saved);
-    } catch (e) {
-      failed(e);
-    }
-    setBusy(false);
   };
-  const install = async () => {
-    setStatus('');
-    try {
-      setView(await api.installDemoVoice(draft));
-    } catch (e) {
-      failed(e);
-    }
-  };
+  const install = () => act(async () => setView(await api.installDemoVoice(draft)));
   const listen = async () => {
     setSampling(true);
-    setStatus('');
     // Safari (WebKit) lets a page sound for about 10 s after a click, and a first sample
     // takes longer: started in the click, without a sample yet, the element may play when it comes
     const before = audio.src;
@@ -1049,13 +948,11 @@ function DemoBlock({ on }: { on: boolean }) {
     audio.load();
     if (before) URL.revokeObjectURL(before);
     audio.play().catch(() => {});
-    try {
+    await act(async () => {
       const wav = await api.demoVoiceSample(draft);
       audio.src = URL.createObjectURL(wav);
       await audio.play();
-    } catch (e) {
-      failed(e);
-    }
+    });
     setSampling(false);
   };
   const field = (k: (typeof VOICE_FIELDS)[VoiceKind][number]) => (
@@ -1289,7 +1186,7 @@ const PERSONAL_CODE_KEY = 'obeya-personal-code';
  * private repositories ticked for it, and removing it from this machine.
  */
 function PersonalSiteBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<PersonalSiteView | null>(null);
+  const [view, setView] = useLoaded(on, api.personalSite);
   const [host, setHost] = useState<PersonalHost>(() => PERSONAL_HOSTS.find((h) => h === read(session, PERSONAL_HOST_KEY)) ?? PERSONAL_HOSTS[0]!);
   const [way, setWay] = useState<CloudflareWay | null>(null);
   const [code, setCode] = useState(() => read(session, PERSONAL_CODE_KEY) ?? '');
@@ -1298,12 +1195,9 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
   // the connection code, at hand before the click: the clipboard takes it within the click
   const [connection, setConnection] = useState('');
   const [removing, setRemoving] = useState(false);
-  const [status, setStatus] = useState('');
+  const { status, act: run } = useAct();
   const p = t.config.personal;
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (on) api.personalSite().then(setView, console.error);
-  }, [on]);
   // opened from a card's hint: it comes into view
   useEffect(() => {
     if (!on || !view || !flag(session, PERSONAL_SHOW_KEY)) return;
@@ -1314,27 +1208,14 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
   }, [on, !!view]);
   const running = !!view?.job?.running;
   // a setup runs on the server, with a login in the browser maybe: follow it until it ends
-  useEffect(() => {
-    if (!on || !running) return;
-    const timer = setInterval(() => api.personalSite().then(setView, console.error), 1000);
-    return () => clearInterval(timer);
-  }, [on, running]);
+  usePoll(on && running, () => api.personalSite().then(setView), 1000);
   useEffect(() => {
     if (view?.site) api.personalSiteCode().then((c) => setConnection(c.code), console.error);
   }, [view?.site?.url]);
   useEffect(() => void write(session, PERSONAL_HOST_KEY, host), [host]);
   useEffect(() => void write(session, PERSONAL_CODE_KEY, code || null), [code]);
   if (!view) return null;
-  const act = async (fn: () => Promise<PersonalSiteView>) => {
-    setStatus('');
-    try {
-      setView(await fn());
-      return true;
-    } catch (e) {
-      setStatus(failText(e));
-      return false;
-    }
-  };
+  const act = (fn: () => Promise<PersonalSiteView>) => run(async () => setView(await fn()));
   // the first site's account, until the owner chooses
   const chosen: CloudflareWay = way ?? { account: view.cloudflareAccounts[0] ?? '', token: '', accountId: '' };
   const setUp = (h: PersonalHost) => {
@@ -1560,7 +1441,7 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
  */
 function VoiceBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<VoiceSetupView | null>(null);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   const [checking, setChecking] = useState(false);
   const recheck = () => {
     setChecking(true);
@@ -1573,22 +1454,11 @@ function VoiceBlock({ on }: { on: boolean }) {
     if (on) recheck();
   }, [on]);
   const running = !!view?.job?.running;
-  useEffect(() => {
-    if (!on || !running) return;
-    const timer = setInterval(() => api.voiceSetup().then(setView, console.error), 1500);
-    return () => clearInterval(timer);
-  }, [on, running]);
+  usePoll(on && running, () => api.voiceSetup().then(setView), 1500);
   if (!view) return null;
   const v = t.config.voice;
   const s = t.config.setup;
-  const install = async () => {
-    setStatus('');
-    try {
-      setView(await api.installVoice());
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
+  const install = () => act(async () => setView(await api.installVoice()));
   const blocked = view.items.some((i) => i.state === 'missing');
   return (
     <div className="c-setup">
@@ -1662,6 +1532,7 @@ function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin
   }, [focus, resolved?.id]);
   const at = Math.min(tab, canvas.repos.length - 1);
   const repo = canvas.repos[at];
+  const takeover: Takeover = { saved, can: saved || !!prepare, ready: async () => saved || ((await prepare?.()) ?? false), onReload };
   return (
     <div className="cfg-canvas">
       <header className={file ? 'cfg-head cfg-has-info' : 'cfg-head'}>
@@ -1748,7 +1619,7 @@ function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin
           where={`${here}, ${t.config.repoAt(repo.path)}`}
           ask={askHere}
           onRecheck={onRecheck}
-          takeover={{ saved, onReload, ...(prepare ? { prepare } : {}) }}
+          takeover={takeover}
           onChange={(x) => {
             setRepo(at, x);
             if (!x) setAt(Math.max(0, at - 1));
@@ -1780,13 +1651,15 @@ interface RepoProps {
 /** A repository's name on its tab: its id once checked, else its folder's name. */
 const repoName = (repo: RepoConfig, resolved: ResolvedCanvas['repos'][number] | undefined) => resolved?.id ?? (repo.path.trim().split(/[\\/]/).filter(Boolean).pop() || t.config.newRepo);
 
-/** What "For everyone" needs of the dialog: whether the canvases are as saved (what is taken over), how to read them again, how to save them first. */
+/** What "For everyone" needs of the dialog: whether the canvases are as saved (what is taken over), how to save them first, how to read them again. */
 interface Takeover {
   saved: boolean;
+  /** They are saved, or can be saved first: not where saving restarts Obeya. */
+  can: boolean;
+  /** Saves the dialog's changes where they are not saved yet; says whether the canvases are as saved now. */
+  ready: () => Promise<boolean>;
   /** Reads the saved configuration again: the server changed it. */
   onReload: () => Promise<void>;
-  /** Saves the dialog's changes; none where saving restarts Obeya. Says whether they were saved. */
-  prepare?: () => Promise<boolean>;
 }
 
 function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, onRecheck, takeover, onChange }: RepoProps) {
@@ -2230,7 +2103,7 @@ function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: strin
   const [way, setWay] = useState<CloudflareWay | null>(null);
   const [job, setJob] = useState<SiteSetupJob | null>(null);
   const [done, setDone] = useState(false);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   const c = t.config.settings;
   const take = (j: SiteSetupJob | null) => {
     setJob(j);
@@ -2249,11 +2122,7 @@ function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: strin
   }, [open]);
   const chosen: CloudflareWay = way ?? { account: accounts[0] ?? '', token: '', accountId: '' };
   const running = !!job?.running;
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => api.repoSiteSetup(path).then((r) => take(r.job), console.error), 1000);
-    return () => clearInterval(timer);
-  }, [running, path]);
+  usePoll(running, () => api.repoSiteSetup(path).then((r) => take(r.job)), 1000);
   if (done) return <p className="hint wide">{c.siteSetupDone}</p>;
   if (!empty && !running) return null;
   return (
@@ -2278,14 +2147,7 @@ function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: strin
             type="button"
             className="btn small primary"
             disabled={running}
-            onClick={async () => {
-              setStatus('');
-              try {
-                take((await api.setUpRepoSite(path, host, name, host === 'cloudflare' ? cloudflareHow(chosen) : {})).job);
-              } catch (e) {
-                setStatus(failText(e));
-              }
-            }}
+            onClick={() => act(async () => take((await api.setUpRepoSite(path, host, name, host === 'cloudflare' ? cloudflareHow(chosen) : {})).job))}
           >
             {running ? c.siteSetupRunning : c.siteSetupGo}
           </button>
@@ -2342,7 +2204,7 @@ function TagProposal({ path, current, language, onTags }: { path: string; curren
   const [job, setJob] = useState<TagProposalJob | null>(null);
   const [available, setAvailable] = useState(false);
   const [taken, setTaken] = useState<{ why: string; before: PageTags | undefined } | null>(null);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   const c = t.config.settings;
   // the poll outlives renders: the field as it is now, and the draft to set
   const now = useRef({ current, onTags });
@@ -2365,11 +2227,7 @@ function TagProposal({ path, current, language, onTags }: { path: string; curren
     if (path.trim()) void poll();
   }, [path]);
   const running = !!job?.running;
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(poll, 2000);
-    return () => clearInterval(timer);
-  }, [running, path]);
+  usePoll(running, poll, 2000);
   if (!available && !running) return null;
   return (
     <div className="wide tag-propose">
@@ -2378,14 +2236,9 @@ function TagProposal({ path, current, language, onTags }: { path: string; curren
         className="btn small"
         title={c.siteTagsProposeHint}
         disabled={running}
-        onClick={async () => {
-          setStatus('');
+        onClick={() => {
           setTaken(null);
-          try {
-            take((await api.proposeTags(path, current, language)).job);
-          } catch (e) {
-            setStatus(failText(e));
-          }
+          void act(async () => take((await api.proposeTags(path, current, language)).job));
         }}
       >
         {running ? c.siteTagsProposing : c.siteTagsPropose}
@@ -2454,18 +2307,15 @@ const sharedDone = new Map<string, SettingsShared>();
 function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }: { repo: RepoConfig; values: RepoValues; branch: string; shareTo: 'main' | 'pr'; shareDirect: boolean; takeover: Takeover }) {
   const c = t.config.settings.share;
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<SettingsShared | null>(() => sharedDone.get(repo.path) ?? null);
-  const [error, setError] = useState('');
+  const { status: error, busy, act } = useAct({ detail: ['settingsShare'] });
   const { branch: _, ...mine } = repo.settings ?? {};
   const count = Object.keys(mine).length + (mine.demo ? Object.keys(mine.demo).length - 1 : 0);
-  const { saved, onReload, prepare } = takeover;
-  const go = async (direct = false) => {
-    setBusy(true);
-    setError('');
-    try {
+  const { saved, can, ready, onReload } = takeover;
+  const go = (direct = false) =>
+    act(async () => {
       // what is taken over is what is saved: the dialog's changes are saved first (why not, its status line says)
-      if (!saved && !(await prepare?.())) return setBusy(false);
+      if (!(await ready())) return;
       const r = await api.shareSettings(repo.path, direct);
       setDone(r);
       setConfirming(false);
@@ -2473,11 +2323,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
         sharedDone.set(repo.path, r);
         await onReload();
       }
-    } catch (e) {
-      setError(failText(e, { detail: ['settingsShare'] }));
-    }
-    setBusy(false);
-  };
+    });
   return (
     <div className="cfg-field cfg-setting cfg-share-settings">
       <div className="cfg-label">{c.label}</div>
@@ -2496,10 +2342,10 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
         {!done && !count && <p className="hint">{c.none}</p>}
         {count > 0 && !confirming && (
           <>
-            <button type="button" className="btn small" disabled={!saved && !prepare} onClick={() => setConfirming(true)}>
+            <button type="button" className="btn small" disabled={!can} onClick={() => setConfirming(true)}>
               {c.button(count)}
             </button>
-            <p className="hint">{saved || prepare ? `${c.hint}${repo.settings?.branch ? ` ${c.hintBranch}` : ''}` : c.saveFirst}</p>
+            <p className="hint">{can ? `${c.hint}${repo.settings?.branch ? ` ${c.hintBranch}` : ''}` : c.saveFirst}</p>
           </>
         )}
         {confirming && (
@@ -2607,21 +2453,13 @@ const DETAILED: ConfigProblem['code'][] = ['demoSite', 'adapterGone', 'repoSetti
  */
 export function Problem({ problem, where, ask, retried }: { problem: ConfigProblem; where: string; ask?: (text: string) => void; retried?: () => void }) {
   const [asked, setAsked] = useState(false);
-  const [retrying, setRetrying] = useState(false);
-  const [error, setError] = useState('');
+  const { status: error, busy: retrying, act } = useAct();
   const text = t.config.problem[problem.code];
-  const retry = async () => {
-    setRetrying(true);
-    setError('');
-    try {
+  const retry = () =>
+    act(async () => {
       await api.retryStart();
       retried?.();
-    } catch (e) {
-      setError(failText(e));
-    } finally {
-      setRetrying(false);
-    }
-  };
+    });
   return (
     <div className="p-error c-problem">
       {text}
@@ -2660,21 +2498,13 @@ export function Problem({ problem, where, ask, retried }: { problem: ConfigProbl
  * button that trusts them; the dialog checks again after it.
  */
 function TrustCommands({ path, trust, onDone }: { path: string; trust: RepoTrust; onDone: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const { status: error, busy, act } = useAct();
   const c = t.config.trust;
-  const go = async () => {
-    setBusy(true);
-    setError('');
-    try {
+  const go = () =>
+    act(async () => {
       await api.trustCommands(path, trust);
       onDone();
-    } catch (e) {
-      setError(failText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   return (
     <div className="c-trust">
       {trust.held.map((g) => (
@@ -2711,30 +2541,23 @@ const blankOnly = (trust: RepoTrust) =>
  * the dialog's changes are saved first, so the canvas runs with the repository on it.
  */
 function AdapterSetup({ canvas, repo, takeover }: { canvas: string; repo: string; takeover: Takeover }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const { saved, prepare } = takeover;
-  const go = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      if (!saved && !(await prepare?.())) return setBusy(false);
+  const { status: error, busy, act } = useAct();
+  const { saved, can, ready } = takeover;
+  const go = () =>
+    act(async () => {
+      if (!(await ready())) return;
       const card = await api.adapterSetup(canvas, repo);
       // the canvas loads with the card open, as after a restart
       keep(sessionStorage, canvas, { at: Date.now(), card: card.id, scroll: [], drafts: [] });
       location.assign(canvasPath(canvas));
-    } catch (e) {
-      setError(failText(e));
-      setBusy(false);
-    }
-  };
+    });
   return (
     <div className="c-row">
       <span className="hint">
         {t.config.adapterSetupHint}
-        {!saved && <> {prepare ? t.config.adapterSetupSaves : t.config.adapterSetupSaveFirst}</>}
+        {!saved && <> {can ? t.config.adapterSetupSaves : t.config.adapterSetupSaveFirst}</>}
       </span>
-      <button className="btn small" disabled={busy || (!saved && !prepare)} onClick={go}>
+      <button className="btn small" disabled={busy || !can} onClick={go}>
         {t.config.adapterSetup}
       </button>
       {error && <p className="p-error">{error}</p>}

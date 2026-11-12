@@ -7,7 +7,8 @@
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CLOUD_PRESETS, CLOUD_VOICES, type CloudPreset, type GitSetupPreview, LARGE_FILE, type Language, type MachineItem, type MachineSection, type MachineView, type SetupItem, type VoiceSetupItem } from '../core/types';
 import { LANGUAGES } from '../core/locale';
-import { api, reload, failText } from './api';
+import { api, reload } from './api';
+import { useAct, usePoll } from './act';
 import { useCopy } from './copy';
 import { Sign } from './logo';
 import { fileSize, t } from './strings';
@@ -112,33 +113,15 @@ export function RecognitionDetail({ item, busy, changed }: { item: VoiceSetupIte
   const [model, setModel] = useState(cloud?.preset === 'openai' ? cloud.model : '');
   const [key, setKey] = useState('');
   const [testing, setTesting] = useState(false);
-  const [status, setStatus] = useState('');
+  const { status, act: run } = useAct({ detail: ['voiceCloud', 'invalid'] });
   const measuring = speed === 'measuring';
-  useEffect(() => {
-    if (!measuring) return;
-    // one check at a time: the setup assistant's takes a while
-    let timer: ReturnType<typeof setTimeout>;
-    let done = false;
-    const tick = async () => {
-      await changed();
-      if (!done) timer = setTimeout(tick, 1500);
-    };
-    timer = setTimeout(tick, 1500);
-    return () => {
-      done = true;
-      clearTimeout(timer);
-    };
-  }, [measuring]);
-  const failed = (e: unknown) => setStatus(failText(e, { detail: ['voiceCloud', 'invalid'] }));
-  const act = async (call: () => Promise<unknown>) => {
-    setStatus('');
-    try {
+  // one check at a time: the setup assistant's takes a while
+  usePoll(measuring, async () => changed(), 1500);
+  const act = (call: () => Promise<unknown>) =>
+    run(async () => {
       await call();
       changed();
-    } catch (e) {
-      failed(e);
-    }
-  };
+    });
   const test = async () => {
     setTesting(true);
     await act(() => api.useCloudVoice({ preset, ...(preset === 'openai' ? { baseUrl, model } : {}), ...(key.trim() ? { key: key.trim() } : {}) }));
@@ -218,11 +201,10 @@ const ready = (section: MachineSection | undefined) => !!section && section.item
 export function Setup({ first, onClose }: { first?: boolean; onClose?: () => void }) {
   const [view, setView] = useState<MachineView | null>(null);
   const [checking, setChecking] = useState(false);
-  const [status, setStatus] = useState('');
+  const { status, setStatus, failed, act: run } = useAct({ detail: ['invalid', 'config'] });
   const [terminal, setTerminal] = useState<string | null>(null);
   const shown = useRef(false);
   shown.current = !!view;
-  const failed = (e: unknown) => setStatus(failText(e, { detail: ['invalid', 'config'] }));
   const recheck = () => {
     setChecking(true);
     return api
@@ -243,11 +225,7 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
     };
   }, []);
   const running = !!view?.job?.running;
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => api.setup().then(setView, console.error), 1500);
-    return () => clearInterval(timer);
-  }, [running]);
+  usePoll(running, () => api.setup().then(setView), 1500);
   useEffect(() => {
     if (!onClose) return;
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -256,19 +234,16 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
   }, [onClose]);
 
   const s = t.setup;
-  const act = async (section: MachineSection, i: MachineItem) => {
-    setStatus('');
+  const act = (section: MachineSection, i: MachineItem) => {
     setTerminal(null);
-    try {
+    return run(async () => {
       if (i.act === 'install') setView(await api.setupInstall(section.id, i.id));
       else if (i.act === 'login') {
         const { opened } = await api.setupLogin(section.id, i.id);
         setTerminal(opened ? i.id : null);
         if (!opened) setStatus(s.noTerminal);
       }
-    } catch (e) {
-      failed(e);
-    }
+    });
   };
   const action = (section: MachineSection) => (i: MachineItem) => {
     const job = view?.job;
@@ -433,13 +408,11 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
   const [path, setPath] = useState('');
   const [clone, setClone] = useState('');
   const [into, setInto] = useState(view.cloneInto);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('');
+  const { status, setStatus, failed, busy, act } = useAct({ detail: ['invalid', 'config'] });
   const [saved, setSaved] = useState<{ canvas: string; branch?: string; opens: boolean } | null>(null);
   // the main branch of the folder named, once Obeya looked at it; or that it is a folder without git
   const found = useFolder(mode === 'folder' ? path.trim() : '');
   const s = t.setup;
-  const failed = (e: unknown) => setStatus(failText(e, { detail: ['invalid', 'config'] }));
   const job = view.job?.kind === 'clone' ? view.job : undefined;
   // a clone that ended as the first canvas
   useEffect(() => {
@@ -449,33 +422,24 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
   const noGit = !!found?.noGit;
   // once Obeya runs with the canvas (by itself, or started again by the owner), the page opens it
   const opened = useRef(false);
-  useEffect(() => {
-    if (!saved) return;
-    const timer = setInterval(
-      () =>
-        api.canvases().then((list) => {
-          if (opened.current || !list.some((c) => c.id === saved.canvas)) return;
-          opened.current = true;
-          location.href = canvasPath(saved.canvas);
-        }, () => {}),
-      1000,
-    );
-    return () => clearInterval(timer);
-  }, [saved]);
+  usePoll(
+    !!saved,
+    () =>
+      api.canvases().then((list) => {
+        if (opened.current || !saved || !list.some((c) => c.id === saved.canvas)) return;
+        opened.current = true;
+        location.href = canvasPath(saved.canvas);
+      }, () => {}),
+    1000,
+  );
 
   /** `withoutGit`: the folder stays without git, its cards working in it directly. */
-  const create = async (withoutGit = false) => {
-    setBusy(true);
-    setStatus('');
-    try {
+  const create = (withoutGit = false) =>
+    act(async () => {
       const out = await api.setupCanvas(mode === 'folder' ? { path, ...(withoutGit ? { git: false as const } : {}) } : { clone, into });
       if ('canvas' in out) setSaved(out);
       else onView(out);
-    } catch (e) {
-      failed(e);
-    }
-    setBusy(false);
-  };
+    });
   const can = mode === 'folder' ? !!path.trim() : !!clone.trim();
   return (
     <section className="c-canvas setup-first">
@@ -569,28 +533,16 @@ const IGNORED_SHOWN = 12;
 export function GitSetup({ path, confirm, onDone, onFolder }: { path: string; confirm: string; onDone: (branch: string) => void; onFolder: () => void }) {
   const [preview, setPreview] = useState<GitSetupPreview | null>(null);
   const [busy, setBusy] = useState<'looking' | 'working' | null>(null);
-  const [error, setError] = useState('');
+  const { status: error, act } = useAct({ detail: ['gitSetup', 'invalid'] });
   const s = t.setup.git;
-  const failed = (e: unknown) => setError(failText(e, { detail: ['gitSetup', 'invalid'] }));
   const look = async () => {
     setBusy('looking');
-    setError('');
-    try {
-      setPreview(await api.setupGitPreview(path));
-    } catch (e) {
-      failed(e);
-    }
+    await act(async () => setPreview(await api.setupGitPreview(path)));
     setBusy(null);
   };
   const go = async () => {
     setBusy('working');
-    setError('');
-    try {
-      const { branch } = await api.setupGit(path);
-      onDone(branch);
-    } catch (e) {
-      failed(e);
-    }
+    await act(async () => onDone((await api.setupGit(path)).branch));
     setBusy(null);
   };
   const p = preview;

@@ -6,7 +6,8 @@
 import { Fragment, type ReactNode, useEffect, useState } from 'react';
 import { encode } from 'uqr';
 import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
-import { api, failText } from './api';
+import { api } from './api';
+import { useAct, usePoll } from './act';
 import { Field, Head } from './config';
 import { clock, t, when } from './strings';
 import { Over } from './over';
@@ -23,17 +24,11 @@ function Coded({ text }: { text: string }) {
 /** The view of the section while `on`, looked at again every few seconds: Tailscale logged in meanwhile, a phone paired. */
 function useAccess(on: boolean): [AccessView | null, (v: AccessView) => void] {
   const [view, setView] = useState<AccessView | null>(null);
+  const load = () => api.access().then((v) => v.local && setView(v));
   useEffect(() => {
-    if (!on) return;
-    let live = true;
-    const load = () => api.access().then((v) => live && v.local && setView(v), console.error);
-    void load();
-    const timer = setInterval(load, 2500);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
+    if (on) load().catch(console.error);
   }, [on]);
+  usePoll(on, load, 2500);
   return [view, setView];
 }
 
@@ -43,19 +38,8 @@ const moved = (view: AccessView): DeviceView[] => (view.address ? view.devices.f
 /** The setting "Reachable from other devices" and what the network needs for it, with one step each. */
 function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => void }) {
   const a = t.access;
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
-  const save = async (remote: RemoteSetting | null) => {
-    setBusy(true);
-    setStatus('');
-    try {
-      onView(await api.saveAccess(remote));
-    } catch (e) {
-      setStatus(failText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { status, busy, act } = useAct();
+  const save = (remote: RemoteSetting | null) => act(async () => onView(await api.saveAccess(remote)));
   const via = view.remote?.via ?? null;
   // what the owner set for keeping the machine awake goes along when the way changes
   const awake = view.remote?.awake ? { awake: view.remote.awake } : {};
@@ -179,17 +163,13 @@ function Qr({ text, size = 220 }: { text: string; size?: number }) {
 export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () => void }) {
   const a = t.access;
   const [view, setView] = useAccess(on);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   if (!view) return <Head title={t.config.sections.devices} hint={a.hint} />;
-  const remove = async (id: string) => {
-    setStatus('');
-    try {
+  const remove = (id: string) =>
+    act(async () => {
       await api.removeDevice(id);
       setView({ ...view, devices: view.devices.filter((d) => d.id !== id) });
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
+    });
   return (
     <>
       <Head title={t.config.sections.devices} hint={a.hint} file={view.file} />

@@ -6,6 +6,7 @@
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuote, TalkRef, TalkWait } from '../core/types';
 import { api, failText } from './api';
+import { useAct } from './act';
 import { Body, Inline, plain } from './markdown';
 import { AnswerFiles, Continues, Msg, Quote, Reading, ThreadCard } from './message';
 import { WalkthroughButton } from './walkthrough';
@@ -416,20 +417,6 @@ function WaitLine({ talk, wait, card, onOpen }: { talk: number; wait: TalkWait; 
   );
 }
 
-/** An error to show under a row, and `act`, which runs a request and then shows its error or clears it. */
-function useAct(fail?: Parameters<typeof failText>[1]): [string, (fn: () => Promise<unknown>) => Promise<void>] {
-  const [error, setError] = useState('');
-  const act = async (fn: () => Promise<unknown>) => {
-    try {
-      await fn();
-      setError('');
-    } catch (e) {
-      setError(failText(e, fail));
-    }
-  };
-  return [error, act];
-}
-
 /** Where a rule goes: the owner's preferences or a repository's CLAUDE.md. */
 function TargetPick({ value, repos, onChange }: { value: string; repos: RepoRef[]; onChange: (target: string) => void }) {
   return (
@@ -490,7 +477,7 @@ function RuleEdit({ draft, setDraft, onEnter, onBlur }: { draft: string; setDraf
 function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items: Item[]; rules: Preference[]; repos: RepoRef[]; onOpen: (i: Item) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [target, setTarget] = useState(p.target ?? '');
-  const [error, decide] = useAct();
+  const { status: error, act: decide } = useAct();
   const card = p.cardId ? items.find((i) => i.id === p.cardId) : undefined;
   const replaced = p.replaces !== undefined ? rules.find((r) => r.id === p.replaces) : undefined;
   const accept = () =>
@@ -579,15 +566,9 @@ function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; 
   const [draft, setDraft] = useSettingDraft(p.id, asText(p.value));
   const field = useRef<HTMLTextAreaElement>(null);
   useFitHeight(field, draft);
-  const [busy, setBusy] = useState(false);
-  const [error, act] = useAct({ detail: ['settingsShare'] });
+  const { status: error, busy, act: decide } = useAct({ detail: ['settingsShare'] });
   const k = t.coordinator;
   const list = Array.isArray(p.value);
-  const decide = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    await act(fn);
-    setBusy(false);
-  };
   const changed = draft.trim() !== asText(p.value);
   const edited = !changed ? undefined : list ? draft.split('\n').map((x) => x.trim()).filter(Boolean) : draft.trim();
   const take = (where: 'machine' | 'repository') => decide(() => api.takeSetting(p.id, where, edited));
@@ -674,7 +655,7 @@ const RESHARE_COUNTS = [10, 20, 50, 100];
 function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (i: Item) => void }) {
   const counts = RESHARE_COUNTS.filter((n) => n < r.outdated);
   const [pick, setPick] = useState<number | 'all'>();
-  const [error, act] = useAct();
+  const { status: error, act } = useAct();
   // the newest 20 unless the owner picks otherwise; null is all of them
   const chosen = pick === 'all' ? null : pick !== undefined && counts.includes(pick) ? pick : (counts.find((n) => n >= 20) ?? null);
   const run = r.run;
@@ -776,7 +757,7 @@ function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (
 
 function PreferenceRow({ p }: { p: Preference }) {
   const [draft, setDraft] = useState<string | null>(null);
-  const [error, act] = useAct();
+  const { status: error, act } = useAct();
   const save = () => {
     if (draft === null || draft.trim() === p.text) return setDraft(null);
     act(async () => {
@@ -806,7 +787,7 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
   const [text, setText] = useState('');
   const [target, setTarget] = useState('');
   const [filed, setFiled] = useState('');
-  const [error, act] = useAct();
+  const { status: error, act } = useAct();
   const field = useRef<HTMLTextAreaElement>(null);
   const talk = useDictatedField(field, true);
   // as high as the rule: a dictated one is a sentence or more
