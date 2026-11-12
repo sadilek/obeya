@@ -13,7 +13,7 @@ import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
 import { outsidePlanDir } from './repo';
-import { type AgentEvent, type AgentSpec, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
+import { type AgentEvent, type AgentSpec, BackgroundWait, atTime, failureReason, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
@@ -1641,7 +1641,7 @@ export class Workers {
       nudged: false,
       lastText: '',
       busy: false,
-      background: 0,
+      work: new BackgroundWait(() => {}),
       tasks: new Map(),
       stalled: false,
       preferences: '',
@@ -1967,7 +1967,7 @@ export class Workers {
   private turnsShown(): Map<string, WorkerTurn> {
     const turns = new Map<string, WorkerTurn>();
     for (const [id, l] of this.live) {
-      if (l.busy) turns.set(id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: !!l.waiting });
+      if (l.busy) turns.set(id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: l.work.waiting });
       else if (this.pausedForDue(l)) turns.set(id, { tasks: [], over: true, restart: true });
     }
     return turns;
@@ -2054,7 +2054,12 @@ export class Workers {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
     const preferences = this.o.preferences?.() ?? '';
-    const live: Live = { session: undefined!, host: hostName(row.workspace), handedOver: false, acted: false, nudged: false, lastText: '', busy: true, background: 0, tasks: new Map(), stalled: false, preferences };
+    const live: Live = { session: undefined!, host: hostName(row.workspace), handedOver: false, acted: false, nudged: false, lastText: '', busy: true,
+      work: new BackgroundWait(() => this.waitedOut(cardId, live), { grace: this.o.backgroundGrace, limit: this.o.backgroundLimit }, (waiting) => this.waitChanged(live, waiting)),
+      tasks: new Map(),
+      stalled: false,
+      preferences,
+    };
     const project = this.o.board.item(cardId)?.parent;
     if (project) live.project = { id: project, decision: this.o.board.decisions(project).at(-1)?.id ?? 0 };
     this.live.set(cardId, live);
@@ -2204,7 +2209,7 @@ export class Workers {
     const live = this.live.get(cardId);
     if (live) {
       // the turn this starts reports the background work that is still running
-      this.stopWaiting(live);
+      live.work.stop();
       clearTimeout(live.lifts);
       live.lifts = undefined;
       this.setBusy(live, true);
@@ -2225,7 +2230,7 @@ export class Workers {
   private takesLater(cardId: string): boolean {
     if (this.preparingFor(cardId)) return true;
     const live = this.live.get(cardId);
-    return !!live && live.busy && !live.waiting && !this.apps.stopping.has(cardId) && !this.pausedOf(cardId);
+    return !!live && live.busy && !live.work.waiting && !this.apps.stopping.has(cardId) && !this.pausedOf(cardId);
   }
 
   /** Whether the card's worker waits for git to make its workspace ready, without a session yet. */
@@ -2366,7 +2371,7 @@ export class Workers {
   private end(cardId: string) {
     const live = this.live.get(cardId);
     this.live.delete(cardId);
-    clearTimeout(live?.waiting);
+    live?.work.stop();
     clearTimeout(live?.lifts);
     live?.session.close();
     // its slot is free again
@@ -2388,7 +2393,7 @@ export class Workers {
     if (e.type === 'background') return this.backgroundChanged(cardId, live, e.tasks);
     // a turn may also start without a message from Obeya (a finished background command)
     this.setBusy(live, e.type !== 'idle');
-    this.stopWaiting(live);
+    live.work.stop();
     clearTimeout(live.lifts);
     live.lifts = undefined;
     if (e.type === 'text' || e.type === 'tool') {
@@ -2433,7 +2438,7 @@ export class Workers {
       }
       case 'error':
         if (e.limit) {
-          live.limited = limitLifts(e.limit, this.o.limitMargin ?? 10_000);
+          live.limited = limitLifts(e.limit, this.o.limitMargin ?? LIMIT_MARGIN);
           const t = this.o.board.t;
           this.o.board.log(cardId, 'state', 'obeya', `${e.message}. ${e.limit.resetsAt ? t.worker.limitResumes(t.when(live.limited)) : t.worker.limitRetries(t.when(live.limited))}`);
           break;
@@ -2445,9 +2450,9 @@ export class Workers {
         this.lost(cardId, live);
         break;
       case 'idle':
-        live.background = e.background ?? 0;
-        if (!live.background) live.tasks.clear();
-        this.turnEnded(cardId, live, live.background, false, this.unheardStarts(cardId, live) || e.more);
+        live.work.running = e.background ?? 0;
+        if (!live.work.running) live.tasks.clear();
+        this.turnEnded(cardId, live, live.work.running, false, this.unheardStarts(cardId, live) || e.more);
         this.apps.parkLater(cardId);
         break;
     }
@@ -2517,7 +2522,7 @@ export class Workers {
       if (live.limited && !handedOver && this.goesOnAfterLimit(cardId)) return this.waitForLimit(cardId, live, live.limited, background);
       // the background work still belongs to the turn, whatever the card's state (a worker may ask
       // while its render runs): a restart now would cut it off
-      this.waitForWorker(cardId, live);
+      this.waitForWorker(live);
       if (!handedOver) {
         // words for the owner on its handover answer theirs though the app it serves for them to try
         // runs on: the card is theirs again. Other work (a test run, a render) wakes the worker to go
@@ -2526,10 +2531,10 @@ export class Workers {
         return;
       }
     }
-    if (more && !handedOver) return this.waitForWorker(cardId, live);
+    if (more && !handedOver) return this.waitForWorker(live);
     if (answering(card)) {
       // a resumed session may first end a turn of its own before it takes in the owner's words
-      if (!acted && !handedOver) return this.waitForWorker(cardId, live);
+      if (!acted && !handedOver) return this.waitForWorker(live);
       // it paused for the restart, which resumes it, still taking in the answer
       if (this.restart && live.toldRestart && !handedOver) return this.pausedForRestart(cardId, live);
       // the usage limit cut it off: it goes on by itself once the limit lifts, still taking in the answer
@@ -2568,7 +2573,7 @@ export class Workers {
     if (!acted && !live.nudged) {
       // the worker's own turn is still to come; should it not, it counts as ended after a while
       // (silence after a nudge, though, is the worker having stopped)
-      this.waitForWorker(cardId, live);
+      this.waitForWorker(live);
       return;
     }
     if (!live.nudged) {
@@ -2667,39 +2672,37 @@ export class Workers {
    * While its background work runs (a watcher waiting for a deploy, say) that may take long: the
    * wait is the work's own, which wakes the worker when it ends.
    */
-  private waitForWorker(cardId: string, live: Live) {
+  private waitForWorker(live: Live) {
     this.setBusy(live, true);
-    const began = !live.waiting;
-    clearTimeout(live.waiting);
-    live.waiting = setTimeout(() => {
-      live.waiting = undefined;
-      this.setBusy(live, false);
-      if (this.live.get(cardId) !== live) return;
-      this.turnEnded(cardId, live, 0, true);
-      this.apps.parkLater(cardId);
-    }, live.background > 0 ? (this.o.backgroundLimit ?? BACKGROUND_LIMIT) : (this.o.backgroundGrace ?? BACKGROUND_GRACE));
-    // a card waiting for the owner shows nobody at work once only its background work holds the turn
-    if (began && [...this.live.values()].includes(live)) this.o.board.changed();
+    live.work.start();
   }
 
-  /** The worker gave a sign of life: an ended turn that waited for it is a turn again, which the card shows. */
-  private stopWaiting(live: Live) {
-    if (!live.waiting) return;
-    clearTimeout(live.waiting);
-    live.waiting = undefined;
-    if (live.busy && [...this.live.values()].includes(live)) this.o.board.changed();
+  /** The worker gave no sign of life for as long as its ended turn waits (`Live.work`): its turn counts as ended. */
+  private waitedOut(cardId: string, live: Live) {
+    this.setBusy(live, false);
+    if (this.live.get(cardId) !== live) return;
+    this.turnEnded(cardId, live, 0, true);
+    this.apps.parkLater(cardId);
+  }
+
+  /**
+   * An ended turn began or stopped waiting for the worker's background work: a card waiting for the
+   * owner shows nobody at work once only that work holds the turn, and someone again once the worker
+   * gave a sign of life.
+   */
+  private waitChanged(live: Live, waiting: boolean) {
+    if ((waiting || live.busy) && [...this.live.values()].includes(live)) this.o.board.changed();
   }
 
   /** The worker's background work started or ended: an ended turn waiting for it waits as long as it runs. */
   private backgroundChanged(cardId: string, live: Live, running: { id: string; description: string }[]) {
-    live.background = running.length;
+    live.work.changed(running.length);
     // what it changes in a folder without git meanwhile is the card's
     this.folder?.background(cardId, running.length > 0);
     const now = Date.now();
     live.tasks = new Map(running.map((t) => [t.id, { ...live.tasks.get(t.id), description: t.description, since: live.tasks.get(t.id)?.since ?? now }]));
     // the card shows what runs while the worker is in a turn
     if (live.busy) this.o.board.changed();
-    if (live.waiting) this.waitForWorker(cardId, live);
   }
 
 
@@ -2715,7 +2718,7 @@ export class Workers {
     const there = remote(this.o.board.row(cardId).workspace);
     if (!there) return;
     this.live.delete(cardId);
-    clearTimeout(live.waiting);
+    live.work.stop();
     clearTimeout(live.lifts);
     const pending = live.pending;
     // in a turn, or its ended turn waiting for background work that woke it: that work went with the session
@@ -2750,7 +2753,7 @@ export class Workers {
    * the limit still holds.
    */
   private waitForLimit(cardId: string, live: Live, at: number, background = 0) {
-    if (background > 0) this.waitForWorker(cardId, live);
+    if (background > 0) this.waitForWorker(live);
     else this.setBusy(live, false);
     if (live.statusBefore === undefined) {
       // after a restart the line may still be the one this shows
@@ -2759,12 +2762,11 @@ export class Workers {
     }
     this.o.board.work(cardId, { status_line: this.o.board.t.worker.limitStatusUntil(this.o.board.t.when(at)) });
     clearTimeout(live.lifts);
-    // a timer runs at most about 24 days
-    live.lifts = setTimeout(() => {
+    live.lifts = atTime(at, () => {
       live.lifts = undefined;
       if (this.live.get(cardId) !== live || !this.goesOnAfterLimit(cardId)) return;
       this.deliver(cardId, LIMIT_LIFTED);
-    }, Math.min(Math.max(0, at - Date.now()), 2 ** 31 - 1));
+    });
   }
 
   /** Whether the card's worker goes on by itself once the usage limit lifts: it is at work on the card, not waiting for the owner. */

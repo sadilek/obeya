@@ -1,7 +1,7 @@
 // A worker's session as Obeya follows it, for the `Workers` that run it and the tools it calls.
 
 import type { BackgroundTask } from '../core/types';
-import type { AgentSession, PermissionAnswer } from './runtime';
+import type { AgentSession, BackgroundWait, PermissionAnswer } from './runtime';
 
 /**
  * A background task of the worker as Obeya follows it: whether it runs since an earlier turn, and
@@ -66,12 +66,13 @@ export interface Live {
   failed?: string;
   /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
   busy: boolean;
-  /** Set while an ended turn waits for the worker's background work to wake it. */
-  waiting?: ReturnType<typeof setTimeout>;
+  /**
+   * An ended turn waiting for the worker's background work to wake it (`waiting`), and how many of
+   * its background tasks run, as the session last said (`running`).
+   */
+  work: BackgroundWait;
   /** Set while the worker waits for a usage limit to lift: it then goes on where it stopped. */
   lifts?: ReturnType<typeof setTimeout>;
-  /** How many of the worker's background tasks run, as the session last said. */
-  background: number;
   /** Those tasks by the session's id, as the agent described them and since when Obeya saw them run, the oldest first: on the card while they run. */
   tasks: Map<string, RunningTask>;
   /** When the usage limit that stopped the worker lifts (or, not knowing, when to try again); gone once it works. */

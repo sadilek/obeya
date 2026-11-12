@@ -13,7 +13,7 @@ import { parsePrUrl } from './forge';
 import { folderPath } from './new-repo';
 import type { Mark, Moment } from './history';
 import type { TalkReply, TalkWaitRow } from './sheet';
-import { type AgentRuntime, type AgentSession, failureReason, limitLifts } from './runtime';
+import { type AgentRuntime, type AgentSession, atTime, failureReason, LIMIT_MARGIN, limitLifts } from './runtime';
 import { type Language, LANGUAGES, ownersLanguage } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import { clip, oneLine, messageOf } from '../core/text';
@@ -414,7 +414,7 @@ export class Commander {
       // the canvas stopped while it read them: they stay held, for the canvas to read once it runs again
       if (this.stopped) return undefined;
       if (e instanceof LimitError) {
-        this.heldUntil = limitLifts(e.limit, this.o.limitMargin ?? 10_000);
+        this.heldUntil = limitLifts(e.limit, this.o.limitMargin ?? LIMIT_MARGIN);
         return undefined;
       }
       // the Coordinator's session failed (not logged in, say): the owner hears why, not that they went unheard
@@ -489,8 +489,7 @@ export class Commander {
   private waitForLimit() {
     clearTimeout(this.heldTimer);
     if (this.stopped) return;
-    // a timer runs at most about 24 days
-    this.heldTimer = setTimeout(() => void this.drain(), Math.min(Math.max(0, this.heldUntil - Date.now()), 2 ** 31 - 1));
+    this.heldTimer = atTime(this.heldUntil, () => void this.drain());
   }
 
   /**

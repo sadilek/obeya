@@ -272,7 +272,7 @@ export const waitQuietly = () => {};
  * waits, without its error and its end, and `margin` after the limit lifts (`limitLifts`) the
  * session is told to go on where it stopped; one that runs into the limit again waits anew.
  */
-export function withLimitWait(runtime: AgentRuntime, margin = 10_000): AgentRuntime {
+export function withLimitWait(runtime: AgentRuntime, margin = LIMIT_MARGIN): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
       const onLimit = spec.onLimit;
@@ -290,15 +290,11 @@ export function withLimitWait(runtime: AgentRuntime, margin = 10_000): AgentRunt
               if (closed) return;
               const until = limitLifts(e.limit, margin);
               clearTimeout(lifts);
-              // a timer runs at most about 24 days
-              lifts = setTimeout(
-                () => {
-                  lifts = undefined;
-                  onLimit(undefined);
-                  session.send(LIMIT_LIFTED);
-                },
-                Math.min(Math.max(0, until - Date.now()), 2 ** 31 - 1),
-              );
+              lifts = atTime(until, () => {
+                lifts = undefined;
+                onLimit(undefined);
+                session.send(LIMIT_LIFTED);
+              });
               onLimit(until);
             } else if (e.type === 'idle' && stopped) stopped = false;
             else spec.onEvent(e);
@@ -453,6 +449,14 @@ const LIMIT_RETRY = 15 * 60_000;
 /** A usage limit that should have lifted already is tried again after this. */
 const LIMIT_AGAIN = 60_000;
 
+/** How long after a usage limit lifts an agent goes on by default, so that clocks a little apart do not matter. */
+export const LIMIT_MARGIN = 10_000;
+
+/** Runs `fn` at the time `at` (ms since the epoch), at once where it has passed; a timer runs at most about 24 days, so one further off runs then. */
+export function atTime(at: number, fn: () => void): ReturnType<typeof setTimeout> {
+  return setTimeout(fn, Math.min(Math.max(0, at - Date.now()), 2 ** 31 - 1));
+}
+
 /** When to go on after the usage limit stopped a turn: `margin` after it lifts, so that clocks a little apart do not matter. */
 export function limitLifts(limit: { resetsAt?: number }, margin: number, now = Date.now()): number {
   const reset = limit.resetsAt;
@@ -468,16 +472,16 @@ export function failureReason(message: string, t: Messages): string {
 }
 
 /** Background work that ended wakes the agent within this; a turn that waits longer without a sign counts as ended. */
-export const BACKGROUND_GRACE = 10 * 60_000;
+const BACKGROUND_GRACE = 10 * 60_000;
 /**
  * Background work ends by its own limit well within this (a command run in the background after two
  * hours at most, a watcher after half an hour): it is only for a session that never says the work ended.
  */
-export const BACKGROUND_LIMIT = 3 * 60 * 60_000;
+const BACKGROUND_LIMIT = 3 * 60 * 60_000;
 
 /**
- * A turn of an agent that answers the owner (an idea's, a look-up's) that ended while its background
- * work runs: that work wakes the agent when it ends, so the turn waits for it, and the owner's words
+ * A turn of an agent (a card's worker, an idea's, a look-up's) that ended while its background work
+ * runs: that work wakes the agent when it ends, so the turn waits for it, and the owner's words
  * meanwhile go into the session at once. Without a sign of the agent for a long while
  * (BACKGROUND_LIMIT while the work runs, BACKGROUND_GRACE after it ended), `over` ends the turn.
  */
