@@ -21,6 +21,7 @@ import { sent, take, type Taken } from './spot';
 import { pasteKeys, t } from './strings';
 import { usePasteTextHint } from './pasteHint';
 import { useLatest } from './latest';
+import { sounding } from './sounding';
 
 /** Starts a recording, for a text field's microphone and Space held in it; null where nobody listens. */
 export const HoldToTalk = createContext<(() => void) | null>(null);
@@ -90,13 +91,18 @@ function closeMic(m: Mic) {
 
 /** How long the microphone stays open after a recording, for the next press to start at once. */
 export const MIC_KEPT_MS = 10_000;
+/** How often a microphone due to be let go looks again whether the page still plays sound. */
+export const MIC_RECHECK_MS = 1000;
 
 /**
  * The microphone between presses: opened by the first, kept for `keptMs` after the last and then
  * let go, so other apps (a call) get it and the system's microphone indicator goes out. Until
- * 2026-11-09 it stayed open as long as the page, and Teams found it taken.
+ * 2026-11-09 it stayed open as long as the page, and Teams found it taken. While `busy` (the page
+ * plays a video or a narration), it is kept on until the sound stops: opening and closing it switches
+ * the sound output to other settings (in the macOS app's web view), and a video playing meanwhile
+ * dropped half a second of its sound.
  */
-export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, keptMs = MIC_KEPT_MS) {
+export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, keptMs = MIC_KEPT_MS, busy: () => boolean = () => false) {
   let held: Promise<M> | null = null;
   /** The held microphone once it is open: dropped then, it closes before anything opens it anew. */
   let opened: M | undefined;
@@ -110,6 +116,7 @@ export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, kept
     if (m !== undefined) close(m);
     else void h?.then(close, () => {});
   };
+  const due = () => (busy() ? (timer = setTimeout(due, MIC_RECHECK_MS)) : drop());
   return {
     /** The open microphone, opening it if it is not. */
     take(): Promise<M> {
@@ -123,10 +130,10 @@ export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, kept
     },
     /** Lets it go at once; the next `take` opens it afresh. */
     drop,
-    /** Lets it go after `keptMs`, unless taken again meanwhile. */
+    /** Lets it go after `keptMs`, unless taken again meanwhile, and not while `busy`. */
     release() {
       clearTimeout(timer);
-      timer = setTimeout(drop, keptMs);
+      timer = setTimeout(due, keptMs);
     },
   };
 }
@@ -155,7 +162,7 @@ export function usePushToTalk(
   const [flat, setFlat] = useState(false);
   /** Recordings let go of that Obeya has not answered yet. */
   const [writing, setWriting] = useState(0);
-  const [mic] = useState(() => micHolder(openMic, closeMic));
+  const [mic] = useState(() => micHolder(openMic, closeMic, MIC_KEPT_MS, sounding));
   const rec = useRef<{ recording: Recording; t0: number; target: Where; into: string | null; spot: Taken | null } | null>(null);
   const held = useRef<number | null>(null);
   const frame = useRef(0);

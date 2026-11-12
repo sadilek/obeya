@@ -48,7 +48,9 @@ flat for 1.5 s shows "The microphone gives no sound.". The first press after a p
 the microphone (0.2–0.3 s); released before it is open, nothing is recorded (rather than a recording running on unheld) and the owner is told
 "The microphone was not ready yet". The microphone stays open for 10 s after a recording, so a press
 soon after starts at once, and is then let go: another app (a call) gets it, and the system's
-microphone indicator goes out; the next press opens it again, as the first after a load does. A
+microphone indicator goes out; the next press opens it again, as the first after a load does. While
+a video or a walkthrough's narration plays, it is kept until the sound stops (paused, ended, muted)
+and let go then. A
 phone may take it even within those seconds from a page that went to the background (the phone
 slept, another app recorded): its track ends or stays muted, and a recording from it fails or stays
 silent. Each press checks that the open microphone still delivers and opens it afresh if not.
@@ -339,7 +341,14 @@ times of its words, which the caption's pointer follows. Demo narration is separ
   recordings after a load failed no more often, and an early open keeps the browser's microphone
   indicator on. **It is let go 10 s after the last recording** (owner's report, 2026-11-09): kept
   open as long as the page, it stayed taken for Microsoft Teams after dictating. Rejected: letting it
-  go at once (each press would lose its first 0.2–0.3 s to opening it).
+  go at once (each press would lose its first 0.2–0.3 s to opening it). **Not while sound plays**
+  (owner's report, 2026-11-12): a tap on Space to start a demo video opened it, and 10 s into the
+  video half a second of its sound went missing in the macOS app. WebKit sets the sound output's
+  buffer by what the page does (small while it captures or runs Web Audio, large for a video alone)
+  and runs the capture through Apple's voice processing, so opening or closing the microphone
+  reconfigures the output, and what plays meanwhile drops out. Rejected: opening the microphone only
+  once Space is held past a tap (the first words of a recording would be lost), echo cancellation
+  off (covers the voice processing, not the buffer).
 - **Parakeet everywhere, the Mac included** (2026-10-14): 8 s of German on an M4 Pro took 0.23 s
   against 4.4 s for faster-whisper on the same CPU threads and 0.93 s for mlx-whisper on the GPU, same
   text; on a small fanless Windows box Whisper took about a minute. Whisper stays optional. Rejected:

@@ -19,6 +19,7 @@ import { t } from './strings';
 import { plainKey, useZoom } from './zoom';
 import { zoomBox } from './zoomBox';
 import { signal } from './signal';
+import { soundOutside } from './sounding';
 
 /** The deck's margin around the slide, on its sides and above it (styles.css `.wt-stage`). */
 const WT_INSET = 10;
@@ -166,7 +167,7 @@ class Reading implements Sound {
 let voiceElement: HTMLAudioElement | undefined;
 const theVoice = () => {
   if (voiceElement) return voiceElement;
-  voiceElement = new Audio();
+  voiceElement = soundOutside(new Audio());
   voiceElement.preload = 'auto';
   voiceElement.onended = () => speaker?.ended();
   return voiceElement;
