@@ -274,7 +274,8 @@ export const CardView = memo(
         )}
         {archivable && (
           <button
-            className={startable ? 'play archive beside' : 'play archive'}
+            // beside the play or the pause of its agent (a Question card's agent reading), not over it
+            className={startable || (!underway && (halted(item) || pausable(item))) ? 'play archive beside' : 'play archive'}
             title={t.archive.archive}
             aria-label={t.archive.archive}
             onPointerDown={(e) => e.stopPropagation()}
