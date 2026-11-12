@@ -83,6 +83,9 @@ export function SetupList<I extends SetupItem | VoiceSetupItem | MachineItem>({
   );
 }
 
+/** The last line of a job's error, which says what went wrong after what led up to it. */
+export const lastLine = (error: string) => error.split('\n').at(-1) ?? '';
+
 /** What the voice check's lines say, here and in the settings sheet. */
 export function voiceState(i: VoiceSetupItem | MachineItem) {
   const v = t.config.voice;
@@ -254,7 +257,7 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
             <span className="c-step">{s.installing}</span> <code>{job.line}</code>
           </span>
         );
-      if (job.error) return <span className="p-error">{s.failed(job.error.split('\n').at(-1) ?? '')}</span>;
+      if (job.error) return <span className="p-error">{s.failed(lastLine(job.error))}</span>;
     }
     if (i.act === 'identity') return <Identity onSaved={setView} onError={failed} />;
     const detail = section.id === 'voice' && i.id === 'recognition' && <RecognitionDetail item={i} busy={running} changed={recheck} />;

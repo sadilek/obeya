@@ -17,7 +17,7 @@ import { keepConfigDraft, keptConfigDraft } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
 import { FolderPick } from './folderPick';
-import { demoState, GitSetup, platformName, RecognitionDetail, SetupList, useFolderWithoutGit, voiceState } from './setup';
+import { demoState, GitSetup, lastLine, platformName, RecognitionDetail, SetupList, useFolderWithoutGit, voiceState } from './setup';
 import { useFitHeight } from './fitHeight';
 import { useCopy } from './copy';
 import { fileSize, snoozeWhen, t } from './strings';
@@ -1075,7 +1075,7 @@ function DemoBlock({ on }: { on: boolean }) {
                 </div>
               )
             )}
-            {job?.error && !job.running && <p className="p-error">{d.installFailed(job.error.split('\n').at(-1) ?? '')}</p>}
+            {job?.error && !job.running && <p className="p-error">{d.installFailed(lastLine(job.error))}</p>}
             {shown.problems.map((p) => (
               <p key={p} className="p-error">
                 {d.problem[p]}
@@ -1467,7 +1467,7 @@ function VoiceBlock({ on }: { on: boolean }) {
       ) : (
         !blocked && <p className="hint">{v.ready}</p>
       )}
-      {view.job?.error && !view.job.running && <p className="p-error">{v.failed(view.job.error.split('\n').at(-1) ?? '')}</p>}
+      {view.job?.error && !view.job.running && <p className="p-error">{v.failed(lastLine(view.job.error))}</p>}
       {status && <p className="hint c-status">{status}</p>}
       <button className="btn small" disabled={checking || running} onClick={recheck}>
         {checking ? s.checking : s.recheck}
