@@ -23,7 +23,7 @@ import { type Gone, type PageDemo, siteBase, siteMissing, type SiteOptions, type
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
 import { rereadChapters } from './demo';
-import { artifactFiles, captionTracksAsync, demoFile, keepDemo, silentVideoAsync, videoFacts } from './demo-files';
+import { artifactFiles, captionTracks, demoFile, keepDemo, silentVideo, videoFacts } from './demo-files';
 import { ARTIFACT_DIR, artifactPageHtml, type DemoPageParts, day, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage } from './demo-page';
 import type { Theme } from './theme';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
@@ -258,17 +258,23 @@ export class Sharing {
    * text, written for what it said before, goes, to be written again in its language when it is
    * shared. A demo on a page is not changed under the page: it is withdrawn first.
    */
-  rebuilt(cardId: string) {
+  async rebuilt(cardId: string) {
     const demo = this.demo(cardId);
     if (!demo || demo.kind === 'html') throw new BadRequest('noShare', 'the card has no demo video');
-    const s = this.stored(cardId);
-    if (s?.state || shows(s, demo)) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
+    const busy = () => {
+      const s = this.stored(cardId);
+      if (s?.state || shows(s, demo)) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
+    };
+    busy();
     const chapters = rereadChapters(demo.dir);
     if (typeof chapters === 'string') throw new BadRequest('invalid', chapters);
     const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = demo;
     // the copy Obeya keeps of it is of what it is now
-    const keeps = kept && keepDemo({ dir: demo.dir, kind: 'video' }, kept);
-    this.o.board.work(cardId, { demo: toJson({ ...rest, chapters, ...videoFacts(demo.dir), ...(keeps ? { kept } : {}) }) });
+    const [keeps, facts] = await Promise.all([kept && keepDemo({ dir: demo.dir, kind: 'video' }, kept), videoFacts(demo.dir)]);
+    // read meanwhile: a demo handed over since stands, and one shared since is not changed under its page
+    if (this.demo(cardId)?.handover !== demo.handover) return;
+    busy();
+    this.o.board.work(cardId, { demo: toJson({ ...rest, chapters, ...facts, ...(keeps ? { kept } : {}) }) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.rebuilt(this.languageOf(demo.dir, this.card(cardId))));
   }
 
@@ -738,7 +744,7 @@ export class Sharing {
     const narration = file('captions.vtt');
     const shared = await this.exportParts(card, demo, video);
     // every caption track goes with it; one from before the tracks is in the demo's language
-    const tracks = (await captionTracksAsync(demo.dir)).flatMap((t) => {
+    const tracks = (await captionTracks(demo.dir)).flatMap((t) => {
       const data = file(t.file);
       return data ? [{ file: t.file, language: t.language ?? shared.language, data }] : [];
     });
@@ -747,7 +753,7 @@ export class Sharing {
       chapters: demo.chapters,
       // a page opened from disk may not load a caption file
       tracks: tracks.map((t) => ({ language: t.language, vtt: new TextDecoder().decode(t.data) })),
-      ...((await silentVideoAsync(video)) ? { silent: true } : {}),
+      ...((await silentVideo(video)) ? { silent: true } : {}),
     };
     if (as === 'html')
       return {

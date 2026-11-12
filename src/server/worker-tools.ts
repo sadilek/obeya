@@ -8,10 +8,10 @@ import { existsSync } from 'node:fs';
 import { realPath } from './path';
 import { isAbsolute, join } from 'node:path';
 import { type CardFile, normalPath } from '../core/files';
-import { answering, AWAITED_STATES, awaited, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, type Item, prototypeBuild, prototypeName, type Question, type RepoRef, type Snooze, laterTime, type Superseded, started, type PageTags } from '../core/types';
+import { answering, AWAITED_STATES, awaited, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, type HeldChanges, formatQuestion, type Item, prototypeBuild, prototypeName, type Question, type RepoRef, type Snooze, laterTime, type Superseded, started, type PageTags } from '../core/types';
 import { type Board, type Retracted, titleKey } from './board';
 import { pathOfRef } from './plan-ref';
-import { fromJson, type PrState, type Json, type StoredDemo, toJson } from './row';
+import { fromJson, type PrState, type Json, type StoredContribution, type StoredDemo, toJson } from './row';
 import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, withPick } from './advisor';
 import { checkArtifact, readChapters } from './demo';
@@ -36,6 +36,61 @@ import { APP_URL, type Live } from './worker-live';
 function demoQuestion(q: { text: string } & Omit<Asked, 'question'>): Pick<Demo, 'question' | 'options' | 'multiple' | 'pick'> {
   const { text, options, multiple, pick } = withPick({ ...q, question: q.text });
   return { question: text, ...(options.length ? { options } : {}), ...(multiple ? { multiple } : {}), ...(pick ? { pick } : {}) };
+}
+
+/**
+ * A demo the worker gives as the card keeps it: an HTML artifact checked (and whether it is its
+ * index.html alone, which also goes out as one HTML file), a video's chapters read; or what is wrong
+ * with it, and whether that is the artifact or the demo to fix.
+ */
+function checkedDemo(d: { kind?: DemoKind; dir: string; chapters?: string[] }): StoredDemo | { wrong: string; fix: 'artifact' | 'demo' } {
+  if (d.kind === 'html') {
+    const wrong = checkArtifact(d.dir);
+    if (wrong) return { wrong, fix: 'artifact' };
+    return { kind: 'html', dir: d.dir, chapters: [], ...(artifactFiles(d.dir).length === 1 ? { single: true as const } : {}) };
+  }
+  const chapters = readChapters(d.dir, d.chapters ?? []);
+  if (typeof chapters === 'string') return { wrong: chapters, fix: 'demo' };
+  return { kind: 'video', dir: d.dir, chapters };
+}
+
+/** A demo as the worker gives it at its handover. */
+type GivenDemo = { kind?: DemoKind; dir: string; chapters?: string[]; question?: { text: string } & Omit<Asked, 'question'>; page?: DemoPage; follows?: 'replaces' | 'supplements' };
+
+/** What the worker gives `ready_for_review`. */
+interface HandOverArgs {
+  summary: string;
+  demo?: GivenDemo;
+  files?: { path: string; caption: string }[];
+  review?: { checks: { name: string; passed: boolean }[]; mergeable: boolean };
+  pr_draft?: string;
+}
+
+/** What `ready_for_review` takes from the session's tools: the review card's pull request, the demo's page, and what each tool ends with. */
+interface HandOverContext {
+  review: StoredContribution | null;
+  shares: boolean;
+  vocabulary: [string, string[]][];
+  /** Whether the session has ended (stopped, replaced): its calls change nothing. */
+  ended: () => boolean;
+  /** The worker hands the card to the owner in this turn. */
+  handOver: () => void;
+  /** The result of a call that ends the turn, with the owner's words that waited for it. */
+  ending: (plain: string, stands: string, change?: string) => string;
+}
+
+/** What a handover found out before it records: what git tells, what is held for the PR, the new demo and the files named. */
+interface HandedOver {
+  work: boolean;
+  own?: CardLanding;
+  mine?: OwnCommits;
+  held?: HeldChanges & { base: string };
+  demo?: StoredDemo;
+  kept: boolean;
+  asked: boolean;
+  approved: boolean;
+  named?: CardFile[];
+  shows: boolean;
 }
 
 /** How many files a worker may name as its result at a handover. */
@@ -177,38 +232,39 @@ export class WorkerTools {
             ),
         },
         run: (args) => {
-          const asked = (shown?: StoredDemo): string => {
+          // the question on the card, with the demo it shows; returns its event
+          const asked = (shown?: StoredDemo): number => {
             handOver();
             const q = withPick(args as unknown as Asked);
             const e = this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
             if (shown) {
               // the demo it replaces stays with the card, for the owner to go back to
               const row = this.o.board.row(cardId);
-              this.o.board.work(cardId, { demo: toJson({ ...this.keep(cardId, e.id, shown), asked: true, handover: e.id, at: e.at }), ...(row.demo ? { demos: this.earlier(cardId, row) } : {}) });
+              this.o.board.work(cardId, { demo: toJson({ ...shown, asked: true, handover: e.id, at: e.at }), ...(row.demo ? { demos: this.earlier(cardId, row) } : {}) });
             }
             this.w.toOwner(cardId, q);
-            return ending(
+            return e.id;
+          };
+          const recorded = () =>
+            ending(
               END_TURN,
               'Recorded: your question waits for the owner on the card, and their answer arrives as your next message.',
               'if they change your question, ask it anew (the card shows the earlier one as asked again further below)',
             );
-          };
           const given = args.demo as { kind?: DemoKind; dir: string; chapters?: string[] } | undefined;
-          if (!given) return asked();
+          if (!given) {
+            asked();
+            return recorded();
+          }
           // a demo made on another machine is shown from its copy here
-          return this.demoHere(cardId, given.dir).then((here) => {
+          return this.demoHere(cardId, given.dir).then(async (here) => {
             if ('wrong' in here) return `Not asked: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then ask again.`;
             // copying it takes a while, in which the owner may stop or replace the session
             if (ended()) return SESSION_ENDED;
-            const kind = given.kind ?? 'video';
-            if (kind === 'html') {
-              const wrong = checkArtifact(here.dir);
-              if (wrong) return `Not asked: ${wrong}. Fix the artifact, then ask again.`;
-              return asked({ kind, dir: here.dir, chapters: [], ...(artifactFiles(here.dir).length === 1 ? { single: true as const } : {}) });
-            }
-            const chapters = readChapters(here.dir, given.chapters ?? []);
-            if (typeof chapters === 'string') return `Not asked: ${chapters}. Fix the demo, then ask again.`;
-            return asked({ kind, dir: here.dir, chapters });
+            const shown = checkedDemo({ ...given, dir: here.dir });
+            if ('wrong' in shown) return `Not asked: ${shown.wrong}. Fix the ${shown.fix}, then ask again.`;
+            await this.keep(cardId, asked(shown));
+            return recorded();
           });
         },
       },
@@ -461,173 +517,7 @@ export class WorkerTools {
               `the files your card made or changed ${this.folder ? 'in the folder' : 'on your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. Without them, the ones named at your last handover stand.`,
             ),
         },
-        run: ({ summary, demo, files, review: results, pr_draft: draft }) => {
-          // a stopped pull this worker resolved lands as it hands it over, without the owner
-          const long = tooLong(String(summary), 6000, 'ready_for_review');
-          if (long) return long;
-          const resolving = fromJson(this.o.board.row(cardId).landed)?.resolve;
-          if (resolving) return this.w.reviews.landResolved(cardId, resolving);
-          type Demo = { kind?: DemoKind; dir: string; chapters?: string[]; question?: { text: string } & Omit<Asked, 'question'>; page?: DemoPage; follows?: 'replaces' | 'supplements' };
-          const given = demo as Demo | undefined;
-          // whether the branch holds work and decides where it lands, which git tells without blocking the server
-          // a review card hands over the PR's head it reviewed, which is all Obeya ever merges
-          // with the commits of its own on top of the PR's head, which Obeya pushes on the owner's approval
-          const handOverWork = (d: Demo | undefined, named: CardFile[] | undefined, shows: boolean): Promise<string> =>
-            review
-              ? this.w.reviews.ownCommits(cardId, review).then((mine) => (typeof mine === 'string' ? mine : handOverNow(d, named, shows, true, undefined, mine)))
-              : Promise.all([this.o.workspaces.hasWork(cardId), this.w.landingOf(cardId)]).then(async ([work, { own }]) =>
-                  handOverNow(d, named, shows, work, own, undefined, work && !this.folder ? await this.o.workspaces.changedFiles(cardId) : undefined),
-                );
-          const handOverNow = (
-            d: Demo | undefined,
-            named: CardFile[] | undefined,
-            shows: boolean,
-            work: boolean,
-            own: CardLanding | undefined,
-            mine?: OwnCommits,
-            changed?: string[],
-          ): string => {
-            // reading what the change shows takes a while, in which the owner may stop or replace the session
-            if (ended()) return SESSION_ENDED;
-            const s = String(summary);
-            const row = this.o.board.row(cardId);
-            if (row.landed) return 'Not handed over: your work is on main already.';
-            if (row.pr && !review) return 'Not handed over: the work is in its pull request, where Obeya follows it.';
-            const checked = results as { checks: { name: string; passed: boolean }[]; mergeable: boolean } | undefined;
-            if (review && !checked) return "Not handed over: a review card's handover says what the checks and the merge probe found (review). Call ready_for_review again with it.";
-            if (review && !fromJson(row.contribution)?.findings) return 'Not handed over: record your findings first (findings; an empty list where your review found nothing), then call ready_for_review again.';
-            const owed = review && this.w.reviews.owedTasks(cardId);
-            if (owed) return `Not handed over: first make the follow-up tasks the owner chose, for ${owed}; then call ready_for_review again.`;
-            // what goes onto the PR with the owner's approval: the worker's own commits and their text, with the requests to the contributor decided meanwhile
-            const held = review && mine ? this.w.reviews.heldAt(cardId, mine, typeof draft === 'string' ? draft : undefined) : undefined;
-            if (typeof held === 'string') return held;
-            // approved work that could not land comes back to be landed, not reviewed: its demo stands
-            const approved = !!row.approved_at;
-            // a handover in answer to the owner's words that brings no new demo is an answer to them, not a demo to watch
-            const answered = !d && !!row.detail && !!fromJson(row.detail).answering;
-            // without a new demo, the one on the card stands, unless it only came with a question
-            const asked = !!row.demo && !!fromJson(row.demo).asked;
-            const kept = !d && !!row.demo && !asked;
-            // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
-            if (!d && !kept && !approved && !this.folder)
-              return `Not handed over: every handover brings a demo${row.demo ? ' (the one you showed with your question is not one)' : ''}. Record it with ${this.w.brief.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
-            let newDemo: StoredDemo | undefined;
-            if (d) {
-              const kind = d.kind ?? 'video';
-              // what the worker says of it beside the demo before, for the owner's buttons when the page shows that one
-              const report = { ...(d.question?.text.trim() ? demoQuestion(d.question) : {}), ...(row.demo && (d.follows === 'replaces' || d.follows === 'supplements') ? { follows: d.follows } : {}) };
-              const tags = vocabulary.length && d.page?.tags && typeof d.page.tags === 'object' ? (d.page.tags as PageTags) : undefined;
-              const page =
-                d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000), ...(tags ? { tags: tagsOf(tags, Object.fromEntries(vocabulary)) } : {}) } : undefined;
-              if (shares && !page)
-                return 'Not handed over: a demo here needs its page (title and text) for colleagues, in case the owner shares it. Call ready_for_review again with demo.page.';
-              if (vocabulary.length) {
-                const wrong = tags ? outside(tags, Object.fromEntries(vocabulary)) : [];
-                const lacking = vocabulary.filter(([dim]) => !tags?.[dim]).map(([dim]) => dim);
-                if (wrong.length) return `Not handed over: the page's tags come from the site's alone, and these are not among them: ${wrong.join(', ')}. Call ready_for_review again with demo.page.tags from those its description gives.`;
-                if (lacking.length) return `Not handed over: the page's tags lack ${lacking.join(', ')}. Give each dimension its values (an empty list where none fits), then call ready_for_review again.`;
-              }
-              if (kind === 'html') {
-                const wrong = checkArtifact(d.dir);
-                if (wrong) return `Not handed over: ${wrong}. Fix the artifact, then call ready_for_review again.`;
-                // an artifact that is its index.html alone also goes out as one HTML file
-                const single = artifactFiles(d.dir).length === 1;
-                newDemo = { kind, dir: d.dir, chapters: [], ...report, ...(page ? { page } : {}), ...(single ? { single } : {}) };
-              } else {
-                const chapters = readChapters(d.dir, d.chapters ?? []);
-                if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
-                newDemo = { kind, dir: d.dir, chapters, ...videoFacts(d.dir), ...report, ...(page ? { page } : {}) };
-              }
-            }
-            handOver();
-            if (review && checked) {
-              const now = fromJson(this.o.board.row(cardId).contribution) ?? review;
-              const { requested: _, held: __, changing: ___, ...rest } = now;
-              const results = { checks: checked.checks.slice(0, 20).map((c) => ({ name: clip(c.name, 60), passed: !!c.passed })), mergeable: !!checked.mergeable };
-              const findings = held && rest.findings?.map((f) => (held.asks.includes(f.id) ? { ...f, withChanges: true as const } : f));
-              this.o.board.work(cardId, {
-                contribution: toJson({ ...rest, reviewed: mine?.head, results, ...(held ? { held, ...(findings ? { findings } : {}) } : {}) }),
-                ...(row.state === 'inPr' ? { state: 'working' } : {}),
-              });
-              // what the pull after the merge would run into on the local main, for the owner to see before approving
-              void this.w.reviews.probeClash(cardId);
-            }
-            const report = this.report(cardId, s);
-            const e = this.o.board.log(cardId, 'review', 'worker', s);
-            // the demo report's question goes with the handover it came with, also once a later one keeps the demo
-            if (newDemo) newDemo = { ...this.keep(cardId, e.id, newDemo), handover: e.id, at: e.at };
-            // the demo it replaces stays with the card, for the owner to go back to; so do a question's drafts, which are no handover's result
-            const demos = (newDemo || asked) && row.demo ? this.earlier(cardId, row) : undefined;
-            // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
-            this.o.board.work(cardId, {
-              // the worker's last status line is about the work it hands over: it would show again once the card is at work
-              ...(approved ? { status_line: review ? this.o.board.t.worker.mergingPr(review.number) : this.o.board.t.worker.landing } : { state: 'waiting', need: d || kept ? 'demo' : 'review', status_line: null }),
-              // approving work that changes nothing makes the card done, which the owner sees before approving; where work
-              // lands that its own branch decides, likewise
-              detail: toJson({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(answered && !approved ? { answered: true } : {}) }),
-              ...(newDemo ? { demo: toJson(newDemo) } : asked ? { demo: null } : {}),
-              ...(demos ? { demos } : {}),
-              // the files named stand until a later handover names others (an empty list named clears them); a folder's card handed
-              // over without a demo shows what it changed, while there are files of it to show
-              ...(named?.length
-                ? { files: toJson(named) }
-                : this.folder && !d && !kept && (named || !row.files || row.files === '[]')
-                  ? { files: shows ? '[]' : null }
-                  : named
-                    ? { files: null }
-                    : {}),
-            });
-            // the size of the change handed over, for the page to lay out its change list from the first time it opens the card
-            void this.w.diff(cardId, false).catch(() => {});
-            const card = this.o.board.item(cardId);
-            if (card?.prototypeOf) this.o.onPrototype?.(card, report, newDemo);
-            if (approved)
-              return review
-                ? ending(
-                    'Recorded. End your turn now; once it has ended, Obeya pushes your commits onto the pull request and merges it.',
-                    'Recorded: once your turn has ended, Obeya pushes your commits onto the pull request and merges it.',
-                    'a change to the work is to be committed by then',
-                  )
-                : ending(
-                    'Recorded. End your turn now; once it has ended, Obeya lands your work on main.',
-                    'Recorded: once your turn has ended, Obeya lands your work on main.',
-                    'a change to the work is to be committed by then',
-                  );
-            // what the owner's button does, as Obeya sees the branch: the worker may know of no commit on it but its own
-            const lands =
-              review || this.folder
-                ? ''
-                : !work
-                  ? ' Obeya sees no change on your branch: approving closes the card, and nothing lands.'
-                  : changed?.length
-                    ? ` Approving lands your branch's change to ${changed.length === 1 ? '1 file' : `${changed.length} files`}: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}.`
-                    : '';
-            return ending(`${END_TURN}${lands}`, `Recorded: your handover waits for the owner's approval.${lands}`, 'if they change what you handed over, hand it over again');
-          };
-          // a demo made on another machine is served and shared from its copy here
-          const handOverWith = (named?: CardFile[]): string | Promise<string> => {
-            if (given && hostName(this.o.board.row(cardId).workspace))
-              return this.demoHere(cardId, given.dir).then((here) =>
-                'wrong' in here
-                  ? `Not handed over: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then call ready_for_review again.`
-                  : handOverWork({ ...given, dir: here.dir }, named, false),
-              );
-            // in a folder, what the change has to show decides whether a handover without a demo shows it beside the conversation
-            if (this.folder && !given) return this.w.showsFiles(cardId).then((shows) => handOverWork(given, named, shows));
-            return handOverWork(given, named, false);
-          };
-          // the files named as the result, checked against what the card changed before anything is handed over
-          const withFiles = () =>
-            files !== undefined
-              ? this.namedFiles(cardId, files as { path: string; caption: string }[]).then(async ({ named, left }) => {
-                  const result = await handOverWith(named);
-                  return left && !result.startsWith('Not ') ? `${result}\n\n${left}` : result;
-                })
-              : handOverWith();
-          // a plan doc for an idea with prototypes says clearly which one it builds on, before it goes to the owner
-          const unclear = this.prototypesUnclear(cardId);
-          return unclear ? unclear.then((why) => why ?? withFiles()) : withFiles();
-        },
+        run: (args) => this.handOver(cardId, args as unknown as HandOverArgs, { review, shares, vocabulary, ended, handOver, ending }),
       },
       {
         name: 'close_unchanged',
@@ -745,7 +635,175 @@ export class WorkerTools {
     ]);
   }
 
-  /** The boards a card's proposals may be on: this canvas's, then those of the other canvases. */
+  /**
+   * `ready_for_review`: the checks in the order the worker meets their refusals, then what the
+   * handover records, then what the worker hears. What git and the demo's files tell is read first,
+   * without blocking the server; the session may have ended meanwhile, and from that check on the
+   * handover reads and writes the card at once. The copy of a new demo Obeya keeps is made last.
+   */
+  private async handOver(cardId: string, a: HandOverArgs, x: HandOverContext): Promise<string> {
+    const long = tooLong(String(a.summary), 6000, 'ready_for_review');
+    if (long) return long;
+    // a stopped pull this worker resolved lands as it hands it over, without the owner
+    const resolving = fromJson(this.o.board.row(cardId).landed)?.resolve;
+    if (resolving) return this.w.reviews.landResolved(cardId, resolving);
+    // a plan doc for an idea with prototypes says clearly which one it builds on, before it goes to the owner
+    const unclear = await this.prototypesUnclear(cardId);
+    if (unclear) return unclear;
+    // the files named as the result, checked against what the card changed before anything is handed over
+    const { named, left } = a.files !== undefined ? await this.namedFiles(cardId, a.files) : {};
+    const result = await this.handOverWith(cardId, a, x, named);
+    return left && !result.startsWith('Not ') ? `${result}\n\n${left}` : result;
+  }
+
+  /** `handOver` with the files named as the result checked (`namedFiles`). */
+  private async handOverWith(cardId: string, a: HandOverArgs, x: HandOverContext, named: CardFile[] | undefined): Promise<string> {
+    const { review } = x;
+    let d = a.demo;
+    if (d) {
+      // a demo made on another machine is served and shared from its copy here
+      const here = await this.demoHere(cardId, d.dir);
+      if ('wrong' in here) return `Not handed over: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then call ready_for_review again.`;
+      d = { ...d, dir: here.dir };
+    }
+    // what a video's player needs to know of it
+    const facts = d && (d.kind ?? 'video') === 'video' ? await videoFacts(d.dir) : {};
+    // in a folder, what the change has to show decides whether a handover without a demo shows it beside the conversation
+    const shows = !!this.folder && !d && (await this.w.showsFiles(cardId));
+    // whether the branch holds work and decides where it lands; a review card hands over the PR's head
+    // it reviewed, which is all Obeya ever merges, with the commits of its own on top, which Obeya
+    // pushes on the owner's approval
+    let git: { work: boolean; own?: CardLanding; mine?: OwnCommits; changed?: string[] };
+    if (review) {
+      const mine = await this.w.reviews.ownCommits(cardId, review);
+      if (typeof mine === 'string') return mine;
+      git = { work: true, mine };
+    } else {
+      const [work, { own }] = await Promise.all([this.o.workspaces.hasWork(cardId), this.w.landingOf(cardId)]);
+      git = { work, ...(own ? { own } : {}), ...(work && !this.folder ? { changed: await this.o.workspaces.changedFiles(cardId) } : {}) };
+    }
+    // reading what the change shows takes a while, in which the owner may stop or replace the session
+    if (x.ended()) return SESSION_ENDED;
+    const row = this.o.board.row(cardId);
+    const refused = this.handOverRefused(cardId, row, a, review);
+    if (refused) return refused;
+    // what goes onto the PR with the owner's approval: the worker's own commits and their text, with the requests to the contributor decided meanwhile
+    const held = review && git.mine ? this.w.reviews.heldAt(cardId, git.mine, typeof a.pr_draft === 'string' ? a.pr_draft : undefined) : undefined;
+    if (typeof held === 'string') return held;
+    // approved work that could not land comes back to be landed, not reviewed: its demo stands
+    const approved = !!row.approved_at;
+    // without a new demo, the one on the card stands, unless it only came with a question
+    const asked = !!row.demo && !!fromJson(row.demo).asked;
+    const kept = !d && !!row.demo && !asked;
+    // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
+    if (!d && !kept && !approved && !this.folder)
+      return `Not handed over: every handover brings a demo${row.demo ? ' (the one you showed with your question is not one)' : ''}. Record it with ${this.w.brief.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
+    const demo = d && this.demoOf(d, row, x, facts);
+    if (typeof demo === 'string') return demo;
+    x.handOver();
+    const handover = this.record(cardId, row, a, x, { ...git, held, demo, kept, asked, approved, named, shows });
+    if (demo) await this.keep(cardId, handover);
+    if (approved)
+      return review
+        ? x.ending(
+            'Recorded. End your turn now; once it has ended, Obeya pushes your commits onto the pull request and merges it.',
+            'Recorded: once your turn has ended, Obeya pushes your commits onto the pull request and merges it.',
+            'a change to the work is to be committed by then',
+          )
+        : x.ending('Recorded. End your turn now; once it has ended, Obeya lands your work on main.', 'Recorded: once your turn has ended, Obeya lands your work on main.', 'a change to the work is to be committed by then');
+    // what the owner's button does, as Obeya sees the branch: the worker may know of no commit on it but its own
+    const { changed } = git;
+    const lands =
+      review || this.folder
+        ? ''
+        : !git.work
+          ? ' Obeya sees no change on your branch: approving closes the card, and nothing lands.'
+          : changed?.length
+            ? ` Approving lands your branch's change to ${changed.length === 1 ? '1 file' : `${changed.length} files`}: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}.`
+            : '';
+    return x.ending(`${END_TURN}${lands}`, `Recorded: your handover waits for the owner's approval.${lands}`, 'if they change what you handed over, hand it over again');
+  }
+
+  /** Why the card cannot be handed over as it stands, before its demo is looked at; nothing where it can. */
+  private handOverRefused(cardId: string, row: CardRow, a: HandOverArgs, review: StoredContribution | null): string | undefined {
+    if (row.landed) return 'Not handed over: your work is on main already.';
+    if (row.pr && !review) return 'Not handed over: the work is in its pull request, where Obeya follows it.';
+    if (review && !a.review) return "Not handed over: a review card's handover says what the checks and the merge probe found (review). Call ready_for_review again with it.";
+    if (review && !fromJson(row.contribution)?.findings) return 'Not handed over: record your findings first (findings; an empty list where your review found nothing), then call ready_for_review again.';
+    const owed = review && this.w.reviews.owedTasks(cardId);
+    if (owed) return `Not handed over: first make the follow-up tasks the owner chose, for ${owed}; then call ready_for_review again.`;
+    return undefined;
+  }
+
+  /** The new demo `d` as the card keeps it, with its report and its page for colleagues; or why it is not handed over. */
+  private demoOf(d: GivenDemo, row: CardRow, x: HandOverContext, facts: Awaited<ReturnType<typeof videoFacts>>): StoredDemo | string {
+    const { vocabulary } = x;
+    // what the worker says of it beside the demo before, for the owner's buttons when the page shows that one
+    const report = { ...(d.question?.text.trim() ? demoQuestion(d.question) : {}), ...(row.demo && (d.follows === 'replaces' || d.follows === 'supplements') ? { follows: d.follows } : {}) };
+    const tags = vocabulary.length && d.page?.tags && typeof d.page.tags === 'object' ? (d.page.tags as PageTags) : undefined;
+    const page = d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000), ...(tags ? { tags: tagsOf(tags, Object.fromEntries(vocabulary)) } : {}) } : undefined;
+    if (x.shares && !page) return 'Not handed over: a demo here needs its page (title and text) for colleagues, in case the owner shares it. Call ready_for_review again with demo.page.';
+    if (vocabulary.length) {
+      const wrong = tags ? outside(tags, Object.fromEntries(vocabulary)) : [];
+      const lacking = vocabulary.filter(([dim]) => !tags?.[dim]).map(([dim]) => dim);
+      if (wrong.length) return `Not handed over: the page's tags come from the site's alone, and these are not among them: ${wrong.join(', ')}. Call ready_for_review again with demo.page.tags from those its description gives.`;
+      if (lacking.length) return `Not handed over: the page's tags lack ${lacking.join(', ')}. Give each dimension its values (an empty list where none fits), then call ready_for_review again.`;
+    }
+    const shown = checkedDemo(d);
+    if ('wrong' in shown) return `Not handed over: ${shown.wrong}. Fix the ${shown.fix}, then call ready_for_review again.`;
+    return { ...shown, ...(shown.kind === 'video' ? facts : {}), ...report, ...(page ? { page } : {}) };
+  }
+
+  /**
+   * What a handover records on the card: a review card's results, the handover in the conversation
+   * with the card's report, the demo (the one it replaces kept with the card), the files named, and
+   * the card waiting for the owner, or approved work staying with Obeya. Returns the handover's event.
+   */
+  private record(cardId: string, row: CardRow, a: HandOverArgs, x: HandOverContext, h: HandedOver): number {
+    const { review } = x;
+    const { demo, kept, asked, approved, named, held, mine, work, own } = h;
+    const checked = a.review;
+    if (review && checked) {
+      const now = fromJson(this.o.board.row(cardId).contribution) ?? review;
+      const { requested: _, held: __, changing: ___, ...rest } = now;
+      const results = { checks: checked.checks.slice(0, 20).map((c) => ({ name: clip(c.name, 60), passed: !!c.passed })), mergeable: !!checked.mergeable };
+      const findings = held && rest.findings?.map((f) => (held.asks.includes(f.id) ? { ...f, withChanges: true as const } : f));
+      this.o.board.work(cardId, {
+        contribution: toJson({ ...rest, reviewed: mine?.head, results, ...(held ? { held, ...(findings ? { findings } : {}) } : {}) }),
+        ...(row.state === 'inPr' ? { state: 'working' } : {}),
+      });
+      // what the pull after the merge would run into on the local main, for the owner to see before approving
+      void this.w.reviews.probeClash(cardId);
+    }
+    const s = String(a.summary);
+    const report = this.report(cardId, s);
+    const e = this.o.board.log(cardId, 'review', 'worker', s);
+    // the demo report's question goes with the handover it came with, also once a later one keeps the demo
+    const newDemo = demo && { ...demo, handover: e.id, at: e.at };
+    // the demo it replaces stays with the card, for the owner to go back to; so do a question's drafts, which are no handover's result
+    const demos = (newDemo || asked) && row.demo ? this.earlier(cardId, row) : undefined;
+    // a handover in answer to the owner's words that brings no new demo is an answer to them, not a demo to watch
+    const answered = !demo && !!row.detail && !!fromJson(row.detail).answering;
+    // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
+    this.o.board.work(cardId, {
+      // the worker's last status line is about the work it hands over: it would show again once the card is at work
+      ...(approved ? { status_line: review ? this.o.board.t.worker.mergingPr(review.number) : this.o.board.t.worker.landing } : { state: 'waiting', need: demo || kept ? 'demo' : 'review', status_line: null }),
+      // approving work that changes nothing makes the card done, which the owner sees before approving; where work
+      // lands that its own branch decides, likewise
+      detail: toJson({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(answered && !approved ? { answered: true } : {}) }),
+      ...(newDemo ? { demo: toJson(newDemo) } : asked ? { demo: null } : {}),
+      ...(demos ? { demos } : {}),
+      // the files named stand until a later handover names others (an empty list named clears them); a folder's card handed
+      // over without a demo shows what it changed, while there are files of it to show
+      ...(named?.length ? { files: toJson(named) } : this.folder && !demo && !kept && (named || !row.files || row.files === '[]') ? { files: h.shows ? '[]' : null } : named ? { files: null } : {}),
+    });
+    // the size of the change handed over, for the page to lay out its change list from the first time it opens the card
+    void this.w.diff(cardId, false).catch(() => {});
+    const card = this.o.board.item(cardId);
+    if (card?.prototypeOf) this.o.onPrototype?.(card, report, newDemo);
+    return e.id;
+  }
+
   proposalBoards(): Board[] {
     return [this.o.board, ...this.otherBoards()];
   }
@@ -804,11 +862,17 @@ export class WorkerTools {
     return `no card on the canvas is called “${title}”.`;
   }
 
-  /** The demo handed over with the event `handover`, with where Obeya keeps a copy of its files (`keepDemo`) where it could make one. */
-  private keep<D extends { dir: string; kind: DemoKind }>(cardId: string, handover: number, demo: D): D & { kept?: string } {
-    if (!this.o.keptDemos) return demo;
+  /**
+   * Obeya keeps a copy of the card's demo just handed over with the event `handover` (`keepDemo`),
+   * where it keeps demos: the card names it once made, unless another demo took its place meanwhile.
+   */
+  private async keep(cardId: string, handover: number) {
+    const demo = fromJson(this.o.board.row(cardId).demo);
+    if (!this.o.keptDemos || demo?.handover !== handover) return;
     const kept = join(this.o.keptDemos, cardId, String(handover));
-    return keepDemo(demo, kept) ? { ...demo, kept } : demo;
+    if (!(await keepDemo(demo, kept))) return;
+    const now = fromJson(this.o.board.row(cardId).demo);
+    if (now?.handover === handover) this.o.board.work(cardId, { demo: toJson({ ...now, kept }) });
   }
 
   /**

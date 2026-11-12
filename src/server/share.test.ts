@@ -1274,7 +1274,7 @@ describe('a demo narrated anew in its directory', () => {
     const c = card('Zählerstände exportieren', { chapters: [[0, 'Vorher'], [9.5, 'Jetzt']] });
     const d = JSON.parse(board.row(c.id).demo!).dir as string;
     revoiced(d);
-    sharing.rebuilt(c.id);
+    await sharing.rebuilt(c.id);
     const demo = JSON.parse(board.row(c.id).demo!);
     expect(demo.chapters).toEqual([[0, 'Before'], [12, 'Now']]);
     // the worker's page text spoke of the demo as it was
@@ -1294,7 +1294,7 @@ describe('a demo narrated anew in its directory', () => {
     const c = card();
     await shared(c.id);
     revoiced(JSON.parse(board.row(c.id).demo!).dir);
-    expect(() => sharing.rebuilt(c.id)).toThrow('stop sharing it first');
+    await expect(sharing.rebuilt(c.id)).rejects.toThrow('stop sharing it first');
     expect(JSON.parse(board.row(c.id).demo!).chapters).toEqual([[0, 'Vorher']]);
   });
 });

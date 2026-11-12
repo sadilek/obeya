@@ -42,8 +42,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   },
   'db.ts': { why: 'startup: the database directory made before the database opens', calls: { mkdirSync: 1 } },
   'demo-files.ts': {
-    why: "server path: a demo's files resolved by their real path (serving, sharing), its caption tracks and the start of its video read where a caller needs them at once (share.ts's export, a demo's facts at its handover); the demo site reads them with captionTracksAsync and silentVideoAsync; a demo handed over is kept (copyFileSync clones on APFS; elsewhere it copies the video, a candidate for fs/promises)",
-    calls: { closeSync: 1, copyFileSync: 1, existsSync: 2, mkdirSync: 1, openSync: 1, readFileSync: 1, readSync: 1, readdirSync: 1, realpathSync: 2, rmSync: 2, statSync: 2, utimesSync: 1 },
+    why: "server path, cheap: a demo's files resolved by their real path (serving, sharing, keeping a copy), an HTML artifact's files listed",
+    calls: { existsSync: 1, readdirSync: 1, realpathSync: 2, statSync: 1 },
   },
   'demo.ts': {
     why: "server path, cheap: a demo handed over is checked (its files there, its chapters read from a small WebVTT file); the plugin's demo skill looked up by a stat",

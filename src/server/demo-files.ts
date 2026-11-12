@@ -2,8 +2,8 @@
 // artifact's files, a video demo's files and caption tracks, whether its video is silent and how
 // large, and the copy Obeya keeps of a demo handed over.
 
-import { closeSync, constants, copyFileSync, type Dirent, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, rmSync, statSync, utimesSync } from 'node:fs';
-import { open, readFile, stat } from 'node:fs/promises';
+import { constants, type Dirent, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { copyFile, mkdir, open, readFile, rm, stat, utimes } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import type { DemoKind } from '../core/types';
 import { listedTracks, trackFile } from '../../plugin/skills/demo/lib/subtitles.ts';
@@ -52,20 +52,7 @@ export interface CaptionTrack {
  * file per language (`captions.<language>.vtt`) in their order, none where it names none; one from
  * before it named them has its `captions.vtt` alone.
  */
-export function captionTracks(dir: string): CaptionTrack[] {
-  let narration: string;
-  try {
-    narration = readFileSync(join(dir, 'captions.vtt'), 'utf8');
-  } catch {
-    return [];
-  }
-  const listed = namedTracks(narration);
-  if (!listed) return [{ file: 'captions.vtt' }];
-  return listed.filter((t) => existsSync(join(dir, t.file)));
-}
-
-/** `captionTracks` without blocking the server. */
-export async function captionTracksAsync(dir: string): Promise<CaptionTrack[]> {
+export async function captionTracks(dir: string): Promise<CaptionTrack[]> {
   let narration: string;
   try {
     narration = await readFile(join(dir, 'captions.vtt'), 'utf8');
@@ -88,14 +75,14 @@ function namedTracks(narration: string): Required<CaptionTrack>[] | null {
 const MP4_HEAD = 4 << 20;
 
 /** The start of an MP4 (`MP4_HEAD`), where its track list is; null where it cannot be read. */
-function mp4Head(file: string): Buffer | null {
+async function mp4Head(file: string): Promise<Buffer | null> {
   try {
-    const fd = openSync(file, 'r');
+    const f = await open(file, 'r');
     try {
-      const head = Buffer.alloc(MP4_HEAD);
-      return head.subarray(0, readSync(fd, head, 0, MP4_HEAD, 0));
+      const buffer = Buffer.alloc(MP4_HEAD);
+      return buffer.subarray(0, (await f.read(buffer, 0, MP4_HEAD, 0)).bytesRead);
     } finally {
-      closeSync(fd);
+      await f.close();
     }
   } catch {
     return null;
@@ -106,26 +93,8 @@ function mp4Head(file: string): Buffer | null {
  * Whether a demo video has no sound: an MP4 whose track list, at its start, holds no audio
  * track (a handler of type `soun`). One whose list is not at its start counts as having sound.
  */
-export const silentVideo = (file: string): boolean => silentHead(mp4Head(file));
-
-/** `silentVideo` without blocking the server. */
-export async function silentVideoAsync(file: string): Promise<boolean> {
-  let head: Buffer | null = null;
-  try {
-    const f = await open(file, 'r');
-    try {
-      const buffer = Buffer.alloc(MP4_HEAD);
-      head = buffer.subarray(0, (await f.read(buffer, 0, MP4_HEAD, 0)).bytesRead);
-    } finally {
-      await f.close();
-    }
-  } catch {}
-  return silentHead(head);
-}
-
-/** `silentVideo` of an MP4's start (`mp4Head`). */
-function silentHead(head: Buffer | null): boolean {
-  const text = head?.toString('latin1');
+export async function silentVideo(file: string): Promise<boolean> {
+  const text = (await mp4Head(file))?.toString('latin1');
   if (!text?.includes('moov')) return false;
   // a `hdlr` box: its type, four bytes of version and flags, four predefined, then the handler's type
   return !/hdlr[\s\S]{8}soun/.test(text);
@@ -135,8 +104,8 @@ function silentHead(head: Buffer | null): boolean {
  * A demo video's width and height in pixels: those of the first track in the list at the MP4's
  * start that has a picture (its `tkhd` box); null where there is none.
  */
-export function videoSize(file: string): [number, number] | null {
-  const head = mp4Head(file);
+export async function videoSize(file: string): Promise<[number, number] | null> {
+  const head = await mp4Head(file);
   if (!head) return null;
   for (let at = head.indexOf('tkhd'); at >= 0; at = head.indexOf('tkhd', at + 4)) {
     // after the type: version and flags, then times, track and duration (wider in version 1), reserved,
@@ -158,8 +127,8 @@ export const DEMO_FILES = ['demo.mp4', 'poster.jpg', 'captions.vtt'] as const;
 export const isDemoFile = (name: string) => (DEMO_FILES as readonly string[]).includes(name) || /^captions\.[A-Za-z0-9-]+\.vtt$/.test(name);
 
 /** The files of a video demo's directory that are served, published and passed on: those of `DEMO_FILES` it has, and its caption tracks. */
-export const demoFiles = (dir: string): string[] =>
-  [...DEMO_FILES, ...captionTracks(dir).flatMap((t) => (t.language ? [t.file] : []))].filter((f) => demoFile(dir, f));
+export const demoFiles = async (dir: string): Promise<string[]> =>
+  [...DEMO_FILES, ...(await captionTracks(dir)).flatMap((t) => (t.language ? [t.file] : []))].filter((f) => demoFile(dir, f));
 
 /**
  * Copies the files of a demo handed over into `to`, replacing what was there, with their times
@@ -169,22 +138,22 @@ export const demoFiles = (dir: string): string[] =>
  * overwrites this one; the card goes back to it, and shares it, from the copy. Copy-on-write where
  * the file system has it. Whether the copy is whole.
  */
-export function keepDemo(demo: { dir: string; kind: DemoKind }, to: string): boolean {
+export async function keepDemo(demo: { dir: string; kind: DemoKind }, to: string): Promise<boolean> {
   try {
-    rmSync(to, { recursive: true, force: true });
-    const files = demo.kind === 'html' ? artifactFiles(demo.dir) : [...demoFiles(demo.dir), ...(demoFile(demo.dir, 'index.html') ? ['index.html'] : [])];
+    await rm(to, { recursive: true, force: true });
+    const files = demo.kind === 'html' ? artifactFiles(demo.dir) : [...(await demoFiles(demo.dir)), ...(demoFile(demo.dir, 'index.html') ? ['index.html'] : [])];
     if (!files.length) return false;
     for (const f of files) {
       const from = demoFile(demo.dir, f)!;
-      mkdirSync(dirname(join(to, f)), { recursive: true });
-      copyFileSync(from, join(to, f), constants.COPYFILE_FICLONE);
-      const { atime, mtime } = statSync(from);
-      utimesSync(join(to, f), atime, mtime);
+      await mkdir(dirname(join(to, f)), { recursive: true });
+      await copyFile(from, join(to, f), constants.COPYFILE_FICLONE);
+      const { atime, mtime } = await stat(from);
+      await utimes(join(to, f), atime, mtime);
     }
     return true;
   } catch (e) {
     console.error(`keeping a copy of the demo in ${demo.dir}:`, messageOf(e));
-    rmSync(to, { recursive: true, force: true });
+    await rm(to, { recursive: true, force: true });
     return false;
   }
 }
@@ -194,10 +163,10 @@ export function keepDemo(demo: { dir: string; kind: DemoKind }, to: string): boo
  * tracks in their order (empty: no subtitles; none for a demo from before them, whose track is its
  * `captions.vtt`), whether it is silent, and its width and height.
  */
-export function videoFacts(dir: string): { tracks?: string[]; silent?: true; size?: [number, number] } {
-  const all = captionTracks(dir);
+export async function videoFacts(dir: string): Promise<{ tracks?: string[]; silent?: true; size?: [number, number] }> {
+  const all = await captionTracks(dir);
   const tracks = all.flatMap((t) => (t.language ? [t.language] : []));
   const video = demoFile(dir, 'demo.mp4');
-  const size = video && videoSize(video);
-  return { ...(all.some((t) => !t.language) ? {} : { tracks }), ...(video && silentVideo(video) ? { silent: true as const } : {}), ...(size ? { size } : {}) };
+  const [silent, size] = video ? await Promise.all([silentVideo(video), videoSize(video)]) : [false, null];
+  return { ...(all.some((t) => !t.language) ? {} : { tracks }), ...(silent ? { silent: true as const } : {}), ...(size ? { size } : {}) };
 }

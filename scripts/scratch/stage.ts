@@ -286,7 +286,7 @@ export async function stageObeya(o: Staging): Promise<Staged> {
   db.run('PRAGMA busy_timeout = 10000');
   const ctx: Context = { stage, dir, home, mainBranch: stage.mainBranch ?? 'main', repos, canvas, ...cards, columns: new Set((db.query('PRAGMA table_info(cards)').all() as { name: string }[]).map((c) => c.name)) };
   holdGoneHosts(db, ctx);
-  for (const [i, c] of stage.cards.entries()) writeCard(db, ctx, c, i);
+  for (const [i, c] of stage.cards.entries()) await writeCard(db, ctx, c, i);
   if (stage.spent !== undefined) db.query("INSERT INTO spend (canvas_id, session, usd) VALUES ($c, 'staged', $usd)").run({ c: canvas, usd: stage.spent });
   writePreferences(db, ctx);
   writeTalk(db, ctx);
@@ -621,7 +621,7 @@ function copyArtifact(from: string, to: string) {
 }
 
 /** The card's fields written into its row, its workspace, costs and conversation. */
-function writeCard(db: Database, ctx: Context, c: StageCard, i: number) {
+async function writeCard(db: Database, ctx: Context, c: StageCard, i: number) {
   const { stage, ids, columns } = ctx;
   const key = keyOf(c, i);
   const id = ids[key]!;
@@ -634,7 +634,7 @@ function writeCard(db: Database, ctx: Context, c: StageCard, i: number) {
   if (c.question !== undefined) row.detail = { question: { options: [], ...c.question } };
   // an HTML artifact is shown from a copy in <dir>, which --artifact may rewrite
   // a video as a handover keeps it, with what the player knows of it beforehand
-  const demo = c.demo && (c.demo.kind === 'html' ? { ...c.demo, dir: copyArtifact(String(c.demo.dir), artifactDir(ctx.dir, key)) } : { ...videoFacts(String(c.demo.dir)), ...c.demo });
+  const demo = c.demo && (c.demo.kind === 'html' ? { ...c.demo, dir: copyArtifact(String(c.demo.dir), artifactDir(ctx.dir, key)) } : { ...(await videoFacts(String(c.demo.dir))), ...c.demo });
   if (demo !== undefined) row.demo = { kind: 'video', ...demo };
   if (c.queue !== undefined)
     row.queue = {

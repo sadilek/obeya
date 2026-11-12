@@ -54,7 +54,7 @@ import type { DemoKind, PageTags, DemoSite } from '../core/types';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import type { Theme } from './theme';
 import { ARTIFACT_DIR, type PageCommit, type PageLanguage } from './demo-page';
-import { artifactFiles, captionTracksAsync, demoFiles, silentVideoAsync } from './demo-files';
+import { artifactFiles, captionTracks, demoFiles, silentVideo } from './demo-files';
 import { artifactHeaders, FEED, feedXml, HEADERS, type Meta, newest, NOT_FOUND, notFoundHtml, overviewHtml, pageHtml, pageUrl, ROBOTS, robotsTxt, SITEMAP, sitemapXml, unlistedHeaders, type VersionFiles } from './site-pages';
 import { artifactCopy } from './artifact-copy';
 import { BUN_ENV } from './resources';
@@ -824,7 +824,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
           p.demos.map(async (d, i) => {
             if (!d.title.trim() || !d.text.trim() || !d.dir) throw new Refused(t.pageIncomplete);
             const html = d.kind === 'html';
-            const files = html ? artifactFiles(d.dir) : demoFiles(d.dir);
+            const files = html ? artifactFiles(d.dir) : await demoFiles(d.dir);
             for (const f of html ? ['index.html'] : ['demo.mp4', 'captions.vtt']) if (!files.includes(f)) throw new Refused(t.fileMissing(f, d.dir));
             // what the artifact loads in CORS mode goes into its copy (artifact-copy.ts)
             const copy = html ? await artifactCopy(d.dir, files, new URL(site.url).origin) : new Map<string, string>();
@@ -1047,7 +1047,7 @@ async function sourceHash(dir: string, files: string[]): Promise<string> {
 }
 
 async function versionFiles(dir: string): Promise<VersionFiles> {
-  const [poster, tracks, silent] = await Promise.all([exists(join(dir, 'poster.jpg')), captionTracksAsync(dir), silentVideoAsync(join(dir, 'demo.mp4'))]);
+  const [poster, tracks, silent] = await Promise.all([exists(join(dir, 'poster.jpg')), captionTracks(dir), silentVideo(join(dir, 'demo.mp4'))]);
   return { poster, tracks, silent };
 }
 
