@@ -2,7 +2,8 @@
 // the owner's words, in each state an agent is on; sentences said or typed with a card open that no
 // agent works on; new tasks that start, wait, or start at a time the owner names; questions with no card open (an opinion becomes
 // an idea, a fact stays in the conversation, work on the machine such as a new repository is a task);
-// actions that depend on reading first, looked up with the step to take then;
+// actions that depend on reading first, looked up with the step to take then; words that add to a
+// question still being looked up, which go into that look-up;
 // requests Obeya cannot do, or words for its makers; a step promised for once a card is done,
 // which it waits for and then takes by itself; and reviews of pull requests, a review card each.
 // Runs only with OBEYA_LIVE=1 (it uses the machine's
@@ -386,6 +387,42 @@ test.skipIf(!process.env.OBEYA_LIVE)(
     const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(Array(r.want).fill('reviewPr')));
     for (const r of results) console.log(`${wrong.includes(r) ? '✗' : '✓'} „${r.text}“ → ${r.got.did.join(', ') || 'nothing'} · ${JSON.stringify(r.got.executed.map((c) => (c.do === 'reviewPr' ? c.pr : 'title' in c ? c.title : '')))}`);
     expect(wrong.map((r) => r.text)).toEqual([]);
+  },
+  300_000,
+);
+
+/**
+ * Words said while a question is still being looked up, and whether they add to it (true: they go
+ * into that look-up) or ask something else (false: a look-up of their own, or no look-up at all).
+ */
+const ADDED: [string, boolean][] = [
+  ['Vielleicht machst du gleich eine ganze Liste von Issues, die in Frage kommen, sortiert nach Attraktivität für meine Aufgabenstellung.', true],
+  ['Schau dabei auch im Forum nach, nicht nur auf GitHub.', true],
+  ['Welche Releases hat Home Assistant im Oktober veröffentlicht?', false],
+];
+
+/** What the Coordinator makes of words said while a look-up runs: the exchange their look-up follows up on, if any. */
+async function added(text: string) {
+  const board = new Board(new Store(':memory:'), { id: 'c', name: 'Home Assistant', repos: [{ id: 'ha', name: 'Home Assistant', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const running = board.sheet.add(
+    'Schau bitte mal bei Home Assistant im Forum oder bei GitHub nach, ob es dort Issues gibt, die wir fixen können, am besten solche, wo die Änderung schön visuell ist.',
+    'Ich suche auf GitHub und im Home-Assistant-Forum nach offenen Issues, die wir fixen könnten, bevorzugt gut sichtbare UI-Änderungen.',
+    { lookUp: { question: 'Welche offenen Issues bei Home Assistant (GitHub, Forum) könnten wir fixen, bevorzugt gut sichtbare UI-Änderungen?', about: null } },
+  );
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
+  const asked: number[] = [];
+  const k = new Commander({ board, runtime, cwd: cwd(), execute: () => {}, lookUp: (t) => void asked.push(t), delayMs: 1 });
+  await k.hear(text, {}, [], { typed: true });
+  const t = asked.length ? board.sheet.exchange(asked[0]!) : undefined;
+  return { joins: t?.follows === running, question: t?.question };
+}
+
+test.skipIf(!process.env.OBEYA_LIVE)(
+  'words that add to a question still being looked up follow up on that look-up; another question does not',
+  async () => {
+    const results = await Promise.all(ADDED.flatMap((c) => [c, c, c]).map(async ([text, want]) => ({ text, want, got: await added(text) })));
+    for (const r of results) console.log(`${r.got.joins === r.want ? '✓' : '✗'} „${r.text}“ → ${r.got.joins ? 'joins' : 'own'} · ${r.got.question ?? '(no look-up)'}`);
+    expect(results.filter((r) => r.got.joins !== r.want).map((r) => r.text)).toEqual([]);
   },
   300_000,
 );

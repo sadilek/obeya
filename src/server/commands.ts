@@ -290,6 +290,8 @@ const MAX_ACTIONS = 20;
 const REMEMBERED_EXCHANGES = 20;
 /** Looked-up answers a fresh session gets in full, the newest; older ones are clipped. */
 const FULL_ANSWERS = 5;
+/** Look-ups still running the Coordinator hears of with each command, the newest. */
+const READING_SHOWN = 10;
 const HISTORY_DAYS = 14;
 const HISTORY_STEPS = 60;
 /** What happened between two commands, at most. */
@@ -936,7 +938,7 @@ export class Commander {
             "Never for a question about the work of an agent on a card (working, waiting for review, in PR, waiting, or finishing what remains, or a live or done card a note resumes its agent on): that agent knows its work, which is on its branch and not in the checkout look_up reads; pass the question to it (note, or feedback when it waits for review).",
             "An agent with a worker's tools (the shell, gh, the web) that reads the plan docs, the repository and the card's start task answers it in a few seconds; a question about a workstream goes to its project agent.",
             `question: the question in full, standing on its own, in the owner's language (it becomes the title of a Question card when the owner moves the thread onto one). card: the number of the card it is about, if any (the open one unless the owner means another). confirm: a short acknowledgement in the owner's language, e.g. ${say.lookUp}`,
-            "follows: when the owner's words follow up on an answer you looked up (asking on, wanting more of it, a file made of it: „und im Oktober?“, „mach mir ein Excel daraus“), that answer's tag (A12): the agent that found it goes on with all it read and computed. In doubt, the newest answer. Left out, a fresh agent starts from nothing.",
+            "follows: when the owner's words follow up on an answer you looked up (asking on, wanting more of it, a file made of it: „und im Oktober?“, „mach mir ein Excel daraus“), that answer's tag (A12): the agent that found it goes on with all it read and computed. In doubt, the newest answer. Left out, a fresh agent starts from nothing. Words that add to a question still being looked up (the list of those says so: narrowing it, widening it, wanting the answer in another form: „mach gleich eine Liste daraus“) follow up on it the same way, with its tag: they go into that look-up, whose one answer answers them too; question then is the question as it stands now, both together, and confirm says the words go into what is being looked up.",
             `then: when the owner asks you to do something whose actions depend on what needs reading first („leg für jedes offene Issue eine Aufgabe an“, „starte die Aufgaben, deren Pull Request grün ist“), the step to take with the answer, standing on its own (cards named by title, and the action it takes: new_card for a task per issue, review_pr for each pull request to review); question then asks for what the step needs (for a task per issue: each one's number, title, link and what it asks for). Once the answer is in, you take that step yourself with act, and the owner can take it back. confirm says both, e.g. ${say.lookUpThen}`,
           ].join('\n'),
           schema: { question: z.string(), card: z.string().optional(), follows: z.string().optional(), then: z.string().optional(), confirm: z.string() },
@@ -1422,9 +1424,11 @@ export class Commander {
                 const later =
                   t.answer !== undefined
                     ? ` → the answer ${answerTag(t.id)} you looked up${t.follows ? ` (following up on ${answerTag(t.follows)})` : ''}: "${full.has(t) ? t.answer : clip(oneLine(t.answer), 400)}"${t.then ? ` (you are about to take the step you looked it up for: ${t.then})` : ''}`
-                    : t.question
-                      ? ' (you were looking it up; no answer came)'
-                      : '';
+                    : t.joinedInto
+                      ? ` (the owner's next words went into this look-up: the answer ${answerTag(t.joinedInto)} answers both)`
+                      : t.question
+                        ? ' (you were looking it up; no answer came)'
+                        : '';
                 if (t.moved) return `- ${when(t.at)} the card "${t.moved.title}" moved to the canvas "${t.moved.canvasName}", in a new repository, and is built there`;
                 const words = t.after
                   ? `${became(t.after)}, and you took up the step you had waited on it for`
@@ -1458,6 +1462,12 @@ export class Commander {
       return [`${cardTag(n)} [${row.state ?? 'planned'}] "${row.title ?? ''}" — ${row.deleted_at ? 'deleted' : `on the canvas "${canvasName}"`}`];
     });
     const project = focus.project ? items.find((i) => i.id === focus.project) : undefined;
+    // look-ups still running that the owner's words may add to: Obeya's own, not those asked of a project's agent in its sheet or gone onto a Question card
+    const reading = this.o.board.sheet
+      .lookingUp()
+      .map((id) => this.o.board.sheet.exchange(id)!)
+      .filter((t) => !t.askedIn && !t.movedTo)
+      .slice(-READING_SHOWN);
     // projects with workstreams to start: start on one hands them all to the Coordinator
     const projects = items.flatMap((p) => {
       if (p.kind !== 'project') return [];
@@ -1512,6 +1522,9 @@ export class Commander {
         ? [`Cards the owner's words name by number that the list leaves out (an action takes only a card on this canvas, not archived):\n${named.join('\n')}`]
         : []),
       ...(projects.length ? [`Projects with workstreams to start:\n${projects.join('\n')}`] : []),
+      ...(reading.length
+        ? [`Questions an agent is looking up for you now, its answer still to come (a follow-up names its tag in follows to go into that look-up):\n${reading.map((t) => `- ${answerTag(t.id)} (${when(t.at)}) “${t.question}”`).join('\n')}`]
+        : []),
       ...(this.waits().length
         ? [`Cards you wait on, to take a step once each gets there (wait_for; stop_waiting drops one):\n${this.waits().map(({ talk, wait }) => `- ${tag(wait.card)} "${wait.title}" until it ${reaches(wait.state)} (since ${when(talk.at)}), then: ${wait.then}`).join('\n')}`]
         : []),

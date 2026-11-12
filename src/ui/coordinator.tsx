@@ -322,7 +322,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 {x.replyTo && <Quote q={talkQuote(x.replyTo)} />}
                 <Body md={x.said} />
                 <Shots ids={x.images} />
-                {x.continues && <Continues question={x.continues} reading={x.answer === undefined && !card} />}
+                {x.continues && <Continues question={x.continues} reading={x.answer === undefined && !card} adds={x.addsTo} />}
                 {asked && <div className="hint">{t.coordinator.askedIn(plain(asked.title))}</div>}
               </Msg>
             )}
@@ -356,8 +356,8 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
               </div>
             ) : (
               <>
-                {/* a question it looked up: the answer follows the acknowledgement */}
-                {x.question && x.answer === undefined && !x.files?.length && (
+                {/* a question it looked up: the answer follows the acknowledgement, or the later words that went into its look-up */}
+                {x.question && x.answer === undefined && !x.joinedInto && !x.files?.length && (
                   <Msg by={x.askedIn ? 'project' : 'coordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'coordinator']}>
                     <div className="hint">{x.limitedUntil ? t.coordinator.lookUpLimited(clock(x.limitedUntil)) : t.coordinator.lookingUp}</div>
                   </Msg>

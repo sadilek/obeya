@@ -324,6 +324,112 @@ describe('a looked-up answer goes on', () => {
     expect(board().sheet.latest().at(-1)).toMatchObject({ answer: 'Oktober bisher auch.', unread: true });
   });
 
+  test('words that add to a question still being looked up go into that look-up, whose one answer stands under them', async () => {
+    await say('such issues, die wir fixen können', {}, 'look_up', { question: 'Which open issues could we fix?', confirm: 'Ich suche.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    const a = answerer();
+    a.emit({ type: 'session', id: 'look-1' });
+    const sessions = runtime.sessions.length;
+    const { brief } = await say('mach gleich eine liste, sortiert nach attraktivität', {}, 'look_up', {
+      question: 'Which open issues could we fix, as a list sorted by how well they suit a visible fix?',
+      follows: `A${first}`,
+      confirm: 'Ich nehme das in die laufende Suche auf.',
+    });
+    // the Coordinator knows the look-up runs, by its tag
+    expect(brief).toContain(`A${first}`);
+    expect(brief).toContain('“Which open issues could we fix?”');
+    const second = board().sheet.latest().at(-1)!.id;
+    // no second agent: the words reach the one reading, with its next step
+    expect(runtime.sessions.length).toBe(sessions);
+    const heard = a.toolStep()!;
+    expect(heard).toContain('While you look this up, the owner added to it. They said: "mach gleich eine liste, sortiert nach attraktivität"');
+    expect(heard).toContain('as a list sorted by');
+    expect(a.toolStep()).toBeUndefined();
+    // the first question waits for no answer of its own; the later words say which look-up they went into
+    expect(board().sheet.exchange(first)).toMatchObject({ joinedInto: second });
+    expect(board().sheet.exchange(first)!.answer).toBeUndefined();
+    expect(board().sheet.latest().at(-1)).toMatchObject({ id: second, thread: first, follows: first, continues: 'Which open issues could we fix?', addsTo: true });
+    a.call('answer_owner', { text: '1. #42 Dark mode …' });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(board().sheet.latest().at(-1)).toMatchObject({ id: second, answer: '1. #42 Dark mode …', unread: true });
+    expect(board().sheet.exchange(first)!.answer).toBeUndefined();
+    expect(board().sheet.lookingUp()).toEqual([]);
+    expect(notices.filter((n) => n.text === '1. #42 Dark mode …')).toHaveLength(1);
+    // a follow-up on that answer resumes the same agent
+    await say('und die zweite?', {}, 'look_up', { question: 'More on the second?', follows: `A${second}`, confirm: 'Moment.' });
+    expect(answerer().spec.resume).toBe('look-1');
+  });
+
+  test('an answer before the agent had the added words is refused with them; a turn that ends without them goes on with them', async () => {
+    await say('frage', {}, 'look_up', { question: 'Q?', confirm: 'Moment.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    const a = answerer();
+    await say('und mit Dezember', {}, 'look_up', { question: 'Q with December?', follows: `A${first}`, confirm: 'Moment.' });
+    const refused = String(await a.call('answer_owner', { text: 'Ohne Dezember.' }));
+    expect(refused).toContain('Nothing was shown yet');
+    expect(refused).toContain('und mit Dezember');
+    expect(board().sheet.latest().at(-1)!.answer).toBeUndefined();
+    await a.call('answer_owner', { text: 'Mit Dezember.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(board().sheet.latest().at(-1)!.answer).toBe('Mit Dezember.');
+
+    // words the turn did not take before it ended start its next turn, in the same session
+    await say('frage 2', {}, 'look_up', { question: 'Q2?', confirm: 'Moment.' });
+    const two = board().sheet.latest().at(-1)!.id;
+    const b = answerer();
+    await say('nur 2024', {}, 'look_up', { question: 'Q2 for 2024?', follows: `A${two}`, confirm: 'Moment.' });
+    b.emit({ type: 'text', text: 'Fertig.' });
+    b.emit({ type: 'idle' });
+    await settle();
+    expect(b.closed).toBe(false);
+    expect(b.inbox.at(-1)).toContain('nur 2024');
+    await b.call('answer_owner', { text: '2024: 3.' });
+    b.emit({ type: 'idle' });
+    await settle();
+    expect(board().sheet.latest().at(-1)!.answer).toBe('2024: 3.');
+  });
+
+  test('words that come once the answer is given follow up on it in a turn of their own', async () => {
+    await say('frage', {}, 'look_up', { question: 'Q?', confirm: 'Moment.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    const a = answerer();
+    a.emit({ type: 'session', id: 'look-1' });
+    await a.call('answer_owner', { text: 'Eins.' });
+    await say('und zwei?', {}, 'look_up', { question: 'Two?', follows: `A${first}`, confirm: 'Moment.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    const b = answerer();
+    expect(b).not.toBe(a);
+    expect(b.spec.resume).toBe('look-1');
+    expect(b.inbox[0]).toContain('The owner follows up on your answer. They said: "und zwei?"');
+    expect(board().sheet.exchange(first)).toMatchObject({ answer: 'Eins.' });
+    expect(board().sheet.exchange(first)!.joinedInto).toBeUndefined();
+  });
+
+  test('words that went into a look-up Obeya restarted in are looked up again in its session, answering both', async () => {
+    await say('frage', {}, 'look_up', { question: 'Q?', confirm: 'Moment.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    const a = answerer();
+    a.emit({ type: 'session', id: 'look-1' });
+    await say('als liste', {}, 'look_up', { question: 'Q as a list?', follows: `A${first}`, confirm: 'Moment.' });
+    const second = board().sheet.latest().at(-1)!.id;
+    const before = runtime.sessions.length;
+    await reopen();
+    await settle();
+    // one agent, for the later words, in the session that read for both
+    expect(runtime.sessions.length).toBe(before + 1);
+    const b = answerer();
+    expect(b.spec.resume).toBe('look-1');
+    expect(b.inbox[0]).toContain('Obeya restarted before you had answered. Meanwhile the owner added to what you were looking up. They said: "als liste"');
+    await b.call('answer_owner', { text: 'Liste.' });
+    b.emit({ type: 'idle' });
+    await settle();
+    expect(board().sheet.exchange(second)!.answer).toBe('Liste.');
+    expect(board().sheet.exchange(first)!.answer).toBeUndefined();
+  });
+
   test('an unknown answer tag goes back to the Coordinator', async () => {
     canvas.commander.hear('und weiter?', {});
     await settle();

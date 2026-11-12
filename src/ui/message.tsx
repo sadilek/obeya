@@ -275,10 +275,10 @@ export function useAnswer(e: CardEvent, hint?: boolean): { head?: ReactNode; fil
   };
 }
 
-/** Under a follow-up: which answer it continues, and while it is looked up, that its agent reads. */
-export const Continues = ({ question, reading }: { question: string; reading?: boolean }) => (
+/** Under a follow-up: which answer it continues (or which look-up its words went into), and while it is looked up, that its agent reads. */
+export const Continues = ({ question, reading, adds }: { question: string; reading?: boolean; adds?: boolean }) => (
   <div className="continues">
-    {t.answer.continues(clip(plain(question), 90))}
+    {(adds ? t.answer.addsTo : t.answer.continues)(clip(plain(question), 90))}
     {reading && ` · ${t.answer.reading}`}
   </div>
 );

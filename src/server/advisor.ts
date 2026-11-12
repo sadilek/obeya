@@ -50,6 +50,13 @@ export interface Briefing {
    * session at once (its answer answers them too), or stops waiting (`undefined`): it goes on, or ends.
    */
   onWaiting?: (pass: ((text: string, images: string[]) => void) | undefined) => void;
+  /**
+   * The turn takes the owner's words while it reads (`hear`, at its start): they reach the agent with
+   * its next step's result, or wake it while it waits for its background work, and answer_owner takes
+   * no answer before the agent has them, so its one answer answers them too. `hear` returns false once
+   * the answer is given: the words come too late for this turn.
+   */
+  onHearing?: (hear: (words: string) => boolean) => void;
 }
 
 /** A turn that answered nothing because it was ended on purpose (`Briefing.signal`). */
@@ -93,6 +100,16 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
       work.stop();
       session.send(text, images);
     };
+    // the owner's words the agent has not had yet (`onHearing`), and how it gets them
+    const added: string[] = [];
+    const take = () => (added.length ? added.splice(0).join('\n\n') : undefined);
+    const hear = (words: string) => {
+      if (answer || closed) return false;
+      added.push(words);
+      // waiting for its background work, the agent has no next step: the words start its next turn
+      if (work.waiting && work.running > 0) pass(take()!, []);
+      return true;
+    };
     // words go in while the work runs; once it ended, it is about to wake the agent, and they wait for the next turn
     const told = () => b.onWaiting?.(work.waiting && work.running > 0 ? pass : undefined);
     const work = new BackgroundWait(over, { grace: b.backgroundGrace, limit: b.backgroundLimit }, told);
@@ -112,6 +129,8 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
             description: `Your answer to the owner, in the owner's language: text in full (markdown, short paragraphs or a list; it stands in the card's log).${b.dir ? ` files: files of yours in ${b.dir} the answer comes with (in the owner's language too), each with its path and a one-line caption in the owner's language; the owner sees them under the text (a page or an image shown inline, any other file to open).` : ''}`,
             schema: b.dir ? { text: z.string(), files: z.array(z.object({ path: z.string(), caption: z.string() })).max(MAX_FILES).optional() } : { text: z.string() },
             run: ({ text, files }) => {
+              const unheard = answer ? undefined : take();
+              if (unheard) return `Nothing was shown yet: ${unheard}\n\nCall answer_owner again with an answer that answers this too.`;
               if (!b.dir || files === undefined) return settle({ text: String(text).trim() });
               const checked = answerFiles(b.dir, files);
               if (typeof checked === 'string') return `${checked} Nothing was shown yet: call answer_owner again.`;
@@ -120,6 +139,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
           },
           ...(b.tools ?? []),
         ],
+        ...(b.onHearing ? { contextUpdate: () => (answer ? undefined : take()) } : {}),
         onEvent: (e) => {
           // what a failed session still reports after its error
           if (closed) return;
@@ -138,6 +158,12 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
             reject(new Error(e.message));
           } else if (e.type === 'idle') {
             work.running = e.background ?? 0;
+            // the turn ended without the words passed in at its end: they start the turn that answers
+            const unheard = answer ? undefined : take();
+            if (unheard) {
+              session.send(unheard);
+              return work.start();
+            }
             // a message still to come (words passed in as the agent woke) starts the turn that answers
             if (!answer && (work.running > 0 || e.more)) work.start();
             else over();
@@ -147,6 +173,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
       b.message,
       b.images,
     );
+    b.onHearing?.(hear);
     b.signal?.addEventListener('abort', () => {
       close();
       if (!answer) reject(new Interrupted());

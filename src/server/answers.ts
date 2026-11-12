@@ -25,6 +25,7 @@ import { describeTool, SPOKEN } from './agent-lines';
 import { clip, messageOf } from '../core/text';
 import { AnswerWalkthrough, prepareWalkthrough, readWalkthrough, type Told, type Voicing, WALKTHROUGH_RULES, writtenIn } from './walkthrough';
 import { isWalkthrough, type Walkthrough } from '../core/walkthrough';
+import type { Place } from '../core/layout';
 
 export interface AnswerOptions {
   board: Board;
@@ -53,7 +54,19 @@ export interface AnswerOptions {
 /** Log lines of a card the answering agent reads. */
 const LOG_LINES = 25;
 
-type Exchange = Talk & { about?: string; session?: string };
+type Exchange = Talk & { about?: string; session?: string; thenPlace?: Place };
+
+/**
+ * A look-up whose agent reads now: the exchanges its answer answers (the one it began with, then
+ * those whose words joined it), its session, the walkthrough it tells so far, and how it hears
+ * more words while it reads (until its answer is given).
+ */
+interface Running {
+  talks: number[];
+  session?: string;
+  files: AnswerFile[];
+  hear?: (words: string) => boolean;
+}
 type By = 'coordinator' | 'project';
 
 /** What "Show as walkthrough" asked for: the walkthrough's thread and file, which the page that clicked plays once it can. */
@@ -69,6 +82,8 @@ export class Answers {
   private preparedOn = new Map<number, Told>();
   /** Exchanges being looked up, so a resume does not ask twice. */
   private busy = new Set<number>();
+  /** The look-up whose agent reads in each thread now (`Running`). */
+  private running = new Map<number, Running>();
   /** The turns of each thread, one after the other: two never run in one session at once. */
   private turns = new Map<number, Promise<unknown>>();
   /** Question cards whose agent is in a turn: what the owner asks meanwhile waits for the next, unread until then. */
@@ -89,7 +104,8 @@ export class Answers {
   lookUp(talkId: number) {
     if (this.busy.has(talkId)) return;
     const t = this.o.board.sheet.exchange(talkId);
-    if (!t?.question || t.answer !== undefined) return;
+    // words joined to a later look-up are answered with it
+    if (!t?.question || t.answer !== undefined || t.joinedInto) return;
     const thread = t.thread ?? t.id;
     const root = thread === t.id ? t : (this.o.board.sheet.exchange(thread) ?? t);
     // a thread on a Question card goes on there, with the card's agent
@@ -99,6 +115,9 @@ export class Answers {
       if (!(this.o.board.thread(card.id).pending ?? []).some((p) => p.talk === talkId)) this.ask(card.id, t.said, { images: this.o.imageFiles?.(t.images), spoken: true, talk: talkId });
       return;
     }
+    const follow = t.id !== thread;
+    // words that go on with what is being looked up now go into that look-up
+    if (follow && this.join(talkId, t, thread)) return;
     this.busy.add(talkId);
     // a walkthrough the look-up began before a restart: the one it tells now takes its place
     const prepared = this.prepared.get(talkId);
@@ -109,48 +128,91 @@ export class Answers {
     const onTool = (name: string, input: Record<string, unknown>) => {
       if (reading && !name.startsWith('mcp__')) this.o.board.log(reading, 'activity', by, describeTool(name, input, this.o.board.t));
     };
-    const follow = t.id !== thread;
     // the session of the answer it continues, else the thread's latest; a thread moved onto a card that is gone has the card's
     const resume = follow ? (this.o.board.sheet.thread(thread).findLast((x) => x.session && x.id <= (t.follows ?? t.id))?.session ?? this.cardSession(root)) : undefined;
     // looked up for an action: Obeya takes it with the answer, which brings what it needs
-    const step = t.then ? `\n\nObeya takes this step itself once your answer is in: ${t.then}\nYour answer gives what the step needs.` : '';
+    const step = t.then ? stepNote(t.then) : '';
     const fresh = `${this.message(root.said, root.question!, about, project, root.askedIn)}${follow ? '' : step}`;
     // written in the project's sheet: Obeya did not read the words, so the agent passes on what asks Obeya
     const asked = t.askedIn ? { images: this.o.imageFiles?.(t.images) ?? [], from: t.askedIn } : undefined;
-    this.queue(thread, () =>
-      this.consult({
+    // following up on a question not answered yet (Obeya restarted while words joined its look-up): it answers both
+    const unanswered = follow && t.follows !== undefined && this.o.board.sheet.exchange(t.follows)?.answer === undefined;
+    const goOn = `${unanswered ? added(t.said, t.askedIn ? undefined : t.question, true) : followUp(t.said, t.askedIn ? undefined : t.question, false)}${step}`;
+    // the exchanges this turn answers: its own, and those whose words join it while it reads; the last shows the answer
+    const run: Running = { talks: [talkId], files: [] };
+    const last = () => run.talks.at(-1)!;
+    this.queue(thread, () => {
+      this.running.set(thread, run);
+      return this.consult({
         thread,
         by,
         about,
         project,
         ...(asked ? { asked } : {}),
         onTool,
-        onSession: (id) => this.o.board.sheet.lookedUpIn(talkId, id),
+        onSession: (id) => {
+          run.session = id;
+          for (const x of run.talks) this.o.board.sheet.lookedUpIn(x, id);
+        },
+        onHearing: (hear) => (run.hear = hear),
         // under the question while the agent tells on, and in the log of the card it was asked on
         onShown: (files) => {
-          this.o.board.sheet.showFiles(talkId, files);
+          run.files = files;
+          this.o.board.sheet.showFiles(last(), files);
           if (reading) this.showLive(reading, 'say', by, thread, files);
         },
         ...(prepared ? { prepared } : {}),
         // under the question in the sheet, and in the conversation of the card it was asked on
         onLimit: (until) => {
-          this.o.board.waitsForLimit({ talk: talkId }, until);
+          this.o.board.waitsForLimit({ talk: last() }, until);
           if (reading && until !== undefined) this.o.board.log(reading, 'state', 'obeya', this.o.board.t.answer.limited(this.o.board.t.when(until)));
         },
         ...(follow
           ? {
               resume,
-              message: `${followUp(t.said, t.askedIn ? undefined : t.question, false)}${step}`,
-              fallback: () => ({ message: `${fresh}\n\n${this.history(thread)}\n\n${followUp(t.said, t.askedIn ? undefined : t.question, false)}${step}` }),
+              message: goOn,
+              fallback: () => ({ message: `${fresh}\n\n${this.history(thread)}\n\n${goOn}` }),
             }
           : { message: fresh }),
       })
-        .then((a) => this.deliver(talkId, thread, by, t.question!, a, reading, project))
-        .catch((e) => this.deliver(talkId, thread, by, t.question!, { text: this.o.board.t.answer.failed(messageOf(e)) }, reading, project)),
-    ).finally(() => {
-      this.busy.delete(talkId);
+        .catch((e): OwnerAnswer => ({ text: this.o.board.t.answer.failed(messageOf(e)) }))
+        .then((a) => {
+          this.running.delete(thread);
+          const answered = this.o.board.sheet.exchange(last()) ?? t;
+          // asked on another card than the words it began with, or in the sheet: the answer stands there
+          const card = answered.cardId && this.o.board.item(answered.cardId) ? answered.cardId : undefined;
+          if (reading && reading !== card) this.dropLive(reading, thread);
+          this.deliver(answered.id, thread, by, answered.question ?? t.question!, a, card, project);
+        });
+    }).finally(() => {
+      for (const x of run.talks) this.busy.delete(x);
       this.prepared.delete(talkId);
     });
+  }
+
+  /**
+   * The owner's words of the follow-up `t` go into the look-up still running in the thread, when they
+   * follow up on what it looks up: its answer answers them too, and stands under them. False where
+   * they come too late for it (its answer is given) or follow up on an answer given before.
+   */
+  private join(talkId: number, t: Exchange, thread: number): boolean {
+    const run = this.running.get(thread);
+    if (!run?.hear || t.follows === undefined || !run.talks.includes(t.follows)) return false;
+    if (!run.hear(`${added(t.said, t.askedIn ? undefined : t.question, false)}${t.then ? stepNote(t.then) : ''}`)) return false;
+    const before = [...run.talks];
+    run.talks.push(talkId);
+    this.busy.add(talkId);
+    const sheet = this.o.board.sheet;
+    // the step an earlier question was looked up for is taken with the answer, which now comes here
+    const earlier = before.map((id) => sheet.exchange(id)).filter((x) => x?.then);
+    if (earlier.length) {
+      sheet.step(talkId, [...earlier.map((x) => x!.then!), ...(t.then ? [t.then] : [])].join('\n'), earlier[0]!.thenPlace ?? t.thenPlace);
+      for (const x of earlier) sheet.step(x!.id, null);
+    }
+    sheet.join(before, talkId, run.session);
+    // a walkthrough it tells already plays under the latest words
+    if (run.files.length) sheet.showFiles(talkId, run.files);
+    return true;
   }
 
   /**
@@ -521,6 +583,8 @@ export class Answers {
     signal?: AbortSignal;
     /** The turn waits for the agent's background work, or no longer (`Briefing.onWaiting`). */
     onWaiting?: Briefing['onWaiting'];
+    /** The turn takes the owner's words while it reads (`Briefing.onHearing`). */
+    onHearing?: Briefing['onHearing'];
     onTool: (name: string, input: Record<string, unknown>) => void;
     onSession: (id: string, model?: string) => void;
     /** Where it shows that it waits for the usage limit. */
@@ -555,6 +619,7 @@ export class Answers {
         dir,
         ...(c.signal ? { signal: c.signal } : {}),
         ...(c.onWaiting ? { onWaiting: c.onWaiting } : {}),
+        ...(c.onHearing ? { onHearing: c.onHearing } : {}),
         ...(c.asked ? { images: c.asked.images } : {}),
         ...(from && this.o.toObeya ? { toObeya: toObeyaTool((request) => this.o.toObeya!(from, request)) } : {}),
         ...(told ? { tools: [told.tool()], rules } : {}),
@@ -578,6 +643,7 @@ export class Answers {
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         ...(c.signal ? { signal: c.signal } : {}),
         ...(c.onWaiting ? { onWaiting: c.onWaiting } : {}),
+        ...(c.onHearing ? { onHearing: c.onHearing } : {}),
       });
     const fresh = () => {
       const f = c.fallback?.() ?? { message: c.message, images: c.images };
@@ -619,7 +685,8 @@ export class Answers {
     // in the log of the card that was open; with the thread moved onto a Question card meanwhile, there too
     const moved = t?.movedTo && this.o.board.item(t.movedTo)?.kind === 'question' ? t.movedTo : undefined;
     this.o.board.sheet.answer(talkId, text, by, a.files);
-    const ref = answerRef(thread, a.files, t?.continues);
+    // an answer to words that went into the look-up answers its question too: it continues nothing
+    const ref = answerRef(thread, a.files, t?.addsTo ? undefined : t?.continues);
     if (card) {
       this.dropLive(card, thread);
       this.o.board.log(card, 'say', by, text, { answer: ref });
@@ -705,6 +772,24 @@ const followUp = (said: string, question: string | undefined, onCard: boolean) =
   ]
     .filter(Boolean)
     .join('\n\n');
+
+/**
+ * What the agent hears when the owner adds to what it looks up before it has answered: while it
+ * reads, or (`restarted`) in a session resumed after Obeya restarted.
+ */
+const added = (said: string, question: string | undefined, restarted: boolean) =>
+  [
+    restarted
+      ? `Obeya restarted before you had answered. Meanwhile the owner added to what you were looking up. They said: "${said}"`
+      : `While you look this up, the owner added to it. They said: "${said}"`,
+    question ? `The question now, as Obeya understood it: ${question}` : '',
+    restarted ? 'Read and check what you need (what you read and computed before is still yours), then call answer_owner once.' : 'Take this into what you look up: your one answer (answer_owner) answers it too.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+/** What the agent hears of the step Obeya takes with its answer, when it was looked up for an action. */
+const stepNote = (then: string) => `\n\nObeya takes this step itself once your answer is in: ${then}\nYour answer gives what the step needs.`;
 
 /** What the agent of a Question card hears when the owner writes while its turn waits for its background work. */
 const meanwhile = (said: string) =>

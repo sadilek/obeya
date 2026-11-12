@@ -194,6 +194,17 @@ export class Sheet {
     this.changed();
   }
 
+  /**
+   * The owner's words of `into` went into the look-up of `ids`, still running: its answer stands
+   * under `into` and answers them all. With `session`, the look-up's, which a follow-up on that
+   * answer resumes.
+   */
+  join(ids: number[], into: number, session?: string) {
+    this.db.query('UPDATE talk SET joined = $into, files = NULL WHERE id IN (SELECT value FROM json_each($ids))').run({ ids: JSON.stringify(ids), into });
+    if (session) this.lookedUpIn(into, session);
+    this.changed();
+  }
+
   /** The session of the agent that looks the exchange's question up. */
   lookedUpIn(id: number, session: string) {
     this.db.query('UPDATE talk SET session_id = $session WHERE id = $id').run({ id, session });
@@ -268,7 +279,7 @@ export class Sheet {
 
   /** Questions the Coordinator is still looking up, oldest first. */
   lookingUp(): number[] {
-    return (this.db.query('SELECT id FROM talk WHERE canvas_id = $c AND question IS NOT NULL AND answer IS NULL ORDER BY id').all({ c: this.canvasId }) as { id: number }[]).map((r) => r.id);
+    return (this.db.query('SELECT id FROM talk WHERE canvas_id = $c AND question IS NOT NULL AND answer IS NULL AND joined IS NULL ORDER BY id').all({ c: this.canvasId }) as { id: number }[]).map((r) => r.id);
   }
 }
 
@@ -288,6 +299,7 @@ interface TalkRow {
   session_id: string | null;
   thread: number | null;
   follows: number | null;
+  joined: number | null;
   files: string | null;
   card: string | null;
   reply_to: string | null;
@@ -319,6 +331,7 @@ const toTalk = (r: TalkRow): Talk => ({
   // a looked-up question is a thread of its own until it follows up on one
   ...(r.question ? { thread: r.thread ?? r.id } : {}),
   ...(r.follows ? { follows: r.follows } : {}),
+  ...(r.joined ? { joinedInto: r.joined } : {}),
   ...(r.files ? { files: JSON.parse(r.files) as AnswerFile[] } : {}),
   ...(r.card ? { movedTo: r.card } : {}),
   ...(r.wish ? { wish: JSON.parse(r.wish) as Wish } : {}),
@@ -333,13 +346,14 @@ const toTalk = (r: TalkRow): Talk => ({
 });
 
 /**
- * An exchange with the question of the answer it continues, when it follows up on one, and the
+ * An exchange with the question of the answer it continues, when it follows up on one (whether its
+ * words went into that look-up while it ran), and the
  * message of the sheet it replies to, when it does.
  */
 function withContinues(db: Database, r: TalkRow): Talk {
-  const followed = r.follows ? (db.query('SELECT question FROM talk WHERE id = $id').get({ id: r.follows }) as { question: string | null } | null) : null;
+  const followed = r.follows ? (db.query('SELECT question, joined FROM talk WHERE id = $id').get({ id: r.follows }) as { question: string | null; joined: number | null } | null) : null;
   const replyTo = r.reply_to ? quotedTalk(db, JSON.parse(r.reply_to) as TalkRef) : undefined;
-  return { ...toTalk(r), ...(followed?.question ? { continues: followed.question } : {}), ...(replyTo ? { replyTo } : {}) };
+  return { ...toTalk(r), ...(followed?.question ? { continues: followed.question, ...(followed.joined ? { addsTo: true as const } : {}) } : {}), ...(replyTo ? { replyTo } : {}) };
 }
 
 /** A message of the sheet as a reply quotes it; none where the exchange or its part is gone. */

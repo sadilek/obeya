@@ -607,6 +607,8 @@ export const MIGRATIONS = [
   END;`,
   // a card whose worker was at work when Obeya's workers stopped: the next start resumes it (`CardRow.resumes`)
   'ALTER TABLE cards ADD COLUMN resumes INTEGER;',
+  // a question whose look-up the owner's later words went into: the exchange whose answer answers it too
+  'ALTER TABLE talk ADD COLUMN joined INTEGER;',
 ];
 
 /**

@@ -1127,6 +1127,13 @@ export interface Talk {
   /** A follow-up: the exchange whose answer it continues, and that one's question. */
   follows?: number;
   continues?: string;
+  /** A follow-up whose words went into the look-up of `continues` while it ran (`joinedInto`). */
+  addsTo?: true;
+  /**
+   * The owner followed up while the question was still being looked up: their words went into that
+   * look-up, and the answer stands under this later exchange, answering both.
+   */
+  joinedInto?: number;
   /** The files the answer came with, in the thread's output directory. */
   files?: AnswerFile[];
   /** The thread moved onto a Question card: that card; its answers stand there from then on. */
