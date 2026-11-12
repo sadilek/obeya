@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import type { CanvasSnapshot } from '../src/core/types';
 import { ownerHeaders } from '../src/server/owner';
 import { alive, PATIENCE, removeDir, until } from '../src/server/testing';
-import { worked } from '../src/ui/talk';
+import { worked } from '../src/ui/cardState';
 import { scratchBase } from './common';
 
 const script = join(import.meta.dir, 'scratch-obeya.ts');

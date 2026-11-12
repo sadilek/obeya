@@ -49,7 +49,7 @@ import { useSheetWidths } from './sheetWidth';
 import { landingLabel, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { canvasPath, cardPath, queryWithout, readAddress } from './address';
-import { beingWritten, split, talkAlone } from './talk';
+import { beingWritten, split, talkAlone } from './cardState';
 import { showNotice, tellers, useAck, voiceTarget } from './tell';
 import { followDone, useCardEdits } from './cardHost';
 import { useCanvasAddress } from './canvasAddress';
