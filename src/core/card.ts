@@ -1,7 +1,7 @@
 // What a card is in: the predicates over a card and its log that the server and the UI ask alike.
 
-import type { Language } from './locale';
-import { MESSAGES } from './messages';
+import { type Language, LANGUAGES } from './locale';
+import { MESSAGES, type Messages } from './messages';
 import type { Awaited, AwaitedState, CanvasSnapshot, CardEvent, CardState, Demo, Item, Question, Talk } from './types';
 
 /** A card whose work is over: `live` once it landed, `done` when it needed no change to the code (a demo, an analysis). */
@@ -93,6 +93,38 @@ export const plannableAsProject = (i: Item) =>
 /** A question as its card's log holds it: the text, then one line per option. */
 export const formatQuestion = (q: Question, language: Language): string =>
   q.options.length ? `${q.text}${q.multiple ? ` (${MESSAGES[language].multiple})` : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
+
+/** A question as the log holds it (`formatQuestion`), in whichever language it was written: its text and the options after it. */
+export function parseQuestion(text: string): { text: string; options: string[] } {
+  const lines = text.split('\n');
+  let n = lines.length;
+  while (n > 1 && lines[n - 1]!.startsWith('– ')) n--;
+  const asked = lines.slice(0, n).join('\n');
+  const marker = LANGUAGES.map((l) => ` (${MESSAGES[l].multiple})`).find((m) => asked.endsWith(m));
+  return { text: marker ? asked.slice(0, -marker.length) : asked, options: lines.slice(n).map((l) => l.slice(2)) };
+}
+
+/** Stands for any text in a message of the table, for `lineOf`: `(m) => m.worker.started(ANY)`. */
+export const ANY = '\0' as never;
+
+/**
+ * Recognises the lines that messages of the table (`MESSAGES`) write, in every language, by their
+ * words: a line is one when it starts as a message `pick` gives, `ANY` in it standing for any text,
+ * up to its last words (what a message ends with after its last `ANY` may have grown since older
+ * lines were written: a link after the sentence). A log line carries its meaning only in its text,
+ * in the language it was written in.
+ */
+export function lineOf(...picks: ((m: Messages) => string)[]): (text: string) => boolean {
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = (says: string) => {
+    const parts = says.split(ANY);
+    while (parts.length > 1 && !parts.at(-1)!.trim()) parts.pop();
+    parts.push(parts.pop()!.trimEnd());
+    return new RegExp(`^${parts.map(escape).join('.*?')}`, 's');
+  };
+  const patterns = [...new Set(LANGUAGES.flatMap((l) => picks.map((pick) => pick(MESSAGES[l]))))].map(pattern);
+  return (text) => patterns.some((p) => p.test(text));
+}
 
 /** Its worker handed the work over: the card waits for the owner's approval or feedback. */
 export const handedOver = (i: Pick<Item, 'state' | 'need'>) => i.state === 'waiting' && (i.need === 'demo' || i.need === 'review');
@@ -240,8 +272,16 @@ export function withSupplemented<T extends Pick<Demo, 'follows'>>(demos: T[], i:
 /** Which of the demo's chapters plays at `at` seconds (the first before any starts); a seek lands a little before a chapter's start. */
 export const chapterAt = (chapters: Demo['chapters'], at: number) => chapters.reduce((cur, [start], i) => (start <= at + 0.05 ? i : cur), 0);
 
+const startedLine = lineOf(
+  (m) => m.worker.started(ANY),
+  (m) => m.worker.reviewStarted(ANY, ANY),
+  (m) => m.worker.startedInFolder,
+  // the wording until 2026-10-06, which older logs hold: „Agent gestartet: <branch> in <path>“
+  () => 'Agent gestartet: ',
+);
+
 /** Obeya's line that a worker started on the card afresh: what it handed over before belongs to an earlier run. */
-export const started = (e: Pick<CardEvent, 'kind' | 'author' | 'text'>) => e.kind === 'state' && e.author === 'obeya' && /^(Agent gestartet|Agent started)/.test(e.text);
+export const started = (e: Pick<CardEvent, 'kind' | 'author' | 'text'>) => e.kind === 'state' && e.author === 'obeya' && startedLine(e.text);
 
 /** The owner's own words in an answer, without the options picked that lead it. */
 export function ownWords(e: Pick<CardEvent, 'text' | 'picks'>): string {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { archiveRefusal, openPerGroup, unreadPerProject, withSupplemented } from './card';
+import { ANY, archiveRefusal, lineOf, openPerGroup, started, unreadPerProject, withSupplemented } from './card';
+import { MESSAGES } from './messages';
 import type { Item, Talk } from './types';
 
 const card = (over: Partial<Item>): Item => ({ id: 'x', number: 1, kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
@@ -88,5 +89,28 @@ describe('withSupplemented', () => {
     expect(along(0)).toEqual([1]);
     expect(along(2)).toEqual([3]);
     expect(along(5)).toEqual([6]);
+  });
+});
+
+describe('lines recognised by the messages that write them', () => {
+  const state = (text: string) => ({ kind: 'state' as const, author: 'obeya' as const, text });
+
+  test("an agent's start in either language, and in the wording older logs hold", () => {
+    expect(started(state(MESSAGES.de.worker.started('obeya/export')))).toBe(true);
+    expect(started(state(MESSAGES.en.worker.reviewStarted(12, 'amerlander')))).toBe(true);
+    expect(started(state(MESSAGES.en.worker.startedInFolder))).toBe(true);
+    expect(started(state('Agent gestartet: obeya/export in /tmp/clone'))).toBe(true);
+    expect(started(state(MESSAGES.de.worker.landedMain))).toBe(false);
+  });
+
+  test('a message stands for any text where `ANY` is, and its last words may have grown since', () => {
+    const linked = lineOf((m) => m.share.prLinked(ANY, ANY));
+    expect(linked(MESSAGES.en.share.prLinked(12, 'https://example.com/pr/12'))).toBe(true);
+    // before the link to the pull request followed the sentence
+    expect(linked('Added the demo’s link to the description of pull request #12.')).toBe(true);
+    expect(linked(MESSAGES.en.share.prNotLinked(12, 'no access'))).toBe(false);
+    const merged = lineOf((m) => m.worker.mergedContribution(ANY));
+    expect(merged('PR #7 gemergt. Live.')).toBe(true);
+    expect(merged('PR #7 geschlossen.')).toBe(false);
   });
 });

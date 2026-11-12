@@ -4,7 +4,7 @@
 import { createContext, type CSSProperties, Fragment, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { BackgroundTask, ChangeRoute, CardEvent, Demo, Item, Mock, Question, Spot } from '../core/types';
-import { finished, openQuestions, pausableNow, started, taskAuthor } from '../core/card';
+import { finished, openQuestions, parseQuestion, pausableNow, started, taskAuthor } from '../core/card';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
@@ -28,7 +28,7 @@ import { cameInView, useSeen } from './seen';
 import { SnoozeLine } from './snooze';
 import { clock as time, errorText, t } from './strings';
 import { worked as isWorked } from './cardState';
-import { cardTalk, demoHandover, talkState, coordinatorReads, parseQuestion, snoozeLine, type Turn, unseenTurns } from './talk';
+import { cardTalk, demoHandover, talkState, coordinatorReads, snoozeLine, type Turn, unseenTurns } from './talk';
 import { WishReplyLink } from './wish';
 import { claudeLoginFailed, codexLoginLost } from '../core/login';
 import { CodexLogin, Reauthenticate } from './reauthenticate';

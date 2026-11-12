@@ -5,7 +5,7 @@
 import type { CardEvent, TalkQuote, TalkRef } from '../core/types';
 import { draftOf, updateDraft, useDraft } from './draft';
 import { plain } from './markdown';
-import { parseQuestion } from './talk';
+import { parseQuestion } from '../core/card';
 import { oneLine } from '../core/text';
 
 /** A message as a quote shows it: who said it, what it was, its text, and where it stands in the conversation (`data-ev`). */

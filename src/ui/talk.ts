@@ -3,7 +3,7 @@
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { CardEvent, Demo, Item, Question } from '../core/types';
-import { openQuestions, ownWords, resumable, started } from '../core/card';
+import { ANY, lineOf, openQuestions, ownWords, parseQuestion, resumable, started } from '../core/card';
 import { readAnswer } from './answer';
 import { agentWorks } from './cardState';
 
@@ -55,9 +55,33 @@ export interface Talk {
   below: Turn[];
 }
 
-/** Obeya's lines that mark where the work stands (the demo linked on the pull request among them), or why an idea clicked to build was not; its other notes (restarts, sessions, what happens on the pull request) fold away. */
-const MILESTONE =
-  /^(Agent gestartet|Agent started|Pull Request gemergt|Pull request merged|Nach der Freigabe auf main gelandet|Landed on main after the approval|Pull Request ohne Merge geschlossen|Pull request closed without a merge|Das Projekt steht jetzt|The project now stands|Nicht gebaut|Not built|Teil gelandet|Part landed|Der Obeya-Checkout stand auf|The Obeya checkout was on|Im Plan-Doc|Ticked off in the plan doc|Den Link zur Demo (als Kommentar|in die Beschreibung)|Commented the demo’s link|Added the demo’s link|main ließ sich nach dem Merge nicht holen: Konflikt|Could not pull main after the merge: it conflicts|Der Merge von PR #\d+ kollidiert|Merging PR #\d+ conflicts|Konflikt mit PR #\d+ gelöst|Conflict with PR #\d+ resolved|main aus dem Remote geholt|Pulled main from the remote|main gepusht|Pushed main|PR #\d+ gemergt\. Live|PR #\d+ merged\. Live|Konflikt gelöst\. Obeya mergt|Conflict resolved\. Obeya merges)/;
+/** Obeya's lines that mark where the work stands besides an agent's start (`started`): the demo linked on the pull request among them, or why an idea clicked to build was not. Its other notes (restarts, sessions, what happens on the pull request) fold away. */
+const milestone = lineOf(
+  (m) => m.worker.merged,
+  (m) => m.worker.mergedTicked,
+  (m) => m.worker.tickedFreed,
+  (m) => m.worker.mergedContribution(ANY),
+  (m) => m.worker.landedMain,
+  (m) => m.worker.prClosed,
+  (m) => m.worker.switchedToMain(ANY, ANY),
+  (m) => m.worker.switchedToMain(null, ANY),
+  (m) => m.worker.pullStopped(ANY, ANY),
+  (m) => m.worker.pullStopped(ANY, null),
+  (m) => m.worker.pullUnresolved(ANY, ANY, ANY),
+  (m) => m.worker.resolvingPull(ANY, ANY),
+  (m) => m.worker.resolvedPull(ANY, ANY),
+  (m) => m.worker.pulledMain(ANY),
+  (m) => m.worker.pushedMain(ANY, ANY),
+  (m) => m.worker.mergingResolved(ANY),
+  (m) => m.idea.becameProject,
+  (m) => m.idea.taskBecameProject,
+  (m) => m.idea.partLanded,
+  (m) => m.idea.notBuiltNoReply,
+  (m) => m.idea.notBuiltQuestions,
+  (m) => m.idea.notBuiltQuestion,
+  (m) => m.share.prLinked(ANY, ANY),
+  (m) => m.share.prCommented(ANY, ANY),
+);
 
 /** The agent that works on the card or thinks the idea through. */
 const agentAuthor = (e: CardEvent) => e.author === 'worker' || e.author === 'explorer';
@@ -88,7 +112,7 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
     case 'denied':
       return 'line';
     case 'state':
-      return e.author === 'explorer' || (e.author === 'obeya' && !MILESTONE.test(e.text) && !limitLine(e) && !wokeLine(e) && !unansweredLine(e) && !waitLine(e)) ? 'step' : 'line';
+      return e.author === 'explorer' || (e.author === 'obeya' && !started(e) && !milestone(e.text) && !limitLine(e) && !wokeLine(e) && !unansweredLine(e) && !waitLine(e)) ? 'step' : 'line';
     default:
       return 'step';
   }
@@ -273,17 +297,23 @@ function repliesLater(events: CardEvent[], i: number): boolean {
 /** The line that the owner paused the card's agent. */
 const pauseLine = (e: CardEvent) => e.kind === 'state' && e.author === 'owner' && LANGUAGES.some((l) => e.text === MESSAGES[l].worker.pausedByOwner);
 
+const snoozed = lineOf((m) => m.worker.snoozed(ANY));
 /** The line that the card was snoozed until a time (or its time changed), by its agent or the owner. */
-export const snoozeLine = (e: CardEvent) => e.kind === 'state' && (e.author === 'worker' || e.author === 'owner') && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].worker.snoozed('\0').split('\0')[0]!));
+export const snoozeLine = (e: CardEvent) => e.kind === 'state' && (e.author === 'worker' || e.author === 'owner') && snoozed(e.text);
 
 /** The line that a snoozed card woke, and why (or, until 2026-10-17, who had snoozed it: „Wieder da (vom Agenten zurückgestellt)“). */
-const wokeLine = (e: CardEvent) => e.kind === 'state' && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].worker.woke('\0').split('\0')[0]!) || e.text.startsWith(`${MESSAGES[l].worker.woke('').replace(/: $/, '')} (`));
+const woke = lineOf(
+  (m) => m.worker.woke(ANY),
+  (m) => `${m.worker.woke('').replace(/: $/, '')} (`,
+);
+const wokeLine = (e: CardEvent) => e.kind === 'state' && woke(e.text);
 
 /** Obeya's line that the agent stopped without answering the owner's words: they write again. */
 const unansweredLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text === MESSAGES[l].worker.unanswered);
 
 /** Obeya's line that the card waits for others before it starts, and why. */
-const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].coordinator.waitsFor('\0', '').split('\0')[0]!));
+const waits = lineOf((m) => m.coordinator.waitsFor(ANY, ANY));
+const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && waits(e.text);
 
 /** Obeya's line that the usage limit stopped the agent's turn, and when it goes on. */
 const limitLine = (e: CardEvent) =>
@@ -442,20 +472,6 @@ function named(shown: Turn[]) {
     a.words = words;
     if (!words && !a.e.images?.length) shown.splice(i--, 1);
   }
-}
-
-/** A question as the log holds it (`formatQuestion`): its text and the options after it. */
-export function parseQuestion(text: string): { text: string; options: string[] } {
-  const lines = text.split('\n');
-  let n = lines.length;
-  while (n > 1 && lines[n - 1]!.startsWith('– ')) n--;
-  return {
-    text: lines
-      .slice(0, n)
-      .join('\n')
-      .replace(/ \((Mehrfachauswahl|multiple choice)\)$/, ''),
-    options: lines.slice(n).map((l) => l.slice(2)),
-  };
 }
 
 /**
