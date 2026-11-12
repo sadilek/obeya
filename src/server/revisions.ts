@@ -13,7 +13,7 @@ import { imageNote, MAX_IMAGES } from './images';
 import { type AgentRuntime, readSession } from './runtime';
 import { toObeyaTool } from './to-obeya';
 import { messageOf } from '../core/text';
-import { PROPOSAL_QUESTIONS, proposalQuestions, proposalTask } from './workers';
+import { PROPOSAL_QUESTIONS, proposalQuestions, proposalTask } from './proposals';
 
 export interface RevisionOptions {
   board: Board;

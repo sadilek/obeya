@@ -12,13 +12,12 @@ import { realPath } from './path';
 import { basename, isAbsolute, join } from 'node:path';
 import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
-import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
-import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type ChangeSize, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, laterTime, type Spot, type Superseded, type SpotInput, started, type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
+import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type ChangeSize, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, laterTime, type Spot, type Superseded, type SpotInput, started, type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote, type Retracted, titleKey } from './board';
 import { pathOfRef } from './plan-ref';
 import { fromJson, type AskedPermission, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type StoredContribution, type Json, type StoredDemo, type Unheard, toJson } from './row';
 import { parsePlanDoc } from '../core/plan-doc';
-import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
+import { type Asked, decisionLog, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
 import { artifactFiles, keepDemo, videoFacts } from './demo-files';
 import { imageNote } from './images';
@@ -40,6 +39,9 @@ import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf, tooLong, oneLine } from '../core/text';
 import { within } from '../core/late';
 import { holdsNotes } from '../core/queue';
+import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
+import { PROPOSAL_QUESTIONS, proposalQuestions, proposalTask, retractedText } from './proposals';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, hostResumed, IN_WORKTREE, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTARTED, RESUMED, restartNotice, restartWaits, snoozedUntil, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export interface WorkerOptions {
   board: Board;
@@ -149,11 +151,6 @@ interface OwnCommits {
   commits: number;
 }
 
-/** Where in the demo video the owner's words are, as the worker reads it above them. */
-const spotNote = (spot: Spot) => {
-  return `[${spot.earlier ? 'Earlier demo video, one a later handover of yours replaced,' : 'Demo video'} at ${mmss(spot.at)}${spot.chapter ? `, chapter “${spot.chapter}”` : ''}${spot.narration ? `, narration: “${spot.narration}”` : ''}]`;
-};
-
 /** Landed work's state once what it waited for (the restart) has happened. */
 const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => l;
 
@@ -211,33 +208,6 @@ async function asBadRequestAsync<T>(p: Promise<T>): Promise<T> {
   }
 }
 
-/** The questions of a proposal (`propose_card`, `revise_proposal`) as the agent gives them. */
-export const PROPOSAL_QUESTIONS = z.array(z.object({ question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() })).max(5);
-
-/** The questions of a proposal as the card holds them. */
-export const proposalQuestions = (questions: z.infer<typeof PROPOSAL_QUESTIONS> = []) => questions.map((q) => toQuestion(q.question, q.options, q.multiple));
-
-/** What became of a proposal the worker took back (`replaced`: by a new one), as it reads it. */
-const retractedText = (r: Retracted, replaced: boolean): string => {
-  if (r.kind === 'unknown')
-    return `No proposal of yours is called so${replaced ? ', so nothing was replaced' : '; nothing was withdrawn'}. Yours: ${r.mine.length ? r.mine.map((m) => `“${m.title}” (${m.gone ? 'removed' : m.state})`).join(', ') : 'none'}.`;
-  const it = `“${r.title}”`;
-  switch (r.kind) {
-    case 'gone':
-      return `${it} was still open and is gone from the canvas.`;
-    case 'marked':
-      return `The owner had taken ${it} on already (${r.state}): Obeya marks it as ${replaced ? 'replaced' : 'withdrawn'} and offers the owner to remove it.`;
-    case 'finished':
-      return `${it} is done already (${r.state}); it stays as it is.`;
-    case 'dismissed':
-      return `The owner had dismissed ${it} already.`;
-    case 'removed':
-      return `The owner had removed ${it} already.`;
-    case 'already':
-      return `${it} was withdrawn already.`;
-  }
-};
-
 /** What a worker hears of a card's task someone else than the owner wrote: its language tells nothing of the owner's (`ownersLanguage`). */
 const TASK_BY: Record<Exclude<TaskAuthor, 'owner'>, string> = {
   plan: "The card's task comes from the project's plan doc, not from the owner: its language tells nothing about theirs.",
@@ -245,10 +215,6 @@ const TASK_BY: Record<Exclude<TaskAuthor, 'owner'>, string> = {
   idea: "The idea's agent wrote the card's task, not the owner: its language tells nothing about theirs.",
   proposal: "A worker proposed the card's task and the owner took it on: its language tells nothing about theirs.",
 };
-
-/** How an agent writes a proposal's task, for the agent who takes it on and has not seen `unseen`. */
-export const proposalTask = (unseen: string) =>
-  `task: the card's text, written for the agent who will take it on, which has seen neither ${unseen}: what is wrong or wanted, where (files, names), what done looks like. Write it as the owner would write a card: no "I", no "my question", no "your card"; name other cards by their title.`;
 
 /** How the worker hears that the owner rewrote the text that goes onto the PR with its own changes. */
 const HELD_EDITED = 'While your handover waits, the owner edited the text that goes onto the pull request with the approval.';
@@ -262,9 +228,6 @@ const FINDINGS_IGNORED = 'The owner ignored findings of your review, on the card
 
 /** How gh words a merge GitHub refused for a conflict with the base branch. */
 const CONFLICT = /cannot be cleanly created|merge conflict/i;
-
-/** How the worker hears that its approved work could not land for something that is not its own to fix. */
-const NOT_LANDED = 'Since you handed over, the owner approved your work, but Obeya could not land it on main:';
 
 function pageHeardOf(share: Share | undefined): PageHeard {
   if (share?.state === 'publishing') return { page: 'going' };
@@ -394,15 +357,6 @@ const TRY_GRACE = 30 * 60_000;
 const PROBE_MS = 1500;
 /** Whether the card's status line is the one it shows while its worker waits for a usage limit, in either language. */
 const limitLine = (line: string | null | undefined) => !!line && LANGUAGES.some((l) => line.startsWith(MESSAGES[l].worker.limitStatus));
-/** Said of the owner's words when they came through speech recognition. */
-export const SPOKEN = 'spoken, so speech recognition may have misheard words';
-
-/** An answer as the worker reads it: the options the owner picked, apart from the words they added. */
-function answerNote(picks: string[], text: string): string {
-  if (!picks.length) return text;
-  const words = ownWords({ text, picks });
-  return `They picked ${picks.map((o) => `“${o}”`).join(', ')}.${words ? `\n\nThey added in their own words:\n\n${words}` : ''}`;
-}
 
 /** The question of a demo report as the demo keeps it: its text, options and the worker's pick, as `ask` takes them. */
 function demoQuestion(q: { text: string } & Omit<Asked, 'question'>): Pick<Demo, 'question' | 'options' | 'multiple' | 'pick'> {
@@ -418,152 +372,8 @@ const END_TURN = 'Recorded. End your turn now without further work; the reply ar
 /** How often Obeya asks whether a machine whose connection was lost answers again. */
 const RECONNECT_MS = 30_000;
 
-const hostResumed = (host: string) =>
-  `The connection to ${host}, the machine your workspace is on, dropped, and your session ended with it. Whatever you had running there may have been stopped with it: background commands, servers you started, and a command still running in your turn. Run again what you still need, and go on from there.`;
-
-const RESTARTED =
-  'Obeya was restarted. Whatever you had running then was stopped with it: background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need. If you had paused for the restart, go on from there.';
-
-const REPO_RESTARTED =
-  "Obeya restarted this repository's agents to apply a change to its configuration. Whatever you had running then was stopped with it: background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need. If you had paused for the restart, go on from there.";
-
-const DUE_WHY: Record<RestartReason, string> = {
-  code: 'restart (new code landed on main)',
-  config: 'restart (the owner saved a new configuration)',
-  repository: "restart (a repository's settings changed on its default branch)",
-  stop: 'stop (the owner is shutting it down)',
-  update: 'restart (the owner installs a new version of the app)',
-  takeover: 'restart (the app takes over this Obeya, which ran without it)',
-};
-
-/** Why Obeya restarts the agents of one repository alone: where they work changed, which they start again with. */
-const REPO_WHY: Partial<Record<RestartReason, string>> = {
-  config: 'the owner changed its configuration',
-  repository: 'its settings changed on its default branch',
-};
-
-/** What is about to happen, who it stops, and when the worker goes on, for the messages below. */
-const dueText = (due: DueRestart) =>
-  due.repo
-    ? {
-        what: `restart this repository's agents (${REPO_WHY[due.reason] ?? REPO_WHY.config}), you among them,`,
-        whom: 'none of them',
-        thing: "restart of this repository's agents",
-        back: 'once it has restarted them',
-      }
-    : { what: `${DUE_WHY[due.reason]} and stops whatever its workers run at that moment.`, whom: 'no worker', thing: DUE_WHY[due.reason], back: 'once it runs again' };
-
-/** How long Obeya waits for the restart at most, as the messages below say it. */
-const minutesLeft = (due: DueRestart) => {
-  const minutes = Math.max(1, Math.round((due.deadline - Date.now()) / 60_000));
-  return `at most ${minutes} more minute${minutes === 1 ? '' : 's'}`;
-};
-
-/** What is about to happen and how long Obeya waits for it, as the messages to a worker in a turn begin. */
-const dueOpening = (due: DueRestart) => {
-  const d = dueText(due);
-  return `Obeya is about to ${due.repo ? `${d.what} which stops whatever you run at that moment.` : d.what} It waits until ${d.whom} is in the middle of a turn, ${minutesLeft(due)}`;
-};
-
-/** Tells a worker that Obeya is about to restart or stop, so that it pauses at a safe point instead of being cut off. */
-const restartNotice = (due: DueRestart) =>
-  `${dueOpening(due)}. Pause at the next safe point: finish the step you are in, start nothing long (a test run, a demo render, a measurement), and end your turn, without handing over if you are not done. Background commands still running keep Obeya waiting: let those you need finish, stop the others (a scratch server you can start again). One that finishes before the restart wakes you for a turn that keeps Obeya waiting too: take in its result and end that turn as well. Obeya resumes you ${dueText(due).back}, and you go on from there.`;
-
-/**
- * Tells a worker whose turn a message starts while a restart is due (a conflict after an approval,
- * an answer, a card started) that the turn keeps Obeya waiting: it takes the message in and leaves
- * what it asks for until Obeya resumes it, instead of judging a step short enough to do first.
- */
-const restartWaits = (due: DueRestart) =>
-  `${dueOpening(due)}, and this turn keeps it waiting. Take in this message, leave the work it asks for until Obeya resumes you, and end your turn, without handing over. Obeya resumes you ${dueText(due).back}, and you do that work then.`;
-
-/** Tells a worker that paused for the restart, and was woken before it (by its background work, a message), that Obeya still waits for it. */
-const stillDue = (due: DueRestart) =>
-  `Obeya still waits for the ${dueText(due).thing} you paused for, ${minutesLeft(due)}, and this turn keeps it waiting. Take in what started it (a background command that finished, a message), leave the work it leads to until Obeya resumes you, and end your turn.`;
-
 /** How long a worker asked to pause at a safe point has for it at most, as a due restart waits for it. */
 const PAUSE_LIMIT = 15 * 60_000;
-
-/** Tells a worker that the owner pauses it, so that it brings its work to a safe point first instead of being cut off. */
-const pauseNotice = (limit: number) => {
-  const minutes = Math.max(1, Math.round(limit / 60_000));
-  return `The owner pauses you now: they want you to stop for the time being, at a safe point rather than in the middle of a step. Finish the step you are in, start nothing long (a test run, a demo render, a measurement), and end your turn, without handing over if you are not done. Stop the background commands still running (a scratch server you can start again): one you let finish keeps the owner waiting. Obeya pauses you wherever you are after at most ${minutes} minute${minutes === 1 ? '' : 's'}. Pausing ends your session; once the owner lets you go on, you go on from there.`;
-};
-
-/** Tells a worker that paused for the owner, and was woken by its background work before it could, that they still wait for it. */
-const PAUSE_STILL =
-  'The owner still waits for you to pause, and this turn keeps them waiting. Take in what started it (a background command that finished), leave the work it leads to until the owner lets you go on, and end your turn.';
-
-/** Tells a worker about to pause at a safe point that the owner let it go on after all. */
-const PAUSE_TAKEN_BACK = 'The owner no longer wants you to pause: go on with your work.';
-
-const RESUMED =
-  'The owner paused you and has now let you go on. Pausing ended your session at once: whatever you had running was stopped with it, background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need, and go on where you stopped.';
-
-/** Until when a worker snoozed, as it hears it: a time, or the card it waits on (and the time at the latest). */
-function snoozedUntil(s: Snooze): string {
-  const at = s.until ? MESSAGES.en.at(Date.parse(s.until)) : '';
-  if (!s.on) return at;
-  const what = s.on.state === 'done' ? 'is done (its work on main, or the card closed without a change)' : 'waits for the owner (a question or a handover)';
-  return `the card “${s.on.title}” ${what}${at ? `, or ${at} at the latest` : ''}`;
-}
-
-/** What became of the card a snoozed worker waits on, that wakes it. */
-function metNote(on: NonNullable<Snooze['on']>, met: Awaited): string {
-  const card = `the card “${on.title}”`;
-  switch (met) {
-    case 'reached':
-      return on.state === 'done' ? `${cap(card)} is done: its work is on main, or it closed without a change.` : `${cap(card)} waits for the owner now (a question or a handover), or is done.`;
-    case 'gone':
-      return `${cap(card)} is gone from the canvas.`;
-    case 'archived':
-      return `${cap(card)} was archived.`;
-    case 'stopped':
-      return `The owner stopped ${card}: it is planned again, and nobody works on it.`;
-    case 'dropped':
-      return `${cap(card)} was an idea, and the owner dropped it.`;
-  }
-}
-const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
-
-/**
- * What a snoozed worker hears when it wakes: why now (`timeUp`: its time has come; `met`: the card it
- * waits on got there, or no longer can; `owner`: the owner woke it, `words` with words of theirs
- * that follow; else Obeya has something for it).
- */
-function wokeNote(s: Snooze, timeUp: boolean, owner: boolean, words: boolean, met?: Awaited): string {
-  const now = MESSAGES.en.at(Date.now());
-  const until = snoozedUntil(s);
-  const why = s.why ? `, to: ${s.why}` : '';
-  const ended =
-    s.by === 'agent'
-      ? 'Your session ended when you snoozed, and whatever still ran in the background then was stopped with it. Run again what you still need.'
-      : 'Snoozing ended your session at once: whatever you had running was stopped with it, background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need, and go on where you stopped.';
-  if (met && s.on) return `${metNote(s.on, met)} You snoozed until ${until}${why}. ${ended}`;
-  if (timeUp) {
-    const yet = s.on ? ` The card “${s.on.title}” has not got there yet.` : '';
-    return `${s.by === 'owner' ? `The owner snoozed you until ${until}, and it is that time now.` : s.moved ? `It is now ${now}: you snoozed${why}, and the owner moved the time to now.` : s.on ? `It is now ${now}: you snoozed until ${until}${why}.` : `It is now ${now}, the time you snoozed until${why}.`}${yet} ${ended}`;
-  }
-  const who = s.by === 'owner' ? `The owner snoozed you until ${until}` : s.moved ? `You snoozed${why}, and the owner moved the time to ${MESSAGES.en.at(Date.parse(s.until!))}` : `You snoozed until ${until}${why}`;
-  const early = owner ? (words ? 'the owner wakes you early' : 'the owner wakes you early, without words, so tell them with reply where things stand') : 'what follows wakes you early';
-  return `${who}; it is now ${now}, and ${early}. ${ended}${s.by === 'agent' ? ' Once you have dealt with it, snooze again if there is still nothing to do until then.' : ''}`;
-}
-
-const AFTER_RESTART = 'If something that remains needs Obeya to run your change, call after_restart and end your turn: Obeya tells you once it runs it.';
-
-const AFTER_LANDING =
-  'Your workspace and this session stay until you end a turn with nothing left to wait for (a question, the restart); then both end. Commits you make here no longer land.';
-
-const AFTER_DONE = 'This session stays until you end a turn with nothing left to wait for (a question, say); then it ends.';
-
-const FOLLOW_UP_FOLDER =
-  "Answer with reply (ask, for a decision that is the owner's). What you change in the folder now counts as this card's, as before, but can no longer be undone from the card: a change the owner's words call for that is more than a small correction becomes a card of its own (propose_card). The session ends once you end a turn with nothing left to wait for.";
-
-const FOLLOW_UP =
-  "Answer with reply (ask, for a decision that is the owner's). Commits you make here do not land: a change to the code the owner's words call for becomes a card of its own (propose_card). Workspace and session end once you end a turn with nothing left to wait for.";
-
-const IN_WORKTREE =
-  "No clone of the repository was free, so this is a temporary worktree, where the repository's app and tooling may not run. If answering needs a full clone, call need_clone and end your turn: Obeya resumes you in the next free clone.";
 
 /** How long taking a card's workspace waits for its ended session to finish its step before git keeps its work. */
 const EVICT_SESSION_WAIT = 30_000;
@@ -5470,53 +5280,6 @@ function mocksText(mocks: Mock[] | undefined): string {
   if (!mocks?.length) return '';
   return ['Mocks of the brief, as the owner saw them rendered (how its variants look):', ...mocks.map((m) => `${m.title || 'Mock'}:\n\n\`\`\`html\n${m.html}\n\`\`\``)].join('\n\n');
 }
-
-/** One log line for a built-in tool call. */
-export function describeTool(name: string, input: Record<string, unknown>, t: Messages): string {
-  const s = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : '');
-  const file = (k: string) => s(k).split('/').slice(-2).join('/');
-  switch (name) {
-    case 'Read':
-      return t.tool.read(file('file_path'));
-    case 'Edit':
-    case 'MultiEdit':
-      return t.tool.edit(file('file_path'));
-    case 'Write':
-      return t.tool.write(file('file_path'));
-    case 'Bash':
-      return `$ ${clip(s('command').split('\n')[0]!, 120)}`;
-    case 'Grep':
-      return t.tool.grep(clip(s('pattern'), 60));
-    case 'Glob':
-      return t.tool.glob(clip(s('pattern'), 60));
-    case 'WebSearch':
-      return s('query') ? t.tool.webSearch(clip(s('query'), 120)) : name;
-    case 'WebFetch':
-      return s('url') ? t.tool.webFetch(clip(s('url'), 120)) : name;
-    case 'TodoWrite':
-      return t.tool.todo;
-    case 'Task':
-    case 'Agent':
-      return `Subagent: ${clip(s('description'), 80)}`;
-    default:
-      return name;
-  }
-}
-
-/** What a tool call that needs the owner's permission does, as the question shows it: a command whole, line by line as code, else its log line or its input. */
-function permissionWhat(name: string, input: Record<string, unknown>, t: Messages): string {
-  if (name === 'Bash' && typeof input.command === 'string') return code(clip(input.command, 4000));
-  const line = describeTool(name, input, t);
-  return line === name ? `${name}: ${code(clip(JSON.stringify(input), 2000))}` : line;
-}
-
-/** Each line as inline code (a line that holds a backtick as it is): the card renders no code blocks. */
-const code = (text: string) =>
-  text
-    .split('\n')
-    .filter((l) => l.trim())
-    .map((l) => (l.includes('`') ? l : `\`${l}\``))
-    .join('\n');
 
 const permissionKey = (p: AskedPermission) => JSON.stringify([p.name, p.input]);
 

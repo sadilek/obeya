@@ -14,7 +14,7 @@ import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './bo
 import type { Message, Unread } from './row';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BackgroundWait } from './runtime';
 import { imageNote } from './images';
-import { describeTool, SPOKEN } from './workers';
+import { describeTool, SPOKEN } from './agent-lines';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { clip, tooLong, oneLine } from '../core/text';
 import { folderPath } from './new-repo';

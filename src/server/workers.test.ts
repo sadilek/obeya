@@ -9,7 +9,7 @@ import { OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { Restarter } from './self-update';
 import { artifact, commit, heard, until } from './testing';
-import { describeTool } from './workers';
+import { describeTool } from './agent-lines';
 import { board, dir, eachTest, handedOver, main, manual, newWorkers, rebuild, runtime, setConversation, setLanguage, state, store, workers } from './workers-fixture';
 import { git } from './git';
 

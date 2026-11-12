@@ -20,7 +20,7 @@ import { imageNote } from './images';
 import type { ProjectAgents } from './project-agents';
 import type { AgentRuntime } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
-import { describeTool, SPOKEN } from './workers';
+import { describeTool, SPOKEN } from './agent-lines';
 import { clip, messageOf } from '../core/text';
 import { AnswerWalkthrough, prepareWalkthrough, readWalkthrough, type Told, type Voicing, WALKTHROUGH_RULES, writtenIn } from './walkthrough';
 import { isWalkthrough, type Walkthrough } from '../core/walkthrough';
