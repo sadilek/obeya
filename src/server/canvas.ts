@@ -14,7 +14,7 @@ import { openWithSystem } from './machine';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
+import type { Awaited, BranchChoice, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
 import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
 import { AGENT_DEFAULTS, type AgentRole, type AgentSetting } from '../core/agents';
 import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
@@ -55,7 +55,7 @@ import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
 import { useBranchSetting } from './branches';
-import { githubToken } from './git';
+import { githubToken, gitRun, NO_PROMPT } from './git';
 import { FolderWorkspaces } from './folder';
 import { claudeToken, hostName, registerHost } from './hosts';
 import { messageOf } from '../core/text';
@@ -837,7 +837,8 @@ export class CanvasRuntime {
         // a card whose own branch has its work go out as a pull request, where the repository's does not yet
         this.watchPrs(repo);
         // a fork's pull request to the original: the head it was opened with is looked at right away, before the worker pushes more onto it
-        if (fromJson(board.row(cardId).pr)?.upstream) repo.prs?.soon(0);
+        // a branch of the owner's whose pull request the work went onto: its state is read right away
+        if (fromJson(board.row(cardId).pr)?.upstream || fromJson(board.row(cardId).pr)?.adopted) repo.prs?.soon(0);
         this.sharing.prOpened(cardId);
       },
       onApproval: (cardId) => this.sharing.approved(cardId),
@@ -1777,6 +1778,8 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings), ...(typeof a.upstream === 'boolean' ? { upstream: a.upstream } : {}) });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
+      case 'branch':
+        return this.repoOf(cardId).workers.adoptBranch(cardId, a.branch);
       case 'pushMain':
         return this.repoOf(cardId).workers.pushMainFor(cardId);
       case 'keepMain':
@@ -2049,6 +2052,12 @@ export class CanvasRuntime {
           ...(c.images?.length ? { images: c.images } : {}),
           ...at,
         });
+        // on a branch of the owner's: taken first (git and the forge are asked), started once it is
+        if (c.branch) {
+          this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+          void this.onBranch(card.id, c.branch, () => (c.until && Date.parse(c.until) > Date.now() ? this.snooze(card.id, c.until) : c.start || c.until ? this.coordinator.request(card.id) : undefined));
+          return card.id;
+        }
         return this.created(card.id, c);
       }
       case 'newIdea': {
@@ -2137,6 +2146,45 @@ export class CanvasRuntime {
   }
 
   /**
+   * The new task works on the owner's branch `branch`, then `then` runs (its start); what keeps it
+   * from taking the branch (none such, another card's) the owner hears, the card left planned.
+   */
+  private async onBranch(cardId: string, branch: string, then: () => unknown) {
+    try {
+      await this.repoOf(cardId).workers.adoptBranch(cardId, branch);
+    } catch (e) {
+      this.board.notify({ text: this.board.t.worker.notAdopted(branch, messageOf(e)), cardId });
+      return;
+    }
+    then();
+  }
+
+  /**
+   * A pull request of the owner's own, whose branch is in the repository's `origin` (`info`): a task
+   * that goes on with it on its branch, started at once, the owner's words its task; a card on that
+   * branch already opens instead, and the words go to its worker.
+   */
+  private async ownPr(repo: Repo, url: string, number: number, info: ContributionInfo, c: Extract<Command, { do: 'reviewPr' }>): Promise<string | undefined> {
+    const t = this.board.t;
+    const branch = info.headRef!;
+    // the branch as origin has it now: the pull request may be newer than the checkout's last fetch
+    await gitRun(repo.info.path, ['fetch', '--quiet', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], { env: NO_PROMPT, timeout: 60_000 }).catch(() => {});
+    const on = (await repo.workers.branchChoices()).find((b) => b.name === branch)?.card;
+    if (on) {
+      if (c.text) this.act(on.id, { action: 'message', text: c.text, spoken: !!c.spoken });
+      this.board.notify({ text: t.worker.branchOpened(branch), cardId: on.id, open: true });
+      return on.id;
+    }
+    const card = this.board.create({ title: info.title.slice(0, TITLE_MAX), body: c.text || t.worker.goOnWith(number, url), repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
+    this.board.log(card.id, 'state', 'owner', t.voice.created);
+    await this.onBranch(card.id, branch, () => {
+      this.coordinator.request(card.id);
+      this.board.notify({ text: t.worker.adoptedPr(number, branch), cardId: card.id, open: true });
+    });
+    return card.id;
+  }
+
+  /**
    * "Review PR #5": a review card for the pull request someone outside opened, started at once, the
    * owner's words with it as its task. A PR that has a card on the canvas already opens that one, and
    * the words go to its worker. What goes wrong (no such PR, one closed) the owner hears.
@@ -2158,18 +2206,16 @@ export class CanvasRuntime {
     const ref = parsePrUrl(url, github);
     if (!ref) return fail(url);
     url = ref.url;
-    // a pull request of another repository would be merged there, from a workspace of this one
-    const origin = originUrl(repo.info);
-    if (origin && !sameRepo(origin, ref.owner, ref.repo)) return fail(t.review.otherRepo(repo.ref.id));
-    // a card of the PR's own (one of Obeya's workers opened it) is the card for it too, also where
+    // a card of the PR's own (one of Obeya's workers opened it, or its work went onto it) is the card for it too, also where
     // its URL was recorded in another form (a slash at the end, the host in capitals, `/pull/` on Forgejo)
     const same = (other?: string) => !!other && (parsePrUrl(other, github)?.url ?? other) === url;
-    const had = this.board.items().find((i) => (same(i.contribution?.url) || same(i.pr?.url)) && !i.archivedAt);
+    const had = this.board.items().find((i) => (same(i.contribution?.url) || same(i.pr?.url) || same(i.adopted?.pr?.url)) && !i.archivedAt);
     if (had) {
       if (c.text) this.act(had.id, { action: 'message', text: c.text, spoken: !!c.spoken });
       this.board.notify({ text: t.review.opened(ref.number), cardId: had.id, open: true });
       return had.id;
     }
+    const origin = originUrl(repo.info);
     let info: ContributionInfo;
     try {
       info = await this.deps.forge.contribution(repo.info.path, url);
@@ -2177,6 +2223,11 @@ export class CanvasRuntime {
       return fail(messageOf(e));
     }
     if (info.state !== 'OPEN') return fail(t.review.notOpen(info.state === 'MERGED'));
+    // the owner's own pull request, from a branch of origin's (also one against the original of a fork): a task goes on with it there
+    const head = info.headRepo && /([^/:]+)\/([^/]+?)(?:\.git)?\/?$/.exec(info.headRepo);
+    if (origin && head && info.headRef && sameRepo(origin, head[1]!, head[2]!)) return this.ownPr(repo, url, ref.number, info, c);
+    // a pull request of another repository would be merged there, from a workspace of this one
+    if (origin && !sameRepo(origin, ref.owner, ref.repo)) return fail(t.review.otherRepo(repo.ref.id));
     const card = this.board.create({ title: `PR #${ref.number}: ${info.title}`.slice(0, TITLE_MAX), body: c.text, repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
     const stored: StoredContribution = {
       url,
@@ -2194,6 +2245,13 @@ export class CanvasRuntime {
     // the card opens, so the owner sees its review begin
     this.board.notify({ text: t.review.started(ref.number, info.author), cardId: card.id, open: true });
     return card.id;
+  }
+
+  /** The branches of the owner's a new task of repository `repo` may work on (`BranchChoice`); none in a folder without git. */
+  async branchChoices(repo: string): Promise<BranchChoice[]> {
+    const r = this.repo(repo);
+    if (!r) throw new BadRequest('invalid', 'unknown repository');
+    return r.info.folder ? [] : r.workers.branchChoices();
   }
 
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */

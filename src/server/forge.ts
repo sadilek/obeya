@@ -8,6 +8,7 @@ import { enterpriseServer, ghHosts, onGitHub, parseRemote } from './repo';
 import { spawnOutput } from './spawn';
 import { gitTry, LOGIN_TTL } from './git';
 import type { GithubLogin } from './hosts';
+import type { AdoptedPr } from '../core/types';
 
 export interface PrStatus {
   state: 'OPEN' | 'MERGED' | 'CLOSED';
@@ -85,6 +86,12 @@ export interface Forge {
   requestChanges(cwd: string, url: string, body: string): Promise<string | void>;
   /** Whether the repository at `cwd`'s origin is public, as its forge says; null where it cannot tell. */
   visibility?(cwd: string): Promise<'public' | 'private' | null>;
+  /**
+   * The open pull request from `branch` of the repository at `cwd`'s origin: in that repository, else
+   * in the one it is a fork of (the original); null where there is none. `AdoptedPr` says where it
+   * is and whether the owner's account may merge it there.
+   */
+  branchPr?(cwd: string, branch: string): Promise<AdoptedPr | null>;
 }
 
 /** A pull request a review card takes on (`Forge.contribution`). */
@@ -171,6 +178,10 @@ export const routedForge = (github: Forge, forgejo: Forge, origin: (cwd: string)
     visibility: async (cwd) => {
       const f = await byOrigin(cwd);
       return f?.visibility ? f.visibility(cwd) : null;
+    },
+    branchPr: async (cwd, branch) => {
+      const f = await byOrigin(cwd);
+      return f?.branchPr ? f.branchPr(cwd, branch) : null;
     },
   };
 };
@@ -426,6 +437,21 @@ export const makeGhForge = (
     async visibility(cwd) {
       const v = (await run(await atOrigin(cwd), 'repo', 'view', '--json', 'visibility', '--jq', '.visibility')).trim().toUpperCase();
       return v === 'PUBLIC' ? 'public' : v ? 'private' : null;
+    },
+    async branchPr(cwd, branch) {
+      const at = await atOrigin(cwd);
+      if (!at.owner || !at.repo) return null;
+      const own = `${at.owner}/${at.repo}`;
+      const repo = JSON.parse(await run(at, 'api', `repos/${own}`, '--jq', '{parent: .parent.full_name, push: .permissions.push}')) as { parent?: string | null; push?: boolean | null };
+      // the pull request of a branch of origin's: in origin's repository, else from there against the original
+      for (const full of [own, ...(repo.parent ? [repo.parent] : [])]) {
+        const open = JSON.parse(await run(at, 'api', `repos/${full}/pulls?state=open&head=${encodeURIComponent(`${at.owner}:${branch}`)}`, '--jq', '[.[] | {url: .html_url, number: .number}]')) as { url: string; number: number }[];
+        const pr = open[0];
+        if (!pr) continue;
+        if (full === own) return { url: pr.url, number: pr.number, ...(repo.push === false ? { maintainers: true as const } : {}) };
+        return { url: pr.url, number: pr.number, repo: full, maintainers: true };
+      }
+      return null;
     },
     async contribution(cwd, url) {
       const ref = prRef(url);

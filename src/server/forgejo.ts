@@ -42,7 +42,7 @@ interface FjPr {
   mergeable: boolean;
   draft?: boolean;
   body?: string | null;
-  head: { sha: string; ref?: string; repo?: { clone_url?: string } | null };
+  head: { sha: string; ref?: string; repo?: { clone_url?: string; full_name?: string } | null };
   user: FjUser;
 }
 interface FjReview {
@@ -262,6 +262,22 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       if (!at) return null;
       const r = (await api(cwd, at.base, 'GET', at.repo)) as { private?: boolean; internal?: boolean } | undefined;
       return r && typeof r.private === 'boolean' ? (r.private || r.internal ? 'private' : 'public') : null;
+    },
+    async branchPr(cwd, branch) {
+      const at = await originRepo(cwd);
+      const own = at.repo.slice('repos/'.length);
+      const repo = (await api(cwd, at.base, 'GET', at.repo)) as { parent?: { full_name?: string } | null; permissions?: { push?: boolean } } | undefined;
+      const parent = repo?.parent?.full_name;
+      // the pull request of a branch of origin's: in origin's repository, else from there against the original
+      for (const full of [own, ...(parent ? [parent] : [])]) {
+        const open = await all<FjPr & { html_url?: string; number: number }>(cwd, at.base, `repos/${full}/pulls?state=open`);
+        const pr = open.find((p) => p.head.ref === branch && (p.head.repo?.full_name ?? own).toLowerCase() === own.toLowerCase());
+        if (!pr) continue;
+        const url = `${at.base}/${full}/pulls/${pr.number}`;
+        if (full === own) return { url, number: pr.number, ...(repo?.permissions?.push === false ? { maintainers: true as const } : {}) };
+        return { url, number: pr.number, repo: full, maintainers: true };
+      }
+      return null;
     },
     async urlOf(cwd, n) {
       const at = await originRepo(cwd);

@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { CardEvent, ChangeSize, DeviceView, CardKind, CardState, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, SettingProposal, SettingProposalState, Snooze } from '../core/types';
+import type { AdoptedBranch, CardEvent, ChangeSize, DeviceView, CardKind, CardState, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, SettingProposal, SettingProposalState, Snooze } from '../core/types';
 import type { CardAgent } from '../core/agents';
 import type { RepoCommands } from '../core/config';
 import type { CardFile } from '../core/files';
@@ -134,6 +134,11 @@ export interface CardRow {
    * pull request too (`RepoRef.upstream`), not only onto the main branch; null otherwise.
    */
   upstream: number | null;
+  /**
+   * A branch of the owner's that existed before the card, which it works on instead of a new one
+   * (`Item.adopted`): before the start the card's `branch` is still empty, and the start takes it.
+   */
+  adopted: Json<AdoptedBranch> | null;
   /** The owner's words Obeya holds for the card's worker until it takes them in, at its next tool step or turn. */
   unheard: Json<Unheard[]> | null;
   /** The address its worker opens the app in the card's workspace at, while it runs (`app_running`); gone once Obeya stops the app or the workspace goes. */
@@ -626,6 +631,8 @@ export const MIGRATIONS = [
   // the look-ups still running, which the Coordinator reads with each command (`Sheet.lookingUp`):
   // found without going through every exchange of the sheet
   'CREATE INDEX talk_looking_up ON talk (canvas_id) WHERE question IS NOT NULL AND answer IS NULL AND joined IS NULL AND stopped IS NULL;',
+  // a task that works on a branch of the owner's that existed before it (`CardRow.adopted`)
+  'ALTER TABLE cards ADD COLUMN adopted TEXT;',
 ];
 
 /**

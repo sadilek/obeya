@@ -625,6 +625,8 @@ function canvasRoutes(x: Routing) {
         return c.keepLeftovers(String(repo), String(host), String(path));
       }),
     },
+    // the branches of the owner's a new task of the repository may work on
+    '/api/c/:canvas/repos/:repo/branches': { GET: on((c, req) => c.branchChoices(req.params.repo!)) },
     // the owner moved the note on a repository's plan directory
     '/api/c/:canvas/plan-dirs/:repo': {
       PATCH: on(async (c, req) => c.board.movePlanDirNote(req.params.repo!, await req.json())),

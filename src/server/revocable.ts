@@ -13,6 +13,8 @@ export function revocable(r: CardRow): Revocable | undefined {
   if (pr?.rollback) return;
   // a fork's work that went to the original as a pull request is public there, and on the main branch too
   if (pr?.upstream || fromJson(r.shipped)?.upstream) return;
+  // the owner's own pull request, open before the card: closing it or reverting it is not taking back what the card did
+  if (pr?.adopted) return;
   if (r.state === 'working' && r.approved_at && !r.landed) return { how: 'approval' };
   const inPr = r.state === 'inPr' || (r.state === 'waiting' && r.need === 'question' && !!pr);
   if (inPr && !r.landed) {

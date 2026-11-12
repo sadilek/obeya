@@ -199,6 +199,17 @@ export interface Stage {
    * its branch into the original, adding the PR) and the maintainers (a comment, the merge).
    */
   upstream?: { name?: string; files?: Record<string, string>; own?: Record<string, string> };
+  /**
+   * Branches of the owner's beside the main branch (design: A branch of the owner's), each a commit
+   * of `files` on the main branch: in the checkout and on `origin` (`where`, default `both`). The
+   * repository then has an origin of its own, `git@github.com:<forgeRepo>.git` (default
+   * `owner/<repoName>`), which git of the scratch Obeya reads as the bare <dir>/origin.git. A `pr` is
+   * an open pull request of the owner's from the branch, played by the forge file (<dir>/forge.json):
+   * against `original` (`acme/app`, a fork's original, whose maintainers merge it) or in origin's
+   * repository; a demo edits the file to play the people on the forge (a comment, the merge). Not
+   * with `pulls`, `upstream`, `poolCheckout` or `hosts`.
+   */
+  branches?: { name: string; files: Record<string, string>; message?: string; where?: 'local' | 'origin' | 'both'; pr?: { number: number; title: string; original?: string } }[];
   cards: StageCard[];
   /**
    * The canvas's rules, active unless `state` says otherwise; `card` and `replaces` name keys;
@@ -386,6 +397,7 @@ function makeRepositories(stage: Stage, dir: string) {
   const forge = { slug: stage.forgeRepo ?? `acme/${basename(repo)}`, repo: stage.forgeClone ? join(dir, 'forge') : repo };
   if (stage.upstream && !folder) makeUpstream(stage.upstream, dir, repo, mainBranch);
   const prHeads = makePulls(stage, dir, repo, forge);
+  if (stage.branches?.length && !folder) makeBranches(stage, dir, repo, mainBranch);
   if (stage.origin && !stage.pulls?.length && !stage.poolCheckout && !stage.hosts?.length) git(repo, 'remote', 'add', 'origin', stage.origin);
   const others = (stage.repos ?? []).map((r) => {
     const path = join(dir, r.name);
@@ -430,6 +442,33 @@ function makeUpstream(u: NonNullable<Stage['upstream']>, dir: string, repo: stri
     git(repo, ...by, 'commit', '-qm', 'Own work of the fork');
   }
   if (!existsSync(join(dir, 'forge.json'))) writeFileSync(join(dir, 'forge.json'), `${JSON.stringify({ repo: original, viewer: 'owner', prs: [] }, null, 2)}\n`);
+}
+
+/** The owner's branches (`Stage.branches`), the origin they are pushed to, and the forge file of their pull requests. */
+function makeBranches(stage: Stage, dir: string, repo: string, mainBranch: string) {
+  if (stage.pulls?.length || stage.upstream || stage.poolCheckout || stage.hosts?.length) fail('branches go with none of pulls, upstream, poolCheckout or hosts');
+  const slug = stage.forgeRepo ?? `owner/${basename(repo)}`;
+  const bare = join(dir, 'origin.git');
+  const url = `git@github.com:${slug}.git`;
+  const by = ['-c', 'user.name=Scratch', '-c', 'user.email=scratch@example.com'];
+  git(dir, 'clone', '-q', '--bare', repo, bare);
+  git(repo, 'remote', 'add', 'origin', url);
+  git(repo, 'config', `url.${bare}.insteadOf`, url);
+  const prs = (stage.branches ?? []).map((b) => {
+    git(repo, 'checkout', '-q', '-b', b.name, mainBranch);
+    writeFiles(repo, b.files);
+    git(repo, 'add', '-A');
+    git(repo, ...by, 'commit', '-qm', b.message ?? `Work on ${b.name}`);
+    const head = git(repo, 'rev-parse', 'HEAD').trim();
+    git(repo, 'checkout', '-q', mainBranch);
+    if ((b.where ?? 'both') !== 'local') git(repo, 'push', '-q', 'origin', b.name);
+    if (b.where === 'origin') git(repo, 'branch', '-q', '-D', b.name);
+    return b.pr ? { url: `https://github.com/${b.pr.original ?? slug}/pull/${b.pr.number}`, number: b.pr.number, title: b.pr.title, author: 'owner', head, headRef: b.name, ...(b.pr.original ? { base: b.pr.original } : {}), checks: [], comments: [] } : null;
+  });
+  git(repo, 'fetch', '-q', 'origin');
+  git(repo, 'remote', 'set-head', 'origin', mainBranch);
+  git(repo, 'branch', '-q', '-u', `origin/${mainBranch}`);
+  writeFileSync(join(dir, 'forge.json'), `${JSON.stringify({ repo: bare, viewer: 'owner', prs: prs.filter(Boolean) }, null, 2)}\n`);
 }
 
 /** The pull requests of people outside, for the forge the file plays (<dir>/forge.json): each PR's head by its number. */
@@ -555,7 +594,7 @@ async function startServer(
     ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')),
     OBEYA_HOME: s.home,
     OBEYA_SCRATCH: ROOT,
-    ...(stage.upstream && !stage.pulls?.length ? { OBEYA_FORGE_FILE: join(s.dir, 'forge.json'), OBEYA_PR_POLL: String(stage.prPoll ?? 10) } : {}),
+    ...((stage.upstream || stage.branches?.length) && !stage.pulls?.length ? { OBEYA_FORGE_FILE: join(s.dir, 'forge.json'), OBEYA_PR_POLL: String(stage.prPoll ?? 10) } : {}),
     ...(stage.pulls?.length
       ? {
           OBEYA_FORGE_FILE: join(s.dir, 'forge.json'),

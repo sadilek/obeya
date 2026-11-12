@@ -196,6 +196,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.upstream ? { upstream: true as const } : {}),
+    ...(r.adopted ? { adopted: fromJson(r.adopted) } : {}),
     ...(r.queue && stateOf(r) === 'planned' ? { queue: fromJson(r.queue) } : {}),
     ...(pr?.url ? { pr: pullRequest(pr) } : {}),
     ...(pr?.rollback ? { rollbackOf: pr.rollback.of } : {}),

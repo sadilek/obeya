@@ -1988,7 +1988,8 @@ export class Board {
     this.store.update(id, {
       ...fields,
       // a repository of the canvas picked instead of a new one: the owner's pick, which the idea's agent leaves
-      ...(repo !== undefined ? { repo: this.repoColumn(repo) } : {}),
+      // a branch taken is the old repository's
+      ...(repo !== undefined ? { repo: this.repoColumn(repo), ...(row.repo !== this.repoColumn(repo) ? { adopted: null } : {}) } : {}),
       ...(newRepo !== undefined || repo !== undefined
         ? { new_repo: toJson(newRepo ? ({ path: newRepo.path.trim(), canvas: newRepo.canvas, by: 'owner' } satisfies NewRepo) : ({ path: '', canvas: true, by: 'owner', none: true } satisfies StoredNewRepo)) }
         : {}),

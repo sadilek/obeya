@@ -549,6 +549,9 @@ export interface CardWorkspaces {
   landOnMain(cardId: string, branch: string, trailer?: string, push?: boolean): Promise<LandProblem | Landed>;
   pushToMain(cardId: string, trailer?: string): Promise<LandProblem | Landed>;
   upstreamStart?(ref: string): Promise<UpstreamStart | null>;
+  branchChoices?(): Promise<OwnBranch[]>;
+  adoptStart?(branch: string): Promise<AdoptStart | null>;
+  pushAdopted?(cardId: string, branch: string): Promise<{ to: string; from: string | null } | LandProblem>;
   upstreamBase?(cardId: string, ref: string): Promise<{ base: string; brings: number } | null>;
   upstreamAhead?(ref: string): Promise<number>;
   upstreamBased?(cardId: string, ref: string): Promise<boolean>;
@@ -579,6 +582,37 @@ export interface LeaseOptions {
   overSlots?: boolean;
   from?: string | null;
   start?: () => Promise<string | null>;
+  /**
+   * The card works on a branch of the owner's that existed before it (`adoptStart`): asked before
+   * git makes the workspace, for the commit the branch stands at (in the checkout, fetched from there
+   * where a clone lacks it); a copy of the branch in the workspace that is behind it is brought
+   * forward to it, never reset.
+   */
+  adopt?: () => Promise<string | null>;
+}
+
+/**
+ * A branch of the owner's a new task may work on (`branchChoices`): the checkout's own and
+ * `origin`'s, but the main branch and Obeya's; whether the checkout and `origin` have it, and whether it is
+ * checked out (in the checkout or one of its worktrees), which only a card's own may be.
+ */
+export interface OwnBranch {
+  name: string;
+  local?: true;
+  remote?: true;
+  checkedOut?: true;
+}
+
+/**
+ * Where a card that works on a branch of the owner's starts (`adoptStart`): the newer of the
+ * checkout's copy and `origin`'s, after fetching it (the local one brought forward to `origin`'s
+ * where it is behind and not checked out); whether `origin` has it (`remote`), and whether the two
+ * went apart, each with commits of its own (`diverged`: the local one is taken).
+ */
+export interface AdoptStart {
+  start: string;
+  remote?: true;
+  diverged?: true;
 }
 
 /**
@@ -939,15 +973,15 @@ export class Workspaces implements CardWorkspaces {
   lease(cardId: string, branch: string, o: LeaseOptions = {}): Lease {
     const own = this.leasedBy(cardId);
     // a worktree git is removing (its card deleted and brought back meanwhile) is added again once git is done
-    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch, o.start);
+    if (own && !this.cloned(own) && this.clears.has(own)) return this.leaseWorktree(cardId, branch, o.start, o.adopt);
     if (own) {
       // given back while git was making it ready, and taken again before git was done: it stays the card's
       this.releasing.delete(cardId);
       return { path: own, ready: this.preparing.get(cardId) ?? null };
     }
-    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start);
+    if (this.o.mode === 'clones') return this.leaseClone(cardId, branch, !!o.overSlots, o.from ?? null, o.start, o.adopt);
     if (!o.overSlots && !this.room(null)) throw new WorkspaceError(SHORT_TEXT.slots, SHORT_CODE.slots);
-    return this.leaseWorktree(cardId, branch, o.start);
+    return this.leaseWorktree(cardId, branch, o.start, o.adopt);
   }
 
   /**
@@ -2061,7 +2095,7 @@ export class Workspaces implements CardWorkspaces {
    * card's branch. One that is not clean now gives way to the next `place` finds, the lease moving
    * there; where none is left, `ready` fails with the shortage.
    */
-  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null, start?: () => Promise<string | null>): Lease {
+  private leaseClone(cardId: string, branch: string, overSlots: boolean, from: string | null, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>): Lease {
     const looking = new Set(this.looking.keys());
     const found = this.place(overSlots, from);
     if ('short' in found) throw new WorkspaceError(SHORT_TEXT[found.short], SHORT_CODE[found.short]);
@@ -2099,8 +2133,13 @@ export class Workspaces implements CardWorkspaces {
         // a branch that already exists holds work: check it out, never reset it; a fetch that writes
         // more than `origin`'s remote-tracking branches may have made it
         const exists = kept || (fetched && !how?.plain ? !!(await gitAsync(path, 'branch', '--list', branch)) : !!refs?.local.has(branch));
-        if (exists) await gitAsync(path, 'checkout', '--quiet', branch);
-        else await gitAsync(path, 'checkout', '--quiet', '-b', branch, (await this.startIn(path, start)) ?? `origin/${base}`);
+        // a branch of the owner's, at the commit the checkout or origin has it
+        const adopted = adopt ? await this.startIn(path, adopt) : null;
+        if (exists) {
+          await gitAsync(path, 'checkout', '--quiet', branch);
+          // a copy left in this clone that is behind the owner's branch goes forward to it; one with commits of its own stays
+          if (adopted && !kept && (await gitAsync(path, 'rev-parse', 'HEAD')) !== adopted && (await isAncestor(path, 'HEAD', adopted, false))) await gitAsync(path, 'merge', '--quiet', '--ff-only', adopted);
+        } else await gitAsync(path, 'checkout', '--quiet', '-b', branch, adopted ?? (await this.startIn(path, start)) ?? `origin/${base}`);
         // the work it had not committed when its workspace was taken is uncommitted again, unless the
         // card was stopped meanwhile: then the clone goes back clean and the one that kept the branch keeps it
         if (from && !this.releasing.has(cardId) && (await gitAsync(path, 'log', '-1', '--format=%B')).includes(SAVED)) await gitAsync(path, 'reset', '--quiet', 'HEAD~1');
@@ -2190,7 +2229,7 @@ export class Workspaces implements CardWorkspaces {
    * The card's worktree, leased at once; added in the background, where it does not exist yet (in a
    * large repository that takes a minute), or once git has removed the one it had before.
    */
-  private leaseWorktree(cardId: string, branch: string, start?: () => Promise<string | null>): Lease {
+  private leaseWorktree(cardId: string, branch: string, start?: () => Promise<string | null>, adopt?: () => Promise<string | null>): Lease {
     const path = join(this.o.dir, cardId.slice(0, 8));
     this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
     this.store.setLease(path, cardId);
@@ -2206,8 +2245,10 @@ export class Workspaces implements CardWorkspaces {
         this.store.setLease(path, cardId);
         if (existsSync(path)) return path;
         mkdirSync(this.o.dir, { recursive: true });
+        // a branch of the owner's: the checkout's copy, brought forward to origin's on the way, or origin's where it has none
+        const adopted = adopt ? await adopt().catch(() => null) : null;
         if ((await gitAsync(this.o.repoPath, 'branch', '--list', branch)) !== '') await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch);
-        else await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath)));
+        else await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, adopted ?? (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath)));
         return path;
       },
       () => this.store.removeWorkspace(path),
@@ -2264,6 +2305,75 @@ export class Workspaces implements CardWorkspaces {
       else mirror.pushProblem = pushRefusal(r.stderr || r.stdout).problem;
     }
     return { start, ...(mirror.updated || mirror.diverged || mirror.checkedOut || mirror.pushed || mirror.pushProblem ? { mirror } : {}) };
+  }
+
+  /**
+   * The branches of the owner's a new task may work on (`OwnBranch`), from the checkout's refs as
+   * last fetched: its local branches and `origin`'s, the main branch and Obeya's own (`obeya/…`) left out.
+   */
+  async branchChoices(): Promise<OwnBranch[]> {
+    const repo = this.o.repoPath;
+    const [refs, main, trees] = await Promise.all([readBranches(repo), this.checkoutBase(), gitTry(repo, 'worktree', 'list', '--porcelain')]);
+    if (!refs) return [];
+    const out = (trees ?? '').split('\n').flatMap((l) => (l.startsWith('branch refs/heads/') ? [l.slice('branch refs/heads/'.length)] : []));
+    const names = [...new Set([...refs.local.keys(), ...refs.remote.keys()])].filter((n) => n !== main && n !== 'HEAD' && !n.startsWith(CARD_BRANCH));
+    return names
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ name, ...(refs.local.has(name) ? { local: true as const } : {}), ...(refs.remote.has(name) ? { remote: true as const } : {}), ...(out.includes(name) ? { checkedOut: true as const } : {}) }));
+  }
+
+  /**
+   * Where a card that works on the owner's branch `branch` starts (`AdoptStart`): `origin`'s copy
+   * fetched first (two minutes at most; as last fetched where it does not answer), the checkout's
+   * own brought forward to it where it is behind, never forced and not while it is checked out.
+   * Null where neither has the branch.
+   */
+  async adoptStart(branch: string): Promise<AdoptStart | null> {
+    const repo = this.o.repoPath;
+    await gitRun(repo, ['fetch', '--quiet', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch(() => {});
+    const at = (ref: string) => gitTry(repo, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`);
+    const local = await at(`refs/heads/${branch}`);
+    const remote = await at(`refs/remotes/origin/${branch}`);
+    if (!local && !remote) return null;
+    const there = remote ? { remote: true as const } : {};
+    if (!local) return { start: remote!, ...there };
+    if (!remote || remote === local || (await isAncestor(repo, remote, local, false))) return { start: local, ...there };
+    if (!(await isAncestor(repo, local, remote, false))) return { start: local, ...there, diverged: true };
+    // behind origin's: forward, where it is not checked out (`git fetch` refuses a branch that is)
+    await gitRun(repo, ['fetch', '--quiet', '.', `refs/remotes/origin/${branch}:refs/heads/${branch}`]);
+    return { start: remote, ...there };
+  }
+
+  /**
+   * Pushes the card's branch, as its workspace has it, onto `branch` of `origin`'s repository
+   * (the checkout's `origin`, whatever a clone's own `origin` is), never forced. Returns where that
+   * branch stood (none where it is new there) and where it stands now, or what stands in the way:
+   * uncommitted work, or commits there the card's branch lacks (both the worker's), any other refusal
+   * (the owner's).
+   */
+  async pushAdopted(cardId: string, branch: string): Promise<{ to: string; from: string | null } | LandProblem> {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
+    try {
+      if (await gitAsync(ws, ...LOOK, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
+      const url = await gitAsync(this.o.repoPath, 'remote', 'get-url', 'origin');
+      const to = await gitAsync(ws, 'rev-parse', 'HEAD');
+      const before = await gitRun(ws, ['ls-remote', '--heads', url, branch], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS });
+      const from = before.code === 0 ? (before.stdout.trim().split(/\s+/)[0] ?? '') || null : null;
+      if (from === to) return { to, from };
+      const r = await gitRun(ws, ['push', '--quiet', url, `HEAD:refs/heads/${branch}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS });
+      if (r.code !== 0) {
+        const refused = pushRefusal(r.stderr || r.stdout);
+        return refused.moved
+          ? { code: 'landPush', worker: true, detail: `origin's ${branch} has commits your branch lacks (pushed from elsewhere since you started): merge them into your branch, never rewriting what is on origin` }
+          : { code: 'landPush', worker: false, detail: refused.problem };
+      }
+      // the checkout knows origin's copy where it is now
+      await gitRun(this.o.repoPath, ['fetch', '--quiet', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], { env: NO_PROMPT, timeout: PUSH_TIMEOUT_MS }).catch(() => {});
+      return { to, from };
+    } catch (e) {
+      return { code: 'landPush', worker: false, detail: messageOf(e) };
+    }
   }
 
   /**

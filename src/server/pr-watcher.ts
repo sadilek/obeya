@@ -304,13 +304,15 @@ export class PrWatcher {
       );
     }
     let told = !!(comments.length || failed.length);
+    // the owner's branch the card took over is published: its base comes in by a merge, never a rewrite
+    const update = pr.adopted || this.board.row(cardId).adopted ? 'by merging its base into your branch (its commits are published: no rebase, amend or force push)' : 'the way the repository does it (merge or rebase; push a rebase with --force-with-lease)';
     if (s.mergeable === 'CONFLICTING' && pr.conflictHead !== s.head) {
       next.conflictHead = s.head;
       told = true;
       this.workers.prEvent(
         cardId,
         this.board.t.pr.conflict,
-        `Your pull request${which} conflicts with its base branch. Bring it up to date with the latest base the way the repository does it (merge or rebase; push a rebase with --force-with-lease), resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.`,
+        `Your pull request${which} conflicts with its base branch. Bring it up to date with the latest base ${update}, resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.`,
       );
     } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
     // a branch protection that wants the branch up to date with its base before a merge
@@ -320,13 +322,13 @@ export class PrWatcher {
       this.workers.prEvent(
         cardId,
         this.board.t.pr.behind,
-        `Your pull request${which} is behind its base branch, and the repository merges only a branch that is up to date with it. Bring it up to date the way the repository does it (merge or rebase; push a rebase with --force-with-lease), run the checks, push, and end your turn.`,
+        `Your pull request${which} is behind its base branch, and the repository merges only a branch that is up to date with it. Bring it up to date ${update}, run the checks, push, and end your turn.`,
       );
     }
     // a push the reviewer has not seen, and nobody asked for another look: the worker asks, once per
     // commit, and only while it has nothing else in hand
     // the original's maintainers review when they do: nobody is nudged
-    if (!told && !pr.upstream && !this.workers.busyCards().includes(cardId) && reviewStale(s, noise) && lastAsked(s, noise) < s.changedAt! && pr.staleHead !== s.head) {
+    if (!told && !pr.upstream && !pr.maintainers && !this.workers.busyCards().includes(cardId) && reviewStale(s, noise) && lastAsked(s, noise) < s.changedAt! && pr.staleHead !== s.head) {
       next.staleHead = s.head;
       told = true;
       this.workers.prEvent(
@@ -346,8 +348,8 @@ export class PrWatcher {
     // ready only while the worker has nothing in hand: what it was told may still change the PR
     const busy = told || this.workers.busyCards().includes(cardId);
     const waits: PrWait[] = [...waitsOf(s, noise), ...(busy ? (['agent'] as const) : [])];
-    // a fork's pull request to the original: its maintainers merge it, never Obeya, and it needs the owner for nothing
-    if (pr.upstream) {
+    // a fork's pull request to the original, or one in a repository the owner's account may not merge in: its maintainers merge it, never Obeya, and it needs the owner for nothing
+    if (pr.upstream || pr.maintainers) {
       // a review the maintainers owe is theirs, as is the merge
       const blocking = waits.filter((w) => w !== 'review' && w !== 'answer');
       next.waits = blocking.length ? blocking : ['maintainer'];

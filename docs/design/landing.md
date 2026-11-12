@@ -219,9 +219,55 @@ without a merge, the owner chooses between "Reopen it" and "Keep it on <main> on
 card `live`. Taking back the approval is not offered: the work is public on the original and on the
 main branch alike. Dependents in the queue wait for the merge as for any PR.
 
+### A branch of the owner's
+
+A task may work on a branch of the owner's that exists already (their own work from before, an
+approach left lying, the branch of a pull request of theirs) instead of a new one from the main
+branch: one of the checkout's or `origin`'s, but the main branch, Obeya's own (`obeya/…`) and one
+the owner has checked out. A branch another card works on (not finished, or finishing in its
+workspace) is that card's: picked, that card opens instead. A contributor's branch stays with its
+review card ("Change it myself" there). Taking a branch looks up its open pull request on the forge:
+one from it in `origin`'s repository, else one from it against the repository `origin` is a fork of
+(the original); the card shows it, and the approval looks again.
+
+The workspace starts on the branch as it stands: `origin`'s copy fetched first, the checkout's own
+brought forward to it where it is behind and not checked out (never forced), the newer of the two
+taken; where both have commits of their own, the checkout's, and the worker hears that `origin`'s
+must be merged in before a push. The worker hears that the branch holds earlier work and, where
+`origin` has it, that its commits there are published: nothing of them is rewritten (no rebase,
+amend or force push), the main branch comes in by a merge, and a push goes onto `origin`'s branch
+fast-forward only. Where it has a pull request, the worker pushes nothing before the approval.
+
+Approved, the work goes the way the branch does:
+
+- With an open pull request: Obeya pushes the card's branch onto the branch on `origin`, never
+  forced, and the card is in that pull request, which the watcher follows as the card's own,
+  wherever it is (see Watching the PR): comments, checks and conflicts go to the worker, which
+  brings in its base by a merge. Obeya merges it where the owner's account may merge there and
+  `autoMerge` allows; a pull request against the original, or in a repository where the owner may
+  not merge, its maintainers merge: Obeya never tries, nudges nobody for a review, and the card does
+  not need the owner while it waits ("PR #82 · waits for maintainers"). Merged, the card is `live`;
+  closed without a merge, the owner is asked as for any pull request. A push turned away because
+  `origin`'s branch moved (pushed from elsewhere) goes back to the worker with the approval kept, to
+  merge it in; any other refusal goes to the owner. The approve button reads "Push to the PR branch",
+  with no "Straight to main" beside it; taking back the approval is not offered, the pull request
+  being the owner's from before.
+- Without one: as any task of the repository (see How work lands). With `pr` the worker opens the
+  pull request from the branch under its name; with `main` it lands rebased like a card's own
+  branch, and the copy on `origin` stays as it was, since nothing is force-pushed.
+
+The owner takes a branch with the field "Branch" on an unstarted task ("new branch" by default; see
+Creating cards in The canvas), by word to Obeya („arbeite auf feature/x weiter“), or with the link
+of a pull request of their own: one whose branch is in `origin` (also one from there against the
+original) becomes a task on that branch, started at once, the owner's words its task, instead of a
+review card. A task on such a branch names it above its title, with its pull request
+("⎇ feature/x · PR #82 (upstream)").
+
 ### Review cards
 
-A pull request someone outside opened (a contributor's) gets a card on the owner's word only:
+A pull request someone outside opened (a contributor's) gets a card on the owner's word only (one
+of the owner's own, from a branch of `origin`'s, becomes a task on that branch instead; see A branch
+of the owner's):
 "Review PR #5" to Obeya, typed or said, or the PR's link (see Other commands). What the owner says
 with it („schau besonders auf Security“, „die Demo nur auf dem Handy“) becomes the card's task, on
 top of the fixed review below. A PR that has a card already opens that card, and the words go to its
@@ -674,6 +720,17 @@ A card no agent worked on, a prototype or an archived card has no field.
   hid that the two differ in what is tested. The explanations are tooltips on the buttons, not
   lines on the card (the owner: always-visible text made the card restless and took the height of
   the approval).
+- **A task may take over a branch of the owner's; its work goes where that branch goes**
+  (2026-11-12, the owner's pull request from a fork against the original: a card meant to take it
+  over and record a demo would have landed copies of its commits on the fork's main branch). With an
+  open pull request the approval pushes onto it and the card follows it; without one the work lands
+  as the repository's tasks do (the owner). Published commits are never rewritten, so the base comes
+  in by a merge. Obeya merges only where the owner's account may, never a pull request against the
+  original. Rejected: taking over only the owner's pull request from a fork by its link (a special
+  case: a branch without a pull request, earlier handwork or an approach left lying, is taken the
+  same way); a review card for it (it reviews a stranger's code and sends findings to a contributor);
+  branches of contributors or of other cards (they belong to their review card or card). The field
+  on the task and the word to Obeya both exist, so the feature is found on the card.
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every

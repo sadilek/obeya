@@ -27,6 +27,8 @@ export interface FilePr {
   mergeable?: PrStatus['mergeable'];
   mergeCommit?: string;
   body?: string;
+  /** `owner/name` of the repository it is in, where that is another than the file's (a fork's pull request to the original): its maintainers merge it. */
+  base?: string;
 }
 
 /** The file: the repository its PRs are of, the account Obeya acts as, the PRs. */
@@ -101,6 +103,12 @@ export function fileForge(path: string): Forge {
       f.prs.push({ url, number, title: o.title, author: f.viewer, head, headRef: o.head, checks: [], comments: [], body: o.body });
       write(f);
       return url;
+    },
+    // the owner's open pull request from a branch of the file's repository, in it or against the original
+    async branchPr(_cwd, branch) {
+      const f = read();
+      const p = f.prs.find((x) => x.headRef === branch && x.author === f.viewer && (x.state ?? 'OPEN') === 'OPEN');
+      return p ? { url: p.url, number: p.number, ...(p.base ? { repo: p.base, maintainers: true as const } : {}) } : null;
     },
     async urlOf(_cwd, n) {
       const p = read().prs.find((x) => x.number === n);

@@ -428,7 +428,8 @@ export class WorkerTools {
           // a fork's pull request to the original is the card's own there, not one in origin's repository
           const up = root.upstream;
           const upUrl = up ? this.o.upstream?.()?.url : undefined;
-          const elsewhere = up
+          // the pull request the card's work went onto (a branch of the owner's) is its own, wherever it is
+          const elsewhere = parsePrUrl(root.url ?? '')?.url === ref.url ? false : up
             ? upUrl
               ? !sameRepo(upUrl, ref.owner, ref.repo)
               : `${ref.owner}/${ref.repo}`.toLowerCase() !== up.name.toLowerCase()

@@ -104,6 +104,15 @@ export interface PrState {
    * or was in the owner's way (`blocked`, with why).
    */
   upstream?: UpstreamPr;
+  /**
+   * The pull request of a branch of the owner's the card works on (`AdoptedBranch`), open before the
+   * card: Obeya pushed the work onto it at the approval, and its commits are published, so nothing
+   * of it is rewritten. `maintainers`: its repository's maintainers merge it (a fork's pull request
+   * to the original, or a repository the owner's account may not merge in); Obeya never does, and
+   * nudges nobody for a review.
+   */
+  adopted?: true;
+  maintainers?: true;
 }
 
 /** `PrState.upstream`. */

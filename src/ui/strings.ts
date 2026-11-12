@@ -573,6 +573,25 @@ const de = {
     pickPr: (into: string, name: string, branch: string) =>
       `Entwickelt auf dem neuesten ${branch} von ${name}; Obeya aktualisiert ${branch} vor dem Start von dort. Geht als Pull Request an ${name} und landet auch auf ${into}.`,
   },
+  adopted: {
+    field: 'Branch',
+    fresh: 'neuer Branch',
+    freshHint: 'Die Aufgabe bekommt einen neuen Branch vom Hauptbranch.',
+    hint: 'Ein bestehender Branch von dir: Die Aufgabe arbeitet darauf weiter. Hat er einen offenen PR, geht ihre Arbeit nach der Freigabe dorthin; sonst landet sie wie jede Aufgabe des Repositorys.',
+    remoteOnly: (name: string) => `${name} (nur auf origin)`,
+    onCard: (name: string, title: string) => `${name} – Karte „${title}“`,
+    onCards: 'Auf einer Karte',
+    loading: 'Branches werden gelesen …',
+    none: 'Keine Branches zum Übernehmen',
+    pr: (name: string) => `PR ${name} · offen`,
+    face: (branch: string) => `⎇ ${branch}`,
+    prShort: (name: string, upstream: boolean) => `PR ${name}${upstream ? ' (Upstream)' : ''}`,
+    approve: 'Auf den PR-Branch pushen',
+    approveHint: (branch: string, pr: string, maintainers: boolean) =>
+      `Pusht die Arbeit auf ${branch}, den Branch von PR ${pr}, nur per Fast-Forward. ${maintainers ? 'Die Maintainer dort mergen ihn; Obeya verfolgt ihn bis dahin.' : 'Obeya verfolgt ihn und mergt ihn, sobald er bereit ist.'}`,
+    approved: (pr: string) => `Freigegeben; geht auf PR ${pr}.`,
+    approving: 'wird auf den PR-Branch gepusht …',
+  },
   cardError: (title: string, why: string) => `„${title}“: ${why}`,
   approvedNoChange: 'Beendet.',
   accepted: 'Vorschlag übernommen und gestartet.',
@@ -698,6 +717,9 @@ const de = {
     notHeld: 'Der Kommentar ist schon beim Agenten.',
     noDirect: 'In diesem Repository geht freigegebene Arbeit nur per Pull Request auf main.',
     noUpstream: 'Dieses Repository ist kein Fork, dessen Arbeit auf seinem Hauptbranch landet und an ein Original gehen kann.',
+    noBranch: 'Diesen Branch gibt es hier nicht zum Übernehmen (der Hauptbranch, Obeyas eigene und ausgecheckte sind ausgenommen).',
+    branchOnCard: 'Auf diesem Branch arbeitet schon eine andere Karte.',
+    branchPr: 'Der Branch dieser Aufgabe hat einen offenen Pull Request: Ihre Arbeit geht dorthin, nicht direkt auf main.',
     notReview: 'Diese Karte prüft keinen Pull Request.',
     noEdits: 'Der Beitragende erlaubt keine Änderungen durch Maintainer: Befunde gehen an ihn.',
     noFinding: 'Über diesen Befund ist schon entschieden.',
@@ -2879,6 +2901,25 @@ const en: Strings = {
     pickPr: (into: string, name: string, branch: string) =>
       `Built on the newest ${branch} of ${name}; Obeya updates ${branch} from there before the start. Goes to ${name} as a pull request and lands on ${into} too.`,
   },
+  adopted: {
+    field: 'Branch',
+    fresh: 'new branch',
+    freshHint: 'The task gets a new branch from the main branch.',
+    hint: 'An existing branch of yours: the task goes on working on it. Where it has an open PR, the work goes there once approved; otherwise it lands as any task of the repository does.',
+    remoteOnly: (name: string) => `${name} (on origin only)`,
+    onCard: (name: string, title: string) => `${name} – card “${title}”`,
+    onCards: 'On a card',
+    loading: 'Reading branches …',
+    none: 'No branches to take',
+    pr: (name: string) => `PR ${name} · open`,
+    face: (branch: string) => `⎇ ${branch}`,
+    prShort: (name: string, upstream: boolean) => `PR ${name}${upstream ? ' (upstream)' : ''}`,
+    approve: 'Push to the PR branch',
+    approveHint: (branch: string, pr: string, maintainers: boolean) =>
+      `Pushes the work onto ${branch}, the branch of PR ${pr}, fast-forward only. ${maintainers ? 'Its maintainers merge it; Obeya follows it until then.' : 'Obeya follows it and merges it once it is ready.'}`,
+    approved: (pr: string) => `Approved; goes onto PR ${pr}.`,
+    approving: 'pushing to the PR branch …',
+  },
   cardError: (title: string, why: string) => `“${title}”: ${why}`,
   approvedNoChange: 'Closed.',
   accepted: 'Proposal accepted and started.',
@@ -2988,6 +3029,9 @@ const en: Strings = {
     notHeld: 'The comment is with the agent already.',
     noDirect: 'In this repository, approved work reaches main only through a pull request.',
     noUpstream: 'This repository is no fork whose work lands on its main branch and can go to an original repository.',
+    noBranch: 'There is no such branch here to take (the main branch, Obeya’s own and checked-out ones are left out).',
+    branchOnCard: 'Another card works on this branch already.',
+    branchPr: 'This task’s branch has an open pull request: its work goes there, not directly onto main.',
     notReview: 'This card reviews no pull request.',
     noEdits: 'The contributor does not allow edits by maintainers: findings go to them.',
     noFinding: 'This finding has been decided on already.',
@@ -4710,8 +4754,23 @@ function queueLabel(q: Queue): string {
 export const becomesLabel = (i: { brief?: string }) => (i.brief !== undefined ? t.kind.becomesProject : t.kind.taskBecomesProject);
 
 /** What kind of card it is, in a word or two, on its face and in its head; a plain task says nothing of its kind. */
-export const kindLabel = (i: Pick<Item, 'kind' | 'idea' | 'proposal' | 'becomesProject' | 'brief' | 'prototypeOf'>) =>
-  i.kind === 'question' ? t.kind.question : i.idea || i.proposal?.idea ? t.kind.idea : i.becomesProject ? becomesLabel(i) : i.prototypeOf ? t.kind.prototype : i.kind === 'project' ? t.kind.project : '';
+export const kindLabel = (i: Pick<Item, 'kind' | 'idea' | 'proposal' | 'becomesProject' | 'brief' | 'prototypeOf' | 'adopted'>) =>
+  i.kind === 'question'
+    ? t.kind.question
+    : i.idea || i.proposal?.idea
+      ? t.kind.idea
+      : i.becomesProject
+        ? becomesLabel(i)
+        : i.prototypeOf
+          ? t.kind.prototype
+          : i.kind === 'project'
+            ? t.kind.project
+            : i.adopted
+              ? adoptedLabel(i.adopted)
+              : '';
+
+/** A task on a branch of the owner's says so above its title: the branch, and its pull request (`#82`, from the original of a fork marked as upstream). */
+export const adoptedLabel = (a: NonNullable<Item['adopted']>) => [t.adopted.face(a.branch), a.pr && t.adopted.prShort(`#${a.pr.number}`, !!a.pr.repo)].filter(Boolean).join(' · ');
 
 /** The owner's text for a refused request or a logged error code; the generic one for anything unknown. */
 export const errorText = (code: string | undefined) => (code && Object.hasOwn(t.error, code) ? t.error[code as ErrorCode] : t.error.invalid);

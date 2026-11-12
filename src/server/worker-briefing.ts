@@ -6,7 +6,7 @@ import { basename } from 'node:path';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGE_NAMES, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { dimensions } from '../core/page-tags';
-import type { Item, Mock, UpstreamRef } from '../core/types';
+import type { AdoptedBranch, Item, Mock, UpstreamRef } from '../core/types';
 import { type TaskAuthor, taskAuthor } from '../core/card';
 import type { Harness } from '../core/agents';
 import { decisionLog } from './advisor';
@@ -16,6 +16,7 @@ import { HOST_DIR, hostName, remote } from './hosts';
 import { fromJson, type StoredContribution } from './row';
 import { TO_OBEYA } from './to-obeya';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
+import type { AdoptStart } from './workspaces';
 
 
 /** What a worker hears of a card's task someone else than the owner wrote: its language tells nothing of the owner's (`ownersLanguage`). */
@@ -112,7 +113,7 @@ ${folder ? '- Others work in the same folder at the same time: leave what your c
    * it is), so the worker fetches it itself.
    */
   /** `upstream`: a fork's card that goes to the original repository as a pull request too, its branch made fresh from `start` (`upstreamStart`). */
-  briefing(card: Item, branch: string, resumed = false, headProblem?: string | null, upstream?: { up: UpstreamRef; start: string }): string {
+  briefing(card: Item, branch: string, resumed = false, headProblem?: string | null, upstream?: { up: UpstreamRef; start: string }, adoptedAt?: AdoptStart): string {
     const parts = [`Your card: “${card.title}”.`];
     const contribution = fromJson(this.o.board.row(card.id).contribution);
     if (contribution) return this.reviewBriefing(card, contribution, branch, resumed, headProblem);
@@ -163,12 +164,15 @@ ${idea.idea.brief}` : '',
     parts.push(
       card.builtOn
         ? `You are on branch ${branch}, which holds the prototype's commits (and any earlier work on this card): look at its log and diff first.`
-        : resumed
+        : card.adopted && !resumed
+          ? adoptedNote(branch, adoptedAt)
+          : resumed
           ? `You are on branch ${branch}, which already holds earlier work on this card, perhaps uncommitted: look at its log, \`git status\` and diff first and go on from there.`
           : upstream
             ? upstreamStartNote(branch, upstream.up, upstream.start)
             : `You are on branch ${branch}, fresh from the default branch.`,
     );
+    if (card.adopted) parts.push(adoptedRules(card.adopted));
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
     if (fromJson(this.o.board.row(card.id).new_repo)?.made)
       parts.push(
@@ -281,6 +285,24 @@ function mocksText(mocks: Mock[] | undefined): string {
  * What the worker of a fork's card that goes to the original repository as a pull request too hears
  * of its branch: where it starts, and that it stays fit for that pull request.
  */
+/** Where a task on a branch of the owner's (`Item.adopted`) starts, for its first briefing. */
+export const adoptedNote = (branch: string, at?: AdoptStart) =>
+  `You are on branch ${branch}, a branch of the owner's that existed before this card${at ? ` (at ${at.start.slice(0, 7)})` : ''}: it holds earlier work, theirs or another agent's, so look at its log and its diff against the main branch first and go on from there.` +
+  (at?.diverged ? ` Its copy on origin has commits this one lacks (the owner's local copy went its own way): merge origin's ${branch} in before you push.` : '');
+
+/** How a task on a branch of the owner's treats it, at every start: what is published stays, and where the work goes once approved. */
+export const adoptedRules = (a: AdoptedBranch) =>
+  [
+    a.remote
+      ? `${a.branch} is on origin, so its commits there are published: never rewrite them (no rebase, amend or force push); to bring the main branch in, merge it. A push goes onto origin's ${a.branch} fast-forward only.`
+      : `Keep ${a.branch} as the owner's branch: do not rename it or start another.`,
+    a.pr
+      ? `It has the open pull request ${a.pr.url}${a.pr.repo ? ` in ${a.pr.repo}` : ''}. Do not push before the owner approves: then Obeya pushes your branch onto it and passes you what its reviewers and checks say.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
 export const upstreamStartNote = (branch: string, up: UpstreamRef, start: string) =>
   `You are on branch ${branch}, fresh from ${start.slice(0, 7)}: the newest commit of ${up.ref}, the main branch of ${up.name}, the original repository this one is a fork of; ${up.into}, this fork's own main branch, is not under it. ` +
   `The owner chose to build this task on the original: it goes to ${up.name} as a pull request once they approve it, and onto ${up.into} as well. So keep the branch carrying nothing of ${up.into}'s own work: do not merge ${up.into} into it, and leave out what only this fork has; where the task needs that, ask the owner.`;

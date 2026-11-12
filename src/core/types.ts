@@ -196,6 +196,12 @@ export interface Item {
    */
   upstreamNew?: number;
   /**
+   * A task that works on a branch of the owner's that existed before it (one of `origin` or a local
+   * one), instead of a new branch from the main branch: that branch, and its open pull request where
+   * it has one, as last looked up. Its work goes out the way that branch does (`AdoptedBranch`).
+   */
+  adopted?: AdoptedBranch;
+  /**
    * Its repository does not run on the canvas (it left the configuration, or did not start): its
    * agents take nothing until it is back, and no other repository's agents take it meanwhile.
    * Never on a Question card, whose agent reads only.
@@ -955,6 +961,42 @@ export interface RepoRef {
   configRev?: number;
 }
 
+/**
+ * A branch of the owner's a task works on (`Item.adopted`): its name, whether `origin` has it
+ * (`remote`, which pushes go to, fast-forward only), and its open pull request, where it has one:
+ * in `origin`'s repository, or from there against another one (`repo`, `owner/name`: the original
+ * of a fork). Approved, the work is pushed onto that branch and the pull request followed; without
+ * one it lands as any task of its repository does.
+ */
+export interface AdoptedBranch {
+  branch: string;
+  remote?: true;
+  pr?: AdoptedPr;
+}
+
+/** The open pull request of an adopted branch (`AdoptedBranch.pr`). */
+export interface AdoptedPr {
+  url: string;
+  number: number;
+  /** `owner/name` of its repository, where that is another than `origin`'s (a fork's pull request to the original). */
+  repo?: string;
+  /** The owner's account may not merge it there: its maintainers do, and Obeya never tries. */
+  maintainers?: true;
+}
+
+/**
+ * A branch a new task may work on (`GET /api/c/<canvas>/repos/<repo>/branches`): the local ones and
+ * `origin`'s, but the main branch, Obeya's own and one checked out; one that is another card's
+ * names that card, which opens instead.
+ */
+export interface BranchChoice {
+  name: string;
+  /** Only on `origin`, not in the checkout. */
+  remoteOnly?: true;
+  /** The card that works on it already. */
+  card?: { id: string; title: string };
+}
+
 /** The original repository of a fork (`RepoRef.upstream`): its main branch as the checkout knows it (`upstream/main`), and its name (`owner/repo`). */
 export interface UpstreamRef {
   /** `<remote>/<branch>`, as the settings name it. */
@@ -1405,6 +1447,11 @@ export type CardAction =
    */
   /** `upstream`: in a fork, whether the work goes to the original repository as a pull request too, in place of the card's choice (`Item.upstream`). */
   | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute>; upstream?: boolean }
+  /**
+   * Before work begins on a task: the branch of the owner's it works on (`Item.adopted`), one of
+   * `BranchChoice` that is no other card's; null: a new branch from the main branch again.
+   */
+  | { action: 'branch'; branch: string | null }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before ("Discard changes"). */
   | { action: 'undo' }
   /** Start a queued card although it may collide. */
@@ -1569,6 +1616,11 @@ export type ErrorCode =
   /** Approving directly onto main: the card's repository lands approved work only through a pull request. */
   | 'noDirect'
   | 'noUpstream'
+  /** Taking a branch of the owner's for a task: there is no such branch to take (the main branch, Obeya's own, one checked out), or another card works on it. */
+  | 'noBranch'
+  | 'branchOnCard'
+  /** Approving directly onto main a task whose branch has an open pull request: its work goes onto that pull request. */
+  | 'branchPr'
   /** What only a folder without git has (discarding a card's changes), or what it has not (prototypes, pull requests). */
   | 'notFolder'
   | 'inFolder'
