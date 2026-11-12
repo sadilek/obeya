@@ -871,8 +871,12 @@ export class WorkerTools {
     if (!this.o.keptDemos || demo?.handover !== handover) return;
     const kept = join(this.o.keptDemos, cardId, String(handover));
     if (!(await keepDemo(demo, kept))) return;
-    const now = fromJson(this.o.board.row(cardId).demo);
-    if (now?.handover === handover) this.o.board.work(cardId, { demo: toJson({ ...now, kept }) });
+    // another demo may have taken its place while the copy was made: the card's earlier demos are then served from it
+    const row = this.o.board.row(cardId);
+    const now = fromJson(row.demo);
+    if (now?.handover === handover) return this.o.board.work(cardId, { demo: toJson({ ...now, kept }) });
+    const earlier = fromJson(row.demos) ?? [];
+    if (earlier.some((d) => d.handover === handover)) this.o.board.work(cardId, { demos: toJson(earlier.map((d) => (d.handover === handover ? { ...d, dir: kept } : d))) });
   }
 
   /**

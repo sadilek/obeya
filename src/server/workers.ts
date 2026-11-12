@@ -428,7 +428,7 @@ export class Workers {
       const said = log(later);
       if (text) this.o.onOwnerInput?.(card, kind, text);
       const m = heldFirst(held, words, seen);
-      this.deliver(cardId, `${header}:\n\n${m.text}`, m.images, { owner: true, said: later ? said : [] });
+      this.deliver(cardId, `${header}\n\n${m.text}`, m.images, { owner: true, said: later ? said : [] });
     };
     const how = spoken ? ` (${SPOKEN})` : '';
     if (handover) {
@@ -436,7 +436,7 @@ export class Workers {
       if (card.question) return this.answerDemo(card, { ...w, text: decided ? `${decided.note}\n\n${text}` : text, images: seen, place: undefined }, []);
       // the work still waits for approval while the worker takes the words in; a change they call for comes as a new handover
       this.takingIn(cardId);
-      send(`The owner wrote on your handover${how}. ${STILL_AWAITS_APPROVAL}`, 'feedback', true);
+      send(`The owner wrote on your handover${how}. ${STILL_AWAITS_APPROVAL}:`, 'feedback', true);
     } else if (card.state === 'waiting' && card.need === 'question') {
       // a note instead of an answer takes the question back: it may have settled it, else the worker asks anew
       const waiting = this.live.get(cardId)?.permission;
@@ -449,14 +449,14 @@ export class Workers {
         if (seen.length) this.live.get(cardId)!.session.send('The screenshots of the owner’s note.', seen);
         return;
       }
-      send(`A note from the owner instead of an answer${how}. It withdraws your question (“${card.question?.text ?? ''}”): if the note settles it, go on; if not, ask again`, 'note');
+      send(`A note from the owner instead of an answer${how}. It withdraws your question (“${card.question?.text ?? ''}”): if the note settles it, go on; if not, ask again.`, 'note');
     }
     // no agent works on the card yet: the words go with the task to the one that takes it on
     else if (holdsNotes(card)) this.leaveNote(card, w, `A note the owner left on the card while no agent worked on it${how}`, words);
     // no session to take them in now: they go with the message that resumes it in the clone
     else if (this.waitsForClone(cardId)) this.leaveNote(card, w, `A note from the owner while you waited for the clone${how}`, words);
     // a note to a paused worker lets it go on, with the note
-    else if (card.state === 'working' || card.state === 'inPr' || card.finishing) send(`A note from the owner${how} (${goesOn(card)})`, 'note');
+    else if (card.state === 'working' || card.state === 'inPr' || card.finishing) send(`A note from the owner${how} (${goesOn(card)}):`, 'note');
     else if (askable(card)) this.followUp(card, w);
     else throw new BadRequest('noAgent', 'no agent works on this card');
   }

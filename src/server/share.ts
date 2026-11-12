@@ -268,12 +268,13 @@ export class Sharing {
     busy();
     const chapters = rereadChapters(demo.dir);
     if (typeof chapters === 'string') throw new BadRequest('invalid', chapters);
-    const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = demo;
     // the copy Obeya keeps of it is of what it is now
-    const [keeps, facts] = await Promise.all([kept && keepDemo({ dir: demo.dir, kind: 'video' }, kept), videoFacts(demo.dir)]);
-    // read meanwhile: a demo handed over since stands, and one shared since is not changed under its page
-    if (this.demo(cardId)?.handover !== demo.handover) return;
+    const [keeps, facts] = await Promise.all([demo.kept && keepDemo({ dir: demo.dir, kind: 'video' }, demo.kept), videoFacts(demo.dir)]);
+    // read meanwhile: a demo handed over since stands, one shared since is not changed under its page, and what the owner answered stays
+    const now = this.demo(cardId);
+    if (!now || now.handover !== demo.handover) return;
     busy();
+    const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = now;
     this.o.board.work(cardId, { demo: toJson({ ...rest, chapters, ...facts, ...(keeps ? { kept } : {}) }) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.rebuilt(this.languageOf(demo.dir, this.card(cardId))));
   }

@@ -346,8 +346,7 @@ describe('workers', () => {
     workers.message(c.id, 'Exportier erst mal gar nichts, ich kläre das.');
     expect(state(c.id)).toBe('working');
     expect(board.item(c.id)!.question).toBeUndefined();
-    expect(runtime.last.inbox.at(-1)).toContain('withdraws your question (“CSV oder Excel?”)');
-    expect(runtime.last.inbox.at(-1)).toContain('Exportier erst mal gar nichts');
+    expect(runtime.last.inbox.at(-1)).toContain('withdraws your question (“CSV oder Excel?”): if the note settles it, go on; if not, ask again.\n\nExportier erst mal gar nichts');
     // a remark is not a decision
     expect(board.decisionsOn(c.id)).toEqual([]);
     expect(() => workers.answer(c.id, 'CSV')).toThrow(BadRequest);

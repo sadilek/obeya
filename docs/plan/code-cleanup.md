@@ -217,8 +217,12 @@ the workstream named does it for all of them.
   builders in `worker-texts.ts`. A16: `opening`, `stopWaiting`. A18: `isPlanDoc` (`repo.ts`),
   `textOf` (`workspaces.ts`), `ReviewCards.prHead`, `newLive`. What an owner can see differ: a card
   whose landing on main met a conflict no longer keeps the status line "Landing on main" while its
-  worker resolves it (`approvalKept` clears it, as a review card's merge did). With them the workers'
-  findings file went, every finding in it done.
+  worker resolves it (`approvalKept` clears it, as a review card's merge did); and with the plan
+  folder at the repository's root, a file the settings exclude (`TEMPLATE.md`) no longer counts as a
+  plan doc a card's branch adds, as the canvas never counted it (`isPlanDoc`). A demo replaced while
+  its copy is made gets the copy in the card's earlier demos; `Sharing.rebuilt` writes onto the demo
+  as it stands after the copy. Codex reviewed the branch; its four findings were fixed or, the
+  last, kept as the fix it is. With them the workers' findings file went, every finding in it done.
 - [x] **W13:** The runtimes. runtimes B1 (`runtime.ts` keeps the
   contract; the Claude Code runtime moves to a `claude.ts` beside `codex.ts`, the shell reader to
   `shell.ts`), B2 (one idle Claude Code session), B7, B8, B10, B13, B15, B16, B19.
