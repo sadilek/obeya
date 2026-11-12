@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { enterpriseServer, ghHosts, onGitHub, parseRemote } from './repo';
 import { spawnOutput } from './spawn';
 import { gitTry, LOGIN_TTL } from './git';
+import type { GithubLogin } from './hosts';
 
 export interface PrStatus {
   state: 'OPEN' | 'MERGED' | 'CLOSED';
@@ -172,30 +173,109 @@ export const routedForge = (github: Forge, forgejo: Forge, origin: (cwd: string)
 };
 
 /**
- * Where gh runs: the directory, and the GitHub host (github.com or an Enterprise server) and owner
- * of the repository it works on, where known.
+ * Where gh runs: the directory, and the GitHub host (github.com or an Enterprise server), owner and
+ * name of the repository it works on, where known.
  */
 export interface GhAt {
   cwd: string;
   host?: string;
   owner?: string;
+  repo?: string;
+}
+
+/** A GitHub repository: its host, owner and name. */
+export interface GithubRepo {
+  host: string;
+  owner: string;
+  repo: string;
 }
 
 /**
- * The host and owner of a GitHub repository by its remote URL (https, ssh or scp-like) on
+ * The host, owner and name of a GitHub repository by its remote URL (https, ssh or scp-like) on
  * github.com or a GitHub Enterprise server gh is logged into (`onGitHub`), or none for any other.
  */
-export function githubRepo(remote: string, hosts: () => string[] = ghHosts): { host: string; owner: string } | undefined {
+export function githubRepo(remote: string, hosts: () => string[] = ghHosts): GithubRepo | undefined {
   const { host, path } = parseRemote(remote);
   if (!host || !onGitHub(remote.trim(), hosts)) return undefined;
-  const owner = /^([^/]+)\/[^/]+$/.exec(path)?.[1];
+  const m = /^([^/]+)\/([^/]+)$/.exec(path);
   // ssh.github.com, GitHub's SSH over port 443, is github.com to gh
-  return owner ? { host: host.endsWith('.github.com') ? 'github.com' : host, owner } : undefined;
+  return m ? { host: host.endsWith('.github.com') ? 'github.com' : host, owner: m[1]!, repo: m[2]! } : undefined;
 }
+
+/**
+ * The GitHub account the owner set for a repository on this machine (`RepoConfig.githubAccount`), by
+ * the repository on GitHub: gh works on it, and on its pull requests, as that account.
+ */
+const accounts = new Map<string, string>();
+const repoKey = ({ host, owner, repo }: GithubRepo) => `${host}/${owner}/${repo}`.toLowerCase();
+
+/** gh works on `repo` as `account` from now on; returns what ends that. */
+export function useGithubAccount(repo: GithubRepo, account: string): () => void {
+  const key = repoKey(repo);
+  accounts.set(key, account);
+  return () => {
+    if (accounts.get(key) === account) accounts.delete(key);
+  };
+}
+
+/** The account gh works as on `owner/repo` on `host`: the one set for it, else the owner's own login (a personal repository). */
+const accountOf = ({ host, owner, repo }: { host: string; owner?: string; repo?: string }) => (owner && repo && accounts.get(repoKey({ host, owner, repo }))) || owner;
 
 
 /** By gh program, host and account: its token as gh hands it out (asked once for calls side by side), and when it was asked. */
 const tokens = new Map<string, { token: Promise<string | null>; at: number }>();
+
+/**
+ * The token of gh's login as `account` on `host` (`gh auth token --user`), asked once per
+ * `LOGIN_TTL`; null where gh has no such login.
+ */
+function accountToken(program: string, host: string, account: string, timeout: number): Promise<string | null> {
+  const key = `${program}\n${host}\n${account}`;
+  let known = tokens.get(key);
+  if (!known || Date.now() - known.at > LOGIN_TTL) {
+    // without the tokens in the environment, which gh would hand back instead of the account's own
+    const { GH_TOKEN: _, GITHUB_TOKEN: __, GH_ENTERPRISE_TOKEN: ___, GITHUB_ENTERPRISE_TOKEN: ____, ...plain } = process.env;
+    const asked = spawnOutput([program, 'auth', 'token', '--hostname', host, '--user', account], { env: plain, stdin: 'ignore', timeout }).then(
+      (r) => (r.code === 0 && r.stdout.trim()) || null,
+      () => null,
+    );
+    known = { token: asked, at: Date.now() };
+    tokens.set(key, known);
+  }
+  return known.token;
+}
+
+/** The variable gh reads a token for `host` from, and the other one it would read instead. */
+const tokenVariables = (host: string) => (enterpriseServer(host) ? (['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'] as const) : (['GH_TOKEN', 'GITHUB_TOKEN'] as const));
+
+/**
+ * The login of `account` on `host`, read in the background and again once older than `LOGIN_TTL`,
+ * the one read before standing meanwhile: its token (for a host's clones, `GithubLogin`), and `env`,
+ * the variable that has gh (and git through gh's credential helper) work as that account in an
+ * agent's environment. None until it is read, or where gh has no such login; `ready` settles once it
+ * was read for the first time.
+ */
+export function accountLogin(host: string, account: string, program = 'gh', timeout = GH_TIMEOUT): GithubLogin & { env: () => Record<string, string> | undefined; ready: () => Promise<unknown> } {
+  let token: string | null = null;
+  let read: Promise<unknown> | undefined;
+  let at = 0;
+  const refresh = () => {
+    at = Date.now();
+    read = accountToken(program, host, account, timeout).then((t) => (token = t));
+    return read;
+  };
+  const login = () => {
+    if (!read || Date.now() - at > LOGIN_TTL) void refresh();
+    return token ?? undefined;
+  };
+  return Object.assign(login, {
+    env: () => {
+      const t = login();
+      return t ? { [tokenVariables(host)[0]]: t } : undefined;
+    },
+    ready: () => read ?? refresh(),
+  });
+}
 
 /**
  * How long one gh call may take before it counts as failed: GitHub slow to answer holds up only the
@@ -210,28 +290,14 @@ const GH_TIMEOUT = 60_000;
  * this machine (another one finds no such repository); else gh as it runs anyway (an
  * organisation's repository, say).
  */
-async function ghEnv(program: string, { host, owner }: Omit<GhAt, 'cwd'>, timeout: number): Promise<NodeJS.ProcessEnv | undefined> {
+async function ghEnv(program: string, { host, owner, repo }: Omit<GhAt, 'cwd'>, timeout: number): Promise<NodeJS.ProcessEnv | undefined> {
   if (!host) return undefined;
-  let token: string | null = null;
-  if (owner) {
-    const key = `${program}\n${host}\n${owner}`;
-    let known = tokens.get(key);
-    if (!known || Date.now() - known.at > LOGIN_TTL) {
-      // without the tokens in the environment, which gh would hand back instead of the account's own
-      const { GH_TOKEN: _, GITHUB_TOKEN: __, GH_ENTERPRISE_TOKEN: ___, GITHUB_ENTERPRISE_TOKEN: ____, ...plain } = process.env;
-      const asked = spawnOutput([program, 'auth', 'token', '--hostname', host, '--user', owner], { env: plain, stdin: 'ignore', timeout }).then(
-        (r) => (r.code === 0 && r.stdout.trim()) || null,
-        () => null,
-      );
-      known = { token: asked, at: Date.now() };
-      tokens.set(key, known);
-    }
-    token = await known.token;
-  }
+  const account = accountOf({ host, owner, repo });
+  const token = account ? await accountToken(program, host, account, timeout) : null;
   const env: NodeJS.ProcessEnv = { ...process.env, GH_HOST: host };
   if (token) {
     // the account's token in place of any the environment has for the host
-    const [name, other] = enterpriseServer(host) ? ['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'] : ['GH_TOKEN', 'GITHUB_TOKEN'];
+    const [name, other] = tokenVariables(host);
     delete env[other];
     env[name] = token;
   }
@@ -254,7 +320,7 @@ export const ghCli =
   };
 
 /** The host and owner of the GitHub repository a checkout's `origin` is, where it is one. */
-async function originRepo(cwd: string): Promise<{ host: string; owner: string } | undefined> {
+async function originRepo(cwd: string): Promise<GithubRepo | undefined> {
   const remote = await gitTry(cwd, 'remote', 'get-url', 'origin');
   return remote !== null ? githubRepo(remote) : undefined;
 }
@@ -271,7 +337,7 @@ const ghUrl = (url: string) => githubPr(url)?.url ?? url;
 /** Where gh runs for the pull request at `url`. */
 const atPr = (cwd: string, url: string): GhAt => {
   const ref = githubPr(url);
-  return ref ? { cwd, host: ref.host, owner: ref.owner } : { cwd };
+  return ref ? { cwd, host: ref.host, owner: ref.owner, repo: ref.repo } : { cwd };
 };
 
 /** The pull request at `url`; throws for a URL that is no GitHub pull request's. */
@@ -308,7 +374,7 @@ interface GhPr {
 /** GitHub through a `gh` runner (the real CLI, or canned output in tests). */
 export const makeGhForge = (
   run: (at: GhAt, ...args: string[]) => string | Promise<string>,
-  repoOf: (cwd: string) => Promise<{ host: string; owner: string } | undefined> = originRepo,
+  repoOf: (cwd: string) => Promise<GithubRepo | { host: string; owner: string } | undefined> = originRepo,
 ): Forge => {
   /** Where gh runs for the repository of the checkout's `origin`. */
   const atOrigin = async (cwd: string): Promise<GhAt> => ({ cwd, ...(await repoOf(cwd)) });

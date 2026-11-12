@@ -24,6 +24,13 @@ export interface RepoConfig {
    * remote.
    */
   hosts?: HostConfig[];
+  /**
+   * The account of the GitHub CLI that Obeya and the repository's agents work on GitHub as, where
+   * its `origin` is there; left out, gh works as it does anyway (the owner's own login for a
+   * repository of theirs, else the account gh has active). This machine's alone: logins differ from
+   * one person and machine to the next, so it never goes into the repository's settings.
+   */
+  githubAccount?: string;
   /** The settings the owner set for this machine in the configuration dialog; each goes before the repository's `.obeya/settings.json`. */
   settings?: RepoSettings;
 }
@@ -340,6 +347,11 @@ export interface ResolvedCanvas {
     /** Where it goes out as a pull request, it may also be pushed straight onto `origin`'s main branch (`direct`). */
     shareDirect?: boolean;
     /**
+     * Where its `origin` is on GitHub: the host and owner, the accounts the GitHub CLI is logged
+     * into there (what `githubAccount` may name) and the one it has active.
+     */
+    github?: { host: string; owner: string; accounts: string[]; active?: string };
+    /**
      * On a canvas that runs: the clones its pool loses with this configuration (path on its machine,
      * the host where not here, the number where Obeya made it, the title of the card that holds it).
      */
@@ -370,7 +382,7 @@ export interface ConfigProblem {
 export const START_FAILED: ConfigProblemCode[] = ['canvasDown', 'repoDown', 'repoBefore'];
 
 /** Whether a problem keeps the configuration from being saved: not one in the repository, which is fixed there. */
-export const blocksSaving = (p: ConfigProblem) => !['demoSite', 'adapterGone', 'repoSettings', 'untrusted', ...START_FAILED].includes(p.code);
+export const blocksSaving = (p: ConfigProblem) => !['demoSite', 'githubAccount', 'adapterGone', 'repoSettings', 'untrusted', ...START_FAILED].includes(p.code);
 
 export type ConfigProblemCode =
   /** No canvas at all. */
@@ -394,6 +406,8 @@ export type ConfigProblemCode =
   | 'notClone'
   /** A clone listed as a workspace whose origin is another repository's. */
   | 'otherClone'
+  /** The GitHub account set for the repository is not one the GitHub CLI is logged into on its host, or its `origin` is not on GitHub. */
+  | 'githubAccount'
   /** The demo site the repository's settings name cannot be used: a field is missing, or its deploy command names a program that is not there. */
   | 'demoSite'
   /** A host that cannot work for the repository: its workers use worktrees, or its work does not go out through a remote. */

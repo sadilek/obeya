@@ -2033,10 +2033,14 @@ export class Workers {
 
   // ---------------------------------------------------------------- sessions
 
-  /** What a worker's environment gets: where Obeya is, and the language the repository names for its demos (`DEMO_LANGUAGE`, read by the demo skill). */
+  /**
+   * What a worker's environment gets: where Obeya is, the language the repository names for its
+   * demos (`DEMO_LANGUAGE`, read by the demo skill), and the token of the GitHub account set for it.
+   */
   private env(): Record<string, string> | undefined {
     const language = this.o.adapter.demo?.language;
-    return language ? { ...this.o.env, DEMO_LANGUAGE: language } : this.o.env;
+    const env = { ...this.o.env, ...(language ? { DEMO_LANGUAGE: language } : {}), ...this.o.githubLogin?.env() };
+    return Object.keys(env).length ? env : undefined;
   }
 
   private launch(cardId: string, message: string, resume?: string, images: string[] = []) {
@@ -2055,6 +2059,8 @@ export class Workers {
     this.live.set(cardId, live);
     this.o.board.changed();
     ({ text: message, images } = this.opening(cardId, live, message, images));
+    // the GitHub account's token, where one is set, the session starts with once it is read
+    const login = this.o.githubLogin?.ready();
     const env = this.env();
     // a plan folder outside the repository is the worker's to tick its workstream in, on this machine
     const plans = live.host ? null : outsidePlanDir(this.o.adapter.planDocs.dir);
@@ -2084,9 +2090,16 @@ export class Workers {
       ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
       onEvent: (e) => this.onEvent(cardId, live, e),
     };
-    const start = (notes: string) => this.o.runtime.start(notes ? { ...spec, system: `${spec.system}\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` } : spec, message, images);
-    // what git still reads of the default branch, the session starts once it has; what it is sent meanwhile reaches it then
-    live.session = typeof notes === 'string' ? start(notes) : startingLater(notes.then((n) => () => start(n)), spec);
+    const start = (notes: string, withEnv = spec) => this.o.runtime.start(notes ? { ...withEnv, system: `${spec.system}\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` } : withEnv, message, images);
+    // what git still reads of the default branch, and the GitHub login, the session starts once it has; what it is sent meanwhile reaches it then
+    if (typeof notes === 'string' && !login) live.session = start(notes);
+    else {
+      const read = Promise.all([notes, login?.catch(() => undefined)]).then(([n]) => {
+        const now = this.env();
+        return () => start(n, { ...spec, ...(now ? { env: now } : {}) });
+      });
+      live.session = startingLater(read, spec);
+    }
     live.session.done.then(() => {
       if (this.live.get(cardId) !== live) return;
       this.live.delete(cardId);

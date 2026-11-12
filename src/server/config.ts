@@ -18,8 +18,8 @@ import { BadRequest } from './board';
 import { type StartFailure } from './canvas';
 import { ConfigError, readRepos, resolveCanvas } from './canvas-config';
 import type { Store } from './db';
-import { sameRemote } from './repo';
-import type { Forge } from './forge';
+import { ghAccounts, sameRemote } from './repo';
+import { type Forge, githubRepo } from './forge';
 import { commitShared, proposeShared, pushShared } from './shared-settings';
 import { leavingClones } from './workspaces';
 import { gitTry } from './git';
@@ -138,6 +138,7 @@ export const configShape = z.array(
                   .strict(),
               )
               .optional(),
+            githubAccount: z.string().optional(),
             settings: settingsShape.optional(),
           })
           .strict(),
@@ -158,12 +159,14 @@ function tidy(canvases: z.infer<typeof configShape>): CanvasConfig[] {
       const settings = tidySettings(r.settings);
       // a folder without git has neither clones nor other machines: its cards all work in it
       if (r.git === false) return { path: r.path.trim(), git: false as const, ...(settings ? { settings } : {}) };
+      const account = r.githubAccount?.trim();
       return {
         path: r.path.trim(),
         ...(workspaces.length ? { workspaces } : {}),
         ...(r.clones ? { clones: r.clones } : {}),
         ...(r.slots !== undefined ? { slots: r.slots } : {}),
         ...(hosts.length ? { hosts } : {}),
+        ...(account ? { githubAccount: account } : {}),
         ...(settings ? { settings } : {}),
       };
     }),
@@ -540,6 +543,13 @@ export class Config {
             const why = adapter.land === 'main' ? 'its work lands on the main of this checkout' : !got.info.remote ? 'it has no remote to clone from' : null;
             if (why) problems.push({ code: 'hostRepo', canvas, repo, detail: `the repository cannot have workers on other machines: ${why}` });
           }
+          const account = r.githubAccount;
+          if (account) {
+            const gh = got.info.remote ? githubRepo(got.info.remote) : undefined;
+            if (!gh) problems.push({ code: 'githubAccount', canvas, repo, detail: `the GitHub account ${account} applies to no repository on GitHub: origin is ${got.info.remote ?? 'unset'}` });
+            else if (!ghAccounts(gh.host).accounts.some((a) => a.toLowerCase() === account.toLowerCase()))
+              problems.push({ code: 'githubAccount', canvas, repo, detail: `the GitHub CLI is not logged in as ${account} on ${gh.host} (gh auth login --hostname ${gh.host})` });
+          }
           const site = adapter.demo?.site;
           const wrong = site && siteProblem(site, resolve(r.path));
           if (wrong) problems.push({ code: 'demoSite', canvas, repo, detail: wrong });
@@ -554,6 +564,7 @@ export class Config {
           repos: given.map(({ config: r, ref, adapter, read: got, values }, repo) => {
             const trust = trusts[repo];
             const leaving = got.info.folder ? [] : this.leaving(id, ref.id === repos[0]!.ref.id ? null : ref.id, r, adapter.workspaces);
+            const gh = !got.info.folder && got.info.remote ? githubRepo(got.info.remote) : undefined;
             return {
             id: ref.id,
             workspaces: adapter.workspaces,
@@ -564,6 +575,7 @@ export class Config {
             shareTo: adapter.land === 'main' ? 'main' : 'pr',
             ...(adapter.land === 'pr' && adapter.direct ? { shareDirect: true } : {}),
             ...(leaving.length ? { leaving } : {}),
+            ...(gh ? { github: { host: gh.host, owner: gh.owner, ...ghAccounts(gh.host) } } : {}),
             };
           }),
         };

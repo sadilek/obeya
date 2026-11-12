@@ -205,6 +205,37 @@ describe("Obeya's configuration", () => {
     expect((await check([{ path: web, hosts: [{ ...host, name: 'a/b' }] }])).problems.map((p) => p.code)).toEqual(['invalid']);
   });
 
+  test("a repository on GitHub offers the accounts gh is logged into there; one set that gh lacks is a problem that blocks nothing; it stays this machine's", async () => {
+    const gh = join(dir, 'gh');
+    mkdirSync(gh);
+    writeFileSync(join(gh, 'hosts.yml'), 'github.com:\n    users:\n        alice:\n        work-alice:\n    user: alice\n');
+    const was = process.env.GH_CONFIG_DIR;
+    process.env.GH_CONFIG_DIR = gh;
+    try {
+      const c = config('file', []);
+      Bun.spawnSync(['git', '-C', web, 'remote', 'add', 'origin', 'git@github.com:acme-org/web.git']);
+      const check = (repos: object[]) => c.check([{ repos }]);
+      const ok = await check([{ path: web, githubAccount: ' work-alice ' }, { path: api }]);
+      expect(ok.problems).toEqual([]);
+      expect(ok.canvases[0]!.repos[0]!.githubAccount).toBe('work-alice');
+      expect(ok.resolved[0]!.repos[0]!.github).toEqual({ host: 'github.com', owner: 'acme-org', accounts: ['alice', 'work-alice'], active: 'alice' });
+      // a repository not on GitHub has no account to choose
+      expect(ok.resolved[0]!.repos[1]!.github).toBeUndefined();
+      expect((await check([{ path: web, githubAccount: '' }])).canvases[0]!.repos[0]).not.toHaveProperty('githubAccount');
+      const missing = await check([{ path: web, githubAccount: 'bob' }, { path: api, githubAccount: 'alice' }]);
+      expect(missing.problems.map((p) => [p.code, p.repo])).toEqual([
+        ['githubAccount', 0],
+        ['githubAccount', 1],
+      ]);
+      expect(missing.problems.some(blocksSaving)).toBe(false);
+      // never among the settings "Take over into the repository for everyone" commits
+      expect(ok.canvases[0]!.repos[0]!.settings).toBeUndefined();
+    } finally {
+      if (was === undefined) delete process.env.GH_CONFIG_DIR;
+      else process.env.GH_CONFIG_DIR = was;
+    }
+  });
+
   test("a demo site that cannot be used is a problem at the repository", async () => {
     const site = { title: 'Demos', url: 'https://demos.example.dev', deploy: 'no-such-deploy-anywhere {dir}' };
     const own = gitRepo(join(dir, 'shop'), { '.obeya/settings.json': JSON.stringify({ demo: { site } }) });

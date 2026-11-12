@@ -82,6 +82,12 @@ export interface WorkerOptions {
   restartsFor?: (landed: Landed, pushedFrom?: string) => Promise<'obeya' | 'repo' | false> | 'obeya' | 'repo' | false;
   /** Added to every worker's environment: where Obeya is (`OBEYA_URL`), for a demo's narration. */
   env?: Record<string, string>;
+  /**
+   * The GitHub account set for the repository on this machine (`accountLogin`): its token goes into
+   * every worker's environment, so the agent's gh works as that account. A session starts once it
+   * was read for the first time.
+   */
+  githubLogin?: { env: () => Record<string, string> | undefined; ready: () => Promise<unknown> };
   /** The narration language of the demo settings, for a repository that names none for its demos; the conversation language when left out. */
   demoLanguage?: () => Language;
   /** The harness the workers' group runs on (`withAgentSetting`), where a card chose none: how a worker waits differs by it. Claude Code when left out. */

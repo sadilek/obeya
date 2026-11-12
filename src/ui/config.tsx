@@ -1799,6 +1799,7 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
           )}
         </div>
       )}
+      {!folder && resolved?.github && <GithubAccount github={resolved.github} value={repo.githubAccount} onChange={(a) => onChange(without('githubAccount', a))} />}
       {resolved && (
         <RepoSettingsBlock
           show={focus?.field === 'settings' ? focus : undefined}
@@ -1812,6 +1813,33 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The GitHub CLI's account the repository works as on this machine (`RepoConfig.githubAccount`):
+ * automatic, or one of the accounts gh is logged into on its host, all in view at once (a machine
+ * has few); one set that gh no longer has stays listed, marked, so it is seen rather than silently
+ * replaced.
+ */
+function GithubAccount({ github, value, onChange }: { github: NonNullable<ResolvedCanvas['repos'][number]['github']>; value: string | undefined; onChange: (account: string | undefined) => void }) {
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  // automatic: the owner's own login where gh has it, else the account gh has active
+  const auto = github.accounts.find((a) => same(a, github.owner)) ?? github.active;
+  const missing = value && !github.accounts.some((a) => same(a, value));
+  return (
+    <div className="cfg-group">
+      <h5 className="cfg-group-head">{t.config.groups.github}</h5>
+      <Field label={<>{t.config.githubAccount} <Info text={t.config.githubAccountHint(github.host)} /></>}>
+        <Seg
+          label={t.config.githubAccount}
+          options={['', ...github.accounts, ...(missing ? [value] : [])]}
+          value={value ? (github.accounts.find((a) => same(a, value)) ?? value) : ''}
+          name={(a) => (!a ? t.config.githubAccountAuto(auto) : a === value && missing ? t.config.githubAccountMissing(a) : a)}
+          onChange={(a) => onChange(a || undefined)}
+        />
+      </Field>
+    </div>
   );
 }
 

@@ -81,9 +81,11 @@ call gets a minute: a PR GitHub does not answer for counts as unreadable for tha
 no other card.
 
 - GitHub through `gh`, on the PR's host (`GH_HOST`; for a PR being opened, the host of `origin`) and
-  as the account that owns the repository where gh has a login for it there (its token as
-  `GH_TOKEN`, on an Enterprise server `GH_ENTERPRISE_TOKEN`, the variable gh reads for such a host):
-  the active account may not see the owner's private repository. Thread
+  as the GitHub account set for the repository on this machine (see GitHub account in Repositories
+  and configuration), else as the account that owns the repository where gh has a login for it
+  there (its token as `GH_TOKEN`, on an Enterprise server `GH_ENTERPRISE_TOKEN`, the variable gh
+  reads for such a host): the active account may not see the owner's private repository, nor an
+  organisation's that only another of the owner's accounts belongs to. Thread
   resolution and comment edit times only GraphQL gives.
 - Forgejo and Gitea through `<server>/api/v1` with curl and git's login for `origin`'s URL (`git
   credential fill`, never prompting; else an access token stored as git's password for the host,

@@ -234,6 +234,22 @@ describe('handing over with a demo', () => {
     expect(runtime.last.inbox[0]).toContain(`recorded with the demo skill (\`${demoSkillName()}\`; if your session does not know it, read its file ${DEMO_SKILL_FILE} and follow that)`);
   });
 
+  test("the GitHub account set for the repository: the worker's session starts once its token is read, with it in its environment", async () => {
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
+    let token: string | undefined;
+    let release!: () => void;
+    const read = new Promise<void>((r) => (release = r));
+    rebuild({ githubLogin: { env: () => (token ? { GH_TOKEN: token } : undefined), ready: () => read } });
+    const before = runtime.sessions.length;
+    await workers.start(manual().id);
+    // not started on whatever gh has active meanwhile
+    expect(runtime.sessions.length).toBe(before);
+    token = 'gho_work';
+    release();
+    await until(() => runtime.sessions.length > before);
+    expect(runtime.last.spec.env).toEqual({ OBEYA_URL: 'http://127.0.0.1:4417', GH_TOKEN: 'gho_work' });
+  });
+
   test("a repository that names the language of its demos gives it to the worker's demo skill", async () => {
     await setup({ ...generic, land: 'main', workspaces: 'clones', demo: { language: 'en' } });
     await workers.start(manual().id);

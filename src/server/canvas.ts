@@ -33,7 +33,7 @@ import { IdeaActions } from './idea-actions';
 import { Images } from './images';
 import { Learner } from './learner';
 import { SettingsReads } from './settings-reads';
-import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge';
+import { accountLogin, type ContributionInfo, type Forge, githubRepo, parsePrUrl, sameRepo, useGithubAccount } from './forge';
 import { Coordinator } from './coordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
@@ -743,6 +743,10 @@ export class CanvasRuntime {
       board.docsChanged();
     });
     const remoteHosts = !folder && info.remote && adapter.workspaces === 'clones' && adapter.land !== 'main' ? (rc.hosts ?? []) : [];
+    // the GitHub account set for the repository on this machine: Obeya's gh calls on it, its agents' gh, and its clones on hosts work as that account
+    const onGithub = !folder && rc.githubAccount && info.remote ? githubRepo(info.remote) : undefined;
+    const githubLogin = onGithub && rc.githubAccount ? accountLogin(onGithub.host, rc.githubAccount) : undefined;
+    if (onGithub && rc.githubAccount) stops.push(useGithubAccount(onGithub, rc.githubAccount));
     // the workers set up below say how many are busy where
     let workers!: Workers;
     let workspaces: CardWorkspaces;
@@ -790,7 +794,7 @@ export class CanvasRuntime {
     }
     // clones on other machines, made in the background: a host that is off now gets them once it answers
     if (remoteHosts.length) {
-      const token = githubToken(info.path, info.remote!);
+      const token = githubLogin ?? githubToken(info.path, info.remote!);
       let stopped = false;
       stops.push(() => (stopped = true));
       for (const h of remoteHosts) {
@@ -855,6 +859,7 @@ export class CanvasRuntime {
       ...(workspaces instanceof Workspaces ? { pulls: workspaces } : {}),
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
+      ...(githubLogin ? { githubLogin } : {}),
       demoLanguage: () => readDemoSettings(deps.home).language,
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),

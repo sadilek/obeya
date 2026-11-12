@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmdirSync, rmSync, unlinkSync, watch, writeFile
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
-import { ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, parseRemote, remoteHost, repoInfo, sameRemote, watchPlanDocs } from './repo';
+import { ghAccounts, ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, parseRemote, remoteHost, repoInfo, sameRemote, watchPlanDocs } from './repo';
 import { gitRepo } from './testing';
 import { git } from './git';
 
@@ -304,6 +304,38 @@ describe('a remote on GitHub', () => {
       expect(ghHosts({ GH_CONFIG_DIR: join(dir, 'none'), GH_HOST: 'github.example.com', GH_ENTERPRISE_TOKEN: 't' })).toEqual(['github.example.com']);
       expect(ghHosts({ GH_CONFIG_DIR: join(dir, 'none'), GH_HOST: 'github.example.com', GH_TOKEN: 't' })).toEqual([]);
       expect(ghHosts({ GH_CONFIG_DIR: join(dir, 'none'), GH_HOST: 'example.ghe.com', GH_TOKEN: 't' })).toEqual(['example.ghe.com']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the accounts gh is logged into on a host, and its active one, by its hosts.yml', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-gh-'));
+    try {
+      const yml = [
+        'github.com:',
+        '    git_protocol: https',
+        '    users:',
+        '        alice:',
+        '            oauth_token: secret',
+        '        work-alice:',
+        '    user: work-alice',
+        '"git.acme.com":',
+        '    oauth_token: old',
+        '    user: "acme-bot"',
+        'github.example.com:',
+        '    git_protocol: ssh',
+        '',
+      ].join('\n');
+      writeFileSync(join(dir, 'hosts.yml'), yml);
+      const env = { GH_CONFIG_DIR: dir };
+      expect(ghAccounts('github.com', env)).toEqual({ accounts: ['alice', 'work-alice'], active: 'work-alice' });
+      expect(ghAccounts('GitHub.com', env)).toEqual({ accounts: ['alice', 'work-alice'], active: 'work-alice' });
+      // gh before 2.40 kept one login per host, named by `user` alone
+      expect(ghAccounts('git.acme.com', env)).toEqual({ accounts: ['acme-bot'], active: 'acme-bot' });
+      expect(ghAccounts('github.example.com', env)).toEqual({ accounts: [] });
+      expect(ghAccounts('gitlab.com', env)).toEqual({ accounts: [] });
+      expect(ghAccounts('github.com', { GH_CONFIG_DIR: join(dir, 'none') })).toEqual({ accounts: [] });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

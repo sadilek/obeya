@@ -72,7 +72,7 @@ export const enterpriseServer = (host: string) => host !== 'github.com' && !host
  * the file rather than asked of `gh auth status`, which checks each login over the network.
  */
 export function ghHosts(env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): string[] {
-  const dir = env.GH_CONFIG_DIR || (env.XDG_CONFIG_HOME ? join(env.XDG_CONFIG_HOME, 'gh') : platform === 'win32' && env.AppData ? join(env.AppData, 'GitHub CLI') : join(homedir(), '.config', 'gh'));
+  const dir = ghConfigDir(env, platform);
   const host = env.GH_HOST?.trim().toLowerCase();
   const token = host && (enterpriseServer(host) ? env.GH_ENTERPRISE_TOKEN || env.GITHUB_ENTERPRISE_TOKEN : env.GH_TOKEN || env.GITHUB_TOKEN);
   const fromEnv = host && token ? [host] : [];
@@ -81,6 +81,55 @@ export function ghHosts(env: NodeJS.ProcessEnv = process.env, platform: string =
   } catch {
     return fromEnv;
   }
+}
+
+/** gh's config directory as gh finds it: `GH_CONFIG_DIR`, `XDG_CONFIG_HOME/gh`, on Windows `%AppData%\GitHub CLI`, else `~/.config/gh`. */
+const ghConfigDir = (env: NodeJS.ProcessEnv, platform: string) =>
+  env.GH_CONFIG_DIR || (env.XDG_CONFIG_HOME ? join(env.XDG_CONFIG_HOME, 'gh') : platform === 'win32' && env.AppData ? join(env.AppData, 'GitHub CLI') : join(homedir(), '.config', 'gh'));
+
+/**
+ * The accounts the GitHub CLI is logged into on `host` (`users` of its entry in `hosts.yml`, gh 2.40
+ * on), and the one it has active there (`user`); none where it has no login there. Read from the
+ * file, as `ghHosts` is, never asking the network.
+ */
+export function ghAccounts(host: string, env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): { accounts: string[]; active?: string } {
+  let text: string;
+  try {
+    text = readFileSync(join(ghConfigDir(env, platform), 'hosts.yml'), 'utf8');
+  } catch {
+    return { accounts: [] };
+  }
+  const accounts: string[] = [];
+  let active: string | undefined;
+  // the lines of the host's entry: from its name at the left margin to the next name there
+  let inHost = false;
+  let usersAt = -1;
+  let userIndent = -1;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const indent = line.length - line.trimStart().length;
+    const m = /^\s*("?)([^":]+)\1:\s*(.*?)\s*$/.exec(line);
+    if (indent === 0) {
+      inHost = !!m && m[2]!.trim().toLowerCase() === host.toLowerCase();
+      usersAt = -1;
+      continue;
+    }
+    if (!inHost || !m) continue;
+    if (usersAt >= 0 && indent > usersAt) {
+      // the accounts are the keys one level below `users:`
+      if (userIndent < 0) userIndent = indent;
+      if (indent === userIndent) accounts.push(m[2]!.trim());
+      continue;
+    }
+    usersAt = -1;
+    if (m[2] === 'users' && !m[3]) {
+      usersAt = indent;
+      userIndent = -1;
+    } else if (m[2] === 'user' && m[3]) active = m[3].replace(/^["']|["']$/g, '');
+  }
+  // gh before 2.40 kept a single login, named by `user` alone
+  if (!accounts.length && active) accounts.push(active);
+  return { accounts, ...(active ? { active } : {}) };
 }
 
 /**

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Forge, ghCli, githubRepo, landedUrl, makeGhForge, parsePrUrl, routedForge, type PrStatus } from './forge';
+import { accountLogin, type Forge, ghCli, githubRepo, landedUrl, makeGhForge, parsePrUrl, routedForge, type PrStatus, useGithubAccount } from './forge';
 import { confidence, lastAsked, readable, reviewOf, reviewStale, waitsOf } from './pr-review';
 import { onGitHub } from './repo';
 import { fakeGh, noContributions, removeDir } from './testing';
@@ -86,14 +86,14 @@ test('a pull request goes to the forge its URL is on; one is opened on the forge
   expect(seen).toEqual(['forgejo status', 'forgejo status', 'github merge', 'github body', 'forgejo setBody', 'github open', 'forgejo open']);
 });
 
-test('githubRepo: host and owner on github.com or an Enterprise server gh is logged into', () => {
+test('githubRepo: host, owner and name on github.com or an Enterprise server gh is logged into', () => {
   const hosts = () => ['github.com', 'github.example.com'];
-  expect(githubRepo('git@github.com:acme/app.git\n', hosts)).toEqual({ host: 'github.com', owner: 'acme' });
-  expect(githubRepo('https://github.com/acme/app', hosts)).toEqual({ host: 'github.com', owner: 'acme' });
-  expect(githubRepo('ssh://git@github.com/acme/app.git', hosts)).toEqual({ host: 'github.com', owner: 'acme' });
-  expect(githubRepo('ssh://git@ssh.github.com:443/acme/app.git', hosts)).toEqual({ host: 'github.com', owner: 'acme' });
-  expect(githubRepo('https://github.example.com/team/app.git', hosts)).toEqual({ host: 'github.example.com', owner: 'team' });
-  expect(githubRepo('git@github.example.com:team/app.git', hosts)).toEqual({ host: 'github.example.com', owner: 'team' });
+  expect(githubRepo('git@github.com:acme/app.git\n', hosts)).toEqual({ host: 'github.com', owner: 'acme', repo: 'app' });
+  expect(githubRepo('https://github.com/acme/app', hosts)).toEqual({ host: 'github.com', owner: 'acme', repo: 'app' });
+  expect(githubRepo('ssh://git@github.com/acme/app.git', hosts)).toEqual({ host: 'github.com', owner: 'acme', repo: 'app' });
+  expect(githubRepo('ssh://git@ssh.github.com:443/acme/app.git', hosts)).toEqual({ host: 'github.com', owner: 'acme', repo: 'app' });
+  expect(githubRepo('https://github.example.com/team/app.git', hosts)).toEqual({ host: 'github.example.com', owner: 'team', repo: 'app' });
+  expect(githubRepo('git@github.example.com:team/app.git', hosts)).toEqual({ host: 'github.example.com', owner: 'team', repo: 'app' });
   expect(githubRepo('https://github.example.com/team/app.git', () => [])).toBeUndefined();
   expect(githubRepo('/home/me/app', hosts)).toBeUndefined();
   expect(githubRepo('git@gitlab.com:acme/app.git', hosts)).toBeUndefined();
@@ -137,6 +137,41 @@ test('gh is sent to the pull request\'s host, with the token of the owner\'s log
       'api repos/team/app | GH_HOST=example.ghe.com GH_TOKEN=token:example.ghe.com:team',
       'pr create | GH_HOST=',
     ]);
+  } finally {
+    for (const [n, v] of saved) if (v !== undefined) process.env[n] = v;
+    await removeDir(dir);
+  }
+});
+
+test('gh works on a repository as the GitHub account set for it, and as the owner\'s login again once the setting ends', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-gh-account-'));
+  const names = ['GH_HOST', 'GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'];
+  const saved = names.map((n) => [n, process.env[n]] as const);
+  for (const n of names) delete process.env[n];
+  try {
+    const program = fakeGh(dir, {});
+    const forge = makeGhForge(ghCli(program));
+    const ended = useGithubAccount({ host: 'github.com', owner: 'Acme-Org', repo: 'App' }, 'work-alice');
+    await forge.body(dir, 'https://github.com/acme-org/app/pull/7');
+    // another repository of the same owner keeps gh as it was
+    await forge.body(dir, 'https://github.com/acme-org/other/pull/8');
+    ended();
+    await forge.body(dir, 'https://github.com/acme-org/app/pull/9');
+    const calls = readFileSync(join(dir, 'calls'), 'utf8').trim().split('\n');
+    expect(calls.filter((c) => c.startsWith('pr view'))).toEqual([
+      'pr view https://github.com/acme-org/app/pull/7 --json body | GH_HOST=github.com GH_TOKEN=token:github.com:work-alice',
+      'pr view https://github.com/acme-org/other/pull/8 --json body | GH_HOST=github.com GH_TOKEN=token:github.com:acme-org',
+      'pr view https://github.com/acme-org/app/pull/9 --json body | GH_HOST=github.com GH_TOKEN=token:github.com:acme-org',
+    ]);
+    // an agent's environment gets the account's token, on an Enterprise server in the variable gh reads there
+    const login = accountLogin('github.com', 'work-alice', program);
+    expect(login.env()).toBeUndefined();
+    await login.ready();
+    expect(login.env()).toEqual({ GH_TOKEN: 'token:github.com:work-alice' });
+    expect(login()).toBe('token:github.com:work-alice');
+    const enterprise = accountLogin('github.example.com', 'alice', program);
+    await enterprise.ready();
+    expect(enterprise.env()).toEqual({ GH_ENTERPRISE_TOKEN: 'token:github.example.com:alice' });
   } finally {
     for (const [n, v] of saved) if (v !== undefined) process.env[n] = v;
     await removeDir(dir);

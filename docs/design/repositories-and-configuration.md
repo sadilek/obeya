@@ -385,7 +385,8 @@ have changes. Renaming a canvas keeps its id and cards.
 
 A repository's page is its path, its problems, then its settings in groups under a small heading
 each, always shown: where its agents work ("Agents work in": worktrees or clones, with its
-source, the clones, slots and other machines), branch and landing (main branch, landing, direct,
+source, the clones, slots and other machines), GitHub (its "GitHub account", only where `origin`
+is on GitHub, see GitHub account), branch and landing (main branch, landing, direct,
 auto-merge, accounts without review, soft paths), app and checks (setup, checks, "How to run the
 app" in a large text field, "Stop while a card waits", the keep condition once there is
 one), plans and language (plan docs, "Repository language"), demos ("Demo language",
@@ -463,6 +464,21 @@ The demo settings and voices), the personal demo site below them into `personal-
 personal site in Sharing demos), languages, theme, models, whether the bar shows the usage limits
 (`usageMeter: false` when not) and whether the page shows what agents cost (`costs: true` when it
 does) into `settings.json` in Obeya's home.
+
+#### GitHub account
+
+On a machine where the GitHub CLI is logged into several accounts (a personal one and a work one,
+say), each repository on GitHub can name the one Obeya and its agents work as there: `githubAccount`
+in the repository's entry of `canvases.json`, chosen in the dialog from the accounts gh is logged
+into on `origin`'s host (read from gh's `hosts.yml`, never over the network), or "Automatic". Set,
+Obeya's own gh calls on the repository and its pull requests run with that account's token (`gh
+auth token --user`), its agents get the token in their environment (`GH_TOKEN`, on an Enterprise
+server `GH_ENTERPRISE_TOKEN`; a session starts once it is read), so their gh, and git where its
+credential helper is gh's, work as that account, and its clones on other machines get it as their
+GitHub login. Automatic is the account that owns the repository where gh has a login for it, else
+the account gh has active. An account gh is not logged into (any more) is a problem at the
+repository that blocks nothing, and gh works as automatic meanwhile. Changing it restarts the
+repository's agents once they paused, as any change to the repository's entry does.
 
 ### Live configuration
 
@@ -564,6 +580,17 @@ language (2026-11-08: a worker on an English task, with English interface and co
 its status lines in German).
 
 ### Decisions
+
+- **The GitHub account is this machine's, set per repository** (owner, 2026-11-12): with gh on the
+  wrong account, a pull request in an organisation's repository was unreadable for Obeya ("Could
+  not resolve to a Repository", 404) until the owner switched gh by hand, which then broke the
+  other repositories. It lives in the configuration, beside the clones and hosts, not in
+  `.obeya/settings.json`: logins differ from one person and machine to the next, and "Take over
+  into the repository for everyone" never takes it. Rejected: a setting in the repository (one
+  person's account names would be everyone's); switching gh's active account for the repository
+  (`gh auth switch` changes it for every terminal and every other repository at once); trying each
+  logged-in account until one sees the repository (a round trip per account, and it silently picks
+  whichever answers first where several can see it).
 
 - **A canvas may span several repositories, and one Obeya serves several canvases.** Rejected: one
   canvas per repository.
