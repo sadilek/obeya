@@ -5,7 +5,7 @@
 import { isAbsolute } from 'node:path';
 import { answering, askable, finished, handedOver, type Item, type Question, type ApproveResult, type ChangeRoute, type Clash, type Finding, type FindingStatus, type HeldChanges, PUSH_HOLD_MS } from '../core/types';
 import { BadRequest } from './board';
-import { fromJson, type HeldComment, type LandedState, type Resolving, type StoredContribution, type Unheard, toJson } from './row';
+import { fromJson, type HeldComment, type Json, type LandedState, type Resolving, type StoredContribution, type Unheard, toJson } from './row';
 import { hostName } from './hosts';
 import type { PullStopped } from './workspaces';
 import { defaultBranchCommit, isFolder } from './branches';
@@ -50,6 +50,8 @@ export interface ReviewHost {
   deliver(cardId: string, text: string, images?: string[], owner?: boolean): void;
   unheard(cardId: string): Unheard[];
   unheardBut(cardId: string, prefix: string): Unheard[];
+  unheardWith(cardId: string, text: string, o?: { replaces?: string }): Json<Unheard[]>;
+  untell(cardId: string, prefix: string): void;
   /** The comments on places in the demo video held back for the worker. */
   held(cardId: string): HeldComment[];
   /** Those comments wait for no timer any more: what follows takes them, or gives them back (`releaseSoon`). */
@@ -429,7 +431,7 @@ export class ReviewCards {
     if (text === c.held.body) return;
     this.o.board.work(cardId, {
       contribution: toJson({ ...c, held: { ...c.held, body: text } }),
-      unheard: toJson([...this.w.unheardBut(cardId, HELD_EDITED), { said: [], text: heldEdited(text), images: [] }]),
+      unheard: this.w.unheardWith(cardId, heldEdited(text), { replaces: HELD_EDITED }),
     });
     this.o.board.log(cardId, 'state', 'owner', (text ? this.o.board.t.worker.heldEdited : this.o.board.t.worker.heldRemoved)(c.number));
   }
@@ -750,7 +752,7 @@ export class ReviewCards {
     // a draft written before the worker heard of the owner's edit would put back what they rewrote
     const edited = draft?.trim() && this.w.unheard(cardId).find((u) => u.text.startsWith(HELD_EDITED));
     if (edited) {
-      this.o.board.work(cardId, { unheard: toJson(this.w.unheardBut(cardId, HELD_EDITED)) });
+      this.w.untell(cardId, HELD_EDITED);
       return `Not handed over: ${edited.text.replace(HELD_EDITED, 'the owner edited the text that goes onto the pull request with the approval.')}\n\nThen call ready_for_review again.`;
     }
     // a text the owner emptied stays empty: the commits go without a comment

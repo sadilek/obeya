@@ -8,7 +8,7 @@ import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { answering, askable, type Awaited, pausable, pausableNow, type WorkerTurn, type CardLanding, type ChangeSize, formatQuestion, handedOver, type Item, pickedAnswer, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, cardAgentOf, type ChangeRoute } from '../core/types';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
-import { fromJson, type AskedPermission, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
+import { fromJson, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
 import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
@@ -191,6 +191,8 @@ export class Workers {
       deliver: (id, text, images, owner) => this.deliver(id, text, images, owner),
       unheard: (id) => this.unheard(id),
       unheardBut: (id, prefix) => this.unheardBut(id, prefix),
+      unheardWith: (id, text, o) => this.unheardWith(id, text, o),
+      untell: (id, prefix) => this.untell(id, prefix),
       held: (id) => this.held(id),
       holdOff: (id) => {
         clearTimeout(this.holding.get(id));
@@ -369,7 +371,7 @@ export class Workers {
     // findings ignored, and nothing else: done as they stand, the worker hears it with its next message or step
     if (decided?.quiet && !text && !images.length) {
       this.o.board.log(cardId, 'hint', 'owner', decided.log, { replyTo });
-      this.o.board.work(cardId, { unheard: toJson([...this.unheard(cardId), { said: [], text: decided.note, images: [] }]) });
+      this.tellLater(cardId, decided.note);
       return;
     }
     const words = `${decided ? `${decided.note}\n\n` : ''}${this.words(cardId, text, images, replyTo, place)}`;
@@ -423,12 +425,12 @@ export class Workers {
       // no agent works on the card yet: the words go with the task to the one that takes it on
       const said = [this.o.board.log(cardId, 'hint', 'owner', text, { images: shots, replyTo, spot: place, unread: true }).id];
       if (text) this.o.onOwnerInput?.(card, 'note', text);
-      this.o.board.work(cardId, { unheard: toJson([...this.unheard(cardId), { said, text: `A note the owner left on the card while no agent worked on it${spoken ? ` (${SPOKEN})` : ''}:\n\n${words}`, images }]) });
+      this.tellLater(cardId, `A note the owner left on the card while no agent worked on it${spoken ? ` (${SPOKEN})` : ''}:\n\n${words}`, { said, images });
     } else if (this.waitsForClone(cardId)) {
       // no session to take them in now: they go with the message that resumes it in the clone
       const said = [this.o.board.log(cardId, 'hint', 'owner', text, { images: shots, replyTo, spot: place, unread: true }).id];
       if (text) this.o.onOwnerInput?.(card, 'note', text);
-      this.o.board.work(cardId, { unheard: toJson([...this.unheard(cardId), { said, text: `A note from the owner while you waited for the clone${spoken ? ` (${SPOKEN})` : ''}:\n\n${words}`, images }]) });
+      this.tellLater(cardId, `A note from the owner while you waited for the clone${spoken ? ` (${SPOKEN})` : ''}:\n\n${words}`, { said, images });
     } else if (card.state === 'working' || card.state === 'inPr' || card.finishing) {
       // comments on the demo video still held back from its handover go first, and stand above the note
       const held = this.takeHeld(cardId);
@@ -936,7 +938,7 @@ export class Workers {
     ];
     this.o.board.work(cardId, {
       detail: toJson({ ...detail, noChange: !this.folder.changed(cardId).length || undefined }),
-      unheard: toJson([...this.unheard(cardId), { said: [], text: told.filter(Boolean).join(' '), images: [] }]),
+      unheard: this.unheardWith(cardId, told.filter(Boolean).join(' ')),
     });
     return report;
   }
@@ -996,7 +998,7 @@ export class Workers {
     if ('code' in result && !result.worker) {
       // the worker hears it with its next step, so it does not tell the owner the card still waits for their approval as if nothing had happened
       const text = `${NOT_LANDED} ${result.detail}\n\nThat is not in your work: the owner sees on the card what to do, and the card waits for their approval again.`;
-      this.o.board.work(cardId, { approved_at: null, unheard: toJson([...this.unheardBut(cardId, NOT_LANDED), { said: [], text, images: [] }]) });
+      this.o.board.work(cardId, { approved_at: null, unheard: this.unheardWith(cardId, text, { replaces: NOT_LANDED }) });
       throw new BadRequest(result.code, result.detail);
     }
     if ('code' in result) {
@@ -1015,7 +1017,7 @@ export class Workers {
       return;
     }
     // an earlier approval that could not land is no news any more
-    if (this.unheard(cardId).some((u) => u.text.startsWith(NOT_LANDED))) this.o.board.work(cardId, { unheard: toJson(this.unheardBut(cardId, NOT_LANDED)) });
+    this.untell(cardId, NOT_LANDED);
     this.o.board.planDocsLanded(cardId, added);
     this.bump(cardId);
     const restartFor = (await this.o.restartsFor?.(result, direct ? (row.workspace ?? undefined) : undefined)) ?? false;
@@ -1704,7 +1706,7 @@ export class Workers {
     const at = MESSAGES.en.at(Date.parse(until));
     const who = by === 'agent' ? 'The agent that proposed this card set it to start' : 'The owner set this card aside to start';
     const text = due ? `${who} at ${at}, and that time has come: what the task leaves for later is due now.` : `${who} at ${at}; the owner started it earlier, now.`;
-    this.o.board.work(cardId, { unheard: toJson([...this.unheard(cardId), { said: [], text, images: [] }]) });
+    this.tellLater(cardId, text);
   }
 
   /** What the owner's pause holds for the worker, or null when it is not paused. */
@@ -2195,7 +2197,7 @@ export class Workers {
     }
     // its worker starts once its workspace is ready and hears them then, or, should git fail, the next start's does
     if ((said.length && this.takesLater(cardId)) || this.preparingFor(cardId)) {
-      this.o.board.work(cardId, { unheard: toJson([...this.unheard(cardId), { said, text, images }]) });
+      this.tellLater(cardId, text, { said, images });
       return;
     }
     this.o.board.readNow(cardId, said);
@@ -2239,6 +2241,25 @@ export class Workers {
   /** What waits for the worker, without what starts with `prefix` (news an event since has made stale). */
   private unheardBut(cardId: string, prefix: string): Unheard[] {
     return this.unheard(cardId).filter((u) => !u.text.startsWith(prefix));
+  }
+
+  /**
+   * What waits for the worker with `text` after it, as `CardRow.unheard` holds it: `said`, the log's
+   * lines of the owner's words it holds; `replaces`, the start of earlier news of the same kind, which
+   * it takes the place of.
+   */
+  private unheardWith(cardId: string, text: string, { said = [], images = [], replaces }: { said?: number[]; images?: string[]; replaces?: string } = {}): Json<Unheard[]> {
+    return toJson([...(replaces ? this.unheardBut(cardId, replaces) : this.unheard(cardId)), { said, text, images }]);
+  }
+
+  /** The worker hears `text` with its next message or step (`unheardWith`). */
+  private tellLater(cardId: string, text: string, o: { said?: number[]; images?: string[]; replaces?: string } = {}) {
+    this.o.board.work(cardId, { unheard: this.unheardWith(cardId, text, o) });
+  }
+
+  /** News for the worker that starts with `prefix` is no news any more: it does not hear it. */
+  private untell(cardId: string, prefix: string) {
+    if (this.unheard(cardId).some((u) => u.text.startsWith(prefix))) this.o.board.work(cardId, { unheard: toJson(this.unheardBut(cardId, prefix)) });
   }
 
   private unheard(cardId: string): Unheard[] {
