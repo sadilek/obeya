@@ -93,7 +93,7 @@ when the card went on (built, taken on, parked, archived), "Left open.", options
 rephrased question counts as settled. An answered question keeps only its orange label, not the
 orange edge.
 
-Which questions are open is one rule too (`openQuestions` in `src/core/types.ts`): an idea's while
+Which questions are open is one rule too (`openQuestions` in `src/core/card.ts`): an idea's while
 its agent is not replying, a proposal's while not being reworked, a worker's while the card waits
 for it, a demo report's until answered; a parked or dropped idea has none. Open questions move to
 the conversation's end under "Question for you" ("Questions for you"), and only then does the field read
