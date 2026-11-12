@@ -193,8 +193,17 @@ export class Revocations {
     // a rebase merge brought several commits, of which the forge named the last
     landed.base = made.base;
     if (rollback) return this.openRollback(cardId, landed, made.main, s.pr!.number);
-    const result: Landed | LandProblem = onto === 'local' ? await this.o.workspaces.landOnMain(cardId, row.branch!) : await this.o.workspaces.pushToMain(cardId);
+    // where landed work goes on to `origin` (`push`), its revert does too
+    const result: Landed | LandProblem = onto === 'local' ? await this.o.workspaces.landOnMain(cardId, row.branch!, undefined, !!this.o.adapter.push) : await this.o.workspaces.pushToMain(cardId);
     if (!(await ok(result)) || 'code' in result) return;
+    const pushed = result.pushed;
+    if (pushed && !pushed.problem) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.pushedLanded(pushed.branch, result.to.slice(0, 7)));
+    if (pushed?.problem) {
+      const t = this.o.board.t.worker;
+      const text = pushed.moved ? t.landedPushMoved(pushed.branch) : t.landedPushRefused(pushed.branch, pushed.problem);
+      this.o.board.log(cardId, 'error', 'obeya', text);
+      this.o.board.notify({ cardId, text, inTalk: true });
+    }
     const restarts = (await this.o.restartsFor?.(result, direct ? ws : undefined)) ?? false;
     this.o.onMerged?.(cardId);
     await this.backToOwner(cardId, landed, onto, this.o.board.t.worker.reverted(result.to.slice(0, 7)), [
