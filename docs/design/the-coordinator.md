@@ -476,11 +476,17 @@ archived or deleted they return, and "Make it a card" again opens the card, back
 need be. Follow-ups asked in the sheet go to the card.
 
 On the card the owner talks straight to that agent through the shared conversation (see Conversation
-on the card); words sent while it reads join its next turn (unread until then, and the owner can
-take them back), except while its turn waits for background work: then they reach it at once, so
-"take 2023 instead" arrives while the download runs (a session that fails after hearing them hands
-them to the fresh one). Its agent passes on with `to_obeya` what asks Obeya; a note the Coordinator
-passes to the card goes to it too.
+on the card). Words sent while it reads go into the turn it is in, as words added to a look-up do
+(see Looked-up threads): the agent gets them with its next step, or at once while its turn waits for
+background work, so "take 2023 instead" arrives while the download runs; an answer it gives before
+it has them is refused with them, so its one answer answers them too. Screenshots reach it as their
+files then. Until the agent has them they are unread and the owner can take them back, which leaves
+seconds while it reads (chosen 2026-11: one answer to what the owner added outweighs the longer
+window to take it back that waiting for the next turn gave). Words that come once its answer is given,
+and "Show as walkthrough" (whose walkthrough the next turn tells), wait for its next turn. A session
+that fails hands the fresh one what it had heard, and what it had not got yet with the fresh one's
+first step. Its agent passes on with `to_obeya` what asks Obeya; a note the Coordinator passes to the
+card goes to it too.
 
 It holds answers, not work: a look of its own ("QUESTION"), the number of answers and files, not
 archived with all finished cards at once (see Archive), no build, plan, prototype or park buttons.

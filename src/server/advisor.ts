@@ -54,10 +54,14 @@ export interface Briefing {
    * The turn takes the owner's words while it reads (`hear`, at its start): they reach the agent with
    * its next step's result, or wake it while it waits for its background work, and answer_owner takes
    * no answer before the agent has them, so its one answer answers them too. `hear` returns false once
-   * the answer is given: the words come too late for this turn.
+   * the answer is given: the words come too late for this turn. Else it returns how to take them
+   * back, which works until the agent has them (true then); `heard` is told when it gets them.
    */
-  onHearing?: (hear: (words: string) => boolean) => void;
+  onHearing?: (hear: Hear) => void;
 }
+
+/** How a turn takes the owner's words while it reads (`Briefing.onHearing`). */
+export type Hear = (words: string, heard?: () => void) => false | (() => boolean);
 
 /** A turn that answered nothing because it was ended on purpose (`Briefing.signal`). */
 export class Interrupted extends Error {
@@ -101,14 +105,25 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
       session.send(text, images);
     };
     // the owner's words the agent has not had yet (`onHearing`), and how it gets them
-    const added: string[] = [];
-    const take = () => (added.length ? added.splice(0).join('\n\n') : undefined);
-    const hear = (words: string) => {
+    const added: { words: string; heard?: () => void }[] = [];
+    const take = () => {
+      if (!added.length) return undefined;
+      const now = added.splice(0);
+      for (const w of now) w.heard?.();
+      return now.map((w) => w.words).join('\n\n');
+    };
+    const hear: Hear = (words, heard) => {
       if (answer || closed) return false;
-      added.push(words);
+      const w = { words, ...(heard ? { heard } : {}) };
+      added.push(w);
       // waiting for its background work, the agent has no next step: the words start its next turn
       if (work.waiting && work.running > 0) pass(take()!, []);
-      return true;
+      return () => {
+        const i = added.indexOf(w);
+        if (i < 0) return false;
+        added.splice(i, 1);
+        return true;
+      };
     };
     // words go in while the work runs; once it ended, it is about to wake the agent, and they wait for the next turn
     const told = () => b.onWaiting?.(work.waiting && work.running > 0 ? pass : undefined);

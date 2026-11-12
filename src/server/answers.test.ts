@@ -571,28 +571,73 @@ describe('a thread on a Question card', () => {
     expect(a.spec.resume).toBe('look-1');
     expect(a.spec.tools.map((t) => t.name)).toContain('to_obeya');
     expect(a.inbox[0]).toContain('und im Oktober?');
-    // what comes while it reads waits for its turn, unread until then, and can be taken back
+    // what comes while it reads goes into this turn with its next step, unread until then, and can be taken back until then
     canvas.tell(card.id, 'und November?', [], true);
     canvas.tell(card.id, 'und Dezember?', [], false);
-    const [november, december] = board().events(card.id).slice(-2);
+    const [november, december] = board().events(card.id).filter((e) => e.kind === 'talk').slice(-2);
     expect([november!.unread, december!.unread]).toEqual([true, true]);
     canvas.press(card.id, { action: 'unsay', id: december!.id });
+    expect(board().events(card.id).some((e) => e.id === december!.id)).toBe(false);
     const sessions = runtime.sessions.length;
-    a.call('answer_owner', { text: 'Oktober: 12 ct.' });
+    a.emit({ type: 'tool', name: 'Bash', input: { command: 'ls' } });
+    const heard = a.toolStep()!;
+    expect(heard).toContain('und November?');
+    expect(heard).not.toContain('und Dezember?');
+    // read once the agent has them: where it took them in, after the step that brought them
+    const step = board().events(card.id).findLast((e) => e.kind === 'activity')!;
+    expect(board().events(card.id).find((e) => e.id === november!.id)).toMatchObject({ readAfter: step.id });
+    expect(() => canvas.press(card.id, { action: 'unsay', id: november!.id })).toThrow('read these words already');
+    // one answer answers both, in the same turn
+    a.call('answer_owner', { text: 'Oktober: 12 ct. November: noch nichts.' });
     a.emit({ type: 'idle' });
     await settle();
-    expect(runtime.sessions.length).toBe(sessions + 1);
+    expect(runtime.sessions.length).toBe(sessions);
+    expect(board().item(card.id)!.thread).toEqual({ talk: first, answers: 3, files: 1 });
+    expect(board().thread(card.id).pending).toEqual([]);
+    expect(board().events(card.id).filter((e) => e.kind === 'talk').map((e) => e.text).slice(-3)).toEqual(['und im Oktober?', 'und November?', 'Oktober: 12 ct. November: noch nichts.']);
+  });
+
+  test('words written while its agent reads reach it with its next step; taken back before that, it never hears them', async () => {
+    const { card } = await moved();
+    canvas.tell(card.id, 'und im Oktober?', [], false);
+    const a = answerer();
+    const shot = canvas.images.save(new Uint8Array([1, 2, 3]), 'image/png');
+    canvas.tell(card.id, 'als Tabelle wie hier', [shot], false);
+    canvas.tell(card.id, 'egal, vergiss es', [], false);
+    const [table, forget] = board().events(card.id).slice(-2);
+    canvas.press(card.id, { action: 'unsay', id: forget!.id });
+    // an answer before the agent has them is refused with them; screenshots come as their files
+    const refused = String(a.call('answer_owner', { text: 'Oktober: 12 ct.' }));
+    expect(refused).toContain('als Tabelle wie hier');
+    expect(refused).toContain(canvas.images.path(shot)!);
+    expect(refused).toContain('answer_owner');
+    expect(refused).not.toContain('vergiss es');
+    expect(a.toolStep()).toBeUndefined();
+    expect(board().events(card.id).find((e) => e.id === table!.id)!.unread).toBeUndefined();
+    // the answer comes once, and no turn follows for words it already answered
+    const sessions = runtime.sessions.length;
+    a.call('answer_owner', { text: 'Oktober als Tabelle: 12 ct.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(runtime.sessions.length).toBe(sessions);
+    expect(board().item(card.id)!.thread!.thinking).toBeFalsy();
+    expect(board().thread(card.id).pending).toEqual([]);
+  });
+
+  test('words that come once its answer is given wait for the next turn, unread until then', async () => {
+    const { card } = await moved();
+    canvas.tell(card.id, 'und im Oktober?', [], false);
+    const a = answerer();
+    a.call('answer_owner', { text: 'Oktober: 12 ct.' });
+    canvas.tell(card.id, 'und November?', [], false);
+    expect(a.toolStep()).toBeUndefined();
+    expect(board().events(card.id).at(-1)!.unread).toBe(true);
+    a.emit({ type: 'idle' });
+    await settle();
     const b = answerer();
     expect(b.inbox[0]).toContain('und November?');
-    expect(b.inbox[0]).not.toContain('und Dezember?');
-    // read once its turn starts: after the answer it waited for
     const answered = board().events(card.id).find((e) => e.text === 'Oktober: 12 ct.')!;
-    expect(board().events(card.id).find((e) => e.id === november!.id)).toMatchObject({ readAfter: answered.id });
-    b.call('answer_owner', { text: 'November: noch nichts.' });
-    b.emit({ type: 'idle' });
-    await settle();
-    expect(board().item(card.id)!.thread).toEqual({ talk: first, answers: 4, files: 1 });
-    expect(board().events(card.id).filter((e) => e.kind === 'talk').map((e) => e.text).slice(-4)).toEqual(['und im Oktober?', 'und November?', 'Oktober: 12 ct.', 'November: noch nichts.']);
+    expect(board().events(card.id).find((e) => e.text === 'und November?')).toMatchObject({ readAfter: answered.id });
   });
 
   test('"Show as walkthrough" on one of its answers asks the card\'s agent, its player in the conversation at once', async () => {
@@ -762,23 +807,27 @@ describe('a thread on a Question card', () => {
     expect(board().events(card.id).filter((e) => e.kind === 'talk').map((e) => e.text).slice(-4)).toEqual(['lade die Daten für 2024', 'mit Dezember', 'stopp, nimm 2023', '2023 mit Dezember: 14 ct.']);
   });
 
-  test('words wait for the next turn once the work ended, and a session that fails after it heard them hands them to the fresh one', async () => {
+  test('words that come as the work ended start the turn that answers, and a session that fails after it heard them hands them to the fresh one', async () => {
     const { card } = await moved();
     canvas.tell(card.id, 'lade die Daten für 2024', [], false);
     const a = answerer();
     a.emit({ type: 'idle', background: 1 });
     canvas.tell(card.id, 'stopp, nimm 2023', [], false);
     expect(a.inbox).toHaveLength(2);
-    // the work ended and is about to wake the agent: what comes now waits for its turn, unread
+    // the work ended and is about to wake the agent: what comes now reaches it with its next step, unread until then
     a.emit({ type: 'idle', background: 1 });
     a.emit({ type: 'background', tasks: [] });
     canvas.tell(card.id, 'und Dezember?', [], false);
     expect(board().events(card.id).at(-1)!.unread).toBe(true);
     expect(a.inbox).toHaveLength(2);
-    // a message still to come keeps the turn going
+    // its turn ends without a step: the words start the turn that answers
     a.emit({ type: 'idle', background: 0, more: true });
     await settle();
     expect(a.closed).toBe(false);
+    expect(a.inbox).toHaveLength(3);
+    expect(a.inbox[2]).toContain('und Dezember?');
+    expect(board().events(card.id).find((e) => e.text === 'und Dezember?')!.unread).toBeUndefined();
+    canvas.tell(card.id, 'und Januar?', [], false);
     // the resumed session fails, and reports more after its error: the fresh session gets what the failed one heard
     const sessions = runtime.sessions.length;
     a.emit({ type: 'error', message: 'boom' });
@@ -789,17 +838,18 @@ describe('a thread on a Question card', () => {
     expect(b.spec.resume).toBeUndefined();
     expect(b.inbox[0]).toContain('lade die Daten für 2024');
     expect(b.inbox[0]).toContain('stopp, nimm 2023');
-    expect(b.inbox[0]).not.toContain('und Dezember?');
-    canvas.tell(card.id, 'und Januar?', [], false);
-    expect(a.inbox).toHaveLength(2);
-    expect(board().events(card.id).at(-1)!.unread).toBe(true);
-    b.call('answer_owner', { text: '2023: 14 ct.' });
+    expect(b.inbox[0]).toContain('und Dezember?');
+    // words passed to the session that failed before it got them reach the fresh one with its next step
+    expect(b.inbox[0]).not.toContain('und Januar?');
+    expect(board().events(card.id).find((e) => e.text === 'und Januar?')!.unread).toBe(true);
+    expect(b.toolStep()).toContain('und Januar?');
+    expect(board().events(card.id).find((e) => e.text === 'und Januar?')!.unread).toBeUndefined();
+    b.call('answer_owner', { text: '2023 bis Januar: 14 ct.' });
     b.emit({ type: 'idle', background: 0 });
     await settle();
-    // what waited goes in with the next turn
-    const c = answerer();
-    expect(c.inbox[0]).toContain('und Dezember?');
-    expect(c.inbox[0]).toContain('und Januar?');
+    // one answer answers all of it: no turn follows
+    expect(runtime.sessions.length).toBe(sessions + 1);
+    expect(board().thread(card.id).pending).toEqual([]);
   });
 
   test('its agent the usage limit stops waits on the card and answers once the limit lifts; paused meanwhile, it waits no more', async () => {

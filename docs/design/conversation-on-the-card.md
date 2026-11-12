@@ -128,8 +128,8 @@ scrolling up.
 A conversation shows things in the order the agent saw them: the owner's words stand where the agent
 read them, not where they were sent. Obeya holds them while the agent is in a turn and records after
 which log line it took them in; the steps before close above them, the rest below. Until read, they
-stand below the agent's work, muted and dashed, "Not read yet · at its next step" (on an idea,
-proposal or Question card "… · after its current reply"). Each has a bin: taking it back
+stand below the agent's work, muted and dashed, "Not read yet · at its next step" (on an idea or
+proposal "… · after its current reply"). Each has a bin: taking it back
 removes it, no agent hears it, and its text and screenshots return to the field if that is empty. No
 undo. A page that lost its connection reloads each open card's log on reconnect, else words would
 stay "Not read yet".
@@ -138,9 +138,10 @@ A worker reads them with the result of its next tool step, through the hook that
 preferences and decisions, screenshots as file paths (a tool result carries no images); a turn that
 ends before another step starts the next with them; a step that ends the turn (`ask`, say) carries
 them in its result, which leaves the turn to the worker (see A worker's tools); a session
-that ends first gets them with the message it resumes with, after a stop at the next start. An
-idea's agent, a proposal's reviser and a Question card's agent read them when their next turn
-starts. Words said between turns start the next turn.
+that ends first gets them with the message it resumes with, after a stop at the next start. A
+Question card's agent reads them with its next step too, and answers them in the answer it reads for
+(see Question cards in The Coordinator). An idea's agent and a proposal's reviser read them when
+their next turn starts. Words said between turns start the next turn.
 
 ### Replying to a message
 

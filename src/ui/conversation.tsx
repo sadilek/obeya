@@ -233,7 +233,7 @@ export function Conversation({
           held.includes(e.id) ? (
             line({ e, steps: [] })
           ) : (
-            <Message key={e.id} turn={{ e, steps: [] }} unread={t.talk.unread(idea || question || proposal ? 'reply' : holdsNotes(item) ? 'start' : 'step')} onDelete={() => takeBack(item.id, e)} />
+            <Message key={e.id} turn={{ e, steps: [] }} unread={t.talk.unread(idea || proposal ? 'reply' : holdsNotes(item) ? 'start' : 'step')} onDelete={() => takeBack(item.id, e)} />
           ),
         )}
         {!working && !past && coordinatorReads(events) && <Reading />}

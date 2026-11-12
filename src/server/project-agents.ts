@@ -29,7 +29,8 @@ export class ProjectAgents {
    * Answers a question the owner asked about the project or one of its workstreams, in the project's
    * session. `dir`: the output directory of the looked-up thread, which the answer's files are in;
    * `signal` ends the turn at once; `onLimit` shows where it waits for the usage limit; `onWaiting`
-   * passes the owner's words in while it waits for its background work (`Briefing.onWaiting`).
+   * passes the owner's words in while it waits for its background work (`Briefing.onWaiting`);
+   * `onHearing` takes them while it reads (`Briefing.onHearing`).
    * Written in the project's sheet, straight to it: its screenshots (`images`), and `toObeya` for
    * what the words ask of Obeya rather than of it. `tools` and `rules`: what the look-up adds (a
    * walkthrough's).
@@ -43,6 +44,7 @@ export class ProjectAgents {
       dir?: string;
       signal?: AbortSignal;
       onWaiting?: Briefing['onWaiting'];
+      onHearing?: Briefing['onHearing'];
       images?: string[];
       toObeya?: AgentTool;
       tools?: AgentTool[];
