@@ -144,7 +144,7 @@ session of the "Small jobs" group (else the text's first line) before its start 
 meanwhile the canvas shows the first line, muted, and a title the owner types wins. A card left
 empty is dropped (one left by a closed page on Obeya's next start). Deleting offers undo.
 
-Below the repository picker, an unstarted task of a repository with git has the field "Branch":
+Below its text field, an unstarted task of a repository with git has the field "Branch":
 "new branch" (from the main branch) by default, or one of the owner's branches, local or on
 `origin` ("(on origin only)"), the task then working on it (see A branch of the owner's in Landing).
 Branches other cards work on stand apart under "On a card" and open that card when picked. A

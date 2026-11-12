@@ -463,7 +463,7 @@ function makeBranches(stage: Stage, dir: string, repo: string, mainBranch: strin
     git(repo, 'checkout', '-q', mainBranch);
     if ((b.where ?? 'both') !== 'local') git(repo, 'push', '-q', 'origin', b.name);
     if (b.where === 'origin') git(repo, 'branch', '-q', '-D', b.name);
-    return b.pr ? { url: `https://github.com/${b.pr.original ?? slug}/pull/${b.pr.number}`, number: b.pr.number, title: b.pr.title, author: 'owner', head, headRef: b.name, ...(b.pr.original ? { base: b.pr.original } : {}), checks: [], comments: [] } : null;
+    return b.pr ? { url: `https://github.com/${b.pr.original ?? slug}/pull/${b.pr.number}`, number: b.pr.number, title: b.pr.title, author: 'owner', head, headRef: b.name, headRepo: `https://github.com/${slug}.git`, ...(b.pr.original ? { base: b.pr.original } : {}), checks: [], comments: [] } : null;
   });
   git(repo, 'fetch', '-q', 'origin');
   git(repo, 'remote', 'set-head', 'origin', mainBranch);

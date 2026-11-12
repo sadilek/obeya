@@ -8,6 +8,7 @@
 //   bun scripts/scratch-obeya.ts --login <port>
 //   bun scripts/scratch-obeya.ts --say <port> <card key> <say|report|talk|question|review|to_obeya|tool|end> <text>
 //   bun scripts/scratch-obeya.ts --artifact <port> <card key> <file> [<summary>]
+//   (a card made while the demo runs takes its id in place of a key)
 //   bun scripts/scratch-obeya.ts --sweep
 //
 // Prints one JSON line, also kept in <dir>/staged.json:
@@ -205,7 +206,8 @@ function silent(port: number) {
 function cardOf(port: number, key: string) {
   const d = dirOf(port);
   const staged = stagedIn(d) ?? fail(`no scratch Obeya staged in ${d}`);
-  const id = staged.cards[key] ?? fail(`no card ${key} staged (${Object.keys(staged.cards).join(', ')})`);
+  // a card made while the demo runs (one the owner creates on the canvas) by its id
+  const id = staged.cards[key] ?? (/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(key) ? key : fail(`no card ${key} staged (${Object.keys(staged.cards).join(', ')})`));
   // a staged.json from before canvasOf has its cards on the first canvas
   const on = staged.canvasOf?.[key] ?? staged.canvas;
   return { base: `http://127.0.0.1:${port}/api/c/${on}`, id, headers: ownerHeaders(join(d, 'home')) };

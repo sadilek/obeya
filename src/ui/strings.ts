@@ -584,7 +584,7 @@ const de = {
     loading: 'Branches werden gelesen …',
     none: 'Keine Branches zum Übernehmen',
     pr: (name: string) => `PR ${name} · offen`,
-    face: (branch: string) => `⎇ ${branch}`,
+    face: (branch: string) => `auf ${branch}`,
     prShort: (name: string, upstream: boolean) => `PR ${name}${upstream ? ' (Upstream)' : ''}`,
     approve: 'Auf den PR-Branch pushen',
     approveHint: (branch: string, pr: string, maintainers: boolean) =>
@@ -2912,7 +2912,7 @@ const en: Strings = {
     loading: 'Reading branches …',
     none: 'No branches to take',
     pr: (name: string) => `PR ${name} · open`,
-    face: (branch: string) => `⎇ ${branch}`,
+    face: (branch: string) => `on ${branch}`,
     prShort: (name: string, upstream: boolean) => `PR ${name}${upstream ? ' (upstream)' : ''}`,
     approve: 'Push to the PR branch',
     approveHint: (branch: string, pr: string, maintainers: boolean) =>

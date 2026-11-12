@@ -292,7 +292,6 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow, act, all }: { 
   return (
     <>
       {!item.newRepo?.due && <RepoPick choice={choice} repos={repos} fresh={!!fresh} />}
-      {!choice.fresh && act && all && <BranchPick item={item} repo={repos.find((r) => r.id === choice.repo)} act={act} all={all} />}
       {!choice.fresh && !item.adopted && <UpstreamPick item={item} repo={repos.find((r) => r.id === choice.repo)} onEdit={onEdit} />}
       {/* the task's screenshots: the worker gets them with the task when it starts */}
       <div className={`p-body-field${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
@@ -321,6 +320,8 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow, act, all }: { 
         <DictationLine draft={key} />
         {shots.error && <p className="p-error c-error">{shots.error}</p>}
       </div>
+      {/* below what the task is: where its work goes on */}
+      {!choice.fresh && act && all && <BranchPick item={item} repo={repos.find((r) => r.id === choice.repo)} act={act} all={all} />}
     </>
   );
 }

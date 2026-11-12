@@ -261,7 +261,7 @@ Creating cards in The canvas), by word to Obeya („arbeite auf feature/x weiter
 of a pull request of their own: one whose branch is in `origin` (also one from there against the
 original) becomes a task on that branch, started at once, the owner's words its task, instead of a
 review card. A task on such a branch names it above its title, with its pull request
-("⎇ feature/x · PR #82 (upstream)").
+("on feature/x · PR #82 (upstream)").
 
 ### Review cards
 
