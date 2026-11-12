@@ -1,0 +1,15 @@
+# ffmpeg on the runner, where its image has none: tts.py makes every voice's clip a WAV with it, for
+# the tests and the voice check alike.
+name: ffmpeg
+description: Installs ffmpeg unless the runner has it
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        command -v ffmpeg && exit
+        case "$RUNNER_OS" in
+          Linux) sudo apt-get update && sudo apt-get install -y ffmpeg ;;
+          macOS) brew install ffmpeg ;;
+          Windows) choco install ffmpeg -y --no-progress ;;
+        esac

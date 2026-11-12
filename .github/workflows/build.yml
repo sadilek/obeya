@@ -64,14 +64,7 @@ jobs:
       # `uv run --with`, so there is no lock or requirements file to key one on.
       - uses: astral-sh/setup-uv@v10.3.0
         with: { enable-cache: false }
-      - name: ffmpeg
-        run: |
-          command -v ffmpeg && exit
-          case "$RUNNER_OS" in
-            Linux) sudo apt-get update && sudo apt-get install -y ffmpeg ;;
-            macOS) brew install ffmpeg ;;
-            Windows) choco install ffmpeg -y --no-progress ;;
-          esac
+      - uses: ./.github/actions/ffmpeg
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - name: bun run test
@@ -81,7 +74,7 @@ jobs:
           bun run test
 
   # the local demo voices Obeya installs on request (Kokoro, Piper) install and speak on each
-  # platform, downloaded afresh (scripts/check-voice.ts)
+  # platform, downloaded afresh (scripts/check-voice.ts); a clip becomes its WAV through ffmpeg
   voices:
     strategy:
       fail-fast: false
@@ -95,6 +88,7 @@ jobs:
         with: { bun-version-file: .bun-version }
       - uses: astral-sh/setup-uv@v10.3.0
         with: { enable-cache: false }
+      - uses: ./.github/actions/ffmpeg
       - run: bun scripts/check-voice.ts
 
   # a scratch Obeya stages from a stage file alone on each platform, its dir and port claims where

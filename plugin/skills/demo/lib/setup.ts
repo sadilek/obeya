@@ -158,21 +158,24 @@ export interface SetupOptions {
   /** Leave out what only the recording needs (browser, Playwright): `node demo.ts --narration`. */
   narrationOnly?: boolean;
   home?: string;
+  /** How a program is run for its version (`output`); tests answer for it without starting one. */
+  run?: typeof output;
 }
 
 /** Checks everything a render of a demo with these settings needs, side by side. */
 export async function checkSetup(s: DemoSettings, o: SetupOptions = {}): Promise<SetupCheck> {
   const env = o.env ?? process.env;
+  const run = o.run ?? output;
   const { platform, arch } = process;
   const family = platform === 'linux' ? linuxFamily() : null;
   const hint = (id: SetupId) => installHint(id, platform, arch, family);
   const missing = (id: SetupId, rest: Partial<SetupItem> = {}): SetupItem => ({ id, state: 'missing', install: hint(id), ...rest });
 
   const [nodeOut, ffmpegOut, encoders, uvOut] = await Promise.all([
-    output('node', ['--version'], env),
-    output('ffmpeg', ['-hide_banner', '-version'], env),
-    output('ffmpeg', ['-hide_banner', '-encoders'], env),
-    output('uv', ['--version'], env),
+    run('node', ['--version'], env),
+    run('ffmpeg', ['-hide_banner', '-version'], env),
+    run('ffmpeg', ['-hide_banner', '-encoders'], env),
+    run('uv', ['--version'], env),
   ]);
   const items: SetupItem[] = [];
 
