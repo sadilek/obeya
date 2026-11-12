@@ -965,7 +965,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .turn-pause .btn-mark { margin: 0; }
 .turn-pause:hover, .turn-pause:focus-visible { color: var(--ink); border-color: var(--muted); }
 @media (hover: hover) {
-  .talk .msg.thinking:not(:hover) .turn-pause:not(:focus-visible) { color: transparent; border-color: transparent; }
+  .talk .msg:not(:hover) .turn-pause:not(:focus-visible) { color: transparent; border-color: transparent; }
 }
 .talk .msg.paused .who { color: var(--muted); }
 .talk .msg.paused > :not(.who) { opacity: .7; }

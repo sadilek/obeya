@@ -66,6 +66,8 @@ interface Running {
   session?: string;
   files: AnswerFile[];
   hear?: Hear;
+  /** Ends the look-up at once, for the owner's stop. */
+  end: AbortController;
 }
 type By = 'coordinator' | 'project';
 
@@ -108,6 +110,8 @@ export class Answers {
   private turnEnds = new Map<string, AbortController>();
   /** Question cards whose agent the owner let go on after a pause: its next turn hears so. */
   private resumed = new Set<string>();
+  /** Exchanges whose look-up the owner let go on after stopping it: it goes on in its session, which hears so. */
+  private goingOn = new Set<number>();
 
   constructor(private o: AnswerOptions) {}
 
@@ -116,7 +120,7 @@ export class Answers {
     if (this.busy.has(talkId)) return;
     const t = this.o.board.sheet.exchange(talkId);
     // words joined to a later look-up are answered with it
-    if (!t?.question || t.answer !== undefined || t.joinedInto) return;
+    if (!t?.question || t.answer !== undefined || t.joinedInto || t.stopped) return;
     const thread = t.thread ?? t.id;
     const root = thread === t.id ? t : (this.o.board.sheet.exchange(thread) ?? t);
     // a thread on a Question card goes on there, with the card's agent
@@ -129,6 +133,9 @@ export class Answers {
     const follow = t.id !== thread;
     // words that go on with what is being looked up now go into that look-up
     if (follow && this.join(talkId, t, thread)) return;
+    // words that go on with a look-up the owner stopped let it go on: its answer answers both
+    const stopped = follow && t.follows !== undefined ? this.o.board.sheet.exchange(t.follows) : undefined;
+    if (stopped?.stopped && !stopped.joinedInto) this.absorb([stopped.id], talkId, t, stopped.session);
     this.busy.add(talkId);
     // a walkthrough the look-up began before a restart: the one it tells now takes its place
     const prepared = this.prepared.get(talkId);
@@ -148,11 +155,15 @@ export class Answers {
     const asked = t.askedIn ? { images: this.o.imageFiles?.(t.images) ?? [], from: t.askedIn } : undefined;
     // following up on a question not answered yet (Obeya restarted while words joined its look-up): it answers both
     const unanswered = follow && t.follows !== undefined && this.o.board.sheet.exchange(t.follows)?.answer === undefined;
-    const goOn = `${unanswered ? added(t.said, t.askedIn ? undefined : t.question, true) : followUp(t.said, t.askedIn ? undefined : t.question, false)}${step}`;
+    const goOn = `${unanswered ? added(t.said, t.askedIn ? undefined : t.question, stopped?.stopped ? 'stopped' : 'restarted') : followUp(t.said, t.askedIn ? undefined : t.question, false)}${step}`;
+    // let go on after the owner stopped it: the session it read in goes on, and hears so
+    const again = this.goingOn.delete(talkId) && t.session ? `${STOPPED_RESUMED}\n\n${t.askedIn ? `They wrote: "${t.said}"` : `The question, as Obeya understood it: ${t.question}`}${step}` : undefined;
     // the exchanges this turn answers: its own, and those whose words join it while it reads; the last shows the answer
-    const run: Running = { talks: [talkId], files: [] };
+    const run: Running = { talks: [talkId], files: [], end: new AbortController() };
     const last = () => run.talks.at(-1)!;
     this.queue(thread, () => {
+      // stopped while it waited for its turn
+      if (this.o.board.sheet.exchange(last())?.stopped) return Promise.resolve();
       this.running.set(thread, run);
       return this.consult({
         thread,
@@ -178,17 +189,31 @@ export class Answers {
           this.o.board.waitsForLimit({ talk: last() }, until);
           if (reading && until !== undefined) this.o.board.log(reading, 'state', 'obeya', this.o.board.t.answer.limited(this.o.board.t.when(until)));
         },
-        ...(follow
+        signal: run.end.signal,
+        ...(again
           ? {
-              resume,
-              message: goOn,
-              fallback: () => ({ message: `${fresh}\n\n${this.history(thread)}\n\n${goOn}` }),
+              resume: t.session,
+              message: again,
+              fallback: () => ({ message: follow ? `${fresh}\n\n${this.history(thread)}\n\n${goOn}` : fresh }),
             }
-          : { message: fresh }),
+          : follow
+            ? {
+                resume,
+                message: goOn,
+                fallback: () => ({ message: `${fresh}\n\n${this.history(thread)}\n\n${goOn}` }),
+              }
+            : { message: fresh }),
       })
-        .catch((e): OwnerAnswer => ({ text: this.o.board.t.answer.failed(messageOf(e)) }))
+        .catch((e): OwnerAnswer | null => (e instanceof Interrupted ? null : { text: this.o.board.t.answer.failed(messageOf(e)) }))
         .then((a) => {
           this.running.delete(thread);
+          // stopped by the owner: no answer, and a walkthrough it began goes with the turn
+          if (!a) {
+            this.o.board.waitsForLimit({ talk: last() }, undefined);
+            this.o.board.sheet.showFiles(last(), []);
+            if (reading) this.dropLive(reading, thread);
+            return this.o.board.sheet.stop(last(), true);
+          }
           const answered = this.o.board.sheet.exchange(last()) ?? t;
           // asked on another card than the words it began with, or in the sheet: the answer stands there
           const card = answered.cardId && this.o.board.item(answered.cardId) ? answered.cardId : undefined;
@@ -209,21 +234,51 @@ export class Answers {
   private join(talkId: number, t: Exchange, thread: number): boolean {
     const run = this.running.get(thread);
     if (!run?.hear || t.follows === undefined || !run.talks.includes(t.follows)) return false;
-    if (!run.hear(`${added(t.said, t.askedIn ? undefined : t.question, false)}${t.then ? stepNote(t.then) : ''}`)) return false;
+    if (!run.hear(`${added(t.said, t.askedIn ? undefined : t.question, 'reading')}${t.then ? stepNote(t.then) : ''}`)) return false;
     const before = [...run.talks];
     run.talks.push(talkId);
     this.busy.add(talkId);
+    this.absorb(before, talkId, t, run.session);
+    // a walkthrough it tells already plays under the latest words
+    if (run.files.length) this.o.board.sheet.showFiles(talkId, run.files);
+    return true;
+  }
+
+  /**
+   * The exchanges `before` are answered with the answer to `talkId`, which goes on in their look-up
+   * (`session`): the step an earlier question was looked up for is taken with that answer.
+   */
+  private absorb(before: number[], talkId: number, t: Exchange, session: string | undefined) {
     const sheet = this.o.board.sheet;
-    // the step an earlier question was looked up for is taken with the answer, which now comes here
     const earlier = before.map((id) => sheet.exchange(id)).filter((x) => x?.then);
     if (earlier.length) {
       sheet.step(talkId, [...earlier.map((x) => x!.then!), ...(t.then ? [t.then] : [])].join('\n'), earlier[0]!.thenPlace ?? t.thenPlace);
       for (const x of earlier) sheet.step(x!.id, null);
     }
-    sheet.join(before, talkId, run.session);
-    // a walkthrough it tells already plays under the latest words
-    if (run.files.length) sheet.showFiles(talkId, run.files);
-    return true;
+    sheet.join(before, talkId, session);
+  }
+
+  /**
+   * The owner stops the look-up of an exchange's question before its answer came: its agent's
+   * session ends at once, in the middle of a step if need be. It goes on once they let it
+   * (`goOnWith`) or follow up on it.
+   */
+  stop(talkId: number) {
+    const t = this.o.board.sheet.exchange(talkId);
+    if (!t?.question || t.answer !== undefined || t.joinedInto || t.stopped || t.movedTo) throw new BadRequest('notLookingUp', 'nothing is being looked up for these words');
+    const run = [...this.running.values()].find((r) => r.talks.includes(talkId));
+    if (run) return run.end.abort();
+    // not begun yet (its turn waits for another of its thread, or the usage limit holds it): it never starts
+    this.o.board.sheet.stop(talkId, true);
+  }
+
+  /** "Resume" on a look-up the owner stopped: it goes on where it stopped, in the session it read in. */
+  goOnWith(talkId: number) {
+    const t = this.o.board.sheet.exchange(talkId);
+    if (!t?.stopped || t.joinedInto) throw new BadRequest('notStopped', 'the look-up is not stopped');
+    this.o.board.sheet.stop(talkId, false);
+    this.goingOn.add(talkId);
+    this.lookUp(talkId);
   }
 
   /**
@@ -822,13 +877,15 @@ const followUp = (said: string, question: string | undefined, onCard: boolean) =
  * What the agent hears when the owner adds to what it looks up before it has answered: while it
  * reads, or (`restarted`) in a session resumed after Obeya restarted.
  */
-const added = (said: string, question: string | undefined, restarted: boolean) =>
+const added = (said: string, question: string | undefined, when: 'reading' | 'restarted' | 'stopped') =>
   [
-    restarted
-      ? `Obeya restarted before you had answered. Meanwhile the owner added to what you were looking up. They said: "${said}"`
-      : `While you look this up, the owner added to it. They said: "${said}"`,
+    when === 'reading'
+      ? `While you look this up, the owner added to it. They said: "${said}"`
+      : when === 'restarted'
+        ? `Obeya restarted before you had answered. Meanwhile the owner added to what you were looking up. They said: "${said}"`
+        : `The owner stopped you before you had answered. Stopping ended your session at once: whatever you had running was stopped with it (a command still running shows exit code 137). Now they go on with what you were looking up. They said: "${said}"`,
     question ? `The question now, as Obeya understood it: ${question}` : '',
-    restarted ? 'Read and check what you need (what you read and computed before is still yours), then call answer_owner once.' : 'Take this into what you look up: your one answer (answer_owner) answers it too.',
+    when === 'reading' ? 'Take this into what you look up: your one answer (answer_owner) answers it too.' : 'Read and check what you need (what you read and computed before is still yours), then call answer_owner once.',
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -847,6 +904,10 @@ const meanwhile = (said: string) =>
 /** What the agent of a Question card hears when the owner lets it go on after a pause. */
 const RESUMED =
   'The owner paused you while you worked on your answer and has now let you go on. Pausing ended your session at once: whatever you had running was stopped with it (a command still running shows exit code 137). What they asked is still unanswered.';
+
+/** What a look-up's agent hears when the owner lets it go on after stopping it. */
+const STOPPED_RESUMED =
+  'The owner stopped you while you looked this up and has now let you go on. Stopping ended your session at once: whatever you had running was stopped with it (a command still running shows exit code 137). What they asked is still unanswered: read and check what you need (what you read and computed before is still yours), then call answer_owner once.';
 
 /** Where the thread's files go, as every turn of it hears. */
 const filesNote = (dir: string) =>

@@ -1426,9 +1426,11 @@ export class Commander {
                     ? ` → the answer ${answerTag(t.id)} you looked up${t.follows ? ` (following up on ${answerTag(t.follows)})` : ''}: "${full.has(t) ? t.answer : clip(oneLine(t.answer), 400)}"${t.then ? ` (you are about to take the step you looked it up for: ${t.then})` : ''}`
                     : t.joinedInto
                       ? ` (the owner's next words went into this look-up: the answer ${answerTag(t.joinedInto)} answers both)`
-                      : t.question
-                        ? ' (you were looking it up; no answer came)'
-                        : '';
+                      : t.stopped
+                        ? ' (you were looking it up; the owner stopped it before its answer came)'
+                        : t.question
+                          ? ' (you were looking it up; no answer came)'
+                          : '';
                 if (t.moved) return `- ${when(t.at)} the card "${t.moved.title}" moved to the canvas "${t.moved.canvasName}", in a new repository, and is built there`;
                 const words = t.after
                   ? `${became(t.after)}, and you took up the step you had waited on it for`
@@ -1468,6 +1470,8 @@ export class Commander {
       .map((id) => this.o.board.sheet.exchange(id)!)
       .filter((t) => !t.askedIn && !t.movedTo)
       .slice(-READING_SHOWN);
+    // look-ups the owner stopped before their answer came, which words that go on with one let go on
+    const stopped = this.o.board.sheet.stoppedLookUps(READING_SHOWN).filter((t) => !t.askedIn && !t.movedTo);
     // projects with workstreams to start: start on one hands them all to the Coordinator
     const projects = items.flatMap((p) => {
       if (p.kind !== 'project') return [];
@@ -1524,6 +1528,11 @@ export class Commander {
       ...(projects.length ? [`Projects with workstreams to start:\n${projects.join('\n')}`] : []),
       ...(reading.length
         ? [`Questions an agent is looking up for you now, its answer still to come (a follow-up names its tag in follows to go into that look-up):\n${reading.map((t) => `- ${answerTag(t.id)} (${when(t.at)}) “${t.question}”`).join('\n')}`]
+        : []),
+      ...(stopped.length
+        ? [
+            `Questions whose look-up the owner stopped before its answer came (words that go on with one, „mach weiter damit“, follow up on its tag in follows: its agent goes on from where it stopped and answers both):\n${stopped.map((t) => `- ${answerTag(t.id)} (${when(t.at)}) “${t.question}”`).join('\n')}`,
+          ]
         : []),
       ...(this.waits().length
         ? [`Cards you wait on, to take a step once each gets there (wait_for; stop_waiting drops one):\n${this.waits().map(({ talk, wait }) => `- ${tag(wait.card)} "${wait.title}" until it ${reaches(wait.state)} (since ${when(talk.at)}), then: ${wait.then}`).join('\n')}`]

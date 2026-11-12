@@ -26,6 +26,7 @@ import { WishReplyLink } from './wish';
 import { ClockMark } from './snooze';
 import { know, read, session, useStoredState, write, useKnown } from './stored';
 import { cardPath } from './address';
+import { PlayMark, StopMark } from './parts';
 import { CardLink, Naming } from './cardLink';
 
 interface Props {
@@ -356,14 +357,28 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
               </div>
             ) : (
               <>
-                {/* a question it looked up: the answer follows the acknowledgement, or the later words that went into its look-up */}
-                {x.question && x.answer === undefined && !x.joinedInto && !x.files?.length && (
-                  <Msg by={x.askedIn ? 'project' : 'coordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'coordinator']}>
+                {/* a question it looked up: the answer follows the acknowledgement, or the later words that went into its look-up; stopped, it waits for "Resume" */}
+                {x.question && x.answer === undefined && !x.joinedInto && x.stopped && (
+                  <Msg
+                    by={x.askedIn ? 'project' : 'coordinator'}
+                    className="paused"
+                    who={`${t.author[x.askedIn ? 'project' : 'coordinator']} ${t.pause.paused}`}
+                    head={
+                      <button className="turn-resume" title={t.pause.resumeHint} onClick={() => void api.resumeLookUp(x.id).catch(() => {})}>
+                        <PlayMark /> {t.pause.resume}
+                      </button>
+                    }
+                  >
+                    <div className="hint">{t.coordinator.lookUpStopped}</div>
+                  </Msg>
+                )}
+                {x.question && x.answer === undefined && !x.joinedInto && !x.stopped && !x.files?.length && (
+                  <Msg by={x.askedIn ? 'project' : 'coordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'coordinator']} head={!x.movedTo && <StopLookUp talk={x.id} />}>
                     <div className="hint">{x.limitedUntil ? t.coordinator.lookUpLimited(clock(x.limitedUntil)) : t.coordinator.lookingUp}</div>
                   </Msg>
                 )}
                 {/* its walkthrough plays here from its first slide on, and plays on as the answer's words come in above it */}
-                {(x.answer !== undefined || (x.question && !!x.files?.length)) && (
+                {(x.answer !== undefined || (x.question && !x.stopped && !!x.files?.length)) && (
                   <Msg
                     by={x.answerBy ?? 'coordinator'}
                     className={fresh.includes(x.id) ? 'fresh' : undefined}
@@ -371,8 +386,9 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                     ev={talkEv({ talk: x.id, part: 'answer' })}
                     onReply={x.answer !== undefined ? reply('answer', x.answerBy ?? 'coordinator', x.answer) : undefined}
                     head={
-                      x.thread !== undefined &&
-                      x.answer !== undefined && (
+                      x.answer === undefined ? (
+                        <StopLookUp talk={x.id} />
+                      ) : x.thread !== undefined && (
                         <>
                           <ThreadCard thread={x.thread} onOpen={onOpen} />
                           {tellable(x, items) && <WalkthroughButton of={{ talk: x.id }} hint={x.id === hinted} />}
@@ -402,6 +418,15 @@ const tellable = (x: Talk, items: Item[]) =>
   x.thread !== undefined
     ? x.answer !== undefined && !x.files?.some((f) => isWalkthrough(f.name)) && !(x.movedTo && items.some((i) => i.id === x.movedTo))
     : !!x.replyOnly && !!x.reply && !x.undone && !x.heldUntil;
+
+/** On a look-up still running, faint until the pointer is on it: halts it at once; "Resume" lets it go on. */
+function StopLookUp({ talk }: { talk: number }) {
+  return (
+    <button className="turn-pause" title={t.coordinator.stopLookUpHint} aria-label={t.pause.halt} onClick={() => void api.stopLookUp(talk).catch(() => {})}>
+      <StopMark />
+    </button>
+  );
+}
 
 /** Under Obeya's reply: a card it waits on, to take the step it said it would take then; "Stop waiting" drops that step. */
 function WaitLine({ talk, wait, card, onOpen }: { talk: number; wait: TalkWait; card: Item | undefined; onOpen: (i: Item) => void }) {

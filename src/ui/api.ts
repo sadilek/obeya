@@ -413,6 +413,9 @@ export const api = {
   dismissReshare: () => call<void>('DELETE', at('/reshare')),
   /** Obeya's sheet is in view, or (`ids`) these exchanges in a project's sheet. */
   readTalk: (ids?: number[]) => call<void>('POST', at('/talk/read'), ids ? { ids } : undefined),
+  /** Stops a look-up before its answer came, and lets it go on. */
+  stopLookUp: (talk: number) => call<void>('POST', at(`/talk/${talk}/stop`)),
+  resumeLookUp: (talk: number) => call<void>('POST', at(`/talk/${talk}/resume`)),
   /** Obeya no longer waits on the card after that exchange, to take the step it said it would. */
   unwait: (talk: number, card: string) => call<{ stopped: boolean }>('POST', at(`/talk/${talk}/unwait`), { card }),
 };

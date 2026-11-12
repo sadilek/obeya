@@ -1168,6 +1168,8 @@ export interface Talk {
    * look-up, and the answer stands under this later exchange, answering both.
    */
   joinedInto?: number;
+  /** The owner stopped its look-up before the answer came: it goes on once they let it ("Resume") or follow up on it. */
+  stopped?: true;
   /** The files the answer came with, in the thread's output directory. */
   files?: AnswerFile[];
   /** The thread moved onto a Question card: that card; its answers stand there from then on. */
@@ -1531,6 +1533,9 @@ export type ErrorCode =
   | 'noAgent'
   /** Resuming an agent the owner has not paused. */
   | 'notPaused'
+  /** Stopping a look-up whose answer came already (or that is stopped), or letting one go on that is not stopped. */
+  | 'notLookingUp'
+  | 'notStopped'
   /** Snoozing a card that is neither at work nor waiting for the owner. */
   | 'notSnoozable'
   /** Waking a card that is not snoozed. */

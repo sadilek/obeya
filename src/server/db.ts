@@ -616,6 +616,10 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN joined INTEGER;',
   // a fork's card whose work goes to the original repository as a pull request too (`CardRow.upstream`)
   'ALTER TABLE cards ADD COLUMN upstream INTEGER;',
+  // a question whose look-up the owner stopped before its answer came: not looked up again until they
+  // let it go on; the Coordinator reads those with each command, found without going through the sheet
+  `ALTER TABLE talk ADD COLUMN stopped INTEGER;
+   CREATE INDEX talk_stopped ON talk (canvas_id) WHERE stopped IS NOT NULL;`,
 ];
 
 /**

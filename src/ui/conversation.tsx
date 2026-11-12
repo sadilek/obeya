@@ -10,7 +10,7 @@ import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
 import { api, type Field, onCardEvent, onCardEventGone, onReconnect } from './api';
 import type { Act, Tell } from './cardSheet';
-import { PauseMark, PlayMark } from './parts';
+import { PlayMark, StopMark } from './parts';
 import { holdsNotes } from '../core/queue';
 import { Body, Inline } from './markdown';
 import { goToMessage, Msg, Quote, Reading, tellable, useAnswer } from './message';
@@ -161,8 +161,8 @@ export function Conversation({
           </button>
         ) : (
           pausableNow(item) && (
-            <button className="turn-pause" title={t.pause.hint} aria-label={t.pause.button} onClick={() => turn(item.id, 'pause')}>
-              <PauseMark />
+            <button className="turn-pause" title={t.pause.hint} aria-label={t.pause.halt} onClick={() => turn(item.id, 'pause')}>
+              <StopMark />
             </button>
           )
         )

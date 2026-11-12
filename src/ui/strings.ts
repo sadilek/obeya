@@ -297,7 +297,9 @@ const de = {
   stopHint: 'Beendet den Agenten: die Aufgabe ist wieder geplant, ein neuer Start beginnt mit einer neuen Sitzung. Committete Arbeit bleibt auf dem Branch.',
   pause: {
     button: 'Pausieren',
-    hint: 'Pausieren: hält den Agenten sofort an, auch mitten in einem Schritt, mit allem, was er gerade laufen hat. Er behält seine Sitzung und macht dort weiter, wo er war, sobald du „Weitermachen“ klickst oder ihm schreibst.',
+    /** The stop mark on the bubble of the running turn, which halts the agent at once, mid-step if need be. */
+    halt: 'Sofort anhalten',
+    hint: 'Sofort anhalten: hält den Agenten sofort an, auch mitten in einem Schritt, mit allem, was er gerade laufen hat. Er behält seine Sitzung und macht dort weiter, wo er war, sobald du „Weitermachen“ klickst oder ihm schreibst.',
     /** The card's pause on the canvas, which lets the agent come to a safe point first. */
     safeHint: 'Pausieren: der Agent bringt erst den Schritt zu Ende, an dem er gerade ist, und hält dann an. Er behält seine Sitzung und macht dort weiter, sobald du „Weitermachen“ klickst oder ihm schreibst.',
     resume: 'Weitermachen',
@@ -686,6 +688,8 @@ const de = {
     notPlannable: 'Als Projekt planen lässt sich nur eine Idee oder eine eigene, geplante Aufgabe, an der noch niemand gearbeitet hat.',
     noAgent: 'An dieser Aufgabe arbeitet gerade kein Agent.',
     notPaused: 'Der Agent ist nicht pausiert.',
+    notLookingUp: 'Hier schlägt Obeya nichts mehr nach.',
+    notStopped: 'Dieses Nachschlagen ist nicht angehalten.',
     notSnoozable: 'Zurückstellen lässt sich nur eine eingeplante Karte, eine in Arbeit oder eine, die auf dich wartet.',
     notSnoozed: 'Die Karte ist nicht zurückgestellt.',
     snoozeTime: 'Dieser Zeitpunkt liegt nicht im kommenden Jahr.',
@@ -1212,6 +1216,9 @@ const de = {
     filed: (repo: string) => `In die Aufgabe „CLAUDE.md ergänzen“ für ${repo} aufgenommen.`,
     undone: 'zurückgenommen',
     lookingUp: 'schlägt nach …',
+    /** The stop mark on a look-up still running, and on one stopped, how it goes on. */
+    stopLookUpHint: 'Sofort anhalten: beendet das Nachschlagen sofort, auch mitten in einem Schritt. Mit „Weitermachen“ geht es dort weiter, wo es stand, ebenso wenn du etwas dazu sagst.',
+    lookUpStopped: 'Noch keine Antwort: Mit „Weitermachen“ geht das Nachschlagen dort weiter, wo du es angehalten hast.',
     /** Under the owner's words written in a project's sheet, which went straight to its project agent. */
     askedIn: (project: string) => `im Projektblatt „${project}“, an den Projekt-Agenten`,
     /** A look-up the usage limit stopped: when it goes on by itself. */
@@ -2633,7 +2640,8 @@ const en: Strings = {
   stopHint: 'Ends the agent: the task is planned again, and starting it again begins a new session. Committed work stays on the branch.',
   pause: {
     button: 'Pause',
-    hint: 'Pause: halts the agent at once, even in the middle of a step, with whatever it has running. It keeps its session and goes on where it was as soon as you click “Resume” or write to it.',
+    halt: 'Halt now',
+    hint: 'Halt now: stops the agent at once, even in the middle of a step, with whatever it has running. It keeps its session and goes on where it was as soon as you click “Resume” or write to it.',
     safeHint: 'Pause: the agent first finishes the step it is in, then stops. It keeps its session and goes on from there as soon as you click “Resume” or write to it.',
     resume: 'Resume',
     resumeHint: 'The agent goes on where you paused it.',
@@ -2970,6 +2978,8 @@ const en: Strings = {
     notPlannable: 'Only an idea, or a planned task of your own nobody has worked on yet, can be planned as a project.',
     noAgent: 'No agent is working on this task right now.',
     notPaused: 'The agent is not paused.',
+    notLookingUp: 'Obeya is no longer looking anything up here.',
+    notStopped: 'This look-up is not stopped.',
     notSnoozable: 'Only a planned card, one at work or one waiting for you can be snoozed.',
     notSnoozed: 'The card is not snoozed.',
     snoozeTime: 'That time is not within the coming year.',
@@ -3470,6 +3480,8 @@ const en: Strings = {
     filed: (repo: string) => `Added to the task “Add to CLAUDE.md” for ${repo}.`,
     undone: 'taken back',
     lookingUp: 'looking it up …',
+    stopLookUpHint: 'Halt now: ends the look-up at once, even in the middle of a step. “Resume” goes on from where it was, and so do words of yours that add to it.',
+    lookUpStopped: 'No answer yet: “Resume” goes on with the look-up where you halted it.',
     askedIn: (project: string) => `in the sheet of “${project}”, to the project agent`,
     lookUpLimited: (time: string) => `Usage limit · looks this up by itself at ${time}`,
     held: (time: string) => `Usage limit · reads this by itself at ${time}`,

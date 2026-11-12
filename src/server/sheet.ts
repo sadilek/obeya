@@ -205,6 +205,12 @@ export class Sheet {
     this.changed();
   }
 
+  /** The owner stopped the look-up of the exchange's question before its answer came (`false`: they let it go on). */
+  stop(id: number, stopped: boolean) {
+    this.db.query('UPDATE talk SET stopped = $stopped WHERE id = $id').run({ id, stopped: stopped ? 1 : null });
+    this.changed();
+  }
+
   /** The session of the agent that looks the exchange's question up. */
   lookedUpIn(id: number, session: string) {
     this.db.query('UPDATE talk SET session_id = $session WHERE id = $id').run({ id, session });
@@ -272,14 +278,34 @@ export class Sheet {
   }
 
   /** One exchange, with the card its question is about. */
-  exchange(id: number): (Talk & { about?: string; thenPlace?: Place }) | null {
+  exchange(id: number): (Talk & { about?: string; session?: string; thenPlace?: Place }) | null {
     const r = this.db.query('SELECT * FROM talk WHERE id = $id').get({ id }) as TalkRow | null;
-    return r ? { ...withContinues(this.db, r), ...(r.about ? { about: r.about } : {}), ...(r.then_place ? { thenPlace: JSON.parse(r.then_place) as Place } : {}) } : null;
+    return r
+      ? {
+          ...withContinues(this.db, r),
+          ...(r.about ? { about: r.about } : {}),
+          ...(r.session_id ? { session: r.session_id } : {}),
+          ...(r.then_place ? { thenPlace: JSON.parse(r.then_place) as Place } : {}),
+        }
+      : null;
   }
 
   /** Questions the Coordinator is still looking up, oldest first. */
   lookingUp(): number[] {
-    return (this.db.query('SELECT id FROM talk WHERE canvas_id = $c AND question IS NOT NULL AND answer IS NULL AND joined IS NULL ORDER BY id').all({ c: this.canvasId }) as { id: number }[]).map((r) => r.id);
+    return (
+      this.db.query('SELECT id FROM talk WHERE canvas_id = $c AND question IS NOT NULL AND answer IS NULL AND joined IS NULL AND stopped IS NULL ORDER BY id').all({ c: this.canvasId }) as { id: number }[]
+    ).map((r) => r.id);
+  }
+
+  /** Questions whose look-up the owner stopped before the answer came, the newest `limit`, oldest first. */
+  stoppedLookUps(limit: number): Talk[] {
+    return (
+      this.db
+        .query('SELECT * FROM talk WHERE canvas_id = $c AND question IS NOT NULL AND answer IS NULL AND joined IS NULL AND stopped IS NOT NULL ORDER BY id DESC LIMIT $limit')
+        .all({ c: this.canvasId, limit }) as TalkRow[]
+    )
+      .reverse()
+      .map(toTalk);
   }
 }
 
@@ -300,6 +326,7 @@ interface TalkRow {
   thread: number | null;
   follows: number | null;
   joined: number | null;
+  stopped: number | null;
   files: string | null;
   card: string | null;
   reply_to: string | null;
@@ -332,6 +359,7 @@ const toTalk = (r: TalkRow): Talk => ({
   ...(r.question ? { thread: r.thread ?? r.id } : {}),
   ...(r.follows ? { follows: r.follows } : {}),
   ...(r.joined ? { joinedInto: r.joined } : {}),
+  ...(r.stopped && r.answer === null ? { stopped: true as const } : {}),
   ...(r.files ? { files: JSON.parse(r.files) as AnswerFile[] } : {}),
   ...(r.card ? { movedTo: r.card } : {}),
   ...(r.wish ? { wish: JSON.parse(r.wish) as Wish } : {}),

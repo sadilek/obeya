@@ -432,6 +432,82 @@ describe('a looked-up answer goes on', () => {
     expect(board().sheet.exchange(first)!.answer).toBeUndefined();
   });
 
+  test('a look-up the owner stops ends at once, stays stopped across a restart, and goes on in its session with "Resume"', async () => {
+    await say('such issues, die wir fixen können', {}, 'look_up', { question: 'Which open issues could we fix?', confirm: 'Ich suche.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    const a = answerer();
+    a.emit({ type: 'session', id: 'look-1' });
+    canvas.answers.stop(first);
+    expect(a.closed).toBe(true);
+    await settle();
+    expect(board().sheet.exchange(first)).toMatchObject({ stopped: true });
+    expect(board().sheet.exchange(first)!.answer).toBeUndefined();
+    expect(board().sheet.lookingUp()).toEqual([]);
+    expect(notices).toHaveLength(0);
+    expect(() => canvas.answers.stop(first)).toThrow(BadRequest);
+    // Obeya restarting does not look it up again
+    const before = runtime.sessions.length;
+    await reopen();
+    await settle();
+    expect(runtime.sessions.length).toBe(before);
+    // the Coordinator knows it was stopped, by its tag
+    const { brief } = await say('was gibt es neues?', {}, 'reply', { text: 'Nichts.' });
+    expect(brief).toContain(`whose look-up the owner stopped before its answer came`);
+    expect(brief).toContain(`A${first}`);
+    canvas.answers.goOnWith(first);
+    await settle();
+    const b = answerer();
+    expect(b.spec.resume).toBe('look-1');
+    expect(b.inbox[0]).toContain('The owner stopped you while you looked this up and has now let you go on');
+    expect(b.inbox[0]).toContain('Which open issues could we fix?');
+    expect(board().sheet.exchange(first)!.stopped).toBeUndefined();
+    b.call('answer_owner', { text: '1. #42 Dark mode' });
+    b.emit({ type: 'idle' });
+    await settle();
+    expect(board().sheet.exchange(first)).toMatchObject({ answer: '1. #42 Dark mode', unread: true });
+    expect(() => canvas.answers.goOnWith(first)).toThrow(BadRequest);
+    expect(() => canvas.answers.stop(first)).toThrow(BadRequest);
+  });
+
+  test('words that go on with a stopped look-up let it go on in its session, its one answer under them', async () => {
+    await say('frage', {}, 'look_up', { question: 'Q?', confirm: 'Moment.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    const a = answerer();
+    a.emit({ type: 'session', id: 'look-1' });
+    canvas.answers.stop(first);
+    await settle();
+    await say('mach weiter, aber nur 2024', {}, 'look_up', { question: 'Q for 2024?', follows: `A${first}`, confirm: 'Ich mache weiter.' });
+    const second = board().sheet.latest().at(-1)!.id;
+    const b = answerer();
+    expect(b.spec.resume).toBe('look-1');
+    expect(b.inbox[0]).toContain('The owner stopped you before you had answered');
+    expect(b.inbox[0]).toContain('mach weiter, aber nur 2024');
+    expect(board().sheet.exchange(first)).toMatchObject({ joinedInto: second });
+    expect(board().sheet.latest().at(-1)).toMatchObject({ id: second, addsTo: true });
+    b.call('answer_owner', { text: '2024: 3.' });
+    b.emit({ type: 'idle' });
+    await settle();
+    expect(board().sheet.exchange(second)!.answer).toBe('2024: 3.');
+    expect(board().sheet.exchange(first)!.answer).toBeUndefined();
+  });
+
+  test('a look-up stopped before its turn began never starts', async () => {
+    await say('frage', {}, 'look_up', { question: 'Q?', confirm: 'Moment.' });
+    const first = board().sheet.latest().at(-1)!.id;
+    const a = answerer();
+    a.emit({ type: 'session', id: 'look-1' });
+    await a.call('answer_owner', { text: 'Eins.' });
+    // a follow-up waits for the turn still running in its thread
+    await say('und zwei?', {}, 'look_up', { question: 'Two?', follows: `A${first}`, confirm: 'Moment.' });
+    const second = board().sheet.latest().at(-1)!.id;
+    canvas.answers.stop(second);
+    const before = runtime.sessions.length;
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(runtime.sessions.length).toBe(before);
+    expect(board().sheet.exchange(second)).toMatchObject({ stopped: true });
+  });
+
   test('an unknown answer tag goes back to the Coordinator', async () => {
     canvas.commander.hear('und weiter?', {});
     await settle();

@@ -86,6 +86,12 @@ export const PauseMark = () => (
     <rect x="7.4" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor" />
   </svg>
 );
+/** The mark on the buttons that halt an agent at once, in the middle of a step if need be. */
+export const StopMark = () => (
+  <svg className="btn-mark" viewBox="0 0 12 12" width="11" height="11" aria-hidden>
+    <rect x="2" y="2" width="8" height="8" rx=".8" fill="currentColor" />
+  </svg>
+);
 export const PlayMark = () => (
   <svg className="btn-mark" viewBox="0 0 12 12" width="11" height="11" aria-hidden>
     <path d="M3 1.5v9l7.5-4.5z" fill="currentColor" />

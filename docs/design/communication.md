@@ -110,7 +110,7 @@ Confirmation and undo.
 ### Pausing an agent
 
 A note reaches the worker at any time without stopping it. To stop it mid-work, the conversation's
-bubble that shows the agent at work ("Agent working …") has a pause mark, faint. At the desk it
+bubble that shows the agent at work ("Agent working …") has a stop mark (■, "Halt now"), faint. At the desk it
 shows only while the pointer is on the bubble, so a long run does not keep a button in view; on a
 touch screen it is always there. By voice „halt mal an“. Both pause at once.
 
@@ -340,6 +340,11 @@ as a learned preference does. Older answers agents gave in the owner's name stay
   newcomer finds a button that appears where the pointer goes, so none stays in view until its
   first use. Rejected: always visible; visible until used once. A touch screen, without hover,
   shows them all.
+- **The bubble's button shows a stop mark, the card's and the canvas's a pause mark** (2026-11-12,
+  owner): the same pause mark for halting mid-step and for waiting for a safe point hid that the
+  bubble's cuts off the step running. What follows is the same paused agent with "Resume" either
+  way, so only the mark and its label ("Halt now") differ; the card's "Stop", which ends the agent,
+  keeps its word.
 - **The card's pause and the canvas's pause wait for a safe point; the bubble's pauses at once**
   (2026-10-30, owner): pausing from the canvas sets work aside for later, and an agent cut off
   mid-step leaves half-done work (a test run, a render, uncommitted edits) to sort out on resume. The

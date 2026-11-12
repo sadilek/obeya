@@ -309,6 +309,16 @@ later words, which show "↳ goes into “…”"; the earlier question shows no
 that come once the answer is given follow up on it in a turn of their own. Obeya restarting
 meanwhile, the later words are looked up again in the session that read for both.
 
+The bubble that shows a look-up still running ("looking it up …", also while its walkthrough plays
+before its words) has the stop mark of an agent's running turn (see Pausing an agent): it ends the
+look-up at once, mid-step if need be, with whatever it ran, and a walkthrough it began goes with it.
+The bubble then reads "Obeya paused" with "Resume", over "No answer yet"; it stays so across a
+restart, which looks up only what was not stopped. "Resume" goes on in the session it read in, which
+hears that it was stopped and what ran was cut off (exit code 137). Words that go on with it go into
+it, as into a running look-up: the Coordinator hears which look-ups the owner stopped, by their tags,
+the agent hears both, and the one answer stands under the later words. A look-up stopped before its
+turn began (it waited for another turn of its thread, or for the usage limit) never starts.
+
 A look-up whose turn ends while its background work runs (a download, a long query) keeps reading
 until that work wakes the agent, within a worker's limits (see Turns that end without a handover);
 should it never wake it, its last words are the answer.
@@ -704,6 +714,12 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   refuse an answer given before. Rejected: queueing them as a follow-up of the answer to come (two
   answers again, the second only once the first is in), and stopping the look-up to start it anew
   with both (what it was running would be cut off).
+- **A running look-up can be stopped, and goes on with "Resume"** (owner, 2026-11-12): a look-up
+  going the wrong way (a long search for something the owner no longer needs) read on for minutes,
+  with nothing to end it. Stopping keeps its session and question, so what it read is not lost when
+  the owner wants it after all or says how it should go on. Rejected: stopping as an answer of its
+  own ("Stopped."), which would have stood in the thread as if it answered, and taking the stopped
+  question off the sheet.
 - **A look-up waits for its background work** (2026-10-19). Rejected: taking its words so far
   ("still downloading …") as the answer, which closed the session and stopped the work.
 - **The project agent can be asked from the project's sheet** (2026-10-21, a colleague's feedback),

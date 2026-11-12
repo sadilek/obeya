@@ -885,6 +885,9 @@ function talkRoutes(x: Routing) {
         c.board.sheet.read(ids as number[] | undefined);
       }),
     },
+    // the owner stops a look-up before its answer came, and lets it go on ("Resume")
+    '/api/c/:canvas/talk/:id/stop': { POST: on((c, req) => c.answers.stop(Number(req.params.id))) },
+    '/api/c/:canvas/talk/:id/resume': { POST: on((c, req) => c.answers.goOnWith(Number(req.params.id))) },
     // the owner no longer wants the step the Coordinator waits on a card for ("Stop waiting")
     '/api/c/:canvas/talk/:id/unwait': {
       POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String((await someFields(req)).card ?? '')) })),
