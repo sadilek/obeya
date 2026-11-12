@@ -40,10 +40,8 @@ const CONFLICT = /cannot be cleanly created|merge conflict/i;
 
 /** What review cards need of the workers. */
 export interface ReviewHost {
-  /** The card's run (`Workers.bump`): one that changed meanwhile makes what was under way stale. */
-  run(cardId: string): number | undefined;
-  /** Whether the workers were shut down. */
-  shut(): boolean;
+  /** Whether what began now is still under way when asked later (`Workers.sameRun`). */
+  sameRun(cardId: string): () => boolean;
   /** Cards approved while git or the forge tells what the approval does (`Workers.approving`): a restart waits for them. */
   approving: Set<string>;
   card(id: string): Item;
@@ -83,11 +81,11 @@ export class ReviewCards {
    * where git could not, unless the card was stopped or started anew meanwhile.
    */
   onPrHead(cardId: string, branch: string, c: StoredContribution, then: (problem: string | null) => void) {
-    const generation = this.w.run(cardId);
+    const same = this.w.sameRun(cardId);
     const ws = this.o.board.row(cardId).workspace;
     const source = this.prSource(c);
     // stopped while git fetched, the workspace may be another card's by now: it is left as it is
-    const still = () => !this.w.shut() && this.w.run(cardId) === generation && this.o.board.row(cardId).workspace === ws;
+    const still = () => same() && this.o.board.row(cardId).workspace === ws;
     const fetched = ws
       ? gitAsync(ws, 'fetch', '--quiet', source, `refs/pull/${c.number}/head`).then(() => (still() ? gitAsync(ws, 'checkout', '--quiet', '-B', branch, 'FETCH_HEAD') : ''))
       : Promise.reject(new Error('the card has no workspace'));
@@ -95,7 +93,7 @@ export class ReviewCards {
       () => null,
       (e: unknown) => messageOf(e),
     ).then((problem) => {
-      if (this.w.shut() || !this.o.board.item(cardId) || this.w.run(cardId) !== generation) return;
+      if (!same()) return;
       if (problem) this.o.board.log(cardId, 'error', 'obeya', problem);
       then(problem);
     });
@@ -336,7 +334,7 @@ export class ReviewCards {
     };
     const along = (a: Comments | undefined, b: Comments | undefined): Comments | undefined => (a && b ? { text: `${a.text}\n\n${b.text}`, images: [...a.images, ...b.images] } : (a ?? b));
     const t = this.o.board.t.worker;
-    const generation = this.w.run(cardId);
+    const still = this.w.sameRun(cardId);
     const held = this.w.held(cardId).length > 0;
     this.w.holdOff(cardId);
     this.w.approving.add(cardId);
@@ -350,7 +348,7 @@ export class ReviewCards {
       });
       // approved before, the worker's handover after a conflict is merged while the card is still with Obeya
       const ready = kept ? this.w.card(cardId).state === 'working' && !!this.o.board.row(cardId).approved_at : handedOver(this.w.card(cardId));
-      if (!ready || this.w.run(cardId) !== generation) throw new BadRequest('notReady', 'the card is not ready for review');
+      if (!ready || !still()) throw new BadRequest('notReady', 'the card is not ready for review');
       if (now.state === 'MERGED') return this.w.merged(cardId, now.mergeCommit, t.mergedContribution(c.number), decide());
       if (now.state === 'CLOSED') throw new BadRequest('prClosed', 'the pull request was closed');
       // the worker's own commits go on top of the head they were made on; already there, only their text is still to post
@@ -360,7 +358,7 @@ export class ReviewCards {
       if (merging) {
         const shown = c.clash;
         const clash = await this.probeClash(cardId);
-        if (this.w.run(cardId) !== generation || !this.o.board.item(cardId)) return;
+        if (!still()) return;
         if (clash && !sameClash(shown, clash)) {
           this.o.board.log(cardId, 'state', 'obeya', t.clashFound(c.number, clash.subject, clash.card?.title));
           throw new BadRequest('pullClash', `the pull request collides with unpushed commits on the local main (${clash.commit.slice(0, 7)} ${clash.subject})`);
@@ -370,7 +368,7 @@ export class ReviewCards {
       }
       if (c.held) {
         if (now.head !== c.reviewed) await this.pushHeld(cardId, c);
-        if (this.w.run(cardId) !== generation || !this.o.board.item(cardId)) return;
+        if (!still()) return;
         await this.postHeld(cardId, c);
         if (c.held.asks.length || !merge) {
           const decided = decide();
@@ -389,13 +387,13 @@ export class ReviewCards {
         const reason = messageOf(e).replace(/^gh pr merge \S+: /, '');
         // the forge read the PR's mergeability before the push, or not at all yet: it says now whether main is in the way
         const after = await forge.status(cwd, c.url).catch(() => undefined);
-        if (this.w.run(cardId) !== generation || !this.o.board.item(cardId)) return;
+        if (!still()) return;
         if (after?.mergeable === 'CONFLICTING' || (after?.mergeable !== 'MERGEABLE' && CONFLICT.test(reason))) return this.conflicted(cardId, c, after?.head || c.reviewed, comments, kept);
         this.o.board.log(cardId, 'error', 'obeya', t.mergeRefused(reason));
         if (comments) this.w.deliver(cardId, comments.text, comments.images, true);
         throw new BadRequest('mergeRefused', reason);
       }
-      if (this.w.run(cardId) !== generation || !this.o.board.item(cardId)) return;
+      if (!still()) return;
       this.w.merged(cardId, merged || undefined, t.mergedContribution(c.number), comments);
     } catch (e) {
       if (held && this.w.held(cardId).length) this.w.releaseSoon(cardId);
@@ -659,7 +657,7 @@ export class ReviewCards {
     const c = fromJson(this.o.board.row(cardId).contribution);
     if (!this.o.forge || !c) return 'Not sent: this card reviews no pull request.';
     if (!body.trim()) return 'Not sent: the review has no text.';
-    const generation = this.w.run(cardId);
+    const still = this.w.sameRun(cardId);
     // the head the request is about, where no handover named one yet: a push after it is news for the worker
     const ws = this.o.board.row(cardId).workspace;
     const head = c.reviewed ?? (ws ? await gitAsync(ws, 'rev-parse', 'HEAD').catch(() => undefined) : undefined);
@@ -672,7 +670,7 @@ export class ReviewCards {
     const t = this.o.board.t.worker;
     // the owner stopped the card meanwhile: the review is out, but the card does not wait for anyone
     const row = this.o.board.row(cardId);
-    if (this.w.run(cardId) !== generation || !(row.state === 'working' || row.state === 'waiting')) {
+    if (!still() || !(row.state === 'working' || row.state === 'waiting')) {
       this.o.board.log(cardId, 'state', 'worker', `${t.changesRequested(c.number, c.author)}${url ? ` ${url}` : ''}`);
       return 'Sent, but the card was stopped meanwhile. End your turn.';
     }

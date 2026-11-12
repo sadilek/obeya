@@ -27,7 +27,7 @@ import { clip, messageOf, tooLong, oneLine } from '../core/text';
 import type { OwnCommits, ReviewCards } from './review-cards';
 import type { WorkerBriefing } from './worker-briefing';
 import { PROPOSAL_QUESTIONS, proposalQuestions, proposalTask, retractedText } from './proposals';
-import { AFTER_LANDING, snoozedUntil } from './worker-texts';
+import { AFTER_LANDING, SESSION_ENDED, snoozedUntil } from './worker-texts';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { APP_URL, type Live } from './worker-live';
 
@@ -108,11 +108,12 @@ export class WorkerTools {
       return `${stands} The owner wrote to you while you worked, and their words reach you only now, with this result: take them in as at any other step. Answer them with reply where they call for an answer, and do what they ask${change ? `; ${change}` : ''}. Then end your turn.\n\n${words}`;
     };
     // a session the owner stopped or replaced may still call its tools: those calls change nothing
+    const ended = () => this.w.liveOf(cardId) !== live && !live.standIn;
     const current = (tools: AgentTool[]): AgentTool[] =>
       tools.map((t) => ({
         ...t,
         run: (args) => {
-          if (this.w.liveOf(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
+          if (ended()) return SESSION_ENDED;
           const heard = (text: string) => {
             if (/^Not [a-z ]+:/.test(text)) live.refused = { tool: t.name, text };
             else if (live.refused?.tool === t.name) live.refused = undefined;
@@ -197,7 +198,7 @@ export class WorkerTools {
           return this.demoHere(cardId, given.dir).then((here) => {
             if ('wrong' in here) return `Not asked: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then ask again.`;
             // copying it takes a while, in which the owner may stop or replace the session
-            if (this.w.liveOf(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
+            if (ended()) return SESSION_ENDED;
             const kind = given.kind ?? 'video';
             if (kind === 'html') {
               const wrong = checkArtifact(here.dir);
@@ -486,7 +487,7 @@ export class WorkerTools {
             changed?: string[],
           ): string => {
             // reading what the change shows takes a while, in which the owner may stop or replace the session
-            if (this.w.liveOf(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
+            if (ended()) return SESSION_ENDED;
             const s = String(summary);
             const row = this.o.board.row(cardId);
             if (row.landed) return 'Not handed over: your work is on main already.';

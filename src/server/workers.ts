@@ -33,7 +33,7 @@ import { appRunning, type Live, onlyApp } from './worker-live';
 import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
-import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTARTED, RESUMED, restartNotice, restartWaits, RUNS_YOUR_CHANGE, sentence, spotNote, stillDue, wokeNote } from './worker-texts';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTARTED, RESUMED, restartNotice, restartWaits, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
 
@@ -183,10 +183,9 @@ export class Workers {
   private tools: WorkerTools;
 
   constructor(private o: WorkerOptions) {
-    this.apps = new CardApps(o, { busy: (id) => !!this.live.get(id)?.busy, run: (id) => this.generation.get(id), shut: () => this.shut });
+    this.apps = new CardApps(o, { busy: (id) => !!this.live.get(id)?.busy, sameRun: (id) => this.sameRun(id), shut: () => this.shut });
     this.reviews = new ReviewCards(o, {
-      run: (id) => this.generation.get(id),
-      shut: () => this.shut,
+      sameRun: (id) => this.sameRun(id),
       approving: this.approving,
       card: (id) => this.card(id),
       deliver: (id, text, images, owner) => this.deliver(id, text, images, owner),
@@ -308,7 +307,7 @@ export class Workers {
       go();
       return Promise.resolve();
     }
-    const generation = this.generation.get(cardId);
+    const still = this.sameRun(cardId);
     const line = this.o.board.t.worker.preparingWorkspace;
     const path = this.o.board.row(cardId).workspace;
     const settle = (then: () => void, always = false) => {
@@ -320,7 +319,7 @@ export class Workers {
       else this.o.board.changed();
       // what was given back meanwhile (the card deleted, say) is freed now
       this.settleLater();
-      if (!this.o.board.item(cardId) || !(always || this.generation.get(cardId) === generation)) return;
+      if (!(always ? this.o.board.item(cardId) : still())) return;
       try {
         then();
       } catch (e) {
@@ -850,7 +849,7 @@ export class Workers {
     const before = this.o.board.row(cardId).approved_at;
     this.o.board.work(cardId, { approved_at: new Date().toISOString() });
     this.approving.add(cardId);
-    const generation = this.generation.get(cardId);
+    const still = this.sameRun(cardId);
     let lands: { land: 'main' | 'pr'; direct: boolean };
     let work: boolean;
     try {
@@ -859,7 +858,7 @@ export class Workers {
       this.approving.delete(cardId);
     }
     // stopped meanwhile (and perhaps started and handed over anew: that is not what the owner approved)
-    if (!handedOver(this.card(cardId)) || this.generation.get(cardId) !== generation) throw new BadRequest('notReady', 'the card is not ready for review');
+    if (!handedOver(this.card(cardId)) || !still()) throw new BadRequest('notReady', 'the card is not ready for review');
     // where work lands on main anyway, approving it directly is approving it
     if (direct && lands.land === 'pr' && !lands.direct) {
       this.o.board.work(cardId, { approved_at: before });
@@ -1428,12 +1427,12 @@ export class Workers {
     this.takeHeld(cardId);
     this.end(cardId);
     this.bump(cardId);
-    const generation = this.generation.get(cardId);
+    const still = this.sameRun(cardId);
     const path = this.o.board.row(cardId).workspace;
     this.o.board.work(cardId, PLANNED_AGAIN);
     said();
     return this.o.workspaces.hasWork(cardId).then((keep) => {
-      if (keep || this.generation.get(cardId) !== generation || this.o.board.row(cardId).workspace !== path) return;
+      if (keep || !still() || this.o.board.row(cardId).workspace !== path) return;
       this.o.workspaces.release(cardId);
       this.o.board.work(cardId, { workspace: null });
     });
@@ -2164,9 +2163,9 @@ export class Workers {
     const stopping = this.apps.stopping.get(cardId);
     if (stopping) {
       // the worker might start the app again while the stop still runs, and lose it
-      const generation = this.generation.get(cardId);
+      const still = this.sameRun(cardId);
       void stopping.then(() => {
-        if (this.generation.get(cardId) === generation) this.deliver(cardId, text, images, false, said);
+        if (still()) this.deliver(cardId, text, images, false, said);
       });
       return;
     }
@@ -2354,6 +2353,15 @@ export class Workers {
   private pausedForRestart(cardId: string, live: Live) {
     if (live.statusBeforeRestart !== undefined) this.o.board.work(cardId, { status_line: live.statusBeforeRestart });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.paused(pauseOf(this.restart!)));
+  }
+
+  /**
+   * Whether what begins now is still under way when asked later, after an await: the card's run is
+   * the same (`bump`), the card is on the canvas, and the workers were not shut down.
+   */
+  private sameRun(cardId: string): () => boolean {
+    const run = this.generation.get(cardId);
+    return () => !this.shut && this.generation.get(cardId) === run && !!this.o.board.item(cardId);
   }
 
   private bump(cardId: string) {
@@ -2716,10 +2724,10 @@ export class Workers {
     const pending = live.pending;
     // in a turn, or its ended turn waiting for background work that woke it: that work went with the session
     const busy = live.busy;
-    const generation = this.generation.get(cardId);
+    const still = this.sameRun(cardId);
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.hostLost(there.host.name));
     const again = async () => {
-      const current = () => this.generation.get(cardId) === generation && !this.live.has(cardId);
+      const current = () => still() && !this.live.has(cardId);
       if (!current()) return;
       if (!(await there.host.reachable())) {
         if (current()) this.reconnecting.set(cardId, this.o.reconnectMs ?? RECONNECT_MS, again);
@@ -2812,7 +2820,7 @@ export class Workers {
   private askNow(cardId: string, live: Live, request: PermissionRequest, signal: AbortSignal): Promise<PermissionAnswer> {
     const asked: AskedPermission = { name: request.name, input: request.input };
     if (this.granted.get(cardId)?.delete(permissionKey(asked))) return Promise.resolve({ allow: true });
-    if (this.live.get(cardId) !== live || signal.aborted) return Promise.resolve({ allow: false, message: 'This session has ended. Stop working and end your turn.' });
+    if (this.live.get(cardId) !== live || signal.aborted) return Promise.resolve({ allow: false, message: SESSION_ENDED });
     const t = this.o.board.t;
     const q: Question = { text: t.worker.permission(permissionWhat(request.name, request.input, t), request.reason && clip(request.reason, 600)), options: [t.worker.allow, t.worker.deny] };
     this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));

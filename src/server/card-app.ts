@@ -20,8 +20,8 @@ const PROBE_MS = 1500;
 export interface CardAppsHost {
   /** Whether the card's worker is in a turn. */
   busy(cardId: string): boolean;
-  /** The card's run (`Workers.bump`): one that changed meanwhile makes what was under way stale. */
-  run(cardId: string): number | undefined;
+  /** Whether what began now is still under way when asked later (`Workers.sameRun`). */
+  sameRun(cardId: string): () => boolean;
   /** Whether the workers were shut down. */
   shut(): boolean;
 }
@@ -154,15 +154,15 @@ export class CardApps {
     // the settings lost the command since the grace began
     if (!stop) return;
     const workspace = this.o.board.row(cardId).workspace!;
-    const generation = this.w.run(cardId);
+    const still = this.w.sameRun(cardId);
     const kept = keep ? await runAppCommand(workspace, keep) : null;
     if (kept?.ok && !kept.missing) {
-      if (this.w.run(cardId) === generation) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parkKept);
+      if (still()) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parkKept);
       return;
     }
     const result = await runAppCommand(workspace, stop);
     // the card's work ended or started afresh meanwhile: its row is no longer this workspace's
-    if (this.w.run(cardId) !== generation) return;
+    if (!still()) return;
     // a branch older than the stop command: nothing of the app runs there to stop
     if (result.missing) return;
     if (!result.ok) {

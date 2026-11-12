@@ -187,3 +187,6 @@ export const failureText = (failed: string, t: Messages) => failureReason(clip(f
 
 /** A text that ends a sentence, with a full stop where it has no closing mark of its own. */
 export const sentence = (text: string) => `${text}${/[.!?]$/.test(text) ? '' : '.'}`;
+
+/** What a tool of a session that has ended (stopped, replaced) answers: the call changed nothing. */
+export const SESSION_ENDED = 'This session has ended. Stop working and end your turn.';
