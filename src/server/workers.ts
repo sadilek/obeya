@@ -14,7 +14,7 @@ import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, sh
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type ChangeSize, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, laterTime, type Spot, type Superseded, type SpotInput, started, type ApproveResult, cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
-import { BadRequest, type Board, replyNote, type Retracted, titleKey } from './board';
+import { BadRequest, type Board, notPaused, pauseRefused, replyNote, type Retracted, titleKey } from './board';
 import { pathOfRef } from './plan-ref';
 import { fromJson, type AskedPermission, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type StoredContribution, type Json, type StoredDemo, type Unheard, toJson } from './row';
 import { parsePlanDoc } from '../core/plan-doc';
@@ -2942,7 +2942,7 @@ export class Workers {
    */
   pause(cardId: string) {
     const card = this.card(cardId);
-    if (!pausableNow(card)) throw new BadRequest('noAgent', card.paused ? 'the agent is paused already' : 'the agent is not working on anything');
+    if (!pausableNow(card)) throw pauseRefused(card, true);
     this.halt(cardId);
   }
 
@@ -2955,12 +2955,11 @@ export class Workers {
    */
   pauseAtSafePoint(cardId: string) {
     const card = this.card(cardId);
-    if (!pausable(card)) throw new BadRequest('noAgent', card.paused || card.pausing ? 'the agent is paused already' : 'the agent is not working on anything');
+    if (!pausable(card)) throw pauseRefused(card, false);
     const live = this.live.get(cardId);
     if (!live?.busy || live.limited) return this.halt(cardId);
     const limit = this.o.pauseLimit ?? PAUSE_LIMIT;
-    this.o.board.work(cardId, { pausing: new Date().toISOString() });
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.pausing);
+    this.o.board.pausing(cardId);
     live.session.send(pauseNotice(limit));
     clearTimeout(this.pausing.get(cardId));
     this.pausing.set(
@@ -2984,8 +2983,7 @@ export class Workers {
     this.reconnecting.delete(cardId);
     clearTimeout(this.pausing.get(cardId));
     this.pausing.delete(cardId);
-    this.o.board.work(cardId, { paused: toJson((pending ? { held: [pending] } : {})), pausing: null });
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.pausedByOwner);
+    this.o.board.paused(cardId, pending ? { held: [pending] } : {});
     this.parkLater(cardId);
   }
 
@@ -3011,7 +3009,7 @@ export class Workers {
       this.live.get(cardId)?.session.send(PAUSE_TAKEN_BACK);
       return;
     }
-    if (!card.paused) throw new BadRequest('notPaused', 'the agent is not paused');
+    if (!card.paused) throw notPaused();
     this.deliver(cardId, '', [], true);
   }
 
@@ -3019,8 +3017,7 @@ export class Workers {
   private pauseTakenBack(cardId: string) {
     clearTimeout(this.pausing.get(cardId));
     this.pausing.delete(cardId);
-    this.o.board.work(cardId, { pausing: null });
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.resumedByOwner);
+    this.o.board.pauseTakenBack(cardId);
     const live = this.live.get(cardId);
     if (live) live.pauseHeld = false;
   }
@@ -3170,10 +3167,7 @@ export class Workers {
       }
       // about to pause at a safe point, it paused for the restart: it stays paused (an idea's or
       // Question card's agent, which a restart of this repository's agents leaves running, pauses by itself)
-      if (row.pausing && !row.paused && i.kind !== 'question' && i.state !== 'idea') {
-        this.o.board.work(i.id, { paused: toJson({}), pausing: null });
-        this.o.board.log(i.id, 'state', 'owner', this.o.board.t.worker.pausedByOwner);
-      }
+      if (row.pausing && !row.paused && i.kind !== 'question' && i.state !== 'idea') this.o.board.paused(i.id);
       // the owner's pause holds across the restart
       if (row.paused || (row.pausing && i.kind !== 'question' && i.state !== 'idea')) {
         this.pausedOverRestart(i.id, landed);
@@ -3615,8 +3609,7 @@ export class Workers {
       text = [PAUSE_TAKEN_BACK, text].filter(Boolean).join('\n\n');
     }
     if (paused) {
-      this.o.board.work(cardId, { paused: null });
-      if (!woke) this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.resumedByOwner);
+      this.o.board.resumed(cardId, !woke);
       const held = paused.held ?? [];
       text = [woke ? wokeText : RESUMED, ...(held.length ? [`While you were ${woke ? 'snoozed' : 'paused'}, Obeya had this for you:\n\n${held.map((h) => h.text).join('\n\n---\n\n')}`] : []), ...(text ? [`Then:\n\n${text}`] : [])].join('\n\n');
       images = [...held.flatMap((h) => h.images), ...images];

@@ -67,7 +67,7 @@ import { docOfRef, keyOfRef, repoOfRef, workstreamRef } from './plan-ref';
 import { PageNotice } from './shared-pages';
 import { Archive } from './archive';
 import { PlanFollower } from './plan-follow';
-import { fromJson, type Shipped, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredThread, toJson } from './row';
+import { fromJson, type PausedState, type Shipped, type StoredDeps, type StoredIdea, type StoredNewRepo, type StoredThread, toJson } from './row';
 import type { Images } from './images';
 import { clip, messageOf, oneLine } from '../core/text';
 
@@ -123,6 +123,16 @@ export class BadRequest extends Error {
     super(message);
   }
 }
+
+/**
+ * The owner's pause (at once when `now`, else at a safe point) refused, for a card whose agent is
+ * paused already or works on nothing; the same refusal for every kind of agent.
+ */
+export const pauseRefused = (card: Pick<Item, 'paused' | 'pausing'>, now: boolean) =>
+  new BadRequest('noAgent', card.paused || (!now && card.pausing) ? 'the agent is paused already' : 'the agent is not working on anything');
+
+/** The owner's resume refused, for a card whose agent is not paused. */
+export const notPaused = () => new BadRequest('notPaused', 'the agent is not paused');
 
 /** A card a number names (`Board.numbered`): its row; as the UI sees it where it is this canvas's; the name of its canvas where that is another. */
 export interface Numbered {
@@ -1477,6 +1487,36 @@ export class Board {
     const why = this.t.worker.wokeWhy;
     this.log(cardId, 'state', woke === 'owner' ? 'owner' : 'obeya', this.t.worker.woke(typeof woke === 'object' ? ('said' in woke ? woke.said : s.on ? why.card(s.on.title, woke.met, s.on.state) : why.time) : why[woke]));
     return s;
+  }
+
+  /*
+   * The owner's pause, the same for every kind of agent: each step is the row's write with its line
+   * in the card's conversation. What each agent does around it (ending its turn, keeping what came
+   * meanwhile) stays with that agent.
+   */
+
+  /** The agent is to pause once it reaches a safe point. */
+  pausing(cardId: string) {
+    this.work(cardId, { pausing: new Date().toISOString() });
+    this.log(cardId, 'state', 'owner', this.t.worker.pausing);
+  }
+
+  /** The agent is paused, holding `state` for when it goes on; one about to pause no longer is. */
+  paused(cardId: string, state: PausedState = {}) {
+    this.work(cardId, { paused: toJson(state), pausing: null });
+    this.log(cardId, 'state', 'owner', this.t.worker.pausedByOwner);
+  }
+
+  /** The agent about to pause at a safe point goes on after all. */
+  pauseTakenBack(cardId: string) {
+    this.work(cardId, { pausing: null });
+    this.log(cardId, 'state', 'owner', this.t.worker.resumedByOwner);
+  }
+
+  /** The paused agent goes on; without its line (`said` false) where another line says why, such as its waking. */
+  resumed(cardId: string, said = true) {
+    this.work(cardId, { paused: null });
+    if (said) this.log(cardId, 'state', 'owner', this.t.worker.resumedByOwner);
   }
 
   /**
