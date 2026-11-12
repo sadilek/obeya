@@ -516,7 +516,7 @@ function Where({ item, parent, worked, inFolder, change, onReadPlan }: { item: I
         <>
           {' · '}
           <a href={item.adopted.pr.url} target="_blank" rel="noreferrer">
-            {t.adopted.pr(prName(item.adopted.pr))} ↗
+            {t.adopted.pr(prName(item.adopted.pr))}{'\u00a0'}↗
           </a>
         </>
       )}
@@ -882,7 +882,7 @@ function BranchPick({ item, repo, act, all }: { item: Item; repo: RepoRef | unde
       </label>
       {pr && (
         <a className="branch-pr" href={pr.url} target="_blank" rel="noreferrer">
-          {t.adopted.pr(prName(pr))} ↗
+          {t.adopted.pr(prName(pr))}{'\u00a0'}↗
         </a>
       )}
     </div>
