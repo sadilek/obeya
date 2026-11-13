@@ -1536,7 +1536,7 @@ export class Commander {
             `The owner attached ${shots === 1 ? 'a screenshot' : `${shots} screenshots`} (shown below). Obeya gives ${shots === 1 ? 'it' : 'them'} to every new_card, new_idea, start, note, answer, feedback, discuss and revise action you take for this message; a title for a new card may say what ${shots === 1 ? 'it shows' : 'they show'}.`,
           ]
         : []),
-      focused && (input.after || input.answered) ? `They said it with this card open: ${describe(focused)}` : focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused)}` : project ? `The owner is looking at the project ${tag(project.id)} "${project.title}".` : 'No card is open: the owner speaks to you.',
+      focused && (input.after || input.answered) ? `They said it with this card open: ${describe(focused)}` : focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused)}` : project ? `The owner is looking at the project ${tag(project.id)} "${project.title}".` : `No card is open: the owner speaks to you, in your conversation in Obeya's sheet, which shows only what was said with no card open.${input.after || input.answered ? '' : lastInSheet(this.o.board.sheet.lastShown(), items)}`,
       `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
       ...(named.length
         ? [`Cards the owner's words name by number that the list leaves out (an action takes only a card on this canvas, not archived):\n${named.join('\n')}`]
@@ -1673,6 +1673,29 @@ export function talkReplyNote(quoted: TalkQuote | undefined): string {
   return `[In reply to ${whose}: “${excerpt(oneLine(quoted.text), 2000)}”]\n\n`;
 }
 
+/** The end of `s` on one line, at most `n` characters: where a message's question stands. */
+const ending = (s: string, n: number) => {
+  const line = oneLine(s);
+  return line.length > n ? `…${line.slice(line.length - n + 1)}` : line;
+};
+
+/**
+ * The last message of Obeya's sheet as the Coordinator reads it with the owner's words there: what
+ * a bare „ja“ answers, which a question it asked in a card's conversation meanwhile does not change.
+ */
+export function lastInSheet(t: Talk | undefined, items: Item[]): string {
+  if (!t) return '';
+  const said = t.said ? ` to their words “${clip(oneLine(t.said), 120)}”` : '';
+  const last = t.movedTo
+    ? `the thread ${answerTag(t.id)}${said}, which went onto the Question card "${items.find((i) => i.id === t.movedTo)?.title ?? ''}" and goes on there`
+    : t.answer !== undefined
+      ? `the answer ${answerTag(t.id)}${t.answerBy === 'project' ? " a project's agent" : ' you'} looked up${said}, ending: “${ending(t.answer, 400)}”`
+      : t.question && !t.stopped
+        ? `your reply${said}: “${ending(t.reply ?? '', 400)}”, its answer ${answerTag(t.id)} still to come`
+        : `your reply${said}: “${ending(t.reply ?? '', 400)}”`;
+  return ` The last message there is ${last}. A bare answer („ja“, „mach das“) answers that one; a question you asked in a card's conversation only where their words name it.`;
+}
+
 /** A queued card's state as the Coordinator reads it. */
 function queued(q: Queue, items: Item[]): string {
   if ('checking' in q) return 'queued: Obeya checks it for merge conflicts';
@@ -1744,7 +1767,7 @@ const CONFIRM: Record<Language, { act: string; words: string; remember: string; 
 const system = (language: Language, ui: Language) => `
 You are the Coordinator of Obeya, a canvas on which the owner directs coding agents by voice or typing; the owner knows you simply as Obeya. Each message brings what the owner just said or typed. Speech is transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary. Typed text stands as written.
 
-This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Each card has a number (K42) that stays its own on every canvas and in every conversation; the owner names cards by it too. No agent works on a planned, live or done card (done: finished without any change to the code, so nothing landed), but a note to a live or done card whose line says so resumes the agent that did its work, to answer; a workstream of a project takes its state from the project's plan doc (checked off there means live).
+This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. The owner speaks in a conversation: the open card's, or with no card open yours in Obeya's sheet. A bare answer („ja“, „nein“, „mach das“) answers the last question in that conversation, also when you asked another one elsewhere since (in a card's conversation); when it stays unclear which question it answers, ask with reply. Each card has a number (K42) that stays its own on every canvas and in every conversation; the owner names cards by it too. No agent works on a planned, live or done card (done: finished without any change to the code, so nothing landed), but a note to a live or done card whose line says so resumes the agent that did its work, to answer; a workstream of a project takes its state from the project's plan doc (checked off there means live).
 
 For each message, call act, reply or look_up once, then end your turn:
 - act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgeaufgabe …" is approve and new_card, with the open card as the one it follows up on): leave none out. A step that can only follow once a card gets somewhere (a canvas for the repository a new task creates, a start once another card has landed) is wait_for in the same act: Obeya wakes you when the card gets there, and you take the step then. Only a wait_for brings you back to a step: one your confirm promises for later needs it.

@@ -135,6 +135,32 @@ describe('a question the Coordinator looks up', () => {
     expect(waitingOn(board().snapshot())).toBe(0);
   });
 
+  test("a bare „ja“ in the sheet answers the sheet's last question, not a newer one asked in a card's conversation", async () => {
+    const proposal = board().create({ title: 'Two tests fail', body: 'Zwei Tests schlagen fehl.', x: 0, y: 0 });
+    await say('Warum zeigt die Frontend-Karte 4000 Dateien?', {}, 'look_up', { question: 'Why does the frontend card show 4000 files?', confirm: 'Ich schaue nach.' });
+    const sheetAnswerer = answerer();
+    await say('Redundant?', { card: proposal.id }, 'look_up', { question: 'Is "Two tests fail" redundant?', confirm: 'Ich vergleiche.' });
+    const cardAnswerer = answerer();
+    expect(cardAnswerer).not.toBe(sheetAnswerer);
+    // the sheet's answer comes first, the card's after it: the newer one is not the one the sheet shows
+    sheetAnswerer.call('answer_owner', { text: 'Main ist leer.\n\nSoll ich main im Frontend-Klon vorspulen?' });
+    sheetAnswerer.emit({ type: 'idle' });
+    await settle();
+    cardAnswerer.call('answer_owner', { text: 'Ja, redundant. Du könntest die Aufgabe verwerfen.' });
+    cardAnswerer.emit({ type: 'idle' });
+    await settle();
+    const [asked, onCard] = board().sheet.latest().slice(-2);
+
+    const { brief } = await say('ja', {}, 'reply', { confirm: 'Ich spule vor.' });
+    // each answer says where the owner read it
+    expect(brief).toContain(`The answer A${asked!.id} you looked up for the owner's question “Why does the frontend card show 4000 files?” came in and was shown to them in your conversation in Obeya's sheet`);
+    expect(brief).toContain(`The answer A${onCard!.id} you looked up for the owner's question “Is "Two tests fail" redundant?” came in and was shown to them in the conversation of the card "Two tests fail" that was open when they asked`);
+    // and the words name the sheet's last message as what a bare answer answers
+    expect(brief).toContain(
+      `No card is open: the owner speaks to you, in your conversation in Obeya's sheet, which shows only what was said with no card open. The last message there is the answer A${asked!.id} you looked up to their words “Warum zeigt die Frontend-Karte 4000 Dateien?”, ending: “Main ist leer. Soll ich main im Frontend-Klon vorspulen?”. A bare answer („ja“, „mach das“) answers that one`,
+    );
+  });
+
   test('an unknown card tag goes back to the Coordinator', async () => {
     const heard = canvas.commander.hear('was macht X?', {});
     await settle();

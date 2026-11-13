@@ -288,7 +288,8 @@ arrives. The quick turn's own reply waits the same way when it only answers, sin
 the canvas shows what it did, with "Undo" above the microphone.
 
 The Coordinator hears each answer in full with the next command (so „ja“ to a card it offered
-works), and it is part of its memory. A question still open at a restart is looked up again. A
+works), with the conversation it stands in (the sheet, or the card that was open), and it is part
+of its memory. A question still open at a restart is looked up again. A
 look-up for an action the owner asked for brings its answer to the Coordinator at once instead,
 which takes the action then (see A step once something is looked up).
 
@@ -524,7 +525,11 @@ of its own.
 ### Coordinator memory
 
 The owner's commands go to one ongoing session per canvas, so it understands „die andere auch“. It
-sees a card's open question, also one in a demo report, so „ja“ is an answer, not an approval. An
+sees a card's open question, also one in a demo report, so „ja“ is an answer, not an approval. A
+bare answer („ja“, „mach das“) answers the last question in the conversation the owner speaks in:
+the open card's, or with no card open the sheet's, whose last message comes with the words. A
+question Obeya asked since in another conversation (an answer looked up on a card) does not take
+it over; where it stays unclear, Obeya asks back. An
 approval by word ("deploy it", „raus damit“) lands the way the repository sets; words that ask to
 bypass the pull request („ohne PR“, „direkt auf main“) approve nothing in a repository whose work
 goes out as one, and the Coordinator replies that only the card's button "Straight to main" does that,
@@ -721,6 +726,12 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   the owner wants it after all or says how it should go on. Rejected: stopping as an answer of its
   own ("Stopped."), which would have stood in the thread as if it answered, and taking the stopped
   question off the sheet.
+- **A bare „ja“ answers the conversation it is said in** (owner, 2026-11-13): asked in the sheet
+  whether to fast-forward a clone, the owner said „ja“ there, and Obeya took it as consent to the
+  newer answer it had given on another card meanwhile, dismissing that card. Obeya now hears each
+  answer with where it stands and, with no card open, the sheet's last message. Rejected: the
+  newest question anywhere (the owner reads one conversation at a time), and always asking back
+  (one open question is the usual case, and „ja“ to it should just work).
 - **A look-up waits for its background work** (2026-10-19). Rejected: taking its words so far
   ("still downloading …") as the answer, which closed the session and stopped the work.
 - **The project agent can be asked from the project's sheet** (2026-10-21, a colleague's feedback),

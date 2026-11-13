@@ -267,6 +267,18 @@ export class Sheet {
       .map((r) => withContinues(this.db, r));
   }
 
+  /**
+   * The last exchange the sheet shows with a message of Obeya's (or of a project's agent) under it:
+   * what the owner sees last in the conversation they speak in with no card open. Words still being
+   * read have no reply yet; words that went into a later look-up have their answer under that one.
+   */
+  lastShown(): Talk | undefined {
+    const r = this.db
+      .query("SELECT * FROM talk WHERE canvas_id = $c AND card_id IS NULL AND reply != '' AND joined IS NULL ORDER BY id DESC LIMIT 1")
+      .get({ c: this.canvasId }) as TalkRow | null;
+    return r ? toTalk(r) : undefined;
+  }
+
   /** The message of the sheet `ref` names (an exchange with no card open), if it is one the owner can reply to there. */
   quote(ref: unknown): TalkQuote | undefined {
     if (!isTalkRef(ref)) return;

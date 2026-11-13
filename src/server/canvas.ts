@@ -444,12 +444,16 @@ export class CanvasRuntime {
         // looked up for an action: the Coordinator takes it now, hearing the answer with it
         if (this.commander.answerIn(talk)) return;
         // asked in a project's sheet, the question went to its project agent without Obeya reading it
-        const sheet = board.sheet.exchange(talk)?.askedIn;
+        const asked = board.sheet.exchange(talk);
+        const sheet = asked?.askedIn;
         const project = sheet ? board.item(sheet)?.title : undefined;
+        // which conversation it stands in: a bare „ja“ there answers it, one in another does not
+        const card = asked?.cardId ? (board.item(asked.cardId)?.title ?? '') : undefined;
+        const where = card !== undefined ? `in the conversation of the card${card ? ` "${card}"` : ''} that was open when they asked` : "in your conversation in Obeya's sheet";
         this.commander.tell(
           project !== undefined
             ? `The owner asked the project agent of "${project}" in its sheet: “${question}”. Its answer ${answerTag(talk)} was shown to them there: ${answer}`
-            : `The answer ${answerTag(talk)} you looked up for the owner's question “${question}” came in and was shown to them: ${answer}`,
+            : `The answer ${answerTag(talk)} you looked up for the owner's question “${question}” came in and was shown to them ${where}: ${answer}`,
         );
       },
     });
