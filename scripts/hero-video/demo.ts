@@ -664,7 +664,9 @@ await runDemo(
         navigator.mediaDevices.getUserMedia = async () => {
           ctx ??= new AudioContext();
           dest ??= ctx.createMediaStreamDestination();
-          return dest.stream;
+          // a clone per request: the page stops the tracks when it lets the microphone go
+          // (MIC_KEPT_MS after the last recording), and a stopped track records silence
+          return new MediaStream(dest.stream.getAudioTracks().map((t) => t.clone()));
         };
         // decoded before the take, so a clip starts the moment the narration does
         const bufs = new Map<string, AudioBuffer>();
