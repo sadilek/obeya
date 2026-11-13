@@ -275,7 +275,8 @@ describe('a new repository from an existing project', () => {
     await until(() => runtime.sessions.some((s) => s.spec.role === 'worker' && s.inbox[0]?.includes('Fix the widget')), 10_000);
     const brief = runtime.sessions.find((s) => s.spec.role === 'worker' && s.inbox[0]?.includes('Fix the widget'))!.inbox[0]!;
     expect(brief).toContain('cloned it for this card from acme/widgets, by way of ada/widgets');
-    expect(brief).toContain('never go into a pull request');
+    // its branch may become the pull request to the original: nothing of setting up goes onto it
+    expect(brief).not.toContain('obeya:settings');
     expect(brief).not.toContain('This repository is new:');
   });
 
@@ -317,6 +318,46 @@ describe('a new repository from an existing project', () => {
     expect(docsCanvas().board.events(task.id).at(-1)!.text).toContain('nicht leer');
     expect(readFileSync(join(full, 'mine.txt'), 'utf8')).toBe('mine');
     expect(set.all().map((c) => c.id)).toEqual(['docs']);
+  });
+
+  test('files that come into the folder while GitHub answers stay where the clone then fails', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((go) => (release = go));
+    stageGithub(true);
+    const look = github.look;
+    github.look = async (r, a) => (await held, look(r, a));
+    const path = join(dir, 'widgets');
+    mkdirSync(path);
+    const task = docsCanvas().board.create({ title: 'Fix', body: 'Fix it.', x: 0, y: 0 });
+    docsCanvas().board.patch(task.id, { newRepo: { path, canvas: true, from: 'acme/widgets' } });
+    docsCanvas().act(task.id, { action: 'start' });
+    await until(() => docsCanvas().board.item(task.id)!.newRepo?.making);
+    writeFileSync(join(path, 'mine.txt'), 'mine');
+    release();
+    await until(() => docsCanvas().board.events(task.id).some((e) => e.kind === 'error'));
+    expect(readFileSync(join(path, 'mine.txt'), 'utf8')).toBe('mine');
+  });
+
+  test('an idea parked while it is cloned is not built, and its clone goes again', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((go) => (release = go));
+    const source = project('notes');
+    stageGithub(true);
+    const path = join(dir, 'notes');
+    const card = idea(path);
+    docsCanvas().board.setNewRepo(card.id, { path, canvas: true, from: source, by: 'agent' }, 'agent');
+    // the clone is held up by holding up the first git call there is no other way to hold: the configuration's check
+    const check = config.check.bind(config);
+    let first = true;
+    config.check = async (c) => (first ? ((first = false), await held) : undefined, check(c));
+    docsCanvas().act(card.id, { action: 'build' });
+    await until(() => docsCanvas().board.item(card.id)!.newRepo?.making);
+    docsCanvas().act(card.id, { action: 'park' });
+    release();
+    await until(() => docsCanvas().board.events(card.id).some((e) => e.kind === 'error'));
+    expect(existsSync(path)).toBe(false);
+    expect(set.all().map((c) => c.id)).toEqual(['docs']);
+    expect(docsCanvas().board.item(card.id)).toMatchObject({ state: 'idea' });
   });
 
   test('once the undo window is over, the card says the clone is under way and offers no undo', async () => {

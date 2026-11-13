@@ -294,11 +294,16 @@ export class IdeaActions {
       const here = resolved.findIndex((r) => r?.id === this.id);
       if (here < 0) throw new Error(`the canvas ${this.id} is not in the configuration`);
       const source = target.from?.trim() ? newRepoSource(target.from, t) : null;
-      // on GitHub as the account set for the card's repository on this machine, else gh's active one
+      // on GitHub as the account set for the card's repository on this machine, else gh's active one (Automatic for the clone then too)
       const mine = this.repos.find((r) => r.ref.id === card.repo) ?? this.repos[0];
       const account = source && 'github' in source && mine ? config.current()[here]?.repos.find((r) => resolve(expandHome(r.path)) === resolve(mine.info.path))?.githubAccount : undefined;
       const repo: MadeRepo | ClonedRepo = source ? await cloneRepo(path, source, t, this.o.github ?? ghNewRepo(), account) : makeRepo(path, t);
       undo.push(repo.undo);
+      // a clone takes minutes: the owner may have parked, dropped or deleted the card meanwhile, and moved canvases around
+      const still = this.board.item(cardId);
+      if (!still || (still.state === 'idea' && still.idea?.status !== 'open')) throw new Error(t.shelved);
+      const at = source ? (await config.check(config.current())).resolved.findIndex((r) => r?.id === this.id) : here;
+      if (at < 0) throw new Error(`the canvas ${this.id} is not in the configuration`);
       // on the configuration as it is now, and taken back from it as it is then: changes meanwhile stay;
       // a fork lands on its own main branch, so each card may go to the original as a pull request too
       const added = {
@@ -307,7 +312,7 @@ export class IdeaActions {
         ...('fork' in repo && repo.fork ? { settings: { land: 'main' as const } } : {}),
       };
       const now = config.current();
-      const after = target.canvas ? [...now, { repos: [added] }] : now.map((c, i) => (i === here ? { ...c, repos: [...c.repos, added] } : c));
+      const after = target.canvas ? [...now, { repos: [added] }] : now.map((c, i) => (i === at ? { ...c, repos: [...c.repos, added] } : c));
       await config.save(after);
       const without = () =>
         config.current().flatMap((c) => {

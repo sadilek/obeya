@@ -189,7 +189,8 @@ export async function cloneRepo(path: string, source: Source, t: Words, github: 
   if (was && (await readdir(path)).length) throw new BadRequest('newRepoPath', t.notEmpty(path));
   notInside(path, t);
   const created = existed ? null : topCreated(path);
-  // a project's files are many: removed without the server waiting; an empty folder the owner made stays, empty again
+  // a project's files are many: removed without the server waiting; an empty folder the owner made stays, empty again.
+  // Called once the clone stands, whose folder git made, or found empty, so all in it is the clone's
   const undo = async () => {
     await rm(path, { recursive: true, force: true });
     if (existed) return mkdir(path);
@@ -217,17 +218,20 @@ export async function cloneRepo(path: string, source: Source, t: Words, github: 
     }
   }
   await mkdir(dirname(path), { recursive: true });
+  // git clone takes back what it made itself where it fails, and refuses a folder that has files in it by now:
+  // only a clone that stands is Obeya's to remove
+  let cloned = false;
   try {
     const clone = () => spawnOutput([GIT, 'clone', '--', url, path], { env: { ...process.env, ...env, ...NO_PROMPT }, stdin: 'ignore', timeout: CLONE_TIMEOUT });
     let r = await clone();
     // a fork just made is cloneable only once GitHub has made it
     for (const until = Date.now() + FORK_READY_MS; r.code !== 0 && fork && Date.now() < until; ) {
       await new Promise((go) => setTimeout(go, 3000));
-      if (existed) await rm(path, { recursive: true, force: true });
       r = await clone();
     }
     if (r.signal) throw new Error(`git clone ${url}: no end within ${CLONE_TIMEOUT / 60_000} min`);
     if (r.code !== 0) throw new Error(`git clone ${url}: ${failureText(r)}`);
+    cloned = true;
     if (original) {
       const step = async (...args: string[]) => {
         const s = await gitRun(path, args, { env: { ...env, ...NO_PROMPT }, timeout: CLONE_TIMEOUT });
@@ -239,7 +243,7 @@ export async function cloneRepo(path: string, source: Source, t: Words, github: 
       await step('remote', 'set-head', 'upstream', original.defaultBranch);
     }
   } catch (e) {
-    await undo();
+    if (cloned) await undo();
     throw e;
   }
   return { path, made: true, undo, from: sourceName(source), ...(fork ? { fork } : {}) };

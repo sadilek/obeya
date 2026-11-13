@@ -175,14 +175,16 @@ Obeya, one step after the other:
    they have one), as the GitHub account set for the card's repository on this machine, else the
    one gh has active: `origin` is the fork, the original the remote `upstream`, its main branch
    fetched. Cloning a large project takes minutes; once the few seconds are through, the button's
-   place says "Cloning frontend …" without "Undo". A fork made on GitHub stays when a later step
-   fails.
+   place says "Cloning frontend …" without "Undo". A card parked, dropped or deleted meanwhile is not
+   built; its clone goes again. A fork made on GitHub stays when a later step fails, and so does
+   whatever came into the folder that was not the clone's.
 2. adds it to the configuration: a canvas of its own, unnamed, so named after the folder (a clone
    after its `origin`, see Canvases and repositories), which starts at once (see Live
    configuration); without "own canvas" the repository joins the card's canvas instead and the card
    stays there, in it. A fork gets `land: main` among this machine's settings, and its `upstream`
    is detected (see Pull requests to the original), so the card's own approval already offers
-   "Approve + PR to <owner/repo>"; the GitHub account it was cloned as is set for it.
+   "Approve + PR to <owner/repo>"; a GitHub account set for the card's repository is set for the
+   clone too.
 3. decides an idea as "Build it like this" does (its agent's session ends, its prototypes are
    discarded, the decision log records the new repository), then moves the card to the new canvas
    whole: its task, conversation, mocks, screenshots and decisions, into the canvas's repository,
@@ -193,9 +195,10 @@ Obeya, one step after the other:
 4. starts it there through the Coordinator. Its worker hears that the repository is new and sets it
    up beside the task: a CLAUDE.md with what the task says about working in it, and its settings with
    the `settings` skill (see Writing the settings). A clone's worker hears what it was cloned from
-   (and the fork), that the project's history, files and CLAUDE.md are its own and the task is its
-   change to it, and writes only the settings, which in a fork never go into a pull request to the
-   original. The card's diff is its change alone, on the project's history.
+   (and the fork), and that the project's history, files and CLAUDE.md are its own and the task is
+   its change to it; it sets up nothing besides, since its branch may become the pull request to the
+   original. The repository's settings come by the card Obeya proposes for a repository without
+   them (see Writing the settings). The card's diff is its change alone, on the project's history.
 
 A step that fails takes back those before it (the configuration, the folder or the git it made),
 and the card says why.
