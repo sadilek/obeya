@@ -16,7 +16,7 @@ export function revocable(r: CardRow): Revocable | undefined {
   // the owner's own pull request, open before the card: closing it or reverting it is not taking back what the card did
   if (pr?.adopted) return;
   // work on the main branch and in a pull request in another repository, open or merged: taking it back there is not the card's; once all are closed unmerged, it is on main alone
-  if (pr?.onMain && [pr, ...(pr.more ?? [])].some((p) => !p.closed)) return;
+  if (pr?.onMain && (r.state !== 'live' || [pr, ...(pr.more ?? [])].some((p) => !p.closed))) return;
   if (r.state === 'working' && r.approved_at && !r.landed) return { how: 'approval' };
   const inPr = r.state === 'inPr' || (r.state === 'waiting' && r.need === 'question' && !!pr);
   if (inPr && !r.landed) {
@@ -30,5 +30,6 @@ export function revocable(r: CardRow): Revocable | undefined {
   if (!s?.commit || !s.base) return;
   if (!s.pr) return { how: 'revert' };
   // pull requests in other repositories would need reverting there too
-  return pr?.more?.length ? undefined : { how: 'rollbackPr', pr: s.pr.number };
+  // (those after a landing are all closed by then: nothing of them to revert)
+  return pr?.more?.length && !pr.onMain ? undefined : { how: 'rollbackPr', pr: s.pr.number };
 }

@@ -58,12 +58,14 @@ const settled = ({ restarts: _, waits: __, ...l }: LandedState): LandedState => 
  * Where a live card's landed work starts and ends, where both are known: `base..commit` is what it
  * changed. A fork's card whose work went to the original as a pull request is on the main branch
  * since the approval: what it changed is its pull request's, from where its branch started to the
- * head merged into the main branch last.
+ * head merged into the main branch last. Work landed on main whose card is in a pull request in
+ * another repository is what landed.
  */
 function landedAt(row: CardRow): { base: string; commit: string } | undefined {
   const up = row.state === 'inPr' || row.state === 'live' || row.state === 'waiting' ? fromJson(row.pr)?.upstream : undefined;
   if (up?.start && up.merged) return { base: up.start, commit: up.merged };
-  const s = row.state === 'live' ? fromJson(row.shipped) : null;
+  // also while a card whose work landed on main is in a pull request in another repository
+  const s = row.state === 'live' || fromJson(row.pr)?.onMain ? fromJson(row.shipped) : null;
   return s?.commit && s.base ? { base: s.base, commit: s.commit } : undefined;
 }
 
@@ -1441,10 +1443,18 @@ export class Workers {
    */
   pageSettled(cardId: string, r?: { url: string } | { why: string }) {
     if (!this.o.board.card(cardId)) return;
-    const l = fromJson(this.o.board.row(cardId).landed);
-    if (!l?.page) return;
-    const { page: _, ...rest } = l;
-    this.o.board.work(cardId, { landed: toJson(rest) });
+    const row = this.o.board.row(cardId);
+    const l = fromJson(row.landed);
+    // landed, and in a pull request in another repository since: it waits there
+    const pr = fromJson(row.pr);
+    if (!l?.page && !pr?.onMain?.page) return;
+    if (l?.page) {
+      const { page: _, ...rest } = l;
+      this.o.board.work(cardId, { landed: toJson(rest) });
+    } else {
+      const { page: _, ...rest } = pr!.onMain!;
+      this.o.board.work(cardId, { pr: toJson({ ...pr!, onMain: rest }) });
+    }
     if (r) this.pageHeard(cardId);
     this.deliver(
       cardId,
@@ -1624,7 +1634,7 @@ export class Workers {
     const row = this.o.board.row(cardId);
     const shipped = fromJson(row.shipped);
     // a fork's pull request to the original: its head merged into the main branch last holds the work as it is now
-    const landed = row.state === 'live' ? (fromJson(row.pr)?.upstream?.merged ?? shipped?.commit) : undefined;
+    const landed = row.state === 'live' ? (fromJson(row.pr)?.upstream?.merged ?? shipped?.commit) : fromJson(row.pr)?.onMain ? shipped?.commit : undefined;
     // to open: the checkout's copy only of what landed there, never for a branch elsewhere
     const ref = landed ?? (local ? undefined : (row.branch ?? undefined));
     const changed = await this.changedFiles(cardId);
@@ -1831,11 +1841,8 @@ export class Workers {
     }
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
     // its work is on main since its landing: stopped while asking about its pull request in another repository, the card is live with that landing, and nothing follows the pull request any more
-    const row = this.o.board.row(cardId);
-    if (fromJson(row.pr)?.onMain) {
+    if (card.onMain) {
       this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.stopped);
-      const commit = fromJson(row.shipped)?.commit;
-      this.o.board.work(cardId, { landed: toJson<LandedState>(commit ? { commit } : {}) });
       this.finish(cardId);
       return Promise.resolve();
     }
@@ -2147,6 +2154,17 @@ export class Workers {
         if (row.workspace && row.session_id) this.launch(i.id, restarted, row.session_id);
         else this.answerTaken(i.id);
         continue;
+      }
+      // landed on main, and in a pull request in another repository since: the restart for that landing
+      // has happened, which a worker that waited for it hears
+      const elsewhere = fromJson(row.pr);
+      if (elsewhere?.onMain?.restarts) {
+        const { restarts: _, waits, ...rest } = elsewhere.onMain;
+        this.o.board.work(i.id, { pr: toJson({ ...elsewhere, onMain: rest }) });
+        if (waits && row.workspace && row.session_id && i.state === 'inPr') {
+          this.launch(i.id, `${repo ? 'Obeya runs' : 'Obeya has started again and runs'} main with your change now. ${restarted}`, row.session_id);
+          continue;
+        }
       }
       // a landing the restart cut off: the card waits for the owner's approval again
       if (i.landing) this.o.board.work(i.id, { approved_at: null });

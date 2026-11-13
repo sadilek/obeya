@@ -451,7 +451,9 @@ export class WorkerTools {
           handOver();
           if (afterMain) {
             // its landing stands: the card is in the pull request until it is merged, and live again then
-            const pr: PrState = { url: ref.url, number: ref.number, repo: named, seen: [], reported: [], onMain: true };
+            const l = fromJson(row.landed)!;
+            const onMain = { ...(l.page ? { page: true as const } : {}), ...(l.restarts ? { restarts: true as const } : {}), ...(l.waits ? { waits: true as const } : {}) };
+            const pr: PrState = { url: ref.url, number: ref.number, repo: named, seen: [], reported: [], onMain };
             this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, status_line: null, landed: null, pr: toJson(pr) });
             this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpenedAfterMain(`${ref.repo} #${ref.number}`));
             this.o.onPrOpened?.(cardId);
@@ -618,7 +620,16 @@ export class WorkerTools {
         description: 'Only after your work has landed and Obeya said it starts again for it: what remains needs Obeya to run your change. Then end your turn; Obeya tells you once it runs your change.',
         schema: {},
         run: () => {
-          const l = fromJson(this.o.board.row(cardId).landed);
+          const row = this.o.board.row(cardId);
+          const l = fromJson(row.landed);
+          // landed, and in a pull request in another repository since
+          const elsewhere = fromJson(row.pr);
+          if (!l && elsewhere?.onMain) {
+            if (!elsewhere.onMain.restarts) return 'Not recorded: Obeya does not start again for this landing; what runs now is what you get.';
+            this.o.board.work(cardId, { pr: toJson({ ...elsewhere, onMain: { ...elsewhere.onMain, waits: true } }) });
+            this.o.board.log(cardId, 'activity', 'worker', this.o.board.t.worker.waitsForRestart);
+            return ending('Recorded. End your turn now.', 'Recorded: Obeya tells you once it runs your change.');
+          }
           if (!l) return 'Not recorded: your work has not landed.';
           if (!l.restarts) return 'Not recorded: Obeya does not start again for this landing; what runs now is what you get.';
           this.o.board.work(cardId, { landed: toJson({ ...l, waits: true }) });

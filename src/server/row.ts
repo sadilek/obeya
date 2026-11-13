@@ -122,9 +122,18 @@ export interface PrState {
   /**
    * The card's work landed on the main branch already (`Shipped` holds it), and this pull request,
    * in another repository, is one the work also needed, reported after that landing: the card is in
-   * it until all are merged, which makes it live without landing anything again.
+   * it until all are merged, which makes it live without landing anything again. What its worker
+   * still waited for after the landing goes on here: its demo's page going out (`page`), the restart
+   * for the landing (`restarts`, `waits` once it waits for it).
    */
-  onMain?: true;
+  onMain?: OnMain;
+}
+
+/** `PrState.onMain`: what of the landing the worker still waits for, as `LandedState` had it. */
+export interface OnMain {
+  page?: true;
+  restarts?: true;
+  waits?: true;
 }
 
 /** `PrState.upstream`. */

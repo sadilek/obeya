@@ -221,8 +221,10 @@ describe('a pull request in another repository, reported after the work landed o
     const shipped = board.row(id).shipped;
     expect(await session.call('pr_opened', { url: DOCS })).toContain('Your work stays on main, and the card is in this pull request until it is merged');
     expect(state(id)).toBe('inPr');
-    expect(pr(id)).toMatchObject({ url: DOCS, number: 3, repo: 'owner/docs', onMain: true });
+    expect(pr(id)).toMatchObject({ url: DOCS, number: 3, repo: 'owner/docs', onMain: {} });
     expect(board.item(id)).toMatchObject({ onMain: true, pr: { url: DOCS, repo: 'owner/docs' } });
+    // what the card changed is what landed, not its branch against main (where it has nothing left)
+    expect(await workers.changedFiles(id)).toEqual(['setting.ts']);
     // the card's work is on main: the arrow does not hold the card behind it again, and taking back is not the card's while the pull request is out
     expect(waitsFor(after)).toEqual([]);
     expect(board.item(id)!.revocable).toBeUndefined();
@@ -255,6 +257,8 @@ describe('a pull request in another repository, reported after the work landed o
     await watcher.poll();
     expect(board.item(id)).toMatchObject({ state: 'waiting', need: 'question' });
     expect(board.item(id)!.question!.options).toEqual([board.t.worker.reopen, board.t.worker.keepOnMain('main')]);
+    // closing the pull request would not take back what is on main
+    expect(board.item(id)!.revocable).toBeUndefined();
     workers.answer(id, '', [], false, undefined, [board.t.worker.keepOnMain('main')]);
     expect(state(id)).toBe('live');
     expect(session.inbox.at(-1)).toContain('The owner keeps the work on main without the pull request owner/docs#3');
@@ -275,6 +279,18 @@ describe('a pull request in another repository, reported after the work landed o
     status.state = 'MERGED';
     await watcher.poll();
     expect(state(id)).toBe('live');
+  });
+
+  test('what the worker waited for after the landing still reaches it: its demo’s page, the restart', async () => {
+    const { id, session } = await landed();
+    board.work(id, { landed: JSON.stringify({ ...fromJson(board.row(id).landed), page: true, restarts: true }) });
+    await session.call('pr_opened', { url: DOCS });
+    expect(pr(id).onMain).toEqual({ page: true, restarts: true });
+    expect(await session.call('after_restart', {})).toContain('Recorded');
+    expect(pr(id).onMain).toEqual({ page: true, restarts: true, waits: true });
+    workers.pageSettled(id, { url: 'https://demos.example/p/rename' });
+    expect(session.inbox.at(-1)).toContain('https://demos.example/p/rename');
+    expect(pr(id).onMain).toEqual({ restarts: true, waits: true });
   });
 
   test('one in the card’s own repository is refused: its work is on main already', async () => {

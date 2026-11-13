@@ -959,7 +959,7 @@ export class CanvasRuntime {
     r.docs?.();
     r.docs = watchPlanDocs(r.read.path, r.adapter, () => this.board.docsChanged());
     // a review card's pull request is watched in any repository, also one that lands on main
-    if (r.adapter.land === 'pr' || this.board.items().some((i) => (i.state === 'inPr' || (i.contribution && !finished(i.state))) && i.repo === r.ref.id)) this.watchPrs(r);
+    if (r.adapter.land === 'pr' || this.board.items().some((i) => (i.state === 'inPr' || (i.onMain && !finished(i.state)) || (i.contribution && !finished(i.state))) && i.repo === r.ref.id)) this.watchPrs(r);
   }
 
   /** Watches the repository's pull requests, unless it does already. */
@@ -1931,6 +1931,12 @@ export class CanvasRuntime {
       return this.board.workDone(card.id);
     }
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
+    // its work is on main since its landing: live with that landing, as `Workers.stop` makes it
+    if (card.onMain) {
+      this.board.log(card.id, 'state', 'owner', t.stopped);
+      this.board.work(card.id, finishedRow(this.board.row(card.id)));
+      return this.board.workDone(card.id);
+    }
     // comments held back for the worker stay in the conversation
     releaseHeld(this.board, card.id);
     this.board.work(card.id, PLANNED_AGAIN);
