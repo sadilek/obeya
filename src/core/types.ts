@@ -310,8 +310,13 @@ export interface Item {
   spent?: number;
   /** The harness, model and effort the owner chose for this card's agent, over its group's (`CardAgent`); absent: the group's. */
   agent?: CardAgent;
-  /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
+  /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`, unless it follows pull requests (`followsPrs`). */
   noChange?: boolean;
+  /**
+   * Waiting for approval, its work went onto pull requests open already instead of onto its branch
+   * (the worker named them at the handover): approving follows them until they are merged.
+   */
+  followsPrs?: AdoptedPr[];
   /**
    * Waiting for approval, its branch changes how work lands (`.obeya/settings.json`, checked at the
    * handover): approving lands it as the branch says, not as the repository does until then.

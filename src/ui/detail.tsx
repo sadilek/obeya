@@ -1,6 +1,6 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { ApproveResult, CardPatch, Item, RepoRef, UpstreamRef } from '../core/types';
 import { agentListens, answering, archiveRefusal, askable, finished, handedOver, plannableAsProject, snoozable, stopped } from '../core/card';
 import { ApiError, api, failText } from './api';
@@ -481,7 +481,9 @@ function TaskView(v: View) {
 
       {/* the decisions below what the card shows, as on every card */}
       <TaskActions v={v} worked={worked} proto={proto} approve={<ApproveButton item={item} act={act} lands={lands} change={change} upstream={upstreamOf(item, repo, lands)} />} />
-      {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
+      {review && item.noChange && !item.prototypeOf && (
+        <p className="hint">{inFolder ? t.folder.noChangeHint : item.followsPrs ? t.follows.hint(item.followsPrs.map(prName), item.followsPrs.some((p) => p.maintainers)) : t.noChangeHint}</p>
+      )}
       {review && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
       {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
     </>
@@ -516,6 +518,17 @@ function Where({ item, parent, worked, inFolder, change, onReadPlan }: { item: I
           </a>
         </>
       )}
+      {/* the pull requests the handed-over work went onto instead of the branch, which the approval follows */}
+      {worked &&
+        !item.pr &&
+        item.followsPrs?.map((p) => (
+          <Fragment key={p.url}>
+            {' · '}
+            <a href={p.url} target="_blank" rel="noreferrer">
+              {t.adopted.pr(prName(p))}{'\u00a0'}↗
+            </a>
+          </Fragment>
+        ))}
       {parent?.plan && (
         <>
           {worked && item.branch && ' · '}
@@ -858,6 +871,16 @@ function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act
           {t.upstream.approve(upstream.name)}
         </button>
       </>
+    );
+  }
+  // work that went onto pull requests open already instead of the branch: the approval follows them
+  const follows = item.noChange && item.followsPrs;
+  if (follows) {
+    const names = follows.map(prName);
+    return (
+      <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.follows.approved(names), pending: t.approving })}>
+        {t.follows.approve(follows.length)}
+      </button>
     );
   }
   // a branch of the owner's with an open pull request: the work goes onto that one

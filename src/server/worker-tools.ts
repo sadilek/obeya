@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { realPath } from './path';
 import { isAbsolute, join } from 'node:path';
 import { type CardFile, normalPath } from '../core/files';
-import { AWAITED_STATES, type Demo, type DemoKind, type DemoPage, type HeldChanges, type Item, type Question, type RepoRef, type Snooze, type Superseded, type PageTags } from '../core/types';
+import { type AdoptedPr, AWAITED_STATES, type Demo, type DemoKind, type DemoPage, type HeldChanges, type Item, type Question, type RepoRef, type Snooze, type Superseded, type PageTags } from '../core/types';
 import { answering, awaited, finished, formatQuestion, laterTime, started } from '../core/card';
 import type { CardLanding } from '../core/config';
 import { type Board, type Retracted, titleKey } from './board';
@@ -67,6 +67,7 @@ interface HandOverArgs {
   files?: { path: string; caption: string }[];
   review?: { checks: { name: string; passed: boolean }[]; mergeable: boolean };
   pr_draft?: string;
+  pull_requests?: string[];
 }
 
 /** What `ready_for_review` takes from the session's tools: the review card's pull request, the demo's page, and what each tool ends with. */
@@ -95,6 +96,8 @@ interface HandedOver {
   approved: boolean;
   named?: CardFile[];
   shows: boolean;
+  /** The pull requests open already that the work went onto instead of the branch, which the approval follows. */
+  follows?: AdoptedPr[];
 }
 
 /** How many files a worker may name as its result at a handover. */
@@ -417,7 +420,10 @@ export class WorkerTools {
         schema: { url: z.string() },
         run: ({ url }) => {
           const row = this.o.board.row(cardId);
-          if (!row.pr) return 'Not recorded: the owner has not approved this card yet. Do not open a pull request before that.';
+          if (!row.pr)
+            return row.landed
+              ? 'Not recorded: the card is finished (its work landed, or it closed without a change to the code), and Obeya follows no pull request for it any more.'
+              : 'Not recorded: the owner has not approved this card yet. Do not open a pull request before that. One your work went onto already instead of your branch, name in ready_for_review (pull_requests): the approval then follows it.';
           const ref = parsePrUrl(String(url));
           if (!ref) return 'Not recorded: that is not the URL of a pull request (on GitHub or GitHub Enterprise https://<host>/<owner>/<repo>/pull/<number>, on Forgejo or Gitea such as Codeberg https://<host>/<owner>/<repo>/pulls/<number>).';
           handOver();
@@ -537,6 +543,17 @@ export class WorkerTools {
                   ),
               }
             : {}),
+          ...(review || this.folder
+            ? {}
+            : {
+                pull_requests: z
+                  .array(z.string())
+                  .max(4)
+                  .optional()
+                  .describe(
+                    'only when your work went onto pull requests that are open already instead of onto your branch (one you opened or pushed to in another repository, say), so your branch holds nothing to land: their URLs. Approved, the card then follows them until they are merged, and Obeya passes you their review comments, failed checks and conflicts, instead of closing the card as done. Leave it out to have the approval close the card.',
+                  ),
+              }),
           files: z
             .array(z.object({ path: z.string(), caption: z.string() }))
             .max(MAX_RESULT_FILES)
@@ -701,14 +718,19 @@ export class WorkerTools {
     // whether the branch holds work and decides where it lands; a review card hands over the PR's head
     // it reviewed, which is all Obeya ever merges, with the commits of its own on top, which Obeya
     // pushes on the owner's approval
-    let git: { work: boolean; own?: CardLanding; mine?: OwnCommits; changed?: string[]; upstreamNew?: number };
+    let git: { work: boolean; own?: CardLanding; mine?: OwnCommits; changed?: string[]; upstreamNew?: number; follows?: AdoptedPr[] };
     if (review) {
       const mine = await this.w.reviews.ownCommits(cardId, review);
       if (typeof mine === 'string') return mine;
       git = { work: true, mine };
     } else {
-      const [work, { own }] = await Promise.all([this.o.workspaces.hasWork(cardId), this.w.landingOf(cardId)]);
+      const [work, { own, land }] = await Promise.all([this.o.workspaces.hasWork(cardId), this.w.landingOf(cardId)]);
       git = { work, ...(own ? { own } : {}), ...(work && !this.folder ? { changed: await this.o.workspaces.changedFiles(cardId) } : {}) };
+      if (a.pull_requests?.length && !this.folder) {
+        const prs = await this.followed(a.pull_requests, work, land);
+        if (typeof prs === 'string') return prs;
+        git.follows = prs;
+      }
       // in a fork: what of the original the main branch would get with the work, should it go there as a pull request too
       const up = work ? this.o.upstream?.() : undefined;
       if (up) {
@@ -752,11 +774,45 @@ export class WorkerTools {
       review || this.folder
         ? ''
         : !git.work
-          ? ' Obeya sees no change on your branch: approving closes the card, and nothing lands.'
+          ? git.follows
+            ? ` Obeya sees no change on your branch: approving follows ${git.follows.map((p) => `pull request ${p.url}`).join(' and ')} until ${git.follows.length > 1 ? 'they are' : 'it is'} merged, and nothing lands from your branch.`
+            : ' Obeya sees no change on your branch: approving closes the card, and nothing lands.'
           : changed?.length
             ? ` Approving lands your branch's change to ${changed.length === 1 ? '1 file' : `${changed.length} files`}: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}.`
             : '';
     return x.ending(`${END_TURN}${lands}`, `Recorded: your handover waits for the owner's approval.${lands}`, 'if they change what you handed over, hand it over again');
+  }
+
+  /**
+   * The pull requests a handover names as where its work went instead of onto the branch
+   * (`pull_requests`), as the approval follows them: each with its repository where that is another
+   * than `origin`'s, and whether its maintainers merge it rather than the owner's account (also where
+   * the forge cannot tell). Refused where a URL is no pull request's, or where the branch holds work,
+   * which lands with the approval instead.
+   */
+  private async followed(urls: string[], work: boolean, land: 'main' | 'pr'): Promise<AdoptedPr[] | string> {
+    const refs: NonNullable<ReturnType<typeof parsePrUrl>>[] = [];
+    for (const url of urls) {
+      const ref = parsePrUrl(String(url));
+      if (!ref) return `Not handed over: ${clip(oneLine(String(url)), 200)} is not the URL of a pull request (on GitHub or GitHub Enterprise https://<host>/<owner>/<repo>/pull/<number>, on Forgejo or Gitea such as Codeberg https://<host>/<owner>/<repo>/pulls/<number>). Call ready_for_review again with pull_requests corrected.`;
+      if (!refs.some((r) => r.url === ref.url)) refs.push(ref);
+    }
+    if (work)
+      return `Not handed over: your branch holds commits or uncommitted changes, which land with the approval${land === 'pr' ? ' as a pull request of their own' : ''}; pull_requests is only for work that went onto pull requests instead of your branch. Throw away what is not meant to land, or hand over without pull_requests${land === 'pr' ? ': a pull request in another repository that the work also needs, you report after the approval with pr_opened' : ''}.`;
+    const cwd = this.o.repoPath ?? '.';
+    const host = this.o.remote && remoteHost(this.o.remote)?.toLowerCase().replace(/^ssh\.github\.com$/, 'github.com');
+    return Promise.all(
+      refs.map(async (ref): Promise<AdoptedPr> => {
+        const ours = !!this.o.remote && sameRepo(this.o.remote, ref.owner, ref.repo) && (!host || host === ref.host.toLowerCase());
+        let may: boolean | null = null;
+        try {
+          may = (await this.o.forge?.mayMerge?.(cwd, ref.url)) ?? null;
+        } catch (e) {
+          console.error(`permissions for ${ref.url}:`, messageOf(e));
+        }
+        return { url: ref.url, number: ref.number, ...(ours ? {} : { repo: `${ref.owner}/${ref.repo}` }), ...(may === true ? {} : { maintainers: true as const }) };
+      }),
+    );
   }
 
   /** Why the card cannot be handed over as it stands, before its demo is looked at; nothing where it can. */
@@ -796,7 +852,7 @@ export class WorkerTools {
    */
   private record(cardId: string, row: CardRow, a: HandOverArgs, x: HandOverContext, h: HandedOver): number {
     const { review } = x;
-    const { demo, kept, asked, approved, named, held, mine, work, own } = h;
+    const { demo, kept, asked, approved, named, held, mine, work, own, follows } = h;
     const checked = a.review;
     if (review && checked) {
       const now = fromJson(this.o.board.row(cardId).contribution) ?? review;
@@ -825,7 +881,7 @@ export class WorkerTools {
       ...(approved ? { status_line: review ? this.o.board.t.worker.mergingPr(review.number) : this.o.board.t.worker.landing } : { state: 'waiting', need: demo || kept ? 'demo' : 'review', status_line: null }),
       // approving work that changes nothing makes the card done, which the owner sees before approving; where work
       // lands that its own branch decides, likewise
-      detail: toJson({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(h.upstreamNew ? { upstreamNew: h.upstreamNew } : {}), ...(answered && !approved ? { answered: true } : {}) }),
+      detail: toJson({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true, ...(follows ? { followsPrs: follows } : {}) }), ...(h.upstreamNew ? { upstreamNew: h.upstreamNew } : {}), ...(answered && !approved ? { answered: true } : {}) }),
       ...(newDemo ? { demo: toJson(newDemo) } : asked ? { demo: null } : {}),
       ...(demos ? { demos } : {}),
       // the files named stand until a later handover names others (an empty list named clears them); a folder's card handed

@@ -583,6 +583,13 @@ const de = {
     approved: (pr: string) => `Freigegeben; geht auf PR ${pr}.`,
     approving: 'wird auf den PR-Branch gepusht …',
   },
+  /** Work that went onto pull requests open already instead of onto the card's branch: the approval follows them. */
+  follows: {
+    approve: (n: number): string => (n > 1 ? 'Freigeben, PRs verfolgen' : 'Freigeben, PR verfolgen'),
+    hint: (prs: string[], maintainers: boolean) =>
+      `Keine Änderung am Code: Die Arbeit liegt ${prs.length > 1 ? `in den PRs ${prs.join(', ')}` : `in PR ${prs[0]}`}. Nach der Freigabe verfolgt die Karte ${prs.length > 1 ? 'sie, bis alle' : 'ihn, bis er'} gemergt ${prs.length > 1 ? 'sind' : 'ist'}${maintainers ? ' (von den Maintainern dort)' : ''}; vom Branch landet nichts.`,
+    approved: (prs: string[]) => `Freigegeben; die Karte verfolgt PR ${prs.join(', ')}.`,
+  },
   cardError: (title: string, why: string) => `„${title}“: ${why}`,
   approvedNoChange: 'Beendet.',
   accepted: 'Vorschlag übernommen und gestartet.',
@@ -2901,6 +2908,13 @@ const en: Strings = {
       `Pushes the work onto ${branch}, the branch of PR ${pr}, fast-forward only. ${maintainers ? 'Its maintainers merge it; Obeya follows it until then.' : 'Obeya follows it and merges it once it is ready.'}`,
     approved: (pr: string) => `Approved; goes onto PR ${pr}.`,
     approving: 'pushing to the PR branch …',
+  },
+  /** Work that went onto pull requests open already instead of onto the card's branch: the approval follows them. */
+  follows: {
+    approve: (n: number) => (n > 1 ? 'Approve, follow PRs' : 'Approve, follow PR'),
+    hint: (prs: string[], maintainers: boolean) =>
+      `No change to the code: the work is in ${prs.length > 1 ? `PRs ${prs.join(', ')}` : `PR ${prs[0]}`}. Once approved, the card follows ${prs.length > 1 ? 'them until all are' : 'it until it is'} merged${maintainers ? ' (by the maintainers there)' : ''}; nothing lands from the branch.`,
+    approved: (prs: string[]) => `Approved; the card follows PR ${prs.join(', ')}.`,
   },
   cardError: (title: string, why: string) => `“${title}”: ${why}`,
   approvedNoChange: 'Closed.',

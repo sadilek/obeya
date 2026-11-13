@@ -1,7 +1,7 @@
 // What a card's row (`CardRow` in db.ts) stores in its JSON columns: the shape of each, and how it
 // is read.
 
-import type { Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
+import type { AdoptedPr, Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
 import type { CardLanding } from '../core/config';
 import type { PullStopped } from './workspaces';
 
@@ -30,6 +30,11 @@ export interface Detail {
   permission?: AskedPermission;
   summary?: string;
   noChange?: boolean;
+  /**
+   * Handed over with the work on pull requests open already instead of on its branch (`ready_for_review`'s
+   * `pull_requests`): approved, the card follows them until they are merged instead of being done.
+   */
+  followsPrs?: AdoptedPr[];
   lands?: CardLanding;
   /** A fork's card: how many commits of the original's main branch the main branch lacks and would get with its work, should it go to the original as a pull request too. */
   upstreamNew?: number;
@@ -105,9 +110,10 @@ export interface PrState {
    */
   upstream?: UpstreamPr;
   /**
-   * The pull request of a branch of the owner's the card works on (`AdoptedBranch`), open before the
-   * card: Obeya pushed the work onto it at the approval, and its commits are published, so nothing
-   * of it is rewritten. `maintainers`: its repository's maintainers merge it (a fork's pull request
+   * A pull request open before the approval that the card's work went onto: the one of a branch of
+   * the owner's the card works on (`AdoptedBranch`), onto which Obeya pushed the work at the
+   * approval, or one the worker named at its handover (`Detail.followsPrs`). Its commits are
+   * published, so nothing of it is rewritten. `maintainers`: its repository's maintainers merge it (a fork's pull request
    * to the original, or a repository the owner's account may not merge in); Obeya never does, and
    * nudges nobody for a review.
    */

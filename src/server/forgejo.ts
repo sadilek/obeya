@@ -279,6 +279,11 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       }
       return null;
     },
+    async mayMerge(cwd, url) {
+      const { base, repo } = where(url);
+      const r = (await api(cwd, base, 'GET', repo)) as { permissions?: { push?: boolean } } | undefined;
+      return typeof r?.permissions?.push === 'boolean' ? r.permissions.push : null;
+    },
     async urlOf(cwd, n) {
       const at = await originRepo(cwd);
       return `${at.base}/${at.repo.slice('repos/'.length)}/pulls/${n}`;

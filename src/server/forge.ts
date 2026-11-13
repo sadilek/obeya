@@ -92,6 +92,8 @@ export interface Forge {
    * is and whether the owner's account may merge it there.
    */
   branchPr?(cwd: string, branch: string): Promise<AdoptedPr | null>;
+  /** Whether the account Obeya acts as may merge the pull request at `url` (it may push to its repository); null where the forge cannot tell. */
+  mayMerge?(cwd: string, url: string): Promise<boolean | null>;
 }
 
 /** A pull request a review card takes on (`Forge.contribution`). */
@@ -182,6 +184,10 @@ export const routedForge = (github: Forge, forgejo: Forge, origin: (cwd: string)
     branchPr: async (cwd, branch) => {
       const f = await byOrigin(cwd);
       return f?.branchPr ? f.branchPr(cwd, branch) : null;
+    },
+    mayMerge: async (cwd, url) => {
+      const f = of(url);
+      return f.mayMerge ? f.mayMerge(cwd, url) : null;
     },
   };
 };
@@ -452,6 +458,11 @@ export const makeGhForge = (
         return { url: pr.url, number: pr.number, repo: full, maintainers: true };
       }
       return null;
+    },
+    async mayMerge(cwd, url) {
+      const ref = prRef(url);
+      const push = (await run(atPr(cwd, url), 'api', `repos/${ref.owner}/${ref.repo}`, '--jq', '.permissions.push')).trim();
+      return push === 'true' ? true : push === 'false' ? false : null;
     },
     async contribution(cwd, url) {
       const ref = prRef(url);

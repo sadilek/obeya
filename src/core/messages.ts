@@ -195,6 +195,8 @@ const de = {
     adoptedStarted: (branch: string, commit: string, diverged?: boolean) =>
       `Startet auf ${branch} (${commit}).${diverged ? ` Der lokale ${branch} und der auf origin haben jeweils eigene Commits; Obeya nimmt den lokalen.` : ''}`,
     approvedPushed: (branch: string, pr: string) => `Freigegeben und auf ${branch} gepusht, den Branch von PR ${pr}.`,
+    approvedFollows: (prs: string[]) =>
+      prs.length > 1 ? `Freigegeben. Vom Branch landet nichts; die Karte verfolgt die PRs ${prs.join(', ')}, bis alle gemergt sind.` : `Freigegeben. Vom Branch landet nichts; die Karte verfolgt PR ${prs[0]}, bis er gemergt ist.`,
     approvedDirect: 'Freigegeben und direkt auf main gepusht.',
     landedDirect: 'Nach der Freigabe direkt auf main gepusht.',
     approvedMain: 'Freigegeben und auf main.',
@@ -768,6 +770,8 @@ const en: Messages = {
     adoptedStarted: (branch: string, commit: string, diverged?: boolean) =>
       `Starts on ${branch} (${commit}).${diverged ? ` The local ${branch} and origin's each have commits of their own; Obeya takes the local one.` : ''}`,
     approvedPushed: (branch: string, pr: string) => `Approved and pushed to ${branch}, the branch of PR ${pr}.`,
+    approvedFollows: (prs: string[]) =>
+      prs.length > 1 ? `Approved. Nothing lands from the branch; the card follows PRs ${prs.join(', ')} until all are merged.` : `Approved. Nothing lands from the branch; the card follows PR ${prs[0]} until it is merged.`,
     approvedDirect: 'Approved and pushed straight to main.',
     landedDirect: 'Pushed straight to main after the approval.',
     approvedMain: 'Approved and on main.',

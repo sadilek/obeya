@@ -110,6 +110,11 @@ export function fileForge(path: string): Forge {
       const p = f.prs.find((x) => x.headRef === branch && x.author === f.viewer && (x.state ?? 'OPEN') === 'OPEN');
       return p ? { url: p.url, number: p.number, ...(p.base ? { repo: p.base, maintainers: true as const } : {}) } : null;
     },
+    // one in another repository than the file's is its maintainers' to merge
+    async mayMerge(_cwd, url) {
+      const p = read().prs.find((x) => x.url === url);
+      return p ? !p.base : null;
+    },
     async urlOf(_cwd, n) {
       const p = read().prs.find((x) => x.number === n);
       if (!p) throw new Error(`no pull request #${n}`);

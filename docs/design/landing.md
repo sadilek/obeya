@@ -68,7 +68,9 @@ that forge's path: a Codeberg PR reported as `…/pull/<n>` (which Codeberg answ
 workspace of the card) gets it reported the same way, a call for each: the card's own is the one in
 its repository (by `origin`), which its landing names; one elsewhere is watched beside it, a PR
 reported again (opened again after it was closed) as before, and one in the card's repository
-reported anew replaces the card's own. Whatever form a URL was recorded in, each call reads it afresh: gh gets GitHub's
+reported anew replaces the card's own. Work that went onto pull requests open already instead of
+onto the card's branch is named at the handover and followed from the approval on (see Live and
+done in Card lifecycle). Whatever form a URL was recorded in, each call reads it afresh: gh gets GitHub's
 `/pull/<n>` (an Enterprise PR recorded as `…/pulls/<n>` before gh was logged in there), and a PR
 already on a card is recognised in any form (a slash at the end, the host in capitals). An address
 with a login, a query or a fragment before the repository is no PR URL: the host it would be told

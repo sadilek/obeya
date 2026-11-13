@@ -25,8 +25,9 @@ visible on a card.
   task, instead of doing it, or a follow-up due later (`start_at`). `repo` exists wherever Obeya
   runs more than one repository: its description lists the ids and paths of the canvas's own and,
   by canvas, those of the other canvases.
-- `ready_for_review(summary, demo, files)`, whose summary is the report the owner reads and whose
-  files are the result shown beside the demo (see The files beside the demo). The demo's `question`
+- `ready_for_review(summary, demo, files, pull_requests)`, whose summary is the report the owner
+  reads and whose files are the result shown beside the demo (see The files beside the demo);
+  `pull_requests` names those the work went onto instead of the branch (see Live and done). The demo's `question`
   (text, options, multiple, pick, pick_why) is asked and answered as with `ask`, while the card goes
   on waiting for approval (see Waiting for approval in Card lifecycle).
 - `app_running(url)`: where the app in its workspace opens, for the owner to try by hand (see Trying

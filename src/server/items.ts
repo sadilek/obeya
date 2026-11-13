@@ -227,6 +227,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(r.kept_in ? { keptIn: r.kept_in.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
     ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp && !landed.resolve ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
     ...(detail.noChange && handed ? { noChange: true } : {}),
+    ...(detail.followsPrs?.length && handed ? { followsPrs: detail.followsPrs } : {}),
     ...(detail.lands && handed ? { lands: detail.lands } : {}),
     ...(detail.upstreamNew && handed ? { upstreamNew: detail.upstreamNew } : {}),
     ...(r.paused ? { paused: true } : {}),

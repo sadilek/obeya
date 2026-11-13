@@ -965,7 +965,10 @@ export class Workers {
     // in a fork, the button the owner clicked says whether the work goes to the original as a pull request too
     if (upstream !== undefined && !!card.upstream !== upstream) this.o.board.work(cardId, { upstream: upstream ? 1 : null });
     const comments = this.approvalComments(cardId);
-    // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open
+    // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open,
+    // unless it went onto pull requests open already, which the card follows then
+    const follows = fromJson(this.o.board.row(cardId).detail)?.followsPrs;
+    if (!work && follows?.length) return this.followPrs(cardId, follows, comments);
     if (!work) return void this.close(cardId, 'owner', comments);
     if (lands.land === 'main' || direct || branchPr) return this.land(cardId, 'owner', comments);
     // the worker opens the PR the way the repository does it, then Obeya watches it
@@ -1124,6 +1127,38 @@ export class Workers {
         .join('\n\n'),
       comments?.images,
       { owner: by === 'owner' },
+    );
+  }
+
+  /**
+   * Approved work that went onto pull requests open already instead of onto the card's branch (the
+   * worker named them at its handover): nothing lands from the branch, and the card follows them
+   * (`PrWatcher`), the first as its own, until they are merged, by Obeya where the owner's account may
+   * merge them, as any, else by their maintainers.
+   */
+  private followPrs(cardId: string, prs: AdoptedPr[], comments?: Comments) {
+    const [first, ...rest] = prs.map(adoptedPrState);
+    this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, status_line: null, approved_at: null, pr: toJson({ ...first!, ...(rest.length ? { more: rest } : {}) }) });
+    const names = prs.map(adoptedPrName);
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.approvedFollows(names));
+    // a page that goes out now gets the pull request's link from Obeya
+    this.o.onApproval?.(cardId);
+    this.o.onPrOpened?.(cardId);
+    const shared = this.card(cardId).share?.url;
+    if (shared) this.pageHeard(cardId);
+    const merger = (p: AdoptedPr) => (p.maintainers ? `its maintainers${p.repo ? ` in ${p.repo}` : ''} merge it, never Obeya, and nobody is asked for a review on your behalf` : this.o.adapter.autoMerge === false ? 'the people on the forge merge it' : 'Obeya merges it once its checks have passed and its review is through');
+    this.deliver(
+      cardId,
+      [
+        `The owner approved your work. Nothing lands from your branch: the card follows the pull request${prs.length > 1 ? 's' : ''} your work went onto until ${prs.length > 1 ? 'all are' : 'it is'} merged. ${prs.map((p) => `${adoptedPrName(p)} (${p.url}): do not merge it; ${merger(p)}.`).join(' ')}`,
+        `From now on Obeya passes you review comments, failed checks and conflicts on ${prs.length > 1 ? 'them' : 'it'}; handle them the way its repository does, on its branch, and push them there yourself. Its commits are published: never rewrite them (no rebase, amend or force push); to bring its base in, merge it. End your turn after each round instead of handing over.`,
+        shared ? `Your demo video is shared on a page of its own: ${shared}. Link it on the pull request where it helps its readers.` : '',
+        comments?.text ?? '',
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      comments?.images,
+      { owner: true },
     );
   }
 

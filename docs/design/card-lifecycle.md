@@ -199,6 +199,18 @@ Obeya sees the branch (close the card, or land the files it names), since a work
 it made, not those its branch carried from before. A worker whose branch emptied after the approval
 closes the card with `close_unchanged`, refused while the workspace holds changes.
 
+Work that went onto pull requests open already instead of onto the card's branch (a fork's pull
+request to the original the worker pushed onto, one it opened in another repository) is named at the
+handover (`ready_for_review`'s `pull_requests`), refused while the branch holds work, which lands
+with the approval instead. The card shows each ("PR boris/bridge#82 · open"), the button reads
+"Approve, follow PR" with a line saying that the card follows it until it is merged and nothing
+lands from the branch, and approving puts the card in that pull request instead of making it
+`done`: the watcher follows it as the card's own (several side by side; see PR loop), its commits
+published as on a branch of the owner's (see A branch of the owner's), merged by Obeya where the
+owner's account may push to its repository, else by its maintainers, and the card is `live` once
+all are merged. The approval cannot be taken back: the work is public in the pull request. A
+handover without them closes the card as before.
+
 A finished card an agent worked on keeps its field: a question there resumes that agent (see
 Questions after the work).
 
@@ -307,6 +319,13 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
 - **Work without a change ends in `done`, not `live`** (2026-10-02). Obeya reads it from the
   workspace, not from the worker's word. The owner still approves it: its demo or summary is the
   result. Rejected: waiting in `in PR` for a PR that never comes.
+- **Unchanged work that went onto a pull request is named at the handover** (2026-11-13). The worker
+  names the pull requests with `ready_for_review`, so the owner sees before approving that the card
+  will follow them, and the approval needs no further turn of the worker; its briefing and tools say
+  what the approval then does, so it offers the owner nothing Obeya would not do. Rejected:
+  accepting `pr_opened` on a card already `done` (its dependents may have started, its page gone
+  out); asking the worker after every approval of unchanged work whether a pull request follows,
+  which keeps every demo and analysis waiting on a turn.
 - **A finished card keeps a field for questions to its agent** (2026-10-08).
 - **What the owner archives**: only their own finished cards, ideas once parked or dropped (a parked
   idea's result may have been used outside Obeya, 2026-10-15), and stopped tasks (2026-10-15).
