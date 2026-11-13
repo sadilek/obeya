@@ -2924,6 +2924,8 @@ export class Workers {
           } else this.o.board.log(cardId, 'state', 'obeya', `${e.message}. ${e.limit.resetsAt ? t.worker.limitResumes(t.when(live.limited)) : t.worker.limitRetries(t.when(live.limited))}`);
           break;
         }
+        // a failure that is no wait ends the one before: the worker does not go on by itself
+        if (live.limited !== undefined) this.unlimited(cardId, live);
         live.failed = e.message;
         this.o.board.log(cardId, 'error', 'obeya', e.message, { token: e.token });
         break;

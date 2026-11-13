@@ -181,7 +181,7 @@ export const sdkRuntime: AgentRuntime = {
     // the account's usage limits as last reported, and whether the turn's request was refused for one
     let limits: SDKRateLimitInfo | undefined;
     let limited = false;
-    // whether the turn's request failed on the API's side (overloaded, a server error), and how many turns in a row failed for an outage
+    // whether the turn's request failed as overloaded, and how many turns in a row failed for an outage
     let unavailable = false;
     let outages = 0;
     const done = (async () => {
@@ -200,7 +200,8 @@ export const sdkRuntime: AgentRuntime = {
           // an API error the CLI words as the agent's reply; the turn's result reports it
           else if (m.type === 'assistant' && m.error) {
             limited ||= m.error === 'rate_limit';
-            unavailable ||= m.error === 'overloaded' || m.error === 'server_error';
+            // not `server_error`, which also stands for a certificate or proxy this machine refuses: the failure's words tell a server's error apart
+            unavailable ||= m.error === 'overloaded';
           }
           else if (m.type === 'assistant' && !m.parent_tool_use_id) {
             for (const block of m.message.content) {
@@ -314,7 +315,7 @@ export function resultFailure(m: SDKResultMessage): string | undefined {
 
 /**
  * Whether a failed turn failed because the Claude API could not be reached or did not serve it
- * (`claudeUnreachable`, or the turn's request failed as `overloaded` or a `server_error`), and when
+ * (`claudeUnreachable`, or the turn's request failed as `overloaded`), and when
  * to try again: after the `streak` of such turns before it (`outageRetry`).
  */
 export function outage(failure: string, unavailable: boolean, streak: number, now = Date.now()): TurnLimit | undefined {

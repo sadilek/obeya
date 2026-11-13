@@ -861,6 +861,24 @@ describe('workers', () => {
     await workers.stop(c.id);
   });
 
+  test('a worker whose try after an outage fails for another reason no longer waits for the outage', async () => {
+    rebuild({ limitMargin: 10 });
+    const c = manual();
+    await workers.start(c.id);
+    runtime.last.emit({ type: 'error', message: 'API Error: 529 Overloaded', limit: { resetsAt: Date.now() + 10, outage: true } });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => runtime.last.inbox.at(-1) === OUTAGE_OVER);
+    const sent = runtime.last.inbox.length;
+    runtime.last.emit({ type: 'error', message: 'Failed to authenticate. API Error: 401 Invalid bearer token' });
+    runtime.last.emit({ type: 'idle' });
+    await Bun.sleep(60);
+    // no try after try: the error stands, and the status line no longer says Claude is unreachable
+    expect(runtime.last.inbox.filter((m) => m === OUTAGE_OVER)).toHaveLength(1);
+    expect(runtime.last.inbox.length).toBeLessThanOrEqual(sent + 1);
+    expect(board.item(c.id)!.statusLine ?? '').not.toStartWith('Claude nicht erreichbar');
+    await workers.stop(c.id);
+  });
+
   test("a worker the usage limit stopped while it took in the owner's words on its handover stays at them and goes on once it lifts", async () => {
     rebuild({ limitMargin: 30 });
     const { card: c } = await handedOver({ summary: 'Studie fertig.' });

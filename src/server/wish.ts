@@ -6,7 +6,7 @@
 import { tmpdir } from 'node:os';
 import { z } from 'zod';
 import { issueFooter, ISSUES_REPO, withoutFooter } from '../core/wish';
-import type { AgentRuntime } from './runtime';
+import { type AgentRuntime, outageRetry } from './runtime';
 import { oneLine } from '../core/text';
 
 export interface WishInput {
@@ -49,6 +49,9 @@ function brief(w: WishInput, shots: number): string {
   return parts.join('\n\n');
 }
 
+/** How many drafts in a row an outage kept from being written: each is a session of its own, so the wait grows here (`outageRetry`). */
+let outages = 0;
+
 /** The issue's title and body, the body ending with `footer`. */
 export function writeWish(runtime: AgentRuntime, w: WishInput, footer: string, images: string[] = []): Promise<WishDraft> {
   const said = w.said.trim();
@@ -75,7 +78,9 @@ export function writeWish(runtime: AgentRuntime, w: WishInput, footer: string, i
         system: SYSTEM,
         // the owner is waiting for the draft: their words stand in it, and the draft says when the job can write it
         onLimit: (until, outage) => {
-          if (until !== undefined) end({ ...fallback(), limitedUntil: new Date(until).toISOString(), ...(outage ? { limitedByOutage: true as const } : {}) });
+          if (until === undefined) return;
+          const at = outage ? Math.max(until, outageRetry(outages++)) : until;
+          end({ ...fallback(), limitedUntil: new Date(at).toISOString(), ...(outage ? { limitedByOutage: true as const } : {}) });
         },
         tools: [
           {
@@ -86,6 +91,7 @@ export function writeWish(runtime: AgentRuntime, w: WishInput, footer: string, i
               const title = oneLine(String(a.title)).slice(0, 200);
               const body = withoutFooter(String(a.body).trim());
               if (!title || !body) return 'Both title and body, please.';
+              outages = 0;
               end({ title, body: `${body}\n\n${footer}` });
               return 'Recorded. End your turn now.';
             },
