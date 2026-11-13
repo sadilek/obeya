@@ -2093,7 +2093,7 @@ button.link:hover { text-decoration: underline; }
 #markhint { position: fixed; z-index: 40; pointer-events: none; transform: translate(14px, 14px); animation: markhint 7s both; }
 @keyframes markhint { 0% { opacity: 0; } 6% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }
 
-#ringback { position: fixed; inset: 0; z-index: 70; cursor: crosshair; }
+#ringback { position: fixed; inset: 0; z-index: 70; }
 #ringback .ring { position: absolute; width: 0; height: 0; }
 /* the canvas behind the ring and its names steps back under a frosted halo that fades out at its
    edge, so they stand out on a busy canvas and the cards further away stay in view */
@@ -2115,6 +2115,11 @@ button.link:hover { text-decoration: underline; }
 .ring.open .ball { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1; }
 .ring.open .ball.hot { transform: translate(calc(var(--bx) * 1.12), calc(var(--by) * 1.12)) scale(1.3);
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 5px hsl(var(--h) 80% 55% / .5), 0 0 26px hsl(var(--h) 90% 55% / .8); }
+/* a ball takes clicks a little beyond its edge, and a lit one, grown and moved outwards, still under
+   the pointer that lit it, so it does not flicker at its inner edge */
+.ball { cursor: pointer; }
+.ball::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+.ball.hot::before { inset: -11px; }
 .ball.new, .ball.none { background: var(--card); box-shadow: 0 0 0 1.5px var(--line), 0 4px 12px rgba(0,0,0,.12); }
 .ring.open .ball.new.hot, .ring.open .ball.none.hot { box-shadow: 0 0 0 2px var(--ink); color: var(--ink); }
 .gtag { position: absolute; display: flex; align-items: center; gap: 4px; box-sizing: border-box; padding: 2px 9px; border-radius: 3px; white-space: nowrap;
