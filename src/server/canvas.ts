@@ -750,9 +750,8 @@ export class CanvasRuntime {
     const githubLogin = onGithub && rc.githubAccount ? accountLogin(onGithub.host, rc.githubAccount) : undefined;
     if (onGithub && rc.githubAccount) stops.push(useGithubAccount(onGithub, rc.githubAccount));
     const workspaceDir = isHome ? join(deps.home, 'workspaces', resolved.id) : join(deps.home, 'workspaces', resolved.id, ref.id);
-    // Obeya's own fetches and pushes for it here go to GitHub as that account too (onto a contributor's fork, say);
-    // a repository without one keeps the machine's login, its workspaces inside the first repository's folder too
-    if (!folder) stops.push(useGitLogin([info.path, workspaceDir], onGithub?.host ?? '', githubLogin));
+    // the folders Obeya's own fetches and pushes for it run in: they go to GitHub as that account too (onto a contributor's fork, say)
+    const loginRoots = [info.path, workspaceDir];
     // the workers set up below say how many are busy where
     let workers!: Workers;
     let workspaces: CardWorkspaces;
@@ -778,6 +777,7 @@ export class CanvasRuntime {
         for (const w of listedClones(rc, info, { land: adapter.land })) {
           git.register(w, [info.remote, info.path].filter((x): x is string => !!x), listed.get(w));
           named.push(w);
+          if (hostName(w) === null) loginRoots.push(w);
         }
         // landing on main needs clones that see the local main; otherwise they track the remote; those still to be made follow in the background
         if (rc.clones) {
@@ -798,6 +798,8 @@ export class CanvasRuntime {
       git.sweep();
       workspaces = git;
     }
+    // a repository without an account keeps the machine's login, its workspaces inside the first repository's folder too
+    if (!folder) stops.push(useGitLogin(loginRoots, onGithub?.host ?? '', githubLogin));
     // clones on other machines, made in the background: a host that is off now gets them once it answers
     if (remoteHosts.length) {
       const token = githubLogin ?? githubToken(info.path, info.remote!);

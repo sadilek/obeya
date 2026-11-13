@@ -18,7 +18,7 @@ import { PrWatcher } from './pr-watcher';
 import { artifact, commit, FakeRuntime, gitClone, gitHttpsServer, gitRepo, identify, primedClones, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
-import { git, useGitLogin } from './git';
+import { git, gitRun, useGitLogin } from './git';
 
 const URL_ = 'https://github.com/acme/app/pull/5';
 
@@ -356,6 +356,17 @@ describe('a review card', () => {
       const head = await approvedOverHttps((id) => ended.push(useGitLogin([dirname(board.row(id).workspace!)], '', undefined)));
       expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(head);
       expect(new Set(server!.logins)).toEqual(new Set(['machine:machine-login']));
+    });
+
+    test.skipIf(!Bun.which('openssl'))('a call moved into another folder by -C logs in as that folder’s, and git’s options with their value apart hide no command', async () => {
+      const account = Object.assign(() => 'account-token', { ready: () => Promise.resolve() });
+      ended.push(useGitLogin([main], server!.host, account), useGitLogin([origin], '', undefined));
+      const url = `${server!.url}/acme/app`;
+      expect((await gitRun(main, ['-C', origin, 'ls-remote', url])).code).toBe(0);
+      expect(new Set(server!.logins)).toEqual(new Set(['machine:machine-login']));
+      server!.logins.length = 0;
+      expect((await gitRun(main, ['--git-dir', join(main, '.git'), 'ls-remote', url])).code).toBe(0);
+      expect(new Set(server!.logins)).toEqual(new Set(['x-access-token:account-token']));
     });
   });
 

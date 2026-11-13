@@ -136,14 +136,23 @@ export function useGitLogin(roots: string[], host: string, login: GithubLogin | 
 /** git's commands that reach a remote, and so may need a login. */
 const NETWORK = new Set(['fetch', 'push', 'pull', 'ls-remote', 'clone']);
 
-/** The git command in `args`, after git's own options (`-c <name>=<value>`, `-C <path>`). */
-function commandOf(args: string[]): string | undefined {
+/** git's own options that take their value as the next argument. */
+const WITH_VALUE = new Set(['-c', '-C', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix']);
+
+/**
+ * The git command in `args`, after git's own options (`-c <name>=<value>`, `-C <path>`), and the
+ * folder it runs in: `cwd`, moved by each `-C`.
+ */
+function commandOf(cwd: string, args: string[]): { command: string | undefined; dir: string } {
+  let dir = resolve(cwd);
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
-    if (a === '-c' || a === '-C') i++;
-    else if (!a.startsWith('-')) return a;
+    if (WITH_VALUE.has(a)) {
+      if (a === '-C' && args[i + 1]) dir = resolve(dir, args[i + 1]!);
+      i++;
+    } else if (!a.startsWith('-')) return { command: a, dir };
   }
-  return undefined;
+  return { command: undefined, dir };
 }
 
 /** Whether `path` is `root` or inside it. */
@@ -153,15 +162,14 @@ function inside(path: string, root: string): boolean {
 }
 
 /**
- * What has a git call in `cwd` on this machine log in as the GitHub login set for the folder it is
+ * What has a git call in `path` on this machine log in as the GitHub login set for the folder it is
  * in (`useGitLogin`): `TOKEN_HELPER` for that host alone, after an empty helper for it, so the
  * machine's helpers (gh's, which answers as gh's active account; the keychain, which would keep the
  * token) are neither asked nor told, and a remote another host answers (a fork elsewhere, a URL
  * rewritten by the repository's configuration) never gets the token. None where no login is set
  * there, or it has no token.
  */
-async function loginFor(cwd: string): Promise<{ args: string[]; env: Record<string, string> } | null> {
-  const path = resolve(cwd);
+async function loginFor(path: string): Promise<{ args: string[]; env: Record<string, string> } | null> {
   const set = gitLogins.filter((l) => inside(path, l.root)).sort((a, b) => b.root.length - a.root.length)[0];
   if (!set?.login) return null;
   await set.login.ready?.().catch(() => {});
@@ -181,7 +189,8 @@ async function loginFor(cwd: string): Promise<{ args: string[]; env: Record<stri
 export async function gitRun(cwd: string, args: string[], o: { env?: Record<string, string>; stdin?: string; timeout?: number } = {}): Promise<GitResult> {
   const there = remoteWorkspace(cwd);
   if (there) return there.host.run(['git', ...TOKEN_HELPER_ARGS, '-C', there.path, ...args], { cwd: there.path, ...(o.stdin !== undefined ? { input: o.stdin } : {}), ...(o.timeout ? { timeout: o.timeout } : {}) });
-  const login = gitLogins.length && NETWORK.has(commandOf(args) ?? '') ? await loginFor(cwd) : null;
+  const call = gitLogins.length ? commandOf(cwd, args) : undefined;
+  const login = call && NETWORK.has(call.command ?? '') ? await loginFor(call.dir) : null;
   const env = login ? { ...o.env, ...login.env } : o.env;
   return spawnOutput([GIT, '-C', cwd, ...(login?.args ?? []), ...args], {
     ...(o.stdin !== undefined ? { stdin: new Blob([o.stdin]) } : {}),
