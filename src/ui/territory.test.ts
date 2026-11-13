@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { inside } from './groups';
+import type { Group, Item } from '../core/types';
+import { inside, placeAll, titleStrips } from './groups';
 import { type Claim, type NameSpot, placeName, Territories, type Territory } from './territory';
 
 const card = (id: string, x: number, y: number, w: Record<string, number> = {}): Claim => ({ id, b: { x, y, w: 300, h: 140 }, w });
@@ -225,3 +226,69 @@ describe('group names', () => {
     expect(placeName(t!.outline!, name, [lone.b, beside], { prev: free }).box).toEqual(free.box);
   });
 });
+
+describe('group names together', () => {
+  const group = (id: string): Group => ({ id, name: id, hue: 200 }) as Group;
+  const shapesOf = (claims: Claim[], ids: string[]) => new Territories().compute(claims, ids).map((t) => ({ g: group(t.group), t }));
+  const crossing = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const mid = (b: { x: number; y: number; w: number; h: number }) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+
+  test("a name does not stand in another group's territory where a spot clear of it is free", () => {
+    // B's card stands up and to the left of A's, so the free spot just above A lies in B's territory
+    const a = card('a', 0, 0, { A: 1 });
+    const b = card('b', -100, -176, { B: 1 });
+    const shapes = shapesOf([a, b], ['A', 'B']);
+    const spots = placeAll({ shapes, cards: [a.b, b.b], strips: [] }, 'near', 0);
+    const box = spots.get('A')!.box;
+    const tb = shapes.find((s) => s.g.id === 'B')!.t;
+    expect(within(tb, mid(box))).toBe(false);
+    expect(within(tb, { x: box.x, y: box.y })).toBe(false);
+    expect(within(tb, { x: box.x + box.w, y: box.y + box.h })).toBe(false);
+  });
+
+  test('names of groups side by side do not run into each other', () => {
+    const left = card('l', 0, 0, { Left: 1 });
+    const right = card('r', 330, 0, { Right: 1 });
+    const shapes = shapesOf([left, right], ['Left', 'Right']).map((s) => ({ ...s, g: { ...s.g, name: 'Billing and invoices' } }));
+    // far out, each name is far wider than its card
+    const spots = placeAll({ shapes, cards: [left.b, right.b], strips: [] }, 'far', Math.floor(Math.log(0.55) / Math.log(1.06)));
+    const [p, q] = [spots.get('Left')!, spots.get('Right')!];
+    expect(crossing(p.box, q.box)).toBe(false);
+  });
+
+  test("far out, the last resort stays off the card in a ring group's middle, which is another group's", () => {
+    // B's cards make a ring around A's card in the middle of a 5 × 5 grid of strangers
+    const claims = [0, 1, 2, 3, 4].flatMap((row) =>
+      [0, 1, 2, 3, 4].map((col) => {
+        const ring = Math.max(Math.abs(col - 2), Math.abs(row - 2)) === 1;
+        return card(`${col}${row}`, col * 320, row * 156, col === 2 && row === 2 ? { A: 1 } : ring ? { B: 1 } : {});
+      }),
+    );
+    const shapes = shapesOf(claims, ['B', 'A']);
+    const strips = claims.map((c) => ({ ...c.b, h: 50 }));
+    const spots = placeAll({ shapes, cards: claims.map((c) => c.b), strips }, 'far', Math.floor(Math.log(0.55) / Math.log(1.06)));
+    const b = spots.get('B')!;
+    expect(b.side).toBe('inside');
+    const middle = claims.find((c) => c.id === '22')!.b;
+    expect(crossing(b.box, middle)).toBe(false);
+  });
+
+  test("far out, the last resort keeps off a project's workstream titles", () => {
+    const item = (id: string, kind: Item['kind'], extra: Partial<Item> = {}) => ({ id, kind, state: 'planned', title: id, body: '', ...extra }) as Item;
+    const project = { item: item('p', 'project'), b: { x: 0, y: 0, w: 1640, h: 400 } };
+    const ws = [0, 1, 2, 3].map((k) => ({ item: item(`w${k}`, 'task', { parent: 'p' }), b: { x: 40 + k * 400, y: 234, w: 300, h: 136 } }));
+    const strips = titleStrips([project, ...ws]);
+    for (const w of ws) expect(strips.some((s) => s.x === w.b.x && s.y === w.b.y)).toBe(true);
+  });
+
+  test('a name is placed once per zoom step, in a box that holds it at every zoom of that step', () => {
+    const lone = card('a', 0, 0, { A: 1 });
+    const shapes = shapesOf([lone], ['A']);
+    const step = Math.floor(Math.log(0.9) / Math.log(1.06));
+    const box = placeAll({ shapes, cards: [lone.b], strips: [] }, 'near', step).get('A')!.box;
+    // drawn 13 px high on screen: at the step's smallest zoom it is largest in the world
+    for (const s of [1.06 ** step, 0.9, 1.06 ** (step + 1) - 1e-9]) expect(0.7 * (13 / s)).toBeLessThanOrEqual(box.h + 1e-6);
+  });
+});
+

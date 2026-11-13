@@ -29,6 +29,8 @@ export interface Territory {
   pieces: [number, number][][][];
   /** The outer ring of its largest piece, along whose edge its name stands (see `placeName`). */
   outline?: [number, number][];
+  /** The holes in that piece, where other groups' cards stand. */
+  holes?: [number, number][][];
   /** The size of its name zoomed far out, in screen px. */
   labelSize: number;
 }
@@ -309,14 +311,14 @@ function territory(group: string, f: Field, rivals: Field[]): Territory {
   const pieces = world(main);
   const path = (ps: [number, number][][][]) => ps.map((poly) => poly.map((ring) => smooth(ring)).join('')).join('');
   // the name stands along the edge of the largest piece, the same for one card and for many
-  let outline: [number, number][] | undefined;
+  let largest: [number, number][][] | undefined;
   let best = 0;
   for (const poly of pieces) {
-    const r = poly[0]!;
-    const a = Math.abs(ringArea(r));
-    if (a > best) (best = a), (outline = r);
+    const a = Math.abs(ringArea(poly[0]!));
+    if (a > best) (best = a), (largest = poly);
   }
-  return { group, main: path(pieces), inner: path(world(inner)), pieces, ...(outline ? { outline } : {}), labelSize: Math.max(40, Math.min(80, Math.sqrt(best) / 11)) };
+  const named = largest ? { outline: largest[0]!, ...(largest.length > 1 ? { holes: largest.slice(1) } : {}) } : {};
+  return { group, main: path(pieces), inner: path(world(inner)), pieces, ...named, labelSize: Math.max(40, Math.min(80, Math.sqrt(best) / 11)) };
 }
 
 /** A ring's signed area. */
@@ -413,6 +415,12 @@ interface Edges {
 const SAMPLES = 64;
 const sampled = new WeakMap<[number, number][], Edges>();
 
+/** The bounds of a ring. */
+export function ringBounds(r: [number, number][]): Bounds {
+  const e = edges(r);
+  return { x: e.minX, y: e.minY, w: e.maxX - e.minX, h: e.maxY - e.minY };
+}
+
 function edges(r: [number, number][]): Edges {
   const known = sampled.get(r);
   if (known) return known;
@@ -506,50 +514,84 @@ function within(r: [number, number][], x: number, y: number) {
   return odd;
 }
 
+/** Whether `box` reaches into the area within ring `r`: its bounds first, then points spread over the box. */
+function reaches(box: Bounds, r: [number, number][]) {
+  const e = edges(r);
+  if (box.x >= e.maxX || box.x + box.w <= e.minX || box.y >= e.maxY || box.y + box.h <= e.minY) return false;
+  for (const fy of [0, 0.5, 1])
+    for (const fx of [0, 0.25, 0.5, 0.75, 1]) if (within(r, box.x + fx * box.w, box.y + fy * box.h)) return true;
+  return false;
+}
+
+/**
+ * What a name keeps clear of besides `cards`, the cards and notes on the canvas: `names`, the
+ * boxes of the names placed before it, and `areas`, the outer rings of the other groups'
+ * territories, so that it does not read as one of theirs. Where no spot along the edge is clear of
+ * these as well, it makes do with one clear of the cards alone.
+ */
+export interface NameOpts {
+  /** The title strips of the cards (zoomed far out only): the last resort inside the piece crosses as few as it can. */
+  strips?: Bounds[];
+  /** Where the name stood a moment ago. */
+  prev?: NameSpot;
+  /** The holes in the piece, where other groups' cards stand. */
+  holes?: [number, number][][];
+  names?: Bounds[];
+  areas?: [number, number][][];
+}
+
 /**
  * Where a group's name of `size` (its capitals' box, world px) stands along `outline`, the outer
- * ring of its territory's largest piece: at the first spot where it covers no card, of
+ * ring of its territory's largest piece: at the first spot where it covers no card, nor another
+ * group's name or territory (`opts`), of
  * - the top edge, centred, then slid along it to the free spot nearest the middle;
  * - the bottom edge, the same, hanging below it;
  * - the side nearer the piece's centre of mass (on a tie, the right), then the other side, beside
  *   it and centred vertically, then slid along it;
+ * then the same spots covering no card alone; then
  * - with `strips` (the title strips of the cards, zoomed far out only) inside the piece, over the
  *   cards, where it crosses the fewest titles, nearest the centre of mass;
  * - else on the top edge, centred, under the cards that cover it.
  * `prev`, where it stood a moment ago, holds it there (slid back towards the middle as far as is
  * free) while that is no worse, so it does not flicker while a card is dragged past it.
  */
-export function placeName(outline: [number, number][], size: { w: number; h: number }, cards: Bounds[], opts: { strips?: Bounds[]; prev?: NameSpot } = {}): NameSpot {
+export function placeName(outline: [number, number][], size: { w: number; h: number }, cards: Bounds[], opts: NameOpts = {}): NameSpot {
   const e = edges(outline);
   const { w, h } = size;
   const gap = h * 0.4;
   const near = e.cx < (e.minX + e.maxX) / 2 - CELL ? 'left' : 'right';
   const order: NameSide[] = ['top', 'bottom', near, near === 'left' ? 'right' : 'left'];
-  let best: { side: NameSide; box: Bounds; rank: number; dist: number } | undefined;
-  search: for (const [rank, side] of order.entries()) {
-    const { c, lo, hi, step } = slots(e, side, w, h);
-    for (let k = 0; (k - 1) * step < Math.max(hi - c, c - lo); k++)
-      for (const a of k ? [Math.min(hi, c + k * step), Math.max(lo, c - k * step)] : [c]) {
-        const box = edgeBox(e, side, a, w, h, gap);
-        // a new spot keeps a little clear of the cards, so the name does not jump to and fro at the border
-        if (box && clear(box, cards, h * 0.2)) {
-          best = { side, box, rank, dist: Math.abs(a - c) };
-          break search;
+  const names = opts.names ?? [];
+  const areas = opts.areas ?? [];
+  // level 0: clear of cards, names and other territories; level 1: of the cards alone
+  const free = (box: Bounds, pad: number, level: number) =>
+    clear(box, cards, pad) && (level > 0 || (clear(box, names, pad) && !areas.some((r) => reaches(box, r))));
+  const search = (level: number) => {
+    for (const [rank, side] of order.entries()) {
+      const { c, lo, hi, step } = slots(e, side, w, h);
+      for (let k = 0; (k - 1) * step < Math.max(hi - c, c - lo); k++)
+        for (const a of k ? [Math.min(hi, c + k * step), Math.max(lo, c - k * step)] : [c]) {
+          const box = edgeBox(e, side, a, w, h, gap);
+          // a new spot keeps a little clear of the cards, so the name does not jump to and fro at the border
+          if (box && free(box, h * 0.2, level)) return { side, box, rank, dist: Math.abs(a - c), level };
         }
-      }
-  }
+    }
+    return undefined;
+  };
+  const best = search(0) ?? (names.length || areas.length ? search(1) : undefined);
+  const level = best?.level ?? 1;
   const prev = opts.prev;
   if (prev && prev.side !== 'inside' && !prev.covered) {
     const rank = order.indexOf(prev.side);
     const { c, lo, hi, step } = slots(e, prev.side, w, h);
     let a = Math.max(lo, Math.min(hi, across(prev.side) ? prev.box.x + prev.box.w / 2 : prev.box.y + prev.box.h / 2));
     let box = edgeBox(e, prev.side, a, w, h, gap);
-    if (box && clear(box, cards, 0) && (!best || rank <= best.rank)) {
+    if (box && free(box, 0, level) && (!best || rank <= best.rank)) {
       // back towards the middle, as far as is free
       while (a !== c) {
         const next = a < c ? Math.min(c, a + step) : Math.max(c, a - step);
         const b = edgeBox(e, prev.side, next, w, h, gap);
-        if (!b || !clear(b, cards, 0)) break;
+        if (!b || !free(b, 0, level)) break;
         a = next;
         box = b;
       }
@@ -557,25 +599,51 @@ export function placeName(outline: [number, number][], size: { w: number; h: num
     }
   }
   if (best) return { side: best.side, box: best.box };
-  if (opts.strips) return inside(outline, e, w, h, opts.strips, prev);
+  if (opts.strips) return inside(outline, e, w, h, opts, prev);
   const { c } = slots(e, 'top', w, h);
   return { side: 'top', box: edgeBox(e, 'top', c, w, h, gap)!, covered: true };
 }
 
-/** Inside the piece: the spot whose box crosses the fewest title strips, nearest its centre of mass. */
-function inside(outline: [number, number][], e: Edges, w: number, h: number, strips: Bounds[], prev?: NameSpot): NameSpot {
+/** Which points of a grid over the piece lie in it (not in a hole), by outline; the same for every size of name. */
+const grids = new WeakMap<[number, number][], { holes: [number, number][][] | undefined; inner: boolean[] }>();
+const GRID = 24;
+function gridOf(outline: [number, number][], e: Edges, holes: [number, number][][] | undefined) {
+  const known = grids.get(outline);
+  if (known && known.holes === holes) return known.inner;
+  const inner: boolean[] = [];
+  for (let i = 0; i < GRID; i++)
+    for (let j = 0; j < GRID; j++) {
+      const x = e.minX + ((i + 0.5) * (e.maxX - e.minX)) / GRID;
+      const y = e.minY + ((j + 0.5) * (e.maxY - e.minY)) / GRID;
+      inner.push(within(outline, x, y) && !holes?.some((r) => within(r, x, y)));
+    }
+  grids.set(outline, { holes, inner });
+  return inner;
+}
+
+/**
+ * Inside the piece: the spot whose box crosses the fewest title strips, nearest its centre of mass;
+ * never in a hole of the piece nor in another group's territory, where the name would read as theirs.
+ */
+function inside(outline: [number, number][], e: Edges, w: number, h: number, opts: NameOpts, prev?: NameSpot): NameSpot {
+  const strips = opts.strips ?? [];
+  // the other territories that reach into the piece's bounds, each with its own bounds to rule it out quickly
+  const areas = (opts.areas ?? []).map((r) => ({ r, e: edges(r) })).filter(({ e: o }) => o.minX < e.maxX && e.minX < o.maxX && o.minY < e.maxY && e.minY < o.maxY);
+  const theirs = (x: number, y: number) => areas.some(({ r, e: o }) => x > o.minX && x < o.maxX && y > o.minY && y < o.maxY && within(r, x, y));
+  const ours = (x: number, y: number) => within(outline, x, y) && !opts.holes?.some((r) => within(r, x, y)) && !theirs(x, y);
   const score = (x: number, y: number) => {
     const box = { x: x - w / 2, y: y - h / 2, w, h };
     return { box, titles: strips.filter((s) => crosses(box, s)).length, dist: len(x - e.cx, y - e.cy) };
   };
-  const N = 24;
+  const inner = gridOf(outline, e, opts.holes);
   let best = score(e.cx, e.cy);
-  if (!within(outline, e.cx, e.cy)) best.titles = Infinity;
-  for (let i = 0; i < N; i++)
-    for (let j = 0; j < N; j++) {
-      const x = e.minX + ((i + 0.5) * (e.maxX - e.minX)) / N;
-      const y = e.minY + ((j + 0.5) * (e.maxY - e.minY)) / N;
-      if (!within(outline, x, y)) continue;
+  if (!ours(e.cx, e.cy)) best.titles = Infinity;
+  for (let i = 0; i < GRID; i++)
+    for (let j = 0; j < GRID; j++) {
+      if (!inner[i * GRID + j]) continue;
+      const x = e.minX + ((i + 0.5) * (e.maxX - e.minX)) / GRID;
+      const y = e.minY + ((j + 0.5) * (e.maxY - e.minY)) / GRID;
+      if (theirs(x, y)) continue;
       const s = score(x, y);
       if (s.titles < best.titles || (s.titles === best.titles && s.dist < best.dist)) best = s;
     }
@@ -583,7 +651,7 @@ function inside(outline: [number, number][], e: Edges, w: number, h: number, str
     const x = prev.box.x + prev.box.w / 2;
     const y = prev.box.y + prev.box.h / 2;
     const s = score(x, y);
-    if (within(outline, x, y) && s.titles <= best.titles && s.dist <= best.dist + h) best = s;
+    if (ours(x, y) && s.titles <= best.titles && s.dist <= best.dist + h) best = s;
   }
   return { side: 'inside', box: best.box };
 }

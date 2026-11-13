@@ -1293,7 +1293,11 @@ function Canvas({
     if (e.key === '0') {
       setFocus(null);
       setSheetOn(false);
-      fly(kept(overviewCam(all, sideNow())), 700);
+      // the frame takes in the groups' names too, which stand outside the cards, at the zoom it comes to
+      const side = sideNow();
+      let to = overviewCam(all, side);
+      for (let k = 0; k < 2; k++) to = overviewCam(unionBounds([all, ...groupNames.boxesAt(to.s)]) ?? all, side);
+      fly(kept(to), 700);
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
@@ -1387,7 +1391,7 @@ function Canvas({
         >
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
-            <GroupNames names={groupNames} />
+            <GroupNames names={groupNames.names} />
             <Links placed={placed} waits={shownWaits} standsFor={standsForId} />
             <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} steps={deps?.steps} loops={loops.flatMap((l) => l.edges)} standsFor={standsForId} s={cam.s}>
               {(shift) => <ManualEdges dep={dep} placed={placed} waitKeys={waitKeys} loops={loops} standsFor={standsForId} s={cam.s} shift={shift} onLoop={resolveLoop} />}
@@ -1415,7 +1419,7 @@ function Canvas({
                 />
               ),
             )}
-            <GroupNames names={groupNames} over />
+            <GroupNames names={groupNames.names} over />
             <ConnectionDots dep={dep} placed={placed} underway={underway} depOf={depOf} />
             {planDirs?.map((d, n) => (
               <PlanDirNote
