@@ -39,7 +39,7 @@ touches, and keep those current in the same change.
   (later starts, taking back, reworking by words), at work, waiting for approval (the handover
   report), approval and landing, taking back an approval, live and done, archive, how projects end.
 - [Communication](design/communication.md) — how workers and Obeya exchange messages: a worker's
-  tools, turns that end without a handover (the usage limit), pausing an agent or a canvas's
+  tools, turns that end without a handover (the usage limit, Claude not reachable), pausing an agent or a canvas's
   agents, snoozing a card, waiting without blocking, refused and confirmed tool calls, notes and
   replies, questions go to the owner.
 - [Conversation on the card](design/conversation-on-the-card.md) — what the owner sees and does in

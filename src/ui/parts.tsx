@@ -192,7 +192,7 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
     (item.repoDown ? t.repoDown.short : undefined) ??
     (item.snoozed ? snoozeWho(item.snoozed) : undefined) ??
     (item.superseded ? (item.superseded.by ? t.superseded.byShort(plain(item.superseded.title ?? '')) : t.superseded.withdrawnShort) : undefined) ??
-    (item.limitedUntil ? t.limitedUntil(clock(item.limitedUntil)) : undefined) ??
+    (item.limitedUntil ? (item.limitedByOutage ? t.unreachableUntil : t.limitedUntil)(clock(item.limitedUntil)) : undefined) ??
     (item.kind === 'question' && item.thread ? t.question.count(item.thread.answers, item.thread.files) : undefined) ??
     (asked === undefined ? undefined : excerpt(asked)) ??
     (item.queue && 'behind' in item.queue ? excerpt(waitReason(item.queue)) : undefined) ??

@@ -26,7 +26,7 @@ import { mediaType } from './images';
 import { COMPILED } from './resources';
 import { OWN_GROUP } from './spawn';
 import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, refuseLongWait, waitRefusal } from './shell';
-import { type AgentRuntime, type AgentSpec, carryTo, cleanEnv, type DeniedBy, lostEvent, stderrTail, trackHere, withStderr } from './runtime';
+import { type AgentRuntime, type AgentSpec, carryTo, claudeUnreachable, cleanEnv, type DeniedBy, lostEvent, outageRetry, stderrTail, trackHere, type TurnLimit, withStderr } from './runtime';
 import type { ToolCall } from './folder';
 import { messageOf } from '../core/text';
 import { within } from '../core/late';
@@ -181,6 +181,9 @@ export const sdkRuntime: AgentRuntime = {
     // the account's usage limits as last reported, and whether the turn's request was refused for one
     let limits: SDKRateLimitInfo | undefined;
     let limited = false;
+    // whether the turn's request failed on the API's side (overloaded, a server error), and how many turns in a row failed for an outage
+    let unavailable = false;
+    let outages = 0;
     const done = (async () => {
       try {
         for await (const m of q) {
@@ -195,7 +198,10 @@ export const sdkRuntime: AgentRuntime = {
             if (!m.agent_id) spec.onEvent({ type: 'denied', name: m.tool_name, input: inputs.get(m.tool_use_id) ?? {}, by: deniedBy(m.decision_reason_type), ...(m.decision_reason?.trim() ? { reason: m.decision_reason.trim() } : {}) });
           }
           // an API error the CLI words as the agent's reply; the turn's result reports it
-          else if (m.type === 'assistant' && m.error) limited ||= m.error === 'rate_limit';
+          else if (m.type === 'assistant' && m.error) {
+            limited ||= m.error === 'rate_limit';
+            unavailable ||= m.error === 'overloaded' || m.error === 'server_error';
+          }
           else if (m.type === 'assistant' && !m.parent_tool_use_id) {
             for (const block of m.message.content) {
               if (block.type === 'text' && block.text.trim()) spec.onEvent({ type: 'text', text: block.text });
@@ -203,8 +209,10 @@ export const sdkRuntime: AgentRuntime = {
             }
           } else if (m.type === 'result') {
             const failed = resultFailure(m);
-            const limit = failed ? usageLimit(failed, limited, limits) : undefined;
+            const limit = failed ? (usageLimit(failed, limited, limits) ?? outage(failed, unavailable, outages)) : undefined;
+            outages = limit?.outage ? outages + 1 : 0;
             limited = false;
+            unavailable = false;
             // a result of a crash or a failed start may carry no cost: nothing to count
             if (m.total_cost_usd > 0) spec.onEvent({ type: 'spend', session: m.session_id, usd: m.total_cost_usd });
             if (failed) spec.onEvent({ type: 'error', message: failed, ...(limit ? { limit } : {}), ...token });
@@ -305,11 +313,20 @@ export function resultFailure(m: SDKResultMessage): string | undefined {
 }
 
 /**
+ * Whether a failed turn failed because the Claude API could not be reached or did not serve it
+ * (`claudeUnreachable`, or the turn's request failed as `overloaded` or a `server_error`), and when
+ * to try again: after the `streak` of such turns before it (`outageRetry`).
+ */
+export function outage(failure: string, unavailable: boolean, streak: number, now = Date.now()): TurnLimit | undefined {
+  return unavailable || claudeUnreachable(failure) ? { resetsAt: outageRetry(streak, now), outage: true } : undefined;
+}
+
+/**
  * Whether a failed turn hit the account's usage limit, and when that lifts: the request was refused
  * for it, the limits last reported say so, or (from a CLI that reports neither) the message does
  * ("You've hit your session limit · resets 2:40pm").
  */
-export function usageLimit(failure: string, refused: boolean, limits: SDKRateLimitInfo | undefined, now = Date.now()): { resetsAt?: number } | undefined {
+export function usageLimit(failure: string, refused: boolean, limits: SDKRateLimitInfo | undefined, now = Date.now()): TurnLimit | undefined {
   const rejected = limits?.status === 'rejected';
   if (!refused && !rejected && !/\bhit your .*limit\b/i.test(failure)) return undefined;
   // the API gives seconds

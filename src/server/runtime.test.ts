@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { type AgentEvent, cleanEnv, withLimitWait, withRepoTrust, withRest, withSpend } from './runtime';
+import { type AgentEvent, claudeUnreachable, cleanEnv, failureReason, OUTAGE_OVER, outageRetry, withLimitWait, withRepoTrust, withRest, withSpend } from './runtime';
+import { MESSAGES } from '../core/messages';
 import { FakeRuntime } from './testing';
 
 test('an agent with onLimit waits for the usage limit and goes on where it stopped once it lifts; one without fails on it', async () => {
@@ -40,6 +41,52 @@ test('an agent with onLimit waits for the usage limit and goes on where it stopp
   runtime.start({ cwd: '/r', system: '', tools: [], onEvent: (e) => plain.push(e) }, 'Los.');
   fake.last.emit({ type: 'error', message: 'limit', limit: {} });
   expect(plain).toEqual([{ type: 'error', message: 'limit', limit: {} }]);
+});
+
+test('an agent with onLimit waits out an outage the same way, told so, and tries again later each time it fails', async () => {
+  const fake = new FakeRuntime();
+  const runtime = withLimitWait(fake, 10);
+  const events: AgentEvent[] = [];
+  const waits: [number | undefined, boolean | undefined][] = [];
+  runtime.start({ cwd: '/r', system: '', tools: [], onLimit: (until, outage) => waits.push([until, outage]), onEvent: (e) => events.push(e) }, 'Los.');
+  const s = fake.last;
+  s.emit({ type: 'error', message: 'Failed to authenticate. API Error: 403 Attention Required! | Cloudflare', limit: { resetsAt: Date.now() + 20, outage: true } });
+  s.emit({ type: 'idle' });
+  expect(events).toEqual([]);
+  expect(waits[0]![1]).toBe(true);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(waits.at(-1)).toEqual([undefined, undefined]);
+  expect(s.inbox.at(-1)).toBe(OUTAGE_OVER);
+});
+
+test('the turns an outage stopped are tried again soon at first, then every quarter of an hour', () => {
+  const now = Date.parse('2026-11-13T10:15:00Z');
+  expect([0, 1, 2, 3, 4, 5, 40].map((n) => (outageRetry(n, now) - now) / 60_000)).toEqual([1, 2, 5, 10, 15, 15, 15]);
+});
+
+test('a failure that says the Claude API could not be reached is an outage; a refusal of the API itself is not', () => {
+  for (const m of [
+    'Failed to authenticate. API Error: 403 Attention Required! | Cloudflare',
+    'API Error: 403 <html><head><title>Attention Required! | Cloudflare</title>',
+    'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+    'API Error: Repeated 529 Overloaded errors',
+    'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"}}',
+    'API Error: 503 Service Unavailable',
+    'API Error: Connection error.',
+    'API Error: Request timed out.',
+  ])
+    expect([m, claudeUnreachable(m)]).toEqual([m, true]);
+  for (const m of [
+    'API Error: 403 {"type":"error","error":{"type":"permission_error","message":"Your organization does not have access"}}',
+    'Failed to authenticate. API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"Invalid bearer token"}}',
+    'API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long"}}',
+    "You've hit your session limit · resets 2:40pm",
+    'Not logged in · Please run /login',
+  ])
+    expect([m, claudeUnreachable(m)]).toEqual([m, false]);
+  expect(failureReason('Failed to authenticate. API Error: 403 Attention Required! | Cloudflare', MESSAGES.en)).toContain('status.claude.com');
+  // a lost login stays one
+  expect(failureReason('Failed to authenticate. API Error: 401 Invalid bearer token', MESSAGES.en)).toBe(MESSAGES.en.failure.notLoggedIn);
 });
 
 test("an agent's environment keeps a machine's Claude login but not another session's marks", () => {

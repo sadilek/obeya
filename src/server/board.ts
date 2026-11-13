@@ -1388,10 +1388,10 @@ export class Board {
     if (this.store.spend(this.canvas.id, card, session, usd)) this.changedRows();
   }
 
-  /** Until when the usage limit holds back what goes by this key (`card:<id>`, `talk:<id>`). */
-  private limited(key: string): { limitedUntil?: string } {
-    const until = this.limits.get(key);
-    return until ? { limitedUntil: until } : {};
+  /** Until when the usage limit (or an outage) holds back what goes by this key (`card:<id>`, `talk:<id>`). */
+  private limited(key: string): { limitedUntil?: string; limitedByOutage?: true } {
+    const held = this.limits.get(key);
+    return held ? { limitedUntil: held.until, ...(held.outage ? { limitedByOutage: true as const } : {}) } : {};
   }
 
   /** Cards that come from a card on another canvas name it, with that canvas. */
@@ -1594,19 +1594,22 @@ export class Board {
 
   /**
    * When the agents that wait for the account's usage limit go on by themselves (ISO time), by
-   * `card:<id>` and `talk:<id>`. Held in memory: after a restart they run into the limit again.
+   * `card:<id>` and `talk:<id>`, and whether what they wait for is an outage. Held in memory: after a
+   * restart they run into the limit again.
    */
-  private limits = new Map<string, string>();
+  private limits = new Map<string, { until: string; outage: boolean }>();
 
   /**
    * The agent of a card (other than its worker), or the one looking up the question of an exchange
-   * in the sheet, waits for the usage limit until `until`; nothing once it goes on.
+   * in the sheet, waits for the usage limit (or with `outage` for the Claude API to answer again)
+   * until `until`; nothing once it goes on.
    */
-  waitsForLimit(at: { card: string } | { talk: number }, until: number | undefined) {
+  waitsForLimit(at: { card: string } | { talk: number }, until: number | undefined, outage = false) {
     const key = 'card' in at ? `card:${at.card}` : `talk:${at.talk}`;
     const iso = until === undefined ? undefined : new Date(until).toISOString();
-    if (this.limits.get(key) === iso) return;
-    if (iso) this.limits.set(key, iso);
+    const was = this.limits.get(key);
+    if (was?.until === iso && was?.outage === outage) return;
+    if (iso) this.limits.set(key, { until: iso, outage });
     else this.limits.delete(key);
     this.changed();
   }

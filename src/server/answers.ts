@@ -19,7 +19,7 @@ import { type Briefing, type Hear, INFORM_RULES, inform, Interrupted, type Owner
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
 import { imageNote } from './images';
 import type { ProjectAgents } from './project-agents';
-import type { AgentRuntime } from './runtime';
+import type { AgentRuntime, OnLimit } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './agent-lines';
 import { clip, messageOf } from '../core/text';
@@ -187,9 +187,10 @@ export class Answers {
         },
         ...(prepared ? { prepared } : {}),
         // under the question in the sheet, and in the conversation of the card it was asked on
-        onLimit: (until) => {
-          this.o.board.waitsForLimit({ talk: last() }, until);
-          if (reading && until !== undefined) this.o.board.log(reading, 'state', 'obeya', this.o.board.t.answer.limited(this.o.board.t.when(until)));
+        onLimit: (until, outage) => {
+          this.o.board.waitsForLimit({ talk: last() }, until, outage);
+          const t = this.o.board.t;
+          if (reading && until !== undefined) this.o.board.log(reading, 'state', 'obeya', outage ? t.answer.unreachable(t.when(until)) : t.answer.limited(t.when(until)));
         },
         signal: run.end.signal,
         ...(again
@@ -618,7 +619,7 @@ export class Answers {
           if (!name.startsWith('mcp__')) this.o.board.log(cardId, 'activity', by, describeTool(name, input, this.o.board.t));
         },
         onSession: (id, model) => this.o.board.work(cardId, { session_id: id, model: model ?? null }),
-        onLimit: (until) => this.o.board.waitsForLimit({ card: cardId }, until),
+        onLimit: (until, outage) => this.o.board.waitsForLimit({ card: cardId }, until, outage),
         onShown: (files) => this.showLive(cardId, 'talk', by, stored.talk, files),
         ...(prepared ? { prepared } : {}),
         resume: this.o.board.row(cardId).session_id ?? undefined,
@@ -691,7 +692,7 @@ export class Answers {
     onTool: (name: string, input: Record<string, unknown>) => void;
     onSession: (id: string, model?: string) => void;
     /** Where it shows that it waits for the usage limit. */
-    onLimit: (until: number | undefined) => void;
+    onLimit: OnLimit;
     /** The walkthrough of the answer has its first slide: its player shows before the answer's words. */
     onShown: (files: AnswerFile[]) => void;
     /** The walkthrough the owner asked for, showing already. */

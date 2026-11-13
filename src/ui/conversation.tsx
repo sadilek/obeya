@@ -169,7 +169,7 @@ export function Conversation({
       }
     >
       {pending.at(-1) && <Gist text={pending.at(-1)!.text} />}
-      {!paused && item.limitedUntil && <div className="hint">{t.limitedUntil(time(item.limitedUntil))}</div>}
+      {!paused && item.limitedUntil && <div className="hint">{(item.limitedByOutage ? t.unreachableUntil : t.limitedUntil)(time(item.limitedUntil))}</div>}
       {!paused && <Background tasks={item.background} />}
       <Steps steps={pending} />
     </Msg>

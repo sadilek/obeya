@@ -330,7 +330,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
             )}
             {x.askedIn ? null : x.heldUntil ? (
               <Msg by="coordinator" className="thinking" who={t.author.coordinator}>
-                <div className="hint">{t.coordinator.held(clock(x.heldUntil))}</div>
+                <div className="hint">{(x.heldByOutage ? t.coordinator.heldUnreachable : t.coordinator.held)(clock(x.heldUntil))}</div>
               </Msg>
             ) : x.reply === undefined ? (
               <Reading />
@@ -375,7 +375,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 )}
                 {x.question && x.answer === undefined && !x.joinedInto && !x.stopped && !x.files?.length && (
                   <Msg by={x.askedIn ? 'project' : 'coordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'coordinator']} head={!x.movedTo && <StopLookUp talk={x.id} />}>
-                    <div className="hint">{x.limitedUntil ? t.coordinator.lookUpLimited(clock(x.limitedUntil)) : t.coordinator.lookingUp}</div>
+                    <div className="hint">{x.limitedUntil ? (x.limitedByOutage ? t.coordinator.lookUpUnreachable : t.coordinator.lookUpLimited)(clock(x.limitedUntil)) : t.coordinator.lookingUp}</div>
                   </Msg>
                 )}
                 {/* its walkthrough plays here from its first slide on, and plays on as the answer's words come in above it */}

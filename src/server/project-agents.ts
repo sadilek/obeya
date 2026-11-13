@@ -8,7 +8,7 @@ import { type Briefing, decisionLog, INFORM_RULES, inform, type OwnerAnswer } fr
 import type { Board } from './board';
 import { pathOfRef } from './plan-ref';
 import { outsidePlanDir } from './repo';
-import type { AgentRuntime, AgentTool } from './runtime';
+import type { AgentRuntime, AgentTool, OnLimit } from './runtime';
 import { TO_OBEYA } from './to-obeya';
 
 export class ProjectAgents {
@@ -38,7 +38,7 @@ export class ProjectAgents {
   inform(
     project: Item,
     message: string,
-    onLimit: (until: number | undefined) => void,
+    onLimit: OnLimit,
     more: {
       onTool?: (name: string, input: Record<string, unknown>) => void;
       dir?: string;

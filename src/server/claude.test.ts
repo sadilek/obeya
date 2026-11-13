@@ -3,7 +3,7 @@ import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { askOwner, backgroundWork, chromeAvailable, claudeExecutable, deniedBy, Inbox, mcpSettled, refuseForegroundWait, resetIn, resultFailure, spawnHere, usageLimit } from './claude';
+import { askOwner, backgroundWork, chromeAvailable, claudeExecutable, deniedBy, Inbox, mcpSettled, outage, refuseForegroundWait, resetIn, resultFailure, spawnHere, usageLimit } from './claude';
 import { endAgentsHere, failureReason, withStderr } from './runtime';
 import { MESSAGES } from '../core/messages';
 import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT } from './shell';
@@ -66,6 +66,17 @@ test('a turn the usage limit stopped says when the limit lifts', () => {
   expect(usageLimit("You've hit your weekly limit", false, undefined, now)).toEqual({});
   expect(usageLimit('overloaded', false, { status: 'allowed' })).toBeUndefined();
   expect(usageLimit('Not logged in · Please run /login', false, undefined)).toBeUndefined();
+});
+
+test('a turn that failed because the Claude API could not be reached waits for an outage, sooner the first time; the usage limit goes first', () => {
+  const now = Date.parse('2026-11-13T10:15:00Z');
+  const blocked = 'Failed to authenticate. API Error: 403 Attention Required! | Cloudflare';
+  expect(outage(blocked, false, 0, now)).toEqual({ resetsAt: now + 60_000, outage: true });
+  expect(outage(blocked, false, 2, now)).toEqual({ resetsAt: now + 5 * 60_000, outage: true });
+  // the request failed as overloaded, whatever the result says
+  expect(outage('error_during_execution', true, 0, now)).toEqual({ resetsAt: now + 60_000, outage: true });
+  expect(outage('Not logged in · Please run /login', false, 0, now)).toBeUndefined();
+  expect(outage('API Error: 400 prompt is too long', false, 0, now)).toBeUndefined();
 });
 
 test('the reset time a limit message names is the next such time in its zone', () => {

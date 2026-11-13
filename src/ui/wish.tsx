@@ -28,7 +28,7 @@ interface Issue {
    * The account's usage limit kept the job from writing: it writes the draft from the same words at
    * `until` (ISO time), reworking the draft before them (`base`), unless the owner edits it first.
    */
-  again?: { wish: Wish; images: string[]; until: string; base: { title: string; body: string } | null };
+  again?: { wish: Wish; images: string[]; until: string; outage?: true; base: { title: string; body: string } | null };
   /** The wish the draft was written from, when it started from one: its link opens this draft again. */
   from?: Wish;
 }
@@ -135,7 +135,7 @@ async function write(w: Wish, images: string[], { base, seed }: { base?: { title
       app: !!window.obeyaApp,
     });
     const shots = base === undefined ? [...(state.issue?.images ?? []), ...images] : (state.issue?.images ?? images);
-    const limited = out.limitedUntil ? { again: { wish: w, images, until: out.limitedUntil, base: before ? { title: before.title, body: before.body } : null } } : {};
+    const limited = out.limitedUntil ? { again: { wish: w, images, until: out.limitedUntil, ...(out.limitedByOutage ? { outage: true as const } : {}), base: before ? { title: before.title, body: before.body } : null } } : {};
     const issue: Issue = { title: out.title, body: out.body, images: shots, ...(out.raw ? { raw: true as const } : {}), ...limited, ...(from ? { from } : {}) };
     // the page switched to another canvas meanwhile: the draft is the canvas's it was asked on
     if (kept !== home) return void home?.store.setItem(home.key, JSON.stringify(issue));
@@ -281,7 +281,7 @@ function IssueFields({ issue, disabled }: { issue: Issue; disabled: boolean }) {
         <span>{t.wish.issueBody}</span>
         <textarea ref={body} value={issue.body} disabled={disabled} spellCheck rows={4} onChange={(e) => edit({ body: e.target.value })} />
       </label>
-      {issue.again ? <p className="hint">{t.wish.limited(clock(issue.again.until))}</p> : issue.raw && <p className="hint">{t.wish.raw}</p>}
+      {issue.again ? <p className="hint">{(issue.again.outage ? t.wish.unreachable : t.wish.limited)(clock(issue.again.until))}</p> : issue.raw && <p className="hint">{t.wish.raw}</p>}
       <Shots ids={issue.images} />
     </div>
   );

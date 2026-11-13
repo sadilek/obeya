@@ -297,12 +297,12 @@ const unansweredLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obe
 const waits = lineOf((m) => m.coordinator.waitsFor(ANY, ANY));
 const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && waits(e.text);
 
-/** Obeya's line that the usage limit stopped the agent's turn, and when it goes on. */
+/** Obeya's line that the usage limit (or an outage) stopped the agent's turn, and when it goes on. */
 const limitLine = (e: CardEvent) =>
   e.kind === 'state' &&
   e.author === 'obeya' &&
   LANGUAGES.some((l) =>
-    [MESSAGES[l].worker.limitResumes, MESSAGES[l].worker.limitRetries].some((says) => {
+    [MESSAGES[l].worker.limitResumes, MESSAGES[l].worker.limitRetries, MESSAGES[l].worker.outageRetries].some((says) => {
       const [before, after] = says('\0').split('\0') as [string, string];
       return e.text.includes(before) && e.text.endsWith(after);
     }),

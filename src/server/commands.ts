@@ -16,7 +16,7 @@ import { parsePrUrl } from './forge';
 import { folderPath } from './new-repo';
 import type { Mark, Moment } from './history';
 import type { TalkReply, TalkWaitRow } from './sheet';
-import { type AgentRuntime, type AgentSession, atTime, failureReason, LIMIT_MARGIN, limitLifts } from './runtime';
+import { type AgentRuntime, type AgentSession, atTime, failureReason, LIMIT_MARGIN, limitLifts, outageRetry, type TurnLimit } from './runtime';
 import { type Language, LANGUAGES, ownersLanguage } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import { clip, oneLine, messageOf } from '../core/text';
@@ -164,6 +164,8 @@ export interface Input {
   spot?: SpotInput;
   /** When the owner said the words, read only now since the usage limit held them (ISO time). */
   heldSince?: string;
+  /** With `heldSince`: what held them was an outage of the Claude API, not the usage limit. */
+  heldByOutage?: true;
   /** No words: a card the Coordinator waited on got there (or no longer can), and it takes up the step it said it would take then. */
   after?: AfterWait;
   /** No words: the answer the Coordinator looked up for an action is in, and it takes up the step it said it would take with it. */
@@ -323,11 +325,11 @@ interface Held {
   at: string;
 }
 
-/** The Coordinator's turn failed on the account's usage limit, which lifts at `resetsAt` when the API said when. */
+/** The Coordinator's turn failed on the account's usage limit, which lifts at `resetsAt` when the API said when, or on an outage (`TurnLimit`). */
 class LimitError extends Error {
   constructor(
     message: string,
-    readonly limit: { resetsAt?: number },
+    readonly limit: TurnLimit,
   ) {
     super(message);
   }
@@ -349,6 +351,9 @@ export class Commander {
   private held = new Map<number, Held>();
   /** When the Coordinator tries again to read what the usage limit holds. */
   private heldUntil = 0;
+  /** Whether what holds them is an outage rather than the usage limit, and how many reads in a row failed on one (each session is new: `outageRetry`). */
+  private heldOutage = false;
+  private outages = 0;
   private heldTimer?: ReturnType<typeof setTimeout>;
   private draining?: Promise<void>;
   /** Set once its canvas stopped (`shutdown`): it reads, runs and arms nothing more. */
@@ -420,7 +425,9 @@ export class Commander {
       // the canvas stopped while it read them: they stay held, for the canvas to read once it runs again
       if (this.stopped) return undefined;
       if (e instanceof LimitError) {
-        this.heldUntil = limitLifts(e.limit, this.o.limitMargin ?? LIMIT_MARGIN);
+        this.heldOutage = !!e.limit.outage;
+        const limit = e.limit.outage ? { ...e.limit, resetsAt: outageRetry(this.outages++) } : e.limit;
+        this.heldUntil = limitLifts(limit, this.o.limitMargin ?? LIMIT_MARGIN);
         return undefined;
       }
       // the Coordinator's session failed (not logged in, say): the owner hears why, not that they went unheard
@@ -429,6 +436,7 @@ export class Commander {
       reply(confirm, { waits: true, answers: false });
       return { confirm };
     }
+    this.outages = 0;
     // decided after the canvas stopped: nothing of it happens, the words stay held
     if (this.stopped) return undefined;
     const { confirm, lookUp } = decision;
@@ -482,12 +490,12 @@ export class Commander {
     const t = this.o.board.t;
     // the canvas stopped while it read them: words held before stay held, others are cut off as by a restart
     if (this.stopped && !this.held.has(talk)) return { confirm: t.voice.interrupted };
-    const confirm = t.voice.held(t.when(this.heldUntil));
+    const confirm = this.heldOutage ? t.voice.heldOutage(t.when(this.heldUntil)) : t.voice.held(t.when(this.heldUntil));
     const card = this.openCard(h.focus.card);
     if (!this.held.has(talk) && card) this.o.board.log(card, 'say', 'coordinator', confirm, { reply: true, ...(h.input.forwarded ? { forwarded: true as const } : {}) });
     this.held.set(talk, h);
     const until = new Date(this.heldUntil).toISOString();
-    for (const [id, { focus, input }] of this.held) this.o.board.sheet.hold(id, { until, reading: { focus, input } });
+    for (const [id, { focus, input }] of this.held) this.o.board.sheet.hold(id, { until, ...(this.heldOutage ? { outage: true as const } : {}), reading: { focus, input } });
     this.waitForLimit();
     return { confirm };
   }
@@ -510,7 +518,7 @@ export class Commander {
         if (this.stopped) return;
         // read now: "is reading …" under the words
         this.o.board.sheet.hold(talk, null);
-        const heard = await this.answer(talk, { ...h, input: { ...h.input, heldSince: h.at } });
+        const heard = await this.answer(talk, { ...h, input: { ...h.input, heldSince: h.at, ...(this.heldOutage ? { heldByOutage: true as const } : {}) } });
         if (!heard) {
           this.hold(talk, h);
           return;
@@ -561,6 +569,7 @@ export class Commander {
       const { focus, input } = x.held.reading as Pick<Held, 'focus' | 'input'>;
       this.held.set(x.id, { transcript: x.said, images: x.images ?? [], focus, input, at: x.at });
       this.heldUntil = Math.max(this.heldUntil, Date.parse(x.held.until));
+      this.heldOutage = !!x.held.outage;
     }
     if (this.held.size) this.waitForLimit();
     // and the steps whose answer came in before the stop, but were not decided yet
@@ -1516,7 +1525,11 @@ export class Commander {
             (focused ? replyNote(this.o.board.quoted(focused.id, input.replyTo), 'coordinator') : focus.card ? '' : talkReplyNote(this.o.board.sheet.quote(input.replyTo))).trim(),
           ].filter(Boolean)),
       ...(input.heldSince
-        ? [`The owner said this ${when(input.heldSince)}, but the account's usage limit kept you from reading it until now; the canvas may have changed since. Obeya told them it would read it once the limit lifted.`]
+        ? [
+            input.heldByOutage
+              ? `The owner said this ${when(input.heldSince)}, but the Claude API could not be reached (an outage) and kept you from reading it until now; the canvas may have changed since. Obeya told them it would read it once Claude answered again.`
+              : `The owner said this ${when(input.heldSince)}, but the account's usage limit kept you from reading it until now; the canvas may have changed since. Obeya told them it would read it once the limit lifted.`,
+          ]
         : []),
       ...(shots
         ? [

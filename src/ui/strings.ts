@@ -74,6 +74,7 @@ const de = {
     raw: 'Obeya konnte den Text nicht umschreiben; er steht hier, wie du ihn geschrieben hast.',
     /** The usage limit kept the job from writing: it writes the draft by itself at `time`, unless the owner edits it first. */
     limited: (time: string) => `Das Nutzungslimit ist erreicht: Obeya schreibt den Entwurf um ${time} von selbst. Bis dahin steht dein Text hier, wie du ihn geschrieben hast; änderst du ihn, bleibt er so.`,
+    unreachable: (time: string) => `Claude ist gerade nicht erreichbar, meist eine Störung bei Anthropic (status.claude.com): Obeya schreibt den Entwurf um ${time} von selbst. Bis dahin steht dein Text hier, wie du ihn geschrieben hast; änderst du ihn, bleibt er so.`,
     issueTitle: 'Titel',
     issueBody: 'Text',
     public: 'Erscheint öffentlich auf GitHub unter deinem Konto; abschicken tust du es dort.',
@@ -428,6 +429,8 @@ const de = {
   },
   /** A card whose agent (not its worker) waits for the account's usage limit: when it goes on by itself. */
   limitedUntil: (time: string) => `Nutzungslimit · weiter um ${time}`,
+  /** An agent waits for the Claude API, which could not be reached (an outage): Obeya tries again then. */
+  unreachableUntil: (time: string) => `Claude nicht erreichbar · neuer Versuch um ${time}`,
   revising: 'Wird nach deinen Worten überarbeitet …',
   /** "Übernehmen und starten" during a revision: the line above the buttons before and after the click, the button while it waits, taking it back, and the same short on the canvas card. */
   acceptWaitsFor: (button: string) => `Der neue Text kommt gleich. „${button}“ wartet auf ihn und entfällt, wenn er noch Fragen hat.`,
@@ -1244,8 +1247,10 @@ const de = {
     askedIn: (project: string) => `im Projektblatt „${project}“, an den Projekt-Agenten`,
     /** A look-up the usage limit stopped: when it goes on by itself. */
     lookUpLimited: (time: string) => `Nutzungslimit · schlägt das um ${time} von selbst nach`,
+    lookUpUnreachable: (time: string) => `Claude nicht erreichbar · schlägt das um ${time} von selbst nach`,
     /** Under words the usage limit keeps Obeya from reading: when it reads them by itself. */
     held: (time: string) => `Nutzungslimit · liest das um ${time} von selbst`,
+    heldUnreachable: (time: string) => `Claude nicht erreichbar · liest das um ${time} von selbst`,
     /** Under Obeya's reply: a card it waits on, to take the step it said it would take then. */
     waits: (title: string, state: AwaitedState) => `Wartet, bis „${title}“ ${state === 'done' ? 'erledigt ist' : 'auf dich wartet'}`,
     unwait: 'Nicht mehr warten',
@@ -2456,6 +2461,7 @@ const en: Strings = {
     writing: 'Obeya is writing the draft …',
     raw: 'Obeya could not rewrite the text; it stands here as you wrote it.',
     limited: (time: string) => `The usage limit is reached: Obeya writes the draft by itself at ${time}. Until then your text stands here as you wrote it; if you edit it, it stays as it is.`,
+    unreachable: (time: string) => `Claude cannot be reached right now, usually an outage at Anthropic (status.claude.com): Obeya writes the draft by itself at ${time}. Until then your text stands here as you wrote it; if you edit it, it stays as it is.`,
     issueTitle: 'Title',
     issueBody: 'Text',
     public: 'Appears publicly on GitHub under your account; you submit it there.',
@@ -2773,6 +2779,7 @@ const en: Strings = {
     accept: 'Accepted, the card is planned and snoozed until then; then it starts by itself.',
   },
   limitedUntil: (time: string) => `Usage limit · continues at ${time}`,
+  unreachableUntil: (time: string) => `Claude not reachable · tries again at ${time}`,
   revising: 'Being reworked by what you said …',
   acceptWaitsFor: (button: string) => `The new text is coming. “${button}” waits for it and is dropped if it still has questions.`,
   acceptWaitsHint: 'It is accepted once reworked, unless it still has questions then.',
@@ -3526,7 +3533,9 @@ const en: Strings = {
     lookUpStopped: 'No answer yet: “Resume” goes on with the look-up where you halted it.',
     askedIn: (project: string) => `in the sheet of “${project}”, to the project agent`,
     lookUpLimited: (time: string) => `Usage limit · looks this up by itself at ${time}`,
+    lookUpUnreachable: (time: string) => `Claude not reachable · looks this up by itself at ${time}`,
     held: (time: string) => `Usage limit · reads this by itself at ${time}`,
+    heldUnreachable: (time: string) => `Claude not reachable · reads this by itself at ${time}`,
     waits: (title: string, state: AwaitedState) => `Waiting until “${title}” ${state === 'done' ? 'is done' : 'waits for you'}`,
     unwait: 'Stop waiting',
     unwaitHint: 'Obeya then leaves out what it said it would do afterwards',

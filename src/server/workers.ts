@@ -16,7 +16,7 @@ import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
 import { isPlanDoc, outsidePlanDir } from './repo';
-import { type AgentEvent, type AgentSpec, BackgroundWait, atTime, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
+import { type AgentEvent, type AgentSpec, BackgroundWait, atTime, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, OUTAGE_OVER, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
@@ -181,8 +181,8 @@ const pauseOf = (due: DueRestart): Pause => (due.reason === 'stop' ? 'stop' : du
 const HOLD_GRACE = 10 * 60_000;
 /** Closing the card with "Approve" also ends the watching: the approval takes the comments then. */
 const RELEASE_DELAY = 1500;
-/** Whether the card's status line is the one it shows while its worker waits for a usage limit, in either language. */
-const limitLine = (line: string | null | undefined) => !!line && LANGUAGES.some((l) => line.startsWith(MESSAGES[l].worker.limitStatus));
+/** Whether the card's status line is the one it shows while its worker waits for a usage limit or an outage, in either language. */
+const limitLine = (line: string | null | undefined) => !!line && LANGUAGES.some((l) => line.startsWith(MESSAGES[l].worker.limitStatus) || line.startsWith(MESSAGES[l].worker.outageStatus));
 
 /** How often Obeya asks whether a machine whose connection was lost answers again. */
 const RECONNECT_MS = 30_000;
@@ -2914,9 +2914,14 @@ export class Workers {
       }
       case 'error':
         if (e.limit) {
+          // a try during an outage that failed again, with nothing of the agent's since: the card's line stands, its status line moves on
+          const again = !!e.limit.outage && live.outage && live.limited !== undefined;
           live.limited = limitLifts(e.limit, this.o.limitMargin ?? LIMIT_MARGIN);
+          live.outage = !!e.limit.outage;
           const t = this.o.board.t;
-          this.o.board.log(cardId, 'state', 'obeya', `${e.message}. ${e.limit.resetsAt ? t.worker.limitResumes(t.when(live.limited)) : t.worker.limitRetries(t.when(live.limited))}`);
+          if (e.limit.outage) {
+            if (!again) this.o.board.log(cardId, 'state', 'obeya', `${t.failure.unreachable(e.message)} ${t.worker.outageRetries(t.when(live.limited))}`);
+          } else this.o.board.log(cardId, 'state', 'obeya', `${e.message}. ${e.limit.resetsAt ? t.worker.limitResumes(t.when(live.limited)) : t.worker.limitRetries(t.when(live.limited))}`);
           break;
         }
         live.failed = e.message;
@@ -3262,12 +3267,13 @@ export class Workers {
       const line = this.o.board.row(cardId).status_line;
       live.statusBefore = line && limitLine(line) ? null : line;
     }
-    this.o.board.work(cardId, { status_line: this.o.board.t.worker.limitStatusUntil(this.o.board.t.when(at)) });
+    const t = this.o.board.t;
+    this.o.board.work(cardId, { status_line: live.outage ? t.worker.outageStatusUntil(t.when(at)) : t.worker.limitStatusUntil(t.when(at)) });
     clearTimeout(live.lifts);
     live.lifts = atTime(at, () => {
       live.lifts = undefined;
       if (this.live.get(cardId) !== live || !this.goesOnAfterLimit(cardId)) return;
-      this.deliver(cardId, LIMIT_LIFTED);
+      this.deliver(cardId, live.outage ? OUTAGE_OVER : LIMIT_LIFTED);
     });
   }
 
@@ -3282,6 +3288,7 @@ export class Workers {
   /** A worker that waited for the usage limit works again: its status line is back. */
   private unlimited(cardId: string, live: Live) {
     live.limited = undefined;
+    live.outage = undefined;
     const before = live.statusBefore;
     live.statusBefore = undefined;
     if (before !== undefined) this.o.board.work(cardId, { status_line: before });

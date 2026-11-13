@@ -60,10 +60,21 @@ export type AgentEvent =
   | { type: 'lost'; message: string }
   /**
    * The turn failed. `limit` when the account's usage limit stopped it (the five-hour session
-   * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when. `token` when
-   * the session signed in with a token rather than this machine's account (`CardEvent.token`).
+   * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when; or, with
+   * `outage`, when the model's service could not be reached (an outage, `claudeUnreachable`): it is
+   * tried again at `resetsAt` (`outageRetry`), and the turn waits as for the usage limit. `token`
+   * when the session signed in with a token rather than this machine's account (`CardEvent.token`).
    */
-  | { type: 'error'; message: string; limit?: { resetsAt?: number }; token?: true };
+  | { type: 'error'; message: string; limit?: TurnLimit; token?: true };
+
+/**
+ * What keeps a turn from going on until `resetsAt` (milliseconds, where known): the account's usage
+ * limit, or with `outage` the model's service, which could not be reached.
+ */
+export interface TurnLimit {
+  resetsAt?: number;
+  outage?: true;
+}
 
 /** The session's host (`AgentEvent` `lost`) is out of reach. */
 export const lostEvent = (host: string): AgentEvent => ({ type: 'lost', message: `the connection to ${host} was lost` });
@@ -135,9 +146,10 @@ export interface AgentSpec {
   /**
    * The agent waits for the account's usage limit instead of failing on it (`withLimitWait`): a turn
    * the limit stops is neither an error nor over, and this hears when the agent goes on by itself,
-   * and nothing once it does or its session ends. Without it, the turn fails with the error's `limit`.
+   * and nothing once it does or its session ends. A service that could not be reached (`outage`) is
+   * waited for the same way. Without it, the turn fails with the error's `limit`.
    */
-  onLimit?: (until: number | undefined) => void;
+  onLimit?: OnLimit;
   onEvent: (e: AgentEvent) => void;
 }
 
@@ -261,8 +273,18 @@ export function startingLater(starting: Promise<() => AgentSession>, spec: Agent
   };
 }
 
+/**
+ * Hears that an agent waits until `until` for the usage limit (or, with `outage`, for the model's
+ * service to be reachable again), and `undefined` once it goes on or its session ends.
+ */
+export type OnLimit = (until: number | undefined, outage?: boolean) => void;
+
 /** What an agent the usage limit stopped is told once it lifts. */
 export const LIMIT_LIFTED = 'The usage limit that stopped your last turn has reset. Go on where you stopped.';
+/** What an agent whose turn an outage stopped is told when Obeya tries again. */
+export const OUTAGE_OVER = 'Your last turn stopped because the API could not be reached (an outage). Go on where you stopped.';
+/** What an agent the `limit` stopped is told when it goes on. */
+export const goOn = (limit: TurnLimit) => (limit.outage ? OUTAGE_OVER : LIMIT_LIFTED);
 
 /** For an agent that waits for the usage limit with nowhere to show it (`AgentSpec.onLimit`): nobody waits for its result. */
 export const waitQuietly = () => {};
@@ -288,14 +310,15 @@ export function withLimitWait(runtime: AgentRuntime, margin = LIMIT_MARGIN): Age
             if (e.type === 'error' && e.limit) {
               stopped = true;
               if (closed) return;
-              const until = limitLifts(e.limit, margin);
+              const limit = e.limit;
+              const until = limitLifts(limit, margin);
               clearTimeout(lifts);
               lifts = atTime(until, () => {
                 lifts = undefined;
                 onLimit(undefined);
-                session.send(LIMIT_LIFTED);
+                session.send(goOn(limit));
               });
-              onLimit(until);
+              onLimit(until, !!limit.outage);
             } else if (e.type === 'idle' && stopped) stopped = false;
             else spec.onEvent(e);
           },
@@ -463,9 +486,31 @@ export function limitLifts(limit: { resetsAt?: number }, margin: number, now = D
   return !reset ? now + LIMIT_RETRY : reset > now ? reset + margin : now + LIMIT_AGAIN;
 }
 
+/**
+ * How long Obeya waits before it tries again a turn that failed because the model's service could
+ * not be reached, by how many such failures came in a row before (`streak`, from 0): soon at first,
+ * an outage that lasts longer every quarter of an hour. Claude Code has retried an overloaded or
+ * failing API for minutes before the turn fails; a refused request (a block page) it does not retry.
+ */
+const OUTAGE_RETRIES = [1, 2, 5, 10, 15].map((m) => m * 60_000);
+export const outageRetry = (streak: number, now = Date.now()) => now + OUTAGE_RETRIES[Math.min(streak, OUTAGE_RETRIES.length - 1)]!;
+
+/**
+ * Whether a turn's failure says the Claude API could not be reached or did not serve the request,
+ * as Claude Code words it: a server error or overload ("API Error: 529 …", "Repeated 529 Overloaded
+ * errors"), no connection ("API Error: Connection error."), or a request refused by Cloudflare in
+ * front of the API (a 403 with its block page, "Attention Required! | Cloudflare", which Claude Code
+ * words as "Failed to authenticate"). A 403 of the API itself (an organisation without access, say)
+ * is not one: trying again would not help.
+ */
+export function claudeUnreachable(message: string): boolean {
+  return /\bAPI Error:? \(?(?:5\d\d\b|Repeated 529\b|Connection error\b|Request timed out\b)|\boverloaded_error\b|\bAPI Error:? \(?403\b.*(?:\bcloudflare\b|\battention required\b|<html)/is.test(message);
+}
+
 /** A session's failure in the owner's words. */
 export function failureReason(message: string, t: Messages): string {
   if (claudeLoginFailed(message)) return t.failure.notLoggedIn;
+  if (claudeUnreachable(message)) return t.failure.unreachable(message);
   const codex = codexLoginLost(message);
   if (codex) return t.failure.codexNotLoggedIn(codex.host);
   return t.failure.session(message);
@@ -595,7 +640,7 @@ export function readSession(
     brief: string;
     role: AgentRole;
     images?: string[];
-    onLimit?: (until: number | undefined) => void;
+    onLimit?: OnLimit;
     /** The card it reads for, whose cost it counts to (`AgentSpec.spendOn`). */
     spendOn?: string;
   },

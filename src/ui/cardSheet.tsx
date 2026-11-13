@@ -51,8 +51,8 @@ export function StateLine({ item, label, paused, children }: { item: Item; label
     <div className={['p-state', finishingUp(item) && 'finishing', paused && 'paused'].filter(Boolean).join(' ')}>
       ● {label ?? stateLabel(item)}
       {children}
-      {/* its agent (not its worker, which says so in its status line) waits for the usage limit, until when */}
-      {item.limitedUntil && <span className="p-status"> · {t.limitedUntil(time(item.limitedUntil))}</span>}
+      {/* its agent (not its worker, which says so in its status line) waits for the usage limit or an outage, until when */}
+      {item.limitedUntil && <span className="p-status"> · {(item.limitedByOutage ? t.unreachableUntil : t.limitedUntil)(time(item.limitedUntil))}</span>}
       {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
     </div>
   );

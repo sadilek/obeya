@@ -26,6 +26,8 @@ export interface WishDraft {
   raw?: true;
   /** With `raw`: the account's usage limit kept the job from writing, until then (ISO time); it can write the draft after. */
   limitedUntil?: string;
+  /** With `limitedUntil`: what kept it from writing was an outage (the Claude API could not be reached), not the usage limit. */
+  limitedByOutage?: true;
 }
 
 /** How long the job may take before the owner's words stand as they are. */
@@ -72,8 +74,8 @@ export function writeWish(runtime: AgentRuntime, w: WishInput, footer: string, i
         role: 'chores',
         system: SYSTEM,
         // the owner is waiting for the draft: their words stand in it, and the draft says when the job can write it
-        onLimit: (until) => {
-          if (until !== undefined) end({ ...fallback(), limitedUntil: new Date(until).toISOString() });
+        onLimit: (until, outage) => {
+          if (until !== undefined) end({ ...fallback(), limitedUntil: new Date(until).toISOString(), ...(outage ? { limitedByOutage: true as const } : {}) });
         },
         tools: [
           {

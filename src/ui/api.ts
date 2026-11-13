@@ -393,7 +393,7 @@ export const api = {
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
   /** The issue for Obeya's makers as a small job writes it from the owner's words, reworking the draft so far; `app`: Obeya runs in its app. */
   writeWish: (w: { said: string; answer?: string; title?: string; body?: string; images?: string[]; app: boolean }) =>
-    call<{ title: string; body: string; raw?: true; limitedUntil?: string }>('POST', at('/wish'), w),
+    call<{ title: string; body: string; raw?: true; limitedUntil?: string; limitedByOutage?: true }>('POST', at('/wish'), w),
   /** A rule of the owner's, active at once, or with `target` one for that repository's CLAUDE.md. */
   addPreference: (text: string, target?: string) => call<void>('POST', at('/preferences'), { text, ...(target ? { target } : {}) }),
   /** Changes a preference, or deletes it with `null`. */

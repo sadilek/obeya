@@ -94,6 +94,8 @@ export interface Live {
   tasks: Map<string, RunningTask>;
   /** When the usage limit that stopped the worker lifts (or, not knowing, when to try again); gone once it works. */
   limited?: number;
+  /** Whether what it waits for is not the usage limit but the model's service, which could not be reached (an outage): Obeya tries again at `limited`. */
+  outage?: boolean;
   /** The card's status line from before the worker waited for the limit, back once it works again. */
   statusBefore?: string | null;
   /** Whether the card's open question is the worker having stopped, not a question it asked. */

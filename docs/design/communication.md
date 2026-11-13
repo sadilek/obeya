@@ -108,6 +108,28 @@ without the worker's text (it takes the card's title and the summary's start) an
 wish, whose owner waits in the dialog (see Wishes for Obeya's makers). Obeya's chat: see
 Confirmation and undo.
 
+#### Claude not reachable
+
+A turn that failed because the Claude API could not be reached or did not serve it waits the same
+way, by every agent that waits for the usage limit: a server error or overload (`API Error: 5xx`,
+"Repeated 529 Overloaded errors", the SDK's `overloaded` and `server_error`), no connection
+("Connection error", "Request timed out"), or a request Cloudflare in front of the API refused with
+its block page ("Failed to authenticate. API Error: 403 Attention Required! | Cloudflare"; Claude
+Code words that as a login failure, but the login is fine). A 403 of the API itself (an
+organisation without access) and a 401 are not outages: trying again would not help, and a 401 is
+a lost login. Obeya tries again after 1, 2, 5 and 10 minutes, then every 15, until Claude answers;
+Claude Code has retried an overloaded API for minutes before the turn fails, but not a block page,
+which fails in under a second, and each try that fails again costs no tokens. The worker's
+conversation shows one line where it happened: "Claude cannot be reached right now (…). Usually that
+is an outage at Anthropic, which status.claude.com shows, not a fault of your setup. Obeya tries
+again at 11:31, and on by itself until Claude answers.", with Claude Code's words in the brackets;
+tries that fail again add no line. The status line reads "Claude not reachable · tries again at
+11:31" for the next try; other agents say the same where they say "Usage limit · …" ("Claude not
+reachable · looks this up by itself at 11:31"), and Obeya's chat says it reads the words by itself
+then. The agent hears that its last turn stopped because the API could not be reached, and goes on
+where it stopped. An agent that does not wait (a demo page shared without the worker's text) shows
+the same explanation in place of "The agent's session failed with an error".
+
 ### Pausing an agent
 
 A note reaches the worker at any time without stopping it. To stop it mid-work, the conversation's
@@ -330,6 +352,12 @@ as a learned preference does. Older answers agents gave in the owner's name stay
   wrapper an agent joins, so an agent added later waits by joining it. Rejected: only workers and
   Obeya's chat waiting, which answered look-ups with the limit error, ended idea turns in it, failed
   proposal reworks and named cards after their text's start.
+- **An outage of the Claude API is waited out like the usage limit** (2026-11-13, GitHub issue #91):
+  the turn goes on by itself once Claude answers again, and the card says in plain words what
+  happened and where to look (status.claude.com). Rejected: showing Claude Code's error as it was,
+  which read as a login fault ("Failed to authenticate … 403 … Cloudflare") and left every agent
+  stopped until the owner wrote again, card by card; and a fixed retry every minute, which would
+  have tried for hours at the same pace in a long outage.
 - **The pause sits on the bubble of the running turn** (2026-10-15), not in the action row: the row
   holds decisions about the card, pausing is about the turn now running, and the pause exists
   exactly when a turn runs (also while a worker takes in the owner's words on a waiting card, before

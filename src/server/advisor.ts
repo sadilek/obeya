@@ -7,7 +7,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { type Language, ownersLanguage } from '../core/locale';
 import type { AnswerFile, Question } from '../core/types';
-import { type AgentRuntime, type AgentTool, BackgroundWait } from './runtime';
+import { type AgentRuntime, type AgentTool, BackgroundWait, type OnLimit } from './runtime';
 import { clip, oneLine } from '../core/text';
 
 /** An answer to a question the owner asked, for the card or the sheet, with the files it comes with. */
@@ -41,7 +41,7 @@ export interface Briefing {
   /** Ends the turn at once, its session with it (the owner paused the agent): the answer fails with `Interrupted`. */
   signal?: AbortSignal;
   /** Where the answer shows that it waits for the account's usage limit, until when; nothing once it goes on (`AgentSpec.onLimit`). */
-  onLimit: (until: number | undefined) => void;
+  onLimit: OnLimit;
   /** How long a turn waits for background work that has ended to wake it, and for work that still runs (ms). */
   backgroundGrace?: number;
   backgroundLimit?: number;

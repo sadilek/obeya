@@ -12,6 +12,7 @@ import { artifact, commit, heard, until } from './testing';
 import { describeTool } from './agent-lines';
 import { board, dir, eachTest, handedOver, main, manual, newWorkers, rebuild, runtime, setConversation, setLanguage, state, store, workers } from './workers-fixture';
 import { git } from './git';
+import { OUTAGE_OVER } from './runtime';
 
 eachTest();
 
@@ -824,6 +825,37 @@ describe('workers', () => {
     runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() + 10_000 } });
     runtime.last.emit({ type: 'idle' });
     expect(state(c.id)).toBe('working');
+    runtime.last.emit({ type: 'text', text: 'Weiter mit den Tests.' });
+    expect(board.item(c.id)!.statusLine).toBe('Exporter steht');
+    await workers.stop(c.id);
+  });
+
+  test('a worker an outage stopped says why in one line, and tries again by itself until Claude answers', async () => {
+    rebuild({ limitMargin: 30 });
+    const c = manual();
+    await workers.start(c.id);
+    runtime.last.call('report', { status: 'Exporter steht' });
+    const blocked = 'Failed to authenticate. API Error: 403 Attention Required! | Cloudflare';
+    runtime.last.emit({ type: 'error', message: blocked, limit: { resetsAt: Date.now() + 20, outage: true } });
+    runtime.last.emit({ type: 'idle' });
+    const sent = runtime.last.inbox.length;
+    // no nudge, no question, no error line: the card says what happened and waits
+    expect(state(c.id)).toBe('working');
+    expect(workers.busyCards()).toEqual([]);
+    expect(board.item(c.id)!.statusLine).toStartWith('Claude nicht erreichbar · neuer Versuch um ');
+    const lines = () => board.events(c.id).filter((e) => e.text.includes('status.claude.com'));
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toMatchObject({ kind: 'state', author: 'obeya' });
+    expect(lines()[0]!.text).toContain(blocked);
+    expect(board.events(c.id).filter((e) => e.kind === 'error')).toEqual([]);
+    await until(() => runtime.last.inbox.length > sent);
+    expect(runtime.last.inbox.at(-1)).toBe(OUTAGE_OVER);
+    // it fails again: no second line, the status line names the next try
+    runtime.last.emit({ type: 'error', message: blocked, limit: { resetsAt: Date.now() + 60_000, outage: true } });
+    runtime.last.emit({ type: 'idle' });
+    expect(lines()).toHaveLength(1);
+    expect(board.item(c.id)!.statusLine).toStartWith('Claude nicht erreichbar · neuer Versuch um ');
+    // Claude answers again: the worker goes on, and its status line is back
     runtime.last.emit({ type: 'text', text: 'Weiter mit den Tests.' });
     expect(board.item(c.id)!.statusLine).toBe('Exporter steht');
     await workers.stop(c.id);

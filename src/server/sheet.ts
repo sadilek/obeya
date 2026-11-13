@@ -24,6 +24,8 @@ export type TalkReply = { lookUp?: TalkLookUp; wish?: Wish; waits?: boolean; ans
 /** Words the usage limit keeps the Coordinator from reading (`talk.held`): until when, and how it reads them then (`Commander`'s). */
 export interface HeldTalk {
   until: string;
+  /** What holds them is an outage (the Claude API could not be reached), not the usage limit. */
+  outage?: true;
   reading: unknown;
 }
 
@@ -363,7 +365,7 @@ const toTalk = (r: TalkRow): Talk => ({
   ...(r.files ? { files: JSON.parse(r.files) as AnswerFile[] } : {}),
   ...(r.card ? { movedTo: r.card } : {}),
   ...(r.wish ? { wish: JSON.parse(r.wish) as Wish } : {}),
-  ...(r.held ? { heldUntil: (JSON.parse(r.held) as HeldTalk).until } : {}),
+  ...(r.held ? heldOf(JSON.parse(r.held) as HeldTalk) : {}),
   ...(r.waits ? { waits: (JSON.parse(r.waits) as TalkWaitRow[]).map(({ card, title, state }) => ({ card, title, state })) } : {}),
   ...(r.after_wait ? { after: JSON.parse(r.after_wait) as TalkAfter } : {}),
   ...(r.asked_in ? { askedIn: r.asked_in } : {}),
@@ -391,3 +393,6 @@ function quotedTalk(db: Database, ref: TalkRef): TalkQuote | undefined {
   if (!r || !text) return;
   return { talk: ref.talk, part: ref.part, by: ref.part === 'said' ? 'owner' : ref.part === 'answer' ? (r.answer_by ?? 'coordinator') : 'coordinator', text };
 }
+
+/** Until when the words are held, and whether by an outage rather than the usage limit. */
+const heldOf = (h: HeldTalk): Pick<Talk, 'heldUntil' | 'heldByOutage'> => ({ heldUntil: h.until, ...(h.outage ? { heldByOutage: true as const } : {}) });

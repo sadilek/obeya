@@ -12,7 +12,7 @@ import { finished, landedWork, nameless, titleFrom } from '../core/card';
 import { BadRequest, type Board, TITLE_MAX } from './board';
 import { ACTIVE } from './items';
 import { fromJson, toJson } from './row';
-import { type AgentRuntime, readSession, waitQuietly } from './runtime';
+import { type AgentRuntime, type OnLimit, readSession, waitQuietly } from './runtime';
 import type { Workers } from './workers';
 import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './workspaces';
 import { LANGUAGE_NAMES } from '../core/locale';
@@ -435,7 +435,7 @@ export class Coordinator {
     }
     let scope: Scope;
     try {
-      scope = await this.estimate(card, active, ahead, pending, (until) => this.o.board.waitsForLimit({ card: cardId }, until));
+      scope = await this.estimate(card, active, ahead, pending, (until, outage) => this.o.board.waitsForLimit({ card: cardId }, until, outage));
     } catch (e) {
       this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.coordinator.estimateFailed(messageOf(e)));
       scope = { files: [], conflictsWith: [], buildsOn: [], reason: '' };
@@ -746,7 +746,7 @@ export class Coordinator {
       // a title reads as well from the home repository while the card's does not run
       cwd: card.repoDown ? this.o.home() : this.o.repoFor(card).path,
       role: 'chores',
-      onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),
+      onLimit: (until, outage) => this.o.board.waitsForLimit({ card: card.id }, until, outage),
       system: NAME_SYSTEM(this.language),
       tools: (finish) => [
         {
@@ -769,7 +769,7 @@ export class Coordinator {
   // ---------------------------------------------------------------- the estimate
 
   /** `onLimit`: where the estimate shows that it waits for the usage limit. */
-  private async estimate(card: Item, active: Item[], ahead: Item[], pending: Item[], onLimit: (until: number | undefined) => void): Promise<Scope> {
+  private async estimate(card: Item, active: Item[], ahead: Item[], pending: Item[], onLimit: OnLimit): Promise<Scope> {
     let scope: Scope | undefined;
     const tags = new Map([...active, ...ahead, ...pending].map((a) => [cardTag(a.number), a.id]));
     // a conflict only with what runs or goes first; building on only a workstream of its project
@@ -818,8 +818,8 @@ export class Coordinator {
       cwd: hands.path,
       role: 'coordinator',
       // the cards the owner started wait with it
-      onLimit: (until) => {
-        for (const w of batch) this.o.board.waitsForLimit({ card: w.id }, until);
+      onLimit: (until, outage) => {
+        for (const w of batch) this.o.board.waitsForLimit({ card: w.id }, until, outage);
       },
       system: (hands.folder ? FOLDER_SCHEDULE_SYSTEM : SCHEDULE_SYSTEM)(this.language, !project),
       tools: (finish) => [

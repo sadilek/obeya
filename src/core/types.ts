@@ -284,6 +284,8 @@ export interface Item {
    * the Coordinator naming or checking it) waits for the account's usage limit: it goes on by itself then (ISO time).
    */
   limitedUntil?: string;
+  /** What it waits for (`limitedUntil`) is an outage, the Claude API could not be reached, not the usage limit: Obeya tries again then. */
+  limitedByOutage?: true;
   /** Since when it waits for the owner (`needsYou`), for the phone view's "Needs you". */
   waitingSince?: string;
   /**
@@ -1234,8 +1236,12 @@ export interface Talk {
   wish?: Wish;
   /** The usage limit keeps the Coordinator from reading the words: it reads them by itself then (ISO time), the reply follows. */
   heldUntil?: string;
+  /** What holds the words (`heldUntil`) is an outage, the Claude API could not be reached, not the usage limit. */
+  heldByOutage?: true;
   /** The usage limit stopped the agent that looks the question up: it goes on by itself then (ISO time), the answer follows. */
   limitedUntil?: string;
+  /** What stopped it (`limitedUntil`) is an outage, the Claude API could not be reached, not the usage limit: Obeya tries again then. */
+  limitedByOutage?: true;
   /** Cards the Coordinator waits on, as its reply said, to take a step once each gets there (`wait_for`). */
   waits?: TalkWait[];
   /** Words of no one: the Coordinator took them up by itself, since a card it waited on got there (or no longer can). */

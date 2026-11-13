@@ -720,6 +720,21 @@ describe('the usage limit', () => {
   const limited = () => new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, limitMargin: 10 });
   const lifts = (ms: number) => runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() + ms } });
 
+  test('words an outage kept the Coordinator from reading say so, and are read by themselves when it tries again', async () => {
+    board.create({ title: 'Export', x: 0, y: 0 });
+    const k = limited();
+    const heard = k.hear('starte Export', {});
+    await settle();
+    runtime.last.emit({ type: 'error', message: 'Failed to authenticate. API Error: 403 Attention Required! | Cloudflare', limit: { resetsAt: Date.now() + 60, outage: true } });
+    const { confirm } = await heard;
+    expect(confirm).toStartWith('Claude ist gerade nicht erreichbar, meist eine Störung bei Anthropic (status.claude.com). Ich lese das um ');
+    const [x] = board.snapshot().talk;
+    expect(x!.heldByOutage).toBe(true);
+    // its first try comes after a minute, whatever the session said: each read is a new session
+    expect(Date.parse(x!.heldUntil!) - Date.now()).toBeGreaterThan(50_000);
+    k.shutdown();
+  });
+
   test('words the limit kept the Coordinator from reading wait and are read by themselves once it lifts; the reply comes with "Undo"', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const notices: Notice[] = [];

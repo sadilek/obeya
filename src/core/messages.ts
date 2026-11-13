@@ -86,6 +86,8 @@ const de = {
     interrupted: 'Obeya startete neu, bevor ich das gelesen hatte. Bitte noch einmal.',
     /** The usage limit keeps the Coordinator from reading the words: it reads them by itself once it lifts. */
     held: (when: string) => `Das Nutzungslimit ist erreicht. Ich lese das ${when} von selbst.`,
+    /** An outage keeps the Coordinator from reading the words: it reads them by itself when it tries again. */
+    heldOutage: (when: string) => `Claude ist gerade nicht erreichbar, meist eine Störung bei Anthropic (status.claude.com). Ich lese das ${when} von selbst.`,
     undone: 'Zurückgenommen.',
     created: 'Per Sprache angelegt.',
     /** On the task Obeya merged others into: which, by their titles. */
@@ -96,11 +98,15 @@ const de = {
     /** Codex lost its login on `host` (null: this machine); the card's error line offers to log in again. */
     codexNotLoggedIn: (host: string | null) => `Codex ist ${host ? `auf ${host}` : 'auf diesem Rechner'} nicht mehr angemeldet: „Bei Codex anmelden“ in der Meldung auf der Karte.`,
     session: (message: string) => `Die Sitzung des Agenten brach mit einem Fehler ab: ${message}`,
+    /** The Claude API could not be reached or did not serve the request (`claudeUnreachable`): Claude Code's own words in brackets. */
+    unreachable: (message: string) => `Claude ist gerade nicht erreichbar (${message}). Meist ist das eine Störung bei Anthropic, die status.claude.com zeigt, kein Fehler deiner Einrichtung.`,
   },
   answer: {
     failed: (why: string) => `Ich konnte die Frage nicht beantworten (${why}).`,
     /** On the card the question was asked on: the usage limit stopped the look-up, which goes on by itself. */
     limited: (when: string) => `Das Nutzungslimit ist erreicht. Obeya schlägt das ${when} von selbst nach.`,
+    /** On the card the question was asked on: an outage stopped the look-up, which Obeya tries again by itself. */
+    unreachable: (when: string) => `Claude ist gerade nicht erreichbar, meist eine Störung bei Anthropic (status.claude.com). Obeya schlägt das ${when} von selbst nach.`,
     asIdea: 'Als Idee weiter besprochen.',
     /** "Show as walkthrough": the owner's words, as the button says, and Obeya's reply. */
     walkthroughAsked: deLabels.walkthrough,
@@ -313,6 +319,8 @@ const de = {
     restartStillDue: (pause: Pause) => `Der Agent ist vor dem ${pause === 'stop' ? 'Beenden' : 'Neustart'} wieder aufgewacht; Obeya sagt ihm, dass ${pause === 'stop' ? 'das Beenden' : 'der Neustart'} noch auf ihn wartet.`,
     limitResumes: (when: string) => `Der Agent arbeitet ${when} automatisch weiter.`,
     limitRetries: (when: string) => `Obeya versucht es ${when} noch einmal.`,
+    /** After `failure.unreachable`: an outage stopped the turn, which Obeya tries again until it gets through. */
+    outageRetries: (when: string) => `Obeya versucht es ${when} wieder und danach weiter von selbst, bis Claude antwortet.`,
     paused: (pause: Pause): string => (pause === 'stop' ? 'Pausiert, bis Obeya wieder läuft.' : pause === 'repo' ? 'Pausiert bis zum Neustart der Agenten dieses Repositorys.' : 'Pausiert bis zum Neustart von Obeya.'),
     hostLost: (host: string) => `Die Verbindung zu ${host} ist weg; der Agent macht weiter, sobald ${host} wieder erreichbar ist.`,
     hostBack: (host: string) => `${host} ist wieder erreichbar; der Agent macht weiter.`,
@@ -338,6 +346,8 @@ const de = {
     deny: 'Ablehnen',
     limitStatus: 'Nutzungslimit',
     limitStatusUntil: (when: string) => `Nutzungslimit · weiter ${when}`,
+    outageStatus: 'Claude nicht erreichbar',
+    outageStatusUntil: (when: string) => `Claude nicht erreichbar · neuer Versuch ${when}`,
     proposesBuild: (reason: string) => `Schlägt vor, die Idee auf diesem Prototyp zu bauen: ${reason}`,
     proposedIdea: (title: string, canvas?: string) => `Idee vorgeschlagen${canvas ? ` auf der Leinwand „${canvas}“` : ''}: ${title}`,
     proposedCard: (title: string, canvas?: string) => `Aufgabe vorgeschlagen${canvas ? ` auf der Leinwand „${canvas}“` : ''}: ${title}`,
@@ -688,6 +698,7 @@ const en: Messages = {
     cloudFailed: (service: string, why: string) => `${service} did not transcribe the recording (${why}).`,
     interrupted: 'Obeya restarted before I had read that. Please say it again.',
     held: (when: string) => `The usage limit is reached. I will read this by myself ${when}.`,
+    heldOutage: (when: string) => `Claude cannot be reached right now, usually an outage at Anthropic (status.claude.com). I will read this by myself ${when}.`,
     undone: 'Taken back.',
     created: 'Created by voice.',
     merged: (titles: string[]) => `Merged with ${titles.map((t) => `“${t}”`).join(', ')}.`,
@@ -696,10 +707,12 @@ const en: Messages = {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',
     codexNotLoggedIn: (host: string | null) => `Codex is no longer logged in ${host ? `on ${host}` : 'on this machine'}: “Log in to Codex” in the card’s message.`,
     session: (message: string) => `The agent's session failed with an error: ${message}`,
+    unreachable: (message: string) => `Claude cannot be reached right now (${message}). Usually that is an outage at Anthropic, which status.claude.com shows, not a fault of your setup.`,
   },
   answer: {
     failed: (why: string) => `I could not answer the question (${why}).`,
     limited: (when: string) => `The usage limit is reached. Obeya looks this up by itself ${when}.`,
+    unreachable: (when: string) => `Claude cannot be reached right now, usually an outage at Anthropic (status.claude.com). Obeya looks this up by itself ${when}.`,
     asIdea: 'Discussed further as an idea.',
     walkthroughAsked: enLabels.walkthrough,
     walkthroughReply: 'I’ll tell the answer as a walkthrough.',
@@ -873,6 +886,7 @@ const en: Messages = {
     restartStillDue: (pause: Pause) => `The agent woke before Obeya's ${pause === 'stop' ? 'stop' : 'restart'}; Obeya tells it the ${pause === 'stop' ? 'stop' : 'restart'} still waits for it.`,
     limitResumes: (when: string) => `The agent goes on by itself ${when}.`,
     limitRetries: (when: string) => `Obeya tries again ${when}.`,
+    outageRetries: (when: string) => `Obeya tries again ${when}, and on by itself until Claude answers.`,
     paused: (pause: Pause) => (pause === 'stop' ? 'Paused until Obeya runs again.' : pause === 'repo' ? "Paused until this repository's agents restart." : 'Paused until Obeya has restarted.'),
     hostLost: (host: string) => `The connection to ${host} is gone; the agent goes on once ${host} can be reached again.`,
     hostBack: (host: string) => `${host} can be reached again; the agent goes on.`,
@@ -896,6 +910,8 @@ const en: Messages = {
     deny: 'Deny',
     limitStatus: 'Usage limit',
     limitStatusUntil: (when: string) => `Usage limit · continues ${when}`,
+    outageStatus: 'Claude not reachable',
+    outageStatusUntil: (when: string) => `Claude not reachable · tries again ${when}`,
     proposesBuild: (reason: string) => `Proposes building the idea on this prototype: ${reason}`,
     proposedIdea: (title: string, canvas?: string) => `Proposed an idea${canvas ? ` on the canvas “${canvas}”` : ''}: ${title}`,
     proposedCard: (title: string, canvas?: string) => `Proposed a task${canvas ? ` on the canvas “${canvas}”` : ''}: ${title}`,
