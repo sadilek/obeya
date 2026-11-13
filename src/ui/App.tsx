@@ -1295,8 +1295,14 @@ function Canvas({
       setSheetOn(false);
       // the frame takes in the groups' names too, which stand outside the cards, at the zoom it comes to
       const side = sideNow();
+      // the names grow in the world as the zoom shrinks: fit again until the frame holds them at its own zoom
       let to = overviewCam(all, side);
-      for (let k = 0; k < 2; k++) to = overviewCam(unionBounds([all, ...groupNames.boxesAt(to.s)]) ?? all, side);
+      for (let k = 0; k < 8; k++) {
+        const next = overviewCam(unionBounds([all, ...groupNames.boxesAt(to.s)]) ?? all, side);
+        const settled = next.s >= to.s - 1e-6;
+        to = next;
+        if (settled) break;
+      }
       fly(kept(to), 700);
     } else if (e.key === 'Tab') {
       e.preventDefault();

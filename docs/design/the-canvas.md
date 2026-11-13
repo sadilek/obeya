@@ -395,7 +395,7 @@ territories and of the names placed before it wins over one that only keeps clea
 a name does not read as a neighbour's and two names do not run into each other. Only far out, where
 nothing is free, it goes inside the piece over the cards, drawn above them, where it crosses the
 fewest card titles, a project's workstreams included (on the blank part of a card below its title),
-nearest the centre of mass, never over a hole in the piece where another group's card stands;
+nearest the centre of mass, clear of the holes in the piece where other groups' cards stand;
 closer in, where titles are what one reads, it stays above the top edge, under the cards that cover
 it. Along an edge it is drawn over the territories and under every card. A name holds its spot
 while that stays free and no better spot has opened, sliding back towards the middle as far as is
@@ -403,7 +403,8 @@ free, so a card dragged past does not make it flicker from side to side; once th
 is back where the rule puts it. Zooming does not move the names on every frame: they are placed
 anew once the zoom has changed by a few per cent, in boxes that hold them at any zoom in between,
 and a moved card moves only the names near it. Fitting the canvas into view (`0`) takes in the
-names that stand outside the cards, so none ends up behind the bar.
+names that stand outside the cards, at the zoom it comes to, so none ends up behind the bar where
+the canvas fits at all.
 
 A territory is the contour of an energy field (Bubble Sets): the group's cards pull, near cards are
 linked so they share one territory (not across another card), other cards push back, and where two

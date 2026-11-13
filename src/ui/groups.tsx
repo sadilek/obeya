@@ -258,7 +258,7 @@ const ringId = (r: object | undefined) => {
   return n;
 };
 const near = (b: Bounds, r: Bounds) => b.x < r.x + r.w && r.x < b.x + b.w && b.y < r.y + r.h && r.y < b.y + b.h;
-const sig = (bs: Bounds[]) => bs.map((b) => `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.w)},${Math.round(b.h)}`).join(';');
+const sig = (bs: Bounds[]) => bs.map((b) => `${b.x},${b.y},${b.w},${b.h}`).join(';');
 
 /**
  * The names of all groups in `look` at zoom step `step`, one after the other, each clear of the

@@ -520,7 +520,8 @@ function reaches(box: Bounds, r: [number, number][]) {
   if (box.x >= e.maxX || box.x + box.w <= e.minX || box.y >= e.maxY || box.y + box.h <= e.minY) return false;
   for (const fy of [0, 0.5, 1])
     for (const fx of [0, 0.25, 0.5, 0.75, 1]) if (within(r, box.x + fx * box.w, box.y + fy * box.h)) return true;
-  return false;
+  // a tip of the area that reaches in between those points
+  return r.some(([x, y]) => x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h);
 }
 
 /**
@@ -623,7 +624,8 @@ function gridOf(outline: [number, number][], e: Edges, holes: [number, number][]
 
 /**
  * Inside the piece: the spot whose box crosses the fewest title strips, nearest its centre of mass;
- * never in a hole of the piece nor in another group's territory, where the name would read as theirs.
+ * its middle never in a hole of the piece nor in another group's territory, where the name would read
+ * as theirs, and its box clear of them where any spot is.
  */
 function inside(outline: [number, number][], e: Edges, w: number, h: number, opts: NameOpts, prev?: NameSpot): NameSpot {
   const strips = opts.strips ?? [];
@@ -631,10 +633,15 @@ function inside(outline: [number, number][], e: Edges, w: number, h: number, opt
   const areas = (opts.areas ?? []).map((r) => ({ r, e: edges(r) })).filter(({ e: o }) => o.minX < e.maxX && e.minX < o.maxX && o.minY < e.maxY && e.minY < o.maxY);
   const theirs = (x: number, y: number) => areas.some(({ r, e: o }) => x > o.minX && x < o.maxX && y > o.minY && y < o.maxY && within(r, x, y));
   const ours = (x: number, y: number) => within(outline, x, y) && !opts.holes?.some((r) => within(r, x, y)) && !theirs(x, y);
+  // whether the name's box, not only its middle, reaches into a hole or another group's territory
+  const others = [...(opts.holes ?? []), ...areas.map(({ r }) => r)];
   const score = (x: number, y: number) => {
     const box = { x: x - w / 2, y: y - h / 2, w, h };
-    return { box, titles: strips.filter((s) => crosses(box, s)).length, dist: len(x - e.cx, y - e.cy) };
+    return { box, titles: strips.filter((s) => crosses(box, s)).length, dist: len(x - e.cx, y - e.cy), blocked: others.some((r) => reaches(box, r)) };
   };
+  type Score = ReturnType<typeof score>;
+  const better = (a: Score, b: Score) =>
+    a.blocked !== b.blocked ? !a.blocked : a.titles !== b.titles ? a.titles < b.titles : a.dist < b.dist;
   const inner = gridOf(outline, e, opts.holes);
   let best = score(e.cx, e.cy);
   if (!ours(e.cx, e.cy)) best.titles = Infinity;
@@ -645,13 +652,13 @@ function inside(outline: [number, number][], e: Edges, w: number, h: number, opt
       const y = e.minY + ((j + 0.5) * (e.maxY - e.minY)) / GRID;
       if (theirs(x, y)) continue;
       const s = score(x, y);
-      if (s.titles < best.titles || (s.titles === best.titles && s.dist < best.dist)) best = s;
+      if (better(s, best)) best = s;
     }
   if (prev?.side === 'inside') {
     const x = prev.box.x + prev.box.w / 2;
     const y = prev.box.y + prev.box.h / 2;
     const s = score(x, y);
-    if (ours(x, y) && s.titles <= best.titles && s.dist <= best.dist + h) best = s;
+    if (ours(x, y) && (!s.blocked || best.blocked) && s.titles <= best.titles && s.dist <= best.dist + h) best = s;
   }
   return { side: 'inside', box: best.box };
 }
