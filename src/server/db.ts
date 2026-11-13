@@ -623,6 +623,9 @@ export const MIGRATIONS = [
   // let it go on; the Coordinator reads those with each command, found without going through the sheet
   `ALTER TABLE talk ADD COLUMN stopped INTEGER;
    CREATE INDEX talk_stopped ON talk (canvas_id) WHERE stopped IS NOT NULL;`,
+  // the look-ups still running, which the Coordinator reads with each command (`Sheet.lookingUp`):
+  // found without going through every exchange of the sheet
+  'CREATE INDEX talk_looking_up ON talk (canvas_id) WHERE question IS NOT NULL AND answer IS NULL AND joined IS NULL AND stopped IS NULL;',
 ];
 
 /**
