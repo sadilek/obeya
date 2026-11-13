@@ -843,7 +843,9 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 - **Demos run under Node, not Bun** (2026-10-09): Bun 1.3.12 closed a child's pipe when it collected
   the process object, after the descriptor had gone to the next child, so the recording browser
   lost its DevTools pipe and every demo run with `bun` hung after its first scene. A demo started
-  with `bun demo.ts` runs itself again under Node.
+  with `bun demo.ts` runs itself again under Node. So every module a Node-run script reaches (the
+  hero video's render imports server modules) imports relative paths with their file extension and
+  no `bun:` module; a test walks those imports, since a break shows only at the next render.
 - **A render names a sleep of the computer and keeps no display awake** (2026-10-17): renders failed
   with "no frame for 20 s" to the second when the Mac went to sleep (lid closed, on battery); a
   sleeping display or locked screen costs a render nothing.
