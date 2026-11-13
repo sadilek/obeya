@@ -252,10 +252,35 @@ async function squashOnto(ws: string, upstream: string): Promise<boolean> {
 }
 
 /**
- * Rebases the workspace's branch onto `upstream`, or squashes it there when only the replay of its
- * commits conflicts. Returns the conflict if neither works, the branch then as it was.
+ * Merges the workspace's branch into the commit `upstream` with a merge commit, the branch as it
+ * is, if it merges cleanly; else the conflict, the branch then as it was.
  */
-async function rebaseOnto(ws: string, upstream: string, base: string): Promise<LandProblem | null> {
+async function mergeOnto(ws: string, upstream: string, base: string): Promise<LandProblem | null> {
+  const m = await gitRun(ws, ['merge-tree', '--write-tree', '--name-only', '--no-messages', upstream, 'HEAD']);
+  if (m.code === 1) {
+    const files = m.stdout.trim().split('\n').slice(1).filter(Boolean);
+    // the commit itself: the workspace's own copy of the branch may be behind it
+    const at = upstream.slice(0, 12);
+    return { code: 'landConflict', worker: true, files, detail: `merging your branch into ${base} (at ${at}) conflicts${files.length ? ` in ${files.join(', ')}` : ''}: merge that commit into your branch (git merge ${at}) and resolve it there` };
+  }
+  if (m.code !== 0) throw new WorkspaceError(`git merge-tree: ${failureText(m)}`);
+  const branch = await gitAsync(ws, 'branch', '--show-current');
+  const commit = await gitAsync(ws, 'commit-tree', m.stdout.trim().split('\n')[0]!, '-p', upstream, '-p', 'HEAD', '-m', `Merge branch '${branch}' into ${base}`);
+  await gitAsync(ws, 'reset', '--quiet', '--hard', commit);
+  return null;
+}
+
+/**
+ * Brings the workspace's branch onto `upstream`. A branch that builds on it already stays as it is.
+ * One with merge commits merges into it (`mergeOnto`): a rebase would flatten them, or rewrite
+ * the commits they merged in. Any other is rebased, or squashed there when only the replay of its
+ * commits conflicts. Returns the conflict if none of it works, the branch then as it was.
+ */
+async function rebaseOnto(ws: string, onto: string, base: string): Promise<LandProblem | null> {
+  // one commit throughout: a branch name may move while it lands (a commit made on main meanwhile)
+  const upstream = await gitAsync(ws, 'rev-parse', '--verify', `${onto}^{commit}`);
+  if (await isAncestor(ws, upstream, 'HEAD', false)) return null;
+  if (await gitAsync(ws, 'rev-list', '--merges', '--max-count=1', `${upstream}..HEAD`)) return mergeOnto(ws, upstream, base);
   try {
     await gitAsync(ws, 'rebase', '--quiet', upstream);
     return null;
@@ -431,12 +456,14 @@ async function replayClash(repo: string, base: string, upstream: string, onto: s
 /**
  * Adds `trailer` (`Demo-Video: <url>`) to the message of the workspace's last commit, the one that
  * lands, unless it has it already (a landing tried before). A commit that cannot be amended lands
- * without it.
+ * without it, as does one a remote has (a branch brought forward to another repository's commit):
+ * amended, it would land as a copy of that commit instead of the commit itself.
  */
 async function withTrailer(ws: string, trailer: string | undefined) {
   if (!trailer) return;
   const message = await gitAsync(ws, 'log', '-1', '--format=%B');
   if (message.split('\n').includes(trailer)) return;
+  if (await gitAsync(ws, 'for-each-ref', '--count=1', '--contains', 'HEAD', '--format=%(refname)', 'refs/remotes')) return;
   // the worker's commit as it was, its author kept; its hooks ran when it was made
   try {
     await gitAsync(ws, 'commit', '--amend', '--quiet', '--no-verify', '--allow-empty', '--cleanup=verbatim', '-m', addTrailer(message, trailer));

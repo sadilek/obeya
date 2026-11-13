@@ -6,7 +6,7 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 
 In a folder without git nothing lands (see Folders without git). Elsewhere the setting `land`
 decides (see Repository settings), read at each approval: `pr` sends the worker into the PR loop;
-`main` rebases the branch onto `main` and fast-forwards the local checkout, and the card is `live`.
+`main` brings the branch onto `main` (below) and fast-forwards the local checkout, and the card is `live`.
 Unset, it is `pr` where `origin` is on GitHub (github.com or a subdomain, Enterprise Cloud's
 `*.ghe.com`, or a host gh is logged into: one in gh's `hosts.yml`, or `GH_HOST` with a token for it
 in the environment; not `gh auth status`, which checks each login over the network), else `main`: on another forge the
@@ -28,9 +28,16 @@ landing: the card stays `live`, its conversation shows why as an error (the remo
 git's reason, without the command; where `main` moved on `origin`, that it has commits the local one
 lacks, which Obeya never pushes over), a line above the microphone says it too, and the worker hears
 that its work is not on `origin` yet. The next landing pushes again. A push gets two minutes, so a
-remote that does not answer holds up no other landing for longer. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
-once more. Commits that conflict one by one but not as a whole land squashed. The last commit landed for a card
-with a shared demo carries the trailer `Demo-Video: <url>` (see Publishing on approval). Uncommitted
+remote that does not answer holds up no other landing for longer. A branch that builds on `main` already lands as it is. One with merge commits (another
+repository's line merged in, say) is never rebased or squashed, which would flatten its merges or
+rewrite the commits they brought in: where `main` moved on since it left it, it merges into `main`
+with a merge commit ("Merge branch '<branch>' into <main>"), and where that conflicts, the worker
+hears to merge `main` into its branch. Any other branch is rebased onto `main`; commits that
+conflict one by one but not as a whole land squashed. Where `main` moved meanwhile (a commit made in
+the checkout by hand), the branch is brought onto it once more. The last commit landed for a card
+with a shared demo carries the trailer `Demo-Video: <url>` (see Publishing on approval), unless a
+remote has that commit already (a branch moved forward to another repository's commit): amended,
+it would land as a copy, so it lands as it is, without the trailer. Uncommitted
 work or a real conflict sends the card back to its worker with the approval kept: its next handover
 lands by itself, without a new demo. A local checkout found on another branch (or none), because an
 agent worked in the project folder instead of its workspace or the owner switched it, Obeya switches back to
@@ -265,8 +272,8 @@ Approved, the work goes the way the branch does:
   look finds a pull request opened on the branch since. Fixes after the approval the worker pushes
   onto the branch at the checkout's `origin` (a clone's own `origin` may be the checkout).
 - Without one: as any task of the repository (see How work lands). With `pr` the worker opens the
-  pull request from the branch under its name; with `main` it lands rebased like a card's own
-  branch, and the copy on `origin` stays as it was, since nothing is force-pushed.
+  pull request from the branch under its name; with `main` it lands like a card's own
+  branch (see How work lands), and the copy on `origin` stays as it was, since nothing is force-pushed.
 
 The owner has a task take a branch through Obeya only: by word („arbeite auf feature/x weiter“), or
 with the link of a pull request of their own: one whose branch is in `origin` (also one from there
@@ -753,6 +760,13 @@ A card no agent worked on, a prototype or an archived card has no field.
   through Obeya only, by word or a pull request's link (the owner, 2026-11-13, after the first
   demo): a "Branch" field on every new task made creating a task more complicated for something
   rarely needed. It is found through the tip under Obeya's field.
+- **A branch with merge commits lands as it is, merged where `main` moved** (2026-11-13): the
+  rebase flattened a merge of another repository's line into copies of its commits, which
+  conflicted one by one and landed squashed under the first one's message; the merge's second
+  parent was lost, and the forge counted the branch behind that repository although it held all of
+  it. Rejected: `git rebase --rebase-merges` (it rebases the merged line too where it left from the
+  branch's own starting point, so its commits land as copies); replaying the first-parent line and
+  remaking each merge (resolutions inside a merge are easily lost, for a rare case).
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every

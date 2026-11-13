@@ -462,6 +462,94 @@ describe('the landed commit names the demo’s page', () => {
 /** A demo's page, as the worker describes it in its handover. */
 const DEMO_PAGE = { title: 'CSV export', text: 'Meter readings download as CSV.' };
 
+describe('a branch with merge commits', () => {
+  const PAGE = 'Demo-Video: https://demos.example.dev/upstream-5-1/';
+  eachTest(MAIN);
+  beforeEach(() => rebuild({ onApproval: () => PAGE }));
+
+  /**
+   * A handed-over card whose branch has `own` commits (each `[file, text, message]`) and then merges
+   * another repository's line (`upstream/main`, two commits off `init`): that line's tip.
+   */
+  async function mergingUpstream(own: [string, string, string][] = [['c.ts', 'c', 'Card work']]) {
+    const c = board.create({ title: 'Get the latest upstream version', x: 0, y: 0 });
+    await workers.start(c.id);
+    const clone = board.row(c.id).workspace!;
+    const branch = board.row(c.id).branch!;
+    git(clone, 'switch', '--quiet', '-c', 'up');
+    commit(clone, 'u1.ts', 'u1', 'Upstream one');
+    const up = commit(clone, 'u2.ts', 'u2', 'Remove the retained switch (#87)');
+    git(clone, 'update-ref', 'refs/remotes/upstream/main', up);
+    git(clone, 'switch', '--quiet', branch);
+    git(clone, 'branch', '--quiet', '-D', 'up');
+    for (const [file, text, message] of own) commit(clone, file, text, message);
+    git(clone, 'merge', '--quiet', '--no-ff', '-m', 'Merge upstream 5.1.0', up);
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    return { c, up, tip: git(clone, 'rev-parse', 'HEAD') };
+  }
+  /** The parents and message of `rev` in the checkout. */
+  const shape = (rev: string) => {
+    const [parents = '', ...message] = git(main, 'log', '-1', '--format=%P%n%B', rev).split('\n');
+    return { parents: parents.split(' '), message: message.join('\n').trim() };
+  };
+
+  test('on a main that has not moved, the branch lands as it is: the merge keeps both parents and its message', async () => {
+    const { c, up, tip } = await mergingUpstream();
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(shape('main')).toEqual({ parents: [git(main, 'rev-parse', 'main~1'), up], message: `Merge upstream 5.1.0\n\n${PAGE}` });
+    expect(git(main, 'log', '--format=%s', '--first-parent', 'main')).toBe('Merge upstream 5.1.0\nCard work\ninit');
+    // only the trailer went into the merge commit: its tree is the branch's
+    expect(git(main, 'rev-parse', 'main^{tree}')).toBe(git(board.row(c.id).workspace!, 'rev-parse', `${tip}^{tree}`));
+  });
+
+  test('on a main that moved on, the branch merges into it as it is, never rebased or squashed', async () => {
+    const { c, up, tip } = await mergingUpstream();
+    const other = commit(main, 'other.ts', 'other', 'Another card');
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(shape('main')).toEqual({ parents: [other, tip], message: `Merge branch '${board.row(c.id).branch}' into main\n\n${PAGE}` });
+    expect(shape(tip)).toEqual({ parents: [git(main, 'rev-parse', `${tip}^1`), up], message: 'Merge upstream 5.1.0' });
+    expect(git(main, 'log', '-1', '--format=%s', `${tip}^1`)).toBe('Card work');
+    expect(git(main, 'show', 'main:other.ts')).toBe('other');
+  });
+
+  test('where the branch conflicts with what landed meanwhile, the worker merges main in; its next handover lands by itself', async () => {
+    const { c, tip } = await mergingUpstream();
+    const clone = board.row(c.id).workspace!;
+    const before = commit(main, 'c.ts', 'main', 'Another card');
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('working');
+    expect(git(main, 'rev-parse', 'main')).toBe(before);
+    expect(git(clone, 'rev-parse', 'HEAD')).toBe(tip);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', code: 'landConflict' });
+    expect(runtime.last.inbox.at(-1)).toContain(`merging your branch into main (at ${before.slice(0, 12)}) conflicts in c.ts: merge that commit into your branch (git merge ${before.slice(0, 12)}) and resolve it there`);
+
+    // as the worker hears it: the clone's own main is behind the checkout's
+    expect(() => git(clone, 'merge', '--quiet', '--no-edit', before.slice(0, 12))).toThrow();
+    commit(clone, 'c.ts', 'resolved', 'Merge main');
+    await runtime.last.call('ready_for_review', { summary: 'Resolved', demo: artifact() });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => state(c.id) === 'live');
+    expect(git(main, 'show', 'main:c.ts')).toBe('resolved');
+    // the worker's merge of main went on as it was
+    expect(git(main, 'rev-list', '--parents', '-1', 'main').split(' ')).toHaveLength(3);
+    expect(git(main, 'merge-base', '--is-ancestor', tip, 'main')).toBe('');
+  });
+
+  test('a branch brought forward to another repository’s commit lands as that commit, without the trailer', async () => {
+    const c = board.create({ title: 'Get the latest upstream version', x: 0, y: 0 });
+    await workers.start(c.id);
+    const clone = board.row(c.id).workspace!;
+    const up = commit(clone, 'u1.ts', 'u1', 'Upstream one');
+    git(clone, 'update-ref', 'refs/remotes/upstream/main', up);
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(main, 'rev-parse', 'main')).toBe(up);
+  });
+});
+
 describe('the landing message names the demo’s page', () => {
   const URL_ = 'https://demos.example.dev/zahlerstande-exportieren-1/';
   /** Whether the repository has a demo site; on approval, the page goes out (`publishing`) unless `share` says otherwise. */
