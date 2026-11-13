@@ -87,6 +87,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - Rarely used actions stay out of the way: shown only where they apply, behind hover or an overflow
   menu, so everyday use isn't cluttered with buttons. A button's label makes clear what it does to
   someone who doesn't yet know the use case.
+- Rare, special-case workflows (forking and cloning an existing project, taking over an existing
+  branch, say) get no UI elements of their own: agents get the capabilities to do them, so the
+  owner simply asks Obeya for them in conversation.
 - Prompts and skills for agents: fix unwanted behaviour by removing the instruction that causes
   it, not by adding a prohibition. Forbid nothing an agent would not do without being told to.
 - The colleagues use Windows or Linux: features must work there; macOS-only tools (e.g. `say`)
