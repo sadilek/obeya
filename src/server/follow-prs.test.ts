@@ -1,15 +1,19 @@
 // Work that went onto pull requests open already instead of onto the card's branch (design: Card
 // lifecycle, Live and done): the handover names them, and the approval follows them until they are
-// merged instead of closing the card as done.
+// merged instead of closing the card as done. And a pull request in another repository that work
+// landed on main also needed (design: Landing, PR loop): reported after the landing, it is followed
+// until it is merged, without landing anything again.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { drawnWaits } from '../core/queue';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import type { Board } from './board';
 import { Store } from './db';
+import { git } from './git';
 import type { Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
 import { fromJson } from './row';
@@ -62,6 +66,8 @@ beforeEach(() => {
   watcher = new PrWatcher(board, workers, forgeFake(), () => main, () => settings);
 });
 afterEach(async () => {
+  // a landed workspace the worker finished with is freed before its repository goes
+  await workers.freed();
   workers.shutdown();
   await removeDir(dir);
 });
@@ -186,5 +192,106 @@ describe('reporting a pull request with pr_opened', () => {
     const { id, session } = await handOver({});
     await workers.approve(id);
     expect(await session.call('pr_opened', { url: UPSTREAM })).toContain('the card is finished');
+  });
+});
+
+describe('a pull request in another repository, reported after the work landed on main', () => {
+  /** One in another repository of the owner's that the work also needed. */
+  const DOCS = 'https://github.com/owner/docs/pull/3';
+
+  /** A task whose work landed on main, and a task the owner's arrow holds behind it. */
+  async function landed() {
+    const c = board.create({ title: 'Rename the setting, and in the docs too', x: 0, y: 0 });
+    const after = board.create({ title: 'Build on the renamed setting', x: 0, y: 0 });
+    board.connect(c.id, after.id);
+    await workers.start(c.id);
+    commit(board.row(c.id).workspace!, 'setting.ts', 'x\n', 'Rename the setting');
+    const session = runtime.last;
+    await session.call('ready_for_review', { summary: 'S', demo: artifact() });
+    session.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    return { id: c.id, after: after.id, session, head: git(main, 'rev-parse', 'HEAD') };
+  }
+  const waitsFor = (id: string) => drawnWaits({ ...board.item(id)!, state: 'planned' }, board.items());
+
+  test('puts the card in it until it is merged, without landing again, and what waits for the card waits no longer', async () => {
+    const { id, after, session, head } = await landed();
+    expect(waitsFor(after)).toEqual([]);
+    const shipped = board.row(id).shipped;
+    expect(await session.call('pr_opened', { url: DOCS })).toContain('Your work stays on main, and the card is in this pull request until it is merged');
+    expect(state(id)).toBe('inPr');
+    expect(pr(id)).toMatchObject({ url: DOCS, number: 3, repo: 'owner/docs', onMain: true });
+    expect(board.item(id)).toMatchObject({ onMain: true, pr: { url: DOCS, repo: 'owner/docs' } });
+    // the card's work is on main: the arrow does not hold the card behind it again, and taking back is not the card's while the pull request is out
+    expect(waitsFor(after)).toEqual([]);
+    expect(board.item(id)!.revocable).toBeUndefined();
+    // its turn ends in the pull request: the session stays for what comes of it
+    session.emit({ type: 'idle' });
+    expect(session.closed).toBe(false);
+    status.comments = [{ id: 'c1', author: 'maintainer', body: 'Please mention the old name', at: '2026-11-13T10:00:00Z' }];
+    await watcher.poll();
+    expect(session.inbox.at(-1)).toContain('Please mention the old name');
+    session.emit({ type: 'idle' });
+    status.state = 'MERGED';
+    status.mergeCommit = 'def5678';
+    await watcher.poll();
+    expect(state(id)).toBe('live');
+    expect(session.inbox.at(-1)).toContain('Your pull request in owner/docs#3 was merged; your work is on main since its landing');
+    // nothing landed again: main is where the landing left it, and the landing is the card's
+    expect(git(main, 'rev-parse', 'HEAD')).toBe(head);
+    expect(board.row(id).shipped).toBe(shipped);
+    expect(fromJson(board.row(id).landed)!.commit).toBe(head);
+    expect(board.item(id)!.revocable).toBeUndefined();
+    session.emit({ type: 'idle' });
+    expect(session.closed).toBe(true);
+  });
+
+  test('closed without a merge, kept on main alone: the card is live, and its approval can be taken back by a revert again', async () => {
+    const { id, session } = await landed();
+    await session.call('pr_opened', { url: DOCS });
+    session.emit({ type: 'idle' });
+    status.state = 'CLOSED';
+    await watcher.poll();
+    expect(board.item(id)).toMatchObject({ state: 'waiting', need: 'question' });
+    expect(board.item(id)!.question!.options).toEqual([board.t.worker.reopen, board.t.worker.keepOnMain('main')]);
+    workers.answer(id, '', [], false, undefined, [board.t.worker.keepOnMain('main')]);
+    expect(state(id)).toBe('live');
+    expect(session.inbox.at(-1)).toContain('The owner keeps the work on main without the pull request owner/docs#3');
+    expect(board.item(id)!.revocable).toEqual({ how: 'revert' });
+  });
+
+  test('closed and opened again, it is followed once reported again', async () => {
+    const { id, session } = await landed();
+    await session.call('pr_opened', { url: DOCS });
+    session.emit({ type: 'idle' });
+    status.state = 'CLOSED';
+    await watcher.poll();
+    workers.answer(id, '', [], false, undefined, [board.t.worker.reopen]);
+    expect(state(id)).toBe('inPr');
+    status.state = 'OPEN';
+    await session.call('pr_opened', { url: DOCS });
+    expect(pr(id).closed).toBeUndefined();
+    status.state = 'MERGED';
+    await watcher.poll();
+    expect(state(id)).toBe('live');
+  });
+
+  test('one in the card’s own repository is refused: its work is on main already', async () => {
+    const { id, session } = await landed();
+    expect(await session.call('pr_opened', { url: OWN })).toContain("that pull request is in the card's own repository");
+    expect(state(id)).toBe('live');
+    expect(board.row(id).pr).toBeNull();
+  });
+
+  test('stopped while it asks about the pull request, the card is live with its landing', async () => {
+    const { id, session } = await landed();
+    await session.call('pr_opened', { url: DOCS });
+    session.emit({ type: 'idle' });
+    status.state = 'CLOSED';
+    await watcher.poll();
+    await workers.stop(id);
+    expect(state(id)).toBe('live');
+    expect(session.closed).toBe(true);
   });
 });

@@ -3,7 +3,7 @@
 // cards it has no wait with: the waits fix the order between the cards they join, the owner the rest.
 
 import type { Item } from './types';
-import { finished } from './card';
+import { landedWork } from './card';
 
 /** Waiting to start: being judged, behind others, or for a workspace. */
 export const inQueue = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !!i.queue;
@@ -17,7 +17,7 @@ export function queueOrder(items: Item[]): Item[] {
 }
 
 /**
- * The prerequisites the owner's arrows hold the card for: those not finished. An arrow holds a card
+ * The prerequisites the owner's arrows hold the card for: those whose work has not landed. An arrow holds a card
  * until it starts: not one at work, nor one the owner started anyway or that was at work before
  * (`begun`, waiting for a workspace or a paused canvas only to go on).
  */
@@ -25,7 +25,7 @@ export function drawnWaits(card: Item, items: Item[]): string[] {
   if (card.state !== 'planned' || (card.queue && 'begun' in card.queue)) return [];
   return (card.manualDependsOn ?? []).filter((id) => {
     const i = items.find((x) => x.id === id);
-    return !!i && !finished(i.state) && !i.archivedAt;
+    return !!i && !landedWork(i) && !i.archivedAt;
   });
 }
 

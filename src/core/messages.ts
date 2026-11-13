@@ -261,6 +261,7 @@ const de = {
     revokeCutOff: 'Obeya wurde dabei beendet; main ist unverändert. Bitte nochmal versuchen.',
     revokedAfterRestart: 'Freigabe zurückgenommen: Die Arbeit ist von main runter und liegt wieder auf dem Branch der Aufgabe. Die Aufgabe wartet auf dich.',
     prClosedQuestion: 'Der Pull Request wurde geschlossen, ohne gemergt zu werden. Wie geht es weiter?',
+    elsewhereClosedQuestion: 'Der Pull Request im anderen Repository wurde geschlossen, ohne gemergt zu werden. Die Arbeit ist auf main. Wie geht es weiter?',
     reopen: 'Neu eröffnen',
     discardWork: 'Die Arbeit verwerfen',
     stopped: 'Gestoppt.',
@@ -347,6 +348,7 @@ const de = {
     superseded: (by?: string, why?: string) =>
       by ? `Der vorschlagende Agent hat diese Karte ersetzt durch „${by}“${why ? `: ${why}` : '.'}` : `Der vorschlagende Agent hat diese Karte zurückgezogen${why ? `: ${why}` : '.'}`,
     prOpened: (pr: string) => `Pull Request ${pr} geöffnet.`,
+    prOpenedAfterMain: (pr: string) => `Pull Request ${pr} geöffnet. Die Arbeit bleibt auf main; die Karte ist live, sobald er gemergt ist.`,
     landing: 'Landet auf main',
     waitsForRestart: 'Wartet auf den Neustart von Obeya mit der neuen Version',
     needsClone: 'Braucht für die Antwort einen vollen Klon',
@@ -830,6 +832,7 @@ const en: Messages = {
     revokeCutOff: 'Obeya stopped while doing it; main is unchanged. Please try again.',
     revokedAfterRestart: 'Approval taken back: the work is off main and back on the task’s branch. The task waits for you.',
     prClosedQuestion: 'The pull request was closed without being merged. How should it go on?',
+    elsewhereClosedQuestion: 'The pull request in the other repository was closed without being merged. The work is on main. How should it go on?',
     reopen: 'Reopen it',
     discardWork: 'Discard the work',
     stopped: 'Stopped.',
@@ -901,6 +904,7 @@ const en: Messages = {
     superseded: (by?: string, why?: string) =>
       by ? `The agent that proposed this card replaced it by “${by}”${why ? `: ${why}` : '.'}` : `The agent that proposed this card withdrew it${why ? `: ${why}` : '.'}`,
     prOpened: (pr: string) => `Pull request ${pr} opened.`,
+    prOpenedAfterMain: (pr: string) => `Pull request ${pr} opened. The work stays on main; the card is live once it is merged.`,
     landing: 'Landing on main',
     waitsForRestart: 'Waits for Obeya to restart with the new version',
     needsClone: 'Needs a full clone to answer',

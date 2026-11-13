@@ -99,7 +99,8 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
     // does a stopped one whose box a plan folder outside the repository ticked
     const state = r.state && (ACTIVE.includes(r.state) || tickedAhead(r)) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
     // what landed of a workstream planned again, also while a new run does the rest; once that lands, the card is live
-    const shipped = state === 'planned' || ACTIVE.includes(state) ? fromJson(r.shipped) : null;
+    // (not that of work that landed whole while the card is in a pull request in another repository)
+    const shipped = state === 'planned' || (ACTIVE.includes(state) && !fromJson(r.pr)?.onMain) ? fromJson(r.shipped) : null;
     const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(workstreamRef(doc.file, k)) ?? []);
     workstreams.push({
       order,
@@ -202,6 +203,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(pr?.rollback ? { rollbackOf: pr.rollback.of } : {}),
     ...(revoke ? { revocable: revoke } : {}),
     ...(pr?.more?.some((m) => m.url) ? { morePrs: pr.more.filter((m) => m.url).map(pullRequest) } : {}),
+    ...(pr?.onMain ? { onMain: true as const } : {}),
     ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),

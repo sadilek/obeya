@@ -39,7 +39,8 @@ owner drew counting as a wait) is never among
 the cards that one sees as ahead or to build on, so no two cards wait for each other.
 
 A waiting card shows the reason (one that starts says which files it shares and why that is fine).
-Once what it waits for has landed or stopped it starts, or, if other work may have started
+Work landed on `main` counts as landed also while its card is in a pull request in another
+repository it also needed (see PR loop in Landing), and as in progress no more. Once what it waits for has landed or stopped it starts, or, if other work may have started
 meanwhile, it is judged again. Cards whose waits end at once (the follow-up tasks of a merged PR,
 say) are judged together, in one turn as a project's start is (see Starting a whole project): it
 sees them in their order in the queue, keeps that order unless a dependency or a likely conflict
@@ -58,7 +59,7 @@ queue's list and the project's sheet), so the owner sees which to start first. E
 progress or queued, it skips this judgement only when no workstream of its project is left unlanded.
 
 A dependency drawn by the owner (see Cards on the canvas) holds the card until the prerequisite has
-finished, including while that prerequisite is not started or stopped: a card started afterwards
+finished or its work landed, including while that prerequisite is not started or stopped: a card started afterwards
 queues behind it once judged, and one in the queue when the arrow is drawn waits for it from then on,
 also one waiting only for a workspace or for the canvas's agents to resume. An arrow counts as a
 wait wherever the queue reads waits: a card held by one is never ahead of its prerequisite or

@@ -68,7 +68,11 @@ that forge's path: a Codeberg PR reported as `…/pull/<n>` (which Codeberg answ
 workspace of the card) gets it reported the same way, a call for each: the card's own is the one in
 its repository (by `origin`), which its landing names; one elsewhere is watched beside it, a PR
 reported again (opened again after it was closed) as before, and one in the card's repository
-reported anew replaces the card's own. Work that went onto pull requests open already instead of
+reported anew replaces the card's own. Work that landed on `main` (there directly, or through the
+card's merged pull request) may need one in another repository too: its worker, finishing after the
+landing, reports it the same way, and the card goes back into its PR loop for it (see Live and done
+in Card lifecycle); one in the card's own repository is refused then, a further change there being
+a card of its own. Work that went onto pull requests open already instead of
 onto the card's branch is named at the handover and followed from the approval on (see Live and
 done in Card lifecycle). Whatever form a URL was recorded in, each call reads it afresh: gh gets GitHub's
 `/pull/<n>` (an Enterprise PR recorded as `…/pulls/<n>` before gh was logged in there), and a PR
@@ -151,7 +155,9 @@ A card with several pull requests (see PR loop) has each treated so, with its ow
 settings for all of them: the card is `live` once every one is merged, its own repository's merge
 being its landing; until then a merged one says what the card still waits for, on the card and in
 its log. One closed without a merge asks the owner as the card's own does, and holds up nothing
-unless it is reported again.
+unless it is reported again. After a landing on `main`, none of them is the card's own: one merged
+is enough, each closed one holds up nothing, and the owner is asked about a closed one with "Reopen
+it" or "Keep it on main only" instead of discarding the work, which is on `main`.
 
 #### The PR on the card
 
@@ -543,6 +549,13 @@ A card no agent worked on, a prototype or an archived card has no field.
 ### Decisions
 
 - **Obeya itself lands directly on `main`**, without branches or PRs.
+- **A pull request in another repository is followed after a landing on `main` too** (2026-11-13):
+  the landing stands and is not repeated, the card goes back into its PR loop until that pull
+  request is merged, and counts as landed for the cards waiting for it, since what they build on is
+  on `main` and the landing had let them start already. Rejected: refusing it once the work has
+  landed (a repository that lands on `main` could never have a pull request its work needed
+  elsewhere followed); holding the waiting cards until that pull request is merged too (they
+  would be held again after the landing let them go, for a repository they do not build on).
 - **The worker tends its PR the repository's way** (2026-10-01). Rejected: Obeya scripting rebase
   and `--force-with-lease`, which clashed with a repository that merges `main` in and never
   force-pushes.

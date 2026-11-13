@@ -692,6 +692,13 @@ export class Workers {
       const words = at.text.split('\n\n').slice(1).join('\n\n').trim();
       return this.upstreamOver(cardId, this.o.board.t.worker.keptOnMain(upstream.into), `The owner keeps the work on ${upstream.into} alone: the pull request to ${upstream.name} stays closed, and the card is live.${words ? '' : ' Leave the pull request as it is.'}`, words ? { text: `Their words with it:\n\n${words}`, images } : undefined);
     }
+    // a pull request in another repository, after the work landed on main, closed: kept on main alone, it holds up nothing
+    const elsewhere = fromJson(row.pr);
+    if (elsewhere?.onMain && picked.includes(this.o.board.t.worker.keepOnMain('main'))) {
+      this.recordAnswer(card, q, at, picked);
+      const words = at.text.split('\n\n').slice(1).join('\n\n').trim();
+      return this.keptOnMain(cardId, elsewhere, words ? { text: `Their words with it:\n\n${words}`, images } : undefined);
+    }
     this.backToWork(cardId);
     this.recordAnswer(card, q, at, picked);
     const m = heldFirst(held, this.words(cardId, at, answerNote(picked, at.text)), [...this.stills(at.place), ...images], 'answered');
@@ -1642,6 +1649,9 @@ export class Workers {
     // a fork's pull request to the original: its work is on the main branch since the approval, and the maintainers merged it there
     const upstream = fromJson(this.o.board.row(cardId).pr)?.upstream;
     if (upstream) return this.upstreamOver(cardId, this.o.board.t.pr.mergedUpstream(upstream.name), `${upstream.name} merged your pull request; the card is live.`);
+    // one in another repository the work also needed: its landing on main stands, and nothing lands again
+    const elsewhere = fromJson(this.o.board.row(cardId).pr);
+    if (elsewhere?.onMain) return this.onMainOver(cardId, note, `Your pull request${elsewhere.more?.length ? 's' : ''} in ${[elsewhere, ...(elsewhere.more ?? [])].filter((p) => !p.closed).map((p) => `${p.repo ?? ''}#${p.number}`).join(', ')} ${elsewhere.more?.length ? 'were' : 'was'} merged; your work is on main since its landing, and the card is live.`);
     // merged in the original by its maintainers: nothing of it is on this repository's main branch to take back by
     const theirs = fromJson(this.o.board.row(cardId).pr);
     if (theirs?.adopted && theirs.repo && note === this.o.board.t.worker.merged) note = this.o.board.t.pr.mergedByMaintainers(adoptedPrName({ number: theirs.number ?? 0, repo: theirs.repo }));
@@ -1737,10 +1747,40 @@ export class Workers {
     this.o.board.log(cardId, 'state', 'obeya', t.prClosed);
     // a fork's work is on its main branch already: it stays there, or the pull request is opened again
     if (pr?.upstream) return this.toOwner(cardId, { text: t.upstreamClosedQuestion(pr.upstream.name, pr.upstream.into), options: [t.reopen, t.keepOnMain(pr.upstream.into)] });
+    // the work landed on main before: it stays there, or the pull request is opened again
+    if (pr?.onMain) return this.toOwner(cardId, { text: t.elsewhereClosedQuestion, options: [t.reopen, t.keepOnMain('main')] });
     this.toOwner(cardId, {
       text: t.prClosedQuestion,
       options: [t.reopen, t.discardWork],
     });
+  }
+
+  /**
+   * The pull requests in other repositories that the card's work, landed on main before, also needed
+   * are over (merged, or closed and the owner keeps the work on main alone): the card is live with
+   * that landing, and its worker hears `told`.
+   */
+  private onMainOver(cardId: string, note: string, told: string, comments?: Comments) {
+    this.bump(cardId);
+    this.refuseAsked(cardId, 'meanwhile the card is live.');
+    const commit = fromJson(this.o.board.row(cardId).shipped)?.commit;
+    const page = this.workOver(cardId, 'live', commit ? { commit } : {});
+    this.o.board.log(cardId, 'state', 'obeya', note);
+    this.tellOver(cardId, [told, page.text], comments, !!comments);
+  }
+
+  /**
+   * The owner keeps the card's work on main without the pull request in another repository that was
+   * closed unmerged: it stays closed, and once none of the card's others is open any more, the card is
+   * live; until then it stays in them.
+   */
+  private keptOnMain(cardId: string, root: PrState, comments?: Comments) {
+    const prs = [root, ...(root.more ?? [])];
+    const closed = prs.filter((p) => p.closed).map((p) => `${p.repo ?? ''}#${p.number}`).join(', ');
+    if (prs.every((p) => p.merged || p.closed))
+      return this.onMainOver(cardId, this.o.board.t.worker.keptOnMain('main'), `The owner keeps the work on main without the pull request ${closed}: it stays closed, and the card is live.${comments ? '' : ' Leave it as it is.'}`, comments);
+    this.backToWork(cardId);
+    this.deliver(cardId, [`The owner keeps the work on main without the pull request ${closed}: it stays closed. The card stays in its other pull requests until they are merged.`, comments?.text ?? ''].filter(Boolean).join('\n\n'), comments?.images, { owner: true });
   }
 
   /**
@@ -1790,6 +1830,15 @@ export class Workers {
       return Promise.resolve();
     }
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
+    // its work is on main since its landing: stopped while asking about its pull request in another repository, the card is live with that landing, and nothing follows the pull request any more
+    const row = this.o.board.row(cardId);
+    if (fromJson(row.pr)?.onMain) {
+      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.stopped);
+      const commit = fromJson(row.shipped)?.commit;
+      this.o.board.work(cardId, { landed: toJson<LandedState>(commit ? { commit } : {}) });
+      this.finish(cardId);
+      return Promise.resolve();
+    }
     return this.planAgain(cardId, () => this.o.board.log(cardId, 'state', 'owner', card.pr ? this.o.board.t.worker.stoppedPrOpen(card.pr.number) : this.o.board.t.worker.stopped));
   }
 

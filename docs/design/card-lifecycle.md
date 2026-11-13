@@ -182,7 +182,8 @@ The worker hears what happened (its session resumed where it had ended) and undo
 the landing that presents the work as done, such as closing an issue. A worker still finishing after
 the landing stops first. Review cards (the contributor's pull request), prototypes and work that
 changed nothing have no approval to take back, nor do cards whose work went out in pull requests in
-several repositories, or whose merge the forge did not name (then nothing tells what to revert).
+several repositories, or landed on `main` and is in a pull request in another repository too, or
+whose merge the forge did not name (then nothing tells what to revert).
 A restart waits for a revert under way; one Obeya was stopped in all the same finishes on the next
 start where the work was off main already, and otherwise leaves the card live, saying so.
 
@@ -210,6 +211,17 @@ published as on a branch of the owner's (see A branch of the owner's), merged by
 owner's account may push to its repository, else by its maintainers, and the card is `live` once
 all are merged. The approval cannot be taken back: the work is public in the pull request. A
 handover without them closes the card as before.
+
+Work that landed on `main` and also needs a pull request in another repository, which its worker
+opens after the landing and reports with `pr_opened` (see PR loop in Landing), puts the card back in
+that pull request: it is in its PR again, its landing stands and nothing lands again, and it is
+`live` once the pull request is merged, the worker hearing so as after any landing. For the cards
+waiting for it (the Coordinator's waits and the owner's arrows), its work counts as landed
+throughout, so they start at the landing as for any card, and none is held again. Closed without a
+merge, the owner keeps the work on `main` alone or has it opened again; "Stop" while the card asks
+about it makes the card `live` with its landing, the pull request no longer followed. Its approval
+cannot be taken back while the pull request is open or merged (the work is in two repositories),
+only once the owner kept the work on `main` alone.
 
 A finished card an agent worked on keeps its field: a question there resumes that agent (see
 Questions after the work).

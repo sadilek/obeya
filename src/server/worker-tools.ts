@@ -103,6 +103,21 @@ interface HandedOver {
 /** How many files a worker may name as its result at a handover. */
 const MAX_RESULT_FILES = 12;
 
+/**
+ * Work that landed on the main branch (directly, or through its merged pull request in its own
+ * repository) and whose worker is still at it after the landing: a pull request in another
+ * repository that the work also needed is followed from then on (`PrState.onMain`).
+ */
+/** A pull request reported again, opened again after it was closed: watched again. */
+const reopened = ({ closed: _, ...pr }: PrState): PrState => pr;
+
+function landedOnMain(row: CardRow): boolean {
+  const l = fromJson(row.landed);
+  const s = fromJson(row.shipped);
+  const pr = fromJson(row.pr);
+  return row.state === 'live' && !!l && !l.unchanged && !l.followUp && !l.revoking && !l.resolve && !!s && !s.upstream && !row.contribution && !pr?.rollback && !pr?.adopted && !pr?.upstream;
+}
+
 const END_TURN = 'Recorded. End your turn now without further work; the reply arrives as your next message.';
 
 /** What the worker's tools need of the workers. */
@@ -416,26 +431,43 @@ export class WorkerTools {
       {
         name: 'pr_opened',
         description:
-          'After the owner approved: report the pull request you opened for this card (its URL); where the work also needed one in another repository, report that one too, a call for each. Then end your turn; Obeya watches them, and the card is live once all are merged.',
+          'After the owner approved: report the pull request you opened for this card (its URL); where the work also needed one in another repository, report that one too, a call for each, also once your work is on main. Then end your turn; Obeya watches them, and the card is live once all are merged.',
         schema: { url: z.string() },
         run: ({ url }) => {
           const row = this.o.board.row(cardId);
-          if (!row.pr)
+          // work just landed on main (or through its merged pull request), whose worker is still at it: one in another repository is followed from here on
+          const afterMain = landedOnMain(row);
+          if (!afterMain && (!row.pr || row.landed))
             return row.landed
               ? 'Not recorded: the card is finished (its work landed, or it closed without a change to the code), and Obeya follows no pull request for it any more.'
               : 'Not recorded: the owner has not approved this card yet. Do not open a pull request before that. One your work went onto already instead of your branch, name in ready_for_review (pull_requests): the approval then follows it.';
           const ref = parsePrUrl(String(url));
           if (!ref) return 'Not recorded: that is not the URL of a pull request (on GitHub or GitHub Enterprise https://<host>/<owner>/<repo>/pull/<number>, on Forgejo or Gitea such as Codeberg https://<host>/<owner>/<repo>/pulls/<number>).';
+          const host = this.o.remote && remoteHost(this.o.remote)?.toLowerCase().replace(/^ssh\.github\.com$/, 'github.com');
+          const named = `${ref.owner}/${ref.repo}`;
+          const ownRepo = !!this.o.remote && sameRepo(this.o.remote, ref.owner, ref.repo) && (!host || host === ref.host.toLowerCase());
+          if ((afterMain || fromJson(row.pr)?.onMain) && ownRepo)
+            return "Not recorded: your work is on main already, and that pull request is in the card's own repository. After the landing, Obeya follows only one in another repository that the work also needed; a further change here becomes a card of its own (propose_card).";
           handOver();
-          const root = fromJson(row.pr);
+          if (afterMain) {
+            // its landing stands: the card is in the pull request until it is merged, and live again then
+            const pr: PrState = { url: ref.url, number: ref.number, repo: named, seen: [], reported: [], onMain: true };
+            this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, status_line: null, landed: null, pr: toJson(pr) });
+            this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpenedAfterMain(`${ref.repo} #${ref.number}`));
+            this.o.onPrOpened?.(cardId);
+            return ending(
+              'Recorded. Your work stays on main, and the card is in this pull request until it is merged: Obeya passes you its review comments, failed checks and conflicts. End your turn now.',
+              'Recorded: Obeya watches the pull request, and the card is live again once it is merged.',
+              'a change to the work goes onto the pull request',
+            );
+          }
+          const root = fromJson(row.pr)!;
           // the card's own is the one in its repository, which the landing is about; one in another
           // repository is watched beside it, and reported again (opened again after it was closed) as before
-          const host = this.o.remote && remoteHost(this.o.remote)?.toLowerCase().replace(/^ssh\.github\.com$/, 'github.com');
           // a fork's pull request to the original is the card's own there, not one in origin's repository
           const up = root.upstream;
           const upUrl = up ? this.o.upstream?.()?.url : undefined;
           // the pull request the card's work went onto (a branch of the owner's) is its own, wherever it is, and its repository the card's there
-          const named = `${ref.owner}/${ref.repo}`;
           const theirs = root.adopted && root.repo ? root.repo : undefined;
           const elsewhere = parsePrUrl(root.url ?? '')?.url === ref.url ? false : theirs ? theirs.toLowerCase() !== named.toLowerCase() : up
             ? upUrl
@@ -449,7 +481,7 @@ export class WorkerTools {
           if (!elsewhere && !known)
             pr =
               parsePrUrl(root.url ?? '')?.url === ref.url || !root.url
-                ? { ...root, url: ref.url, number: ref.number, ...(up ? { repo: `${ref.owner}/${ref.repo}` } : {}) }
+                ? { ...reopened(root), url: ref.url, number: ref.number, ...(up ? { repo: `${ref.owner}/${ref.repo}` } : {}) }
                 : {
                     url: ref.url,
                     number: ref.number,
@@ -461,10 +493,8 @@ export class WorkerTools {
                     ...(theirs ? { repo: named } : {}),
                     ...(root.maintainers ? { maintainers: true as const } : {}),
                   };
-          else if (known) {
-            const { closed: _, ...open } = known;
-            pr = { ...root, more: root.more!.map((m) => (m === known ? { ...open, url: ref.url } : m)) };
-          } else pr = { ...root, more: [...(root.more ?? []), { url: ref.url, number: ref.number, repo: named, seen: [], reported: [] }] };
+          else if (known) pr = { ...root, more: root.more!.map((m) => (m === known ? { ...reopened(known), url: ref.url } : m)) };
+          else pr = { ...root, more: [...(root.more ?? []), { url: ref.url, number: ref.number, repo: named, seen: [], reported: [] }] };
           this.o.board.work(cardId, { pr: toJson(pr) });
           this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(elsewhere || up || theirs ? `${(up || theirs) && !elsewhere ? named : ref.repo} #${ref.number}` : `#${ref.number}`));
           this.o.onPrOpened?.(cardId);

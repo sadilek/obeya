@@ -360,7 +360,8 @@ export class Board {
       const s = fromJson(r.shipped) ?? {};
       if (s.fetch || (s.commit && this.holds && !this.holds(repoOfRef(r.plan_ref!, this.home), s.commit))) continue;
       const pr = fromJson(r.pr);
-      const shipped: Shipped = { ...s, ...(!s.pr && pr?.url && pr.number ? { pr: { url: pr.url, number: pr.number } } : {}) };
+      // one in another repository, reported after the work landed on main, is no merge of it
+      const shipped: Shipped = { ...s, ...(!s.pr && !pr?.onMain && pr?.url && pr.number ? { pr: { url: pr.url, number: pr.number } } : {}) };
       // a new run starts on a fresh branch: the old one is merged, perhaps squashed
       this.store.update(r.id, { state: 'planned', need: null, pr: null, branch: null, shipped: toJson(shipped) });
       this.log(r.id, 'state', 'obeya', this.t.idea.partLanded);
@@ -1208,6 +1209,8 @@ export class Board {
     const key = keyOfRef(row.plan_ref);
     if (key === null || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
+    // work landed on main already, in a pull request elsewhere: the doc ticked it off at the landing, its watcher sees that one merged
+    if (row.state === 'inPr' && fromJson(row.pr)?.onMain) return null;
     // a pull request that takes the work back: the doc ticks the workstream off until it is merged
     if (row.state === 'inPr' && fromJson(row.pr)?.rollback) return null;
     if (row.state === 'inPr' && tickedAhead(row)) return null;

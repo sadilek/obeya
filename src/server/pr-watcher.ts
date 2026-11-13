@@ -161,6 +161,8 @@ export class PrWatcher {
   /** Whether the card's work is merged: its first pull request and each further one not closed. */
   private allMerged(cardId: string): boolean {
     const [first, ...more] = this.prsOf(cardId);
+    // after the work landed on main, none of them is the card's own: each is as any further one, and one merged is enough
+    if (first?.onMain) return [first, ...more].every((p) => p.merged || p.closed) && [first, ...more].some((p) => p.merged);
     return !!first?.url && !!first.merged && more.every((m) => m.merged || m.closed);
   }
 
@@ -210,7 +212,8 @@ export class PrWatcher {
     const which = this.prsOf(cardId).length > 1 ? ` (${pr.url})` : '';
     if (s.state === 'CLOSED') {
       // a further one, closed, holds up nothing: the owner says whether it is opened again
-      this.save(cardId, which && this.prsOf(cardId)[0]?.url !== pr.url ? { ...next, closed: true } : next);
+      // so is each after the work landed on main
+      this.save(cardId, (which && this.prsOf(cardId)[0]?.url !== pr.url) || this.stored(cardId)?.onMain ? { ...next, closed: true } : next);
       return this.workers.prClosed(cardId);
     }
     const told = this.tell(cardId, pr, s, next, which, noise);

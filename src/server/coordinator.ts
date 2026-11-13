@@ -8,7 +8,7 @@ import type { RepoAdapter } from '../adapters/types';
 import { cardTag } from '../core/card-number';
 import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, startable, waitsOn } from '../core/queue';
 import { type Item, UNDO_HOLD_MS, type Wait } from '../core/types';
-import { finished, nameless, titleFrom } from '../core/card';
+import { finished, landedWork, nameless, titleFrom } from '../core/card';
 import { BadRequest, type Board, TITLE_MAX } from './board';
 import { ACTIVE } from './items';
 import { fromJson, toJson } from './row';
@@ -372,8 +372,8 @@ export class Coordinator {
     return this.o.board
       .snapshot()
       // approved work counts until it has landed: a PR not yet merged still holds its files
-      // a prototype never lands, so it collides with nothing
-      .items.filter((i) => ACTIVE.includes(i.state) && i.kind !== 'project' && !i.prototypeOf && (!repo || i.repo === repo));
+      // a prototype never lands, so it collides with nothing; nor does work landed on main whose card is in a pull request elsewhere
+      .items.filter((i) => ACTIVE.includes(i.state) && !i.onMain && i.kind !== 'project' && !i.prototypeOf && (!repo || i.repo === repo));
   }
 
   /**
@@ -400,7 +400,7 @@ export class Coordinator {
     const items = this.o.board.items();
     const seen = new Set([card.id, ...active.map((i) => i.id), ...ahead.map((i) => i.id)]);
     return items.filter(
-      (i) => i.parent === card.parent && i.kind !== 'project' && !seen.has(i.id) && !finished(i.state) && !i.archivedAt && !waitsOn(i, card.id, items),
+      (i) => i.parent === card.parent && i.kind !== 'project' && !seen.has(i.id) && !landedWork(i) && !i.archivedAt && !waitsOn(i, card.id, items),
     );
   }
 
@@ -1084,7 +1084,7 @@ const describe = (c: Change) =>
   `${c.file} (${c.regions.length ? (c.regions[0] === 'deleted' ? 'deleted' : `lines ${c.regions.slice(0, 8).join('; ')}${c.regions.length > 8 ? '; …' : ''}`) : 'new'})`;
 
 /** A card waited on that still holds back what builds on it: there, and its work not on the main branch yet. */
-const unlanded = (i?: Item) => !!i && !finished(i.state) && !i.archivedAt;
+const unlanded = (i?: Item) => !!i && !landedWork(i) && !i.archivedAt;
 /** Whether two lists hold the same cards. */
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 

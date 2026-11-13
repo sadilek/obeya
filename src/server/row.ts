@@ -119,6 +119,12 @@ export interface PrState {
    */
   adopted?: true;
   maintainers?: true;
+  /**
+   * The card's work landed on the main branch already (`Shipped` holds it), and this pull request,
+   * in another repository, is one the work also needed, reported after that landing: the card is in
+   * it until all are merged, which makes it live without landing anything again.
+   */
+  onMain?: true;
 }
 
 /** `PrState.upstream`. */

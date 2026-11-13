@@ -223,6 +223,11 @@ export interface Item {
    * one in its own): the card is live once all of them and `pr` are merged.
    */
   morePrs?: PullRequest[];
+  /**
+   * In its pull request (`pr`), one in another repository that the work also needed: the card's own
+   * work landed on the main branch before, and counts as landed for the cards that wait for it.
+   */
+  onMain?: true;
   /** A review card: the pull request of someone outside that the card reviews and, once approved, merges. */
   contribution?: Contribution;
   /**

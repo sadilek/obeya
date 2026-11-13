@@ -6,6 +6,12 @@ import type { Awaited, AwaitedState, CanvasSnapshot, CardEvent, CardState, Demo,
 
 /** A card whose work is over: `live` once it landed, `done` when it needed no change to the code (a demo, an analysis). */
 export const finished = (s: CardState) => s === 'live' || s === 'done';
+/**
+ * A card whose work is on the main branch: finished, or landed there while the card is in a pull
+ * request in another repository that the work also needed (`Item.onMain`). What waits for the card
+ * to land waits no longer.
+ */
+export const landedWork = (i: Pick<Item, 'state' | 'onMain'>) => finished(i.state) || !!i.onMain;
 /** A card an agent worked on until the owner stopped it: planned again, its branch stays the card's. */
 export const stopped = (i: Pick<Item, 'state' | 'branch' | 'unstarted'>) => i.state === 'planned' && !!i.branch && !i.unstarted;
 /** A finished card of the owner's whose agent is done: the archive may take it. */
