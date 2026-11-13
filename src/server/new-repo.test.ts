@@ -280,6 +280,15 @@ describe('a new repository from an existing project', () => {
     expect(brief).not.toContain('This repository is new:');
   });
 
+  test('a new card the owner asks Obeya for in a fork of a project is made and started there in one step', async () => {
+    stageGithub(false);
+    const path = join(dir, 'widgets');
+    const id = docsCanvas().run({ do: 'newCard', title: 'Fix the count', body: 'Fix it.', start: true, newRepo: { path, canvas: true, from: 'acme/widgets' } }) as string;
+    await until(() => set.get('widgets')?.board.item(id), 10_000);
+    expect(git(path, 'remote', 'get-url', 'upstream')).toContain('widgets.git');
+    await until(() => set.get('widgets')!.board.item(id)!.queue || set.get('widgets')!.board.item(id)!.state === 'working');
+  });
+
   test('a GitHub repository the owner may push to is cloned as it is, without a fork', async () => {
     const { original } = stageGithub(true);
     const path = join(dir, 'widgets');

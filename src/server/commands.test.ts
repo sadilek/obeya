@@ -1689,6 +1689,20 @@ describe('other canvases and new repositories', () => {
     await until(() => executed.length);
     expect(executed[0]).toEqual({ do: 'newRepo', card: idea.id, path: '~/dev/super59', canvas: true });
   });
+
+  test('„forke acme/widgets nach … und behebe dort …“ makes the task and starts it in a clone of the project, in one step', async () => {
+    const k = commander();
+    const heard = k.hear('forke acme/widgets nach ~/dev/widgets und behebe dort die Zählung', {});
+    await settle();
+    const s = runtime.last;
+    expect(s.call('act', { actions: [{ do: 'new_card', title: 'Zählung', body: 'Behebe die Zählung.', clone_from: 'acme/widgets' }], confirm: '…' })).toContain('go with path');
+    expect(s.call('act', { actions: [{ do: 'new_card', title: 'Zählung', body: 'Behebe die Zählung.', path: '~/dev/widgets', start: false }], confirm: '…' })).toContain('starts at once');
+    s.call('act', { actions: [{ do: 'new_card', title: 'Zählung', body: 'Behebe die Zählung.', path: '~/dev/widgets', clone_from: 'acme/widgets' }], confirm: 'Forke acme/widgets und behebe die Zählung dort.' });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await until(() => executed.length);
+    expect(executed[0]).toMatchObject({ do: 'newCard', title: 'Zählung', start: true, newRepo: { path: '~/dev/widgets', canvas: true, from: 'acme/widgets' } });
+  });
 });
 
 describe('card numbers', () => {

@@ -2070,6 +2070,13 @@ export class CanvasRuntime {
           ...(c.images?.length ? { images: c.images } : {}),
           ...at,
         });
+        // in a repository Obeya makes for it (a clone of a project, perhaps): started there, as "Start agent" on its card with that repository picked
+        if (c.newRepo) {
+          this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+          this.board.setNewRepo(card.id, { ...c.newRepo, by: 'owner' });
+          this.act(card.id, { action: 'start' });
+          return card.id;
+        }
         // on a branch of the owner's: taken first (git and the forge are asked), started once it is
         if (c.branch) {
           this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);

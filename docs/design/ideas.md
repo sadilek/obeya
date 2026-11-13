@@ -159,7 +159,8 @@ decision log; lasting preferences are learned by the Coordinator (see Learning t
 ### Building in a new repository
 
 "Build it like this" or "Start agent" on a card whose target is a new repository (or the Coordinator,
-„bau das in einem neuen Repo unter ~/dev/super59“) waits a few seconds in which "Undo", in
+„bau das in einem neuen Repo unter ~/dev/super59“, also for a new task it makes and starts there in
+one step) waits a few seconds in which "Undo", in
 the button's place ("Creating super59 …"), leaves everything as it was; the window does not outlive
 a restart of Obeya. What can be told at once is refused at once: no folder, a relative one, one that
 is a repository of a canvas already, canvases from the command line (nothing could start live). Then
@@ -168,8 +169,9 @@ Obeya, one step after the other:
 1. creates the folder where there is none and sets git up in it as "Set up a git repository here"
    does (see Setting up git in a folder): local only, no remote, nothing published. A folder that is
    a repository already is taken as it is; one inside another repository is refused. Where the card
-   names an existing project to start from ("from": `owner/name` on GitHub, a git URL or a folder;
-   anything else refused at once), the folder (new, or empty; one with files in it is refused)
+   names an existing project to start from (`owner/name` on GitHub, a git URL or a folder, which the
+   owner names to Obeya, „forke home-assistant/frontend nach ~/dev/frontend und behebe dort …“, or
+   the idea's agent picks; anything else refused at once), the folder (new, or empty; one with files in it is refused)
    becomes a clone of it instead, its history and all. A GitHub repository the owner cannot push to
    is forked into their GitHub account first (GitHub hands back the fork they have already, where
    they have one), as the GitHub account set for the card's repository on this machine, else the
@@ -286,4 +288,6 @@ when Obeya stopped.
   fork's settings into its repository (a commit of Obeya's on the owner's fork; `land` and
   `upstream` are this machine's way of working with it, which "Take over into the repository for
   everyone" can still share); forking every GitHub source (a repository the owner may push to needs
-  none).
+  none); a "from" field in the card's repository picker (owner, 2026-11-13: rarely needed, not
+  self-explaining, and always in view once "New repository …" is picked), so the project is named to
+  Obeya, which makes the card and starts it in its clone in one step.

@@ -28,7 +28,7 @@ export type Command = (
    * `until` (ISO): it is planned and starts by itself then, as a planned card the owner snoozed.
    */
   /** `canvas`: another canvas of this Obeya, where the card goes instead (into its home repository). */
-  | { do: 'newCard'; title: string; body: string; start: boolean; until?: string; repo?: string; from?: string; place?: Place; canvas?: string; branch?: string }
+  | { do: 'newCard'; title: string; body: string; start: boolean; until?: string; repo?: string; from?: string; place?: Place; canvas?: string; branch?: string; newRepo?: { path: string; canvas: boolean; from?: string } }
   | { do: 'newIdea'; title: string; body: string; repo?: string; place?: Place; canvas?: string }
   /**
    * An idea is built, or a planned task started, in a repository that does not exist yet, at `path`:
@@ -848,7 +848,7 @@ export class Commander {
           description: [
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
             'Actions (card: the number of the card, K42; new_card and new_idea take none, except a follow-up):',
-            `- new_card: a new card. title short and precise, body what the owner asked for in their words, start false only when the owner says it should wait („nur notieren“, „für später“, „noch nicht starten“), else true: work on it begins right away, as with a click on "Start agent" (checked for conflicts with work in progress, queued if need be); until when the owner names a time for the work („Anfang Dezember“, „erst am Montag“, „in zwei Wochen“): it is planned now and starts by itself then, as with snooze on a planned card (the local time as for snooze, 08:00 on a day without an hour, the first of a month for its beginning)${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}; canvas: where the owner wants it on another canvas of this Obeya („leg auf Super 59 eine Aufgabe an“), that canvas's name from the list, and it goes into that canvas's first repository. A follow-up of a card (for one of its findings, or something from its summary): card the number of that card, and body the finding or passage in full, then what the owner added. branch: where the owner wants the work done on a branch of theirs that exists already („arbeite auf feature/x weiter“, „mach auf dem Branch login-fix weiter“), its name as git has it; the card then works on that branch instead of a new one, and its work goes onto that branch's pull request where it has one. Where the owner names a pull request rather than a branch („übernimm PR #82“, its link), review_pr takes it, finding its branch.`,
+            `- new_card: a new card. title short and precise, body what the owner asked for in their words, start false only when the owner says it should wait („nur notieren“, „für später“, „noch nicht starten“), else true: work on it begins right away, as with a click on "Start agent" (checked for conflicts with work in progress, queued if need be); until when the owner names a time for the work („Anfang Dezember“, „erst am Montag“, „in zwei Wochen“): it is planned now and starts by itself then, as with snooze on a planned card (the local time as for snooze, 08:00 on a day without an hour, the first of a month for its beginning)${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}; canvas: where the owner wants it on another canvas of this Obeya („leg auf Super 59 eine Aufgabe an“), that canvas's name from the list, and it goes into that canvas's first repository. A follow-up of a card (for one of its findings, or something from its summary): card the number of that card, and body the finding or passage in full, then what the owner added. branch: where the owner wants the work done on a branch of theirs that exists already („arbeite auf feature/x weiter“, „mach auf dem Branch login-fix weiter“), its name as git has it; the card then works on that branch instead of a new one, and its work goes onto that branch's pull request where it has one. Where the owner names a pull request rather than a branch („übernimm PR #82“, its link), review_pr takes it, finding its branch. path, own_canvas and clone_from: where the work is to happen in a repository that does not exist here yet, as for build on an idea; the card is made and started there in one step (Obeya creates or clones the repository, its canvas, and moves the card there), so its agent finds the project in place instead of setting it up itself („forke home-assistant/frontend nach ~/dev/frontend und behebe dort …“: path ~/dev/frontend, clone_from home-assistant/frontend).`,
             "- start: start work on a planned card; path, own_canvas and clone_from as for build on an idea, where the owner wants a planned task of theirs nobody has worked on yet started in a repository that does not exist yet. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card Obeya is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to Obeya together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
             '- dequeue: take a card out of the queue (waiting behind other cards, for a free workspace, or still being checked by Obeya); it goes back to planned and does not start until started again („nimm … aus der Warteschlange“, „lass … doch noch nicht starten“).',
             "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing), or for the agent that will take on a planned card (in the queue or not, stopped too), which gets it with the task once it starts; it doesn't stop it. Whatever the owner says to the agent: an instruction, a remark on its work, a question to it; never a question the owner asks you about the canvas.",
@@ -1299,8 +1299,12 @@ export class Commander {
       return { do: 'newIdea', title: a.title.trim(), body: a.body ?? '', ...into, ...there };
     }
     if (!a.title?.trim()) return 'a new card needs a title';
-    if (a.path?.trim() || a.own_canvas !== undefined || a.clone_from?.trim())
-      return 'a new card takes no path, own_canvas or clone_from (start and build do, on a card there already): its agent makes what its body asks for, a repository included, and a canvas for that repository follows with wait_for on the card';
+    const path = a.path?.trim();
+    if (!path && (a.own_canvas !== undefined || a.clone_from?.trim())) return 'own_canvas and clone_from go with path, the folder of the new repository';
+    if (path) {
+      if (!folderPath(path)) return `${path} is no folder: give it absolute or from ~`;
+      if (a.start === false || a.until?.trim() || a.branch?.trim() || a.card || elsewhere) return 'a new card in a new repository starts at once, on no branch of the owner\'s, as a follow-up of no card, from this canvas';
+    }
     const from = a.card ? this.cardOf(a.card) : undefined;
     if (a.card && (!from || !this.o.board.item(from))) return `no card ${a.card}; give the card a follow-up comes from, or none`;
     const until = a.until?.trim() ? localTime(a.until) : undefined;
@@ -1310,7 +1314,18 @@ export class Commander {
     if (when === 'far') return 'until lies more than a year ahead';
     const branch = a.branch?.trim();
     if (branch && (from || elsewhere)) return 'a branch is taken only by a new card of this canvas that follows up on none';
-    return { do: 'newCard', title: a.title.trim(), body: a.body ?? '', start: a.start !== false, ...(until !== undefined ? { until: new Date(until).toISOString() } : {}), ...into, ...(from ? { from } : {}), ...there, ...(branch ? { branch } : {}) };
+    return {
+      do: 'newCard',
+      title: a.title.trim(),
+      body: a.body ?? '',
+      start: a.start !== false,
+      ...(until !== undefined ? { until: new Date(until).toISOString() } : {}),
+      ...into,
+      ...(from ? { from } : {}),
+      ...there,
+      ...(branch ? { branch } : {}),
+      ...(path ? { newRepo: { path, canvas: a.own_canvas !== false, ...(a.clone_from?.trim() ? { from: a.clone_from.trim() } : {}) } } : {}),
+    };
   }
 
   /**
@@ -1771,7 +1786,7 @@ You are the Coordinator of Obeya, a canvas on which the owner directs coding age
 This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. The owner speaks in a conversation: the open card's, or with no card open yours in Obeya's sheet. A bare answer („ja“, „nein“, „mach das“) answers the last question in that conversation, also when you asked another one elsewhere since (in a card's conversation); when it stays unclear which question it answers, ask with reply. Each card has a number (K42) that stays its own on every canvas and in every conversation; the owner names cards by it too. No agent works on a planned, live or done card (done: finished without any change to the code, so nothing landed), but a note to a live or done card whose line says so resumes the agent that did its work, to answer; a workstream of a project takes its state from the project's plan doc (checked off there means live).
 
 For each message, call act, reply or look_up once, then end your turn:
-- act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgeaufgabe …" is approve and new_card, with the open card as the one it follows up on): leave none out. A step that can only follow once a card gets somewhere (a canvas for the repository a new task creates, a start once another card has landed) is wait_for in the same act: Obeya wakes you when the card gets there, and you take the step then. Only a wait_for brings you back to a step: one your confirm promises for later needs it.
+- act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgeaufgabe …" is approve and new_card, with the open card as the one it follows up on): leave none out. A step that can only follow once a card gets somewhere (a start once another card has landed) is wait_for in the same act: Obeya wakes you when the card gets there, and you take the step then. Only a wait_for brings you back to a step: one your confirm promises for later needs it.
 - reply, when the owner asks you a question of fact you can answer from what you know (the cards, their states and history, this conversation), also about the open card, or when nothing fits or it is unclear which card or what is meant.
 - look_up, when the answer needs reading or checking: what an agent would do on a card ("Was würde der Agent hier machen, wenn ich starte?"), what the plan says, how or why something works, what is on the machine or on GitHub (which file is newest, whether a script ran, what a release holds). Never reply that you cannot know or predict it; look it up. The answer follows in a few seconds. Also when the actions the owner asks for depend on such reading (a task for each open GitHub issue): look_up with then, and you take the actions yourself once the answer is in; confirm names both, the reading and the actions to follow.
 All three take confirm: one short sentence in the owner's language (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards (${CONFIRM[language].act}). No preamble, no questions back unless you use reply. ${ownersLanguage(language)} A new card's or idea's title is in the owner's language too.

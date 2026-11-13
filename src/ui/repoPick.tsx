@@ -1,6 +1,6 @@
 // The repository a card is built in, picked before work on it begins: one of the canvas's, or a
-// new one Obeya creates for it (its folder, the project it starts as a clone of, if any, and
-// whether it gets a canvas of its own). Built once
+// new one Obeya creates for it (its folder, and whether it gets a canvas of its own; the project it
+// starts as a clone of only by the owner's words to Obeya or the idea's agent, rarely needed). Built once
 // for every kind of card that has a task before it starts (a planned task, an idea); the button
 // that starts or builds the card names a new one, so what the click does is clear before it.
 
@@ -12,7 +12,7 @@ import { t } from './strings';
 export interface FreshRepo {
   path: string;
   canvas: boolean;
-  /** An existing project it starts as a clone of; empty: it starts empty. */
+  /** An existing project it starts as a clone of, as Obeya or the idea's agent set it; none: it starts empty. */
   from?: string;
 }
 
@@ -67,9 +67,6 @@ export function useRepoChoice(item: Item, onEdit: (p: CardPatch) => void): RepoC
 
 /** The name a new repository's folder gives it (and its canvas): the last part of its path. */
 export const newRepoName = (path: string) => path.trim().replace(/[/\\]+$/, '').split(/[/\\]/).at(-1) ?? '';
-
-/** The name of the project a new repository is cloned from: the last part of `owner/name`, a URL or a folder, without `.git`. */
-const sourceName = (from: string) => newRepoName(from.trim().replace(/\.git$/, '').replace(/^.*:/, ''));
 
 /** Whether a new repository's source is on GitHub (`owner/name`, or a github.com URL), which Obeya may fork first. */
 const onGithub = (from: string) => /^[\w.-]+\/[\w.-]+$/.test(from.trim()) || /github\.com[/:]/i.test(from);
@@ -129,22 +126,6 @@ export function RepoPick({ choice, repos, fresh = true }: { choice: RepoChoice; 
             maxLength={1000}
             onChange={(e) => choice.setFresh({ ...n, path: e.target.value })}
           />
-          <label className="repo-from" title={t.repoPick.fromHint}>
-            {t.repoPick.from}
-            <input
-              aria-label={t.repoPick.from}
-              value={n.from ?? ''}
-              placeholder={t.repoPick.fromPlaceholder}
-              spellCheck={false}
-              maxLength={1000}
-              onChange={(e) => choice.setFresh({ ...n, from: e.target.value })}
-              // a folder named only up to where it goes takes the project's name
-              onBlur={() => {
-                const name = n.from ? sourceName(n.from) : '';
-                if (name && /[/\\]$/.test(n.path)) choice.setFresh({ ...n, path: n.path + name });
-              }}
-            />
-          </label>
           <label className="repo-canvas" title={t.repoPick.ownCanvasHint}>
             <input type="checkbox" checked={n.canvas} onChange={(e) => choice.setFresh({ ...n, canvas: e.target.checked })} />
             {t.repoPick.ownCanvas}
