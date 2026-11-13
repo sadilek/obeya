@@ -265,7 +265,8 @@ export interface StoredShare {
 export type StoredDemo = Demo & { dir: string; kept?: string };
 
 /** What is stored of a repository to create for a card: the target, and once Obeya made it, `made`. */
-export type StoredNewRepo = NewRepo & { made?: true; none?: true };
+/** `fork`: the fork Obeya made of `from` on GitHub for it (`owner/name`), once made. */
+export type StoredNewRepo = NewRepo & { made?: true; none?: true; fork?: string };
 
 /** What is stored of a prototype: how it ended, once it did, and its worker's proposal to build the idea on it. */
 export interface StoredPrototype {

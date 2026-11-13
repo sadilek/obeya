@@ -8,6 +8,7 @@ import { Config } from './config';
 import { Store } from './db';
 import { FakeRuntime, gitRepo, noForge, ownGlobalGitConfig, refusal, removeDir, until } from './testing';
 import { git } from './git';
+import type { GithubForNewRepo } from './new-repo';
 
 let dir: string;
 let store: Store;
@@ -15,6 +16,10 @@ let runtime: FakeRuntime;
 let set: Canvases;
 let config: Config;
 let notices: Notice[];
+/** What the fake GitHub was asked: the repositories looked at and forked, with the account. */
+let asked: string[];
+/** GitHub as the tests stage it: `look` and `fork` answer with repositories in the temp directory. */
+let github: GithubForNewRepo;
 
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 
@@ -37,7 +42,10 @@ beforeEach(async () => {
     server: { port: 4417, home: dir, permissionMode: 'auto' },
     apply: (configs, ids) => set.apply(configs, ids),
   });
-  set = await Canvases.start(configs, { store, home: join(dir, 'home'), runtime, forge: noForge, config, newRepoHoldMs: 30, restartIntervalMs: 5 });
+  asked = [];
+  github = { look: () => Promise.reject(new Error('no GitHub here')), fork: () => Promise.reject(new Error('no GitHub here')), env: async () => ({}) };
+  const viaFake: GithubForNewRepo = { look: (r, a) => github.look(r, a), fork: (r, a) => github.fork(r, a), env: (h, a) => github.env(h, a) };
+  set = await Canvases.start(configs, { store, home: join(dir, 'home'), runtime, forge: noForge, config, newRepoHoldMs: 30, restartIntervalMs: 5, newRepoGithub: viaFake });
   notices = [];
   docsCanvas().board.onNotice((n) => notices.push(n));
 });
@@ -215,6 +223,115 @@ describe('building an idea in a new repository', () => {
     expect(c.board.item(card.id)!.newRepo).toBeUndefined();
     // and stands too
     expect(c.board.setNewRepo(card.id, { path: '~/dev/d', canvas: true, by: 'agent' }, 'agent')).toBe(false);
+  });
+});
+
+/** A project on "GitHub": a bare repository in the temp directory with a commit of its own on `main`. */
+function project(name: string): string {
+  const work = gitRepo(join(dir, 'work', name), { 'README.md': `# ${name}\n`, 'src/app.ts': 'export {};\n' });
+  const bare = join(dir, 'remote', `${name}.git`);
+  git(dir, 'clone', '--quiet', '--bare', work, bare);
+  return bare;
+}
+
+/** GitHub with `acme/widgets`, which the owner may push to or not; a fork goes to `ada/widgets`. */
+function stageGithub(push: boolean) {
+  const original = project('widgets');
+  const fork = join(dir, 'remote', 'ada', 'widgets.git');
+  github = {
+    look: async (r, account) => {
+      asked.push(`look ${r.owner}/${r.repo} as ${account ?? 'gh'}`);
+      return { push, fullName: `${r.owner}/${r.repo}`, cloneUrl: original, defaultBranch: 'main' };
+    },
+    fork: async (r, account) => {
+      asked.push(`fork ${r.owner}/${r.repo} as ${account ?? 'gh'}`);
+      git(dir, 'clone', '--quiet', '--bare', original, fork);
+      return { fullName: 'ada/widgets', cloneUrl: fork };
+    },
+    env: async () => ({}),
+  };
+  return { original, fork };
+}
+
+describe('a new repository from an existing project', () => {
+  test('a GitHub repository the owner cannot push to is forked and the fork cloned, the original as upstream; work lands on its main, each card may go to the original as a PR', async () => {
+    const { original, fork } = stageGithub(false);
+    const path = join(dir, 'dev', 'widgets');
+    const task = docsCanvas().board.create({ title: 'Fix the widget', body: 'Fix it.', x: 0, y: 0 });
+    docsCanvas().board.patch(task.id, { newRepo: { path, canvas: true, from: 'acme/widgets' } });
+    docsCanvas().act(task.id, { action: 'start' });
+    await until(() => set.get('widgets')?.board.item(task.id), 10_000);
+    expect(asked).toEqual(['look acme/widgets as gh', 'fork acme/widgets as gh']);
+    // the project's own history, not an empty first commit
+    expect(git(path, 'log', '--format=%s')).toBe('init');
+    expect(git(path, 'remote', 'get-url', 'origin')).toBe(fork);
+    expect(git(path, 'remote', 'get-url', 'upstream')).toBe(original);
+    expect(git(path, 'symbolic-ref', 'refs/remotes/upstream/HEAD')).toBe('refs/remotes/upstream/main');
+    // the settings that make the approval offer the pull request to the original take effect at once, on this machine
+    expect(JSON.parse(readFileSync(join(dir, 'canvases.json'), 'utf8')).at(-1)).toEqual({ repos: [{ path, settings: { land: 'main' } }] });
+    const there = set.get('widgets')!;
+    expect(there.board.canvas.repos[0]).toMatchObject({ branch: 'main', upstream: { ref: 'upstream/main', branch: 'main' } });
+    expect(there.board.events(task.id).map((e) => e.text)).toContainEqual(expect.stringContaining('ada/widgets'));
+    await until(() => runtime.sessions.some((s) => s.spec.role === 'worker' && s.inbox[0]?.includes('Fix the widget')), 10_000);
+    const brief = runtime.sessions.find((s) => s.spec.role === 'worker' && s.inbox[0]?.includes('Fix the widget'))!.inbox[0]!;
+    expect(brief).toContain('cloned it for this card from acme/widgets, by way of ada/widgets');
+    expect(brief).toContain('never go into a pull request');
+    expect(brief).not.toContain('This repository is new:');
+  });
+
+  test('a GitHub repository the owner may push to is cloned as it is, without a fork', async () => {
+    const { original } = stageGithub(true);
+    const path = join(dir, 'widgets');
+    const task = docsCanvas().board.create({ title: 'Fix', body: 'Fix it.', x: 0, y: 0 });
+    docsCanvas().board.patch(task.id, { newRepo: { path, canvas: false, from: 'https://github.com/acme/widgets.git' } });
+    docsCanvas().act(task.id, { action: 'start' });
+    await until(() => docsCanvas().board.item(task.id)?.repo === 'widgets', 10_000);
+    expect(asked).toEqual(['look acme/widgets as gh']);
+    expect(git(path, 'remote')).toBe('origin');
+    expect(git(path, 'remote', 'get-url', 'origin')).toBe(original);
+    expect(JSON.parse(readFileSync(join(dir, 'canvases.json'), 'utf8'))[0].repos.at(-1)).toEqual({ path });
+  });
+
+  test('a folder or any other git URL is cloned as it is; the card says from where', async () => {
+    const source = project('notes');
+    const path = join(dir, 'notes');
+    const card = idea(path);
+    docsCanvas().board.setNewRepo(card.id, { path, canvas: true, from: source, by: 'agent' }, 'agent');
+    docsCanvas().act(card.id, { action: 'build' });
+    await until(() => set.get('notes')?.board.item(card.id), 10_000);
+    expect(git(path, 'log', '--format=%s')).toBe('init');
+    expect(git(path, 'remote', 'get-url', 'origin')).toBe(source);
+    expect(set.get('notes')!.board.events(card.id).map((e) => e.text)).toContainEqual(expect.stringContaining(`ist ein Klon von ${source}`));
+  });
+
+  test('something that is no project to clone is refused at once; a folder that is not empty fails, and stays as it was', async () => {
+    const task = docsCanvas().board.create({ title: 'Fix', body: 'Fix it.', x: 0, y: 0 });
+    docsCanvas().board.patch(task.id, { newRepo: { path: join(dir, 'x'), canvas: true, from: 'just words' } });
+    expect(refusal(() => docsCanvas().act(task.id, { action: 'start' }))).toBe('newRepoFrom');
+    const full = join(dir, 'full');
+    mkdirSync(full);
+    writeFileSync(join(full, 'mine.txt'), 'mine');
+    docsCanvas().board.patch(task.id, { newRepo: { path: full, canvas: true, from: project('notes') } });
+    docsCanvas().act(task.id, { action: 'start' });
+    await until(() => docsCanvas().board.events(task.id).some((e) => e.kind === 'error'));
+    expect(docsCanvas().board.events(task.id).at(-1)!.text).toContain('nicht leer');
+    expect(readFileSync(join(full, 'mine.txt'), 'utf8')).toBe('mine');
+    expect(set.all().map((c) => c.id)).toEqual(['docs']);
+  });
+
+  test('once the undo window is over, the card says the clone is under way and offers no undo', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((go) => (release = go));
+    stageGithub(true);
+    const look = github.look;
+    github.look = async (r, a) => (await held, look(r, a));
+    const task = docsCanvas().board.create({ title: 'Fix', body: 'Fix it.', x: 0, y: 0 });
+    docsCanvas().board.patch(task.id, { newRepo: { path: join(dir, 'widgets'), canvas: true, from: 'acme/widgets' } });
+    docsCanvas().act(task.id, { action: 'start' });
+    await until(() => docsCanvas().board.item(task.id)!.newRepo?.making);
+    expect(refusal(() => docsCanvas().act(task.id, { action: 'stayHere' }))).toBe('newRepoGone');
+    release();
+    await until(() => set.get('widgets')?.board.item(task.id), 10_000);
   });
 });
 

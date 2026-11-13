@@ -6,7 +6,7 @@ import { archiveRefusal } from '../core/card';
 import { Body, Inline } from './markdown';
 import { cardDraft } from './draft';
 import { Composer } from './composer';
-import { newRepoWords, type RepoChoice, RepoPick } from './repoPick';
+import { makingWords, newRepoWords, type RepoChoice, RepoPick } from './repoPick';
 import { snoozeWho } from './snooze';
 import { stateLabel, t } from './strings';
 import { type Act, ArchiveButton, Armed, DeleteButton, Later, RepoDownBox, type Run, StateLine, SupersededBox, type Tell } from './cardSheet';
@@ -117,7 +117,7 @@ export function IdeaView({
               </button>
             )}
             {item.newRepo?.due ? (
-              <Armed label={t.repoPick.making(choice.name)} undo={t.undo} onUndo={() => act({ action: 'stayHere' }, { close: false })} />
+              <Armed label={makingWords(item, choice.name)} undo={t.undo} {...(item.newRepo.making ? {} : { onUndo: () => act({ action: 'stayHere' }, { close: false }) })} />
             ) : idea.buildAfterReply ? (
               <Armed label={t.idea.buildWaits} undo={t.idea.unbuild} onUndo={() => act({ action: 'unbuild' }, { close: false })} />
             ) : (

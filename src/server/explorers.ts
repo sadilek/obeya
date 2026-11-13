@@ -483,16 +483,17 @@ export class Explorers {
       },
       {
         name: 'plan_repo',
-        description: `When the owner wants the idea built in a repository that does not exist yet ("in a new repo under ~/dev/super59"): path, its folder (absolute or from ~), and canvas: true for a canvas of its own (the default), false where the owner wants the repository on this canvas beside the others. The card's repository picker then shows it, and its button builds it there: Obeya creates the folder and a local git repository (no remote, nothing published), a canvas named after it, moves this idea there with all it holds (brief, conversation, mocks, decisions) and builds it there; the worker hears the repository is new and sets it up (CLAUDE.md, Obeya's settings). The whole value each time; an empty path when it is to be built in an existing repository again. What the owner picked on the card stands: you do not change it.`,
-        schema: { path: z.string(), canvas: z.boolean().optional() },
-        run: ({ path, canvas }) => {
+        description: `When the owner wants the idea built in a repository that does not exist yet ("in a new repo under ~/dev/super59"): path, its folder (absolute or from ~), and canvas: true for a canvas of its own (the default), false where the owner wants the repository on this canvas beside the others. The card's repository picker then shows it, and its button builds it there: Obeya creates the folder and a local git repository (no remote, nothing published), a canvas named after it, moves this idea there with all it holds (brief, conversation, mocks, decisions) and builds it there; the worker hears the repository is new and sets it up (CLAUDE.md, Obeya's settings). from: where the idea is a change to an existing project the owner does not have here yet (a fork of an open-source project, say), that project (owner/name on GitHub, a git URL or a folder): the repository then starts as a clone of it instead of empty, a GitHub repository the owner cannot push to forked into their account first, the original kept as the remote upstream. The whole value each time; an empty path when it is to be built in an existing repository again. What the owner picked on the card stands: you do not change it.`,
+        schema: { path: z.string(), canvas: z.boolean().optional(), from: z.string().optional() },
+        run: ({ path, canvas, from }) => {
           const p = clip(String(path ?? '').trim(), 1000);
+          const f = clip(String(from ?? '').trim(), 1000);
           if (p && !folderPath(p)) return `${p} is no folder: give it absolute or from ~.`;
-          const set = this.o.board.setNewRepo(cardId, p ? { path: p, canvas: canvas !== false, by: 'agent' } : null, 'agent');
+          const set = this.o.board.setNewRepo(cardId, p ? { path: p, canvas: canvas !== false, ...(f ? { from: f } : {}), by: 'agent' } : null, 'agent');
           const now = this.o.board.newRepo(cardId);
           if (!set) return `The owner picked the repository on the card themselves${now?.path ? ` (a new one at ${now.path})` : ''}; it stays as they chose.`;
           this.o.board.log(cardId, 'activity', 'explorer', p ? t.plansRepo(p) : t.plansNoRepo);
-          return p ? `The card now builds it in a new repository at ${p}${canvas === false ? ' on this canvas' : ', with a canvas of its own'}.` : 'No new repository: it is built where the card says.';
+          return p ? `The card now builds it in a new repository at ${p}${f ? `, a clone of ${f}` : ''}${canvas === false ? ' on this canvas' : ', with a canvas of its own'}.` : 'No new repository: it is built where the card says.';
         },
       },
       {
@@ -550,7 +551,7 @@ export class Explorers {
       mocks.length ? `The brief's mocks, shown under it (update_brief without mocks keeps them): ${mocks.map((m) => `“${m.title}”`).join(', ')}.` : '',
       variants.length ? `The prototypes you planned (plan_prototypes):\n${variants.map((v) => `- ${v.approach}: ${v.show}`).join('\n')}` : '',
       split ? `The part you marked to split off (plan_split): “${split.title}”.\n\n${split.brief}` : '',
-      repo ? `It is to be built in a new repository at ${repo.path || '(no folder named yet)'}${repo.canvas ? ', with a canvas of its own' : ' on this canvas'}, as ${repo.by === 'owner' ? 'the owner picked on the card' : 'you marked with plan_repo'}.` : '',
+      repo ? `It is to be built in a new repository at ${repo.path || '(no folder named yet)'}${repo.from ? `, a clone of ${repo.from}` : ''}${repo.canvas ? ', with a canvas of its own' : ' on this canvas'}, as ${repo.by === 'owner' ? 'the owner picked on the card' : 'you marked with plan_repo'}.` : '',
       shown.length
         ? `The idea's prototypes${prototypes.length > shown.length ? ` (the latest ${shown.length} of ${prototypes.length})` : ''}:\n${shown.map((p) => `- “${p.title}”, ${prototypeState(p)}${p.summary ? `. Its summary: ${clip(p.summary, 2000)}` : ''}`).join('\n')}`
         : '',

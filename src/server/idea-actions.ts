@@ -3,7 +3,7 @@
 // project, prototypes and what becomes of them, and making the new repository the card moves to.
 
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { type Item, UNDO_HOLD_MS } from '../core/types';
 import { buildableOn, plannableAsProject } from '../core/card';
 import { clip, messageOf, oneLine, plainText } from '../core/text';
@@ -14,12 +14,22 @@ import { slug } from './canvas-config';
 import type { Config } from './config';
 import type { Coordinator } from './coordinator';
 import type { Store } from './db';
-import { fromJson, type StoredDemo, toJson } from './row';
+import { fromJson, type StoredDemo, type StoredNewRepo, toJson } from './row';
 import type { Explorers } from './explorers';
 import { type Images, MAX_IMAGES } from './images';
-import { makeRepo, newRepoPath } from './new-repo';
+import { type ClonedRepo, cloneRepo, ghNewRepo, type GithubForNewRepo, makeRepo, type MadeRepo, newRepoPath, newRepoSource } from './new-repo';
+import { expandHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { realPath } from './path';
 import { outsidePlanDir } from './repo';
+
+/** What is kept of a card's new repository once Obeya made it: where, and what it was cloned from (and the fork it made), for its worker's brief. */
+const madeRecord = (target: StoredNewRepo, repo: MadeRepo | ClonedRepo): StoredNewRepo => ({
+  path: target.path,
+  canvas: target.canvas,
+  by: target.by,
+  made: true,
+  ...('from' in repo ? { from: repo.from, ...(repo.fork ? { fork: repo.fork.name } : {}) } : {}),
+});
 
 /** New repositories being made, one after the other (`makeNewRepo`). */
 let making: Promise<unknown> = Promise.resolve();
@@ -86,6 +96,8 @@ export interface IdeaActionsOptions {
   config?: Config;
   /** How long building or starting a card in a new repository waits for undo; UNDO_HOLD_MS when left out. */
   newRepoHoldMs?: number;
+  /** What a new repository started from a GitHub repository asks of GitHub; `ghNewRepo` when left out. */
+  github?: GithubForNewRepo;
   /** The card left for another canvas: what the canvas kept of the owner's words on it goes. */
   forget: (cardId: string) => void;
 }
@@ -216,6 +228,7 @@ export class IdeaActions {
     if (target.due) return;
     const t = this.board.t.newRepo;
     const path = newRepoPath(target.path, t);
+    if (target.from?.trim()) newRepoSource(target.from, t);
     if (this.o.config && this.o.config.view().source !== 'file') throw new BadRequest('newRepoPath', t.fromCommandLine);
     this.taken(path);
     const due = Date.now() + (this.o.newRepoHoldMs ?? UNDO_HOLD_MS);
@@ -224,6 +237,9 @@ export class IdeaActions {
       cardId,
       setTimeout(() => {
         this.newRepos.delete(cardId);
+        // past taking it back: the card says so while a clone takes its minutes
+        const now = this.board.newRepo(cardId);
+        if (now?.due) this.board.setNewRepo(cardId, { ...now, making: true });
         // one after the other, on any canvas: each adds to the configuration as the one before left it
         making = making.then(() => this.makeNewRepo(cardId));
       }, due - Date.now()),
@@ -274,13 +290,22 @@ export class IdeaActions {
       this.taken(path);
       const config = this.o.config;
       if (!config) throw new Error('no configuration to add the repository to');
-      const repo = makeRepo(path, t);
-      undo.push(repo.undo);
       const { resolved } = await config.check(config.current());
       const here = resolved.findIndex((r) => r?.id === this.id);
       if (here < 0) throw new Error(`the canvas ${this.id} is not in the configuration`);
-      // on the configuration as it is now, and taken back from it as it is then: changes meanwhile stay
-      const added = { path: target.path.trim() };
+      const source = target.from?.trim() ? newRepoSource(target.from, t) : null;
+      // on GitHub as the account set for the card's repository on this machine, else gh's active one
+      const mine = this.repos.find((r) => r.ref.id === card.repo) ?? this.repos[0];
+      const account = source && 'github' in source && mine ? config.current()[here]?.repos.find((r) => resolve(expandHome(r.path)) === resolve(mine.info.path))?.githubAccount : undefined;
+      const repo: MadeRepo | ClonedRepo = source ? await cloneRepo(path, source, t, this.o.github ?? ghNewRepo(), account) : makeRepo(path, t);
+      undo.push(repo.undo);
+      // on the configuration as it is now, and taken back from it as it is then: changes meanwhile stay;
+      // a fork lands on its own main branch, so each card may go to the original as a pull request too
+      const added = {
+        path: target.path.trim(),
+        ...(account ? { githubAccount: account } : {}),
+        ...('fork' in repo && repo.fork ? { settings: { land: 'main' as const } } : {}),
+      };
       const now = config.current();
       const after = target.canvas ? [...now, { repos: [added] }] : now.map((c, i) => (i === here ? { ...c, repos: [...c.repos, added] } : c));
       await config.save(after);
@@ -290,12 +315,12 @@ export class IdeaActions {
           return repos.length ? [{ ...c, repos }] : [];
         });
       undo.push(() => config.save(without()));
-      if (!target.canvas) return this.joined(cardId, path, repo.made);
+      if (!target.canvas) return this.joined(cardId, path, repo);
       const checked = await config.check(after);
       const id = checked.resolved.at(-1)?.id;
       const there = id ? this.o.canvases?.().find((c) => c.id === id) : undefined;
       if (!there) throw new Error(t.notStarted(checked.problems.filter((p) => p.canvas === after.length - 1).map((p) => p.detail).join('; ') || path));
-      this.moveTo(cardId, there, repo.made);
+      this.moveTo(cardId, there, repo);
     } catch (e) {
       for (const step of undo.reverse()) {
         try {
@@ -305,20 +330,21 @@ export class IdeaActions {
         }
       }
       if (!this.board.item(cardId)) return;
-      this.board.setNewRepo(cardId, { ...target, due: undefined });
+      this.board.setNewRepo(cardId, { ...target, due: undefined, making: undefined });
       this.board.log(cardId, 'error', 'obeya', t.failed(messageOf(e)), { code: e instanceof BadRequest ? e.code : undefined });
     }
   }
 
   /** The new repository joined this canvas: the card works in it, an idea built as "Build it like this" builds it. */
-  private joined(cardId: string, path: string, made: boolean) {
+  private joined(cardId: string, path: string, repo: MadeRepo | ClonedRepo) {
     const r = this.repos.find((x) => x.info.path === path);
     if (!r) throw new Error(`${path} does not run on the canvas`);
     const card = this.board.item(cardId)!;
     const target = this.board.newRepo(cardId)!;
     this.board.patch(cardId, { repo: r.ref.id });
-    this.board.setNewRepo(cardId, { path: target.path, canvas: false, by: target.by, made: true });
-    this.board.log(cardId, 'state', 'obeya', this.board.t.newRepo.joined(target.path.trim(), made));
+    this.board.setNewRepo(cardId, { ...madeRecord(target, repo), canvas: false });
+    this.board.log(cardId, 'state', 'obeya', this.board.t.newRepo.joined(target.path.trim(), repo.made));
+    if ('from' in repo) this.board.log(cardId, 'state', 'obeya', this.board.t.newRepo.cloned(target.path.trim(), repo.from, repo.fork?.name));
     if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(target.path.trim()), log: this.board.t.idea.buildLog });
     this.coordinator.request(cardId);
   }
@@ -329,7 +355,7 @@ export class IdeaActions {
    * with its history, decisions and screenshots, out of its group, and starts there. This canvas's
    * sheet says where it went, and a page that has it open follows it.
    */
-  private moveTo(cardId: string, there: CanvasRuntime, made: boolean) {
+  private moveTo(cardId: string, there: CanvasRuntime, repo: MadeRepo | ClonedRepo) {
     const card = this.board.item(cardId)!;
     const target = this.board.newRepo(cardId)!;
     const shown = target.path.trim();
@@ -340,9 +366,10 @@ export class IdeaActions {
     if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(shown), log: this.board.t.idea.buildLog });
     this.o.forget(cardId);
     const at = there.board.freeSpot(there.inView);
-    this.o.store.moveCard(cardId, there.id, at, { new_repo: toJson({ path: target.path, canvas: true, by: target.by, made: true }) });
+    this.o.store.moveCard(cardId, there.id, at, { new_repo: toJson({ ...madeRecord(target, repo), canvas: true }) });
     this.o.store.dropEmptyGroups(this.id);
-    there.board.log(cardId, 'state', 'obeya', there.board.t.newRepo.movedHere(this.board.canvas.name, shown, made));
+    there.board.log(cardId, 'state', 'obeya', there.board.t.newRepo.movedHere(this.board.canvas.name, shown, repo.made));
+    if ('from' in repo) there.board.log(cardId, 'state', 'obeya', there.board.t.newRepo.cloned(shown, repo.from, repo.fork?.name));
     const moved = { card: cardId, title: card.title, canvas: there.id, canvasName: there.board.canvas.name };
     this.board.moved(moved);
     this.o.tell(`The card "${card.title}" moved to the canvas "${there.board.canvas.name}", in its new repository ${shown}, and is built there.`);

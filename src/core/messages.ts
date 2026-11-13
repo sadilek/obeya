@@ -465,11 +465,18 @@ const de = {
     taken: (path: string, canvas: string) => `Das Repository ${path} gibt es auf der Leinwand „${canvas}“ schon; wähl es dort.`,
     inside: (path: string, repo: string) => `${path} liegt im Repository ${repo}.`,
     notFolder: (path: string) => `${path} ist kein Ordner.`,
+    notEmpty: (path: string) => `${path} ist nicht leer; ein Klon braucht einen neuen oder leeren Ordner.`,
+    badFrom: (from: string) => `${from} ist kein Projekt zum Klonen: owner/name auf GitHub, eine Git-URL oder ein Ordner (absolut oder ab ~).`,
     fromCommandLine: 'Die Leinwände kommen von der Kommandozeile; eine neue legt nur die Konfiguration an.',
     notStarted: (why: string) => `Die neue Leinwand startet nicht: ${why}`,
     /** In the card's conversation, once it is on the new canvas. */
     movedHere: (from: string, path: string, made: boolean) => `Von der Leinwand „${from}“ hierher umgezogen. Das Repository ${path} ${made ? 'ist neu angelegt' : 'gab es schon'}.`,
     joined: (path: string, made: boolean) => `Das Repository ${path} ${made ? 'ist neu angelegt und ' : ''}gehört jetzt zu dieser Leinwand; die Karte arbeitet darin.`,
+    /** After `movedHere` or `joined`, for a repository cloned from an existing project; `fork`: the fork Obeya made of it on GitHub. */
+    cloned: (path: string, from: string, fork?: string) =>
+      fork
+        ? `${path} ist ein Klon von ${fork}, dem Fork von ${from}, den Obeya dafür auf GitHub angelegt hat. Arbeit landet auf seinem Hauptbranch; jede Karte kann zusätzlich als Pull Request an ${from} gehen.`
+        : `${path} ist ein Klon von ${from}.`,
     /** In Obeya's sheet of the canvas the card left. */
     movedAway: (title: string, canvas: string) => `„${title}“ ist auf die Leinwand „${canvas}“ umgezogen und wird dort gebaut.`,
     /** The answer the decision log records when an idea is built in a new repository. */
@@ -1021,10 +1028,16 @@ const en: Messages = {
     taken: (path: string, canvas: string) => `The repository ${path} is on the canvas “${canvas}” already; choose it there.`,
     inside: (path: string, repo: string) => `${path} lies inside the repository ${repo}.`,
     notFolder: (path: string) => `${path} is not a folder.`,
+    notEmpty: (path: string) => `${path} is not empty; a clone needs a new or empty folder.`,
+    badFrom: (from: string) => `${from} is no project to clone: owner/name on GitHub, a git URL or a folder (absolute or from ~).`,
     fromCommandLine: 'The canvases come from the command line; a new one would only go into the configuration.',
     notStarted: (why: string) => `The new canvas does not start: ${why}`,
     movedHere: (from: string, path: string, made: boolean) => `Moved here from the canvas “${from}”. The repository ${path} ${made ? 'is new' : 'existed already'}.`,
     joined: (path: string, made: boolean) => `The repository ${path} ${made ? 'is new and ' : ''}belongs to this canvas now; the card works in it.`,
+    cloned: (path: string, from: string, fork?: string) =>
+      fork
+        ? `${path} is a clone of ${fork}, the fork of ${from} Obeya made for it on GitHub. Work lands on its main branch; each card may also go to ${from} as a pull request.`
+        : `${path} is a clone of ${from}.`,
     movedAway: (title: string, canvas: string) => `“${title}” moved to the canvas “${canvas}” and is built there.`,
     buildAnswer: (path: string) => `Build it like this, in the new repository ${path}.`,
   },

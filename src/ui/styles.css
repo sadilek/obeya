@@ -728,8 +728,9 @@ textarea.p-body:focus { border-color: var(--muted); }
 /* the repository a card is built in, with a new one's folder and whether it gets a canvas of its own */
 .upstream-pick > .hint:first-child { margin-right: 10px; }
 .repo-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
-.repo-new { display: flex; align-items: center; gap: 14px; margin-top: 12px; flex: 0 1 560px; }
-.repo-path { flex: 1; min-width: 0; font: 13px var(--mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); }
+.repo-new { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 12px; flex: 0 1 820px; }
+.repo-path, .repo-from > input { flex: 1 1 200px; min-width: 0; font: 13px var(--mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); }
+.repo-from { display: flex; flex: 1 1 300px; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .repo-canvas { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .actions { display: flex; gap: 10px; margin-top: 18px; align-items: center; }
 /* deleting stands apart from what moves the card on */

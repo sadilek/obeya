@@ -174,9 +174,15 @@ ${idea.idea.brief}` : '',
     );
     if (card.adopted) parts.push(adoptedRules(card.adopted));
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
-    if (fromJson(this.o.board.row(card.id).new_repo)?.made)
+    const made = fromJson(this.o.board.row(card.id).new_repo);
+    const setupCard = `the card “${this.o.board.t.adapterSetup.title(basename(this.o.repoPath ?? ''))}” would`;
+    if (made?.made && made.from)
       parts.push(
-        `This repository is new: Obeya created it for this card with a first commit of what its folder held (a default .gitignore, else nothing). It is local only, with no remote. Besides the task, set it up as part of your work: a CLAUDE.md with what the task says about how to work in this repository, and its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as the card “${this.o.board.t.adapterSetup.title(basename(this.o.repoPath ?? ''))}” would.`,
+        `This repository is new on this machine: Obeya cloned it for this card from ${made.from}${made.fork ? `, by way of ${made.fork}, a fork of it Obeya made on GitHub in the owner's account: \`origin\` is the fork, \`upstream\` the original. Work here lands on the fork's main branch, and the owner may also send a card to ${made.from} as a pull request when approving it` : ''}. It is an existing project: its history, files and CLAUDE.md are the project's own, and the task is your change to it. Besides the task, write its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as ${setupCard}${made.fork ? `; how work lands and the original's main branch are set for this machine already. The settings are the fork's own: they never go into a pull request to ${made.from}` : ''}.`,
+      );
+    else if (made?.made)
+      parts.push(
+        `This repository is new: Obeya created it for this card with a first commit of what its folder held (a default .gitignore, else nothing). It is local only, with no remote. Besides the task, set it up as part of your work: a CLAUDE.md with what the task says about how to work in this repository, and its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as ${setupCard}.`,
       );
     const { run, stop } = this.o.adapter.app ?? {};
     const parking = stop ? ' While the card waits for the owner, Obeya stops the app in your workspace; your next message then says so.' : '';

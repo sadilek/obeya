@@ -135,15 +135,18 @@ export function StartButton({ item, act, label, hint, disabled, on }: { item: It
 }
 
 /** A go clicked while an agent works on the card ("Build it like this", "Accept and start"): it waits armed until the agent is done, its take-back beside it. */
-export function Armed({ label, undo, onUndo }: { label: string; undo: string; onUndo: () => void }) {
+export function Armed({ label, undo, onUndo }: { label: string; undo: string; onUndo?: () => void }) {
   return (
     <>
       <button className="btn primary armed" disabled aria-pressed>
         {label}
       </button>
-      <button className="btn" onClick={onUndo}>
-        {undo}
-      </button>
+      {/* without onUndo it is past taking back */}
+      {onUndo && (
+        <button className="btn" onClick={onUndo}>
+          {undo}
+        </button>
+      )}
     </>
   );
 }

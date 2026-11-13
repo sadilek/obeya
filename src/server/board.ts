@@ -1997,7 +1997,13 @@ export class Board {
       // a branch taken is the old repository's
       ...(repo !== undefined ? { repo: this.repoColumn(repo), ...(row.repo !== this.repoColumn(repo) ? { adopted: null } : {}) } : {}),
       ...(newRepo !== undefined || repo !== undefined
-        ? { new_repo: toJson(newRepo ? ({ path: newRepo.path.trim(), canvas: newRepo.canvas, by: 'owner' } satisfies NewRepo) : ({ path: '', canvas: true, by: 'owner', none: true } satisfies StoredNewRepo)) }
+        ? {
+            new_repo: toJson(
+              newRepo
+                ? ({ path: newRepo.path.trim(), canvas: newRepo.canvas, ...(newRepo.from?.trim() ? { from: newRepo.from.trim() } : {}), by: 'owner' } satisfies NewRepo)
+                : ({ path: '', canvas: true, by: 'owner', none: true } satisfies StoredNewRepo),
+            ),
+          }
         : {}),
       ...(images !== undefined ? { images: images.length ? toJson(images) : null } : {}),
       ...(collapsed !== undefined ? { collapsed: collapsed ? 1 : 0 } : {}),
@@ -2010,6 +2016,8 @@ export class Board {
     if (n !== null && (typeof n !== 'object' || typeof (n as NewRepo).path !== 'string' || typeof (n as NewRepo).canvas !== 'boolean'))
       throw new BadRequest('invalid', 'newRepo must be { path, canvas } or null');
     if (n && (n as NewRepo).path.length > 1000) throw new BadRequest('invalid', 'the path is too long');
+    const from = n && (n as NewRepo).from;
+    if (from !== undefined && from !== null && (typeof from !== 'string' || from.length > 1000)) throw new BadRequest('invalid', 'from must be a repository to clone, at most 1000 characters');
     if (row.prototype_of || begun(row))
       throw new BadRequest('invalid', 'a card gets a new repository only before work on it begins');
     if (this.newRepo(row.id)?.due) throw new BadRequest('newRepoDue', 'the new repository is being made');

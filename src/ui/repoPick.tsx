@@ -1,5 +1,6 @@
 // The repository a card is built in, picked before work on it begins: one of the canvas's, or a
-// new one Obeya creates for it (its folder, and whether it gets a canvas of its own). Built once
+// new one Obeya creates for it (its folder, the project it starts as a clone of, if any, and
+// whether it gets a canvas of its own). Built once
 // for every kind of card that has a task before it starts (a planned task, an idea); the button
 // that starts or builds the card names a new one, so what the click does is clear before it.
 
@@ -11,6 +12,8 @@ import { t } from './strings';
 export interface FreshRepo {
   path: string;
   canvas: boolean;
+  /** An existing project it starts as a clone of; empty: it starts empty. */
+  from?: string;
 }
 
 export interface RepoChoice {
@@ -29,12 +32,12 @@ export interface RepoChoice {
  * shows, unless the owner has changed it on the card since it opened.
  */
 export function useRepoChoice(item: Item, onEdit: (p: CardPatch) => void): RepoChoice {
-  const saved: FreshRepo | null = item.newRepo ? { path: item.newRepo.path, canvas: item.newRepo.canvas } : null;
+  const saved: FreshRepo | null = item.newRepo ? { path: item.newRepo.path, canvas: item.newRepo.canvas, ...(item.newRepo.from ? { from: item.newRepo.from } : {}) } : null;
   const [repo, setRepo] = useState(item.repo);
   const [fresh, setFreshState] = useState(saved);
   // what the owner picked here and the server does not have yet: until it does, the card keeps showing it
   const mine = useRef<string | null>(null);
-  const key = (r: string, f: FreshRepo | null) => JSON.stringify([r, f?.path.trim() ?? null, f?.canvas ?? null]);
+  const key = (r: string, f: FreshRepo | null) => JSON.stringify([r, f?.path.trim() ?? null, f?.canvas ?? null, f?.from?.trim() || null]);
   const stored = key(item.repo, saved);
   useEffect(() => {
     if (mine.current !== null && mine.current !== stored) return;
@@ -64,6 +67,12 @@ export function useRepoChoice(item: Item, onEdit: (p: CardPatch) => void): RepoC
 
 /** The name a new repository's folder gives it (and its canvas): the last part of its path. */
 export const newRepoName = (path: string) => path.trim().replace(/[/\\]+$/, '').split(/[/\\]/).at(-1) ?? '';
+
+/** The name of the project a new repository is cloned from: the last part of `owner/name`, a URL or a folder, without `.git`. */
+const sourceName = (from: string) => newRepoName(from.trim().replace(/\.git$/, '').replace(/^.*:/, ''));
+
+/** Whether a new repository's source is on GitHub (`owner/name`, or a github.com URL), which Obeya may fork first. */
+const onGithub = (from: string) => /^[\w.-]+\/[\w.-]+$/.test(from.trim()) || /github\.com[/:]/i.test(from);
 
 /** Where a new repository's folder starts out: beside the canvas's first repository. */
 const besideHome = (repos: RepoRef[]) => repos[0]?.path.replace(/[/\\][^/\\]+[/\\]?$/, '/') ?? '';
@@ -120,6 +129,22 @@ export function RepoPick({ choice, repos, fresh = true }: { choice: RepoChoice; 
             maxLength={1000}
             onChange={(e) => choice.setFresh({ ...n, path: e.target.value })}
           />
+          <label className="repo-from" title={t.repoPick.fromHint}>
+            {t.repoPick.from}
+            <input
+              aria-label={t.repoPick.from}
+              value={n.from ?? ''}
+              placeholder={t.repoPick.fromPlaceholder}
+              spellCheck={false}
+              maxLength={1000}
+              onChange={(e) => choice.setFresh({ ...n, from: e.target.value })}
+              // a folder named only up to where it goes takes the project's name
+              onBlur={() => {
+                const name = n.from ? sourceName(n.from) : '';
+                if (name && /[/\\]$/.test(n.path)) choice.setFresh({ ...n, path: n.path + name });
+              }}
+            />
+          </label>
           <label className="repo-canvas" title={t.repoPick.ownCanvasHint}>
             <input type="checkbox" checked={n.canvas} onChange={(e) => choice.setFresh({ ...n, canvas: e.target.checked })} />
             {t.repoPick.ownCanvas}
@@ -136,9 +161,17 @@ export function newRepoWords(choice: RepoChoice, idea: boolean): { button: strin
   if (!n) return null;
   const path = n.path.trim();
   if (!path || !choice.name) return { button: idea ? t.idea.build : t.start, hint: t.repoPick.noPath, ready: false };
+  const from = n.from?.trim();
   return {
     button: idea ? t.repoPick.build(choice.name) : t.repoPick.start(choice.name),
-    hint: n.canvas ? t.repoPick.willMove(path, choice.name, idea) : t.repoPick.willJoin(path),
+    hint: from
+      ? `${t.repoPick.willClone(from, path, onGithub(from))} ${n.canvas ? t.repoPick.andMove(choice.name, idea) : t.repoPick.andJoin}`
+      : n.canvas
+        ? t.repoPick.willMove(path, choice.name, idea)
+        : t.repoPick.willJoin(path),
     ready: true,
   };
 }
+
+/** What the button's place says while Obeya makes the card's new repository. */
+export const makingWords = (item: Item, name: string) => (item.newRepo?.making && item.newRepo.from ? t.repoPick.cloning(name) : t.repoPick.making(name));

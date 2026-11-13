@@ -10,7 +10,9 @@ first repository is the canvas's home; the others' plan docs are referenced as `
 owner's cards carry their repository, chosen in the panel before work begins (home by default); on a
 canvas with several repositories every card names its own. The picker (on a planned task, and on an
 idea beside "Build it like this"; built once for both) lists the canvas's repositories and "New repository
-…": a folder (it starts beside the home repository) and "own canvas" (on by default; off, the
+…": a folder (it starts beside the home repository), "from" (empty, or an existing project the new
+repository starts as a clone of, a fork where the owner cannot push to it; a folder named only up
+to where it goes then takes the project's name) and "own canvas" (on by default; off, the
 repository joins this canvas). Picked, it reads "super59 (new)", and starting or building the card
 creates that repository first (see Building in a new repository); it is saved as it is picked,
 like anything entered on a card. It shows on a canvas with several repositories, and on a card

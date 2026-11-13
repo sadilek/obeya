@@ -1363,15 +1363,20 @@ export interface NewCard {
 /**
  * A repository to be created for a card: its folder (absolute or from `~`; empty while the owner has
  * not named one yet) and whether it gets a canvas of its own, which the card moves to, or joins the
- * card's canvas. `by`: who chose it; what the owner chose, the idea's agent does not change.
+ * card's canvas. `from`: an existing project it starts as a clone of (`owner/name` on GitHub, a git
+ * URL, a folder), forked first where the owner cannot push to it on GitHub; without, it starts empty.
+ * `by`: who chose it; what the owner chose, the idea's agent does not change.
  * `due`: building or starting the card was clicked, and Obeya creates the repository then (ISO),
- * unless the owner takes it back meanwhile (`UNDO_HOLD_MS`).
+ * unless the owner takes it back meanwhile (`UNDO_HOLD_MS`); `making`: that time has come, and
+ * Obeya is making it (cloning a large project takes minutes), past taking it back.
  */
 export interface NewRepo {
   path: string;
   canvas: boolean;
+  from?: string;
   by: 'owner' | 'agent';
   due?: string;
+  making?: true;
 }
 
 /** A card on another canvas, as a card that refers to it shows it. */
@@ -1395,7 +1400,7 @@ export interface CardPatch {
   /** The task's screenshots, all of them (ids from `POST /api/c/<canvas>/images`). */
   images?: string[];
   /** Before work begins: a repository to create for the card (`by` is the owner's), or none (null). */
-  newRepo?: Pick<NewRepo, 'path' | 'canvas'> | null;
+  newRepo?: Pick<NewRepo, 'path' | 'canvas' | 'from'> | null;
   /** In a fork (`RepoRef.upstream`), until the approval: whether the work goes to the original repository as a pull request too (`Item.upstream`). */
   upstream?: boolean;
 }
@@ -1654,6 +1659,8 @@ export type ErrorCode =
   | 'newRepoDue'
   /** Building or starting a card in a new repository that has no folder named. */
   | 'newRepoPath'
+  /** A new repository is to start from something that is no project git could clone (`NewRepo.from`). */
+  | 'newRepoFrom'
   /** The undo window of a new repository is over: it is being made. */
   | 'newRepoGone'
   /** Every machine with a clean free clone has as many workers busy as it has slots. */

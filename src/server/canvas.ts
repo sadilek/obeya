@@ -1,6 +1,7 @@
 // One canvas and everything that works on it: its repositories (each with adapter, workspaces,
 // workers, project agents and PR watcher), the board, the Coordinator and the voice commands.
 
+import type { GithubForNewRepo } from './new-repo';
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -87,6 +88,8 @@ export interface CanvasDeps {
   commandDelayMs?: number;
   /** How long building or starting a card in a new repository waits for undo; UNDO_HOLD_MS when left out. */
   newRepoHoldMs?: number;
+  /** What a new repository started from a GitHub repository asks of GitHub (`ghNewRepo` when left out); a stand-in in tests. */
+  newRepoGithub?: GithubForNewRepo;
   /** The checkout this Obeya runs from, when it starts again for new code there (self-update.ts). */
   ownCheckout?: string | null;
   /** Obeya's configuration, which the Coordinator reads and changes on the owner's word. */
@@ -420,6 +423,7 @@ export class CanvasRuntime {
       ...(deps.canvases ? { canvases: deps.canvases } : {}),
       ...(deps.config ? { config: deps.config } : {}),
       ...(deps.newRepoHoldMs !== undefined ? { newRepoHoldMs: deps.newRepoHoldMs } : {}),
+      ...(deps.newRepoGithub ? { github: deps.newRepoGithub } : {}),
       forget: (cardId) => {
         clearTimeout(this.writing.get(cardId)?.timer);
         this.writing.delete(cardId);
@@ -473,7 +477,7 @@ export class CanvasRuntime {
     });
     board.interruptTalk();
     // the undo window of a new repository is not kept across a restart: the card stays as it was
-    for (const i of board.items()) if (i.newRepo?.due) board.setNewRepo(i.id, { ...i.newRepo, due: undefined });
+    for (const i of board.items()) if (i.newRepo?.due) board.setNewRepo(i.id, { ...i.newRepo, due: undefined, making: undefined });
     this.commander.resume();
     this.answers.resumeAll();
     this.revisions = new Revisions({
@@ -2085,7 +2089,7 @@ export class CanvasRuntime {
       case 'newRepo': {
         const card = this.board.item(c.card);
         if (!card) throw new BadRequest('unknownCard', 'unknown card');
-        this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, by: 'owner' });
+        this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, ...(c.from ? { from: c.from } : {}), by: 'owner' });
         return this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' });
       }
       case 'reviewPr':

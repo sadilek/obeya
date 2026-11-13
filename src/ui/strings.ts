@@ -446,7 +446,7 @@ const de = {
   /** The repository picker of a card before work begins, with a repository Obeya creates for it. */
   repoPick: {
     newRepo: 'Neues Repository …',
-    newRepoHint: 'Ein Repository, das es noch nicht gibt: Obeya legt Ordner und git an, nur lokal.',
+    newRepoHint: 'Ein Repository, das es noch nicht gibt: Obeya legt Ordner und git an, nur lokal, oder klont ein bestehendes Projekt hinein.',
     /** The picker's entry and the buttons once a new repository has its folder. */
     named: (name: string) => `${name} (neu)`,
     path: 'Ordner',
@@ -461,6 +461,16 @@ const de = {
     start: (name: string) => `Agent starten in ${name} (neu)`,
     /** While the undo window runs, in place of the button. */
     making: (name: string) => `Legt ${name} an …`,
+    from: 'von',
+    fromPlaceholder: 'leer, oder ein Projekt zum Forken: owner/name, Git-URL',
+    fromHint: 'Leer beginnt das Repository leer. Ein bestehendes Projekt hier (owner/name auf GitHub, eine Git-URL oder ein Ordner) macht es zu einem Klon davon; ein GitHub-Repository, in das du nicht pushen darfst, forkt Obeya vorher in dein GitHub-Konto.',
+    /** Under the buttons, for a new repository cloned from an existing project, before what becomes of its canvas. */
+    willClone: (from: string, path: string, github: boolean) =>
+      github ? `Forkt ${from} in dein GitHub-Konto (wo du nicht pushen darfst) und klont es nach ${path}.` : `Klont ${from} nach ${path}.`,
+    andMove: (canvas: string, idea: boolean) => `Legt die Leinwand „${canvas}“ an und nimmt die ${idea ? 'Idee' : 'Aufgabe'} mit allem dorthin mit.`,
+    andJoin: 'Es kommt zu dieser Leinwand dazu.',
+    /** In place of the button once the undo window is over and the clone is under way. */
+    cloning: (name: string) => `Klont ${name} …`,
   },
   task: 'Auftrag',
   talk: {
@@ -703,6 +713,7 @@ const de = {
     evicting: 'Die Aufgabe gibt gerade ihren Workspace ab; starte sie gleich noch einmal.',
     newRepoDue: 'Obeya legt das neue Repository gerade an.',
     newRepoPath: 'Für das neue Repository fehlt der Ordner.',
+    newRepoFrom: 'Davon lässt sich nicht klonen: Gib owner/name auf GitHub, eine Git-URL oder einen Ordner an.',
     newRepoGone: 'Zu spät: Obeya legt das Repository schon an.',
     notMovable: 'Die Aufgabe kann in der Warteschlange nicht weiter.',
     notPlannable: 'Als Projekt planen lässt sich nur eine Idee oder eine eigene, geplante Aufgabe, an der noch niemand gearbeitet hat.',
@@ -2792,7 +2803,7 @@ const en: Strings = {
   openThere: 'Open it there',
   repoPick: {
     newRepo: 'New repository …',
-    newRepoHint: 'A repository that does not exist yet: Obeya creates the folder and git, local only.',
+    newRepoHint: 'A repository that does not exist yet: Obeya creates the folder and git, local only, or clones an existing project into it.',
     named: (name: string) => `${name} (new)`,
     path: 'Folder',
     pathPlaceholder: '~/dev/name',
@@ -2804,6 +2815,16 @@ const en: Strings = {
     build: (name: string) => `Build it like this in ${name} (new)`,
     start: (name: string) => `Start agent in ${name} (new)`,
     making: (name: string) => `Creating ${name} …`,
+    from: 'from',
+    fromPlaceholder: 'empty, or a project to fork: owner/name, git URL',
+    fromHint: 'Left empty, the repository starts empty. An existing project here (owner/name on GitHub, a git URL or a folder) starts it as a clone of that project; a GitHub repository you cannot push to is forked into your GitHub account first.',
+    /** Under the buttons, for a new repository cloned from an existing project, before what becomes of its canvas. */
+    willClone: (from: string, path: string, github: boolean) =>
+      github ? `Forks ${from} into your GitHub account (where you cannot push to it) and clones it into ${path}.` : `Clones ${from} into ${path}.`,
+    andMove: (canvas: string, idea: boolean) => `Creates the canvas “${canvas}” and takes the ${idea ? 'idea' : 'task'} there with everything.`,
+    andJoin: 'It joins this canvas.',
+    /** In place of the button once the undo window is over and the clone is under way. */
+    cloning: (name: string) => `Cloning ${name} …`,
   },
   task: 'Task',
   talk: {
@@ -3018,6 +3039,7 @@ const en: Strings = {
     evicting: 'The task is giving up its workspace right now; start it again in a moment.',
     newRepoDue: 'Obeya is creating the new repository right now.',
     newRepoPath: 'The new repository has no folder yet.',
+    newRepoFrom: 'Nothing to clone there: give owner/name on GitHub, a git URL or a folder.',
     newRepoGone: 'Too late: Obeya is creating the repository already.',
     notMovable: 'The task cannot move further in the queue.',
     notPlannable: 'Only an idea, or a planned task of your own nobody has worked on yet, can be planned as a project.',

@@ -104,8 +104,9 @@ until the idea becomes a project: then its plan doc decides.
 Beside it stands the repository picker of a card before work begins (see Canvases and repositories),
 with "New repository …": an idea to be built in a repository that does not exist yet. Its agent
 picks that target from the conversation („bau es in ~/dev/super59, eigene Leinwand“) with
-`plan_repo` (a folder and whether it gets a canvas of its own; the whole value each time, an empty
-folder for none); the picker shows it, and what the owner picks there instead stands, the agent does
+`plan_repo` (a folder, whether it gets a canvas of its own, and the existing project it starts as a
+clone of, where the idea is a change to one the owner does not have here yet; the whole value each
+time, an empty folder for none); the picker shows it, and what the owner picks there instead stands, the agent does
 not change it. On a canvas with one repository the picker shows only once a new repository is
 picked. The button then names the target ("Build it like this in super59 (new)"), with a line under
 it on what the click does, and the click builds the idea there (see Building in a new repository).
@@ -166,10 +167,22 @@ Obeya, one step after the other:
 
 1. creates the folder where there is none and sets git up in it as "Set up a git repository here"
    does (see Setting up git in a folder): local only, no remote, nothing published. A folder that is
-   a repository already is taken as it is; one inside another repository is refused.
-2. adds it to the configuration: a canvas of its own, unnamed, so named after the folder, which
-   starts at once (see Live configuration); without "own canvas" the repository joins the
-   card's canvas instead and the card stays there, in it.
+   a repository already is taken as it is; one inside another repository is refused. Where the card
+   names an existing project to start from ("from": `owner/name` on GitHub, a git URL or a folder;
+   anything else refused at once), the folder (new, or empty; one with files in it is refused)
+   becomes a clone of it instead, its history and all. A GitHub repository the owner cannot push to
+   is forked into their GitHub account first (GitHub hands back the fork they have already, where
+   they have one), as the GitHub account set for the card's repository on this machine, else the
+   one gh has active: `origin` is the fork, the original the remote `upstream`, its main branch
+   fetched. Cloning a large project takes minutes; once the few seconds are through, the button's
+   place says "Cloning frontend …" without "Undo". A fork made on GitHub stays when a later step
+   fails.
+2. adds it to the configuration: a canvas of its own, unnamed, so named after the folder (a clone
+   after its `origin`, see Canvases and repositories), which starts at once (see Live
+   configuration); without "own canvas" the repository joins the card's canvas instead and the card
+   stays there, in it. A fork gets `land: main` among this machine's settings, and its `upstream`
+   is detected (see Pull requests to the original), so the card's own approval already offers
+   "Approve + PR to <owner/repo>"; the GitHub account it was cloned as is set for it.
 3. decides an idea as "Build it like this" does (its agent's session ends, its prototypes are
    discarded, the decision log records the new repository), then moves the card to the new canvas
    whole: its task, conversation, mocks, screenshots and decisions, into the canvas's repository,
@@ -179,7 +192,10 @@ Obeya, one step after the other:
    canvas.
 4. starts it there through the Coordinator. Its worker hears that the repository is new and sets it
    up beside the task: a CLAUDE.md with what the task says about working in it, and its settings with
-   the `settings` skill (see Writing the settings).
+   the `settings` skill (see Writing the settings). A clone's worker hears what it was cloned from
+   (and the fork), that the project's history, files and CLAUDE.md are its own and the task is its
+   change to it, and writes only the settings, which in a fork never go into a pull request to the
+   original. The card's diff is its change alone, on the project's history.
 
 A step that fails takes back those before it (the configuration, the folder or the git it made),
 and the card says why.
@@ -255,3 +271,16 @@ when Obeya stopped.
   whose worker sets up the repository and copies the brief (it searched other repositories for how,
   waited for an approval, carried the context only as a copy, and the new canvas came without the
   card); only instructing the agents better (the detour would stay).
+- **A new repository may start as a clone of an existing project, forked first where the owner
+  cannot push to it** (2026-11-13): a task to fix an open-source project the owner had no copy of
+  got an empty repository, whose worker forked the project inside the task. Its diff then held the
+  whole project against an empty main branch (over 4000 files for a three-file fix), and the fork's
+  settings (`land`, `upstream`) sat on the card's branch, taking effect only with the approval they
+  were needed for, so "Approve + PR to …" was missing. Obeya forks and clones before the task starts
+  and sets how a fork lands on this machine at once. Rejected: leaving the fork to the worker with
+  better instructions (setup and change still in one card, the settings still too late); a setup
+  card ahead of the task (a second card and approval for what Obeya can do in a step); writing the
+  fork's settings into its repository (a commit of Obeya's on the owner's fork; `land` and
+  `upstream` are this machine's way of working with it, which "Take over into the repository for
+  everyone" can still share); forking every GitHub source (a repository the owner may push to needs
+  none).

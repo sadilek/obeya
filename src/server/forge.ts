@@ -312,7 +312,14 @@ const GH_TIMEOUT = 60_000;
  */
 async function ghEnv(program: string, { host, owner, repo }: Omit<GhAt, 'cwd'>, timeout: number): Promise<NodeJS.ProcessEnv | undefined> {
   if (!host) return undefined;
-  const account = accountOf({ host, owner, repo });
+  return accountEnv(host, accountOf({ host, owner, repo }), program, timeout);
+}
+
+/**
+ * gh's environment (and git's, where its credential helper is gh's) for working as `account` on
+ * `host`: the account's token where gh has a login for it, else gh as it runs anyway.
+ */
+export async function accountEnv(host: string, account: string | undefined, program = 'gh', timeout = GH_TIMEOUT): Promise<NodeJS.ProcessEnv> {
   const token = account ? await accountToken(program, host, account, timeout) : null;
   const env: NodeJS.ProcessEnv = { ...process.env, GH_HOST: host };
   if (token) {

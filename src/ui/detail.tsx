@@ -19,7 +19,7 @@ import { MdField } from './mdField';
 import { DictateButton, DictationLine } from './dictation';
 import { appended, cardDraft, dropDraft, typeAtCursor, updateDraft, useFieldOn } from './draft';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
-import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPick';
+import { makingWords, newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPick';
 import { ClockMark, SnoozeMenu, snoozeWho } from './snooze';
 import { kindLabel, snoozeWhen, t } from './strings';
 import { agentWorks, ownerField, talkAlone, waitsFirstStart, worked as isWorked } from './cardState';
@@ -954,7 +954,7 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
   const start = unworked ? (
     // one snoozed to start later starts now with "Wake now" on its line in the conversation
     item.newRepo?.due ? (
-      <Armed label={t.repoPick.making(choice.name)} undo={t.undo} onUndo={() => act({ action: 'stayHere' }, { close: false })} />
+      <Armed label={makingWords(item, choice.name)} undo={t.undo} {...(item.newRepo.making ? {} : { onUndo: () => act({ action: 'stayHere' }, { close: false }) })} />
     ) : (
       !item.snoozed && <StartButton item={item} act={act} on={!fresh} disabled={!!fresh && !fresh.ready} label={fresh?.button ?? t.start} hint={fresh?.hint ?? (repo?.folder ? t.folder.startHint : t.startHint)} />
     )
