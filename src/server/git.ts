@@ -2,9 +2,9 @@
 // (`ssh://<host>/…`, see `hosts.ts`), and how a failure reads.
 
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { messageOf } from '../core/text';
-import { type GithubLogin, remote, TOKEN_HELPER_ARGS } from './hosts';
+import { type GithubLogin, remote, TOKEN_HELPER, TOKEN_HELPER_ARGS } from './hosts';
 import { failureText, spawnOutput } from './spawn';
 
 export class WorkspaceError extends Error {
@@ -109,17 +109,83 @@ const failed = (cwd: string, args: string[], r: GitResult) => new WorkspaceError
 export const NO_PROMPT = { GIT_TERMINAL_PROMPT: '0' };
 
 /**
+ * The GitHub logins of repositories on this machine, by the folders git runs in for them
+ * (`useGitLogin`): a repository without one set has its entry too, with none, so that a folder
+ * inside another's (a canvas's other repositories have their workspaces inside its first one's)
+ * does not take the outer one's.
+ */
+const gitLogins: { root: string; host: string; login: GithubLogin | undefined }[] = [];
+
+/**
+ * git's calls that reach a remote, in `roots` on this machine (a repository's checkout, the folder
+ * of its workspaces), log in to `host` over HTTPS as `login` from now on (a repository's GitHub
+ * account, see `accountLogin`), or with the machine's own login where `login` is none or has no
+ * token; returns what ends that.
+ */
+export function useGitLogin(roots: string[], host: string, login: GithubLogin | undefined): () => void {
+  const added = roots.map((root) => ({ root: resolve(root), host, login }));
+  gitLogins.push(...added);
+  return () => {
+    for (const a of added) {
+      const i = gitLogins.indexOf(a);
+      if (i >= 0) gitLogins.splice(i, 1);
+    }
+  };
+}
+
+/** git's commands that reach a remote, and so may need a login. */
+const NETWORK = new Set(['fetch', 'push', 'pull', 'ls-remote', 'clone']);
+
+/** The git command in `args`, after git's own options (`-c <name>=<value>`, `-C <path>`). */
+function commandOf(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === '-c' || a === '-C') i++;
+    else if (!a.startsWith('-')) return a;
+  }
+  return undefined;
+}
+
+/** Whether `path` is `root` or inside it. */
+function inside(path: string, root: string): boolean {
+  const r = relative(root, path);
+  return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r));
+}
+
+/**
+ * What has a git call in `cwd` on this machine log in as the GitHub login set for the folder it is
+ * in (`useGitLogin`): `TOKEN_HELPER` for that host alone, after an empty helper for it, so the
+ * machine's helpers (gh's, which answers as gh's active account; the keychain, which would keep the
+ * token) are neither asked nor told, and a remote another host answers (a fork elsewhere, a URL
+ * rewritten by the repository's configuration) never gets the token. None where no login is set
+ * there, or it has no token.
+ */
+async function loginFor(cwd: string): Promise<{ args: string[]; env: Record<string, string> } | null> {
+  const path = resolve(cwd);
+  const set = gitLogins.filter((l) => inside(path, l.root)).sort((a, b) => b.root.length - a.root.length)[0];
+  if (!set?.login) return null;
+  await set.login.ready?.().catch(() => {});
+  const token = set.login();
+  if (!token) return null;
+  const key = `credential.https://${set.host}.helper`;
+  return { args: ['-c', `${key}=`, '-c', `${key}=${TOKEN_HELPER[1]}`], env: { GH_TOKEN: token } };
+}
+
+/**
  * `git` in `cwd` without blocking the server, with its exit code: the one runner the others are
  * built on. `cwd` may be a workspace on another machine (`ssh://<host>/…`), where git runs over SSH
- * with the repository's GitHub login; `env` (on top of the server's) applies on this machine only.
- * `stdin`: the call's input; `timeout`: how long it may take, in ms.
+ * with the repository's GitHub login; on this machine, a call that reaches a remote logs in as the
+ * login set for its folder (`useGitLogin`). `env` (on top of the server's) applies on this machine
+ * only. `stdin`: the call's input; `timeout`: how long it may take, in ms.
  */
 export async function gitRun(cwd: string, args: string[], o: { env?: Record<string, string>; stdin?: string; timeout?: number } = {}): Promise<GitResult> {
   const there = remoteWorkspace(cwd);
   if (there) return there.host.run(['git', ...TOKEN_HELPER_ARGS, '-C', there.path, ...args], { cwd: there.path, ...(o.stdin !== undefined ? { input: o.stdin } : {}), ...(o.timeout ? { timeout: o.timeout } : {}) });
-  return spawnOutput([GIT, '-C', cwd, ...args], {
+  const login = gitLogins.length && NETWORK.has(commandOf(args) ?? '') ? await loginFor(cwd) : null;
+  const env = login ? { ...o.env, ...login.env } : o.env;
+  return spawnOutput([GIT, '-C', cwd, ...(login?.args ?? []), ...args], {
     ...(o.stdin !== undefined ? { stdin: new Blob([o.stdin]) } : {}),
-    ...(o.env ? { env: { ...process.env, ...o.env } } : {}),
+    ...(env ? { env: { ...process.env, ...env } } : {}),
     ...(o.timeout ? { timeout: o.timeout } : {}),
   });
 }

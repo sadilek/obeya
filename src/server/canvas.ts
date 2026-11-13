@@ -55,7 +55,7 @@ import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
 import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
 import { useBranchSetting } from './branches';
-import { githubToken, gitRun, NO_PROMPT } from './git';
+import { githubToken, gitRun, NO_PROMPT, useGitLogin } from './git';
 import { FolderWorkspaces } from './folder';
 import { claudeToken, hostName, registerHost } from './hosts';
 import { messageOf } from '../core/text';
@@ -749,6 +749,10 @@ export class CanvasRuntime {
     const onGithub = !folder && rc.githubAccount && info.remote ? githubRepo(info.remote) : undefined;
     const githubLogin = onGithub && rc.githubAccount ? accountLogin(onGithub.host, rc.githubAccount) : undefined;
     if (onGithub && rc.githubAccount) stops.push(useGithubAccount(onGithub, rc.githubAccount));
+    const workspaceDir = isHome ? join(deps.home, 'workspaces', resolved.id) : join(deps.home, 'workspaces', resolved.id, ref.id);
+    // Obeya's own fetches and pushes for it here go to GitHub as that account too (onto a contributor's fork, say);
+    // a repository without one keeps the machine's login, its workspaces inside the first repository's folder too
+    if (!folder) stops.push(useGitLogin([info.path, workspaceDir], onGithub?.host ?? '', githubLogin));
     // the workers set up below say how many are busy where
     let workers!: Workers;
     let workspaces: CardWorkspaces;
@@ -760,7 +764,7 @@ export class CanvasRuntime {
       const git = new Workspaces(deps.store, resolved.id, {
         mode: adapter.workspaces,
         repoPath: info.path,
-        dir: isHome ? join(deps.home, 'workspaces', resolved.id) : join(deps.home, 'workspaces', resolved.id, ref.id),
+        dir: workspaceDir,
         repo: isHome ? null : ref.id,
         machines: [{ host: null, ...(rc.slots !== undefined ? { slots: rc.slots } : {}) }, ...remoteHosts.map((h) => ({ host: h.name, ...(h.slots !== undefined ? { slots: h.slots } : {}) }))],
         busy: (host) => workers.busyOn(host),

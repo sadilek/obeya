@@ -9,7 +9,7 @@ import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { PATIENCE } from './patience';
 import { Workspaces } from './workspaces';
-import { git } from './git';
+import { GIT, git } from './git';
 import { BadRequest, Board } from './board';
 import { cardTag } from '../core/card-number';
 import { Store } from './db';
@@ -306,6 +306,72 @@ export function removeTemplates() {
  * hold one for a moment after the test is through. So it tries again for a while; Bun ignores
  * `rmSync`'s own `maxRetries`.
  */
+/**
+ * A git server over HTTPS for the repositories under `root` (`<url>/<path in root>`), with a
+ * certificate of its own (git takes it with `GIT_SSL_NO_VERIFY`), through git's `http-backend`. It
+ * answers only a request that logs in (HTTP Basic), and records each login it was given (`logins`,
+ * as `user:password`). Null where the machine has no `openssl` to make the certificate.
+ */
+export async function gitHttpsServer(root: string): Promise<{ url: string; host: string; logins: string[]; stop: () => void } | null> {
+  if (!Bun.which('openssl')) return null;
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-https-'));
+  const made = Bun.spawnSync(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem')], { stderr: 'pipe' });
+  if (made.exitCode !== 0) return null;
+  const logins: string[] = [];
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    tls: { cert: readFileSync(join(dir, 'cert.pem'), 'utf8'), key: readFileSync(join(dir, 'key.pem'), 'utf8') },
+    async fetch(req) {
+      const auth = req.headers.get('authorization');
+      if (!auth?.startsWith('Basic ')) return new Response('log in\n', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="git"' } });
+      logins.push(atob(auth.slice(6)));
+      const u = new URL(req.url);
+      const body = req.body ? new Uint8Array(await req.arrayBuffer()) : undefined;
+      const p = Bun.spawn([GIT, 'http-backend'], {
+        env: {
+          ...process.env,
+          GIT_PROJECT_ROOT: root,
+          GIT_HTTP_EXPORT_ALL: '1',
+          PATH_INFO: u.pathname,
+          QUERY_STRING: u.search.slice(1),
+          REQUEST_METHOD: req.method,
+          CONTENT_TYPE: req.headers.get('content-type') ?? '',
+          ...(body ? { CONTENT_LENGTH: String(body.length) } : {}),
+          HTTP_CONTENT_ENCODING: req.headers.get('content-encoding') ?? '',
+          GIT_PROTOCOL: req.headers.get('git-protocol') ?? '',
+          REMOTE_USER: 'contributor',
+          REMOTE_ADDR: '127.0.0.1',
+        },
+        stdin: body ?? 'ignore',
+        stdout: 'pipe',
+        stderr: 'ignore',
+      });
+      const out = Buffer.from(await new Response(p.stdout).arrayBuffer());
+      await p.exited;
+      // CGI: headers, an empty line, the body
+      const end = out.indexOf('\r\n\r\n');
+      const headers = new Headers();
+      let status = 200;
+      for (const line of out.subarray(0, end).toString().split('\r\n')) {
+        const [name, ...value] = line.split(':');
+        if (name!.toLowerCase() === 'status') status = Number.parseInt(value.join(':').trim(), 10);
+        else headers.append(name!, value.join(':').trim());
+      }
+      return new Response(out.subarray(end + 4), { status, headers });
+    },
+  });
+  return {
+    url: `https://127.0.0.1:${server.port}`,
+    host: `127.0.0.1:${server.port}`,
+    logins,
+    stop: () => {
+      void server.stop(true);
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
 export async function removeDir(path: string) {
   for (const end = Date.now() + 10_000; ; await Bun.sleep(50)) {
     try {

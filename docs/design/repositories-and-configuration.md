@@ -489,7 +489,12 @@ Obeya's own gh calls on the repository and its pull requests run with that accou
 auth token --user`), its agents get the token in their environment (`GH_TOKEN`, on an Enterprise
 server `GH_ENTERPRISE_TOKEN`; a session starts once it is read), so their gh, and git where its
 credential helper is gh's, work as that account, and its clones on other machines get it as their
-GitHub login. Automatic is the account that owns the repository where gh has a login for it, else
+GitHub login. Obeya's own fetches and pushes for the repository on this machine (in its checkout and
+its workspaces: landing, a review card's PR head, the worker's commits pushed onto a contributor's
+fork) log in to that host over HTTPS as that account too, with a credential helper of their own that
+answers for that host alone; the machine's helpers (gh's, which answers as gh's active account, the
+keychain, which would keep the token) are neither asked nor told. Without an account, or where gh
+has no login for it, git logs in as the machine's configuration says. Automatic is the account that owns the repository where gh has a login for it, else
 the account gh has active. An account gh is not logged into (any more) is a problem at the
 repository that blocks nothing, and gh works as automatic meanwhile. Changing it restarts the
 repository's agents once they paused, as any change to the repository's entry does.
@@ -605,6 +610,14 @@ its status lines in German).
   (`gh auth switch` changes it for every terminal and every other repository at once); trying each
   logged-in account until one sees the repository (a round trip per account, and it silently picks
   whichever answers first where several can see it).
+- **Obeya's own git calls over HTTPS use the account too, bypassing the machine's helpers**
+  (2026-11-13): pushing a review card's commits onto a contributor's fork was refused (403) as gh's
+  active account, since git asked the machine's helper, which is gh's. The account is the one of the
+  repository the pull request targets, not looked up by the fork, which is another repository. The
+  token goes to the repository's host only: a remote that resolves elsewhere (a URL rewritten in a
+  workspace's configuration, where a contributor's code ran) never gets it. Rejected: `GH_TOKEN` in
+  git's environment alone (only gh's helper reads it; a keychain or Git Credential Manager would
+  answer with its own login instead).
 
 - **A canvas may span several repositories, and one Obeya serves several canvases.** Rejected: one
   canvas per repository.

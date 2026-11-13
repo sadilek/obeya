@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import { awaitsContributorNext, needsYou } from '../core/card';
@@ -15,10 +15,10 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, primedClones, removeDir, syncGitCalls, testBoard, until } from './testing';
+import { artifact, commit, FakeRuntime, gitClone, gitHttpsServer, gitRepo, identify, primedClones, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
-import { git } from './git';
+import { git, useGitLogin } from './git';
 
 const URL_ = 'https://github.com/acme/app/pull/5';
 
@@ -107,9 +107,9 @@ afterEach(async () => {
 });
 
 /** A review card for PR #5, as „Review PR #5“ makes it, started and on the PR's head. */
-async function reviewCard(canModify = true) {
+async function reviewCard(canModify = true, headRepo = origin) {
   const card = board.create({ title: 'PR #5: Watcher polls gh in the background', body: 'Look at security especially.', x: 0, y: 0 });
-  const c: StoredContribution = { url: URL_, number: 5, author: 'amerlander', title: 'Watcher polls gh in the background', canModify, headRepo: origin, headRef: 'contrib' };
+  const c: StoredContribution = { url: URL_, number: 5, author: 'amerlander', title: 'Watcher polls gh in the background', canModify, headRepo, headRef: 'contrib' };
   board.work(card.id, { contribution: JSON.stringify(c) });
   await workers.start(card.id);
   await until(() => runtime.sessions.length > 0);
@@ -302,6 +302,61 @@ describe('a review card', () => {
     expect(board.item(id)!.contribution!.held).toBeUndefined();
     expect(board.item(id)!.contribution!.findings![1]).toMatchObject({ status: 'fixed', url: `${URL_}#issuecomment-1` });
     expect(board.events(id).some((e) => e.text.startsWith(board.t.worker.pushedHeld(5, 1)))).toBe(true);
+  });
+
+  describe('its commits pushed onto the contributor’s fork over HTTPS', () => {
+    let server: Awaited<ReturnType<typeof gitHttpsServer>>;
+    const names = ['GIT_CONFIG_GLOBAL', 'GIT_SSL_NO_VERIFY', 'GIT_TERMINAL_PROMPT', 'GH_TOKEN'] as const;
+    const saved = names.map((n) => [n, process.env[n]] as const);
+    let ended: (() => void)[] = [];
+    beforeEach(async () => {
+      server = await gitHttpsServer(dir);
+      // the machine's own login, as its git configuration hands it out (gh's helper, as gh's active account)
+      writeFileSync(join(dir, 'gitconfig'), '[credential]\n\thelper = "!f() { test \\"$1\\" = get && echo username=machine && echo password=machine-login; }; f"\n');
+      Object.assign(process.env, { GIT_CONFIG_GLOBAL: join(dir, 'gitconfig'), GIT_SSL_NO_VERIFY: '1', GIT_TERMINAL_PROMPT: '0' });
+      delete process.env.GH_TOKEN;
+    });
+    afterEach(() => {
+      for (const end of ended) end();
+      ended = [];
+      server?.stop();
+      for (const [n, v] of saved) {
+        if (v === undefined) delete process.env[n];
+        else process.env[n] = v;
+      }
+    });
+
+    /** A review card on PR #5 whose fork is `origin` served over HTTPS, approved with a commit of its worker's own; returns that commit. */
+    async function approvedOverHttps(login?: (id: string) => void) {
+      const id = await reviewCard(true, `${server!.url}/acme/app`);
+      login?.(id);
+      await handOver();
+      workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
+      runtime.last.emit({ type: 'idle' });
+      const head = commitOwn(id, 'shortcut.ts');
+      await runtime.last.call('ready_for_review', { summary: 'Fixed 2.', demo: artifact(), review: results, pr_draft: 'I added the shortcut.' });
+      runtime.last.emit({ type: 'idle' });
+      await workers.approve(id);
+      return head;
+    }
+
+    test.skipIf(!Bun.which('openssl'))('as the GitHub account set for the repository, without asking the machine’s login', async () => {
+      const account = Object.assign(() => 'account-token', { ready: () => Promise.resolve() });
+      ended.push(useGitLogin([main, join(dir, 'ws')], server!.host, account));
+      const head = await approvedOverHttps();
+      expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(head);
+      expect(fake.said.merges).toEqual([head]);
+      expect(new Set(server!.logins)).toEqual(new Set(['x-access-token:account-token']));
+    });
+
+    test.skipIf(!Bun.which('openssl'))('as the machine’s login where no account is set, also inside the folder of a repository that has one', async () => {
+      const account = Object.assign(() => 'account-token', { ready: () => Promise.resolve() });
+      // a canvas's other repositories have their workspaces inside its first one's folder
+      ended.push(useGitLogin([dir], server!.host, account));
+      const head = await approvedOverHttps((id) => ended.push(useGitLogin([dirname(board.row(id).workspace!)], '', undefined)));
+      expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(head);
+      expect(new Set(server!.logins)).toEqual(new Set(['machine:machine-login']));
+    });
   });
 
   test('"Push and comment only" pushes and comments, and the card waits for "Merge" again', async () => {
