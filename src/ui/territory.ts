@@ -27,8 +27,11 @@ export interface Territory {
   inner: string;
   /** The territory's outlines in world coordinates, each piece's rings (outer first). */
   pieces: [number, number][][][];
-  /** Where its name goes: the middle of its largest piece. */
-  label?: Pt;
+  /** The outer ring of its largest piece, along whose edge its name stands (see `placeName`). */
+  outline?: [number, number][];
+  /** The holes in that piece, where other groups' cards stand. */
+  holes?: [number, number][][];
+  /** The size of its name zoomed far out, in screen px. */
   labelSize: number;
 }
 
@@ -307,29 +310,26 @@ function territory(group: string, f: Field, rivals: Field[]): Territory {
     mp!.coordinates.map((poly) => poly.map((ring) => soften(ring.slice(0, -1).map(([gx, gy]) => [(i0 + gx!) * CELL, (j0 + gy!) * CELL] as [number, number]))));
   const pieces = world(main);
   const path = (ps: [number, number][][][]) => ps.map((poly) => poly.map((ring) => smooth(ring)).join('')).join('');
-  // the name sits in the largest piece
-  let label: Pt | undefined;
+  // the name stands along the edge of the largest piece, the same for one card and for many
+  let largest: [number, number][][] | undefined;
   let best = 0;
   for (const poly of pieces) {
-    const r = poly[0]!;
-    let a = 0;
-    let cx = 0;
-    let cy = 0;
-    for (let k = 0; k < r.length; k++) {
-      const [ax, ay] = r[k]!;
-      const [bx, by] = r[(k + 1) % r.length]!;
-      const c = ax * by - bx * ay;
-      a += c;
-      cx += (ax + bx) * c;
-      cy += (ay + by) * c;
-    }
-    if (Math.abs(a) > best) {
-      best = Math.abs(a);
-      label = { x: cx / (3 * a), y: cy / (3 * a) };
-    }
+    const a = Math.abs(ringArea(poly[0]!));
+    if (a > best) (best = a), (largest = poly);
   }
-  const area = best / 2;
-  return { group, main: path(pieces), inner: path(world(inner)), pieces, ...(label ? { label } : {}), labelSize: Math.max(40, Math.min(80, Math.sqrt(area) / 11)) };
+  const named = largest ? { outline: largest[0]!, ...(largest.length > 1 ? { holes: largest.slice(1) } : {}) } : {};
+  return { group, main: path(pieces), inner: path(world(inner)), pieces, ...named, labelSize: Math.max(40, Math.min(80, Math.sqrt(best) / 11)) };
+}
+
+/** A ring's signed area. */
+function ringArea(r: [number, number][]) {
+  let a = 0;
+  for (let k = 0; k < r.length; k++) {
+    const [ax, ay] = r[k]!;
+    const [bx, by] = r[(k + 1) % r.length]!;
+    a += ax * by - bx * ay;
+  }
+  return a / 2;
 }
 
 const key = (b: Bounds, w: number) => `${b.x},${b.y},${b.w},${b.h},${w.toFixed(3)}`;
@@ -384,4 +384,281 @@ export class Territories {
     this.last = last;
     return out;
   }
+}
+
+// ------------------------------------------------------------------ the name
+
+/** Beside which edge of its territory's largest piece a group's name stands, or inside it over the cards. */
+export type NameSide = 'top' | 'bottom' | 'left' | 'right' | 'inside';
+export interface NameSpot {
+  side: NameSide;
+  /** The box of the name's capitals, in world coordinates. */
+  box: Bounds;
+  /** No spot along the edge was free and there is no last resort: it stands on the top edge, under the cards that cover it. */
+  covered?: boolean;
+}
+
+/** An outline sampled: the topmost and bottommost point of each of its columns, the leftmost and rightmost of each of its rows. */
+interface Edges {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  /** Its centre of mass. */
+  cx: number;
+  cy: number;
+  top: Float64Array;
+  bottom: Float64Array;
+  left: Float64Array;
+  right: Float64Array;
+}
+const SAMPLES = 64;
+const sampled = new WeakMap<[number, number][], Edges>();
+
+/** The bounds of a ring. */
+export function ringBounds(r: [number, number][]): Bounds {
+  const e = edges(r);
+  return { x: e.minX, y: e.minY, w: e.maxX - e.minX, h: e.maxY - e.minY };
+}
+
+function edges(r: [number, number][]): Edges {
+  const known = sampled.get(r);
+  if (known) return known;
+  const xs = r.map(([x]) => x);
+  const ys = r.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const dx = (maxX - minX) / SAMPLES || 1;
+  const dy = (maxY - minY) / SAMPLES || 1;
+  const top = new Float64Array(SAMPLES).fill(Infinity);
+  const bottom = new Float64Array(SAMPLES).fill(-Infinity);
+  const left = new Float64Array(SAMPLES).fill(Infinity);
+  const right = new Float64Array(SAMPLES).fill(-Infinity);
+  let a = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let k = 0; k < r.length; k++) {
+    const [ax, ay] = r[k]!;
+    const [bx, by] = r[(k + 1) % r.length]!;
+    const cross = ax * by - bx * ay;
+    a += cross;
+    cx += (ax + bx) * cross;
+    cy += (ay + by) * cross;
+    // the columns (and rows) whose middle this side crosses
+    for (let i = Math.max(0, Math.ceil((Math.min(ax, bx) - minX) / dx - 0.5)); i < SAMPLES; i++) {
+      const x = minX + (i + 0.5) * dx;
+      if (x >= Math.max(ax, bx)) break;
+      const y = ay + ((x - ax) * (by - ay)) / (bx - ax);
+      if (y < top[i]!) top[i] = y;
+      if (y > bottom[i]!) bottom[i] = y;
+    }
+    for (let j = Math.max(0, Math.ceil((Math.min(ay, by) - minY) / dy - 0.5)); j < SAMPLES; j++) {
+      const y = minY + (j + 0.5) * dy;
+      if (y >= Math.max(ay, by)) break;
+      const x = ax + ((y - ay) * (bx - ax)) / (by - ay);
+      if (x < left[j]!) left[j] = x;
+      if (x > right[j]!) right[j] = x;
+    }
+  }
+  const e = a ? { minX, maxX, minY, maxY, cx: cx / (3 * a), cy: cy / (3 * a), top, bottom, left, right } : { minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, top, bottom, left, right };
+  sampled.set(r, e);
+  return e;
+}
+
+/** The outermost of `v`'s samples (`dir` -1: the smallest) whose middle lies between `lo` and `hi`, or the one nearest them. */
+function outermost(v: Float64Array, lo: number, hi: number, origin: number, d: number, dir: 1 | -1) {
+  let i0 = Math.max(0, Math.ceil((lo - origin) / d - 0.5));
+  let i1 = Math.min(SAMPLES - 1, Math.floor((hi - origin) / d - 0.5));
+  if (i0 > i1) i0 = i1 = Math.max(0, Math.min(SAMPLES - 1, Math.round(((lo + hi) / 2 - origin) / d - 0.5)));
+  let out = -dir * Infinity;
+  for (let i = i0; i <= i1; i++) if (Number.isFinite(v[i]!) && dir * (v[i]! - out) > 0) out = v[i]!;
+  return Number.isFinite(out) ? out : undefined;
+}
+
+const across = (s: NameSide) => s === 'top' || s === 'bottom';
+
+/** Along an edge: the name's middle from `lo` to `hi`, starting from `c`, the middle of the piece's side. */
+function slots(e: Edges, side: NameSide, w: number, h: number) {
+  const [a, b, size] = across(side) ? [e.minX, e.maxX, w] : [e.minY, e.maxY, h];
+  const c = (a + b) / 2;
+  const lo = Math.min(c, a + size / 2);
+  const hi = Math.max(c, b - size / 2);
+  return { c, lo, hi, step: Math.max(1, (hi - lo) / 48) };
+}
+
+/** The name's box with its middle at `along`, just outside `side` of the outline. */
+function edgeBox(e: Edges, side: NameSide, along: number, w: number, h: number, gap: number): Bounds | undefined {
+  if (across(side)) {
+    const x = along - w / 2;
+    const y = side === 'top' ? outermost(e.top, x, x + w, e.minX, (e.maxX - e.minX) / SAMPLES || 1, -1) : outermost(e.bottom, x, x + w, e.minX, (e.maxX - e.minX) / SAMPLES || 1, 1);
+    return y === undefined ? undefined : { x, y: side === 'top' ? y - gap - h : y + gap, w, h };
+  }
+  const y = along - h / 2;
+  const x = side === 'left' ? outermost(e.left, y, y + h, e.minY, (e.maxY - e.minY) / SAMPLES || 1, -1) : outermost(e.right, y, y + h, e.minY, (e.maxY - e.minY) / SAMPLES || 1, 1);
+  return x === undefined ? undefined : { x: side === 'left' ? x - gap - w : x + gap, y, w, h };
+}
+
+const clear = (b: Bounds, cards: Bounds[], pad: number) =>
+  cards.every((c) => b.x + b.w + pad <= c.x || c.x + c.w + pad <= b.x || b.y + b.h + pad <= c.y || c.y + c.h + pad <= b.y);
+const crosses = (a: Bounds, b: Bounds) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+function within(r: [number, number][], x: number, y: number) {
+  let odd = false;
+  for (let k = 0, j = r.length - 1; k < r.length; j = k++) {
+    const [ax, ay] = r[k]!;
+    const [bx, by] = r[j]!;
+    if (ay > y !== by > y && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) odd = !odd;
+  }
+  return odd;
+}
+
+/** Whether `box` reaches into the area within ring `r`: its bounds first, then points spread over the box. */
+function reaches(box: Bounds, r: [number, number][]) {
+  const e = edges(r);
+  if (box.x >= e.maxX || box.x + box.w <= e.minX || box.y >= e.maxY || box.y + box.h <= e.minY) return false;
+  for (const fy of [0, 0.5, 1])
+    for (const fx of [0, 0.25, 0.5, 0.75, 1]) if (within(r, box.x + fx * box.w, box.y + fy * box.h)) return true;
+  // a tip of the area that reaches in between those points
+  return r.some(([x, y]) => x > box.x && x < box.x + box.w && y > box.y && y < box.y + box.h);
+}
+
+/**
+ * What a name keeps clear of besides `cards`, the cards and notes on the canvas: `names`, the
+ * boxes of the names placed before it, and `areas`, the outer rings of the other groups'
+ * territories, so that it does not read as one of theirs. Where no spot along the edge is clear of
+ * these as well, it makes do with one clear of the cards alone.
+ */
+export interface NameOpts {
+  /** The title strips of the cards (zoomed far out only): the last resort inside the piece crosses as few as it can. */
+  strips?: Bounds[];
+  /** Where the name stood a moment ago. */
+  prev?: NameSpot;
+  /** The holes in the piece, where other groups' cards stand. */
+  holes?: [number, number][][];
+  names?: Bounds[];
+  areas?: [number, number][][];
+}
+
+/**
+ * Where a group's name of `size` (its capitals' box, world px) stands along `outline`, the outer
+ * ring of its territory's largest piece: at the first spot where it covers no card, nor another
+ * group's name or territory (`opts`), of
+ * - the top edge, centred, then slid along it to the free spot nearest the middle;
+ * - the bottom edge, the same, hanging below it;
+ * - the side nearer the piece's centre of mass (on a tie, the right), then the other side, beside
+ *   it and centred vertically, then slid along it;
+ * then the same spots covering no card alone; then
+ * - with `strips` (the title strips of the cards, zoomed far out only) inside the piece, over the
+ *   cards, where it crosses the fewest titles, nearest the centre of mass;
+ * - else on the top edge, centred, under the cards that cover it.
+ * `prev`, where it stood a moment ago, holds it there (slid back towards the middle as far as is
+ * free) while that is no worse, so it does not flicker while a card is dragged past it.
+ */
+export function placeName(outline: [number, number][], size: { w: number; h: number }, cards: Bounds[], opts: NameOpts = {}): NameSpot {
+  const e = edges(outline);
+  const { w, h } = size;
+  const gap = h * 0.4;
+  const near = e.cx < (e.minX + e.maxX) / 2 - CELL ? 'left' : 'right';
+  const order: NameSide[] = ['top', 'bottom', near, near === 'left' ? 'right' : 'left'];
+  const names = opts.names ?? [];
+  const areas = opts.areas ?? [];
+  // level 0: clear of cards, names and other territories; level 1: of the cards alone
+  const free = (box: Bounds, pad: number, level: number) =>
+    clear(box, cards, pad) && (level > 0 || (clear(box, names, pad) && !areas.some((r) => reaches(box, r))));
+  const search = (level: number) => {
+    for (const [rank, side] of order.entries()) {
+      const { c, lo, hi, step } = slots(e, side, w, h);
+      for (let k = 0; (k - 1) * step < Math.max(hi - c, c - lo); k++)
+        for (const a of k ? [Math.min(hi, c + k * step), Math.max(lo, c - k * step)] : [c]) {
+          const box = edgeBox(e, side, a, w, h, gap);
+          // a new spot keeps a little clear of the cards, so the name does not jump to and fro at the border
+          if (box && free(box, h * 0.2, level)) return { side, box, rank, dist: Math.abs(a - c), level };
+        }
+    }
+    return undefined;
+  };
+  const best = search(0) ?? (names.length || areas.length ? search(1) : undefined);
+  const level = best?.level ?? 1;
+  const prev = opts.prev;
+  if (prev && prev.side !== 'inside' && !prev.covered) {
+    const rank = order.indexOf(prev.side);
+    const { c, lo, hi, step } = slots(e, prev.side, w, h);
+    let a = Math.max(lo, Math.min(hi, across(prev.side) ? prev.box.x + prev.box.w / 2 : prev.box.y + prev.box.h / 2));
+    let box = edgeBox(e, prev.side, a, w, h, gap);
+    if (box && free(box, 0, level) && (!best || rank <= best.rank)) {
+      // back towards the middle, as far as is free
+      while (a !== c) {
+        const next = a < c ? Math.min(c, a + step) : Math.max(c, a - step);
+        const b = edgeBox(e, prev.side, next, w, h, gap);
+        if (!b || !free(b, 0, level)) break;
+        a = next;
+        box = b;
+      }
+      if (!best || rank < best.rank || Math.abs(a - c) <= best.dist + h) return { side: prev.side, box };
+    }
+  }
+  if (best) return { side: best.side, box: best.box };
+  if (opts.strips) return inside(outline, e, w, h, opts, prev);
+  const { c } = slots(e, 'top', w, h);
+  return { side: 'top', box: edgeBox(e, 'top', c, w, h, gap)!, covered: true };
+}
+
+/** Which points of a grid over the piece lie in it (not in a hole), by outline; the same for every size of name. */
+const grids = new WeakMap<[number, number][], { holes: [number, number][][] | undefined; inner: boolean[] }>();
+const GRID = 24;
+function gridOf(outline: [number, number][], e: Edges, holes: [number, number][][] | undefined) {
+  const known = grids.get(outline);
+  if (known && known.holes === holes) return known.inner;
+  const inner: boolean[] = [];
+  for (let i = 0; i < GRID; i++)
+    for (let j = 0; j < GRID; j++) {
+      const x = e.minX + ((i + 0.5) * (e.maxX - e.minX)) / GRID;
+      const y = e.minY + ((j + 0.5) * (e.maxY - e.minY)) / GRID;
+      inner.push(within(outline, x, y) && !holes?.some((r) => within(r, x, y)));
+    }
+  grids.set(outline, { holes, inner });
+  return inner;
+}
+
+/**
+ * Inside the piece: the spot whose box crosses the fewest title strips, nearest its centre of mass;
+ * its middle never in a hole of the piece nor in another group's territory, where the name would read
+ * as theirs, and its box clear of them where any spot is.
+ */
+function inside(outline: [number, number][], e: Edges, w: number, h: number, opts: NameOpts, prev?: NameSpot): NameSpot {
+  const strips = opts.strips ?? [];
+  // the other territories that reach into the piece's bounds, each with its own bounds to rule it out quickly
+  const areas = (opts.areas ?? []).map((r) => ({ r, e: edges(r) })).filter(({ e: o }) => o.minX < e.maxX && e.minX < o.maxX && o.minY < e.maxY && e.minY < o.maxY);
+  const theirs = (x: number, y: number) => areas.some(({ r, e: o }) => x > o.minX && x < o.maxX && y > o.minY && y < o.maxY && within(r, x, y));
+  const ours = (x: number, y: number) => within(outline, x, y) && !opts.holes?.some((r) => within(r, x, y)) && !theirs(x, y);
+  // whether the name's box, not only its middle, reaches into a hole or another group's territory
+  const others = [...(opts.holes ?? []), ...areas.map(({ r }) => r)];
+  const score = (x: number, y: number) => {
+    const box = { x: x - w / 2, y: y - h / 2, w, h };
+    return { box, titles: strips.filter((s) => crosses(box, s)).length, dist: len(x - e.cx, y - e.cy), blocked: others.some((r) => reaches(box, r)) };
+  };
+  type Score = ReturnType<typeof score>;
+  const better = (a: Score, b: Score) =>
+    a.blocked !== b.blocked ? !a.blocked : a.titles !== b.titles ? a.titles < b.titles : a.dist < b.dist;
+  const inner = gridOf(outline, e, opts.holes);
+  let best = score(e.cx, e.cy);
+  if (!ours(e.cx, e.cy)) best.titles = Infinity;
+  for (let i = 0; i < GRID; i++)
+    for (let j = 0; j < GRID; j++) {
+      if (!inner[i * GRID + j]) continue;
+      const x = e.minX + ((i + 0.5) * (e.maxX - e.minX)) / GRID;
+      const y = e.minY + ((j + 0.5) * (e.maxY - e.minY)) / GRID;
+      if (theirs(x, y)) continue;
+      const s = score(x, y);
+      if (better(s, best)) best = s;
+    }
+  if (prev?.side === 'inside') {
+    const x = prev.box.x + prev.box.w / 2;
+    const y = prev.box.y + prev.box.h / 2;
+    const s = score(x, y);
+    if (ours(x, y) && (!s.blocked || best.blocked) && s.titles <= best.titles && s.dist <= best.dist + h) best = s;
+  }
+  return { side: 'inside', box: best.box };
 }

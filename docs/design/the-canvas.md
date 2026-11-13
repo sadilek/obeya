@@ -382,8 +382,29 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
 ### Groups on the canvas
 
 A group shows as a territory behind its cards: a soft glowing outline over a faint area in its
-colour. Group colours appear only there and in the minimap, never on a card, so they do not compete
-with the state inks. Zoomed far out, group names stand pale over their territories.
+colour. Group colours appear only there, in the group's name and in the minimap, never on a card,
+so they do not compete with the state inks. A group's name stands along the edge of its territory's
+largest piece, the same for one card and for many: far out (below the zoom at which cards show only
+their titles) large and pale, closer in as a small header in capitals in the group's colour, at a
+fixed size on screen; the two cross-fade where the cards change look. It goes to the first spot
+where it covers no card (nor a note on the canvas): above the top edge, centred, then slid along
+that edge to the free spot nearest the middle; then hanging below the bottom edge, the same way;
+then beside the side nearer the piece's centre of mass (on a tie, the right), then the other side,
+centred vertically and then slid along it. A spot that also keeps clear of the other groups'
+territories and of the names placed before it wins over one that only keeps clear of the cards, so
+a name does not read as a neighbour's and two names do not run into each other. Only far out, where
+nothing is free, it goes inside the piece over the cards, drawn above them, where it crosses the
+fewest card titles, a project's workstreams included (on the blank part of a card below its title),
+nearest the centre of mass, clear of the holes in the piece where other groups' cards stand;
+closer in, where titles are what one reads, it stays above the top edge, under the cards that cover
+it. Along an edge it is drawn over the territories and under every card. A name holds its spot
+while that stays free and no better spot has opened, sliding back towards the middle as far as is
+free, so a card dragged past does not make it flicker from side to side; once the card has gone it
+is back where the rule puts it. Zooming does not move the names on every frame: they are placed
+anew once the zoom has changed by a few per cent, in boxes that hold them at any zoom in between,
+and a moved card moves only the names near it. Fitting the canvas into view (`0`) takes in the
+names that stand outside the cards, at the zoom it comes to, so none ends up behind the bar where
+the canvas fits at all.
 
 A territory is the contour of an energy field (Bubble Sets): the group's cards pull, near cards are
 linked so they share one territory (not across another card), other cards push back, and where two
@@ -425,6 +446,12 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **A group's name stands along its territory's edge, at every zoom** (2026-11-12; its colour
+  closer in kept by the owner, 2026-11-13): at the territory's centre and drawn over the cards it
+  landed on a title (with one card, right over it), and closer in a group could be told only by its
+  colour. The small header closer in keeps the group's colour, which ties it to its territory.
+  Rejected: a solid tab on the top edge (heavier, and a group colour over a card); hiding a name
+  that finds no free spot (it should stay visible); showing names only far out.
 - **The search stays in the bar and is the quick way to a card** (2026-11-01, owner): before the
   first word it lists the canvas's cards, the last changed first, and the archive joins only with
   the first word so the list stays short; a row under the pointer lights its card up where it

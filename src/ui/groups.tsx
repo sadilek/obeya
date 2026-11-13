@@ -3,10 +3,13 @@
 // that assign a group.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type Bounds, centre } from '../core/layout';
+import { type Bounds, centre, shapeOf } from '../core/layout';
 import type { Group, Item } from '../core/types';
+import { titleFrom } from '../core/card';
+import { plain } from './markdown';
 import { t } from './strings';
-import { type Claim, type Territory, Territories } from './territory';
+import { FAR } from './camera';
+import { type Claim, type NameSpot, placeName, ringBounds, type Territory, Territories } from './territory';
 
 type Placed = { item: Item; b: Bounds }[];
 type Pt = { x: number; y: number };
@@ -179,18 +182,201 @@ export function TerritoryLayer({ shapes, waves, streaks, selected }: { shapes: S
   );
 }
 
-/** The groups' names over their territories, shown when zoomed far out. */
-export function GroupNames({ shapes }: { shapes: Shape[] }) {
+/** A group's name closer in than FAR, in screen px; far out it is the territory's `labelSize`. */
+const NEAR_PX = 13;
+/** The two looks of a name, as `.gname.far` and `.gname.near` draw them: weight and letter spacing (em). */
+const LOOK = { far: { weight: 800, spacing: 0.14 }, near: { weight: 700, spacing: 0.12 } } as const;
+type Look = keyof typeof LOOK;
+/** The height of the font's capitals, in em. */
+const CAPS = 0.7;
+/** Zoomed far out a task card shows only its title, from this far below its top, up to three lines of this height (world px, as `.z-far .card` sets them). */
+const FAR_TITLE = { top: 18, line: 26 * 1.1, lines: 3, font: '600 100px Newsreader, Georgia, serif' };
+/**
+ * The names are placed anew once the zoom has changed by this factor, not on every frame of a
+ * zoom: each for the smallest zoom of its step, where it is largest in the world, so that drawn at
+ * any zoom within the step it covers no more than the box it was placed in.
+ */
+const STEP = 1.06;
+const stepOf = (s: number) => Math.floor(Math.log(s) / Math.log(STEP));
+
+/** Widths of texts in a font, in em, measured once. */
+const widths = new Map<string, number>();
+let canvas: CanvasRenderingContext2D | null | undefined;
+function emWidth(text: string, font: string) {
+  const k = `${font}|${text}`;
+  let w = widths.get(k);
+  if (w === undefined) {
+    canvas ??= typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
+    if (canvas) {
+      canvas.font = font;
+      w = canvas.measureText(text).width / 100;
+    } else w = text.length * 0.6;
+    widths.set(k, w);
+  }
+  return w;
+}
+let family: string | undefined;
+const nameFont = (weight: number) => {
+  family ??= (typeof document !== 'undefined' && getComputedStyle(document.documentElement).getPropertyValue('--cond').trim()) || 'sans-serif';
+  return `${weight} 100px ${family}`;
+};
+
+/** The part of a card its title takes zoomed far out (a project's or chip's: its top 45 %). */
+function titleStrip(item: Item, b: Bounds): Bounds {
+  if (shapeOf(item) !== 'task') return { ...b, h: b.h * 0.45 };
+  const title = item.title ? plain(item.title) : titleFrom(item.body) || t.titlePlaceholder;
+  const lines = Math.max(1, Math.min(FAR_TITLE.lines, Math.ceil((emWidth(title, FAR_TITLE.font) * 26 * 1.05) / (b.w - 28))));
+  return { ...b, h: Math.min(b.h, FAR_TITLE.top + lines * FAR_TITLE.line + 4) };
+}
+
+/** The title strips of every card on the canvas, a project's workstreams included, which a name far out stays off where it can. */
+export const titleStrips = (placed: Placed) => placed.map((p) => titleStrip(p.item, p.b));
+
+/** Where a name stands (`box`, the box it was placed in, in world px) and its size drawn now. */
+export type NameAt = NameSpot & { font: number };
+export interface Named {
+  g: Group;
+  far?: NameAt;
+  near?: NameAt;
+}
+
+/** What the names keep clear of: the cards and notes on the canvas, and the cards' title strips far out. */
+export interface Ground {
+  shapes: Shape[];
+  cards: Bounds[];
+  strips: Bounds[];
+}
+type Memo = Map<string, { key: string; spot: NameSpot }>;
+
+/** A number for each ring, so that a key can tell whether a territory's outline is still the same. */
+const ringIds = new WeakMap<object, number>();
+let ringCount = 0;
+const ringId = (r: object | undefined) => {
+  if (!r) return 0;
+  let n = ringIds.get(r);
+  if (n === undefined) ringIds.set(r, (n = ++ringCount));
+  return n;
+};
+const near = (b: Bounds, r: Bounds) => b.x < r.x + r.w && r.x < b.x + b.w && b.y < r.y + r.h && r.y < b.y + b.h;
+const sig = (bs: Bounds[]) => bs.map((b) => `${b.x},${b.y},${b.w},${b.h}`).join(';');
+
+/**
+ * The names of all groups in `look` at zoom step `step`, one after the other, each clear of the
+ * ones before it. A name is placed anew only where what is around it changed (with `memo`, which
+ * also holds where it stood, so it holds still while cards move past it): a card dragged moves
+ * the names near it, not all of them.
+ */
+export function placeAll({ shapes, cards, strips }: Ground, look: Look, step: number, memo?: Memo): Map<string, NameSpot> {
+  const out = new Map<string, NameSpot>();
+  const placed: Bounds[] = [];
+  const font = (look === 'far' ? 1 : NEAR_PX) / STEP ** step;
+  const others = shapes.flatMap(({ g, t: x }) => x.pieces.map((p) => ({ g: g.id, ring: p[0]!, b: ringBounds(p[0]!) })));
+  for (const { g, t: x } of shapes) {
+    if (!x.outline) continue;
+    const px = look === 'far' ? x.labelSize * font : font;
+    const { weight, spacing } = LOOK[look];
+    const w = (emWidth(g.name.toUpperCase(), nameFont(weight)) + spacing * (g.name.length - 1)) * px;
+    const h = CAPS * px;
+    // only what lies within reach of the outline matters to it
+    const ob = ringBounds(x.outline);
+    const reach = w + 2 * h;
+    const region = { x: ob.x - reach, y: ob.y - reach, w: ob.w + 2 * reach, h: ob.h + 2 * reach };
+    const localCards = cards.filter((c) => near(c, region));
+    const localStrips = look === 'far' ? strips.filter((c) => near(c, ob)) : undefined;
+    const names = placed.filter((c) => near(c, region));
+    const theirs = others.filter((o) => o.g !== g.id && near(o.b, region));
+    const key = [step, w.toFixed(1), ringId(x.outline), ringId(x.holes), sig(localCards), sig(localStrips ?? []), sig(names), theirs.map((o) => ringId(o.ring)).join(',')].join('|');
+    const id = `${g.id}:${look}`;
+    const known = memo?.get(id);
+    let spot = known?.key === key ? known.spot : undefined;
+    if (!spot) {
+      spot = placeName(x.outline, { w, h }, localCards, {
+        ...(localStrips ? { strips: localStrips } : {}),
+        ...(known ? { prev: known.spot } : {}),
+        ...(x.holes ? { holes: x.holes } : {}),
+        names,
+        areas: theirs.map((o) => o.ring),
+      });
+      memo?.set(id, { key, spot });
+    }
+    out.set(g.id, spot);
+    if (!spot.covered) placed.push(spot.box);
+  }
+  return out;
+}
+
+/**
+ * Where each group's name stands at zoom `s` (see `placeName`): along its territory's edge where
+ * no card (nor note, `notes`), other name or other territory covers it, far out with the last
+ * resort over its cards below their titles. Only the look shown at `s` is placed; the other keeps
+ * where it stood while it fades out. `boxesAt` tells where the names would stand at another
+ * zoom, for a camera that frames the canvas.
+ */
+export function useGroupNames(shapes: Shape[], placed: Placed, notes: Bounds[], s: number): { names: Named[]; boxesAt: (s: number) => Bounds[] } {
+  const memo = useRef<Memo>(new Map());
+  const shown = useRef(new Map<string, { far?: NameSpot; near?: NameSpot }>());
+  // widths measured before the fonts came are measured again once they are there
+  const [fonts, setFonts] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void document.fonts?.ready.then(() => {
+      if (!live) return;
+      widths.clear();
+      family = undefined;
+      memo.current.clear();
+      setFonts((n) => n + 1);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  // what a name keeps clear of: the cards and the notes on the canvas; far out the titles of all cards, workstreams included
+  const cards = useMemo(() => [...placed.filter((p) => !p.item.parent).map((p) => p.b), ...notes], [placed, notes]);
+  const strips = useMemo(() => titleStrips(placed), [placed, fonts]);
+  const look: Look = s < FAR ? 'far' : 'near';
+  const step = stepOf(s);
+  const spots = useMemo(() => {
+    const now = placeAll({ shapes, cards, strips }, look, step, memo.current);
+    const ids = new Set(shapes.map(({ g }) => g.id));
+    for (const id of [...shown.current.keys()]) if (!ids.has(id)) shown.current.delete(id);
+    for (const { g } of shapes) shown.current.set(g.id, { ...shown.current.get(g.id), [look]: now.get(g.id) });
+    for (const id of [...memo.current.keys()]) if (!ids.has(id.slice(0, id.lastIndexOf(':')))) memo.current.delete(id);
+    return new Map(shown.current);
+  }, [shapes, cards, strips, look, step]);
+  const names = shapes.map(({ g, t: x }) => {
+    const at = spots.get(g.id);
+    return {
+      g,
+      ...(at?.far ? { far: { ...at.far, font: x.labelSize / s } } : {}),
+      ...(at?.near ? { near: { ...at.near, font: NEAR_PX / s } } : {}),
+    };
+  });
+  const boxesAt = (to: number) => [...placeAll({ shapes, cards, strips }, to < FAR ? 'far' : 'near', stepOf(to)).values()].map((p) => p.box);
+  return { names, boxesAt };
+}
+
+/** One name, centred in the box it was placed in; the letter spacing after the last letter is left out of the centring. */
+function NameText({ g, at, look }: { g: Group; at: NameAt; look: Look }) {
+  const { box, font } = at;
   return (
-    <svg id="gnames" width="1" height="1">
-      {shapes.map(
-        ({ g, t: x }) =>
-          x.label && (
-            <text key={g.id} className="gname" x={x.label.x} y={x.label.y} style={{ ...hue(g.hue), fontSize: `calc(${x.labelSize}px / var(--s))` }}>
-              {g.name}
-            </text>
-          ),
-      )}
+    <text className={`gname ${look}`} x={box.x + box.w / 2 + (LOOK[look].spacing * font) / 2} y={box.y + box.h / 2 + (CAPS * font) / 2} style={{ ...hue(g.hue), fontSize: font }}>
+      {g.name}
+    </text>
+  );
+}
+
+/**
+ * The groups' names under the cards, over the territories: far out pale and large, closer in small
+ * in the group's colour, cross-fading at FAR; `over`: the names far out that stand inside their
+ * territory, drawn over the cards.
+ */
+export function GroupNames({ names, over }: { names: Named[]; over?: boolean }) {
+  return (
+    <svg id={over ? 'gnames-over' : 'gnames'} width="1" height="1">
+      {names.flatMap(({ g, far, near }) => [
+        far && (far.side === 'inside') === !!over && <NameText key={`${g.id}:far`} g={g} at={far} look="far" />,
+        !over && near && <NameText key={`${g.id}:near`} g={g} at={near} look="near" />,
+      ])}
     </svg>
   );
 }

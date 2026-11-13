@@ -9,7 +9,7 @@ import { archivedWithDone, nameless, needsYou, titleFrom, unreadAnswers, unreadP
 import type { ConfigProblem } from '../core/config';
 import { api, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { goTo, onSwitch } from './switch';
-import { GroupNames, TerritoryLayer, useTerritories } from './groups';
+import { GroupNames, TerritoryLayer, useGroupNames, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { CardNumber } from './cardNumber';
@@ -313,6 +313,7 @@ function Canvas({
     const h = setTimeout(() => writeJson(local, camKey(snapshot.canvas.id), besideSheet(cam, camSide.current, NO_SIDES)), 300);
     return () => clearTimeout(h);
   }, [cam, snapshot.canvas.id]);
+  const groupNames = useGroupNames(territories.shapes, placed, notes, cam.s);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const onResize = () => setTick((n) => n + 1);
@@ -1292,7 +1293,17 @@ function Canvas({
     if (e.key === '0') {
       setFocus(null);
       setSheetOn(false);
-      fly(kept(overviewCam(all, sideNow())), 700);
+      // the frame takes in the groups' names too, which stand outside the cards, at the zoom it comes to
+      const side = sideNow();
+      // the names grow in the world as the zoom shrinks: fit again until the frame holds them at its own zoom
+      let to = overviewCam(all, side);
+      for (let k = 0; k < 8; k++) {
+        const next = overviewCam(unionBounds([all, ...groupNames.boxesAt(to.s)]) ?? all, side);
+        const settled = next.s >= to.s - 1e-6;
+        to = next;
+        if (settled) break;
+      }
+      fly(kept(to), 700);
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
@@ -1386,6 +1397,7 @@ function Canvas({
         >
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
+            <GroupNames names={groupNames.names} />
             <Links placed={placed} waits={shownWaits} standsFor={standsForId} />
             <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} steps={deps?.steps} loops={loops.flatMap((l) => l.edges)} standsFor={standsForId} s={cam.s}>
               {(shift) => <ManualEdges dep={dep} placed={placed} waitKeys={waitKeys} loops={loops} standsFor={standsForId} s={cam.s} shift={shift} onLoop={resolveLoop} />}
@@ -1413,6 +1425,7 @@ function Canvas({
                 />
               ),
             )}
+            <GroupNames names={groupNames.names} over />
             <ConnectionDots dep={dep} placed={placed} underway={underway} depOf={depOf} />
             {planDirs?.map((d, n) => (
               <PlanDirNote
@@ -1433,7 +1446,6 @@ function Canvas({
                 onHide={() => hideNote(d)}
               />
             ))}
-            <GroupNames shapes={territories.shapes} />
           </div>
         </div>
         {/* on an empty canvas the camera centres the notes on the plan directories: the hint stands above them, with space between */}
