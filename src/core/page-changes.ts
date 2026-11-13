@@ -1,7 +1,7 @@
-// What changed on shared demo pages (site.ts writes them from demo-page.ts), as their viewers see
-// it, oldest first. A page keeps the newest change it was published after (`version` of its share);
-// the changes after that one which show on its kind of page are what sharing it again brings, and a
-// page with none is up to date. Their words are in the UI's strings (`pageChanges`), by id.
+// What changed on shared demo pages (site.ts writes them from demo-page.ts and site-pages.ts), as
+// their viewers see it, oldest first. A page keeps the newest change it was published after
+// (`version` of its share); the changes after that one which show on its kind of page are what
+// sharing it again brings, and a page with none is up to date. Their words are in the UI's strings (`pageChanges`), by id.
 //
 // A change to the templates that shows on the pages gets an entry here; one that shows nowhere
 // (a refactoring, a style only the other kind of page uses) gets none, so it marks no page.
@@ -50,8 +50,8 @@ export const THEME_CHANGED = 'theme';
 /** What leaves a page outdated: a change of Obeya's pages, or its repository's theme. */
 export type OutdatedBy = PageChangeId | typeof THEME_CHANGED;
 
-/** The sample pages' hash (`pagesHash` in site.ts) the changes above account for. */
-export const PAGES_HASH = { video: '0f84a715dade', html: '4e295b5fc68d', stacked: '37947625c81c' };
+/** The sample pages' hash (`pagesHash` in site-pages.ts) the changes above account for. */
+export const PAGES_HASH = { video: 'f4534a9d5cab', html: '8fa3fc215448', stacked: '37af6b00a5ec' };
 
 /** The version a page published now gets: the newest change; '' while there is none. */
 export const pagesVersion = (changes: readonly PageChange[] = PAGE_CHANGES): string => changes.at(-1)?.id ?? '';

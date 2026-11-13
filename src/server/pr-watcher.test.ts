@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import type { Language } from '../core/locale';
-import { needsYou } from '../core/types';
-import { Board } from './board';
+import { needsYou } from '../core/card';
+import type { Board } from './board';
 import { Store } from './db';
 import { ghCli, makeGhForge, type Forge, type PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, fakeGh, FakeRuntime, gitClone, gitRepo, noContributions, PATIENCE, removeDir, until } from './testing';
+import { fakeGh, FakeRuntime, gitRepo, handedOverOn, heard, noContributions, PATIENCE, primedClones, removeDir, stateOn, testBoard, until } from './testing';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { Workspaces } from './workspaces';
 
 let dir: string;
 let main: string;
@@ -41,10 +41,8 @@ beforeEach(async () => {
   gitRepo(main);
   const store = new Store(':memory:');
   language = 'de';
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => language);
-  workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
-  gitClone(main, join(dir, 'ws', '1'));
-  await workspaces.ensureClones(main, 1);
+  board = testBoard({ store, path: main, language: () => language });
+  workspaces = await primedClones(store, main, dir);
   runtime = new FakeRuntime();
   opened = [];
   settings = { ...generic, land: 'pr', workspaces: 'clones', prNoise: ['deploy-bot'] };
@@ -70,27 +68,19 @@ beforeEach(async () => {
   };
   watcher = new PrWatcher(board, workers, forge, () => main, () => settings);
 });
-afterEach(() => removeDir(dir));
+afterEach(async () => {
+  workers.shutdown();
+  await removeDir(dir);
+});
 
-const state = (id: string) => {
-  const i = board.item(id)!;
-  return i.need ? `${i.state}:${i.need}` : i.state;
-};
+const state = (id: string) => stateOn(board, id);
 
-/** Work on the card's branch, so approving it goes out as a pull request. */
-function commit(cardId: string) {
-  const clone = board.row(cardId).workspace!;
-  writeFileSync(join(clone, 'export.ts'), '');
-  git(clone, 'add', '.');
-  git(clone, 'commit', '--quiet', '-m', 'Export');
-}
+/** A card handed over with work on its branch, so approving it goes out as a pull request; the worker's turn goes on. */
+const handedOver = async () => (await handedOverOn({ board, workers, runtime }, { title: 'Export', commit: 'export.ts', idle: false })).card;
 
 /** A card through review and approval, with its PR reported. */
 async function inPr() {
-  const c = board.create({ title: 'Export', x: 0, y: 0 });
-  await workers.start(c.id);
-  commit(c.id);
-  await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+  const c = await handedOver();
   await workers.approve(c.id);
   return c.id;
 }
@@ -119,10 +109,7 @@ describe('the PR phase', () => {
   });
 
   test('a demo shared before approval is linked in the PR by the worker; pr_opened passes the PR on', async () => {
-    const c = board.create({ title: 'Export', x: 0, y: 0 });
-    await workers.start(c.id);
-    commit(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    const c = await handedOver();
     board.work(c.id, { share: JSON.stringify({ slug: 'export', url: 'https://demos.example/export/', dir: '/d' }) });
     await workers.approve(c.id);
     expect(runtime.last.inbox.at(-1)).toContain('shared with the team on a page of its own: https://demos.example/export/. Link it');
@@ -438,10 +425,12 @@ describe('watching', () => {
     expect(board.item(id)!.pr).toMatchObject({ ready: true, mergeError: refuse });
     expect(needsYou(board.item(id)!)).toBe(true);
     expect(board.events(id).at(-1)!.text).toBe(`Obeya konnte nicht mergen: ${refuse}`);
-    // said once
+    // said once, and a round that finds it as before stores nothing anew
     const events = board.events(id).length;
+    const stored = board.row(id).pr;
     await watcher.poll();
     expect(board.events(id).length).toBe(events);
+    expect(board.row(id).pr).toBe(stored);
     // a new comment is work for the worker again
     status.comments.push({ id: 'i3', author: 'lead', body: 'One more thing.', at: '2026-10-02T09:00:00Z' });
     await watcher.poll();
@@ -554,8 +543,6 @@ describe('watching', () => {
 });
 
 describe('a tool call waiting for permission', () => {
-  const flush = () => new Promise((r) => setTimeout(r, 0));
-
   test('after the merge, a worker finishing asks for one: the card is not merged a second time, and the question stays', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
@@ -566,7 +553,7 @@ describe('a tool call waiting for permission', () => {
     const told = runtime.last.inbox.length;
     // the turn the merge started cleans up, with a command the settings want confirmed
     const answer = runtime.last.permission('Bash', { command: 'rm -rf /tmp/demo' });
-    await flush();
+    await heard();
     expect(state(id)).toBe('waiting:question');
     await watcher.poll();
     expect(state(id)).toBe('waiting:question');
@@ -580,7 +567,7 @@ describe('a tool call waiting for permission', () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
     const answer = runtime.last.permission('Bash', { command: 'git push --force' });
-    await flush();
+    await heard();
     expect(state(id)).toBe('waiting:question');
     status.state = 'MERGED';
     await watcher.poll();
@@ -706,6 +693,7 @@ describe('pull requests in several repositories', () => {
   let statuses: Record<string, PrStatus>;
 
   beforeEach(() => {
+    workers.shutdown();
     workers = new Workers({ board, runtime, workspaces, adapter: settings, remote: 'git@github.com:acme/app.git' });
     const open = (): PrStatus => ({ state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [{ name: 'CI', state: 'pending' }], comments: [] });
     statuses = { [URL_]: open(), [OTHER]: { ...open(), head: 'ddd' } };

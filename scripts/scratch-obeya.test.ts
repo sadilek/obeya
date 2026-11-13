@@ -1,13 +1,13 @@
 import { afterAll, expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanvasSnapshot } from '../src/core/types';
 import { ownerHeaders } from '../src/server/owner';
-import { PATIENCE, removeDir } from '../src/server/testing';
-import { worked } from '../src/ui/talk';
+import { alive, PATIENCE, removeDir, until } from '../src/server/testing';
+import { worked } from '../src/ui/cardState';
 import { scratchBase } from './common';
 
 const script = join(import.meta.dir, 'scratch-obeya.ts');
@@ -40,6 +40,7 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
       port,
       dir,
       plans: { 'docs/plan/werkzeug.md': '# Werkzeug\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n' },
+      canvases: ['Website'],
       cards: [
         { key: 'P', project: 'docs/plan/werkzeug.md', x: 520, y: 10 },
         { key: 'W1', workstream: 'W1', state: 'working', statusLine: 'Liest ein' },
@@ -48,6 +49,8 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
         { key: 'C', title: 'Frage', state: 'waiting', need: 'question', question: { text: 'Lang oder kurz?', options: ['Lang', 'Kurz'] } },
         { key: 'D', title: 'Folge', from: 'C' },
         { key: 'H', title: 'Entwürfe', state: 'waiting', need: 'demo', summary: 'Zwei Entwürfe.', demo: { kind: 'html', dir: artifact, chapters: [] } },
+        { key: 'S', title: 'Startseite', canvas: 'Website', state: 'working' },
+        { key: 'T', title: 'Footer', canvas: 'Website', state: 'working', workspace: true },
       ],
     }),
   );
@@ -78,7 +81,21 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
   for (const key of ['A', 'C', 'H', 'W1']) expect(worked(card(key))).toBe(true);
   expect(card('B').branch).toBeUndefined();
   expect(card('D').from).toBe(staged.cards.C!);
+  // a card the stage puts on another canvas is there, and staged.json says so
+  const { canvasOf } = staged as unknown as { canvasOf: Record<string, string> };
+  expect(canvasOf.S).not.toBe(staged.canvas);
+  expect(canvasOf.A).toBe(staged.canvas);
+  expect(items.some((i) => i.id === staged.cards.S)).toBe(false);
+  const website = (await (await fetch(`http://127.0.0.1:${port}/api/c/${canvasOf.S}/canvas`, { headers })).json()) as CanvasSnapshot;
+  expect(website.items.find((i) => i.id === staged.cards.S)).toMatchObject({ title: 'Startseite', state: 'working' });
   const db = new Database(join(dir, 'home/obeya.db'), { readonly: true });
+  // a card on another canvas with a workspace works in a worktree of that canvas's repository, registered under it
+  const space = db.query<{ path: string; canvas_id: string; repo: string | null }, [string]>('SELECT path, canvas_id, repo FROM workspaces WHERE card_id = ?').get(staged.cards.T!)!;
+  expect(space).toMatchObject({ canvas_id: canvasOf.T, repo: null });
+  expect(canvasOf.T).toBe(canvasOf.S!);
+  expect(website.items.find((i) => i.id === staged.cards.T)!.workspace).toBe(space.path);
+  const common = Bun.spawnSync(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: space.path }).stdout.toString().trim();
+  expect(realpathSync(common)).toBe(realpathSync(join(dir, 'repo-2', '.git')));
   const created = db.query<{ created_at: string }, [string]>('SELECT created_at FROM cards WHERE id = ?').get(staged.cards.A!)!.created_at;
   db.close();
   expect(Date.now() - Date.parse(created)).toBeGreaterThan(7000_000);
@@ -96,11 +113,16 @@ test("--say and --artifact act as a staged card's agent, through the server", as
   expect(say.stderr.toString()).toBe('');
   expect(run('--say', String(port), 'A', 'report', 'Writing tests').stdout.toString()).toContain('Shown on the card.');
   expect(run('--say', String(port), 'A', 'talk', 'Done with the parser.').stdout.toString()).toContain('Shown to the owner.');
+  // words of the text that look like options are the text's, given one by one or as one
+  expect(run('--say', String(port), 'A', 'say', 'Ran', 'it', 'with', '--dry', 'first.').stderr.toString()).toBe('');
+  expect(run('--say', String(port), 'A', 'say', '--force is gone.').stderr.toString()).toBe('');
   const events = await api<{ kind: string; author: string; text: string }[]>(`/cards/${staged.cards.A}/events`);
   expect(events.filter((e) => e.author === 'worker').map((e) => [e.kind, e.text])).toEqual([
     ['say', 'Reading the parser first.'],
     ['report', 'Writing tests'],
     ['talk', 'Done with the parser.'],
+    ['say', 'Ran it with --dry first.'],
+    ['say', '--force is gone.'],
   ]);
   expect((await card('A')).statusLine).toBe('Writing tests');
   expect(run('--say', String(port), 'A', 'shout', 'x').stderr.toString()).toContain('usage');
@@ -108,7 +130,7 @@ test("--say and --artifact act as a staged card's agent, through the server", as
   const before = (await card('H')).demo!;
   const next = join(tmp, 'index.html');
   writeFileSync(next, '<h1>Second draft</h1>');
-  const handed = run('--artifact', String(port), 'H', next, 'The second draft.');
+  const handed = run('--artifact', String(port), 'H', next, 'The', 'second', 'draft,', 'without', '--force.');
   expect(handed.stderr.toString()).toBe('');
   const after = await card('H');
   expect(after.demo).toMatchObject({ kind: 'html' });
@@ -117,7 +139,14 @@ test("--say and --artifact act as a staged card's agent, through the server", as
   expect(readFileSync(join(dir, 'artifacts/H/index.html'), 'utf8')).toBe('<h1>Second draft</h1>');
   expect(readFileSync(join(artifact, 'index.html'), 'utf8')).toBe('<h1>First draft</h1>');
   const review = (await api<{ kind: string; text: string }[]>(`/cards/${staged.cards.H}/events`)).at(-1)!;
-  expect(review).toMatchObject({ kind: 'review', text: 'The second draft.' });
+  expect(review).toMatchObject({ kind: 'review', text: 'The second draft, without --force.' });
+  // a card on the second canvas: --say reaches it there
+  const other = run('--say', String(port), 'S', 'report', 'Drawing the hero');
+  expect(other.stderr.toString()).toBe('');
+  expect(other.stdout.toString()).toContain('Shown on the card.');
+  const on = (JSON.parse(readFileSync(join(dir, 'staged.json'), 'utf8')) as { canvasOf: Record<string, string> }).canvasOf.S;
+  const website = (await (await fetch(`http://127.0.0.1:${port}/api/c/${on}/canvas`, { headers })).json()) as CanvasSnapshot;
+  expect(website.items.find((i) => i.id === staged.cards.S)!.statusLine).toBe('Drawing the hero');
 }, 20_000);
 
 test('without a port, stagings at the same time each pick a free one, and staging afresh takes the same again', async () => {
@@ -183,13 +212,7 @@ test('a scratch Obeya nothing uses ends by itself, and --login says so', async (
   const staged = JSON.parse(r.stdout.toString()) as { port: number; pid: number; endsItself: boolean };
   expect(staged.endsItself).toBe(true);
   try {
-    for (const end = Date.now() + 15_000 * PATIENCE; Date.now() < end; await Bun.sleep(200))
-      try {
-        process.kill(staged.pid, 0);
-      } catch {
-        break;
-      }
-    expect(() => process.kill(staged.pid, 0)).toThrow();
+    await until(() => !alive(staged.pid), 15_000 * PATIENCE);
     const login = Bun.spawnSync([process.execPath, script, '--login', String(staged.port), '--dir', idleDir]);
     expect(login.exitCode).toBe(1);
     expect(login.stderr.toString()).toMatch(/it ended by itself \(nothing used it for \d+ seconds\); stage it afresh/);

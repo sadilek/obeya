@@ -8,14 +8,16 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { type Language, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { MESSAGES } from '../core/messages';
-import { type CardEvent, formatQuestion, type Item, type Mock, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question, type SettledPart } from '../core/types';
+import { type CardEvent, type Item, type Mock, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question, type SettledPart } from '../core/types';
+import { formatQuestion } from '../core/card';
 import { type Asked, decisionLog, withPick } from './advisor';
-import { BadRequest, type Board, type Message, replyNote, type Unread } from './board';
+import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
+import type { Message, Unread } from './row';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BackgroundWait } from './runtime';
 import { imageNote } from './images';
-import { describeTool, SPOKEN } from './workers';
+import { describeTool, SPOKEN } from './agent-lines';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
-import { clip, tooLong } from '../core/text';
+import { clip, tooLong, oneLine } from '../core/text';
 import { folderPath } from './new-repo';
 
 export interface ExplorerOptions {
@@ -84,7 +86,7 @@ export class Explorers {
     this.o.board.setIdea(cardId, { yourTurn: false, questions: [], next: undefined });
     if (text) this.o.onOwnerInput?.(card, text);
     const quoted = replyTo ? this.o.board.quoted(cardId, replyTo) : undefined;
-    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${replyNote(quoted, 'explorer')}${text}${this.o.board.numbersNote(text, card.id)}${imageNote(images)}`, images, false, [said.id], true);
+    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${replyNote(quoted, 'explorer')}${text}${this.o.board.numbersNote(text, card.id)}${imageNote(images)}`, { images, said: [said.id], owner: true });
   }
 
   /**
@@ -94,9 +96,8 @@ export class Explorers {
    */
   pause(cardId: string) {
     const card = this.idea(cardId);
-    if (!this.live.has(cardId)) throw new BadRequest('noAgent', card.paused ? 'the agent is paused already' : 'the agent is not working on anything');
+    if (!this.live.has(cardId)) throw pauseRefused(card, true);
     this.interrupt(cardId, 'paused', true);
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.pausedByOwner);
   }
 
   /**
@@ -105,25 +106,18 @@ export class Explorers {
    */
   pauseAtSafePoint(cardId: string) {
     const card = this.idea(cardId);
-    if (!this.live.has(cardId) || card.pausing) throw new BadRequest('noAgent', card.paused || card.pausing ? 'the agent is paused already' : 'the agent is not working on anything');
-    this.o.board.work(cardId, { pausing: new Date().toISOString() });
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.pausing);
+    if (!this.live.has(cardId) || card.pausing) throw pauseRefused(card, false);
+    this.o.board.pausing(cardId);
   }
 
   /** The owner lets the paused agent go on: it answers what it had not answered yet. One about to pause after its reply works on instead. */
   resume(cardId: string) {
     const card = this.idea(cardId);
-    if (card.pausing) return this.pauseTakenBack(cardId);
-    if (!card.paused) throw new BadRequest('notPaused', 'the agent is not paused');
+    if (card.pausing) return this.o.board.pauseTakenBack(cardId);
+    if (!card.paused) throw notPaused();
     // a reply already given left nothing unanswered: it goes on with what it did after it, its words no new reply
     const unanswered = !!this.o.board.idea(cardId).unread;
-    this.send(card, unanswered ? 'Answer them now.' : RESUMED, [], !unanswered, [], true);
-  }
-
-  /** The owner lets the agent about to pause after its reply go on after all (`resume`, or their words to it). */
-  private pauseTakenBack(cardId: string) {
-    this.o.board.work(cardId, { pausing: null });
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.resumedByOwner);
+    this.send(card, unanswered ? 'Answer them now.' : RESUMED, { quiet: !unanswered, owner: true });
   }
 
   /**
@@ -152,8 +146,8 @@ export class Explorers {
   open(cardId: string, proposed?: 'idea' | 'task', notes?: { text: string; images: string[] }) {
     const card = this.o.board.item(cardId);
     if (!card || card.state !== 'idea') return;
-    if (notes?.text) return this.send(card, `${OPENING_NOTES}\n\n---\n\n${notes.text}`, notes.images, false);
-    this.send(card, proposed === 'idea' ? OPENING_PROPOSED : proposed === 'task' ? OPENING_PROPOSED_TASK : OPENING, [], false);
+    if (notes?.text) return this.send(card, `${OPENING_NOTES}\n\n---\n\n${notes.text}`, { images: notes.images });
+    this.send(card, proposed === 'idea' ? OPENING_PROPOSED : proposed === 'task' ? OPENING_PROPOSED_TASK : OPENING);
   }
 
   /**
@@ -163,13 +157,14 @@ export class Explorers {
   tell(cardId: string, text: string, quiet = false) {
     const card = this.o.board.item(cardId);
     if (!card || card.state !== 'idea') return;
-    this.send(card, text, [], quiet);
+    this.send(card, text, { quiet });
   }
 
   /**
    * Ends the idea's session; its id stays, so the conversation can go on later. A pause ends with it
    * (the idea parked, dropped, decided), unless it ends for one (`paused`): then the idea is paused
-   * in the same step, so the canvas never counts it as neither paused nor about to pause.
+   * in the same step, so the canvas never counts it as neither paused nor about to pause, with the
+   * line that it paused.
    */
   close(cardId: string, paused = false) {
     const live = this.live.get(cardId);
@@ -178,7 +173,7 @@ export class Explorers {
     live?.session.close();
     const card = this.o.board.item(cardId);
     if (card?.idea?.thinking) this.o.board.setIdea(cardId, { thinking: false });
-    if (paused) this.o.board.work(cardId, { paused: '{}', pausing: null });
+    if (paused) this.o.board.paused(cardId);
     else if (card?.paused || card?.pausing) this.o.board.work(cardId, { paused: null, pausing: null });
   }
 
@@ -207,8 +202,7 @@ export class Explorers {
       // about to pause after its reply, which the restart cut off: it stays paused, its words unanswered
       if (i.pausing) {
         this.o.board.setIdea(i.id, { thinking: false });
-        this.o.board.work(i.id, { paused: '{}', pausing: null });
-        this.o.board.log(i.id, 'state', 'owner', this.o.board.t.worker.pausedByOwner);
+        this.o.board.paused(i.id);
         continue;
       }
       // with its repository not on the canvas, what it has not answered waits for the owner's next words
@@ -234,10 +228,14 @@ export class Explorers {
     this.live.clear();
   }
 
-  /** `owner`: the owner's words, which let a paused agent go on; what Obeya tells it waits with what it has not answered yet. */
-  private send(card: Item, message: string, images: string[] = [], quiet = false, said: number[] = [], owner = false) {
+  /**
+   * `quiet`: the turn's words are no reply. `said`: the owner's messages it carries. `owner`: the owner's
+   * words, which let a paused agent go on; what Obeya tells it waits with what it has not answered yet.
+   */
+  private send(card: Item, message: string, o: { images?: string[]; quiet?: boolean; said?: number[]; owner?: boolean } = {}) {
+    const { images = [], quiet = false, said = [], owner = false } = o;
     // the owner's words let an agent about to pause after its reply go on, as they do a paused one
-    if (owner && this.o.board.row(card.id).pausing) this.pauseTakenBack(card.id);
+    if (owner && this.o.board.row(card.id).pausing) this.o.board.pauseTakenBack(card.id);
     const live = this.live.get(card.id);
     if (live) {
       // queued, it goes in with whatever else came, which may well need a reply
@@ -257,21 +255,20 @@ export class Explorers {
         this.o.board.setIdea(card.id, { unread: { why: unread?.why ?? 'paused', messages: [...(unread?.messages ?? []), { text: message, images, said }] } });
         return;
       }
-      this.o.board.work(card.id, { paused: null });
-      this.o.board.log(card.id, 'state', 'owner', this.o.board.t.worker.resumedByOwner);
+      this.o.board.resumed(card.id);
     }
     const current = [...(unread?.messages ?? []), { text: message, images, said }];
     this.o.board.setIdea(card.id, { thinking: true, unread: undefined });
     this.o.board.readNow(card.id, current.flatMap((m) => m.said));
     const text = unread ? `${UNREAD_NOTE[unread.why]}\n\n${unread.messages.map((m) => m.text).join('\n\n')}\n\n---\n\n${message}` : message;
     const all = current.flatMap((m) => m.images);
-    if (row.session_id) return this.launch(card, current, text, row.session_id, all, quiet);
+    if (row.session_id) return this.launch(card, current, text, { resume: row.session_id, images: all, quiet });
     // a planned card that became an idea brings the screenshots of its task
     const shots = this.o.imageFiles?.(card.images) ?? [];
-    this.launch(card, current, `${this.briefing(card, shots, current.flatMap((m) => m.said))}\n\n${text}`, undefined, [...shots, ...all], quiet);
+    this.launch(card, current, `${this.briefing(card, shots, current.flatMap((m) => m.said))}\n\n${text}`, { images: [...shots, ...all], quiet });
   }
 
-  private launch(card: Item, current: Message[], message: string, resume: string | undefined, images: string[], quiet = false) {
+  private launch(card: Item, current: Message[], message: string, { resume, images, quiet }: { resume?: string; images: string[]; quiet: boolean }) {
     // where it reads, first: without its repository on the canvas, nothing starts
     const cwd = this.o.pathFor(card);
     const preferences = this.o.preferences?.() ?? '';
@@ -334,7 +331,7 @@ export class Explorers {
         break;
       case 'tool':
         // its own tools show in the conversation and the brief, not as reading
-        if (!e.name.startsWith('mcp__') && !OWN_TOOLS.includes(e.name)) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input, this.o.board.t));
+        if (!e.name.startsWith('mcp__')) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input, this.o.board.t));
         break;
       case 'error':
         this.o.board.log(cardId, 'error', 'obeya', e.message, { token: e.token });
@@ -377,7 +374,6 @@ export class Explorers {
     if (this.o.board.row(cardId).pausing) {
       live.current = [];
       this.interrupt(cardId, 'paused', true);
-      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.pausedByOwner);
       this.o.onReplied?.(cardId, true);
       return;
     }
@@ -455,7 +451,7 @@ export class Explorers {
       },
       {
         name: 'update_brief',
-        description: `Replace the brief of the idea ("${t.briefName}"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own. mocks: how the brief's variants look, one per variant, shown under the brief; ${MOCKS}. The whole list whenever it changes; leave it out to keep the mocks as they are, an empty list removes them.`,
+        description: `Replace the brief of the idea ("${this.o.board.t.labels.brief}"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own. mocks: how the brief's variants look, one per variant, shown under the brief; ${MOCKS}. The whole list whenever it changes; leave it out to keep the mocks as they are, an empty list removes them.`,
         schema: { brief: z.string(), mocks: MOCK_SCHEMA },
         run: ({ brief, mocks }) => {
           this.o.board.setIdea(cardId, { brief: clip(String(brief).trim(), 20000), ...(mocks === undefined ? {} : { mocks: mocksOf(mocks) }) });
@@ -465,7 +461,7 @@ export class Explorers {
       },
       {
         name: 'plan_prototypes',
-        description: `The throwaway prototypes the brief plans, one per variant to be seen side by side: the whole list each time, empty when none are planned any more. When the owner clicks "${t.prototypeButton}", the card offers them, all chosen, and starts one worker per variant at once; without this list it starts one prototype of the idea as it stands. approach: the variant in a few words, in ${OWNER_LANGUAGE} (${WORDS[language].approach}); it becomes the prototype's title. show: that prototype's task, in ${OWNER_LANGUAGE}: what it builds and what its demo shows, for this variant only; its worker also reads the brief.`,
+        description: `The throwaway prototypes the brief plans, one per variant to be seen side by side: the whole list each time, empty when none are planned any more. When the owner clicks "${this.o.board.t.labels.prototype}", the card offers them, all chosen, and starts one worker per variant at once; without this list it starts one prototype of the idea as it stands. approach: the variant in a few words, in ${OWNER_LANGUAGE} (${WORDS[language].approach}); it becomes the prototype's title. show: that prototype's task, in ${OWNER_LANGUAGE}: what it builds and what its demo shows, for this variant only; its worker also reads the brief.`,
         schema: { prototypes: z.array(z.object({ approach: z.string(), show: z.string() })).max(MAX_VARIANTS) },
         run: ({ prototypes }) => {
           const variants = plannedPrototypes(prototypes);
@@ -476,7 +472,7 @@ export class Explorers {
       },
       {
         name: 'plan_split',
-        description: `When part of the idea is settled and part is still open (to be discussed further, or prototyped), the part to build now: the owner splits it off with "${t.splitOffButton}" as a task of its own, which a worker starts on at once, and the idea stays with what is open. title: that task's title, a few words in ${OWNER_LANGUAGE}. brief: its worker's task, in ${OWNER_LANGUAGE} markdown, standing on its own and holding only what is settled; what is still open is no part of it. The whole value each time; both empty when no part is settled apart from the rest any more.`,
+        description: `When part of the idea is settled and part is still open (to be discussed further, or prototyped), the part to build now: the owner splits it off with "${this.o.board.t.labels.splitOff}" as a task of its own, which a worker starts on at once, and the idea stays with what is open. title: that task's title, a few words in ${OWNER_LANGUAGE}. brief: its worker's task, in ${OWNER_LANGUAGE} markdown, standing on its own and holding only what is settled; what is still open is no part of it. The whole value each time; both empty when no part is settled apart from the rest any more.`,
         schema: { title: z.string(), brief: z.string() },
         run: ({ title, brief }) => {
           const part = settledPart(title, brief);
@@ -588,7 +584,7 @@ You are the exploration agent of one idea on Obeya, a canvas on which the owner 
 
 Your sources are the code, the repository's docs and plan docs, and what the messages give you (decisions taken so far, the owner's preferences). You have the tools a worker has: what the discussion depends on beyond the text (the git history, files on this machine and their dates, a release, pull request or CI run on GitHub with gh, a page on the web), check rather than guess. Nothing you do yourself starts work.${toObeya ? `\n\n${TO_OBEYA}` : ''}
 
-The card shows the brief ("${MESSAGES[ui].idea.briefName}") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
+The card shows the brief ("${MESSAGES[ui].labels.brief}") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
 
 How to work:
 - Put what you find and propose into the brief, not into your reply: what the code does today, variants with their trade-offs and what each would cost (what it touches, roughly how much agent work, the risks), decisions, open questions, effort.
@@ -618,7 +614,6 @@ Owner-facing text (your replies, the brief, its mocks, prototypes and split-off 
 `.trim();
 };
 
-const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'plan_split', 'plan_repo', 'record_decision', 'to_obeya'];
 
 /** At most this many prototypes are planned for one idea. */
 const MAX_VARIANTS = 6;
@@ -676,7 +671,7 @@ function plannedPrototypes(list: unknown): PlannedPrototype[] {
   const seen = new Set<string>();
   const out: PlannedPrototype[] = [];
   for (const p of (list as { approach?: unknown; show?: unknown }[] | undefined) ?? []) {
-    const approach = clip(String(p.approach ?? '').replace(/\s+/g, ' ').trim(), 60);
+    const approach = clip(oneLine(String(p.approach ?? '')), 60);
     const show = clip(String(p.show ?? '').trim(), 4000);
     if (!approach || !show || seen.has(approach.toLowerCase())) continue;
     seen.add(approach.toLowerCase());
@@ -688,7 +683,7 @@ function plannedPrototypes(list: unknown): PlannedPrototype[] {
 /** The mocks as the agent wrote them: each with a title and some HTML, at most one per variant. */
 function mocksOf(list: unknown): Mock[] {
   return ((list as { title?: unknown; html?: unknown }[] | undefined) ?? [])
-    .map((m) => ({ title: clip(String(m.title ?? '').replace(/\s+/g, ' ').trim(), 80), html: String(m.html ?? '').trim() }))
+    .map((m) => ({ title: clip(oneLine(String(m.title ?? '')), 80), html: String(m.html ?? '').trim() }))
     .filter((m) => m.html && m.html.length <= MOCK_MAX)
     .slice(0, MAX_VARIANTS);
 }
@@ -698,7 +693,7 @@ const MOCK_MAX = 20000;
 
 /** The part to build now as the agent marked it: both a title and a brief, or no split. */
 function settledPart(title: unknown, brief: unknown): SettledPart | undefined {
-  const part = { title: clip(String(title ?? '').replace(/\s+/g, ' ').trim(), 160), brief: clip(String(brief ?? '').trim(), 20000) };
+  const part = { title: clip(oneLine(String(title ?? '')), 160), brief: clip(String(brief ?? '').trim(), 20000) };
   return part.title && part.brief ? part : undefined;
 }
 

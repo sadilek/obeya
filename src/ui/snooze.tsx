@@ -3,10 +3,11 @@
 // a swipe on the phone's "Needs you", and that line with "Wake now". One component for
 // every kind of card; a review card handed over can also wait for its contributor to respond.
 
-import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
-import { awaitsContributorNext, type CardEvent, type Item, type Snooze } from '../core/types';
+import { useRef, useState } from 'react';
+import type { CardEvent, Item, Snooze } from '../core/types';
+import { awaitsContributorNext } from '../core/card';
 import { api } from './api';
-import { useMenuClose } from './queue';
+import { useMenuClose, usePlaced } from './menu';
 import { clock, t } from './strings';
 
 /** The clock mark of a snoozed card and of the button that snoozes one. */
@@ -38,20 +39,6 @@ const fieldValue = (d: Date) => {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
-
-/** Room kept between the menu and the edges of the screen. */
-const EDGE = 8;
-
-/** Puts the menu (fixed) below the button where it fits on the screen, else above it, else as low as fits, centred on the button. */
-export function placeOnScreen(menu: HTMLElement, button: DOMRect) {
-  const { width, height } = menu.getBoundingClientRect();
-  const below = button.bottom + 6;
-  const above = button.top - 6 - height;
-  const top = below + height <= innerHeight - EDGE ? below : above >= EDGE ? above : Math.max(EDGE, innerHeight - EDGE - height);
-  const left = Math.min(Math.max(EDGE, button.left + button.width / 2 - width / 2), innerWidth - EDGE - width);
-  menu.style.top = `${top}px`;
-  menu.style.left = `${Math.max(EDGE, left)}px`;
-}
 
 /** What the menu offers besides its times: a choice that waits for something else, and one that takes the time away. */
 interface Extra {
@@ -206,25 +193,6 @@ export function SnoozeMenu({
       )}
     </div>
   );
-}
-
-/** Keeps the fixed menu `menu` on the screen beside what `anchor` measures while `on`, as the page scrolls and resizes. */
-function usePlaced(on: boolean, menu: RefObject<HTMLElement | null>, anchor: () => DOMRect) {
-  useLayoutEffect(() => {
-    if (!on) return;
-    const place = () => menu.current && placeOnScreen(menu.current, anchor());
-    place();
-    // the field to pick a date and time makes the menu taller
-    const grown = new ResizeObserver(place);
-    if (menu.current) grown.observe(menu.current);
-    addEventListener('scroll', place, true);
-    addEventListener('resize', place);
-    return () => {
-      grown.disconnect();
-      removeEventListener('scroll', place, true);
-      removeEventListener('resize', place);
-    };
-  }, [on]);
 }
 
 /**

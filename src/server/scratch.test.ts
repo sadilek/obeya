@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { branchOf, ScratchEnd } from './scratch';
 import { gitRepo } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 const tmp = mkdtempSync(join(tmpdir(), 'obeya-scratch-end-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));

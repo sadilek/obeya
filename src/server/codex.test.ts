@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { bareCommand, CodexLogins, codexRuntime, codexUsageOf, itemCalls, limitResets, modelsOf, notLoggedIn, patchCalls, WAIT_REFUSED } from './codex';
+import { bareCommand, CodexLogins, codexRuntime, codexUsageOf, itemCalls, limitResets, modelsOf, nearestEffort, notLoggedIn, patchCalls, resolveCodexModel, WAIT_REFUSED } from './codex';
 import type { ToolCall } from './folder';
 import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
 import { alive, until } from './testing';
@@ -328,13 +328,22 @@ test("Codex's rate limits as the bar's: the five hours as the session, the week,
   expect(codexUsageOf({ rateLimits: codex, rateLimitsByLimitId: { codex, codex_mini: mini } }, at)).toEqual({
     at: at.toISOString(),
     limits: [
-      { kind: 'session', group: 'session', percent: 28, resetsAt: new Date(1_793_710_855_000).toISOString(), severity: 'normal' },
-      { kind: 'weekly_all', group: 'weekly', percent: 85, resetsAt: new Date(1_793_776_281_000).toISOString(), severity: 'warning' },
-      { kind: 'weekly_scoped', group: 'weekly', scope: 'GPT-6-Luna', percent: 100, resetsAt: new Date(1_793_776_281_000).toISOString(), severity: 'critical' },
+      { kind: 'session', group: 'session', percent: 28, resetsAt: new Date(1_793_710_855_000).toISOString(), windowMinutes: 300, severity: 'normal' },
+      { kind: 'weekly_all', group: 'weekly', percent: 85, resetsAt: new Date(1_793_776_281_000).toISOString(), windowMinutes: 10080, severity: 'warning' },
+      { kind: 'weekly_scoped', group: 'weekly', scope: 'GPT-6-Luna', percent: 100, resetsAt: new Date(1_793_776_281_000).toISOString(), windowMinutes: 10080, severity: 'critical' },
     ],
   });
   // an API key: no windows
   expect(codexUsageOf({ rateLimits: { limitId: null, limitName: null, primary: null, secondary: null }, rateLimitsByLimitId: null })).toBeNull();
+});
+
+test("a Codex window's length goes with it, so the bar marks how much of it has gone by; one of unknown length gets none", () => {
+  const at = new Date('2026-11-03T08:00:00Z');
+  const codex = { limitId: 'codex', limitName: null, primary: { usedPercent: 10, windowDurationMins: 60, resetsAt: 1_793_710_855 }, secondary: { usedPercent: 20, windowDurationMins: null, resetsAt: 1_793_776_281 } };
+  expect(codexUsageOf({ rateLimits: codex }, at)!.limits.map((l) => [l.group, l.windowMinutes])).toEqual([
+    ['session', 60],
+    ['weekly', undefined],
+  ]);
 });
 
 test('the models Codex lists, without hidden ones, each with the efforts it takes among Obeya’s', () => {
@@ -348,4 +357,22 @@ test('the models Codex lists, without hidden ones, each with the efforts it take
     { id: 'gpt-6.1-sol', name: 'GPT-6.1-Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], isDefault: true },
     { id: 'gpt-6-luna', name: 'GPT-6-Luna', efforts: ['low'] },
   ]);
+});
+
+test('a family runs on its newest model in the catalog, else on the default; on none in a catalog without either', () => {
+  const catalog = [{ id: 'gpt-5.6-sol' }, { id: 'gpt-6.2-sol' }, { id: 'gpt-6.1-sol' }, { id: 'gpt-6-luna', isDefault: true as const }];
+  expect(resolveCodexModel(catalog, 'gpt-#-sol')?.id).toBe('gpt-6.2-sol');
+  // a model id stored before resolves as its family
+  expect(resolveCodexModel(catalog, 'gpt-6.1-sol')?.id).toBe('gpt-6.2-sol');
+  expect(resolveCodexModel(catalog, 'gpt-#-terra')?.id).toBe('gpt-6-luna');
+  expect(resolveCodexModel([{ id: 'gpt-6-luna' }], 'gpt-#-terra')).toBeUndefined();
+  expect(resolveCodexModel([], 'gpt-#-sol')).toBeUndefined();
+});
+
+test('an effort the model does not take becomes the nearest it takes, the higher of two as near', () => {
+  expect(nearestEffort('max', ['low', 'medium', 'high', 'xhigh'])).toBe('xhigh');
+  expect(nearestEffort('medium', ['low', 'high'])).toBe('high');
+  expect(nearestEffort('low', ['medium', 'high'])).toBe('medium');
+  expect(nearestEffort('high', ['low', 'high'])).toBe('high');
+  expect(nearestEffort('max', undefined)).toBe('max');
 });

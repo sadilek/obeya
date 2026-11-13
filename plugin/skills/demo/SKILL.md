@@ -104,8 +104,9 @@ proposal (`propose_card`); without Obeya, into the summary.
 
 ## 4. Write the demo script
 
-Demos go into the demo directory of the demo settings (`~/demos` unless they name another):
-`node ${CLAUDE_SKILL_DIR}/lib/settings.ts` prints it as `directory`; `<demos>` below stands for it.
+Read the demo settings first: `node ${CLAUDE_SKILL_DIR}/lib/settings.ts` prints the narration's
+language and person, the voice, the subtitle languages and the demo directory (`directory`;
+`<demos>` below stands for it), each with what it means for the script.
 Create `<demos>/<repo-dir>-<slug>/demo.ts` (model: the newest demo of the same repository in
 `<demos>`, else `${CLAUDE_SKILL_DIR}/example/demo.ts`). It imports `runDemo` from
 `${CLAUDE_SKILL_DIR}/lib/director.ts` and defines:
@@ -121,11 +122,7 @@ Create `<demos>/<repo-dir>-<slug>/demo.ts` (model: the newest demo of the same r
   "+ uncommitted changes" when there are any, stack, data; reviews only where some ran — the
   session's own, or the ones on the PR).
 
-Narration — in the language and person of the demo settings, matter-of-fact. Read them first:
-`node ${CLAUDE_SKILL_DIR}/lib/settings.ts` prints the language (narration, chapter titles, report;
-the repository's own where its settings name one) and the person: the first person only when the voice is the owner's own, otherwise the work
-is presented without "I" or "we". With no voice (`voice: none`) the video is silent: the narration
-is shown as captions only, and each scene lasts as long as its text takes to read.
+Narration — in the language and person the settings name, matter-of-fact.
 - One scene per behaviour, 1–3 sentences each. Say what the viewer sees and why it matters,
   never the implementation. Length follows the size of the change, never padded: a small one
   30–60 s (for a fix: the broken behaviour, then the fixed one), a larger one 1½–3 min,
@@ -149,13 +146,10 @@ is shown as captions only, and each scene lasts as long as its text takes to rea
 - Write large numbers as words ("about fifteen thousand two hundred euros"); small ones as digits
   are fine. Avoid abbreviations the voice would spell out.
 - A foreign term that is not in the narration language's lexicon (`lib/lexicon.de.json`) gets
-  its spoken form in a mark, `{Canvas|Kännwes}`: the captions show "Canvas", Piper and
-  `say` (which read every word by the narration language's rules) speak "Kännwes". Qwen3 gets
-  no marks; a word it cannot read goes into its own lexicon (`lib/lexicon.qwen3.<language>.json`).
-  The render names the words Qwen3 was heard saying differently (section 6). Add a respelling for
-  one only where the voice plausibly said it wrong, not where the speech recognition mishears a
-  name, a file name or an English term in German narration, and only once `--narration` heard the
-  respelling come back right.
+  its spoken form in a mark, `{Canvas|Kännwes}`: the captions show "Canvas", Piper (also Kokoro's
+  German narration) and `say` (which read every word by the narration language's rules) speak "Kännwes". Qwen3 gets
+  no marks; a word it cannot read goes into its own lexicon (`lib/lexicon.qwen3.<language>.json`,
+  section 6).
 - Audio tags in square brackets (`[short pause]`, `[long pause]`) go to ElevenLabs v4 (its default
   model) and v3, which read them. Every other voice speaks the text between two pause tags on its
   own and puts silence where they stand (half a second for a short one, a second and a half for a
@@ -167,9 +161,8 @@ clears), `drag(from, to, ms?)` (onto an element or a point, the pointer moving a
 `scrollTo`, `highlight(locator | locator[], label?)` (a ring around the visible part of its
 elements that follows scrolling; cleared at each scene and by `clearHighlights()`; not inside
 iframes; several in one scene all stay bright, each with its own label, and only the rest of the
-page is dimmed; an element hidden behind another part of the page fails the scene, and so does a
-ring on exactly what a ring of the scene has already: either way the locator mostly matched another
-element than meant), `untilSpoken(fraction)` to time an action to the narration,
+page is dimmed; a ring on a hidden element or on one the scene rings already fails the scene,
+saying why), `untilSpoken(fraction)` to time an action to the narration,
 `pdfFrom(button, name)` (PDF from a new-tab button → PNG pages; needs `pdftoppm` from poppler),
 `showImage(png, top, caption)`, `panImage(top)`, `hideImage`, `skip(fn, { quiet? })` (see above),
 `wait`, `evaluate(fn, arg?)` (`page.evaluate` that fails once the page has not answered for 20 s),
@@ -190,13 +183,9 @@ Start the narration as soon as the `say` texts are written, while you still scri
 (`run` may be empty then): `--narration` synthesises and caches the clips and exits, so the
 render later starts recording at once.
 
-Where the settings name subtitle languages beside the narration's (`subtitles` in what
-`lib/settings.ts` prints), a render first writes the sentences to translate
-(`.work/subtitles/source.json`), says where each language's translation goes
-(`.work/subtitles/<language>.json`) and exits with code 2 before recording. Translate them
-yourself, a sentence for a sentence, as many per scene as the source has (a translation with
-another number is refused), then render again. After a change to a `say`, the render sets the
-translation it makes stale aside (`<language>.stale.json`) and asks for it anew.
+Where the settings name subtitle languages beside the narration's, a render first stops with
+exit code 2, before recording, and says what to translate, where to and how; translate it
+yourself, then render again. It asks again after a change to a `say`.
 
 Before the first render, once the scenes are scripted, run `node demo.ts --dry`: it runs `login`,
 `open` and every scene against the running app as a render would, without narration, video or
@@ -208,16 +197,10 @@ check with `--dry` that it comes.
 
 Run all of them with the Bash tool's `run_in_background`; you are notified when they end (a
 render takes one to three minutes). Not with `&`, and do not wait with `sleep` or `pgrep` loops
-(sleep is blocked; `pgrep -f "node demo.ts"` matches its own command line). A second run of the
-same demo while one runs is refused with the PID of the first.
+(sleep is blocked; `pgrep -f "node demo.ts"` matches its own command line).
 
-Narration is synthesised first by `lib/tts.py` (except in a silent demo), in the voice of the demo settings: Kokoro (the
-default; German narration with it is Piper's), Piper or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
-(Gemini, OpenAI, ElevenLabs, Azure, an own endpoint) with its key from its environment variable or
-a key file. Qwen3 hears each sentence back with Parakeet, the speech recognition that came with
-it, and makes one it stumbled over again. The settings live in `demo.json` in Obeya's home
-(`OBEYA_HOME`, else `~/.obeya`); Obeya's configuration dialog edits them. A missing voice or tool
-stops the render with how to install it (section 3). `DEMO_VOICE=<provider>` renders in another
+Narration is synthesised first by `lib/tts.py` (except in a silent demo), in the voice of the
+demo settings; Obeya's configuration dialog edits them. `DEMO_VOICE=<provider>` renders in another
 voice; `DEMO_VOICE=<path>.wav` clones that clip with Qwen3-TTS (its exact transcript beside it as
 `.txt`); `DEMO_VOICE=none` renders a silent version. Clips are cached by voice and text, so re-runs
 after a visual fix skip synthesis. A voice that loads a large model (Qwen3-TTS, the owner's
@@ -226,29 +209,25 @@ command) takes several GB, so only one such demo loads it at a time (lock
 hang. Under Obeya (`OBEYA_URL` set), Obeya holds Qwen3-TTS loaded for all demos and for about 5
 minutes after the last clip: the narration then logs "synthesised by Obeya", and parallel demos
 take turns clip by clip without the lock. Recording uses the local Chrome, else Edge, else
-Playwright's own Chromium (`DEMO_CHROME` names another; headless screencast, 1440×900). A failing scene (or `login`, `open`) stops the run with the page's
-`URL:`, a `Screenshot:` of it (`.work/failure.png`) and the `Cause:`, Playwright's message with
-the locator it waited for.
+Playwright's own Chromium (`DEMO_CHROME` names another; headless screencast, 1440×900). A failing
+scene (or `login`, `open`) stops the run with the page's URL, a screenshot and the cause.
 
 ## 6. Review your own video — before the owner sees it
 
 - The render writes a `captions.<language>.vtt` per subtitle language, the narration's first, and
   `captions.vtt` with the narration, its first line naming the tracks in order
   (`WEBVTT - subtitles: en de fr`): a cue per sentence, all on the same times.
-- The render ends with a review table: per scene its chapter time and title. A scene flagged
-  with seconds "without narration" shows a stretch where nothing is said: if it only waits, wrap
-  the wait in `d.skip`; otherwise let the narration say what happens there.
-- With Qwen3, a sentence under a scene that "stumbled in every take" was kept as the best of five:
-  reword it or respell the word it stumbles over, then render the narration again. Below the
-  table, "heard differently" lists each word heard as another, with its scenes: a lexicon
-  candidate (section 4), mostly the recognition's own noise on names. `.work/tts.json` holds each
-  sentence as heard. "narration not heard back" says why the recognition did not run.
+- The render ends with a review table: per scene its chapter time and title, and what to look at
+  (a stretch without narration, a sentence the voice stumbled over).
+- Qwen3 hears each sentence back with Parakeet, makes one it stumbled over again, and lists below
+  the table each word it was heard saying differently (`.work/tts.json` holds each sentence as
+  heard). Add a respelling to its lexicon only where the voice plausibly said the word wrong, not
+  where the recognition mishears a name, a file name or an English term in German narration, and
+  only once `--narration` heard the respelling come back right.
 - `review/NN-mid.jpg` and `review/NN.jpg`: a still from the middle and from the end of each
   scene. Look at all of them: is the thing being talked about on screen, ringed, legible, and
   does nothing show that the narration leaves out? Pull
   further frames only for fast transitions (`ffmpeg -ss <t> -i demo.mp4 -frames:v 1 x.png`).
-- A warning that the screencast frames are smaller than the viewport means part of the page is
-  missing from the video.
 
 Iterate until it is clean.
 
@@ -273,12 +252,7 @@ another language without recording it again: `node demo.ts --revoice en` in its 
 `node ${CLAUDE_SKILL_DIR}/lib/revoice.ts <demo dir> en` where its script no longer runs. The screen
 keeps its language; the narration, chapter titles and report change.
 
-The first run writes the words to translate (`.work/revoice/source.json`) and says where their
-translation goes (`.work/revoice/en.json`, same shape). Translate them yourself: each `say` as it
-should sound, in the same person, its audio tags where they stand, as many sentences as the
-source's (each is a caption, timed with the other languages' tracks); a label on screen quoted as it
-appears with its meaning after it, in a `say` as an aside ("Teilen", share, …: a voice drops
-parentheses at times), elsewhere "Teilen" (Share); read the labels from `review/`. The next run
+The first run says what to translate, where to and how; translate it yourself. The next run
 synthesises the clips, stretches each scene's narrated stretch to its new clip so actions stay on
 their words, and rebuilds the video, captions, chapters, stills and report page in place; the demo
 as recorded stays in `.work/revoice/original/`. Its other subtitle tracks stay, on the new times.

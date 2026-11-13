@@ -13,22 +13,58 @@ import { t } from './strings';
 
 /** A file with more lines than this starts folded, so a generated file does not bury the rest. */
 const FOLD_LINES = 1500;
+/** How often an open card at work in a folder without git reads its change again: its agent changes the folder as it goes. */
+const LOOK_MS = 5000;
 
 /**
- * The branch line of a card: its name, the size of its change, its directory to copy, and its
- * running app to open. `sizeBelow`: the card's change list shows the size instead.
+ * The card's change without its patch, read once `on` and again as the work moves on (another
+ * state, status line, handover, workspace or list of files), and on `reload`; in a folder without
+ * git (`poll`) also every few seconds while its agent works. Until it is read again, the last read
+ * stands. `set`: the change as a read of the whole diff has it.
  */
-export function Branch({ item, sizeBelow }: { item: Item; sizeBelow?: boolean }) {
+export function useCardDiff(item: Item, { on, poll }: { on: boolean; poll: boolean }) {
   const [diff, setDiff] = useState<CardDiff | null>(null);
-  const [open, setOpen] = useState(false);
-  // read again when the work moves on; the line keeps the last size meanwhile
+  const [asked, setAsked] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    let gone = false;
+    const look = () => api.diff(item.id).then((d) => !gone && setDiff(d), () => {});
+    void look();
+    const timer = poll && item.state === 'working' ? setInterval(look, LOOK_MS) : undefined;
+    return () => {
+      gone = true;
+      clearInterval(timer);
+    };
+  }, [on, poll, item.id, item.state, item.need, item.statusLine, item.summary, item.workspace, item.noChange, JSON.stringify(item.files), asked]);
+  return { diff, set: setDiff, reload: () => setAsked((n) => n + 1) };
+}
+
+/** The card's change as `useCardDiff` reads it. */
+export type CardChange = ReturnType<typeof useCardDiff>;
+
+/** The card's whole change with its patch, read once; null while it loads. */
+export function useFullDiff(id: string): CardDiff | null | 'failed' {
+  const [diff, setDiff] = useState<CardDiff | null | 'failed'>(null);
   useEffect(() => {
     let gone = false;
-    api.diff(item.id).then((d) => !gone && setDiff(d), () => {});
+    api.diff(id, true).then(
+      (d) => !gone && setDiff(d ?? 'failed'),
+      () => !gone && setDiff('failed'),
+    );
     return () => {
       gone = true;
     };
-  }, [item.id, item.state, item.need, item.statusLine, item.workspace, item.summary]);
+  }, [id]);
+  return diff;
+}
+
+/**
+ * The branch line of a card: its name, the size of its change (`diff`, as last read), its directory
+ * to copy, and its running app to open. `sizeBelow`: the card's change list shows the size instead.
+ * `onRead`: the change as the whole diff, once opened, has it.
+ */
+export function Branch({ item, diff, onRead, sizeBelow }: { item: Item; diff: CardDiff | null; onRead: (d: CardDiff) => void; sizeBelow?: boolean }) {
+  const [open, setOpen] = useState(false);
   // until the change is read, its size as last read: the line keeps its length, and what is under it its place
   const size = diff ? { ...diffSize(diff.files), files: diff.files.length } : item.changeSize;
   return (
@@ -53,7 +89,7 @@ export function Branch({ item, sizeBelow }: { item: Item; sizeBelow?: boolean })
         </>
       )}
       <AppLink item={item} />
-      {open && <DiffView item={item} onClose={() => setOpen(false)} onRead={setDiff} />}
+      {open && <DiffView item={item} onClose={() => setOpen(false)} onRead={onRead} />}
     </>
   );
 }
@@ -98,7 +134,8 @@ function AppLink({ item }: { item: Item }) {
   );
 }
 
-function CopyPath({ path }: { path: string }) {
+/** A path's button that copies it, and says so for a moment. */
+export function CopyPath({ path }: { path: string }) {
   const [copied, copy] = useCopy(3000);
   return (
     <button className={copied ? 'link copied' : 'link'} title={path} onClick={() => copy(path)}>
@@ -112,23 +149,12 @@ function CopyPath({ path }: { path: string }) {
  * without git, the card's change list and its text files' diffs. Opened on one `file`, it shows only
  * that file's diff, with a link to the whole.
  */
-export function DiffView({ item, file, onClose, onRead }: { item: Item; file?: string; onClose: () => void; onRead: (d: CardDiff) => void }) {
-  const [diff, setDiff] = useState<CardDiff | null | 'failed'>(null);
+export function DiffView({ item, file, onClose, onRead }: { item: Item; file?: string; onClose: () => void; onRead?: (d: CardDiff) => void }) {
+  const diff = useFullDiff(item.id);
   const [only, setOnly] = useState(file);
   useEffect(() => {
-    let gone = false;
-    api.diff(item.id, true).then(
-      (d) => {
-        if (gone) return;
-        setDiff(d ?? 'failed');
-        if (d) onRead(d);
-      },
-      () => !gone && setDiff('failed'),
-    );
-    return () => {
-      gone = true;
-    };
-  }, [item.id]);
+    if (diff && diff !== 'failed') onRead?.(diff);
+  }, [diff]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     addEventListener('keydown', h);
@@ -168,7 +194,7 @@ export function DiffView({ item, file, onClose, onRead }: { item: Item; file?: s
               </>
             )}
           </span>
-          <button className="d-close" title={t.diff.close} onClick={onClose}>
+          <button className="d-close" title={t.close} onClick={onClose}>
             ×
           </button>
         </div>
@@ -297,6 +323,15 @@ export function numbered(lines: string[]): Line[] {
 /** The sign of what happened to a file: moved, added, changed, deleted. */
 export const MARK: Record<FolderChange['kind'], string> = { moved: '↪', added: '＋', modified: '✎', deleted: '✕' };
 
+/** A path of a change list as the owner reads it: a directory's with its `/`, a moved one's from where it was. */
+export const changePath = (c: { path: string; from?: string; dir?: true }) => {
+  const name = (p: string) => (c.dir ? `${p}/` : p);
+  return c.from ? `${name(c.from)} → ${name(c.path)}` : name(c.path);
+};
+
+/** Whether a line of a change list has lines added or removed to show: a text file that changed. */
+export const hasLines = (c: { added?: number; removed?: number }) => c.added !== undefined && (c.added > 0 || c.removed! > 0);
+
 /** What else the folder's change list says of a file: that the card also changed one it moved, and what discarding would leave. */
 export function ChangeNote({ c }: { c: Pick<FolderChange, 'changed' | 'undo'> }) {
   return (
@@ -318,9 +353,8 @@ function ChangeTable({ changes, diffed, onFile }: { changes: FolderChange[]; dif
     <table className="f-list">
       <tbody>
         {changes.map((c) => {
-          const name = (p: string) => (c.dir ? `${p}/` : p);
-          const path = c.kind === 'moved' ? `${name(c.from!)} → ${name(c.path)}` : name(c.path);
-          const lines = c.added !== undefined && (c.added > 0 || c.removed! > 0);
+          const path = changePath(c);
+          const lines = hasLines(c);
           return (
             <tr key={`${c.kind}:${c.from ?? ''}:${c.path}`}>
               <td className="f-mark" aria-label={c.kind}>

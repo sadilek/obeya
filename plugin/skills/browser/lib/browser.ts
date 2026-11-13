@@ -1,32 +1,7 @@
 // A headless Chromium of the session's own, driven from the shell over the Chrome DevTools Protocol
 // (CDP). Plain Node with type stripping, like the demo skill; on macOS, Linux and Windows.
 //
-// Usage: node browser.ts <command> [args]
-//   start [--window-size 1280,900] [--fake-mic <file.wav>]
-//                                    launch the session's browser (muted); --fake-mic grants the
-//                                    microphone and plays the WAV (looped) as its input
-//   stop                             close it
-//   status                           show port/pid and open tabs
-//   open <url> [--no-wait]           open url in a new tab, print tab id
-//   nav <url> [--tab id] [--no-wait] navigate an existing tab
-//   tabs                             list open tabs (id, url, title)
-//   close <tabId>                    close a tab
-//   eval <js> [--tab id]             run JS in page, print JSON result
-//   text [--tab id]                  print document.body.innerText
-//   html [--tab id]                  print full page HTML
-//   screenshot <file.png> [--tab id] [--full]
-//   pdf <file.pdf> [--tab id]
-//   input <step>… [--tab id]         trusted mouse/keyboard input, steps run in order on one
-//                                    connection (a key held with down: stays down until up:):
-//     click:X,Y  dbl:X,Y  drag:X1,Y1,X2,Y2  wheel:X,Y,DX,DY[,ctrl]
-//     key:NAME  down:NAME  up:NAME   (NAME: a character, Enter, Escape, Tab, Space, Backspace,
-//                                     ArrowUp/Down/Left/Right)
-//     type:TEXT  wait:MS  shot:FILE.png  eval:JS
-//     X,Y may be @<css selector> instead: the centre of the first matching element
-//   playwright                       print the import of the Playwright it is launched with, muted, for
-//                                    a script of one's own, and whether Playwright's WebKit and Firefox are installed
-//   playwright install <browser>…    install Playwright's own webkit or firefox (--with-deps: with the
-//                                    system libraries they need on Linux)
+// Usage: node browser.ts <command> [args]; the commands and input steps are in ../SKILL.md.
 //
 // Each Claude Code session has a browser of its own: its state (port, pid) is in a file named by
 // the session's process (`CLAUDE_PID`), and the process holding the browser (`serve`, started by
@@ -40,6 +15,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { alive, isMain } from '../../../lib/process.ts';
 
 const fail = (msg: string): never => {
   console.error(msg);
@@ -47,16 +23,6 @@ const fail = (msg: string): never => {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Whether a process runs; `kill(pid, 0)` only asks, on Windows too. */
-export function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
 
 /** The process of the Claude Code session that runs this command, whose browser it drives. */
 export function sessionPid(env: NodeJS.ProcessEnv = process.env): number | null {
@@ -172,40 +138,90 @@ async function pickTab(port: number, tabId?: string): Promise<Tab> {
   return tab!;
 }
 
-function cdp(wsUrl: string, method: string, params: object = {}): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
-    const timer = setTimeout(() => {
-      ws.close();
-      reject(new Error(`Timeout waiting for ${method}`));
-    }, 30_000);
-    ws.onopen = () => ws.send(JSON.stringify({ id: 1, method, params }));
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(String(event.data));
-      if (msg.id !== 1) return;
-      clearTimeout(timer);
-      ws.close();
-      if (msg.error) reject(new Error(`${method}: ${msg.error.message}`));
-      else resolve(msg.result);
-    };
-    ws.onerror = () => {
-      clearTimeout(timer);
-      reject(new Error(`WebSocket connection to ${wsUrl} failed`));
-    };
-  });
+interface Connection {
+  /** A command's result; rejects on an error, or when no answer came within 30 s. */
+  send(method: string, params?: object, sessionId?: string): Promise<any>;
+  /** What the browser sends that answers no command: its events. */
+  on(handler: (event: { method: string; params: any; sessionId?: string }) => void): void;
+  close(): void;
 }
 
-async function evalInTab(tab: Tab, expression: string): Promise<any> {
-  const result = await cdp(tab.webSocketDebuggerUrl, 'Runtime.evaluate', {
-    expression,
-    returnByValue: true,
-    awaitPromise: true,
-    replMode: true,
+/** A CDP connection to a tab or the browser (`webSocketDebuggerUrl`). */
+async function connect(wsUrl: string): Promise<Connection> {
+  const ws = new WebSocket(wsUrl);
+  const failed = () => new Error(`WebSocket connection to ${wsUrl} failed`);
+  // the connection gets the same 30 s as a command
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Timeout connecting to ${wsUrl}`));
+      ws.close();
+    }, 30_000);
+    ws.onopen = () => resolve(clearTimeout(timer));
+    ws.onerror = () => {
+      clearTimeout(timer);
+      reject(failed());
+    };
   });
+  let id = 0;
+  const pending = new Map<number, { method: string; timer: NodeJS.Timeout; resolve: (result: any) => void; reject: (error: Error) => void }>();
+  /** The command `i` that waits for its answer, which no longer waits once taken. */
+  const take = (i: number) => {
+    const call = pending.get(i);
+    clearTimeout(call?.timer);
+    pending.delete(i);
+    return call;
+  };
+  let handler: Parameters<Connection['on']>[0] = () => {};
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(String(event.data));
+    const call = take(msg.id);
+    if (!call) {
+      if (msg.method) handler(msg);
+    } else if (msg.error) call.reject(new Error(`${call.method}: ${msg.error.message}`));
+    else call.resolve(msg.result);
+  };
+  ws.onerror = () => {
+    for (const i of [...pending.keys()]) take(i)!.reject(failed());
+  };
+  return {
+    send: (method, params = {}, sessionId) =>
+      new Promise((resolve, reject) => {
+        const i = ++id;
+        const timer = setTimeout(() => take(i)?.reject(new Error(`Timeout waiting for ${method}`)), 30_000);
+        pending.set(i, { method, timer, resolve, reject });
+        ws.send(JSON.stringify({ id: i, method, params, ...(sessionId ? { sessionId } : {}) }));
+      }),
+    on: (h) => (handler = h),
+    close: () => ws.close(),
+  };
+}
+
+/** One command on a connection of its own. */
+async function cdp(wsUrl: string, method: string, params: object = {}): Promise<any> {
+  const connection = await connect(wsUrl);
+  try {
+    return await connection.send(method, params);
+  } finally {
+    connection.close();
+  }
+}
+
+/** The value of `expression` in the page, promises awaited; an exception in it ends the command. */
+async function evaluate(connection: Connection, expression: string): Promise<any> {
+  const result = await connection.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, replMode: true });
   if (result.exceptionDetails) {
     fail(result.exceptionDetails.exception?.description ?? JSON.stringify(result.exceptionDetails));
   }
   return result.result.value;
+}
+
+async function evalInTab(tab: Tab, expression: string): Promise<any> {
+  const connection = await connect(tab.webSocketDebuggerUrl);
+  try {
+    return await evaluate(connection, expression);
+  } finally {
+    connection.close();
+  }
 }
 
 async function waitForLoad(port: number, tabId: string, timeoutMs = 20_000): Promise<void> {
@@ -250,30 +266,13 @@ function keyOf(name: string) {
 
 /** Trusted input over one CDP connection, so a key held down stays down across steps. */
 async function runInput(tab: Tab, steps: string[]) {
-  const ws = new WebSocket(tab.webSocketDebuggerUrl);
-  await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = () => j(new Error('WebSocket failed')))));
-  let id = 0;
-  const pending = new Map<number, (m: any) => void>();
-  ws.onmessage = (e) => {
-    const m = JSON.parse(String(e.data));
-    if (m.id && pending.has(m.id)) pending.get(m.id)!(m);
-  };
-  const send = (method: string, params: object = {}): Promise<any> =>
-    new Promise((resolve) => {
-      const i = ++id;
-      pending.set(i, (m) => (m.error ? fail(`${method}: ${m.error.message}`) : resolve(m.result)));
-      ws.send(JSON.stringify({ id: i, method, params }));
-    });
-  const evaluate = async (expression: string) => {
-    const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, replMode: true });
-    if (r.exceptionDetails) fail(r.exceptionDetails.exception?.description ?? JSON.stringify(r.exceptionDetails));
-    return r.result.value;
-  };
+  const connection = await connect(tab.webSocketDebuggerUrl);
+  const { send } = connection;
   /** `X,Y…` numbers, where one `@selector` stands for the centre of that element (two numbers). */
   const coords = async (arg: string): Promise<number[]> => {
     if (!arg.startsWith('@')) return arg.split(',').map(Number);
     const sel = arg.slice(1);
-    const p = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: 'nearest' }); const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+    const p = await evaluate(connection, `(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: 'nearest' }); const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
     if (!p) fail(`No element matches ${sel}`);
     return p;
   };
@@ -344,14 +343,11 @@ async function runInput(tab: Tab, steps: string[]) {
       case 'wait':
         await sleep(Number(arg));
         break;
-      case 'shot': {
-        const r = await send('Page.captureScreenshot', { format: 'png' });
-        fs.writeFileSync(arg, Buffer.from(r.data, 'base64'));
-        console.log(`Screenshot saved to ${arg}.`);
+      case 'shot':
+        save(arg, (await send('Page.captureScreenshot', { format: 'png' })).data, 'Screenshot');
         break;
-      }
       case 'eval': {
-        const v = await evaluate(arg);
+        const v = await evaluate(connection, arg);
         console.log(typeof v === 'string' ? v : JSON.stringify(v));
         break;
       }
@@ -359,7 +355,7 @@ async function runInput(tab: Tab, steps: string[]) {
         fail(`Unknown input step ${step}`);
     }
   }
-  ws.close();
+  connection.close();
 }
 
 interface ServeSpec {
@@ -424,14 +420,11 @@ async function serve(spec: ServeSpec) {
  */
 async function silenceSpeech(port: number, source: string) {
   const { webSocketDebuggerUrl } = await http(port, '/json/version');
-  const ws = new WebSocket(webSocketDebuggerUrl);
-  await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = () => j(new Error('WebSocket failed')))));
-  let id = 0;
-  const send = (method: string, params: object = {}, sessionId?: string) =>
-    ws.send(JSON.stringify({ id: ++id, method, params, ...(sessionId ? { sessionId } : {}) }));
+  const connection = await connect(webSocketDebuggerUrl);
+  // sent without waiting for the answers: a target may be gone before it answers
+  const send = (method: string, params: object = {}, sessionId?: string) => void connection.send(method, params, sessionId).catch(() => {});
   const autoAttach = (sessionId?: string) => send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId);
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(String(event.data));
+  connection.on((msg) => {
     if (msg.method !== 'Target.attachedToTarget') return;
     const { sessionId, targetInfo } = msg.params;
     if (targetInfo.type === 'page' || targetInfo.type === 'iframe') {
@@ -444,7 +437,7 @@ async function silenceSpeech(port: number, source: string) {
       send('Runtime.runIfWaitingForDebugger', {}, sessionId);
       send('Target.detachFromTarget', { sessionId });
     }
-  };
+  });
   autoAttach();
 }
 
@@ -542,7 +535,26 @@ async function playwright(args: string[]) {
   }
 }
 
+async function listTabs(port: number) {
+  for (const tab of await pageTabs(port)) console.log(`${tab.id}  ${tab.url}  ${JSON.stringify(tab.title)}`);
+}
+
+/** Sends `tab` to `url` and prints its id, once the page has loaded unless `noWait`. */
+async function navigate(port: number, tab: Tab, url: string, noWait: boolean) {
+  await cdp(tab.webSocketDebuggerUrl, 'Page.navigate', { url });
+  if (!noWait) await waitForLoad(port, tab.id);
+  console.log(tab.id);
+}
+
+/** Writes what CDP returned in base64 (`data`) to `file`, and says so. */
+function save(file: string, data: string, what: string) {
+  fs.writeFileSync(file, Buffer.from(data, 'base64'));
+  console.log(`${what} saved to ${file}.`);
+}
+
 async function main([command, ...args]: string[]) {
+  const tabId = takeFlag(args, '--tab');
+  const tab = async () => pickTab((await loadState()).port, tabId);
   switch (command) {
     case 'serve':
       return serve(JSON.parse(args[0]!) as ServeSpec);
@@ -557,111 +569,76 @@ async function main([command, ...args]: string[]) {
       const state = await loadState();
       const owner = state.owner ? `, closes when process ${state.owner} ends` : ', until `stop`';
       console.log(`Running on CDP port ${state.port} (pid ${state.pid}${owner}).`);
-      for (const tab of await pageTabs(state.port)) console.log(`${tab.id}  ${tab.url}  ${JSON.stringify(tab.title)}`);
-      return;
+      return listTabs(state.port);
     }
 
-    case 'tabs': {
-      const state = await loadState();
-      for (const tab of await pageTabs(state.port)) console.log(`${tab.id}  ${tab.url}  ${JSON.stringify(tab.title)}`);
-      return;
-    }
+    case 'tabs':
+      return listTabs((await loadState()).port);
 
     case 'open': {
       const noWait = takeBoolFlag(args, '--no-wait');
       const url = args[0] ?? fail('Usage: open <url> [--no-wait]');
-      const state = await loadState();
+      const { port } = await loadState();
       // /json/new URL-decodes its query inconsistently across versions; opening
       // about:blank and navigating via CDP sidesteps that.
-      const tab: Tab = await http(state.port, '/json/new', 'PUT');
-      await cdp(tab.webSocketDebuggerUrl, 'Page.navigate', { url });
-      if (!noWait) await waitForLoad(state.port, tab.id);
-      console.log(tab.id);
-      return;
+      return navigate(port, await http(port, '/json/new', 'PUT'), url, noWait);
     }
 
     case 'nav': {
       const noWait = takeBoolFlag(args, '--no-wait');
-      const tabId = takeFlag(args, '--tab');
       const url = args[0] ?? fail('Usage: nav <url> [--tab id] [--no-wait]');
-      const state = await loadState();
-      const tab = await pickTab(state.port, tabId);
-      await cdp(tab.webSocketDebuggerUrl, 'Page.navigate', { url });
-      if (!noWait) await waitForLoad(state.port, tab.id);
-      console.log(tab.id);
-      return;
+      const { port } = await loadState();
+      return navigate(port, await pickTab(port, tabId), url, noWait);
     }
 
     case 'close': {
-      const tabId = args[0] ?? fail('Usage: close <tabId>');
-      const state = await loadState();
-      const tab = await pickTab(state.port, tabId);
-      await fetch(`http://127.0.0.1:${state.port}/json/close/${tab.id}`);
-      console.log(`Closed ${tab.id}.`);
+      const id = args[0] ?? fail('Usage: close <tabId>');
+      const { port } = await loadState();
+      const closing = await pickTab(port, id);
+      await fetch(`http://127.0.0.1:${port}/json/close/${closing.id}`);
+      console.log(`Closed ${closing.id}.`);
       return;
     }
 
     case 'eval': {
-      const tabId = takeFlag(args, '--tab');
       const expression = args[0] ?? fail('Usage: eval <js> [--tab id]');
-      const state = await loadState();
-      const value = await evalInTab(await pickTab(state.port, tabId), expression);
+      const value = await evalInTab(await tab(), expression);
       console.log(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
       return;
     }
 
-    case 'text': {
-      const tabId = takeFlag(args, '--tab');
-      const state = await loadState();
-      console.log(await evalInTab(await pickTab(state.port, tabId), 'document.body.innerText'));
+    case 'text':
+      console.log(await evalInTab(await tab(), 'document.body.innerText'));
       return;
-    }
 
-    case 'html': {
-      const tabId = takeFlag(args, '--tab');
-      const state = await loadState();
-      console.log(await evalInTab(await pickTab(state.port, tabId), 'document.documentElement.outerHTML'));
+    case 'html':
+      console.log(await evalInTab(await tab(), 'document.documentElement.outerHTML'));
       return;
-    }
 
     case 'screenshot': {
-      const tabId = takeFlag(args, '--tab');
       const fullPage = takeBoolFlag(args, '--full');
       const file = args[0] ?? fail('Usage: screenshot <file.png> [--tab id] [--full]');
-      const state = await loadState();
-      const tab = await pickTab(state.port, tabId);
-      const result = await cdp(tab.webSocketDebuggerUrl, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: fullPage });
-      fs.writeFileSync(file, Buffer.from(result.data, 'base64'));
-      console.log(`Screenshot saved to ${file}.`);
-      return;
+      const { data } = await cdp((await tab()).webSocketDebuggerUrl, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: fullPage });
+      return save(file, data, 'Screenshot');
     }
 
     case 'pdf': {
-      const tabId = takeFlag(args, '--tab');
       const file = args[0] ?? fail('Usage: pdf <file.pdf> [--tab id]');
-      const state = await loadState();
-      const tab = await pickTab(state.port, tabId);
-      const result = await cdp(tab.webSocketDebuggerUrl, 'Page.printToPDF', { printBackground: true });
-      fs.writeFileSync(file, Buffer.from(result.data, 'base64'));
-      console.log(`PDF saved to ${file}.`);
-      return;
+      const { data } = await cdp((await tab()).webSocketDebuggerUrl, 'Page.printToPDF', { printBackground: true });
+      return save(file, data, 'PDF');
     }
 
-    case 'input': {
-      const tabId = takeFlag(args, '--tab');
-      if (!args.length) fail('Usage: input <step>… [--tab id] — see header comment for the steps.');
-      const state = await loadState();
-      await runInput(await pickTab(state.port, tabId), args);
-      return;
-    }
+    case 'input':
+      if (!args.length) fail('Usage: input <step>… [--tab id] — the steps are in SKILL.md.');
+      // a step that fails or gets no answer ends the command with its message alone
+      return runInput(await tab(), args).catch((error: Error) => fail(error.message));
 
     case 'playwright':
       return playwright(args);
 
     default:
-      fail('Usage: browser.ts <start|stop|status|tabs|open|nav|close|eval|text|html|screenshot|pdf|input|playwright> — see header comment for details.');
+      fail('Usage: browser.ts <start|stop|status|tabs|open|nav|close|eval|text|html|screenshot|pdf|input|playwright> — see SKILL.md for details.');
   }
 }
 
-const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
-if (process.argv[1] && same(fs.realpathSync(process.argv[1]), import.meta.filename)) await main(process.argv.slice(2));
+if (isMain(import.meta.filename)) await main(process.argv.slice(2));

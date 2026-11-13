@@ -6,40 +6,25 @@
 // repositories' settings (`RepoSettings`) are read where they are used, apply at once, and saving
 // them alone restarts nothing but where they change where the workers work.
 
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { readSharedAsync, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
+import { readShared, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
 import { settingsShape, withoutGone as goneSettings } from '../adapters/schema';
-import { LANGUAGES } from '../core/locale';
-import { blocksSaving, type CanvasConfig, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type DemoSettingsProblem, type DemoSettingsView, type DemoVoiceCheck, type ResolvedCanvas, type VoiceInstallJob, layerSettings, type ProposedSetting, type RepoTrust, type RepoValues, settingPatch, commandLines } from '../core/types';
-import {
-  absoluteDirectory,
-  DEMO_SETTINGS_FILE,
-  demoDirectory,
-  type DemoSettings,
-  expandHome,
-  narrationPerson,
-  readDemoSettings,
-  SERVICES,
-  tidyDemoSettings,
-  VOICES,
-  writeDemoSettings,
-} from '../../plugin/skills/demo/lib/settings.ts';
-import { checkSetup, type SetupCheck } from '../../plugin/skills/demo/lib/setup.ts';
-import { installState, installVoice, KEY_ENV, sample } from '../../plugin/skills/demo/lib/voices.ts';
+import type { ProposedSetting } from '../core/types';
+import { blocksSaving, type CanvasConfig, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type ResolvedCanvas, layerSettings, type RepoTrust, type RepoValues, commandLines } from '../core/config';
+import { expandHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { BadRequest } from './board';
-import { ConfigError, readRepos, resolveCanvas, type StartFailure } from './canvas';
+import { type StartFailure } from './canvas';
+import { ConfigError, readRepos, resolveCanvas } from './canvas-config';
 import type { Store } from './db';
-import { freshPath } from './path';
-import { sameRemote } from './repo';
-import type { DemoSpace } from './demo-space';
-import type { Forge } from './forge';
+import { ghAccounts, sameRemote } from './repo';
+import { type Forge, githubRepo } from './forge';
 import { commitShared, proposeShared, pushShared } from './shared-settings';
-import { gitCalls, gitSteps, leavingClones } from './workspaces';
+import { leavingClones } from './workspaces';
+import { gitTry } from './git';
 import { VERSION } from './resources';
-import { siteProblem } from './share';
+import { siteProblem } from './site';
 import { canonical, commandsOf, heldGroups, trustHeld, trustTakenOver } from './trust';
 
 export const CONFIG_FILE = 'canvases.json';
@@ -71,23 +56,21 @@ function tidySettings(s: z.infer<typeof settingsShape> | undefined): RepoSetting
   const dir = s.planDocs?.dir.trim().replace(/\/+$/, '');
   const site = tidySite(s.demo?.site);
   const demo = { ...(site ? { site } : {}), ...(s.demo?.language ? { language: s.demo.language } : {}) };
-  const app = tidyApp(s.app);
+  // what is not normalised here goes as it came
   const out: RepoSettings = {
-    ...(s.branch?.trim() ? { branch: s.branch.trim() } : {}),
-    ...(s.land ? { land: s.land } : {}),
-    ...(s.direct !== undefined ? { direct: s.direct } : {}),
-    ...(s.autoMerge !== undefined ? { autoMerge: s.autoMerge } : {}),
-    ...(s.checks ? { checks: list(s.checks)! } : {}),
-    ...(s.setup !== undefined ? { setup: s.setup.trim() } : {}),
-    ...(dir ? { planDocs: { dir, exclude: list(s.planDocs!.exclude)! } } : {}),
-    ...(s.softPaths ? { softPaths: list(s.softPaths)! } : {}),
-    ...(s.workspaces ? { workspaces: s.workspaces } : {}),
-    ...(s.prNoise ? { prNoise: list(s.prNoise)! } : {}),
-    ...(s.language ? { language: s.language } : {}),
-    ...(app ? { app } : {}),
-    ...(Object.keys(demo).length ? { demo } : {}),
+    ...s,
+    branch: s.branch?.trim() || undefined,
+    checks: list(s.checks),
+    setup: s.setup?.trim(),
+    planDocs: dir ? { dir, exclude: list(s.planDocs!.exclude)! } : undefined,
+    softPaths: list(s.softPaths),
+    prNoise: list(s.prNoise),
+    app: tidyApp(s.app),
+    demo: Object.keys(demo).length ? demo : undefined,
   };
-  return Object.keys(out).length ? out : undefined;
+  // in the dialog's order, without what is left unset
+  const kept = (['branch', ...SHARED_FIELDS] as const).filter((k) => out[k] !== undefined).map((k) => [k, out[k]]);
+  return kept.length ? (Object.fromEntries(kept) as RepoSettings) : undefined;
 }
 
 /**
@@ -115,6 +98,12 @@ function tidySite(s: DemoSite | undefined): DemoSite | undefined {
     ...(s.tags && Object.keys(s.tags).length ? { tags: s.tags } : {}),
   };
   return out.title || out.url || out.deploy || Object.keys(out).length > 3 ? out : undefined;
+}
+
+/** `value` as this machine's settings for the repository hold it (`RepoSettings`). */
+export function settingPatch(field: ProposedSetting, value: string | string[] | undefined): RepoSettings {
+  if (field === 'run') return { app: { ...(value !== undefined ? { run: value as string } : {}) } };
+  return { [field]: value } as RepoSettings;
 }
 
 /** The canvases as the configuration lists them, from the dialog, the file and the Coordinator alike. */
@@ -149,6 +138,7 @@ export const configShape = z.array(
                   .strict(),
               )
               .optional(),
+            githubAccount: z.string().optional(),
             settings: settingsShape.optional(),
           })
           .strict(),
@@ -169,12 +159,14 @@ function tidy(canvases: z.infer<typeof configShape>): CanvasConfig[] {
       const settings = tidySettings(r.settings);
       // a folder without git has neither clones nor other machines: its cards all work in it
       if (r.git === false) return { path: r.path.trim(), git: false as const, ...(settings ? { settings } : {}) };
+      const account = r.githubAccount?.trim();
       return {
         path: r.path.trim(),
         ...(workspaces.length ? { workspaces } : {}),
         ...(r.clones ? { clones: r.clones } : {}),
         ...(r.slots !== undefined ? { slots: r.slots } : {}),
         ...(hosts.length ? { hosts } : {}),
+        ...(account ? { githubAccount: account } : {}),
         ...(settings ? { settings } : {}),
       };
     }),
@@ -213,10 +205,6 @@ export interface ConfigOptions {
   running: () => string[];
   /** The running server's settings; `commit` the one its checkout stands at (none for the compiled binary). */
   server: { port: number; home: string; permissionMode: string; commit?: string | null };
-  /** Where this Obeya answers, so a sample's voice is held by it (`narration.ts`); none in tests. */
-  narrationUrl?: string;
-  /** The lock a heavy voice's sample waits for; the machine's (TTS_LOCK) unless a test gives its own. */
-  ttsLock?: string;
   /**
    * Starts Obeya again with the saved configuration, for canvases that came from the command line
    * (the file is the configuration from then on); absent where nothing restarts it (--dev).
@@ -233,33 +221,20 @@ export interface ConfigOptions {
   onSettings?: () => void;
   /** Where "Take over into the repository for everyone" opens its pull request. */
   forge?: Forge;
-  /** The demo directory's space and the deletion of old frames; none in tests. */
-  space?: DemoSpace;
+}
+
+/** Where settings for everyone went, for the log: `origin` where they went to `origin`'s main branch, or would have. */
+function sharedHow(done: SettingsShared, origin: boolean): string {
+  if ('pr' in done) return `as a pull request: ${done.pr}`;
+  if ('unchanged' in done) return `which ${origin ? "origin's " : ''}${done.branch} had already`;
+  return origin ? `pushed onto origin's ${done.branch}` : `committed on ${done.branch}`;
 }
 
 /** Whether the repository has the branch, locally or as `origin`'s. */
 async function hasBranch(path: string, branch: string): Promise<boolean> {
-  const found = await gitSteps(path, gitCalls(...['refs/heads/', 'refs/remotes/origin/'].map((ref) => ['rev-parse', '--verify', '--quiet', `${ref}${branch}^{commit}`])));
+  const found = await Promise.all(['refs/heads/', 'refs/remotes/origin/'].map((ref) => gitTry(path, 'rev-parse', '--verify', '--quiet', `${ref}${branch}^{commit}`)));
   return found.some((x) => x !== null);
 }
-
-const demoShape = z
-  .object({
-    language: z.enum(LANGUAGES),
-    voice: z.enum(VOICES),
-    ownVoice: z.boolean().optional(),
-    command: z.string().optional(),
-    url: z.string().optional(),
-    voiceName: z.string().optional(),
-    references: z.partialRecord(z.enum(LANGUAGES), z.string()).optional(),
-    // the one clip of a draft kept in the dialog from before `references`: `tidyDemoSettings` takes it as its language's
-    reference: z.string().optional(),
-    keyFile: z.string().optional(),
-    directory: z.string().optional(),
-    keepFrames: z.union([z.number().int().positive(), z.literal('always')]).optional(),
-    subtitles: z.array(z.string()).optional(),
-  })
-  .strict();
 
 /** The repository's commands that wait for the owner's confirmation (`heldGroups`), with what they were when last confirmed; none where none do. */
 function trustOf(path: string, read: Parameters<typeof commandsOf>[0], mine: RepoSettings | undefined, store: Store): RepoTrust | undefined {
@@ -278,43 +253,6 @@ function markHeld(values: RepoValues, trust: RepoTrust | undefined): RepoValues 
     app: trust.held.includes('app') ? { ...values.app, stop: mark(values.app.stop), keep: mark(values.app.keep) } : values.app,
     demo: trust.held.includes('site') ? { ...values.demo, site: mark(values.demo.site) } : values.demo,
   } as RepoValues;
-}
-
-function parseDemo(input: unknown): DemoSettings {
-  const parsed = demoShape.safeParse(input);
-  if (!parsed.success) throw new BadRequest('config', z.prettifyError(parsed.error));
-  return tidyDemoSettings(parsed.data);
-}
-
-/** What keeps demo settings from working; saving them is allowed all the same. */
-export function demoSettingsProblems(
-  s: DemoSettings,
-  env: Record<string, string | undefined> = process.env,
-  platform: string = process.platform,
-): DemoSettingsProblem[] {
-  const problems: DemoSettingsProblem[] = [];
-  if (s.voice === 'command' && !s.command) problems.push('noCommand');
-  if ((s.voice === 'http' || s.voice === 'azure') && !s.url) problems.push('noUrl');
-  if (s.voice === 'say' && platform !== 'darwin') problems.push('notHere');
-  const service = (SERVICES as readonly string[]).includes(s.voice) || s.voice === 'http';
-  if (service && !env[KEY_ENV[s.voice as keyof typeof KEY_ENV]]) {
-    if (s.keyFile && !existsSync(expandHome(s.keyFile))) problems.push('keyFileMissing');
-    else if (!s.keyFile && s.voice !== 'http') problems.push('noKey');
-  }
-  return problems;
-}
-
-/** What keeps each of Qwen3's clips to clone from working, by its language; saving them is allowed all the same. */
-export function clipProblems(s: DemoSettings): DemoVoiceCheck['clips'] {
-  const out: DemoVoiceCheck['clips'] = {};
-  if (s.voice !== 'qwen3') return out;
-  for (const language of LANGUAGES) {
-    const clip = s.references?.[language] && expandHome(s.references[language]);
-    if (!clip) continue;
-    if (!existsSync(clip)) out[language] = 'referenceMissing';
-    else if (!existsSync(clip.replace(/\.wav$/i, '.txt'))) out[language] = 'noTranscript';
-  }
-  return out;
 }
 
 export class Config {
@@ -417,7 +355,7 @@ export class Config {
       await onMachine();
       return null;
     }
-    const to = (await this.check(canvases)).resolved[at.canvas]?.repos[at.repo]?.shareTo ?? 'main';
+    const to = (await this.landing(canvases, at))?.shareTo ?? 'main';
     const done = await this.share(path, patch, to, field);
     if ('pr' in done) {
       await onMachine();
@@ -448,20 +386,25 @@ export class Config {
     const { branch: _, ...mine } = at.r.settings ?? {};
     if (!Object.keys(mine).length) throw new BadRequest('noSettings', `${at.r.path}: nothing set on this machine to take over`);
     const repoPath = resolve(expandHome(at.r.path));
-    const resolved = (await this.check(canvases)).resolved[at.canvas];
-    const to = resolved?.repos[at.repo]?.shareTo ?? 'main';
+    const landing = await this.landing(canvases, at);
+    const to = landing?.shareTo ?? 'main';
     if (to === 'pr' && parsed.data.direct) {
-      if (!resolved?.repos[at.repo]?.shareDirect) throw new BadRequest('noDirect', `${repoPath}: work goes to main only through pull requests`);
+      if (!landing?.shareDirect) throw new BadRequest('noDirect', `${repoPath}: work goes to main only through pull requests`);
       const { after, ...done } = await pushShared(repoPath, mine);
-      console.log(`Obeya: settings of ${repoPath} for everyone, ${'unchanged' in done ? 'which origin\'s ' + done.branch + ' had already' : `pushed onto origin's ${done.branch}`}`);
+      console.log(`Obeya: settings of ${repoPath} for everyone, ${sharedHow(done, true)}`);
       // origin's had them already: only what the main branch Obeya reads has goes (the local one may be ahead of origin's)
-      this.takenOver(repoPath, undefined, 'unchanged' in done ? (await readSharedAsync(repoPath)).settings : after);
+      this.takenOver(repoPath, undefined, 'unchanged' in done ? (await readShared(repoPath)).settings : after);
       this.o.onSettings?.();
       return done;
     }
     const done = await this.share(repoPath, mine, to, 'settings');
     if (!('pr' in done)) this.o.onSettings?.();
     return done;
+  }
+
+  /** The repository `at` of the configuration as it resolves: where its work lands, so where settings for everyone go. */
+  private async landing(canvases: CanvasConfig[], at: { canvas: number; repo: number }) {
+    return (await this.check(canvases)).resolved[at.canvas]?.repos[at.repo];
   }
 
   /**
@@ -474,17 +417,14 @@ export class Config {
     if (to === 'pr') {
       if (!this.o.forge) throw new BadRequest('settingsShare', 'no forge to open a pull request with');
       const done = await proposeShared(path, patch, this.o.forge);
-      if ('pr' in done) {
-        console.log(`Obeya: ${what} of ${path} for everyone, as a pull request: ${done.pr}`);
-        return done;
-      }
-      console.log(`Obeya: ${what} of ${path} for everyone, which origin's ${'branch' in done ? done.branch : ''} had already`);
+      console.log(`Obeya: ${what} of ${path} for everyone, ${sharedHow(done, true)}`);
+      if ('pr' in done) return done;
       // only what the main branch Obeya reads has: the local one may be ahead of origin's
-      this.takenOver(path, undefined, (await readSharedAsync(path)).settings);
+      this.takenOver(path, undefined, (await readShared(path)).settings);
       return done;
     }
     const { before: _, after, ...done } = await commitShared(path, patch);
-    console.log(`Obeya: ${what} of ${path} for everyone, ${'unchanged' in done ? 'which ' + done.branch + ' had already' : `committed on ${'branch' in done ? done.branch : ''}`}`);
+    console.log(`Obeya: ${what} of ${path} for everyone, ${sharedHow(done, false)}`);
     // all of it is in the file now, also what it held already
     this.takenOver(path, undefined, after);
     return done;
@@ -501,7 +441,7 @@ export class Config {
     if (!parsed.success) throw new BadRequest('invalid', 'expected { path, seen, held }');
     const repoPath = resolve(expandHome(parsed.data.path));
     if (!existsSync(repoPath)) throw new BadRequest('invalid', `no repository at ${parsed.data.path}`);
-    const now = commandsOf(await readSharedAsync(repoPath));
+    const now = commandsOf(await readShared(repoPath));
     if (canonical(now) !== canonical(parsed.data.seen)) throw new BadRequest('trustChanged', `${repoPath}: its commands changed on the default branch since they were shown`);
     // only the groups the dialog showed: one this machine's values (saved or in the draft) stand in for it did not
     this.o.store.trustCommands(repoPath, trustHeld(this.o.store.trustedCommands(repoPath), now, parsed.data.held.filter((g) => now[g] !== undefined)));
@@ -592,6 +532,8 @@ export class Config {
         const { id, name, repos } = resolveCanvas(c, this.o.store, undefined, undefined, read);
         // the repositories in the order given, though the home one runs first
         const given = c.repos.map((r) => repos.find((x) => x.config === r)!);
+        // the commands each repository holds until the owner confirms them, read once
+        const trusts = given.map(({ config: r, read: got }) => trustOf(got.info.path, got.shared, r.settings, this.o.store));
         // what is wrong in a repository's settings for everyone is fixed there, not here: it keeps nothing from being saved
         c.repos.forEach((r, repo) => {
           const { adapter, read: got } = given[repo]!;
@@ -601,20 +543,28 @@ export class Config {
             const why = adapter.land === 'main' ? 'its work lands on the main of this checkout' : !got.info.remote ? 'it has no remote to clone from' : null;
             if (why) problems.push({ code: 'hostRepo', canvas, repo, detail: `the repository cannot have workers on other machines: ${why}` });
           }
+          const account = r.githubAccount;
+          if (account) {
+            const gh = got.info.remote ? githubRepo(got.info.remote) : undefined;
+            if (!gh) problems.push({ code: 'githubAccount', canvas, repo, detail: `the GitHub account ${account} applies to no repository on GitHub: origin is ${got.info.remote ?? 'unset'}` });
+            else if (!ghAccounts(gh.host).accounts.some((a) => a.toLowerCase() === account.toLowerCase()))
+              problems.push({ code: 'githubAccount', canvas, repo, detail: `the GitHub CLI is not logged in as ${account} on ${gh.host} (gh auth login --hostname ${gh.host})` });
+          }
           const site = adapter.demo?.site;
           const wrong = site && siteProblem(site, resolve(r.path));
           if (wrong) problems.push({ code: 'demoSite', canvas, repo, detail: wrong });
           for (const detail of got.shared.problems) problems.push({ code: 'repoSettings', canvas, repo, detail });
-          const trust = trustOf(got.info.path, got.shared, r.settings, this.o.store);
+          const trust = trusts[repo];
           if (trust)
             problems.push({ code: 'untrusted', canvas, repo, detail: `held until the owner confirms them: ${trust.held.flatMap((g) => commandLines(trust.now, g)).join('; ')}` });
         });
         return {
           id,
           name,
-          repos: given.map(({ config: r, ref, adapter, read: got, values }) => {
-            const trust = trustOf(got.info.path, got.shared, r.settings, this.o.store);
+          repos: given.map(({ config: r, ref, adapter, read: got, values }, repo) => {
+            const trust = trusts[repo];
             const leaving = got.info.folder ? [] : this.leaving(id, ref.id === repos[0]!.ref.id ? null : ref.id, r, adapter.workspaces);
+            const gh = !got.info.folder && got.info.remote ? githubRepo(got.info.remote) : undefined;
             return {
             id: ref.id,
             workspaces: adapter.workspaces,
@@ -625,6 +575,7 @@ export class Config {
             shareTo: adapter.land === 'main' ? 'main' : 'pr',
             ...(adapter.land === 'pr' && adapter.direct ? { shareDirect: true } : {}),
             ...(leaving.length ? { leaving } : {}),
+            ...(gh ? { github: { host: gh.host, owner: gh.owner, ...ghAccounts(gh.host) } } : {}),
             };
           }),
         };
@@ -664,19 +615,6 @@ export class Config {
     });
   }
 
-  /** The demo settings in Obeya's home; a demo reads them when it renders, so no restart is needed. */
-  demo(): DemoSettingsView {
-    const settings = readDemoSettings(this.o.server.home);
-    return {
-      file: resolve(this.o.server.home, DEMO_SETTINGS_FILE),
-      settings,
-      check: this.voiceCheck(settings),
-      ...(this.voiceJob ? { job: this.voiceJob } : {}),
-      platform: process.platform,
-      ...(this.o.space ? { space: this.o.space.view() } : {}),
-    };
-  }
-
   /**
    * Obeya's home, whose `settings.json` holds the owner's own settings (settings.ts): the language,
    * light or dark, the agents' models.
@@ -685,82 +623,11 @@ export class Config {
     return this.o.server.home;
   }
 
-  saveDemo(input: unknown): DemoSettingsView {
-    const before = readDemoSettings(this.o.server.home);
-    const settings = parseDemo(input);
-    writeDemoSettings(settings, this.o.server.home);
-    console.log(`Obeya: demo settings saved to ${resolve(this.o.server.home, DEMO_SETTINGS_FILE)}`);
-    // frames kept for a shorter time, or another directory: what is due goes at once
-    if (before.keepFrames !== settings.keepFrames || demoDirectory(before) !== demoDirectory(settings)) void this.o.space?.sweepSoon();
-    return this.demo();
+  /** The running canvases take `canvases` over, each by the id it resolved to. */
+  private async applyNow(canvases: CanvasConfig[], resolved: (ResolvedCanvas | null)[]) {
+    await this.o.apply?.(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
   }
 
-  private voiceCheck(s: DemoSettings): DemoVoiceCheck {
-    return {
-      person: narrationPerson(s),
-      problems: demoSettingsProblems(s),
-      clips: clipProblems(s),
-      install: installState(s, this.o.server.home),
-      directory: demoDirectory(s),
-      ...(s.directory && !absoluteDirectory(s.directory) ? { directoryRelative: true } : {}),
-    };
-  }
-
-  /** A voice as the owner is choosing it, before it is saved. */
-  checkDemo(input: unknown): DemoVoiceCheck {
-    return this.voiceCheck(parseDemo(input));
-  }
-
-  /** What a render with these settings needs on this machine, and how to install what is missing. */
-  async demoSetup(input: unknown): Promise<SetupCheck> {
-    await freshPath();
-    return checkSetup(parseDemo(input), { home: this.o.server.home });
-  }
-
-  private voiceJob?: VoiceInstallJob;
-
-  /** Installs what the voice needs, in the background; the view says how far it got. */
-  installDemoVoice(input: unknown): DemoSettingsView {
-    const s = parseDemo(input);
-    if (this.voiceJob?.running) throw new BadRequest('voiceInstalling', `${this.voiceJob.voice} is being installed`);
-    const job: VoiceInstallJob = (this.voiceJob = { voice: s.voice, running: true, line: '' });
-    console.log(`Obeya: installing the voice ${s.voice}`);
-    installVoice(s, (line) => (job.line = line.slice(0, 300)), this.o.server.home).then(
-      () => {
-        job.running = false;
-        console.log(`Obeya: voice ${s.voice} installed`);
-      },
-      (e: Error) => {
-        job.running = false;
-        job.error = e.message;
-        console.error(`Obeya: installing the voice ${s.voice} failed: ${e.message}`);
-      },
-    );
-    return this.demo();
-  }
-
-  /** One sentence in the voice, as WAV, so the owner hears it before choosing it. */
-  async sampleDemoVoice(input: unknown): Promise<Uint8Array<ArrayBuffer>> {
-    const s = parseDemo(input);
-    const dir = mkdtempSync(join(tmpdir(), 'obeya-voice-'));
-    try {
-      const out = join(dir, 'sample.wav');
-      await sample(s, out, this.o.server.home, this.o.narrationUrl, this.o.ttsLock).catch((e: Error) => {
-        // tts.py says why on its last line: no key, no command, a service's refusal
-        const why = e.message.trim().split('\n').at(-1) ?? e.message;
-        throw new BadRequest('voiceSample', why);
-      });
-      return Uint8Array.from(readFileSync(out));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
-  /**
-   * Saves a configuration that works, and the running canvases take it over (design: Live
-   * configuration). Where they came from the command line, Obeya starts again with it where
-   * something restarts it.
-   */
   /**
    * "Try again": the running canvases take the saved configuration over again, as after a
    * save, so what did not start as it has them tries again.
@@ -768,10 +635,15 @@ export class Config {
   async retry(): Promise<{}> {
     if (!this.o.apply) throw new BadRequest('config', 'this Obeya does not apply its configuration while it runs');
     const { canvases, resolved } = await this.check(this.current());
-    await this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
+    await this.applyNow(canvases, resolved);
     return {};
   }
 
+  /**
+   * Saves a configuration that works, and the running canvases take it over (design: Live
+   * configuration). Where they came from the command line, Obeya starts again with it where
+   * something restarts it.
+   */
   async save(input: unknown): Promise<ConfigSaved> {
     const { canvases, resolved, problems: all } = await this.check(input);
     const problems = all.filter(blocksSaving);
@@ -782,7 +654,7 @@ export class Config {
     if (this.o.source === 'file' && !this.restarting && this.o.apply) {
       console.log(`Obeya: configuration saved to ${this.o.file}; it applies at once`);
       // settles once the canvases took it over, git read without the server waiting
-      await this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
+      await this.applyNow(canvases, resolved);
       return { restarting: false, applied: true };
     }
     console.log(`Obeya: configuration saved to ${this.o.file}`);

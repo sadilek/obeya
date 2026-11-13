@@ -10,14 +10,13 @@ agent got them); the agent's questions with their options and the owner's pick m
 replies; its handovers (the one a demo came with carries the report's question, with its options
 and the owner's pick marked, muted once answered; a handover in the same turn as a reply stands
 under it after a dashed line as "Handover"); and what the Coordinator looked up. Small lines between
-them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, the demo's link put on the pull
+them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, a fork's pull request merged into its main branch, the demo's link put on the pull
 request, stopped, errors, usage limit); an address in them is a link (the comment on the pull
 request, say). Everything else (tool calls, each with what it acts on: the file, the command, a
 web search's query, a fetched page's address; thoughts, status lines, Obeya's notes) folds away as "History" under the agent's next message. Obeya's reply to what
-the agent passed on (`to_obeya`) answers a step in that "History", so it stands under that message,
-with what Obeya says after it until then (the answer it looked up); while that message has not come
-yet, below the agent at work. The owner's words or a state line before the message keep it where it
-came, below the agent's steps up to there. What Obeya reads to look a question up on a card (asked
+the agent passed on (`to_obeya`) stands where it came: the agent's steps up to there, the passing-on
+the last of them, close above it as they do before the owner's words, and the agent's next message,
+which may build on the reply, stands below it. What Obeya reads to look a question up on a card (asked
 there by voice, or passed on by its agent) is not the agent's work: it stays out of the agent's
 "History" and its bubble at work, and folds under the answer Obeya looked up; while Obeya still
 looks, under its reply that it does, where that reply stands. On a Question card Obeya's agent is
@@ -93,7 +92,7 @@ when the card went on (built, taken on, parked, archived), "Left open.", options
 rephrased question counts as settled. An answered question keeps only its orange label, not the
 orange edge.
 
-Which questions are open is one rule too (`openQuestions` in `src/core/types.ts`): an idea's while
+Which questions are open is one rule too (`openQuestions` in `src/core/card.ts`): an idea's while
 its agent is not replying, a proposal's while not being reworked, a worker's while the card waits
 for it, a demo report's until answered; a parked or dropped idea has none. Open questions move to
 the conversation's end under "Question for you" ("Questions for you"), and only then does the field read
@@ -233,7 +232,8 @@ Under a task's title stand its branch (and plan doc) and the size of its change 
 files"; where the card shows its change list, the size stands below the list instead): before landing the workspace against where its base branch was, uncommitted and new files
 included; after, what the landing put on the default branch (an archived card keeps it). A click
 shows the whole diff over the page; "Copy path" copies the workspace's directory (`host:/dir` on
-another machine). The owner rarely reads code, so it stays a quiet line.
+another machine), on a page that may not write the clipboard too, as a code block's button does
+(so do the share link's "Copy" and the setup's copy buttons). The owner rarely reads code, so it stays a quiet line.
 
 #### The files beside the demo
 
@@ -463,11 +463,12 @@ image.
   step, so it knows where they were read and can take them back. Rejected: passing a note straight
   into the session; Obeya learned only at turn end what it took, and the SDK takes one back only by
   a control request.
-- **Obeya's reply to a passed-on request under the agent's message** (owner, 2026-10-29): the agent
-  passes the owner's words on and then says so; standing where it was logged, Obeya's "One moment, I'll
-  check" came above the agent's message that triggered it. The passing-on step folds under that
-  message, so the reply follows it. Rejected: holding the reply back in the server until the
-  agent's message (it would be lost in a restart, and each kind of agent would need it).
+- **Obeya's reply to a passed-on request where it came** (owner, 2026-11-12): an agent that asks
+  Obeya (for a side chat's context, say) replies with what Obeya answered it, so its message belongs
+  below that answer; the agent's steps up to the passing-on close above the answer, so it still
+  follows the step that set it going. Rejected: the reply under the agent's next message, where its
+  passing-on folds away (2026-10-29 until 2026-11-12): the agent's message then stood above the
+  answer it built on.
 - **Obeya's look-up apart from the agent's work** (2026-10-29): Obeya logs what it reads for a
   look-up on the card it was asked on, under its answer. Rejected: showing it in the worker's bubble
   at work, as if the worker read it; not logging it on the card (the owner would not see what the

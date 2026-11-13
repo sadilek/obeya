@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmdirSync, rmSync, unlinkSync, watch, writeFile
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
-import { ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, remoteHost, repoInfo, repoInfoAsync, sameRemote, watchPlanDocs } from './repo';
+import { ghAccounts, ghHosts, oldLinuxBun, onGitHub, outsidePlanDir, readPlanDocs, parseRemote, remoteHost, repoInfo, sameRemote, watchPlanDocs } from './repo';
 import { gitRepo } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 const DOC = '# P\n\n## Workstreams\n\n- [ ] **W1:** One.\n';
 
@@ -32,18 +32,17 @@ describe('readPlanDocs', () => {
   });
 });
 
-describe('repoInfoAsync', () => {
-  test('reads a repository as repoInfo does, without the server waiting for git; a folder without git is refused', async () => {
+describe('repoInfo', () => {
+  test('reads where a repository is, its origin and its main branch; a folder without git is refused', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'obeya-repo-info-'));
     try {
       const repo = gitRepo(join(dir, 'shop'));
-      expect(await repoInfoAsync(repo)).toEqual({ path: repo, remote: null, branch: 'main' });
+      expect(await repoInfo(repo)).toEqual({ path: repo, remote: null, branch: 'main' });
       git(repo, 'remote', 'add', 'origin', 'https://example.com/acme/shop.git');
       git(repo, 'branch', '-m', 'trunk');
-      expect(await repoInfoAsync(repo)).toEqual(repoInfo(repo));
-      expect(await repoInfoAsync(repo)).toEqual({ path: repo, remote: 'https://example.com/acme/shop.git', branch: 'trunk' });
+      expect(await repoInfo(repo)).toEqual({ path: repo, remote: 'https://example.com/acme/shop.git', branch: 'trunk' });
       mkdirSync(join(dir, 'plain'));
-      await expect(repoInfoAsync(join(dir, 'plain'))).rejects.toThrow('is not a git repository');
+      await expect(repoInfo(join(dir, 'plain'))).rejects.toThrow('is not a git repository');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -277,6 +276,18 @@ describe('a remote on GitHub', () => {
     expect(sameRemote('/srv/git/shop', 'git@github.com:srv/git/shop')).toBe(false);
   });
 
+  test('is taken apart into host, path and web address in every form git takes; a path has neither host nor address', () => {
+    const shop = { host: 'github.com', path: 'acme/shop', web: 'https://github.com/acme/shop' };
+    expect(parseRemote(' https://token@github.com/acme/shop.git/ ')).toEqual(shop);
+    expect(parseRemote('ssh://git@GitHub.com:22/acme/shop.git')).toEqual(shop);
+    expect(parseRemote('git@github.com:acme/shop.git')).toEqual(shop);
+    expect(parseRemote('git@github.com:/acme/shop')).toEqual(shop);
+    // a server below a path keeps it, and its own scheme and port
+    expect(parseRemote('http://git.acme.com:3000/forge/acme/shop.git')).toEqual({ host: 'git.acme.com', path: 'forge/acme/shop', web: 'http://git.acme.com:3000/forge/acme/shop' });
+    expect(parseRemote('/srv/git/shop.git/')).toEqual({ host: null, path: '/srv/git/shop', web: null });
+    expect(parseRemote('C:\\repos\\shop\\')).toEqual({ host: null, path: 'C:\\repos\\shop', web: null });
+  });
+
   test("on another host counts where the GitHub CLI is logged into it, by its hosts.yml where gh keeps it", () => {
     const dir = mkdtempSync(join(tmpdir(), 'obeya-gh-'));
     try {
@@ -293,6 +304,38 @@ describe('a remote on GitHub', () => {
       expect(ghHosts({ GH_CONFIG_DIR: join(dir, 'none'), GH_HOST: 'github.example.com', GH_ENTERPRISE_TOKEN: 't' })).toEqual(['github.example.com']);
       expect(ghHosts({ GH_CONFIG_DIR: join(dir, 'none'), GH_HOST: 'github.example.com', GH_TOKEN: 't' })).toEqual([]);
       expect(ghHosts({ GH_CONFIG_DIR: join(dir, 'none'), GH_HOST: 'example.ghe.com', GH_TOKEN: 't' })).toEqual(['example.ghe.com']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the accounts gh is logged into on a host, and its active one, by its hosts.yml', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-gh-'));
+    try {
+      const yml = [
+        'github.com:',
+        '    git_protocol: https',
+        '    users:',
+        '        alice:',
+        '            oauth_token: secret',
+        '        work-alice:',
+        '    user: work-alice',
+        '"git.acme.com":',
+        '    oauth_token: old',
+        '    user: "acme-bot"',
+        'github.example.com:',
+        '    git_protocol: ssh',
+        '',
+      ].join('\n');
+      writeFileSync(join(dir, 'hosts.yml'), yml);
+      const env = { GH_CONFIG_DIR: dir };
+      expect(ghAccounts('github.com', env)).toEqual({ accounts: ['alice', 'work-alice'], active: 'work-alice' });
+      expect(ghAccounts('GitHub.com', env)).toEqual({ accounts: ['alice', 'work-alice'], active: 'work-alice' });
+      // gh before 2.40 kept one login per host, named by `user` alone
+      expect(ghAccounts('git.acme.com', env)).toEqual({ accounts: ['acme-bot'], active: 'acme-bot' });
+      expect(ghAccounts('github.example.com', env)).toEqual({ accounts: [] });
+      expect(ghAccounts('gitlab.com', env)).toEqual({ accounts: [] });
+      expect(ghAccounts('github.com', { GH_CONFIG_DIR: join(dir, 'none') })).toEqual({ accounts: [] });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

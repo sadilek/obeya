@@ -19,6 +19,7 @@ import { knowsSkills, matching, type Slash, skillWord, slashAt, useSkills, usedS
 import { AttachButton, ShotStrip, useShotInput } from './shots';
 import { t } from './strings';
 import type { Skill } from '../core/types';
+import { useLatest } from './latest';
 
 /** Whether Enter sends what is written (Shift+Enter breaks the line), as at the desk. */
 let enterSends = true;
@@ -113,8 +114,7 @@ export function Composer({
   const tools = useRef<HTMLDivElement>(null);
   // as high as the text; the stylesheet caps it, and beyond that it scrolls
   useFitHeight(field, text, true, (el) => fitField(el, tools.current));
-  const listen = useRef(onText);
-  listen.current = onText;
+  const listen = useLatest(onText);
   useEffect(() => listen.current?.(text), [text]);
   const reply = useReply(key);
   const [focused, setFocused] = useState(false);

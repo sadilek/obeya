@@ -3,19 +3,14 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { type OtherDoc, type PlanDoc, parsePlanDoc, type Workstream } from '../core/plan-doc';
-import { defaultBranch, defaultBranchAsync, gitAsync, gitCalls, gitOrNull, gitSteps } from './workspaces';
+import { defaultBranch } from './branches';
+import { gitAsync, gitTry } from './git';
 
-/** Where a repository is, its `origin` and its main branch (`defaultBranch`), the caller waiting for git: for scripts. Throws where `path` is no git repository. */
-export function repoInfo(path: string): RepoInfo {
-  if (gitOrNull(path, 'rev-parse', '--git-dir') === null) throw new Error(`${path} is not a git repository`);
-  return { path, remote: gitOrNull(path, 'remote', 'get-url', 'origin'), branch: defaultBranch(path) };
-}
-
-/** `repoInfo` without the server waiting for git. */
-export async function repoInfoAsync(path: string): Promise<RepoInfo> {
-  const [dir, remote] = await gitSteps(path, gitCalls(['rev-parse', '--git-dir'], ['remote', 'get-url', 'origin']));
+/** Where a repository is, its `origin` and its main branch (`defaultBranch`). Throws where `path` is no git repository. */
+export async function repoInfo(path: string): Promise<RepoInfo> {
+  const [dir, remote] = await Promise.all([gitTry(path, 'rev-parse', '--git-dir'), gitTry(path, 'remote', 'get-url', 'origin')]);
   if (dir === null) throw new Error(`${path} is not a git repository`);
-  return { path, remote: remote ?? null, branch: await defaultBranchAsync(path) };
+  return { path, remote, branch: await defaultBranch(path) };
 }
 
 /**
@@ -27,6 +22,30 @@ export function remoteHost(url: string): string | null {
   return m ? m[1]!.toLowerCase() : null;
 }
 
+/** A git remote URL taken apart (`parseRemote`). */
+export interface Remote {
+  /** Its host (`remoteHost`); null for a repository on this machine. */
+  host: string | null;
+  /**
+   * Its path without trailing slashes and `.git`: on a host without the slashes it begins with
+   * (`owner/repo`, `group/owner/repo` on a server below a path), on this machine as written.
+   */
+  path: string;
+  /** Where a browser finds it, without credentials: an http(s) remote at its own address, another at `https://<host>/<path>`; null on this machine. */
+  web: string | null;
+}
+
+/** A git remote URL taken apart, in whichever form git takes it: `https://host/owner/repo.git`, `ssh://git@host:22/owner/repo`, `git@host:owner/repo`, a path. */
+export function parseRemote(url: string): Remote {
+  const u = url.trim();
+  const host = remoteHost(u);
+  const bare = (p: string) => p.replace(/[/\\]+$/, '').replace(/\.git$/, '');
+  if (!host) return { host, path: bare(u), web: null };
+  const path = bare(u.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '').replace(/^[^/\\:]*:/, '')).replace(/^\/+/, '');
+  const web = /^https?:\/\//i.test(u) ? bare(u.replace(/^(https?:\/\/)[^@/]*@/i, '$1')) : `https://${host}/${path}`;
+  return { host, path, web };
+}
+
 /**
  * Whether two git remote URLs name the same repository, in whichever form git takes each: https,
  * `ssh://` and `user@host:path` of one repository are the same (user, port, `.git` and case aside);
@@ -34,10 +53,8 @@ export function remoteHost(url: string): string | null {
  */
 export function sameRemote(a: string, b: string): boolean {
   const key = (url: string) => {
-    const u = url.trim();
-    const host = remoteHost(u);
-    const path = host ? u.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, '').replace(/^[^/\\:]*:/, '') : u;
-    return `${host ?? ''}|${path.replace(/\/+$/, '').replace(/\.git$/, '').replace(/^\/+/, host ? '' : '/')}`.toLowerCase();
+    const { host, path } = parseRemote(url);
+    return `${host ?? ''}|${host ? path : path.replace(/^\/+/, '/')}`.toLowerCase();
   };
   return key(a) === key(b);
 }
@@ -55,7 +72,7 @@ export const enterpriseServer = (host: string) => host !== 'github.com' && !host
  * the file rather than asked of `gh auth status`, which checks each login over the network.
  */
 export function ghHosts(env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): string[] {
-  const dir = env.GH_CONFIG_DIR || (env.XDG_CONFIG_HOME ? join(env.XDG_CONFIG_HOME, 'gh') : platform === 'win32' && env.AppData ? join(env.AppData, 'GitHub CLI') : join(homedir(), '.config', 'gh'));
+  const dir = ghConfigDir(env, platform);
   const host = env.GH_HOST?.trim().toLowerCase();
   const token = host && (enterpriseServer(host) ? env.GH_ENTERPRISE_TOKEN || env.GITHUB_ENTERPRISE_TOKEN : env.GH_TOKEN || env.GITHUB_TOKEN);
   const fromEnv = host && token ? [host] : [];
@@ -64,6 +81,55 @@ export function ghHosts(env: NodeJS.ProcessEnv = process.env, platform: string =
   } catch {
     return fromEnv;
   }
+}
+
+/** gh's config directory as gh finds it: `GH_CONFIG_DIR`, `XDG_CONFIG_HOME/gh`, on Windows `%AppData%\GitHub CLI`, else `~/.config/gh`. */
+const ghConfigDir = (env: NodeJS.ProcessEnv, platform: string) =>
+  env.GH_CONFIG_DIR || (env.XDG_CONFIG_HOME ? join(env.XDG_CONFIG_HOME, 'gh') : platform === 'win32' && env.AppData ? join(env.AppData, 'GitHub CLI') : join(homedir(), '.config', 'gh'));
+
+/**
+ * The accounts the GitHub CLI is logged into on `host` (`users` of its entry in `hosts.yml`, gh 2.40
+ * on), and the one it has active there (`user`); none where it has no login there. Read from the
+ * file, as `ghHosts` is, never asking the network.
+ */
+export function ghAccounts(host: string, env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): { accounts: string[]; active?: string } {
+  let text: string;
+  try {
+    text = readFileSync(join(ghConfigDir(env, platform), 'hosts.yml'), 'utf8');
+  } catch {
+    return { accounts: [] };
+  }
+  const accounts: string[] = [];
+  let active: string | undefined;
+  // the lines of the host's entry: from its name at the left margin to the next name there
+  let inHost = false;
+  let usersAt = -1;
+  let userIndent = -1;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    const indent = line.length - line.trimStart().length;
+    const m = /^\s*("?)([^":]+)\1:\s*(.*?)\s*$/.exec(line);
+    if (indent === 0) {
+      inHost = !!m && m[2]!.trim().toLowerCase() === host.toLowerCase();
+      usersAt = -1;
+      continue;
+    }
+    if (!inHost || !m) continue;
+    if (usersAt >= 0 && indent > usersAt) {
+      // the accounts are the keys one level below `users:`
+      if (userIndent < 0) userIndent = indent;
+      if (indent === userIndent) accounts.push(m[2]!.trim());
+      continue;
+    }
+    usersAt = -1;
+    if (m[2] === 'users' && !m[3]) {
+      usersAt = indent;
+      userIndent = -1;
+    } else if (m[2] === 'user' && m[3]) active = m[3].replace(/^["']|["']$/g, '');
+  }
+  // gh before 2.40 kept a single login, named by `user` alone
+  if (!accounts.length && active) accounts.push(active);
+  return { accounts, ...(active ? { active } : {}) };
 }
 
 /**
@@ -94,6 +160,9 @@ function planDirOf(repoPath: string, adapter: RepoAdapter): { dir: string; root:
   return outside ? { dir: outside, root: parse(outside).root } : { dir: join(repoPath, adapter.planDocs.dir), root: repoPath };
 }
 
+/** Whether a file of the plan directory, by its name there or its path, is a plan doc: Markdown, and not one the settings exclude. */
+export const isPlanDoc = (file: string, exclude: string[]) => file.endsWith('.md') && !exclude.some((x) => file === x || file.endsWith(`/${x}`));
+
 /**
  * The docs in the plan directory of the working tree, or of the folder outside the repository it
  * names: those that describe a project, and the others with the reason they are not one (none
@@ -106,7 +175,7 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): { docs: Pl
   const others: OtherDoc[] = [];
   if (!existsSync(dir)) return { docs, others };
   for (const f of readdirSync(dir)
-    .filter((f) => f.endsWith('.md') && !adapter.planDocs.exclude.includes(f))
+    .filter((f) => isPlanDoc(f, adapter.planDocs.exclude))
     .sort()) {
     const file = `${named}/${f}`;
     let markdown: string;

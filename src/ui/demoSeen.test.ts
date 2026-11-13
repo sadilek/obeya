@@ -1,15 +1,12 @@
 import { expect, test } from 'bun:test';
 import type { Demo } from '../core/types';
 import { arrivedOnOpenCard, held, markSeen, openedWith, unseen } from './demoSeen';
+import { memoryStorage } from './testing';
 
-const store = () => {
-  const m = new Map<string, string>();
-  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
-};
 const demo = (at: number, handover = 1): Demo => ({ kind: 'video', chapters: [[0, 'Start'], [at, 'End']], handover });
 
 test('a demo counts as seen only once it has played, not when the card shows it', () => {
-  const s = store();
+  const s = memoryStorage();
   // the card opened and the video mounted, but it never played: the next opening still starts it
   expect(unseen(s, 'a', demo(12))).toBe(true);
   expect(unseen(s, 'a', demo(12))).toBe(true);
@@ -19,13 +16,13 @@ test('a demo counts as seen only once it has played, not when the card shows it'
 });
 
 test('a new render of the demo is unseen again', () => {
-  const s = store();
+  const s = memoryStorage();
   markSeen(s, 'a', demo(12));
   expect(unseen(s, 'a', demo(15.4))).toBe(true);
 });
 
 test('a demo that arrives on the open card does not start by itself', () => {
-  const s = store();
+  const s = memoryStorage();
   // the card was opened while the agent was still at work: no demo yet
   const opened = openedWith(s, 'a', undefined);
   expect(arrivedOnOpenCard(opened, demo(12))).toBe(true);
@@ -36,7 +33,7 @@ test('a demo that arrives on the open card does not start by itself', () => {
 });
 
 test("a reload keeps a demo that arrived on the open card waiting; closing the card ends that", () => {
-  const s = store();
+  const s = memoryStorage();
   held.set(s, 'a', demo(12));
   // the page a restart reloads reopens the card to the same demo, without the owner opening it
   expect(arrivedOnOpenCard(openedWith(s, 'a', demo(12)), demo(12))).toBe(true);
@@ -47,7 +44,7 @@ test("a reload keeps a demo that arrived on the open card waiting; closing the c
 });
 
 test("a later handover's demo is unseen even where its chapters fall at the same times", () => {
-  const s = store();
+  const s = memoryStorage();
   markSeen(s, 'a', demo(12, 1));
   expect(unseen(s, 'a', demo(12, 1))).toBe(false);
   expect(unseen(s, 'a', demo(12, 2))).toBe(true);

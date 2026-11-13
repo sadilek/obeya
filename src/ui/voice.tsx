@@ -10,15 +10,18 @@
 
 import { createContext, useEffect, useRef, useState } from 'react';
 import type { Place } from '../core/layout';
-import { ApiError, api, confirmShownMs, type Heard, holdRestart, undoShownMs, type Where } from './api';
+import { ApiError, api, type Heard, holdRestart, type Where, failText } from './api';
+import { confirmShownMs, undoShownMs } from './tell';
 import { beginDictation, dictate, draftOf, focusedDraft, insertFiles, insertPasted, MIC_DRAFT, moveFiles, moveImages, pastedIn, sendsWithEnter, takesImages, toObeya, updateDraft, useDraft, useFieldOn, uploaded, useFocusedDraft, withoutPasted, withoutWords, wordsOf } from './draft';
 import { Aside } from './aside';
 import { type Recording, record } from './recorder';
 import { AttachButton, ShotStrip, useShotInput } from './shots';
 import { replyOn, setReply, useReply } from './reply';
 import { sent, take, type Taken } from './spot';
-import { failText, pasteKeys, t } from './strings';
+import { pasteKeys, t } from './strings';
 import { usePasteTextHint } from './pasteHint';
+import { useLatest } from './latest';
+import { sounding } from './sounding';
 
 /** Starts a recording, for a text field's microphone and Space held in it; null where nobody listens. */
 export const HoldToTalk = createContext<(() => void) | null>(null);
@@ -88,13 +91,18 @@ function closeMic(m: Mic) {
 
 /** How long the microphone stays open after a recording, for the next press to start at once. */
 export const MIC_KEPT_MS = 10_000;
+/** How often a microphone due to be let go looks again whether the page still plays sound. */
+export const MIC_RECHECK_MS = 1000;
 
 /**
  * The microphone between presses: opened by the first, kept for `keptMs` after the last and then
  * let go, so other apps (a call) get it and the system's microphone indicator goes out. Until
- * 2026-11-09 it stayed open as long as the page, and Teams found it taken.
+ * 2026-11-09 it stayed open as long as the page, and Teams found it taken. While `busy` (the page
+ * plays a video or a narration), it is kept on until the sound stops: opening and closing it switches
+ * the sound output to other settings (in the macOS app's web view), and a video playing meanwhile
+ * dropped half a second of its sound.
  */
-export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, keptMs = MIC_KEPT_MS) {
+export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, keptMs = MIC_KEPT_MS, busy: () => boolean = () => false) {
   let held: Promise<M> | null = null;
   /** The held microphone once it is open: dropped then, it closes before anything opens it anew. */
   let opened: M | undefined;
@@ -108,6 +116,7 @@ export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, kept
     if (m !== undefined) close(m);
     else void h?.then(close, () => {});
   };
+  const due = () => (busy() ? (timer = setTimeout(due, MIC_RECHECK_MS)) : drop());
   return {
     /** The open microphone, opening it if it is not. */
     take(): Promise<M> {
@@ -121,10 +130,10 @@ export function micHolder<M>(open: () => Promise<M>, close: (m: M) => void, kept
     },
     /** Lets it go at once; the next `take` opens it afresh. */
     drop,
-    /** Lets it go after `keptMs`, unless taken again meanwhile. */
+    /** Lets it go after `keptMs`, unless taken again meanwhile, and not while `busy`. */
     release() {
       clearTimeout(timer);
-      timer = setTimeout(drop, keptMs);
+      timer = setTimeout(due, keptMs);
     },
   };
 }
@@ -153,7 +162,7 @@ export function usePushToTalk(
   const [flat, setFlat] = useState(false);
   /** Recordings let go of that Obeya has not answered yet. */
   const [writing, setWriting] = useState(0);
-  const [mic] = useState(() => micHolder(openMic, closeMic));
+  const [mic] = useState(() => micHolder(openMic, closeMic, MIC_KEPT_MS, sounding));
   const rec = useRef<{ recording: Recording; t0: number; target: Where; into: string | null; spot: Taken | null } | null>(null);
   const held = useRef<number | null>(null);
   const frame = useRef(0);
@@ -336,8 +345,7 @@ export interface Told {
  */
 export function useTold(onHeard: (h: Heard) => void, inView: (h: Heard) => boolean = () => false) {
   const [told, setTold] = useState<Told[]>([]);
-  const toldRef = useRef(told);
-  toldRef.current = told;
+  const toldRef = useLatest(told);
   const next = useRef(0);
   const update = (id: number, fn: (x: Told) => Told | null) => setTold((ts) => ts.flatMap((x) => (x.id === id ? (fn(x) ?? []) : [x])));
 
@@ -422,7 +430,8 @@ export function ToldList({ told, open, onUndo, aside = false, onGone }: { told: 
  * A microphone held by a finger: the touch is the press and nothing else. Held for half a second,
  * Chrome on Android took it for a long press on what stands around the button (the field's frame):
  * it began selecting text, which closed the keyboard and cancelled the touch, so the recording ended
- * at once. A touch whose start is cancelled makes no long press, no selection and no focus change.
+ * at once. A touch whose start is cancelled makes no long press, no selection and no focus change,
+ * and a held finger shows no menu. The props to spread on the button.
  */
 export function useHeldByTouch<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -434,8 +443,16 @@ export function useHeldByTouch<T extends HTMLElement>() {
     el.addEventListener('touchstart', hold, { passive: false });
     return () => el.removeEventListener('touchstart', hold);
   });
-  return ref;
+  return { ref, onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault() };
 }
+
+/** Where what is said goes while a field has the cursor: into it, and whether Enter then sends it. */
+export const IntoField = ({ draft }: { draft: string }) => (
+  <>
+    → <b>{t.voice.intoField}</b>
+    {sendsWithEnter(draft) && t.voice.sendWithEnter && ` · ${t.voice.sendWithEnter}`}
+  </>
+);
 
 /**
  * The microphone at the bottom, and under it where what is said goes: into the field with the
@@ -485,7 +502,7 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
       <div className="ptt-row">
         <button
           id="mic"
-          ref={mic}
+          {...mic}
           title={t.voice.hold}
           style={{ ['--lvl' as string]: 1 + level * 0.45 }}
           onPointerDown={(e) => {
@@ -493,8 +510,6 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
             e.preventDefault();
             onDown();
           }}
-          // held by a finger, it shows no menu
-          onContextMenu={(e) => e.preventDefault()}
         >
           <span className="ring" />
           <MicIcon />
@@ -514,8 +529,7 @@ export function PushToTalk({ phase, level, flat, target, field, onDown }: { phas
         </div>
       ) : into ? (
         <div id="target" className="into">
-          → <b>{t.voice.intoField}</b>
-          {sendsWithEnter(into) && t.voice.sendWithEnter && ` · ${t.voice.sendWithEnter}`}
+          <IntoField draft={into} />
         </div>
       ) : (
         target !== null && (
@@ -544,7 +558,7 @@ function FileChips() {
       {words.map((w, i) => (
         <span key={`f${i}`} className="c-file" title={w}>
           <span className="name">{w.replace(/"/g, '').split(/[\\/]/).at(-1)}</span>
-          <button className="remove" title={t.shots.remove} onClick={() => drop(withoutWords(draft.text, [w]))}>
+          <button className="remove" title={t.remove} onClick={() => drop(withoutWords(draft.text, [w]))}>
             ×
           </button>
         </span>
@@ -552,7 +566,7 @@ function FileChips() {
       {texts.map((p, i) => (
         <span key={`t${i}`} className="c-file c-pasted" title={p.length > PASTED_TITLE ? `${p.slice(0, PASTED_TITLE)} …` : p}>
           <span className="name">{p.slice(0, 300)}</span>
-          <button className="remove" title={t.shots.remove} onClick={() => drop(withoutPasted(draft.text, [p]))}>
+          <button className="remove" title={t.remove} onClick={() => drop(withoutPasted(draft.text, [p]))}>
             ×
           </button>
         </span>

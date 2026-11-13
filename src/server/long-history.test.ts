@@ -2,11 +2,11 @@ import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CanvasRuntime } from './canvas';
+import type { CanvasRuntime } from './canvas';
 import type { Session } from './commands';
-import { Store } from './db';
-import { type History, writeHistory } from './fixtures/history';
-import { cpuTime, FakeRuntime, gitRepo, heard, noForge, removeDir } from './testing';
+import type { Store } from './db';
+import { appCanvas, type History, writeHistory } from './fixtures/history';
+import { cpuTime, heard, removeDir } from './testing';
 
 // The server's rounds that ran into its history: with every change of the canvas, every command to
 // the Coordinator and every pass over the shared pages, they read whole tables, and the history
@@ -35,23 +35,13 @@ let fresh: Setup;
 
 async function setup(scale: number): Promise<Setup> {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-long-history-'));
-  // a site nobody answers at: asking it which pages are gone finds none
-  const site = { title: 'Demos', url: 'http://127.0.0.1:9/', deploy: 'true {dir}' };
-  const repo = gitRepo(join(dir, 'app'), {
-    'docs/plan/plan.md': '# App\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** One.\n- [ ] **W2:** Two.\n',
-    '.obeya/settings.json': JSON.stringify({ demo: { site } }),
-  });
-  const store = new Store(join(dir, 'obeya.db'));
-  store.trustCommands(repo, { site: { url: site.url, deploy: site.deploy } });
-  const canvas = await CanvasRuntime.start({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
+  const { store, canvas } = await appCanvas(dir);
   const history = writeHistory(store, canvas.board.canvas.id, dir, scale);
   const board = canvas.board;
   // the Coordinator waits on a card for a step, and a card is snoozed until another one is done
-  const talk = store.addTalk(board.canvas.id, 'Tell me once it is done.', 'I will.', null);
-  store.waitTalk(talk, [{ card: history.onCanvas[0]!, title: 'Card', state: 'done', then: 'tell the owner' }]);
+  const talk = board.sheet.add('Tell me once it is done.', 'I will.');
+  board.sheet.wait(talk, [{ card: history.onCanvas[0]!, title: 'Card', state: 'done', then: 'tell the owner' }]);
   board.work(history.onCanvas[1]!, { snoozed: JSON.stringify({ by: 'owner', on: { card: history.onCanvas[2]!, state: 'done' } }) });
-  // the server sends each change to the pages that show the canvas
-  board.onChange(() => JSON.stringify(board.snapshot()));
   board.changed();
   await heard();
   return { dir, store, canvas, history };
@@ -134,28 +124,26 @@ test('the Coordinator’s brief for a command: its first in a session, with the 
   // of the steps read, those of cards still on the canvas
   expect(first.split('\n').filter((l) => / "Card \d+": /.test(l)).length).toBeGreaterThan(5);
   expect(await inUnits(() => brief({ read: 0, rules: [] }))).toBeLessThan(2);
-  const since = long.canvas.board.mark();
+  const since = long.canvas.board.history.mark();
   expect(await inUnits(() => brief({ read: 1, since, rules: [] }))).toBeLessThan(2);
 });
 
 test('what the learner reads around an input of the owner’s: what they said in the last days', async () => {
-  const around = () => long.canvas.coordinator['around'](null, 'talk', 'Start it.', {});
+  const around = () => long.canvas.learner['around'](null, 'talk', 'Start it.', {});
   expect(around().join('\n')).toContain('What the owner said in the last');
   expect(await inUnits(around)).toBeLessThan(1);
 });
 
-
-
 test('the archive opened and scrolled: a page of its cards, at its start and far down', async () => {
   const board = long.canvas.board;
-  const first = board.archivePage(ARCHIVE_PAGE);
+  const first = board.archived.page(ARCHIVE_PAGE);
   expect(first.items.map((i) => i.id)).toEqual(long.history.archived.slice(0, ARCHIVE_PAGE));
   // the page the owner scrolled to after thousands of cards
   const r = long.store.card(long.history.archived[8000]!)!;
   const far = JSON.stringify([r.archived_at, r.created_at, r.id]);
-  expect(board.archivePage(ARCHIVE_PAGE, far).items.map((i) => i.id)).toEqual(long.history.archived.slice(8001, 8001 + ARCHIVE_PAGE));
-  expect(await inUnits(() => board.archivePage(ARCHIVE_PAGE))).toBeLessThan(3);
-  expect(await inUnits(() => board.archivePage(ARCHIVE_PAGE, far))).toBeLessThan(3);
+  expect(board.archived.page(ARCHIVE_PAGE, far).items.map((i) => i.id)).toEqual(long.history.archived.slice(8001, 8001 + ARCHIVE_PAGE));
+  expect(await inUnits(() => board.archived.page(ARCHIVE_PAGE))).toBeLessThan(3);
+  expect(await inUnits(() => board.archived.page(ARCHIVE_PAGE, far))).toBeLessThan(3);
 });
 
 test('a search through the archive: the first reads it a slice at a time, the server free in between; the next only searches', async () => {
@@ -173,8 +161,8 @@ test('a search through the archive: the first reads it a slice at a time, the se
     slices.push(performance.now() - at);
     return rows;
   });
-  const entries = board['indexEntries'].bind(board);
-  const built = spyOn(board as unknown as { indexEntries: typeof entries }, 'indexEntries').mockImplementation((rows) => {
+  const entries = board.archived['indexEntries'].bind(board.archived);
+  const built = spyOn(board.archived as unknown as { indexEntries: typeof entries }, 'indexEntries').mockImplementation((rows) => {
     const at = performance.now();
     const out = entries(rows);
     slices[slices.length - 1]! += performance.now() - at;
@@ -182,7 +170,7 @@ test('a search through the archive: the first reads it a slice at a time, the se
   });
   let between = 0;
   let ready = false;
-  const search = board.archiveSearch('card 1234', { count: ARCHIVE_PAGE }).finally(() => (ready = true));
+  const search = board.archived.search('card 1234', { count: ARCHIVE_PAGE }).finally(() => (ready = true));
   // what else waits for the server gets its turn between two slices
   while (!ready) {
     await new Promise((r) => setImmediate(r));
@@ -198,6 +186,6 @@ test('a search through the archive: the first reads it a slice at a time, the se
   if (process.env.OBEYA_SHOW_UNITS) console.log(`${slices.length} slices, typically ${typical.toFixed(2)} units`);
   expect(typical).toBeLessThan(3);
   const words = ['card 9', 'cards few sentences owner'];
-  expect(await inUnits(() => board.archiveSearch(words[n++ % 2]!, { count: ARCHIVE_PAGE }))).toBeLessThan(5);
-  expect(await inUnits(() => board.archiveSearch('card 12', { count: 30, everywhere: true }))).toBeLessThan(5);
+  expect(await inUnits(() => board.archived.search(words[n++ % 2]!, { count: ARCHIVE_PAGE }))).toBeLessThan(5);
+  expect(await inUnits(() => board.archived.search('card 12', { count: 30, everywhere: true }))).toBeLessThan(5);
 });

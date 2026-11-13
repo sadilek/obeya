@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Board } from './board';
+import type { KeptClone } from '../core/types';
+import type { Board } from './board';
 import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
-import { alive, gitClone, gitRepo, identify, leftBehind, removeDir, until } from './testing';
-import { addTrailer, defaultBranch, git, originFetch, Workspaces } from './workspaces';
+import { onStart } from './spawn';
+import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
+import { addTrailer, originFetch, pushRefusal, statusEntries, unlanded, Workspaces } from './workspaces';
+import { defaultBranch } from './branches';
+import { git, hasCommit, isAncestor } from './git';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-branch-'))));
@@ -29,42 +33,90 @@ const rejection = (p: Promise<unknown>) =>
     (e: unknown) => e,
   );
 
-describe('the main branch', () => {
-  test("is origin's HEAD where the checkout knows one, whatever branch it is on", () => {
+/** A commit in `repo` that writes `text` into `file`, named after both ("notes.md: mine"). */
+const edit = (repo: string, file: string, text: string) => commit(repo, file, text, `${file}: ${text.trim()}`);
+
+/** A remote with `README.md` and `notes.md` on main, the checkout cloned from it, and the workspaces of its cards. */
+function originAndCheckout() {
+  const origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
+  const checkout = gitClone(origin, join(dir, 'checkout'));
+  identify(checkout);
+  return { origin, checkout, spaces: new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') }) };
+}
+
+describe('the main branch', async () => {
+  test("is origin's HEAD where the checkout knows one, whatever branch it is on", async () => {
     const origin = gitRepo(join(dir, 'origin'));
     git(origin, 'branch', '-m', 'trunk');
     gitClone(origin, join(dir, 'clone'));
     git(join(dir, 'clone'), 'checkout', '--quiet', '-b', 'feature');
-    expect(defaultBranch(join(dir, 'clone'))).toBe('trunk');
+    expect(await defaultBranch(join(dir, 'clone'))).toBe('trunk');
   });
 
-  test("is the only branch of a repository without a remote, cards' branches aside", () => {
+  test("is the only branch of a repository without a remote, cards' branches aside", async () => {
     const repo = gitRepo(join(dir, 'repo'));
     git(repo, 'branch', '-m', 'develop');
-    expect(defaultBranch(repo)).toBe('develop');
+    expect(await defaultBranch(repo)).toBe('develop');
     git(repo, 'checkout', '--quiet', '-b', 'obeya/export-abc123');
-    expect(defaultBranch(repo)).toBe('develop');
+    expect(await defaultBranch(repo)).toBe('develop');
     git(repo, 'checkout', '--quiet', '--detach');
-    expect(defaultBranch(repo)).toBe('develop');
+    expect(await defaultBranch(repo)).toBe('develop');
   });
 
-  test('stays master or main while the owner has another branch checked out', () => {
+  test('stays master or main while the owner has another branch checked out', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     git(repo, 'branch', '-m', 'master');
     git(repo, 'checkout', '--quiet', '-b', 'experiment');
-    expect(defaultBranch(repo)).toBe('master');
+    expect(await defaultBranch(repo)).toBe('master');
     git(repo, 'config', 'init.defaultBranch', 'experiment');
-    expect(defaultBranch(repo)).toBe('experiment');
+    expect(await defaultBranch(repo)).toBe('experiment');
   });
 
-  test("is the branch the checkout is on where none of its branches is the usual one, else git's init.defaultBranch", () => {
+  test("is the branch the checkout is on where none of its branches is the usual one, else git's init.defaultBranch", async () => {
     const repo = gitRepo(join(dir, 'repo'));
     git(repo, 'branch', '-m', 'develop');
     git(repo, 'checkout', '--quiet', '-b', 'release');
-    expect(defaultBranch(repo)).toBe('release');
+    expect(await defaultBranch(repo)).toBe('release');
     git(repo, 'checkout', '--quiet', '--detach');
     git(repo, 'config', 'init.defaultBranch', 'trunk');
-    expect(defaultBranch(repo)).toBe('trunk');
+    expect(await defaultBranch(repo)).toBe('trunk');
+  });
+});
+
+describe('why a remote refused a push', () => {
+  test('the remote’s own words and git’s reason, without the command and paths', () => {
+    const github = [
+      'remote: error: GH006: Protected branch update failed for refs/heads/main.',
+      'remote: error: Changes must be made through a pull request.',
+      'To github.com:acme/station.git',
+      ' ! [remote rejected] main -> main (protected branch hook declined)',
+      "error: failed to push some refs to 'github.com:acme/station.git'",
+    ].join('\n');
+    expect(pushRefusal(github)).toEqual({ problem: 'error: GH006: Protected branch update failed for refs/heads/main. error: Changes must be made through a pull request. (protected branch hook declined)' });
+    expect(pushRefusal("remote: Permission to acme/station.git denied to mira.\nfatal: unable to access 'https://github.com/acme/station.git/': The requested URL returned error: 403")).toEqual({
+      problem: 'Permission to acme/station.git denied to mira.',
+    });
+    expect(pushRefusal("fatal: 'origin' does not appear to be a git repository\nfatal: Could not read from remote repository.")).toEqual({ problem: 'fatal: Could not read from remote repository.' });
+  });
+
+  test('a branch that moved on the remote says so, whatever git calls it', () => {
+    expect(pushRefusal("To /srv/station.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to '/srv/station.git'")).toEqual({ problem: "error: failed to push some refs to '/srv/station.git'", moved: true });
+    expect(pushRefusal(' ! [rejected]        main -> main (non-fast-forward)').moved).toBe(true);
+  });
+});
+
+describe('what git can tell of commits', () => {
+  test('a commit the repository lacks is no ancestor and not there; a repository git cannot read tells neither', async () => {
+    const repo = gitRepo(join(dir, 'tell'));
+    const head = git(repo, 'rev-parse', 'HEAD');
+    const unknown = '0123456789abcdef0123456789abcdef01234567';
+    expect(await hasCommit(repo, head)).toBe(true);
+    expect(await hasCommit(repo, unknown)).toBe(false);
+    expect(await isAncestor(repo, head, head)).toBe(true);
+    expect(await rejection(isAncestor(repo, unknown, head))).toBeInstanceOf(Error);
+    writeFileSync(join(repo, '.git', 'config'), '[core\n');
+    expect(await rejection(hasCommit(repo, head))).toBeInstanceOf(Error);
+    expect(await rejection(isAncestor(repo, head, head))).toBeInstanceOf(Error);
   });
 });
 
@@ -72,7 +124,7 @@ describe('a leased clone', () => {
   test('git fails to make ready is given back, and not taken again at once', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     const [clone] = await spaces.ensureClones(repo, 1);
     // its origin is gone: the fetch fails
@@ -93,7 +145,7 @@ describe('a leased clone', () => {
   test('is looked at while free without git writing its index, which a card taking it meanwhile needs to write', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    testBoard({ store, path: repo });
     let looked = 0;
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws'), changed: () => looked++ });
     const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
@@ -122,7 +174,7 @@ describe("a card's workspace looked at while its agent works there", () => {
   test('is read without git writing its index, and a file whose timestamps alone changed is no change', async () => {
     const repo = gitRepo(join(dir, 'repo'), { 'README.md': 'hello\n', 'a.txt': 'a\n', 'b.txt': 'b\n', 'c.txt': 'c\n' });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     await spaces.ensureClones(repo, 1);
     const card = board.create({ title: 'A', x: 0, y: 0 }).id;
@@ -152,7 +204,7 @@ describe('a clone made ready for a card', () => {
   test('starts from main as its origin has it now, fetching only where the origin has branches or tags it lacks', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
     const fetchHead = join(clone, '.git', 'FETCH_HEAD');
@@ -167,9 +219,7 @@ describe('a clone made ready for a card', () => {
     // as cloned: nothing to fetch
     expect(await start('a')).toBe(false);
     // main moved on
-    writeFileSync(join(repo, 'b.txt'), 'b');
-    git(repo, 'add', '.');
-    git(repo, 'commit', '--quiet', '-m', 'b');
+    commit(repo, 'b.txt', 'b', 'b');
     expect(await start('b')).toBe(true);
     expect(git(clone, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'main'));
     // a tag on a commit the clone has, and a branch of its own
@@ -185,7 +235,7 @@ describe('a clone made ready for a card', () => {
   test('a fetch rule that also writes branches of its own, and pruning, count as git has them', async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
     const [clone] = (await spaces.ensureClones(repo, 1)) as [string];
     // a branch deleted in the origin goes from the clone where its fetch prunes
@@ -258,7 +308,7 @@ describe('free clones', () => {
   const setup = async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     let changed = 0;
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws'), changed: () => changed++ });
     const clones = await spaces.ensureClones(repo, 2);
@@ -279,12 +329,106 @@ describe('free clones', () => {
     expect(await lease.ready!).toBe(two);
     expect(spaces.leasedBy(a)).toBe(two);
     expect(git(two, 'branch', '--show-current')).toBe('obeya/a');
-    // the dirty one is free, and known as dirty: no card takes it until it is clean
+    // the dirty one is free, and known as dirty: no card takes it while it is
     expect(spaces.list().find((w) => w.path === one)!.card_id).toBeNull();
     expect(spaces.leasable()).toBe(false);
     const b = board.create({ title: 'B', x: 0, y: 0 }).id;
     expect(() => spaces.lease(b, 'obeya/b')).toThrow(expect.objectContaining({ code: 'dirtyWorkspaces' }));
+    // a card wanted it: Obeya keeps what was left there on a branch of its own, and the clone is free
+    await until(() => spaces.leasable());
+    expect(existsSync(join(one, 'stray.txt'))).toBe(false);
+    const [kept] = git(one, 'branch', '--list', '--format=%(refname:short)', 'obeya-leftovers/*').split('\n') as [string];
+    expect(kept).toMatch(/^obeya-leftovers\/main-\d{8}-\d{6}$/);
+    expect(git(one, 'show', `${kept}:stray.txt`)).toBe('x');
+    expect(git(one, 'log', '-1', '--format=%B', kept)).toContain('Obeya-Kept: leftovers');
+    expect(git(one, 'branch', '--show-current')).toBe('main');
+    const taken = spaces.lease(b, 'obeya/b');
+    expect(taken.path).toBe(one);
+    expect(await taken.ready).toBe(one);
+  }, 20_000);
+
+  test('"Commit to a new branch and free the clone" keeps changed and new files on a branch; line endings alone it drops', async () => {
+    const { board, spaces } = await setup();
+    const a = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const lease = spaces.lease(a, 'obeya/a');
+    await lease.ready;
+    const path = spaces.leasedBy(a)!;
+    // a held clone is the card's own
+    expect(await spaces.keepLeftovers(path)).toBeNull();
+    spaces.release(a);
+    expect(await spaces.keepLeftovers(path)).toBe('');
+    writeFileSync(join(path, 'README.md'), 'changed\n');
+    writeFileSync(join(path, 'notes.txt'), 'mine\n');
+    // as the pool names it: its path there and the machine
+    const branch = (await spaces.keepLeftovers(path, spaces.pool([])[0]!.name))!;
+    expect(branch).toMatch(/^obeya-leftovers\/obeya\/a-/);
+    expect(git(path, 'status', '--porcelain')).toBe('');
+    expect(git(path, 'branch', '--show-current')).toBe('obeya/a');
+    expect(git(path, 'show', `${branch}:notes.txt`)).toBe('mine');
+    expect(git(path, 'show', `${branch}:README.md`)).toBe('changed');
+    // the same file with other line endings, as a tool may write it back: nothing to keep
+    git(path, 'config', 'core.autocrlf', 'false');
+    git(path, 'reset', '--quiet', '--hard');
+    writeFileSync(join(path, 'README.md'), 'hello\r\n');
+    expect(git(path, 'status', '--porcelain')).not.toBe('');
+    expect(await spaces.keepLeftovers(path)).toBe('');
+    expect(git(path, 'status', '--porcelain')).toBe('');
+    expect(git(path, 'branch', '--list', 'obeya-leftovers/*').split('\n')).toHaveLength(1);
+    // named with another machine, the clone of the same path here is not the one meant
+    writeFileSync(join(path, 'notes.txt'), 'mine\n');
+    expect(await spaces.keepLeftovers(path, 'elsewhere')).toBeNull();
+    expect(existsSync(join(path, 'notes.txt'))).toBe(true);
+    // a file staged otherwise than the working tree has it: both are kept, the staged one in a commit of its own
+    writeFileSync(join(path, 'README.md'), 'staged\n');
+    git(path, 'add', 'README.md');
+    writeFileSync(join(path, 'README.md'), 'worked on\n');
+    const both = (await spaces.keepLeftovers(path))!;
+    expect(git(path, 'show', `${both}:README.md`)).toBe('worked on');
+    expect(git(path, 'show', `${both}:notes.txt`)).toBe('mine');
+    expect(git(path, 'show', `${both}~1:README.md`)).toBe('staged');
+    expect(git(path, 'rev-parse', `${both}~2`)).toBe(git(path, 'rev-parse', 'HEAD'));
+    expect(git(path, 'status', '--porcelain')).toBe('');
+    // git failing on the way (no branch obeya-leftovers/… beside one named obeya-leftovers): the index is put back as it was
+    for (const b of git(path, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/obeya-leftovers/').split('\n')) git(path, 'branch', '--quiet', '-D', b);
+    git(path, 'branch', 'obeya-leftovers');
+    writeFileSync(join(path, 'README.md'), 'staged again\n');
+    git(path, 'add', 'README.md');
+    writeFileSync(join(path, 'README.md'), 'worked on again\n');
+    writeFileSync(join(path, 'more.txt'), 'new\n');
+    expect(await spaces.keepLeftovers(path)).toBeNull();
+    expect(git(path, 'show', ':README.md')).toBe('staged again');
+    expect(readFileSync(join(path, 'README.md'), 'utf8')).toBe('worked on again\n');
+    expect(git(path, 'status', '--porcelain', '--', 'more.txt')).toBe('?? more.txt');
+  }, 20_000);
+
+  test('status entries skip the source of a rename in either column', () => {
+    expect(statusEntries(' R a-new.txt\0old.txt\0MM z.txt\0').map((e) => e.xy)).toEqual([' R', 'MM']);
+    expect(statusEntries('R  b.txt\0a.txt\0?? c.txt\0').map((e) => `${e.xy}|${e.path}`)).toEqual(['R |b.txt', '??|c.txt']);
   });
+
+  test('a clone with files assumed unchanged stays as it is; the next blocked one is freed for the card instead', async () => {
+    const { board, spaces, clones, changed } = await setup();
+    const [one, two] = clones as [string, string];
+    // `add` would leave the hidden change out, and the reset overwrite it
+    git(one, 'update-index', '--assume-unchanged', 'README.md');
+    writeFileSync(join(one, 'README.md'), 'hidden\n');
+    writeFileSync(join(one, 'stray.txt'), 'x');
+    writeFileSync(join(two, 'stray.txt'), 'y');
+    // not looked at yet: the looks find both dirty
+    spaces.leasable();
+    await until(() => changed() === 2);
+    const a = board.create({ title: 'A', x: 0, y: 0 }).id;
+    expect(() => spaces.lease(a, 'obeya/a')).toThrow(expect.objectContaining({ code: 'dirtyWorkspaces' }));
+    // the first could not be freed: the next one is, and the card takes it
+    // a waiting card asks again on every change of the board
+    await until(() => (spaces.leasable(), !existsSync(join(two, 'stray.txt'))));
+    await until(() => spaces.leasable());
+    expect(readFileSync(join(one, 'README.md'), 'utf8')).toBe('hidden\n');
+    expect(existsSync(join(one, 'stray.txt'))).toBe(true);
+    expect(git(one, 'branch', '--list', 'obeya-leftovers/*')).toBe('');
+    expect(existsSync(join(two, 'stray.txt'))).toBe(false);
+    expect(await spaces.lease(a, 'obeya/a').ready).toBe(two);
+  }, 20_000);
 
   test('no card gets are named in the pool, with why: the files changed, git failing, the folder gone', async () => {
     const { spaces, clones, changed } = await setup();
@@ -329,7 +473,7 @@ describe('a workspace git frees', () => {
   const setup = async (mode: 'clones' | 'worktrees') => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode, repoPath: repo, dir: join(dir, 'ws') });
     if (mode === 'clones') await spaces.ensureClones(repo, 1);
     return { repo, spaces, card: (title: string) => board.create({ title, x: 0, y: 0 }).id };
@@ -370,7 +514,7 @@ describe('a workspace git frees', () => {
   test("a landed card's worktree goes with what still runs from it, which its stop command did not know of", async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const log = join(dir, 'stopped.log');
     const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: repo, dir: join(dir, 'ws'), stop: `echo stopped>> ${log}` });
     const a = board.create({ title: 'A', x: 0, y: 0 }).id;
@@ -484,28 +628,28 @@ describe("a card's fork point", () => {
     const SETTINGS = '.obeya/settings.json';
     const repo = gitRepo(join(dir, 'repo'), { 'README.md': 'hello\n', [SETTINGS]: '{"land":"main"}\n' });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: repo });
     const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: repo, dir: join(dir, 'ws') });
     const card = board.create({ title: 'A', x: 0, y: 0 }).id;
     const { path: ws, ready } = spaces.lease(card, 'obeya/a');
     await ready;
     expect(await spaces.forkPoint(card, SETTINGS)).toBeNull();
     // at the same second, so git ranks the two places they parted at by the merges' parents alone
-    const commit = (tree: string, parents: string[], message: string) =>
+    const commitTree = (tree: string, parents: string[], message: string) =>
       Bun.spawnSync(['git', '-C', repo, 'commit-tree', tree, ...parents.flatMap((p) => ['-p', p]), '-m', message], {
         env: { ...process.env, GIT_AUTHOR_DATE: '1700000000 +0000', GIT_COMMITTER_DATE: '1700000000 +0000' },
       }).stdout.toString().trim();
     const root = git(repo, 'rev-parse', 'HEAD');
     writeFileSync(join(ws, SETTINGS), '{"land":"pr"}\n');
     git(ws, 'commit', '--quiet', '-am', 'land by pull request');
-    const card1 = commit(git(ws, 'rev-parse', 'HEAD^{tree}'), [root], 'land by pull request');
+    const card1 = commitTree(git(ws, 'rev-parse', 'HEAD^{tree}'), [root], 'land by pull request');
     writeFileSync(join(repo, 'README.md'), 'hello again\n');
     git(repo, 'commit', '--quiet', '-am', 'readme');
-    const main1 = commit(git(repo, 'rev-parse', 'HEAD^{tree}'), [root], 'readme');
+    const main1 = commitTree(git(repo, 'rev-parse', 'HEAD^{tree}'), [root], 'readme');
     // each merges the other: the branch from main's side, main keeping its own settings
     const both = git(repo, 'merge-tree', '--write-tree', card1, main1);
-    git(ws, 'reset', '--quiet', '--hard', commit(both, [main1, card1], 'merge'));
-    git(repo, 'reset', '--quiet', '--hard', commit(git(repo, 'rev-parse', `${main1}^{tree}`), [card1, main1], 'merge'));
+    git(ws, 'reset', '--quiet', '--hard', commitTree(both, [main1, card1], 'merge'));
+    git(repo, 'reset', '--quiet', '--hard', commitTree(git(repo, 'rev-parse', `${main1}^{tree}`), [card1, main1], 'merge'));
     expect(git(ws, 'merge-base', '--all', 'HEAD', 'main').split('\n').sort()).toEqual([card1, main1].sort());
     // the settings differ at one of the two and not at the other, the README the other way round: a
     // check against another of them than the one named answers wrongly for one of the files
@@ -519,33 +663,15 @@ describe("a card's fork point", () => {
 
 describe('the pull after a merge', () => {
   // the machine's own git configuration may set a way of pulling: none is set unless a test sets one
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let spaces: Workspaces;
-  beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
-  });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
+  beforeEach(() => ({ origin, checkout, spaces } = originAndCheckout()));
 
   test('rebases a main with commits of its own where git sets no way of pulling', async () => {
-    const own = commit(checkout, 'notes.md', 'mine\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    const own = edit(checkout, 'notes.md', 'mine\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD') });
     // the owner's commit on top of the merge, no merge commit
@@ -556,8 +682,8 @@ describe('the pull after a merge', () => {
 
   test("keeps the repository's own way of pulling", async () => {
     git(checkout, 'config', 'pull.rebase', 'false');
-    const own = commit(checkout, 'notes.md', 'mine\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    const own = edit(checkout, 'notes.md', 'mine\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     expect(await spaces.pullMain()).not.toHaveProperty('problem');
     expect(git(checkout, 'rev-parse', 'HEAD^1')).toBe(own);
     expect(git(checkout, 'rev-parse', 'HEAD^2')).toBe(merged);
@@ -565,16 +691,16 @@ describe('the pull after a merge', () => {
 
   test("fast-forwards a main without commits of its own, the owner's uncommitted changes kept", async () => {
     writeFileSync(join(checkout, 'notes.md'), 'draft\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     expect(await spaces.pullMain()).not.toHaveProperty('problem');
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(merged);
     expect(readFileSync(join(checkout, 'notes.md'), 'utf8')).toBe('draft\n');
   });
 
   test('a pull that would stop on a conflict is not made: it names the unpushed commit it would stop at', async () => {
-    commit(checkout, 'notes.md', 'mine\n');
-    const own = commit(checkout, 'README.md', 'mine\n');
-    const merged = commit(origin, 'README.md', 'merged\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
+    const merged = edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     expect(r).toEqual({ stopped: { commit: own, subject: 'README.md: mine', files: ['README.md'], unpushed: 2, main: own, upstream: merged } });
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(own);
@@ -583,10 +709,10 @@ describe('the pull after a merge', () => {
   });
 
   test('an unpushed commit the remote has cherry-picked is skipped, as the rebase skips it', async () => {
-    const own = commit(checkout, 'README.md', 'mine\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
     git(origin, 'fetch', '--quiet', checkout, own);
     git(origin, 'cherry-pick', own);
-    commit(origin, 'README.md', 'then theirs\n');
+    edit(origin, 'README.md', 'then theirs\n');
     const r = await spaces.pullMain();
     expect(r).not.toHaveProperty('stopped');
     expect(r).not.toHaveProperty('problem');
@@ -595,44 +721,28 @@ describe('the pull after a merge', () => {
 
   test('where the owner pulls by a merge, the conflict is the merge’s as a whole', async () => {
     git(checkout, 'config', 'pull.rebase', 'false');
-    const own = commit(checkout, 'README.md', 'mine\n');
-    commit(checkout, 'notes.md', 'mine\n');
-    commit(origin, 'README.md', 'merged\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     expect(r).toMatchObject({ stopped: { commit: own, files: ['README.md'], unpushed: 2 } });
   });
 });
 
 describe('pushing main', () => {
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let spaces: Workspaces;
   beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
+    ({ origin, checkout, spaces } = originAndCheckout());
     // a remote one can push to
     git(origin, 'config', 'receive.denyCurrentBranch', 'updateInstead');
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
   });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
 
   test('puts the unpushed commits on the remote, after what the remote has of its own', async () => {
-    commit(checkout, 'notes.md', 'mine\n');
-    const theirs = commit(origin, 'README.md', 'theirs\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    const theirs = edit(origin, 'README.md', 'theirs\n');
     const r = await spaces.pushMain();
     expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD') });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(git(checkout, 'rev-parse', 'HEAD'));
@@ -640,8 +750,8 @@ describe('pushing main', () => {
   });
 
   test('pushes nothing where what the remote has conflicts with them', async () => {
-    const own = commit(checkout, 'README.md', 'mine\n');
-    const theirs = commit(origin, 'README.md', 'theirs\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
+    const theirs = edit(origin, 'README.md', 'theirs\n');
     expect(await spaces.pushMain()).toEqual({ problem: expect.stringContaining('README.md') });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(theirs);
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(own);
@@ -649,41 +759,23 @@ describe('pushing main', () => {
 });
 
 describe('before a merge, the clash with unpushed commits', () => {
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let spaces: Workspaces;
   let pr: string;
   beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
+    ({ origin, checkout, spaces } = originAndCheckout());
     // the contributor's pull request, on the remote's main as it is
     git(origin, 'checkout', '--quiet', '-b', 'contrib');
-    writeFileSync(join(origin, 'README.md'), 'theirs\n');
-    git(origin, 'commit', '--quiet', '-am', 'theirs');
-    pr = git(origin, 'rev-parse', 'HEAD');
+    pr = commit(origin, 'README.md', 'theirs\n', 'theirs');
     git(origin, 'checkout', '--quiet', 'main');
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
     git(checkout, 'fetch', '--quiet', 'origin', 'contrib');
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
   });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
 
   test('names the unpushed commit the pull would stop at, and touches nothing', async () => {
-    commit(checkout, 'notes.md', 'mine\n');
-    const own = commit(checkout, 'README.md', 'mine\n');
+    edit(checkout, 'notes.md', 'mine\n');
+    const own = edit(checkout, 'README.md', 'mine\n');
     writeFileSync(join(checkout, 'notes.md'), 'draft\n');
     expect(await spaces.clashBeforeMerge('card', pr)).toEqual({ commit: own, subject: 'README.md: mine', files: ['README.md'], unpushed: 2 });
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(own);
@@ -692,49 +784,32 @@ describe('before a merge, the clash with unpushed commits', () => {
 
   test('none without unpushed commits, nor where they touch other lines', async () => {
     expect(await spaces.clashBeforeMerge('card', pr)).toBeNull();
-    commit(checkout, 'notes.md', 'mine\n');
+    edit(checkout, 'notes.md', 'mine\n');
     expect(await spaces.clashBeforeMerge('card', pr)).toBeNull();
   });
 
   test('none where the PR conflicts with the remote’s main itself: the forge shows that', async () => {
-    commit(origin, 'README.md', 'moved\n');
-    commit(checkout, 'README.md', 'mine\n');
+    edit(origin, 'README.md', 'moved\n');
+    edit(checkout, 'README.md', 'mine\n');
     expect(await spaces.clashBeforeMerge('card', pr)).toBeNull();
   });
 });
 
 describe('a resolved pull lands', () => {
-  let globalConfig: string | undefined;
+  ownGlobalGitConfig();
   let origin: string;
   let checkout: string;
   let ws: string;
   let spaces: Workspaces;
   beforeEach(() => {
-    globalConfig = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
-    origin = gitRepo(join(dir, 'origin'), { 'README.md': 'hello\n', 'notes.md': 'notes\n' });
-    checkout = join(dir, 'checkout');
-    gitClone(origin, checkout);
-    identify(checkout);
-    ws = join(dir, 'ws', 'clone');
-    gitClone(origin, ws);
+    ({ origin, checkout, spaces } = originAndCheckout());
+    ws = gitClone(origin, join(dir, 'ws', 'clone'));
     identify(ws);
-    spaces = new Workspaces(new Store(':memory:'), 'c', { mode: 'clones', repoPath: checkout, dir: join(dir, 'ws') });
   });
-  afterEach(() => {
-    if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-    else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, 'commit', '--quiet', '-am', `${file}: ${text.trim()}`);
-    return git(repo, 'rev-parse', 'HEAD');
-  };
   /** The local main stopped at the merge; the worker rebases it in its workspace, the conflict resolved. */
   async function resolved() {
-    commit(checkout, 'README.md', 'mine\n');
-    commit(origin, 'README.md', 'merged\n');
+    edit(checkout, 'README.md', 'mine\n');
+    edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
     if (!('stopped' in r)) throw new Error('the pull did not stop');
     const { main, upstream } = r.stopped;
@@ -760,7 +835,7 @@ describe('a resolved pull lands', () => {
 
   test('what landed on the local main meanwhile goes on top', async () => {
     const at = await resolved();
-    const later = commit(checkout, 'notes.md', 'later\n');
+    const later = edit(checkout, 'notes.md', 'later\n');
     const r = await spaces.landResolution(ws, at);
     expect(r).toMatchObject({ from: later });
     expect(git(checkout, 'log', '-1', '--format=%s')).toBe('notes.md: later');
@@ -794,8 +869,11 @@ describe('a resolved pull lands', () => {
 });
 
 describe('clones the configuration no longer names', () => {
-  /** Writes the folder it runs in to `stopped` beside the clones. */
-  const STOP = WINDOWS ? 'echo %CD%>> ..\\stopped' : 'echo "$PWD" >> ../stopped';
+  /**
+   * Writes the folder it runs in to a file of its own beside it (`1.stopped` for `1`): on Windows,
+   * stops that appended to one file at once lost a line.
+   */
+  const STOP = WINDOWS ? 'echo %CD%> "%CD%.stopped"' : 'echo "$PWD" > "$PWD.stopped"';
   let origin: string;
   let store: Store;
   let board: Board;
@@ -807,14 +885,17 @@ describe('clones the configuration no longer names', () => {
     return { spaces, paths };
   };
   // what the stop command ran in, as the path names it (macOS's temporary directory is behind a link)
-  const stopped = () => (existsSync(join(ws, 'stopped')) ? readFileSync(join(ws, 'stopped'), 'utf8').trim().split(/\s*\n/).map((p) => p.replace(/^\/private\//, '/')) : []);
+  const stopped = () =>
+    (existsSync(ws) ? readdirSync(ws).filter((f) => f.endsWith('.stopped')) : [])
+      .toSorted()
+      .map((f) => readFileSync(join(ws, f), 'utf8').trim().replace(/^\/private\//, '/'));
 
   beforeEach(() => {
     gitRepo(join(dir, 'main'));
     origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ store, path: join(dir, 'main') });
     ws = join(dir, 'ws');
   });
 
@@ -835,15 +916,13 @@ describe('clones the configuration no longer names', () => {
     writeFileSync(join(stashed, 'README.md'), 'stashed\n');
     git(stashed, 'stash', '--quiet');
     git(unpushed, 'checkout', '--quiet', '-b', 'obeya/card-abc123');
-    writeFileSync(join(unpushed, 'work.txt'), 'work\n');
-    git(unpushed, 'add', '.');
-    git(unpushed, 'commit', '--quiet', '-m', 'not pushed');
+    commit(unpushed, 'work.txt', 'work\n', 'not pushed');
     let changes = 0;
     const watched = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: STOP, changed: () => changes++ });
     watched.keepOnly(null, []);
     expect(watched.list()).toEqual([]);
     await until(() => watched.pool([])[0]!.kept?.length === 4);
-    expect(watched.pool([])[0]!.kept!.toSorted()).toEqual(paths);
+    expect(watched.pool([])[0]!.kept!.map((k) => k.path).toSorted()).toEqual(paths);
     expect(changes).toBe(4);
     for (const p of paths) expect(existsSync(join(p, '.git'))).toBe(true);
     // nothing was stopped: the folder stays as it is
@@ -859,14 +938,9 @@ describe('clones the configuration no longer names', () => {
     expect(stopped().toSorted()).toEqual(paths);
   });
 
-  test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main counts as landed', async () => {
-    const { spaces, paths } = await make(4);
-    const [tagged, deleted, squashed, odd] = paths as [string, string, string, string];
-    const commit = (clone: string, file: string) => {
-      writeFileSync(join(clone, file), `${file}\n`);
-      git(clone, 'add', '.');
-      git(clone, 'commit', '--quiet', '-m', file);
-    };
+  test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main, or a tag origin has, count as landed', async () => {
+    const { spaces, paths } = await make(5);
+    const [tagged, deleted, squashed, odd, released] = paths as [string, string, string, string, string];
     git(tagged, 'checkout', '--quiet', '-b', 'try');
     commit(tagged, 'try.txt');
     git(tagged, 'tag', 'tried');
@@ -890,10 +964,81 @@ describe('clones the configuration no longer names', () => {
     for (const f of ['a.txt', 'b.txt']) writeFileSync(join(other, f), `${f}\n`);
     git(other, 'add', '.');
     git(other, 'commit', '--quiet', '-m', 'Squashed');
+    // and main changed one of its files since
+    writeFileSync(join(other, 'a.txt'), 'a.txt\nmore\n');
+    git(other, 'commit', '--quiet', '-am', 'More');
     git(other, 'push', '--quiet', 'origin', 'main');
+    // a release tagged on a branch that is gone from origin, its tag pushed
+    git(released, 'checkout', '--quiet', '-b', 'hotfix');
+    commit(released, 'fix.txt');
+    git(released, 'tag', '-a', '-m', 'Release', 'v1.0.1');
+    git(released, 'push', '--quiet', 'origin', 'hotfix', 'v1.0.1');
+    git(released, 'checkout', '--quiet', 'main');
+    git(released, 'branch', '--quiet', '-D', 'hotfix');
+    git(origin, 'branch', '--quiet', '-D', 'hotfix');
     spaces.keepOnly(null, []);
-    await until(() => !existsSync(squashed) && spaces.pool([])[0]!.kept?.length === 3);
-    expect(spaces.pool([])[0]!.kept!.toSorted()).toEqual([tagged, deleted, odd]);
+    await until(() => !existsSync(squashed) && !existsSync(released) && spaces.pool([])[0]!.kept?.length === 3, 15_000 * PATIENCE);
+    const kept: KeptClone[] = [
+      { path: tagged, lost: [{ what: 'commits', kind: 'tag', name: 'tried', n: 1 }] },
+      { path: deleted, lost: [{ what: 'commits', kind: 'branch', name: 'obeya/gone', n: 1 }] },
+      { path: odd, lost: [{ what: 'commits', kind: 'branch', name: 'odd', n: WINDOWS ? 1 : 2 }] },
+    ];
+    const byPath = (a: KeptClone, b: KeptClone) => a.path.localeCompare(b.path);
+    expect(spaces.pool([])[0]!.kept!.toSorted(byPath)).toEqual(kept.toSorted(byPath));
+  }, 30_000 * PATIENCE);
+
+  test('a branch of a thousand files squashed onto main counts as landed, asked in command lines Windows takes', async () => {
+    const { paths } = await make(1);
+    const clone = paths[0]!;
+    const files = Array.from({ length: 1000 }, (_, i) => `generated/a-directory-with-a-long-name/file-${String(i).padStart(4, '0')}-with-a-long-name-too.txt`);
+    // one fast-import, not `git add` of a thousand files: that took seconds on a busy machine
+    let stream = 'commit refs/heads/obeya/generated\ncommitter Test <test@example.com> 0 +0000\ndata 9\nGenerated\nfrom refs/heads/main\n';
+    for (const f of files) stream += `M 100644 inline ${f}\ndata ${f.length + 1}\n${f}\n\n`;
+    const imported = Bun.spawnSync(['git', '-C', clone, 'fast-import', '--quiet'], { stdin: Buffer.from(stream), stderr: 'pipe' });
+    expect(imported.exitCode, imported.stderr.toString()).toBe(0);
+    git(clone, 'checkout', '--quiet', 'obeya/generated');
+    // the pull request squashed onto main (the branch's files on main's commit), and its branch deleted
+    const squashed = git(clone, 'commit-tree', 'obeya/generated^{tree}', '-p', 'origin/main', '-m', 'Squashed');
+    git(clone, 'push', '--quiet', 'origin', `${squashed}:refs/heads/main`);
+    const lines: number[] = [];
+    const stop = onStart((argv) => argv.some((a) => a.startsWith(':(literal)')) && lines.push(argv.filter((a) => a.startsWith(':(literal)')).join(' ').length));
+    try {
+      expect(await unlanded(clone)).toEqual([]);
+    } finally {
+      stop();
+    }
+    expect(lines.length).toBeGreaterThan(1);
+    // the rule `listed` keeps: about 32,000 characters fit on a command line on Windows
+    for (const n of lines) expect(n).toBeLessThan(24_000);
+  });
+
+  test('work not landed that merges cleanly into main is told after one merge, not one per commit of main', async () => {
+    const { paths } = await make(1);
+    const clone = paths[0]!;
+    git(clone, 'checkout', '--quiet', '-b', 'obeya/open');
+    commit(clone, 'a.txt');
+    // main changed the same file in many commits since
+    const other = gitRepo(join(dir, 'other'));
+    git(other, 'remote', 'add', 'origin', origin);
+    git(other, 'fetch', '--quiet', 'origin');
+    git(other, 'reset', '--quiet', '--hard', 'origin/main');
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(join(other, `main-${i}.txt`), `${i}\n`);
+      writeFileSync(join(other, 'a.txt'), '');
+      git(other, 'add', '.');
+      git(other, 'commit', '--quiet', '-m', `Main ${i}`);
+      git(other, 'rm', '--quiet', 'a.txt');
+      git(other, 'commit', '--quiet', '-m', `Main ${i} again`);
+    }
+    git(other, 'push', '--quiet', 'origin', 'main');
+    let merges = 0;
+    const stop = onStart((argv) => argv.includes('merge-tree') && merges++);
+    try {
+      expect(await unlanded(clone)).toEqual([{ what: 'commits', kind: 'branch', name: 'obeya/open', n: 1 }]);
+    } finally {
+      stop();
+    }
+    expect(merges).toBe(1);
   });
 
   test('a clone named again while its folder is looked at stays, with what a card does in it', async () => {

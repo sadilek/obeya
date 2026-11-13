@@ -10,9 +10,9 @@ import { join } from 'node:path';
 import { defaultsFor, parseShared, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE, withSettings } from '../../../../src/adapters/index.ts';
 import { allTicked, type NotAProject } from '../../../../src/core/plan-doc.ts';
 import { outsidePlanDir, readPlanDocs, repoInfo } from '../../../../src/server/repo.ts';
-import { siteProblem } from '../../../../src/server/share.ts';
+import { siteProblem } from '../../../../src/server/site.ts';
 
-const repo = repoInfo(process.cwd());
+const repo = await repoInfo(process.cwd());
 const settingsFile = join(repo.path, REPO_SETTINGS_FILE);
 if (!existsSync(settingsFile)) {
   console.log(`No ${settingsFile}: write the repository's settings first.`);
@@ -43,7 +43,7 @@ console.log(
     `settings from ${settingsFile}: ${Object.keys(shared.settings ?? {}).join(', ') || '(none)'}`,
     `setup: ${show(adapter.setup)}`,
     `checks: ${show(adapter.checks)}`,
-    `land: ${adapter.land}${adapter.direct ? ' (direct allowed)' : ''}${adapter.land === 'pr' && adapter.autoMerge === false ? ' (merged by its team, not by Obeya)' : ''}, workspaces: ${adapter.workspaces}`,
+    `land: ${adapter.land}${adapter.land === 'main' && adapter.push ? ' (pushed to origin after each landing)' : ''}${adapter.land === 'main' && adapter.upstream ? ` (cards may go to ${adapter.upstream} as a pull request too)` : ''}${adapter.direct ? ' (direct allowed)' : ''}${adapter.land === 'pr' && adapter.autoMerge === false ? ' (merged by its team, not by Obeya)' : ''}, workspaces: ${adapter.workspaces}`,
     `planDocs: ${show(adapter.planDocs)}, softPaths: ${show(adapter.softPaths)}`,
     ...planLines,
     `app.run: ${adapter.app?.run || '(none: each worker finds out from the repository how to run the app)'}`,

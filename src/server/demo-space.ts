@@ -7,6 +7,7 @@ import { lstat, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { DemoSpaceView } from '../core/types';
+import { alive } from './spawn';
 import { type DemoSettings, demoDirectory } from '../../plugin/skills/demo/lib/settings.ts';
 
 /** Days after a demo's last render that its frames are kept, where the demo settings name nothing. */
@@ -76,15 +77,14 @@ export async function lastRender(work: string): Promise<number> {
 
 /** A render that still runs holds `render.pid` with its process (the director's `holdRenderLock`). */
 async function rendering(work: string): Promise<boolean> {
+  let pid: number;
   try {
-    const pid = Number(await readFile(join(work, 'render.pid'), 'utf8'));
-    if (!pid) return false;
-    process.kill(pid, 0);
-    return true;
+    pid = Number(await readFile(join(work, 'render.pid'), 'utf8'));
   } catch (e) {
-    // a process of another user still runs
+    // a pid file of another user's render
     return (e as NodeJS.ErrnoException).code === 'EPERM';
   }
+  return !!pid && alive(pid);
 }
 
 /** A file is there, or a link to one. */
@@ -184,7 +184,6 @@ export class DemoSpace {
     const freed = this.freed?.dir === dir ? this.freed : undefined;
     if (!this.pending && (!used || Date.now() - Date.parse(used.at) > STALE_MS)) void this.queue(false);
     return {
-      keepDays: keepDays(s, this.o.home),
       defaultDays: defaultDays(this.o.home),
       busy: this.pending > 0,
       ...(used ? { used: { bytes: used.bytes, work: used.work, at: used.at } } : {}),

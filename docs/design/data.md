@@ -17,6 +17,8 @@ Persistent (SQLite):
   contributor's pull request (author, whether maintainers may push, the head handed over, the
   checks and merge probe, the findings with what came of each, the change request waiting for the
   contributor); an approval held until the work can land; landed work whose worker still finishes;
+  the commits its landed work spans and whether it went straight past a pull request, and the pull
+  request that takes merged work back (see Taking back an approval in Card lifecycle);
   a waiting card's stopped app, or where its app runs for the owner to try; the clone that keeps a
   card's branch since its workspace was taken from it; the model its session runs on; the files its
   worker named as its result, and the demos of earlier handovers;

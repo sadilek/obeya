@@ -5,26 +5,26 @@
 
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuote, TalkRef, TalkWait } from '../core/types';
-import { api } from './api';
-import { Inline, plain } from './markdown';
-import { AnswerFiles, Body, Continues, Msg, Quote, Reading, ThreadCard } from './message';
+import { api, failText } from './api';
+import { useAct } from './act';
+import { Body, Inline, plain } from './markdown';
+import { AnswerFiles, Continues, Msg, Quote, Reading, ThreadCard } from './message';
 import { WalkthroughButton } from './walkthrough';
 import { isWalkthrough } from '../core/walkthrough';
 import { type Reply, setReply, talkEv, talkQuote } from './reply';
-import { clock, failText, t } from './strings';
+import { clock, t } from './strings';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
-import { DictationLine, useDictatedField } from './dictation';
+import { DictatedArea } from './dictation';
 import { cardDraft, OBEYA_DRAFT } from './draft';
 import { Shots } from './shots';
 import { usePageVisible } from './seen';
 import { useStickToEnd } from './stickToEnd';
 import { useFitHeight } from './fitHeight';
 import { PageChangeList } from './page-changes';
-import { useStoredState } from './stored';
 import { WishReplyLink } from './wish';
 import { ClockMark } from './snooze';
-import { know, known } from './known';
+import { know, read, session, useStoredState, write, useKnown } from './stored';
 import { cardPath } from './address';
 import { CardLink, Naming } from './cardLink';
 
@@ -133,7 +133,7 @@ const REVIEW_KNOWN = 'obeya-review-pr-known';
  */
 function ReviewHint({ items, repos }: { items: Item[]; repos: RepoRef[] }) {
   const used = items.some((i) => i.contribution);
-  const [closed, setClosed] = useState(() => known(REVIEW_KNOWN));
+  const [closed, close] = useKnown(REVIEW_KNOWN);
   useEffect(() => {
     if (used) know(REVIEW_KNOWN);
   }, [used]);
@@ -146,8 +146,7 @@ function ReviewHint({ items, repos }: { items: Item[]; repos: RepoRef[] }) {
         title={t.review.hideHint}
         aria-label={t.review.hideHint}
         onClick={() => {
-          know(REVIEW_KNOWN);
-          setClosed(true);
+          close();
         }}
       >
         ×
@@ -323,7 +322,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 {x.replyTo && <Quote q={talkQuote(x.replyTo)} />}
                 <Body md={x.said} />
                 <Shots ids={x.images} />
-                {x.continues && <Continues question={x.continues} reading={x.answer === undefined && !card} />}
+                {x.continues && <Continues question={x.continues} reading={x.answer === undefined && !card} adds={x.addsTo} />}
                 {asked && <div className="hint">{t.coordinator.askedIn(plain(asked.title))}</div>}
               </Msg>
             )}
@@ -357,8 +356,8 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
               </div>
             ) : (
               <>
-                {/* a question it looked up: the answer follows the acknowledgement */}
-                {x.question && x.answer === undefined && !x.files?.length && (
+                {/* a question it looked up: the answer follows the acknowledgement, or the later words that went into its look-up */}
+                {x.question && x.answer === undefined && !x.joinedInto && !x.files?.length && (
                   <Msg by={x.askedIn ? 'project' : 'coordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'coordinator']}>
                     <div className="hint">{x.limitedUntil ? t.coordinator.lookUpLimited(clock(x.limitedUntil)) : t.coordinator.lookingUp}</div>
                   </Msg>
@@ -418,20 +417,6 @@ function WaitLine({ talk, wait, card, onOpen }: { talk: number; wait: TalkWait; 
   );
 }
 
-/** An error to show under a row, and `act`, which runs a request and then shows its error or clears it. */
-function useAct(fail?: Parameters<typeof failText>[1]): [string, (fn: () => Promise<unknown>) => Promise<void>] {
-  const [error, setError] = useState('');
-  const act = async (fn: () => Promise<unknown>) => {
-    try {
-      await fn();
-      setError('');
-    } catch (e) {
-      setError(failText(e, fail));
-    }
-  };
-  return [error, act];
-}
-
 /** Where a rule goes: the owner's preferences or a repository's CLAUDE.md. */
 function TargetPick({ value, repos, onChange }: { value: string; repos: RepoRef[]; onChange: (target: string) => void }) {
   return (
@@ -451,37 +436,7 @@ function TargetPick({ value, repos, onChange }: { value: string; repos: RepoRef[
 
 /** A rule's text being edited in place: Enter takes it, Escape leaves it as it was. */
 function RuleEdit({ draft, setDraft, onEnter, onBlur }: { draft: string; setDraft: (d: string | null) => void; onEnter: () => void; onBlur?: () => void }) {
-  const field = useRef<HTMLTextAreaElement>(null);
-  const talk = useDictatedField(field, true);
-  return (
-    <>
-      <textarea
-        ref={field}
-        className={talk.dictating ? 'dictating' : undefined}
-        data-esc
-        autoFocus
-        value={draft}
-        rows={2}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          talk.blur();
-          onBlur?.();
-        }}
-        onKeyUp={talk.keyUp}
-        onKeyDown={(e) => {
-          if (talk.keyDown(e)) return;
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            onEnter();
-          } else if (e.key === 'Escape') {
-            e.stopPropagation();
-            setDraft(null);
-          }
-        }}
-      />
-      <DictationLine draft={talk.key} />
-    </>
-  );
+  return <DictatedArea data-esc autoFocus value={draft} rows={2} onChange={setDraft} onEnter={onEnter} onEscape={() => setDraft(null)} {...(onBlur ? { onBlur } : {})} />;
 }
 
 /**
@@ -492,7 +447,7 @@ function RuleEdit({ draft, setDraft, onEnter, onBlur }: { draft: string; setDraf
 function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items: Item[]; rules: Preference[]; repos: RepoRef[]; onOpen: (i: Item) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [target, setTarget] = useState(p.target ?? '');
-  const [error, decide] = useAct();
+  const { status: error, act: decide } = useAct();
   const card = p.cardId ? items.find((i) => i.id === p.cardId) : undefined;
   const replaced = p.replaces !== undefined ? rules.find((r) => r.id === p.replaces) : undefined;
   const accept = () =>
@@ -531,7 +486,7 @@ function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items:
           </button>
         ) : (
           <button className="btn" onClick={() => setDraft(null)}>
-            {t.coordinator.cancel}
+            {t.cancel}
           </button>
         )}
         <button className="btn danger" onClick={() => decide(() => api.rejectProposal(p.id))}>
@@ -559,15 +514,12 @@ function GearIcon() {
  */
 function useSettingDraft(id: number, proposed: string): [string, (v: string) => void] {
   const key = `obeya-setting-draft-${id}`;
-  const [draft, setDraft] = useState(() => sessionStorage.getItem(key) ?? proposed);
+  const [draft, setDraft] = useState(() => read(session, key) ?? proposed);
   return [
     draft,
     (v) => {
       setDraft(v);
-      try {
-        if (v === proposed) sessionStorage.removeItem(key);
-        else sessionStorage.setItem(key, v);
-      } catch {}
+      write(session, key, v === proposed ? null : v);
     },
   ];
 }
@@ -584,15 +536,9 @@ function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; 
   const [draft, setDraft] = useSettingDraft(p.id, asText(p.value));
   const field = useRef<HTMLTextAreaElement>(null);
   useFitHeight(field, draft);
-  const [busy, setBusy] = useState(false);
-  const [error, act] = useAct({ detail: ['settingsShare'] });
+  const { status: error, busy, act: decide } = useAct({ detail: ['settingsShare'] });
   const k = t.coordinator;
   const list = Array.isArray(p.value);
-  const decide = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    await act(fn);
-    setBusy(false);
-  };
   const changed = draft.trim() !== asText(p.value);
   const edited = !changed ? undefined : list ? draft.split('\n').map((x) => x.trim()).filter(Boolean) : draft.trim();
   const take = (where: 'machine' | 'repository') => decide(() => api.takeSetting(p.id, where, edited));
@@ -679,7 +625,7 @@ const RESHARE_COUNTS = [10, 20, 50, 100];
 function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (i: Item) => void }) {
   const counts = RESHARE_COUNTS.filter((n) => n < r.outdated);
   const [pick, setPick] = useState<number | 'all'>();
-  const [error, act] = useAct();
+  const { status: error, act } = useAct();
   // the newest 20 unless the owner picks otherwise; null is all of them
   const chosen = pick === 'all' ? null : pick !== undefined && counts.includes(pick) ? pick : (counts.find((n) => n >= 20) ?? null);
   const run = r.run;
@@ -781,7 +727,7 @@ function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (
 
 function PreferenceRow({ p }: { p: Preference }) {
   const [draft, setDraft] = useState<string | null>(null);
-  const [error, act] = useAct();
+  const { status: error, act } = useAct();
   const save = () => {
     if (draft === null || draft.trim() === p.text) return setDraft(null);
     act(async () => {
@@ -798,7 +744,7 @@ function PreferenceRow({ p }: { p: Preference }) {
       ) : (
         <RuleEdit draft={draft} setDraft={setDraft} onEnter={save} onBlur={save} />
       )}
-      <button className="pref-del" title={t.coordinator.remove} onClick={() => api.setPreference(p.id, null).catch(() => {})}>
+      <button className="pref-del" title={t.remove} onClick={() => api.setPreference(p.id, null).catch(() => {})}>
         ✕
       </button>
       {error && <span className="p-error">{error}</span>}
@@ -811,11 +757,7 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
   const [text, setText] = useState('');
   const [target, setTarget] = useState('');
   const [filed, setFiled] = useState('');
-  const [error, act] = useAct();
-  const field = useRef<HTMLTextAreaElement>(null);
-  const talk = useDictatedField(field, true);
-  // as high as the rule: a dictated one is a sentence or more
-  useFitHeight(field, text);
+  const { status: error, act } = useAct();
   const add = () =>
     text.trim() &&
     act(async () => {
@@ -825,30 +767,22 @@ function NewPreference({ repos }: { repos: RepoRef[] }) {
     });
   return (
     <div className="composer pref-new">
-      <textarea
-        ref={field}
-        className={talk.dictating ? 'dictating' : undefined}
+      {/* as high as the rule: a dictated one is a sentence or more */}
+      <DictatedArea
+        fit
         value={text}
         rows={1}
         placeholder={t.coordinator.addPlaceholder}
-        onChange={(e) => {
-          setText(e.target.value);
+        onChange={(text) => {
+          setText(text);
           setFiled('');
         }}
-        onBlur={talk.blur}
-        onKeyUp={talk.keyUp}
-        onKeyDown={(e) => {
-          if (talk.keyDown(e)) return;
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            add();
-          }
-        }}
-      />
-      <button className="btn" disabled={!text.trim()} onClick={add}>
-        {t.coordinator.add}
-      </button>
-      <DictationLine draft={talk.key} />
+        onEnter={add}
+      >
+        <button className="btn" disabled={!text.trim()} onClick={add}>
+          {t.coordinator.add}
+        </button>
+      </DictatedArea>
       <TargetPick value={target} repos={repos} onChange={setTarget} />
       {filed && <span className="hint filed">{filed}</span>}
       {error && <span className="p-error">{error}</span>}

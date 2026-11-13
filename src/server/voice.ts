@@ -52,6 +52,26 @@ export function looping(text: string): boolean {
 export const silence = (text: string) =>
   /^[[(*]?(vielen dank|danke fürs zuschauen|musik|untertitel(ung)? (im auftrag )?des zdf.*|thank you|thanks for watching|music)[.!]?[\])*]?$/i.test(text.trim());
 
+/**
+ * What the owner said in the recording at `file`: the words, `''` where they said nothing, `null`
+ * where the recognition understood nothing it could write down. The card titles (`vocabulary`) talk
+ * Whisper into loops or guesses on a recording without speech, so it hears such a one once more
+ * without them. `on`: where it was said, for the log.
+ */
+export async function hear(transcriber: Transcriber, file: string, vocabulary: string, on: string): Promise<string | null> {
+  const first = await transcriber.transcribe(file, vocabulary);
+  const text = first.text.trim();
+  if (silence(text)) return console.log(`voice on ${on}: ${text}`), '';
+  if (!looping(text) && !first.doubtful) return text;
+  if (first.unprompted) return console.log(`voice ${looping(text) ? 'looped' : 'was unsure'} on ${on}: ${text.slice(0, 80)}`), null;
+  console.log(`whisper ${looping(text) ? 'looped' : 'was unsure'} on ${on}: ${text.slice(0, 80)}; once more without the card titles`);
+  const again = await transcriber.transcribe(file, '');
+  const second = again.text.trim();
+  if (!looping(second) && !again.doubtful && !silence(second)) return second;
+  console.log(`whisper on ${on} without the card titles${again.doubtful ? ', unsure' : ''}: ${second.slice(0, 80)}`);
+  return silence(second) ? '' : null;
+}
+
 const VOICE = resource('voice');
 
 /**
@@ -227,18 +247,17 @@ export class VoiceIn implements Transcriber {
   constructor(
     private home: string,
     readonly local: LocalTranscriber,
-    private fetcher: typeof fetch = fetch,
-    /** Loads the recognition only once the owner speaks, not ahead (a scratch Obeya, scratch.ts). */
-    private lazy = false,
+    /** `lazy`: loads the recognition only once the owner speaks, not ahead (a scratch Obeya, scratch.ts). */
+    private o: { fetcher?: typeof fetch; lazy?: boolean } = {},
   ) {}
 
   transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
     const cloud = cloudInUse(this.home);
-    return cloud ? transcribeInCloud(cloud, audioPath, vocabulary, this.fetcher) : this.local.transcribe(audioPath, vocabulary);
+    return cloud ? transcribeInCloud(cloud, audioPath, vocabulary, this.o.fetcher ?? fetch) : this.local.transcribe(audioPath, vocabulary);
   }
 
   warm(ahead = false) {
-    if (!(ahead && this.lazy) && !cloudInUse(this.home)) this.local.warm();
+    if (!(ahead && this.o.lazy) && !cloudInUse(this.home)) this.local.warm();
   }
 
   stop() {

@@ -300,6 +300,15 @@ thread queue. A session that cannot be resumed is replaced by a fresh agent give
 The follow-up shows "↳ continues “…”" (and "reading …" while it runs) under the owner's words, so
 the owner sees which answer Obeya took it for.
 
+Words that add to a question still being looked up („mach gleich eine Liste daraus“) go into that
+look-up instead of starting one of their own: the Coordinator hears which look-ups run, by their
+tags, and follows up on one the same way. The agent gets the words with its next step (or they wake
+it while it waits for its background work), and its one answer answers both: an answer it gives
+before it has them is refused with them, so it cannot answer past them. The answer stands under the
+later words, which show "↳ goes into “…”"; the earlier question shows no answer of its own. Words
+that come once the answer is given follow up on it in a turn of their own. Obeya restarting
+meanwhile, the later words are looked up again in the session that read for both.
+
 A look-up whose turn ends while its background work runs (a download, a long query) keeps reading
 until that work wakes the agent, within a worker's limits (see Turns that end without a handover);
 should it never wake it, its last words are the answer.
@@ -682,6 +691,13 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   page written into the thread's directory with the slides (as an HTML artifact, sandboxed): every
   walkthrough would keep the player of its day, and its words and look would live apart from the
   interface's strings and its light and dark.
+- **Words added while a look-up runs go into it** (owner, 2026-11-12): asked for a list while
+  Obeya was still searching, a second look-up started beside the first, and the owner got two
+  answers, the first one without the list they had asked for. The words reach the agent with its
+  next step rather than as a message of their own, so Obeya knows when the agent has them and can
+  refuse an answer given before. Rejected: queueing them as a follow-up of the answer to come (two
+  answers again, the second only once the first is in), and stopping the look-up to start it anew
+  with both (what it was running would be cut off).
 - **A look-up waits for its background work** (2026-10-19). Rejected: taking its words so far
   ("still downloading …") as the answer, which closed the session and stopped the work.
 - **The project agent can be asked from the project's sheet** (2026-10-21, a colleague's feedback),

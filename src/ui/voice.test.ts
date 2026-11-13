@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
-import { micHolder, stillOpen } from './voice';
+import { MIC_RECHECK_MS, micHolder, stillOpen } from './voice';
 
 const mic = (tracks: { readyState: string; muted: boolean }[], state = 'running') => ({
   stream: { getAudioTracks: () => tracks } as unknown as MediaStream,
@@ -83,5 +83,49 @@ describe('micHolder', () => {
     expect(await opening).toBe(1);
     await settle();
     expect(log).toEqual(['open 1', 'close 1']);
+  });
+});
+
+describe('micHolder while the page plays sound', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  test('the microphone is kept until the sound stops, and let go then', async () => {
+    const log: string[] = [];
+    let playing = true;
+    const h = micHolder(
+      async () => (log.push('open'), 1),
+      () => log.push('close'),
+      10_000,
+      () => playing,
+    );
+    await h.take();
+    h.release();
+    jest.advanceTimersByTime(60_000);
+    expect(log).toEqual(['open']);
+    playing = false;
+    jest.advanceTimersByTime(MIC_RECHECK_MS);
+    expect(log).toEqual(['open', 'close']);
+  });
+
+  test('a press while it waits for the sound keeps it, and the wait starts again from its release', async () => {
+    const log: string[] = [];
+    let playing = true;
+    const h = micHolder(
+      async () => (log.push('open'), 1),
+      () => log.push('close'),
+      10_000,
+      () => playing,
+    );
+    await h.take();
+    h.release();
+    jest.advanceTimersByTime(15_000);
+    await h.take();
+    playing = false;
+    jest.advanceTimersByTime(30_000);
+    expect(log).toEqual(['open']);
+    h.release();
+    jest.advanceTimersByTime(10_000);
+    expect(log).toEqual(['open', 'close']);
   });
 });

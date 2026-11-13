@@ -22,13 +22,14 @@
 // own (Cloudflare Pages serves the overview for a site without a `404.html`, as one deployed before
 // Obeya wrote it): a manifest answered that way is missing, not unreadable.
 //
-// The pages come from Obeya's own templates (`demo-page.ts`), each in its demo's language, the
-// overview in the site's. A call writes only its own page and the overview: a page shared earlier
-// keeps the template it was written with until it is published again (the page changes since,
-// page-changes.ts, say what that would bring). A page published again with the same video, or the same artifact
-// files, keeps its date, so the overview keeps its order when pages are brought up to date or get
-// their pull request's link. What counts is the demo's own files (`source` in meta.json), not the
-// copies on the site, which carry what Obeya adds to an artifact (artifact-copy.ts).
+// The pages come from Obeya's own templates (`demo-page.ts`, `site-pages.ts`), each in its demo's
+// language, the overview in the site's. A call writes only its own page and the overview: a page
+// shared earlier keeps the template it was written with until it is published again (the page
+// changes since, page-changes.ts, say what that would bring). A page published again with the same
+// video, or the same artifact files, keeps its date, so the overview keeps its order when pages are
+// brought up to date or get their pull request's link. What counts is the demo's own files
+// (`source` in meta.json), not the copies on the site, which carry what Obeya adds to an artifact
+// (artifact-copy.ts).
 //
 // A repository's theme (theme.ts) goes into each page of its cards, after Obeya's style, and beside
 // it as `theme.css`; each page names its repository (`repoMark`). The overview carries a theme only
@@ -39,9 +40,6 @@
 // A host may serve no byte ranges (Cloudflare Pages does not): the video page then loads the video
 // whole, so a browser can seek in it (`demo-page.ts`).
 //
-// A host that reads a `_headers` file (Cloudflare Pages, Netlify) sends an artifact's files with the
-// headers that keep it from the internet beyond what its CSP covers (`artifactHeaders`).
-//
 // The owner's personal site (personal-site.ts) is unlisted (`unlisted`): a page lies at
 // `<token>/<slug>/`, the token drawn per card; the manifest lies in a secret directory; the root and
 // the answer to a missing address are blank; there is no feed; pages and headers keep search engines
@@ -50,68 +48,105 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve, sep } from 'node:path';
-import type { DemoSite } from '../adapters/types';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import type { Messages } from '../core/messages';
-import { dimensions } from '../core/page-tags';
-import type { PageTags } from '../core/types';
-import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type CaptionTrack, captionTracksAsync, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, silentVideoAsync, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
+import type { DemoKind, PageTags } from '../core/types';
+import type { DemoSite } from '../core/config';
+import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import type { Theme } from './theme';
+import { ARTIFACT_DIR, type PageCommit, type PageLanguage } from './demo-page';
+import { artifactFiles, captionTracks, demoFiles, silentVideo } from './demo-files';
+import { artifactHeaders, FEED, feedXml, HEADERS, type Meta, newest, NOT_FOUND, notFoundHtml, overviewHtml, pageHtml, pageUrl, ROBOTS, robotsTxt, SITEMAP, sitemapXml, unlistedHeaders, type VersionFiles } from './site-pages';
 import { artifactCopy } from './artifact-copy';
-import { pagePolicy, sealed, withHeightReport } from '../core/frame';
-import { demoFiles, OWN_CONNECTIONS } from './demo';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
-import { HERE, isFolder } from './workspaces';
-import { BLANK_PAGE, GITHUB_PAGES, githubPagesDeploy } from './site-hosts';
-import { COMMAND_TIMEOUT, commandWords, SHARE_CWD, type SharePage, type ShareTarget, scriptArgv, tail } from './share';
+import { HERE } from './workspaces';
+import { isFolder } from './branches';
+import { gitTry } from './git';
+import { BLANK_PAGE, GITHUB_PAGES, githubPagesDeploy, parseEnv, SITES_DIR } from './site-hosts';
+import { commandWords } from './folder-processes';
 import { messageOf } from '../core/text';
 
-/** Where the sites live under Obeya's home. */
-export const SITES_DIR = 'sites';
 /** The largest file a site takes without `maxFile` (Cloudflare Pages' limit). */
 export const MAX_FILE = 25 * 1024 * 1024;
 
-/** What a page's directory on the site keeps besides its files, for the overview. */
-export interface Meta {
-  /** Absent on video pages. */
-  kind?: 'html';
+/** A demo version on a page: the first gives the page its title and text, each later one is an addendum below it. */
+export interface PageDemo {
   title: string;
   text: string;
+  /** A video, or an HTML artifact. */
+  kind: DemoKind;
+  /** Seconds and title of each scene; none for an artifact. */
   chapters: [number, string][];
-  pr: string | null;
-  /** Without a pull request: where the work landed on the default branch; absent before it did, and on pages from before (until 2026-10-30). */
-  commit?: PageCommit;
-  /** When it was first shared, and when its video or artifact last changed (the date the page and the overview show). */
-  first: string;
-  at: string;
-  /** A hash of the video or the artifact's files as the demo has them. */
-  source: string;
-  language: PageLanguage;
-  /** Who shared it: git's name (`user.name`) in the repository of the Obeya that published it; absent on pages from before (until 2026-10-20) or where git has none. */
-  by?: string;
-  /** The later demo versions on the page, in order of handover, each in a directory of the page's (`dir`). */
-  more?: MoreMeta[];
-  /** The page's tags from the site's vocabulary (`demo.site.tags`), by dimension; absent on pages without. */
-  tags?: PageTags;
-  /** The repository it was published from (`repoMark`); absent on pages from before (until 2026-11-03). */
-  repo?: string;
-}
-
-/** A later demo version on a page: what its section shows, and when it was handed over (`handed`, its heading). */
-interface MoreMeta {
-  kind?: 'html';
-  title: string;
-  text: string;
-  chapters: [number, string][];
+  /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`; an artifact's `index.html` and the files it loads. */
   dir: string;
-  handed: string;
-  at: string;
-  source: string;
+  /** When it was handed over, which a later version's section is headed with. */
+  at?: string;
 }
 
-/** When the page's newest version last changed: the date the overview shows it with. */
-const newest = (m: Meta) => [m.at, ...(m.more ?? []).map((x) => x.at)].sort().at(-1)!;
+/** What a page on the site is made of: its demo versions, and what the page says of the change. */
+export interface SharePage {
+  /** Stays the same for a card, so a shared link keeps working when the page is published again. */
+  slug: string;
+  /** The demo versions on the page, in order of handover. */
+  demos: [PageDemo, ...PageDemo[]];
+  /** The card's pull request, once it has one. */
+  pr: string | null;
+  /** Without a pull request: where the card's work landed on the default branch, once it has. */
+  commit?: PageCommit | null;
+  /** The demo's language, for the page's own words (`language` of the page templates). */
+  language: PageLanguage;
+  /** The slugs of the other pages Obeya has stored as shared on this site: the site must still hold them. */
+  shared: string[];
+  /** The page's tags from the site's vocabulary, by dimension (`tagsOf`); none where the site has none. */
+  tags?: PageTags;
+  /** The theme of the card's repository (theme.ts); none where it has none. */
+  theme?: Theme;
+}
+
+/**
+ * Where a card's pages go. Pages whose targets have the same key are on one site: a publish or
+ * withdrawal names the others as shared. Keys are not stored, so they only need to stay the same
+ * across a restart.
+ */
+export interface ShareTarget {
+  key: string;
+  /** The card's repository checkout. */
+  repo: string;
+  /**
+   * The page's URL, or why it did not go out; what the target said on the way goes into the card's
+   * log, and what it says while it goes on (`log`). `gone`: pages another machine withdrew, found
+   * on the way.
+   */
+  publish(page: SharePage, log?: (text: string) => void): Promise<({ url: string; said: string } | { why: string; said: string }) & { gone?: Gone[] }>;
+  withdraw(slug: string, shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
+  /**
+   * The pages another machine withdrew (their cards here lose their link), and the pages shared
+   * from here (`shared`) that the live site lacks or has older, taken offline by another machine's
+   * deployment that came in between.
+   */
+  audit(shared: string[]): Promise<{ gone: Gone[]; missing: string[] }>;
+  /** Where the page of `slug` is, before it is published. */
+  pageUrl(slug: string): string;
+  /** Deploys again what this machine has, for the pages `audit` found missing. */
+  repair(shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
+  /**
+   * Gives pages on the site their tags in one deploy, in place: each keeps its video or artifact as
+   * the site has it (the demo's own files may be gone), and the page around them is written anew.
+   * `shared`: every page shared through the target, those included.
+   */
+  retag(pages: { slug: string; tags: PageTags }[], shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
+}
+
+/**
+ * Where a site's deploy runs, under Obeya's home: not in the checkout, which is often a workspace
+ * of the pool too, and a file a command leaves in its working directory (`wrangler pages deploy`
+ * writes its cache there) would keep the workspace from being leased until someone cleans up.
+ */
+export const SHARE_CWD = 'share';
+
+/** A site's deploy that has not finished by then is stopped (an upload of a few files takes seconds). */
+export const COMMAND_TIMEOUT = 15 * 60_000;
 
 /** The site's directory name: its URL's host and path. */
 export function siteKey(url: string): string {
@@ -124,11 +159,6 @@ export function siteKey(url: string): string {
 
 /** The site's directory under Obeya's home: `site/` is deployed, `backup/` holds a page set aside while a deploy runs. */
 export const siteBase = (home: string, site: DemoSite) => join(home, SITES_DIR, siteKey(site.url));
-
-/** The page's URL on the site. */
-/** The site's root, the overview's address. */
-export const siteRoot = (site: DemoSite) => `${site.url.replace(/\/+$/, '')}/`;
-export const pageUrl = (site: DemoSite, slug: string) => `${siteRoot(site)}${slug}/`;
 
 /** The site's host and path, as the owner reads it. */
 export const siteName = (site: DemoSite) => site.url.replace(/^https?:\/\//, '').replace(/\/+$/, '');
@@ -153,16 +183,55 @@ export function siteMissing(home: string, site: DemoSite): string | null {
   return file && !existsSync(file) ? site.env! : null;
 }
 
-/** `KEY=value` lines; blank lines, comments and a leading `export` are allowed, a value may be quoted. */
-export function parseEnv(text: string): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const line of text.split(/\r?\n/)) {
-    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
-    if (!m || line.trimStart().startsWith('#')) continue;
-    const v = m[2]!;
-    env[m[1]!] = /^(["']).*\1$/.test(v) ? v.slice(1, -1) : v;
+/**
+ * Argv whose program, given as a path, is found in the repository (`~` is the home directory), and
+ * a script (`.ts`, `.js`) runs with Obeya's own Bun, on every platform.
+ */
+export function scriptArgv(words: string[], repoPath: string): string[] {
+  if (!words.length) return [];
+  let [program, ...rest] = words as [string, ...string[]];
+  // bunx is Obeya's own Bun too: an installation of Obeya may have no bunx on the PATH
+  if (program === 'bunx') return [process.execPath, 'x', ...rest];
+  program = expandHome(program);
+  const script = /\.(m?[jt]sx?|cjs)$/.test(program);
+  if ((script || /[\\/]/.test(program)) && !isAbsolute(program)) program = resolve(repoPath, program);
+  return script ? [process.execPath, program, ...rest] : [program, ...rest];
+}
+
+/** What the demo site lacks to be shared on (a title, an http(s) URL, a deploy command); null where it has it. */
+export function siteIncomplete(site: DemoSite): string | null {
+  if (!site.title.trim()) return 'demo.site.title: missing';
+  if (!/^https?:\/\/[^\s/]+[^\s]*$/.test(site.url)) return 'demo.site.url: expected an http(s) URL';
+  if (!site.deploy.trim()) return 'demo.site.deploy: missing';
+  return null;
+}
+
+/**
+ * Why the demo site a repository's settings name cannot be used, in English, starting with its
+ * field (`demo.site.url: …`); null where it can. The configuration reports it.
+ */
+export function siteProblem(site: DemoSite, repoPath: string): string | null {
+  const incomplete = siteIncomplete(site);
+  if (incomplete) return incomplete;
+  const words = commandWords(site.deploy);
+  // the deploy Obeya builds in: a GitHub repository, pushed to with gh's login
+  if (words[0] === GITHUB_PAGES) {
+    if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(words[1] ?? '')) return `demo.site.deploy: ${GITHUB_PAGES} expects <owner>/<repository>`;
+    return Bun.which('gh') ? null : `demo.site.deploy: ${GITHUB_PAGES} needs gh, which is not on the PATH`;
   }
-  return env;
+  // bunx runs as Obeya's own Bun
+  if (words[0] === 'bunx') return words.length > 1 ? null : 'demo.site.deploy: bunx without a package';
+  const argv = scriptArgv(words, repoPath);
+  const program = argv[0] === process.execPath ? argv[1] : argv[0];
+  if (!program) return 'demo.site.deploy: the deploy command is empty';
+  if (isAbsolute(program)) return existsSync(program) ? null : `demo.site.deploy: the deploy command's program ${program} does not exist`;
+  return Bun.which(program) ? null : `demo.site.deploy: the deploy command's program ${program} is not on the PATH`;
+}
+
+/** The last lines of a command's output, for the card's log. */
+export function tail(s: string, lines = 20): string {
+  const all = s.trim().split('\n');
+  return (all.length > lines ? ['…', ...all.slice(-lines)] : all).join('\n').slice(-3000);
 }
 
 class Refused extends Error {}
@@ -227,10 +296,7 @@ const gitNames = new Map<string, Promise<string | undefined>>();
 function gitName(repo: string): Promise<string | undefined> {
   let name = gitNames.get(repo);
   if (!name) {
-    name = spawnOutput(['git', '-C', repo, 'config', '--get', 'user.name'], { stdin: 'ignore' }).then(
-      (r) => (r.code === 0 ? r.stdout.trim() || undefined : undefined),
-      () => undefined,
-    );
+    name = gitTry(repo, 'config', '--get', 'user.name').then((r) => r || undefined);
     gitNames.set(repo, name);
   }
   return name;
@@ -255,8 +321,8 @@ export function repoMark(repo: string): Promise<string> {
       let root = '';
       if (!isFolder(key)) {
         try {
-          const r = await spawnOutput(['git', '-C', key, 'rev-list', '--max-parents=0', 'HEAD'], { stdin: 'ignore' });
-          if (r.code === 0) root = r.stdout.trim().split('\n').sort()[0] ?? '';
+          const roots = await gitTry(key, 'rev-list', '--max-parents=0', 'HEAD');
+          if (roots !== null) root = roots.split('\n').sort()[0] ?? '';
         } catch {}
       }
       return createHash('sha256').update(root ? `commit:${root}` : `path:${key}`).digest('hex').slice(0, 16);
@@ -582,7 +648,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     // the deploy Obeya builds in for GitHub Pages
     if (words[0] === GITHUB_PAGES) {
       try {
-        return tail(await githubPagesDeploy(dir, words[1] ?? '', join(base, 'git'), undefined, { private: unlisted }));
+        return tail(await githubPagesDeploy(dir, words[1] ?? '', join(base, 'git'), { private: unlisted }));
       } catch (e) {
         throw new Refused(t.deployFailed(1), { cause: messageOf(e) });
       }
@@ -616,18 +682,26 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
    * machine has as shared that the live site lacks, and checks those. A change another machine's
    * deployment came in between with (seen before the deploy, or after it without the change) is
    * undone here and made once more; a failed deploy is undone too. Each page's directory is set
-   * aside meanwhile in `backup/`; with `inPlace`, only the files `apply` rewrites are copied
-   * there, and the page's own files (its video, its artifact) stay where they are.
+   * aside meanwhile (`wholeBackup`); with `inPlace`, only the files `apply` rewrites are
+   * (`inPlaceBackup`).
    */
-  const change = async (
-    slugs: string[],
-    shared: string[],
-    apply: ((slug: string, rev: number, before: Entry | undefined) => Promise<Entry>) | null,
-    log: (text: string) => void,
-    gone: Gone[],
+  const change = async ({
+    slugs,
+    shared,
+    apply,
+    log,
+    gone,
     inPlace = false,
-  ): Promise<string> => {
+  }: {
+    slugs: string[];
+    shared: string[];
+    apply?: (slug: string, rev: number, before: Entry | undefined) => Promise<Entry>;
+    log: (text: string) => void;
+    gone: Gone[];
+    inPlace?: boolean;
+  }): Promise<string> => {
     const env = await deployEnv();
+    const backup = inPlace ? inPlaceBackup : wholeBackup;
     for (let round = 1; ; round++) {
       const live = await readLive(env);
       const local = await readLocal();
@@ -638,20 +712,13 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       await checkSite(kept, inPlace ? [] : slugs);
       const before = new Map(slugs.map((s) => [s, local.pages[s]]));
       const rev = new Map(slugs.map((s) => [s, Math.max(local.pages[s]?.rev ?? 0, live.pages[s]?.rev ?? 0) + 1]));
-      const backup = new Map<string, string | null>();
-      for (const s of slugs) backup.set(s, await setAside(s, inPlace ? REWRITTEN : undefined));
+      const aside = new Map<string, string | null>();
+      for (const s of slugs) aside.set(s, await backup.setAside(s));
       const undo = async () => {
         if (!slugs.length) return;
         for (const s of slugs) {
-          const b = backup.get(s);
           forget(s);
-          if (inPlace) {
-            if (b) for (const f of await readdir(b)) await copyFile(join(b, f), join(dir, s, f));
-            if (b) await rm(b, { recursive: true, force: true });
-          } else {
-            await rm(join(dir, s), { recursive: true, force: true });
-            if (b) await rename(b, join(dir, s));
-          }
+          await backup.restore(s, aside.get(s) ?? null);
           const was = before.get(s);
           if (was) local.pages[s] = was;
           else delete local.pages[s];
@@ -689,24 +756,51 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         log(t.cameBetween);
         continue;
       }
-      for (const b of backup.values()) if (b) await rm(b, { recursive: true, force: true });
+      for (const b of aside.values()) if (b) await rm(b, { recursive: true, force: true });
       return [said, seen === null ? t.notSeenYet : ''].filter(Boolean).join('\n');
     }
   };
 
-  /** Moves a page's directory out of the site, or copies only the files named (`only`), so a change can be undone. */
-  const setAside = async (slug: string, only?: string[]): Promise<string | null> => {
+  /** A new directory in `backup/` for the page's, where it is there; null where it is not. */
+  const backupFor = async (slug: string): Promise<string | null> => {
     if (!(await exists(join(dir, slug)))) return null;
     const backup = join(base, 'backup', `${slug}-${Date.now()}`);
     await mkdir(dirname(backup), { recursive: true });
-    if (!only) {
+    return backup;
+  };
+
+  /**
+   * How a change keeps a page's directory, so it can be undone: `setAside` before it (where the
+   * backup is; null for a page not there), `restore` to undo it, which takes the backup back.
+   * A page written anew or withdrawn: its whole directory moved out of the site.
+   */
+  const wholeBackup: Backup = {
+    setAside: async (slug) => {
+      const backup = await backupFor(slug);
+      if (!backup) return null;
       forget(slug);
       await rename(join(dir, slug), backup);
       return backup;
-    }
-    await mkdir(backup, { recursive: true });
-    for (const f of only) if (await exists(join(dir, slug, f))) await copyFile(join(dir, slug, f), join(backup, f));
-    return backup;
+    },
+    restore: async (slug, backup) => {
+      await rm(join(dir, slug), { recursive: true, force: true });
+      if (backup) await rename(backup, join(dir, slug));
+    },
+  };
+  /** A page retagged in place: only the files that rewrites copied, the page's own files (its video, its artifact) staying where they are. */
+  const inPlaceBackup: Backup = {
+    setAside: async (slug) => {
+      const backup = await backupFor(slug);
+      if (!backup) return null;
+      await mkdir(backup, { recursive: true });
+      for (const f of REWRITTEN) if (await exists(join(dir, slug, f))) await copyFile(join(dir, slug, f), join(backup, f));
+      return backup;
+    },
+    restore: async (slug, backup) => {
+      if (!backup) return;
+      for (const f of await readdir(backup)) await copyFile(join(backup, f), join(dir, slug, f));
+      await rm(backup, { recursive: true, force: true });
+    },
   };
 
   /** Runs a change of the site, its reason in Obeya's words where it was refused, with the pages another machine withdrew. */
@@ -723,17 +817,15 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   return {
     key: `site:${siteKey(site.url)}`,
     repo,
-    ...(unlisted ? { unlisted: true as const } : {}),
     publish: (p: SharePage, log = () => {}) =>
       attempt(async (gone) => {
         const slug = checkSlug(p.slug, unlisted);
         // the first version at the page's root, each later one in a directory of its own
-        const parts = [{ ...p, sub: '' }, ...(p.more ?? []).map((m, i) => ({ ...m, sub: String(i + 2) }))];
         const ready = await Promise.all(
-          parts.map(async (d) => {
-            if (!d.title?.trim() || !d.text?.trim() || !d.dir) throw new Refused(t.pageIncomplete);
+          p.demos.map(async (d, i) => {
+            if (!d.title.trim() || !d.text.trim() || !d.dir) throw new Refused(t.pageIncomplete);
             const html = d.kind === 'html';
-            const files = html ? artifactFiles(d.dir) : demoFiles(d.dir);
+            const files = html ? artifactFiles(d.dir) : await demoFiles(d.dir);
             for (const f of html ? ['index.html'] : ['demo.mp4', 'captions.vtt']) if (!files.includes(f)) throw new Refused(t.fileMissing(f, d.dir));
             // what the artifact loads in CORS mode goes into its copy (artifact-copy.ts)
             const copy = html ? await artifactCopy(d.dir, files, new URL(site.url).origin) : new Map<string, string>();
@@ -742,14 +834,16 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               const size = copy.has(f) ? Buffer.byteLength(copy.get(f)!) : (await stat(join(d.dir, f))).size;
               if (size > max) throw new Refused(t.fileTooLarge(f, (size / 1024 / 1024).toFixed(1), String(Math.round((max / 1024 / 1024) * 10) / 10)));
             }
-            return { d, html, files, copy };
+            return { d, sub: i ? String(i + 1) : '', html, files, copy };
           }),
         );
         const target = join(dir, slug);
-        const said = await change(
-          [slug],
-          p.shared ?? [],
-          async (_, rev, entry) => {
+        const said = await change({
+          slugs: [slug],
+          shared: p.shared,
+          log,
+          gone,
+          apply: async (_, rev, entry) => {
             const before = entry?.withdrawn ? null : entry?.meta;
             // a version keeps its date while its demo's own files stay the same, wherever it was on the page
             const dated = new Map<string, string>(before ? [[before.source, before.at], ...(before.more ?? []).map((m) => [m.source, m.at] as [string, string])] : []);
@@ -757,8 +851,8 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             // the one whose Obeya publishes it now; a machine whose git has no name keeps whom the page named
             const by = opts.by ?? (await gitName(repo)) ?? before?.by;
             const written = [];
-            for (const { d, html, files, copy } of ready) {
-              const into = join(target, d.sub, html ? ARTIFACT_DIR : '');
+            for (const { d, sub, html, files, copy } of ready) {
+              const into = join(target, sub, html ? ARTIFACT_DIR : '');
               await mkdir(into, { recursive: true });
               for (const f of files) {
                 await mkdir(dirname(join(into, f)), { recursive: true });
@@ -766,15 +860,15 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               }
               for (const [f, data] of copy) await writeFile(join(into, f), data);
               const source = await sourceHash(d.dir, html ? files : ['demo.mp4']);
-              written.push({ d, html, source, at: dated.get(source) ?? now });
+              written.push({ d, sub, html, source, at: dated.get(source) ?? now });
             }
             const [first, ...later] = written as [(typeof written)[number], ...typeof written];
             const meta: Meta = {
               ...(first.html ? { kind: 'html' as const } : {}),
-              title: p.title.trim(),
-              text: p.text.trim(),
-              chapters: first.html ? [] : (p.chapters ?? []),
-              pr: p.pr ?? null,
+              title: first.d.title.trim(),
+              text: first.d.text.trim(),
+              chapters: first.html ? [] : first.d.chapters,
+              pr: p.pr,
               ...(p.commit ? { commit: p.commit } : {}),
               first: before?.first ?? now,
               at: first.at,
@@ -785,13 +879,13 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               repo: await repoMark(repo),
               ...(later.length
                 ? {
-                    more: later.map(({ d, html, source, at }) => ({
+                    more: later.map(({ d, sub, html, source, at }) => ({
                       ...(html ? { kind: 'html' as const } : {}),
                       title: d.title.trim(),
                       text: d.text.trim(),
-                      chapters: html ? [] : (d.chapters ?? []),
-                      dir: d.sub,
-                      handed: 'at' in d && d.at ? d.at : at,
+                      chapters: html ? [] : d.chapters,
+                      dir: sub,
+                      handed: d.at ?? at,
                       at,
                       source,
                     })),
@@ -800,18 +894,16 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             };
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             if (p.theme) await writeFile(join(target, PAGE_THEME), p.theme.css);
-            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), undefined, unlisted, p.theme?.css));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), { unlisted, ...(p.theme ? { theme: p.theme.css } : {}) }));
             return { ...(await entryOf(slug)), rev };
           },
-          log,
-          gone,
-        );
+        });
         return { url: pageUrl(site, slug), said };
       }),
     withdraw: async (slugArg, shared, log = () => {}) => {
       const r = await attempt(async (gone) => {
         const slug = checkSlug(slugArg, unlisted);
-        const said = await change([slug], shared, async (_, rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }), log, gone);
+        const said = await change({ slugs: [slug], shared, log, gone, apply: async (_, rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }) });
         return { said };
       });
       return 'why' in r ? { ...r, why: t.notWithdrawn(r.why) } : r;
@@ -838,10 +930,13 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     retag: (pages, shared, log = () => {}) =>
       attempt(async (gone) => {
         const want = new Map(pages.map((p) => [checkSlug(p.slug, unlisted), p.tags]));
-        const said = await change(
-          [...want.keys()],
+        const said = await change({
+          slugs: [...want.keys()],
           shared,
-          async (slug, rev) => {
+          log,
+          gone,
+          inPlace: true,
+          apply: async (slug, rev) => {
             const target = join(dir, slug);
             let text: string;
             try {
@@ -855,17 +950,20 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             // the page around its files in today's template, with the theme it went out with
             const theme = await readFile(join(target, PAGE_THEME), 'utf8').catch(() => undefined);
-            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), undefined, unlisted, theme));
+            await writeFile(join(target, 'index.html'), pageHtml(site, slug, meta, await versionsFiles(target, meta), { unlisted, ...(theme ? { theme } : {}) }));
             return { ...(await entryOf(slug)), rev };
           },
-          log,
-          gone,
-          true,
-        );
+        });
         return { said };
       }),
-    repair: async (shared, log = () => {}) => attempt(async (gone) => ({ said: await change([], shared, null, log, gone) })),
+    repair: async (shared, log = () => {}) => attempt(async (gone) => ({ said: await change({ slugs: [], shared, log, gone }) })),
   };
+}
+
+/** How a change sets a page's directory aside, and puts it back to undo the change (`change`). */
+interface Backup {
+  setAside: (slug: string) => Promise<string | null>;
+  restore: (slug: string, backup: string | null) => Promise<void>;
 }
 
 /** What retagging a page in place rewrites of its directory. */
@@ -934,8 +1032,8 @@ async function filesUnder(root: string, at = ''): Promise<string[]> {
   return out.sort();
 }
 
-function checkSlug(slug: unknown, unlisted: boolean): string {
-  if (typeof slug !== 'string' || !isPage(slug, unlisted)) throw new Refused(`not a slug: ${String(slug)}`);
+function checkSlug(slug: string, unlisted: boolean): string {
+  if (!isPage(slug, unlisted)) throw new Refused(`not a slug: ${String(slug)}`);
   return slug;
 }
 
@@ -949,89 +1047,8 @@ async function sourceHash(dir: string, files: string[]): Promise<string> {
   return h.digest('hex');
 }
 
-/**
- * A hash of a sample page in each language, with everything a page can have, the video pages',
- * then the artifact pages': it changes with every change to Obeya's templates, and `PAGES_HASH`
- * (page-changes.ts) pins it, so a change is described for the viewers, or found to show nowhere.
- */
-export function pagesHash(): { video: string; html: string; stacked: string } {
-  const site = { title: 'Demos', url: 'https://demos.example.dev/', deploy: 'true' };
-  const at = '2026-01-15T12:00:00.000Z';
-  const sample: Meta = {
-    title: 'Title',
-    text: 'A sentence.\n\nAnother one.',
-    chapters: [
-      [0, 'Before'],
-      [12.5, 'After'],
-    ],
-    pr: 'https://github.com/o/r/pull/1',
-    first: at,
-    at,
-    source: '',
-    language: 'de',
-    by: 'Ada Lovelace',
-    tags: { Area: ['Billing', 'Reports'], Audience: [] },
-  };
-  const hash = (pages: string[]) => createHash('sha256').update(pages.join('\0')).digest('hex').slice(0, 12);
-  const languages: PageLanguage[] = ['de', 'en'];
-  // without a pull request, the commit (the commits) the work landed as
-  const commit = { url: 'https://github.com/o/r/commit/b' };
-  const commits = { url: 'https://github.com/o/r/compare/a...b', several: true as const };
-  const files = () => ({ poster: true, tracks: [{ file: 'captions.vtt' }] });
-  const video = hash(languages.flatMap((language) => [pageHtml(site, 'title-1', { ...sample, language }, files), pageHtml(site, 'title-1', { ...sample, language, pr: null, commit }, files)]));
-  const html = hash(languages.map((language) => pageHtml(site, 'title-1', { ...sample, kind: 'html', chapters: [], language }, () => ({ poster: false, tracks: [] })) + sealed(withHeightReport('<body></body>'), new URL(site.url).origin)));
-  // a page with several versions: a video, then an artifact and a video as addenda
-  const more: MoreMeta[] = [
-    { kind: 'html', title: 'Second', text: 'A detail.', chapters: [], dir: '2', handed: at, at, source: '' },
-    { title: 'Third', text: 'Another detail.', chapters: [[0, 'Only']], dir: '3', handed: at, at, source: '' },
-  ];
-  // the same on every machine: the time of an addendum is said in the machine's time zone
-  const stacked = hash(languages.flatMap((language) => [pageHtml(site, 'title-1', { ...sample, language, more }, files, 'UTC'), pageHtml(site, 'title-1', { ...sample, language, more, pr: null, commit: commits }, files, 'UTC')]));
-  return { video, html, stacked };
-}
-
-/** The file a host such as Cloudflare Pages or Netlify reads the headers of the site's files from; on another host it is a file nobody asks for. */
-export const HEADERS = '_headers';
-/** The page a host (Cloudflare Pages, GitHub Pages, Netlify) answers an address it lacks with. */
-export const NOT_FOUND = '404.html';
-
-/** Every file of an unlisted site is kept out of search engines, and a link leaving it says nothing of where it came from. */
-const unlistedHeaders = () => `/*
-  X-Robots-Tag: noindex, nofollow
-  Referrer-Policy: no-referrer
-`;
-
-/**
- * The headers of an artifact's files on the site, for a host that sends them: its policy again, now
- * with the sandbox, so a file opened directly does not run in the site's origin, and what no CSP
- * reaches, a connection opened ahead (`preconnect`) or WebRTC, kept to the site
- * (`Connection-Allowlist`, Chrome 152 on).
- */
-export function artifactHeaders(site: DemoSite, unlisted = false): string {
-  const u = new URL(site.url);
-  // on an unlisted site, behind the random part of the page's address
-  const path = u.pathname.replace(/\/+$/, '') + (unlisted ? '/:token' : '');
-  // an artifact as the page's first version, and as a later one in a directory of its own
-  return [`${path}/:slug/${ARTIFACT_DIR}/*`, `${path}/:slug/:n/${ARTIFACT_DIR}/*`]
-    .map(
-      (at) => `${at}
-  Content-Security-Policy: sandbox allow-scripts; ${pagePolicy(u.origin)}
-  Connection-Allowlist: ${OWN_CONNECTIONS}
-  X-DNS-Prefetch-Control: off
-`,
-    )
-    .join('');
-}
-
-/** What a video version's directory on the site holds beside its video: a poster, its caption tracks, and whether the video is silent. */
-interface VersionFiles {
-  poster: boolean;
-  tracks: CaptionTrack[];
-  silent?: boolean;
-}
-
 async function versionFiles(dir: string): Promise<VersionFiles> {
-  const [poster, tracks, silent] = await Promise.all([exists(join(dir, 'poster.jpg')), captionTracksAsync(dir), silentVideoAsync(join(dir, 'demo.mp4'))]);
+  const [poster, tracks, silent] = await Promise.all([exists(join(dir, 'poster.jpg')), captionTracks(dir), silentVideo(join(dir, 'demo.mp4'))]);
   return { poster, tracks, silent };
 }
 
@@ -1040,56 +1057,6 @@ async function versionsFiles(target: string, m: Meta): Promise<(dir: string) => 
   const dirs = ['', ...(m.more ?? []).map((x) => x.dir)];
   const read = await Promise.all(dirs.map((d) => versionFiles(join(target, d))));
   return (dir) => read[dirs.indexOf(dir)] ?? { poster: false, tracks: [] };
-}
-
-/**
-
- * The page at `slug` of the site, in its language; `files`: what a version's directory (the page's
- * own: '') holds. A listed site's page names its address for search engines; a page of an unlisted
- * site links no overview and no tags, and keeps itself out of search engines. `theme`: the CSS of
- * the card's repository's theme.
- */
-export function pageHtml(site: DemoSite, slug: string, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
-  const { language } = m;
-  const w = PAGE_WORDS[language];
-  const parts = {
-    title: m.title,
-    text: m.text,
-    pr: m.pr,
-    commit: m.commit ?? null,
-    when: w.sharedOn(day(m.at, language), m.by),
-    tabTitle: unlisted ? m.title : `${m.title} · ${site.title}`,
-    language,
-    ...(theme ? { theme } : {}),
-    ...(unlisted
-      ? { unlisted: true as const }
-      : {
-          canonical: pageUrl(site, slug),
-          top: { href: '../', text: w.allDemos },
-          // each links the overview showing the pages that have it
-          tags: Object.entries(m.tags ?? {}).flatMap(([dimension, values]) => values.map((value) => ({ dimension, value, href: `../?${new URLSearchParams({ [dimension]: value })}` }))),
-        }),
-  };
-  // a track from before the tracks is in the demo's language
-  const tracks = (f: VersionFiles) => f.tracks.map((t) => ({ file: t.file, language: t.language ?? language }));
-  if (m.more?.length) {
-    const demo = (d: { kind?: 'html'; title: string; text: string; chapters: [number, string][] }, dir: string): StackedDemo => {
-      if (d.kind === 'html') return { kind: 'html', title: d.title, text: d.text, base: dir ? `${dir}/` : '' };
-      const f = files(dir);
-      return { kind: 'video', title: d.title, text: d.text, base: dir ? `${dir}/` : '', chapters: d.chapters, poster: f.poster, tracks: tracks(f), ...(f.silent ? { silent: true } : {}) };
-    };
-    return stackedPageHtml({ ...parts, demos: [demo(m, ''), ...m.more.map((x) => ({ ...demo(x, x.dir), at: x.handed }))], ...(timeZone ? { timeZone } : {}) });
-  }
-  if (m.kind === 'html') return artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` } });
-  const own = files('');
-  return demoPageHtml({
-    ...parts,
-    chapters: m.chapters,
-    video: { src: 'demo.mp4' },
-    ...(own.poster ? { poster: 'poster.jpg' } : {}),
-    tracks: tracks(own).map((t) => ({ language: t.language, src: t.file })),
-    ...(own.silent ? { silent: true } : {}),
-  });
 }
 
 /**
@@ -1103,231 +1070,3 @@ async function overviewTheme(dir: string, pages: (Meta & { slug: string })[], wr
   const last = marked.reduce((a, b) => ((written[b.slug]?.at ?? '') > (written[a.slug]?.at ?? '') ? b : a));
   return readFile(join(dir, last.slug, PAGE_THEME), 'utf8').catch(() => undefined);
 }
-
-/** The site's Atom feed, at its root beside the overview. */
-export const FEED = 'feed.xml';
-
-/** The first sentence of a page's text, as the overview shows it. */
-const firstSentence = (t: string) => (t.match(/^.+?[.!?](?=\s|$)/)?.[0] ?? t).slice(0, 240);
-
-/** The style the overview adds: its filter (search, a row of chips per dimension), the count and "Copy links", each page's copy icon. */
-const OVERVIEW_STYLE = `
-  .filter { display: grid; gap: 10px; margin: 0 0 16px; }
-  .filter input { font: inherit; font-size: 15px; width: 100%; padding: 7px 11px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); }
-  .filter input:focus { outline: none; border-color: var(--accent); }
-  .dim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .dim > span { color: var(--muted); font-size: 13px; min-width: 90px; }
-  .chip { all: unset; cursor: pointer; font-size: 13px; line-height: 1.5; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); }
-  .chip:hover { border-color: var(--accent); }
-  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--card); }
-  .chip:focus-visible, .copy:focus-visible, .copy-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding: 10px 0 12px; font-size: 14px; color: var(--muted); }
-  .copy-all, .copy { all: unset; cursor: pointer; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
-  .copy-all svg, .copy svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  ul.demos li { position: relative; }
-  ul.demos li[hidden] { display: none; }
-  ul.demos a { padding-right: 52px; }
-  ul.demos i { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; font-style: normal; }
-  ul.demos i em { font-style: normal; font-size: 12px; padding: 0 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
-  .copy { position: absolute; top: 12px; right: 12px; padding: 6px; border-radius: 3px; opacity: 0; transition: opacity 0.1s; }
-  .copy:hover { background: var(--chip); }
-  ul.demos li:hover .copy, .copy:focus-visible, .copy.done { opacity: 1; }
-  .copy.done::after { content: attr(data-done); position: absolute; right: 100%; margin-right: 4px; font-size: 13px; white-space: nowrap; }
-  @media (hover: none) { .copy { opacity: 1; } }
-`;
-
-/** Two overlapping sheets: the mark for copying. */
-const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
-
-/**
- * Every page on the site, the most recently shared first, in the site's language. Above them a
- * filter: a search over title and text, and a row of chips per dimension of the site's vocabulary
- * (its values that some page has), any of a dimension's and all dimensions; it stands in the URL
- * (`?Area=Billing&q=pdf`), so a filtered list can be passed on. Each page's link is copied by its
- * icon, those shown all at once by "Copy links": as HTML links and as a Markdown list. It all
- * runs in the browser; the site stays static.
- */
-export function overviewHtml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage, theme?: string): string {
-  const w = PAGE_WORDS[language];
-  const has = (d: string, v: string) => pages.some((p) => p.tags?.[d]?.includes(v));
-  const dims = dimensions(site.tags).flatMap(([d, values]) => {
-    const on = values.filter((v) => has(d, v));
-    return on.length ? [[d, on] as const] : [];
-  });
-  const search = (d: Meta) => [d.title, d.text, ...(d.more ?? []).flatMap((m) => [m.title, m.text])].join(' ').toLowerCase().replace(/\s+/g, ' ');
-  const entry = (d: Meta & { slug: string }) => {
-    const tags = dims.flatMap(([dim, values]) => values.filter((v) => d.tags?.[dim]?.includes(v)));
-    const line = [day(newest(d), language), ...(d.by ? [w.by(d.by)] : []), firstSentence(d.text)].map(esc).join(' · ');
-    return `<li data-tags="${esc(JSON.stringify(d.tags ?? {}))}" data-search="${esc(search(d))}"><a href="${d.slug}/"><b>${esc(d.title)}</b><span>${line}</span>${tags.length ? `<i>${tags.map((v) => `<em>${esc(v)}</em>`).join('')}</i>` : ''}</a><button class="copy" data-url="${esc(pageUrl(site, d.slug))}" data-done="${esc(w.copied)}" title="${esc(w.copyLink)}" aria-label="${esc(w.copyLink)}">${COPY_ICON}</button></li>`;
-  };
-  const filter = `<div class="filter">
-<input type="search" id="q" placeholder="${esc(w.search)}" aria-label="${esc(w.search)}" autocomplete="off">
-${dims.map(([d, values]) => `<div class="dim" role="group" aria-label="${esc(d)}"><span>${esc(d)}</span>${values.map((v) => `<button class="chip" data-d="${esc(d)}" data-v="${esc(v)}" aria-pressed="false">${esc(v)}</button>`).join('')}</div>`).join('\n')}
-</div>
-<div class="bar"><span id="count">${esc(w.shown.replace('{n}', String(pages.length)).replace('{m}', String(pages.length)))}</span><button class="copy-all" title="${esc(w.copyLinksHint)}">${COPY_ICON}<span>${esc(w.copyLinks)}</span></button></div>
-`;
-  return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(site.title)}</title><link rel="canonical" href="${esc(siteRoot(site))}"><link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="${FEED}"><style>${PAGE_STYLE}${OVERVIEW_STYLE}</style>${themeStyle(theme)}</head>
-<body><main>
-<h1>${esc(site.title)}</h1>
-<div class="when">${esc(w.overview)} · <a href="${FEED}">${esc(w.feed)}</a></div>
-${
-  pages.length
-    ? `${filter}<ul class="demos">${pages.map(entry).join('\n')}</ul>
-<p class="none" hidden>${esc(w.noMatch)}</p>
-<script>${overviewScript(w)}</script>`
-    : `<p>${esc(w.noDemos)}</p>`
-}
-${credit(language)}</main></body></html>
-`;
-}
-
-/**
- * A listed site's answer to an address it lacks, in the site's language and with the overview's
- * theme: no such page, or withdrawn, and a link to the overview. The host serves it at any address,
- * so it links the overview by its full address and holds everything it needs.
- */
-function notFoundHtml(site: DemoSite, language: PageLanguage, theme?: string): string {
-  const w = PAGE_WORDS[language];
-  return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>${esc(`${w.notFound} · ${site.title}`)}</title><style>${PAGE_STYLE} .text { margin-top: 14px; }</style>${themeStyle(theme)}</head>
-<body><main>
-<div class="top"><a href="${esc(siteRoot(site))}">${esc(w.allDemos)}</a></div>
-<h1>${esc(w.notFound)}</h1>
-<div class="text"><p>${esc(w.notFoundText)}</p></div>
-${credit(language)}</main></body></html>
-`;
-}
-
-/**
- * The overview's filter in the browser: the chips and the search from the URL, the pages that pass
- * them, the count, the URL kept in step; copying a page's link, and the links of those shown as
- * `text/html` and as a Markdown list (`text/plain`), as text alone where the browser has no `ClipboardItem`.
- */
-const overviewScript = (w: (typeof PAGE_WORDS)[PageLanguage]) => `
-  const words = ${JSON.stringify({ shown: w.shown, copied: w.copied, copyLinks: w.copyLinks }).replace(/</g, '\\u003c')};
-  const q = document.getElementById('q'), chips = [...document.querySelectorAll('.chip')], items = [...document.querySelectorAll('ul.demos li')];
-  const count = document.getElementById('count'), none = document.querySelector('.none'), all = document.querySelector('.copy-all');
-  const params = new URLSearchParams(location.search);
-  q.value = params.get('q') || '';
-  for (const c of chips) c.setAttribute('aria-pressed', String(params.getAll(c.dataset.d).includes(c.dataset.v)));
-  const tagsOf = (li) => { try { return JSON.parse(li.dataset.tags); } catch { return {}; } };
-  const apply = () => {
-    const chosen = {};
-    for (const c of chips) if (c.getAttribute('aria-pressed') === 'true') (chosen[c.dataset.d] ||= []).push(c.dataset.v);
-    const terms = q.value.toLowerCase().split(/\\s+/).filter(Boolean);
-    let n = 0;
-    for (const li of items) {
-      const tags = tagsOf(li);
-      // any of a dimension's chips, and every dimension with one
-      const pass = Object.entries(chosen).every(([d, vs]) => vs.some((v) => (tags[d] || []).includes(v))) && terms.every((t) => li.dataset.search.includes(t));
-      li.hidden = !pass;
-      if (pass) n++;
-    }
-    count.textContent = words.shown.replace('{n}', n).replace('{m}', items.length);
-    none.hidden = n > 0;
-    all.disabled = n === 0;
-    const next = new URLSearchParams();
-    for (const [d, vs] of Object.entries(chosen)) for (const v of vs) next.append(d, v);
-    if (q.value.trim()) next.set('q', q.value.trim());
-    const search = next.toString();
-    history.replaceState(null, '', search ? '?' + search : location.pathname);
-  };
-  for (const c of chips) c.addEventListener('click', () => { c.setAttribute('aria-pressed', String(c.getAttribute('aria-pressed') !== 'true')); apply(); });
-  q.addEventListener('input', apply);
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const copy = async (html, text) => {
-    if (window.ClipboardItem && navigator.clipboard.write) {
-      try {
-        await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })]);
-        return;
-      } catch {}
-    }
-    await navigator.clipboard.writeText(text);
-  };
-  for (const b of document.querySelectorAll('.copy')) b.addEventListener('click', async () => {
-    const url = b.dataset.url;
-    await copy('<a href="' + esc(url) + '">' + esc(url) + '</a>', url);
-    b.classList.add('done');
-    setTimeout(() => b.classList.remove('done'), 1500);
-  });
-  all.addEventListener('click', async () => {
-    const shown = items.filter((li) => !li.hidden).map((li) => ({ title: li.querySelector('b').textContent, url: li.querySelector('.copy').dataset.url }));
-    if (!shown.length) return;
-    await copy('<ul>' + shown.map((d) => '<li><a href="' + esc(d.url) + '">' + esc(d.title) + '</a></li>').join('') + '</ul>', shown.map((d) => '- [' + d.title.replace(/([\\[\\]])/g, '\\\\$1') + '](' + d.url + ')').join('\\n'));
-    const label = all.querySelector('span');
-    label.textContent = words.copied;
-    setTimeout(() => { label.textContent = words.copyLinks; }, 1500);
-  });
-  apply();
-`;
-
-/** Text without the control characters XML 1.0 does not allow. */
-const printable = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
-/** Text in XML. */
-const xml = (s: string) => esc(printable(s));
-
-/**
- * The site's pages as an Atom feed, in the order and with the dates of the overview: each page's
- * title, its text, its address as link and id. The feed is as old as its newest page; a site
- * without pages dates it now.
- */
-function feedXml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage): string {
-  const base = siteRoot(site);
-  const updated = pages.length ? newest(pages[0]!) : new Date().toISOString();
-  const entry = (d: Meta & { slug: string }) => {
-    const url = xml(pageUrl(site, d.slug));
-    const plain = printable(d.text);
-    return `<entry xml:lang="${d.language}">
-<title type="text">${xml(d.title)}</title>
-<link rel="alternate" type="text/html" href="${url}"/>
-<id>${url}</id>
-<published>${xml(d.first)}</published>
-<updated>${xml(newest(d))}</updated>
-${d.by ? `<author><name>${xml(d.by)}</name></author>\n` : ''}${Object.entries(d.tags ?? {})
-      .flatMap(([dim, values]) => values.map((v) => `<category term="${xml(v)}" label="${xml(`${dim}: ${v}`)}"/>\n`))
-      .join('')}<summary type="text">${xml(firstSentence(plain))}</summary>
-<content type="html">${xml(paragraphs(plain))}</content>
-</entry>
-`;
-  };
-  return `<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="${language}">
-<title type="text">${xml(site.title)}</title>
-<subtitle type="text">${xml(PAGE_WORDS[language].overview)}</subtitle>
-<link rel="self" type="application/atom+xml" href="${xml(base + FEED)}"/>
-<link rel="alternate" type="text/html" href="${xml(base)}"/>
-<id>${xml(base)}</id>
-<updated>${xml(updated)}</updated>
-<author><name>${xml(site.title)}</name></author>
-<generator uri="${OBEYA_URL}">Obeya</generator>
-${pages.map(entry).join('')}</feed>
-`;
-}
-
-/** The site's pages for search engines, at its root beside the overview. */
-export const SITEMAP = 'sitemap.xml';
-/** Where search engines look for the sitemap: read only at the root of a host. */
-export const ROBOTS = 'robots.txt';
-
-/**
- * The overview and every page, dated as the feed dates them: the overview by its newest page (an
- * empty site undated), each page by its newest version. A sitemap names only addresses under its
- * own, so a site under a path of its host has one all the same.
- */
-function sitemapXml(site: DemoSite, pages: (Meta & { slug: string })[]): string {
-  const url = (loc: string, at?: string) => `<url><loc>${xml(loc)}</loc>${at ? `<lastmod>${xml(at)}</lastmod>` : ''}</url>\n`;
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${url(siteRoot(site), pages[0] && newest(pages[0]))}${pages.map((d) => url(pageUrl(site, d.slug), newest(d))).join('')}</urlset>
-`;
-}
-
-/** Everything open to crawlers, and where the sitemap is. */
-const robotsTxt = (site: DemoSite) => `User-agent: *
-Allow: /
-
-Sitemap: ${siteRoot(site)}${SITEMAP}
-`;

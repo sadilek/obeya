@@ -38,21 +38,46 @@ ESPEAK_PATH_LIMIT = 150
 
 def espeak_data(data: str) -> str:
     """espeak-ng's data where it can read it: where the package put it, or, under a path too long
-    for it, a copy in the system's temporary directory, made once."""
+    for it, a copy in the system's temporary directory, kept complete.
+
+    Each clip makes the copy good again: macOS deletes files in its temporary directory that were
+    not read for three days and leaves their directories, so a copy loses files over time. A file
+    that is missing or differs from the package's is copied beside the copy and moved into place,
+    so espeak-ng never reads a file half written, and clips that start at once each put the same
+    file there."""
     if len(data) <= ESPEAK_PATH_LIMIT:
         return data
-    copy = os.path.join(tempfile.gettempdir(), "obeya-espeak-ng-data")
-    if not os.path.isfile(os.path.join(copy, "phontab")):
-        part = tempfile.mkdtemp(prefix="obeya-espeak-", dir=tempfile.gettempdir())
-        shutil.copytree(data, os.path.join(part, "data"))
-        try:
-            os.replace(os.path.join(part, "data"), copy)
-        except OSError:
-            if not os.path.isfile(os.path.join(copy, "phontab")):  # not another clip finishing first
-                raise
-        finally:
-            shutil.rmtree(part, ignore_errors=True)
+    temp = tempfile.gettempdir()
+    copy = os.path.join(temp, "obeya-espeak-ng-data")
+    for root, _dirs, files in os.walk(data):
+        target = os.path.normpath(os.path.join(copy, os.path.relpath(root, data)))
+        os.makedirs(target, exist_ok=True)
+        for name in files:
+            source, placed = os.path.join(root, name), os.path.join(target, name)
+            if same_file(source, placed):
+                continue
+            fd, part = tempfile.mkstemp(prefix="obeya-espeak-", dir=temp)
+            os.close(fd)
+            try:
+                shutil.copy2(source, part)
+                os.replace(part, placed)
+            except OSError:
+                # Windows refuses to replace a file another clip has open: fine once that clip put it there
+                if not same_file(source, placed):
+                    raise
+            finally:
+                if os.path.exists(part):
+                    os.remove(part)
     return copy
+
+
+def same_file(source: str, placed: str) -> bool:
+    """Whether the copy holds the package's file as it is: same size and time."""
+    try:
+        a, b = os.stat(source), os.stat(placed)
+    except FileNotFoundError:
+        return False
+    return a.st_size == b.st_size and int(a.st_mtime) == int(b.st_mtime)
 
 
 def chunks(phonemes: list[str]) -> list[str]:

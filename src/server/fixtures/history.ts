@@ -1,6 +1,27 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Store } from '../db';
+import { CanvasRuntime } from '../canvas';
+import { Store } from '../db';
+import { FakeRuntime, gitRepo, noForge } from '../testing';
+
+/**
+ * The canvas the size tests fill (`board-size.test.ts`, `long-history.test.ts`): one repository
+ * with a plan doc and a demo site nobody answers at (asking it which pages are gone finds none),
+ * its store in `dir`, and a listener that rebuilds the canvas view after each change, as the server
+ * sends it to the pages that show the canvas.
+ */
+export async function appCanvas(dir: string): Promise<{ store: Store; canvas: CanvasRuntime }> {
+  const site = { title: 'Demos', url: 'http://127.0.0.1:9/', deploy: 'true {dir}' };
+  const repo = gitRepo(join(dir, 'app'), {
+    'docs/plan/plan.md': '# App\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** One.\n- [ ] **W2:** Two.\n',
+    '.obeya/settings.json': JSON.stringify({ demo: { site } }),
+  });
+  const store = new Store(join(dir, 'obeya.db'));
+  store.trustCommands(repo, { site: { url: site.url, deploy: site.deploy } });
+  const canvas = await CanvasRuntime.start({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
+  canvas.board.onChange(() => JSON.stringify(canvas.board.snapshot()));
+  return { store, canvas };
+}
 
 /**
  * A history like the one of a long-used Obeya, written straight into a store's database: cards on

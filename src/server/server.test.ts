@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ArchivePage, CardAction, ClientMessage, ServerMessage } from '../core/types';
 import type { Board } from './board';
-import { Canvases, CanvasRuntime } from './canvas';
+import { CanvasRuntime } from './canvas';
+import { Canvases } from './canvases';
 import type { Command } from './commands';
 import { Store } from './db';
 import { AppUpdates } from './app-update';
@@ -16,19 +16,18 @@ import type { NarrationHost } from './narration';
 import { KEY_HEADER, keyOf } from './owner';
 import { Stalls } from './stalls';
 import { serve, serveNarration } from './server';
-import { artifact, asOwner, FakeRuntime, gitClone, gitRepo, identify, noForge, removeDir, until } from './testing';
-import { git, RECHECK_MS } from './workspaces';
+import { canvas, dir, eachTest, runtime, start } from './canvas-fixture';
+import { artifact, asOwner, commit, gitClone, gitRepo, handedOverOn, identify, noForge, until, silent } from './testing';
+import { RECHECK_MS } from './workspaces';
+import { git } from './git';
 import type { Transcript } from './voice';
 
-let dir: string;
 let board: Board;
-let runtime: FakeRuntime;
 let executed: Command[];
 let heardAudio: string[];
 /** What the fake Whisper writes, given the vocabulary it was prompted with. */
 let whisper: (vocabulary: string) => string | Transcript;
 let server: ReturnType<typeof serve>;
-let canvas: CanvasRuntime;
 let warmed: number;
 /** How often it was warmed ahead (`?ahead=1`: the cursor went into Obeya's field) rather than for speaking. */
 let warmedAhead: number;
@@ -36,13 +35,9 @@ let warmedAhead: number;
 const DELAY_MS = 200;
 
 // A canvas in clone mode without any clone registered: every start fails for want of a workspace.
-beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'obeya-server-'));
-  const main = join(dir, 'main');
-  // settings of its own that work in clones, none registered; the canvas is named after the directory
-  gitRepo(main, { 'README.md': 'hi\n', '.obeya/settings.json': '{ "workspaces": "clones" }\n' });
-  runtime = new FakeRuntime();
-  canvas = await CanvasRuntime.start({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, commandDelayMs: DELAY_MS });
+// It has settings of its own that work in clones, none registered; the canvas is named after the directory.
+eachTest({ files: { 'README.md': 'hi\n', '.obeya/settings.json': '{ "workspaces": "clones" }\n' }, repo: { clones: 0 }, deps: () => ({ commandDelayMs: DELAY_MS }) });
+beforeEach(() => {
   board = canvas.board;
   executed = [];
   heardAudio = [];
@@ -58,11 +53,13 @@ beforeEach(async () => {
     },
     warm: (ahead?: boolean) => void (ahead ? warmedAhead++ : warmed++),
   };
-  server = serve([canvas], { transcriber }, 0);
+  server = serve([canvas], 0, { transcriber });
 });
-afterEach(async () => {
+/** Canvas sets a test starts beside the canvas: shut down after it. */
+const started: { shutdown(): void }[] = [];
+afterEach(() => {
   server.stop(true);
-  await removeDir(dir);
+  for (const c of started.splice(0)) c.shutdown();
   setSystemTime();
 });
 
@@ -97,6 +94,29 @@ describe('refused requests', () => {
     expect(await codeOf(act(c.id, { action: 'fly' }))).toBe('invalid');
     expect(await codeOf(post(api(`/cards/${c.id}/act`), '{'))).toBe('invalid');
     expect(await codeOf(post(api('/cards'), JSON.stringify({ title: 'x', x: 'links', y: 0 })))).toBe('invalid');
+  });
+
+  test('a body that is the JSON literal null is refused, not an error of the server', async () => {
+    const c = card();
+    const send = (method: string, path: string) => fetch(new URL(api(path), server.url), { method, headers: { 'content-type': 'application/json' }, body: 'null' });
+    const routes: [string, string][] = [
+      ['POST', '/cards'],
+      ['POST', '/adapter-setup'],
+      ['PATCH', `/cards/${c.id}`],
+      ['POST', '/assign'],
+      ['POST', '/dependencies'],
+      ['DELETE', '/dependencies'],
+      ['POST', `/cards/${c.id}/act`],
+      ['POST', `/cards/${c.id}/stand-in`],
+      ['POST', '/command'],
+      ['POST', '/wish'],
+      ['POST', '/command/undo'],
+      ['POST', '/preferences'],
+      ['PATCH', '/preferences/1'],
+      ['POST', '/files/find'],
+    ];
+    const statuses = await Promise.all(routes.map(async ([method, path]) => `${method} ${path.replace(c.id, ':id')} ${(await send(method, path)).status}`));
+    expect(statuses.filter((s) => !s.endsWith(' 400'))).toEqual([]);
   });
 
   test('a card already with the Coordinator cannot be started again', async () => {
@@ -395,12 +415,12 @@ describe('the connection to every canvas', () => {
     const others = await Promise.all(
       ['second', 'third'].map((name) => {
         const path = gitRepo(join(dir, name), { 'README.md': 'hi\n' });
-        return CanvasRuntime.start({ repos: [{ path }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+        return start({ repos: [{ path }] }, { store: new Store(':memory:'), commandDelayMs: undefined });
       }),
     );
     const all = [canvas, ...others];
     for (const c of all) for (let i = 0; i < 300; i++) c.board.create({ title: `Card ${i}`, body: 'x'.repeat(20000), x: i, y: 0 });
-    const many = serve(all, { transcriber: { transcribe: async () => ({ text: '', doubtful: false }), warm: () => {} } }, 0);
+    const many = serve(all, 0, { transcriber: { transcribe: async () => ({ text: '', doubtful: false }), warm: () => {} } });
     const page = slowPage(many);
     try {
       await sleep(300);
@@ -505,7 +525,7 @@ describe('plan docs', () => {
 });
 
 describe('voice', () => {
-  const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1)!;
+  const interpretation = () => runtime.withTool('act').at(-1)!;
   /** The Coordinator's session once the command has reached it. */
   const briefed = async () => {
     await until(() => interpretation()?.inbox.length);
@@ -601,7 +621,7 @@ describe('voice', () => {
       const body = (await (await fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { confirm: string; token?: string; audio?: string };
       expect(body.confirm).toBe(confirm);
       expect(body.token).toBeUndefined();
-      expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+      expect(runtime.withTool('act')).toEqual([]);
     });
   }
 
@@ -637,7 +657,7 @@ describe('voice', () => {
     expect(warmed).toBe(1);
     expect(warmedAhead).toBe(1);
     const k = interpretation();
-    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toHaveLength(1);
+    expect(runtime.withTool('act')).toHaveLength(1);
     expect(k.inbox).toEqual([]);
     const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'starte A' }) });
     expect(await briefed()).toBe(k);
@@ -696,7 +716,7 @@ describe('voice', () => {
     const idea = board.create({ title: 'Export', x: 0, y: 0, idea: true });
     await post(api(`/command?card=${idea.id}`), JSON.stringify({ text: 'Was kostet das?' }));
     expect(told.at(-1)).toEqual([idea.id, 'Was kostet das?', [], false]);
-    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+    expect(runtime.withTool('act')).toEqual([]);
     const planned = card();
     const res = post(api(`/command?card=${planned.id}`), JSON.stringify({ text: 'starte das' }));
     (await briefed()).call('reply', { confirm: 'Ok.' });
@@ -799,7 +819,7 @@ describe('screenshots', () => {
 
     const c = working();
     expect((await act(c.id, { action: 'message', text: 'Der Knopf hier ist zu klein', images: [id] })).status).toBe(204);
-    const s = runtime.sessions.find((x) => x.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    const s = runtime.withTool('ready_for_review')[0]!;
     expect(s.inbox[0]).toContain('Der Knopf hier ist zu klein');
     expect(s.inbox[0]).toContain('attached a screenshot');
     expect(s.images[0]).toEqual([canvas.images.path(id)!]);
@@ -823,7 +843,7 @@ describe('screenshots', () => {
     const c = card();
     board.work(c.id, { state: 'working', workspace: dir, session_id: 'sess-1' });
     const res = post(api('/command'), JSON.stringify({ text: 'Neue Karte: diese Seite bricht um, und sag A, dass es so aussieht', images: [id] }));
-    const coordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    const coordinator = () => runtime.withTool('act').at(-1);
     await until(() => coordinator()?.inbox.length);
     const k = coordinator()!;
     expect(k.images[0]).toEqual([canvas.images.path(id)!]);
@@ -853,7 +873,7 @@ describe('screenshots', () => {
     expect(await codeOf(voice('?image=0000.png'))).toBe('invalid');
     expect(heardAudio).toEqual([]);
     const res = voice(`?image=${id}`);
-    const coordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    const coordinator = () => runtime.withTool('act').at(-1);
     await until(() => coordinator()?.inbox.length);
     const k = coordinator()!;
     expect(k.images[0]).toEqual([canvas.images.path(id)!]);
@@ -913,7 +933,7 @@ describe('other files', () => {
 
 describe('a walkthrough an answer comes with', () => {
   test("is read by its player, the owner's alone, by its name in the thread's directory; its clips come as the answer's files", async () => {
-    const thread = board.addTalk('wie landet eine karte?', 'Moment.', null, { question: 'How does a card land?', about: null });
+    const thread = board.sheet.add('wie landet eine karte?', 'Moment.', { lookUp: { question: 'How does a card land?', about: null } });
     const out = canvas.answerDir(thread);
     mkdirSync(join(out, 'landen.clips'), { recursive: true });
     const w = { title: 'Landen', slides: [{ type: 'title', title: 'Landen', parts: ['Landen.'] }], done: false, clips: [[{ file: '1-1.wav', seconds: 1 }]], clipsDir: 'landen.clips' };
@@ -975,7 +995,7 @@ describe('a newer version of the app', () => {
     const restarter = new Restarter({ busy: () => busy, go: (reason) => gone.push(reason), patienceMs: 60_000, intervalMs: 10 });
     const updates = new AppUpdates();
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, updates);
+    server = serve([canvas], 0, { transcriber: silent, restarter, updates });
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -1008,7 +1028,7 @@ describe('a newer version of the app', () => {
     const restarter = new Restarter({ busy: () => [], go: () => {} });
     const updates = new AppUpdates();
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, updates);
+    server = serve([canvas], 0, { transcriber: silent, restarter, updates });
     await post('/api/app-update', JSON.stringify({ version: '0.2.0', download: 'https://github.com/sadilek/obeya/releases/tag/v0.2.0' }));
     expect(updates.current()).toEqual({ version: '0.2.0', download: 'https://github.com/sadilek/obeya/releases/tag/v0.2.0' });
     expect(await codeOf(post('/api/app-update/install', ''))).toBe('invalid');
@@ -1024,15 +1044,25 @@ describe('a newer version of the app', () => {
     const restarter = new Restarter({ busy: () => busy, go: (reason) => gone.push(reason), patienceMs: 60_000, intervalMs: 10 });
     const updates = new AppUpdates();
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, updates);
+    server = serve([canvas], 0, { transcriber: silent, restarter, updates });
     expect(await (await post('/api/app-update', JSON.stringify({ rebuilt: true }))).json()).toEqual({ updating: true });
     // no button in the bar: the restart shows what it waits for
     expect(updates.current()).toBeNull();
-    expect(restarter.due()?.reason).toBe('update');
+    await until(() => restarter.due()?.reason === 'update');
     // the shell says it again every few seconds while it waits
     await post('/api/app-update', JSON.stringify({ rebuilt: true }));
     busy = [];
     await until(() => gone.length === 1);
+    expect(gone).toEqual(['update']);
+  });
+
+  // that it gets its answer before the server ends is main.ts's `go`, which waits a moment for every request
+  test('with no worker busy, a shell that built itself anew has the update go ahead at once', async () => {
+    const gone: string[] = [];
+    const restarter = new Restarter({ busy: () => [], go: (reason) => gone.push(reason) });
+    server.stop(true);
+    server = serve([canvas], 0, { transcriber: silent, restarter, updates: new AppUpdates() });
+    expect(await (await post('/api/app-update', JSON.stringify({ rebuilt: true }))).json()).toEqual({ updating: true });
     expect(gone).toEqual(['update']);
   });
 
@@ -1041,7 +1071,7 @@ describe('a newer version of the app', () => {
     let busy = [{ canvas: 'main', card: 'k1' }];
     const restarter = new Restarter({ busy: () => busy, go: (reason) => gone.push(reason), patienceMs: 60_000, intervalMs: 10 });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, new AppUpdates());
+    server = serve([canvas], 0, { transcriber: silent, restarter, updates: new AppUpdates() });
     restarter.request('code');
     expect(await (await post('/api/app-takeover', '')).json()).toEqual({ taking: true });
     await until(() => restarter.due()?.reason === 'takeover');
@@ -1059,7 +1089,7 @@ describe('a newer version of the app', () => {
     const gone: string[] = [];
     const restarter = new Restarter({ busy: () => [{ canvas: 'main', card: 'k1' }], go: (reason) => gone.push(reason) });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, new AppUpdates());
+    server = serve([canvas], 0, { transcriber: silent, restarter, updates: new AppUpdates() });
     const ask = async (kept = '') => (await post('/api/app-rebuilt', JSON.stringify({ kept }))).json();
     // a worker in the middle of a turn does not hold it off: the server and its workers run on
     expect(await ask()).toEqual({ now: true, kept: false });
@@ -1092,7 +1122,7 @@ describe('new commits on the upstream of the checkout Obeya runs from', () => {
     git(up, 'commit', '--quiet', '-am', 'Faster');
     const sources = new SourceUpdates(clone);
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, sources);
+    server = serve([canvas], 0, { transcriber: silent, sources });
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -1133,7 +1163,7 @@ describe('the usage limits in the bar', () => {
     const meter = new UsageMeter(() => ({ fetch: async () => ({ at: '2026-10-28T08:00:00.000Z', limits: [{ kind: 'session', group: 'session', percent: 7, severity: 'normal' }] }), close: () => void closed++ }), { lingerMs: 10 });
     const usage = new UsageMeters([{ harness: 'claude', meter }], { on: true, ready: () => true });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, usage);
+    server = serve([canvas], 0, { transcriber: silent, usage });
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -1150,7 +1180,7 @@ describe('the usage limits in the bar', () => {
 test('a page that froze has its stall logged, with this machine and the canvas as where', async () => {
   const lines: string[] = [];
   server.stop(true);
-  server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, new Stalls({ home: dir, log: (l) => lines.push(l) }));
+  server = serve([canvas], 0, { transcriber: silent, stalls: new Stalls({ home: dir, log: (l) => lines.push(l) }) });
   const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
   await new Promise((r) => (ws.onopen = r));
   ws.send(JSON.stringify({ type: 'stall', ms: 200, scripts: [], before: [] } satisfies ClientMessage));
@@ -1164,7 +1194,7 @@ describe('a restart that waits', () => {
   test('shows on the canvas with the cards it waits for, here and by title on the others, and goes ahead at the owner\'s word', async () => {
     const other = join(dir, 'other');
     gitRepo(other);
-    const second = await CanvasRuntime.start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    const second = await start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), commandDelayMs: undefined });
     const there = second.board.create({ title: 'Export als CSV', x: 0, y: 0 });
     let busy = [
       { canvas: 'main', card: 'k1' },
@@ -1173,7 +1203,7 @@ describe('a restart that waits', () => {
     let gone = 0;
     const restarter = new Restarter({ busy: () => busy, go: () => gone++, patienceMs: 60_000, intervalMs: 10 });
     server.stop(true);
-    server = serve([canvas, second], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter);
+    server = serve([canvas, second], 0, { transcriber: silent, restarter });
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -1199,7 +1229,7 @@ describe('a restart that waits', () => {
     let gone = 0;
     const restarter = new Restarter({ busy: () => [], go: () => gone++, patienceMs: 0, intervalMs: 10 });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter);
+    server = serve([canvas], 0, { transcriber: silent, restarter });
     const messages: ServerMessage[] = [];
     const connect = async () => {
       const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
@@ -1235,7 +1265,7 @@ describe('a restart that waits', () => {
     let written = (_: string) => {};
     const writing = new Promise<string>((resolve) => (written = resolve));
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: await writing, doubtful: false }) } }, 0, false, undefined, restarter);
+    server = serve([canvas], 0, { transcriber: { transcribe: async () => ({ text: await writing, doubtful: false }) }, restarter });
     const dictated = fetch(new URL(api('/voice?listen'), server.url), { method: 'POST', body: 'AUDIO' });
     await until(() => restarter['holds'].size === 1);
     restarter.request('code');
@@ -1252,11 +1282,11 @@ describe('cards that need the owner', () => {
   test('reach every canvas\'s pages, so each page lists those of the others too', async () => {
     const other = join(dir, 'other');
     gitRepo(other);
-    const second = await CanvasRuntime.start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    const second = await start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), commandDelayMs: undefined });
     const waiting = second.board.create({ title: 'B', x: 0, y: 0 });
     second.board.work(waiting.id, { state: 'waiting', need: 'review' });
     server.stop(true);
-    server = serve([canvas, second], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
+    server = serve([canvas, second], 0, { transcriber: silent });
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -1303,9 +1333,10 @@ describe('canvases that start and stop while Obeya runs', () => {
     const other = join(dir, 'other');
     gitRepo(other);
     const set = await Canvases.start([], { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge, restartIntervalMs: 5 });
+    started.push(set);
     const list = [canvas];
     server.stop(true);
-    server = serve({ all: () => [...list, ...set.all()], onChange: (fn) => set.onChange(fn) }, { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
+    server = serve({ all: () => [...list, ...set.all()], onChange: (fn) => set.onChange(fn) }, 0, { transcriber: silent });
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -1341,22 +1372,10 @@ describe('landing approved work', () => {
     git(repo, 'fetch', '--quiet', 'origin');
     const pushing = join(dir, 'pushing');
     writeFileSync(join(origin, 'hooks/pre-receive'), `#!/bin/sh\ntouch '${shPath(pushing)}'\nsleep 1\n`, { mode: 0o755 });
-    const pushed = await CanvasRuntime.start({ repos: [{ path: repo, clones: 2, settings: { land: 'pr', direct: true, workspaces: 'clones' } }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    const pushed = await start({ repos: [{ path: repo, clones: 2, settings: { land: 'pr', direct: true, workspaces: 'clones' } }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), commandDelayMs: undefined });
     server.stop(true);
-    server = serve([canvas, pushed], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
-    const handedOver = async (title: string) => {
-      const c = pushed.board.create({ title, x: 0, y: 0 });
-      await pushed.repoOf(c.id).workers.start(c.id);
-      const session = runtime.last;
-      const clone = pushed.board.row(c.id).workspace!;
-      identify(clone);
-      writeFileSync(join(clone, `${title}.ts`), title);
-      git(clone, 'add', '.');
-      git(clone, 'commit', '--quiet', '-m', title);
-      await session.call('ready_for_review', { summary: 'S', demo: artifact() });
-      session.emit({ type: 'idle' });
-      return c;
-    };
+    server = serve([canvas, pushed], 0, { transcriber: silent });
+    const handedOver = async (title: string) => (await handedOverOn({ board: pushed.board, workers: pushed.repos[0]!.workers, runtime }, { title, commit: `${title}.ts` })).card;
     const a = await handedOver('A');
     const b = await handedOver('B');
     const approve = (id: string) => post(`/api/c/${pushed.board.canvas.id}/cards/${id}/act`, JSON.stringify({ action: 'approve', direct: true }));
@@ -1374,8 +1393,7 @@ describe('landing approved work', () => {
     for (const res of await Promise.all(landings)) expect(res.ok).toBe(true);
     expect(pushed.board.item(a.id)!.state).toBe('live');
     expect(pushed.board.item(b.id)!.state).toBe('live');
-    expect(git(origin, 'log', '--format=%s', 'main').split('\n').sort()).toEqual(['A', 'B', 'init']);
-    pushed.shutdown();
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n').sort()).toEqual(['A.ts', 'B.ts', 'init']);
   }, 15_000);
 });
 
@@ -1391,15 +1409,15 @@ describe('starting a card', () => {
     const cloned = gitRepo(join(dir, 'cloned'));
     const uploadPack = join(dir, 'slow-upload-pack');
     writeFileSync(uploadPack, slow('fetch', 'exec git-upload-pack "$@"\n'), { mode: 0o755 });
-    const deps = (home: string) => ({ store: new Store(':memory:'), home: join(dir, home), runtime, forge: noForge });
-    const worktrees = await CanvasRuntime.start({ name: 'Worktrees', repos: [{ path: trees, settings: { workspaces: 'worktrees' } }] }, deps('home-trees'));
-    const clones = await CanvasRuntime.start({ name: 'Clones', repos: [{ path: cloned, clones: 1, settings: { workspaces: 'clones' } }] }, deps('home-clones'));
+    const deps = (home: string) => ({ store: new Store(':memory:'), home: join(dir, home), commandDelayMs: undefined });
+    const worktrees = await start({ name: 'Worktrees', repos: [{ path: trees, settings: { workspaces: 'worktrees' } }] }, deps('home-trees'));
+    const clones = await start({ name: 'Clones', repos: [{ path: cloned, clones: 1, settings: { workspaces: 'clones' } }] }, deps('home-clones'));
     const [clone] = clones.repos[0]!.workspaces.list();
     git(clone!.path, 'config', 'remote.origin.uploadpack', shPath(uploadPack));
     // a tag made since the clone was: the start has something to fetch
     git(cloned, 'tag', 'v1');
     server.stop(true);
-    server = serve([canvas, worktrees, clones], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
+    server = serve([canvas, worktrees, clones], 0, { transcriber: silent });
 
     const starts = [worktrees, clones].map((c) => {
       const card = c.board.create({ title: 'Langsamer Start', x: 0, y: 0 });
@@ -1429,8 +1447,6 @@ describe('starting a card', () => {
       expect(runtime.sessions.find((s) => s.spec.cwd === ws)!.inbox[0]).toContain('Langsamer Start');
       expect(c.board.item(card.id)!.statusLine).toBeUndefined();
     }
-    worktrees.shutdown();
-    clones.shutdown();
   }, 15_000);
 });
 
@@ -1443,9 +1459,9 @@ describe('the read tree and the free clones', () => {
     const checkout = join(dir, 'checkout');
     gitClone(origin, checkout);
     // work goes out as pull requests: the read tree is a worktree of the checkout, apart from the pool's clone
-    const shop = await CanvasRuntime.start(
+    const shop = await start(
       { name: 'Shop', repos: [{ path: checkout, clones: 1, settings: { land: 'pr', workspaces: 'clones' } }] },
-      { store: new Store(':memory:'), home: join(dir, 'home-shop'), runtime, forge: noForge },
+      { store: new Store(':memory:'), home: join(dir, 'home-shop'), commandDelayMs: undefined },
     );
     const projects = () => shop.board.snapshot().items.filter((i) => i.kind === 'project').map((p) => p.title).sort();
     expect(projects()).toEqual(['Export']);
@@ -1465,7 +1481,7 @@ describe('the read tree and the free clones', () => {
     // in between, that second call would keep the look before going on into the card's start
     git(clone!.path, 'config', 'core.fsmonitorHookVersion', '2');
     server.stop(true);
-    server = serve([canvas, shop], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
+    server = serve([canvas, shop], 0, { transcriber: silent });
     const answers = async () => {
       for (const c of [shop, canvas]) {
         const before = performance.now();
@@ -1475,9 +1491,7 @@ describe('the read tree and the free clones', () => {
     };
 
     // main moves: the read tree follows in the background, the plan docs read before standing meanwhile
-    writeFileSync(join(origin, 'docs/plan/import.md'), doc('Import'));
-    git(origin, 'add', '.');
-    git(origin, 'commit', '--quiet', '-m', 'import');
+    commit(origin, 'docs/plan/import.md', doc('Import'), 'import');
     let moved = false;
     const refreshed = shop.repos[0]!.read.refresh().then(() => (moved = true));
     await until(() => existsSync(join(marks, 'checkout')));
@@ -1511,7 +1525,6 @@ describe('the read tree and the free clones', () => {
     go('status');
     await started;
     expect(runtime.sessions.find((s) => s.spec.cwd === clone!.path)!.inbox[0]).toContain('Langsamer Blick');
-    shop.shutdown();
   }, 15_000);
 });
 
@@ -1534,13 +1547,13 @@ describe('freeing and discarding workspaces', () => {
     go('status');
     // a prototype in the pool's only clone, and a card in a worktree of its own
     const origin = gitRepo(join(dir, 'shop'), { 'guide.md': 'Guide\n', '.gitattributes': '*.md filter=slow\n' });
-    const shop = await CanvasRuntime.start(
+    const shop = await start(
       { name: 'Shop', repos: [{ path: origin, clones: 1, settings: { land: 'pr', workspaces: 'clones' } }] },
-      { store: new Store(':memory:'), home: join(dir, 'home-shop'), runtime, forge: noForge },
+      { store: new Store(':memory:'), home: join(dir, 'home-shop'), commandDelayMs: undefined },
     );
-    const tools = await CanvasRuntime.start(
+    const tools = await start(
       { name: 'Tools', repos: [{ path: gitRepo(join(dir, 'tools')), settings: { land: 'main', workspaces: 'worktrees' } }] },
-      { store: new Store(':memory:'), home: join(dir, 'home-tools'), runtime, forge: noForge },
+      { store: new Store(':memory:'), home: join(dir, 'home-tools'), commandDelayMs: undefined },
     );
     const [clone] = shop.repos[0]!.workspaces.list();
     // writing a file of the default branch back into the clone, and `git status` in the worktree, wait for the test
@@ -1548,7 +1561,7 @@ describe('freeing and discarding workspaces', () => {
     git(clone!.path, 'config', 'filter.slow.clean', 'cat');
     git(tools.repos[0]!.ref.path, 'config', 'core.fsmonitor', slow('status', 'exit 1'));
     server.stop(true);
-    server = serve([canvas, shop, tools], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
+    server = serve([canvas, shop, tools], 0, { transcriber: silent });
     const answers = async () => {
       for (const c of [shop, tools, canvas]) {
         const before = Date.now();
@@ -1574,7 +1587,7 @@ describe('freeing and discarding workspaces', () => {
     });
     expect(discarded.ok).toBe(true);
     expect(Date.now() - discarding).toBeLessThan(1000);
-    expect(shop.board.archived().find((i) => i.id === prototype.id)).toMatchObject({ prototypeEnd: 'discarded' });
+    expect(shop.board.archived.all().find((i) => i.id === prototype.id)).toMatchObject({ prototypeEnd: 'discarded' });
     await until(() => existsSync(join(marks, 'checkout')));
     await answers();
     // half cleaned, the clone is no other card's yet
@@ -1591,9 +1604,7 @@ describe('freeing and discarding workspaces', () => {
     await tools.repos[0]!.workers.start(card.id);
     await tools.repos[0]!.workers.prepared();
     const tree = tools.board.row(card.id).workspace!;
-    writeFileSync(join(tree, 'lint.ts'), 'lint\n');
-    git(tree, 'add', '.');
-    git(tree, 'commit', '--quiet', '-m', 'Lint');
+    commit(tree, 'lint.ts', 'lint\n', 'Lint');
     await tools.repos[0]!.workers.stop(card.id);
     hold('status');
     const deleting = Date.now();
@@ -1607,8 +1618,6 @@ describe('freeing and discarding workspaces', () => {
     await until(() => !existsSync(tree));
     await tools.repos[0]!.workers.freed();
     expect(tools.repos[0]!.workspaces.list()).toEqual([]);
-    shop.shutdown();
-    tools.shutdown();
   }, 20_000);
 });
 

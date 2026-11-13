@@ -10,13 +10,15 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 // by its path: the package exports no package.json, which Bun imports all the same but TypeScript does not
 import sdk from '../../node_modules/@anthropic-ai/claude-agent-sdk/package.json';
 import { DOCUMENT } from '../core/files';
-import { blocksSaving, CLONES, type FirstCanvas, type MachineItem, type MachineJob, type MachineSection, type MachineSectionId, type MachineView, type SetupFolder, type GitSetupPreview } from '../core/types';
+import type { FirstCanvas, MachineItem, MachineJob, MachineSection, MachineSectionId, MachineView, SetupFolder, GitSetupPreview } from '../core/types';
+import { blocksSaving, CLONES } from '../core/config';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { checkSetup, type LinuxFamily, linuxFamily, output } from '../../plugin/skills/demo/lib/setup.ts';
 import { installVoice } from '../../plugin/skills/demo/lib/voices.ts';
@@ -25,10 +27,10 @@ import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
 import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
-import { repoInfoAsync } from './repo';
+import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
-import { claudeExecutable, machineClaude, runClaudeHere } from './runtime';
-import { codexExecutable, CodexLogins, type CodexLoginState, spawnOptions, startArgv } from './codex';
+import { claudeExecutable, machineClaude, runClaudeHere } from './claude';
+import { codexExecutable, CodexLogins, type CodexLoginState, runCodex, spawnOptions, startArgv } from './codex';
 import { findCodex, type HarnessFound, type Harnesses } from './harnesses';
 import { extendPath, freshPath, which } from './path';
 import { ownerLanguage } from './settings';
@@ -182,6 +184,33 @@ export async function updateClaude(log: (line: string) => void = () => {}, env: 
   extendPath(env, platform);
 }
 
+/**
+ * Brings the Codex the agents run on up to date with `codex update`, which updates it through
+ * whatever installed it (npm, bun, pnpm, Homebrew, the standalone installer). A Codex older than that
+ * command (whose `update --help` is the general help) is updated by the package manager it lives in:
+ * npm's or bun's global packages, Homebrew's cask; any other it cannot update.
+ */
+export async function updateCodex(log: (line: string) => void = () => {}, env: Env = process.env): Promise<void> {
+  const bin = codexExecutable(env);
+  if (!bin) throw new Error('Codex is not installed on this machine');
+  const help = await runCodex(bin, ['update', '--help'], env);
+  if (help && /^Update Codex/m.test(help)) return runLogged(startArgv(bin, ['update']), env, log);
+  const real = await realpath(bin).catch(() => bin);
+  const argv = codexManager(real.replace(/\\/g, '/'));
+  if (!argv) throw new Error(`Codex at ${bin} is too old to update itself; update it as it was installed`);
+  const program = which(argv[0]!, env);
+  if (!program) throw new Error(`${argv[0]} is not on the PATH`);
+  await runLogged(startArgv(program, argv.slice(1)), env, log);
+}
+
+/** The command that updates a Codex older than `codex update` by the package manager it lives in (its real path); null where none does. */
+export function codexManager(real: string): string[] | null {
+  if (/\/\.bun\/install\/global\/node_modules\/@openai\/codex\//.test(real)) return ['bun', 'install', '-g', '@openai/codex@latest'];
+  if (/\/node_modules\/@openai\/codex\//.test(real)) return ['npm', 'install', '-g', '@openai/codex@latest'];
+  if (/\/Caskroom\/codex\//.test(real)) return ['brew', 'upgrade', '--cask', 'codex'];
+  return null;
+}
+
 /** A command as a shell shows it, its program quoted when its path has spaces. */
 const shown = (argv: string[]) => argv.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
 
@@ -282,14 +311,7 @@ export function welcome(home: string, canvases: CanvasRuntime[]) {
 
 /** The folder a clone gets: the repository's name, from a URL or `owner/name`. */
 export function cloneName(spec: string): string {
-  return (
-    spec
-      .trim()
-      .replace(/[/\\]+$/, '')
-      .replace(/\.git$/, '')
-      .split(/[/:\\]/)
-      .at(-1) ?? ''
-  );
+  return parseRemote(spec).path.split(/[/\\]/).at(-1) ?? '';
 }
 
 export interface MachineOptions {
@@ -576,7 +598,7 @@ export class MachineSetup {
   async folder(input: unknown): Promise<SetupFolder> {
     const path = folderOf(input);
     try {
-      return { repo: true, branch: (await repoInfoAsync(path)).branch };
+      return { repo: true, branch: (await repoInfo(path)).branch };
     } catch {
       return withoutGit(path) ? { repo: false, folder: true } : { repo: false };
     }
@@ -635,6 +657,6 @@ export class MachineSetup {
     const canvas = resolved.at(-1)!.id;
     writeFileSync(join(this.o.home, WELCOME_FILE), canvas);
     const { restarting, applied } = await this.o.config.save(next);
-    return { canvas, branch: folder ? '' : (await repoInfoAsync(path)).branch, opens: restarting || !!applied };
+    return { canvas, branch: folder ? '' : (await repoInfo(path)).branch, opens: restarting || !!applied };
   }
 }

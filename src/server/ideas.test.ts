@@ -1,56 +1,21 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { describe, expect, test } from 'bun:test';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CanvasRuntime } from './canvas';
-import { Store } from './db';
+import { board, canvas, dir, eachTest, item, main, restart, runtime, settle } from './canvas-fixture';
 import { Explorers } from './explorers';
-import { FakeRuntime, type FakeSession, gitRepo, heard, identify, noForge, removeDir, until } from './testing';
-import { git } from './workspaces';
+import { commit, type FakeSession, heard, identify, until } from './testing';
+import { git } from './git';
 
-let dir: string;
-let main: string;
-let store: Store;
-let runtime: FakeRuntime;
-let canvas: CanvasRuntime;
+eachTest({ repo: { settings: { land: 'pr' } }, deps: () => ({ permissionMode: 'acceptEdits', limitMargin: 10 }) });
 
-const open = (clones = 1) =>
-  CanvasRuntime.start({ repos: [{ path: main, clones, settings: { land: 'pr' } }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 });
-
-beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'obeya-ideas-'));
-  main = join(dir, 'main');
-  gitRepo(main);
-  mkdirSync(join(main, 'docs/plan'), { recursive: true });
-  store = new Store(':memory:');
-  runtime = new FakeRuntime();
-  canvas = await open();
-});
-afterEach(async () => {
-  // git freeing a workspace in the background is done before its repository goes
-  await Promise.all(canvas.repos.map((r) => r.workers.freed()));
-  canvas.shutdown();
-  await removeDir(dir);
-});
-
-// the timers' work done, and the workers it started at work in their workspaces
-const settle = async (ms = 5) => {
-  await new Promise((r) => setTimeout(r, ms));
-  await Promise.all(canvas.repos.map((r) => r.workers.prepared()));
-  await Promise.all(canvas.repos.map((r) => r.workers.freed()));
-};
 /** A plan doc lands on main, and Obeya reads it from there. */
 const landDoc = async (file: string, text: string) => {
-  writeFileSync(join(main, file), text);
   identify(main);
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', `Plan ${file}`);
+  commit(main, file, text, `Plan ${file}`);
   await canvas.repos[0]!.read.refresh();
 };
-const board = () => canvas.board;
-const item = (id: string) => board().item(id)!;
 const idea = (title = 'Export für Vermieter', body = 'Vermieter wollen ihre Zählerstände.') => board().create({ idea: true, title, body, x: 0, y: 0 });
-const explorer = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'update_brief')).at(-1)!;
+const explorer = () => runtime.withTool('update_brief').at(-1)!;
 const talk = (id: string) => board().events(id).filter((e) => e.kind === 'talk').map((e) => [e.author, e.text]);
 const turn = (s: FakeSession, reply: string, extra?: () => void) => {
   s.emit({ type: 'session', id: 'sess-1' });
@@ -442,7 +407,7 @@ describe('an idea', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Exporte immer als CSV.' });
     await settle();
-    const learn = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'propose'))!;
+    const learn = runtime.withTool('propose')[0]!;
     expect(learn.inbox[0]).toContain('words in the discussion of an idea: Exporte immer als CSV.');
   });
 
@@ -472,7 +437,7 @@ describe('an idea', () => {
     expect(item(i.id).idea).toBeUndefined();
     await settle();
     expect(item(i.id).state).toBe('working');
-    const worker = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    const worker = runtime.withTool('ready_for_review')[0]!;
     expect(worker.inbox[0]).toContain('**Ziel:** CSV-Export.');
     expect(board().decisions(null).at(-1)).toMatchObject({ answer: 'So bauen, wie der Stand der Idee sagt.' });
     expect(() => canvas.act(i.id, { action: 'discuss', text: 'Noch was.' })).toThrow('not an idea');
@@ -504,7 +469,7 @@ describe('an idea', () => {
     canvas.act(i.id, { action: 'build' });
     expect(item(i.id)).toMatchObject({ state: 'planned', brief: '**Entscheidungen:** A.', mocks: [a] });
     await settle();
-    const worker = runtime.sessions.find((x) => x.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    const worker = runtime.withTool('ready_for_review')[0]!;
     expect(worker.inbox[0]).toContain('A Knopf oben:\n\n```html\n<button style="float:right">Export</button>\n```');
   });
 
@@ -528,7 +493,7 @@ describe('an idea', () => {
     expect(c.body).toContain('**Ziel:** Vermieterportal.');
     await settle();
     expect(item(i.id).state).toBe('working');
-    const worker = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    const worker = runtime.withTool('ready_for_review')[0]!;
     expect(worker.inbox[0]).toContain('**Ziel:** Vermieterportal.');
   });
 
@@ -546,7 +511,7 @@ describe('an idea', () => {
     expect(board().events(c.id).at(-1)!.text).toBe('Als Projekt: Ein Agent schreibt das Plan-Doc; ist es gelandet, tritt das Projekt an die Stelle der Aufgabe.');
     await settle();
     expect(item(c.id).state).toBe('working');
-    const worker = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    const worker = runtime.withTool('ready_for_review')[0]!;
     expect(worker.inbox[0]).toContain('Jeder Kunde bekommt eigene Daten.');
     expect(worker.inbox[0]).toContain('## Workstreams');
     // once decided, and on a task someone has worked on, it is refused
@@ -560,11 +525,7 @@ describe('an idea', () => {
     const plans = join(dir, 'private-plans');
     mkdirSync(plans);
     writeFileSync(join(plans, 'export-fur-vermieter.md'), '# Schon da\n');
-    canvas.shutdown();
-    canvas = await CanvasRuntime.start(
-      { repos: [{ path: main, clones: 1, settings: { land: 'pr', planDocs: { dir: plans, exclude: [] } } }] },
-      { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 },
-    );
+    await restart({ repo: { settings: { land: 'pr', planDocs: { dir: plans, exclude: [] } } } });
     const i = idea();
     canvas.act(i.id, { action: 'planDoc' });
     const file = `${plans.replaceAll('\\', '/')}/export-fur-vermieter-2.md`;
@@ -576,7 +537,7 @@ describe('an idea', () => {
     canvas.act(twin.id, { action: 'planDoc' });
     expect(item(twin.id).body).toContain('export-fur-vermieter-3.md');
     await settle();
-    const worker = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    const worker = runtime.withTool('ready_for_review')[0]!;
     // the folder is the worker's to write in, as its workspace
     expect(worker.spec.dirs).toEqual([plans.replaceAll('\\', '/')]);
     writeFileSync(file, '# Export\n\n## Ziel\n\nExport.\n\n## Workstreams\n\n- [ ] **W1:** CSV. Zuerst.\n');
@@ -634,8 +595,7 @@ describe('an idea', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Frage.' });
     explorer().emit({ type: 'session', id: 'sess-9' });
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     const s = explorer();
     expect(s.spec.resume).toBe('sess-9');
     expect(s.inbox[0]).toContain('Obeya was restarted');
@@ -735,9 +695,8 @@ describe('an idea', () => {
     canvas.act(i.id, { action: 'park' });
     expect(first.closed).toBe(true);
     expect(item(i.id).idea).toMatchObject({ status: 'parked', thinking: false });
-    canvas.shutdown();
-    canvas = await open();
-    expect(runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief'))).toHaveLength(1);
+    await restart();
+    expect(runtime.withTool('update_brief')).toHaveLength(1);
     canvas.act(i.id, { action: 'discuss', text: 'Drittens.' });
     const later = explorer();
     expect(later).not.toBe(first);
@@ -768,9 +727,8 @@ describe('an idea', () => {
     expect(first.closed).toBe(true);
     expect(item(i.id)).toMatchObject({ paused: true, idea: { status: 'open', thinking: false } });
     expect(() => canvas.act(i.id, { action: 'pause' })).toThrow('paused already');
-    canvas.shutdown();
-    canvas = await open();
-    const explorers = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief')).length;
+    await restart();
+    const explorers = () => runtime.withTool('update_brief').length;
     expect(explorers()).toBe(1);
     expect(item(i.id).paused).toBe(true);
     canvas.act(i.id, { action: 'resume' });
@@ -872,7 +830,7 @@ describe('an idea', () => {
     expect(s.closed).toBe(false);
     canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
     expect(s.inbox).toHaveLength(1);
-    await settle(60);
+    await until(() => s.inbox.length > 1);
     expect(item(i.id).limitedUntil).toBeUndefined();
     expect(s.inbox[1]).toContain('The usage limit that stopped your last turn has reset');
     s.call('reply', { text: 'Zu erstens.' });
@@ -892,8 +850,7 @@ describe('an idea', () => {
     explorer().emit({ type: 'session', id: 'sess-9' });
     explorer().emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() + 10_000 } });
     explorer().emit({ type: 'idle' });
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     expect(item(i.id).limitedUntil).toBeUndefined();
     const s = explorer();
     expect(s.inbox[0]).toContain('Obeya was restarted');
@@ -910,8 +867,7 @@ describe('an idea', () => {
     canvas.act(i.id, { action: 'discuss', text: 'Frage.' });
     explorer().emit({ type: 'session', id: 'sess-9' });
     canvas.act(i.id, { action: 'discuss', text: 'Noch eine.' });
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     const s = explorer();
     expect(s.spec.resume).toBe('sess-9');
     expect(s.inbox[0]).toContain('Noch eine.');
@@ -927,7 +883,7 @@ describe('a prototype', () => {
     writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00:00.351 --> 00:00:10.000\nSo sähe es aus.\n');
     return d;
   };
-  const workers = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'));
+  const workers = () => runtime.withTool('ready_for_review');
   const worker = () => workers()[0]!;
   /** The worker of a card: workers start once git has prepared their workspaces, in no set order. */
   const workerOf = (cardId: string) => workers().find((w) => w.spec.cwd === board().row(cardId).workspace)!;
@@ -935,14 +891,12 @@ describe('a prototype', () => {
     board()
       .snapshot()
       .items.filter((x) => x.prototypeOf === ideaId);
-  const archived = (id: string) => board().archived().find((i) => i.id === id);
+  const archived = (id: string) => board().archived.all().find((i) => i.id === id);
   /** The prototype's worker commits something on its branch, as a real one would. */
-  const commit = (cardId: string, file: string) => {
+  const commitOn = (cardId: string, file: string) => {
     const ws = board().row(cardId).workspace!;
     identify(ws);
-    writeFileSync(join(ws, file), 'prototyp\n');
-    git(ws, 'add', '.');
-    git(ws, 'commit', '--quiet', '-m', `Prototyp ${file}`);
+    commit(ws, file, 'prototyp\n', `Prototyp ${file}`);
   };
   const handOver = (s: FakeSession, summary: string, demo = 'demo') =>
     s.call('ready_for_review', { summary, demo: { dir: demoDir(demo), chapters: ['Knopf'] } });
@@ -1005,8 +959,7 @@ describe('a prototype', () => {
   });
 
   test('several run side by side, each with its approach, and the idea shows every demo', async () => {
-    canvas.shutdown();
-    canvas = await open(3);
+    await restart({ repo: { clones: 3 } });
     const i = idea('Logo für Obeya');
     canvas.act(i.id, { action: 'prototype', text: 'Wortmarke: der Name in eigener Schrift' });
     canvas.act(i.id, { action: 'prototype', text: 'Bildmarke' });
@@ -1034,8 +987,7 @@ describe('a prototype', () => {
   });
 
   test('a second prototype with the same approach is numbered', async () => {
-    canvas.shutdown();
-    canvas = await open(2);
+    await restart({ repo: { clones: 2 } });
     const i = idea();
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
     await settle();
@@ -1046,8 +998,7 @@ describe('a prototype', () => {
   });
 
   test('starting one takes the suggestion off the idea, and a prototype is no step while every planned one is being built', async () => {
-    canvas.shutdown();
-    canvas = await open(4);
+    await restart({ repo: { clones: 4 } });
     const i = idea('Leinwand ordnen');
     canvas.act(i.id, { action: 'discuss', text: 'Erst sehen?' });
     explorer().call('reply', { text: 'Erst messen.', next: { step: 'prototype', why: 'Erst die Zahlen.' } });
@@ -1088,8 +1039,7 @@ describe('a prototype', () => {
   });
 
   test('the variants its agent planned start at once, one prototype each, and none twice', async () => {
-    canvas.shutdown();
-    canvas = await open(4);
+    await restart({ repo: { clones: 4 } });
     const i = idea('Leinwand ordnen');
     canvas.act(i.id, { action: 'discuss', text: 'Zeig mir alle drei.' });
     turn(explorer(), 'Drei Prototypen geplant.', () =>
@@ -1128,8 +1078,7 @@ describe('a prototype', () => {
   });
 
   test('"Build this prototype" builds the idea on its branch; the others are discarded', async () => {
-    canvas.shutdown();
-    canvas = await open(3);
+    await restart({ repo: { clones: 3 } });
     const i = idea();
     board().setIdea(i.id, { brief: '**Ziel:** CSV-Export.' });
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
@@ -1137,8 +1086,8 @@ describe('a prototype', () => {
     await settle();
     const [chosen, other] = prototypes(i.id);
     const [w, wOther] = [workerOf(chosen!.id), workerOf(other!.id)];
-    commit(chosen!.id, 'knopf.txt');
-    commit(other!.id, 'menu.txt');
+    commitOn(chosen!.id, 'knopf.txt');
+    commitOn(other!.id, 'menu.txt');
     // the chosen one's worker asked the owner something on its card
     w!.call('ask', { question: 'Knopf oben oder unten?', options: ['oben', 'unten'] });
     canvas.act(chosen!.id, { action: 'answer', text: 'oben' });
@@ -1236,8 +1185,7 @@ describe('a prototype', () => {
   });
 
   test('"Plan as a project" keeps the prototypes until the project stands; then the one its plan doc names goes to its workstream, and the others are discarded', async () => {
-    canvas.shutdown();
-    canvas = await open(3);
+    await restart({ repo: { clones: 3 } });
     const i = idea('Webseite');
     board().setIdea(i.id, { brief: '**Ziel:** Eine Seite. Über die Variante entscheiden die Prototypen.' });
     canvas.act(i.id, { action: 'prototype', text: 'Film zuerst' });
@@ -1245,7 +1193,7 @@ describe('a prototype', () => {
     await settle();
     const [film, manifest] = prototypes(i.id);
     const w = workerOf(film!.id);
-    commit(film!.id, 'film.html');
+    commitOn(film!.id, 'film.html');
     await handOver(w!, 'Ruhige Seite mit großem Video oben.');
     explorer().emit({ type: 'idle' });
 
@@ -1290,7 +1238,7 @@ describe('a prototype', () => {
     // started like any other workstream, it works on the prototype's branch
     canvas.act(w2!.id, { action: 'start' });
     await until(() => {
-      for (const k of runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope'))) k.call('scope', { files: [], conflicts_with: [], reason: '' });
+      for (const k of runtime.withTool('scope')) k.call('scope', { files: [], conflicts_with: [], reason: '' });
       return item(w2!.id).state === 'working';
     });
     const brief = workers().at(-1)!.inbox[0]!;
@@ -1318,15 +1266,14 @@ describe('a prototype', () => {
   });
 
   test('the plan doc for an idea with prototypes is handed over only once it says clearly which one a workstream builds on', async () => {
-    canvas.shutdown();
-    canvas = await open(3);
+    await restart({ repo: { clones: 3 } });
     const i = idea('Webseite');
     canvas.act(i.id, { action: 'prototype', text: 'Film zuerst' });
     canvas.act(i.id, { action: 'prototype', text: 'Manifest' });
     await settle();
     canvas.act(i.id, { action: 'planDoc' });
     await until(() => {
-      for (const k of runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope'))) k.call('scope', { files: [], conflicts_with: [], reason: '' });
+      for (const k of runtime.withTool('scope')) k.call('scope', { files: [], conflicts_with: [], reason: '' });
       return item(i.id).state === 'working';
     });
     await settle();
@@ -1334,10 +1281,7 @@ describe('a prototype', () => {
     const ws = board().row(i.id).workspace!;
     const write = (doc: string) => {
       identify(ws);
-      mkdirSync(join(ws, 'docs/plan'), { recursive: true });
-      writeFileSync(join(ws, 'docs/plan/seite.md'), `# Webseite\n\n## Ziel\n\nEine Seite.\n\n## Workstreams\n\n${doc}`);
-      git(ws, 'add', '.');
-      git(ws, 'commit', '--quiet', '-m', 'Plan');
+      commit(ws, 'docs/plan/seite.md', `# Webseite\n\n## Ziel\n\nEine Seite.\n\n## Workstreams\n\n${doc}`, 'Plan');
     };
     write('- [ ] **W1:** Seite bauen. Auf dem gewählten Prototyp.\n- [ ] **W2:** Texte.\n');
     expect(await handOver(w, 'Plan geschrieben.')).toContain('Not handed over: in your plan doc, the workstream W1 mentions a prototype without naming which.');
@@ -1364,8 +1308,7 @@ describe('a prototype', () => {
   });
 
   test('"Split off a task" starts the settled part as a task of its own; the idea stays with its conversation and prototypes', async () => {
-    canvas.shutdown();
-    canvas = await open(3);
+    await restart({ repo: { clones: 3 } });
     const i = idea('Lese-Lern-App');
     const shot = canvas.images.save(new Uint8Array([1]), 'image/png');
     canvas.act(i.id, { action: 'discuss', text: 'So soll das Spiel aussehen.', images: [shot] });
@@ -1444,7 +1387,7 @@ describe('a prototype', () => {
 });
 
 describe('by voice', () => {
-  const reader = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1)!;
+  const reader = () => runtime.withTool('act').at(-1)!;
 
   test('"Ich will über … nachdenken" makes an idea whose agent opens the discussion', async () => {
     const heard = canvas.commander.hear('Ich will über Export für Vermieter nachdenken', {});
@@ -1467,7 +1410,7 @@ describe('by voice', () => {
     expect(talk(i.id)).toEqual([['owner', 'eher als PDF']]);
     expect(explorer().inbox[0]).toContain('eher als PDF');
     expect(explorer().inbox[0]).toContain('speech recognition may have misheard');
-    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+    expect(runtime.withTool('act')).toEqual([]);
   });
 
   test("its agent passes on what asks Obeya for something; the Coordinator reads it with the owner's words", async () => {

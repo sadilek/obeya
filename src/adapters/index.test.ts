@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { repoInfo } from '../server/repo';
 import { gitRepo } from '../server/testing';
-import { git } from '../server/workspaces';
-import { layerSettings, type RepoSettings } from '../core/types';
+import { defaultBranchCommit } from '../server/branches';
+import { git } from '../server/git';
+import { layerSettings, type RepoSettings } from '../core/config';
 import { defaultsFor, hasAdapterModule, parseShared, readShared, repoValues, withSettings } from '.';
 import { generic } from './generic';
 
@@ -23,14 +24,14 @@ describe('defaultsFor', () => {
     expect(read.settings).toMatchObject({ land: 'main', workspaces: 'worktrees', checks: ['bun run test', 'bun run typecheck'] });
   });
 
-  test('lands through pull requests where origin is on GitHub, else on the main branch', () => {
+  test('lands through pull requests where origin is on GitHub, else on the main branch', async () => {
     const repo = gitRepo(join(dir, 'shop'));
-    const land = () => defaultsFor(repoInfo(repo)).land;
-    expect(land()).toBe('main');
+    const land = async () => defaultsFor(await repoInfo(repo)).land;
+    expect(await land()).toBe('main');
     git(repo, 'remote', 'add', 'origin', 'git@github.com:acme/shop.git');
-    expect(land()).toBe('pr');
+    expect(await land()).toBe('pr');
     git(repo, 'remote', 'set-url', 'origin', 'https://gitlab.com/acme/shop.git');
-    expect(land()).toBe('main');
+    expect(await land()).toBe('main');
     // a GitHub Enterprise host the GitHub CLI is logged into
     const gh = join(dir, 'gh');
     mkdirSync(gh);
@@ -39,7 +40,7 @@ describe('defaultsFor', () => {
     const was = process.env.GH_CONFIG_DIR;
     process.env.GH_CONFIG_DIR = gh;
     try {
-      expect(land()).toBe('pr');
+      expect(await land()).toBe('pr');
     } finally {
       if (was === undefined) delete process.env.GH_CONFIG_DIR;
       else process.env.GH_CONFIG_DIR = was;
@@ -73,14 +74,14 @@ describe('withSettings', () => {
 });
 
 describe('.obeya/settings.json', () => {
-  test('is read from the default branch, not the checkout; a field that is wrong does not count, the rest does', () => {
+  test('is read from the default branch, not the checkout; a field that is wrong does not count, the rest does', async () => {
     const repo = gitRepo(join(dir, 'shop'), { 'README.md': 'hi\n', '.obeya/settings.json': '{ "land": "main", "checks": ["bun test"] }\n' });
     // with the tree of .obeya/ there, which the repository's theme is read from (theme.ts)
-    expect(readShared(repo)).toEqual({ settings: { land: 'main', checks: ['bun test'] }, raw: { land: 'main', checks: ['bun test'] }, problems: [], obeyaTree: expect.stringMatching(/^[0-9a-f]{40,64}$/) });
+    expect(await readShared(repo)).toEqual({ settings: { land: 'main', checks: ['bun test'] }, raw: { land: 'main', checks: ['bun test'] }, problems: [], obeyaTree: expect.stringMatching(/^[0-9a-f]{40,64}$/) });
     // the checkout's own change counts once it is committed on the default branch
     writeFileSync(join(repo, '.obeya/settings.json'), '{ "land": "pr" }\n');
-    expect(readShared(repo).settings).toEqual({ land: 'main', checks: ['bun test'] });
-    expect(readShared(gitRepo(join(dir, 'plain'))).settings).toBeUndefined();
+    expect((await readShared(repo)).settings).toEqual({ land: 'main', checks: ['bun test'] });
+    expect((await readShared(gitRepo(join(dir, 'plain')))).settings).toBeUndefined();
 
     const read = parseShared('{ "check": ["x"], "land": "sideways", "branch": "develop", "setup": "bun install", "app": { "run": "bun dev" } }');
     expect(read.settings).toEqual({ setup: 'bun install', app: { run: 'bun dev' } });
@@ -114,13 +115,14 @@ describe('.obeya/settings.json', () => {
     ]);
   });
 
-  test("its values come after this machine's and before the defaults, and say they come from the repository", () => {
+  test("its values come after this machine's and before the defaults, and say they come from the repository", async () => {
     const repo = gitRepo(join(dir, 'shop'), { 'README.md': 'hi\n' });
     const shared = { checks: ['bun test'], setup: 'bun install', app: { run: 'bun dev', stop: 'pkill -F .pid' } };
     const mine: RepoSettings = { setup: '', app: { run: 'bun dev --port 4000' } };
-    const a = withSettings(defaultsFor(repoInfo(repo)), () => layerSettings<RepoSettings>(shared, mine));
+    const info = await repoInfo(repo);
+    const a = withSettings(defaultsFor(info), () => layerSettings<RepoSettings>(shared, mine));
     expect([a.checks, a.setup, a.land, a.app]).toEqual([['bun test'], '', 'main', { run: 'bun dev --port 4000', stop: 'pkill -F .pid' }]);
-    expect(repoValues(repoInfo(repo), false, shared)).toMatchObject({
+    expect(repoValues(info, 'main', false, shared)).toMatchObject({
       checks: { value: ['bun test'], source: 'repository' },
       setup: { value: 'bun install', source: 'repository' },
       land: { value: 'main', source: 'detected' },
@@ -130,39 +132,40 @@ describe('.obeya/settings.json', () => {
       demo: { site: { value: null, source: 'default' }, language: { value: null, source: 'default' } },
     });
     // a repository that names German for what lands in it
-    expect(withSettings(defaultsFor(repoInfo(repo)), () => ({ language: 'de' })).language).toBe('de');
-    expect(repoValues(repoInfo(repo), false, { language: 'de' }).language).toEqual({ value: 'de', source: 'repository' });
+    expect(withSettings(defaultsFor(info), () => ({ language: 'de' })).language).toBe('de');
+    expect(repoValues(info, 'main', false, { language: 'de' }).language).toEqual({ value: 'de', source: 'repository' });
   });
 });
 
 describe('hasAdapterModule', () => {
-  test('finds an adapter module from before on the default branch, not in the checkout', () => {
+  const found = async (repo: string) => hasAdapterModule(repo, (await defaultBranchCommit(repo)).commit);
+  test('finds an adapter module from before on the default branch, not in the checkout', async () => {
     const repo = gitRepo(join(dir, 'shop'), { 'README.md': 'hi\n', '.obeya/adapter/index.ts': "export default { name: 'shop' };\n" });
-    expect(hasAdapterModule(repo)).toBe(true);
+    expect(await found(repo)).toBe(true);
     git(repo, 'checkout', '--quiet', '-b', 'card');
     git(repo, 'rm', '--quiet', '-r', '.obeya');
     git(repo, 'commit', '--quiet', '-m', 'no module on this branch');
-    expect(hasAdapterModule(repo)).toBe(true);
+    expect(await found(repo)).toBe(true);
     git(repo, 'checkout', '--quiet', 'main');
     git(repo, 'merge', '--quiet', 'card');
-    expect(hasAdapterModule(repo)).toBe(false);
-    expect(hasAdapterModule(gitRepo(join(dir, 'plain')))).toBe(false);
+    expect(await found(repo)).toBe(false);
+    expect(await found(gitRepo(join(dir, 'plain')))).toBe(false);
   });
 });
 
 describe("a repository's Claude Code configuration", () => {
-  test('is every file under .claude/ and .mcp.json on the default branch, each told apart to the byte; a submodule by its commit', () => {
+  test('is every file under .claude/ and .mcp.json on the default branch, each told apart to the byte; a submodule by its commit', async () => {
     const repo = gitRepo(join(dir, 'claude'), { 'README.md': 'x\n', '.claude/skills/probe/SKILL.md': 'hooks\n', '.mcp.json': '{}\n', 'src/a.ts': '\n' });
-    const before = readShared(repo).claude!;
+    const before = (await readShared(repo)).claude!;
     expect(Object.keys(before)).toEqual(['.claude/skills/probe/SKILL.md', '.mcp.json']);
     expect(before['.mcp.json']!.text).toBe('{}');
     // a blank line before the frontmatter is what decides whether a skill's hook runs
     writeFileSync(join(repo, '.claude/skills/probe/SKILL.md'), '\nhooks\n');
     git(repo, 'commit', '--quiet', '-am', 'blank line');
-    expect(readShared(repo).claude!['.claude/skills/probe/SKILL.md']!.id).not.toBe(before['.claude/skills/probe/SKILL.md']!.id);
+    expect((await readShared(repo)).claude!['.claude/skills/probe/SKILL.md']!.id).not.toBe(before['.claude/skills/probe/SKILL.md']!.id);
     const head = git(repo, 'rev-parse', 'HEAD').trim();
     git(repo, 'update-index', '--add', '--cacheinfo', `160000,${head},.claude/skills/other`);
     git(repo, 'commit', '--quiet', '-m', 'submodule');
-    expect(readShared(repo).claude!['.claude/skills/other']).toEqual({ id: head, text: `(commit ${head})` });
+    expect((await readShared(repo)).claude!['.claude/skills/other']).toEqual({ id: head, text: `(commit ${head})` });
   });
 });

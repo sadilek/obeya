@@ -82,6 +82,15 @@ the worktree is there; so does a repository's restart. When a canvas starts, its
 or moved before it reads from them, since the checkout, the only thing to read meanwhile, may be on a
 card's branch; the server answers meanwhile.
 
+The same holds wherever git is at work in the read tree, the checkout included, by Obeya (pulling a
+merged pull request, landing) or by hand: while git holds the index's lock or stands in a rebase,
+merge, cherry-pick, revert or bisect, the files are no finished state of main. A rebase shows
+`origin`'s files until the local commits are back on top, so a doc deleted only on the local main is
+back for that moment, and a doc added there is gone. Plan docs are read only from a finished state:
+meanwhile the ones read before stand, and they are read again once git is done (looked at every
+100 ms; git still at work after a minute, a rebase stopped on a conflict or a lock left behind, is
+logged).
+
 ### Plan docs
 
 A doc in the repository's plan directory (`planDocs`) is a project when its `## Workstreams` (or
@@ -232,7 +241,7 @@ repository, for everyone, and the `settings` of its entry in `canvases.json`, se
 the configuration dialog, which also holds the main branch. The reference for every field is
 `docs/settings.md`, linked from the README.
 
-The fields: `land`, `direct`, `autoMerge`, `checks`, `setup`, `planDocs`, `softPaths`, `workspaces`,
+The fields: `land`, `push`, `upstream` (see Pull requests to the original), `direct`, `autoMerge`, `checks`, `setup`, `planDocs`, `softPaths`, `workspaces`,
 `prNoise`, `language` (see Language), `app` (`run`, `stop`, `keep`) and `demo` (`language`, `site`:
 see Static sites). Only what Obeya itself acts on is a command: `stop` and `keep` park a waiting card
 (see Parking). `run` is prose, for any kind of app (a web app, a CLI, a desktop or mobile app):
@@ -376,7 +385,8 @@ have changes. Renaming a canvas keeps its id and cards.
 
 A repository's page is its path, its problems, then its settings in groups under a small heading
 each, always shown: where its agents work ("Agents work in": worktrees or clones, with its
-source, the clones, slots and other machines), branch and landing (main branch, landing, direct,
+source, the clones, slots and other machines), GitHub (its "GitHub account", only where `origin`
+is on GitHub, see GitHub account), branch and landing (main branch, landing, direct,
 auto-merge, accounts without review, soft paths), app and checks (setup, checks, "How to run the
 app" in a large text field, "Stop while a card waits", the keep condition once there is
 one), plans and language (plan docs, "Repository language"), demos ("Demo language",
@@ -454,6 +464,21 @@ The demo settings and voices), the personal demo site below them into `personal-
 personal site in Sharing demos), languages, theme, models, whether the bar shows the usage limits
 (`usageMeter: false` when not) and whether the page shows what agents cost (`costs: true` when it
 does) into `settings.json` in Obeya's home.
+
+#### GitHub account
+
+On a machine where the GitHub CLI is logged into several accounts (a personal one and a work one,
+say), each repository on GitHub can name the one Obeya and its agents work as there: `githubAccount`
+in the repository's entry of `canvases.json`, chosen in the dialog from the accounts gh is logged
+into on `origin`'s host (read from gh's `hosts.yml`, never over the network), or "Automatic". Set,
+Obeya's own gh calls on the repository and its pull requests run with that account's token (`gh
+auth token --user`), its agents get the token in their environment (`GH_TOKEN`, on an Enterprise
+server `GH_ENTERPRISE_TOKEN`; a session starts once it is read), so their gh, and git where its
+credential helper is gh's, work as that account, and its clones on other machines get it as their
+GitHub login. Automatic is the account that owns the repository where gh has a login for it, else
+the account gh has active. An account gh is not logged into (any more) is a problem at the
+repository that blocks nothing, and gh works as automatic meanwhile. Changing it restarts the
+repository's agents once they paused, as any change to the repository's entry does.
 
 ### Live configuration
 
@@ -556,6 +581,17 @@ its status lines in German).
 
 ### Decisions
 
+- **The GitHub account is this machine's, set per repository** (owner, 2026-11-12): with gh on the
+  wrong account, a pull request in an organisation's repository was unreadable for Obeya ("Could
+  not resolve to a Repository", 404) until the owner switched gh by hand, which then broke the
+  other repositories. It lives in the configuration, beside the clones and hosts, not in
+  `.obeya/settings.json`: logins differ from one person and machine to the next, and "Take over
+  into the repository for everyone" never takes it. Rejected: a setting in the repository (one
+  person's account names would be everyone's); switching gh's active account for the repository
+  (`gh auth switch` changes it for every terminal and every other repository at once); trying each
+  logged-in account until one sees the repository (a round trip per account, and it silently picks
+  whichever answers first where several can see it).
+
 - **A canvas may span several repositories, and one Obeya serves several canvases.** Rejected: one
   canvas per repository.
 - **A canvas belongs to a repository, not a checkout**, named after its `origin`, so clones share one.
@@ -623,6 +659,11 @@ its status lines in German).
   to do. Rejected: the text only as the conversation's first message.
 - **A plan doc with every workstream ticked ends its project** (2026-10-12, the owner), or finished
   plans kept in a repository stay on the canvas forever; the owner archives it (see Projects end).
+- **Plan docs are not read while git is at work in the read tree** (2026-11-11): a pull with rebase
+  in the checkout showed `origin`'s files for a moment, where a doc deleted only locally was back,
+  and its archived project came back to the canvas for good. Told by what git keeps in its directory
+  meanwhile (the index's lock, a rebase's or merge's state), without git. Rejected: marking only
+  Obeya's own git calls (a pull by hand does the same).
 - **A plan doc that disappears ends its project automatically** (2026-10-01); an explicit
   "Finish" may sit on top later. Rejected: reading old content from git history (fragile).
 - **The configuration is the file `canvases.json`**, edited in the UI or by the Coordinator

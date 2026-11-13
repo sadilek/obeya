@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, ArchivePage, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
+import type { AccessView, ArchivePage, Pairing, RemoteSetting, CloudPreset, CanvasInfo, CanvasSnapshot, ClientMessage, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, ServerMessage, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
+import type { Waiting } from '../core/card';
+import type { AgentRole, AgentSetting, Harness, AgentsView } from '../core/agents';
+import type { CanvasConfig, ConfigSaved, ConfigView, ConfigChecked, PersonalSiteView, SiteSetupJob, TagProposalJob, RepoTrust, SettingsShared } from '../core/config';
 import { setCostsShown } from './costs';
 import type { Wish } from '../core/wish';
 import { INPUT, noteMessage, watchPageStalls } from './stalls';
+import { signal } from './signal';
+import { errorText, t } from './strings';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -16,19 +21,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The owner's text for a call that failed: the server's refusal, else `offline` (Obeya could not be
+ * reached). For the codes in `detail`, and those whose text ends in a colon, the refusal's own
+ * message follows, which names the particulars.
+ */
+export const failText = (e: unknown, { detail = [], offline = t.offlineError }: { detail?: string[]; offline?: string } = {}) =>
+  e instanceof ApiError ? errorText(e.code) + (e.code && (detail.includes(e.code) || errorText(e.code).endsWith(':')) ? ` ${e.message}` : '') : offline;
+
 async function call<T>(method: string, path: string, body?: unknown, keepalive?: boolean): Promise<T> {
   const res = await send(method, path, body, keepalive);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
 /** The request, with `body` as JSON; throws the server's refusal. With `keepalive`, it outlasts the page. */
-async function send(method: string, path: string, body?: unknown, keepalive?: boolean) {
-  const res = await fetch(path, {
+const send = (method: string, path: string, body?: unknown, keepalive?: boolean) =>
+  raw(path, {
     method,
     keepalive,
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+
+/** The request as it is; throws the server's refusal. */
+async function raw(path: string, init?: RequestInit) {
+  const res = await fetch(path, init);
   await refused(res);
   return res;
 }
@@ -47,8 +64,7 @@ async function refused(res: Response) {
 
 /** Saves a file the server makes, under the name it gives. */
 async function download(path: string, fallback: string) {
-  const res = await fetch(path);
-  await refused(res);
+  const res = await raw(path);
   const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallback;
   const url = URL.createObjectURL(await res.blob());
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
@@ -66,11 +82,13 @@ let canvasId = '';
 export function setCanvas(id: string) {
   canvasId = id;
 }
-/** A path in the shown canvas's API. */
 /** The page runs as the app on a phone's home screen, not in its browser. */
 export const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
-export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
+/** A path in the API of the canvas `canvas`. */
+const canvasApi = (canvas: string, path = '') => `/api/c/${encodeURIComponent(canvas)}${path}`;
+/** A path in the shown canvas's API. */
+export const at = (path: string) => canvasApi(canvasId, path);
 /**
  * The canvas each card is on, where the page shows the cards of several (the phone view). A call
  * about a card goes to its canvas even once another is in view: the card closing puts Obeya's in
@@ -83,19 +101,20 @@ export function cardsOn(canvas: string, cards: string[]) {
 /** The canvas of the card `id`: the one it is on where the page shows several, else the shown one. */
 export const canvasOf = (id: string) => canvasOfCard.get(id) ?? canvasId;
 /** A path in the API of the card's canvas, about the card or project `id`. */
-export const cardAt = (id: string, path = '') => `/api/c/${encodeURIComponent(canvasOf(id))}/cards/${id}${path}`;
+export const cardAt = (id: string, path = '') => canvasApi(canvasOf(id), `/cards/${id}${path}`);
 /** A path in the API of the canvas of what the words are about, else of the shown one. */
 const whereAt = (where: Where, path: string) => {
   const id = where && ('card' in where ? where.card : where.project);
-  return id ? `/api/c/${encodeURIComponent(canvasOf(id))}${path}` : at(path);
+  return canvasApi(id ? canvasOf(id) : canvasId, path);
 };
+/** The address of a served file below its owner's, by its path; `download` to save it. */
+const filePath = (path: string, download: boolean) => `/files/${path.split('/').map(encodeURIComponent).join('/')}${download ? '?download' : ''}`;
+
 /** Where a looked-up answer's file is served; `download` to save it. */
-export const answerFile = (thread: number, name: string, download = false) =>
-  at(`/threads/${thread}/files/${name.split('/').map(encodeURIComponent).join('/')}${download ? '?download' : ''}`);
+export const answerFile = (thread: number, name: string, download = false) => at(`/threads/${thread}${filePath(name, download)}`);
 
 /** Where a file of a card's work is served (its left column's tabs); `download` to save it. */
-export const cardFile = (id: string, path: string, download = false) =>
-  cardAt(id, `/files/${path.split('/').map(encodeURIComponent).join('/')}${download ? '?download' : ''}`);
+export const cardFile = (id: string, path: string, download = false) => cardAt(id, filePath(path, download));
 
 /** What a command is said about: the open card, the open project, or neither. */
 export type Where = { card: string } | { project: string } | null;
@@ -123,10 +142,6 @@ export interface Heard {
   /** The card whose conversation shows the reply in full. */
   inCard?: string;
 }
-/** How long "Undo" shows: until shortly before the command stops waiting. */
-export const undoShownMs = (undoMs: number) => Math.max(0, undoMs - 400);
-/** How long a confirmation stays above the microphone: 7 s, unless its undo window is longer. */
-export const confirmShownMs = (undoMs = 0) => Math.max(7000, undoMs + 1500);
 
 /**
  * How a new site is set up at its host: in the Cloudflare account of a site this machine deploys to
@@ -143,7 +158,7 @@ export interface SiteHow {
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
   /** The canvas `id` as it is now, for a switch to it before its own connection is open. */
-  canvasOf: (id: string) => call<CanvasSnapshot>('GET', `/api/c/${encodeURIComponent(id)}/canvas`),
+  canvasOf: (id: string) => call<CanvasSnapshot>('GET', canvasApi(id, '/canvas')),
   /** Obeya's configuration, for all canvases. */
   config: () => call<ConfigView>('GET', '/api/config'),
   /** What the configuration as saved amounts to, and what is wrong with it: it reads every repository, so it comes after `config`. */
@@ -182,8 +197,8 @@ export const api = {
   agents: () => call<AgentsView>('GET', '/api/agents'),
   /** Saves the model or the effort of one group. */
   saveAgents: (role: AgentRole, choice: Partial<AgentSetting>) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
-  /** Updates Claude Code in the background; the view says how far it got. */
-  updateClaude: () => call<AgentsView>('POST', '/api/agents/update'),
+  /** Updates Claude Code in the background, here or on the host named; the view says how far it got. */
+  updateHarness: (harness: Harness, host?: string) => call<AgentsView>('POST', '/api/agents/update', host === undefined ? { harness } : { harness, host }),
   /** The setup assistant's list: what Obeya needs on this machine. */
   setup: () => call<MachineView>('GET', '/api/setup'),
   setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),
@@ -239,9 +254,9 @@ export const api = {
   /** Has the restart of this canvas's repositories' agents that waits for them go ahead at once. */
   restartReposNow: () => call<{ restarting: boolean }>('POST', at('/restart')),
   /** Pauses the agents at work on a canvas; cards the Coordinator lets start there wait until they resume. */
-  pauseAgents: (canvas: string) => call<void>('POST', `/api/c/${encodeURIComponent(canvas)}/pause`),
+  pauseAgents: (canvas: string) => call<void>('POST', canvasApi(canvas, '/pause')),
   /** Resumes a canvas's paused agents, and the cards waiting for that start. */
-  resumeAgents: (canvas: string) => call<void>('POST', `/api/c/${encodeURIComponent(canvas)}/resume`),
+  resumeAgents: (canvas: string) => call<void>('POST', canvasApi(canvas, '/resume')),
   /** Installs the newer version of the app once the workers paused, as a restart waits for them. */
   installUpdate: () => call<{ updating: boolean }>('POST', '/api/app-update/install'),
   /** Fast-forwards the checkout Obeya runs from to its upstream; Obeya then restarts with the new code once the workers paused. */
@@ -250,10 +265,12 @@ export const api = {
   dependency: (from: string, to: string, remove = false, keepalive = false) => call<void>(remove ? 'DELETE' : 'POST', at('/dependencies'), { from, to }, keepalive),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   /** The card that writes a repository's settings for everyone, on the canvas it belongs to (not necessarily the shown one). */
-  adapterSetup: (canvas: string, repo: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/adapter-setup`, { repo }),
+  adapterSetup: (canvas: string, repo: string) => call<Item>('POST', canvasApi(canvas, '/adapter-setup'), { repo }),
   /** The note on a repository's plan directory stays where the owner put it (its top left). */
   movePlanDirNote: (repo: string, to: { x: number; y: number }) => call<void>('PATCH', at(`/plan-dirs/${encodeURIComponent(repo)}`), to),
-  preparePlanDoc: (canvas: string, repo: string, file: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/prepare-plan-doc`, { repo, file }),
+  /** "Commit to a new branch and free the clone" on a clone uncommitted changes block: the branch they went to, '' where there was nothing to keep. */
+  keepLeftovers: (repo: string, host: string, path: string) => call<{ branch: string }>('POST', at('/workspaces/leftovers'), { repo, host, path }),
+  preparePlanDoc: (canvas: string, repo: string, file: string) => call<Item>('POST', canvasApi(canvas, '/prepare-plan-doc'), { repo, file }),
   /** Downloads a card's demo as a ZIP of its page with the files, or as one HTML file. */
   exportDemo: (id: string, as: 'zip' | 'html', demo?: number) => download(cardAt(id, `/export?as=${as}${demo === undefined ? '' : `&demo=${demo}`}`), `demo.${as}`),
   /** The size of a card's demo video in bytes, the latest one or earlier one `n`; null when unknown. */
@@ -305,22 +322,19 @@ export const api = {
   assign: (cards: string[], group: string | null) => call<void>('POST', at('/assign'), { cards, group }),
   /** Stores a screenshot for a message; the message names it by the id. */
   uploadImage: async (image: Blob) => {
-    const res = await fetch(at('/images'), { method: 'POST', headers: { 'content-type': image.type }, body: image });
-    await refused(res);
+    const res = await raw(at('/images'), { method: 'POST', headers: { 'content-type': image.type }, body: image });
     return ((await res.json()) as { id: string }).id;
   },
   /** Stores another kind of file for a message; returns the path the agent reads it at. */
   uploadFile: async (file: File) => {
-    const res = await fetch(at(`/files?name=${encodeURIComponent(file.name)}`), { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
-    await refused(res);
+    const res = await raw(at(`/files?name=${encodeURIComponent(file.name)}`), { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
     return ((await res.json()) as { path: string }).path;
   },
   /** Where a file dropped in the browser lies on Obeya's machine, if Obeya finds exactly one that fits its name, size and time. */
   findFile: async (file: File) => (await call<{ path: string | null }>('POST', at('/files/find'), { name: file.name, size: file.size, modified: file.lastModified })).path,
   /** An image the app's drop names by its path on this machine, as a file the page attaches. */
   localImage: async (path: string) => {
-    const res = await fetch(at(`/files/local?path=${encodeURIComponent(path)}`));
-    await refused(res);
+    const res = await raw(at(`/files/local?path=${encodeURIComponent(path)}`));
     const blob = await res.blob();
     return new File([blob], path.split(/[\\/]/).at(-1)!, { type: blob.type });
   },
@@ -364,8 +378,7 @@ export const api = {
       body.set('audio', audio);
       body.set('text', text);
     }
-    const res = await fetch(whereAt(where, `/voice${query(where)}${q && (where ? '&' : '?')}${q}`), { method: 'POST', body });
-    await refused(res);
+    const res = await raw(whereAt(where, `/voice${query(where)}${q && (where ? '&' : '?')}${q}`), { method: 'POST', body });
     return (await res.json()) as Heard;
   },
   /** Whether the recording `voice` sent as `sent` arrived whole. */
@@ -376,7 +389,7 @@ export const api = {
   command: (text: string, where: Where, { images, field, replyTo, spot, place }: { images?: string[]; field?: Field; replyTo?: number | TalkRef; spot?: SpotInput; place?: Place } = {}) =>
     call<Heard>('POST', whereAt(where, `/command${query(where)}${place ? `${where ? '&' : '?'}place=${placeParam(place)}` : ''}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}), ...(replyTo ? { replyTo } : {}), ...(spot ? { spot } : {}) }),
   /** A typed request to the Coordinator of another canvas, about nothing in view there. */
-  commandOn: (canvas: string, text: string) => call<Heard>('POST', `/api/c/${encodeURIComponent(canvas)}/command`, { text }),
+  commandOn: (canvas: string, text: string) => call<Heard>('POST', canvasApi(canvas, '/command'), { text }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
   /** The issue for Obeya's makers as a small job writes it from the owner's words, reworking the draft so far; `app`: Obeya runs in its app. */
   writeWish: (w: { said: string; answer?: string; title?: string; body?: string; images?: string[]; app: boolean }) =>
@@ -398,7 +411,6 @@ export const api = {
   stopReshare: () => call<void>('POST', at('/reshare/stop')),
   /** "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change. */
   dismissReshare: () => call<void>('DELETE', at('/reshare')),
-  /** The owner has the Coordinator's sheet in view: the answers waiting there are read. */
   /** Obeya's sheet is in view, or (`ids`) these exchanges in a project's sheet. */
   readTalk: (ids?: number[]) => call<void>('POST', at('/talk/read'), ids ? { ids } : undefined),
   /** Obeya no longer waits on the card after that exchange, to take the step it said it would. */
@@ -406,43 +418,33 @@ export const api = {
 };
 
 // Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.
-const eventListeners = new Set<(e: CardEvent) => void>();
-export function onCardEvent(fn: (e: CardEvent) => void): () => void {
-  eventListeners.add(fn);
-  return () => eventListeners.delete(fn);
-}
+const cardEvents = signal<[e: CardEvent]>();
+export const onCardEvent = cardEvents.on;
 
 // A canvas's WebSocket is open again after it was lost: what was pushed meanwhile never arrived, so
 // whoever shows a card's log loads it anew (the agent may have read the owner's words meanwhile).
-const reconnectListeners = new Set<() => void>();
-export function onReconnect(fn: () => void): () => void {
-  reconnectListeners.add(fn);
-  return () => reconnectListeners.delete(fn);
-}
+const reconnected = signal();
+export const onReconnect = reconnected.on;
 
 // A line taken out of a card's log (a comment deleted before it went to the worker).
-const goneListeners = new Set<(cardId: string, id: number) => void>();
-export function onCardEventGone(fn: (cardId: string, id: number) => void): () => void {
-  goneListeners.add(fn);
-  return () => goneListeners.delete(fn);
-}
+const cardEventsGone = signal<[cardId: string, id: number]>();
+export const onCardEventGone = cardEventsGone.on;
 
 // What Obeya tells the owner without a command of theirs to answer (an answer looked up, what a
 // request an agent passed on came to): it shows above the microphone, with "Undo" while actions wait.
-const noticeListeners = new Set<(n: Notice) => void>();
+const notices = signal<[n: Notice]>();
 /** Notices that came before anything showed them: those a page gets as it opens, before the canvas is drawn. */
 let heldNotices: { n: Notice; at: number }[] = [];
 export function onNotice(fn: (n: Notice) => void): () => void {
-  noticeListeners.add(fn);
+  const off = notices.on(fn);
   const held = heldNotices;
   heldNotices = [];
   // the undo window went on meanwhile
   for (const { n, at } of held) fn(n.undoMs ? { ...n, undoMs: Math.max(0, n.undoMs - (Date.now() - at)) } : n);
-  return () => noticeListeners.delete(fn);
+  return off;
 }
 function notice(n: Notice) {
-  if (!noticeListeners.size) heldNotices.push({ n, at: Date.now() });
-  for (const fn of noticeListeners) fn(n);
+  if (!notices.emit(n)) heldNotices.push({ n, at: Date.now() });
 }
 
 // What the owner does in this page that a restart would cut off, by who holds it (the demo video,
@@ -452,8 +454,16 @@ const holds = new Map<string, OwnerHold>();
 const sockets = new Map<string, WebSocket>();
 /** The key of the phone view's one connection among them. */
 const EVERY = '*';
+/** The socket of the canvas the page shows, or the phone view's one. */
+const mainSocket = () => sockets.get(canvasId) ?? sockets.get(EVERY);
+/** Sends `m` over `ws` while it is open; false where it is not. */
+function tell(ws: WebSocket | undefined, m: ClientMessage): boolean {
+  if (ws?.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(m));
+  return true;
+}
 const sendHolds = () => {
-  for (const ws of sockets.values()) if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'hold', hold: [...new Set(holds.values())] } satisfies ClientMessage));
+  for (const ws of sockets.values()) tell(ws, { type: 'hold', hold: [...new Set(holds.values())] });
 };
 /** Holds a due restart off while the owner watches (`video`) or dictates (`voice`); `null` lets go. */
 export function holdRestart(by: string, what: OwnerHold | null) {
@@ -468,8 +478,7 @@ export function holdRestart(by: string, what: OwnerHold | null) {
 // the page the owner looked at last wins.
 let focusMessage: Extract<ClientMessage, { type: 'focus' }> | null = null;
 const sendFocus = () => {
-  const ws = sockets.get(canvasId) ?? sockets.get(EVERY);
-  if (focusMessage && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(focusMessage));
+  if (focusMessage) tell(mainSocket(), focusMessage);
 };
 export function reportFocus(place: Place) {
   focusMessage = { type: 'focus', place: placeParam(place) };
@@ -487,17 +496,12 @@ let inViewIsUse = false;
 /** The phone view: being in view is using it. */
 export const phoneInUse = () => void (inViewIsUse = true);
 const sendHere = () => {
-  const ws = sockets.get(canvasId) ?? sockets.get(EVERY);
-  if (document.visibilityState === 'visible' && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'here' } satisfies ClientMessage));
+  if (document.visibilityState === 'visible') tell(mainSocket(), { type: 'here' });
 };
 if (typeof document !== 'undefined') {
   // a stall of this page goes into the server's log
-  watchPageStalls((stall) => {
-    const ws = sockets.get(canvasId) ?? [...sockets.values()][0];
-    if (ws?.readyState !== WebSocket.OPEN) return false;
-    ws.send(JSON.stringify({ type: 'stall', ...stall } satisfies ClientMessage));
-    return true;
-  });
+  // any socket reaches the server's log
+  watchPageStalls((stall) => tell(sockets.get(canvasId) ?? [...sockets.values()][0], { type: 'stall', ...stall }));
   for (const type of INPUT) addEventListener(type, () => void (used = true), { capture: true, passive: true });
   setInterval(() => {
     const playing = [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended);
@@ -508,22 +512,19 @@ if (typeof document !== 'undefined') {
   // the phone locked or another app in front: what starts waiting from now on is pushed again
   const away = () => {
     if (document.visibilityState !== 'hidden') return;
-    for (const ws of sockets.values()) if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'away' } satisfies ClientMessage));
+    for (const ws of sockets.values()) tell(ws, { type: 'away' });
   };
   document.addEventListener('visibilitychange', away);
   addEventListener('pagehide', away);
 }
 
 // Whoever has something to keep across the reload a restart brings writes it down here first.
-const reloadListeners = new Set<() => void>();
-export function beforeReload(fn: () => void): () => void {
-  reloadListeners.add(fn);
-  return () => reloadListeners.delete(fn);
-}
+const reloading = signal();
+export const beforeReload = reloading.on;
 
 /** Loads the page again, keeping what is open, as after a restart. */
 export function reload() {
-  for (const fn of reloadListeners) fn();
+  reloading.emit();
   location.reload();
 }
 
@@ -533,7 +534,7 @@ export function reload() {
  * storage, which the new shell's webview starts without. `token` tells the shell it is there.
  */
 export async function handOver(token: string) {
-  for (const fn of reloadListeners) fn();
+  reloading.emit();
   const entries = Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)!).map((k) => [k, sessionStorage.getItem(k) ?? '']);
   await send('POST', '/api/app-rebuilt/handover', { token, entries });
 }
@@ -614,7 +615,7 @@ function keepOpen(key: string, link: Link): () => void {
     setTimeout(() => opening.readyState === WebSocket.CONNECTING && opening.close(), GIVE_UP_MS);
     ws.onopen = () => {
       if (document.visibilityState === 'visible') sendHere();
-      if (opened) for (const fn of reconnectListeners) fn();
+      if (opened) reconnected.emit();
       opened = true;
       link.answers();
       delay = 500;
@@ -631,8 +632,8 @@ function keepOpen(key: string, link: Link): () => void {
         if (server && server !== msg.server) reload();
         server = msg.server;
       }
-      if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
-      else if (msg.type === 'eventGone') for (const fn of goneListeners) fn(msg.cardId, msg.id);
+      if (msg.type === 'event') cardEvents.emit(msg.event);
+      else if (msg.type === 'eventGone') cardEventsGone.emit(msg.cardId, msg.id);
       else if (msg.type === 'notice') notice(msg);
       else link.message(msg);
     };
@@ -650,7 +651,7 @@ function keepOpen(key: string, link: Link): () => void {
     const visible = document.visibilityState === 'visible';
     const cameBack = hidden && visible;
     hidden = !visible;
-    if (visible && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'back' } satisfies ClientMessage));
+    if (visible) tell(ws, { type: 'back' });
     if (!visible || closed || ws.readyState === WebSocket.OPEN) return sendFocus();
     // a phone that was locked had no connection meanwhile, which says nothing of the server: not
     // answering counts from now, and a connection still opening from back then is tried anew

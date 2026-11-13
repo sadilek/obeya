@@ -2,21 +2,23 @@
 // with the owner's change requests going to the contributor or made by the worker, and merged by
 // Obeya on approval, pinned to the head the worker reviewed.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
-import { awaitsContributorNext, needsYou } from '../core/types';
-import { Board, type StoredContribution } from './board';
+import { awaitsContributorNext, needsYou } from '../core/card';
+import type { Board } from './board';
+import type { StoredContribution } from './row';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
+import { artifact, commit, FakeRuntime, gitClone, gitRepo, identify, primedClones, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { Workspaces } from './workspaces';
+import { git } from './git';
 
 const URL_ = 'https://github.com/acme/app/pull/5';
 
@@ -29,6 +31,7 @@ function fakeForge(head: () => string) {
     status: async () => ({ ...status, head: status.head || head() }),
     body: async () => '',
     setBody: async () => {},
+    close: async () => {},
     open: async () => '',
     urlOf: async (_cwd, n) => `https://github.com/acme/app/pull/${n}`,
     contribution: async () => ({ ...info, head: head() }),
@@ -72,9 +75,7 @@ let prHead: string;
 /** A commit on the contributor's side, published as the PR's head in `origin`. */
 function push(file: string) {
   git(origin, 'checkout', '--quiet', '-B', 'contrib', prHead || 'main');
-  writeFileSync(join(origin, file), `${file}\n`);
-  git(origin, 'add', '.');
-  git(origin, 'commit', '--quiet', '-m', file);
+  commit(origin, file);
   prHead = git(origin, 'rev-parse', 'HEAD').trim();
   git(origin, 'update-ref', 'refs/pull/5/head', prHead);
   git(origin, 'checkout', '--quiet', 'main');
@@ -88,10 +89,8 @@ beforeEach(async () => {
   prHead = '';
   push('poll.ts');
   const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
-  const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
-  gitClone(main, join(dir, 'ws', '1'));
-  await workspaces.ensureClones(main, 1);
+  board = testBoard({ store, path: main });
+  const workspaces = await primedClones(store, main, dir);
   runtime = new FakeRuntime();
   // the PR's branch in the contributor's repository, where Obeya pushes the worker's own commits
   fake = fakeForge(() => git(origin, 'rev-parse', 'contrib'));
@@ -121,10 +120,7 @@ async function reviewCard(canModify = true) {
 function commitOwn(id: string, file: string) {
   const ws = board.row(id).workspace!;
   identify(ws);
-  writeFileSync(join(ws, file), `${file}\n`);
-  git(ws, 'add', '.');
-  git(ws, 'commit', '--quiet', '-m', file);
-  return git(ws, 'rev-parse', 'HEAD').trim();
+  return commit(ws, file);
 }
 
 /** The worker records its findings and hands over, and its turn ends. */
@@ -149,16 +145,14 @@ const contribution = (id: string) => JSON.parse(board.row(id).contribution!) as 
 function landedLocally(file: string, subject: string) {
   identify(main);
   const base = git(main, 'rev-parse', 'HEAD').trim();
-  writeFileSync(join(main, file), `${subject}\n`);
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', subject);
+  commit(main, file, `${subject}\n`, subject);
   const card = board.create({ title: 'Poll more often', x: 400, y: 0 });
   board.work(card.id, { state: 'live', branch: 'obeya/poll-more-often', session_id: 'session-x', shipped: JSON.stringify({ commit: git(main, 'rev-parse', 'HEAD').trim(), base }) });
   return card.id;
 }
 
 /** Once the probes of the card's PR against the local main started so far are through. */
-const probed = (id: string) => (workers as unknown as { probeClash(id: string): Promise<unknown> }).probeClash(id);
+const probed = (id: string) => (workers as unknown as { reviews: { probeClash(id: string): Promise<unknown> } }).reviews.probeClash(id);
 
 describe('a review card', () => {
   test('starts on the PR head, its worker told to read the diff before running any of it', async () => {
@@ -190,9 +184,7 @@ describe('a review card', () => {
 
   test('its session reads none of the PR’s Claude Code settings, and the default branch’s CLAUDE.md', async () => {
     git(main, 'checkout', '-q', 'main');
-    writeFileSync(join(main, 'CLAUDE.md'), 'Reviews bring in a second reviewer.\n');
-    git(main, 'add', '.');
-    git(main, 'commit', '--quiet', '-m', 'notes');
+    commit(main, 'CLAUDE.md', 'Reviews bring in a second reviewer.\n', 'notes');
     await reviewCard();
     expect(runtime.last.spec.untrusted).toBe(true);
     expect(runtime.last.spec.system).toContain('Reviews bring in a second reviewer.');
@@ -201,9 +193,7 @@ describe('a review card', () => {
   test('resuming after a restart, its session gets the default branch’s CLAUDE.md without the server waiting for git, read again once main moved', async () => {
     git(main, 'checkout', '-q', 'main');
     const notes = (text: string) => {
-      writeFileSync(join(main, 'CLAUDE.md'), `${text}\n`);
-      git(main, 'add', '.');
-      git(main, 'commit', '--quiet', '-m', text);
+      commit(main, 'CLAUDE.md', `${text}\n`, text);
     };
     notes('Reviews bring in a second reviewer.');
     const id = await reviewCard();
@@ -819,6 +809,24 @@ describe('a review card', () => {
     expect(told).toContain('poll.ts');
   });
 
+  test('"Push main" waiting out its undo window does not run from workers that were shut down', async () => {
+    landedLocally('poll.ts', 'Polls every minute');
+    const id = await reviewCard();
+    await handOver();
+    await until(() => !!board.item(id)!.contribution!.clash);
+    git(origin, 'config', 'receive.denyCurrentBranch', 'updateInstead');
+    const pushes = spyOn(Workspaces.prototype, 'pushMain');
+    try {
+      workers.pushMainFor(id);
+      // the repository's workers started afresh (`stopRepo`): the new ones know nothing of the push
+      workers.shutdown();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(pushes).not.toHaveBeenCalled();
+    } finally {
+      pushes.mockRestore();
+    }
+  });
+
   test('an agent that ends its turn twice without resolving the pull leaves it to the owner', async () => {
     const x = landedLocally('poll.ts', 'Polls every minute');
     const id = await reviewCard();
@@ -876,6 +884,20 @@ describe('a review card', () => {
     expect(fake.said.merges).toEqual([head]);
   });
 
+  test('a handover where git cannot tell whether the branch builds on the PR’s head says so, instead of blaming a push of the contributor’s', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
+    runtime.last.emit({ type: 'idle' });
+    const head = commitOwn(id, 'shortcut.ts');
+    // a broken repository: the branch's head names a commit git no longer has
+    const ws = board.row(id).workspace!;
+    rmSync(join(ws, '.git', 'objects', head.slice(0, 2), head.slice(2)));
+    const told = await runtime.last.call('ready_for_review', { summary: 'S', review: results });
+    expect(told).toContain('Obeya could not tell whether your branch builds on the pull request’s head');
+    expect(told).not.toContain('does not build on it');
+  });
+
   test('a push the contributor’s repository rejects is a push of theirs: nothing is posted or merged', async () => {
     const id = await reviewCard();
     await handOver();
@@ -929,9 +951,7 @@ describe('a review card', () => {
     await handOver();
     // main moved since the PR branched off, in the same file
     identify(origin);
-    writeFileSync(join(origin, 'poll.ts'), 'poll every minute\n');
-    git(origin, 'add', '.');
-    git(origin, 'commit', '--quiet', '-m', 'Poll every minute');
+    commit(origin, 'poll.ts', 'poll every minute\n', 'Poll every minute');
     fake.status.mergeable = 'CONFLICTING';
     expect(await workers.approve(id, { findings: { 2: 'drop' } })).toEqual({ conflict: 'agent' });
     expect(fake.said.merges).toEqual([]);
@@ -1116,6 +1136,47 @@ describe('"Review PR #5" on a canvas', () => {
     await watcherOf(id).poll();
     expect(canvas.board.item(id)!.state).toBe('working');
     expect(worker().inbox.at(-1)).toContain('pushed to the pull request');
+  });
+
+  test('closed by the contributor while it waits for them, the card wakes and asks the owner, with what they wrote on closing for the worker', async () => {
+    const id = await handedOver();
+    await canvas.act(id, { action: 'awaitContributor' });
+    fake.status.comments.push({ id: 'c1', author: 'amerlander', body: 'Closing this, I will split it up.', at: new Date(Date.now() + 60_000).toISOString() });
+    fake.status.state = 'CLOSED';
+    await watcherOf(id).poll();
+    const card = canvas.board.item(id)!;
+    expect(card.snoozed).toBeUndefined();
+    expect(needsYou(card)).toBe(true);
+    expect(card.question!.text).toBe(canvas.board.t.worker.contributionClosedQuestion);
+    expect(canvas.board.events(id).some((e) => e.text === canvas.board.t.worker.woke(canvas.board.t.worker.prClosed))).toBe(true);
+    expect(worker().inbox.at(-1)).toContain('I will split it up');
+  });
+
+  test('a card asked about its closed PR while still set aside until the contributor responds wakes at the next round', async () => {
+    const id = await handedOver();
+    await canvas.act(id, { action: 'awaitContributor' });
+    fake.status.state = 'CLOSED';
+    // as a card closed before the closing woke it stands: asked, closed, and still set aside
+    const c = JSON.parse(canvas.board.row(id).contribution!);
+    canvas.board.work(id, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: { text: canvas.board.t.worker.contributionClosedQuestion } }), contribution: JSON.stringify({ ...c, closed: true }) });
+    expect(canvas.board.item(id)!.snoozed).toBeDefined();
+    const n = worker().inbox.length;
+    await watcherOf(id).poll();
+    expect(canvas.board.item(id)!.snoozed).toBeUndefined();
+    expect(needsYou(canvas.board.item(id)!)).toBe(true);
+    expect(worker().inbox.length).toBe(n);
+    await watcherOf(id).poll();
+    expect(canvas.board.events(id).filter((e) => e.text.includes(canvas.board.t.worker.prClosed))).toHaveLength(1);
+  });
+
+  test('merged while it waits for the contributor, the card is live and set aside no longer', async () => {
+    const id = await handedOver();
+    await canvas.act(id, { action: 'awaitContributor' });
+    fake.status.state = 'MERGED';
+    await watcherOf(id).poll();
+    const card = canvas.board.item(id)!;
+    expect(card.state).toBe('live');
+    expect(card.snoozed).toBeUndefined();
   });
 
   test('only a review card handed over can wait for its contributor', async () => {

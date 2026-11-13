@@ -1,9 +1,9 @@
 // A card's number (`K42`), on its face and in its sheet: a click puts it on the clipboard, so the
 // owner can name the card by it to the Coordinator and the agents.
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { cardTag } from '../core/card-number';
-import { copyOrSelect } from './copy';
+import { useCopied } from './copy';
 import { t } from './strings';
 
 /** The two sheets of the copy icon. */
@@ -24,15 +24,7 @@ export function CopyIcon({ size = 15 }: { size?: number }) {
 export function CardNumber({ n, className }: { n: number; className?: string }) {
   const tag = cardTag(n);
   const el = useRef<HTMLSpanElement>(null);
-  const [done, setDone] = useState<'copied' | 'selected' | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = async () => {
-    const how = await copyOrSelect(tag, el.current!);
-    setDone(how);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setDone(null), 1500);
-  };
+  const [done, copy] = useCopied(1500);
   return (
     <button
       type="button"
@@ -43,11 +35,11 @@ export function CardNumber({ n, className }: { n: number; className?: string }) 
       onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => {
         e.stopPropagation();
-        void copy();
+        void copy(tag, el.current!);
       }}
     >
       <span ref={el}>{tag}</span>
-      {done ? <span className="card-no-done">{done === 'copied' ? t.cardNumber.copied : t.cardNumber.selected}</span> : <CopyIcon size={12} />}
+      {done ? <span className="card-no-done">{done === 'copied' ? t.copied : t.cardNumber.selected}</span> : <CopyIcon size={12} />}
     </button>
   );
 }

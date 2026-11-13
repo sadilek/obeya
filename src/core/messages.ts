@@ -9,6 +9,51 @@ import type { Awaited, AwaitedState, Snooze } from './types';
 /** What a worker pauses for: Obeya restarting, Obeya stopping, or only its repository's agents restarting (a change to its configuration). */
 export type Pause = 'restart' | 'stop' | 'repo';
 
+/**
+ * Labels of the UI's buttons and settings that the server's lines and prompts name. The UI's table
+ * (src/ui/strings.ts) takes them from here, since the server cannot import it, so a renamed button
+ * is renamed where the log and the agents name it too.
+ */
+const deLabels = {
+  /** The card's button that approves work past the pull request, straight onto the main branch. */
+  approveDirect: 'Direkt auf main',
+  /** An answer's button that has it told as a walkthrough. */
+  walkthrough: 'Als Walkthrough zeigen',
+  /** An idea's brief, and the idea's buttons. */
+  brief: 'Stand der Idee',
+  prototype: 'Prototyp bauen lassen',
+  splitOff: 'Teilaufgabe abtrennen',
+  /** A proposal's buttons. */
+  accept: 'Übernehmen und starten',
+  acceptIdea: 'Übernehmen und besprechen',
+  acceptAsIdea: 'Als Idee besprechen',
+  /** A demo's sharing buttons. */
+  share: 'Teilen',
+  reshare: 'Erneut teilen',
+  replace: 'Auf der Seite ersetzen',
+  add: 'Zur Seite dazunehmen',
+  unshare: 'Nicht mehr teilen',
+  /** The settings of a repository the work retrospective may propose a value for (`PROPOSED_SETTINGS`). */
+  settings: { checks: 'Prüfungen', setup: 'Einrichten', softPaths: 'Weiche Pfade', run: 'So läuft die App' },
+};
+
+const enLabels: typeof deLabels = {
+  approveDirect: 'Straight to main',
+  walkthrough: 'Show as walkthrough',
+  brief: 'Where the idea stands',
+  prototype: 'Have a prototype built',
+  splitOff: 'Split off a task',
+  accept: 'Accept and start',
+  acceptIdea: 'Accept and discuss',
+  acceptAsIdea: 'Discuss as an idea',
+  share: 'Share',
+  reshare: 'Share again',
+  replace: 'Replace on the page',
+  add: 'Add to the page',
+  unshare: 'Stop sharing',
+  settings: { checks: 'Checks', setup: 'Setup', softPaths: 'Soft paths', run: 'How to run the app' },
+};
+
 const de = {
   /** A time in the owner's words: „um 14:40“, or „am 7.10. um 14:40“ on another day. */
   when: (at: number) => {
@@ -25,6 +70,7 @@ const de = {
   },
   /** A title as the text around it quotes it. */
   quote: (s: string) => `„${s}“`,
+  labels: deLabels,
   /** The marker of a question with several answers allowed, after its text in the log. */
   multiple: 'Mehrfachauswahl',
   /** The headings of a taken proposal's questions in its text. */
@@ -57,7 +103,7 @@ const de = {
     limited: (when: string) => `Das Nutzungslimit ist erreicht. Obeya schlägt das ${when} von selbst nach.`,
     asIdea: 'Als Idee weiter besprochen.',
     /** "Show as walkthrough": the owner's words, as the button says, and Obeya's reply. */
-    walkthroughAsked: 'Als Walkthrough zeigen',
+    walkthroughAsked: deLabels.walkthrough,
     walkthroughReply: 'Ich erzähle die Antwort als Walkthrough.',
   },
   tool: {
@@ -145,6 +191,24 @@ const de = {
     landedDirect: 'Nach der Freigabe direkt auf main gepusht.',
     approvedMain: 'Freigegeben und auf main.',
     landedMain: 'Nach der Freigabe auf main gelandet.',
+    pushedLanded: (branch: string, commit: string) => `Zu origin/${branch} gepusht (${commit}).`,
+    approvedUpstream: (into: string, name: string) => `Freigegeben: auf ${into} und als Pull Request an ${name}.`,
+    upstreamClosedQuestion: (name: string, into: string) => `${name} hat den Pull Request geschlossen, ohne ihn zu mergen. Die Arbeit ist auf ${into}. Wie geht es weiter?`,
+    keepOnMain: (into: string) => `Nur auf ${into} behalten`,
+    keptOnMain: (into: string) => `Der Pull Request bleibt geschlossen; die Arbeit bleibt auf ${into}. Live.`,
+    upstreamStarted: (name: string, branch: string, commit: string, mirror?: UpstreamMirror) =>
+      [
+        `Startet auf dem neuesten ${branch} von ${name} (${commit}).`,
+        mirror?.updated ? `Der lokale ${branch} ist jetzt auf diesem Stand.` : '',
+        mirror?.diverged ? `Der lokale ${branch} hat eigene Commits; Obeya hat ihn so gelassen.` : '',
+        mirror?.checkedOut ? `Der lokale ${branch} ist ausgecheckt; Obeya hat ihn so gelassen.` : '',
+        mirror?.pushed ? `origin/${branch} ist jetzt auch auf diesem Stand.` : '',
+        mirror?.pushProblem ? `origin hat den Push von ${branch} abgelehnt: ${mirror.pushProblem}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    landedPushRefused: (branch: string, reason: string) => `Gelandet, aber origin hat den Push von ${branch} abgelehnt: ${reason}. ${branch} auf origin bleibt zurück; die nächste Landung pusht wieder.`,
+    landedPushMoved: (branch: string) => `Gelandet, aber nicht zu origin gepusht: ${branch} hat dort Commits, die hier fehlen, und Obeya pusht nie erzwungen. ${branch} auf origin bleibt zurück.`,
     switchedToMain: (branch: string | null, commit: string) =>
       branch ? `Der Obeya-Checkout stand auf dem Branch ${branch}. Obeya hat ihn zum Landen auf main gewechselt; ${branch} bleibt, wie er war.` : `Der Obeya-Checkout stand auf keinem Branch (${commit}). Obeya hat ihn zum Landen auf main gewechselt.`,
     approvedUnchanged: 'Freigegeben. Ohne Änderung am Code gibt es nichts zu landen: erledigt.',
@@ -171,6 +235,21 @@ const de = {
     workspaceGone: (path: string, planned: boolean) =>
       `Den Workspace ${path} gibt es nicht mehr: freigegeben${planned ? ', die Karte ist wieder geplant' : ''}. Der nächste Start nimmt einen anderen.`,
     prClosed: 'Pull Request ohne Merge geschlossen.',
+    /** Taking back the owner's approval (design: Taking back an approval). */
+    revoking: 'Nimmt die Freigabe zurück …',
+    revokedApproval: 'Freigabe zurückgenommen: Die nächste Übergabe wartet wieder auf dich, statt von selbst zu landen.',
+    revokedPr: (prs: string[]) =>
+      prs.length ? `Freigabe zurückgenommen: ${prs.length > 1 ? `Pull Requests ${prs.join(', ')}` : `Pull Request ${prs[0]}`} ohne Merge geschlossen. Die Aufgabe wartet wieder auf dich.` : 'Freigabe zurückgenommen, bevor der Pull Request offen war. Die Aufgabe wartet wieder auf dich.',
+    reverted: (commit: string) => `Freigabe zurückgenommen: auf main rückgängig gemacht (${commit}). Die Arbeit liegt wieder auf dem Branch der Aufgabe und wartet auf dich.`,
+    rollbackOpened: (n: number, of: number) => `Freigabe zurückgenommen: Rollback-PR #${n} macht PR #${of} rückgängig. Obeya mergt ihn, sobald er bereit ist; danach wartet die Aufgabe wieder auf dich.`,
+    rolledBack: (n: number) => `Rollback-PR #${n} gemergt: Die Arbeit ist von main runter und liegt wieder auf dem Branch der Aufgabe. Die Aufgabe wartet auf dich.`,
+    rollbackClosed: (n: number) => `Rollback-PR #${n} ohne Merge geschlossen: Die Arbeit bleibt auf main, die Aufgabe ist wieder live.`,
+    notReapplied: 'Die Arbeit ließ sich nicht wieder auf den Branch legen, weil sich main seither geändert hat. Der Agent holt sie zurück und übergibt neu.',
+    revokeFailed: (why: string) => `Freigabe nicht zurückgenommen: ${why}`,
+    revokeNoWorkspace: 'Kein Workspace frei. Sobald einer frei ist, nochmal versuchen.',
+    revokeLanding: 'Die Arbeit landet gerade mit der noch geltenden Freigabe.',
+    revokeCutOff: 'Obeya wurde dabei beendet; main ist unverändert. Bitte nochmal versuchen.',
+    revokedAfterRestart: 'Freigabe zurückgenommen: Die Arbeit ist von main runter und liegt wieder auf dem Branch der Aufgabe. Die Aufgabe wartet auf dich.',
     prClosedQuestion: 'Der Pull Request wurde geschlossen, ohne gemergt zu werden. Wie geht es weiter?',
     reopen: 'Neu eröffnen',
     discardWork: 'Die Arbeit verwerfen',
@@ -290,6 +369,11 @@ const de = {
     behind: 'Der Branch ist hinter dem Zielbranch, und das Repository mergt nur einen aktuellen. Der Agent bringt ihn auf Stand.',
     mergedOne: (pr: string, left: (string | null)[]) =>
       `Pull Request ${pr} gemergt. Live, sobald auch ${left.map((l) => (l ? `Pull Request ${l}` : 'der Pull Request dieses Repositorys')).join(' und ')} gemergt ist.`,
+    intoMain: (into: string, commit: string) => `Neuer Stand des Pull Requests in ${into} gemergt (${commit}).`,
+    portRecorded: (into: string) => `Der Pull Request trägt die Arbeit, die schon auf ${into} ist: Was später dazukommt, mergt Obeya in ${into}.`,
+    intoMainConflict: (into: string) => `Der neue Stand des Pull Requests lässt sich nicht konfliktfrei in ${into} mergen. Der Agent löst das.`,
+    intoMainBlocked: (into: string, why: string) => `Obeya kann den neuen Stand des Pull Requests nicht in ${into} mergen: ${why}`,
+    mergedUpstream: (name: string) => `${name} hat den Pull Request gemergt. Live.`,
   },
   idea: {
     buildAfterReply: 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.',
@@ -348,10 +432,6 @@ const de = {
     /** A workstream card that left its project: the doc no longer lists it, or its log belongs to another workstream. */
     leftGone: (project: string) => `Hat das Projekt „${project}“ verlassen: Das Plan-Doc führt diesen Workstream nicht mehr.`,
     leftOther: (project: string) => `Hat das Projekt „${project}“ verlassen: Dieser Verlauf gehört zu einem Workstream, den das Plan-Doc nicht mehr führt.`,
-    /** How the brief and the prototype button are called on the card, for the idea's agent. */
-    briefName: 'Stand der Idee',
-    prototypeButton: 'Prototyp bauen lassen',
-    splitOffButton: 'Teilaufgabe abtrennen',
   },
   /** A card built or started in a repository Obeya creates for it. */
   newRepo: {
@@ -375,7 +455,7 @@ const de = {
   proposal: {
     /** `how`: the button clicked, "Übernehmen und starten", "Übernehmen und besprechen" (a proposed idea) or "Als Idee besprechen". */
     acceptAfterRevision: (how: 'start' | 'discuss' | 'asIdea') =>
-      `${{ start: 'Übernehmen und starten', discuss: 'Übernehmen und besprechen', asIdea: 'Als Idee besprechen' }[how]}, sobald der Vorschlag überarbeitet ist; hat er noch Fragen, bleibt er Vorschlag.`,
+      `${{ start: deLabels.accept, discuss: deLabels.acceptIdea, asIdea: deLabels.acceptAsIdea }[how]}, sobald der Vorschlag überarbeitet ist; hat er noch Fragen, bleibt er Vorschlag.`,
     notAccepting: 'Doch nicht übernehmen.',
     notAcceptedNoRevision: 'Nicht übernommen: Die Überarbeitung kam nicht zustande.',
     notAcceptedQuestions: 'Nicht übernommen: Der Vorschlag hat noch Fragen.',
@@ -426,9 +506,8 @@ const de = {
     ruleTaken: (rule: string) => `Regel aufgenommen: „${rule}“`,
     revised: 'Vorschlag überarbeitet.',
     reviseFailed: (why: string) => `Überarbeiten ging nicht: ${why}`,
+    noRevisedText: 'der Agent hat keinen neuen Text geliefert',
   },
-  /** The card's button that approves work past the pull request, straight onto the main branch (the UI's own label). */
-  approveDirect: 'Direkt auf main',
   claudeMd: {
     title: 'CLAUDE.md ergänzen',
     task: 'Der Owner hat diese Regeln für dieses Repo festgelegt. Arbeite sie in die CLAUDE.md ein, passend zu dem, was dort steht (Abschnitt, Ton, Länge) und ohne Dopplungen; steht eine schon sinngemäß drin, schärfe nur die Stelle. Sonst nichts ändern. Statt einer Demo genügt in der Zusammenfassung der neue Wortlaut.',
@@ -441,19 +520,18 @@ const de = {
     from: (repo: string, why: string, cards: string) => `Aus der Arbeitsrückschau für ${repo}. ${why} Karten: ${cards}.`,
     done: (repo: string, made: number) =>
       `Arbeitsrückschau für ${repo}: ${made ? `${made === 1 ? 'ein Vorschlag' : `${made} Vorschläge`}, auf der Leinwand und bei Obeya.` : 'nichts, was sich auf mehreren Karten wiederholt.'}`,
-    settings: { checks: 'Prüfungen', setup: 'Einrichten', softPaths: 'Weiche Pfade', run: 'So läuft die App' },
     onMachine: (setting: string, repo: string) => `„${setting}“ für ${repo} gilt jetzt auf diesem Rechner.`,
     committed: (setting: string, repo: string, branch: string) => `„${setting}“ für ${repo} steht jetzt in .obeya/settings.json auf ${branch} und gilt für alle.`,
     opened: (setting: string, repo: string, pr: string) => `„${setting}“ für ${repo}: Pull Request geöffnet, ${pr}. Bis er gemergt ist, gilt der Wert auf diesem Rechner.`,
   },
   share: {
-    share: 'Teilen: Die Seite geht online.',
-    again: 'Erneut teilen: Die Seite wird mit dem neuen Stand erzeugt.',
-    newDemo: 'Auf der Seite ersetzen: Die Seite zeigt jetzt diese Demo statt der geteilten.',
-    added: 'Zur Seite dazunehmen: Die Seite bekommt diese Demo als Ergänzung dazu.',
-    unshare: 'Nicht mehr teilen: Die Seite wird zurückgezogen.',
-    unshareOne: 'Nicht mehr teilen: Die Seite geht ohne diese Demo wieder online.',
-    againWithOthers: 'Erneut teilen, mit anderen geteilten Demos: Die Seite wird mit dem neuen Stand erzeugt.',
+    share: `${deLabels.share}: Die Seite geht online.`,
+    again: `${deLabels.reshare}: Die Seite wird mit dem neuen Stand erzeugt.`,
+    newDemo: `${deLabels.replace}: Die Seite zeigt jetzt diese Demo statt der geteilten.`,
+    added: `${deLabels.add}: Die Seite bekommt diese Demo als Ergänzung dazu.`,
+    unshare: `${deLabels.unshare}: Die Seite wird zurückgezogen.`,
+    unshareOne: `${deLabels.unshare}: Die Seite geht ohne diese Demo wieder online.`,
+    againWithOthers: `${deLabels.reshare}, mit anderen geteilten Demos: Die Seite wird mit dem neuen Stand erzeugt.`,
     approved: (how: 'share' | 'replace' | 'add'): string =>
       how === 'share'
         ? 'Mit der Freigabe geteilt: Die Seite geht online.'
@@ -511,9 +589,9 @@ const de = {
     restored: 'Die Seite fehlte auf der Site: Der Deploy eines anderen Rechners hatte sie offline genommen. Obeya hat sie wieder deployt.',
     notRestored: (why: string) => `Die Seite fehlt auf der Site (der Deploy eines anderen Rechners hat sie offline genommen) und ist nicht wieder deployt: ${why}`,
     exported: (zip: boolean, name: string) => `Exportiert als ${zip ? 'ZIP' : 'HTML-Datei'}: ${name}`,
-    /** The line in a pull request's description that links its demo. */
     rebuilt: (language: 'de' | 'en'): string =>
       `Das Demo ist in seinem Verzeichnis neu vertont, auf ${language === 'en' ? 'Englisch' : 'Deutsch'}: Die Aufgabe zeigt es mit seinen neuen Kapiteln, und der Text seiner Seite wird beim Teilen neu geschrieben.`,
+    /** The line in a pull request's description that links its demo. */
     prLine: (html: boolean): string => (html ? 'Demo-Seite' : 'Demo-Video'),
   },
   /** The first card on the canvas the setup assistant created: what to try. */
@@ -583,6 +661,7 @@ const en: Messages = {
     return `${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...year }).replace(',', '')}, ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
   },
   quote: (s: string) => `“${s}”`,
+  labels: enLabels,
   multiple: 'multiple choice',
   decided: 'Decided',
   openQuestions: 'Open questions',
@@ -607,7 +686,7 @@ const en: Messages = {
     failed: (why: string) => `I could not answer the question (${why}).`,
     limited: (when: string) => `The usage limit is reached. Obeya looks this up by itself ${when}.`,
     asIdea: 'Discussed further as an idea.',
-    walkthroughAsked: 'Show as walkthrough',
+    walkthroughAsked: enLabels.walkthrough,
     walkthroughReply: 'I’ll tell the answer as a walkthrough.',
   },
   tool: {
@@ -674,6 +753,24 @@ const en: Messages = {
     landedDirect: 'Pushed straight to main after the approval.',
     approvedMain: 'Approved and on main.',
     landedMain: 'Landed on main after the approval.',
+    pushedLanded: (branch: string, commit: string) => `Pushed to origin/${branch} (${commit}).`,
+    approvedUpstream: (into: string, name: string) => `Approved: onto ${into}, and as a pull request to ${name}.`,
+    upstreamClosedQuestion: (name: string, into: string) => `${name} closed the pull request without merging it. The work is on ${into}. How should it go on?`,
+    keepOnMain: (into: string) => `Keep it on ${into} only`,
+    keptOnMain: (into: string) => `The pull request stays closed; the work stays on ${into}. Live.`,
+    upstreamStarted: (name: string, branch: string, commit: string, mirror?: UpstreamMirror) =>
+      [
+        `Starts on the newest ${branch} of ${name} (${commit}).`,
+        mirror?.updated ? `The local ${branch} is at that state now.` : '',
+        mirror?.diverged ? `The local ${branch} has commits of its own; Obeya left it as it is.` : '',
+        mirror?.checkedOut ? `The local ${branch} is checked out; Obeya left it as it is.` : '',
+        mirror?.pushed ? `origin/${branch} is at that state now too.` : '',
+        mirror?.pushProblem ? `origin refused the push of ${branch}: ${mirror.pushProblem}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    landedPushRefused: (branch: string, reason: string) => `Landed, but origin refused the push of ${branch}: ${reason}. ${branch} on origin stays behind; the next landing pushes again.`,
+    landedPushMoved: (branch: string) => `Landed, but not pushed to origin: ${branch} there has commits this one lacks, and Obeya never forces a push. ${branch} on origin stays behind.`,
     switchedToMain: (branch: string | null, commit: string) =>
       branch ? `The Obeya checkout was on the branch ${branch}. Obeya switched it to main to land the work; ${branch} stays as it was.` : `The Obeya checkout was on no branch (${commit}). Obeya switched it to main to land the work.`,
     approvedUnchanged: 'Approved. Without a change to the code there is nothing to land: done.',
@@ -695,6 +792,20 @@ const en: Messages = {
     workspaceGone: (path: string, planned: boolean) =>
       `The workspace ${path} no longer exists: freed${planned ? ', the card is planned again' : ''}. The next start takes another.`,
     prClosed: 'Pull request closed without a merge.',
+    revoking: 'Taking back the approval …',
+    revokedApproval: 'Approval taken back: the next handover waits for you again instead of landing by itself.',
+    revokedPr: (prs: string[]) =>
+      prs.length ? `Approval taken back: ${prs.length > 1 ? `pull requests ${prs.join(', ')}` : `pull request ${prs[0]}`} closed without a merge. The task waits for you again.` : 'Approval taken back before the pull request was open. The task waits for you again.',
+    reverted: (commit: string) => `Approval taken back: reverted on main (${commit}). The work is back on the task's branch and waits for you.`,
+    rollbackOpened: (n: number, of: number) => `Approval taken back: rollback PR #${n} reverts PR #${of}. Obeya merges it once it is ready; then the task waits for you again.`,
+    rolledBack: (n: number) => `Rollback PR #${n} merged: the work is off main and back on the task's branch. The task waits for you.`,
+    rollbackClosed: (n: number) => `Rollback PR #${n} closed without a merge: the work stays on main, and the task is live again.`,
+    notReapplied: 'The work could not go back onto the branch, since main has changed since. The agent brings it back and hands over again.',
+    revokeFailed: (why: string) => `Approval not taken back: ${why}`,
+    revokeNoWorkspace: 'No workspace is free. Try again once one is.',
+    revokeLanding: 'the work is landing right now, with the approval that still held.',
+    revokeCutOff: 'Obeya stopped while doing it; main is unchanged. Please try again.',
+    revokedAfterRestart: 'Approval taken back: the work is off main and back on the task’s branch. The task waits for you.',
     prClosedQuestion: 'The pull request was closed without being merged. How should it go on?',
     reopen: 'Reopen it',
     discardWork: 'Discard the work',
@@ -798,6 +909,11 @@ const en: Messages = {
     behind: 'The branch is behind the base branch, and the repository merges only an up-to-date one. The agent brings it up to date.',
     mergedOne: (pr: string, left: (string | null)[]) =>
       `Pull request ${pr} merged. Live once ${left.map((l) => (l ? `pull request ${l}` : 'the pull request of this repository')).join(' and ')} ${left.length > 1 ? 'are' : 'is'} merged too.`,
+    intoMain: (into: string, commit: string) => `Merged the pull request's new commits into ${into} (${commit}).`,
+    portRecorded: (into: string) => `The pull request carries the work that is on ${into} already: what is added to it later, Obeya merges into ${into}.`,
+    intoMainConflict: (into: string) => `The pull request's new commits do not merge into ${into} without conflicts. The agent resolves it.`,
+    intoMainBlocked: (into: string, why: string) => `Obeya cannot merge the pull request's new commits into ${into}: ${why}`,
+    mergedUpstream: (name: string) => `${name} merged the pull request. Live.`,
   },
   idea: {
     buildAfterReply: 'Build it once the reply is there; if the agent still asks something, it is not built.',
@@ -852,9 +968,6 @@ const en: Messages = {
     partLanded: 'Part landed; the plan doc keeps it open.',
     leftGone: (project: string) => `Left the project “${project}”: the plan doc no longer lists this workstream.`,
     leftOther: (project: string) => `Left the project “${project}”: this history belongs to a workstream the plan doc no longer lists.`,
-    briefName: 'Where the idea stands',
-    prototypeButton: 'Have a prototype built',
-    splitOffButton: 'Split off a task',
   },
   newRepo: {
     held: (path: string) => `Creating the repository ${path} …`,
@@ -873,7 +986,7 @@ const en: Messages = {
   },
   proposal: {
     acceptAfterRevision: (how: 'start' | 'discuss' | 'asIdea') =>
-      `${{ start: 'Accept and start', discuss: 'Accept and discuss', asIdea: 'Discuss as an idea' }[how]} once the proposal is revised; if it still has questions, it stays a proposal.`,
+      `${{ start: enLabels.accept, discuss: enLabels.acceptIdea, asIdea: enLabels.acceptAsIdea }[how]} once the proposal is revised; if it still has questions, it stays a proposal.`,
     notAccepting: 'Not accepting it after all.',
     notAcceptedNoRevision: 'Not accepted: the revision did not come.',
     notAcceptedQuestions: 'Not accepted: the proposal still has questions.',
@@ -921,8 +1034,8 @@ const en: Messages = {
     ruleTaken: (rule: string) => `Rule added: “${rule}”`,
     revised: 'Proposal revised.',
     reviseFailed: (why: string) => `Revising did not work: ${why}`,
+    noRevisedText: 'the agent gave no new text',
   },
-  approveDirect: 'Straight to main',
   claudeMd: {
     title: 'Add to CLAUDE.md',
     task: 'The owner set these rules for this repository. Work them into the CLAUDE.md, fitting what is there (section, tone, length) and without repeating anything; where one is in it already in other words, only sharpen that place. Change nothing else. Instead of a demo, the new wording in the summary is enough.',
@@ -935,19 +1048,18 @@ const en: Messages = {
     from: (repo: string, why: string, cards: string) => `From the work retrospective for ${repo}. ${why} Cards: ${cards}.`,
     done: (repo: string, made: number) =>
       `Work retrospective for ${repo}: ${made ? `${made === 1 ? 'one proposal' : `${made} proposals`}, on the canvas and with Obeya.` : 'nothing that recurs on several cards.'}`,
-    settings: { checks: 'Checks', setup: 'Setup', softPaths: 'Soft paths', run: 'How to run the app' },
     onMachine: (setting: string, repo: string) => `“${setting}” for ${repo} now applies on this machine.`,
     committed: (setting: string, repo: string, branch: string) => `“${setting}” for ${repo} is now in .obeya/settings.json on ${branch} and applies to everyone.`,
     opened: (setting: string, repo: string, pr: string) => `“${setting}” for ${repo}: pull request opened, ${pr}. Until it is merged, the value applies on this machine.`,
   },
   share: {
-    share: 'Share: the page goes online.',
-    again: 'Share again: the page is made anew.',
-    newDemo: 'Replace on the page: the page now shows this demo instead of the shared ones.',
-    added: 'Add to the page: the page gets this demo as an addendum.',
-    unshare: 'Stop sharing: the page is withdrawn.',
-    unshareOne: 'Stop sharing: the page goes online again without this demo.',
-    againWithOthers: 'Share again, with other shared demos: the page is made anew.',
+    share: `${enLabels.share}: the page goes online.`,
+    again: `${enLabels.reshare}: the page is made anew.`,
+    newDemo: `${enLabels.replace}: the page now shows this demo instead of the shared ones.`,
+    added: `${enLabels.add}: the page gets this demo as an addendum.`,
+    unshare: `${enLabels.unshare}: the page is withdrawn.`,
+    unshareOne: `${enLabels.unshare}: the page goes online again without this demo.`,
+    againWithOthers: `${enLabels.reshare}, with other shared demos: the page is made anew.`,
     approved: (how: 'share' | 'replace' | 'add'): string =>
       how === 'share'
         ? 'Shared with the approval: the page goes online.'
@@ -1052,6 +1164,15 @@ const en: Messages = {
     several: (n: number) => `${n} cards wait for you`,
   },
 };
+
+/** What became of a fork's copy of the original's main branch when a card started on it (`UpstreamStart.mirror` in the server). */
+export interface UpstreamMirror {
+  updated?: true;
+  diverged?: true;
+  checkedOut?: true;
+  pushed?: true;
+  pushProblem?: string;
+}
 
 export const MESSAGES: Record<Language, Messages> = { de, en };
 

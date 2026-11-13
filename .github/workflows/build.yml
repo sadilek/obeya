@@ -1,8 +1,8 @@
 # Builds Obeya on every platform it ships for, each on its own runner (no cross compilation, so the
 # smoke test runs where the build ran). A push to main that changes code (not only docs or the site)
 # builds the unsigned installers, checks the compiled server (scripts/check-binary.ts: a scratch
-# canvas answers, with the version, a repository's own adapter, Playwright and the adapter kit
-# from the resources), checks that the local demo voices install and speak on Linux, Windows and
+# canvas answers, with the version, a repository's own settings, Playwright among the resources and
+# a script run on the binary's Bun), checks that the local demo voices install and speak on Linux, Windows and
 # macOS, that a scratch Obeya stages on each of them (scripts/check-scratch.ts), and runs the tests
 # and the type check on Linux, Windows and macOS; the installers stay a week as the
 # run's artifacts. A tag v<version of package.json> does the same and then makes a draft release
@@ -58,20 +58,13 @@ jobs:
           version="v$(node -p "require('./package.json').version")"
           [ "$GITHUB_REF_NAME" = "$version" ] || { echo "::error::tag $GITHUB_REF_NAME, but package.json says $version"; exit 1; }
       - uses: oven-sh/setup-bun@v2
-        with: { bun-version: 1.4.3 }
+        with: { bun-version-file: .bun-version }
       # the demo voice's tests run its sidecars through uv, and ffmpeg makes their WAVs; setup-uv
       # tags only whole versions since v8. No cache: the sidecars' few dependencies come with
       # `uv run --with`, so there is no lock or requirements file to key one on.
       - uses: astral-sh/setup-uv@v10.3.0
         with: { enable-cache: false }
-      - name: ffmpeg
-        run: |
-          command -v ffmpeg && exit
-          case "$RUNNER_OS" in
-            Linux) sudo apt-get update && sudo apt-get install -y ffmpeg ;;
-            macOS) brew install ffmpeg ;;
-            Windows) choco install ffmpeg -y --no-progress ;;
-          esac
+      - uses: ./.github/actions/ffmpeg
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - name: bun run test
@@ -81,7 +74,7 @@ jobs:
           bun run test
 
   # the local demo voices Obeya installs on request (Kokoro, Piper) install and speak on each
-  # platform, downloaded afresh (scripts/check-voice.ts)
+  # platform, downloaded afresh (scripts/check-voice.ts); a clip becomes its WAV through ffmpeg
   voices:
     strategy:
       fail-fast: false
@@ -92,9 +85,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-        with: { bun-version: 1.4.3 }
+        with: { bun-version-file: .bun-version }
       - uses: astral-sh/setup-uv@v10.3.0
         with: { enable-cache: false }
+      - uses: ./.github/actions/ffmpeg
       - run: bun scripts/check-voice.ts
 
   # a scratch Obeya stages from a stage file alone on each platform, its dir and port claims where
@@ -109,7 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-        with: { bun-version: 1.4.3 }
+        with: { bun-version-file: .bun-version }
       - run: bun install --frozen-lockfile
       - run: |
           git config --global user.name CI
@@ -136,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-        with: { bun-version: 1.4.3 }
+        with: { bun-version-file: .bun-version }
       - uses: actions/setup-node@v7
         with: { node-version: 24 }
       - uses: dtolnay/rust-toolchain@stable
@@ -186,7 +180,7 @@ jobs:
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: oven-sh/setup-bun@v2
-        with: { bun-version: 1.4.3 }
+        with: { bun-version-file: .bun-version }
       - uses: actions/download-artifact@v8
         with: { path: release, pattern: 'obeya-*', merge-multiple: true }
       - run: bun scripts/release.ts notes "$GITHUB_REF_NAME" notes.md

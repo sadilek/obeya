@@ -12,8 +12,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, parse } from 'node:path';
-import { check, expect, failed, until } from './check-harness';
-import { scratchBase } from './common';
+import { check, expect, finish, until } from './check-harness';
+import { alive, scratchBase, scratchDir } from './common';
 
 const script = join(import.meta.dir, 'scratch-obeya.ts');
 const dir = mkdtempSync(join(tmpdir(), 'obeya-check-scratch-'));
@@ -37,7 +37,7 @@ await check('stages without --port or --dir', () => {
 if (staged) {
   const s = staged;
   await check('the scratch dir lies where this platform keeps it', () => {
-    expect(s.dir === join(scratchBase(), `obeya-scratch-${s.port}`), `${s.dir} is not in ${scratchBase()}`);
+    expect(s.dir === scratchDir(s.port), `${s.dir} is not in ${scratchBase()}`);
     if (process.platform === 'win32') expect(s.dir.startsWith(tmpdir()), `${s.dir} is not in the system temp folder ${tmpdir()}`);
     expect(existsSync(join(s.dir, 'staged.json')), 'no staged.json in it');
     // the claim goes once the staging is done
@@ -50,17 +50,10 @@ if (staged) {
   await check("--say speaks as the card's agent", () => run('--say', String(s.port), 'A', 'say', 'Reading the stage file.').trim());
   await check('--stop ends the server', async () => {
     run('--stop', String(s.port));
-    await until('the server ends', 10_000, () => {
-      try {
-        process.kill(s.pid, 0);
-        return false;
-      } catch {
-        return true;
-      }
-    });
+    await until('the server ends', 10_000, () => !alive(s.pid));
   });
   rmSync(s.dir, { recursive: true, force: true });
 }
 
 rmSync(dir, { recursive: true, force: true });
-process.exit(failed ? 1 : 0);
+finish();

@@ -23,6 +23,9 @@ export interface Frame {
   height: number;
 }
 
+/** An audio tag of a narration (`[short pause]`), which only some voices read. */
+export const AUDIO_TAG = /\[[^\]]*\]/g;
+
 /**
  * A narration as it is shown (captions) and checked: without audio tags ("[short pause]"), which
  * only some voices read, and a term respelt for the voice as it is written (`{Canvas|Kännwes}`
@@ -31,13 +34,13 @@ export interface Frame {
 export function untagged(say: string) {
   return say
     .replace(/\{([^{}|]*)\|[^{}]*\}/g, '$1')
-    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(AUDIO_TAG, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
 /** The clock strip `overlay.js` paints: its cells, their size and where it sits. */
-export const CLOCK = { bits: 24, cell: 3, left: 2, bottom: 3 };
+export const CLOCK = { bits: 24, cell: 3, left: 2, top: 3 };
 
 /**
  * The time a frame was painted, from one row of gray pixels across its clock strip (`CLOCK.cell`

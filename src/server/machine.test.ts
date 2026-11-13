@@ -1,19 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { CLONES, type MachineView } from '../core/types';
+import { delimiter, dirname, join } from 'node:path';
+import type { MachineView } from '../core/types';
+import { CLONES } from '../core/config';
 import { Board } from './board';
 import type { CanvasRuntime } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
 import { claudeToken } from './hosts';
 import { Harnesses } from './harnesses';
-import { cloneName, machineHint, MachineSetup, runnable, WELCOME_FILE, welcome } from './machine';
-import { claudeExecutable, runClaudeHere } from './runtime';
-import { fakeProgram, gitRepo, removeDir } from './testing';
+import { cloneName, codexManager, machineHint, MachineSetup, runnable, updateCodex, WELCOME_FILE, welcome } from './machine';
+import { claudeExecutable, runClaudeHere } from './claude';
+import { fakeProgram, gitRepo, gitSh, ownGlobalGitConfig, removeDir } from './testing';
 import { VoiceSetup } from './voice-setup';
-import { git } from './workspaces';
+import { git } from './git';
 
 let dir: string;
 let home: string;
@@ -225,6 +226,8 @@ describe('what Obeya needs on this machine', () => {
 });
 
 describe('the first canvas', () => {
+  const globalGit = ownGlobalGitConfig();
+
   test('a repository folder becomes a canvas whose workers use worktrees, and Obeya runs it at once', async () => {
     const repo = gitRepo(join(dir, 'shop'));
     git(repo, 'branch', '-m', 'master');
@@ -271,31 +274,30 @@ describe('the first canvas', () => {
     writeFileSync(join(shop, 'node_modules', 'x.js'), '');
     writeFileSync(join(shop, 'app.ts'), '');
     // the name and e-mail the assistant's step for them set
-    const before = process.env.GIT_CONFIG_GLOBAL;
-    process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-    writeFileSync(process.env.GIT_CONFIG_GLOBAL, '[user]\n\tname = Ada\n\temail = ada@example.com\n[init]\n\tdefaultBranch = main\n');
-    try {
-      const s = setup();
-      expect(s.gitPreview({ path: shop })).toMatchObject({ files: 2, ignored: ['node_modules/'] });
-      expect(s.gitSetup({ path: shop })).toEqual({ branch: 'main' });
-      expect(await s.canvas({ path: shop })).toMatchObject({ canvas: 'shop', branch: 'main' });
-    } finally {
-      if (before === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-      else process.env.GIT_CONFIG_GLOBAL = before;
-    }
+    globalGit('[user]\n\tname = Ada\n\temail = ada@example.com\n[init]\n\tdefaultBranch = main\n');
+    const s = setup();
+    expect(s.gitPreview({ path: shop })).toMatchObject({ files: 2, ignored: ['node_modules/'] });
+    expect(s.gitSetup({ path: shop })).toEqual({ branch: 'main' });
+    expect(await s.canvas({ path: shop })).toMatchObject({ canvas: 'shop', branch: 'main' });
   });
 
   test('a clone goes into a folder of its name and becomes the canvas', async () => {
     const origin = gitRepo(join(dir, 'origin', 'shop'));
-    const s = new MachineSetup({ home, config: config() });
+    // git for the clone, and none of the runner's other programs: each view looks at the whole
+    // machine, whose Claude Code (the Agent SDK's, where none is installed) once took a busy runner
+    // past the test's limit. On Windows also git's sh, which a local clone starts git-upload-pack
+    // with: git puts it on the PATH by itself only where MSYSTEM is unset, and the runner's Git Bash
+    // sets it
+    const machine = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^path$/i.test(k))) as Record<string, string>;
+    const tools = [dirname(Bun.which('git')!), ...(process.platform === 'win32' ? [dirname(gitSh())] : [])];
+    const s = setup({ env: { ...machine, PATH: [bin, ...tools].join(delimiter), OBEYA_CLAUDE: join(dir, 'none', 'claude') } });
     await s.canvas({ clone: origin, into: join(dir, 'code') });
-    // each view looks at the whole machine (Claude Code, git, gh, the demo voice), which on a Windows runner takes seconds
     await s.done();
     const v = await s.view();
     expect(v.job).toMatchObject({ kind: 'clone', running: false, canvas: 'shop', branch: 'main', opens: true });
     expect(existsSync(join(dir, 'code', 'shop', '.git'))).toBe(true);
     // the folder is there now: a second clone into it is refused
-    await expect(new MachineSetup({ home, config: config() }).canvas({ clone: origin, into: join(dir, 'code') })).rejects.toMatchObject({ code: 'cloneTarget' });
+    await expect(setup().canvas({ clone: origin, into: join(dir, 'code') })).rejects.toMatchObject({ code: 'cloneTarget' });
   });
 
   test('names a clone after its repository', () => {
@@ -314,5 +316,26 @@ describe('the first canvas', () => {
     const cards = board.snapshot().items.filter((i) => i.kind === 'task');
     expect(cards.map((c) => c.title)).toEqual([board.t.welcome.title]);
     expect(existsSync(join(home, WELCOME_FILE))).toBe(false);
+  });
+});
+
+describe("updating this machine's Codex", () => {
+  test('runs `codex update` where Codex has it, and tells its output', async () => {
+    fake('codex', `case "$1 $2" in "update --help") echo "Update Codex to the latest version";; "update ") echo "Updating Codex via npm"; echo updated > ${JSON.stringify(join(dir, 'updated'))};; esac`);
+    const lines: string[] = [];
+    await updateCodex((l) => lines.push(l), { PATH: [bin, '/usr/bin', '/bin'].join(delimiter) });
+    expect([readFileSync(join(dir, 'updated'), 'utf8').trim(), lines]).toEqual(['updated', ['Updating Codex via npm']]);
+    fake('codex', 'case "$1 $2" in "update --help") echo "Update Codex to the latest version";; *) echo "Error: no network" >&2; exit 1;; esac');
+    await expect(updateCodex(() => {}, { PATH: [bin, '/usr/bin', '/bin'].join(delimiter) })).rejects.toThrow('exited with 1: Error: no network');
+  });
+
+  test('a Codex older than `codex update` is updated by the package manager it lives in; any other says it cannot be', async () => {
+    expect(codexManager('/opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js')).toEqual(['npm', 'install', '-g', '@openai/codex@latest']);
+    expect(codexManager('/home/me/.bun/install/global/node_modules/@openai/codex/bin/codex.js')).toEqual(['bun', 'install', '-g', '@openai/codex@latest']);
+    expect(codexManager('/opt/homebrew/Caskroom/codex/0.159.2/codex-aarch64-apple-darwin')).toEqual(['brew', 'upgrade', '--cask', 'codex']);
+    expect(codexManager('/home/me/.codex/bin/codex')).toBeNull();
+    // the general help: no such command
+    fake('codex', 'echo "Codex CLI"');
+    await expect(updateCodex(() => {}, { PATH: [bin, '/usr/bin', '/bin'].join(delimiter) })).rejects.toThrow('is too old to update itself');
   });
 });

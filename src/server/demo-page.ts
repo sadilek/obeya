@@ -4,15 +4,11 @@
 // without one exports it (share.ts): as a ZIP with the video or the artifact beside the page, or as
 // one HTML file with everything inside.
 
-import { closeSync, type Dirent, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
-import { open, readFile, stat } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
-import { pagePolicy, sealed, withHeightReport } from '../core/frame';
+import { inScript, inStyle, pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { languageName, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
-import { listedTracks, trackFile } from '../../plugin/skills/demo/lib/subtitles.ts';
 import { captionPages, cueWords, pageOf, spokenWord } from '../core/caption-pages';
-import { type PlayerWords, videoPlayer } from '../core/video-player';
+import { PLAYER_ICONS, PLAYER_KEYS, type PlayerWords, videoPlayer } from '../core/video-player';
 import PLAYER_STYLE from '../core/player.css' with { type: 'text' };
 
 /** The languages a page speaks: those a demo is narrated in. */
@@ -30,7 +26,7 @@ export const PAGE_WORDS: Record<
     commits: string;
     ownWindow: string;
     demoOf: (day: string) => string;
-    /** A page on a site (`site.ts`): when it was shared and by whom (git's name of the one whose Obeya shared it), the link to the overview; the overview's own words. */
+    /** A page on a site (`site-pages.ts`): when it was shared and by whom (git's name of the one whose Obeya shared it), the link to the overview; the overview's own words. */
     sharedOn: (day: string, by?: string) => string;
     allDemos: string;
     /** On the overview, after a page's date: who shared it. */
@@ -177,8 +173,8 @@ interface PageParts {
   when: string;
   /** The browser tab's title. */
   tabTitle: string;
-  /** The demo's language, which the page's own words and the captions' name are in; German without one. */
-  language?: PageLanguage;
+  /** The demo's language, which the page's own words and the captions' name are in. */
+  language: PageLanguage;
   /** A link above the title (say, to all demos). */
   top?: { href: string; text: string };
   /** The page's tags, by dimension, each a link (say, to the overview showing the pages with it). */
@@ -209,116 +205,6 @@ export interface DemoPageParts extends PageParts {
   silent?: boolean;
 }
 
-/** A caption track of a video demo's directory: its file, and its language, unknown for a demo from before the tracks. */
-export interface CaptionTrack {
-  file: string;
-  language?: string;
-}
-
-/**
- * The caption tracks of a video demo's directory: those its `captions.vtt` names (`listedTracks`), a
- * file per language (`captions.<language>.vtt`) in their order, none where it names none; one from
- * before it named them has its `captions.vtt` alone.
- */
-export function captionTracks(dir: string): CaptionTrack[] {
-  let narration: string;
-  try {
-    narration = readFileSync(join(dir, 'captions.vtt'), 'utf8');
-  } catch {
-    return [];
-  }
-  const listed = namedTracks(narration);
-  if (!listed) return [{ file: 'captions.vtt' }];
-  return listed.filter((t) => existsSync(join(dir, t.file)));
-}
-
-/** `captionTracks` without blocking the server. */
-export async function captionTracksAsync(dir: string): Promise<CaptionTrack[]> {
-  let narration: string;
-  try {
-    narration = await readFile(join(dir, 'captions.vtt'), 'utf8');
-  } catch {
-    return [];
-  }
-  const listed = namedTracks(narration);
-  if (!listed) return [{ file: 'captions.vtt' }];
-  const there = await Promise.all(listed.map((t) => stat(join(dir, t.file)).then(() => true, () => false)));
-  return listed.filter((_, i) => there[i]);
-}
-
-/** The tracks a `captions.vtt` names (`listedTracks`), each by its file, whether there or not; null where it names none. */
-function namedTracks(narration: string): Required<CaptionTrack>[] | null {
-  const listed = listedTracks(narration);
-  return listed ? listed.flatMap((language) => (/^[A-Za-z0-9-]+$/.test(language) ? [{ file: trackFile(language), language }] : [])) : null;
-}
-
-/** How much of an MP4's start is searched for its tracks: the director writes them there (`+faststart`). */
-const MP4_HEAD = 4 << 20;
-
-/** The start of an MP4 (`MP4_HEAD`), where its track list is; null where it cannot be read. */
-function mp4Head(file: string): Buffer | null {
-  try {
-    const fd = openSync(file, 'r');
-    try {
-      const head = Buffer.alloc(MP4_HEAD);
-      return head.subarray(0, readSync(fd, head, 0, MP4_HEAD, 0));
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Whether a demo video has no sound: an MP4 whose track list, at its start, holds no audio
- * track (a handler of type `soun`). One whose list is not at its start counts as having sound.
- */
-export const silentVideo = (file: string): boolean => silentHead(mp4Head(file));
-
-/** `silentVideo` without blocking the server. */
-export async function silentVideoAsync(file: string): Promise<boolean> {
-  let head: Buffer | null = null;
-  try {
-    const f = await open(file, 'r');
-    try {
-      const buffer = Buffer.alloc(MP4_HEAD);
-      head = buffer.subarray(0, (await f.read(buffer, 0, MP4_HEAD, 0)).bytesRead);
-    } finally {
-      await f.close();
-    }
-  } catch {}
-  return silentHead(head);
-}
-
-/** `silentVideo` of an MP4's start (`mp4Head`). */
-function silentHead(head: Buffer | null): boolean {
-  const text = head?.toString('latin1');
-  if (!text?.includes('moov')) return false;
-  // a `hdlr` box: its type, four bytes of version and flags, four predefined, then the handler's type
-  return !/hdlr[\s\S]{8}soun/.test(text);
-}
-
-/**
- * A demo video's width and height in pixels: those of the first track in the list at the MP4's
- * start that has a picture (its `tkhd` box); null where there is none.
- */
-export function videoSize(file: string): [number, number] | null {
-  const head = mp4Head(file);
-  if (!head) return null;
-  for (let at = head.indexOf('tkhd'); at >= 0; at = head.indexOf('tkhd', at + 4)) {
-    // after the type: version and flags, then times, track and duration (wider in version 1), reserved,
-    // layer, group, volume, reserved and the matrix, then width and height as 16.16 fixed point
-    const box = at + 4;
-    const size = box + 4 + (head[box] === 1 ? 32 : 20) + 52;
-    if (size + 8 > head.length) return null;
-    const w = Math.round(head.readUInt32BE(size) / 65536);
-    const h = Math.round(head.readUInt32BE(size + 4) / 65536);
-    if (w > 0 && h > 0) return [w, h];
-  }
-  return null;
-}
-
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /** The text's paragraphs as HTML. */
 export const paragraphs = (text: string) =>
@@ -331,10 +217,7 @@ export const paragraphs = (text: string) =>
 /** The link to the change: its pull request, or without one the commit (the commits) it landed as; '' before either. */
 const changeLink = (p: Pick<PageParts, 'pr' | 'commit'>, w: (typeof PAGE_WORDS)[PageLanguage]) =>
   p.pr ? `<a href="${esc(p.pr)}">${w.pr}</a>` : p.commit ? `<a href="${esc(p.commit.url)}">${p.commit.several ? w.commits : w.commit}</a>` : '';
-/** Text inside a `<script>` element must not close it. */
-const inScript = (s: string) => s.replace(/<\//g, '<\\/');
-
-export const day = (at: Date | string, language: PageLanguage = 'de') => dayFormat(language).format(new Date(at));
+export const day = (at: Date | string, language: PageLanguage) => dayFormat(language).format(new Date(at));
 
 /** A formatter per language: making one for each date took the overview of a site of some hundred pages a quarter of a second. */
 const dayFormats = new Map<PageLanguage, Intl.DateTimeFormat>();
@@ -397,7 +280,7 @@ const VIDEO_STYLE = `
 ${PLAYER_STYLE.replaceAll('\r\n', '\n')}`;
 
 /** A repository's theme (theme.ts) in a page's head, after Obeya's own style, so it wins; nothing in it may close its element. */
-export const themeStyle = (css?: string) => (css ? `<style>${css.replace(/<\/(style)/gi, '<\\/$1')}</style>` : '');
+export const themeStyle = (css?: string) => (css ? `<style>${inStyle(css)}</style>` : '');
 
 /** Obeya's site, which every page and the overview link at their end. */
 export const OBEYA_URL = 'https://obeya.si';
@@ -421,11 +304,14 @@ const CUES = `
   }
 `;
 
+/** What the player (src/core/video-player.ts) takes along from the modules it runs beside in Obeya, as a script's object. */
+const PLAYER_LIB = `{ captionPages: ${captionPages}, pageOf: ${pageOf}, cueWords: ${cueWords}, spokenWord: ${spokenWord}, preferredTrack: ${preferredTrack}, keys: ${JSON.stringify(PLAYER_KEYS)}, icons: ${JSON.stringify(PLAYER_ICONS)} }`;
+
 // each video's player (src/core/video-player.ts), its chapters from its `data-chapters`, taking the page's keys; a
 // silent video shows its captions from the start, in the viewer's language where it has a track in it, else the first
 const PLAYERS = (words: PlayerWords) => `
   {
-    const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, cueWords: ${cueWords}, spokenWord: ${spokenWord}, preferredTrack: ${preferredTrack} };
+    const lib = ${PLAYER_LIB};
     const words = ${JSON.stringify(words)};
     for (const fig of document.querySelectorAll('figure.dp')) {
       const pv = fig.querySelector('video');
@@ -441,7 +327,7 @@ const PLAYERS = (words: PlayerWords) => `
  */
 export const sitePlayerScript = () => `// The video player of Obeya's cards and demo pages (src/core/video-player.ts), written by scripts/site-player.ts.
 window.obeyaPlayer = (root, video, chapters) => {
-  const lib = { captionPages: ${captionPages}, pageOf: ${pageOf}, cueWords: ${cueWords}, spokenWord: ${spokenWord}, preferredTrack: ${preferredTrack} };
+  const lib = ${PLAYER_LIB};
   return (${videoPlayer})(root, video, { chapters, words: ${JSON.stringify(PAGE_WORDS.en.player)}, prefer: navigator.languages, keys: 'within', fullscreen: true }, lib);
 };
 `;
@@ -454,16 +340,73 @@ const playerTag = (chapters: [number, string][], video: string, play: string) =>
 const trackTags = (tracks: { language: string; src: string }[], language: PageLanguage) =>
   tracks.map((t) => `<track kind="captions" src="${esc(t.src)}" srclang="${esc(t.language)}" label="${esc(languageName(t.language, language))}">`).join('');
 
-// A host that serves no byte ranges (Cloudflare Pages answers a range request with the whole file)
-// leaves a video a browser cannot seek in (it jumps back): then the page loads the video once and
-// plays it from memory. A page opened from disk cannot fetch it and needs not.
-const SEEKABLE = (src: string) => `
-  const seekable = fetch(${JSON.stringify(src)}, { headers: { Range: 'bytes=0-' } }).then(async (r) => {
-    if (r.status === 206) return r.body?.cancel();
-    const url = URL.createObjectURL(await r.blob()), at = v.currentTime, playing = !v.paused;
-    v.src = url; v.currentTime = at;
-    if (playing) v.play();
-  }).catch(() => {});
+/** A video's chapters, each a button that plays from its start, the first one marked; nothing for a video without. */
+const chapterList = (chapters: [number, string][]) =>
+  chapters.length
+    ? `<ol>${chapters.map(([at, title], i) => `<li><button data-at="${at}"${i === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
+    : '';
+
+/** A video on a page: its file (none for one held in the page), its poster, its caption tracks, whether silent, its chapters, and the link to the change beside them. */
+interface PageVideo {
+  src?: string;
+  poster?: string;
+  silent?: boolean;
+  tracks: { language: string; src: string }[];
+  chapters: [number, string][];
+  link: string;
+}
+
+/** A video in its player, its chapters and the link to the change beside it (`VIDEO_WIRING` sets them going). */
+const videoGrid = (v: PageVideo, language: PageLanguage) => `<div class="grid">
+  ${playerTag(v.chapters, `<video preload="metadata"${v.src === undefined ? '' : ` src="${esc(v.src)}"`}${v.poster ? ` poster="${esc(v.poster)}"` : ''}${v.silent ? ' data-silent' : ''}>${trackTags(v.tracks, language)}</video>`, PAGE_WORDS[language].play)}
+  <div>${chapterList(v.chapters)}${v.link ? `<div class="pr">${v.link}</div>` : ''}</div>
+</div>`;
+
+/** An artifact in its sandboxed frame; `attr`: where the frame gets the artifact from (`src`, `srcdoc`; nothing where the page's script gives it). */
+const artifactFrame = (attr: string, title: string) => `<div class="artifact"><iframe ${attr}sandbox="allow-scripts" title="${esc(title)}"></iframe></div>`;
+
+/** "Open in its own window": the page with the artifact alone (`?alone`, `?alone=<n>` for the one at that place of several). */
+const ownWindow = (alone: string, w: (typeof PAGE_WORDS)[PageLanguage]) => `<a href="?${alone}" target="_blank" rel="noopener">${w.ownWindow}</a>`;
+
+// Each video of a page (in its `.grid`): its chapters' buttons, and a big play button over it until it
+// first plays (a click anywhere on it but its controls starts it, instead of the small button in the
+// corner). A host that serves no byte ranges (Cloudflare Pages answers a range request with the whole
+// file) leaves a video a browser cannot seek in (it jumps back): then the page loads the video once
+// and plays it from memory. One held in the page (no `src`) plays from memory already; a page opened
+// from disk cannot fetch it and needs not.
+const VIDEO_WIRING = `
+  for (const g of document.querySelectorAll('.grid')) {
+    const v = g.querySelector('video'), bs = [...g.querySelectorAll('ol button')], src = v.getAttribute('src');
+    const seekable = src === null ? Promise.resolve() : fetch(src, { headers: { Range: 'bytes=0-' } }).then(async (r) => {
+      if (r.status === 206) return r.body?.cancel();
+      const url = URL.createObjectURL(await r.blob()), at = v.currentTime, playing = !v.paused;
+      v.src = url; v.currentTime = at;
+      if (playing) v.play();
+    }).catch(() => {});
+    bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
+    const start = g.querySelector('.start');
+    start.addEventListener('click', () => v.play());
+    v.addEventListener('play', () => { start.hidden = true; });
+    v.addEventListener('timeupdate', () => {
+      let on = 0; bs.forEach((b, i) => { if (Number(b.dataset.at) <= v.currentTime + 0.05) on = i; });
+      bs.forEach((b, i) => b.classList.toggle('on', i === on));
+    });
+  }
+`;
+
+// Each artifact's frame grows to the height the artifact says, at most 30 steps: one as high as its
+// window (100vh plus a margin) would grow with each. \`?alone=<n>\` shows the artifact at that place
+// alone, \`?alone\` the first, or a page's only one where it has no places (\`#v1\`, \`#v2\` …).
+const FRAME_HEIGHT = `
+  const alone = new URLSearchParams(location.search).get('alone');
+  const shown = alone === null ? null : document.getElementById('v' + (alone || '1')) || (document.getElementById('v1') ? null : document.body);
+  if (shown && shown.querySelector('.artifact')) { document.body.classList.add('alone'); shown.classList.add('alone'); }
+  const steps = new Map([...document.querySelectorAll('.artifact iframe')].map((f) => [f, shown && shown.contains(f) ? 30 : 0]));
+  addEventListener('message', (e) => {
+    const f = [...steps.keys()].find((f) => f.contentWindow === e.source);
+    const h = f && e.data && e.data.obeyaHeight;
+    if (typeof h === 'number' && h > 0 && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
+  });
 `;
 
 // the video's bytes held in the page, played from a blob so it can seek
@@ -498,87 +441,68 @@ export const ON_DISK = 'file:';
  * as `srcdoc` has the page's policy as well as its own).
  */
 export function artifactPageHtml(p: ArtifactPageParts): string {
-  const language = p.language ?? 'de';
-  const w = PAGE_WORDS[language];
+  const w = PAGE_WORDS[p.language];
   const frame =
-    'src' in p.artifact
-      ? `<iframe ${p.disk ? '' : `src="${esc(p.artifact.src)}" `}sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`
-      : `<iframe srcdoc="${esc(sealed(withHeightReport(p.artifact.html)))}" sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`;
-  const links = [
-    'src' in p.artifact ? `<a href="?alone" target="_blank" rel="noopener">${w.ownWindow}</a>` : '',
-    changeLink(p, w),
-  ].filter(Boolean);
-  return `${pageStart(p, language, pagePolicy(ON_DISK))}${links.length ? `<div class="links">${links.join('')}</div>\n` : ''}<div class="artifact">${frame}</div>
-${credit(language)}</main>
-<script>
-  // an artifact as high as its window (100vh plus a margin) would grow with each step: it stops after a few
-  const f = document.querySelector('.artifact iframe');${
+    'src' in p.artifact ? artifactFrame(p.disk ? '' : `src="${esc(p.artifact.src)}" `, p.title) : artifactFrame(`srcdoc="${esc(sealed(withHeightReport(p.artifact.html)))}" `, p.title);
+  const links = ['src' in p.artifact ? ownWindow('alone', w) : '', changeLink(p, w)].filter(Boolean);
+  return `${pageStart(p, { policy: pagePolicy(ON_DISK) })}${links.length ? `<div class="links">${links.join('')}</div>\n` : ''}${frame}
+${credit(p.language)}</main>
+<script>${
     p.disk && 'src' in p.artifact
       ? `
+  const f = document.querySelector('.artifact iframe');
   if (location.protocol === 'file:') f.sandbox.add('allow-same-origin');
   f.src = ${JSON.stringify(p.artifact.src)};`
       : ''
-  }
-  const alone = new URLSearchParams(location.search).has('alone');
-  if (alone) document.body.classList.add('alone');
-  let steps = alone ? 30 : 0;
-  addEventListener('message', (e) => {
-    const h = e.source === f.contentWindow && e.data && e.data.obeyaHeight;
-    if (typeof h === 'number' && h > 0 && steps++ < 30) f.style.height = Math.min(Math.ceil(h), 30000) + 'px';
-  });
-</script>
+  }${FRAME_HEIGHT}</script>
 </body></html>
 `;
 }
 
 /** What an unlisted page's head says: no index, no referrer (the meta tags hold where a host sends no headers of the site's own, GitHub Pages). */
-const UNLISTED_META = '<meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">';
+export const UNLISTED_META = '<meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">';
 
 /**
- * A page's start, down to the demo's text: its head (with its `policy`, if it has one), the link
- * above the title, the title, when it was shared. A page with a theme has a policy in any case, that
- * of a shared artifact's page, so nothing the theme names loads from elsewhere.
+ * A page's head, down to the start of its `<main>`, in the page's language: its `policy` where it
+ * has one, and a page with a theme has one in any case, that of a shared artifact's page, so nothing
+ * the theme names loads from elsewhere. `meta`: what the head says after the viewport, `links`:
+ * after the title; `style`: what the page adds to Obeya's style, before the theme.
  */
-function pageStart(p: PageParts, language: PageLanguage, policy?: string, style = '', list = ''): string {
-  policy ??= p.theme ? pagePolicy(ON_DISK) : undefined;
+export function pageHead({ language, title, theme, policy, meta = '', links = '', style = '' }: { language: PageLanguage; title: string; theme?: string | undefined; policy?: string | undefined; meta?: string; links?: string; style?: string }): string {
+  policy ??= theme ? pagePolicy(ON_DISK) : undefined;
   return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8">${policy ? `<meta http-equiv="Content-Security-Policy" content="${policy}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">${p.unlisted ? UNLISTED_META : ''}${p.canonical ? `<link rel="canonical" href="${esc(p.canonical)}">` : ''}
-<title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}${style}</style>${themeStyle(p.theme)}</head>
+<html lang="${language}"><head><meta charset="utf-8">${policy ? `<meta http-equiv="Content-Security-Policy" content="${policy}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">${meta}
+<title>${esc(title)}</title>${links}<style>${PAGE_STYLE}${style}</style>${themeStyle(theme)}</head>
 <body><main>
-${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>
+`;
+}
+
+/**
+ * A demo page's start, down to the demo's text: its head, the link above the title, the title,
+ * when it was shared, its tags; `list`: what comes before the text (the versions of a page with several).
+ */
+function pageStart(p: PageParts, { policy, style, list = '' }: { policy?: string; style?: string; list?: string } = {}): string {
+  return `${pageHead({ language: p.language, title: p.tabTitle, theme: p.theme, policy, meta: `${p.unlisted ? UNLISTED_META : ''}${p.canonical ? `<link rel="canonical" href="${esc(p.canonical)}">` : ''}`, ...(style ? { style } : {}) })}${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>
 <div class="when">${esc(p.when)}</div>
 ${p.tags?.length ? `<div class="tags">${p.tags.map((x) => `<a class="tag" href="${esc(x.href)}"><span>${esc(x.dimension)}</span> ${esc(x.value)}</a>`).join('')}</div>\n` : ''}${list}<div class="text">${paragraphs(p.text)}</div>
 `;
 }
 
 export function demoPageHtml(p: DemoPageParts): string {
-  const language = p.language ?? 'de';
-  const w = PAGE_WORDS[language];
-  const chapters = p.chapters.length
-    ? `<ol>${p.chapters.map(([at, title], i) => `<li><button data-at="${at}"${i === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
-    : '';
-  const src = 'src' in p.video ? ` src="${esc(p.video.src)}"` : '';
-  const link = changeLink(p, w);
+  const language = p.language;
   const linked = p.tracks.flatMap((t) => ('src' in t ? [t] : []));
   const held = p.tracks.flatMap((t) => ('vtt' in t ? [t] : []));
-  return `${pageStart(p, language, undefined, VIDEO_STYLE)}<div class="grid">
-  ${playerTag(p.chapters, `<video preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}${p.silent ? ' data-silent' : ''}>${trackTags(linked, language)}</video>`, w.play)}
-  <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
-</div>
+  const video: PageVideo = {
+    ...('src' in p.video ? { src: p.video.src } : {}),
+    ...(p.poster ? { poster: p.poster } : {}),
+    ...(p.silent ? { silent: true } : {}),
+    tracks: linked,
+    chapters: p.chapters,
+    link: changeLink(p, PAGE_WORDS[language]),
+  };
+  return `${pageStart(p, { style: VIDEO_STYLE })}${videoGrid(video, language)}
 ${credit(language)}</main>
-${held.map((t) => `<script type="text/vtt" class="captions" data-lang="${esc(t.language)}" data-label="${esc(languageName(t.language, language))}">${inScript(t.vtt)}</script>\n`).join('')}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>
-  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${held.length ? CUES : ''}${inScript(PLAYERS(w.player))}
-  bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
-  // a big play button over the video until it first plays: a click anywhere on it but its
-  // controls starts it, instead of the small button in the corner
-  const start = document.querySelector('.start');
-  start.addEventListener('click', () => v.play());
-  v.addEventListener('play', () => { start.hidden = true; });
-  v.addEventListener('timeupdate', () => {
-    let on = 0; bs.forEach((b, i) => { if (Number(b.dataset.at) <= v.currentTime + 0.05) on = i; });
-    bs.forEach((b, i) => b.classList.toggle('on', i === on));
-  });
-</script>
+${held.map((t) => `<script type="text/vtt" class="captions" data-lang="${esc(t.language)}" data-label="${esc(languageName(t.language, language))}">${inScript(t.vtt)}</script>\n`).join('')}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>${VIDEO_WIRING}${'base64' in p.video || held.length ? `  const v = document.querySelector('video');` : ''}${'base64' in p.video ? BLOB : ''}${held.length ? CUES : ''}${inScript(PLAYERS(PAGE_WORDS[language].player))}</script>
 </body></html>
 `;
 }
@@ -614,7 +538,7 @@ const STACK_STYLE = `
  * (`?alone=<n>`, its place on the page).
  */
 export function stackedPageHtml(p: StackedPageParts): string {
-  const language = p.language ?? 'de';
+  const language = p.language;
   const w = PAGE_WORDS[language];
   const [first, ...later] = p.demos;
   const name = (i: number) => (i === 0 ? w.first : w.addendum(later[i - 1]!.at, p.timeZone));
@@ -623,25 +547,23 @@ export function stackedPageHtml(p: StackedPageParts): string {
   const block = (d: StackedDemo, i: number) => {
     const link = i === 0 ? changeLink(p, w) : '';
     if (d.kind === 'html')
-      return `<div class="links"><a href="?alone=${i + 1}" target="_blank" rel="noopener">${w.ownWindow}</a>${link}</div>
-<div class="artifact"><iframe src="${esc(d.base + ARTIFACT_DIR)}/index.html" sandbox="allow-scripts" title="${esc(d.title)}"></iframe></div>`;
-    const chapters = d.chapters.length
-      ? `<ol>${d.chapters.map(([at, title], j) => `<li><button data-at="${at}"${j === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
-      : '';
-    return `<div class="grid">
-  ${playerTag(
-    d.chapters,
-    `<video preload="metadata" src="${esc(d.base)}demo.mp4"${d.poster ? ` poster="${esc(d.base)}poster.jpg"` : ''}${d.silent ? ' data-silent' : ''}>${trackTags(
-      d.tracks.map((t) => ({ language: t.language, src: d.base + t.file })),
+      return `<div class="links">${ownWindow(`alone=${i + 1}`, w)}${link}</div>
+${artifactFrame(`src="${esc(d.base + ARTIFACT_DIR)}/index.html" `, d.title)}`;
+    return videoGrid(
+      {
+        src: `${d.base}demo.mp4`,
+        ...(d.poster ? { poster: `${d.base}poster.jpg` } : {}),
+        ...(d.silent ? { silent: true } : {}),
+        tracks: d.tracks.map((t) => ({ language: t.language, src: d.base + t.file })),
+        chapters: d.chapters,
+        link,
+      },
       language,
-    )}</video>`,
-    w.play,
-  )}
-  <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
-</div>`;
+    );
   };
   const artifacts = p.demos.some((d) => d.kind === 'html');
-  return `${pageStart({ ...p, title: first.title, text: first.text }, language, artifacts ? pagePolicy(ON_DISK) : undefined, STACK_STYLE + (p.demos.some((d) => d.kind === 'video') ? VIDEO_STYLE : ''), list)}<section id="v1">
+  const videos = p.demos.some((d) => d.kind === 'video');
+  return `${pageStart({ ...p, title: first.title, text: first.text }, { ...(artifacts ? { policy: pagePolicy(ON_DISK) } : {}), style: STACK_STYLE + (videos ? VIDEO_STYLE : ''), list })}<section id="v1">
 ${block(first, 0)}
 </section>
 ${later
@@ -655,71 +577,10 @@ ${block(d, i + 1)}
   )
   .join('\n')}
 ${credit(language)}</main>
-<script>
-  // each video: seekable on a host without byte ranges, its chapters, its big play button
-  for (const g of document.querySelectorAll('.grid')) {
-    const v = g.querySelector('video'), bs = [...g.querySelectorAll('ol button')], src = v.getAttribute('src');
-    const seekable = fetch(src, { headers: { Range: 'bytes=0-' } }).then(async (r) => {
-      if (r.status === 206) return r.body?.cancel();
-      const url = URL.createObjectURL(await r.blob()), at = v.currentTime, playing = !v.paused;
-      v.src = url; v.currentTime = at;
-      if (playing) v.play();
-    }).catch(() => {});
-    bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
-    const start = g.querySelector('.start');
-    start.addEventListener('click', () => v.play());
-    v.addEventListener('play', () => { start.hidden = true; });
-    v.addEventListener('timeupdate', () => {
-      let on = 0; bs.forEach((b, i) => { if (Number(b.dataset.at) <= v.currentTime + 0.05) on = i; });
-      bs.forEach((b, i) => b.classList.toggle('on', i === on));
-    });
-  }
-  // each artifact grows to its height, at most 30 steps; ?alone=<n> shows the one at that place alone
-  const alone = new URLSearchParams(location.search).get('alone');
-  const shown = alone === null ? null : document.getElementById('v' + (alone || '1'));
-  if (shown && shown.querySelector('.artifact')) { document.body.classList.add('alone'); shown.classList.add('alone'); }
-  const steps = new Map([...document.querySelectorAll('.artifact iframe')].map((f) => [f, shown && shown.contains(f) ? 30 : 0]));
-  addEventListener('message', (e) => {
-    const f = [...steps.keys()].find((f) => f.contentWindow === e.source);
-    const h = f && e.data && e.data.obeyaHeight;
-    if (typeof h === 'number' && h > 0 && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
-  });${p.demos.some((d) => d.kind === 'video') ? inScript(PLAYERS(w.player)) : ''}
-</script>
+<script>${VIDEO_WIRING}${FRAME_HEIGHT}${videos ? inScript(PLAYERS(w.player)) : ''}</script>
 </body></html>
 `;
 }
 
 /** An HTML artifact's directory on a page, beside the page's `index.html`. */
 export const ARTIFACT_DIR = 'artifact';
-
-/**
- * A file of a demo's directory by its path there: the file itself where it is one and lies inside the
- * directory, else null. A link to a file outside counts as outside: the worker made the directory,
- * and what is in it is served, published and passed on.
- */
-export function demoFile(dir: string, name: string): string | null {
-  try {
-    const root = realpathSync(dir);
-    const path = realpathSync(resolve(root, name));
-    return path.startsWith(root + sep) && statSync(path).isFile() ? path : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The files of an HTML artifact's directory, relative to it, without hidden ones; links only to a file inside it. */
-export function artifactFiles(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  const out: string[] = [];
-  // its own walk: one that follows a link to a directory may walk the whole disk
-  const walk = (sub: string) => {
-    for (const e of readdirSync(join(dir, sub), { withFileTypes: true }) as Dirent[]) {
-      if (e.name.startsWith('.')) continue;
-      const f = sub ? `${sub}/${e.name}` : e.name;
-      if (e.isDirectory()) walk(f);
-      else if (e.isFile() || (e.isSymbolicLink() && demoFile(dir, f))) out.push(f);
-    }
-  };
-  walk('');
-  return out.sort();
-}

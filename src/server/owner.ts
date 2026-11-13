@@ -12,6 +12,7 @@
 import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
+import { jsonInScript } from '../core/frame';
 import type { Language } from '../core/locale';
 import { MESSAGES } from '../core/messages.ts';
 
@@ -54,6 +55,25 @@ export function ownerKey(home: string): string {
 /** The header that carries the owner's key of `home`, for a script's requests. */
 export const ownerHeaders = (home: string) => ({ [KEY_HEADER]: ownerKey(home) });
 
+/**
+ * Obeya's API at `base` (`http://127.0.0.1:<port>`) for a script, as the owner of `home`: a request to
+ * `path`, with `json` sent as the body (POST unless `method` says otherwise); throws on a status that
+ * is not ok.
+ */
+export const ownerApi =
+  (base: string, home: string) =>
+  async (path: string, { json, ...init }: RequestInit & { json?: unknown } = {}): Promise<Response> => {
+    const method = init.method ?? (json !== undefined ? 'POST' : 'GET');
+    const res = await fetch(`${base}${path}`, {
+      ...init,
+      method,
+      headers: { ...ownerHeaders(home), ...(json !== undefined ? { 'content-type': 'application/json' } : {}), ...(init.headers as Record<string, string> | undefined) },
+      ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
+    });
+    if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
+    return res;
+  };
+
 /** A link for `base` (`http://127.0.0.1:4417`) to open signed in, from the Obeya there that holds the key of `home`; `null` when none answers. */
 export async function loginLink(base: string, home: string, next = '/'): Promise<string | null> {
   try {
@@ -77,7 +97,8 @@ export const serving = (server: object, owner: Owner) => void keys.set(server, o
 /** The key a server `serving` noted wants. */
 export const keyOf = (server: object) => keys.get(server)!;
 
-const cookie = (req: Request, name: string) =>
+/** The value of the cookie `name` the request brings. */
+export const cookie = (req: Request, name: string) =>
   req.headers
     .get('cookie')
     ?.split(';')
@@ -99,7 +120,7 @@ const same = (a: string, b: string) => {
  */
 function onward(next: string, headers: Record<string, string> = {}): Response {
   const attr = next.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  const html = `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${attr}"><title>Obeya</title><script>location.replace(${JSON.stringify(next).replace(/</g, '\\u003c')})</script>`;
+  const html = `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${attr}"><title>Obeya</title><script>location.replace(${jsonInScript(next)})</script>`;
   return new Response(html, { headers: { ...headers, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }
 

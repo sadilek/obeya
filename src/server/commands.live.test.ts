@@ -2,7 +2,8 @@
 // the owner's words, in each state an agent is on; sentences said or typed with a card open that no
 // agent works on; new tasks that start, wait, or start at a time the owner names; questions with no card open (an opinion becomes
 // an idea, a fact stays in the conversation, work on the machine such as a new repository is a task);
-// actions that depend on reading first, looked up with the step to take then;
+// actions that depend on reading first, looked up with the step to take then; words that add to a
+// question still being looked up, which go into that look-up;
 // requests Obeya cannot do, or words for its makers; a step promised for once a card is done,
 // which it waits for and then takes by itself; and reviews of pull requests, a review card each.
 // Runs only with OBEYA_LIVE=1 (it uses the machine's
@@ -16,9 +17,11 @@ import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Config } from './config';
 import { Store } from './db';
-import { AGENT_DEFAULTS, type CanvasConfig, type ConfigView } from '../core/types';
-import { type AgentRuntime, sdkRuntime, withAgentSetting } from './runtime';
-import { gitRepo } from './testing';
+import { AGENT_DEFAULTS } from '../core/agents';
+import type { CanvasConfig, ConfigView } from '../core/config';
+import { sdkRuntime } from './claude';
+import { type AgentRuntime, withAgentSetting } from './runtime';
+import { gitRepo, testBoard } from './testing';
 
 // the sessions need the machine's Claude login, which the test setup hides behind a scratch config
 const scratch = process.env.CLAUDE_CONFIG_DIR;
@@ -78,7 +81,7 @@ const CASES: [string, string, string | null, boolean, Command['do'][]][] = [
 
 /** What the Coordinator makes of one sentence, or of a request passed on with it: the actions as they run. */
 async function hear(state: string, text: string, request: string | null, typed: boolean) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const board = testBoard();
   const login = board.create({ title: 'Login', x: 0, y: 0 });
   if (state === 'queued') board.work(login.id, { state: 'working' });
   const card = board.create({ title: 'Export als CSV', x: 0, y: 0 });
@@ -160,7 +163,7 @@ const NO_CARD: [string, boolean, Command['do'][]][] = [
 
 /** What the Coordinator makes of one sentence with no card open. */
 async function noCard(text: string, typed: boolean) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const board = testBoard();
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'live' });
   board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Zählerstände nachtragen', x: 0, y: 0 });
@@ -206,7 +209,7 @@ test.skipIf(!process.env.OBEYA_LIVE)(
   async () => {
     const results = await Promise.all(
       READ_FIRST.map(async ([text, then, want]) => {
-        const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+        const board = testBoard();
         board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
         const executed: Command[] = [];
         const asked: number[] = [];
@@ -215,7 +218,7 @@ test.skipIf(!process.env.OBEYA_LIVE)(
         const heard = await k.hear(text, {}, [], { typed: true });
         if (heard.token) k.arm(heard.token);
         await new Promise((r) => setTimeout(r, 20));
-        const step = asked.length ? board.exchange(asked[0]!)?.then : undefined;
+        const step = asked.length ? board.sheet.exchange(asked[0]!)?.then : undefined;
         return { text, then, want, did: executed.map((c) => c.do), step, confirm: heard.confirm };
       }),
     );
@@ -245,7 +248,7 @@ const WISHES: [string, 'cannot' | 'wish' | null][] = [
 
 /** What the Coordinator makes of one sentence with no card open: whether it says Obeya cannot do it, or opens a draft for the makers. */
 async function wishOf(text: string) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const board = testBoard();
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'live' });
   board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
   const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
@@ -276,12 +279,12 @@ const LATER: [string, Command['do'][], string | null][] = [
  * card's agent can begin: the Coordinator waits on that card, and takes the step once it is done.
  */
 async function later(text: string) {
-  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => 'en');
+  const board = testBoard({ language: () => 'en' });
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Login', x: 0, y: 0 });
   // a folder no repository is in yet, as on the owner's machine then: the Coordinator may look
   const place = join(cwd(), 'recipes');
-  board.addTalk(
+  board.sheet.add(
     `Kannst du mir ein neues Repo in ${place} und einen entsprechenden Obeya canvas anlegen? Privater Account, erstmal nicht nach GitHub.`,
     `I can't create a repository myself; Obeya can only put a canvas on one that already exists. Run \`mkdir -p ${place} && cd ${place} && git init -b main && git commit --allow-empty -m "Start"\`. Tell me once it's there, and I'll add the canvas “Recipes”.`,
   );
@@ -304,7 +307,7 @@ async function later(text: string) {
   if (heard.token) k.arm(heard.token);
   await new Promise((r) => setTimeout(r, 20));
   // a wait is the Coordinator's own: it stands on the exchange rather than running
-  const wait = board.waitingTalk()[0]?.waiting[0];
+  const wait = board.sheet.waiting()[0]?.waiting[0];
   const made = executed.length;
   const now = [...executed.map((c) => c.do), ...(wait ? ['waitFor' as const] : [])];
   if (!wait) return { now, confirm: heard.confirm };
@@ -354,11 +357,11 @@ async function reviews(text: string) {
   board.work(board.create({ title: 'Checkout button looks disabled', x: 0, y: 0 }).id, { state: 'live' });
   const contribution = { url: 'https://github.com/acme/shop/pull/4', number: 4, author: 'alice', title: 'Round totals to cents', canModify: true };
   board.work(board.create({ title: 'PR #4: Round totals to cents', x: 0, y: 0 }).id, { state: 'done', contribution: JSON.stringify(contribution) });
-  board.addTalk('Review bitte Pull Request Nummer 4.', 'Neue Aufgabe für das Review von Pull Request 4, der Agent prüft ihn.');
+  board.sheet.add('Review bitte Pull Request Nummer 4.', 'Neue Aufgabe für das Review von Pull Request 4, der Agent prüft ihn.');
   // tasks made for reviews before, which only look like review cards
   board.work(board.create({ title: 'Review PR #2', body: 'Review Pull Request 2.', x: 0, y: 0 }).id, { state: 'done' });
   board.work(board.create({ title: 'Review PR #3', body: 'Review Pull Request 3.', x: 0, y: 0 }).id, { state: 'waiting', need: 'demo', demo: DEMO });
-  board.addTalk('Review Pull Requests 2 und 3, jeweils auf ihrer eigenen Karte.', 'Neue Aufgaben „Review PR #2“ und „Review PR #3“, die Agenten starten.');
+  board.sheet.add('Review Pull Requests 2 und 3, jeweils auf ihrer eigenen Karte.', 'Neue Aufgaben „Review PR #2“ und „Review PR #3“, die Agenten starten.');
   board.addPreference('When a request of mine contains several separate tasks (e.g. a release and a website update), create a separate card for each instead of one card for all.');
   board.addPreference("When I ask for a review of a pull request, the review checks the changes (including anything hidden that doesn't belong there) and records no demo video if the PR already contains one.");
   const executed: Command[] = [];
@@ -369,7 +372,7 @@ async function reviews(text: string) {
   if (heard.token) k.arm(heard.token);
   // the open pull requests, looked up: the Coordinator takes the step it looked them up for
   if (asked.length) {
-    board.answerTalk(asked[0]!, 'Three open pull requests are newer than PR #4:\n- #5 "Empty cart shows a hint" by bob: https://github.com/acme/shop/pull/5\n- #6 "Discount codes" by carol: https://github.com/acme/shop/pull/6\n- #7 "Currency symbol per locale" by dave: https://github.com/acme/shop/pull/7', 'coordinator');
+    board.sheet.answer(asked[0]!, 'Three open pull requests are newer than PR #4:\n- #5 "Empty cart shows a hint" by bob: https://github.com/acme/shop/pull/5\n- #6 "Discount codes" by carol: https://github.com/acme/shop/pull/6\n- #7 "Currency symbol per locale" by dave: https://github.com/acme/shop/pull/7', 'coordinator');
     k.answerIn(asked[0]!);
     for (const end = Date.now() + 120_000; !executed.length && Date.now() < end; ) await new Promise((r) => setTimeout(r, 100));
   }
@@ -384,6 +387,42 @@ test.skipIf(!process.env.OBEYA_LIVE)(
     const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(Array(r.want).fill('reviewPr')));
     for (const r of results) console.log(`${wrong.includes(r) ? '✗' : '✓'} „${r.text}“ → ${r.got.did.join(', ') || 'nothing'} · ${JSON.stringify(r.got.executed.map((c) => (c.do === 'reviewPr' ? c.pr : 'title' in c ? c.title : '')))}`);
     expect(wrong.map((r) => r.text)).toEqual([]);
+  },
+  300_000,
+);
+
+/**
+ * Words said while a question is still being looked up, and whether they add to it (true: they go
+ * into that look-up) or ask something else (false: a look-up of their own, or no look-up at all).
+ */
+const ADDED: [string, boolean][] = [
+  ['Vielleicht machst du gleich eine ganze Liste von Issues, die in Frage kommen, sortiert nach Attraktivität für meine Aufgabenstellung.', true],
+  ['Schau dabei auch im Forum nach, nicht nur auf GitHub.', true],
+  ['Welche Releases hat Home Assistant im Oktober veröffentlicht?', false],
+];
+
+/** What the Coordinator makes of words said while a look-up runs: the exchange their look-up follows up on, if any. */
+async function added(text: string) {
+  const board = new Board(new Store(':memory:'), { id: 'c', name: 'Home Assistant', repos: [{ id: 'ha', name: 'Home Assistant', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  const running = board.sheet.add(
+    'Schau bitte mal bei Home Assistant im Forum oder bei GitHub nach, ob es dort Issues gibt, die wir fixen können, am besten solche, wo die Änderung schön visuell ist.',
+    'Ich suche auf GitHub und im Home-Assistant-Forum nach offenen Issues, die wir fixen könnten, bevorzugt gut sichtbare UI-Änderungen.',
+    { lookUp: { question: 'Welche offenen Issues bei Home Assistant (GitHub, Forum) könnten wir fixen, bevorzugt gut sichtbare UI-Änderungen?', about: null } },
+  );
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.coordinator);
+  const asked: number[] = [];
+  const k = new Commander({ board, runtime, cwd: cwd(), execute: () => {}, lookUp: (t) => void asked.push(t), delayMs: 1 });
+  await k.hear(text, {}, [], { typed: true });
+  const t = asked.length ? board.sheet.exchange(asked[0]!) : undefined;
+  return { joins: t?.follows === running, question: t?.question };
+}
+
+test.skipIf(!process.env.OBEYA_LIVE)(
+  'words that add to a question still being looked up follow up on that look-up; another question does not',
+  async () => {
+    const results = await Promise.all(ADDED.flatMap((c) => [c, c, c]).map(async ([text, want]) => ({ text, want, got: await added(text) })));
+    for (const r of results) console.log(`${r.got.joins === r.want ? '✓' : '✗'} „${r.text}“ → ${r.got.joins ? 'joins' : 'own'} · ${r.got.question ?? '(no look-up)'}`);
+    expect(results.filter((r) => r.got.joins !== r.want).map((r) => r.text)).toEqual([]);
   },
   300_000,
 );

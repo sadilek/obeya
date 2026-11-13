@@ -10,6 +10,9 @@
  */
 export const OWN_GROUP = process.platform !== 'win32';
 
+/** Whether the process `pid` runs (one of another user's, which this process may not signal, runs too). */
+export { alive } from '../../plugin/lib/process.ts';
+
 /**
  * Makes every console program Obeya starts through `Bun.spawn` or `Bun.spawnSync` (git above all,
  * many times a second while it looks after clones) run without a window, where nothing says
@@ -293,6 +296,9 @@ export function onStart(fn: (argv: string[], out: Promise<Output>) => void): () 
   starting.add(fn);
   return () => starting.delete(fn);
 }
+
+/** How a command that failed reads: what it said, else its exit code. */
+export const failureText = (r: { code: number; stdout: string; stderr: string }): string => r.stderr.trim() || r.stdout.trim() || `exit code ${r.code}`;
 
 /** Runs `argv` and waits for it: its exit code, its output, and the signal that stopped it (a timeout), if one did. */
 export function spawnOutput(argv: string[], o: Options = {}): Promise<Output> {

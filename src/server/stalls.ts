@@ -7,6 +7,7 @@ import { appendFileSync, renameSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { PageStall } from '../core/types';
 import { ONE_AT_A_TIME } from './spawn';
+import { clip } from '../core/text';
 
 /** A stall from this long on is logged: a pause of half a second is one the owner notices. */
 export const STALL_MS = 500;
@@ -46,7 +47,7 @@ export interface Trace {
 }
 
 /** A process run synchronously, how long the server waited for it, and how long its thread computed meanwhile (starting it, taking in its output). */
-export interface Waited {
+interface Waited {
   argv: string[];
   ms: number;
   cpuMs?: number;
@@ -74,7 +75,7 @@ export function placeOf(t: Trace): string {
 function command(argv: string[]): string {
   const [program = '', ...args] = argv;
   const text = [basename(program), ...args].join(' ');
-  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+  return clip(text, 200);
 }
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
@@ -224,7 +225,7 @@ interface Run {
 }
 
 /** The line a run gets. */
-export function describeRun(r: Run): string {
+function describeRun(r: Run): string {
   const s = Math.round((r.last - r.since) / 1000);
   const span = s < 120 ? `${s} s` : `${Math.round(s / 60)} min`;
   const each = r.least === r.most ? seconds(r.least) : `${(r.least / 1000).toFixed(1)}–${seconds(r.most)}`;
@@ -252,7 +253,7 @@ export function pageStall(msg: unknown): PageStall | null {
   };
 }
 
-export interface StallOptions {
+interface StallOptions {
   /** Obeya's home, where `stalls.log` is kept. */
   home: string;
   /** The server's log. */

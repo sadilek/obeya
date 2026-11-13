@@ -3,9 +3,12 @@
 // session loads, and the skills Claude Code brings. Claude Code tells without a session doing any work
 // (no message, no tokens): a process starts, answers, and ends.
 
-import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
+import type { SlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import type { Skill } from '../core/types';
-import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+import { Kept } from '../core/kept';
+import { withTimeout } from '../core/late';
+import { idleClaude } from './claude';
+import { messageOf } from '../core/text';
 
 /** Where an agent works, as far as its skills go. */
 export interface SkillPlace {
@@ -61,33 +64,16 @@ const DESCRIPTION_MAX = 200;
 
 /** Asks Claude Code on this machine, with the machine's login and the user's settings. */
 export const sdkSkills: SkillLister = async (place) => {
-  const abort = new AbortController();
-  const claude = claudeExecutable();
-  // no message ever comes: the session answers its control requests and ends with the abort
-  const prompt = (async function* () {
-    await new Promise((r) => abort.signal.addEventListener('abort', r));
-  })() as AsyncIterable<never>;
-  const q = query({
-    prompt,
-    options: {
-      cwd: place.cwd,
-      abortController: abort,
-      ...(claude ? { pathToClaudeCodeExecutable: claude } : {}),
-      spawnClaudeCodeProcess: spawnHere(() => {}),
-      env: cleanEnv(),
-      ...(place.plugins.length ? { plugins: place.plugins.map((path) => ({ type: 'local' as const, path })) } : {}),
-      ...(place.untrusted ? { settingSources: ['user' as const] } : {}),
-    },
+  const { q, close } = idleClaude(place.cwd, {
+    ...(place.plugins.length ? { plugins: place.plugins.map((path) => ({ type: 'local' as const, path })) } : {}),
+    ...(place.untrusted ? { settingSources: ['user' as const] } : {}),
   });
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const late = new Promise<never>((_, fail) => (timer = setTimeout(() => fail(new Error('Claude Code did not list its skills')), ANSWER_MS)));
     // which of Claude Code's own commands are skills, only the skill list says
-    const [commands, skills] = await Promise.race([Promise.all([q.supportedCommands(), q.reloadSkills().then((r) => r.skills)]), late]);
+    const [commands, skills] = await withTimeout(Promise.all([q.supportedCommands(), q.reloadSkills().then((r) => r.skills)]), ANSWER_MS, 'Claude Code did not list its skills');
     return skillsOf(commands, new Set(skills.map((s) => s.name)));
   } finally {
-    clearTimeout(timer);
-    abort.abort();
+    close();
   }
 };
 
@@ -96,8 +82,7 @@ export const sdkSkills: SkillLister = async (place) => {
  * asks for them, and many cards share a repository. A list that fails is empty, and asked again next time.
  */
 export class Skills {
-  private known = new Map<string, { skills: Skill[]; at: number }>();
-  private asking = new Map<string, Promise<Skill[]>>();
+  private kept = new Map<string, Kept<Skill[]>>();
 
   constructor(
     private list: SkillLister = sdkSkills,
@@ -107,23 +92,12 @@ export class Skills {
   /** The skills at `place`: the list kept, asked afresh behind it once it is old; the first time, once Claude Code has answered. */
   of(place: SkillPlace): Promise<Skill[]> {
     const key = JSON.stringify([place.cwd, place.plugins, place.untrusted]);
-    const kept = this.known.get(key);
-    if (kept && this.now() - kept.at < FRESH_MS) return Promise.resolve(kept.skills);
-    let asking = this.asking.get(key);
-    if (!asking) {
-      asking = this.list(place)
-        .catch((e) => {
-          console.error(`Obeya: Claude Code did not list the skills in ${place.cwd}: ${e instanceof Error ? e.message : String(e)}`);
-          return null;
-        })
-        .then((skills) => {
-          this.asking.delete(key);
-          if (skills) this.known.set(key, { skills, at: this.now() });
-          else this.known.delete(key);
-          return skills ?? [];
-        });
-      this.asking.set(key, asking);
+    let kept = this.kept.get(key);
+    if (!kept) {
+      const failed = (e: unknown) => console.error(`Obeya: Claude Code did not list the skills in ${place.cwd}: ${messageOf(e)}`);
+      this.kept.set(key, (kept = new Kept(() => this.list(place), { forMs: FRESH_MS, failed, forget: true, now: this.now })));
     }
-    return kept ? Promise.resolve(kept.skills) : asking;
+    const skills = kept.get();
+    return skills ? Promise.resolve(skills) : kept.fresh().then((s) => s ?? []);
   }
 }

@@ -3,23 +3,17 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_GITIGNORE, previewGitSetup, setUpGit, withoutGit } from './git-setup';
-import { gitRepo, removeDir } from './testing';
-import { git } from './workspaces';
+import { gitRepo, ownGlobalGitConfig, removeDir } from './testing';
+import { git } from './git';
 
 let dir: string;
 let folder: string;
-let globalConfig: string | undefined;
 
 /** git's global configuration for the test, as the setup assistant's step for name and e-mail leaves it. */
-function globalGit(text: string) {
-  writeFileSync(join(dir, 'gitconfig'), text);
-}
+const globalGit = ownGlobalGitConfig('[user]\n\tname = Ada Lovelace\n\temail = ada@example.com\n');
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-git-setup-test-'));
-  globalConfig = process.env.GIT_CONFIG_GLOBAL;
-  process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-  globalGit('[user]\n\tname = Ada Lovelace\n\temail = ada@example.com\n');
   // a project that never had git: dependencies, a secret, its code and one large file
   folder = join(dir, 'shop');
   for (const [file, text] of Object.entries({
@@ -33,11 +27,7 @@ beforeEach(() => {
   }
   writeFileSync(join(folder, 'data.bin'), Buffer.alloc(2_000_000));
 });
-afterEach(async () => {
-  if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-  else process.env.GIT_CONFIG_GLOBAL = globalConfig;
-  await removeDir(dir);
-});
+afterEach(() => removeDir(dir));
 
 describe('setting up git in a folder', () => {
   test('the preview shows what goes in and what stays out, and changes nothing', () => {

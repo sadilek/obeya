@@ -50,6 +50,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   and checks results in demos and result artifacts. Source code and diffs stay in the background:
   on a card with a demo or artifact, its changed files are optional and stay collapsed until
   opened, never shown up front.
+- Explanations on cards and in the UI tell the owner what matters to them: the consequence (that a
+  change gets applied to a base it was never tested on, say), not the mechanics behind it (which
+  branches the agent creates or moves work to).
 - Obeya's UI never sends the owner to the command line: when a message suggests a step (pushing
   `main` first, say), Obeya offers it as an action right there, or the message doesn't mention it.
 - UI strings live in one place, `src/ui/strings.ts`, in German and English (two tables of one shape).
@@ -113,7 +116,7 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   `.voice/qwen-reference-de.wav` (a recording) and `qwen-reference-en.wav` (cut from the ElevenLabs
   voice); the demo settings' `references` name each under its narration language. Qwen3 is good
   enough for demos, ElevenLabs marginally better for the site, so the site stays with ElevenLabs
-  (owner, 2026-10-12); `scripts/hero-video/qwen.py` renders the hero narration in Qwen3 to compare.
+  (owner, 2026-10-12); `scripts/hero-video/render.ts --qwen` renders the hero video in Qwen3.
 - The site (obeya.si) stays quick to read and understand: it names features in a few plain words
   and leaves out details and special cases (which forges, how a single interaction goes); those
   belong in the docs or the README.

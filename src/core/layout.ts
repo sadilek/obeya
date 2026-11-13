@@ -1,7 +1,8 @@
 // Card sizes and default placement. Cards keep a fixed, readable size; a project wraps its children.
 
 import { plain } from './plain';
-import { finished, finishingUp, type Item, type PlanDir } from './types';
+import type { Item, PlanDir } from './types';
+import { finished, finishingUp } from './card';
 
 export type Shape = 'task' | 'chip' | 'project';
 

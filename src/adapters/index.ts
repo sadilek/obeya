@@ -1,7 +1,7 @@
-import { defaultBranchCommit, readingDefaultBranch } from '../server/read-tree';
+import { defaultBranchCommit, isFolder } from '../server/branches';
 import { onGitHub } from '../server/repo';
-import { type ClaudeFile, isNested, SHARED_FIELDS, type NESTED_SETTINGS, type NestedSetting, type RepoSettings, type RepoValues, type SharedSettings } from '../core/types';
-import { detectedBranch, type GitSteps, gitSteps, gitStepsSync, isFolder } from '../server/workspaces';
+import { type ClaudeFile, isNested, SHARED_FIELDS, type NESTED_SETTINGS, type NestedSetting, type RepoSettings, type RepoValues, type SharedSettings } from '../core/config';
+import { gitTry } from '../server/git';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from './generic';
@@ -13,7 +13,7 @@ import { messageOf } from '../core/text';
 export const REPO_ADAPTER_DIR = '.obeya/adapter';
 
 /** Obeya's defaults for the repository: what it runs on where its settings say nothing. */
-export const defaultsFor = (repo: RepoInfo): RepoAdapter => ({ ...generic, land: detectedLand(repo) });
+export const defaultsFor = (repo: RepoInfo): RepoAdapter => ({ ...generic, land: detectedLand(repo), ...(repo.upstream ? { upstream: repo.upstream } : {}) });
 
 /**
  * How work lands where the settings do not say: through pull requests where `origin` is on GitHub
@@ -49,10 +49,12 @@ export function withSettings(a: RepoAdapter, settings: () => RepoSettings | unde
  * The repository's settings as they stand without this machine's, with where each comes from: its
  * `.obeya/settings.json` (`shared`), the clones the configuration names, detection, the defaults.
  */
-export function repoValues(repo: RepoInfo, clones = false, shared: SharedSettings = {}, detected = detectedBranch(repo.path)): RepoValues {
+export function repoValues(repo: RepoInfo, detected: string, clones = false, shared: SharedSettings = {}): RepoValues {
   const a = defaultsFor(repo);
   const value = <K extends Exclude<keyof SharedSettings, NestedSetting>, T>(v: T, field: K) =>
-    shared[field] !== undefined ? { value: shared[field] as T, source: 'repository' as const } : { value: v, source: field === 'land' ? ('detected' as const) : ('default' as const) };
+    shared[field] !== undefined
+      ? { value: shared[field] as T, source: 'repository' as const }
+      : { value: v, source: field === 'land' || (field === 'upstream' && !!v) ? ('detected' as const) : ('default' as const) };
   // a field of `app` or `demo` from the repository, else none
   const nested = <K extends NestedSetting, F extends (typeof NESTED_SETTINGS)[K][number], T>(k: K, f: F, none: T) => {
     const v = (shared[k] as Record<string, unknown> | undefined)?.[f];
@@ -61,14 +63,16 @@ export function repoValues(repo: RepoInfo, clones = false, shared: SharedSetting
   return {
     branch: { value: detected, source: 'detected' },
     land: value(a.land, 'land'),
+    push: value(!!a.push, 'push'),
+    upstream: value(a.upstream ?? '', 'upstream'),
     direct: value(!!a.direct, 'direct'),
-    autoMerge: value(a.autoMerge ?? true, 'autoMerge'),
-    checks: value(a.checks ?? [], 'checks'),
-    setup: value(a.setup ?? '', 'setup'),
+    autoMerge: value(a.autoMerge, 'autoMerge'),
+    checks: value(a.checks, 'checks'),
+    setup: value(a.setup, 'setup'),
     planDocs: value(a.planDocs, 'planDocs'),
     softPaths: value(a.softPaths, 'softPaths'),
     workspaces: clones ? { value: 'clones', source: 'clones' } : value(a.workspaces, 'workspaces'),
-    prNoise: value(a.prNoise ?? [], 'prNoise'),
+    prNoise: value(a.prNoise, 'prNoise'),
     language: value(a.language, 'language'),
     app: { run: nested('app', 'run', ''), stop: nested('app', 'stop', ''), keep: nested('app', 'keep', '') },
     demo: { site: nested('demo', 'site', null), language: nested('demo', 'language', null) },
@@ -112,20 +116,13 @@ export function parseShared(text: string): SharedRead {
 }
 
 /**
- * The repository's `.obeya/settings.json` as its default branch has it at `commit` (by
- * `defaultBranchCommit`'s rule), not as the checkout has it, which is on a card's branch most of
- * the time; nothing where the default branch has no such file.
+ * The repository's `.obeya/settings.json` as its default branch has it (`defaultBranchCommit`),
+ * not as the checkout has it, which is on a card's branch most of the time; nothing where the
+ * default branch has no such file.
  */
-export function readShared(repoPath: string, commit = defaultBranchCommit(repoPath).commit): SharedRead {
+export async function readShared(repoPath: string): Promise<SharedRead> {
   if (isFolder(repoPath)) return readSharedFiles(repoPath);
-  return gitStepsSync(repoPath, readingShared(commit));
-}
-
-/** `readShared` without the server waiting for git. */
-export async function readSharedAsync(repoPath: string): Promise<SharedRead> {
-  if (isFolder(repoPath)) return readSharedFiles(repoPath);
-  const { commit } = await gitSteps(repoPath, readingDefaultBranch(repoPath));
-  return gitSteps(repoPath, readingShared(commit));
+  return readSharedAt(repoPath, (await defaultBranchCommit(repoPath)).commit);
 }
 
 /** `readShared` of a folder without git: its `.obeya/settings.json` and Claude Code configuration as the folder has them. */
@@ -151,13 +148,13 @@ export function readSharedFiles(dir: string): SharedRead {
   return { ...read, claude };
 }
 
-/** `readShared` at `commit` as git steps, with the repository's Claude Code configuration beside it. */
-export function* readingShared(commit: string): GitSteps<SharedRead> {
-  const [text, listed, tree] = yield [
-    ['cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`],
-    ['ls-tree', '-r', '-z', commit, '--', ...CLAUDE_PATHS],
-    ['rev-parse', '--verify', '-q', `${commit}:.obeya`],
-  ];
+/** `readShared` of the repository at `cwd` at `commit`, with its Claude Code configuration beside it. */
+export async function readSharedAt(cwd: string, commit: string): Promise<SharedRead> {
+  const [text, listed, tree] = await Promise.all([
+    gitTry(cwd, 'cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`),
+    gitTry(cwd, 'ls-tree', '-r', '-z', commit, '--', ...CLAUDE_PATHS),
+    gitTry(cwd, 'rev-parse', '--verify', '-q', `${commit}:.obeya`),
+  ]);
   const read: SharedRead = { ...(text != null ? parseShared(text) : { problems: [] }), ...(tree ? { obeyaTree: tree } : {}) };
   // `<mode> <type> <object>\t<path>`: a blob's text is read (trimmed, for reading: its object tells
   // contents apart), a submodule's commit stands for what it holds
@@ -170,30 +167,23 @@ export function* readingShared(commit: string): GitSteps<SharedRead> {
     .sort((a, b) => (a.file < b.file ? -1 : 1));
   if (!entries.length) return read;
   const blobs = entries.filter((e) => e.type === 'blob');
-  const texts = blobs.length ? yield blobs.map((e) => ['cat-file', 'blob', e.id]) : [];
+  const texts = await Promise.all(blobs.map((e) => gitTry(cwd, 'cat-file', 'blob', e.id)));
   const claude = Object.fromEntries(
     entries.map((e) => [e.file, { id: e.id, text: e.type === 'blob' ? (texts[blobs.indexOf(e)] ?? '') : `(${e.type} ${e.id})` }]),
   );
   return { ...read, claude };
 }
 
-/** The `.obeya/settings.json` alone at `commit` as git steps, read as `readingShared` reads it. */
-export function* readingSettings(commit: string): GitSteps<SharedRead> {
-  const [text] = yield [['cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`]];
+/** The `.obeya/settings.json` alone of the repository at `cwd` at `commit`, read as `readSharedAt` reads it. */
+export async function readSettingsAt(cwd: string, commit: string): Promise<SharedRead> {
+  const text = await gitTry(cwd, 'cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`);
   return text != null ? parseShared(text) : { problems: [] };
 }
 
 /**
- * Whether the repository's main branch still has a `.obeya/adapter/index.ts`: a module that said
- * what its settings say now, which Obeya no longer reads (problem `adapterGone`).
+ * Whether the repository at `cwd` still has a `.obeya/adapter/index.ts` at `commit`: a module that
+ * said what its settings say now, which Obeya no longer reads (problem `adapterGone`).
  */
-export function hasAdapterModule(repoPath: string, commit = defaultBranchCommit(repoPath).commit): boolean {
-  if (isFolder(repoPath)) return false;
-  return gitStepsSync(repoPath, readingAdapterModule(commit));
-}
-
-/** `hasAdapterModule` at `commit` as git steps. */
-export function* readingAdapterModule(commit: string): GitSteps<boolean> {
-  const [found] = yield [['cat-file', '-e', `${commit}:${REPO_ADAPTER_DIR}/index.ts`]];
-  return found != null;
+export async function hasAdapterModule(cwd: string, commit: string): Promise<boolean> {
+  return (await gitTry(cwd, 'cat-file', '-e', `${commit}:${REPO_ADAPTER_DIR}/index.ts`)) != null;
 }

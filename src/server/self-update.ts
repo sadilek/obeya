@@ -8,9 +8,10 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { inert } from '../core/inert';
 import type { OwnerHold, RestartReason } from '../core/types';
+import { Listeners } from '../core/watched';
 import { gitDirs } from './read-tree';
 import { COMPILED } from './resources';
-import { gitAsync, gitOrNull } from './workspaces';
+import { gitAsync, gitOrNull } from './git';
 
 /** The exit code that asks the supervisor for a fresh server. */
 export const RESTART = 75;
@@ -74,27 +75,20 @@ export interface RestarterOptions {
  * and until when at most. The owner can have it go ahead at once. A stop waits for the workers
  * alone: the owner asked for it, and a page left playing a video does not hold it off.
  */
-export class Restarter {
+export class Restarter extends Listeners {
   private current: Due | null = null;
-  private stopping = false;
-  private updating = false;
-  private taking = false;
   private gone = false;
   private stopWaiting = () => {};
-  private listeners = new Set<() => void>();
   /** What the owner does in each open page (by connection), as the page last said, and in each request the server answers. */
   private holds = new Map<string, OwnerHold[]>();
 
-  constructor(private o: RestarterOptions) {}
+  constructor(private o: RestarterOptions) {
+    super();
+  }
 
   /** The restart that waits, if one does. */
   due(): Due | null {
     return this.current;
-  }
-
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
   }
 
   /** What the owner does in the open page `page` (or a request the server answers) that a restart waits for; none, or `[]`, when the page closes. */
@@ -115,15 +109,10 @@ export class Restarter {
    */
   request(reason: RestartReason) {
     if (this.gone) return;
-    if (reason === 'stop') this.stopping = true;
-    if (reason === 'update' && !this.stopping) this.updating = true;
-    if (reason === 'takeover') this.taking = true;
     if (this.current) {
-      if (reason === 'stop' && this.current.reason !== 'stop') {
-        this.current = { ...this.current, reason, owner: [] };
-        this.emit();
-      } else if (OUTRANKS[reason] > OUTRANKS[this.current.reason]) {
-        this.current = { ...this.current, reason };
+      if (OUTRANKS[reason] > OUTRANKS[this.current.reason]) {
+        // a stop no longer waits for the owner
+        this.current = { ...this.current, reason, ...(reason === 'stop' ? { owner: [] } : {}) };
         this.emit();
       }
       return;
@@ -131,7 +120,7 @@ export class Restarter {
     const patience = this.o.patienceMs ?? RESTART_PATIENCE_MS;
     const since = Date.now();
     let waiting = this.o.busy();
-    const owner = this.owner();
+    const owner = reason === 'stop' ? [] : this.owner();
     if (!waiting.length && !owner.length) return this.go(reason);
     this.current = { reason, since, deadline: since + patience, waiting, owner };
     this.emit();
@@ -162,21 +151,19 @@ export class Restarter {
 
   /** What the owner does that a restart waits for: watching a demo video, dictating; nothing while Obeya stops. */
   owner(): OwnerHold[] {
-    if (this.stopping) return [];
+    if (this.current?.reason === 'stop') return [];
     const all = new Set([...this.holds.values(), this.o.held?.() ?? []].flat());
     return (['video', 'voice'] as const).filter((h) => all.has(h));
   }
 
-  private go(reason: RestartReason) {
+  /** Ends as the reason that waits, which outranks the one it was first asked for (`OUTRANKS`). */
+  private go(asked: RestartReason) {
     if (this.gone) return;
     this.gone = true;
     this.stopWaiting();
+    const reason = this.current?.reason ?? asked;
     this.current = null;
-    this.o.go(this.stopping ? 'stop' : this.updating ? 'update' : this.taking ? 'takeover' : reason);
-  }
-
-  private emit() {
-    for (const fn of this.listeners) fn();
+    this.o.go(reason);
   }
 }
 
@@ -185,10 +172,14 @@ const OUTRANKS: Record<RestartReason, number> = { code: 0, config: 0, repository
 
 const key = (b: Busy[]) => b.map((x) => `${x.canvas}/${x.card}`).join(' ');
 
-/** Whether the commits from `from` to `to` change code, not only docs (unknown counts as code); without the server waiting for git. */
-export async function changesCode(checkout: string, from: string, to: string): Promise<boolean> {
-  const changed = await gitAsync(checkout, 'diff', '--name-only', from, to).catch(() => null);
-  return changed === null || changed.split('\n').some((f) => f && !inert(f));
+/**
+ * Whether the commits of `range` (`git diff`'s arguments: `[from, to]`, `['HEAD...@{upstream}']`)
+ * change code, not only docs (unknown counts as code); without the server waiting for git.
+ */
+export async function changesCode(checkout: string, range: string[]): Promise<boolean> {
+  // -z: the names as they are, which git otherwise quotes where they hold a non-ASCII character or a quote
+  const changed = await gitAsync(checkout, 'diff', '-z', '--name-only', ...range).catch(() => null);
+  return changed === null || changed.split('\0').some((f) => f && !inert(f));
 }
 
 /** The commit `checkout` stands at, if it is a git checkout. */
@@ -257,7 +248,7 @@ export function watchOwnCode(checkout: string, start: string, fn: (from: string,
       if ((done = stopped)) return;
       if (head && head !== seen) seen = head;
       else if (head && head !== base) {
-        const code = await changesCode(checkout, base, head);
+        const code = await changesCode(checkout, [base, head]);
         // a commit while git diffed has not held still for a round (it may be a landing under way): the next round tells
         const still = code && (await look()) === head;
         if ((done = stopped)) return;

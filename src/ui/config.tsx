@@ -4,24 +4,29 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, modelChoices, type ModelChoice, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type CostsView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoVoiceCheck, type Language, type NarrationLanguage, type PageTags, type SetupCheck, type Theme, THEMES, type VoiceKind, type VoiceSetupView } from '../core/types';
+import { AGENT_ROLES, type AgentEffort, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices } from '../core/agents';
+import { blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
-import { ClaudeUpdate } from './agentPick';
-import { api, reload, type SiteHow } from './api';
-import { keepConfigDraft, keptConfigDraft } from './configDraft';
+import { effortsOf, HarnessUpdate, modelLabel } from './agentPick';
+import { api, reload, type SiteHow, failText } from './api';
+import { useAct, useLoaded, usePoll } from './act';
+import { useLatest } from './latest';
+import { type FilledClones, keepConfigDraft, keptConfigDraft, restartsAgents, withClones } from './configDraft';
 import { keep } from './keep';
 import { plain } from './markdown';
 import { FolderPick } from './folderPick';
-import { demoState, GitSetup, platformName, RecognitionDetail, SetupList, useFolderWithoutGit, voiceState } from './setup';
+import { demoState, GitSetup, lastLine, platformName, RecognitionDetail, SetupList, useFolderWithoutGit, voiceState } from './setup';
 import { useFitHeight } from './fitHeight';
 import { useCopy } from './copy';
-import { failText, fileSize, snoozeWhen, t } from './strings';
+import { fileSize, snoozeWhen, t } from './strings';
 import { applyTheme } from './theme';
 import { WishLink } from './wish';
 import { canvasPath } from './address';
+import { flag, read, session, setFlag, takeJson, write, writeJson } from './stored';
 
 declare global {
   interface Window {
@@ -51,30 +56,30 @@ const CANVAS_KEY = 'obeya-config-canvas';
 
 /** Opens the dialog at the canvases next time, at the one the page shows, as from the note on a plan directory. */
 export const showCanvasesSection = () => {
-  sessionStorage.setItem(SECTION_KEY, 'canvases');
-  sessionStorage.removeItem(CANVAS_KEY);
+  write(session, SECTION_KEY, 'canvases');
+  write(session, CANVAS_KEY, null);
 };
 
 /** The canvas this tab showed last in the dialog, if any. */
 const keptCanvas = () => {
-  const n = Number(sessionStorage.getItem(CANVAS_KEY) ?? NaN);
+  const n = Number(read(session, CANVAS_KEY) ?? NaN);
   return Number.isInteger(n) && n >= 0 ? n : null;
 };
 
 /** Opens the dialog at the demos next time, as from the hint on a card to set up a personal demo site. */
 export const showDemosSection = () => {
-  sessionStorage.setItem(SECTION_KEY, 'demos');
-  sessionStorage.setItem(PERSONAL_SHOW_KEY, '1');
+  write(session, SECTION_KEY, 'demos');
+  setFlag(session, PERSONAL_SHOW_KEY, true);
 };
 /** The personal demo site is to be scrolled to once the dialog shows it. */
 const PERSONAL_SHOW_KEY = 'obeya-config-personal';
 
 /** Opens the dialog at "Other devices" next time, as from "Connect a phone". */
-export const showDevicesSection = () => sessionStorage.setItem(SECTION_KEY, 'devices');
+export const showDevicesSection = () => write(session, SECTION_KEY, 'devices');
 
 /** The section this tab showed last, if any. */
 const keptSection = () => {
-  const s = sessionStorage.getItem(SECTION_KEY) as Section | null;
+  const s = read(session, SECTION_KEY) as Section | null;
   return s && SECTIONS.includes(s) ? s : null;
 };
 
@@ -91,7 +96,7 @@ const FOCUS_KEY = 'obeya-config-focus';
 /** Opens the dialog next time at a repository's clone count or slots, as from a card waiting for a free clone or slot. */
 export const showRepoClones = (f: ConfigFocus) => {
   showCanvasesSection();
-  sessionStorage.setItem(FOCUS_KEY, JSON.stringify(f));
+  writeJson(session, FOCUS_KEY, f);
 };
 
 /** The canvases' draft as written down, with the id each canvas had when loaded. */
@@ -99,22 +104,35 @@ type KeptCanvases = { draft: CanvasConfig[]; origin: (string | null)[] };
 const ofKept = (k: KeptCanvases) => k.draft;
 
 /**
- * The draft with the ids of its canvases once the check of the configuration as `loaded` resolved
+ * A canvas of the draft: its configuration, the id it had when loaded (renaming a running canvas
+ * keeps it, and its cards), and a key that goes with it when it moves or one above it goes, and
+ * what is open in it with it.
+ */
+interface Row {
+  key: number;
+  origin: string | null;
+  canvas: CanvasConfig;
+}
+let rowKeys = 0;
+const rowsOf = (canvases: CanvasConfig[], origin: (string | null)[] = []): Row[] => canvases.map((canvas, i) => ({ key: rowKeys++, origin: origin[i] ?? null, canvas }));
+
+/**
+ * The rows with the ids of their canvases once the check of the configuration as `loaded` resolved
  * them: a canvas without one yet gets the id of the loaded canvas with its repositories, and a
  * running one the owner renamed meanwhile keeps it, as a rename does once the id is known; one they
  * added has none.
  */
-function pinned(kept: KeptCanvases, loaded: CanvasConfig[], resolved: Checked['resolved'], running: string[]): KeptCanvases {
+function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved'], running: string[]): Row[] {
   const taken = new Set<number>();
-  const out = kept.draft.map((c, i) => {
-    if (kept.origin[i]) return { c, id: kept.origin[i]! };
+  return rows.map((r) => {
+    if (r.origin) return r;
+    const c = r.canvas;
     const j = loaded.findIndex((l, k) => !taken.has(k) && JSON.stringify(l.repos) === JSON.stringify(c.repos));
-    if (j < 0) return { c, id: null };
+    if (j < 0) return r;
     taken.add(j);
     const id = resolved[j]?.id ?? null;
-    return { c: id && running.includes(id) && !c.id && c.name !== loaded[j]!.name ? { ...c, id } : c, id };
+    return { ...r, origin: id, canvas: id && running.includes(id) && !c.id && c.name !== loaded[j]!.name ? { ...c, id } : c };
   });
-  return { draft: out.map((x) => x.c), origin: out.map((x) => x.id) };
 }
 
 /** `list` with its entry at `from` moved to `to`. */
@@ -135,35 +153,32 @@ function checkedMoved(c: Checked, n: number, from: number, to: number): Checked 
 
 export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProblems, onConnect, revs }: { on: boolean; /** The canvas the page shows: the one Canvases shows first. */ page?: string; onClose: () => void; onSetup: () => void; onAsk: Ask; onTalk: () => void; onProblems: (n: number) => void; onConnect: () => void; revs: string }) {
   const [view, setView] = useState<ConfigView | null>(null);
-  const [draft, setDraft] = useState<CanvasConfig[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
+  // the canvases of the rows: the same list until one of them changes (not with an id pinned), so the draft is checked once per change
+  const drafted = useRef<CanvasConfig[]>([]);
+  if (rows.length !== drafted.current.length || rows.some((r, i) => r.canvas !== drafted.current[i])) drafted.current = rows.map((r) => r.canvas);
+  const draft = drafted.current;
   const [checked, setChecked] = useState<Checked | null>(null);
   // the check of the configuration as saved: it reads every repository, so it comes after the configuration
   const [saved, setSaved] = useState<Checked | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { status, setStatus, busy, act } = useAct();
   const [json, setJson] = useState(false);
   const [section, setSectionState] = useState<Section>(() => keptSection() ?? 'canvases');
   const setSection = (s: Section) => {
-    sessionStorage.setItem(SECTION_KEY, s);
+    write(session, SECTION_KEY, s);
     setSectionState(s);
   };
-  // the id each canvas of the draft had when loaded: renaming a running canvas keeps it, and its cards
-  const [origin, setOrigin] = useState<(string | null)[]>([]);
   // a repository added here whose settings say clones gets as many as the first canvas's, once it is checked, until existing ones are listed
   const filled = useRef<FilledClones>(new Map());
   // the canvases as loaded while their ids are unknown yet: those come with the check of the saved configuration
   const unpinned = useRef<CanvasConfig[] | null>(null);
-  // counts the drafts loaded anew (reset, read again): a canvas of the one before is not one of this one
-  const [loads, setLoads] = useState(0);
+  // a draft loaded anew (reset, read again) has rows of its own: a canvas of the one before is not one of this one
   const load = (v: ConfigView, c: Checked | null) => {
-    setLoads((n) => n + 1);
     filled.current.clear();
-    setDraft(v.canvases);
-    setOrigin(c ? c.resolved.map((r) => r?.id ?? null) : v.canvases.map(() => null));
+    setRows(rowsOf(v.canvases, c?.resolved.map((r) => r?.id ?? null)));
     unpinned.current = c ? null : v.canvases;
   };
-  const now = useRef({ draft, origin, running: view?.running ?? [] });
-  now.current = { draft, origin, running: view?.running ?? [] };
+  const running = useLatest(view?.running ?? []);
   const savedSeq = useRef(0);
   const checkSaved = () => {
     const n = ++savedSeq.current;
@@ -174,9 +189,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       const loaded = unpinned.current;
       unpinned.current = null;
       if (!loaded) return;
-      const p = pinned(now.current, loaded, c.resolved, now.current.running);
-      if (p.draft.some((x, i) => x !== now.current.draft[i])) setDraft(p.draft);
-      setOrigin(p.origin);
+      setRows((rows) => pinned(rows, loaded, c.resolved, running.current));
     }, console.error);
   };
 
@@ -186,11 +199,10 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   // the canvas Canvases shows, by its place in the draft; until one is chosen, the field to show's or the page's, once their ids are known
   const [pick, setPickState] = useState<number | null>(keptCanvas);
   const setPick = (i: number | null) => {
-    if (i === null) sessionStorage.removeItem(CANVAS_KEY);
-    else sessionStorage.setItem(CANVAS_KEY, String(i));
+    write(session, CANVAS_KEY, i === null ? null : String(i));
     setPickState(i);
   };
-  const idAt = (i: number) => origin[i] ?? checked?.resolved[i]?.id ?? null;
+  const idAt = (i: number) => rows[i]?.origin ?? checked?.resolved[i]?.id ?? null;
   const wanted = useRef<string | null>(null);
   useEffect(() => {
     const id = wanted.current;
@@ -199,34 +211,23 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
     if (i < 0) return;
     wanted.current = null;
     setPick(i);
-  }, [origin, checked, view]);
+  }, [rows, checked, view]);
   const shown = Math.min(pick ?? 0, Math.max(0, draft.length - 1));
-
-  // a key per canvas that goes with it when it moves or one above it goes, and what is open in it with it
-  const keys = useRef<number[]>([]);
-  const nextKey = useRef(0);
-  const keyed = useRef(loads);
-  if (keyed.current !== loads || keys.current.length !== draft.length) {
-    keyed.current = loads;
-    keys.current = draft.map(() => nextKey.current++);
-  }
 
   const changed = !!view && JSON.stringify(draft) !== JSON.stringify(view.canvases);
   const changedRef = useRef(changed);
   changedRef.current = changed;
   // a draft not saved yet is written down as it changes: a reload (Obeya's restart) brings it back
   useEffect(() => {
-    if (view) keepConfigDraft<KeptCanvases>(sessionStorage, 'canvases', { draft, origin }, view.canvases, ofKept);
-  }, [draft, origin, view]);
+    if (view) keepConfigDraft<KeptCanvases>(sessionStorage, 'canvases', { draft, origin: rows.map((r) => r.origin) }, view.canvases, ofKept);
+  }, [rows, view]);
   // read afresh whenever the dialog opens: the Coordinator or the file may have changed it; a draft not saved yet stays, after a reload too
   useEffect(() => {
     if (!on) return;
     sharedDone.clear();
     const s = keptSection();
     if (s) setSectionState(s);
-    const f = sessionStorage.getItem(FOCUS_KEY);
-    sessionStorage.removeItem(FOCUS_KEY);
-    const fo = f ? (JSON.parse(f) as ConfigFocus) : null;
+    const fo = takeJson<ConfigFocus>(session, FOCUS_KEY);
     setFocus(fo);
     // the canvas with the field to show, else the one this tab showed last, else the page's
     const kept = keptCanvas();
@@ -237,9 +238,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       setView(v);
       const kept = !changedRef.current && keptConfigDraft<KeptCanvases>(sessionStorage, 'canvases', v.canvases, ofKept);
       if (kept) {
-        setLoads((n) => n + 1);
-        setDraft(kept.draft);
-        setOrigin(kept.origin);
+        setRows(rowsOf(kept.draft, kept.origin));
         unpinned.current = v.canvases;
       } else if (!changedRef.current) load(v, null);
       setStatus(v.restarting ? t.config.saved : '');
@@ -258,7 +257,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   const take = (c: Checked, checkedDraft: CanvasConfig[]) => {
     setChecked(c);
     const next = view && withClones(checkedDraft, view.canvases, c.resolved, filled.current);
-    if (next) setDraft(next);
+    if (next) setRows((rows) => rows.map((r, i) => ({ ...r, canvas: next[i] ?? r.canvas })));
   };
 
   // the draft is checked as it is edited: paths, settings, ids; as saved, it has the check of the saved configuration
@@ -285,7 +284,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   // a canvas differs from the saved one with its id, or from the one at its place while ids are unknown; one added always
   const canvasChanged = (i: number) => {
     if (!view || !changed) return false;
-    const id = origin[i];
+    const id = rows[i]!.origin;
     const j = id && saved ? saved.resolved.findIndex((r) => r?.id === id) : i;
     return j !== i || JSON.stringify(draft[i]) !== JSON.stringify(view.canvases[j]);
   };
@@ -297,24 +296,18 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
     setPick(i);
   };
   const addCanvas = () => {
-    keys.current = [...keys.current, nextKey.current++];
-    setDraft([...draft, { repos: [{ path: '' }] }]);
-    setOrigin([...origin, null]);
-    showCanvas(draft.length);
+    setRows([...rows, ...rowsOf([{ repos: [{ path: '' }] }])]);
+    showCanvas(rows.length);
   };
   const setCanvas = (i: number, x: CanvasConfig | null) => {
-    if (x) return setDraft(draft.map((y, j) => (j === i ? x : y)));
-    keys.current = keys.current.filter((_, j) => j !== i);
-    setDraft(draft.filter((_, j) => j !== i));
-    setOrigin(origin.filter((_, j) => j !== i));
+    if (x) return setRows(rows.map((r, j) => (j === i ? { ...r, canvas: x } : r)));
+    setRows(rows.filter((_, j) => j !== i));
     // the next one takes its place; after the last, the one before it
-    setPick(Math.max(0, Math.min(i, draft.length - 2)));
+    setPick(Math.max(0, Math.min(i, rows.length - 2)));
   };
   const moveCanvas = (from: number, to: number) => {
-    keys.current = moved(keys.current, from, to);
-    setDraft(moved(draft, from, to));
-    setOrigin(moved(origin, from, to));
-    if (checked) setChecked(checkedMoved(checked, draft.length, from, to));
+    setRows(moved(rows, from, to));
+    if (checked) setChecked(checkedMoved(checked, rows.length, from, to));
     if (shown === from) setPick(to);
   };
   return (
@@ -345,13 +338,13 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                     )}
                   </span>
                   <ul>
-                    {draft.map((x, i) => {
+                    {rows.map((r, i) => {
                       const on = section === 'canvases' && i === shown;
                       const n = problems.filter((p) => p.canvas === i).length;
                       return (
-                        <li key={keys.current[i]}>
+                        <li key={r.key}>
                           <button className={on ? 'on' : undefined} aria-current={on || undefined} onClick={() => showCanvas(i)}>
-                            <span className="cfg-nav-name">{canvasName(x, i)}</span>
+                            <span className="cfg-nav-name">{canvasName(r.canvas, i)}</span>
                             {canvasChanged(i) && <span className="cfg-dot" title={c.unsaved} />}
                             {n > 0 && (
                               <span className="n err" title={c.problemCount(n)}>
@@ -401,10 +394,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
             ) : (
               <Canvases
                 view={view}
-                draft={draft}
-                origin={origin}
+                rows={rows}
                 n={shown}
-                canvasKey={keys.current[shown]}
                 checked={checked}
                 changed={changed}
                 busy={busy}
@@ -414,9 +405,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                 onCanvas={setCanvas}
                 onMove={moveCanvas}
                 onSave={async () => {
-                  setBusy(true);
                   let applies = false;
-                  try {
+                  await act(async () => {
                     const { restarting, applied } = await api.saveConfig(draft);
                     // what is saved now is the draft as last checked; settings applied at once change what the
                     // repositories amount to (where "For everyone" goes, say), so it is read and checked again
@@ -427,10 +417,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
                     checkSaved();
                     setStatus(restarting ? c.saved : applied ? (restartsAgents(view.canvases, draft) ? c.savedRestarts : c.savedApplied) : c.savedOnly);
                     applies = !restarting;
-                  } catch (e) {
-                    setStatus(failText(e));
-                  }
-                  setBusy(false);
+                  });
                   return applies;
                 }}
                 onReset={() => load(view, saved)}
@@ -448,8 +435,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
           </section>
           <section className="cfg-sec" hidden={section !== 'agents'}>
             <AgentsBlock on={on} />
-            <UsageBlock on={on} />
-            <CostsBlock on={on} />
+            <ToggleSetting on={on} load={api.usageMeter} save={api.saveUsageMeter} text={t.usage.setting} />
+            <ToggleSetting on={on} load={api.costs} save={api.saveCosts} text={t.costs.setting} />
           </section>
           <section className="cfg-sec" hidden={section !== 'voice'}>
             <VoiceBlock on={on} />
@@ -516,6 +503,19 @@ export function Field({ label, hint, className, children }: { label: ReactNode; 
   );
 }
 
+/** A choice of a few options as one row of buttons, the chosen one lit. */
+export function Seg<T>({ label, options, value, name, onChange, disabled }: { label: string; options: readonly T[]; /** None of them: a value not chosen yet. */ value: NoInfer<T> | null; name: (x: T) => ReactNode; onChange: (x: T) => void; disabled?: boolean }) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={label}>
+      {options.map((x) => (
+        <button key={String(x)} type="button" role="radio" aria-checked={value === x} className={value === x ? 'on' : undefined} disabled={disabled} onClick={() => onChange(x)}>
+          {name(x)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * What to know about a field, behind a small icon: the icon shows while the pointer is on the field or its
  * label (the nearest `.cfg-has-info` around it) or the field has the focus, so the page stays calm; the text
@@ -568,12 +568,9 @@ const TIP_WIDTH = 340;
 
 interface CanvasesProps {
   view: ConfigView;
-  draft: CanvasConfig[];
-  origin: (string | null)[];
+  rows: Row[];
   /** The canvas shown, by its place in the draft. */
   n: number;
-  /** Its key, which goes with it when it moves: what is open in it stays with it. */
-  canvasKey: number | undefined;
   checked: Checked | null;
   changed: boolean;
   busy: boolean;
@@ -595,7 +592,7 @@ interface CanvasesProps {
 }
 
 /** One canvas of the configuration with its repositories; all canvases are saved together, with the bar at the bottom. */
-function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, focus, onAsk, onRecheck, onCanvas, onMove, onSave, onReset, onReload, status, json, onJson }: CanvasesProps) {
+function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onRecheck, onCanvas, onMove, onSave, onReset, onReload, status, json, onJson }: CanvasesProps) {
   const c = t.config;
   const problems = checked?.problems ?? [];
   // "For everyone" takes over what is saved: with changes in the dialog it saves them first, where that applies without a restart
@@ -605,20 +602,21 @@ function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, f
   const gone = resolved.every(Boolean) ? view.running.filter((id) => !resolved.some((r) => r?.id === id)) : [];
   // from the command line, saving creates the file: that is worth saying out loud
   const file = view.source === 'file' ? { file: view.file } : { notice: c.fromArgs(view.file) };
-  const x = draft[n];
+  const row = rows[n];
+  const pin = row?.origin;
   return (
     <>
-      {x ? (
+      {row ? (
         <CanvasBlock
-          key={canvasKey}
+          key={row.key}
           n={n}
-          {...(draft.length > 1 ? { onMove: (earlier: boolean) => onMove(n, earlier ? n - 1 : n + 1), last: n === draft.length - 1 } : {})}
-          canvas={x}
+          {...(rows.length > 1 ? { onMove: (earlier: boolean) => onMove(n, earlier ? n - 1 : n + 1), last: n === rows.length - 1 } : {})}
+          canvas={row.canvas}
           {...file}
           checking={!checked}
           resolved={checked?.resolved[n] ?? null}
           running={view.running}
-          pin={origin[n] && view.running.includes(origin[n]) ? origin[n] : undefined}
+          pin={pin && view.running.includes(pin) ? pin : undefined}
           saved={!changed}
           problems={problems.filter((p) => p.canvas === n)}
           focus={focus}
@@ -637,7 +635,7 @@ function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, f
           <Problem key={k} problem={p} where="" ask={changed ? undefined : onAsk} />
         ))}
       {changed && gone.length > 0 && <p className="hint warn">{c.gone(gone.join(', '))}</p>}
-      {json && <pre className="c-json">{JSON.stringify(draft, null, 2)}</pre>}
+      {json && <pre className="c-json">{JSON.stringify(rows.map((r) => r.canvas), null, 2)}</pre>}
       <div className="cfg-actions">
         <button className="btn primary" disabled={!changed || busy || problems.some(blocksSaving)} onClick={() => void onSave()}>
           {/* a configuration from the file applies while Obeya runs; one from the command line becomes the file with a restart */}
@@ -648,7 +646,7 @@ function Canvases({ view, draft, origin, n, canvasKey, checked, changed, busy, f
             {c.reset}
           </button>
         )}
-        {status ? <span className="hint c-status">{status}</span> : changed && draft.length > 1 && <span className="hint c-status">{c.savesAll}</span>}
+        {status ? <span className="hint c-status">{status}</span> : changed && rows.length > 1 && <span className="hint c-status">{c.savesAll}</span>}
         <button className={json ? 'btn small cfg-json on' : 'btn small cfg-json'} onClick={onJson}>
           {c.json}
         </button>
@@ -728,34 +726,20 @@ const DEFAULT_DEMO_DIRECTORY = '~/demos';
  * language, which agents write the owner in, saved on its own and taking effect with their next words.
  */
 function LanguageBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<LanguageView | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (on) api.language().then(setView, console.error);
-  }, [on]);
+  const [view, setView] = useLoaded(on, api.language);
+  const { status, setStatus, failed, busy, act } = useAct();
   if (!view) return null;
   const l = t.config.language;
-  const choose = async (language: Language | null) => {
-    setBusy(true);
-    setStatus('');
-    try {
-      const v = await api.saveLanguage(language);
-      setView(v);
+  const choose = (language: Language | null) =>
+    act(async () => {
+      setView(await api.saveLanguage(language));
       // the strings are set before the first render: the page loads again, keeping what is open
       reload();
-    } catch (e) {
-      setStatus(failText(e));
-      setBusy(false);
-    }
-  };
-  const converse = async (conversation: Language | null) => {
+    });
+  // saved beside the interface language, which stays choosable meanwhile
+  const converse = (conversation: Language | null) => {
     setStatus('');
-    try {
-      setView(await api.saveConversationLanguage(conversation));
-    } catch (e) {
-      setStatus(failText(e));
-    }
+    api.saveConversationLanguage(conversation).then(setView, failed);
   };
   return (
     <>
@@ -787,98 +771,44 @@ function LanguageBlock({ on }: { on: boolean }) {
 
 /** Light or dark, or as the system: saved on its own, and the page takes it at once. */
 function ThemeBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<ThemeView | null>(null);
-  const [status, setStatus] = useState('');
-  useEffect(() => {
-    if (on) api.theme().then(setView, console.error);
-  }, [on]);
+  const [view, setView] = useLoaded(on, api.theme);
+  const { status, act } = useAct();
   if (!view) return null;
   const l = t.config.theme;
   const choose = async (theme: Theme | null) => {
     const before = view;
     setView({ ...view, chosen: theme });
     applyTheme(theme);
-    setStatus('');
-    try {
-      setView(await api.saveTheme(theme));
-    } catch (e) {
-      setView(before);
-      applyTheme(before.chosen);
-      setStatus(failText(e));
-    }
+    if (await act(async () => setView(await api.saveTheme(theme)))) return;
+    setView(before);
+    applyTheme(before.chosen);
   };
   return (
     <>
       <Head sub title={l.title} hint={l.hint} file={view.file} />
       <Field label={l.title}>
-        <div className="seg" role="radiogroup" aria-label={l.title}>
-          {[null, ...THEMES].map((x) => (
-            <button key={x ?? 'system'} type="button" role="radio" aria-checked={view.chosen === x} className={view.chosen === x ? 'on' : undefined} onClick={() => choose(x)}>
-              {x ? l.names[x] : l.system}
-            </button>
-          ))}
-        </div>
+        <Seg label={l.title} options={[null, ...THEMES]} value={view.chosen} name={(x) => (x ? l.names[x] : l.system)} onChange={choose} />
       </Field>
       {status && <p className="hint c-status">{status}</p>}
     </>
   );
 }
 
-/** Whether the bar shows the plan's usage limits: saved on its own, and the bar follows at once. */
-function UsageBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<UsageMeterView | null>(null);
-  const [status, setStatus] = useState('');
-  useEffect(() => {
-    if (on) api.usageMeter().then(setView, console.error);
-  }, [on]);
+/**
+ * A setting that is on or off, saved on its own, the page following at once: whether the bar shows
+ * the plan's usage limits, whether the page shows what the agents cost.
+ */
+function ToggleSetting({ on, load, save, text }: { on: boolean; load: () => Promise<{ file: string; on: boolean }>; save: (on: boolean) => Promise<{ file: string; on: boolean }>; text: { title: string; hint: string; label: string } }) {
+  const [view, setView] = useLoaded(on, load);
+  const { status, act } = useAct();
   if (!view) return null;
-  const l = t.usage.setting;
-  const choose = async (shown: boolean) => {
-    setStatus('');
-    try {
-      setView(await api.saveUsageMeter(shown));
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
   return (
     <>
-      <Head sub title={l.title} hint={l.hint} file={view.file} />
-      <Field label={l.title}>
+      <Head sub title={text.title} hint={text.hint} file={view.file} />
+      <Field label={text.title}>
         <label className="c-check">
-          <input type="checkbox" checked={view.on} onChange={(e) => choose(e.target.checked)} />
-          {l.label}
-        </label>
-      </Field>
-      {status && <p className="hint c-status">{status}</p>}
-    </>
-  );
-}
-
-/** Whether the page shows what the agents cost: saved on its own, and every open page follows at once. */
-function CostsBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<CostsView | null>(null);
-  const [status, setStatus] = useState('');
-  useEffect(() => {
-    if (on) api.costs().then(setView, console.error);
-  }, [on]);
-  if (!view) return null;
-  const l = t.costs.setting;
-  const choose = async (shown: boolean) => {
-    setStatus('');
-    try {
-      setView(await api.saveCosts(shown));
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
-  return (
-    <>
-      <Head sub title={l.title} hint={l.hint} file={view.file} />
-      <Field label={l.title}>
-        <label className="c-check">
-          <input type="checkbox" checked={view.on} onChange={(e) => choose(e.target.checked)} />
-          {l.label}
+          <input type="checkbox" checked={view.on} onChange={(e) => act(async () => setView(await save(e.target.checked)))} />
+          {text.label}
         </label>
       </Field>
       {status && <p className="hint c-status">{status}</p>}
@@ -892,26 +822,12 @@ function CostsBlock({ on }: { on: boolean }) {
  * the models and efforts are those of the chosen harness.
  */
 function AgentsBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<AgentsView | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (on) api.agents().then(setView, console.error);
-  }, [on]);
+  const [view, setView] = useLoaded(on, api.agents);
+  const { status, busy, act } = useAct();
   if (!view) return null;
   const a = t.config.agents;
-  const choose = async (role: AgentRole, choice: Partial<AgentSetting>) => {
-    setBusy(true);
-    setStatus('');
-    try {
-      setView(await api.saveAgents(role, choice));
-    } catch (e) {
-      setStatus(failText(e));
-    }
-    setBusy(false);
-  };
+  const choose = (role: AgentRole, choice: Partial<AgentSetting>) => act(async () => setView(await api.saveAgents(role, choice)));
   const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  const modelName = (h: Harness, m: ModelChoice) => `${h === 'claude' ? (a.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}${m.version ? ` ${m.version}` : ''}`;
   const unready = view.harnesses.filter((h) => !h.ready);
   return (
     <>
@@ -925,7 +841,7 @@ function AgentsBlock({ on }: { on: boolean }) {
           const setting = view.agents[role];
           // Codex's families by their newest model; a model chosen that the harness no longer offers stays shown
           const listed = modelChoices(harness(setting.harness), setting.model);
-          const efforts = listed.find((m) => m.value === setting.model)?.efforts ?? AGENT_EFFORTS;
+          const efforts = effortsOf(listed, setting.model);
           return (
             <Fragment key={role}>
               <div className="cfg-agent">
@@ -945,7 +861,7 @@ function AgentsBlock({ on }: { on: boolean }) {
               <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value })}>
                 {listed.map((m) => (
                   <option key={m.value} value={m.value}>
-                    {modelName(setting.harness, m)}
+                    {`${modelLabel(setting.harness, m)}${m.version ? ` ${m.version}` : ''}`}
                   </option>
                 ))}
               </select>
@@ -960,7 +876,9 @@ function AgentsBlock({ on }: { on: boolean }) {
           );
         })}
       </div>
-      <ClaudeUpdate view={view} onView={setView} />
+      {HARNESSES.map((h) => (
+        <HarnessUpdate key={h} harness={h} view={view} onView={setView} />
+      ))}
       {unready.length > 0 && <p className="hint">{`${unready.map((h) => a.notReady(t.harnesses[h.id])).join(', ')}. ${a.setUp}`}</p>}
       {status && <p className="hint c-status">{status}</p>}
     </>
@@ -972,8 +890,7 @@ function DemoBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<DemoSettingsView | null>(null);
   const [draft, setDraft] = useState<DemoSettings | null>(null);
   const [check, setCheck] = useState<DemoVoiceCheck | null>(null);
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { status, setStatus, failed, busy, act } = useAct({ detail: ['voiceSample'] });
   const [sampling, setSampling] = useState(false);
   // the subtitle languages as typed, separators and all, while the field has them; the draft holds their codes
   const [subtitlesText, setSubtitlesText] = useState<string | null>(null);
@@ -1003,11 +920,7 @@ function DemoBlock({ on }: { on: boolean }) {
   }, [draft, installing]);
   // an installation runs on the server, or it counts the demos' space: follow it until it ends
   const counting = !!view?.space?.busy;
-  useEffect(() => {
-    if (!on || !(installing || counting)) return;
-    const timer = setInterval(() => api.demoSettings().then(setView, console.error), 1500);
-    return () => clearInterval(timer);
-  }, [on, installing, counting]);
+  usePoll(on && (installing || counting), () => api.demoSettings().then(setView), 1500);
   useEffect(() => () => audio.pause(), [audio]);
   if (!view || !draft) return null;
   const d = t.config.demo;
@@ -1016,27 +929,19 @@ function DemoBlock({ on }: { on: boolean }) {
   const shown = check ?? view.check;
   const job = view.job?.voice === draft.voice ? view.job : undefined;
   const unknownCodes = (draft.subtitles ?? []).filter((c) => !knownLanguage(c));
-  const failed = (e: unknown) => setStatus(failText(e, { detail: ['voiceSample'] }));
   const save = async () => {
-    setBusy(true);
-    try {
+    if (await act(async () => {
       const v = await api.saveDemoSettings(draft);
       setView(v);
       setDraft(v.settings);
       setSubtitlesText(null);
+    }))
       setStatus(d.saved);
-    } catch (e) {
-      failed(e);
-    }
-    setBusy(false);
   };
-  const install = async () => {
+  // installing and sampling leave Save as it is: the status line alone is theirs too
+  const install = () => {
     setStatus('');
-    try {
-      setView(await api.installDemoVoice(draft));
-    } catch (e) {
-      failed(e);
-    }
+    api.installDemoVoice(draft).then(setView, failed);
   };
   const listen = async () => {
     setSampling(true);
@@ -1183,7 +1088,7 @@ function DemoBlock({ on }: { on: boolean }) {
                 </div>
               )
             )}
-            {job?.error && !job.running && <p className="p-error">{d.installFailed(job.error.split('\n').at(-1) ?? '')}</p>}
+            {job?.error && !job.running && <p className="p-error">{d.installFailed(lastLine(job.error))}</p>}
             {shown.problems.map((p) => (
               <p key={p} className="p-error">
                 {d.problem[p]}
@@ -1289,52 +1194,36 @@ const PERSONAL_CODE_KEY = 'obeya-personal-code';
  * private repositories ticked for it, and removing it from this machine.
  */
 function PersonalSiteBlock({ on }: { on: boolean }) {
-  const [view, setView] = useState<PersonalSiteView | null>(null);
-  const [host, setHost] = useState<PersonalHost>(() => PERSONAL_HOSTS.find((h) => h === sessionStorage.getItem(PERSONAL_HOST_KEY)) ?? PERSONAL_HOSTS[0]!);
+  const [view, setView] = useLoaded(on, api.personalSite);
+  const [host, setHost] = useState<PersonalHost>(() => PERSONAL_HOSTS.find((h) => h === read(session, PERSONAL_HOST_KEY)) ?? PERSONAL_HOSTS[0]!);
   const [way, setWay] = useState<CloudflareWay | null>(null);
-  const [code, setCode] = useState(() => sessionStorage.getItem(PERSONAL_CODE_KEY) ?? '');
-  const [connecting, setConnecting] = useState(() => !!sessionStorage.getItem(PERSONAL_CODE_KEY));
+  const [code, setCode] = useState(() => read(session, PERSONAL_CODE_KEY) ?? '');
+  const [connecting, setConnecting] = useState(() => !!read(session, PERSONAL_CODE_KEY));
   const [copied, copy] = useCopy(1500);
   // the connection code, at hand before the click: the clipboard takes it within the click
   const [connection, setConnection] = useState('');
   const [removing, setRemoving] = useState(false);
-  const [status, setStatus] = useState('');
+  const { status, act: run } = useAct();
   const p = t.config.personal;
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (on) api.personalSite().then(setView, console.error);
-  }, [on]);
   // opened from a card's hint: it comes into view
   useEffect(() => {
-    if (!on || !view || !sessionStorage.getItem(PERSONAL_SHOW_KEY)) return;
-    sessionStorage.removeItem(PERSONAL_SHOW_KEY);
+    if (!on || !view || !flag(session, PERSONAL_SHOW_KEY)) return;
+    setFlag(session, PERSONAL_SHOW_KEY, false);
     // the demo settings above load meanwhile and push it down: scrolled once they stand
     const at = setTimeout(() => box.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 400);
     return () => clearTimeout(at);
   }, [on, !!view]);
   const running = !!view?.job?.running;
   // a setup runs on the server, with a login in the browser maybe: follow it until it ends
-  useEffect(() => {
-    if (!on || !running) return;
-    const timer = setInterval(() => api.personalSite().then(setView, console.error), 1000);
-    return () => clearInterval(timer);
-  }, [on, running]);
+  usePoll(on && running, () => api.personalSite().then(setView), 1000);
   useEffect(() => {
     if (view?.site) api.personalSiteCode().then((c) => setConnection(c.code), console.error);
   }, [view?.site?.url]);
-  useEffect(() => sessionStorage.setItem(PERSONAL_HOST_KEY, host), [host]);
-  useEffect(() => (code ? sessionStorage.setItem(PERSONAL_CODE_KEY, code) : sessionStorage.removeItem(PERSONAL_CODE_KEY)), [code]);
+  useEffect(() => void write(session, PERSONAL_HOST_KEY, host), [host]);
+  useEffect(() => void write(session, PERSONAL_CODE_KEY, code || null), [code]);
   if (!view) return null;
-  const act = async (fn: () => Promise<PersonalSiteView>) => {
-    setStatus('');
-    try {
-      setView(await fn());
-      return true;
-    } catch (e) {
-      setStatus(failText(e));
-      return false;
-    }
-  };
+  const act = (fn: () => Promise<PersonalSiteView>) => run(async () => setView(await fn()));
   // the first site's account, until the owner chooses
   const chosen: CloudflareWay = way ?? { account: view.cloudflareAccounts[0] ?? '', token: '', accountId: '' };
   const setUp = (h: PersonalHost) => {
@@ -1348,13 +1237,7 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
       <Head title={p.title} hint={p.hint} />
       {!site ? (
         <div className="cfg-narrow">
-          <div className="seg" role="radiogroup" aria-label={p.title}>
-            {PERSONAL_HOSTS.map((h) => (
-              <button key={h} type="button" role="radio" aria-checked={host === h} className={host === h ? 'on' : undefined} disabled={running} onClick={() => setHost(h)}>
-                {p.hosts[h]}
-              </button>
-            ))}
-          </div>
+          <Seg label={p.title} options={PERSONAL_HOSTS} value={host} name={(h) => p.hosts[h]} onChange={setHost} disabled={running} />
           <p className="hint">{p.notes[host]}</p>
           {host === 'cloudflare' && <CloudflareAccount accounts={view.cloudflareAccounts} way={chosen} onChange={setWay} disabled={running} />}
           <button className="btn primary" disabled={running || (host === 'cloudflare' && chosen.account === 'token' && !chosen.token.trim())} onClick={() => setUp(host)}>
@@ -1445,7 +1328,7 @@ function PersonalSiteBlock({ on }: { on: boolean }) {
           <Field label={p.codeLabel} hint={p.codeHint}>
             <div className="personal-actions">
               <button className="btn small" disabled={!connection} onClick={() => copy(connection)}>
-                {copied ? p.copied : p.code}
+                {copied ? t.copied : p.code}
               </button>
             </div>
           </Field>
@@ -1560,7 +1443,7 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
  */
 function VoiceBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<VoiceSetupView | null>(null);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   const [checking, setChecking] = useState(false);
   const recheck = () => {
     setChecking(true);
@@ -1573,22 +1456,11 @@ function VoiceBlock({ on }: { on: boolean }) {
     if (on) recheck();
   }, [on]);
   const running = !!view?.job?.running;
-  useEffect(() => {
-    if (!on || !running) return;
-    const timer = setInterval(() => api.voiceSetup().then(setView, console.error), 1500);
-    return () => clearInterval(timer);
-  }, [on, running]);
+  usePoll(on && running, () => api.voiceSetup().then(setView), 1500);
   if (!view) return null;
   const v = t.config.voice;
   const s = t.config.setup;
-  const install = async () => {
-    setStatus('');
-    try {
-      setView(await api.installVoice());
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
+  const install = () => act(async () => setView(await api.installVoice()));
   const blocked = view.items.some((i) => i.state === 'missing');
   return (
     <div className="c-setup">
@@ -1608,7 +1480,7 @@ function VoiceBlock({ on }: { on: boolean }) {
       ) : (
         !blocked && <p className="hint">{v.ready}</p>
       )}
-      {view.job?.error && !view.job.running && <p className="p-error">{v.failed(view.job.error.split('\n').at(-1) ?? '')}</p>}
+      {view.job?.error && !view.job.running && <p className="p-error">{v.failed(lastLine(view.job.error))}</p>}
       {status && <p className="hint c-status">{status}</p>}
       <button className="btn small" disabled={checking || running} onClick={recheck}>
         {checking ? s.checking : s.recheck}
@@ -1662,6 +1534,7 @@ function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin
   }, [focus, resolved?.id]);
   const at = Math.min(tab, canvas.repos.length - 1);
   const repo = canvas.repos[at];
+  const takeover: Takeover = { saved, can: saved || !!prepare, ready: async () => saved || ((await prepare?.()) ?? false), onReload };
   return (
     <div className="cfg-canvas">
       <header className={file ? 'cfg-head cfg-has-info' : 'cfg-head'}>
@@ -1748,7 +1621,7 @@ function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin
           where={`${here}, ${t.config.repoAt(repo.path)}`}
           ask={askHere}
           onRecheck={onRecheck}
-          takeover={{ saved, onReload, ...(prepare ? { prepare } : {}) }}
+          takeover={takeover}
           onChange={(x) => {
             setRepo(at, x);
             if (!x) setAt(Math.max(0, at - 1));
@@ -1780,13 +1653,15 @@ interface RepoProps {
 /** A repository's name on its tab: its id once checked, else its folder's name. */
 const repoName = (repo: RepoConfig, resolved: ResolvedCanvas['repos'][number] | undefined) => resolved?.id ?? (repo.path.trim().split(/[\\/]/).filter(Boolean).pop() || t.config.newRepo);
 
-/** What "For everyone" needs of the dialog: whether the canvases are as saved (what is taken over), how to read them again, how to save them first. */
+/** What "For everyone" needs of the dialog: whether the canvases are as saved (what is taken over), how to save them first, how to read them again. */
 interface Takeover {
   saved: boolean;
+  /** They are saved, or can be saved first: not where saving restarts Obeya. */
+  can: boolean;
+  /** Saves the dialog's changes where they are not saved yet; says whether the canvases are as saved now. */
+  ready: () => Promise<boolean>;
   /** Reads the saved configuration again: the server changed it. */
   onReload: () => Promise<void>;
-  /** Saves the dialog's changes; none where saving restarts Obeya. Says whether they were saved. */
-  prepare?: () => Promise<boolean>;
 }
 
 function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, onRecheck, takeover, onChange }: RepoProps) {
@@ -1886,13 +1761,7 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
               <Info text={t.config.settings.workspacesHint} />
             </div>
             <div className="cfg-control">
-              <div className="seg" role="radiogroup" aria-label={t.config.settings.workspaces}>
-                {(['worktrees', 'clones'] as const).map((x) => (
-                  <button key={x} type="button" role="radio" aria-checked={workIn === x} className={workIn === x ? 'on' : undefined} onClick={() => setWorkIn(x)}>
-                    {t.config.settings.workIn[x]}
-                  </button>
-                ))}
-              </div>
+              <Seg label={t.config.settings.workspaces} options={['worktrees', 'clones'] as const} value={workIn} name={(x) => t.config.settings.workIn[x]} onChange={setWorkIn} />
             </div>
           </div>
           {clones ? (
@@ -1930,6 +1799,7 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
           )}
         </div>
       )}
+      {!folder && resolved?.github && <GithubAccount github={resolved.github} value={repo.githubAccount} onChange={(a) => onChange(without('githubAccount', a))} />}
       {resolved && (
         <RepoSettingsBlock
           show={focus?.field === 'settings' ? focus : undefined}
@@ -1943,6 +1813,33 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The GitHub CLI's account the repository works as on this machine (`RepoConfig.githubAccount`):
+ * automatic, or one of the accounts gh is logged into on its host, all in view at once (a machine
+ * has few); one set that gh no longer has stays listed, marked, so it is seen rather than silently
+ * replaced.
+ */
+function GithubAccount({ github, value, onChange }: { github: NonNullable<ResolvedCanvas['repos'][number]['github']>; value: string | undefined; onChange: (account: string | undefined) => void }) {
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  // automatic: the owner's own login where gh has it, else the account gh has active
+  const auto = github.accounts.find((a) => same(a, github.owner)) ?? github.active;
+  const missing = value && !github.accounts.some((a) => same(a, value));
+  return (
+    <div className="cfg-group">
+      <h5 className="cfg-group-head">{t.config.groups.github}</h5>
+      <Field label={<>{t.config.githubAccount} <Info text={t.config.githubAccountHint(github.host)} /></>}>
+        <Seg
+          label={t.config.githubAccount}
+          options={['', ...github.accounts, ...(missing ? [value] : [])]}
+          value={value ? (github.accounts.find((a) => same(a, value)) ?? value) : ''}
+          name={(a) => (!a ? t.config.githubAccountAuto(auto) : a === value && missing ? t.config.githubAccountMissing(a) : a)}
+          onChange={(a) => onChange(a || undefined)}
+        />
+      </Field>
+    </div>
   );
 }
 
@@ -2043,9 +1940,25 @@ function RepoSettingsBlock({
     const from = base[k].source;
     return field(k, label, own(k) !== undefined, base[k].held ? c.held : c.source[from], () => set(k, undefined), control, hint);
   };
+  // the kinds of control a setting has: a line of text, a list one entry a line, a box to tick, a choice of a few
+  const text = (k: SettingKey, label: string, hint: string, placeholder?: string) =>
+    row(k, label, <input className="c-path" aria-label={label} placeholder={placeholder} spellCheck={false} value={value<string>(k)} onChange={(e) => set(k, e.target.value)} />, hint);
+  const list = (k: SettingKey, label: string, hint: string) =>
+    row(k, label, <textarea rows={Math.max(2, value<string[]>(k).length + 1)} spellCheck={false} aria-label={label} value={lines(k)} onChange={(e) => set(k, e.target.value.split('\n'))} />, hint);
+  const check = (k: SettingKey, label: string, box: string, hint?: string) =>
+    row(
+      k,
+      label,
+      <label className="c-check">
+        <input type="checkbox" checked={value<boolean>(k)} onChange={(e) => set(k, e.target.checked)} />
+        {box}
+      </label>,
+      hint,
+    );
+  const choice = <T,>(k: SettingKey, label: string, options: readonly T[], name: (x: T) => string, hint: string) =>
+    row(k, label, <Seg label={label} options={options} value={value<T>(k)} name={name} onChange={(x) => set(k, x)} />, hint);
   const land = value<'main' | 'pr'>('land');
   const planDocs = value<{ dir: string; exclude: string[] }>('planDocs');
-  const language = value<Language>('language');
   const demoLanguage = value<NarrationLanguage | null>('demoLanguage');
   const site = value<DemoSite | null>('site') ?? { title: '', url: '', deploy: '' };
   const setSite = (patch: Partial<DemoSite>) => set('site', { ...site, ...patch });
@@ -2059,55 +1972,30 @@ function RepoSettingsBlock({
       {control}
     </label>
   );
+  const siteText = (k: 'title' | 'url' | 'deploy' | 'env', label: string, placeholder?: string, wide = false) =>
+    sub(label, <input className="c-path" aria-label={label} placeholder={placeholder} spellCheck={false} value={site[k] ?? ''} onChange={(e) => setSite({ [k]: e.target.value })} />, wide);
   return (
     <div className="cfg-settings" ref={box}>
       {!folder && (
         <div className="cfg-group">
           <h5 className="cfg-group-head">{t.config.groups.landing}</h5>
-          {row('branch', c.branch, <input className="c-path" aria-label={c.branch} spellCheck={false} value={value<string>('branch')} onChange={(e) => set('branch', e.target.value)} />, c.branchHint)}
-          {row(
-            'land',
-            c.land,
-            <div className="seg" role="radiogroup" aria-label={c.land}>
-              {(['main', 'pr'] as const).map((x) => (
-                <button key={x} type="button" role="radio" aria-checked={land === x} className={land === x ? 'on' : undefined} onClick={() => set('land', x)}>
-                  {c.lands[x]}
-                </button>
-              ))}
-            </div>,
-            c.landHint,
-          )}
-          {land === 'pr' &&
-            row(
-              'direct',
-              c.direct,
-              <label className="c-check">
-                <input type="checkbox" checked={value<boolean>('direct')} onChange={(e) => set('direct', e.target.checked)} />
-                {c.directLabel}
-              </label>,
-            )}
-          {land === 'pr' &&
-            row(
-              'autoMerge',
-              c.autoMerge,
-              <label className="c-check">
-                <input type="checkbox" checked={value<boolean>('autoMerge')} onChange={(e) => set('autoMerge', e.target.checked)} />
-                {c.autoMergeLabel}
-              </label>,
-              c.autoMergeHint,
-            )}
-          {land === 'pr' && row('prNoise', c.prNoise, <textarea rows={2} spellCheck={false} aria-label={c.prNoise} value={lines('prNoise')} onChange={(e) => set('prNoise', e.target.value.split('\n'))} />, c.prNoiseHint)}
-          {row('softPaths', c.softPaths, <textarea rows={Math.max(2, value<string[]>('softPaths').length + 1)} spellCheck={false} aria-label={c.softPaths} value={lines('softPaths')} onChange={(e) => set('softPaths', e.target.value.split('\n'))} />, c.softPathsHint)}
+          {text('branch', c.branch, c.branchHint)}
+          {choice('land', c.land, ['main', 'pr'] as const, (x) => c.lands[x], c.landHint)}
+          {land === 'main' && check('push', c.push, c.pushLabel, c.pushHint)}
+          {land === 'main' && text('upstream', c.upstream, c.upstreamHint, 'upstream/main')}
+          {land === 'pr' && check('direct', c.direct, c.directLabel)}
+          {land === 'pr' && check('autoMerge', c.autoMerge, c.autoMergeLabel, c.autoMergeHint)}
+          {land === 'pr' && list('prNoise', c.prNoise, c.prNoiseHint)}
+          {list('softPaths', c.softPaths, c.softPathsHint)}
         </div>
       )}
       <div className="cfg-group">
         <h5 className="cfg-group-head">{t.config.groups.app}</h5>
-        {row('setup', c.setup, <input className="c-path" aria-label={c.setup} spellCheck={false} value={value<string>('setup')} onChange={(e) => set('setup', e.target.value)} />, c.setupHint)}
-        {row('checks', c.checks, <textarea rows={Math.max(2, value<string[]>('checks').length + 1)} spellCheck={false} aria-label={c.checks} value={lines('checks')} onChange={(e) => set('checks', e.target.value.split('\n'))} />, c.checksHint)}
+        {text('setup', c.setup, c.setupHint)}
+        {list('checks', c.checks, c.checksHint)}
         {row('run', c.run, <textarea rows={Math.max(6, Math.ceil(value<string>('run').length / 70) + 1)} aria-label={c.run} placeholder={c.runPlaceholder} value={value<string>('run')} onChange={(e) => set('run', e.target.value)} />, c.runHint)}
-        {row('stop', c.stop, <input className="c-path" aria-label={c.stop} placeholder="docker compose down" spellCheck={false} value={value<string>('stop')} onChange={(e) => set('stop', e.target.value)} />, c.stopHint)}
-        {!!value<string>('stop').trim() &&
-          row('keep', c.keep, <input className="c-path" aria-label={c.keep} placeholder="grep -q PERSIST=1 .env" spellCheck={false} value={value<string>('keep')} onChange={(e) => set('keep', e.target.value)} />, c.keepHint)}
+        {text('stop', c.stop, c.stopHint, 'docker compose down')}
+        {!!value<string>('stop').trim() && text('keep', c.keep, c.keepHint, 'grep -q PERSIST=1 .env')}
       </div>
       <div className="cfg-group">
         <h5 className="cfg-group-head">{t.config.groups.plans}</h5>
@@ -2120,33 +2008,11 @@ function RepoSettingsBlock({
           </div>,
           c.planDocsHint,
         )}
-        {row(
-          'language',
-          c.language,
-          <div className="seg" role="radiogroup" aria-label={c.language}>
-            {LANGUAGES.map((x) => (
-              <button key={x} type="button" role="radio" aria-checked={language === x} className={language === x ? 'on' : undefined} onClick={() => set('language', x)}>
-                {c.languages[x]}
-              </button>
-            ))}
-          </div>,
-          c.languageHint,
-        )}
+        {choice('language', c.language, LANGUAGES, (x) => c.languages[x], c.languageHint)}
       </div>
       <div className="cfg-group">
         <h5 className="cfg-group-head">{t.config.groups.demos}</h5>
-        {row(
-          'demoLanguage',
-          c.demoLanguage,
-          <div className="seg" role="radiogroup" aria-label={c.demoLanguage}>
-            {LANGUAGES.map((x) => (
-              <button key={x} type="button" role="radio" aria-checked={demoLanguage === x} className={demoLanguage === x ? 'on' : undefined} onClick={() => set('demoLanguage', x)}>
-                {c.languages[x]}
-              </button>
-            ))}
-          </div>,
-          c.demoLanguageHint,
-        )}
+        {choice('demoLanguage', c.demoLanguage, LANGUAGES, (x) => c.languages[x], c.demoLanguageHint)}
         {row(
           'site',
           c.site,
@@ -2158,10 +2024,10 @@ function RepoSettingsBlock({
               </button>
             ) : (
               <>
-            {sub(c.siteTitle, <input className="c-path" aria-label={c.siteTitle} spellCheck={false} value={site.title} onChange={(e) => setSite({ title: e.target.value })} />)}
-            {sub(c.siteUrl, <input className="c-path" aria-label={c.siteUrl} placeholder="https://demos.example.com" spellCheck={false} value={site.url} onChange={(e) => setSite({ url: e.target.value })} />)}
-            {sub(c.siteDeploy, <input className="c-path" aria-label={c.siteDeploy} placeholder="bunx wrangler@4 pages deploy {dir} --project-name demos" spellCheck={false} value={site.deploy} onChange={(e) => setSite({ deploy: e.target.value })} />, true)}
-            {sub(c.siteEnv, <input className="c-path" aria-label={c.siteEnv} placeholder="sites/demos/deploy.env" spellCheck={false} value={site.env ?? ''} onChange={(e) => setSite({ env: e.target.value })} />, true)}
+            {siteText('title', c.siteTitle)}
+            {siteText('url', c.siteUrl, 'https://demos.example.com')}
+            {siteText('deploy', c.siteDeploy, 'bunx wrangler@4 pages deploy {dir} --project-name demos', true)}
+            {siteText('env', c.siteEnv, 'sites/demos/deploy.env', true)}
             {sub(
               c.siteHeaders,
               <textarea
@@ -2193,16 +2059,7 @@ function RepoSettingsBlock({
             {/* not a label: a click on its words would press the first button */}
             <div className="wide">
               <span className="hint">{c.sitePublish}</span>
-              <div className="seg" role="radiogroup" aria-label={c.sitePublish}>
-                {(['click', 'approved'] as const).map((x) => {
-                  const on = (site.publish ?? 'click') === x;
-                  return (
-                    <button key={x} type="button" role="radio" aria-checked={on} className={on ? 'on' : undefined} onClick={() => setSite({ publish: x === 'approved' ? x : undefined })}>
-                      {c.sitePublishes[x]}
-                    </button>
-                  );
-                })}
-              </div>
+              <Seg label={c.sitePublish} options={['click', 'approved'] as const} value={site.publish ?? 'click'} name={(x) => c.sitePublishes[x]} onChange={(x) => setSite({ publish: x === 'approved' ? x : undefined })} />
             </div>
               </>
             )}
@@ -2230,7 +2087,7 @@ function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: strin
   const [way, setWay] = useState<CloudflareWay | null>(null);
   const [job, setJob] = useState<SiteSetupJob | null>(null);
   const [done, setDone] = useState(false);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   const c = t.config.settings;
   const take = (j: SiteSetupJob | null) => {
     setJob(j);
@@ -2249,11 +2106,7 @@ function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: strin
   }, [open]);
   const chosen: CloudflareWay = way ?? { account: accounts[0] ?? '', token: '', accountId: '' };
   const running = !!job?.running;
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => api.repoSiteSetup(path).then((r) => take(r.job), console.error), 1000);
-    return () => clearInterval(timer);
-  }, [running, path]);
+  usePoll(running, () => api.repoSiteSetup(path).then((r) => take(r.job)), 1000);
   if (done) return <p className="hint wide">{c.siteSetupDone}</p>;
   if (!empty && !running) return null;
   return (
@@ -2265,27 +2118,14 @@ function SiteSetupRow({ path, name, empty, onSite }: { path: string; name: strin
       ) : (
         <>
           <p className="hint">{c.siteSetupHint}</p>
-          <div className="seg" role="radiogroup" aria-label={c.siteSetup}>
-            {(['github', 'cloudflare'] as const).map((h) => (
-              <button key={h} type="button" role="radio" aria-checked={host === h} className={host === h ? 'on' : undefined} disabled={running} onClick={() => setHost(h)}>
-                {c.siteSetupHosts[h]}
-              </button>
-            ))}
-          </div>
+          <Seg label={c.siteSetup} options={['github', 'cloudflare'] as const} value={host} name={(h) => c.siteSetupHosts[h]} onChange={setHost} disabled={running} />
           <p className="hint">{c.siteSetupNotes[host]}</p>
           {host === 'cloudflare' && <CloudflareAccount accounts={accounts} way={chosen} onChange={setWay} disabled={running} />}
           <button
             type="button"
             className="btn small primary"
             disabled={running}
-            onClick={async () => {
-              setStatus('');
-              try {
-                take((await api.setUpRepoSite(path, host, name, host === 'cloudflare' ? cloudflareHow(chosen) : {})).job);
-              } catch (e) {
-                setStatus(failText(e));
-              }
-            }}
+            onClick={() => act(async () => take((await api.setUpRepoSite(path, host, name, host === 'cloudflare' ? cloudflareHow(chosen) : {})).job))}
           >
             {running ? c.siteSetupRunning : c.siteSetupGo}
           </button>
@@ -2342,7 +2182,7 @@ function TagProposal({ path, current, language, onTags }: { path: string; curren
   const [job, setJob] = useState<TagProposalJob | null>(null);
   const [available, setAvailable] = useState(false);
   const [taken, setTaken] = useState<{ why: string; before: PageTags | undefined } | null>(null);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   const c = t.config.settings;
   // the poll outlives renders: the field as it is now, and the draft to set
   const now = useRef({ current, onTags });
@@ -2365,11 +2205,7 @@ function TagProposal({ path, current, language, onTags }: { path: string; curren
     if (path.trim()) void poll();
   }, [path]);
   const running = !!job?.running;
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(poll, 2000);
-    return () => clearInterval(timer);
-  }, [running, path]);
+  usePoll(running, poll, 2000);
   if (!available && !running) return null;
   return (
     <div className="wide tag-propose">
@@ -2378,14 +2214,9 @@ function TagProposal({ path, current, language, onTags }: { path: string; curren
         className="btn small"
         title={c.siteTagsProposeHint}
         disabled={running}
-        onClick={async () => {
-          setStatus('');
+        onClick={() => {
           setTaken(null);
-          try {
-            take((await api.proposeTags(path, current, language)).job);
-          } catch (e) {
-            setStatus(failText(e));
-          }
+          void act(async () => take((await api.proposeTags(path, current, language)).job));
         }}
       >
         {running ? c.siteTagsProposing : c.siteTagsPropose}
@@ -2454,18 +2285,15 @@ const sharedDone = new Map<string, SettingsShared>();
 function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }: { repo: RepoConfig; values: RepoValues; branch: string; shareTo: 'main' | 'pr'; shareDirect: boolean; takeover: Takeover }) {
   const c = t.config.settings.share;
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<SettingsShared | null>(() => sharedDone.get(repo.path) ?? null);
-  const [error, setError] = useState('');
+  const { status: error, busy, act } = useAct({ detail: ['settingsShare'] });
   const { branch: _, ...mine } = repo.settings ?? {};
   const count = Object.keys(mine).length + (mine.demo ? Object.keys(mine.demo).length - 1 : 0);
-  const { saved, onReload, prepare } = takeover;
-  const go = async (direct = false) => {
-    setBusy(true);
-    setError('');
-    try {
+  const { saved, can, ready, onReload } = takeover;
+  const go = (direct = false) =>
+    act(async () => {
       // what is taken over is what is saved: the dialog's changes are saved first (why not, its status line says)
-      if (!saved && !(await prepare?.())) return setBusy(false);
+      if (!(await ready())) return;
       const r = await api.shareSettings(repo.path, direct);
       setDone(r);
       setConfirming(false);
@@ -2473,11 +2301,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
         sharedDone.set(repo.path, r);
         await onReload();
       }
-    } catch (e) {
-      setError(failText(e, { detail: ['settingsShare'] }));
-    }
-    setBusy(false);
-  };
+    });
   return (
     <div className="cfg-field cfg-setting cfg-share-settings">
       <div className="cfg-label">{c.label}</div>
@@ -2496,10 +2320,10 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
         {!done && !count && <p className="hint">{c.none}</p>}
         {count > 0 && !confirming && (
           <>
-            <button type="button" className="btn small" disabled={!saved && !prepare} onClick={() => setConfirming(true)}>
+            <button type="button" className="btn small" disabled={!can} onClick={() => setConfirming(true)}>
               {c.button(count)}
             </button>
-            <p className="hint">{saved || prepare ? `${c.hint}${repo.settings?.branch ? ` ${c.hintBranch}` : ''}` : c.saveFirst}</p>
+            <p className="hint">{can ? `${c.hint}${repo.settings?.branch ? ` ${c.hintBranch}` : ''}` : c.saveFirst}</p>
           </>
         )}
         {confirming && (
@@ -2521,7 +2345,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
                 </button>
               )}
               <button type="button" className="btn small" disabled={busy} onClick={() => setConfirming(false)}>
-                {c.cancel}
+                {t.cancel}
               </button>
             </div>
           </div>
@@ -2607,21 +2431,13 @@ const DETAILED: ConfigProblem['code'][] = ['demoSite', 'adapterGone', 'repoSetti
  */
 export function Problem({ problem, where, ask, retried }: { problem: ConfigProblem; where: string; ask?: (text: string) => void; retried?: () => void }) {
   const [asked, setAsked] = useState(false);
-  const [retrying, setRetrying] = useState(false);
-  const [error, setError] = useState('');
+  const { status: error, busy: retrying, act } = useAct();
   const text = t.config.problem[problem.code];
-  const retry = async () => {
-    setRetrying(true);
-    setError('');
-    try {
+  const retry = () =>
+    act(async () => {
       await api.retryStart();
       retried?.();
-    } catch (e) {
-      setError(failText(e));
-    } finally {
-      setRetrying(false);
-    }
-  };
+    });
   return (
     <div className="p-error c-problem">
       {text}
@@ -2660,21 +2476,13 @@ export function Problem({ problem, where, ask, retried }: { problem: ConfigProbl
  * button that trusts them; the dialog checks again after it.
  */
 function TrustCommands({ path, trust, onDone }: { path: string; trust: RepoTrust; onDone: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const { status: error, busy, act } = useAct();
   const c = t.config.trust;
-  const go = async () => {
-    setBusy(true);
-    setError('');
-    try {
+  const go = () =>
+    act(async () => {
       await api.trustCommands(path, trust);
       onDone();
-    } catch (e) {
-      setError(failText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   return (
     <div className="c-trust">
       {trust.held.map((g) => (
@@ -2711,30 +2519,23 @@ const blankOnly = (trust: RepoTrust) =>
  * the dialog's changes are saved first, so the canvas runs with the repository on it.
  */
 function AdapterSetup({ canvas, repo, takeover }: { canvas: string; repo: string; takeover: Takeover }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const { saved, prepare } = takeover;
-  const go = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      if (!saved && !(await prepare?.())) return setBusy(false);
+  const { status: error, busy, act } = useAct();
+  const { saved, can, ready } = takeover;
+  const go = () =>
+    act(async () => {
+      if (!(await ready())) return;
       const card = await api.adapterSetup(canvas, repo);
       // the canvas loads with the card open, as after a restart
       keep(sessionStorage, canvas, { at: Date.now(), card: card.id, scroll: [], drafts: [] });
       location.assign(canvasPath(canvas));
-    } catch (e) {
-      setError(failText(e));
-      setBusy(false);
-    }
-  };
+    });
   return (
     <div className="c-row">
       <span className="hint">
         {t.config.adapterSetupHint}
-        {!saved && <> {prepare ? t.config.adapterSetupSaves : t.config.adapterSetupSaveFirst}</>}
+        {!saved && <> {can ? t.config.adapterSetupSaves : t.config.adapterSetupSaveFirst}</>}
       </span>
-      <button className="btn small" disabled={busy || (!saved && !prepare)} onClick={go}>
+      <button className="btn small" disabled={busy || !can} onClick={go}>
         {t.config.adapterSetup}
       </button>
       {error && <p className="p-error">{error}</p>}

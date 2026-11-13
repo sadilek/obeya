@@ -2,10 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
-import { serveCardFile } from './demo';
-import { artifact } from './testing';
+import { serveCardFile } from './serve-files';
+import { artifact, commit } from './testing';
 import { board, eachTest, main, manual, runtime, spaces, workers } from './workers-fixture';
-import { git } from './workspaces';
 
 eachTest();
 
@@ -13,16 +12,12 @@ eachTest();
 async function reportCard() {
   mkdirSync(join(main, 'docs'), { recursive: true });
   writeFileSync(join(main, 'docs', 'chart.png'), 'png');
-  writeFileSync(join(main, 'notes.md'), 'private\n');
-  git(main, 'add', '-A');
-  git(main, 'commit', '--quiet', '-m', 'chart');
+  commit(main, 'notes.md', 'private\n', 'chart');
   const c = manual();
   await workers.start(c.id);
   const ws = board.row(c.id).workspace!;
   writeFileSync(join(ws, 'docs', 'report.md'), '# Report\n\n![Chart](chart.png)\n');
-  writeFileSync(join(ws, 'README.md'), 'hello again\n');
-  git(ws, 'add', '-A');
-  git(ws, 'commit', '--quiet', '-m', 'report');
+  commit(ws, 'README.md', 'hello again\n', 'report');
   return { c, ws };
 }
 

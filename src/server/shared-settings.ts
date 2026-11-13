@@ -8,33 +8,20 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseShared, REPO_SETTINGS_FILE } from '../adapters';
-import { layerSettings, SHARED_FIELDS, type SettingsShared, type SharedSettings } from '../core/types';
+import { layerSettings, SHARED_FIELDS, type SettingsShared, type SharedSettings } from '../core/config';
 import { BadRequest } from './board';
 import type { Forge } from './forge';
-import { defaultBranchAsync, GIT, LOOK } from './workspaces';
+import { defaultBranch } from './branches';
+import { gitRun, gitTry, LOOK, NO_PROMPT } from './git';
 import { messageOf } from '../core/text';
-import { spawnOutput } from './spawn';
+import { failureText } from './spawn';
 import { canonical } from './trust';
 
-interface Run {
-  code: number;
-  out: string;
-  err: string;
-}
-
-/** git, without blocking the server: a fetch or push waits for the remote. */
-async function gitRun(repoPath: string, args: string[], o: { env?: Record<string, string>; stdin?: string } = {}): Promise<Run> {
-  const r = await spawnOutput([GIT, '-C', repoPath, ...args], {
-    stdin: o.stdin !== undefined ? new Blob([o.stdin]) : 'ignore',
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...o.env },
-  });
-  return { code: r.code, out: r.stdout.trim(), err: r.stderr.trim() };
-}
-
-async function must(repoPath: string, args: string[], o?: Parameters<typeof gitRun>[2]): Promise<string> {
-  const r = await gitRun(repoPath, args, o);
-  if (r.code !== 0) throw new BadRequest('settingsShare', `git ${args[0]}: ${r.err || r.out || `exit code ${r.code}`}`);
-  return r.out;
+/** git without blocking the server (a fetch or push waits for the remote), its output trimmed; a failure is the request's error. */
+async function must(repoPath: string, args: string[], o: { env?: Record<string, string>; stdin?: string } = {}): Promise<string> {
+  const r = await gitRun(repoPath, args, { ...o, env: { ...NO_PROMPT, ...o.env } });
+  if (r.code !== 0) throw new BadRequest('settingsShare', `git ${args[0]}: ${failureText(r)}`);
+  return r.stdout.trim();
 }
 
 /**
@@ -43,15 +30,15 @@ async function must(repoPath: string, args: string[], o?: Parameters<typeof gitR
  * nothing the file does not (however it orders its fields): then there is nothing to commit.
  */
 export async function sharedText(repoPath: string, commit: string, mine: SharedSettings): Promise<{ text: string; same: boolean; before?: SharedSettings; after: SharedSettings }> {
-  const r = await gitRun(repoPath, ['cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`]);
-  const read = r.code === 0 ? parseShared(r.out) : { problems: [] };
+  const file = await gitTry(repoPath, 'cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`);
+  const read = file !== null ? parseShared(file) : { problems: [] };
   const raw = read.raw ?? {};
   const merged = layerSettings<Record<string, unknown>>(raw, mine as Record<string, unknown>)!;
   const ordered: Record<string, unknown> = {};
   for (const k of SHARED_FIELDS) if (merged[k] !== undefined) ordered[k] = merged[k];
   for (const [k, v] of Object.entries(merged)) if (!(k in ordered)) ordered[k] = v;
   const text = `${JSON.stringify(ordered, null, 2)}\n`;
-  const same = r.code === 0 && canonical(raw) === canonical(ordered);
+  const same = file !== null && canonical(raw) === canonical(ordered);
   return { text, same, ...(read.settings ? { before: read.settings } : {}), after: parseShared(text).settings ?? {} };
 }
 
@@ -66,10 +53,10 @@ async function commitBeside(repoPath: string, parent: string, text: string, mess
     const tree = await must(repoPath, ['write-tree'], { env });
     const commit = await gitRun(repoPath, ['commit-tree', tree, '-p', parent, '-m', message]);
     if (commit.code !== 0) {
-      if (/user\.email|user\.name|identity/i.test(commit.err)) throw new BadRequest('noIdentity', "git has no name and e-mail for commits (user.name, user.email)");
-      throw new BadRequest('settingsShare', `git commit-tree: ${commit.err}`);
+      if (/user\.email|user\.name|identity/i.test(commit.stderr)) throw new BadRequest('noIdentity', "git has no name and e-mail for commits (user.name, user.email)");
+      throw new BadRequest('settingsShare', `git commit-tree: ${commit.stderr.trim()}`);
     }
-    return commit.out;
+    return commit.stdout.trim();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -85,11 +72,11 @@ const subjectOf = (mine: SharedSettings) => `Obeya settings for everyone: ${Obje
  * the file holds them already.
  */
 export async function commitShared(repoPath: string, mine: SharedSettings): Promise<SettingsShared & { before?: SharedSettings; after: SharedSettings }> {
-  const branch = await defaultBranchAsync(repoPath);
-  const parent = (await gitRun(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`])).out;
+  const branch = await defaultBranch(repoPath);
+  const parent = (await gitTry(repoPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`)) ?? '';
   if (!parent) throw new BadRequest('settingsShare', `the repository has no local branch ${branch}`);
-  const onIt = (await gitRun(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).out === branch;
-  if (onIt && (await gitRun(repoPath, [...LOOK, 'status', '--porcelain', '--', REPO_SETTINGS_FILE])).out)
+  const onIt = (await gitTry(repoPath, 'symbolic-ref', '--quiet', '--short', 'HEAD')) === branch;
+  if (onIt && (await gitTry(repoPath, ...LOOK, 'status', '--porcelain', '--', REPO_SETTINGS_FILE)))
     throw new BadRequest('settingsDirty', `${REPO_SETTINGS_FILE} has changes of its own in ${repoPath}; commit or discard them first`);
   const { text, same, before, after } = await sharedText(repoPath, parent, mine);
   if (same) return { unchanged: true, branch, ...(before ? { before } : {}), after };
@@ -102,7 +89,7 @@ export async function commitShared(repoPath: string, mine: SharedSettings): Prom
 
 /** A commit with `mine` in `.obeya/settings.json` on top of `origin`'s main branch, as just fetched; none where it holds them already. */
 async function onOrigin(repoPath: string, mine: SharedSettings) {
-  const branch = await defaultBranchAsync(repoPath);
+  const branch = await defaultBranch(repoPath);
   await must(repoPath, ['fetch', '--quiet', '--no-write-fetch-head', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
   const parent = await must(repoPath, ['rev-parse', '--verify', `refs/remotes/origin/${branch}^{commit}`]);
   const { text, same, after } = await sharedText(repoPath, parent, mine);

@@ -3,12 +3,11 @@
 // background, since a login in the browser may take minutes; the dialog follows its lines.
 
 import { basename, resolve } from 'node:path';
-import type { DemoSite } from '../adapters/types';
-import type { PersonalSiteView, SiteSetupJob } from '../core/types';
+import type { PersonalSiteView, SiteSetupJob, DemoSite } from '../core/config';
 import { BadRequest } from './board';
-import { allowPrivate, cloudflareDeploy, connect, connectionCode, envFileFor, newToken, type PersonalSite, personalDemoSite, readPersonal, shareApproved, type SiteHost, writeEnv, writePersonal } from './personal-site';
+import { allowPrivate, connect, connectionCode, envFileFor, hostDeploy, newToken, type PersonalSite, personalDemoSite, readPersonal, shareApproved, type SiteHost, writeEnv, writePersonal } from './personal-site';
 import { siteMissing } from './site';
-import { cloudflareAccounts, type Exec, GITHUB_PAGES, GITHUB_PAGES_MAX, setupCloudflare, setupGithub, SetupRefused } from './site-hosts';
+import { cloudflareAccounts, type Exec, setupCloudflare, setupGithub, SetupRefused } from './site-hosts';
 import { messageOf } from '../core/text';
 
 export interface SiteSetupOptions {
@@ -97,17 +96,11 @@ export class SiteSetup {
     const open = host === 'github' && (input as { public?: unknown } | null)?.public === true;
     if (readPersonal(this.o.home)) throw new BadRequest('invalid', 'this machine has a personal demo site already; remove it first');
     this.run(PERSONAL, host, async (log) => {
-      const name = `obeya-${slug(this.o.user ?? '') || 'demos'}`.slice(0, 50);
-      let site: PersonalSite;
-      if (host === 'cloudflare') {
-        const r = await setupCloudflare({ home: this.o.home, name, log, ...(account ? { account } : {}), ...(token ? { token } : {}), ...(this.o.x ? { x: this.o.x } : {}), ...(this.o.wait ? { wait: this.o.wait } : {}) });
-        site = { host, url: r.url, project: r.project, secret: newToken(128) };
-        if (r.env) writeEnv(this.o.home, (site.env = envFileFor(r.url, host)), r.env);
-      } else {
-        // a private repository keeps the site unlisted; a public one lists its files, so its site is listed
-        const r = await setupGithub({ name: 'obeya-demos', private: !open, log, ...(this.o.x ? { x: this.o.x } : {}), ...(this.o.wait ? { wait: this.o.wait } : {}) });
-        site = { host, url: r.url, project: r.project, ...(open ? {} : { secret: newToken(128) }) };
-      }
+      // at GitHub, a private repository keeps the site unlisted; a public one lists its files, so its site is listed
+      const name = host === 'cloudflare' ? `obeya-${slug(this.o.user ?? '') || 'demos'}`.slice(0, 50) : 'obeya-demos';
+      const r = await this.atHost(host, { name, private: !open, account, token }, log);
+      const site: PersonalSite = { host, url: r.url, project: r.project, ...(open ? {} : { secret: newToken(128) }) };
+      if (r.env) writeEnv(this.o.home, (site.env = envFileFor(r.url, host)), r.env);
       writePersonal(this.o.home, site);
       this.o.changed();
       log(`Ready: ${site.url}`);
@@ -147,23 +140,20 @@ export class SiteSetup {
 
   /** Ticks or unticks a private repository for the personal site. */
   allow(input: unknown): PersonalSiteView {
-    const { path, on } = (input ?? {}) as { path?: unknown; on?: unknown };
-    if (typeof path !== 'string' || typeof on !== 'boolean') throw new BadRequest('invalid', 'expected { path, on }');
-    try {
-      allowPrivate(this.o.home, path, on);
-    } catch (e) {
-      throw new BadRequest('invalid', messageOf(e));
-    }
-    this.o.changed();
-    return this.view();
+    return this.tick(input, allowPrivate);
   }
 
   /** Ticks or unticks a repository for sharing each approved card's latest demo on the personal site by itself. */
   approved(input: unknown): PersonalSiteView {
+    return this.tick(input, shareApproved);
+  }
+
+  /** Ticks or unticks a repository in one of the personal site's lists (`{ path, on }`). */
+  private tick(input: unknown, set: (home: string, path: string, on: boolean) => unknown): PersonalSiteView {
     const { path, on } = (input ?? {}) as { path?: unknown; on?: unknown };
     if (typeof path !== 'string' || typeof on !== 'boolean') throw new BadRequest('invalid', 'expected { path, on }');
     try {
-      shareApproved(this.o.home, path, on);
+      set(this.o.home, path, on);
     } catch (e) {
       throw new BadRequest('invalid', messageOf(e));
     }
@@ -181,20 +171,26 @@ export class SiteSetup {
     const title = typeof name === 'string' && name.trim() ? name.trim() : basename(path);
     const project = `${slug(title) || 'demos'}-demos`.slice(0, 50);
     this.run(path, host, async (log) => {
-      let site: DemoSite;
-      if (host === 'cloudflare') {
-        const r = await setupCloudflare({ home: this.o.home, name: project, log, ...(account ? { account } : {}), ...(token ? { token } : {}), ...(this.o.x ? { x: this.o.x } : {}), ...(this.o.wait ? { wait: this.o.wait } : {}) });
-        site = { title: `${title} demos`, url: r.url, deploy: cloudflareDeploy(r.project) };
-        if (r.env) writeEnv(this.o.home, (site.env = envFileFor(r.url, host)), r.env);
-      } else {
-        // listed: the repository behind it may be public, as everything on the site is
-        const r = await setupGithub({ name: project, private: false, log, ...(this.o.x ? { x: this.o.x } : {}), ...(this.o.wait ? { wait: this.o.wait } : {}) });
-        site = { title: `${title} demos`, url: r.url, deploy: `${GITHUB_PAGES} ${r.project}`, maxFile: GITHUB_PAGES_MAX };
-      }
+      // listed: the repository behind it at GitHub may be public, as everything on the site is
+      const r = await this.atHost(host, { name: project, private: false, account, token }, log);
+      const site: DemoSite = { title: `${title} demos`, url: r.url, ...hostDeploy(host, r.project) };
+      if (r.env) writeEnv(this.o.home, (site.env = envFileFor(r.url, host)), r.env);
       log(`Ready: ${site.url}`);
       return { site };
     });
     return this.jobs.get(path) ?? null;
+  }
+
+  /**
+   * A new site at the host: a Cloudflare Pages project (in the account named, or with the token
+   * given), or a GitHub repository with Pages (`private` or public). Its address and project, and
+   * at Cloudflare the credentials for its env file where it took some.
+   */
+  private atHost(host: SiteHost, o: { name: string; private: boolean; account?: string | undefined; token?: Record<string, string> | undefined }, log: (line: string) => void): Promise<{ url: string; project: string; env?: Record<string, string> }> {
+    const seams = { ...(this.o.x ? { x: this.o.x } : {}), ...(this.o.wait ? { wait: this.o.wait } : {}) };
+    return host === 'cloudflare'
+      ? setupCloudflare({ home: this.o.home, name: o.name, log, ...(o.account ? { account: o.account } : {}), ...(o.token ? { token: o.token } : {}), ...seams })
+      : setupGithub({ name: o.name, private: o.private, log, ...seams });
   }
 
   /** A repository's setup, as far as it got; null without one. */

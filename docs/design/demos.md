@@ -464,8 +464,10 @@ and has Obeya re-read and share them.
 #### Frames on time
 
 Frames go on the video by the time they were painted (see Decisions): the overlay paints the time
-into a strip of 24 black and white cells at the page's bottom left, the director reads it from every
-frame and paints the strip over. A frame painted within a second before one already on the video is
+into a strip of 24 black and white cells at the page's top left, the director reads it from every
+frame and paints the strip over. The top, as no scrollbar takes it: at the bottom, a page a few pixels
+too wide for the window got a horizontal scrollbar that pushed the strip up, away from where the
+director reads and paints it over, and the video showed it flickering (2026-11-12). A frame painted within a second before one already on the video is
 left out: the screencast now and then hands one over after later ones, and held in place it showed
 the page as it was a moment before (a highlight ring seemed to blink). A clock read as hours earlier
 (a strip under the white veil) or as later than the frame was handed over is misread: its frame
@@ -591,7 +593,7 @@ shared page full screen. A click on the picture plays and pauses it. "CC" switch
 off, and so does C where a demo video or walkthrough is what the owner is at; the choice is one for
 walkthroughs and demos in that browser, on until switched off. Z or the magnifier zooms the playing
 video out of the card, with its caption and controls, to as large as the window allows above the
-microphone, growing or shrinking as captions are switched; Z, Esc or a click beside it ends the
+microphone and right of the pinned navigation sidebar (which stays above the grey), growing or shrinking as captions are switched; Z, Esc or a click beside it ends the
 zoom. Z takes the zoomed video or
 walkthrough, else the one playing, else the one under the pointer, else the first in sight (a
 walkthrough's player zooms the same way, see The Coordinator → Walkthroughs).

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
 import { launchChromium } from '../../../lib/chromium.ts';
-import { paintTimes } from './director.ts';
+import { paintTimes } from './screencast.ts';
 import type { Frame } from './timeline.ts';
 
 // The overlay in a real browser, on a page with iframes as a card's HTML artifact has them.
@@ -31,6 +31,8 @@ describe('the demo overlay', () => {
           ? html('<p id="inside">inside</p>')
           : new URL(req.url).pathname === '/shadow'
             ? html(SHADOW)
+            : new URL(req.url).pathname === '/wide'
+              ? html('<div style="width:808px;height:2000px;background:linear-gradient(#fff,#ddd)">wide</div>')
             : html('<p id="under">behind the sheet</p><div id="sheet" style="position:fixed;left:0;top:0;right:0;height:40px;background:#eee"></div><button id="b">Go</button><button id="edge" style="position:fixed;right:4px;top:2px">Send</button><iframe src="/frame"></iframe><iframe sandbox="allow-scripts" src="/frame"></iframe>'),
     });
     browser = await launchChromium();
@@ -99,6 +101,36 @@ describe('the demo overlay', () => {
         expect(Math.abs(p! - frames[i]!.t)).toBeLessThan(5);
       });
     } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  // A page 8 px wider than the window gets a horizontal scrollbar, which takes the bottom of the
+  // window: a strip at the bottom sat above it, where the director neither read nor painted it
+  // over, and the video showed it flickering (2026-11-12). Scrolled sideways, it stays put too.
+  test.skipIf(!Bun.which('ffmpeg'))('a page too wide for the window still tells when each frame was painted', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clock-'));
+    const ctx = await browser.newContext({ viewport: { width: 800, height: 600 } });
+    await ctx.addInitScript({ path: path.join(import.meta.dirname, 'overlay.js') });
+    try {
+      const wide = await ctx.newPage();
+      await wide.goto(new URL('/wide', server.url).href);
+      await wide.waitForFunction(() => document.querySelector('canvas')?.isConnected);
+      expect(await wide.evaluate(() => innerHeight - document.documentElement.clientHeight)).toBeGreaterThan(0);
+      const frames: Frame[] = [];
+      for (const x of [0, 8]) {
+        await wide.evaluate((x) => scrollTo(x, 0), x);
+        await wide.evaluate(() => new Promise(requestAnimationFrame));
+        const file = path.join(dir, `${String(frames.length).padStart(6, '0')}.jpg`);
+        await wide.screenshot({ path: file, type: 'jpeg', quality: 92 });
+        frames.push({ file, t: Date.now() / 1000, width: 800, height: 600 });
+      }
+      paintTimes(frames, dir, { width: 800, height: 600 }).forEach((p, i) => {
+        expect(p).not.toBeNull();
+        expect(Math.abs(p! - frames[i]!.t)).toBeLessThan(5);
+      });
+    } finally {
+      await ctx.close();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }, 30_000);

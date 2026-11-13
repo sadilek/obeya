@@ -7,14 +7,14 @@
 import { basename } from 'node:path';
 import { z } from 'zod';
 import { ownersLanguage } from '../core/locale';
-import { formatQuestion, type Item, type Question, type Revising } from '../core/types';
+import type { Item, Question, Revising } from '../core/types';
+import { formatQuestion } from '../core/card';
 import { BadRequest, type Board } from './board';
 import { imageNote, MAX_IMAGES } from './images';
-import type { AgentRuntime } from './runtime';
-import { readSession } from './coordinator';
+import { type AgentRuntime, readSession } from './runtime';
 import { toObeyaTool } from './to-obeya';
 import { messageOf } from '../core/text';
-import { PROPOSAL_QUESTIONS, proposalQuestions, proposalTask } from './workers';
+import { PROPOSAL_QUESTIONS, proposalQuestions, proposalTask } from './proposals';
 
 export interface RevisionOptions {
   board: Board;
@@ -180,7 +180,7 @@ export class Revisions {
     if (revised) return revised;
     if (error !== undefined) throw new Error(error);
     if (passed) return null;
-    throw new Error('der Agent hat keinen neuen Text geliefert');
+    throw new Error(this.o.board.t.coordinator.noRevisedText);
   }
 
   private message(card: Item, said: Revising, shots: ReturnType<Revisions['shots']>): string {

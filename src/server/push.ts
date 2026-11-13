@@ -11,11 +11,13 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
-import { type Item, needsYou } from '../core/types';
+import type { Item } from '../core/types';
+import { needsYou } from '../core/card';
 import { BadRequest } from './board';
 import type { Store } from './db';
 import { UNUSED_MS } from './remote';
 import { newVapidJwk, type Post, type PushMessage, send, subscriptionOf, type Subscription, type Vapid, vapidOf } from './webpush';
+import { clip } from '../core/text';
 
 /** How long after the owner last used a page at the machine nothing is pushed. */
 export const DESK_MS = 3 * 60_000;
@@ -64,8 +66,6 @@ export function startedWaiting(before: ReadonlyMap<string, Item>, after: readonl
   });
 }
 
-/** At most `n` characters: a push carries at most about 4 KB, and a phone shows a few lines anyway. */
-const clipped = (text: string, n: number) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
 
 /** A title as plain text: a notification shows no markdown. */
 export const plainTitle = (md: string) =>
@@ -208,13 +208,14 @@ export class Push {
     this.later(() => this.windowEnds(), WINDOW_MS);
   }
 
+  /** Clipped: a push carries at most about 4 KB, and a phone shows a few lines anyway. */
   private message(cards: Waits[]): PushMessage {
     const m = MESSAGES[this.language()].push;
     if (cards.length === 1) {
       const w = cards[0]!;
-      return { title: clipped(plainTitle(w.title), 160), body: clipped([m[w.kind], w.canvas].filter(Boolean).join(' · '), 200), url: this.cardUrl(w.card), tag: w.card, at: Date.now() };
+      return { title: clip(plainTitle(w.title), 160), body: clip([m[w.kind], w.canvas].filter(Boolean).join(' · '), 200), url: this.cardUrl(w.card), tag: w.card, at: this.now() };
     }
-    return { title: m.several(cards.length), body: clipped(cards.map((w) => plainTitle(w.title)).join(' · '), 600), url: '/', tag: 'several', at: Date.now() };
+    return { title: m.several(cards.length), body: clip(cards.map((w) => plainTitle(w.title)).join(' · '), 600), url: '/', tag: 'several', at: this.now() };
   }
 
   /** Where tapping the push for a card leads: the card on its canvas, by its short code. */

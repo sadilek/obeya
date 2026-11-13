@@ -30,10 +30,17 @@ const run =
 const python = run(UV);
 const withNumpy = run(UV_NUMPY);
 
+// uv's first run on a machine finds its Python, which took the first test on a Windows runner past
+// its 25 s: done here, outside the time limit of any test
+beforeAll(() => {
+  expect(run(UV, 600_000)(['-c', 'pass']).status).toBe(0);
+}, 600_000);
+
 /**
  * A voice that serves until its stdin ends, writing a short silent WAV per request. Given a second
  * argument, it is loaded only once that file exists. `FAKE_HANG_AT` gives no answer to that
- * request, as a stuck Qwen3 voice did; it reports a sentence done first. Given the script as
+ * request, as a stuck Qwen3 voice did; it reports a sentence done first. It logs the reference
+ * clip a request names. Given the script as
  * written, it says it heard the text as said; with `FAKE_TIMED`, it gives the times of its words.
  */
 const FAKE_VOICE = String.raw`
@@ -61,6 +68,8 @@ while line := sys.stdin.readline():
     with wave.open(request["out"], "wb") as fh:
         fh.setnchannels(1); fh.setsampwidth(2); fh.setframerate(24000); fh.writeframes(b"\0\0" * 2400)
     open(log, "a").write(request["language"] + ":" + request["text"] + "\n")
+    if "reference" in request:
+        open(log, "a").write("reference:" + request["reference"] + "\n")
     heard = {"heard": [{"script": request["script"], "heard": request["text"]}]} if "script" in request else {}
     if os.environ.get("FAKE_TIMED"):
         heard["timed"] = [[" " + request["text"], 0.01]]
@@ -72,7 +81,7 @@ let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-tts-'));
   writeFileSync(join(dir, 'voice.py'), FAKE_VOICE);
-  writeFileSync(join(dir, 'spec.json'), JSON.stringify({ kind: 'command', argv: ['false'], serve: ['python', join(dir, 'voice.py')], tag: 'fake', heavy: true }));
+  writeFileSync(join(dir, 'spec.json'), JSON.stringify({ kind: 'command', serve: ['python', join(dir, 'voice.py')], tag: 'fake', heavy: true }));
   writeFileSync(join(dir, 'jobs.json'), JSON.stringify(['Eins.', 'Zwei.', 'Drei.'].map((text, i) => ({ id: `s${i}`, text }))));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -115,6 +124,15 @@ describe('a voice that stays loaded', () => {
     expect(clip.timed).toEqual([[' Eins.', 0.01], [' Zwei drei.', 0.61], [' Vier.', 2.21]]);
   });
 
+  test('gets the clip to clone with each request, as Obeya sends it, not on its command line', () => {
+    const spec = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8'));
+    writeFileSync(join(dir, 'spec.json'), JSON.stringify({ ...spec, host: { reference: '/x/me.wav' } }));
+    writeFileSync(join(dir, 'jobs.json'), JSON.stringify([{ id: 's0', text: 'Eins.' }]));
+    // without Obeya: the render serves the voice itself
+    expect(narrate({ OBEYA_URL: '' }).status).toBe(0);
+    expect(log()).toEqual(['start', 'de:Eins.', 'reference:/x/me.wav', 'end']);
+  });
+
   test('a sample starts it once and ends it', () => {
     const r = python([join(LIB, 'tts.py'), '--sample', join(dir, 'spec.json'), 'en', 'Hello.', join(dir, 'sample.wav')], { FAKE_LOG: join(dir, 'log') });
     expect(r.status).toBe(0);
@@ -139,6 +157,30 @@ describe('a voice that stays loaded', () => {
     expect(r.stderr).toContain('the voice said nothing for 0.5 s while making a clip and was ended: generating Zwei.');
     expect(performance.now() - started).toBeLessThan(30_000);
     expect(log()).toEqual(['start', 'de:Eins.']);
+  });
+});
+
+describe('a hosted voice', () => {
+  test('whose daily quota is spent ends a sample with what to do, as it ends a render, not with a traceback', async () => {
+    // a rate limit "per day", as Gemini answers it once the free tier is used up
+    const server = Bun.serve({ port: 0, fetch: () => new Response('{"error":{"code":429,"details":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel"}]}}', { status: 429 }) });
+    try {
+      writeFileSync(join(dir, 'http.json'), JSON.stringify(voiceSpec({ language: 'en', voice: 'http', url: `http://127.0.0.1:${server.port}/tts` })));
+      writeFileSync(join(dir, 'jobs.json'), JSON.stringify([{ id: 's0', text: 'Hello.' }]));
+      // not spawnSync: the server in this process answers while tts.py waits
+      const tts = async (...args: string[]) => {
+        const p = Bun.spawn([...UV, join(LIB, 'tts.py'), ...args], { stdout: 'pipe', stderr: 'pipe' });
+        const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited]);
+        return { err, code };
+      };
+      for (const r of [await tts('--sample', join(dir, 'http.json'), 'en', 'Hello.', join(dir, 'sample.wav')), await tts(join(dir, 'http.json'), 'en', join(dir, 'jobs.json'), join(dir, 'out'))]) {
+        expect(r.err).not.toContain('Traceback');
+        expect(r.err.trim()).toBe('the daily http TTS quota is used up; choose another voice (or DEMO_GEMINI_MODEL) or wait a day');
+        expect(r.code).toBe(1);
+      }
+    } finally {
+      server.stop(true);
+    }
   });
 });
 

@@ -4,35 +4,22 @@
 // text field too, until the owner has done so once.
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { know, known } from './known';
+import { know, known, local, read, write } from './stored';
+import { signal } from './signal';
 
 /** Set once the owner pasted a screenshot or confirmed the hint: it never shows again. */
 export const PASTE_KNOWN = 'obeya-paste-known';
 /** The field (its draft key) the hint is due in, kept across reloads until it is confirmed. */
 const PASTE_DUE = 'obeya-paste-hint';
 
-let due: string | null = (() => {
-  try {
-    return known(PASTE_KNOWN) ? null : localStorage.getItem(PASTE_DUE);
-  } catch {
-    return null;
-  }
-})();
+let due: string | null = known(PASTE_KNOWN) ? null : read(local, PASTE_DUE);
 /** The fields that take screenshots now, in the order they appeared. */
 let fields: string[] = [];
-const listeners = new Set<() => void>();
-const changed = () => listeners.forEach((l) => l());
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => void listeners.delete(l);
-};
+const { emit: changed, on: subscribe } = signal();
 
 function setDue(key: string | null) {
   due = key;
-  try {
-    if (key) localStorage.setItem(PASTE_DUE, key);
-    else localStorage.removeItem(PASTE_DUE);
-  } catch {}
+  write(local, PASTE_DUE, key);
   changed();
 }
 

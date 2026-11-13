@@ -9,71 +9,34 @@
 // the demo instead: the same page as a ZIP with its files, or as one HTML file.
 // Pages of one target are on one site, so each publish names the others.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
-import { z } from 'zod';
-import { LANGUAGE_NAMES } from '../core/locale';
+import { readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { MESSAGES, type Messages } from '../core/messages';
-import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented } from '../core/types';
-import { BadRequest, type Board, cardDemos, contributionOf, type DemoRef, pageTagsOf, type PrState, sameDemo, type SharedDemo, sharedDemos, type Shipped, type StoredDemo, type StoredReshare, type StoredShare } from './board';
+import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags } from '../core/types';
+import { withSupplemented } from '../core/card';
+import type { DemoSite } from '../core/config';
+import { BadRequest, type Board } from './board';
+import { cardDemos, pageTagsOf, sameDemo, sharedDemos, type StoredReshare } from './shared-pages';
+import { fromJson, type DemoRef, type SharedDemo, type StoredDemo, type StoredShare, toJson } from './row';
 import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
-import type { DemoSite } from '../adapters/types';
-import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { type Gone, siteBase, siteMissing, type SiteOptions, siteTarget } from './site';
+import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { type Gone, type PageDemo, siteBase, siteMissing, type SiteOptions, type SharePage, siteTarget, type ShareTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
-import { GITHUB_PAGES } from './site-hosts';
-import { keepDemo, rereadChapters, videoFacts } from './demo';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, captionTracks, type DemoPageParts, day, demoFile, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage, silentVideo } from './demo-page';
+import { rereadChapters } from './demo';
+import { artifactFiles, captionTracks, demoFile, keepDemo, silentVideo, videoFacts } from './demo-files';
+import { ARTIFACT_DIR, artifactPageHtml, type DemoPageParts, day, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage } from './demo-page';
 import type { Theme } from './theme';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
-import { readSession } from './coordinator';
+import { chooseTags, type TagAsk, writePage } from './page-session';
 import type { CardRow } from './db';
-import { branchName, gitAsync } from './workspaces';
+import { branchName } from './branches';
+import { gitAsync } from './git';
 import { originOf } from './forgejo';
 import { zip } from './zip';
 import { messageOf } from '../core/text';
-
-/** A later demo version on a page, below the first as an addendum. */
-export interface PageDemo {
-  title: string;
-  text: string;
-  kind: DemoKind;
-  chapters: [number, string][];
-  dir: string;
-  /** When it was handed over, which its section is headed with. */
-  at?: string;
-}
-
-/** What a page on the site is made of: the first demo version shared, and the later ones below it. */
-export interface SharePage {
-  /** Stays the same for a card, so a shared link keeps working when the page is published again. */
-  slug: string;
-  title: string;
-  text: string;
-  /** A video, or an HTML artifact. */
-  kind: DemoKind;
-  /** Seconds and title of each scene; none for an artifact. */
-  chapters: [number, string][];
-  /** The card's pull request, once it has one. */
-  pr: string | null;
-  /** Without a pull request: where the card's work landed on the default branch, once it has. */
-  commit?: PageCommit | null;
-  /** The demo's language, for the page's own words (`language` of the page templates). */
-  language: PageLanguage;
-  /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`; an artifact's `index.html` and the files it loads. */
-  dir: string;
-  /** The slugs of the other pages Obeya has stored as shared on this site: the site must still hold them. */
-  shared: string[];
-  /** The later demo versions on the page, in order of handover. */
-  more?: PageDemo[];
-  /** The page's tags from the site's vocabulary, by dimension (`tagsOf`); none where the site has none. */
-  tags?: PageTags;
-  /** The theme of the card's repository (theme.ts); none where it has none. */
-  theme?: Theme;
-}
 
 /**
  * Where a repository's demos may go: the site its settings name (none without one), its checkout,
@@ -86,49 +49,6 @@ export interface ShareSource {
   /** Its theme for the pages (`.obeya/theme.css`, theme.ts), asked for once a page goes out; none where it has none. */
   theme?: () => Theme | null | Promise<Theme | null>;
 }
-
-/**
- * Where a card's pages go. Pages whose targets have the same key are on one site: a publish or
- * withdrawal names the others as shared. Keys are not stored, so they only need to stay the same
- * across a restart.
- */
-export interface ShareTarget {
-  key: string;
-  /** An unlisted site (the owner's personal one): a page's place on it is `<token>/<slug>`. */
-  unlisted?: true;
-  /** The card's repository checkout. */
-  repo: string;
-  /**
-   * The page's URL, or why it did not go out; what the target said on the way goes into the card's
-   * log, and what it says while it goes on (`log`). `gone`: pages another machine withdrew, found
-   * on the way.
-   */
-  publish(page: SharePage, log?: (text: string) => void): Promise<({ url: string; said: string } | { why: string; said: string }) & { gone?: Gone[] }>;
-  withdraw(slug: string, shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
-  /**
-   * The pages another machine withdrew (their cards here lose their link), and the pages shared
-   * from here (`shared`) that the live site lacks or has older, taken offline by another machine's
-   * deployment that came in between.
-   */
-  audit(shared: string[]): Promise<{ gone: Gone[]; missing: string[] }>;
-  /** Where the page of `slug` is, before it is published. */
-  pageUrl(slug: string): string;
-  /** Deploys again what this machine has, for the pages `audit` found missing. */
-  repair(shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
-  /**
-   * Gives pages on the site their tags in one deploy, in place: each keeps its video or artifact as
-   * the site has it (the demo's own files may be gone), and the page around them is written anew.
-   * `shared`: every page shared through the target, those included.
-   */
-  retag(pages: { slug: string; tags: PageTags }[], shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
-}
-
-/**
- * Where a site's deploy runs, under Obeya's home: not in the checkout, which is often a workspace
- * of the pool too, and a file a command leaves in its working directory (`wrangler pages deploy`
- * writes its cache there) would keep the workspace from being leased until someone cleans up.
- */
-export const SHARE_CWD = 'share';
 
 export interface SharingOptions {
   board: Board;
@@ -151,9 +71,6 @@ export interface SharingOptions {
    */
   onPage?: (cardId: string, r?: { url: string } | { why: string }) => void;
 }
-
-/** A site's deploy that has not finished by then is stopped (an upload of a few files takes seconds). */
-export const COMMAND_TIMEOUT = 15 * 60_000;
 
 /** The pages of all canvases go out one at a time: a site directory takes one change at a time. */
 let chain: Promise<unknown> = Promise.resolve();
@@ -192,10 +109,8 @@ export class Sharing {
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     const now: DemoRef[] = s?.url ? sharedDemos(s) : [];
-    const ref = refOf(demo);
-    const on = now.some((d) => sameDemo(d, ref));
-    // with no page yet or beside the versions there, it takes along the demos it supplements
-    const next = on ? now : add || !now.length ? this.beside(cardId, now, ref) : [ref];
+    const on = shows(s, demo);
+    const next = on ? now : this.versionsWith(cardId, now, refOf(demo), add);
     this.set(cardId, { ...this.fresh(card, s), state: 'publishing', next: next.map(refOf) });
     const t = this.o.board.t.share;
     const said = !s?.url ? t.share : on ? t.again : add ? t.added : t.newDemo;
@@ -270,7 +185,7 @@ export class Sharing {
   onApproval(cardId: string, on: boolean) {
     const card = this.card(cardId);
     if (card.prototypeOf) throw new BadRequest('noShare', 'prototypes are not shared');
-    const { notOnApproval: _, ...s } = this.stored(cardId) ?? { slug: slugOf(card) };
+    const { notOnApproval: _, ...s } = this.shareOf(card);
     this.set(cardId, on ? s : { ...s, notOnApproval: true });
   }
 
@@ -287,7 +202,7 @@ export class Sharing {
     if (!allowed) throw new BadRequest('invalid', `the site has no tags of the dimension ${dimension}`);
     const wrong = values.filter((v) => !allowed.includes(v));
     if (wrong.length) throw new BadRequest('invalid', `not in the site's tags of ${dimension}: ${wrong.join(', ')}`);
-    const s = this.stored(cardId) ?? { slug: slugOf(card) };
+    const s = this.shareOf(card);
     const chosen = allowed.filter((v) => values.includes(v));
     this.setTagFields(cardId, card, { tags: { ...s.tags, [dimension]: chosen } });
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.tagsSet(dimension, chosen));
@@ -298,7 +213,7 @@ export class Sharing {
   private notOnPage(cardId: string) {
     const demo = this.demo(cardId);
     const s = this.stored(cardId);
-    if (!demo || (s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo))))) return;
+    if (!demo || shows(s, demo)) return;
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.notOnApproval);
   }
 
@@ -307,12 +222,10 @@ export class Sharing {
     const card = this.find(cardId);
     const demo = this.demo(cardId);
     const s = this.stored(cardId);
-    if (!card || !demo || s?.state) return;
+    if (!card || !demo || s?.state || shows(s, demo)) return;
     const now: DemoRef[] = s?.url ? sharedDemos(s) : [];
-    const ref = refOf(demo);
-    if (now.some((d) => sameDemo(d, ref))) return;
     const add = demo.follows === 'supplements';
-    this.set(cardId, { ...this.fresh(card, s), state: 'publishing', next: (add ? this.beside(cardId, now, ref) : [ref]).map(refOf) });
+    this.set(cardId, { ...this.fresh(card, s), state: 'publishing', next: this.versionsWith(cardId, now, refOf(demo), add).map(refOf) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.approved(!now.length ? 'share' : add ? 'add' : 'replace'));
     void serial(() => this.publish(cardId));
   }
@@ -347,17 +260,24 @@ export class Sharing {
    * text, written for what it said before, goes, to be written again in its language when it is
    * shared. A demo on a page is not changed under the page: it is withdrawn first.
    */
-  rebuilt(cardId: string) {
+  async rebuilt(cardId: string) {
     const demo = this.demo(cardId);
     if (!demo || demo.kind === 'html') throw new BadRequest('noShare', 'the card has no demo video');
-    const s = this.stored(cardId);
-    if (s?.state || (s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo))))) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
+    const busy = () => {
+      const s = this.stored(cardId);
+      if (s?.state || shows(s, demo)) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
+    };
+    busy();
     const chapters = rereadChapters(demo.dir);
     if (typeof chapters === 'string') throw new BadRequest('invalid', chapters);
-    const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = demo;
     // the copy Obeya keeps of it is of what it is now
-    const keeps = kept && keepDemo({ dir: demo.dir, kind: 'video' }, kept);
-    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters, ...videoFacts(demo.dir), ...(keeps ? { kept } : {}) }) });
+    const [keeps, facts] = await Promise.all([demo.kept && keepDemo({ dir: demo.dir, kind: 'video' }, demo.kept), videoFacts(demo.dir)]);
+    // read meanwhile: a demo handed over since stands, one shared since is not changed under its page, and what the owner answered stays
+    const now = this.demo(cardId);
+    if (!now || now.handover !== demo.handover) return;
+    busy();
+    const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = now;
+    this.o.board.work(cardId, { demo: toJson({ ...rest, chapters, ...facts, ...(keeps ? { kept } : {}) }) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.rebuilt(this.languageOf(demo.dir, this.card(cardId))));
   }
 
@@ -388,7 +308,7 @@ export class Sharing {
     this.convert();
     for (const { r, s } of this.shares()) {
       // one of many shared again goes on with the rest of them
-      if (s.state === 'publishing' && s.again && this.o.board.reshareRun()?.queue[0] === r.id) continue;
+      if (s.state === 'publishing' && s.again && this.o.board.pages.reshareRun()?.queue[0] === r.id) continue;
       if (s.state === 'publishing') void serial(() => this.publish(r.id));
       else if (s.state === 'withdrawing') void serial(() => this.withdraw(r.id));
     }
@@ -416,15 +336,6 @@ export class Sharing {
       const { outdated: _, ...rest } = s as StoredShare & { outdated?: true };
       this.set(r.id, { ...rest, version });
     }
-    // pages from before several versions (until 2026-10-16) showed one demo: a list of one, the
-    // card's demo in that directory (the latest one rendered there) named by its handover
-    for (const { r, s } of this.shares()) {
-      if (s.demos || !s.dir || !s.shown) continue;
-      const { dir: _, shown: __, ...rest } = s;
-      const demo = cardDemos(r).findLast((d) => d.dir === s.dir);
-      const one: SharedDemo = { ...(demo ? refOf(demo) : { dir: s.dir }), ...(demo?.at ? { at: demo.at } : {}), dir: s.dir, shown: s.shown };
-      this.set(r.id, { ...rest, demos: [one] });
-    }
   }
 
   /**
@@ -435,12 +346,12 @@ export class Sharing {
    * in place a batch at a time (`tagSome`).
    */
   reshareMany(count: number | null, tags = false) {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again already');
-    const outdated = tags ? this.o.board.untaggedRows() : this.o.board.outdatedRows().map(({ r }) => r);
+    const outdated = tags ? this.o.board.pages.untaggedRows() : this.o.board.pages.outdatedRows().map(({ r }) => r);
     const cards = this.o.board.shownCards(outdated);
     const rows = outdated
-      .map((r) => ({ r, s: this.o.board.storedShare(r), card: cards.get(r.id) }))
+      .map((r) => ({ r, s: this.o.board.pages.storedShare(r), card: cards.get(r.id) }))
       .filter(({ s, card }) => card && this.target(card, s));
     if (!rows.length) throw new BadRequest('nothingOutdated', tags ? 'no shared page lacks tags' : 'no shared page is outdated');
     const made = (dir?: string) => (dir ? (statOr(join(dir, 'demo.mp4')) ?? statOr(join(dir, 'index.html')) ?? statOr(dir) ?? 0) : 0);
@@ -450,30 +361,30 @@ export class Sharing {
       .sort((a, b) => b.at - a.at)
       .slice(0, count ?? undefined)
       .map((r) => r.id);
-    this.o.board.setReshareRun({ queue, total: queue.length, done: 0, failed: [], ...(tags ? { tags: true as const } : {}) });
+    this.o.board.pages.setReshareRun({ queue, total: queue.length, done: 0, failed: [], ...(tags ? { tags: true as const } : {}) });
     this.nextAgain();
   }
 
   /** Stops sharing many again: the page going out finishes, the rest stay as they are. */
   stopResharing() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (!run?.queue.length) return;
     const going = this.tagging.length ? run.queue.filter((id) => this.tagging.includes(id)) : this.resharing && this.stored(run.queue[0]!)?.state === 'publishing' ? [run.queue[0]!] : [];
-    this.o.board.setReshareRun({ ...run, queue: going, stopped: true });
+    this.o.board.pages.setReshareRun({ ...run, queue: going, stopped: true });
   }
 
   /** "Hide": puts away what the finished run says, and the notice of outdated pages until a newer change. */
   dismissResharing() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again');
     // a run tagging pages leaves the notice of outdated pages as it is
-    if (run?.tags) this.o.board.setReshareRun(null);
-    else this.o.board.dismissOutdated();
+    if (run?.tags) this.o.board.pages.setReshareRun(null);
+    else this.o.board.pages.dismissOutdated();
   }
 
   /** The next page of the run sharing many again, once the site is free. */
   private nextAgain() {
-    if (this.resharing || !this.o.board.reshareRun()?.queue.length) return;
+    if (this.resharing || !this.o.board.pages.reshareRun()?.queue.length) return;
     this.resharing = true;
     void serial(() => this.again()).finally(() => {
       this.resharing = false;
@@ -482,7 +393,7 @@ export class Sharing {
   }
 
   private async again() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     const id = run?.queue[0];
     if (!id) return;
     const s = this.stored(id);
@@ -493,20 +404,20 @@ export class Sharing {
     else {
       const row = this.find(id) && this.o.board.row(id);
       // one that is up to date meanwhile no longer counts
-      if (s && row && this.o.board.outdatedBy(row).length > 0) {
+      if (s && row && this.o.board.pages.outdatedBy(row).length > 0) {
         this.set(id, { ...s, state: 'publishing', refresh: true, again: true });
         this.o.board.log(id, 'state', 'owner', this.o.board.t.share.againWithOthers);
         ok = await this.publish(id);
       }
     }
     // shared again meanwhile on its own, withdrawn or gone: it no longer counts
-    const now = this.o.board.reshareRun();
+    const now = this.o.board.pages.reshareRun();
     if (!now) return;
     const next: StoredReshare = { ...now, queue: now.queue.filter((x) => x !== id) };
     if (ok === true) next.done++;
     else if (ok === false) next.failed = [...next.failed, id];
     else next.total--;
-    this.o.board.setReshareRun(next);
+    this.o.board.pages.setReshareRun(next);
   }
 
   /**
@@ -518,9 +429,9 @@ export class Sharing {
    * failed, is counted as failed.
    */
   private async tagSome() {
-    const run = this.o.board.reshareRun();
+    const run = this.o.board.pages.reshareRun();
     if (!run?.queue.length) return;
-    const untaggedNow = new Set(this.o.board.untaggedRows().map((r) => r.id));
+    const untaggedNow = new Set(this.o.board.pages.untaggedRows().map((r) => r.id));
     const pages: Tagging[] = [];
     const dropped: string[] = [];
     let target: ShareTarget | null = null;
@@ -545,10 +456,10 @@ export class Sharing {
     } finally {
       this.tagging = [];
     }
-    const now = this.o.board.reshareRun();
+    const now = this.o.board.pages.reshareRun();
     if (!now) return;
     const out = new Set([...pages.map((p) => p.id), ...dropped]);
-    this.o.board.setReshareRun({
+    this.o.board.pages.setReshareRun({
       ...now,
       queue: now.queue.filter((x) => !out.has(x)),
       done: now.done + done.length,
@@ -560,7 +471,7 @@ export class Sharing {
   /** Tags a batch of `tagSome` on its site, noting each page as done, failed, or no longer lacking tags (`dropped`). */
   private async tagBatch(target: ShareTarget, pages: Tagging[], done: string[], failed: string[], dropped: string[]) {
     const t = this.o.board.t.share;
-    const chosen = await this.chooseTags(target.repo, pages);
+    const chosen = await chooseTags(this.o.runtime, target.repo, pages);
     // the owner may have chosen some meanwhile: the session's choice stands only where the page still lacks
     const going = pages.flatMap((p) => {
       const lacking = this.missingTags(p.card);
@@ -569,7 +480,8 @@ export class Sharing {
       else if (!tags || !Object.keys(tags).length) failed.push(p.id);
       return tags && Object.keys(tags).length ? [{ ...p, chosen: tags, tags: tagsOf({ ...pageTagsOf(this.o.board.row(p.id)), ...tags }, this.vocabulary(p.card)) }] : [];
     });
-    for (const p of pages) if (!chosen.has(p.id)) this.o.board.log(p.id, 'error', 'obeya', `${t.notShared}: ${t.noTags}`);
+    // one the owner tagged meanwhile lacks nothing, whatever the session gave it
+    for (const p of pages) if (!chosen.has(p.id) && failed.includes(p.id)) this.o.board.log(p.id, 'error', 'obeya', `${t.notShared}: ${t.noTags}`);
     if (going.length) {
       const r = await target.retag(
         going.map((p) => ({ slug: p.slug, tags: p.tags })),
@@ -578,7 +490,7 @@ export class Sharing {
       this.lost(target.key, r.gone ?? []);
       for (const p of going) {
         if (r.why) {
-          this.o.board.log(p.id, 'error', 'obeya', [`${t.notShared}: ${r.why}`, r.said].filter(Boolean).join('\n\n'));
+          this.o.board.log(p.id, 'error', 'obeya', withOutput(`${t.notShared}: ${r.why}`, r.said));
           failed.push(p.id);
           continue;
         }
@@ -631,7 +543,7 @@ export class Sharing {
     const t = this.o.board.t.share;
     const r = await target.repair(shared, (text) => log('activity', text));
     this.lost(target.key, r.gone);
-    if (r.why) return log('error', [t.notRestored(r.why), r.said].filter(Boolean).join('\n\n'));
+    if (r.why) return log('error', withOutput(t.notRestored(r.why), r.said));
     if (r.said) log('activity', r.said);
     log('state', t.restored);
   }
@@ -661,10 +573,12 @@ export class Sharing {
     const card = this.find(cardId);
     if (s?.state !== 'publishing' || !card) return null;
     const t = this.o.board.t.share;
-    const failed = s.again ? t.notAgain : s.retag ? t.notShared : s.refresh ? t.notLinked : t.notShared;
+    // why the page goes out: shared again with many, its tags changed, a link to its change added, or the owner shared it
+    const why = s.again ? 'again' : s.retag ? 'retag' : s.refresh ? 'link' : 'share';
+    const failed = { again: t.notAgain, retag: t.notShared, link: t.notLinked, share: t.notShared }[why];
     const back = (why: string, out = '') => {
       this.set(cardId, atRest(s));
-      this.o.board.log(cardId, 'error', 'obeya', [`${failed}: ${why}`, out].filter(Boolean).join('\n\n'));
+      this.o.board.log(cardId, 'error', 'obeya', withOutput(`${failed}: ${why}`, out));
       this.settled(cardId, { why });
       return false;
     };
@@ -702,25 +616,24 @@ export class Sharing {
       }
     }
     const [first, ...later] = demos as [SharedDemo, ...SharedDemo[]];
+    const onPage = (d: SharedDemo): PageDemo => ({ ...d.shown, dir: d.dir, ...(d.at ? { at: d.at } : {}) });
     const vocabulary = this.vocabulary(card);
     const lacking = this.missingTags(card);
     if (lacking) {
-      const tags = (await this.chooseTags(target.repo, [{ id: cardId, card, slug: pathOf(s), demos, lacking }])).get(cardId);
+      const tags = (await chooseTags(this.o.runtime, target.repo, [{ id: cardId, demos, lacking }])).get(cardId);
       if (tags) this.chosen(cardId, tags);
     }
     const tags = tagsOf(pageTagsOf(this.o.board.row(cardId)), vocabulary);
     const pr = this.prOf(cardId);
     const commit = pr ? null : await this.commitOf(card);
-    const theme = await this.o.sourceFor(card)?.theme?.();
+    const theme = await this.themeOf(card);
     const input: SharePage = {
       slug: pathOf(s),
-      ...first.shown,
+      demos: [onPage(first), ...later.map(onPage)],
       pr,
       ...(commit ? { commit } : {}),
       language: this.languageOf(first.dir, card),
-      dir: first.dir,
       shared: this.others(cardId, target.key),
-      ...(later.length ? { more: later.map((d) => ({ ...d.shown, dir: d.dir, ...(d.at ? { at: d.at } : {}) })) } : {}),
       ...(Object.keys(tags).length ? { tags } : {}),
       ...(theme ? { theme } : {}),
     };
@@ -730,7 +643,8 @@ export class Sharing {
     const { url } = r;
     this.set(cardId, { slug: s.slug, url, demos, ...(pr ? { pr } : {}), ...(commit ? { commit: commit.url } : {}), version: pagesVersion(), ...(theme ? { theme: theme.hash } : {}), ...kept(s), ...(s.personal ? { personal: true as const } : {}) });
     if (r.said) this.o.board.log(cardId, 'activity', 'obeya', r.said);
-    this.o.board.log(cardId, 'state', 'obeya', s.again ? t.sharedAgain(url) : s.retag ? t.retagged(url) : s.refresh ? (pr ? t.linksPr(url) : t.linksCommit(url)) : t.shared(url));
+    const out = { again: t.sharedAgain, retag: t.retagged, link: pr ? t.linksPr : t.linksCommit, share: t.shared }[why];
+    this.o.board.log(cardId, 'state', 'obeya', out(url));
     this.settled(cardId, { url });
     if (pr) await this.linkPr(cardId, pr, url, target.repo, first.shown.kind);
     // the pull request was opened or the work landed while the page went out, or the owner changed its tags: once more, with them
@@ -748,7 +662,7 @@ export class Sharing {
   private async linkPr(cardId: string, pr: string, url: string, cwd: string, kind: DemoKind) {
     const n = parsePrUrl(pr)?.number;
     const row = this.o.board.row(cardId);
-    const review = contributionOf(row);
+    const review = fromJson(row.contribution);
     if (review) {
       // a review card's PR is the contributor's: its description stays theirs, and the link comes as a comment, once the owner approved
       const key = `${cardId}\n${url}`;
@@ -758,8 +672,8 @@ export class Sharing {
       const t = MESSAGES[this.languageOf(this.demo(cardId)?.dir ?? '', this.card(cardId))].share;
       try {
         const at = await this.o.forge.comment(cwd, pr, t.prComment(kind === 'html', url));
-        const now = contributionOf(this.o.board.row(cardId));
-        if (now) this.o.board.work(cardId, { contribution: JSON.stringify({ ...now, linked: url }) });
+        const now = fromJson(this.o.board.row(cardId).contribution);
+        if (now) this.o.board.work(cardId, { contribution: toJson({ ...now, linked: url }) });
         this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.prCommented(n, at || pr));
       } catch (e) {
         this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.share.prNotCommented(n, messageOf(e)));
@@ -784,7 +698,7 @@ export class Sharing {
     if (s?.state !== 'withdrawing' || !card) return;
     const back = (why: string, out = '') => {
       this.set(cardId, atRest(s));
-      this.o.board.log(cardId, 'error', 'obeya', [why, out].filter(Boolean).join('\n\n'));
+      this.o.board.log(cardId, 'error', 'obeya', withOutput(why, out));
     };
     const target = this.target(card);
     const t = this.o.board.t.share;
@@ -806,14 +720,24 @@ export class Sharing {
   async export(cardId: string, as: 'zip' | 'html', handover?: number): Promise<{ name: string; type: string; data: Uint8Array<ArrayBuffer> }> {
     const card = this.card(cardId);
     const demo = handover === undefined ? this.demo(cardId) : this.cardDemo(cardId, { handover, dir: '' });
-    if (demo?.kind === 'html' && !card.prototypeOf) return this.exportArtifact(card, demo, as);
-    const video = demo && demoFile(demo.dir, 'demo.mp4');
-    if (card.prototypeOf || !demo || !video || !existsSync(video)) throw new BadRequest('noShare', 'the card has no demo');
+    if (card.prototypeOf || !demo) throw new BadRequest('noShare', 'the card has no demo');
+    const made = demo.kind === 'html' ? await this.artifactExport(card, demo, as) : await this.videoExport(card, demo, as);
+    const slug = this.shareOf(card).slug;
+    const out =
+      'html' in made
+        ? { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(made.html) }
+        : { name: `${slug}.zip`, type: 'application/zip', data: zip(made.entries.map((e) => ({ name: `${slug}/${e.name}`, data: e.data }))) };
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
+    return out;
+  }
+
+  /** A video demo's export: its page as one file, or with its video, poster and captions beside it (`entries`, by their place in the ZIP's directory). */
+  private async videoExport(card: Item, demo: StoredDemo, as: 'zip' | 'html'): Promise<Exported> {
+    const video = demoFile(demo.dir, 'demo.mp4');
+    if (!video) throw new BadRequest('noShare', 'the card has no demo');
     const size = statSync(video).size;
     if (as === 'html' && size > EXPORT_HTML_MAX)
       throw new BadRequest('exportTooLarge', `the video is ${(size / 1024 / 1024).toFixed(1)} MiB; one HTML file takes at most ${EXPORT_HTML_MAX / 1024 / 1024} MiB`);
-    const page = await this.page(card, demo);
-    const slug = this.stored(cardId)?.slug ?? slugOf(card);
     const file = (f: string) => {
       const path = demoFile(demo.dir, f);
       return path ? new Uint8Array(readFileSync(path)) : null;
@@ -821,81 +745,78 @@ export class Sharing {
     const poster = file('poster.jpg');
     // the narration's text, whether or not it is a track: what a player outside Obeya reads where it knows one file only
     const narration = file('captions.vtt');
-    const language = this.languageOf(demo.dir, card);
+    const shared = await this.exportParts(card, demo, video);
     // every caption track goes with it; one from before the tracks is in the demo's language
-    const tracks = captionTracks(demo.dir).flatMap((t) => {
+    const tracks = (await captionTracks(demo.dir)).flatMap((t) => {
       const data = file(t.file);
-      return data ? [{ file: t.file, language: t.language ?? language, data }] : [];
+      return data ? [{ file: t.file, language: t.language ?? shared.language, data }] : [];
     });
     const parts: Omit<DemoPageParts, 'video' | 'poster'> = {
-      title: page.title,
-      text: page.text,
+      ...shared,
       chapters: demo.chapters,
-      pr: this.prOf(cardId),
-      commit: await this.commitOf(card),
-      when: PAGE_WORDS[language].demoOf(day(statSync(video).mtime, language)),
-      tabTitle: page.title,
-      language,
-      ...(await this.themeOf(card)),
       // a page opened from disk may not load a caption file
       tracks: tracks.map((t) => ({ language: t.language, vtt: new TextDecoder().decode(t.data) })),
-      ...(silentVideo(video) ? { silent: true } : {}),
+      ...((await silentVideo(video)) ? { silent: true } : {}),
     };
-    let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
-    if (as === 'html') {
-      const html = demoPageHtml({
-        ...parts,
-        video: { base64: Buffer.from(readFileSync(video)).toString('base64') },
-        ...(poster ? { poster: `data:image/jpeg;base64,${Buffer.from(poster).toString('base64')}` } : {}),
-      });
-      out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(html) };
-    } else {
-      const html = demoPageHtml({ ...parts, video: { src: 'demo.mp4' }, ...(poster ? { poster: 'poster.jpg' } : {}) });
-      const entries = [
-        { name: `${slug}/index.html`, data: new TextEncoder().encode(html) },
-        { name: `${slug}/demo.mp4`, data: new Uint8Array(readFileSync(video)) },
-        ...(poster ? [{ name: `${slug}/poster.jpg`, data: poster }] : []),
-        ...tracks.map((t) => ({ name: `${slug}/${t.file}`, data: t.data })),
-        ...(narration && !tracks.some((t) => t.file === 'captions.vtt') ? [{ name: `${slug}/captions.vtt`, data: narration }] : []),
-      ];
-      out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
-    }
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
-    return out;
+    if (as === 'html')
+      return {
+        html: demoPageHtml({
+          ...parts,
+          video: { base64: Buffer.from(readFileSync(video)).toString('base64') },
+          ...(poster ? { poster: `data:image/jpeg;base64,${Buffer.from(poster).toString('base64')}` } : {}),
+        }),
+      };
+    const html = demoPageHtml({ ...parts, video: { src: 'demo.mp4' }, ...(poster ? { poster: 'poster.jpg' } : {}) });
+    return {
+      entries: [
+        { name: 'index.html', data: new TextEncoder().encode(html) },
+        { name: 'demo.mp4', data: new Uint8Array(readFileSync(video)) },
+        ...(poster ? [{ name: 'poster.jpg', data: poster }] : []),
+        ...tracks.map((t) => ({ name: t.file, data: t.data })),
+        ...(narration && !tracks.some((t) => t.file === 'captions.vtt') ? [{ name: 'captions.vtt', data: narration }] : []),
+      ],
+    };
   }
 
-  private async exportArtifact(card: Item, demo: Demo & { dir: string }, as: 'zip' | 'html') {
+  /** An HTML artifact's export: its page with the artifact inside, where it is its `index.html` alone, or with the artifact's files beside it. */
+  private async artifactExport(card: Item, demo: StoredDemo, as: 'zip' | 'html'): Promise<Exported> {
     const files = artifactFiles(demo.dir);
     if (!files.includes('index.html')) throw new BadRequest('noShare', 'the card has no demo');
     if (as === 'html' && files.length > 1) throw new BadRequest('exportNotAlone', 'the artifact loads files beside its index.html; it goes out as a ZIP only');
-    const page = await this.page(card, demo);
-    const slug = this.stored(card.id)?.slug ?? slugOf(card);
-    const index = readFileSync(join(demo.dir, 'index.html'), 'utf8');
-    const language = this.languageOf(demo.dir, card);
-    const when = PAGE_WORDS[language].demoOf(day(statSync(join(demo.dir, 'index.html')).mtime, language));
-    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), commit: await this.commitOf(card), when, tabTitle: page.title, language, ...(await this.themeOf(card)) };
-    let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
-    if (as === 'html') {
-      out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { html: index } })) };
-    } else {
-      const copy = await artifactCopy(demo.dir, files, ON_DISK);
-      const entries = [
-        { name: `${slug}/index.html`, data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` }, disk: true })) },
+    const parts = await this.exportParts(card, demo, join(demo.dir, 'index.html'));
+    if (as === 'html') return { html: artifactPageHtml({ ...parts, artifact: { html: readFileSync(join(demo.dir, 'index.html'), 'utf8') } }) };
+    const copy = await artifactCopy(demo.dir, files, ON_DISK);
+    return {
+      entries: [
+        { name: 'index.html', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` }, disk: true })) },
         ...files.map((f) => ({
-          name: `${slug}/${ARTIFACT_DIR}/${f}`,
+          name: `${ARTIFACT_DIR}/${f}`,
           data: copy.has(f) ? new TextEncoder().encode(copy.get(f)) : new Uint8Array(readFileSync(join(demo.dir, f))),
         })),
-      ];
-      out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
-    }
-    this.o.board.log(card.id, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
-    return out;
+      ],
+    };
   }
 
-  /** The theme of the card's repository for an exported page, as the page's parts take it. */
-  private async themeOf(card: Item): Promise<{ theme?: string }> {
-    const theme = await this.o.sourceFor(card)?.theme?.();
-    return theme ? { theme: theme.css } : {};
+  /** What an exported page shows of every demo: its words, the link to the change, and the day the demo was made, that of the file `dated`. */
+  private async exportParts(card: Item, demo: StoredDemo, dated: string) {
+    const page = await this.page(card, demo);
+    const theme = await this.themeOf(card);
+    const language = this.languageOf(demo.dir, card);
+    return {
+      title: page.title,
+      text: page.text,
+      pr: this.prOf(card.id),
+      commit: await this.commitOf(card),
+      when: PAGE_WORDS[language].demoOf(day(statSync(dated).mtime, language)),
+      tabTitle: page.title,
+      language,
+      ...(theme ? { theme: theme.css } : {}),
+    };
+  }
+
+  /** The theme of the card's repository for its page; none where it has none. */
+  private async themeOf(card: Item): Promise<Theme | null | undefined> {
+    return this.o.sourceFor(card)?.theme?.();
   }
 
   /**
@@ -904,102 +825,16 @@ export class Sharing {
    */
   private async page(card: Item, demo: Demo & { dir: string }, lacking: PageTags | null = null): Promise<DemoPage> {
     if (demo.page) return demo.page;
-    const { tags, ...page } = await this.writePage(card, demo, this.languageOf(demo.dir, card), lacking);
+    // a card's summary goes with its approval; the log keeps every handover
+    const summary = this.o.board.summary(card.id) ?? this.o.board.events(card.id).filter((e) => e.kind === 'review' && e.author === 'worker').at(-1)?.text ?? '';
+    const { tags, ...page } = await writePage(this.o.runtime, { cwd: this.target(card)?.repo ?? this.o.home, card, summary, demo, language: this.languageOf(demo.dir, card), lacking });
     if (tags) this.chosen(card.id, tags);
     const row = this.o.board.row(card.id);
     const latest = this.demo(card.id);
-    if (latest && sameDemo(latest, demo)) this.o.board.work(card.id, { demo: JSON.stringify({ ...latest, page }) });
+    if (latest && sameDemo(latest, demo)) this.o.board.work(card.id, { demo: toJson({ ...latest, page }) });
     else if (row.demos)
-      this.o.board.work(card.id, { demos: JSON.stringify((JSON.parse(row.demos) as StoredDemo[]).map((d) => (sameDemo(d, demo) ? { ...d, page } : d))) });
+      this.o.board.work(card.id, { demos: toJson(fromJson(row.demos).map((d) => (sameDemo(d, demo) ? { ...d, page } : d))) });
     return page;
-  }
-
-  /**
-   * The page's text for a demo handed over without one (its repository did not share then): a short
-   * session writes it from the worker's summary. Without one, the card's title and the summary's start stand in.
-   */
-  private async writePage(card: Item, demo: Demo, language: PageLanguage, lacking: PageTags | null): Promise<DemoPage> {
-    // a card's summary goes with its approval; the log keeps every handover
-    const summary = this.o.board.summary(card.id) ?? this.o.board.events(card.id).filter((e) => e.kind === 'review' && e.author === 'worker').at(-1)?.text ?? '';
-    const fallback: DemoPage = { title: plainText(card.title), text: plainText(summary).split(/(?<=[.!?])\s+/).slice(0, 4).join(' ') || plainText(card.title) };
-    let page: DemoPage | null = null;
-    await readSession(this.o.runtime, {
-      cwd: this.target(card)?.repo ?? this.o.home,
-      role: 'chores',
-      system: pageSystem(LANGUAGE_NAMES[language], lacking),
-      tools: (finish) => [
-        {
-          name: 'page',
-          description: `The page's title and text, in ${LANGUAGE_NAMES[language]}${lacking ? `, and its tags: ${TAGS_FIELD}` : ''}.`,
-          schema: { title: z.string(), text: z.string(), ...(lacking ? { tags: tagsSchema(lacking) } : {}) },
-          run: ({ title, text, tags }) => {
-            if (page) return 'Already written.';
-            page = {
-              title: String(title).trim().slice(0, 200) || fallback.title,
-              text: String(text).trim().slice(0, 2000) || fallback.text,
-              ...(lacking ? { tags: picked(tags, lacking) } : {}),
-            };
-            return finish('Recorded. End your turn now.');
-          },
-        },
-      ],
-      brief: [
-        `The card: “${plainText(card.title)}”.`,
-        card.body.trim() ? `Its task:\n${card.body.trim().slice(0, 3000)}` : '',
-        summary ? `What its worker handed over:\n${summary.slice(0, 4000)}` : '',
-        demo.kind === 'html'
-          ? 'The demo is a page to look at (an HTML artifact: charts, a comparison, an analysis), not a video.'
-          : demo.chapters.length
-            ? `The demo video's chapters: ${demo.chapters.map(([, t]) => t).join(' · ')}`
-            : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-    });
-    return page ?? fallback;
-  }
-
-  /**
-   * The tags the pages lack for the site's vocabulary (each such dimension with its values), chosen
-   * by one short session from the title and text of their demos; it chooses only those, so what the
-   * owner or a worker chose stays. A page it gave no answer for is missing from the result.
-   */
-  private async chooseTags(cwd: string, pages: Tagging[]): Promise<Map<string, PageTags>> {
-    const got = new Map<string, PageTags>();
-    const all: PageTags = {};
-    for (const p of pages) for (const [d, v] of dimensions(p.lacking)) all[d] = v;
-    const asked = (p: Tagging) => Object.keys(p.lacking);
-    const left = () => pages.flatMap((p, i) => (got.has(p.id) ? [] : [i + 1]));
-    await readSession(this.o.runtime, {
-      cwd,
-      role: 'chores',
-      system: TAGS_SYSTEM,
-      tools: (finish) => [
-        {
-          name: 'tags',
-          description: `A page's tags: its number (\`page\`${pages.length === 1 ? ', 1' : ''}), and ${TAGS_FIELD}.`,
-          schema: { page: z.number().int().optional(), tags: tagsSchema(all) },
-          run: ({ page, tags }) => {
-            const p = pages[(Number(page) || 1) - 1];
-            if (!p) return `There is no page ${String(page)}.`;
-            if (got.has(p.id)) return 'Already chosen.';
-            got.set(p.id, picked(tags, p.lacking));
-            return left().length ? `Recorded. Still to tag: page ${left().join(', ')}.` : finish('Recorded. End your turn now.');
-          },
-        },
-      ],
-      brief: [
-        `The dimensions to choose for, each with its values:\n${dimensions(all)
-          .map(([d, v]) => `- ${d}: ${v.join(', ')}`)
-          .join('\n')}`,
-        ...pages.map((p, i) => {
-          const only = asked(p).length < Object.keys(all).length ? ` (only ${asked(p).join(', ')})` : '';
-          const head = pages.length > 1 ? `Page ${i + 1}${only}:\n` : '';
-          return head + p.demos.map((d, j) => `${j ? 'A later demo on the page' : 'The page'}: “${d.shown.title}”\n${d.shown.text}`).join('\n\n');
-        }),
-      ].join('\n\n'),
-    });
-    return got;
   }
 
   /**
@@ -1010,8 +845,8 @@ export class Sharing {
     const row = this.o.board.row(cardId);
     const without = (t: PageTags | undefined) => (t ? Object.fromEntries(Object.entries(t).filter(([d]) => !(d in tags))) : undefined);
     const page = <D extends Demo>(d: D): D => (d.page?.tags ? { ...d, page: { ...d.page, tags: without(d.page.tags) } } : d);
-    if (row.demo) this.o.board.work(cardId, { demo: JSON.stringify(page(JSON.parse(row.demo) as StoredDemo)) });
-    if (row.demos) this.o.board.work(cardId, { demos: JSON.stringify((JSON.parse(row.demos) as StoredDemo[]).map(page)) });
+    if (row.demo) this.o.board.work(cardId, { demo: toJson(page(fromJson(row.demo))) });
+    if (row.demos) this.o.board.work(cardId, { demos: toJson(fromJson(row.demos).map(page)) });
     const s = this.stored(cardId);
     this.setTagFields(cardId, this.card(cardId), { tags: without(s?.tags) ?? {}, auto: { ...s?.auto, ...tags } });
     this.o.board.log(cardId, 'activity', 'obeya', this.o.board.t.share.tagsChosen(shownTags(tags, tags).map(([d, v]) => `${d}: ${v.join(', ')}`).join(' · ') || '–'));
@@ -1161,7 +996,7 @@ export class Sharing {
    */
   private async commitOf(card: Item): Promise<PageCommit | null> {
     const row = this.o.board.row(card.id);
-    const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+    const shipped = fromJson(row.shipped);
     const repo = this.o.sourceFor(card)?.repo;
     if (!shipped?.commit || shipped.pr || this.prOf(card.id) || !repo) return null;
     const remote = await originOf(repo);
@@ -1174,8 +1009,7 @@ export class Sharing {
 
   /** The card's pull request, once its worker opened it. */
   private prOf(cardId: string): string | null {
-    const pr = this.o.board.row(cardId).pr;
-    return pr ? ((JSON.parse(pr) as PrState).url ?? null) : null;
+    return fromJson(this.o.board.row(cardId).pr)?.url ?? null;
   }
 
   /**
@@ -1191,9 +1025,13 @@ export class Sharing {
     return this.o.languageFor?.(card) ?? readDemoSettings(this.o.home).language;
   }
 
-  /** One of the card's demos a page may show (`cardDemos`), by its handover, else by its directory. */
-  /** The versions on the page, the demo and the ones it supplements (`withSupplemented`), in order of handover. */
-  private beside(cardId: string, now: DemoRef[], ref: DemoRef): DemoRef[] {
+  /**
+   * The versions a page shows with the demo `ref` going on it: in place of those on it, the demo
+   * alone; beside them (`add`), or on a page without any, the demo and the ones it supplements
+   * (`withSupplemented`) with them, in order of handover.
+   */
+  private versionsWith(cardId: string, now: DemoRef[], ref: DemoRef, add: boolean): DemoRef[] {
+    if (now.length && !add) return [ref];
     const all = cardDemos(this.o.board.row(cardId));
     const i = all.findLastIndex((d) => sameDemo(d, ref));
     const along = i < 0 ? [ref] : withSupplemented(all, i).map(refOf);
@@ -1210,18 +1048,18 @@ export class Sharing {
     return dir && d.handover !== undefined ? { ...d, dir } : d;
   }
 
+  /** One of the card's demos a page may show (`cardDemos`), by its handover, else by its directory. */
   private cardDemo(cardId: string, ref: DemoRef): StoredDemo | null {
     return cardDemos(this.o.board.row(cardId)).findLast((d) => sameDemo(d, ref)) ?? null;
   }
 
   private demo(cardId: string): StoredDemo | null {
-    const d = this.o.board.row(cardId).demo;
-    return d ? (JSON.parse(d) as StoredDemo) : null;
+    return fromJson(this.o.board.row(cardId).demo);
   }
 
   /** The cards of the canvas, archived ones too, that were ever shared or are about to be, with their shares. */
   private shares(): { r: CardRow; s: StoredShare }[] {
-    return this.o.board.sharedRows().map((r) => ({ r, s: this.o.board.storedShare(r) }));
+    return this.o.board.pages.sharedRows().map((r) => ({ r, s: this.o.board.pages.storedShare(r) }));
   }
 
   /** The shared cards (`shares`) the UI shows, with where each belongs (`Board.shownCards`); those gone are left out. */
@@ -1234,10 +1072,14 @@ export class Sharing {
     });
   }
 
+  /** The card's share, or what a new one starts from: the slug its page keeps for good. */
+  private shareOf(card: Item): StoredShare {
+    return this.stored(card.id) ?? { slug: slugOf(card) };
+  }
+
   private stored(cardId: string): StoredShare | null {
     if (!this.find(cardId)) return null;
-    const s = this.o.board.row(cardId).share;
-    return s ? (JSON.parse(s) as StoredShare) : null;
+    return fromJson(this.o.board.row(cardId).share);
   }
 
   /** The card's page is at rest: those waiting for it hear so, unless its latest demo goes out after it. */
@@ -1251,30 +1093,15 @@ export class Sharing {
    */
   private set(cardId: string, { tags: _, auto: __, ...s }: StoredShare) {
     const now = this.stored(cardId);
-    this.o.board.work(cardId, { share: JSON.stringify({ ...s, ...(now?.tags ? { tags: now.tags } : {}), ...(now?.auto ? { auto: now.auto } : {}) }) });
+    this.o.board.work(cardId, { share: toJson({ ...s, ...(now?.tags ? { tags: now.tags } : {}), ...(now?.auto ? { auto: now.auto } : {}) }) });
   }
 
   /** Changes the page's tags the owner set by hand, or the reading session chose. */
   private setTagFields(cardId: string, card: Item, fields: Pick<StoredShare, 'tags' | 'auto'>) {
-    const s = this.stored(cardId) ?? { slug: slugOf(card) };
-    this.o.board.work(cardId, { share: JSON.stringify({ ...s, ...fields }) });
+    const s = this.shareOf(card);
+    this.o.board.work(cardId, { share: toJson({ ...s, ...fields }) });
   }
 }
-
-const pageSystem = (language: string, lacking: PageTags | null) => `You write the page on which the demo of a change (a video, or a page with charts or an analysis) is shared with colleagues of the team. They have never seen the tool the change was planned in, its cards or plan docs; they know the product. Read the card's task and its worker's summary, and call the tool page once with:
-- title: what changes, for a user of the product, in a few words (not the card's internal wording).
-- text: two to five sentences in ${language}: what changes for the user and why. No findings, no test details, no internal process (cards, workers, demos, reviews), no markdown.${
-  lacking
-    ? `
-- tags: for each of these dimensions, the values that fit the change (an empty list where none does), from these alone:
-${dimensions(lacking)
-  .map(([d, v]) => `  - ${d}: ${v.join(', ')}`)
-  .join('\n')}`
-    : ''
-}
-Then end your turn. Read code only if the summary leaves unclear what the change does for the user.`;
-
-const TAGS_SYSTEM = `You tag pages on which the demos of changes are shared with colleagues, so they find them among many by their tags. For each page the brief names, read its title and text, and call the tool tags once with its number: for each dimension the brief names (or the page's own, where it names some), the values that fit the change (an empty list where none does), from its values alone. Then end your turn.`;
 
 /** How many pages the run tagging pages tags with one session and one deploy. */
 const TAG_BATCH = 20;
@@ -1289,33 +1116,22 @@ interface SharedCard {
   card: CardPlace;
 }
 
+/** An exported page: one HTML file, or the files of its ZIP, each by its place in the page's directory. */
+type Exported = { html: string } | { entries: { name: string; data: Uint8Array<ArrayBuffer> }[] };
+
 /** A page the reading session chooses tags for. */
-interface Tagging {
-  id: string;
+interface Tagging extends TagAsk {
   card: Item;
   /** Its place on its site (`pathOf`). */
   slug: string;
   demos: SharedDemo[];
-  /** The dimensions it lacks, each with its values. */
-  lacking: PageTags;
 }
 
-const TAGS_FIELD = 'for each dimension, the values that fit (an empty list where none does), only from the values given for it';
+/** Whether the demo is on the share's page. */
+const shows = (s: StoredShare | null, demo: DemoRef) => !!s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo)));
 
-const tagsSchema = (lacking: PageTags) =>
-  z
-    .record(z.string(), z.array(z.string()))
-    .describe(
-      dimensions(lacking)
-        .map(([d, v]) => `${d}: ${v.join(', ')}`)
-        .join('; '),
-    );
-
-/** The tags a session gave, kept to the dimensions and values asked for; a dimension it left out has none. */
-function picked(given: unknown, lacking: PageTags): PageTags {
-  const g = (given && typeof given === 'object' ? given : {}) as Record<string, unknown>;
-  return Object.fromEntries(dimensions(lacking).map(([d, values]) => [d, values.filter((v) => Array.isArray(g[d]) && (g[d] as unknown[]).includes(v))]));
-}
+/** A line for the card's log with what the deploy said below it, where it said something. */
+const withOutput = (head: string, said: string) => [head, said].filter(Boolean).join('\n\n');
 
 /** A share at rest: neither held, nor publishing, nor withdrawing. */
 function atRest({ state: _, refresh: __, again: ___, next: ____, retag: _____, ...s }: StoredShare): StoredShare {
@@ -1347,7 +1163,7 @@ function statOr(path: string): number | null {
 export const DEMO_MARKER = '<!-- obeya:demo -->';
 
 /** The description with a line linking the demo's page; null when it links the page already. */
-export function withDemoLink(body: string, url: string, kind: DemoKind = 'video', t: Messages = MESSAGES.de): string | null {
+export function withDemoLink(body: string, url: string, kind: DemoKind, t: Messages): string | null {
   if (body.includes(url)) return null;
   const line = `${t.share.prLine(kind === 'html')}: ${url} ${DEMO_MARKER}`;
   const lines = body.split('\n');
@@ -1361,59 +1177,3 @@ export function withDemoLink(body: string, url: string, kind: DemoKind = 'video'
 
 /** A card's page keeps this slug for good: a shared link stays the same, and an export is named by it. */
 const slugOf = (card: Item) => branchName(card.title, card.id).slice('obeya/'.length);
-
-/** The words of a command line, as a shell would split it where quotes ("…", '…') keep spaces. */
-export const commandWords = (line: string): string[] => [...line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]!);
-
-/**
- * Argv whose program, given as a path, is found in the repository (`~` is the home directory), and
- * a script (`.ts`, `.js`) runs with Obeya's own Bun, on every platform.
- */
-export function scriptArgv(words: string[], repoPath: string): string[] {
-  if (!words.length) return [];
-  let [program, ...rest] = words as [string, ...string[]];
-  // bunx is Obeya's own Bun too: an installation of Obeya may have no bunx on the PATH
-  if (program === 'bunx') return [process.execPath, 'x', ...rest];
-  program = expandHome(program);
-  const script = /\.(m?[jt]sx?|cjs)$/.test(program);
-  if ((script || /[\\/]/.test(program)) && !isAbsolute(program)) program = resolve(repoPath, program);
-  return script ? [process.execPath, program, ...rest] : [program, ...rest];
-}
-
-/** What the demo site lacks to be shared on (a title, an http(s) URL, a deploy command); null where it has it. */
-export function siteIncomplete(site: DemoSite): string | null {
-  if (!site.title.trim()) return 'demo.site.title: missing';
-  if (!/^https?:\/\/[^\s/]+[^\s]*$/.test(site.url)) return 'demo.site.url: expected an http(s) URL';
-  if (!site.deploy.trim()) return 'demo.site.deploy: missing';
-  return null;
-}
-
-/**
- * Why the demo site a repository's settings name cannot be used, in English, starting with its
- * field (`demo.site.url: …`); null where it can. The configuration reports it.
- */
-export function siteProblem(site: DemoSite, repoPath: string): string | null {
-  const incomplete = siteIncomplete(site);
-  if (incomplete) return incomplete;
-  const words = commandWords(site.deploy);
-  // the deploy Obeya builds in: a GitHub repository, pushed to with gh's login
-  if (words[0] === GITHUB_PAGES) {
-    if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(words[1] ?? '')) return `demo.site.deploy: ${GITHUB_PAGES} expects <owner>/<repository>`;
-    return Bun.which('gh') ? null : `demo.site.deploy: ${GITHUB_PAGES} needs gh, which is not on the PATH`;
-  }
-  // bunx runs as Obeya's own Bun
-  if (words[0] === 'bunx') return words.length > 1 ? null : 'demo.site.deploy: bunx without a package';
-  const argv = scriptArgv(words, repoPath);
-  const program = argv[0] === process.execPath ? argv[1] : argv[0];
-  if (!program) return 'demo.site.deploy: the deploy command is empty';
-  if (isAbsolute(program)) return existsSync(program) ? null : `demo.site.deploy: the deploy command's program ${program} does not exist`;
-  return Bun.which(program) ? null : `demo.site.deploy: the deploy command's program ${program} is not on the PATH`;
-}
-
-/** The last lines of a command's output, for the card's log. */
-export function tail(s: string, lines = 20): string {
-  const all = s.trim().split('\n');
-  return (all.length > lines ? ['…', ...all.slice(-lines)] : all).join('\n').slice(-3000);
-}
-
-const plainText = (s: string) => s.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();

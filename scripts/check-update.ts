@@ -23,27 +23,24 @@ import { type Subprocess } from 'bun';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { recorded } from '../src/server/instance';
 import { ownerHeaders } from '../src/server/owner';
-import { check, exited, expect, failed, sleep, until } from './check-harness';
-import { cargoPath, endingIn, opt } from './common';
+import { check, exited, expect, finish, sleep, until } from './check-harness';
+import { cargoPath, ROOT, script } from './common';
+import { bundled, here, TARGETS } from './targets';
 
-const ROOT = resolve(import.meta.dir, '..');
-const args = process.argv.slice(2);
+const { fail, args, run } = script('check-update');
+const { values: options } = args({ dir: { type: 'string' }, reuse: { type: 'boolean' }, keep: { type: 'boolean' } });
 const os = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux';
 const BUNDLE = join(ROOT, 'app', 'target', 'release', 'bundle');
-const env = { ...process.env, PATH: cargoPath() };
+const PATH = cargoPath();
 
 const hash = (file: string) => new Bun.CryptoHasher('sha256').update(readFileSync(file)).digest('hex');
-function run(cmd: string[], cwd = ROOT, more: Record<string, string> = {}) {
-  console.log(`$ ${cmd.map((c) => (c.length > 80 ? `${c.slice(0, 77)}...` : c)).join(' ')}`);
-  const r = Bun.spawnSync(cmd, { cwd, stdout: 'inherit', stderr: 'inherit', env: { ...env, ...more } });
-  if (r.exitCode !== 0) throw new Error(`${cmd[0]} failed (exit ${r.exitCode})`);
-}
 
 // ---------------------------------------------------------------- two versions, one key pair
 // without symlinks (macOS's /tmp is one): Tauri refuses to run from a path that has one
 const dir = (() => {
-  const d = resolve(opt('dir') ?? mkdtempSync(join(tmpdir(), 'obeya-update-check-')));
+  const d = resolve(options.dir ?? mkdtempSync(join(tmpdir(), 'obeya-update-check-')));
   mkdirSync(d, { recursive: true });
   return realpathSync(d);
 })();
@@ -51,7 +48,7 @@ const OLD = '0.0.1';
 const NEW = '0.0.2';
 /** What is installed of each version, and what the update of the new one is. */
 const made = { old: join(dir, 'old'), new: join(dir, 'new') };
-const reuse = args.includes('--reuse') && existsSync(join(dir, 'port')) && existsSync(made.old) && existsSync(made.new);
+const reuse = !!options.reuse && existsSync(join(dir, 'port')) && existsSync(made.old) && existsSync(made.new);
 const port = reuse ? Number(readFileSync(join(dir, 'port'), 'utf8')) : await freePort();
 async function freePort() {
   const s = Bun.serve({ port: 0, fetch: () => new Response() });
@@ -60,16 +57,13 @@ async function freePort() {
   return p;
 }
 
-/** The installer, the update and the program each build leaves, by platform. */
-const one = (sub: string, end: string) => {
-  const f = endingIn(join(BUNDLE, sub), end);
-  if (!f) throw new Error(`no ${end} in ${join(BUNDLE, sub)}`);
-  return f;
-};
-const UPDATE = { darwin: 'Obeya.app.tar.gz', windows: 'Obeya-setup.exe', linux: 'Obeya.AppImage' }[os];
+const { platform, update } = TARGETS[here()];
+/** The update of this platform, as the new version is served and, but on macOS, as each version is installed. */
+const UPDATE = `Obeya${update.ends}`;
+const built = () => bundled(BUNDLE, update) ?? fail(`no ${update.ends} in ${join(BUNDLE, update.from)}`);
 
 if (!reuse) {
-  run([process.execPath, 'x', 'tauri', 'signer', 'generate', '--ci', '-f', '-w', join(dir, 'check.key')], join(ROOT, 'app'));
+  run([process.execPath, 'x', 'tauri', 'signer', 'generate', '--ci', '-f', '-w', join(dir, 'check.key')], { cwd: join(ROOT, 'app'), env: { PATH } });
   const pubkey = readFileSync(join(dir, 'check.key.pub'), 'utf8').trim();
   const config = (version: string) =>
     JSON.stringify({ version, plugins: { updater: { pubkey, endpoints: [`http://127.0.0.1:${port}/latest.json`], dangerousInsecureTransportProtocol: true } } });
@@ -81,21 +75,16 @@ if (!reuse) {
     rmSync(to, { recursive: true, force: true });
     mkdirSync(to, { recursive: true });
     const signing: Record<string, string> = version === NEW ? { TAURI_SIGNING_PRIVATE_KEY: readFileSync(join(dir, 'check.key'), 'utf8'), TAURI_SIGNING_PRIVATE_KEY_PASSWORD: '' } : {};
-    run([process.execPath, 'scripts/build-app.ts', '--bundles', bundles, '--config', config(version)], ROOT, signing);
+    run([process.execPath, 'scripts/build-app.ts', '--bundles', bundles, '--config', config(version)], { env: { PATH, ...signing } });
+    // what is installed: the app on macOS; elsewhere the update is the installer
     if (os === 'darwin') cpSync(join(BUNDLE, 'macos', 'Obeya.app'), join(to, 'Obeya.app'), { recursive: true, verbatimSymlinks: true });
-    if (os === 'windows') cpSync(one('nsis', '-setup.exe'), join(to, 'Obeya-setup.exe'));
-    if (os === 'linux') cpSync(one('appimage', '.AppImage'), join(to, 'Obeya.AppImage'));
-    if (version === NEW) {
-      const update = os === 'darwin' ? join(BUNDLE, 'macos', 'Obeya.app.tar.gz') : os === 'windows' ? one('nsis', '-setup.exe') : one('appimage', '.AppImage');
-      cpSync(update, join(to, UPDATE));
-      cpSync(`${update}.sig`, join(to, `${UPDATE}.sig`));
-    }
+    if (os !== 'darwin' || version === NEW) cpSync(built(), join(to, UPDATE));
+    if (version === NEW) cpSync(`${built()}.sig`, join(to, `${UPDATE}.sig`));
   }
   writeFileSync(join(dir, 'port'), String(port));
 }
 
 // ---------------------------------------------------------------- the release the old one finds
-const platform = { darwin: 'darwin', windows: 'windows', linux: 'linux' }[os] + '-' + (process.arch === 'arm64' ? 'aarch64' : 'x86_64');
 let fetched = 0;
 const releases = Bun.serve({
   port,
@@ -147,17 +136,12 @@ const before = hash(shell);
 
 /** Where the app runs: the scratch home, and on Windows after the update the default one (see the top). */
 let homeNow = home;
-const serverEntry = () => {
-  try {
-    return JSON.parse(readFileSync(join(homeNow, 'server.json'), 'utf8')) as { pid: number; port: number; app?: boolean };
-  } catch {
-    return null;
-  }
-};
+const serverEntry = () => recorded(homeNow);
+/** What the app's server answers, null when none runs or it refuses. */
 const api = async (method: string, path: string) => {
   const entry = serverEntry();
   if (!entry) return null;
-  const res = await fetch(`http://127.0.0.1:${entry.port}${path}`, { method, headers: ownerHeaders(homeNow), signal: AbortSignal.timeout(5000) });
+  const res = await fetch(`${entry.url}${path}`, { method, headers: ownerHeaders(homeNow), signal: AbortSignal.timeout(5000) });
   return res.ok ? (res.status === 204 ? {} : await res.json()) : null;
 };
 
@@ -215,8 +199,7 @@ try {
   if (app && app.exitCode === null) app.kill();
   releases.stop(true);
   if (os === 'windows') Bun.spawnSync([join(process.env.LOCALAPPDATA ?? '', 'Obeya', 'uninstall.exe'), '/S']);
-  if (!args.includes('--keep') && !opt('dir')) rmSync(dir, { recursive: true, force: true });
+  if (!options.keep && !options.dir) rmSync(dir, { recursive: true, force: true });
   else console.log(`kept ${dir}`);
 }
-console.log(failed ? `${failed} check(s) failed` : 'all checks passed');
-process.exit(failed ? 1 : 0);
+finish();

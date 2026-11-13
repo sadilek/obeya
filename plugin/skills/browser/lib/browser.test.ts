@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeDir } from '../../../../src/server/testing';
-import { alive } from './browser.ts';
+import { alive } from '../../../lib/process.ts';
 
 // Real browsers, run with plain Node as the skill's commands are; each start takes about a second.
 const SCRIPT = join(import.meta.dir, 'browser.ts');
@@ -136,6 +136,22 @@ describe('browser skill', () => {
     expect(existsSync(profile)).toBe(false);
     expect(existsSync(state(pid))).toBe(false);
   }, 30_000);
+
+  test('an input step the page does not answer gives up after 30 s, as eval does', async () => {
+    const pid = session();
+    await browser(pid, 'start');
+    await browser(pid, 'open', 'data:text/html,<p>stuck</p>');
+    const started = performance.now();
+    // a page busy for good: neither command gets an answer from it
+    const [step, command] = await Promise.all([
+      browser(pid, 'input', 'eval:for (;;) {}').catch((e: Error) => e.message),
+      Bun.sleep(1000).then(() => browser(pid, 'eval', 'document.title').catch((e: Error) => e.message)),
+    ]);
+    expect(step).toContain('input failed: Timeout waiting for Runtime.evaluate');
+    expect(command).toContain('Timeout waiting for Runtime.evaluate');
+    expect(performance.now() - started).toBeLessThan(40_000);
+    await browser(pid, 'stop');
+  }, 60_000);
 
   test('two sessions never share a browser; stop closes only its own', async () => {
     const a = session();

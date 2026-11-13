@@ -93,9 +93,11 @@ describe('what starts waiting', () => {
 
 describe('Push', () => {
   test('a card that starts waiting is pushed at once, encrypted for the phone, and opens that card', async () => {
-    const { push, sent, shown } = await setup();
+    const { push, sent, shown, tick } = await setup();
+    // stamped by Push's clock
+    const at = tick(3_600_000);
     push.waits([{ ...waits('c1'), canvas: 'Obeya' }]);
-    expect(await shown()).toEqual([{ title: 'c1', body: 'Demo bereit · Obeya', url: '/?card=c1', tag: 'c1', at: expect.any(Number) }]);
+    expect(await shown()).toEqual([{ title: 'c1', body: 'Demo bereit · Obeya', url: '/?card=c1', tag: 'c1', at }]);
     expect(sent[0]!.url).toBe('https://web.push.apple.com/abc');
   });
 
@@ -139,15 +141,16 @@ describe('Push', () => {
   });
 
   test('what starts waiting within the minute after a push goes out as one push at its end, without what no longer waits', async () => {
-    const { push, shown, timers, endWindow } = await setup();
+    const { push, shown, timers, endWindow, tick } = await setup();
     push.waits([waits('c1')]);
     push.waits([waits('c2', 'question')]);
     push.waits([waits('c3', 'proposal'), waits('c4', 'demo', false)]);
     push.waits([waits('c5', 'idea')]);
     expect(await shown()).toHaveLength(1);
     expect(timers).toHaveLength(1);
+    const at = tick(3_600_000);
     endWindow();
-    expect((await shown())[1]).toEqual({ title: '3 Karten warten auf dich', body: 'c2 · c3 · c5', url: '/', tag: 'several', at: expect.any(Number) });
+    expect((await shown())[1]).toEqual({ title: '3 Karten warten auf dich', body: 'c2 · c3 · c5', url: '/', tag: 'several', at });
     // a new minute: one more within it waits for its end
     push.waits([waits('c6', 'question')]);
     expect(await shown()).toHaveLength(2);

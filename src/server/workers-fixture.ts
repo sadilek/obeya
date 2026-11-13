@@ -1,6 +1,7 @@
 // What the tests of the workers share (workers.test.ts and workers-*.test.ts, split so that
 // `bun test --parallel` runs them side by side): a checkout with a clone, a board and the workers
-// on it, set up afresh for each test. Tests read the bindings below; they replace one with its setter.
+// on it, set up afresh for each test. Tests read the bindings below; they replace one with its setter
+// or, the workers, with `rebuild`.
 
 import { afterEach, beforeEach } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
@@ -9,15 +10,24 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import type { PlanDoc } from '../core/plan-doc';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
 import { ReadTree } from './read-tree';
-import { FakeRuntime, gitClone, gitRepo, identify, removeDir } from './testing';
-import { Workers } from './workers';
+import { FakeRuntime, gitClone, gitRepo, handedOverOn, identify, primedClones, removeDir, stateOn, testBoard, ws } from './testing';
+import { type WorkerOptions, Workers } from './workers';
 import { Workspaces } from './workspaces';
 
-export const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
 export const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')], markdown: '' };
+
+/** The repository's settings unless a test sets up with others: work lands on main from clones, with setup, checks and an app. */
+export const defaultAdapter: RepoAdapter = {
+  ...generic,
+  land: 'main',
+  workspaces: 'clones',
+  setup: 'bun install',
+  checks: ['bun test'],
+  app: { run: 'Start it with `bun run stack`; after an API change, `bun run api:restart`. The URL is in `.stack.env` under WEB_URL.' },
+};
 
 export let dir: string;
 export let main: string;
@@ -31,19 +41,27 @@ export let store: Store;
 export let origin: string;
 /** The cards `onMerged` was called for. */
 export let merged: string[];
+/** What the workers were set up with: `rebuild` builds them again from it. */
+let base: WorkerOptions;
 
 /** The language of Obeya's interface in these tests. */
 export let language: 'de' | 'en';
 /** The owner's conversation language in these tests; the interface's where none is set. */
 export let conversation: 'de' | 'en' | undefined;
 
-export const setWorkers = (w: Workers) => void (workers = w);
+/** Every `Workers` a test made here, the ones it replaced too: each is shut down after the test (`eachTest`). */
+const made = new Set<Workers>();
+export const setWorkers = (w: Workers) => void made.add((workers = w));
+/** Workers a test makes beside the ones it works through (another canvas's, an Obeya started anew): shut down with them after the test. */
+export const tracked = (w: Workers) => (made.add(w), w);
 export const setDocs = (d: PlanDoc[]) => void (docs = d);
 export const setLanguage = (l: 'de' | 'en') => void (language = l);
 export const setConversation = (l: 'de' | 'en') => void (conversation = l);
 
 /** `withOrigin`: clones come from a bare `origin`, as from a remote, instead of from the checkout. */
-export async function setup(adapter: RepoAdapter, withOrigin = false) {
+export async function setup(adapter: RepoAdapter = defaultAdapter, withOrigin = false) {
+  // a test that sets up afresh is done with the setup before: it goes as after a test
+  if (made.size) await tearDown();
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
   main = join(dir, 'main');
   gitRepo(main);
@@ -56,18 +74,16 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
   const holds = (_repo: string, commit: string) => read.holds(commit, () => board.docsChanged());
   language = 'de';
   conversation = undefined;
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }), undefined, holds, () => language, () => conversation ?? language);
-  const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
+  board = testBoard({ store, path: main, docs: () => docs, holds, language: () => language, conversation: () => conversation ?? language });
+  const clones = adapter.workspaces === 'clones';
+  const workspaces = clones
+    ? await primedClones(store, main, dir, { source: withOrigin ? origin : main })
+    : new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
-  if (adapter.workspaces === 'clones') {
-    // the clone ensureClones would make, without git's clone (`gitClone`)
-    gitClone(withOrigin ? origin : main, join(dir, 'ws', '1'));
-    await workspaces.ensureClones(withOrigin ? origin : main, 1);
-    for (const w of workspaces.list()) identify(w.path);
-  }
+  if (clones) for (const w of workspaces.list()) identify(w.path);
   runtime = new FakeRuntime();
   merged = [];
-  workers = new Workers({
+  base = {
     board,
     runtime,
     workspaces,
@@ -75,34 +91,37 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
     onMerged: (cardId) => void merged.push(cardId),
     env: { OBEYA_URL: 'http://127.0.0.1:4417' },
     keptDemos: join(dir, 'kept'),
-  });
+  };
+  setWorkers(new Workers(base));
 }
 
+/** Workers built as the setup's, with `options` changed; shut down after the test with the others. */
+export const newWorkers = (options: Partial<WorkerOptions> = {}) => tracked(new Workers({ ...base, ...options }));
+/** Replaces `workers` with `newWorkers(options)`. */
+export const rebuild = (options: Partial<WorkerOptions> = {}) => (workers = newWorkers(options));
+
 /**
- * Sets each test of the calling file up afresh and removes it afterwards. Each file calls it: run
- * one after the other in one process, the files share this module, evaluated once.
+ * Sets each test in the calling scope up afresh, with `adapter` and `withOrigin` (see `setup`), and
+ * removes it afterwards. A file calls it at its top, or in each describe where they differ; run one
+ * after the other in one process, the files share this module, evaluated once.
  */
-export function eachTest() {
-  beforeEach(() =>
-    setup({
-      ...generic,
-      land: 'main',
-      workspaces: 'clones',
-      setup: 'bun install',
-      checks: ['bun test'],
-      app: { run: 'Start it with `bun run stack`; after an API change, `bun run api:restart`. The URL is in `.stack.env` under WEB_URL.' },
-    }),
-  );
-  afterEach(async () => {
-    // git freeing a workspace in the background is done before its repository goes
-    await workers?.freed();
-    await removeDir(dir);
-  });
+export function eachTest(adapter = defaultAdapter, withOrigin = false) {
+  beforeEach(() => setup(adapter, withOrigin));
+  afterEach(tearDown);
+}
+
+/** No timer of a test's workers outlives the setup; git freeing a workspace in the background is done before its repository goes. */
+async function tearDown() {
+  const all = [...made];
+  made.clear();
+  for (const w of all) w.shutdown();
+  await Promise.all(all.map((w) => w.freed()));
+  await removeDir(dir);
 }
 
 export const manual = () => board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
-export const state = (id: string) => {
-  const i = board.item(id)!;
-  return i.need ? `${i.state}:${i.need}` : i.state;
-};
-export const flush = () => new Promise((r) => setTimeout(r, 0));
+
+/** A card started and handed over on the setup's board, as `handedOverOn` has it. */
+export const handedOver = (o: Parameters<typeof handedOverOn>[1] = {}) => handedOverOn({ board, workers, runtime }, o);
+
+export const state = (id: string) => stateOn(board, id);

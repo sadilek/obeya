@@ -2,9 +2,7 @@
 // settings in front (`.obeya/settings.json`, then this machine's). The core only talks to this
 // interface.
 
-import type { AppSettings, DemoSite, SharedSettings } from '../core/types';
-
-export type { AppSettings, DemoSite };
+import type { SharedSettings } from '../core/config';
 
 export interface RepoInfo {
   path: string;
@@ -16,7 +14,11 @@ export interface RepoInfo {
   branch: string;
   /** A folder without git (`RepoConfig.git` false): cards work in it directly. */
   folder?: true;
+  /** The original repository's main branch as detected (`detectUpstream`), where the checkout is a fork with a remote `upstream`. */
+  upstream?: string;
+  /** The URLs of its remotes, by name: the original repository's, for one, which cards may go to as a pull request. */
+  remotes?: Record<string, string>;
 }
 
 /** The repository's settings in front of Obeya's defaults: a field with a default is always there. */
-export type RepoAdapter = SharedSettings & Required<Pick<SharedSettings, 'planDocs' | 'land' | 'softPaths' | 'workspaces' | 'language'>>;
+export type RepoAdapter = SharedSettings & Required<Pick<SharedSettings, 'planDocs' | 'land' | 'autoMerge' | 'checks' | 'setup' | 'softPaths' | 'workspaces' | 'prNoise' | 'language'>>;

@@ -3,39 +3,32 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AccessView, Pairing } from '../core/types';
-import { CanvasRuntime } from './canvas';
+import { canvas, dir, eachTest, store } from './canvas-fixture';
 import { Config } from './config';
-import { Store } from './db';
 import { MachineSetup } from './machine';
 import { Access, deviceName, machineAddresses, PAIRING_MS, UNUSED_MS } from './remote';
 import { serve } from './server';
 import { Tailscale } from './tailscale';
 import { Push } from './push';
-import { asOwner, fakeProgram, fakeTailscale, gitRepo, noForge, removeDir, tailscaleStatus, until } from './testing';
+import { asOwner, fakeProgram, fakeTailscale, tailscaleStatus, until, silent } from './testing';
 import { b64u } from './webpush';
 
 const NAME = 'mac.tail1234.ts.net';
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 
-let dir: string;
 let ts: string;
-let store: Store;
 let access: Access;
 let server: ReturnType<typeof serve>;
 let clock: number;
-let canvas: CanvasRuntime;
 let push: Push;
 /** What went to the push service: to where. */
 let pushed: string[];
 
-beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'obeya-remote-'));
-  const main = gitRepo(join(dir, 'main'), { 'README.md': 'hi\n', '.obeya/settings.json': '{ "workspaces": "clones" }\n' });
+eachTest({ files: { 'README.md': 'hi\n', '.obeya/settings.json': '{ "workspaces": "clones" }\n' }, repo: { clones: 0 } });
+beforeEach(() => {
   ts = join(dir, 'ts');
-  store = new Store(':memory:');
   clock = Date.now();
   access = new Access({ store, home: dir, tailscale: new Tailscale(fakeTailscale(ts)), now: () => clock });
-  canvas = await CanvasRuntime.start({ repos: [{ path: main }] }, { store, home: dir, runtime: undefined as never, forge: noForge });
   pushed = [];
   push = new Push({
     store,
@@ -44,12 +37,11 @@ beforeEach(async () => {
       return { status: 201, text: async () => '' };
     },
   });
-  server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, access, push);
+  server = serve([canvas], 0, { transcriber: silent, access, push });
 });
-afterEach(async () => {
+afterEach(() => {
   access.stop();
   server.stop(true);
-  await removeDir(dir);
 });
 
 // on this machine: with the owner's key
@@ -347,7 +339,7 @@ describe("the system's folder dialog", () => {
     const config = new Config({ file: join(dir, 'canvases.json'), source: 'file', started: [], store, running: () => [], server: { port: 4417, home: dir, permissionMode: 'auto' }, apply: () => {} });
     const machine = new MachineSetup({ home: dir, config, env: { PATH: bin }, platform: windows ? 'win32' : 'linux', arch: 'x64', compiled: true });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, config, undefined, undefined, machine, undefined, undefined, access, push);
+    server = serve([canvas], 0, { transcriber: silent, config, machine, access, push });
     const post = { method: 'POST', body: JSON.stringify({ prompt: 'Folder' }) };
 
     // this machine: offered, and the folder comes back

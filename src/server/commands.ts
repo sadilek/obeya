@@ -2,17 +2,21 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import { type AgentSetting, agentListens, answering, askable, type Awaited, awaited, type AwaitedState, awaitsContributorNext, blocksSaving, type CanvasConfig, finished, handedOver, type Item, type NextStep, type Notice, openQuestions, pausableNow, plannableAsProject, halted, untouched, snoozable, SNOOZE_LIMIT, type Queue, type SpotInput, type Talk, type TalkAfter, type TalkQuote, type TalkRef } from '../core/types';
-import { holdsNotes, notStarted } from '../core/queue';
+import type { Awaited, AwaitedState, Item, NextStep, Notice, Queue, SpotInput, Talk, TalkAfter, TalkQuote, TalkRef } from '../core/types';
+import { agentListens, answering, askable, awaited, awaitsContributorNext, finished, handedOver, openQuestions, pausableNow, plannableAsProject, halted, untouched, snoozable, laterTime } from '../core/card';
+import type { AgentSetting } from '../core/agents';
+import { blocksSaving, type CanvasConfig } from '../core/config';
+import { holdsNotes, notStarted, startable } from '../core/queue';
 import { answerTag, fromAnswerTag } from './answers';
 import { cardNumbersIn, cardTag, NUMBERS_SINCE, numberOfTag } from '../core/card-number';
-import { BadRequest, type Board, excerpt, replyNote } from './board';
+import { BadRequest, type Board, excerpt, replyNote, TITLE_MAX } from './board';
 import type { Place } from '../core/layout';
 import { type Config, configShape } from './config';
 import { parsePrUrl } from './forge';
 import { folderPath } from './new-repo';
-import type { Mark, Moment, TalkWaitRow } from './db';
-import { type AgentRuntime, type AgentSession, failureReason, limitLifts } from './runtime';
+import type { Mark, Moment } from './history';
+import type { TalkReply, TalkWaitRow } from './sheet';
+import { type AgentRuntime, type AgentSession, atTime, failureReason, LIMIT_MARGIN, limitLifts } from './runtime';
 import { type Language, LANGUAGES, ownersLanguage } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import { clip, oneLine, messageOf } from '../core/text';
@@ -276,6 +280,8 @@ const ACTION = z.object({
   own_canvas: z.boolean().optional(),
 });
 type ActionArgs = z.infer<typeof ACTION>;
+/** An action on a card the owner names (`card`), as `Commander.cardCommand` takes it. */
+type CardArgs = ActionArgs & { do: Exclude<ActionArgs['do'], 'wish' | 'wait_for' | 'stop_waiting' | 'remember' | 'work_retro' | 'group' | 'ungroup' | 'rename_group' | 'merge' | 'delete' | 'review_pr' | 'new_idea' | 'new_card'> };
 
 /** Actions in one command, at most: "start all queued cards" may name many. */
 const MAX_ACTIONS = 20;
@@ -284,6 +290,8 @@ const MAX_ACTIONS = 20;
 const REMEMBERED_EXCHANGES = 20;
 /** Looked-up answers a fresh session gets in full, the newest; older ones are clipped. */
 const FULL_ANSWERS = 5;
+/** Look-ups still running the Coordinator hears of with each command, the newest. */
+const READING_SHOWN = 10;
 const HISTORY_DAYS = 14;
 const HISTORY_STEPS = 60;
 /** What happened between two commands, at most. */
@@ -342,6 +350,8 @@ export class Commander {
   private heldUntil = 0;
   private heldTimer?: ReturnType<typeof setTimeout>;
   private draining?: Promise<void>;
+  /** Set once its canvas stopped (`shutdown`): it reads, runs and arms nothing more. */
+  private stopped = false;
 
   constructor(private o: CommanderOptions) {}
 
@@ -351,47 +361,75 @@ export class Commander {
    * Coordinator's sheet. Screenshots (image ids) go with the actions that create or concern a card.
    */
   async hear(transcript: string, focus: Focus, images: string[] = [], input: Input = {}): Promise<Heard> {
-    const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
+    const card = this.openCard(focus.card);
     // passed on by the card's agent: the owner's words stand in the card's conversation already
     const said = input.forwarded ? undefined : transcript;
     const replyTo = card ? this.o.board.quoted(card, input.replyTo)?.id : undefined;
-    const quoted = card ? undefined : this.o.board.quotedTalk(input.replyTo);
+    const quoted = card ? undefined : this.o.board.sheet.quote(input.replyTo);
     // the owner's words stand in the conversation at once, the Coordinator's reply follows once it has read them
-    const talk = this.o.board.addTalk(transcript, '', card ?? null, undefined, images, quoted);
+    const talk = this.o.board.sheet.add(transcript, '', { card, images, replyTo: quoted });
     if (card && said) this.o.board.log(card, 'say', 'owner', said, { images, replyTo });
     const held: Held = { transcript, images, focus, input, at: new Date().toISOString() };
     // what the usage limit held is read first, in the order it was said; while the limit holds, these words wait with it
-    await this.drain();
-    const h = this.held.size ? this.hold(talk, held) : ((await this.answer(talk, held)) ?? this.hold(talk, held));
+    const h = (await this.readAfterHeld(talk, held)) ?? this.hold(talk, held);
     return card ? h : { ...h, talk };
+  }
+
+  /** `id`, while its card is on the board: the card open when the words were said, if it is still there. */
+  private openCard(id?: string | null): string | undefined {
+    return id && this.o.board.item(id) ? id : undefined;
+  }
+
+  /**
+   * Reads the words of exchange `talk` once what the usage limit held is read; nothing while it
+   * holds words still, or kept the Coordinator from reading these.
+   */
+  private async readAfterHeld(talk: number, h: Held): Promise<Heard | undefined> {
+    await this.drain();
+    return this.held.size ? undefined : this.answer(talk, h);
+  }
+
+  /**
+   * A reply the owner did not wait for (their words were held, or it takes up a step with no words of
+   * theirs, or an agent passed them on): its undo window starts, and it shows as a notice on `card`,
+   * or without one under exchange `talk`, with "Undo" where it has actions.
+   */
+  announce(heard: Heard, card: string | undefined, talk?: number) {
+    if (heard.token) this.arm(heard.token);
+    this.o.board.notify({ text: heard.confirm, ...(card ? { cardId: card } : { talk }), ...(heard.token ? { token: heard.token, undoMs: this.delayMs } : {}), ...(heard.wish ? { wish: heard.wish } : {}) });
   }
 
   /** Reads the words of exchange `talk` and acts on them; nothing when the usage limit kept the Coordinator from reading them. */
   private async answer(talk: number, { transcript, focus, images, input }: Held): Promise<Heard | undefined> {
-    const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
+    if (this.stopped) return undefined;
+    const card = this.openCard(focus.card);
     const said = input.forwarded ? undefined : transcript;
     const replyTo = card ? this.o.board.quoted(card, input.replyTo)?.id : undefined;
     // a reply that only answers (no actions to take back, no answer to look up) waits in the sheet
     // until the owner sees it, as a looked-up answer does: it may come once the sheet is closed; on a
     // card it stands in the conversation, where a confirmation folds away
-    const reply = (confirm: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) => {
-      this.o.board.replyTalk(talk, confirm, lookUp, wish, waits, answers);
-      if (card) this.o.board.log(card, 'say', 'coordinator', confirm, { ...(wish ? { wish } : {}), ...(waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
+    const reply = (confirm: string, how: TalkReply = {}) => {
+      this.o.board.sheet.reply(talk, confirm, how);
+      if (card) this.o.board.log(card, 'say', 'coordinator', confirm, { ...(how.wish ? { wish: how.wish } : {}), ...(how.waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
     };
     let decision: Decision;
     try {
       decision = await this.interpret(transcript, focus, images, input);
     } catch (e) {
+      // the canvas stopped while it read them: they stay held, for the canvas to read once it runs again
+      if (this.stopped) return undefined;
       if (e instanceof LimitError) {
-        this.heldUntil = limitLifts(e.limit, this.o.limitMargin ?? 10_000);
+        this.heldUntil = limitLifts(e.limit, this.o.limitMargin ?? LIMIT_MARGIN);
         return undefined;
       }
       // the Coordinator's session failed (not logged in, say): the owner hears why, not that they went unheard
       const t = this.o.board.t;
       const confirm = t.voice.couldNotRead(failureReason(messageOf(e), t));
-      reply(confirm, undefined, undefined, true, false);
+      reply(confirm, { waits: true, answers: false });
       return { confirm };
     }
+    // decided after the canvas stopped: nothing of it happens, the words stay held
+    if (this.stopped) return undefined;
     const { confirm, lookUp } = decision;
     // a draft for Obeya's makers: what the owner wants them told, or what they asked and Obeya could not do
     const wish: Wish | undefined = decision.wish ? { said: decision.wish } : decision.cannot && !lookUp ? { said: transcript, answer: confirm } : undefined;
@@ -413,9 +451,9 @@ export class Commander {
     if (lookUp) {
       // nothing to take back: the answer follows once it is looked up
       const about = lookUp.about ?? card ?? (focus.project && this.o.board.item(focus.project) ? focus.project : undefined);
-      reply(confirm, { question: lookUp.question, about: about ?? null });
+      reply(confirm, { lookUp: { question: lookUp.question, about: about ?? null } });
       if (lookUp.follows) this.o.board.followTalk(talk, lookUp.follows);
-      if (lookUp.then) this.o.board.thenTalk(talk, lookUp.then, focus.place);
+      if (lookUp.then) this.o.board.sheet.step(talk, lookUp.then, focus.place);
       this.o.lookUp?.(talk);
       if (said) this.o.onOwnerInput?.(card, 'talk', said, confirm);
       return { confirm };
@@ -423,7 +461,7 @@ export class Commander {
     // talking about an idea changes nothing that would need taking back: it goes on at once
     const talking = commands.filter((c) => c.do === 'discuss');
     const rest = commands.filter((c) => !talking.includes(c));
-    reply(confirm, undefined, wish, !commands.length);
+    reply(confirm, { wish, waits: !commands.length });
     for (const c of talking) await this.run(c);
     if (!commands.length && said && !decision.wish) this.o.onOwnerInput?.(card, 'talk', said, confirm);
     if (!rest.length) return { confirm, ...drafted };
@@ -441,20 +479,22 @@ export class Commander {
    */
   private hold(talk: number, h: Held): Heard {
     const t = this.o.board.t;
+    // the canvas stopped while it read them: words held before stay held, others are cut off as by a restart
+    if (this.stopped && !this.held.has(talk)) return { confirm: t.voice.interrupted };
     const confirm = t.voice.held(t.when(this.heldUntil));
-    const card = h.focus.card && this.o.board.item(h.focus.card) ? h.focus.card : undefined;
+    const card = this.openCard(h.focus.card);
     if (!this.held.has(talk) && card) this.o.board.log(card, 'say', 'coordinator', confirm, { reply: true, ...(h.input.forwarded ? { forwarded: true as const } : {}) });
     this.held.set(talk, h);
     const until = new Date(this.heldUntil).toISOString();
-    for (const [id, { focus, input }] of this.held) this.o.board.holdTalk(id, { until, reading: { focus, input } });
+    for (const [id, { focus, input }] of this.held) this.o.board.sheet.hold(id, { until, reading: { focus, input } });
     this.waitForLimit();
     return { confirm };
   }
 
   private waitForLimit() {
     clearTimeout(this.heldTimer);
-    // a timer runs at most about 24 days
-    this.heldTimer = setTimeout(() => void this.drain(), Math.min(Math.max(0, this.heldUntil - Date.now()), 2 ** 31 - 1));
+    if (this.stopped) return;
+    this.heldTimer = atTime(this.heldUntil, () => void this.drain());
   }
 
   /**
@@ -466,17 +506,16 @@ export class Commander {
     return (this.draining ??= (async () => {
       clearTimeout(this.heldTimer);
       for (const [talk, h] of [...this.held]) {
+        if (this.stopped) return;
         // read now: "is reading …" under the words
-        this.o.board.holdTalk(talk, null);
+        this.o.board.sheet.hold(talk, null);
         const heard = await this.answer(talk, { ...h, input: { ...h.input, heldSince: h.at } });
         if (!heard) {
           this.hold(talk, h);
           return;
         }
         this.held.delete(talk);
-        if (heard.token) this.arm(heard.token);
-        const card = h.focus.card && this.o.board.item(h.focus.card) ? h.focus.card : undefined;
-        this.o.board.notify({ text: heard.confirm, ...(card ? { cardId: card } : { talk }), ...(heard.token ? { token: heard.token, undoMs: this.delayMs } : {}), ...(heard.wish ? { wish: heard.wish } : {}) });
+        this.announce(heard, this.openCard(h.focus.card), talk);
       }
     })().finally(() => (this.draining = undefined)));
   }
@@ -502,7 +541,7 @@ export class Commander {
     if (!w || w.timer) return;
     const due = Date.now() + this.delayMs;
     const { commands, said, talk, confirm, card } = w;
-    this.o.board.holdCommand(token, due, { commands, ...(said ? { said } : {}), talk, confirm, ...(card ? { card } : {}) } satisfies Waiting);
+    this.o.board.sheet.holdCommand(token, due, { commands, ...(said ? { said } : {}), talk, confirm, ...(card ? { card } : {}) } satisfies Waiting);
     this.schedule(token, w, due);
   }
 
@@ -511,28 +550,30 @@ export class Commander {
    * over, at once when it is over already. The owner had their confirmation.
    */
   resume() {
-    for (const { token, due, body } of this.o.board.heldCommands()) {
+    for (const { token, due, body } of this.o.board.sheet.heldCommands()) {
       const w = body as Waiting;
       this.waiting.set(token, w);
       this.schedule(token, w, due);
     }
     // and the words the usage limit held are read once it lifts
-    for (const x of this.o.board.heldTalk()) {
+    for (const x of this.o.board.sheet.held()) {
       const { focus, input } = x.held.reading as Pick<Held, 'focus' | 'input'>;
       this.held.set(x.id, { transcript: x.said, images: x.images ?? [], focus, input, at: x.at });
       this.heldUntil = Math.max(this.heldUntil, Date.parse(x.held.until));
     }
     if (this.held.size) this.waitForLimit();
     // and the steps whose answer came in before the stop, but were not decided yet
-    for (const x of this.o.board.answeredSteps()) this.answerIn(x.id);
+    for (const x of this.o.board.sheet.answeredSteps()) this.answerIn(x.id);
   }
 
   private schedule(token: string, w: Waiting & { due?: number; timer?: ReturnType<typeof setTimeout>; running?: boolean }, due: number) {
+    // kept in the database: the canvas runs them once it runs again, as after a restart
+    if (this.stopped) return;
     w.due = due;
     w.timer = setTimeout(async () => {
       w.running = true;
       // a restart while they run cuts them off rather than running them twice
-      this.o.board.dropCommand(token);
+      this.o.board.sheet.dropCommand(token);
       // what the owner takes back is not learned from either
       if (w.said) this.o.onOwnerInput?.(w.card, 'command', w.said, w.confirm);
       // in the order the owner said them; one that fails does not hold up the others
@@ -543,6 +584,24 @@ export class Commander {
       }
       this.waiting.delete(token);
     }, Math.max(0, due - Date.now()));
+  }
+
+  /**
+   * Its canvas stopped (Obeya ends, or the canvas left the configuration): what the usage limit holds
+   * is no longer read once it lifts, and the commands in their undo window do not run. Both stay in
+   * the database, as a restart leaves them: a canvas that runs again reads and runs them then
+   * (`resume`). A command already running finishes; the Coordinator's session ends.
+   */
+  shutdown() {
+    this.stopped = true;
+    clearTimeout(this.heldTimer);
+    for (const w of this.waiting.values()) if (!w.running) clearTimeout(w.timer);
+    const s = this.session;
+    this.session = null;
+    if (s && !s.ended) {
+      s.ended = true;
+      s.agent.close();
+    }
   }
 
   /** Whether commands the owner has the confirmation of wait for "Undo" or run: a restart waits for them. */
@@ -582,8 +641,8 @@ export class Commander {
     if (!w || w.running) return false;
     clearTimeout(w.timer);
     this.waiting.delete(token);
-    this.o.board.dropCommand(token);
-    this.o.board.undoTalk(w.talk);
+    this.o.board.sheet.dropCommand(token);
+    this.o.board.sheet.undo(w.talk);
     if (w.card && this.o.board.item(w.card)) this.o.board.log(w.card, 'state', 'owner', this.o.board.t.voice.undone);
     this.news.push(`The owner took back what you confirmed with “${w.confirm}”; it did not happen.`);
     return true;
@@ -596,7 +655,7 @@ export class Commander {
 
   /** The cards the Coordinator waits on, each with the exchange whose reply said so. */
   private waits(): { talk: Talk; wait: TalkWaitRow }[] {
-    return this.o.board.waitingTalk().flatMap(({ waiting, ...talk }) => waiting.map((wait) => ({ talk, wait })));
+    return this.o.board.sheet.waiting().flatMap(({ waiting, ...talk }) => waiting.map((wait) => ({ talk, wait })));
   }
 
   /** The steps the Coordinator waits to take once the card gets somewhere. */
@@ -609,22 +668,22 @@ export class Commander {
     const id = c.card ?? (c.newCard !== undefined ? made.get(c.newCard) : undefined);
     const card = id ? this.o.board.item(id) : undefined;
     if (talk === undefined || !card) throw new Error(`the card to wait on is not there: ${c.then}`);
-    const before = this.o.board.waitingTalk().find((x) => x.id === talk)?.waiting ?? [];
+    const before = this.o.board.sheet.waiting().find((x) => x.id === talk)?.waiting ?? [];
     // several steps on one card each stand
-    this.o.board.waitTalk(talk, [...before, { card: card.id, title: card.title, state: c.state, then: c.then }]);
+    this.o.board.sheet.wait(talk, [...before, { card: card.id, title: card.title, state: c.state, then: c.then }]);
   }
 
   /** It no longer waits on the card, after whichever exchange it said so. */
   private stopWaiting(card: string) {
-    for (const x of this.o.board.waitingTalk()) if (x.waiting.some((w) => w.card === card)) this.o.board.waitTalk(x.id, x.waiting.filter((w) => w.card !== card));
+    for (const x of this.o.board.sheet.waiting()) if (x.waiting.some((w) => w.card === card)) this.o.board.sheet.wait(x.id, x.waiting.filter((w) => w.card !== card));
   }
 
   /** The owner no longer wants the step the Coordinator waits on the card for, after exchange `talk` ("Stop waiting"); false when it no longer waits. */
   unwait(talk: number, card: string): boolean {
-    const x = this.o.board.waitingTalk().find((t) => t.id === talk);
+    const x = this.o.board.sheet.waiting().find((t) => t.id === talk);
     const dropped = x?.waiting.filter((y) => y.card === card) ?? [];
     if (!x || !dropped.length) return false;
-    this.o.board.waitTalk(talk, x.waiting.filter((y) => y.card !== card));
+    this.o.board.sheet.wait(talk, x.waiting.filter((y) => y.card !== card));
     this.news.push(`The owner told you to stop waiting on “${dropped[0]!.title}”: you do not take the step you would have taken then (${dropped.map((w) => w.then).join('; ')}).`);
     return true;
   }
@@ -656,18 +715,18 @@ export class Commander {
    * back. Its reply reaches the owner as a notice, with "Undo" where it has actions.
    */
   private async follow(x: Talk, w: TalkWaitRow, met: Awaited) {
-    const card = x.cardId && this.o.board.item(x.cardId) ? x.cardId : undefined;
+    const card = this.openCard(x.cardId);
     // a card that got done also counts for a wait until it needs the owner: it is done, not waiting
     const reached = met === 'reached' && finished(this.o.board.item(w.card)?.state ?? 'planned') ? 'done' : w.state;
     const after: TalkAfter = { title: w.title, state: reached, met, from: x.id };
     /** Takes the wait off its exchange; false when the owner dropped it meanwhile. */
     const consume = () => {
-      const now = this.o.board.waitingTalk().find((t) => t.id === x.id)?.waiting ?? [];
+      const now = this.o.board.sheet.waiting().find((t) => t.id === x.id)?.waiting ?? [];
       const n = now.findIndex((y) => y.card === w.card && y.then === w.then);
-      if (n >= 0) this.o.board.waitTalk(x.id, now.filter((_, i) => i !== n));
+      if (n >= 0) this.o.board.sheet.wait(x.id, now.filter((_, i) => i !== n));
       return n >= 0;
     };
-    const talk = this.o.board.addTalk('', '', card ?? null, undefined, [], undefined, after);
+    const talk = this.o.board.sheet.add('', '', { card, after });
     const h: Held = {
       transcript: '',
       images: [],
@@ -675,20 +734,18 @@ export class Commander {
       input: { after: { ...after, card: w.card, then: w.then, said: x.said, promised: x.reply ?? '', at: x.at } },
       at: new Date().toISOString(),
     };
-    await this.drain();
-    const heard = this.held.size ? undefined : await this.answer(talk, h);
+    const heard = await this.readAfterHeld(talk, h);
     if (!consume()) {
       // dropped while it was read: what it decided does not happen
       if (heard?.token) this.undo(heard.token);
       else if (!heard) {
-        this.o.board.replyTalk(talk, this.o.board.t.voice.undone);
-        this.o.board.undoTalk(talk);
+        this.o.board.sheet.reply(talk, this.o.board.t.voice.undone);
+        this.o.board.sheet.undo(talk);
       }
       return;
     }
     if (!heard) return void this.hold(talk, h);
-    if (heard.token) this.arm(heard.token);
-    this.o.board.notify({ text: heard.confirm, ...(card ? { cardId: card } : { talk }), ...(heard.token ? { token: heard.token, undoMs: this.delayMs } : {}), ...(heard.wish ? { wish: heard.wish } : {}) });
+    this.announce(heard, card, talk);
   }
 
   /** Looked-up answers whose step is being taken up, by exchange. */
@@ -702,7 +759,7 @@ export class Commander {
    * notice, with "Undo" where it has actions. Returns whether a step was taken up.
    */
   answerIn(id: number): boolean {
-    const x = this.o.board.exchange(id);
+    const x = this.o.board.sheet.exchange(id);
     if (!x?.then || x.answer === undefined || x.question === undefined || this.takingUp.has(id)) return false;
     this.takingUp.add(id);
     void this.takeUp({ ...x, then: x.then, answer: x.answer, question: x.question })
@@ -712,8 +769,8 @@ export class Commander {
   }
 
   private async takeUp(x: Talk & { then: string; answer: string; question: string; thenPlace?: Place }) {
-    const card = x.cardId && this.o.board.item(x.cardId) ? x.cardId : undefined;
-    const talk = this.o.board.addTalk('', '', card ?? null, undefined, x.images ?? [], undefined, undefined, undefined, x.id);
+    const card = this.openCard(x.cardId);
+    const talk = this.o.board.sheet.add('', '', { card, images: x.images, answered: x.id });
     const h: Held = {
       transcript: '',
       // the screenshots of the owner's words go with the cards the step creates
@@ -723,12 +780,10 @@ export class Commander {
       input: { answered: { from: x.id, question: x.question, answer: x.answer, then: x.then, said: x.said, promised: x.reply ?? '', at: x.at } },
       at: new Date().toISOString(),
     };
-    await this.drain();
-    const heard = this.held.size ? undefined : await this.answer(talk, h);
-    this.o.board.thenTalk(x.id, null);
+    const heard = await this.readAfterHeld(talk, h);
+    this.o.board.sheet.step(x.id, null);
     if (!heard) return void this.hold(talk, h);
-    if (heard.token) this.arm(heard.token);
-    this.o.board.notify({ text: heard.confirm, ...(card ? { cardId: card } : { talk }), ...(heard.token ? { token: heard.token, undoMs: this.delayMs } : {}), ...(heard.wish ? { wish: heard.wish } : {}) });
+    this.announce(heard, card, talk);
   }
 
   /** Words Whisper should expect: Obeya's own, and the titles on the canvas. */
@@ -742,7 +797,7 @@ export class Commander {
 
   /** Starts the Coordinator's session ahead, so a command does not wait for its start-up. Called when the owner starts speaking. */
   warm() {
-    if (!this.live()) this.session = this.open();
+    if (!this.stopped && !this.live()) this.session = this.open();
   }
 
   private choice = () => JSON.stringify(this.o.agentSetting?.() ?? {});
@@ -849,7 +904,7 @@ export class Commander {
               {
                 name: 'config',
                 description: [
-                  "Read Obeya's configuration: the canvases this Obeya serves (canvases), each with its repositories (path; git: false for a folder without git, whose cards work in it directly, with neither clones nor hosts; clones: clones to create, workspaces: existing clones to use, slots: how many of its workers may be busy at once on this machine (as many as there are clones when left out, any number for repositories whose workers use worktrees), hosts: other machines over SSH its workers run on (name, ssh target, root directory there, clones, slots), a new card going to the first machine with a free slot, this one first; all but slots only for repositories whose workers use clones; settings: the values the owner set for this machine in front of the repository's .obeya/settings.json: main branch (branch), how approved work lands (land: main or pr; direct; autoMerge: false where the people on the forge merge a ready pull request instead of Obeya), checks, setup, planDocs, softPaths, workspaces, prNoise, app (run: the recipe for running the app that every worker reads, in prose; stop and keep: the commands Obeya runs to stop a waiting card's app), language (of what lands in the repository: code, docs, commit messages; en or de, English when left out), demo's language, demo's site (title, url, deploy command line with {dir}, env, headers, maxFile, publish: approved where each approved card's latest demo goes on the site by itself; without one, \"Teilen\" exports a demo as a ZIP or one HTML file)), what they amount to (resolved: canvas id, as in /c/<id>, name, repository ids, whether workers use clones or worktrees, adapterGone where the repository still has an adapter module Obeya no longer reads, trust where commands of its settings or its own Claude Code settings are new or changed on its default branch and wait for the owner to trust them in the Konfiguration dialog (held: which groups; now and before: the commands), and values: each setting as it stands without this machine's, with its source), problems, which canvases run now (running), where it is saved (file; source: whether the running canvases come from that file or from the command line), and the server's settings from its command line (port, data directory, the agents' permission mode, whether it restarts by itself).",
+                  "Read Obeya's configuration: the canvases this Obeya serves (canvases), each with its repositories (path; git: false for a folder without git, whose cards work in it directly, with neither clones nor hosts; clones: clones to create, workspaces: existing clones to use, slots: how many of its workers may be busy at once on this machine (as many as there are clones when left out, any number for repositories whose workers use worktrees), hosts: other machines over SSH its workers run on (name, ssh target, root directory there, clones, slots), a new card going to the first machine with a free slot, this one first; all but slots only for repositories whose workers use clones; settings: the values the owner set for this machine in front of the repository's .obeya/settings.json: main branch (branch), how approved work lands (land: main or pr; push: true where each landing on main is pushed to origin; upstream: in a fork, the original's main branch as <remote>/<branch>, which cards may go to as a pull request too; direct; autoMerge: false where the people on the forge merge a ready pull request instead of Obeya), checks, setup, planDocs, softPaths, workspaces, prNoise, app (run: the recipe for running the app that every worker reads, in prose; stop and keep: the commands Obeya runs to stop a waiting card's app), language (of what lands in the repository: code, docs, commit messages; en or de, English when left out), demo's language, demo's site (title, url, deploy command line with {dir}, env, headers, maxFile, publish: approved where each approved card's latest demo goes on the site by itself; without one, \"Teilen\" exports a demo as a ZIP or one HTML file)), what they amount to (resolved: canvas id, as in /c/<id>, name, repository ids, whether workers use clones or worktrees, adapterGone where the repository still has an adapter module Obeya no longer reads, trust where commands of its settings or its own Claude Code settings are new or changed on its default branch and wait for the owner to trust them in the Konfiguration dialog (held: which groups; now and before: the commands), and values: each setting as it stands without this machine's, with its source), problems, which canvases run now (running), where it is saved (file; source: whether the running canvases come from that file or from the command line), and the server's settings from its command line (port, data directory, the agents' permission mode, whether it restarts by itself).",
                   'Call it for any question about the configuration, and before configure.',
                 ].join('\n'),
                 schema: {},
@@ -883,7 +938,7 @@ export class Commander {
             "Never for a question about the work of an agent on a card (working, waiting for review, in PR, waiting, or finishing what remains, or a live or done card a note resumes its agent on): that agent knows its work, which is on its branch and not in the checkout look_up reads; pass the question to it (note, or feedback when it waits for review).",
             "An agent with a worker's tools (the shell, gh, the web) that reads the plan docs, the repository and the card's start task answers it in a few seconds; a question about a workstream goes to its project agent.",
             `question: the question in full, standing on its own, in the owner's language (it becomes the title of a Question card when the owner moves the thread onto one). card: the number of the card it is about, if any (the open one unless the owner means another). confirm: a short acknowledgement in the owner's language, e.g. ${say.lookUp}`,
-            "follows: when the owner's words follow up on an answer you looked up (asking on, wanting more of it, a file made of it: „und im Oktober?“, „mach mir ein Excel daraus“), that answer's tag (A12): the agent that found it goes on with all it read and computed. In doubt, the newest answer. Left out, a fresh agent starts from nothing.",
+            "follows: when the owner's words follow up on an answer you looked up (asking on, wanting more of it, a file made of it: „und im Oktober?“, „mach mir ein Excel daraus“), that answer's tag (A12): the agent that found it goes on with all it read and computed. In doubt, the newest answer. Left out, a fresh agent starts from nothing. Words that add to a question still being looked up (the list of those says so: narrowing it, widening it, wanting the answer in another form: „mach gleich eine Liste daraus“) follow up on it the same way, with its tag: they go into that look-up, whose one answer answers them too; question then is the question as it stands now, both together, and confirm says the words go into what is being looked up.",
             `then: when the owner asks you to do something whose actions depend on what needs reading first („leg für jedes offene Issue eine Aufgabe an“, „starte die Aufgaben, deren Pull Request grün ist“), the step to take with the answer, standing on its own (cards named by title, and the action it takes: new_card for a task per issue, review_pr for each pull request to review); question then asks for what the step needs (for a task per issue: each one's number, title, link and what it asks for). Once the answer is in, you take that step yourself with act, and the owner can take it back. confirm says both, e.g. ${say.lookUpThen}`,
           ].join('\n'),
           schema: { question: z.string(), card: z.string().optional(), follows: z.string().optional(), then: z.string().optional(), confirm: z.string() },
@@ -891,7 +946,7 @@ export class Commander {
             const q = String(question).trim();
             if (!q) return 'The question is missing.';
             const followed = follows ? fromAnswerTag(String(follows)) : undefined;
-            if (follows && (!followed || !this.o.board.exchange(followed)?.thread))
+            if (follows && (!followed || !this.o.board.sheet.exchange(followed)?.thread))
               return `Unknown answer ${String(follows)}; call look_up again with the tag of an answer you looked up (A12), or without follows.`;
             const about = card ? this.cardOf(String(card)) : undefined;
             if (card && (!about || !this.o.board.item(about))) return `No card ${String(card)} on this canvas; call look_up again with the number of one, or without card.`;
@@ -956,8 +1011,7 @@ export class Commander {
 
   /** The repository an action names for a new card, where the canvas has more than one and it is among them. */
   private newCardRepo(a: ActionArgs): string | undefined {
-    const repos = this.o.board.canvas.repos;
-    return repos.length > 1 && repos.some((r) => r.id === a.repo) ? a.repo : undefined;
+    return this.o.board.canvas.repos.length > 1 && a.repo && this.hasRepo(a.repo) ? a.repo : undefined;
   }
 
   /** Why an action cannot be done: the repositories it names that the canvas does not have. */
@@ -967,132 +1021,36 @@ export class Commander {
 
   /** One action as a command, or why it cannot be done. */
   private command(a: ActionArgs, s: Session, all: ActionArgs[] = [a]): Command | string {
-    // taken out before: it opens a draft, it does not run
-    if (a.do === 'wish') return 'a wish is no action that runs';
-    if (a.do === 'wait_for') {
-      const then = a.text?.trim();
-      if (!then) return 'the step you take then is missing (text)';
-      const state: AwaitedState = a.state === 'waits_for_owner' ? 'waitsForOwner' : 'done';
-      // the card the step acts on, given beside the one waited on, leaves unclear which of them is which
-      if (a.on && a.card && a.on.trim() !== a.card.trim())
-        return `on (${a.on}) and card (${a.card}) name two cards: give with on only the card to wait on, and name the card the step acts on in text`;
-      const on = (a.on ?? a.card ?? a.title)?.trim();
-      const id = on ? this.cardOf(on) : undefined;
-      if (!id) {
-        const title = on?.toLowerCase();
-        const newCard = title ? all.find((x) => x.do === 'new_card' && x.title?.trim().toLowerCase() === title)?.title?.trim() : undefined;
-        if (!newCard) return `${on ? `no card ${on}` : 'no card named'}: give with on the number of the card to wait on, or the title of a new_card in this act`;
-        return { do: 'waitFor', newCard, state, then };
-      }
-      const card = this.o.board.item(id);
-      if (!card) return `no card ${on}`;
-      const met = awaited(card, state);
-      if (met === 'reached') return `the card ${state === 'done' ? 'is done' : 'waits for the owner'} already: take the step now`;
-      if (met) return `the card no longer gets there by itself (${met}): reply to the owner instead`;
-      return { do: 'waitFor', card: card.id, state, then };
-    }
-    if (a.do === 'stop_waiting') {
-      const on = a.on ?? a.card;
-      const id = on ? this.cardOf(on) : undefined;
-      if (!id || !this.waits().some(({ wait }) => wait.card === id)) return `you do not wait on ${on ?? '(no card named)'}; the cards you wait on are in the message`;
-      return { do: 'stopWaiting', card: id };
-    }
-    if (a.do === 'remember') {
-      const text = a.text?.trim();
-      if (!text) return 'the rule is missing';
-      if (text.length > 500) return 'a rule has at most 500 characters';
-      const repos = [...new Set(a.repos ?? [])];
-      const unknown = repos.filter((r) => !this.o.board.canvas.repos.some((x) => x.id === r));
-      if (unknown.length) return this.unknownRepo(unknown);
-      const to = repos.length ? { repos } : {};
-      if (a.replaces === undefined) return { do: 'remember', text, ...to };
-      const replaces = s.rules[a.replaces - 1];
-      if (replaces === undefined) return `there is no rule ${a.replaces}; give the number of one of the owner's rules, or none`;
-      return { do: 'remember', text, replaces, ...to };
-    }
-    if (a.do === 'work_retro') {
-      if (a.repo && !this.o.board.canvas.repos.some((r) => r.id === a.repo)) return this.unknownRepo([a.repo]);
-      const open = a.card ? this.o.board.item(this.cardOf(a.card) ?? '')?.repo : undefined;
-      return { do: 'workRetro', repo: a.repo ?? open ?? this.o.board.home };
-    }
-    if (a.do === 'group' || a.do === 'ungroup') {
-      const tags = [...new Set([...(a.cards ?? []), ...(a.card ? [a.card] : [])])];
-      if (!tags.length) return 'name the cards with cards (their numbers)';
-      const cards: string[] = [];
-      for (const t of tags) {
-        const id = this.cardOf(t);
-        if (!id || !this.o.board.item(id)) return `no card ${t} on this canvas`;
-        cards.push(id);
-      }
-      if (a.do === 'ungroup') return { do: 'ungroup', cards };
-      // the name may come where rename_group takes the group
-      const name = (a.text || a.group)?.replace(/\s+/g, ' ').trim();
-      if (!name) return "the group's name is missing (text)";
-      if (name.length > 60) return "a group's name has at most 60 characters";
-      return { do: 'group', cards, name };
-    }
-    if (a.do === 'rename_group') {
-      const groups = this.o.board.snapshot().groups;
-      const g = groups.find((x) => x.name.toLowerCase() === a.group?.trim().toLowerCase());
-      if (!g) return `there is no group ${a.group ?? '(none named)'}; the canvas has ${groups.map((x) => `"${x.name}"`).join(', ') || 'none'}`;
-      const name = a.text?.replace(/\s+/g, ' ').trim();
-      if (!name) return 'the new name is missing (text)';
-      if (name.length > 60) return "a group's name has at most 60 characters";
-      if (groups.some((x) => x.id !== g.id && x.name.toLowerCase() === name.toLowerCase())) return `there is a group "${name}" already`;
-      return { do: 'renameGroup', group: g.id, name };
-    }
-    if (a.do === 'merge' || a.do === 'delete') {
-      const tags = [...new Set([...(a.card ? [a.card] : []), ...(a.cards ?? [])])];
-      if (!tags.length) return a.do === 'merge' ? 'name the cards with cards (their numbers, the one that stays first)' : 'name the card (its number)';
-      const cards: Item[] = [];
-      for (const t of tags) {
-        const card = this.o.board.item(this.cardOf(t) ?? '');
-        if (!card) return `no card ${t} on this canvas`;
-        const why = notUntouched(card);
-        if (why) return `only a planned task nobody has worked on yet can be ${a.do === 'merge' ? 'merged' : 'deleted'}: ${t} "${card.title}" ${why}`;
-        cards.push(card);
-      }
-      if (a.do === 'delete') return cards.length === 1 ? { do: 'delete', card: cards[0]!.id } : 'delete takes one card; give one delete action for each';
-      if (cards.length < 2) return 'name at least two cards to merge (cards)';
-      if (new Set(cards.map((c) => c.repo)).size > 1) return `only tasks of one repository can be merged: ${cards.map((c) => `"${c.title}" is in ${c.repo}`).join(', ')}`;
-      const title = (a.title || a.text)?.replace(/\s+/g, ' ').trim();
-      if (!title) return "the merged task's title is missing (title)";
-      if (title.length > 200) return 'a title has at most 200 characters';
-      return { do: 'merge', card: cards[0]!.id, others: cards.slice(1).map((c) => c.id), title };
-    }
-    if (a.do === 'review_pr') {
-      const pr = a.pr?.trim().replace(/^#/, '') ?? '';
-      if (!pr) return 'the pull request is missing (pr: its number, or its URL)';
-      if (!/^\d+$/.test(pr) && !parsePrUrl(pr)) return `${pr} is neither the number of a pull request nor its URL`;
-      const repo = this.newCardRepo(a);
-      return { do: 'reviewPr', pr, text: (a.text || a.body || '').trim(), ...(repo ? { repo } : {}) };
-    }
-    const elsewhere = a.do === 'new_idea' || a.do === 'new_card' ? this.otherCanvas(a.canvas) : undefined;
-    if (typeof elsewhere === 'string' && elsewhere.startsWith('unknown')) return elsewhere;
-    const there = elsewhere ? { canvas: elsewhere } : {};
-    if (a.do === 'new_idea') {
-      if (!a.title?.trim()) return 'a new idea needs a title';
-      const repo = elsewhere ? undefined : this.newCardRepo(a);
-      return { do: 'newIdea', title: a.title.trim(), body: a.body ?? '', ...(repo ? { repo } : {}), ...there };
-    }
-    if (a.do === 'new_card') {
-      if (!a.title?.trim()) return 'a new card needs a title';
-      if (a.path?.trim() || a.own_canvas !== undefined)
-        return 'a new card takes no path or own_canvas (start and build do, on a card there already): its agent makes what its body asks for, a repository included, and a canvas for that repository follows with wait_for on the card';
-      const repo = elsewhere ? undefined : this.newCardRepo(a);
-      const from = a.card ? this.cardOf(a.card) : undefined;
-      if (a.card && (!from || !this.o.board.item(from))) return `no card ${a.card}; give the card a follow-up comes from, or none`;
-      const until = a.until?.trim() ? localTime(a.until) : undefined;
-      if (until !== undefined && Number.isNaN(until)) return 'until is no time: the local time as YYYY-MM-DDTHH:MM';
-      if (until !== undefined && until <= Date.now()) return 'that time has passed: leave until out to start it now';
-      if (until !== undefined && until > Date.now() + SNOOZE_LIMIT) return 'until lies more than a year ahead';
-      return { do: 'newCard', title: a.title.trim(), body: a.body ?? '', start: a.start !== false, ...(until !== undefined ? { until: new Date(until).toISOString() } : {}), ...(repo ? { repo } : {}), ...(from ? { from } : {}), ...there };
+    switch (a.do) {
+      // taken out before: it opens a draft, it does not run
+      case 'wish':
+        return 'a wish is no action that runs';
+      case 'wait_for':
+        return this.waitForCommand(a, all);
+      case 'stop_waiting':
+        return this.stopWaitingCommand(a);
+      case 'remember':
+        return this.rememberCommand(a, s);
+      case 'work_retro':
+        return this.workRetroCommand(a);
+      case 'group':
+      case 'ungroup':
+        return this.groupCommand(a);
+      case 'rename_group':
+        return this.renameGroupCommand(a);
+      case 'merge':
+      case 'delete':
+        return this.mergeCommand(a);
+      case 'review_pr':
+        return this.reviewPrCommand(a);
+      case 'new_idea':
+      case 'new_card':
+        return this.newCardCommand(a);
     }
     const id = a.card ? this.cardOf(a.card) : undefined;
     const card = id ? this.o.board.item(id) : undefined;
     if (!card) return `no card ${a.card ?? '(none named)'} on this canvas`;
-    const reviewable = handedOver(card);
-    const is = `it is ${card.need ? `${card.state}: ${card.need}` : card.state}`;
+    const is = stateNow(card);
     // an accepted proposal its agent withdrew or replaced goes or stays, whatever it is now
     if (card.superseded && (a.do === 'dismiss' || a.do === 'keep')) return { do: a.do, card: card.id };
     if (a.do === 'keep') return `its agent has not withdrawn or replaced the card (${is})`;
@@ -1118,6 +1076,12 @@ export class Commander {
         return `only an idea, or a planned task of the owner's nobody has worked on yet and not with Obeya, is built in a new repository (${is})`;
       return { do: 'newRepo', card: card.id, path, canvas: a.own_canvas !== false };
     }
+    return this.cardCommand({ ...a, do: a.do }, card, s);
+  }
+
+  /** An action on `card` as a command, or why the card's state does not allow it. */
+  private cardCommand(a: CardArgs, card: Item, s: Session): Command | string {
+    const is = stateNow(card);
     switch (a.do) {
       case 'discuss':
         if (!a.text?.trim()) return 'the text is missing';
@@ -1136,13 +1100,12 @@ export class Commander {
         // a card waiting to start holds the note for the worker that takes it on
         if (a.do === 'note' && !['working', 'inPr', 'waiting'].includes(card.state) && !card.finishing && !askable(card) && !holdsNotes(card)) return `no agent works on this card (${is}), a note cannot reach it`;
         if (a.do === 'answer' && !card.question) return `the card has no open question (${is})`;
-        if (a.do === 'feedback' && !reviewable) return `the card does not wait for review (${is})`;
+        if (a.do === 'feedback' && !handedOver(card)) return `the card does not wait for review (${is})`;
         return { do: a.do, card: card.id, text: a.text.trim() };
       }
       case 'start':
         if (card.kind === 'project') {
-          if (!this.o.board.items().some((i) => i.parent === card.id && i.state === 'planned' && !i.queue))
-            return 'the project has no planned workstream left that is not already with Obeya';
+          if (!startable(card, this.o.board.items()).length) return 'the project has no planned workstream left that is not already with Obeya';
           break;
         }
         if (card.state !== 'planned') return `only a planned card can be started (${is})`;
@@ -1155,7 +1118,7 @@ export class Commander {
         if (card.state !== 'planned' || !card.queue) return `the card is not in the queue (${is})`;
         break;
       case 'approve': {
-        if (!reviewable) return `the card does not wait for review (${is})`;
+        if (!handedOver(card)) return `the card does not wait for review (${is})`;
         const repo = this.o.board.canvas.repos.find((r) => r.id === card.repo);
         // where work lands on main anyway, approving it directly is approving it
         if (!a.direct || !repo?.pullRequests) break;
@@ -1163,7 +1126,7 @@ export class Commander {
         // the owner hears why rather than getting a pull request they did not want
         if (!repo.direct) return `the repository ${card.repo} lands approved work only through a pull request; it does not allow pushing it directly onto main. Tell the owner so with reply, and approve without direct only once they want the pull request`;
         // past the pull request goes only by the card's button, never by word
-        const button = MESSAGES[this.o.board.language()].quote(MESSAGES[this.o.board.language()].approveDirect);
+        const button = MESSAGES[this.o.board.language()].quote(MESSAGES[this.o.board.language()].labels.approveDirect);
         return `nothing was approved: approval by word never pushes past the pull request. Tell the owner so with reply: straight onto main goes by the button ${button} on the card; approved without direct, the work goes out as a pull request`;
       }
       case 'accept':
@@ -1196,8 +1159,10 @@ export class Commander {
         }
         if (!snoozable(card)) return `the card is neither planned, at work nor waiting for the owner, so there is nothing to snooze (${is})`;
         const at = a.until ? localTime(a.until) : NaN;
-        if (Number.isNaN(at)) return 'until is missing: the local time as YYYY-MM-DDTHH:MM';
-        if (at <= Date.now()) return 'that time has passed';
+        const when = laterTime(at);
+        if (when === 'none') return 'until is missing: the local time as YYYY-MM-DDTHH:MM';
+        if (when === 'past') return 'that time has passed';
+        if (when === 'far') return 'until lies more than a year ahead';
         return { do: 'snooze', card: card.id, until: new Date(at).toISOString() };
       }
       case 'wake':
@@ -1205,6 +1170,156 @@ export class Commander {
         break;
     }
     return { do: a.do, card: card.id };
+  }
+
+  /** A step to take once a card gets somewhere (`wait_for`): on a card there, or on a new card of the same act by its title. */
+  private waitForCommand(a: ActionArgs, all: ActionArgs[]): Command | string {
+    const then = a.text?.trim();
+    if (!then) return 'the step you take then is missing (text)';
+    const state: AwaitedState = a.state === 'waits_for_owner' ? 'waitsForOwner' : 'done';
+    // the card the step acts on, given beside the one waited on, leaves unclear which of them is which
+    if (a.on && a.card && a.on.trim() !== a.card.trim())
+      return `on (${a.on}) and card (${a.card}) name two cards: give with on only the card to wait on, and name the card the step acts on in text`;
+    const on = (a.on ?? a.card ?? a.title)?.trim();
+    const id = on ? this.cardOf(on) : undefined;
+    if (!id) {
+      const title = on?.toLowerCase();
+      const newCard = title ? all.find((x) => x.do === 'new_card' && x.title?.trim().toLowerCase() === title)?.title?.trim() : undefined;
+      if (!newCard) return `${on ? `no card ${on}` : 'no card named'}: give with on the number of the card to wait on, or the title of a new_card in this act`;
+      return { do: 'waitFor', newCard, state, then };
+    }
+    const card = this.o.board.item(id);
+    if (!card) return `no card ${on}`;
+    const met = awaited(card, state);
+    if (met === 'reached') return `the card ${reaches(state)} already: take the step now`;
+    if (met) return `the card no longer gets there by itself (${met}): reply to the owner instead`;
+    return { do: 'waitFor', card: card.id, state, then };
+  }
+
+  /** No longer waiting on the card named (`on` or `card`). */
+  private stopWaitingCommand(a: ActionArgs): Command | string {
+    const on = a.on ?? a.card;
+    const id = on ? this.cardOf(on) : undefined;
+    if (!id || !this.waits().some(({ wait }) => wait.card === id)) return `you do not wait on ${on ?? '(no card named)'}; the cards you wait on are in the message`;
+    return { do: 'stopWaiting', card: id };
+  }
+
+  /** A rule for all agents, or for the CLAUDE.md of the repositories it names; `s.rules` numbers the rule it replaces. */
+  private rememberCommand(a: ActionArgs, s: Session): Command | string {
+    const text = a.text?.trim();
+    if (!text) return 'the rule is missing';
+    if (text.length > 500) return 'a rule has at most 500 characters';
+    const repos = [...new Set(a.repos ?? [])];
+    const unknown = repos.filter((r) => !this.hasRepo(r));
+    if (unknown.length) return this.unknownRepo(unknown);
+    const to = repos.length ? { repos } : {};
+    if (a.replaces === undefined) return { do: 'remember', text, ...to };
+    const replaces = s.rules[a.replaces - 1];
+    if (replaces === undefined) return `there is no rule ${a.replaces}; give the number of one of the owner's rules, or none`;
+    return { do: 'remember', text, replaces, ...to };
+  }
+
+  /** The work retrospective of the repository named, else of the card's, else of the canvas's home. */
+  private workRetroCommand(a: ActionArgs): Command | string {
+    if (a.repo && !this.hasRepo(a.repo)) return this.unknownRepo([a.repo]);
+    const open = a.card ? this.o.board.item(this.cardOf(a.card) ?? '')?.repo : undefined;
+    return { do: 'workRetro', repo: a.repo ?? open ?? this.o.board.home };
+  }
+
+  /** The cards named, into the group of the name given, or out of their groups. */
+  private groupCommand(a: ActionArgs): Command | string {
+    const cards = this.cardsOf([...(a.cards ?? []), ...(a.card ? [a.card] : [])]);
+    if (typeof cards === 'string') return cards;
+    if (!cards.length) return 'name the cards with cards (their numbers)';
+    const ids = cards.map((c) => c.id);
+    if (a.do === 'ungroup') return { do: 'ungroup', cards: ids };
+    // the name may come where rename_group takes the group
+    const name = oneLine(a.text || a.group || '');
+    return badGroupName(name, "the group's name is missing (text)") ?? { do: 'group', cards: ids, name };
+  }
+
+  /** The group named (`group`) under a new name (`text`). */
+  private renameGroupCommand(a: ActionArgs): Command | string {
+    const groups = this.o.board.snapshot().groups;
+    const g = groups.find((x) => x.name.toLowerCase() === a.group?.trim().toLowerCase());
+    if (!g) return `there is no group ${a.group ?? '(none named)'}; the canvas has ${groups.map((x) => `"${x.name}"`).join(', ') || 'none'}`;
+    const name = oneLine(a.text ?? '');
+    const bad = badGroupName(name, 'the new name is missing (text)');
+    if (bad) return bad;
+    if (groups.some((x) => x.id !== g.id && x.name.toLowerCase() === name.toLowerCase())) return `there is a group "${name}" already`;
+    return { do: 'renameGroup', group: g.id, name };
+  }
+
+  /** Merging planned tasks nobody has worked on into the first one named, or deleting one such task. */
+  private mergeCommand(a: ActionArgs): Command | string {
+    const cards = this.cardsOf([...(a.card ? [a.card] : []), ...(a.cards ?? [])], (card, t) => {
+      const why = notUntouched(card);
+      return why && `only a planned task nobody has worked on yet can be ${a.do === 'merge' ? 'merged' : 'deleted'}: ${t} "${card.title}" ${why}`;
+    });
+    if (typeof cards === 'string') return cards;
+    if (!cards.length) return a.do === 'merge' ? 'name the cards with cards (their numbers, the one that stays first)' : 'name the card (its number)';
+    if (a.do === 'delete') return cards.length === 1 ? { do: 'delete', card: cards[0]!.id } : 'delete takes one card; give one delete action for each';
+    if (cards.length < 2) return 'name at least two cards to merge (cards)';
+    if (new Set(cards.map((c) => c.repo)).size > 1) return `only tasks of one repository can be merged: ${cards.map((c) => `"${c.title}" is in ${c.repo}`).join(', ')}`;
+    const title = oneLine(a.title || a.text || '');
+    if (!title) return "the merged task's title is missing (title)";
+    if (title.length > TITLE_MAX) return `a title has at most ${TITLE_MAX} characters`;
+    return { do: 'merge', card: cards[0]!.id, others: cards.slice(1).map((c) => c.id), title };
+  }
+
+  /** A review card for the pull request given by its number or URL. */
+  private reviewPrCommand(a: ActionArgs): Command | string {
+    const pr = a.pr?.trim().replace(/^#/, '') ?? '';
+    if (!pr) return 'the pull request is missing (pr: its number, or its URL)';
+    if (!/^\d+$/.test(pr) && !parsePrUrl(pr)) return `${pr} is neither the number of a pull request nor its URL`;
+    const repo = this.newCardRepo(a);
+    return { do: 'reviewPr', pr, text: (a.text || a.body || '').trim(), ...(repo ? { repo } : {}) };
+  }
+
+  /** A new idea or card, on this canvas or the one it names. */
+  private newCardCommand(a: ActionArgs): Command | string {
+    const elsewhere = this.otherCanvas(a.canvas);
+    if (typeof elsewhere === 'string' && elsewhere.startsWith('unknown')) return elsewhere;
+    const there = elsewhere ? { canvas: elsewhere } : {};
+    const repo = elsewhere ? undefined : this.newCardRepo(a);
+    const into = repo ? { repo } : {};
+    if (a.do === 'new_idea') {
+      if (!a.title?.trim()) return 'a new idea needs a title';
+      return { do: 'newIdea', title: a.title.trim(), body: a.body ?? '', ...into, ...there };
+    }
+    if (!a.title?.trim()) return 'a new card needs a title';
+    if (a.path?.trim() || a.own_canvas !== undefined)
+      return 'a new card takes no path or own_canvas (start and build do, on a card there already): its agent makes what its body asks for, a repository included, and a canvas for that repository follows with wait_for on the card';
+    const from = a.card ? this.cardOf(a.card) : undefined;
+    if (a.card && (!from || !this.o.board.item(from))) return `no card ${a.card}; give the card a follow-up comes from, or none`;
+    const until = a.until?.trim() ? localTime(a.until) : undefined;
+    const when = until === undefined ? 'ok' : laterTime(until);
+    if (when === 'none') return 'until is no time: the local time as YYYY-MM-DDTHH:MM';
+    if (when === 'past') return 'that time has passed: leave until out to start it now';
+    if (when === 'far') return 'until lies more than a year ahead';
+    return { do: 'newCard', title: a.title.trim(), body: a.body ?? '', start: a.start !== false, ...(until !== undefined ? { until: new Date(until).toISOString() } : {}), ...into, ...(from ? { from } : {}), ...there };
+  }
+
+  /**
+   * The cards `tags` name, each once; or, for the first tag that names no card on this canvas or
+   * whose card `check` refuses, why not.
+   */
+  private cardsOf(tags: string[], check?: (card: Item, tag: string) => string | undefined): Item[] | string {
+    const cards: Item[] = [];
+    for (const t of new Set(tags)) {
+      const id = this.cardOf(t);
+      const card = id ? this.o.board.item(id) : undefined;
+      if (!card) return `no card ${t} on this canvas`;
+      const why = check?.(card, t);
+      if (why) return why;
+      cards.push(card);
+    }
+    return cards;
+  }
+
+  /** Whether the canvas has the repository `id`. */
+  private hasRepo(id: string): boolean {
+    return this.o.board.canvas.repos.some((r) => r.id === id);
   }
 
   private interpret(transcript: string, focus: Focus, images: string[], input: Input): Promise<Decision> {
@@ -1215,6 +1330,7 @@ export class Commander {
 
   /** Reads one command; settles when the turn has ended, while the decision goes out as soon as it is taken. */
   private async read(transcript: string, focus: Focus, images: string[], input: Input, decide: (d: Decision) => void, retry = true): Promise<void> {
+    if (this.stopped) throw new Error('the canvas stopped');
     const warmed = this.live();
     const s = warmed ?? (this.session = this.open());
     let decided = false;
@@ -1271,44 +1387,8 @@ export class Commander {
       const n = numbers.get(id);
       return n ? cardTag(n) : this.o.board.tagOf(id);
     };
-    const describe = (i: Item) => {
-      const project = i.parent ? items.find((p) => p.id === i.parent) : undefined;
-      const state = i.queue
-        ? queued(i.queue, items)
-        : i.need
-          ? `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}`
-          : i.idea && i.idea.status !== 'open'
-            ? `idea: ${i.idea.status}`
-            : i.idea?.thinking
-              ? `idea, its agent is working on its reply${i.idea.buildAfterReply ? '; built once the reply is there, unless it asks questions' : ''}`
-            : i.kind === 'question'
-              ? `question card: a thread of answers you looked up, moved onto a card; its agent ${i.thread?.thinking ? 'is reading' : 'answers what the owner asks on it (note)'}`
-            : i.finishing
-              ? i.followUp
-                ? `${i.state}, its agent answers the owner's follow-up${i.waitsForClone ? '; it needs a full clone for that and waits for the next free one, then goes on by itself' : ''}`
-                : `${i.state}, its agent finishes what remains${i.state === 'done' ? ' (nothing to land: the work changed no code)' : ' after the landing'}`
-              : askable(i)
-                ? `${i.state}, its agent's session has ended; a note resumes it to answer`
-                : i.state;
-      const paused = i.snoozed
-        ? `; snoozed by ${i.snoozed.by === 'agent' ? 'its agent' : 'the owner'} until ${i.snoozed.on ? `the card “${i.snoozed.on.title}” ${i.snoozed.on.state === 'done' ? 'is done' : 'waits for the owner'}${i.snoozed.until ? `, ${when(i.snoozed.until)} at the latest` : ''}` : i.snoozed.contributor ? `${i.snoozed.contributor.author}, the author of the pull request, responds${i.snoozed.until ? `, ${when(i.snoozed.until)} at the latest` : ''}` : when(i.snoozed.until!)}${i.snoozed.why ? ` (then: ${clip(oneLine(i.snoozed.why), 120)})` : ''}${i.snoozed.waiting ? ': it waits for the owner again then, and is not on their list until then' : i.snoozed.start ? ': it starts then; start or wake starts it now' : ': nothing of its agent runs until then; a note or wake wakes it earlier'}`
-        : i.paused
-        ? '; its agent is paused by the owner: nothing of it runs until resume or what the owner says to it, which it goes on with'
-        : i.pausing
-        ? '; the owner asked its agent to pause at a safe point: it ends its turn once the step it is in is done, and is paused then; resume or what the owner says to it lets it work on instead'
-        : i.restartPaused
-        ? "; its agent paused for Obeya's restart that is due and goes on once Obeya runs again"
-        : i.inTurn && i.state !== 'working'
-          ? '; its agent is working on something right now'
-          : i.background?.length
-            ? `; its agent's turn is over, its background work still runs (${i.background.map((b) => clip(oneLine(b.description), 80)).join('; ')})`
-            : '';
-      const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
-      const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
-      const became = i.prototypeOf ? items.find((x) => x.kind === 'project' && x.origin === i.prototypeOf) : undefined;
-      const group = i.group ? groups.get(i.group) : undefined;
-      return `${tag(i.id)} [${state}${paused}] "${i.title}"${repo}${i.contribution ? ` (review card for PR #${i.contribution.number} by ${i.contribution.author})` : ''}${project ? ` (project "${project.title}")` : ''}${group ? ` (group "${group}")` : ''}${became ? ` (prototype of the idea "${i.ideaTitle ?? ''}", which became the project ${tag(became.id)} "${became.title}"; it is being handed to the workstream its plan doc builds on it, or thrown away)` : idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.proposal ? ` — proposed ${i.proposal.idea ? 'idea' : 'task'}${i.proposal.startAt && i.state === 'proposal' ? `, to start ${when(i.proposal.startAt)} once accepted (it waits until then)` : ''}${i.proposal.revising ? `, being reworked by what the owner said${i.proposal.acceptAfterRevision ? `; accepted${i.proposal.acceptAfterRevision === 'idea' ? ' as an idea' : ''} once the new text is there, unless it asks questions` : ''}` : ''}` : ''}${i.superseded ? ` — the agent that proposed it ${i.superseded.by ? `replaced it by "${i.superseded.title ?? ''}"` : 'withdrew it'}${i.superseded.why ? ` (${clip(oneLine(i.superseded.why), 200)})` : ''}; the owner removes it (dismiss) or keeps it (keep)` : ''}${i.statusLine ? ` — status: ${clip(oneLine(i.statusLine), 160)}` : ''}${asks(i)}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(oneLine(i.idea.next.why), 200)}` : ''}${i.idea?.variants.length ? ` — prototypes its agent planned: ${i.idea.variants.map((v) => v.approach).join(', ')}` : ''}${i.idea?.split ? ` — task its agent marked to split off now (split_off): "${clip(oneLine(i.idea.split.title), 160)}"` : ''}${i.newRepo ? ` — to be built in a new repository ${i.newRepo.path || '(no folder named yet)'}${i.newRepo.canvas ? ' with a canvas of its own' : ' on this canvas'}, as ${i.newRepo.by === 'owner' ? 'the owner' : "its idea's agent"} chose${i.newRepo.due ? '; Obeya creates it in a few seconds unless the owner takes it back on the card' : ''}` : ''}`;
-    };
+    const line: LineContext = { items, groups, tag, repos: this.o.board.canvas.repos.length > 1 };
+    const describe = (i: Item) => cardLine(i, line);
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);
       // a card no longer shown (its plan doc is gone) is no longer talked about
@@ -1325,14 +1405,14 @@ export class Commander {
     };
     const now = new Date().toISOString();
     // what is written from here on comes with the next command
-    const mark = this.o.board.mark();
+    const mark = this.o.board.history.mark();
     const first = s.read === 0;
     let history: string[];
     if (first) {
       // without the words being read now
-      const talk = this.o.board.talk(REMEMBERED_EXCHANGES).filter((t) => t.reply !== undefined);
+      const talk = this.o.board.sheet.latest(REMEMBERED_EXCHANGES).filter((t) => t.reply !== undefined);
       const full = new Set(talk.filter((t) => t.answer !== undefined).slice(-FULL_ANSWERS));
-      const steps = this.o.board.timeline(new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString(), HISTORY_STEPS);
+      const steps = this.o.board.history.timeline(new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString(), HISTORY_STEPS);
       // before cards had numbers, the Coordinator tagged them afresh in each session (K1, K2, …)
       const numbered = this.o.board.setting(NUMBERS_SINCE);
       const before = numbered && talk.some((t) => t.at < numbered) ? `; until ${when(numbered)} a card's K-number held for one session only, so one said then names another card than the same number now` : '';
@@ -1344,9 +1424,11 @@ export class Commander {
                 const later =
                   t.answer !== undefined
                     ? ` → the answer ${answerTag(t.id)} you looked up${t.follows ? ` (following up on ${answerTag(t.follows)})` : ''}: "${full.has(t) ? t.answer : clip(oneLine(t.answer), 400)}"${t.then ? ` (you are about to take the step you looked it up for: ${t.then})` : ''}`
-                    : t.question
-                      ? ' (you were looking it up; no answer came)'
-                      : '';
+                    : t.joinedInto
+                      ? ` (the owner's next words went into this look-up: the answer ${answerTag(t.joinedInto)} answers both)`
+                      : t.question
+                        ? ' (you were looking it up; no answer came)'
+                        : '';
                 if (t.moved) return `- ${when(t.at)} the card "${t.moved.title}" moved to the canvas "${t.moved.canvasName}", in a new repository, and is built there`;
                 const words = t.after
                   ? `${became(t.after)}, and you took up the step you had waited on it for`
@@ -1360,7 +1442,7 @@ export class Commander {
         `What happened on the canvas in the last ${HISTORY_DAYS} days (oldest first):\n${steps.flatMap(step).join('\n') || '(nothing)'}`,
       ];
     } else {
-      const steps = this.o.board.timeline(s.since!, NEWS_STEPS + 1);
+      const steps = this.o.board.history.timeline(s.since!, NEWS_STEPS + 1);
       const more = steps.length > NEWS_STEPS ? steps.splice(0, steps.length - NEWS_STEPS).length : 0;
       history = steps.length ? [`What happened on the canvas since the owner's last command:\n${more ? `- (${more} earlier steps left out)\n` : ''}${steps.flatMap(step).join('\n')}`] : [];
     }
@@ -1380,10 +1462,16 @@ export class Commander {
       return [`${cardTag(n)} [${row.state ?? 'planned'}] "${row.title ?? ''}" — ${row.deleted_at ? 'deleted' : `on the canvas "${canvasName}"`}`];
     });
     const project = focus.project ? items.find((i) => i.id === focus.project) : undefined;
+    // look-ups still running that the owner's words may add to: Obeya's own, not those asked of a project's agent in its sheet or gone onto a Question card
+    const reading = this.o.board.sheet
+      .lookingUp()
+      .map((id) => this.o.board.sheet.exchange(id)!)
+      .filter((t) => !t.askedIn && !t.movedTo)
+      .slice(-READING_SHOWN);
     // projects with workstreams to start: start on one hands them all to the Coordinator
     const projects = items.flatMap((p) => {
       if (p.kind !== 'project') return [];
-      const open = items.filter((i) => i.parent === p.id && i.state === 'planned' && !i.queue);
+      const open = startable(p, items);
       return open.length ? [`${tag(p.id)} [project] "${p.title}" — planned workstreams not yet started: ${open.map((i) => i.label ?? i.title).join(', ')}`] : [];
     });
     return [
@@ -1398,7 +1486,7 @@ export class Commander {
           ]
         : input.after
         ? [
-            `No words of the owner's this time: you take up a step you said you would take. ${when(input.after.at)} the owner ${input.after.said ? `said: "${input.after.said}"` : 'had a step of yours waiting'}, and you answered: "${input.after.promised}", waiting until the card "${input.after.title}" ${until(input.after.state)}, to then: ${input.after.then}`,
+            `No words of the owner's this time: you take up a step you said you would take. ${when(input.after.at)} the owner ${input.after.said ? `said: "${input.after.said}"` : 'had a step of yours waiting'}, and you answered: "${input.after.promised}", waiting until the card "${input.after.title}" ${reaches(input.after.state)}, to then: ${input.after.then}`,
             `Now ${became(input.after)}.${this.awaitedCard(input.after.card, items, describe)}`,
             input.after.met === 'reached'
               ? 'Take that step now, with act (and config before configure), as you said you would. Where it no longer fits what happened since (the card\'s summary, the canvas), tell the owner with reply instead. The owner reads your confirm as a notice and can take the actions back.'
@@ -1418,7 +1506,7 @@ export class Commander {
               ? `The owner typed${focused && input.field ? ` into ${FIELDS[input.field]}` : ''} (as written, no recognition errors): "${transcript}"`
               : `The owner said (speech recognition, may contain errors): "${transcript}"`,
             // in reply to a message of the open card's conversation, or of the sheet
-            (focused ? replyNote(this.o.board.quoted(focused.id, input.replyTo), 'coordinator') : focus.card ? '' : talkReplyNote(this.o.board.quotedTalk(input.replyTo))).trim(),
+            (focused ? replyNote(this.o.board.quoted(focused.id, input.replyTo), 'coordinator') : focus.card ? '' : talkReplyNote(this.o.board.sheet.quote(input.replyTo))).trim(),
           ].filter(Boolean)),
       ...(input.heldSince
         ? [`The owner said this ${when(input.heldSince)}, but the account's usage limit kept you from reading it until now; the canvas may have changed since. Obeya told them it would read it once the limit lifted.`]
@@ -1434,8 +1522,11 @@ export class Commander {
         ? [`Cards the owner's words name by number that the list leaves out (an action takes only a card on this canvas, not archived):\n${named.join('\n')}`]
         : []),
       ...(projects.length ? [`Projects with workstreams to start:\n${projects.join('\n')}`] : []),
+      ...(reading.length
+        ? [`Questions an agent is looking up for you now, its answer still to come (a follow-up names its tag in follows to go into that look-up):\n${reading.map((t) => `- ${answerTag(t.id)} (${when(t.at)}) “${t.question}”`).join('\n')}`]
+        : []),
       ...(this.waits().length
-        ? [`Cards you wait on, to take a step once each gets there (wait_for; stop_waiting drops one):\n${this.waits().map(({ talk, wait }) => `- ${tag(wait.card)} "${wait.title}" until it ${until(wait.state)} (since ${when(talk.at)}), then: ${wait.then}`).join('\n')}`]
+        ? [`Cards you wait on, to take a step once each gets there (wait_for; stop_waiting drops one):\n${this.waits().map(({ talk, wait }) => `- ${tag(wait.card)} "${wait.title}" until it ${reaches(wait.state)} (since ${when(talk.at)}), then: ${wait.then}`).join('\n')}`]
         : []),
       `Groups on the canvas: ${groupList.map((g) => `"${g.name}"`).join(', ') || '(none yet)'}`,
       rules.length
@@ -1445,6 +1536,92 @@ export class Commander {
       `Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name}${r.pullRequests ? `; approved work goes out as a pull request${r.direct ? ", or directly onto main by the card's button" : ''}` : ''})`).join(', ')}`,
     ].join('\n\n');
   }
+}
+
+/** What a card's line for the Coordinator needs beyond the card: the canvas's cards and groups, and each card's tag. */
+interface LineContext {
+  items: Item[];
+  groups: Map<string, string>;
+  tag: (id: string) => string;
+  /** The canvas has more than one repository: a line names the card's. */
+  repos: boolean;
+}
+
+/** A card's line in the Coordinator's message: its tag, state, title, and what else it needs to know of it. */
+function cardLine(i: Item, c: LineContext): string {
+  const { items, tag } = c;
+  const project = i.parent ? items.find((p) => p.id === i.parent) : undefined;
+  const group = i.group ? c.groups.get(i.group) : undefined;
+  const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
+  const became = i.prototypeOf ? items.find((x) => x.kind === 'project' && x.origin === i.prototypeOf) : undefined;
+  const parts = [`${tag(i.id)} [${stateOf(i, items)}${pauseOf(i)}] "${i.title}"`];
+  if (c.repos) parts.push(` in ${i.repo}`);
+  if (i.contribution) parts.push(` (review card for PR #${i.contribution.number} by ${i.contribution.author})`);
+  if (project) parts.push(` (project "${project.title}")`);
+  if (group) parts.push(` (group "${group}")`);
+  if (became)
+    parts.push(` (prototype of the idea "${i.ideaTitle ?? ''}", which became the project ${tag(became.id)} "${became.title}"; it is being handed to the workstream its plan doc builds on it, or thrown away)`);
+  else if (idea) parts.push(` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})`);
+  const p = i.proposal;
+  if (p) {
+    parts.push(` — proposed ${p.idea ? 'idea' : 'task'}`);
+    if (p.startAt && i.state === 'proposal') parts.push(`, to start ${when(p.startAt)} once accepted (it waits until then)`);
+    if (p.revising)
+      parts.push(`, being reworked by what the owner said${p.acceptAfterRevision ? `; accepted${p.acceptAfterRevision === 'idea' ? ' as an idea' : ''} once the new text is there, unless it asks questions` : ''}`);
+  }
+  const s = i.superseded;
+  if (s) parts.push(` — the agent that proposed it ${s.by ? `replaced it by "${s.title ?? ''}"` : 'withdrew it'}${s.why ? ` (${clip(oneLine(s.why), 200)})` : ''}; the owner removes it (dismiss) or keeps it (keep)`);
+  if (i.statusLine) parts.push(` — status: ${clip(oneLine(i.statusLine), 160)}`);
+  parts.push(asks(i));
+  const x = i.idea;
+  if (x?.next) parts.push(` — its agent would ${NEXT_ACTION[x.next.step]} next: ${clip(oneLine(x.next.why), 200)}`);
+  if (x?.variants.length) parts.push(` — prototypes its agent planned: ${x.variants.map((v) => v.approach).join(', ')}`);
+  if (x?.split) parts.push(` — task its agent marked to split off now (split_off): "${clip(oneLine(x.split.title), 160)}"`);
+  const r = i.newRepo;
+  if (r)
+    parts.push(
+      ` — to be built in a new repository ${r.path || '(no folder named yet)'}${r.canvas ? ' with a canvas of its own' : ' on this canvas'}, as ${r.by === 'owner' ? 'the owner' : "its idea's agent"} chose${r.due ? '; Obeya creates it in a few seconds unless the owner takes it back on the card' : ''}`,
+    );
+  return parts.join('');
+}
+
+/** A card's state, as its line for the Coordinator gives it. */
+function stateOf(i: Item, items: Item[]): string {
+  if (i.queue) return queued(i.queue, items);
+  if (i.need)
+    return `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}`;
+  if (i.idea && i.idea.status !== 'open') return `idea: ${i.idea.status}`;
+  if (i.idea?.thinking) return `idea, its agent is working on its reply${i.idea.buildAfterReply ? '; built once the reply is there, unless it asks questions' : ''}`;
+  if (i.kind === 'question') return `question card: a thread of answers you looked up, moved onto a card; its agent ${i.thread?.thinking ? 'is reading' : 'answers what the owner asks on it (note)'}`;
+  if (i.finishing)
+    return i.followUp
+      ? `${i.state}, its agent answers the owner's follow-up${i.waitsForClone ? '; it needs a full clone for that and waits for the next free one, then goes on by itself' : ''}`
+      : `${i.state}, its agent finishes what remains${i.state === 'done' ? ' (nothing to land: the work changed no code)' : ' after the landing'}`;
+  if (askable(i)) return `${i.state}, its agent's session has ended; a note resumes it to answer`;
+  return i.state;
+}
+
+/** Whether a card's agent is snoozed, paused or at work outside its state, as its line for the Coordinator says right after the state. */
+function pauseOf(i: Item): string {
+  const s = i.snoozed;
+  if (s) {
+    const latest = s.until ? `, ${when(s.until)} at the latest` : '';
+    const until = s.on ? `the card “${s.on.title}” ${reaches(s.on.state)}${latest}` : s.contributor ? `${s.contributor.author}, the author of the pull request, responds${latest}` : when(s.until!);
+    const then = s.why ? ` (then: ${clip(oneLine(s.why), 120)})` : '';
+    const after = s.waiting
+      ? ': it waits for the owner again then, and is not on their list until then'
+      : s.start
+        ? ': it starts then; start or wake starts it now'
+        : ': nothing of its agent runs until then; a note or wake wakes it earlier';
+    return `; snoozed by ${s.by === 'agent' ? 'its agent' : 'the owner'} until ${until}${then}${after}`;
+  }
+  if (i.paused) return '; its agent is paused by the owner: nothing of it runs until resume or what the owner says to it, which it goes on with';
+  if (i.pausing)
+    return '; the owner asked its agent to pause at a safe point: it ends its turn once the step it is in is done, and is paused then; resume or what the owner says to it lets it work on instead';
+  if (i.restartPaused) return "; its agent paused for Obeya's restart that is due and goes on once Obeya runs again";
+  if (i.inTurn && i.state !== 'working') return '; its agent is working on something right now';
+  if (i.background?.length) return `; its agent's turn is over, its background work still runs (${i.background.map((b) => clip(oneLine(b.description), 80)).join('; ')})`;
+  return '';
 }
 
 /** How a step of a card's history reads. */
@@ -1468,7 +1645,7 @@ export function talkReplyNote(quoted: TalkQuote | undefined): string {
       : quoted.part === 'reply'
         ? 'your reply'
         : `the answer ${answerTag(quoted.talk)}${quoted.by === 'project' ? " the project's agent" : ' you'} looked up`;
-  return `[In reply to ${whose}: “${excerpt(quoted.text.replace(/\s+/g, ' ').trim(), 2000)}”]\n\n`;
+  return `[In reply to ${whose}: “${excerpt(oneLine(quoted.text), 2000)}”]\n\n`;
 }
 
 /** A queued card's state as the Coordinator reads it. */
@@ -1489,10 +1666,10 @@ function queued(q: Queue, items: Item[]): string {
 
 /** What became of a card the Coordinator waited on, as it reads it. */
 const became = (a: Pick<TalkAfter, 'title' | 'met' | 'state'>) =>
-  `the card "${a.title}" ${{ reached: a.state === 'done' ? 'is done' : 'waits for the owner', gone: 'is gone (removed)', archived: 'was archived', stopped: 'was stopped by the owner (planned again)', dropped: 'was dropped' }[a.met]}`;
+  `the card "${a.title}" ${{ reached: reaches(a.state), gone: 'is gone (removed)', archived: 'was archived', stopped: 'was stopped by the owner (planned again)', dropped: 'was dropped' }[a.met]}`;
 
-/** What the Coordinator waits for a card to reach. */
-const until = (state: AwaitedState) => (state === 'done' ? 'is done' : 'waits for the owner');
+/** What the Coordinator waits for a card to reach, as it reads it ("until the card …"). */
+export const reaches = (state: AwaitedState) => (state === 'done' ? 'is done' : 'waits for the owner');
 
 /**
  * A time the Coordinator gives (`until`), in ms: local, as it is told to write it; a day without an
@@ -1558,6 +1735,12 @@ What the owner says or types with a card open that an agent works on (working, i
 When the open card is a proposal, what the owner says about it (what should be added, dropped, decided or put differently, or their thoughts on it) is revise with their words, unless they clearly accept or dismiss it or ask for something else.
 On an idea, "Mach, was du vorschlägst" takes the step its agent would take next, as its line says; when that is answering, discuss with the options its agent would pick for its open questions. Wanting to think about something, rather than have it done, is new_idea. So is asking you for an opinion or a way forward rather than a fact ("Was meinst du, was wir da jetzt machen sollen?", "Wie sollten wir … angehen?", "Was hältst du davon, …?"): such a discussion belongs on an idea card, where its exploration agent opens it. body: the owner's words as they are (their screenshots go along); confirm names the idea (${CONFIRM[language].idea}). A question of fact (what the plan says, what happened, what an agent would do) stays reply or look_up. A wrong guess costs one idea card, which the owner takes back with undo, so go ahead.
 `.trim();
+
+/** A card's state, as the reason an action refuses gives it. */
+const stateNow = (card: Item) => `it is ${card.need ? `${card.state}: ${card.need}` : card.state}`;
+
+/** Why `name` (on one line) cannot name a group: `missing` when it is empty; none where it can. */
+const badGroupName = (name: string, missing: string) => (!name ? missing : name.length > 60 ? "a group's name has at most 60 characters" : undefined);
 
 /** Whether an agent is on the card: working on it, waiting for the owner, in a PR, or finishing what remains after the landing. */
 const hasAgent = (i: Item) => agentListens(i) && i.state !== 'idea' && i.state !== 'proposal';

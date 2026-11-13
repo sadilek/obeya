@@ -69,20 +69,6 @@ the narration names is outside the picture. The agent's run differs each time it
 long it takes, its status lines, whether it proposes a card of its own), so the narration says
 nothing that only holds for one run.
 
-## The same narration in Qwen3-TTS
-
-`qwen.py` speaks the rendered video's narration again with Qwen3-TTS, cloned from ten seconds of
-the ElevenLabs voice (`.voice/qwen-reference-en.wav` and its transcript `.txt` in the main checkout,
-gitignored), each clip where the ElevenLabs one starts, evened out as the demo's mix is. It costs no
-credits and takes a few minutes:
-
-```sh
-~/.obeya/voices/qwen3/env/bin/python scripts/hero-video/qwen.py
-```
-
-It writes `qwen-vergleich/` beside the video: `hero-qwen.mp4`, `narration-qwen.wav`, and
-`hero-elevenlabs.mp4` to compare against.
-
 ## Publish
 
 The video is not in git. It is an asset of the GitHub release `site-media`, which the Pages

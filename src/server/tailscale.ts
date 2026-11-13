@@ -43,6 +43,15 @@ interface ServeConfig {
   AllowFunnel?: Record<string, boolean>;
 }
 
+/** `tailscale serve status --json`'s configuration, from its first `{` (a warning may come before it). */
+function parseServe(out: string): ServeConfig {
+  const at = out.indexOf('{');
+  return at < 0 ? {} : (JSON.parse(out.slice(at)) as ServeConfig);
+}
+
+/** Whether `config` still serves `entry` as Obeya noted it. */
+const serves = (config: ServeConfig, entry: NamedEntry) => config.Web?.[`${entry.name}:${entry.https}`]?.Handlers?.['/']?.Proxy === entry.target;
+
 /** The entries of `config` on one of `SERVE_PORTS` that proxy `/` somewhere. */
 function entriesOf(config: ServeConfig): NamedEntry[] {
   return Object.entries(config.Web ?? {}).flatMap(([key, web]) => {
@@ -128,8 +137,7 @@ export class Tailscale {
   private async config(): Promise<ServeConfig> {
     const r = await this.run(['serve', 'status', '--json']);
     if (!r.ok) throw new Error(r.out);
-    const at = r.out.indexOf('{');
-    return at < 0 ? {} : (JSON.parse(r.out.slice(at)) as ServeConfig);
+    return parseServe(r.out);
   }
 
   /**
@@ -184,7 +192,7 @@ export class Tailscale {
   /** Removes the entry Obeya served, if it is still Obeya's. */
   async unserve(entry: NamedEntry): Promise<void> {
     const config = await this.config().catch(() => ({}) as ServeConfig);
-    if (config.Web?.[`${entry.name}:${entry.https}`]?.Handlers?.['/']?.Proxy !== entry.target) return;
+    if (!serves(config, entry)) return;
     await this.drop(config, [entry]);
   }
 
@@ -194,9 +202,8 @@ export class Tailscale {
       Bun.spawnSync([this.bin!, ...args], { stdin: input === undefined ? 'ignore' : new TextEncoder().encode(input), stdout: 'pipe', stderr: 'pipe', timeout: 5000 });
     const status = run(['serve', 'status', '--json']);
     try {
-      const out = status.stdout.toString();
-      const config = (out.includes('{') ? JSON.parse(out.slice(out.indexOf('{'))) : {}) as ServeConfig;
-      if (config.Web?.[`${entry.name}:${entry.https}`]?.Handlers?.['/']?.Proxy === entry.target) run(['serve', 'set-raw'], JSON.stringify(without(config, [entry])));
+      const config = parseServe(status.stdout.toString());
+      if (serves(config, entry)) run(['serve', 'set-raw'], JSON.stringify(without(config, [entry])));
     } catch {}
   }
 

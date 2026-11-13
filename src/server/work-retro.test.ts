@@ -3,10 +3,9 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
-import { cardTag } from '../core/card-number';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
-import { artifact, FakeRuntime, type FakeSession, gitRepo, removeDir } from './testing';
+import { artifact, FakeRuntime, type FakeSession, gitRepo, removeDir, settle, tag, testBoard } from './testing';
 import { WorkRetro } from './work-retro';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
@@ -18,28 +17,23 @@ let main: string;
 let board: Board;
 let runtime: FakeRuntime;
 let retro: WorkRetro;
-let workers: Workers;
+let store: Store;
 /** The transcript file of each session id; the others have none. */
 let files: Record<string, string>;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-wr-'));
   main = gitRepo(join(dir, 'main'));
-  const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  store = new Store(':memory:');
+  board = testBoard({ store, path: main });
   runtime = new FakeRuntime();
   files = {};
   retro = new WorkRetro({ board, runtime, pathFor: () => main, transcript: (id) => files[id] ?? null, every: 3, ramp: [] });
-  const workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
-  workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, onWorkEnded: (id, ws) => retro.ended(id, ws) });
 });
 afterEach(() => removeDir(dir));
 
-const settle = () => new Promise((r) => setTimeout(r, 5));
-/** The number a card goes by, as the retrospective names it. */
-const tag = (c: { number: number }) => cardTag(c.number);
-const noteSessions = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'note'));
-const retroSessions = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'card'));
+const noteSessions = () => runtime.withTool('note');
+const retroSessions = () => runtime.withTool('card');
 
 /** A card that ran in the given sessions and whose work ended. */
 function ran(title: string, ...sessions: string[]) {
@@ -237,22 +231,28 @@ describe('work retrospective', () => {
 
   test('a card started again from scratch keeps its earlier run, and its work ending reads both', async () => {
     files = { s1: SAMPLE, s2: SAMPLE };
-    const c = board.create({ title: 'Neu gestartet', x: 0, y: 0 });
-    await workers.start(c.id);
-    runtime.last.emit({ type: 'session', id: 's1' });
-    await workers.stop(c.id);
-    await workers.start(c.id);
-    expect(board.events(c.id).some((e) => e.text.includes('(Sitzung s1) bleibt für die Arbeitsrückschau erhalten'))).toBe(true);
-    const worker = runtime.last;
-    worker.emit({ type: 'session', id: 's2' });
-    await worker.call('ready_for_review', { summary: 'Fertig.', demo: artifact() });
-    worker.emit({ type: 'idle' });
-    // approved without a change: nothing lands, and the card is done once its worker's turn ends
-    await workers.approve(c.id);
-    worker.emit({ type: 'idle' });
-    await settle();
-    const s = noteSessions()[0]!;
-    expect(s.inbox[0]).toContain("The excerpt of its worker's 2 runs");
-    expect(s.inbox[0]).toContain('Run 1 of 2');
+    const workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
+    const workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, onWorkEnded: (id, ws) => retro.ended(id, ws) });
+    try {
+      const c = board.create({ title: 'Neu gestartet', x: 0, y: 0 });
+      await workers.start(c.id);
+      runtime.last.emit({ type: 'session', id: 's1' });
+      await workers.stop(c.id);
+      await workers.start(c.id);
+      expect(board.events(c.id).some((e) => e.text.includes('(Sitzung s1) bleibt für die Arbeitsrückschau erhalten'))).toBe(true);
+      const worker = runtime.last;
+      worker.emit({ type: 'session', id: 's2' });
+      await worker.call('ready_for_review', { summary: 'Fertig.', demo: artifact() });
+      worker.emit({ type: 'idle' });
+      // approved without a change: nothing lands, and the card is done once its worker's turn ends
+      await workers.approve(c.id);
+      worker.emit({ type: 'idle' });
+      await settle();
+      const s = noteSessions()[0]!;
+      expect(s.inbox[0]).toContain("The excerpt of its worker's 2 runs");
+      expect(s.inbox[0]).toContain('Run 1 of 2');
+    } finally {
+      workers.shutdown();
+    }
   });
 });

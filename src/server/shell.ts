@@ -256,3 +256,145 @@ export function writesNothing(command: string): boolean {
   }
   return done();
 }
+
+/** A foreground command may sleep this long; anything longer keeps the owner's notes from the agent. */
+export const FOREGROUND_SLEEP_LIMIT = 30;
+
+/** Short waits the refusal suggests; both pass it (tested), the first also where `timeout` is missing (macOS). */
+export const BOUNDED_WAITS = [
+  'for i in $(seq 1 15); do curl -sf localhost:3000 && break; sleep 2; done',
+  "timeout 30 bash -c 'until curl -sf localhost:3000; do sleep 2; done'",
+];
+
+/** Why a command that sleeps too long in the foreground is not run, as both runtimes tell their agents, then `advice` on how to wait instead in that runtime's terms. */
+export const waitRefusal = (advice: string) =>
+  `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. ${advice}`;
+
+/** A `PreToolUse` hook's answer that refuses `command` for `reason` when it sleeps in the foreground longer than the limit; nothing when it may run. */
+export function refuseLongWait(command: string, reason: string) {
+  if (foregroundSleep(command) <= FOREGROUND_SLEEP_LIMIT) return undefined;
+  return { hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'deny' as const, permissionDecisionReason: reason } };
+}
+
+/**
+ * How many seconds a shell command sleeps in the foreground, read from the command line alone:
+ * `sleep` with its durations (`sleep 90`, `sleep 5m`, `sleep 1m 30s`), times the iterations of the
+ * loop it is in (a `for` over a word list, `seq` or `{a..b}`; `while` and `until` have no bound).
+ * A command that `timeout N` starts counts at most N, wherever it stands (`cd app && timeout 30 bash
+ * -c 'until …; do sleep 2; done'`). What runs behind `&` does not count, nor does the text of a
+ * heredoc unless a shell runs it (`bash <<EOF`, `cat <<EOF | sh`). Commands that only sleep inside
+ * scripts or programs they call are not seen.
+ */
+export function foregroundSleep(command: string): number {
+  // redirections such as 2>&1 are words, not `&`
+  const tokens = boundTimeouts(withoutHeredocs(command)).replace(/['"`]/g, ' ').match(/\d*[<>]&\d*-?|&>>?|&&|\|\||[;&|(){}\n]|[^\s;&|(){}<>]+|[<>]+/g) ?? [];
+  // per open loop or group (and the command line itself): seconds of finished commands, and of the one in progress
+  type Frame = { done: number; current: number; iterations: number; closer: string };
+  const stack: Frame[] = [{ done: 0, current: 0, iterations: 1, closer: '' }];
+  const top = () => stack.at(-1)!;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (t === 'sleep') {
+      let s = 0;
+      while (i + 1 < tokens.length && /^(\d+(\.\d+)?[smhd]?|inf(inity)?)$/.test(tokens[i + 1]!)) s += seconds(tokens[++i]!);
+      top().current += s;
+    } else if (t === 'while' || t === 'until') stack.push({ done: 0, current: 0, iterations: Infinity, closer: 'done' });
+    else if (t === '(' || t === '{') stack.push({ done: 0, current: 0, iterations: 1, closer: t === '(' ? ')' : '}' });
+    else if (t === 'for') {
+      // the words up to `do` say how often the body runs
+      const header: string[] = [];
+      while (i + 1 < tokens.length && tokens[i + 1] !== 'do') header.push(tokens[++i]!);
+      stack.push({ done: 0, current: 0, iterations: iterations(header), closer: 'done' });
+    } else if (t === top().closer) {
+      const loop = stack.pop()!;
+      const body = loop.done + loop.current;
+      top().current += body > 0 ? body * loop.iterations : 0;
+    } else if (t === '&') top().current = 0;
+    else if (t === ';' || t === '&&' || t === '||' || t === '\n') {
+      top().done += top().current;
+      top().current = 0;
+    }
+  }
+  // loops left open (a command line cut off) count as they stand
+  let total = 0;
+  for (let k = stack.length - 1; k >= 0; k--) {
+    const f = stack[k]!;
+    const body = f.done + f.current + total;
+    total = body > 0 ? body * f.iterations : 0;
+  }
+  return total;
+}
+
+/** `timeout` (or coreutils' `gtimeout` on macOS) where a command begins: variables set for it, options, then the duration. */
+const TIMEOUT = /^(?:\w+=\S*\s+)*g?timeout(?:\s+(?:-[ks]\s*\S+|--?[a-zA-Z][\w-]*(?:=\S+)?))*\s+(\d+(?:\.\d+)?[smhd]?)(?=\s)/;
+
+/** Words after which a command begins, as after `;`. */
+const COMMAND_BEFORE = new Set(['do', 'then', 'else', 'elif', '!', 'time']);
+
+/**
+ * The command line with each command that `timeout N` starts replaced by a `sleep` as long as it
+ * can wait: N, or less if what it runs sleeps less (`timeout 0` sets no bound). Quotes count here,
+ * so a loop handed to `bash -c '…'` stays in the command it belongs to.
+ */
+function boundTimeouts(command: string): string {
+  let out = '';
+  let start = true;
+  for (let i = 0; i < command.length; ) {
+    const rest = command.slice(i);
+    const t = start ? TIMEOUT.exec(rest) : null;
+    if (t) {
+      const end = i + commandEnd(rest);
+      const bound = seconds(t[1]!) || Infinity;
+      out += `sleep ${Math.min(bound, foregroundSleep(command.slice(i + t[0].length, end)))} `;
+      i = end;
+      start = false;
+      continue;
+    }
+    const unit = rest.match(/^(?:[ \t]+|\d*[<>]&\d*-?|&>>?|[<>]+|[;&|(){}\n]|'[^']*'?|"(?:\\.|[^"\\])*"?|\\.|[^\s;&|(){}<>'"\\]+)/)?.[0] ?? rest[0]!;
+    out += unit;
+    i += unit.length;
+    if (/^[;&|({\n]$/.test(unit)) start = true;
+    else if (!/^[ \t]+$/.test(unit) && !/^\d*[<>]/.test(unit)) start = COMMAND_BEFORE.has(unit);
+  }
+  return out;
+}
+
+/** Where the command at the start of `text` ends: at `;`, `&`, `|`, a line break or a `)` it did not open, outside quotes. */
+function commandEnd(text: string): number {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '\\') i++;
+    else if (c === "'") i = text.indexOf("'", i + 1) < 0 ? text.length : text.indexOf("'", i + 1);
+    else if (c === '"') {
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++;
+    } else if (c === '(') depth++;
+    else if (c === ')' && depth-- === 0) return i;
+    else if (c === '&' && (/[<>]/.test(text[i - 1] ?? '') || text[i + 1] === '>')) continue;
+    else if (/[;&|\n]/.test(c) && depth === 0) return i;
+  }
+  return text.length;
+}
+
+function seconds(d: string): number {
+  if (d.startsWith('inf')) return Infinity;
+  const n = Number.parseFloat(d);
+  return n * ({ m: 60, h: 3600, d: 86400 }[d.at(-1)!] ?? 1);
+}
+
+/** How often a `for` runs from its header (`i in a b c`, `i in $(seq 1 60)`, `i in {1..60}`); unknown counts as unbounded. */
+function iterations(header: string[]): number {
+  const at = header.indexOf('in');
+  if (at < 0) return Infinity;
+  const words = header.slice(at + 1).filter((w) => !/^(&&|\|\||[;&|(){}\n])$/.test(w));
+  const list = words.join(' ');
+  const range = list.match(/^(-?\d+)\.\.(-?\d+)$/);
+  if (range) return Math.abs(Number(range[2]) - Number(range[1])) + 1;
+  const seq = list.match(/^\$? ?seq (-?\d+)(?: (-?\d+))?(?: (-?\d+))?$/);
+  if (seq) {
+    const [first, step, last] =
+      seq[3] !== undefined ? [Number(seq[1]), Number(seq[2]), Number(seq[3])] : seq[2] !== undefined ? [Number(seq[1]), 1, Number(seq[2])] : [1, 1, Number(seq[1])];
+    return step === 0 ? Infinity : Math.max(0, Math.floor((last - first) / step) + 1);
+  }
+  return words.some((w) => w.startsWith('$')) ? Infinity : words.length;
+}

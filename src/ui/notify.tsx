@@ -5,8 +5,8 @@
 // at every load, so a new key or a subscription the push service renewed reaches it.
 
 import { useEffect, useState } from 'react';
-import { api, standalone } from './api';
-import { failText, t } from './strings';
+import { api, standalone, failText } from './api';
+import { t } from './strings';
 
 type State = 'none' | 'install' | 'ask' | 'on';
 

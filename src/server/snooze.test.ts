@@ -1,37 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { needsYou } from '../core/types';
-import { CanvasRuntime } from './canvas';
-import { Store } from './db';
-import { FakeRuntime, type FakeSession, gitRepo, noForge, removeDir, until } from './testing';
+import { describe, expect, test } from 'bun:test';
+import { needsYou } from '../core/card';
+import { board, canvas, eachTest, item, restart, runtime, settle, workers } from './canvas-fixture';
+import { type FakeSession, until } from './testing';
 
-let dir: string;
-let main: string;
-let store: Store;
-let runtime: FakeRuntime;
-let canvas: CanvasRuntime;
+eachTest({ repo: { settings: { land: 'main' } } });
 
-const open = () => CanvasRuntime.start({ repos: [{ path: main, clones: 1, settings: { land: 'main' } }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10 });
-
-beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'obeya-snooze-'));
-  main = join(dir, 'main');
-  gitRepo(main);
-  mkdirSync(join(main, 'docs/plan'), { recursive: true });
-  store = new Store(':memory:');
-  runtime = new FakeRuntime();
-  canvas = await open();
-});
-afterEach(async () => {
-  canvas.shutdown();
-  await removeDir(dir);
-});
-
-const board = () => canvas.board;
-const item = (id: string) => board().item(id)!;
-const workers = () => canvas.repos[0]!.workers;
 const last = (id: string) => board().events(id).at(-1)!;
 const HOUR = 60 * 60_000;
 /** A time from now, as the agent or the browser sends it. */
@@ -66,8 +39,7 @@ describe('the agent snoozes itself', () => {
 
     // a restart starts no session for it, and the time comes all the same
     const n = runtime.sessions.length;
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     expect(runtime.sessions.length).toBe(n);
     canvas.wakeDue(Date.parse(until) - 1000);
     expect(runtime.sessions.length).toBe(n);
@@ -420,8 +392,7 @@ describe('edges a review found', () => {
     board().work(id, { state: 'live', landed: JSON.stringify({ commit: 'abc', restarts: true, waits: true }) });
     s.call('snooze', { until: later(10 * HOUR), why: 'x' });
     s.emit({ type: 'idle' });
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     expect(runtime.last.inbox[0]).toContain('Obeya has started again and runs main with your change now.');
     expect(JSON.parse(board().row(id).landed!)).toEqual({ commit: 'abc' });
     expect(item(id).snoozed).toBeUndefined();
@@ -463,11 +434,6 @@ describe('the Coordinator waits on a card', () => {
 });
 
 describe('a card that starts later', () => {
-  // the timers' work done, and the workers it started at work in their workspaces
-  const settle = async () => {
-    await new Promise((r) => setTimeout(r, 5));
-    await Promise.all(canvas.repos.map((r) => r.workers.prepared()));
-  };
   const DAY = 24 * HOUR;
   const worker = () => runtime.sessions.findLast((x) => x.spec.role === 'worker')!;
 
@@ -489,8 +455,7 @@ describe('a card that starts later', () => {
 
     // its source card's work is done by then, and the one clone free
     await canvas.act(src, { action: 'stop' });
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     canvas.wakeDue(Date.parse(at) - 1000);
     expect(item(p.id).queue).toBeUndefined();
     canvas.wakeDue(Date.parse(at) + 1000);

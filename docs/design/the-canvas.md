@@ -49,12 +49,18 @@ Right, before the workspace pool: the usage limits of the plans Claude Code and 
 machine are logged in with, every limit of a plan as a thin meter, one above the other in the
 order of the list below, without labels or numbers (the session's, five hours, above the week's for
 all models and the week's for a single model), coloured in the grade the plan's usage endpoint gives
-it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). The bar shows
+it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). A tick on each meter
+marks how much of its window has gone by (Claude's session five hours, its week seven days, a Codex
+window as long as Codex says it is, counted back from when it starts anew; no tick where the length
+or the reset is unknown): green while the usage is at or under it, red once the usage runs ahead of
+the time, so a glance tells whether the limit lasts until it starts anew. The bar shows
 every plan with a login, whether agents run on it or not, each beside its name ("Claude", "Codex")
 when it shows two, without one when it shows one. A click lists every limit of
 every plan (the session, the week for all models, the week for a single model) with its meter and
-percentage, when it starts anew, and where the numbers come from and as of when. "Usage limits in
-the bar" under Configuration → General turns them off and on (on until then). The phone view shows
+percentage, when it starts anew and how long until then ("in 3 h 12 min", counting down while the
+list is open), and where the numbers come from and as of when; a line under it says what the tick
+means, for whoever sees it the first time, until they put it away with "Got it" (kept in the
+browser). "Usage limits in the bar" under Configuration → General turns them off and on (on until then). The phone view shows
 the same at the right of its bar; its list hangs from the bar as wide as the screen.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
@@ -92,8 +98,9 @@ orange of a waiting card, everything that waits for the owner on every canvas: t
 them, and per canvas one for Obeya's answers waiting unread; the app's icon carries the same number
 (see App). The count stands still: it always sits in the same place, so the eye finds it without a
 pulse. A click lists under it "Needs you", the phone's list (see The phone view), built once
-for both: the same entries in the same order. Its head counts what waits on every canvas, as the
-button does; a snoozed card is neither listed nor counted until it comes back (see Snoozing a
+for both: the same entries in the same order. Its head carries no count, the button just above it
+has it; pinned as the sidebar (below), where the button is gone, the head counts what waits on
+every canvas in its stead. A snoozed card is neither listed nor counted until it comes back (see Snoozing a
 card). Each entry is a light row, its title and what it waits for since when, without the waiting
 card's orange frame, set apart from the next by a line, and the card open now is marked in it.
 With several canvases, each canvas in the configuration's order heads what waits on it, in a
@@ -156,7 +163,7 @@ progress and its number after the last word. Only two lines fit above the workst
 is at least as wide as its title needs for two (a collapsed one grows a line taller instead); the
 server sizes projects too, so the title's width is estimated from its length, not measured. Its
 buttons ("Arrange", "Start all N", "Archive" once done) show while the pointer is on the project,
-at all times on a touch screen: beside the title where all of them fit on its line, else all
+at all times on a touch screen, and zoomed out as well, a size larger so they stay legible: beside the title where all of them fit on its line, else all
 together in a "…" menu at the head's top right, whose room the title always leaves, so it never
 reflows. Never some beside the title and some in the menu.
 
@@ -347,7 +354,8 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
 
 - *The card*: off-white card stock on a warm dotted board, nearly square corners, a short hard
   shadow, the state as a rule across the top in its ink (a band when zoomed out). No ruled lines.
-  The owner's turn is an orange frame and a pulsing pushpin with "!" (the pulse, a halo growing and
+  The owner's turn is an orange frame (thicker zoomed out, but on the same cards at every zoom: none
+  on a snoozed card, 2026-11-11) and a pulsing pushpin with "!" (the pulse, a halo growing and
   fading, changes nothing but size and opacity: an animation the browser has to repaint makes the
   whole card under it shimmer on a zoomed-out canvas, 2026-10-30); an idea is on rose stock; a
   proposal only pencilled in (dashed, no stock); a queued card's rule dashed; done and live cards
@@ -473,6 +481,9 @@ code, a generic one otherwise.
   as a compositor-only scaled layer it did the same. Rejected: dropping the bar's blur or changing
   the overlay instead, which either also ends the gaps; the bar keeps its look and the overlay its
   clock.
+- **The total is counted once on screen** (owner, 2026-11-11): the list opened under the button
+  repeated the button's count in its head, right below it. Docked, the button is gone, so the
+  sidebar's head keeps the total.
 - **A snoozed card leaves "Needs you"** (issue #50, 2026-11-03): the owner put it off, so it
   waits for nobody until it comes back, and listing it under what needs them (uncounted, at the
   end) only made the list longer. On the canvas it still stands, greyed; on the phone it moves to

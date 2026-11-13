@@ -3,26 +3,24 @@
 // bar, the canvas's, whose list names the cards that cost the most. The server counts the costs
 // whether they are shown or not, and tells every page when the owner turns them on or off.
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import type { Item } from '../core/types';
 import { money, t } from './strings';
+import { useMenuClose } from './menu';
+import { signal } from './signal';
 
 let shown = false;
-const listeners = new Set<() => void>();
+const changed = signal();
 
 /** What the server said of the setting: on connect and whenever the owner changes it. */
 export function setCostsShown(on: boolean) {
   if (on === shown) return;
   shown = on;
-  for (const l of listeners) l();
+  changed.emit();
 }
 
 /** Whether the page shows what the agents cost. */
-export const useCostsShown = () =>
-  useSyncExternalStore(
-    (l) => (listeners.add(l), () => void listeners.delete(l)),
-    () => shown,
-  );
+export const useCostsShown = () => useSyncExternalStore(changed.on, () => shown);
 
 /** A cost as the page writes it: "≈ $1.23", below a cent "< $0.01". */
 export const costLabel = (usd: number) => (usd < 0.005 ? t.costs.under(money(0.01)) : t.costs.about(money(usd)));
@@ -60,17 +58,7 @@ export function CostsPill({ total, items, onOpen }: { total: number | undefined;
   const on = useCostsShown();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    addEventListener('pointerdown', away, true);
-    addEventListener('keydown', esc);
-    return () => {
-      removeEventListener('pointerdown', away, true);
-      removeEventListener('keydown', esc);
-    };
-  }, [open]);
+  useMenuClose(open, ref, () => setOpen(false), true);
   if (!on || !total) return null;
   // a project's figure holds its workstreams', which the list names themselves
   const top = items

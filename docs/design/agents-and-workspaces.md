@@ -19,6 +19,11 @@ Obeya's environment without the marks of a Claude Code session that may have sta
 such a machine `claude-token` in Obeya's home, once there, takes the variable's place: it holds the
 newest token the owner gave Obeya, which the variable Obeya was started with may not.
 
+On Windows, program lookup and additions to the search path preserve the environment's
+case-insensitive variable names even in copies of the environment: `Path` and `PATH` name the
+same search path. Where a copy holds several spellings, the one that sorts first counts (`PATH`
+before `Path`), the one a started program gets. Unix environment names remain case sensitive.
+
 A worker is one session per card with streaming input, permission mode `auto`, and the repository's
 Claude Code settings and CLAUDE.md (only once the owner trusted them, see Trusting a repository's
 commands); after a restart it resumes by session id. A project agent is one session per project in
@@ -106,7 +111,8 @@ Claude Code says it stands for (the one it lists under the alias, else the newes
 lists): the newest of its family Claude Code lists, by its id or under the alias, since a new model
 (Fable 5.2) comes listed by its id while the alias still names the one before. An agent on this
 machine is then given that model's id instead of the alias where the two differ, so Fable runs on
-Fable 5.2; one on another machine gets the alias. Claude Code is asked by an idle session of its own
+Fable 5.2; one on a host likewise by what that host's Claude Code lists (see Updating Claude Code and Codex),
+the alias as it is until it has said. Claude Code is asked by an idle session of its own
 as Obeya starts, again after ten minutes or once its version changed, in the background: until it
 has answered, the aliases show without a version and go to Claude Code as they are, and no menu
 waits for it. Which version runs shows on a started card's conversation heading, as Claude Code's
@@ -136,7 +142,7 @@ instructions that differ by harness (how a worker waits); what it leaves out is 
 changes only while the card waits to start (planned, proposed, in the queue); once it is at work the
 choice stays as it began.
 
-#### Updating Claude Code
+#### Updating Claude Code and Codex
 
 Which Claude Code is the newest, npm's registry says (the dist-tag of the channel Claude Code's own
 settings update from, `autoUpdatesChannel`: `latest`, or `stable`), asked in the background as Obeya
@@ -147,8 +153,31 @@ The click runs `claude update` on the machine's own installation (it updates one
 manager through that manager), or, where there is none (the checkout on the SDK's binary), the
 official installer; then Obeya looks at Claude Code again and asks it for its models before the
 line goes: meanwhile it says "Updating Claude Code…", after a failure why, with "Try again".
-Agents that start afterwards run on the new version, one at work keeps its own. Sessions on another
-machine run that machine's `claude`, which Obeya neither checks nor updates.
+Agents that start afterwards run on the new version, one at work keeps its own.
+
+Codex alike: the newest is npm's `latest` of `@openai/codex` (Codex has no channels), asked once
+Codex is found installed, and a Codex behind it gets the same line in the Codex part of the menu
+and in "Agents and models" ("Codex 0.167.0 is out"). The click runs `codex update`, which updates
+Codex through whatever installed it (npm, bun, pnpm, Homebrew, the standalone installer); a Codex
+older than that command (its `update --help` is the general help) is updated by the package manager
+it lives in, by its real path: npm's or bun's global packages, Homebrew's cask; any other says it
+cannot update itself. Then Obeya looks at Codex again and asks it for its models before the line
+goes, so a model that came with the new version is in the menus (and a family's agents run on it,
+see Codex). Obeya looks at both again ten minutes after the last look when a menu of models asks,
+so one updated on the command line shows its version and models then.
+
+Sessions on a host run that host's own `claude` and `codex`, which Obeya looks at over the
+connection, each host the configuration names: as Obeya starts, again ten minutes after the last
+when a menu of models asks, on a host that did not answer once it does. The look asks for each
+one's version, for Claude Code also for the channel its settings there update from, whose newest
+npm says (asked from this machine); an idle Claude Code session started there, as here, lists its
+models, which an agent there then runs on (an alias as the newest of its family; a Codex agent
+there picks its family's newest from that host's catalog as it starts). A host whose Claude Code or
+Codex is behind gets a line of its own under this machine's, in both places: "Claude Code 2.1.322
+is out, build-box has 2.1.300" with an "Update" button that runs `claude update` (or Codex's update
+as here) there, then looks again and asks for the models, with "Updating Claude Code on build-box…"
+meanwhile and why it failed after a failure. A host without the harness, or one that has not
+answered yet, shows no line for it.
 
 ### What agents cost
 
@@ -238,13 +267,19 @@ The pool is what the configuration names. A clone no longer named leaves it: a f
 leased one when its card gives it back (no card moves mid-work). A clone Obeya made is then deleted
 from disk, after its app stopped (see Parking), if nothing would be lost: no uncommitted or untracked files
 (ignored ones aside), no stash, no submodules, no worktree from it in use, and no branch, tag or
-detached HEAD with commits on no branch of `origin` (fetched with pruning) unless each file they
-change is as on `origin`'s main branch, so a branch squashed or rebased in its pull request counts as
-landed (where work lands on the local main, `origin` is the Obeya checkout). The folder is moved
-aside first, so a clone named again meanwhile (here or by another canvas) is never removed under a
-card. Otherwise it stays: the log says once what lies in it, the pool's list shows "stays: work not
-landed in <path>", and a later start looks again; raising the number takes it back as it
-is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
+detached HEAD with commits on no branch of `origin` (fetched with pruning), unless its changes are on
+`origin`'s main branch already or it is a tag `origin` has too (a release tagged on a branch since
+deleted). Changes count as on the main branch where merging the branch into the main branch's head
+changes nothing, or, where that merge conflicts, merging it into one of the main branch's last 50
+commits that changed the branch's files does (with a git before 2.38: where each file it changed is
+there as the branch has it): a branch squashed or rebased in its pull request counts as landed, also
+once the main branch changed the same files again. A merge into the head that is clean but changes
+something ends the search, so work not landed costs a handful of git calls, not one per commit (over
+SSH each is a round trip). Where work lands on the local main, `origin` is the Obeya checkout. The folder is moved aside first, so a
+clone named again meanwhile (here or by another canvas) is never removed under a card. Otherwise it
+stays: the log says once what lies in it, the pool's list shows "stays, as work not landed lies
+there:" with what (a branch or tag by name with how many commits, uncommitted changes, a stash) and
+the path, and a later start looks again; raising the number takes it back as it is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
 workspace on this machine whose folder is gone (moved or deleted by hand) and that the configuration
 no longer names leaves at once, clone or worktree, held or not: its card names no workspace any
 more, one at work is planned again, its log says so, and its next start takes another. Only a
@@ -339,12 +374,38 @@ A free clone is blocked when the last look at it (see Workspaces) says no new ca
 uncommitted or untracked changes (the list names the first five files), git fails in it, its
 folder is missing, its machine does not answer over SSH (one line per machine), or git failed making
 it ready for a card in the last minute. Blocked clones do not count as free, and the list says in
-orange, per clone, why and what puts it right: commit or discard the changes; repair it, or delete
-a clone Obeya made, which its next start makes again; clone it again or take the path out of the
-configuration; check the network and SSH access. Showing the pool looks again, in the background,
-at free clones whose look is old by the same measure or that were never looked at, so the pill tells
-before a card waits what a waiting card would find. A card queued for want of a workspace points to
-the pill for the reason.
+orange, per clone, why and what puts it right: for uncommitted changes, the card whose branch the
+clone is on (a link, as in the rows) and whether its work has landed, and "Commit to a new branch
+and free the clone" (see Leftovers in a free clone); repair it, or delete a clone Obeya made, which its next start
+makes again; clone it again or take the path out of the configuration; check the network and SSH
+access. Showing the pool looks again, in the background, at free clones whose look is old by the
+same measure or that were never looked at, so the pill tells before a card waits what a waiting card
+would find. A card queued for want of a workspace points to the pill for the reason.
+
+#### Leftovers in a free clone
+
+What a card leaves uncommitted in its clone (files of a landed task, a generated file a tool wrote
+back with other line endings) would keep every other card out of it. "Commit to a new branch and
+free the clone" on such a clone's line in the pool's list, with a line beside it saying where the
+changes go, puts it all (untracked files too, ignored ones aside) into a commit of Obeya's, marked by
+the trailer `Obeya-Kept: leftovers`, on a branch of its own in that clone, `obeya-leftovers/<branch
+it was on>-<date>-<time>` in the machine's local time, made from the commit checked out (a file
+staged otherwise than the working tree has it first gets a commit of its own as staged, so neither
+is lost); nothing is pushed. The clone is then clean on the branch it was on, and a confirmation
+names the branch. Changes of line endings alone, none of them staged, are dropped without a branch.
+A clone stays as it is, with a message, where files are marked assume-unchanged (`add` leaves those
+out and the reset would overwrite them) or a submodule has changes of its own (no commit here holds
+them, and the clone would stay dirty); so does one where git fails on the way, its index put back as
+it was. It takes effect at once,
+without an undo window: the work is on the branch. A clone Obeya made is freed so by itself once a
+card would take it but for the leftovers (a card starting or waiting finds no clean free clone),
+once for the changes as it found them, the first such clone not tried already, so one that could not
+be freed does not keep a card from the next; the line beside the button says so. A clone the owner
+listed is freed only by the button, since it may be one they also work in by hand. The button acts on
+the clone of the machine its line is under, never on one with the same path elsewhere. The leftovers'
+branch is work not on `origin`, never counted as landed in another form (its staged snapshot may
+hold what its last commit undoes): a clone holding one stays on disk when it leaves the pool (see
+above).
 
 ### Folders without git
 
@@ -507,14 +568,16 @@ unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' dire
 `exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
 another pid. One shared connection where `ControlMaster` exists (not Windows), its sockets in
 `/tmp/obeya-ssh-<uid>` for the owner alone, since whoever reaches a socket uses its connection;
-`BatchMode`; keep-alives that notice a dropped link within 45 s. Calls the server still blocks on fail
-at once after a host's connection failed, and the host is asked again in the background 30 s on;
-when it answers, waiting cards look again.
+`BatchMode`; keep-alives that notice a dropped link within 45 s. The server never waits on a call
+there: each runs beside its other work. A host whose connection failed counts as unreachable until a
+call there answers again (the pool's next look at its free clones, a minute on, say); then waiting cards look
+again.
 
 #### Logins and files
 
-Nothing secret is stored there: the repository's GitHub login (from `git credential fill` here, read
-in the background, see Stalls) and
+Nothing secret is stored there: the repository's GitHub login (the token of the GitHub account set
+for it, see GitHub account in Repositories and configuration, else from `git credential fill` here;
+read in the background, see Stalls) and
 the Claude login (`claude-token` in Obeya's home, from `claude setup-token`, else
 `CLAUDE_CODE_OAUTH_TOKEN`) travel as the first line
 of stdin of each command and session (a Codex session gets no Claude login); the clones' credential helper reads `GH_TOKEN` (after an empty
@@ -656,6 +719,14 @@ for its hooks), and what the repository's work needs.
 - **An update of Claude Code at the owner's click** (owner, 2026-11-10), shown where models are
   chosen. Rejected: updating by itself, which Claude Code does in interactive use and may be turned
   off there; a pill in the bar, which Claude Code's near-daily releases would keep there.
+- **Codex's update runs `codex update`** (2026-11-10), which knows each way Codex is installed and
+  updates it the same way, with a package manager's own command only for a Codex older than it.
+  Rejected: Obeya choosing the package manager itself every time, which would guess wrong for the
+  standalone installer and for any manager Codex adds later.
+- **Each host's Claude Code and Codex are checked and updated there, over the connection** (owner, 2026-11-10),
+  with `claude update` (`codex update`) on the host, so its own kind of installation (npm, the installer) updates as
+  it would by hand. Rejected: copying this machine's Claude Code there, which may be built for
+  another platform and would leave the host's own installation behind on its `PATH`.
 - **An alias stands for the newest of its family Claude Code lists** (owner, 2026-11-10), and an
   agent gets that model's id where the alias names an older one. Rejected: the alias as Claude Code
   resolves it, which kept Fable on 5.1 for as long as Claude Code listed 5.2 only by its id;
@@ -749,6 +820,24 @@ for its hooks), and what the repository's work needs.
   the files it then names only by their timestamps are compared by content. Rejected: a copy of the
   index for each look (one more file to copy per look, and over SSH a shell on the host); retrying
   the command that found the lock held (each of Obeya's, the agents' and the owner's own would need it).
+- **Leftovers in a free clone go onto a branch of their own, by themselves in a clone Obeya made**
+  (2026-11-11): files a landed card left uncommitted, or a generated file with other line endings,
+  blocked a clone for every card until the owner cleaned it up by hand, while cards waited. Kept on a
+  branch, nothing is lost and the clone is free; Obeya does it once a card needs the clone, not at
+  every look, so a tool still writing there does not leave a branch a minute. Rejected: discarding
+  them (they may be work); a stash (shared by the clone's branches and found by no one); committing
+  them onto the card's own branch (a landed card's branch would hold work again); doing it in a clone
+  the owner listed without being asked; a button "Save leftovers and free it" with the rest in a
+  tooltip (it left the owner guessing what happens and where the changes go).
+- **A tag `origin` has, and a branch whose changes the main branch had at some point, count as
+  landed** (2026-11-11): two clones stayed on disk for good as "work not landed", held by a release
+  tag that origin has but no branch of origin holds; and a squashed pull request's branch counted
+  only while each of its files was still as on the main branch's head. Older commits are tried only
+  where merging into the head conflicts: a clean merge that changes something is work not landed,
+  and trying all 50 for each such branch took thousands of round trips on a host over SSH (counting
+  a branch whose changes main took and later removed as landed is what that gives up, on the safe
+  side). Rejected: comparing patch-ids of the main branch's commits (git needs them piped in, which a
+  run over SSH does not offer).
 - **Free clones are chosen by their last look, the one taken looked at again** (2026-10-21): in a
   large repository (GitHub issue #2: 9,188 files, on Windows) or over SSH, `git status` in every free
   clone at each look held the server, on every canvas. Rejected: asking git while choosing; a start

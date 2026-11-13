@@ -8,15 +8,18 @@
   // stayed in the video, as the director paints over only the top page's. Pointer, rings and image
   // stage belong to the top page too.
   if (window.__demo || window !== window.top) return;
-  // The time each frame was painted, in a strip of black and white cells at the bottom left: on a
+  // The time each frame was painted, in a strip of black and white cells at the top left: on a
   // busy machine the screencast hands frames over seconds after they were painted, so the director
   // reads the time from the picture (`readClock` in timeline.ts) and paints the strip over in the video.
-  const CLOCK = { bits: 24, cell: 3, left: 2, bottom: 3 };
+  // At the top, as no scrollbar takes the top of the window: at the bottom, a page a few pixels too
+  // wide put a horizontal scrollbar under the strip, which pushed it up out of the place the
+  // director reads and paints over, and the video showed it flickering (2026-11-12).
+  const CLOCK = { bits: 24, cell: 3, left: 2, top: 3 };
   const strip = document.createElement('canvas');
   strip.width = CLOCK.bits * CLOCK.cell;
   strip.height = CLOCK.cell;
   strip.style.cssText =
-    `position:fixed;left:${CLOCK.left}px;bottom:${CLOCK.bottom}px;width:${strip.width}px;height:${strip.height}px;` +
+    `position:fixed;left:${CLOCK.left}px;top:${CLOCK.top}px;width:${strip.width}px;height:${strip.height}px;` +
     'pointer-events:none;z-index:2147483647;image-rendering:pixelated;';
   const pen = strip.getContext('2d');
   function tick() {
@@ -117,7 +120,6 @@
   // dimming shadow on every ring would lay itself over the other rings' elements. A clip path, not
   // an SVG mask: the mask's full-page layer stalled the page for about 0.27 s each time it went
   // (seen as a jerk in a drag or a card appearing, in every render of the hero video).
-  const SVG = 'http://www.w3.org/2000/svg';
   function ensureDim() {
     if (dim && dim.el.isConnected) return dim;
     const el = document.createElement('div');

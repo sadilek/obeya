@@ -160,7 +160,7 @@ test('a cloud service is tested with the sentence, then hears every recording; a
     if (process.platform !== 'win32') expect(statSync(join(home, VOICE_FILE)).mode & 0o777).toBe(0o600);
 
     // a recording goes to the service, with the card titles as a prompt; the key stays when another test leaves it out
-    const voice = new VoiceIn(home, local, fetcher);
+    const voice = new VoiceIn(home, local, { fetcher });
     writeFileSync(join(home, 'speech.webm'), 'webm');
     expect(await voice.transcribe(join(home, 'speech.webm'), 'Export für Vermieter')).toEqual({ text: 'Starte die Karte Export für Vermieter.', doubtful: false });
     expect(sent.at(-1)!.form.get('prompt')).toBe('Export für Vermieter');
@@ -225,7 +225,7 @@ test("a scratch Obeya's voice in loads the recognition only once the owner speak
   try {
     let warmed = 0;
     const local = { warm: () => void warmed++ } as unknown as LocalTranscriber;
-    const lazy = new VoiceIn(home, local, fetch, true);
+    const lazy = new VoiceIn(home, local, { lazy: true });
     lazy.warm(true);
     expect(warmed).toBe(0);
     lazy.warm();

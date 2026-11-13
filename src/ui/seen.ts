@@ -1,6 +1,7 @@
 // What of each card's conversation the owner has had in view, in this browser: its messages after
 // that are new to them (counted on the phone's button, marked in the conversation).
 import { useEffect, useRef, useState } from 'react';
+import { local, read, write, writeJson } from './stored';
 
 /** The last event of each card's conversation the owner had in view, by card. */
 const SEEN = 'obeya-seen';
@@ -8,8 +9,9 @@ const SEEN = 'obeya-seen';
 const BEFORE = 'obeya-phone-seen';
 
 function all(): Record<string, number> {
+  // the former key counts only while the current one is missing, not where it is broken
   try {
-    return JSON.parse(localStorage.getItem(SEEN) ?? localStorage.getItem(BEFORE) ?? '{}') as Record<string, number>;
+    return JSON.parse(read(local, SEEN) ?? read(local, BEFORE) ?? '{}') as Record<string, number>;
   } catch {
     return {};
   }
@@ -19,11 +21,8 @@ function all(): Record<string, number> {
 export const seenOf = (card: string): number => all()[card] ?? -1;
 
 export function markSeen(card: string, id: number) {
-  try {
-    const kept = Object.entries(all()).filter(([c]) => c !== card);
-    localStorage.setItem(SEEN, JSON.stringify(Object.fromEntries([...kept.slice(-299), [card, id]])));
-    localStorage.removeItem(BEFORE);
-  } catch {}
+  const kept = Object.entries(all()).filter(([c]) => c !== card);
+  if (writeJson(local, SEEN, Object.fromEntries([...kept.slice(-299), [card, id]]))) write(local, BEFORE, null);
 }
 
 /** Whether the page is in view: not in a background tab, not behind a locked screen. */

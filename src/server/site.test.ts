@@ -1,19 +1,20 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { DemoSite } from '../core/config';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DemoSite } from '../adapters/types';
 import { MESSAGES } from '../core/messages';
-import { Board } from './board';
+import type { Board } from './board';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
-import type { SharePage, ShareTarget } from './share';
 import { Sharing } from './share';
-import { MANIFEST, NOT_FOUND, parseEnv, repoMark, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
+import { MANIFEST, type PageDemo, repoMark, type SharePage, type ShareTarget, siteKey, siteMissing, siteName, siteTarget } from './site';
+import { NOT_FOUND, pagesHash } from './site-pages';
+import { parseEnv } from './site-hosts';
 import { PAGES_HASH } from '../core/page-changes';
-import { FakeRuntime, gitRepo, noForge, removeDir } from './testing';
+import { deployScript, FakeRuntime, fakeSiteHost, gitRepo, noForge, removeDir, testBoard, videoDemo } from './testing';
 
 let dir: string;
 let home: string;
@@ -21,54 +22,28 @@ let repo: string;
 let demo: string;
 let target: ShareTarget;
 
-// the deploy line's stand-in, a script in the repository: copies the site's directory to `deployed/`
-// (a host's snapshot), records it with the env file's TOKEN, and fails while the file `fail` exists.
-// While `lag` exists the host keeps serving the deployment before; each line of `race` is another
-// machine's snapshot, deployed right after this one (one per deploy)
-const DEPLOY = `
-const { appendFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
-const [site, out] = process.argv.slice(2);
+// the deploy line's stand-in, a script in the repository: records the deploy with the env file's
+// TOKEN and fails while the file `fail` exists. While `lag` exists the host keeps serving the
+// deployment before; each line of `race` is another machine's snapshot, deployed right after this
+// one (one per deploy)
+const DEPLOY = deployScript({
+  before: `
+if (more.length) writeFileSync(out + '/args', JSON.stringify(more));
 appendFileSync(out + '/deploys', readdirSync(site).sort().join(' ') + ' token=' + (process.env.TOKEN ?? '') + '\\n');
 console.log('Uploaded ' + readdirSync(site).length + ' entries');
 if (existsSync(out + '/fail')) { console.error('upload refused: token expired'); process.exit(3); }
-if (existsSync(out + '/lag')) process.exit(0);
-rmSync(out + '/deployed', { recursive: true, force: true });
-cpSync(site, out + '/deployed', { recursive: true });
+if (existsSync(out + '/lag')) process.exit(0);`,
+  after: `
 if (existsSync(out + '/race')) {
   const [other, ...rest] = readFileSync(out + '/race', 'utf8').trim().split('\\n');
   if (rest.length) writeFileSync(out + '/race', rest.join('\\n'));
   else rmSync(out + '/race');
   rmSync(out + '/deployed', { recursive: true, force: true });
   cpSync(other, out + '/deployed', { recursive: true });
-}
-`;
-
-// the host: serves what was deployed last, and a missing file with its 404.html (HTTP 404) where it has one,
-// as Cloudflare Pages, GitHub Pages and Netlify do; `down` answers 503, `token` sends a request without it to a login;
-// `onManifest` runs before a read of the manifest is answered; `fallback` answers a missing file with the
-// root's index.html (as Cloudflare Pages does for a site without a 404.html), `garbled` the manifest with it;
-// `pretty`: as Cloudflare Pages, `…/index.html` redirects (308) to `…/`
-const host: { down?: boolean; token?: string; onManifest?: () => void; fallback?: boolean; garbled?: boolean; pretty?: boolean } = {};
-const server = Bun.serve({
-  port: 0,
-  fetch(req) {
-    if (host.down) return new Response('down', { status: 503 });
-    if (host.token && req.headers.get('X-Token') !== host.token) return Response.redirect('https://login.example.dev/', 302);
-    let path = decodeURIComponent(new URL(req.url).pathname);
-    if (path === `/${MANIFEST}`) host.onManifest?.();
-    if (host.pretty && path.endsWith('/index.html')) return new Response(null, { status: 308, headers: { location: path.slice(0, -'index.html'.length) } });
-    if (path.endsWith('/')) path += 'index.html';
-    const file = join(dir, 'deployed', path);
-    const root = join(dir, 'deployed', 'index.html');
-    if (host.garbled && path === `/${MANIFEST}`) return new Response(Bun.file(root));
-    if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
-    const missing = join(dir, 'deployed', NOT_FOUND);
-    if (existsSync(missing)) return new Response(Bun.file(missing), { status: 404 });
-    return host.fallback && existsSync(root) ? new Response(Bun.file(root)) : new Response('not found', { status: 404 });
-  },
+}`,
 });
-afterAll(() => server.stop(true));
-const URL_ = `http://localhost:${server.port}/`;
+
+const { url: URL_, host, deployed } = fakeSiteHost(() => dir);
 
 const SITE = (extra: Partial<DemoSite> = {}): DemoSite => ({
   title: 'Team demos',
@@ -83,7 +58,6 @@ const SITE = (extra: Partial<DemoSite> = {}): DemoSite => ({
 const make = (site: DemoSite, at = home, machine = 'a', language: 'de' | 'en' = 'de', by = 'Ada Lovelace') =>
   siteTarget({ ...site, deploy: site.deploy.replace('__OUT__', dir) }, repo, at, MESSAGES.en.share, { machine, checkWaits: [0, 10, 10], language, by });
 const siteDir = (at = home) => join(at, 'sites', siteKey(URL_), 'site');
-const deployed = () => join(dir, 'deployed');
 const deploys = () => readFileSync(join(dir, 'deploys'), 'utf8').trim().split('\n');
 
 beforeEach(() => {
@@ -94,36 +68,31 @@ beforeEach(() => {
   writeFileSync(join(repo, 'deploy.ts'), DEPLOY);
   mkdirSync(join(home, 'sites/demos'), { recursive: true });
   writeFileSync(join(home, 'sites/demos/deploy.env'), '# for the host\nexport TOKEN="secret-1"\nOTHER=x\n');
-  demo = join(dir, 'demo');
-  mkdirSync(demo);
-  writeFileSync(join(demo, 'demo.mp4'), 'video');
+  demo = videoDemo(join(dir, 'demo'));
   writeFileSync(join(demo, 'poster.jpg'), 'poster');
-  writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n');
   writeFileSync(join(demo, 'report.html'), 'not for colleagues');
   target = make(SITE());
 });
-afterEach(async () => {
-  await removeDir(dir);
-  delete host.down;
-  delete host.token;
-  delete host.onManifest;
-  delete host.fallback;
-  delete host.garbled;
-  delete host.pretty;
-});
+afterEach(() => removeDir(dir));
 
-const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({
+/** A page of one demo version (its fields among `extra`), and the later ones (`more`). */
+const page = (slug: string, { title, text, kind, chapters, dir, more = [], ...extra }: Partial<Omit<SharePage, 'demos'> & PageDemo> & { more?: PageDemo[] } = {}): SharePage => ({
   slug,
-  title: `Titel ${slug}`,
-  text: 'Erster Satz <b>roh</b>. Zweiter Satz.',
-  kind: 'video',
-  chapters: [
-    [0, 'Vorher'],
-    [12.5, 'Nachher'],
+  demos: [
+    {
+      title: title ?? `Titel ${slug}`,
+      text: text ?? 'Erster Satz <b>roh</b>. Zweiter Satz.',
+      kind: kind ?? 'video',
+      chapters: chapters ?? [
+        [0, 'Vorher'],
+        [12.5, 'Nachher'],
+      ],
+      dir: dir ?? demo,
+    },
+    ...more,
   ],
   pr: null,
   language: 'de',
-  dir: demo,
   shared: [],
   ...extra,
 });
@@ -215,6 +184,12 @@ describe('a site Obeya keeps', () => {
     expect(overview()).toContain('<h1>Team demos</h1>');
     expect(overview()).toContain(`${CREDIT_DE}</main>`);
     expect(readFileSync(join(deployed(), 'index.html'), 'utf8')).toBe(overview());
+  });
+
+  test('a deploy line keeps a quoted value inside a word together, without its quotes, as a shell does', async () => {
+    target = make(SITE({ deploy: `deploy.ts {dir} __OUT__ --message="Demo of the week" --tag='a b'` }));
+    expect('url' in (await target.publish(page('csv-export-abc123')))).toBe(true);
+    expect(JSON.parse(readFileSync(join(dir, 'args'), 'utf8'))).toEqual(['--message=Demo of the week', '--tag=a b']);
   });
 
   test("writes each page in its demo's language and the overview in the repository's", async () => {
@@ -389,7 +364,7 @@ describe('a site Obeya keeps', () => {
     mkdirSync(join(art, 'data'), { recursive: true });
     writeFileSync(join(art, 'index.html'), '<html><body><h2>Graph</h2><script src="data/chart.js"></script></body></html>');
     writeFileSync(join(art, 'data/chart.js'), 'draw()');
-    const artifact = (extra: Partial<SharePage> = {}) => page('auswertung-abc123', { kind: 'html', chapters: [], dir: art, ...extra });
+    const artifact = (extra: Parameters<typeof page>[1] = {}) => page('auswertung-abc123', { kind: 'html', chapters: [], dir: art, ...extra });
     expect(await target.publish(artifact())).toMatchObject({ url: `${URL_}auswertung-abc123/` });
     const at = join(siteDir(), 'auswertung-abc123');
     expect(readdirSync(at).sort()).toEqual(['artifact', 'index.html', 'meta.json']);
@@ -812,7 +787,7 @@ describe('sharing to a site', () => {
   let sharing: Sharing;
 
   beforeEach(() => {
-    board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ path: repo });
     sharing = new Sharing({
       board,
       runtime: new FakeRuntime(),
@@ -903,7 +878,7 @@ test("a repository whose settings name a site: the canvas says the env file it l
   rmSync(join(home, 'sites/demos/deploy.env'));
   // the owner trusted the site
   const store = new Store(':memory:');
-  store.trustCommands(shop, commandsOf(readShared(shop)));
+  store.trustCommands(shop, commandsOf(await readShared(shop)));
   const canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), forge: noForge });
   try {
     expect(canvas.repos[0]!.site).toEqual(SITE());

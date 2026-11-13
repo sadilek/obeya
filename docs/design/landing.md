@@ -20,7 +20,15 @@ The branch goes onto `main` as the local checkout has it, also from a clone whos
 remote (one listed in the settings, or made while work went out as pull requests): what other cards
 landed there and nobody pushed yet is under it, so the fast-forward cannot fail for a diverged
 `main`; the clone fetches that commit from the checkout only where none of its branches stands on
-it. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
+it. With `push` (see Repository settings), Obeya then pushes the local `main` to `origin` within the
+same landing, never forced, so a `main` shared there is current right after the approval; the log
+says "Pushed to origin/<main>". The push carries all of the local `main`, also what landed earlier
+and was not pushed. A refused push (`main` moved on `origin`, protection, rights) does not undo the
+landing: the card stays `live`, its conversation shows why as an error (the remote's own words and
+git's reason, without the command; where `main` moved on `origin`, that it has commits the local one
+lacks, which Obeya never pushes over), a line above the microphone says it too, and the worker hears
+that its work is not on `origin` yet. The next landing pushes again. A push gets two minutes, so a
+remote that does not answer holds up no other landing for longer. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
 once more. Commits that conflict one by one but not as a whole land squashed. The last commit landed for a card
 with a shared demo carries the trailer `Demo-Video: <url>` (see Publishing on approval). Uncommitted
 work or a real conflict sends the card back to its worker with the approval kept: its next handover
@@ -81,9 +89,11 @@ call gets a minute: a PR GitHub does not answer for counts as unreadable for tha
 no other card.
 
 - GitHub through `gh`, on the PR's host (`GH_HOST`; for a PR being opened, the host of `origin`) and
-  as the account that owns the repository where gh has a login for it there (its token as
-  `GH_TOKEN`, on an Enterprise server `GH_ENTERPRISE_TOKEN`, the variable gh reads for such a host):
-  the active account may not see the owner's private repository. Thread
+  as the GitHub account set for the repository on this machine (see GitHub account in Repositories
+  and configuration), else as the account that owns the repository where gh has a login for it
+  there (its token as `GH_TOKEN`, on an Enterprise server `GH_ENTERPRISE_TOKEN`, the variable gh
+  reads for such a host): the active account may not see the owner's private repository, nor an
+  organisation's that only another of the owner's accounts belongs to. Thread
   resolution and comment edit times only GraphQL gives.
 - Forgejo and Gitea through `<server>/api/v1` with curl and git's login for `origin`'s URL (`git
   credential fill`, never prompting; else an access token stored as git's password for the host,
@@ -154,6 +164,60 @@ folded line. Below, the review as last polled, oldest first: per round
 a reviewer commented in ("Round 2 · greptile-apps · 3 comments, 1 open"), each comment folded to
 its first line with its thread's state and reply count, unfolded with file, comment and replies; the
 conversation between the rounds. Bots' HTML is stripped except badge names (Greptile's "P1").
+
+### Pull requests to the original
+
+A fork whose main branch is an integration branch (the original's main branch plus features of its
+own) and whose work lands on main may name the original's main branch as the checkout knows it
+(`upstream`, `<remote>/<branch>`; detected from a remote named `upstream`). Each of its cards then
+has a start point, picked on the unstarted card beside the repository picker: the fork's main
+branch ("team", say: built and tested with the fork's own features, landing there alone) or the
+original's main ("main of <owner/repo>": built on the original, going to it as a pull request and
+onto the fork's main branch too). The pick names the base rather than where the work goes, since
+that is what decides what it was tested on; each of its buttons says what it means in its tooltip.
+The approval may still
+send any card to the original: a card started on the original shows "Approve + PR to
+<owner/repo>" first and "Approve, for me only" beside it, any other card "Approve" first and
+"Approve + PR to <owner/repo>" beside it. The tooltips say what each does in one line: "Catches
+up team with main, lands the change on team, and opens a PR to <owner/repo>" (the catching up only
+where the original has commits the fork's main branch lacks, counted at the handover), on a card
+started on the fork's main branch "… applies it to main untested …", and for the fork alone "Lands
+the change on team, without a PR to <owner/repo>". Approving by word goes the card's way.
+
+A card started on the original starts from the newest commit of its main branch, fetched first.
+On the way Obeya brings the fork's copy of that branch (the local branch of the same name, and
+`origin`'s) forward to it, never forced: a copy with commits of its own, or one checked out, stays
+as it is, and the card's log says what became of it. The worker hears that its branch carries
+nothing of the fork's own and keeps it that way. Approved:
+
+- A branch that left the fork's main branch at a commit of the original's is the pull request's
+  branch: it merges into the main branch with a merge commit, never rebased (made in git's object
+  store, the checkout fast-forwarded to it, pushed with `push`), bringing the original's commits it
+  builds on along, and the worker pushes it to `origin` and opens the pull request against the
+  original from there.
+- Any other (a card started on the fork's main branch, approved with "Approve + PR to …") lands as
+  usual, rebased; the worker then makes the pull request's branch anew from the original's newest
+  main, in a worktree of its own, carrying the change over without what only the fork has, runs the
+  checks there and asks the owner where it no longer does what the demo showed. The head the pull
+  request is reported with counts as on the main branch already: where it builds on nothing of the
+  original the main branch lacks, Obeya records it as merged without taking its changes (a merge
+  with the main branch's tree), so later fixes merge alone; otherwise it merges it for real,
+  bringing the original's new commits along, and a conflict with the change already landed goes to
+  the worker as any below.
+
+The card is then in its pull request (`pr_opened`, the original's repository being the card's own
+there) and the watcher follows it as any (see Watching the PR), except that the original's
+maintainers merge it: Obeya never does, does not nudge them for a review of new commits, and the
+card does not need the owner while it waits ("PR #82 · waits for maintainers"). Every head pushed
+onto it, once the worker is out of its turn, is merged into the main branch as well, and the
+merged head goes there before the card goes `live`; never the other way round. A merge that
+conflicts goes to the worker, once per head: it makes the merge itself on
+`<branch>-into-<main>` (from the main branch, merging the head), which Obeya takes at its next look
+(fast-forwarding to it, or merging it where the main branch moved on); the card's PR block says so.
+What stands in the checkout's way is logged for the owner once, and tried again each round. Closed
+without a merge, the owner chooses between "Reopen it" and "Keep it on <main> only", which makes the
+card `live`. Taking back the approval is not offered: the work is public on the original and on the
+main branch alike. Dependents in the queue wait for the merge as for any PR.
 
 ### Review cards
 
@@ -253,7 +317,10 @@ is picked as well, which then comes first or not. It comes back as soon as the c
 on the PR or pushes, counting from when the card came to wait for the owner, so what they did
 between the handover and the click counts too: the line that it is back says what they did, and the
 worker hears it (and that the owner waited for it), reviews again as after a change request, and
-hands over anew; the handover before gives way to that review.
+hands over anew; the handover before gives way to that review. Closing the PR is a response too:
+the card comes back with "Pull request closed without a merge." and the owner's question whether it
+can go, and the worker gets the comments the contributor left when closing it. Merged, the card is
+live and no longer snoozed.
 
 "Merge (PR #5)" approves: Obeya reads the PR, and at a head other than the one handed over (the
 contributor pushed since) it pushes, posts and merges nothing, and the worker reviews the PR as it
@@ -441,6 +508,12 @@ A card no agent worked on, a prototype or an archived card has no field.
   the button (leaves a pull request to close).
 - **Landing problems are classified**: uncommitted work, conflicts and emptied branches go to the
   worker; a blocked checkout or refused push to the owner.
+- **Landing on `main` may push it to `origin`** (`push`, 2026-11-12), off by default, never forced:
+  a fork whose main branch is shared on `origin` fell behind there until the owner pushed by hand.
+  A refused push leaves the card `live` and tells the owner, since the work is on the local `main`
+  and other cards build on it. Rejected: the card back in review (a new approval would land nothing
+  new); pulling `origin`'s `main` first where it moved, which rewrites landed commits without the
+  owner.
 - **An approval holds through fixes to land it**; a stop or a problem for the owner takes it back.
 - **Landing does not block the server** (2026-10-10). Rejected: landing inside the request, which
   froze the server and kept the card needing the owner.
@@ -581,6 +654,26 @@ A card no agent worked on, a prototype or an archived card has no field.
   the merge without asking (publishes what the owner has not pushed); the review
   card's agent alone (it knows the PR, not the change it collides with); a question to the owner
   for every stopped pull (the agents can do it, and the owner works at the level of requirements).
+- **A fork's card may go to the original as a pull request too, chosen per card by its start
+  point** (2026-11-12): a fork with an integration branch knew only one main branch and one way of
+  landing, so workers carried changes to the original by hand and then synced each review fix back
+  (commits "Sync … with the PR branch" twice over). The pick names the base the task is built on
+  (the fork's main branch or the original's newest main), not where it goes: what matters to the
+  owner is what the work was tested on, not which branches the agent makes (the owner, after the
+  second demo). A card started on the original builds on the original's newest main, which Obeya
+  brings the fork's copy of forward first; its merge into the fork then brings the original's new
+  commits along, which the approval says beforehand (the owner chose this over keeping them out).
+  What is pushed onto the pull request merges into the fork, never the fork into the pull request.
+  The approval may still change the choice, since the need for the pull request often shows only
+  in the work. Rejected: starting from the original's state the fork already has (the pull request
+  lags behind the original, and what was tested is not what the maintainers merge); rebasing the
+  branch onto the fork's main at the approval (it would no longer be the pull request's branch);
+  cherry-picking review fixes into the fork (copies of each commit, the history the owner wanted
+  gone); a setting per repository instead of per card (in a fork most cards are the fork's own,
+  some go upstream); naming the pick by where the work goes ("For me only", "Also as PR"), which
+  hid that the two differ in what is tested. The explanations are tooltips on the buttons, not
+  lines on the card (the owner: always-visible text made the card restless and took the height of
+  the approval).
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type GitSetupPreview, LARGE_FILE } from '../core/types';
 import { BadRequest } from './board';
-import { GIT } from './workspaces';
+import { GIT } from './git';
 
 /** What Obeya writes as `.gitignore` where the folder has none: build output, dependencies, secrets. */
 export const DEFAULT_GITIGNORE = `# Build output

@@ -1,37 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { agentListens, type Item } from '../core/types';
-import { CanvasRuntime } from './canvas';
-import { Store } from './db';
-import { FakeRuntime, type FakeSession, gitRepo, noForge, removeDir } from './testing';
+import { describe, expect, test } from 'bun:test';
+import type { Item } from '../core/types';
+import { agentListens } from '../core/card';
+import { board, canvas, eachTest, restart, runtime, say as tell, settle } from './canvas-fixture';
+import { until } from './testing';
 
-let dir: string;
-let main: string;
-let store: Store;
-let runtime: FakeRuntime;
-let canvas: CanvasRuntime;
+eachTest({ deps: () => ({ limitMargin: 10 }) });
 
-const open = () => CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, limitMargin: 10 });
-
-beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'obeya-revisions-'));
-  main = join(dir, 'main');
-  gitRepo(main);
-  store = new Store(':memory:');
-  runtime = new FakeRuntime();
-  canvas = await open();
-});
-afterEach(async () => {
-  canvas.shutdown();
-  await removeDir(dir);
-});
-
-const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
-const board = () => canvas.board;
-const isCoordinator = (s: FakeSession) => s.spec.tools.some((t) => t.name === 'look_up');
-const reviser = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'revise_proposal')).at(-1);
+const reviser = () => runtime.withTool('revise_proposal').at(-1);
 
 /** A proposal from the agent of "Export", with one question. */
 function proposal(): Item {
@@ -45,15 +20,14 @@ function proposal(): Item {
 }
 
 /** Says `text` with the proposal open; the Coordinator acts with `actions` (its tags looked up by title). */
-async function say(text: string, card: Item, actions: (tag: string) => Record<string, unknown>[], typed = false, images: string[] = []) {
-  const heard = canvas.commander.hear(text, { card: card.id }, images, typed ? { typed: true, field: 'revise' } : {});
-  await settle();
-  const s = runtime.sessions.filter(isCoordinator).at(-1)!;
-  const brief = s.inbox.at(-1)!;
-  const tag = brief.match(new RegExp(`(K\\d+) \\[proposal\\] "${card.title}"`))![1]!;
-  const result = s.call('act', { actions: actions(tag), confirm: 'Ich überarbeite den Vorschlag.' });
-  s.emit({ type: 'idle' });
-  return { heard: await heard, brief, result };
+function say(text: string, card: Item, actions: (tag: string) => Record<string, unknown>[], typed = false, images: string[] = []) {
+  return tell(
+    text,
+    { card: card.id },
+    'act',
+    (brief) => ({ actions: actions(brief.match(new RegExp(`(K\\d+) \\[proposal\\] "${card.title}"`))![1]!), confirm: 'Ich überarbeite den Vorschlag.' }),
+    { images, input: typed ? { typed: true, field: 'revise' } : {} },
+  );
 }
 
 describe('a proposal reworked by what the owner says', () => {
@@ -103,7 +77,7 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().item(p.id)!.proposal?.revising).toMatchObject({ words: 'Was würdest du nehmen?' });
     expect(reviser()!.inbox[0]).toContain('Was würdest du nehmen?');
     expect(reviser()!.spec.tools.map((t) => t.name)).toContain('to_obeya');
-    expect(runtime.sessions.some(isCoordinator)).toBe(false);
+    expect(runtime.withTool('look_up')).toEqual([]);
     // the question stays above the owner's words
     expect(board().events(p.id).map((e) => [e.kind, e.author])).toEqual([
       ['question', 'worker'],
@@ -146,7 +120,7 @@ describe('a proposal reworked by what the owner says', () => {
     const r = reviser()!;
     const result = r.call('to_obeya', { request: 'Accept the proposal and start it' }) as Promise<string>;
     await settle();
-    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const k = runtime.withTool('look_up').at(-1)!;
     const tag = k.inbox.at(-1)!.match(/(K\d+) \[proposal\] "CSV-Export prüfen"/)![1]!;
     expect(k.call('act', { actions: [{ do: 'accept', card: tag }], confirm: 'Ich übernehme den Vorschlag und starte ihn.' })).not.toContain('goes by a click');
     k.emit({ type: 'idle' });
@@ -300,7 +274,7 @@ describe('a proposal reworked by what the owner says', () => {
     const p = board().propose(from.id, { title: 'Exportformate', task: 'PDF-Export bauen.' });
     const heard = canvas.commander.hear('Das will ich erst als Idee besprechen', {});
     await settle();
-    const k = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const k = runtime.withTool('look_up').at(-1)!;
     const tag = k.inbox.at(-1)!.match(/(K\d+) \[proposal\] "Exportformate"/)![1]!;
     k.call('act', { actions: [{ do: 'accept', card: tag, idea: true }], confirm: 'Ich übernehme ihn als Idee.' });
     k.emit({ type: 'idle' });
@@ -321,6 +295,15 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'error', text: expect.stringContaining('Überarbeiten ging nicht') });
   });
 
+  test('with an English interface, why it ended without a text is said in English too', async () => {
+    await restart({ deps: { language: () => 'en' } });
+    const p = proposal();
+    canvas.revisions.revise(p.id, 'Excel too', false);
+    reviser()!.emit({ type: 'idle' });
+    await settle();
+    expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'error', text: 'Revising did not work: the agent gave no new text' });
+  });
+
   test('a reviser the usage limit stops waits on the proposal and reworks it once the limit lifts', async () => {
     const p = proposal();
     canvas.revisions.revise(p.id, 'Excel auch', false);
@@ -332,8 +315,7 @@ describe('a proposal reworked by what the owner says', () => {
     expect(board().item(p.id)!.proposal?.revising).toMatchObject({ words: 'Excel auch' });
     expect(board().item(p.id)!.limitedUntil).toBeDefined();
     expect(board().events(p.id).some((e) => e.kind === 'error')).toBe(false);
-    await settle(60);
-    expect(board().item(p.id)!.limitedUntil).toBeUndefined();
+    await until(() => board().item(p.id)!.limitedUntil === undefined);
     expect(r.inbox.at(-1)).toContain('usage limit');
     r.call('revise_proposal', { title: 'CSV- und Excel-Export prüfen', task: 'Beide schreiben Umlaute falsch.', questions: [], reply: 'Excel ist drin.' });
     r.emit({ type: 'idle' });
@@ -356,8 +338,7 @@ describe('a proposal reworked by what the owner says', () => {
     const p = proposal();
     canvas.revisions.revise(p.id, 'Excel auch', false);
     const before = runtime.sessions.length;
-    canvas.shutdown();
-    canvas = await open();
+    await restart();
     expect(runtime.sessions.length).toBe(before + 1);
     expect(reviser()!.inbox[0]).toContain('Excel auch');
   });
@@ -462,7 +443,7 @@ describe('a proposal its agent takes back', () => {
     // the Coordinator sees the mark, and keep takes it off
     const heard = canvas.commander.hear('Behalte die alte Karte', { card: p.id }, []);
     await settle();
-    const s = runtime.sessions.filter(isCoordinator).at(-1)!;
+    const s = runtime.withTool('look_up').at(-1)!;
     expect(s.inbox.at(-1)).toContain('replaced it by "CSV-Kodierung festlegen"; the owner removes it (dismiss) or keeps it (keep)');
     const tag = s.inbox.at(-1)!.match(/(K\d+) \[planned\] "CSV-Export prüfen"/)![1]!;
     s.call('act', { actions: [{ do: 'keep', card: tag }], confirm: 'Sie bleibt.' });

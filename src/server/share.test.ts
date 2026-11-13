@@ -1,21 +1,23 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DemoSite } from '../adapters/types';
-import { BadRequest, Board } from './board';
+import { BadRequest, type Board } from './board';
 import { Store } from './db';
 import { EXPORT_HTML_MAX } from '../core/types';
+import type { DemoSite } from '../core/config';
+import { MESSAGES } from '../core/messages';
 import type { Forge } from './forge';
 import { demoPageHtml } from './demo-page';
-import { DEMO_MARKER, SHARE_CWD, Sharing, withDemoLink } from './share';
-import { siteKey } from './site';
+import { DEMO_MARKER, Sharing, withDemoLink } from './share';
+import { SHARE_CWD, siteKey } from './site';
 import { missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import type { Theme } from './theme';
-import { FakeRuntime, gitRepo, noContributions, PATIENCE, removeDir } from './testing';
-import { git } from './workspaces';
+import { deployScript, FakeRuntime, fakeSiteHost, gitRepo, noContributions, removeDir, testBoard, until, videoDemo } from './testing';
+import { git } from './git';
 
 let dir: string;
+let store: Store;
 let board: Board;
 let runtime: FakeRuntime;
 let sharing: Sharing;
@@ -44,36 +46,21 @@ const calls = () => {
   return all.map((c, i) => ({ ...c, wrote: Object.keys(c.pages).filter((slug) => c.pages[slug]!.rev !== all[i - 1]?.pages[slug]?.rev) }));
 };
 
-// the deploy line's stand-in: records the site's manifest, then copies the site's directory to
-// `deployed/` (the host's snapshot), or fails with some output while the file `fail` exists. While
-// the file `hold` exists, a deploy waits after it is recorded. Like `wrangler pages deploy`, it
-// leaves its cache in its working directory.
-const DEPLOY = `
-const { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
-const [site, out] = process.argv.slice(2);
+// the deploy line's stand-in: records the site's manifest, waits while the file `hold` exists, and
+// fails with some output while the file `fail` exists. Like `wrangler pages deploy`, it leaves its
+// cache in its working directory.
+const DEPLOY = deployScript({
+  before: `
 mkdirSync('.wrangler/cache', { recursive: true });
 writeFileSync('.wrangler/cache/pages.json', '{}');
 const { pages } = JSON.parse(readFileSync(site + '/obeya-site.json', 'utf8'));
 appendFileSync(out + '/calls', JSON.stringify({ pages, home: process.env.OBEYA_HOME, cwd: process.cwd(), repo: process.env.OBEYA_REPO }) + '\\n');
 while (existsSync(out + '/hold')) await Bun.sleep(10);
 if (existsSync(out + '/fail')) { console.error('upload refused: token expired'); process.exit(2); }
-console.error('Uploading 3 files');
-rmSync(out + '/deployed', { recursive: true, force: true });
-cpSync(site, out + '/deployed', { recursive: true });
-`;
-
-// the host: serves what was deployed last
-const server = Bun.serve({
-  port: 0,
-  fetch(req) {
-    let path = decodeURIComponent(new URL(req.url).pathname);
-    if (path.endsWith('/')) path += 'index.html';
-    const file = join(dir, 'deployed', path);
-    return !path.includes('..') && existsSync(file) && statSync(file).isFile() ? new Response(Bun.file(file)) : new Response('not found', { status: 404 });
-  },
+console.error('Uploading 3 files');`,
 });
-afterAll(() => server.stop(true));
-const SITE_URL = `http://localhost:${server.port}/`;
+
+const { url: SITE_URL, deployed } = fakeSiteHost(() => dir);
 /** When the site's demos go out: on approval (`approved`), or only on "Share". */
 let publish: DemoSite['publish'];
 /** The site's vocabulary of tags (`demo.site.tags`); none without. */
@@ -88,15 +75,16 @@ beforeEach(() => {
   theme = null;
   dir = mkdtempSync(join(tmpdir(), 'obeya-share-'));
   writeFileSync(join(dir, 'deploy.ts'), DEPLOY);
-  board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: dir, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  store = new Store(':memory:');
+  board = testBoard({ store, path: dir });
   runtime = new FakeRuntime();
   bodies = new Map();
   edits = [];
   comments = [];
   settled = [];
   sharing = make();
-  board.showVocabulary(() => vocabulary);
-  board.showThemes(() => theme?.hash ?? null);
+  board.pages.showVocabulary(() => vocabulary);
+  board.pages.showThemes(() => theme?.hash ?? null);
 });
 afterEach(async () => {
   await removeDir(dir);
@@ -147,7 +135,7 @@ function openPr(id: string, body = 'Exportiert Zählerstände.') {
 function card(title = 'Zählerstände exportieren', demo: Record<string, unknown> = {}, language: string | null = 'de') {
   const c = board.create({ title, x: 0, y: 0 });
   const d = join(dir, `demo-${c.id}`);
-  if (demo.kind !== 'html') videoDir(d);
+  if (demo.kind !== 'html') videoDemo(d);
   else mkdirSync(d);
   if (demo.kind !== 'html' && language) writeFileSync(join(d, 'index.html'), `<!doctype html>\n<html lang="${language}">\n<head><title>Bericht</title></head></html>`);
   board.work(c.id, {
@@ -157,24 +145,17 @@ function card(title = 'Zählerstände exportieren', demo: Record<string, unknown
   return board.item(c.id)!;
 }
 
-/** A video demo's directory: the video and its captions. */
-function videoDir(d: string) {
-  mkdirSync(d, { recursive: true });
-  writeFileSync(join(d, 'demo.mp4'), 'video');
-  writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n');
-  return d;
-}
-
 const share = (id: string) => board.item(id)!.share;
 /** The card's page on the site, by its slug. */
 const slug = (id: string) => (JSON.parse(board.row(id).share!) as { slug: string }).slug;
 /** What the latest deploy said of the card's page. */
 const meta = (id: string) => calls().at(-1)!.pages[slug(id)]!.meta!;
-async function until(ok: () => boolean) {
-  for (let i = 0; i < 400 * PATIENCE && !ok(); i++) await new Promise((r) => setTimeout(r, 10));
-  expect(ok()).toBe(true);
-}
 const log = (id: string) => board.events(id).map((e) => e.text);
+/** Shares the card's demo (or does `act`) and waits until its page is out. */
+async function shared(id: string, act = () => sharing.share(id)) {
+  act();
+  await until(() => share(id)?.state === 'shared');
+}
 
 describe('sharing a demo', () => {
   test('publishes the page on the site right away, keeps its link, and withdraws it', async () => {
@@ -188,7 +169,7 @@ describe('sharing a demo', () => {
     const [call] = calls();
     expect(call!.wrote).toEqual([slug]);
     expect(call!.pages[slug]!.meta).toMatchObject({ title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.', chapters: [[0, 'Vorher']], pr: null, language: 'de' });
-    expect(readFileSync(join(dir, 'deployed', slug, 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(deployed(), slug, 'demo.mp4'), 'utf8')).toBe('video');
     // the deploy runs under Obeya's home, and learns the checkout from the environment
     expect(call!.home).toBe(join(dir, 'home'));
     expect(call!.cwd).toBe(realpathSync(join(dir, 'home', SHARE_CWD)));
@@ -201,11 +182,10 @@ describe('sharing a demo', () => {
     expect(share(c.id)!.state).toBe('withdrawing');
     await until(() => !share(c.id));
     expect(calls().at(-1)!.pages[slug]!.withdrawn).toBe(true);
-    expect(existsSync(join(dir, 'deployed', slug))).toBe(false);
+    expect(existsSync(join(deployed(), slug))).toBe(false);
     expect(log(c.id).at(-1)).toBe('Die Seite ist zurückgezogen.');
     // shared again, under the same link
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(share(c.id)!.url).toBe(`${SITE_URL}${slug}/`);
   });
 
@@ -213,8 +193,7 @@ describe('sharing a demo', () => {
     const repo = gitRepo(join(dir, 'checkout'));
     sharing = make(repo);
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     sharing.unshare(c.id);
     await until(() => !share(c.id));
     expect(calls().map((c) => c.repo)).toEqual([repo, repo]);
@@ -224,9 +203,8 @@ describe('sharing a demo', () => {
 
   test('a newer demo is not shared on its own: the card says so, and "Replace on the page" replaces the page', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
-    const newer = videoDir(join(dir, 'newer'));
+    await shared(c.id);
+    const newer = videoDemo(join(dir, 'newer'));
     writeFileSync(join(newer, 'demo.mp4'), 'newer video');
     board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [], page: { title: 'CSV-Export 2', text: 'T.' } }) });
     expect(share(c.id)).toMatchObject({ state: 'shared', stale: true });
@@ -238,7 +216,7 @@ describe('sharing a demo', () => {
     expect(share(c.id)!.stale).toBeUndefined();
     expect(calls().at(-1)!.wrote).toEqual([slug(c.id)]);
     expect(meta(c.id).title).toBe('CSV-Export 2');
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), 'demo.mp4'), 'utf8')).toBe('newer video');
+    expect(readFileSync(join(deployed(), slug(c.id), 'demo.mp4'), 'utf8')).toBe('newer video');
   });
 
   test('a failed deploy leaves the card as it was, with the output in its log', async () => {
@@ -252,8 +230,7 @@ describe('sharing a demo', () => {
     expect(err.text).toContain('token expired');
     // shared, then a failed withdrawal: the page stays shared
     rmSync(join(dir, 'fail'));
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     writeFileSync(join(dir, 'fail'), '');
     sharing.unshare(c.id);
     await until(() => share(c.id)?.state === 'shared');
@@ -262,11 +239,10 @@ describe('sharing a demo', () => {
 
   test('a site that lost a page shared from here is not deployed, so the page does not go offline', async () => {
     const a = card('A');
-    sharing.share(a.id);
-    await until(() => share(a.id)?.state === 'shared');
+    await shared(a.id);
     // the site's directory on this machine and the host both lost it
     rmSync(join(dir, 'home', 'sites'), { recursive: true });
-    rmSync(join(dir, 'deployed'), { recursive: true });
+    rmSync(deployed(), { recursive: true });
     const b = card('B');
     sharing.share(b.id);
     await until(() => !share(b.id));
@@ -278,35 +254,30 @@ describe('sharing a demo', () => {
     const c = card('Auswertung', { kind: 'html', chapters: [], page: { title: 'Verlust und Zapfung', text: 'Geschätzt aus den Messdaten.' } });
     writeFileSync(join(dir, `demo-${c.id}`, 'index.html'), '<!doctype html><body>Chart</body>');
     openPr(c.id);
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(meta(c.id)).toMatchObject({ kind: 'html', title: 'Verlust und Zapfung', chapters: [], pr: PR });
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), 'artifact', 'index.html'), 'utf8')).toContain('Chart');
+    expect(readFileSync(join(deployed(), slug(c.id), 'artifact', 'index.html'), 'utf8')).toContain('Chart');
     expect(bodies.get(PR)).toContain(`Demo-Seite: ${share(c.id)!.url} ${DEMO_MARKER}`);
   });
 
   test("writes the page in the demo's language: its report page's, else the repository's, else the demo settings'", async () => {
     const en = card('English', {}, 'en');
-    sharing.share(en.id);
-    await until(() => share(en.id)?.state === 'shared');
+    await shared(en.id);
     expect(meta(en.id).language).toBe('en');
     // an artifact names its own; a demo without a page that names one takes the settings' narration language
     const artifact = card('Artifact', { kind: 'html', chapters: [], page: { title: 'Loss', text: 'From the readings.' } });
     writeFileSync(join(dir, `demo-${artifact.id}`, 'index.html'), '<html lang="en-GB"><body>Chart</body></html>');
-    sharing.share(artifact.id);
-    await until(() => share(artifact.id)?.state === 'shared');
+    await shared(artifact.id);
     expect(meta(artifact.id).language).toBe('en');
     mkdirSync(join(dir, 'home'), { recursive: true });
     for (const language of ['en', 'de'] as const) {
       writeFileSync(join(dir, 'home', 'demo.json'), JSON.stringify({ language }));
       const c = card(`Without ${language}`, {}, null);
-      sharing.share(c.id);
-      await until(() => share(c.id)?.state === 'shared');
+      await shared(c.id);
       expect(meta(c.id).language).toBe(language);
     }
     const c = card('In English, without a page that says so', {}, null);
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(meta(c.id).language).toBe('en');
   });
 
@@ -356,8 +327,7 @@ describe('the tags of a page', () => {
   test("the worker's go on the page, in the vocabulary's order, and the card shows them", async () => {
     const c = tagged({ Area: ['Reports', 'Billing'], Audience: [] });
     expect(board.item(c.id)!.tags).toEqual({ Area: ['Reports', 'Billing'], Audience: [] });
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(runtime.sessions).toHaveLength(0);
     expect(meta(c.id).tags).toEqual({ Area: ['Billing', 'Reports'], Audience: [] });
   });
@@ -380,8 +350,7 @@ describe('the tags of a page', () => {
     // kept: the next share needs no session
     sharing.unshare(c.id);
     await until(() => !share(c.id));
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(runtime.sessions).toHaveLength(1);
     expect(meta(c.id).tags).toEqual({ Area: ['Billing'], Audience: ['Customers'] });
   });
@@ -404,8 +373,7 @@ describe('the tags of a page', () => {
     expect(board.item(c.id)!.tags).toEqual({ Area: ['Reports'], Audience: ['Admins'] });
     expect(log(c.id).at(-1)).toBe('Tags von Hand gesetzt, Area: Reports');
     expect(calls()).toHaveLength(0);
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(meta(c.id).tags).toEqual({ Area: ['Reports'], Audience: ['Admins'] });
     // after sharing: the page goes out again right away, with the same demo
     sharing.setTags(c.id, 'Audience', []);
@@ -416,7 +384,7 @@ describe('the tags of a page', () => {
     expect(meta(c.id).tags).toEqual({ Area: ['Reports'], Audience: [] });
     expect(log(c.id).at(-1)).toBe(`Die geteilte Seite zeigt jetzt ihre neuen Tags: ${share(c.id)!.url}`);
     // a later demo's worker
-    const newer = videoDir(join(dir, 'newer'));
+    const newer = videoDemo(join(dir, 'newer'));
     board.work(c.id, { demos: board.row(c.id).demo!.replace(/^/, '[') + ']', demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [], page: { title: 'T', text: 'T.', tags: { Area: ['Settings'], Audience: ['Customers'] } } }) });
     expect(board.item(c.id)!.tags).toEqual({ Area: ['Reports'], Audience: [] });
     // a dimension the owner left alone comes from the newest worker
@@ -449,8 +417,7 @@ describe('the tags of a page', () => {
     const b = tagged({ Area: ['Billing'], Audience: ['Admins'] }, 'B');
     const c = tagged({ Area: ['Reports'], Audience: ['Admins'] }, 'C');
     for (const x of [a, b, c]) {
-      sharing.share(x.id);
-      await until(() => share(x.id)?.state === 'shared');
+      await shared(x.id);
     }
     sharing.setTags(b.id, 'Area', ['Billing']);
     await until(() => still(b.id));
@@ -487,6 +454,26 @@ describe('the tags of a page', () => {
     expect(board.setting('reshare_dismissed')).toBeNull();
   });
 
+  test('a page the owner tagged while the session chose, which gave it no answer, is no failure of the run', async () => {
+    const [a, b] = ['A', 'B'].map((x) => card(x, { page: { title: `Page ${x}`, text: 'Vermieter laden Zählerstände als CSV.', tags: { Area: ['Billing'], Audience: ['Admins'] } } }));
+    for (const x of [a!, b!]) {
+      sharing.share(x.id);
+      await until(() => still(x.id));
+    }
+    vocabulary = { Area: ['Invoices', 'Reports'], Audience: ['Admins', 'Customers'] };
+    board.changed();
+    sharing.reshareMany(null, true);
+    await until(() => runtime.sessions.length === 1);
+    const pageA = runtime.last.inbox[0]!.match(/Page (\d+)(?: \([^)]*\))?:\nThe page: “Page A”/)![1];
+    // the owner tags B meanwhile; the session answers for A alone
+    sharing.setTags(b!.id, 'Area', ['Reports']);
+    runtime.last.call('tags', { page: Number(pageA), tags: { Area: ['Invoices'] } });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => board.snapshot().reshare?.run?.left === 0);
+    expect(board.snapshot().reshare?.run?.failed).toEqual([]);
+    expect(log(b!.id).filter((l) => l.startsWith('Nicht geteilt'))).toEqual([]);
+  });
+
   test("a page whose demo files are gone is tagged in place: the site's copy of its video stays, the page shows the tags", async () => {
     vocabulary = { Area: ['Billing', 'Reports'], Audience: ['Admins', 'Customers'] };
     const a = tagged({ Area: ['Billing'], Audience: [] }, 'Alt A');
@@ -513,8 +500,8 @@ describe('the tags of a page', () => {
     expect([tagsOf(a.id), tagsOf(b.id)].map((t) => t?.Kind?.[0])).toEqual(expect.arrayContaining(['Bug fix', 'New feature']));
     // asked for Kind alone: the Area it gave for one stays as it was
     for (const x of [a, b]) expect(tagsOf(x.id)!.Area).toEqual(['Billing']);
-    expect(readFileSync(join(dir, 'deployed', slug(b.id), 'demo.mp4'), 'utf8')).toBe('video');
-    expect(readFileSync(join(dir, 'deployed', slug(b.id), 'index.html'), 'utf8')).toContain('Kind');
+    expect(readFileSync(join(deployed(), slug(b.id), 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(deployed(), slug(b.id), 'index.html'), 'utf8')).toContain('Kind');
     expect(board.item(b.id)!.tags!.Kind).toEqual([tagsOf(b.id)!.Kind![0]!]);
     expect(board.snapshot().reshare?.untagged).toBeUndefined();
   });
@@ -546,7 +533,7 @@ describe('several demo versions on one page', () => {
   /** A later handover's demo: the one on the card goes to its earlier demos. */
   function later(id: string, handover: number, extra: Record<string, unknown> = {}) {
     const row = board.row(id);
-    const d = videoDir(join(dir, `demo-${id}-${handover}`));
+    const d = videoDemo(join(dir, `demo-${id}-${handover}`));
     writeFileSync(join(d, 'demo.mp4'), `video ${handover}`);
     board.work(id, {
       demos: JSON.stringify([...JSON.parse(row.demos ?? '[]'), JSON.parse(row.demo!)]),
@@ -554,15 +541,10 @@ describe('several demo versions on one page', () => {
     });
   }
   const stored = (id: string) => JSON.parse(board.row(id).share!) as { demos?: { handover?: number; dir: string }[]; dir?: string; shown?: unknown };
-  const page = (id: string) => readFileSync(join(dir, 'deployed', slug(id), 'index.html'), 'utf8');
-  async function shared(id: string, act: () => void) {
-    act();
-    await until(() => share(id)?.state === 'shared');
-  }
-
+  const page = (id: string) => readFileSync(join(deployed(), slug(id), 'index.html'), 'utf8');
   test('"Add to the page" puts a later demo below the shared one, under the same link', async () => {
     const c = first();
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     expect(share(c.id)).toMatchObject({ on: [1] });
     const url = share(c.id)!.url;
     later(c.id, 2, { follows: 'supplements' });
@@ -572,8 +554,8 @@ describe('several demo versions on one page', () => {
     expect(stored(c.id).demos!.map((d) => d.handover)).toEqual([1, 2]);
     expect(log(c.id)).toContain('Zur Seite dazunehmen: Die Seite bekommt diese Demo als Ergänzung dazu.');
     // the first stays at the page's root, the later one in a directory of its own
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), '2', 'demo.mp4'), 'utf8')).toBe('video 2');
+    expect(readFileSync(join(deployed(), slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(deployed(), slug(c.id), '2', 'demo.mp4'), 'utf8')).toBe('video 2');
     expect(meta(c.id)).toMatchObject({ title: 'CSV-Export', more: [{ title: 'Ergänzung 2', dir: '2', chapters: [[0, 'Nachher']], handed: '2026-10-16T11:37:00.000Z' }] });
     expect(page(c.id)).toContain('<h1>CSV-Export</h1>');
     expect(page(c.id)).toContain('<a href="#v2">2. Ergänzung vom ');
@@ -583,10 +565,10 @@ describe('several demo versions on one page', () => {
 
   test('a supplement rendered into the directory of the shared demo goes beside it, which goes out again from the copy Obeya kept', async () => {
     const c = first();
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     // the worker renders the supplement over the files of the first, which the card shows from its copy since
     const one = JSON.parse(board.row(c.id).demo!) as { dir: string };
-    const kept = videoDir(join(dir, 'kept', c.id, '1'));
+    const kept = videoDemo(join(dir, 'kept', c.id, '1'));
     writeFileSync(join(one.dir, 'demo.mp4'), 'video 2');
     board.work(c.id, {
       demos: JSON.stringify([{ ...JSON.parse(board.row(c.id).demo!), dir: kept }]),
@@ -594,14 +576,14 @@ describe('several demo versions on one page', () => {
     });
     await shared(c.id, () => sharing.share(c.id, { add: true }));
     expect(share(c.id)).toMatchObject({ on: [1, 2] });
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), '2', 'demo.mp4'), 'utf8')).toBe('video 2');
+    expect(readFileSync(join(deployed(), slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(deployed(), slug(c.id), '2', 'demo.mp4'), 'utf8')).toBe('video 2');
     expect(stored(c.id).demos!.map((d) => d.dir)).toEqual([kept, one.dir]);
   });
 
   test("drafts a question showed in between are no demo of the page: not what it lacks, and not shared with a supplement", async () => {
     const c = first();
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     later(c.id, 2, { asked: true });
     expect(share(c.id)!.stale).toBeUndefined();
     later(c.id, 3, { follows: 'supplements' });
@@ -613,28 +595,28 @@ describe('several demo versions on one page', () => {
   test('"Share" on a supplement with no page yet puts the demo it supplements above it', async () => {
     const c = first();
     later(c.id, 2, { follows: 'supplements' });
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     expect(share(c.id)).toMatchObject({ on: [1, 2] });
     expect(meta(c.id)).toMatchObject({ title: 'CSV-Export', more: [{ title: 'Ergänzung 2' }] });
   });
 
   test('"Replace on the page" takes the shared ones off the page', async () => {
     const c = first();
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     later(c.id, 2);
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     expect(share(c.id)).toMatchObject({ on: [2] });
     expect(share(c.id)!.stale).toBeUndefined();
     expect(meta(c.id)).toMatchObject({ title: 'Ergänzung 2' });
     expect(meta(c.id)).not.toHaveProperty('more');
-    expect(existsSync(join(dir, 'deployed', slug(c.id), '2'))).toBe(false);
+    expect(existsSync(join(deployed(), slug(c.id), '2'))).toBe(false);
     expect(log(c.id)).toContain('Auf der Seite ersetzen: Die Seite zeigt jetzt diese Demo statt der geteilten.');
   });
 
   test('an earlier demo shared goes onto the page in its place by handover', async () => {
     const c = first();
     later(c.id, 2);
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     expect(share(c.id)).toMatchObject({ on: [2] });
     await shared(c.id, () => sharing.share(c.id, { demo: 1, add: true }));
     expect(share(c.id)).toMatchObject({ on: [1, 2] });
@@ -643,7 +625,7 @@ describe('several demo versions on one page', () => {
 
   test('one version taken off goes out again without it; the last one takes the page down', async () => {
     const c = first();
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     later(c.id, 2);
     await shared(c.id, () => sharing.share(c.id, { add: true }));
     await shared(c.id, () => sharing.unshare(c.id, 1));
@@ -658,7 +640,7 @@ describe('several demo versions on one page', () => {
 
   test('a version already on the page goes out again with the others, and the PR link republishes them all', async () => {
     const c = first();
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     later(c.id, 2);
     await shared(c.id, () => sharing.share(c.id, { add: true }));
     await shared(c.id, () => sharing.share(c.id, { demo: 1 }));
@@ -671,15 +653,15 @@ describe('several demo versions on one page', () => {
 
   test('a page shared before several versions becomes a list of one, named by its handover', async () => {
     const c = first();
-    await shared(c.id, () => sharing.share(c.id));
+    await shared(c.id);
     const { demos, ...rest } = stored(c.id) as { demos: { dir: string; shown: unknown }[] };
     board.work(c.id, { share: JSON.stringify({ ...rest, dir: demos[0]!.dir, shown: demos[0]!.shown }) });
     later(c.id, 2);
-    // read as a list of one before it is converted
-    expect(share(c.id)).toMatchObject({ on: [1], stale: true });
-    sharing.resume();
+    // the next start converts it before anything reads it
+    board = testBoard({ store, path: dir });
     expect(stored(c.id)).not.toHaveProperty('dir');
     expect(stored(c.id).demos!.map((d) => d.handover)).toEqual([1]);
+    expect(share(c.id)).toMatchObject({ on: [1], stale: true });
   });
 });
 
@@ -692,8 +674,7 @@ describe('a page published before a change to the pages', () => {
 
   test('is offered to share again with what changed since, and "Share again" brings it up to date', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(stored(c.id).version).toBe(pagesVersion());
     expect(share(c.id)!.outdated).toBeUndefined();
 
@@ -725,8 +706,7 @@ describe('a page published before a change to the pages', () => {
 
   test('a newer demo is replaced on the page or added to it; the versions on the page still say what sharing them again brings', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     backdate(c.id);
     board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], page: { title: 'T', text: 'T.' } }) });
     expect(share(c.id)).toMatchObject({ stale: true });
@@ -737,8 +717,7 @@ describe('a page published before a change to the pages', () => {
     const a = card('A');
     const b = card('B');
     for (const c of [a, b]) {
-      sharing.share(c.id);
-      await until(() => share(c.id)?.state === 'shared');
+      await shared(c.id);
       backdate(c.id);
     }
     sharing.share(a.id);
@@ -750,8 +729,7 @@ describe('a page published before a change to the pages', () => {
   test('a page from before Obeya kept the page changes gets its change from the page as the site has it', async () => {
     const [a, b] = [card('A'), card('B')];
     for (const c of [a, b]) {
-      sharing.share(c.id);
-      await until(() => share(c.id)?.state === 'shared');
+      await shared(c.id);
       board.work(c.id, { share: JSON.stringify({ ...stored(c.id), version: '9aef9b8395b7', outdated: true }) });
     }
     // b's page on the site is one from before the look of 2026-10-10
@@ -780,8 +758,7 @@ describe('sharing many outdated pages again at once', () => {
       return c;
     });
     for (const c of cards) {
-      sharing.share(c.id);
-      await until(() => share(c.id)?.state === 'shared');
+      await shared(c.id);
       backdate(c.id);
     }
     return cards;
@@ -815,8 +792,7 @@ describe('sharing many outdated pages again at once', () => {
     const [, video] = await outdated(1, 2);
     const html = card('Auswertung', { kind: 'html', chapters: [] });
     writeFileSync(join(dir, `demo-${html.id}`, 'index.html'), '<!doctype html>');
-    sharing.share(html.id);
-    await until(() => share(html.id)?.state === 'shared');
+    await shared(html.id);
     sharing.reshareMany(1);
     await until(() => reshare()?.run?.left === 0);
     sharing.dismissResharing();
@@ -851,14 +827,14 @@ describe('sharing many outdated pages again at once', () => {
     // the canvas's changes do not look at the files; the notice shows it once Obeya looked at them, the server not waiting
     board.changed();
     expect(reshare()!.outdated).toBe(3);
-    await board.lookAtDemos();
+    await board.pages.lookAtDemos();
     expect(reshare()).toEqual({ outdated: 2, changes: changes(2) });
     expect(share(a!.id)).toEqual({ state: 'shared', url: expect.stringContaining(SITE_URL) });
     const before = calls().length;
     sharing.reshareMany(null);
     rmSync(join(dir, `demo-${b!.id}`, 'demo.mp4'));
     await until(() => reshare()?.run?.left === 0);
-    await board.lookAtDemos();
+    await board.pages.lookAtDemos();
     expect(reshare()).toEqual({ outdated: 0, run: { total: 1, done: 1, failed: [], left: 0 } });
     expect(wrote(before)).toEqual([slug(c!.id)]);
     sharing.dismissResharing();
@@ -902,7 +878,7 @@ describe('sharing many outdated pages again at once', () => {
     const [a, b] = await outdated(2, 1);
     // the restart came while b went out
     board.work(b!.id, { share: JSON.stringify({ ...JSON.parse(board.row(b!.id).share!), state: 'publishing', refresh: true, again: true }) });
-    board.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
+    board.pages.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
     sharing = make();
     sharing.resume();
     await until(() => reshare()?.run?.left === 0);
@@ -917,7 +893,7 @@ describe('sharing many outdated pages again at once', () => {
     sharing.share(d!.id);
     await until(() => share(d!.id)?.state === 'shared' && !share(d!.id)!.outdated);
     board.work(b!.id, { share: JSON.stringify({ ...JSON.parse(board.row(b!.id).share!), state: 'publishing', refresh: true, again: true }) });
-    board.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
+    board.pages.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
     const stored = (id: string) => board.row(id).share;
     const before = [a, c, d].map((x) => stored(x!.id));
     writeFileSync(join(dir, 'hold'), '');
@@ -943,7 +919,7 @@ describe('publishing on approval', () => {
   /** A later handover's demo, with what its worker said of it. */
   function later(id: string, handover: number, extra: Record<string, unknown> = {}) {
     const row = board.row(id);
-    const d = videoDir(join(dir, `demo-${id}-${handover}`));
+    const d = videoDemo(join(dir, `demo-${id}-${handover}`));
     writeFileSync(join(d, 'demo.mp4'), `video ${handover}`);
     board.work(id, {
       demos: JSON.stringify([...JSON.parse(row.demos ?? '[]'), JSON.parse(row.demo!)]),
@@ -962,7 +938,7 @@ describe('publishing on approval', () => {
     rmSync(join(dir, 'hold'));
     await until(() => share(c.id)?.state === 'shared');
     expect(share(c.id)!.url).toBe(`${SITE_URL}${slug(c.id)}/`);
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(deployed(), slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
     // approved again (a landing that went back to the worker): the page has the demo already
     expect(sharing.approved(c.id)).toBe(trailer);
     await Bun.sleep(50);
@@ -1031,8 +1007,7 @@ describe('publishing on approval', () => {
     const review = { url, number: 5, author: 'amerlander', title: 'Watcher', canModify: true, route: 'contributor' };
     board.work(c.id, { state: 'waiting', need: 'demo', pr: JSON.stringify({ url, number: 5, seen: [], reported: [] }), contribution: JSON.stringify(review) });
     // shared before the approval: nothing goes to the PR yet
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(comments).toEqual([]);
     board.work(c.id, { contribution: JSON.stringify({ ...review, approved: true }) });
     sharing.approved(c.id);
@@ -1101,8 +1076,7 @@ describe('publishing on approval', () => {
     expect(share(c.id)).toBeUndefined();
     expect(log(c.id).at(-1)).toBe('Mit der Freigabe nicht geteilt: „Mit der Freigabe teilen“ war abgewählt.');
     // shared now, before the approval: the page goes out, and a later demo waits for the owner
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     later(c.id, 2);
     expect(sharing.approved(c.id)).toBe(`Demo-Video: ${SITE_URL}${slug(c.id)}/`);
     await Bun.sleep(50);
@@ -1124,8 +1098,7 @@ describe('publishing on approval', () => {
     const c = card();
     expect(sharing.approved(c.id)).toBeNull();
     expect(share(c.id)).toBeUndefined();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     later(c.id, 2);
     expect(sharing.approved(c.id)).toBe(`Demo-Video: ${SITE_URL}${slug(c.id)}/`);
     await Bun.sleep(50);
@@ -1138,8 +1111,7 @@ describe('publishing on approval', () => {
 describe('the link in the pull request', () => {
   test('a page shared before the PR is published again with its link, and the description links the page', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(meta(c.id).pr).toBeNull();
     openPr(c.id);
     sharing.prOpened(c.id);
@@ -1163,8 +1135,7 @@ describe('the link in the pull request', () => {
   test('a page shared after the PR links it at once; a description that links the page already stays', async () => {
     const c = card();
     openPr(c.id, `Exportiert Zählerstände.\n\nDemo: ${SITE_URL}zahlerstande-exportieren-${c.id.slice(0, 6)}/`);
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(calls()).toHaveLength(1);
     expect(meta(c.id).pr).toBe(PR);
     expect(edits).toEqual([]);
@@ -1183,9 +1154,8 @@ describe('the link in the pull request', () => {
 
   test('a newer demo on the card is not put out with the link: the page goes out again as it is', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
-    const newer = videoDir(join(dir, 'newer'));
+    await shared(c.id);
+    const newer = videoDemo(join(dir, 'newer'));
     writeFileSync(join(newer, 'demo.mp4'), 'newer video');
     board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [[0, 'Neu']], page: { title: 'CSV-Export 2', text: 'T.' } }) });
     openPr(c.id);
@@ -1193,7 +1163,7 @@ describe('the link in the pull request', () => {
     // the link goes in once the deploy is done: recorded, it is still copying the site
     await until(() => calls().length === 2 && edits.length === 1);
     expect(meta(c.id)).toMatchObject({ title: 'CSV-Export', chapters: [[0, 'Vorher']], pr: PR });
-    expect(readFileSync(join(dir, 'deployed', slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(deployed(), slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
     expect(share(c.id)!.stale).toBe(true);
   });
 
@@ -1207,11 +1177,11 @@ describe('the link in the pull request', () => {
   });
 
   test('withDemoLink adds a line once and replaces its own', () => {
-    expect(withDemoLink('', 'https://d/a/')).toBe(`Demo-Video: https://d/a/ ${DEMO_MARKER}\n`);
-    expect(withDemoLink('Text\n\n', 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n`);
-    expect(withDemoLink('Siehe https://d/a/', 'https://d/a/')).toBeNull();
-    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}\n\nFooter`, 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n\nFooter`);
-    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}`, 'https://d/a/', 'html')).toBe(`Text\n\nDemo-Seite: https://d/a/ ${DEMO_MARKER}`);
+    expect(withDemoLink('', 'https://d/a/', 'video', MESSAGES.de)).toBe(`Demo-Video: https://d/a/ ${DEMO_MARKER}\n`);
+    expect(withDemoLink('Text\n\n', 'https://d/a/', 'video', MESSAGES.de)).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n`);
+    expect(withDemoLink('Siehe https://d/a/', 'https://d/a/', 'video', MESSAGES.de)).toBeNull();
+    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}\n\nFooter`, 'https://d/a/', 'video', MESSAGES.de)).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n\nFooter`);
+    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}`, 'https://d/a/', 'html', MESSAGES.de)).toBe(`Text\n\nDemo-Seite: https://d/a/ ${DEMO_MARKER}`);
   });
 });
 
@@ -1232,12 +1202,11 @@ describe('the link to the commit, without a pull request', () => {
     return { base, to };
   }
   const commitOf = (id: string, at = -1) => (calls().at(at)!.pages[slug(id)]!.meta as { commit?: { url: string; several?: true } }).commit;
-  const page = (id: string) => readFileSync(join(dir, 'deployed', slug(id), 'index.html'), 'utf8');
+  const page = (id: string) => readFileSync(join(deployed(), slug(id), 'index.html'), 'utf8');
 
   test('a page shared before the work landed is published again with the commit', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(commitOf(c.id)).toBeUndefined();
     const { to } = land(c.id);
     await sharing.landed(c.id);
@@ -1256,8 +1225,7 @@ describe('the link to the commit, without a pull request', () => {
   test('work landed in several commits links the comparison over them; a page shared then links it at once', async () => {
     const c = card('In English', {}, null);
     const { base, to } = land(c.id, 3);
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(calls()).toHaveLength(1);
     expect(commitOf(c.id)).toEqual({ url: `https://github.com/acme/app/compare/${base}...${to}`, several: true });
     expect(page(c.id)).toContain('>View commits</a>');
@@ -1281,8 +1249,7 @@ describe('the link to the commit, without a pull request', () => {
     const c = card();
     openPr(c.id);
     land(c.id);
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(meta(c.id).pr).toBe(PR);
     expect(commitOf(c.id)).toBeUndefined();
   });
@@ -1291,8 +1258,7 @@ describe('the link to the commit, without a pull request', () => {
     git(repo, 'remote', 'set-url', 'origin', join(dir, 'elsewhere.git'));
     const c = card();
     land(c.id);
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(commitOf(c.id)).toBeUndefined();
   });
 });
@@ -1309,7 +1275,7 @@ describe('a demo narrated anew in its directory', () => {
     const c = card('Zählerstände exportieren', { chapters: [[0, 'Vorher'], [9.5, 'Jetzt']] });
     const d = JSON.parse(board.row(c.id).demo!).dir as string;
     revoiced(d);
-    sharing.rebuilt(c.id);
+    await sharing.rebuilt(c.id);
     const demo = JSON.parse(board.row(c.id).demo!);
     expect(demo.chapters).toEqual([[0, 'Before'], [12, 'Now']]);
     // the worker's page text spoke of the demo as it was
@@ -1327,10 +1293,9 @@ describe('a demo narrated anew in its directory', () => {
 
   test('a demo on a shared page is not changed under it', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     revoiced(JSON.parse(board.row(c.id).demo!).dir);
-    expect(() => sharing.rebuilt(c.id)).toThrow('stop sharing it first');
+    await expect(sharing.rebuilt(c.id)).rejects.toThrow('stop sharing it first');
     expect(JSON.parse(board.row(c.id).demo!).chapters).toEqual([[0, 'Vorher']]);
   });
 });
@@ -1361,7 +1326,7 @@ describe('exporting a demo, where the repository has no demo site', () => {
   test('the version shown goes into the file: an earlier one by its handover', async () => {
     const c = card('Ohne Ziel', { handover: 1 });
     files(c, 'FIRST');
-    const d = videoDir(join(dir, `demo-${c.id}-2`));
+    const d = videoDemo(join(dir, `demo-${c.id}-2`));
     writeFileSync(join(d, 'demo.mp4'), 'SECOND');
     board.work(c.id, {
       demos: JSON.stringify([JSON.parse(board.row(c.id).demo!)]),
@@ -1435,7 +1400,7 @@ describe('exporting a demo, where the repository has no demo site', () => {
     expect(html).toContain('<script type="text/vtt" class="captions" data-lang="en" data-label="English">');
     for (const german of ['Deutsch', 'Abspielen', 'Demo vom', 'ansehen', 'lang="de"']) expect(html).not.toContain(german);
     // a site's page, with the caption files beside it, names each track in its own language
-    const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', video: { src: 'demo.mp4' }, tracks: [{ language: 'en', src: 'captions.en.vtt' }, { language: 'fr', src: 'captions.fr.vtt' }] };
+    const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', language: 'de' as const, video: { src: 'demo.mp4' }, tracks: [{ language: 'en', src: 'captions.en.vtt' }, { language: 'fr', src: 'captions.fr.vtt' }] };
     expect(demoPageHtml({ ...parts, language: 'en' })).toContain('<track kind="captions" src="captions.en.vtt" srclang="en" label="English"><track kind="captions" src="captions.fr.vtt" srclang="fr" label="French">');
     // without a language the page is German
     expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.fr.vtt" srclang="fr" label="Französisch">');
@@ -1513,18 +1478,17 @@ describe('exporting a demo, where the repository has no demo site', () => {
 
 describe('a repository’s theme', () => {
   const THEME = { css: ':root { --accent: #1d4ed8; } h1 { font-family: system-ui; }', hash: 'aaaaaaaaaaaaaaaa' };
-  const pageOf = (id: string) => readFileSync(join(dir, 'deployed', slug(id), 'index.html'), 'utf8');
+  const pageOf = (id: string) => readFileSync(join(deployed(), slug(id), 'index.html'), 'utf8');
 
   test('goes into the page after Obeya’s style; a new theme leaves the page outdated, and sharing again brings it', async () => {
     theme = THEME;
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     const html = pageOf(c.id);
     expect(html.indexOf(`<style>${THEME.css}</style>`)).toBeGreaterThan(html.indexOf('</style>'));
     // nothing the theme names loads from elsewhere
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:;`);
-    expect(readFileSync(join(dir, 'deployed', 'index.html'), 'utf8')).toContain(`<style>${THEME.css}</style>`);
+    expect(readFileSync(join(deployed(), 'index.html'), 'utf8')).toContain(`<style>${THEME.css}</style>`);
     expect(share(c.id)!.outdated).toBeUndefined();
 
     // a new theme on the main branch: the canvas shows what it leaves outdated
@@ -1561,8 +1525,7 @@ describe('a repository’s theme', () => {
     const C = { css: ':root { --accent: #15803d; }', hash: 'cccccccccccccccc' };
     theme = A;
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     theme = B;
     board.changed();
     sharing.dismissResharing();
@@ -1580,7 +1543,7 @@ describe('a repository’s theme', () => {
   test('is asked for of shared pages alone, not of every card the canvas shows', async () => {
     theme = THEME;
     const asked: string[] = [];
-    board.showThemes((repo) => (asked.push(repo), theme?.hash ?? null));
+    board.pages.showThemes((repo) => (asked.push(repo), theme?.hash ?? null));
     for (let i = 0; i < 5; i++) board.create({ title: `Karte ${i}`, x: 0, y: 0 });
     card();
     asked.length = 0;
@@ -1588,8 +1551,7 @@ describe('a repository’s theme', () => {
     board.snapshot();
     expect(asked).toEqual([]);
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     asked.length = 0;
     board.changed();
     board.snapshot();
@@ -1598,8 +1560,7 @@ describe('a repository’s theme', () => {
 
   test('a page without a theme stays as it was, and a repository with none marks no page', async () => {
     const c = card();
-    sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'shared');
+    await shared(c.id);
     expect(pageOf(c.id)).not.toContain('Content-Security-Policy');
     expect(JSON.parse(board.row(c.id).share!)).not.toHaveProperty('theme');
     expect(share(c.id)!.outdated).toBeUndefined();

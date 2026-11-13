@@ -2,13 +2,15 @@
 // effect, set once before the first render (`setLanguage`); choosing another language loads the
 // page again. Dates and numbers follow the language, in the browser's own variant of it.
 
-import { ApiError } from './api';
 import type { DiffFile } from '../core/diff';
 import { type Language, languageOf } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
-import { type AgentEffort, type AgentModel, type AgentRole, type Harness, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
+import { type CardState, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Item, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LostWork } from '../core/types';
+import { stopped } from '../core/card';
+import type { AgentEffort, AgentModel, AgentRole, Harness } from '../core/agents';
+import type { ConfigProblemCode, LeavingClone } from '../core/config';
 
 /** A list in a sentence: „a, b und c“. */
 const listOf = (items: string[], and: string) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ${and} ${items.at(-1)}`);
@@ -168,10 +170,13 @@ const de = {
     howTo: 'Mehrere Karten auf einmal verschieben: mit Umschalt anklicken oder mit Umschalt um sie herum ziehen.',
   },
   close: 'Schließen (Esc)',
+  cancel: 'Abbrechen',
+  remove: 'Entfernen',
+  copied: 'Kopiert',
+  download: 'Herunterladen',
   /** A card's number (`K42`), which a click copies. */
   cardNumber: {
     copy: (tag: string) => `Nummer ${tag} kopieren: so nennst du die Karte Obeya und den Agenten`,
-    copied: 'Kopiert',
     selected: 'Markiert',
   },
   sheetGrip: 'Breite ziehen · Doppelklick: zurück auf die Standardbreite',
@@ -266,14 +271,16 @@ const de = {
     /** The effort chosen, beside the harness and model in the line beside the button. */
     chosenEffort: (effort: string) => `Effort ${effort}`,
   },
-  /** A newer Claude Code that is out, in a card's menu of models and in the Configuration's agents. */
-  claudeUpdate: {
-    out: (version: string) => `Claude Code ${version} ist da`,
+  /** A newer version of a harness (`name`: Claude Code, Codex) that is out, in a card's menu of models and in the Configuration's agents. */
+  harnessUpdate: {
+    /** `host`: the line for that host's installation, which is at `now` there; none: this machine's. */
+    out: (name: string, version: string, host?: string, now?: string) => (host ? `${name} ${version} ist da, ${host} hat ${now}` : `${name} ${version} ist da`),
     button: 'Aktualisieren',
     /** On hover: the version the agents run on now (`now`), and what the update does. */
-    hint: (now: string) => `Die Agenten laufen auf ${now}. Agenten, die nach dem Aktualisieren starten, laufen auf der neuen Version, mit ihren Modellen; einer, der gerade arbeitet, bleibt bei seiner.`,
-    running: 'Claude Code wird aktualisiert …',
-    failed: (why: string) => `Aktualisieren ging nicht: ${why}`,
+    hint: (now: string, host?: string) =>
+      `${host ? `Die Agenten auf ${host} laufen auf ${now}` : `Die Agenten laufen auf ${now}`}. Agenten, die nach dem Aktualisieren starten, laufen auf der neuen Version, mit ihren Modellen; einer, der gerade arbeitet, bleibt bei seiner.`,
+    running: (name: string, host?: string) => (host ? `${name} wird auf ${host} aktualisiert …` : `${name} wird aktualisiert …`),
+    failed: (why: string, host?: string) => (host ? `Aktualisieren auf ${host} ging nicht: ${why}` : `Aktualisieren ging nicht: ${why}`),
     again: 'Nochmal versuchen',
   },
   /** The state of a task the owner stopped, in place of „Geplant“. */
@@ -352,15 +359,30 @@ const de = {
   },
   approve: 'Freigeben',
   approvePr: 'Freigeben (PR)',
-  approveDirect: MESSAGES.de.approveDirect,
+  approveDirect: MESSAGES.de.labels.approveDirect,
   directHint: 'Direkt auf main: ohne Review, Push auf origin/main',
   approveNoChange: 'Beenden',
   noChangeHint: 'Keine Änderung am Code: Beenden schließt die Karte ab, ohne Pull Request.',
-  accept: 'Übernehmen und starten',
+  /** Taking back the approval: the button says what it does, which differs by where the work is. */
+  revoke: {
+    approval: 'Freigabe zurücknehmen',
+    approvalHint: 'Die nächste Übergabe landet dann nicht von selbst, sondern wartet wieder auf deine Freigabe.',
+    closePr: (n?: number) => (n ? `Freigabe zurücknehmen (PR #${n} schließen)` : 'Freigabe zurücknehmen (kein PR)'),
+    closePrHint: 'Schließt den Pull Request ohne Merge (sein Branch bleibt). Die Aufgabe wartet danach wieder mit ihrer Demo auf dich.',
+    revert: 'Freigabe zurücknehmen (Revert auf main)',
+    revertHint: 'Ein Revert-Commit auf main macht die Arbeit rückgängig, so wie sie gelandet ist. Die Aufgabe wartet danach wieder mit ihrer Demo auf dich; eine neue Freigabe bringt die Arbeit zurück.',
+    rollbackPr: (n: number) => `Freigabe zurücknehmen (Rollback-PR für #${n})`,
+    rollbackPrHint: (n: number) => `PR #${n} ist schon gemergt: Obeya öffnet einen Pull Request, der ihn rückgängig macht, und mergt ihn wie jeden. Danach wartet die Aufgabe wieder mit ihrer Demo auf dich.`,
+    ackApproval: 'Freigabe zurückgenommen.',
+    ackClosePr: (n?: number) => (n ? `Freigabe wird zurückgenommen: PR #${n} wird geschlossen.` : 'Freigabe wird zurückgenommen.'),
+    ackRevert: 'Freigabe wird zurückgenommen: Revert auf main.',
+    ackRollbackPr: (n: number) => `Freigabe wird zurückgenommen: Rollback-PR für #${n} wird geöffnet.`,
+  },
+  accept: MESSAGES.de.labels.accept,
   acceptOnly: 'Übernehmen',
-  acceptIdea: 'Übernehmen und besprechen',
+  acceptIdea: MESSAGES.de.labels.acceptIdea,
   acceptAsTask: 'Als Aufgabe übernehmen',
-  acceptAsIdea: 'Als Idee besprechen',
+  acceptAsIdea: MESSAGES.de.labels.acceptAsIdea,
   acceptAsIdeaHint: 'Erst mit einem Agenten durchdenken, als Idee, statt es gleich zu bauen',
   dismiss: 'Verwerfen',
   send: 'Senden',
@@ -418,7 +440,6 @@ const de = {
   openThere: 'Dort öffnen',
   /** The repository picker of a card before work begins, with a repository Obeya creates for it. */
   repoPick: {
-    label: 'Repository',
     newRepo: 'Neues Repository …',
     newRepoHint: 'Ein Repository, das es noch nicht gibt: Obeya legt Ordner und git an, nur lokal.',
     /** The picker's entry and the buttons once a new repository has its folder. */
@@ -475,7 +496,6 @@ const de = {
     cited: (text: string) => `„${text}“ - `,
     // the button in the corner of a code block, and what it says for a moment after
     copy: 'Kopieren',
-    copied: 'Kopiert',
     // where the browser lets the page not write the clipboard (an insecure origin)
     selected: 'Markiert: zum Kopieren lange drücken',
   },
@@ -498,7 +518,6 @@ const de = {
     big: (lines: number) => `${lines} Zeilen, eingeklappt`,
     unfold: 'Aufklappen',
     truncated: 'Das Diff ist hier abgeschnitten, weil es zu groß ist; die übrigen Dateien stehen oben in der Liste.',
-    close: 'Schließen (Esc)',
     copyPath: 'Pfad kopieren',
     copied: '✓ Pfad kopiert',
   },
@@ -523,10 +542,8 @@ const de = {
     discard: 'Änderungen verwerfen',
     discardHint: (n: number) => `Setzt ${n === 1 ? '1 Datei' : `${n} Dateien`} zurück, wie sie vor der Karte waren. Die Karte wartet danach weiter auf dich.`,
     seconds: (s: number) => `${s} s`,
-    cancel: 'Abbrechen',
     clickToCancel: 'Noch einmal klicken bricht ab',
     cancelHint: 'Bricht ab: Die Änderungen der Karte bleiben, wie sie sind. Ist die Zeit abgelaufen, lässt sich das Verwerfen nicht mehr zurücknehmen.',
-    discarded: 'Änderungen verworfen.',
     approveHint: 'Freigeben beendet die Karte: Die Änderungen bleiben im Ordner und lassen sich danach nicht mehr verwerfen.',
     approved: 'Freigegeben: erledigt.',
     noChangeHint: 'Nichts im Ordner geändert: Beenden schließt die Karte ab.',
@@ -536,6 +553,24 @@ const de = {
   approvedDirect: 'Freigegeben; geht direkt auf main.',
   approving: 'wird freigegeben …',
   approvingDirect: 'wird direkt auf main gepusht …',
+  upstream: {
+    approve: (name: string) => `Freigeben + PR an ${name}`,
+    approveMine: 'Freigeben, nur für mich',
+    hint: (into: string, name: string, branch: string, brings?: number) =>
+      `${brings ? `Holt ${into} auf den Stand von ${branch}, landet` : 'Landet'} die Änderung auf ${into} und öffnet einen PR an ${name}.`,
+    hintPort: (into: string, name: string, branch: string, brings?: number) =>
+      `Landet die Änderung auf ${into}, wendet sie ungetestet auf ${branch} an und öffnet einen PR an ${name}${brings ? `; holt ${into} später auf den Stand von ${branch}` : ''}.`,
+    mineHint: (into: string, name: string) => `Landet die Änderung auf ${into}, ohne PR an ${name}.`,
+    approved: (name: string) => `Freigegeben; geht auch als PR an ${name}.`,
+    approving: 'landet und geht als PR ans Original …',
+    startOn: 'Startpunkt',
+    mine: (into: string) => into,
+    pr: (branch: string, name: string) => `${branch} von ${name}`,
+    pickMine: (into: string, name: string) =>
+      `Entwickelt auf ${into}, mit den eigenen Features des Forks; landet standardmäßig dort. Soll sie bei der Freigabe stattdessen an ${name}, wird sie dort angewendet, ohne dort getestet worden zu sein.`,
+    pickPr: (into: string, name: string, branch: string) =>
+      `Entwickelt auf dem neuesten ${branch} von ${name}; Obeya aktualisiert ${branch} vor dem Start von dort. Geht als Pull Request an ${name} und landet auch auf ${into}.`,
+  },
   cardError: (title: string, why: string) => `„${title}“: ${why}`,
   approvedNoChange: 'Beendet.',
   accepted: 'Vorschlag übernommen und gestartet.',
@@ -548,7 +583,6 @@ const de = {
     withdrawn: 'Der vorschlagende Agent hat diese Karte zurückgezogen.',
     byShort: (title: string) => `Ersetzt durch „${title}“`,
     withdrawnShort: 'Vom Agenten zurückgezogen',
-    remove: 'Entfernen',
     removeHint: 'Die Karte geht vom Canvas; arbeitet ein Agent daran, hält er an.',
     keep: 'Behalten',
     keepHint: 'Die Karte bleibt, wie sie ist, und der Hinweis geht.',
@@ -643,6 +677,7 @@ const de = {
     queued: 'Die Aufgabe liegt schon bei Obeya.',
     notQueued: 'Die Aufgabe wartet nicht in der Warteschlange.',
     notEvictable: 'Diesen Workspace kann die Karte nicht abgeben.',
+    notFreed: 'Obeya konnte die Änderungen in diesem Klon nicht committen (git schlug fehl, oder Dateien dort sind als unverändert markiert); er bleibt, wie er ist.',
     evicting: 'Die Aufgabe gibt gerade ihren Workspace ab; starte sie gleich noch einmal.',
     newRepoDue: 'Obeya legt das neue Repository gerade an.',
     newRepoPath: 'Für das neue Repository fehlt der Ordner.',
@@ -658,6 +693,7 @@ const de = {
     notReady: 'Das ist nicht bereit zur Abnahme.',
     notHeld: 'Der Kommentar ist schon beim Agenten.',
     noDirect: 'In diesem Repository geht freigegebene Arbeit nur per Pull Request auf main.',
+    noUpstream: 'Dieses Repository ist kein Fork, dessen Arbeit auf seinem Hauptbranch landet und an ein Original gehen kann.',
     notReview: 'Diese Karte prüft keinen Pull Request.',
     noEdits: 'Der Beitragende erlaubt keine Änderungen durch Maintainer: Befunde gehen an ihn.',
     noFinding: 'Über diesen Befund ist schon entschieden.',
@@ -665,10 +701,11 @@ const de = {
     prMoved: 'Nichts gepusht oder gemergt: Der PR steht nicht mehr auf dem übergebenen Stand. Der Agent prüft ihn neu.',
     pullClash: 'Nicht gemergt: Der PR kollidiert mit ungepushten Commits auf main (steht jetzt auf der Karte). Erst main pushen, oder trotzdem mergen.',
     noClash: 'Der PR kollidiert mit nichts Ungepushtem auf main (mehr).',
+    notRevocable: 'Hier gibt es keine Freigabe (mehr) zurückzunehmen.',
+    notRevoking: 'Die Freigabe wird schon zurückgenommen; das lässt sich nicht mehr rückgängig machen.',
     prClosed: 'Der Pull Request ist geschlossen.',
     mergeRefused: 'Nicht gemergt:',
     pushRefused: 'Nicht gepusht:',
-    noPr: 'Diesen Pull Request kann Obeya nicht lesen:',
     notFolder: 'Das geht nur in einem Ordner ohne git.',
     inFolder: 'Das gibt es in einem Ordner ohne git nicht.',
     repoDown: 'Das Repository dieser Karte läuft gerade nicht auf dieser Leinwand.',
@@ -872,6 +909,8 @@ const de = {
   },
   pr: {
     title: (n: number, repo?: string) => `Pull Request ${repo ? `${repo.split('/').pop()} ` : ''}#${n}`,
+    rollbackTitle: (n: number, of: number) => `Rollback-PR #${n} (macht #${of} rückgängig)`,
+    rollbackShort: 'Rollback',
     merged: 'Gemergt. Die Karte wird live, sobald auch die anderen Pull Requests gemergt sind.',
     closed: 'Ohne Merge geschlossen.',
     waits: (waits: PrWait[]) =>
@@ -891,6 +930,7 @@ const de = {
               review: 'ein Review des neuesten Commits',
               answer: 'die Antwort des Reviewers auf die Bitte um ein neues Review',
               agent: 'den Agenten, der gerade daran arbeitet',
+              maintainer: 'Review und Merge durch die Maintainer des Originals',
             })[w],
         )
         .join(', ')}.`,
@@ -901,6 +941,10 @@ const de = {
       `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. ${by} gibt aber nur ${score}; unter 4/5 mergt Obeya nicht selbst. Du entscheidest: selbst mergen oder dem Agenten sagen, was noch fehlt.`,
     noChecks: 'Noch keine Checks.',
     opening: 'Der Agent öffnet den Pull Request.',
+    openingUpstream: (name: string) => `Der Agent öffnet den Pull Request an ${name}.`,
+    into: (into: string) => `Auch auf ${into}: Was auf diesen Pull Request kommt, mergt Obeya dort ebenfalls hinein.`,
+    intoConflict: (into: string) => `Der neue Stand lässt sich nicht konfliktfrei in ${into} mergen; der Agent löst das.`,
+    intoBlocked: (into: string, why: string) => `Der neue Stand ist noch nicht auf ${into}: ${why}`,
     review: 'Review',
     round: (n: number, author: string) => `Runde ${n} · ${author}`,
     threads: (n: number, open: number) =>
@@ -925,6 +969,7 @@ const de = {
       review: 'wartet auf Review',
       answer: 'wartet auf Reviewer',
       agent: 'Agent arbeitet',
+      maintainer: 'wartet auf Maintainer',
     } satisfies Record<PrWait, string>,
     short: (pr: string, failed: number, conflict: boolean, ready?: boolean, held?: string, wait?: string) =>
       [`PR ${pr}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : '', ready ? 'Bereit zum Mergen' : '', held ? `Review nur ${held}` : '', wait ?? '']
@@ -968,7 +1013,7 @@ const de = {
     earlierHint: 'Diese Demo hat eine spätere Übergabe ersetzt.',
   },
   share: {
-    share: 'Teilen',
+    share: MESSAGES.de.labels.share,
     shareHint: 'Veröffentlicht das Video auf einer Seite für die Kollegen, auf der Demo-Site dieses Repositorys',
     shareHintHtml: 'Veröffentlicht die Seite mit Text und Artefakt für die Kollegen, auf der Demo-Site dieses Repositorys',
     shareNow: 'Jetzt teilen',
@@ -995,9 +1040,9 @@ const de = {
     tooLarge: (bytes: number) => `Für eine einzelne Datei ist das Video zu groß (${number(bytes / 1024 / 1024, 1)} MB, höchstens ${number(EXPORT_HTML_MAX / 1024 / 1024)} MB).`,
     preparing: 'Wird vorbereitet …',
     writingPage: 'Der Text der Seite wird zuerst geschrieben; das dauert etwas.',
-    replace: 'Auf der Seite ersetzen',
+    replace: MESSAGES.de.labels.replace,
     replaceHint: 'Die geteilte Seite zeigt diese Demo statt der geteilten; der Link bleibt.',
-    add: 'Zur Seite dazunehmen',
+    add: MESSAGES.de.labels.add,
     addHint: 'Die geteilte Seite bekommt diese Demo als Ergänzung unter der geteilten; der Link bleibt.',
     addEarlierHint: 'Nimmt diese Demo auf die geteilte Seite dazu, an ihrer Stelle nach Übergabe; der Link bleibt.',
     /** Which of the card's demos the shared page holds, by their numbers in the line above the demo. */
@@ -1008,7 +1053,7 @@ const de = {
     onPageMark: 'Auf der geteilten Seite',
     /** What the worker said of the latest demo beside the one before (`Demo.follows`). */
     agentSays: (follows: 'replaces' | 'supplements', before: number) => (follows === 'supplements' ? `Laut Agent ergänzt dieses Video Demo ${before}.` : `Laut Agent ist dieses Video neu aufgenommen und ersetzt Demo ${before}.`),
-    stop: 'Nicht mehr teilen',
+    stop: MESSAGES.de.labels.unshare,
     stopHint: 'Nimmt die Seite herunter; erneutes Teilen bringt sie unter demselben Link zurück.',
     stopOneHint: 'Nimmt diese Demo von der Seite; die anderen bleiben unter demselben Link.',
     open: 'Öffnen',
@@ -1018,7 +1063,7 @@ const de = {
     publishing: 'Wird veröffentlicht …',
     withdrawing: 'Wird zurückgezogen …',
     outdated: 'Seit diese Seite geteilt wurde, haben sich die Seiten geändert:',
-    reshare: 'Erneut teilen',
+    reshare: MESSAGES.de.labels.reshare,
     reshareHint: 'Erzeugt die Seite neu, mit denselben Demos; der Link bleibt.',
     /** The page's tags as chips in the share box, from the site's vocabulary. */
     tags: 'Tags',
@@ -1060,17 +1105,17 @@ const de = {
   },
   answer: {
     makeCard: 'Als Karte',
-    walkthrough: 'Als Walkthrough zeigen',
+    walkthrough: MESSAGES.de.labels.walkthrough,
     walkthroughHint: 'Lässt diese Antwort als Walkthrough erzählen: Folien mit Ton, als nächste Antwort darunter.',
     makeCardHint: 'Legt diesen Faden (Fragen, Antworten, Dateien) als Frage-Karte auf die Leinwand; der Agent, der nachgeschlagen hat, liest dort weiter.',
     onCard: (title: string) => `Auf der Karte „${title}“`,
     onCardHint: 'Dieser Faden geht auf seiner Frage-Karte weiter.',
     continues: (question: string) => `↳ setzt fort: „${question}“`,
+    addsTo: (question: string) => `↳ fließt ein in: „${question}“`,
     reading: 'liest …',
     showFolder: 'Im Ordner zeigen',
     showFolderHint: 'Öffnet den Ordner mit allen Dateien dieser Antworten',
     open: (caption: string) => (caption ? `${caption} – öffnen` : 'Öffnen'),
-    download: 'Herunterladen',
   },
   /** The player of an answer told as a walkthrough. */
   walkthrough: {
@@ -1103,7 +1148,6 @@ const de = {
     show: 'Im Ordner zeigen',
     showHint: 'Zeigt die Datei markiert in ihrem Ordner, auf dem Rechner, auf dem Obeya läuft',
     notHere: 'Das geht nur an dem Rechner, auf dem Obeya läuft.',
-    download: 'Herunterladen',
     loading: 'Lädt …',
     failed: 'Die Datei ließ sich nicht lesen.',
     noDiff: 'Die Änderungen dieser Datei lassen sich nicht Zeile für Zeile zeigen.',
@@ -1159,12 +1203,10 @@ const de = {
     accept: 'Übernehmen',
     change: 'Ändern',
     reject: 'Verwerfen',
-    cancel: 'Abbrechen',
     preferencesHead: (n: number) => `Präferenzen (${n})`,
     preferencesHint:
       'Wie die Agenten über Obeya mit dir arbeiten, in jedem Repo. Alle Agenten halten sich daran. Was du hier einträgst oder Obeya mit „Merk dir: …“ sagst, gilt sofort; was ein Repo betrifft, kommt in dessen Aufgabe „CLAUDE.md ergänzen“.',
     edit: 'Zum Bearbeiten klicken',
-    remove: 'Entfernen',
     add: 'Hinzufügen',
     addPlaceholder: 'Neue Regel',
     filed: (repo: string) => `In die Aufgabe „CLAUDE.md ergänzen“ für ${repo} aufgenommen.`,
@@ -1262,7 +1304,6 @@ const de = {
     noDevices: 'Noch keins.',
     pairedAt: (when: string) => `verbunden ${when}`,
     seenAt: (when: string) => `zuletzt ${when}`,
-    remove: 'Entfernen',
     // the dialog „Telefon verbinden“
     scan: 'Scanne den Code mit der Kamera deines Telefons; es muss im selben VPN sein.',
     scanTailscale: (account?: string) => `Scanne den Code mit der Kamera deines Telefons; es braucht Tailscale, angemeldet ${account ? `als ${account}` : 'mit demselben Konto wie hier'}.`,
@@ -1415,7 +1456,7 @@ const de = {
     newRepo: 'Neues Repository',
     repos: 'Repositories',
     savesAll: 'Speichern nimmt die Änderungen aller Leinwände mit; links markiert.',
-    groups: { workspaces: 'Wo die Agenten arbeiten', landing: 'Branch und Landen', app: 'App und Prüfungen', plans: 'Pläne und Sprache', demos: 'Demos' },
+    groups: { workspaces: 'Wo die Agenten arbeiten', landing: 'Branch und Landen', github: 'GitHub', app: 'App und Prüfungen', plans: 'Pläne und Sprache', demos: 'Demos' },
     trust: {
       app: 'App stoppen und behalten (app.stop, app.keep): Obeya führt sie aus, wenn eine Karte wartet. Bis dahin bleibt die App laufen.',
       site: 'Demo-Seite (demo.site): Obeya veröffentlicht mit diesem Befehl und liest die Seite unter dieser Adresse. Bis dahin werden Demos exportiert.',
@@ -1474,6 +1515,11 @@ const de = {
     hosts: 'Weitere Rechner (über SSH), wenn hier alle Slots belegt sind',
     hostsHint: 'Obeya legt die Klone dort selbst an und startet die Agenten dort über ssh. Die Anmeldung bei Claude (claude-token in Obeyas Verzeichnis) und bei GitHub gehen bei jedem Start mit und bleiben dort nicht liegen.',
     hostName: 'Name',
+    githubAccount: 'GitHub-Konto',
+    githubAccountHint: (host: string) =>
+      `Als welches Konto der GitHub-Kommandozeile (gh) Obeya und die Agenten dieses Repositorys auf ${host} arbeiten: Pull Requests öffnen, lesen und kommentieren. Gilt nur auf diesem Rechner und kommt nicht ins Repository. Zur Auswahl stehen die Konten, bei denen gh angemeldet ist (gh auth login). Automatisch: das Konto, dem das Repository gehört, wenn gh dort angemeldet ist, sonst das in gh aktive Konto.`,
+    githubAccountAuto: (account: string | undefined) => (account ? `Automatisch (${account})` : 'Automatisch'),
+    githubAccountMissing: (account: string) => `${account} (bei gh nicht angemeldet)`,
     hostSsh: 'ssh-Ziel, z. B. ich@rechner.local',
     hostRoot: 'Verzeichnis dort, z. B. ~/obeya/repo',
     hostClones: 'Klone',
@@ -1492,27 +1538,32 @@ const de = {
       land: 'Freigegebene Arbeit',
       lands: { main: 'Landet auf dem Hauptbranch', pr: 'Geht als Pull Request raus' },
       landHint: 'Auf dem Hauptbranch: Obeya übernimmt die Arbeit beim Freigeben selbst in den Checkout. Als Pull Request: der Agent öffnet ihn, Obeya wartet auf Prüfungen und Review und merget ihn dann.',
+      push: 'Zu origin pushen',
+      pushLabel: 'Nach jeder Landung schiebt Obeya den Hauptbranch auch zu origin',
+      pushHint: 'Nie erzwungen. Lehnt origin den Push ab (der Branch hat sich dort bewegt, er ist geschützt, Rechte fehlen), bleibt die Arbeit gelandet, und die Karte sagt dir, warum.',
+      upstream: 'Original (Fork)',
+      upstreamHint: 'Bei einem Fork der Hauptbranch des Originals, wie dieser Checkout ihn kennt (<remote>/<branch>). Aufgaben können dann auch als Pull Request ans Original gehen; Obeya verfolgt ihn und mergt Nachbesserungen auch in den Hauptbranch. Erkannt an einem Remote namens upstream; leer: keins.',
       direct: 'Direkt erlauben',
       directLabel: 'Freigeben darf die Arbeit auch direkt auf den Hauptbranch schieben, ohne Pull Request',
       autoMerge: 'Automatisch mergen',
       autoMergeLabel: 'Obeya mergt den Pull Request selbst, sobald Prüfungen und Review durch sind',
       autoMergeHint: 'Aus: Ist der Pull Request bereit, wartet die Karte auf dich, und gemergt wird auf GitHub oder Codeberg (etwa nach dem Review eines Kollegen). Obeya sieht den Merge und setzt die Karte auf live.',
-      checks: 'Prüfungen',
+      checks: MESSAGES.de.labels.settings.checks,
       checksHint: 'Befehle, die ein Agent vor der Übergabe ausführt, einer pro Zeile.',
-      setup: 'Einrichten',
+      setup: MESSAGES.de.labels.settings.setup,
       setupHint: 'Befehl, den ein Agent zuerst in seinem Arbeitsverzeichnis ausführt (Abhängigkeiten).',
       planDocs: 'Plan-Dokumente',
       planDir: 'Verzeichnis',
       planDocsHint: 'Ein Pfad im Repository wird vom Hauptbranch gelesen. Ein absoluter Pfad (oder ~/…) ist ein Ordner dieses Rechners außerhalb von git, für Pläne, die nicht ins Repository sollen: Obeya liest ihn dort, und die Agenten haken ihre Workstreams dort ab.',
       planExclude: 'ausgenommen, mit Komma getrennt',
-      softPaths: 'Weiche Pfade',
+      softPaths: MESSAGES.de.labels.settings.softPaths,
       softPathsHint: 'Pfade, deren Änderungen nie als Konflikt zwischen zwei Aufgaben zählen (Doku, Plan-Dokumente), einer pro Zeile; ein / am Ende nimmt ein Verzeichnis.',
       workspaces: 'Agenten arbeiten in',
       workIn: { worktrees: 'Worktrees', clones: 'Klonen' },
       workspacesHint: 'Ändern startet die Agenten dieses Repositorys neu, sobald keiner mitten in einem Schritt ist; Obeya und alle anderen arbeiten weiter.',
       prNoise: 'Konten ohne Review',
       prNoiseHint: 'Konten, deren Kommentare an Pull Requests kein Review sind (Deploy-Bots), eines pro Zeile.',
-      run: 'So läuft die App',
+      run: MESSAGES.de.labels.settings.run,
       runPlaceholder: 'Start mit ./dev.sh; nach einer API-Änderung ./restart-api.sh, die Seite lädt von selbst neu. Die URL steht beim Start in der Konsole. Login: …',
       runHint:
         'Freitext für die Agenten, kein Befehl, so wie man es einem neuen Kollegen erklärt: wie man die App startet, was nach welcher Änderung zu tun ist (API neu starten, Seite neu laden, neu bauen), wo die App ihre Adresse nennt, Login und Testdaten für eine Demo. Jeder Agent bekommt ihn. Bleibt er leer, findet jeder Agent es selbst im Repository heraus.',
@@ -1568,7 +1619,6 @@ const de = {
         pushDirect: (branch: string) => `Direkt auf ${branch} committen`,
         commit: 'Committen',
         openPr: 'Pull Request öffnen',
-        cancel: 'Abbrechen',
         committed: (branch: string, commit: string) => `Auf ${branch} committet (${commit}). Die Werte kommen jetzt aus dem Repository.`,
         unchanged: (branch: string) => `.obeya/settings.json auf ${branch} hatte diese Werte schon; nichts committet. Sie kommen jetzt aus dem Repository.`,
         opened: 'Pull Request geöffnet:',
@@ -1624,6 +1674,7 @@ const de = {
       noBranch: 'Diesen Hauptbranch hat das Repository nicht, weder hier noch auf origin.',
       repoSettings: 'Ein Wert in .obeya/settings.json des Repositorys gilt nicht; an seiner Stelle steht, was ohne ihn gilt:',
       untrusted: 'Das Repository bringt Befehle mit, die neu sind oder sich geändert haben. Obeya führt sie erst aus, wenn du ihnen vertraust:',
+      githubAccount: 'Mit dem eingestellten GitHub-Konto ist die GitHub-Kommandozeile (gh) nicht angemeldet; bis sie es ist, arbeitet gh als das Konto, das sie aktiv hat:',
       demoSite: 'Die Demo-Site in den Einstellungen des Repositorys ist so nicht nutzbar; bis sie es ist, exportiert „Teilen“ Demos als Datei:',
       adapterGone: 'Das Repository hat auf dem Hauptbranch noch ein .obeya/adapter/, das Obeya nicht mehr liest. Was darin steht, gehört in seine Einstellungen (.obeya/settings.json); „Von einem Agenten ausfüllen lassen“ übernimmt es:',
       canvasDown: 'Diese Leinwand läuft nicht: Ihr Heimat-Repository ließ sich nicht starten. Ihre Karten bleiben gespeichert.',
@@ -1793,7 +1844,6 @@ const de = {
       code: 'Verbindungscode kopieren',
       codeLabel: 'Weitere Rechner',
       codeHint: 'Damit auch ein anderer Rechner von dir hierhin teilt: Code kopieren, dort Konfiguration → Demos → „Mit vorhandener Seite verbinden“ öffnen und ihn einfügen. Der Code enthält den geheimen Pfad der Seite und ihre Zugangsdaten; gib ihn nicht weiter.',
-      copied: 'Kopiert',
       remove: 'Von diesem Rechner entfernen',
       removeHint: 'Dieser Rechner teilt nicht mehr dorthin. Die geteilten Seiten und das Projekt beim Hoster bleiben.',
       removeConfirm: 'Wirklich entfernen',
@@ -1906,7 +1956,6 @@ const de = {
     noTerminal: 'Obeya hat hier kein Terminal gefunden. Bitte den Befehl in einem Terminal ausführen.',
     byHand: 'Oder im Terminal:',
     copy: 'Kopieren',
-    copied: 'Kopiert',
     yourName: 'Dein Name',
     yourEmail: 'E-Mail',
     saveIdentity: 'Eintragen',
@@ -1954,7 +2003,6 @@ const de = {
       again: 'Neu ansehen',
       confirm: 'Einrichten und committen',
       confirmCanvas: 'Einrichten, committen und Leinwand anlegen',
-      cancel: 'Abbrechen',
       working: 'Wird eingerichtet …',
     },
   },
@@ -2021,7 +2069,6 @@ const de = {
   update: {
     pill: (version: string) => `Update ${version}`,
     install: 'Installieren',
-    download: 'Herunterladen',
     title: (version: string, day: string | null) => `Obeya ${version} ist da${day ? ` (vom ${day})` : ''}.`,
     how: 'Installieren wartet wie ein Neustart, bis die Agenten an einem sicheren Punkt pausieren (höchstens 15 Minuten), und nicht mitten in deinem Video oder Diktat. Dann ersetzt sich die App und startet neu, und die Agenten machen weiter.',
     howDownload: 'Als .deb-Paket installiert, kann sich Obeya nicht selbst ersetzen: Lade das neue Paket herunter und installiere es wie das erste.',
@@ -2056,6 +2103,14 @@ const de = {
     /** A limit for one model or surface only. */
     scoped: (scope: string) => `Woche, nur ${scope}`,
     resets: (when: string) => `neu ab ${when}`,
+    /** How long until then, after it. */
+    left: (span: string) => `noch ${span}`,
+    /** The parts of that span. */
+    days: (n: number) => `${n} ${n === 1 ? 'Tag' : 'Tage'}`,
+    hours: (n: number) => `${n} Std.`,
+    minutes: (n: number) => `${n} Min.`,
+    /** Under the list: what the tick on each meter means. */
+    pace: 'Der Strich auf jedem Balken zeigt, wie viel vom Zeitfenster schon vergangen ist: grün, solange der Verbrauch dahinter bleibt, rot, sobald er der Zeit vorausläuft und das Limit vor dem Neustart ausgehen könnte.',
     source: (harness: string, time: string) => `Von ${harness} auf diesem Rechner, jede Minute neu; Stand ${time}.`,
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
@@ -2100,11 +2155,32 @@ const de = {
     /** In the list of workspaces, for one no card holds. */
     freeRow: 'frei',
     blockedRow: 'blockiert',
-    kept: (path: string) => `bleibt: nicht gelandete Arbeit in ${path}`,
+    /** A folder of a clone Obeya made that left the pool and stays: what lies in it that would be lost. */
+    kept: (path: string, lost: string[]) => `bleibt, weil dort nicht gelandete Arbeit liegt: ${lost.join('; ')} (${path})`,
+    lost: (l: LostWork) => {
+      switch (l.what) {
+        case 'submodules':
+          return 'Submodule';
+        case 'worktrees':
+          return l.n === 1 ? 'ein Worktree daraus' : `${l.n} Worktrees daraus`;
+        case 'changes':
+          return l.n === 1 ? 'eine nicht committete Änderung' : `${l.n} nicht committete Änderungen`;
+        case 'stash':
+          return 'ein Stash';
+        case 'commits': {
+          const what = l.kind === 'head' ? 'ein losgelöster HEAD' : l.kind === 'branch' ? `Branch ${l.name}` : l.kind === 'tag' ? `Tag ${l.name}` : l.name;
+          return `${what} mit ${l.n === 1 ? 'einem Commit' : `${l.n} Commits`}, die nicht auf origin ${l.n === 1 ? 'ist' : 'sind'}`;
+        }
+      }
+    },
     /** A free clone no new card gets now: why, and what the owner can do about it. */
     blocked: {
       dirty: (path: string, files: string[], more: number) =>
-        `${path} hat nicht committete Änderungen: ${files.join(', ')}${more ? ` und ${more} weitere` : ''}. Keine Karte bekommt den Klon, bis du sie dort committest oder verwirfst (neue Dateien löschst).`,
+        `${path} hat nicht committete Änderungen: ${files.join(', ')}${more ? ` und ${more} weitere` : ''}. Keine Karte bekommt den Klon, solange sie dort liegen.`,
+      /** After the dirty line: the card whose branch the clone is on, as a link between these, and whether its work has landed. */
+      leftBy: 'Sie stammen von ',
+      leftWork: (work: 'landed' | 'open' | 'none'): string =>
+        work === 'landed' ? ', deren Arbeit schon gelandet ist.' : work === 'none' ? ', die ohne Änderung am Code fertig ist.' : ', deren Arbeit noch nicht gelandet ist.',
       broken: (path: string, error: string, made: boolean) =>
         `In ${path} geht git nicht: ${error}. Keine Karte bekommt den Klon, bis du ihn reparierst${made ? ' oder den Ordner löschst (dann legt Obeya ihn beim nächsten Start neu an)' : ''}.`,
       missing: (path: string, made: boolean) =>
@@ -2129,6 +2205,13 @@ const de = {
     leaving: 'gibt ihn ab',
     taken: (title: string) => `„${title}“ gibt ihren Workspace ab.`,
     keptBack: (title: string) => `„${title}“ behält ihren Workspace.`,
+    /** On a clone uncommitted changes block: what is there goes into a branch of its own, and the clone is free. */
+    keepLeftovers: 'Auf neuen Branch committen und Klon freigeben',
+    /** Beside that button: where the changes go, and, in a clone Obeya made, that it does so by itself once a card needs the clone. */
+    keepLeftoversWhat: (made: boolean) =>
+      `Alle Änderungen, auch neue Dateien, kommen als Commit auf einen neuen Branch obeya-leftovers/… in diesem Klon. Nichts wird gepusht oder gelöscht.${made ? ' Das macht Obeya auch von selbst, sobald eine Karte einen Klon braucht und keiner frei ist.' : ''}`,
+    /** `branch`: where they are now; empty where there was nothing to keep (line endings alone). */
+    leftoversKept: (branch: string) => (branch ? `Der Klon ist frei. Die Änderungen liegen als Commit im Branch ${branch} dieses Klons.` : 'Der Klon ist frei. Es gab nichts zu sichern.'),
   },
   archive: {
     button: 'Archiv',
@@ -2187,7 +2270,7 @@ const de = {
   idea: {
     status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
     yourTurn: 'Idee · du bist dran',
-    brief: 'Stand der Idee',
+    brief: MESSAGES.de.labels.brief,
     mock: 'Mock',
     briefEmpty: 'Noch leer. Der Explorations-Agent hält hier fest, was das Gespräch ergibt: Ziel, Varianten, Entscheidungen, offene Fragen.',
     seed: 'Ausgangspunkt',
@@ -2196,12 +2279,12 @@ const de = {
     compose: 'Frag nach, widersprich, entscheide – oder halte die Leertaste',
     build: 'So bauen',
     /** Splits the part the agent marked as settled off as a task of its own, started at once; the idea stays with what is open. */
-    splitOff: 'Teilaufgabe abtrennen',
+    splitOff: MESSAGES.de.labels.splitOff,
     splitOffHint: (task: string) => `„${task}“ wird eine eigene Aufgabe neben der Idee und startet gleich. Die Idee bleibt mit dem, was offen ist, ihrem Gespräch und ihren Prototypen.`,
     /** Over the task "Teilaufgabe abtrennen" would split off, under the brief. */
     settled: (task: string) => `Teilaufgabe zum Abtrennen: „${task}“`,
     planDoc: 'Als Projekt planen',
-    prototype: 'Prototyp bauen lassen',
+    prototype: MESSAGES.de.labels.prototype,
     prototypePlaceholder: 'Der Ansatz in ein paar Worten, dann was der Prototyp zeigen soll. Leer: die Idee, wie sie steht.',
     prototypeOwn: 'Dazu ein eigener Ansatz? In ein paar Worten, dann was sein Prototyp zeigen soll.',
     /** The variants the idea's agent planned, to start a prototype each. */
@@ -2238,9 +2321,9 @@ const de = {
     nextStep: {
       answer: (n: number): string => (n > 1 ? 'Erst die Fragen beantworten' : 'Erst die Frage beantworten'),
       build: () => 'So bauen',
-      splitOff: () => 'Teilaufgabe abtrennen',
+      splitOff: () => MESSAGES.de.labels.splitOff,
       planDoc: () => 'Als Projekt planen',
-      prototype: () => 'Prototyp bauen lassen',
+      prototype: () => MESSAGES.de.labels.prototype,
       park: () => 'Parken',
       drop: () => 'Verwerfen',
     } satisfies Record<NextStep['step'], (questions: number) => string>,
@@ -2275,10 +2358,8 @@ const de = {
   },
   shots: {
     attach: 'Screenshot anhängen – oder mit ⌘V einfügen oder hineinziehen. Eine andere Datei hineingezogen fügt ihren Pfad ein.',
-    remove: 'Entfernen',
     enlarge: 'Vergrößern',
     markUp: 'Vergrößern und markieren',
-    close: 'Schließen (Esc)',
     markHint: 'Ziehen rahmt eine Stelle ein, ein Klick setzt einen Punkt',
     undo: 'Rückgängig',
     undoTitle: 'Letzte Markierung zurücknehmen (⌘Z / Strg+Z)',
@@ -2437,10 +2518,13 @@ const en: Strings = {
     howTo: 'To move several cards at once: Shift-click them, or hold Shift and drag around them.',
   },
   close: 'Close (Esc)',
+  cancel: 'Cancel',
+  remove: 'Remove',
+  copied: 'Copied',
+  download: 'Download',
   /** A card's number (`K42`), which a click copies. */
   cardNumber: {
     copy: (tag: string) => `Copy the number ${tag}: name the card by it to Obeya and the agents`,
-    copied: 'Copied',
     selected: 'Selected',
   },
   sheetGrip: 'Drag to resize · Double-click: back to the default width',
@@ -2527,12 +2611,13 @@ const en: Strings = {
     effort: 'Effort',
     chosenEffort: (effort: string) => `effort ${effort}`,
   },
-  claudeUpdate: {
-    out: (version: string) => `Claude Code ${version} is out`,
+  harnessUpdate: {
+    out: (name: string, version: string, host?: string, now?: string) => (host ? `${name} ${version} is out, ${host} has ${now}` : `${name} ${version} is out`),
     button: 'Update',
-    hint: (now: string) => `The agents run on ${now}. Agents that start after the update run on the new version, with its models; one at work keeps its own.`,
-    running: 'Updating Claude Code…',
-    failed: (why: string) => `Update failed: ${why}`,
+    hint: (now: string, host?: string) =>
+      `${host ? `The agents on ${host} run on ${now}` : `The agents run on ${now}`}. Agents that start after the update run on the new version, with its models; one at work keeps its own.`,
+    running: (name: string, host?: string) => (host ? `Updating ${name} on ${host}…` : `Updating ${name}…`),
+    failed: (why: string, host?: string) => (host ? `Update on ${host} failed: ${why}` : `Update failed: ${why}`),
     again: 'Try again',
   },
   stoppedState: 'Stopped',
@@ -2598,15 +2683,29 @@ const en: Strings = {
   },
   approve: 'Approve',
   approvePr: 'Approve (PR)',
-  approveDirect: MESSAGES.en.approveDirect,
+  approveDirect: MESSAGES.en.labels.approveDirect,
   directHint: 'Straight to main: no review, push to origin/main',
   approveNoChange: 'Close',
   noChangeHint: 'No change to the code: Close finishes the card without a pull request.',
-  accept: 'Accept and start',
+  revoke: {
+    approval: 'Take back approval',
+    approvalHint: 'The next handover then does not land by itself but waits for your approval again.',
+    closePr: (n?: number) => (n ? `Take back approval (close PR #${n})` : 'Take back approval (no PR yet)'),
+    closePrHint: 'Closes the pull request without a merge (its branch stays). The task then waits for you again with its demo.',
+    revert: 'Take back approval (revert on main)',
+    revertHint: 'A revert commit on main undoes the work, the way it landed. The task then waits for you again with its demo; approving it again brings the work back.',
+    rollbackPr: (n: number) => `Take back approval (rollback PR for #${n})`,
+    rollbackPrHint: (n: number) => `PR #${n} is merged already: Obeya opens a pull request that reverts it and merges it like any other. The task then waits for you again with its demo.`,
+    ackApproval: 'Approval taken back.',
+    ackClosePr: (n?: number) => (n ? `Taking back the approval: closing PR #${n}.` : 'Taking back the approval.'),
+    ackRevert: 'Taking back the approval: reverting on main.',
+    ackRollbackPr: (n: number) => `Taking back the approval: opening a rollback PR for #${n}.`,
+  },
+  accept: MESSAGES.en.labels.accept,
   acceptOnly: 'Accept',
-  acceptIdea: 'Accept and discuss',
+  acceptIdea: MESSAGES.en.labels.acceptIdea,
   acceptAsTask: 'Accept as a task',
-  acceptAsIdea: 'Discuss as an idea',
+  acceptAsIdea: MESSAGES.en.labels.acceptAsIdea,
   acceptAsIdeaHint: 'Think it through with an agent first, as an idea, instead of building it right away',
   dismiss: 'Dismiss',
   send: 'Send',
@@ -2656,7 +2755,6 @@ const en: Strings = {
   fromElsewhere: (title: string, canvas: string) => `Comes from “${title}” on the canvas “${canvas}”.`,
   openThere: 'Open it there',
   repoPick: {
-    label: 'Repository',
     newRepo: 'New repository …',
     newRepoHint: 'A repository that does not exist yet: Obeya creates the folder and git, local only.',
     named: (name: string) => `${name} (new)`,
@@ -2700,7 +2798,6 @@ const en: Strings = {
     citeHint: 'Put the marked text into your message, in quotation marks',
     cited: (text: string) => `“${text}” - `,
     copy: 'Copy',
-    copied: 'Copied',
     selected: 'Selected: press and hold to copy',
   },
   lastFailure: (at: string) => `Last failed (${at})`,
@@ -2721,7 +2818,6 @@ const en: Strings = {
     big: (lines: number) => `${lines} lines, folded`,
     unfold: 'Unfold',
     truncated: 'The diff is cut off here because it is too large; the remaining files are in the list at the top.',
-    close: 'Close (Esc)',
     copyPath: 'Copy path',
     copied: '✓ Path copied',
   },
@@ -2746,10 +2842,8 @@ const en: Strings = {
     discard: 'Discard changes',
     discardHint: (n: number) => `Puts ${n === 1 ? '1 file' : `${n} files`} back as they were before the card. The card then still waits for you.`,
     seconds: (s: number) => `${s} s`,
-    cancel: 'Cancel',
     clickToCancel: 'Click again to cancel',
     cancelHint: 'Cancels: the card’s changes stay as they are. Once the time is up, discarding cannot be taken back.',
-    discarded: 'Changes discarded.',
     approveHint: 'Approving finishes the card: the changes stay in the folder and can no longer be discarded.',
     approved: 'Approved: done.',
     noChangeHint: 'Nothing changed in the folder: Close finishes the card.',
@@ -2759,6 +2853,24 @@ const en: Strings = {
   approvedDirect: 'Approved; goes straight to main.',
   approving: 'being approved …',
   approvingDirect: 'being pushed straight to main …',
+  upstream: {
+    approve: (name: string) => `Approve + PR to ${name}`,
+    approveMine: 'Approve, for me only',
+    hint: (into: string, name: string, branch: string, brings?: number) =>
+      `${brings ? `Catches up ${into} with ${branch}, lands` : 'Lands'} the change on ${into}, and opens a PR to ${name}.`,
+    hintPort: (into: string, name: string, branch: string, brings?: number) =>
+      `Lands the change on ${into}, applies it to ${branch} untested, and opens a PR to ${name}${brings ? `; catches up ${into} with ${branch} later` : ''}.`,
+    mineHint: (into: string, name: string) => `Lands the change on ${into}, without a PR to ${name}.`,
+    approved: (name: string) => `Approved; goes to ${name} as a PR too.`,
+    approving: 'landing, and going to the original as a PR …',
+    startOn: 'Start point',
+    mine: (into: string) => into,
+    pr: (branch: string, name: string) => `${branch} of ${name}`,
+    pickMine: (into: string, name: string) =>
+      `Built on ${into}, with the fork's own features; lands there by default. Should it go to ${name} at the approval instead, it is applied there without having been tested there.`,
+    pickPr: (into: string, name: string, branch: string) =>
+      `Built on the newest ${branch} of ${name}; Obeya updates ${branch} from there before the start. Goes to ${name} as a pull request and lands on ${into} too.`,
+  },
   cardError: (title: string, why: string) => `“${title}”: ${why}`,
   approvedNoChange: 'Closed.',
   accepted: 'Proposal accepted and started.',
@@ -2770,7 +2882,6 @@ const en: Strings = {
     withdrawn: 'The agent that proposed this card withdrew it.',
     byShort: (title: string) => `Replaced by “${title}”`,
     withdrawnShort: 'Withdrawn by its agent',
-    remove: 'Remove',
     removeHint: 'The card leaves the canvas; an agent working on it stops.',
     keep: 'Keep',
     keepHint: 'The card stays as it is, and the note goes.',
@@ -2850,6 +2961,7 @@ const en: Strings = {
     queued: 'The task is already with Obeya.',
     notQueued: 'The task is not waiting in the queue.',
     notEvictable: 'This card cannot give up this workspace.',
+    notFreed: 'Obeya could not commit the changes in this clone (git failed, or files there are marked as unchanged); it stays as it is.',
     evicting: 'The task is giving up its workspace right now; start it again in a moment.',
     newRepoDue: 'Obeya is creating the new repository right now.',
     newRepoPath: 'The new repository has no folder yet.',
@@ -2865,6 +2977,7 @@ const en: Strings = {
     notReady: 'This is not ready for review.',
     notHeld: 'The comment is with the agent already.',
     noDirect: 'In this repository, approved work reaches main only through a pull request.',
+    noUpstream: 'This repository is no fork whose work lands on its main branch and can go to an original repository.',
     notReview: 'This card reviews no pull request.',
     noEdits: 'The contributor does not allow edits by maintainers: findings go to them.',
     noFinding: 'This finding has been decided on already.',
@@ -2872,10 +2985,11 @@ const en: Strings = {
     prMoved: 'Nothing pushed or merged: the PR is no longer at the state handed over. The agent reviews it again.',
     pullClash: 'Not merged: the PR collides with unpushed commits on main (now shown on the card). Push main first, or merge anyway.',
     noClash: 'The PR no longer collides with anything unpushed on main.',
+    notRevocable: 'There is no approval (left) to take back here.',
+    notRevoking: 'The approval is being taken back already; that can no longer be undone.',
     prClosed: 'The pull request is closed.',
     mergeRefused: 'Not merged:',
     pushRefused: 'Not pushed:',
-    noPr: 'Obeya cannot read this pull request:',
     notFolder: 'That is only possible in a folder without git.',
     inFolder: 'A folder without git has no such thing.',
     repoDown: 'This card’s repository does not run on this canvas right now.',
@@ -3065,6 +3179,8 @@ const en: Strings = {
   },
   pr: {
     title: (n: number, repo?: string) => `Pull request ${repo ? `${repo.split('/').pop()} ` : ''}#${n}`,
+    rollbackTitle: (n: number, of: number) => `Rollback PR #${n} (reverts #${of})`,
+    rollbackShort: 'Rollback',
     merged: 'Merged. The card goes live once the other pull requests are merged too.',
     closed: 'Closed without a merge.',
     waits: (waits: PrWait[]) =>
@@ -3084,6 +3200,7 @@ const en: Strings = {
               review: 'a review of the newest commit',
               answer: 'the reviewer’s answer to the request for another review',
               agent: 'the agent, who is at work on it',
+              maintainer: 'the review and merge by the original’s maintainers',
             })[w],
         )
         .join(', ')}.`,
@@ -3094,6 +3211,10 @@ const en: Strings = {
       `Ready to merge: checks green, all comments settled, the review is through. But ${by} gives only ${score}; below 4/5 Obeya does not merge by itself. You decide: merge it yourself or tell the agent what is still missing.`,
     noChecks: 'No checks yet.',
     opening: 'The agent is opening the pull request.',
+    openingUpstream: (name: string) => `The agent is opening the pull request to ${name}.`,
+    into: (into: string) => `On ${into} too: what goes onto this pull request, Obeya merges in there as well.`,
+    intoConflict: (into: string) => `The new commits do not merge into ${into} without conflicts; the agent resolves it.`,
+    intoBlocked: (into: string, why: string) => `The new commits are not on ${into} yet: ${why}`,
     review: 'Review',
     round: (n: number, author: string) => `Round ${n} · ${author}`,
     threads: (n: number, open: number) =>
@@ -3118,6 +3239,7 @@ const en: Strings = {
       review: 'waits for review',
       answer: 'waits for reviewer',
       agent: 'agent at work',
+      maintainer: 'waits for maintainers',
     } satisfies Record<PrWait, string>,
     short: (pr: string, failed: number, conflict: boolean, ready?: boolean, held?: string, wait?: string) =>
       [`PR ${pr}`, failed ? `${failed} ${failed === 1 ? 'check red' : 'checks red'}` : '', conflict ? 'Conflict' : '', ready ? 'Ready to merge' : '', held ? `Review only ${held}` : '', wait ?? '']
@@ -3159,7 +3281,7 @@ const en: Strings = {
     earlierHint: 'A later handover replaced this demo.',
   },
   share: {
-    share: 'Share',
+    share: MESSAGES.en.labels.share,
     shareHint: 'Publishes the video on a page for colleagues, on this repository’s demo site',
     shareHintHtml: 'Publishes the page with text and artifact for colleagues, on this repository’s demo site',
     shareNow: 'Share now',
@@ -3186,9 +3308,9 @@ const en: Strings = {
     tooLarge: (bytes: number) => `The video is too large for a single file (${number(bytes / 1024 / 1024, 1)} MB, at most ${number(EXPORT_HTML_MAX / 1024 / 1024)} MB).`,
     preparing: 'Preparing …',
     writingPage: 'The page’s text is written first; that takes a moment.',
-    replace: 'Replace on the page',
+    replace: MESSAGES.en.labels.replace,
     replaceHint: 'The shared page shows this demo instead of the shared ones; the link stays.',
-    add: 'Add to the page',
+    add: MESSAGES.en.labels.add,
     addHint: 'The shared page gets this demo as an addendum below the shared ones; the link stays.',
     addEarlierHint: 'Adds this demo to the shared page, in its place by handover; the link stays.',
     demos: (ns: number[]) => `${ns.length > 1 ? 'demos' : 'demo'} ${ns.length > 1 ? `${ns.slice(0, -1).join(', ')} and ${ns.at(-1)}` : ns[0]}`,
@@ -3197,7 +3319,7 @@ const en: Strings = {
     along: (demos: string) => `Goes on the page with ${demos}, which the agent says this demo supplements.`,
     onPageMark: 'On the shared page',
     agentSays: (follows: 'replaces' | 'supplements', before: number) => (follows === 'supplements' ? `The agent says this video supplements demo ${before}.` : `The agent says this video is recorded afresh and replaces demo ${before}.`),
-    stop: 'Stop sharing',
+    stop: MESSAGES.en.labels.unshare,
     stopHint: 'Takes the page down; sharing again brings it back under the same link.',
     stopOneHint: 'Takes this demo off the page; the others stay under the same link.',
     open: 'Open',
@@ -3207,7 +3329,7 @@ const en: Strings = {
     publishing: 'Publishing …',
     withdrawing: 'Withdrawing …',
     outdated: 'Since this page was shared, the pages changed:',
-    reshare: 'Share again',
+    reshare: MESSAGES.en.labels.reshare,
     reshareHint: 'Makes the page afresh, with the same demos; the link stays.',
     tags: 'Tags',
     tagsHint: 'The page’s tags: the demo site’s overview filters by them. A change takes effect at once; a shared page goes out again right away.',
@@ -3243,17 +3365,17 @@ const en: Strings = {
   },
   answer: {
     makeCard: 'Make it a card',
-    walkthrough: 'Show as walkthrough',
+    walkthrough: MESSAGES.en.labels.walkthrough,
     walkthroughHint: 'Has this answer told as a walkthrough: slides with narration, as the next answer below.',
     makeCardHint: 'Puts this thread (questions, answers, files) on the canvas as a Question card; the agent that looked it up reads on there.',
     onCard: (title: string) => `On the card “${title}”`,
     onCardHint: 'This thread goes on on its Question card.',
     continues: (question: string) => `↳ continues “${question}”`,
+    addsTo: (question: string) => `↳ goes into “${question}”`,
     reading: 'reading …',
     showFolder: 'Show in folder',
     showFolderHint: 'Opens the folder with all the files of these answers',
     open: (caption: string) => (caption ? `${caption} – open` : 'Open'),
-    download: 'Download',
   },
   walkthrough: {
     play: 'Play walkthrough',
@@ -3285,7 +3407,6 @@ const en: Strings = {
     show: 'Show in folder',
     showHint: 'Shows the file selected in its folder, on the computer Obeya runs on',
     notHere: 'This works only on the computer Obeya runs on.',
-    download: 'Download',
     loading: 'Loading …',
     failed: 'The file could not be read.',
     noDiff: 'The changes of this file cannot be shown line by line.',
@@ -3340,12 +3461,10 @@ const en: Strings = {
     accept: 'Accept',
     change: 'Change',
     reject: 'Dismiss',
-    cancel: 'Cancel',
     preferencesHead: (n: number) => `Preferences (${n})`,
     preferencesHint:
       'How the agents work with you through Obeya, in every repo. All agents keep to them. What you enter here or tell Obeya with “Remember: …” applies at once; what concerns one repo goes into its task “Add to CLAUDE.md”.',
     edit: 'Click to edit',
-    remove: 'Remove',
     add: 'Add',
     addPlaceholder: 'New rule',
     filed: (repo: string) => `Added to the task “Add to CLAUDE.md” for ${repo}.`,
@@ -3437,7 +3556,6 @@ const en: Strings = {
     noDevices: 'None yet.',
     pairedAt: (when: string) => `connected ${when}`,
     seenAt: (when: string) => `last ${when}`,
-    remove: 'Remove',
     scan: "Scan the code with your phone's camera; it has to be in the same VPN.",
     scanTailscale: (account?: string) => `Scan the code with your phone's camera; it needs Tailscale, logged in ${account ? `as ${account}` : 'with the same account as here'}.`,
     orType: 'Or open the address on the phone and type this code:',
@@ -3571,7 +3689,7 @@ const en: Strings = {
     newRepo: 'New repository',
     repos: 'Repositories',
     savesAll: 'Saving takes the changes of all canvases; marked on the left.',
-    groups: { workspaces: 'Where agents work', landing: 'Branch and landing', app: 'App and checks', plans: 'Plans and language', demos: 'Demos' },
+    groups: { workspaces: 'Where agents work', landing: 'Branch and landing', github: 'GitHub', app: 'App and checks', plans: 'Plans and language', demos: 'Demos' },
     trust: {
       app: 'Stopping and keeping the app (app.stop, app.keep): Obeya runs them while a card waits. Until then the app keeps running.',
       site: 'Demo site (demo.site): Obeya deploys with this command and reads the site at this address. Until then demos are exported.',
@@ -3631,6 +3749,11 @@ const en: Strings = {
     hosts: 'Other machines (over SSH), once all slots here are taken',
     hostsHint: 'Obeya creates the clones there itself and starts the agents there through ssh. The Claude login (claude-token in Obeya’s directory) and the GitHub login go along with each start and are not left there.',
     hostName: 'Name',
+    githubAccount: 'GitHub account',
+    githubAccountHint: (host: string) =>
+      `Which account of the GitHub CLI (gh) Obeya and this repository’s agents work as on ${host}: opening, reading and commenting on pull requests. Applies on this machine only and never goes into the repository. The choices are the accounts gh is logged into (gh auth login). Automatic: the account that owns the repository where gh is logged into it, else the account active in gh.`,
+    githubAccountAuto: (account: string | undefined) => (account ? `Automatic (${account})` : 'Automatic'),
+    githubAccountMissing: (account: string) => `${account} (not logged in to gh)`,
     hostSsh: 'ssh target, e.g. me@machine.local',
     hostRoot: 'Directory there, e.g. ~/obeya/repo',
     hostClones: 'Clones',
@@ -3649,27 +3772,32 @@ const en: Strings = {
       land: 'Approved work',
       lands: { main: 'Lands on the main branch', pr: 'Goes out as a pull request' },
       landHint: 'On the main branch: Obeya takes the work into the checkout itself on approval. As a pull request: the agent opens it, Obeya waits for checks and review and then merges it.',
+      push: 'Push to origin',
+      pushLabel: 'After each landing, Obeya pushes the main branch to origin too',
+      pushHint: 'Never forced. If origin refuses the push (the branch moved there, it is protected, rights are missing), the work stays landed and the card tells you why.',
+      upstream: 'Original (fork)',
+      upstreamHint: 'In a fork, the original repository’s main branch as this checkout knows it (<remote>/<branch>). Tasks can then go to the original as a pull request too; Obeya follows it and merges fixes into the main branch as well. Detected from a remote named upstream; empty: none.',
       direct: 'Allow direct',
       directLabel: 'Approving may also push the work directly onto the main branch, without a pull request',
       autoMerge: 'Merge automatically',
       autoMergeLabel: 'Obeya merges the pull request itself once checks and review are through',
       autoMergeHint: 'Off: once the pull request is ready, the card waits for you, and the merge happens on GitHub or Codeberg (after a colleague’s review, say). Obeya sees the merge and marks the card live.',
-      checks: 'Checks',
+      checks: MESSAGES.en.labels.settings.checks,
       checksHint: 'Commands an agent runs before handing over, one per line.',
-      setup: 'Setup',
+      setup: MESSAGES.en.labels.settings.setup,
       setupHint: 'Command an agent runs first in its workspace (dependencies).',
       planDocs: 'Plan docs',
       planDir: 'Directory',
       planDocsHint: 'A path in the repository is read from the main branch. An absolute path (or ~/…) is a folder on this machine outside git, for plans that stay out of the repository: Obeya reads it there, and the agents tick their workstreams off there.',
       planExclude: 'excluded, comma-separated',
-      softPaths: 'Soft paths',
+      softPaths: MESSAGES.en.labels.settings.softPaths,
       softPathsHint: 'Paths whose edits never count as a conflict between two tasks (docs, plan docs), one per line; a trailing / covers a directory.',
       workspaces: 'Agents work in',
       workIn: { worktrees: 'worktrees', clones: 'clones' },
       workspacesHint: "Changing it restarts this repository's agents once none is in the middle of a step; Obeya and everyone else work on.",
       prNoise: 'Accounts without review',
       prNoiseHint: 'Accounts whose pull request comments are not review feedback (deploy bots), one per line.',
-      run: 'How to run the app',
+      run: MESSAGES.en.labels.settings.run,
       runPlaceholder: 'Start with ./dev.sh; after an API change ./restart-api.sh, the page reloads by itself. The URL is printed at start. Login: …',
       runHint:
         'Free text for the agents, not a command, as you would explain it to a new colleague: how to start the app, what to do after which kind of change (restart the API, reload the page, rebuild), where the app gives its address, the login and test data for a demo. Every agent gets it. Left empty, each agent finds it out from the repository itself.',
@@ -3725,7 +3853,6 @@ const en: Strings = {
         pushDirect: (branch: string) => `Commit straight to ${branch}`,
         commit: 'Commit',
         openPr: 'Open pull request',
-        cancel: 'Cancel',
         committed: (branch: string, commit: string) => `Committed on ${branch} (${commit}). The values now come from the repository.`,
         unchanged: (branch: string) => `.obeya/settings.json on ${branch} already had these values; nothing committed. They now come from the repository.`,
         opened: 'Pull request opened:',
@@ -3781,6 +3908,7 @@ const en: Strings = {
       noBranch: 'The repository has no such main branch, neither here nor on origin.',
       repoSettings: 'A value in the repository’s .obeya/settings.json does not count; what applies without it stands in its place:',
       untrusted: 'The repository brings commands that are new or changed. Obeya runs them only once you trust them:',
+      githubAccount: 'The GitHub CLI (gh) is not logged in as the GitHub account set here; until it is, gh works as the account it has active:',
       demoSite: 'The demo site in the repository’s settings cannot be used like this; until it can, “Share” exports demos as a file:',
       adapterGone: 'The repository still has a .obeya/adapter/ on its main branch, which Obeya no longer reads. What it says belongs in its settings (.obeya/settings.json); “Have an agent fill them in” moves it there:',
       canvasDown: 'This canvas is not running: its home repository did not start. Its cards are kept.',
@@ -3950,7 +4078,6 @@ const en: Strings = {
       code: 'Copy connection code',
       codeLabel: 'Other computers',
       codeHint: 'To share here from another computer of yours too: copy the code, then open Configuration → Demos → “Connect to an existing site” there and paste it. The code holds the site’s secret path and its credentials; keep it to yourself.',
-      copied: 'Copied',
       remove: 'Remove from this machine',
       removeHint: 'This machine no longer shares there. The shared pages and the project at the host stay.',
       removeConfirm: 'Remove it',
@@ -4059,7 +4186,6 @@ const en: Strings = {
     noTerminal: 'Obeya found no terminal here. Please run the command in a terminal.',
     byHand: 'Or in a terminal:',
     copy: 'Copy',
-    copied: 'Copied',
     yourName: 'Your name',
     yourEmail: 'E-mail',
     saveIdentity: 'Set',
@@ -4107,7 +4233,6 @@ const en: Strings = {
       again: 'Look again',
       confirm: 'Set up and commit',
       confirmCanvas: 'Set up, commit and create canvas',
-      cancel: 'Cancel',
       working: 'Setting up …',
     },
   },
@@ -4173,7 +4298,6 @@ const en: Strings = {
   update: {
     pill: (version: string) => `Update ${version}`,
     install: 'Install',
-    download: 'Download',
     title: (version: string, day: string | null) => `Obeya ${version} is out${day ? ` (${day})` : ''}.`,
     how: 'Installing waits like a restart until the agents pause at a safe point (at most 15 minutes), and not in the middle of your video or dictation. Then the app replaces itself and restarts, and the agents carry on.',
     howDownload: 'Installed as a .deb package, Obeya cannot replace itself: download the new package and install it like the first one.',
@@ -4200,6 +4324,11 @@ const en: Strings = {
     kinds: { session: 'Session (5 hours)', weekly_all: 'Week, all models' },
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,
+    left: (span: string) => `in ${span}`,
+    days: (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`,
+    hours: (n: number) => `${n} h`,
+    minutes: (n: number) => `${n} min`,
+    pace: 'The tick on each meter marks how much of its window has gone by: green while usage stays behind it, red once usage runs ahead of the time and the limit may run out before it resets.',
     source: (harness: string, time: string) => `From ${harness} on this machine, every minute; as of ${time}.`,
     setting: {
       title: 'Usage limits in the bar',
@@ -4236,10 +4365,29 @@ const en: Strings = {
     onCanvas: (canvas: string) => `on ${canvas}`,
     freeRow: 'free',
     blockedRow: 'blocked',
-    kept: (path: string) => `stays: work not landed in ${path}`,
+    kept: (path: string, lost: string[]) => `stays, as work not landed lies there: ${lost.join('; ')} (${path})`,
+    lost: (l: LostWork) => {
+      switch (l.what) {
+        case 'submodules':
+          return 'submodules';
+        case 'worktrees':
+          return l.n === 1 ? 'a worktree made from it' : `${l.n} worktrees made from it`;
+        case 'changes':
+          return l.n === 1 ? 'an uncommitted change' : `${l.n} uncommitted changes`;
+        case 'stash':
+          return 'a stash';
+        case 'commits': {
+          const what = l.kind === 'head' ? 'a detached HEAD' : l.kind === 'branch' ? `branch ${l.name}` : l.kind === 'tag' ? `tag ${l.name}` : l.name;
+          return `${what} with ${l.n === 1 ? 'a commit' : `${l.n} commits`} not on origin`;
+        }
+      }
+    },
     blocked: {
       dirty: (path: string, files: string[], more: number) =>
-        `${path} has uncommitted changes: ${files.join(', ')}${more ? ` and ${more} more` : ''}. No card gets the clone until you commit or discard them there (delete new files).`,
+        `${path} has uncommitted changes: ${files.join(', ')}${more ? ` and ${more} more` : ''}. No card gets the clone while they are there.`,
+      leftBy: 'They come from ',
+      leftWork: (work: 'landed' | 'open' | 'none'): string =>
+        work === 'landed' ? ', whose work has landed already.' : work === 'none' ? ', which finished without a change to the code.' : ', whose work has not landed yet.',
       broken: (path: string, error: string, made: boolean) =>
         `git fails in ${path}: ${error}. No card gets the clone until you repair it${made ? ' or delete the folder (Obeya then makes it again at its next start)' : ''}.`,
       missing: (path: string, made: boolean) =>
@@ -4259,6 +4407,10 @@ const en: Strings = {
     leaving: 'giving it up',
     taken: (title: string) => `“${title}” gives up its workspace.`,
     keptBack: (title: string) => `“${title}” keeps its workspace.`,
+    keepLeftovers: 'Commit to a new branch and free the clone',
+    keepLeftoversWhat: (made: boolean) =>
+      `All changes, new files too, are committed on a new branch obeya-leftovers/… in this clone. Nothing is pushed or deleted.${made ? ' Obeya also does this by itself as soon as a card needs a clone and none is free.' : ''}`,
+    leftoversKept: (branch: string) => (branch ? `The clone is free. The changes are committed on the branch ${branch} in that clone.` : 'The clone is free. There was nothing to keep.'),
   },
   archive: {
     button: 'Archive',
@@ -4305,7 +4457,7 @@ const en: Strings = {
   idea: {
     status: { open: 'Idea', parked: 'Idea · parked', dropped: 'Idea · dropped' },
     yourTurn: 'Idea · your turn',
-    brief: 'Where the idea stands',
+    brief: MESSAGES.en.labels.brief,
     mock: 'Mock',
     briefEmpty: 'Empty so far. The exploration agent records here what the conversation yields: goal, variants, decisions, open questions.',
     seed: 'Starting point',
@@ -4313,11 +4465,11 @@ const en: Strings = {
     thinking: 'thinking …',
     compose: 'Ask, object, decide – or hold the space bar',
     build: 'Build it like this',
-    splitOff: 'Split off a task',
+    splitOff: MESSAGES.en.labels.splitOff,
     splitOffHint: (task: string) => `“${task}” becomes a task of its own beside the idea and starts right away. The idea stays with what is open, its conversation and its prototypes.`,
     settled: (task: string) => `Settled to build: “${task}”`,
     planDoc: 'Plan as a project',
-    prototype: 'Have a prototype built',
+    prototype: MESSAGES.en.labels.prototype,
     prototypePlaceholder: 'The approach in a few words, then what the prototype should show. Empty: the idea as it stands.',
     prototypeOwn: 'An approach of your own as well? In a few words, then what its prototype should show.',
     variants: 'Planned variants: one prototype each',
@@ -4348,9 +4500,9 @@ const en: Strings = {
     nextStep: {
       answer: (n: number) => (n > 1 ? 'Answer the questions first' : 'Answer the question first'),
       build: () => 'Build it like this',
-      splitOff: () => 'Split off a task',
+      splitOff: () => MESSAGES.en.labels.splitOff,
       planDoc: () => 'Plan as a project',
-      prototype: () => 'Have a prototype built',
+      prototype: () => MESSAGES.en.labels.prototype,
       park: () => 'Park',
       drop: () => 'Drop',
     },
@@ -4382,10 +4534,8 @@ const en: Strings = {
   },
   shots: {
     attach: 'Attach a screenshot – or paste it with ⌘V or drop it here. Any other file dropped here goes in by its path.',
-    remove: 'Remove',
     enlarge: 'Enlarge',
     markUp: 'Enlarge and mark up',
-    close: 'Close (Esc)',
     markHint: 'Drag to frame a region, click to pin a spot',
     undo: 'Undo',
     undoTitle: 'Take back the last mark (⌘Z / Ctrl+Z)',
@@ -4464,8 +4614,19 @@ export const snoozeWhen = (at: string | number) => {
             .replace(/^(\p{L}+)\.?,?/u, '$1');
   return `${day}, ${clock(d)}`;
 };
+/** A span of time in its two largest units, rounded up to the minute: „6 Tage 14 Std.“, „3 Std. 12 Min.“, „42 Min.“. */
+export const countdown = (ms: number) => {
+  const all = Math.max(1, Math.ceil(ms / 60_000));
+  const [d, h, m] = [Math.floor(all / 1440), Math.floor((all % 1440) / 60), all % 60];
+  const u = t.usage;
+  if (d) return h ? `${u.days(d)} ${u.hours(h)}` : u.days(d);
+  if (h) return m ? `${u.hours(h)} ${u.minutes(m)}` : u.hours(h);
+  return u.minutes(m);
+};
 /** A short date: day and month. */
 export const shortDay = (d: Date | string | number) => new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+/** When something began: the time today, else the day. */
+export const when = (d: string | number) => (new Date(d).toDateString() === new Date().toDateString() ? clock(d) : shortDay(d));
 /** A long date with its weekday; the year only when it is not this one. */
 const longDay = (d: Date, today: Date) =>
   d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }) });
@@ -4478,88 +4639,70 @@ export const money = (usd: number) => usd.toLocaleString(locale, { style: 'curre
 /** What an approved card says while Obeya lands it: a review card's agent's commits being pushed onto its PR, its merge, any other's landing. */
 export const landingLabel = (i: { contribution?: { held?: unknown } }) => (i.contribution ? (i.contribution.held ? t.review.pushingHeld : t.review.merging) : t.approving);
 
-export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: { held?: unknown }; landing?: true; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
-  i.snoozed
-    ? i.snoozed.on
-      ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))
-      : i.snoozed.contributor
-        ? t.snooze.contributor(i.snoozed.contributor.author, i.snoozed.until && snoozeWhen(i.snoozed.until))
-        : t.snooze.until(snoozeWhen(i.snoozed.until!))
-    : i.pausing
-    ? t.pause.pausing
-    : i.kind === 'question'
-    ? i.paused
-      ? t.pause.working
-      : i.thread?.thinking
-      ? t.question.reading
-      : t.question.ready
-    : i.prototypeEnd
-    ? t.idea.ended[i.prototypeEnd]
-    : i.paused
-    ? i.idea
-      ? t.pause.idea
-      : i.state === 'waiting' && i.need
-      ? t.pause.waiting(t.need[i.need])
-      : i.finishing
-      ? i.state === 'done' ? t.pause.done : t.pause.live
-      : i.state === 'inPr' ? t.pause.inPr : t.pause.working
-    : i.restartPaused
-    ? i.state === 'waiting' && i.need
-      ? t.restartPause.waiting(t.need[i.need])
-      : i.state === 'live' || i.state === 'done'
-      ? t.restartPause[i.state]
-      : i.state === 'inPr' ? t.restartPause.inPr : t.restartPause.working
-    : i.finishing && (i.state === 'live' || i.state === 'done')
-    ? i.followUp
-      ? i.state === 'done' ? t.followingUpDone : t.followingUp
-      : i.state === 'done' ? t.finishingDone : t.finishing
-    : i.idea
-    ? i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking
-      ? t.idea.yourTurn
-      : t.idea.status[i.idea.status]
-    : i.queue
-    ? 'checking' in i.queue
-      ? t.queue.checking
-      : 'paused' in i.queue
-        ? t.queue.paused
-      : 'workspace' in i.queue
-        ? i.queue.workspace === 'slots'
-          ? t.queue.slot
-          : t.queue.workspace
-        : t.queue.waiting
-    : i.state === 'waiting' && i.need
-      ? i.landing
-        ? landingLabel(i)
-        : i.answering
-        ? t.answering
-        : i.need === 'demo' && i.question
-          ? t.demoWithQuestion
-          : i.answered
-            ? t.agentAnswered
-            : t.need[i.need]
-      : i.state === 'inPr' && i.contribution
-        ? t.review.waits
-      : i.state === 'inPr' && !i.pr
-        ? t.openingPr
-        : i.state === 'proposal' && (i.retro || i.proposal?.setup)
-          ? t.proposalByObeya
-          : stopped(i)
-            ? t.stoppedState
-            : t.state[i.state];
+/** What a card's state line says: the first that holds of what is listed, in this order. */
+export function stateLabel(i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: { held?: unknown }; landing?: true; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }): string {
+  if (i.snoozed) {
+    const { on, contributor, until } = i.snoozed;
+    if (on) return t.snooze.on(on.title, on.state, until && snoozeWhen(until));
+    if (contributor) return t.snooze.contributor(contributor.author, until && snoozeWhen(until));
+    return t.snooze.until(snoozeWhen(until!));
+  }
+  if (i.pausing) return t.pause.pausing;
+  if (i.kind === 'question') return i.paused ? t.pause.working : i.thread?.thinking ? t.question.reading : t.question.ready;
+  if (i.prototypeEnd) return t.idea.ended[i.prototypeEnd];
+  if (i.paused) return pausedLabel(i);
+  if (i.restartPaused) return restartPausedLabel(i);
+  if (i.finishing && (i.state === 'live' || i.state === 'done')) {
+    if (i.followUp) return i.state === 'done' ? t.followingUpDone : t.followingUp;
+    return i.state === 'done' ? t.finishingDone : t.finishing;
+  }
+  if (i.idea) return i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking ? t.idea.yourTurn : t.idea.status[i.idea.status];
+  if (i.queue) return queueLabel(i.queue);
+  if (i.state === 'waiting' && i.need) {
+    if (i.landing) return landingLabel(i);
+    if (i.answering) return t.answering;
+    if (i.need === 'demo' && i.question) return t.demoWithQuestion;
+    return i.answered ? t.agentAnswered : t.need[i.need];
+  }
+  if (i.state === 'inPr' && i.contribution) return t.review.waits;
+  if (i.state === 'inPr' && !i.pr) return t.openingPr;
+  if (i.state === 'proposal' && (i.retro || i.proposal?.setup)) return t.proposalByObeya;
+  if (stopped(i)) return t.stoppedState;
+  return t.state[i.state];
+}
+
+/** A card whose agent the owner paused: what it was at. */
+function pausedLabel(i: { state: CardState; need?: Need; idea?: Idea; finishing?: boolean }): string {
+  if (i.idea) return t.pause.idea;
+  if (i.state === 'waiting' && i.need) return t.pause.waiting(t.need[i.need]);
+  if (i.finishing) return i.state === 'done' ? t.pause.done : t.pause.live;
+  return i.state === 'inPr' ? t.pause.inPr : t.pause.working;
+}
+
+/** A card whose agent waits for Obeya's restart: what it was at. */
+function restartPausedLabel(i: { state: CardState; need?: Need }): string {
+  if (i.state === 'waiting' && i.need) return t.restartPause.waiting(t.need[i.need]);
+  if (i.state === 'live' || i.state === 'done') return t.restartPause[i.state];
+  return i.state === 'inPr' ? t.restartPause.inPr : t.restartPause.working;
+}
+
+/** A card in the queue: what it waits for. */
+function queueLabel(q: Queue): string {
+  if ('checking' in q) return t.queue.checking;
+  if ('paused' in q) return t.queue.paused;
+  if ('workspace' in q) return q.workspace === 'slots' ? t.queue.slot : t.queue.workspace;
+  return t.queue.waiting;
+}
 
 /** An idea or a task decided as a project, until the project takes its place; a card that was an idea has the brief it was decided on. */
 export const becomesLabel = (i: { brief?: string }) => (i.brief !== undefined ? t.kind.becomesProject : t.kind.taskBecomesProject);
 
+/** What kind of card it is, in a word or two, on its face and in its head; a plain task says nothing of its kind. */
+export const kindLabel = (i: Pick<Item, 'kind' | 'idea' | 'proposal' | 'becomesProject' | 'brief' | 'prototypeOf'>) =>
+  i.kind === 'question' ? t.kind.question : i.idea || i.proposal?.idea ? t.kind.idea : i.becomesProject ? becomesLabel(i) : i.prototypeOf ? t.kind.prototype : i.kind === 'project' ? t.kind.project : '';
+
 /** The owner's text for a refused request or a logged error code; the generic one for anything unknown. */
 export const errorText = (code: string | undefined) => (code && Object.hasOwn(t.error, code) ? t.error[code as ErrorCode] : t.error.invalid);
-
-/**
- * The owner's text for a call that failed: the server's refusal, else `offline` (Obeya could not be
- * reached). For the codes in `detail`, and those whose text ends in a colon, the refusal's own
- * message follows, which names the particulars.
- */
-export const failText = (e: unknown, { detail = [], offline = t.offlineError }: { detail?: string[]; offline?: string } = {}) =>
-  e instanceof ApiError ? errorText(e.code) + (e.code && (detail.includes(e.code) || errorText(e.code).endsWith(':')) ? ` ${e.message}` : '') : offline;
 
 /**
  * On a phone, which has no space bar: the texts that name it name the microphone instead. Enter

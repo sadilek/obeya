@@ -1,19 +1,30 @@
 // Test doubles, and git repositories for tests.
 
 import { dlopen, FFIType, ptr } from 'bun:ffi';
-import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { afterAll, afterEach, beforeEach } from 'bun:test';
+import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { PATIENCE } from './patience';
-import { git } from './workspaces';
+import { Workspaces } from './workspaces';
+import { git } from './git';
+import { BadRequest, Board } from './board';
+import { cardTag } from '../core/card-number';
+import { Store } from './db';
+import { MANIFEST } from './site';
+import { NOT_FOUND } from './site-pages';
+import type { PlanDoc } from '../core/plan-doc';
+import type { Item } from '../core/types';
+import type { Workers } from './workers';
 import { KEY_HEADER, keyOf } from './owner';
 import { Voicing } from './walkthrough';
 import type { Language } from '../core/locale';
+import type { Transcriber } from './voice';
 
-/** The calls of a forge that only review cards make, for a fake forge of a test that has none. */
-export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {} };
+/** The calls of a forge that only review cards and taking back an approval make, for a fake forge of a test that has none. */
+export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges' | 'close'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {}, close: async () => {} };
 
 /** A forge for tests that never reach a pull request. */
 export const noForge: Forge = { status: async () => ({}) as never, body: async () => '', setBody: async () => {}, merge: async () => {}, open: async () => '', ...noContributions };
@@ -77,6 +88,10 @@ export class FakeRuntime implements AgentRuntime {
   }
   get last() {
     return this.sessions.at(-1)!;
+  }
+  /** The sessions given tool `name`: the kind of agent that alone has it (`update_brief`, say). */
+  withTool(name: string): FakeSession[] {
+    return this.sessions.filter((s) => s.spec.tools.some((t) => t.name === name));
   }
 }
 
@@ -157,6 +172,104 @@ export function gitClone(source: string, path: string, { bare = false } = {}): s
   writeFileSync(config, text.replace(url, (_, section: string) => `${section}\turl = ${quoted}\n`));
   copies.set(resolve(path), clone);
   return path;
+}
+
+/**
+ * Git's global configuration for each test of the scope this is called in: a file of its own that
+ * holds `text`, in place of the machine's (which may set a name, a way of pulling, signing), and
+ * the machine's again after the test. What it returns writes the file anew, for one test.
+ */
+export function ownGlobalGitConfig(text = '') {
+  let before: string | undefined;
+  let file = '';
+  beforeEach(() => {
+    before = process.env.GIT_CONFIG_GLOBAL;
+    file = join(mkdtempSync(join(tmpdir(), 'obeya-gitconfig-')), 'gitconfig');
+    writeFileSync(file, text);
+    process.env.GIT_CONFIG_GLOBAL = file;
+  });
+  afterEach(() => {
+    if (before === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = before;
+    rmSync(dirname(file), { recursive: true, force: true });
+  });
+  return (again: string) => writeFileSync(file, again);
+}
+
+/**
+ * Writes `file` in `repo` (making its directory), commits everything there as `message` and
+ * returns the new HEAD: a repository's or a workspace's next commit in a test. The repository
+ * needs an identity (`identify`; `gitRepo`'s copies and the workers fixture's clones have one).
+ */
+export function commit(repo: string, file: string, text = `${file}\n`, message = file): string {
+  mkdirSync(dirname(join(repo, file)), { recursive: true });
+  writeFileSync(join(repo, file), text);
+  git(repo, 'add', '-A');
+  git(repo, 'commit', '--quiet', '-m', message);
+  return git(repo, 'rev-parse', 'HEAD');
+}
+
+/**
+ * A board on the test canvas "C" (id `c`) with one repository "Home" (id `home`) at `path`, as tests
+ * use one without a canvas around it: plan docs from `docs`, `holds` and the languages as `Board`
+ * takes them (German where left out).
+ */
+export function testBoard({
+  store = new Store(':memory:'),
+  path = '/r',
+  docs = () => [],
+  holds,
+  language,
+  conversation,
+}: {
+  store?: Store;
+  path?: string;
+  docs?: () => PlanDoc[];
+  holds?: (repo: string, commit: string) => boolean;
+  language?: () => Language;
+  conversation?: () => Language;
+} = {}): Board {
+  return new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path, branch: 'main' }] }, () => ({ docs: docs(), dirs: [] }), undefined, holds, language, conversation);
+}
+
+/**
+ * The workspaces of the test canvas `c` for `repo`, with `n` clones under `<dir>/ws` registered,
+ * cloned from `source`, as `ensureClones` makes them but through `gitClone`, which is quicker.
+ */
+export async function primedClones(store: Store, repo: string, dir: string, { n = 1, source = repo } = {}): Promise<Workspaces> {
+  const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
+  for (let k = 1; k <= n; k++) gitClone(source, join(dir, 'ws', String(k)));
+  await spaces.ensureClones(source, n);
+  return spaces;
+}
+
+/**
+ * A card started by `workers` and handed over as a worker hands over: with `commit` (a file name) a
+ * commit of that file in its workspace, `ready_for_review` with `summary` and `demo`, and with
+ * `idle` the end of the worker's turn. The card is a new one on `board` titled `title`, or `card`.
+ */
+export async function handedOverOn(
+  { board, workers, runtime }: { board: Board; workers: Workers; runtime: FakeRuntime },
+  {
+    card,
+    title = 'Zählerstände exportieren',
+    commit: file,
+    summary = 'S',
+    demo = artifact() as object,
+    idle = true,
+  }: { card?: Item; title?: string; commit?: string; summary?: string; demo?: object; idle?: boolean } = {},
+) {
+  card ??= board.create({ title, x: 0, y: 0 });
+  await workers.start(card.id);
+  const session = runtime.last;
+  const workspace = board.row(card.id).workspace!;
+  if (file) {
+    identify(workspace);
+    commit(workspace, file);
+  }
+  await session.call('ready_for_review', { summary, demo });
+  if (idle) session.emit({ type: 'idle' });
+  return { card, session, workspace };
 }
 
 const gitDir = (repo: string) => (existsSync(join(repo, '.git')) ? join(repo, '.git') : repo);
@@ -241,7 +354,7 @@ function bunProgram(dir: string, name: string, script: string): string {
 let sh: string | undefined;
 
 /** Git for Windows' sh: git's exec path is `<root>/mingw64/libexec/git-core`, sh is in `<root>/usr/bin`. */
-function gitSh(): string {
+export function gitSh(): string {
   if (sh) return sh;
   const exec = Bun.spawnSync(['git', '--exec-path'], { stdout: 'pipe' }).stdout.toString().trim();
   const root = resolve(exec, '..', '..', '..');
@@ -273,11 +386,6 @@ export function identify(repo: string) {
 }
 
 /**
- * Waits until `done` holds. A request reaches the server only after a round trip, which on a
- * loaded machine (other workers' test runs) takes longer than any fixed pause; a test that went
- * on too early failed and left its request open, and stopping the server reset it in the next test.
- */
-/**
  * `fetch` and `WebSocket` with the owner's key of the server `of` gives (one of `serve`), as the
  * page, the app's shell and Obeya's scripts send it. A request without it goes through the global ones.
  */
@@ -299,8 +407,40 @@ export function asOwner(of: () => object) {
   };
 }
 
-/** The board's listeners have heard of what changed so far (they hear of it once the code that changed it is through: `Board.changed`). */
+/**
+ * A turn of the event loop: what was set off without a wait has run, such as the board's listeners
+ * hearing of what changed so far (they hear of it once the code that changed it is through:
+ * `Board.changed`).
+ */
 export const heard = () => Bun.sleep(0);
+
+/** A few milliseconds: what timers set a moment ahead (a command's `delayMs: 1`, say) has run. */
+export const settle = () => Bun.sleep(5);
+
+/** The code of the `BadRequest` that `act` throws, if it throws one: why the action was refused. */
+export function refusal(act: () => unknown): string | undefined {
+  try {
+    act();
+  } catch (e) {
+    if (e instanceof BadRequest) return e.code;
+    throw e;
+  }
+}
+
+/** A card's state as tests compare it: with its need after a colon where it has one (`waiting:review`). */
+export const stateOn = (board: Board, id: string) => {
+  const i = board.item(id)!;
+  return i.need ? `${i.state}:${i.need}` : i.state;
+};
+
+/** A workstream of a plan doc. */
+export const ws = (key: string, done = false) => ({ key, label: key, title: `Title ${key}`, body: `Body ${key}`, done, inReview: false });
+
+/** The content of a file that is not text: `n` bytes, other ones for each `seed`. */
+export const bytes = (n: number, seed: number) => Uint8Array.from({ length: n }, (_, i) => (i * seed + 7) % 251);
+
+/** The tag a card goes by in what agents read (`K42`). */
+export const tag = (c: { number: number }) => cardTag(c.number);
 
 /**
  * Windows counts a thread's CPU time in ticks of about 15.6 ms, coarser than a read of the cards;
@@ -343,16 +483,13 @@ export async function leftBehind(cwd: string): Promise<number> {
   return pid;
 }
 
-/** Whether the process `pid` runs. */
-export const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
+export { alive } from './spawn';
 
+/**
+ * Waits until `done` holds. A request reaches the server only after a round trip, which on a
+ * loaded machine (other workers' test runs) takes longer than any fixed pause; a test that went
+ * on too early failed and left its request open, and stopping the server reset it in the next test.
+ */
 export const until = async (done: () => unknown, ms = 3000 * PATIENCE) => {
   // on a clock `setSystemTime` leaves running: Date.now() stands still after it
   for (const end = performance.now() + ms; !(await done()); await Bun.sleep(2)) if (performance.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
@@ -434,13 +571,85 @@ kill $proxy 2>/dev/null
   return program;
 }
 
-
 /** A demo for a handover in a test that is not about demos: an HTML artifact in a directory of its own. */
 export function artifact(): { kind: 'html'; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-artifact-'));
   writeFileSync(join(dir, 'index.html'), '<p>Ergebnis</p>\n');
   return { kind: 'html', dir };
 }
+
+/** A video demo's directory as a worker hands it over, with its video and captions: `dir`, made where it is not there yet. */
+export function videoDemo(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'demo.mp4'), 'video');
+  writeFileSync(join(dir, 'captions.vtt'), 'WEBVTT\n');
+  return dir;
+}
+
+/** What the stand-in for a demo site's host does besides serving the files (`fakeSiteHost`): all off unless a test turns them on. */
+export interface SiteHostSwitches {
+  /** It answers 503. */
+  down?: boolean;
+  /** It sends a request without this `X-Token` header to a login. */
+  token?: string;
+  /** Runs before a read of the manifest is answered. */
+  onManifest?: () => void;
+  /** A missing file gets the root's `index.html`, as Cloudflare Pages answers for a site without a `404.html`. */
+  fallback?: boolean;
+  /** The manifest gets the root's `index.html`. */
+  garbled?: boolean;
+  /** `…/index.html` redirects (308) to `…/`, as Cloudflare Pages does. */
+  pretty?: boolean;
+}
+
+/**
+ * The host of a demo site, for the tests of a file: it serves what the deploy line's stand-in
+ * (`deployScript`) copied to `<out()>/deployed` last, and a missing file with that deployment's
+ * `404.html` (HTTP 404) where it has one, as Cloudflare Pages, GitHub Pages and Netlify do. Its
+ * switches (`host`) go off after each test.
+ */
+export function fakeSiteHost(out: () => string) {
+  const host: SiteHostSwitches = {};
+  const deployed = () => join(out(), 'deployed');
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      if (host.down) return new Response('down', { status: 503 });
+      if (host.token && req.headers.get('X-Token') !== host.token) return Response.redirect('https://login.example.dev/', 302);
+      let path = decodeURIComponent(new URL(req.url).pathname);
+      if (path === `/${MANIFEST}`) host.onManifest?.();
+      if (host.pretty && path.endsWith('/index.html')) return new Response(null, { status: 308, headers: { location: path.slice(0, -'index.html'.length) } });
+      if (path.endsWith('/')) path += 'index.html';
+      const file = join(deployed(), path);
+      const root = join(deployed(), 'index.html');
+      if (host.garbled && path === `/${MANIFEST}`) return new Response(Bun.file(root));
+      if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
+      const missing = join(deployed(), NOT_FOUND);
+      if (existsSync(missing)) return new Response(Bun.file(missing), { status: 404 });
+      return host.fallback && existsSync(root) ? new Response(Bun.file(root)) : new Response('not found', { status: 404 });
+    },
+  });
+  afterEach(() => {
+    for (const key of Object.keys(host) as (keyof SiteHostSwitches)[]) delete host[key];
+  });
+  afterAll(() => server.stop(true));
+  return { url: `http://localhost:${server.port}/`, host, deployed };
+}
+
+/**
+ * The deploy line's stand-in, a script for Bun called with the site's directory, `out` and more
+ * arguments (`more`): it copies the site's directory to `<out>/deployed`, the host's snapshot
+ * (`fakeSiteHost`). `before` and `after` are code that runs before and after the copy, with
+ * node:fs's functions at hand; `before` may end the script first.
+ */
+export const deployScript = ({ before = '', after = '' } = {}) => `
+const { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const [site, out, ...more] = process.argv.slice(2);
+${before}
+rmSync(out + '/deployed', { recursive: true, force: true });
+cpSync(site, out + '/deployed', { recursive: true });
+${after}
+`;
 
 /**
  * A stand-in for GitHub's CLI, in `dir`, slow as GitHub can be: it answers a call on pull request
@@ -536,9 +745,9 @@ export function tailscaleStatus(dir: string, s: TailscaleStatus) {
   );
 }
 
-/** A WAV of `seconds` of silence, 16 kHz mono 16-bit, as a voice writes one. */
-export function silentWav(seconds: number): Buffer {
-  const data = Math.round(seconds * 16000) * 2;
+/** A WAV of `seconds` of silence, mono 16-bit at `rate` (16 kHz, as a voice writes one). */
+export function silentWav(seconds: number, rate = 16000) {
+  const data = Math.round(seconds * rate) * 2;
   const b = Buffer.alloc(44 + data);
   b.write('RIFF', 0, 'ascii');
   b.writeUInt32LE(36 + data, 4);
@@ -546,8 +755,8 @@ export function silentWav(seconds: number): Buffer {
   b.writeUInt32LE(16, 16);
   b.writeUInt16LE(1, 20);
   b.writeUInt16LE(1, 22);
-  b.writeUInt32LE(16000, 24);
-  b.writeUInt32LE(32000, 28);
+  b.writeUInt32LE(rate, 24);
+  b.writeUInt32LE(rate * 2, 28);
   b.writeUInt16LE(2, 32);
   b.writeUInt16LE(16, 34);
   b.write('data', 36, 'ascii');
@@ -598,3 +807,6 @@ export function fakeVoicing() {
     },
   };
 }
+
+/** A transcriber that hears nothing, for a server under test that takes no recordings. */
+export const silent: Transcriber = { transcribe: async () => ({ text: '', doubtful: false }) };

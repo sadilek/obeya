@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { artifactCopy } from './artifact-copy';
-import { artifactFiles } from './demo-page';
+import { artifactFiles } from './demo-files';
 
 const root = mkdtempSync(join(tmpdir(), 'obeya-artifact-copy-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));

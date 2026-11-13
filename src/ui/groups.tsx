@@ -4,7 +4,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type Bounds, centre, shapeOf } from '../core/layout';
-import { type Group, type Item, titleFrom } from '../core/types';
+import type { Group, Item } from '../core/types';
+import { titleFrom } from '../core/card';
 import { plain } from './markdown';
 import { t } from './strings';
 import { type Claim, type NameSpot, placeName, type Territory, Territories } from './territory';

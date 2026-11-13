@@ -3,15 +3,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Notice } from '../core/types';
-import type { BadRequest } from './board';
-import { Canvases } from './canvas';
+import { Canvases } from './canvases';
 import { Config } from './config';
 import { Store } from './db';
-import { FakeRuntime, gitRepo, noForge, removeDir, until } from './testing';
-import { git } from './workspaces';
+import { FakeRuntime, gitRepo, noForge, ownGlobalGitConfig, refusal, removeDir, until } from './testing';
+import { git } from './git';
 
 let dir: string;
-let globalConfig: string | undefined;
 let store: Store;
 let runtime: FakeRuntime;
 let set: Canvases;
@@ -20,12 +18,11 @@ let notices: Notice[];
 
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 
+// git's name and e-mail, which the first commit of a new repository is made under
+ownGlobalGitConfig('[user]\n\tname = Ada Lovelace\n\temail = ada@example.com\n');
+
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-new-repo-'));
-  // git's name and e-mail, which the first commit of a new repository is made under
-  globalConfig = process.env.GIT_CONFIG_GLOBAL;
-  process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig');
-  writeFileSync(join(dir, 'gitconfig'), '[user]\n\tname = Ada Lovelace\n\temail = ada@example.com\n');
   const docs = gitRepo(join(dir, 'docs'));
   const configs = [{ name: 'Docs', repos: [{ path: docs }] }];
   writeFileSync(join(dir, 'canvases.json'), JSON.stringify(configs));
@@ -46,19 +43,10 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   set.shutdown();
-  if (globalConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
-  else process.env.GIT_CONFIG_GLOBAL = globalConfig;
   await removeDir(dir);
 });
 
 const docsCanvas = () => set.get('docs')!;
-const refused = (fn: () => unknown) => {
-  try {
-    fn();
-  } catch (e) {
-    return (e as BadRequest).code;
-  }
-};
 
 /** An idea on the Docs canvas, discussed, with a screenshot, a decision and its agent's pick of a new repository at `path`. */
 function idea(path: string, canvas = true) {
@@ -133,7 +121,7 @@ describe('building an idea in a new repository', () => {
     const now = docsCanvas().board.item(card.id)!;
     expect(now.state).toBe('idea');
     expect(now.newRepo).toEqual({ path, canvas: true, by: 'agent' });
-    expect(refused(() => docsCanvas().act(card.id, { action: 'stayHere' }))).toBe('newRepoGone');
+    expect(refusal(() => docsCanvas().act(card.id, { action: 'stayHere' }))).toBe('newRepoGone');
   });
 
   test('a step that fails takes back those before it, and the card says why', async () => {
@@ -177,13 +165,13 @@ describe('building an idea in a new repository', () => {
 
   test('a folder that is a repository of a canvas already is refused at once', () => {
     const card = idea(join(dir, 'docs'));
-    expect(refused(() => docsCanvas().act(card.id, { action: 'build' }))).toBe('newRepoPath');
+    expect(refusal(() => docsCanvas().act(card.id, { action: 'build' }))).toBe('newRepoPath');
   });
 
   test('in the undo window the card takes no other way on, and its agent does not change the target', () => {
     const card = idea(join(dir, 'super59'));
     docsCanvas().act(card.id, { action: 'build' });
-    expect(refused(() => docsCanvas().act(card.id, { action: 'planDoc' }))).toBe('newRepoDue');
+    expect(refusal(() => docsCanvas().act(card.id, { action: 'planDoc' }))).toBe('newRepoDue');
     expect(docsCanvas().board.setNewRepo(card.id, { path: join(dir, 'other'), canvas: true, by: 'agent' }, 'agent')).toBe(false);
     expect(docsCanvas().board.item(card.id)!.newRepo?.due).toBeTruthy();
     docsCanvas().act(card.id, { action: 'stayHere' });
@@ -203,8 +191,8 @@ describe('building an idea in a new repository', () => {
 
   test('a link to a repository of a canvas counts as that repository; a path neither absolute nor from ~ is refused', () => {
     symlinkSync(join(dir, 'docs'), join(dir, 'link'));
-    expect(refused(() => docsCanvas().act(idea(join(dir, 'link')).id, { action: 'build' }))).toBe('newRepoPath');
-    expect(refused(() => docsCanvas().act(idea('~someone/project').id, { action: 'build' }))).toBe('newRepoPath');
+    expect(refusal(() => docsCanvas().act(idea(join(dir, 'link')).id, { action: 'build' }))).toBe('newRepoPath');
+    expect(refusal(() => docsCanvas().act(idea('~someone/project').id, { action: 'build' }))).toBe('newRepoPath');
   });
 
   test('a task snoozed to start later makes its new repository when it starts', async () => {

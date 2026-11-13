@@ -5,17 +5,24 @@
 
 import { useRef, useState } from 'react';
 import type { Place } from '../core/layout';
-import { agentListens, type Item, type TalkRef } from '../core/types';
+import type { Item, Notice, TalkRef } from '../core/types';
+import { agentListens } from '../core/card';
 import { Aside } from './aside';
-import { api, ApiError, type Field, type Heard, type Where } from './api';
+import { api, ApiError, type Field, type Heard, type Where, failText } from './api';
 import { clip } from '../core/text';
 import { excerpt, plain } from './markdown';
 import { sent, take, videoOf } from './spot';
-import { failText, t } from './strings';
+import { t } from './strings';
 import type { useTold } from './voice';
 
 /** How long a confirmation stays, and its "Undo" unless the action waits longer. */
 export const ACK_MS = 7000;
+
+/** How long "Undo" shows: until shortly before the action stops waiting for it. */
+export const undoShownMs = (undoMs: number) => Math.max(0, undoMs - 400);
+
+/** How long a confirmation stays above the microphone: `ACK_MS`, unless its undo window (`undoMs`) is longer, then a moment past it. */
+export const confirmShownMs = (undoMs = 0) => Math.max(ACK_MS, undoMs + 1500);
 
 /**
  * The confirmation above the microphone: `showAck` with "Undo" while the action still waits,
@@ -33,8 +40,8 @@ export function useAck(aside = false) {
     setAckOn(true);
     clearTimeout(ackTimer.current);
     clearTimeout(undoTimer.current);
-    if (undo) undoTimer.current = setTimeout(() => setAck((a) => (a && a.text === text ? { text } : a)), Math.max(0, undoMs - 400));
-    ackTimer.current = setTimeout(() => setAckOn(false), ACK_MS);
+    if (undo) undoTimer.current = setTimeout(() => setAck((a) => (a && a.text === text ? { text } : a)), undoShownMs(undoMs));
+    ackTimer.current = setTimeout(() => setAckOn(false), confirmShownMs(undo ? undoMs : 0));
   }
   /** What went wrong, in place of the confirmation; what the server did not refuse also goes to the console. */
   function fail(e: unknown) {
@@ -76,6 +83,18 @@ export function useAck(aside = false) {
  * line shows it plain, on one line and cut short; the sheet or the card has it in full.
  */
 export const noticeLine = (text: string) => clip(excerpt(text), 300);
+
+/** A notice above the microphone, naming the card `i` it is about. */
+export function showNotice(told: ReturnType<typeof useTold>, i: Item | undefined, n: Notice) {
+  told.show(i ? { id: i.id, title: plain(i.title) } : undefined, {
+    confirm: noticeLine(n.text),
+    ...(n.token ? { token: n.token } : {}),
+    ...(n.undoMs ? { undoMs: n.undoMs } : {}),
+    ...(n.talk ? { talk: n.talk } : {}),
+    ...(n.project ? { project: n.project } : {}),
+    ...(n.inTalk && n.cardId ? { inCard: n.cardId } : {}),
+  });
+}
 
 /**
  * Hands words on: `byId` finds the cards they may be about, `told` keeps each command's line above

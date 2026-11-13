@@ -29,7 +29,7 @@
   --serif: Newsreader, "Iowan Old Style", Georgia, serif; --cond: "Plex Condensed", "Arial Narrow", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896;
-  --waiting-rgb: 242,116,5; --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
+  --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
   --dep-line: #aaa190; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
   --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf;
   --s: 1;
@@ -42,7 +42,7 @@
   --shadow: inset 0 1px 0 rgba(255,250,235,.05), 0 1px 0 rgba(0,0,0,.7), 1px 3px 0 rgba(0,0,0,.45);
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
-  --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
+  --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
   --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
@@ -52,7 +52,7 @@
   --shadow: inset 0 1px 0 rgba(255,250,235,.05), 0 1px 0 rgba(0,0,0,.7), 1px 3px 0 rgba(0,0,0,.45);
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
-  --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
+  --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
   --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
@@ -133,7 +133,12 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .project > .head .arrange { color: var(--muted); }
 .project > .head .arrange:disabled { cursor: default; animation: arranging 1.4s ease-in-out infinite; }
 @keyframes arranging { 50% { opacity: .45; } }
-.z-far .project .head-btn, .z-far .project > .head .more { display: none; }
+/* from afar they stay, a size up, so they are still read and hit */
+.z-far .project > .head .head-btn { zoom: 1.4; }
+.z-far .project > .head .acts { top: 12px; }
+.z-far .project > .head.has-acts { padding-right: 44px; }
+.z-far .project > .head .more { top: 14px; width: 32px; height: 32px; }
+.z-far .project > .head .more svg { width: 18px; height: 18px; }
 /* folds the project to its head and back; always in sight, so it is found */
 .project > .head .fold { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; margin-right: -4px;
   border: 0; border-radius: 3px; background: none; color: var(--muted); cursor: pointer; }
@@ -263,7 +268,8 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .z-far .card { padding-top: 18px; }
 .z-far .card::before { height: 8px; }
 .z-far .card.task .ttl { font-size: 26px; line-height: 1.1; -webkit-line-clamp: 3; }
-.z-far .card.s-waiting:not(.underway):not(.answering), .z-far .card.s-idea.your-turn { box-shadow: 0 0 0 5px var(--waiting), var(--shadow); }
+/* the owner's turn framed a size up, and only where the near view frames it too (not underway, answering or snoozed) */
+.z-far .card.s-waiting:not(.underway):not(.answering):not(.snoozed), .z-far .card.s-idea.your-turn:not(.snoozed) { box-shadow: 0 0 0 5px var(--waiting), var(--shadow); }
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
@@ -420,8 +426,15 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.usage .stack { display: flex; flex-direction: column; gap: 2px; }
 .pill.usage .stack .meter { width: 30px; height: 4px; }
 .pill.usage .tip .usage-list + .hint { margin-bottom: 12px; }
-.pill.usage .meter { position: relative; width: 34px; height: 5px; border-radius: 3px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex: none; }
-.pill.usage .meter i { position: absolute; inset: 0 auto 0 0; background: var(--muted); border-radius: inherit; }
+.pill.usage .meter { position: relative; width: 34px; height: 5px; border-radius: 3px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); flex: none; }
+.pill.usage .meter i { position: absolute; inset: 0 auto 0 0; max-width: 100%; background: var(--muted); border-radius: inherit; }
+/* how much of the window has gone by: a tick a little taller than the meter, green while usage keeps behind it */
+.pill.usage .meter .pace { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--approved); }
+.pill.usage .meter .pace.ahead { background: var(--error); }
+.pill.usage .stack .meter .pace { top: -1px; bottom: -1px; }
+/* the line that explains the tick, and its quiet button that puts it away */
+.pill.usage .pace-key button.link { color: var(--muted); font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.pill.usage .pace-key button.link:hover { color: var(--ink); }
 .pill.usage .warning .meter i, .pill.usage .meter.warning i { background: var(--waiting); }
 .pill.usage .critical .meter i, .pill.usage .meter.critical i { background: var(--error); }
 .pill.usage .usage-list { list-style: none; margin: 0 0 8px; padding: 0; }
@@ -436,9 +449,13 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.workspaces .ws-path { grid-column: 2; font: 12px/1.4 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   direction: rtl; text-align: left; }
 .pill.workspaces .ws-card { grid-column: 2; overflow-wrap: anywhere; }
-.pill.workspaces .ws-card .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
-.pill.workspaces .ws-card .from:hover { text-decoration-color: currentColor; }
+.pill.workspaces .ws-card .from, .pill.workspaces .tip p.warn .from, .prefs .occasion .from, .proposals .setting-edit .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.pill.workspaces .ws-card .from:hover, .pill.workspaces .tip p.warn .from:hover { text-decoration-color: currentColor; }
 .pill.workspaces .btn.ws-take { margin-left: 8px; padding: 2px 9px; font-size: 12px; font-weight: 500; vertical-align: 1px; }
+/* under a clone its leftovers block: the button that commits them to a branch and frees it, and what it does */
+.pill.workspaces .ws-leftovers { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin: 8px 0 2px; }
+.pill.workspaces .ws-leftovers .btn.ws-take { margin-left: 0; flex: none; }
+.pill.workspaces .ws-leftovers .hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
 /* the rare action of giving a card's clone away sits behind a faint "⋯" */
 .pill.workspaces .ws-more { margin-left: 6px; padding: 0 5px; border: 0; border-radius: 3px; background: none; color: var(--muted); opacity: .55; cursor: pointer; font-size: 13px; line-height: 1.2; }
 .pill.workspaces .ws-more:hover, .pill.workspaces .ws-more[aria-expanded="true"] { opacity: 1; background: var(--chip); }
@@ -483,7 +500,6 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .prefs .pref-del:hover { color: var(--error); }
 .prefs .p-error { flex-basis: 100%; margin: 0; }
 .prefs .occasion { flex-basis: 100%; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.prefs .occasion .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .prefs .occasion q { font-style: italic; }
 .prefs .target, .pref-new .target { flex-basis: 100%; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .prefs .target select, .pref-new .target select { font: inherit; color: var(--ink); padding: 3px 6px; border: 1px solid var(--line); border-radius: 2px; background: var(--card); }
@@ -499,7 +515,6 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .proposals .setting-new textarea.setting-value { flex: none; border: 1px solid var(--line); resize: none; overflow: hidden; outline: none; color: var(--ink); }
 .proposals .setting-new textarea.setting-value:focus { border-color: var(--proposal); }
 .proposals .setting-edit { color: var(--muted); font-size: 11.5px; }
-.proposals .setting-edit .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .proposals .setting-diff { flex-basis: 100%; display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: start; }
 .proposals .setting-label { color: var(--muted); font-size: 12px; padding-top: 6px; }
 .proposals .setting-diff .setting-value.was { color: var(--muted); background: transparent; border: 1px dashed var(--line); }
@@ -526,10 +541,12 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .hint { color: var(--muted); font-size: 12px; }
 button.pill.help { width: 32px; height: 32px; padding: 0; justify-content: center; font-weight: 700; font-size: 15px; color: var(--muted); }
 button.pill.help:hover, button.pill.help.on { color: var(--ink); }
-#help { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
-#help .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 24px; width: 860px; max-width: 100%; max-height: 100%; overflow: auto; }
+/* a dialog over the greyed page (over.tsx): each keeps by its id what is its own */
+.dimmed { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
+.dimmed > .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 24px; max-width: 100%; max-height: 100%; overflow: auto; }
+.dimmed .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
+#help .box { width: 860px; }
 #help h2 { margin: 0 0 14px; font-size: 23px; }
-#help .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
 #help .sections { columns: 2 340px; column-gap: 36px; }
 #help section { break-inside: avoid; margin-bottom: 18px; }
 #help section:last-child { margin-bottom: 0; }
@@ -548,11 +565,9 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 #help .w-legend { font-size: 12px; color: var(--muted); }
 
 /* the draft of a wish or a bug for Obeya's makers: over the page, as tall as its text needs; the box scrolls, its fields never */
-#wish { position: fixed; inset: 0; z-index: 61; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
-#wish .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 22px; width: 760px; max-width: 100%; max-height: 100%; overflow: auto;
-  display: flex; flex-direction: column; gap: 12px; }
+#wish { z-index: 61; }
+#wish .box { padding-bottom: 22px; width: 760px; display: flex; flex-direction: column; gap: 12px; }
 #wish h2 { margin: 0 0 2px; font-size: 21px; }
-#wish .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
 #wish .w-issue { display: flex; flex-direction: column; gap: 10px; }
 #wish .w-issue label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 #wish .w-issue input, #wish .w-issue textarea { font: inherit; font-size: 14px; line-height: 1.45; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; }
@@ -661,7 +676,7 @@ ol.p-list > li::before { content: none; }
 .p-table :is(th, td) { text-align: left; vertical-align: top; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--line); }
 .p-table th { font-weight: 600; }
 .p-code { margin: 10px 0 0; padding: 8px 10px; background: var(--chip); border-radius: 2px; overflow: auto; font: 12.5px/1.5 var(--mono); }
-/* a code block's copy button (message.tsx), in its corner: at the desk while the pointer is on the
+/* a code block's copy button (markdown.tsx), in its corner: at the desk while the pointer is on the
    block (and until used once), on a touch screen always */
 .p-code-box { position: relative; margin: 10px 0 0; }
 /* a conversation's code block is often prose to send on (a message): it wraps, to be read without scrolling sideways */
@@ -711,6 +726,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .seg button { border: 0; background: transparent; border-radius: 2px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: var(--muted); }
 .seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
 /* the repository a card is built in, with a new one's folder and whether it gets a canvas of its own */
+.upstream-pick > .hint:first-child { margin-right: 10px; }
 .repo-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 .repo-new { display: flex; align-items: center; gap: 14px; margin-top: 12px; flex: 0 1 560px; }
 .repo-path { flex: 1; min-width: 0; font: 13px var(--mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); }
@@ -721,10 +737,6 @@ textarea.p-body:focus { border-color: var(--muted); }
 .btn { border: 0; border-radius: 3px; padding: 9px 16px; font-weight: 600; cursor: pointer; background: var(--chip); }
 .btn.primary { background: var(--ink); color: var(--bg); }
 .btn.danger { color: var(--error); }
-/* a prototype whose idea became a project: the workstream to build on it, on a line of its own above the buttons */
-.actions:has(.build-on) { flex-wrap: wrap; }
-.build-on { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.build-on select { font: inherit; font-size: 13px; color: var(--ink); padding: 6px 8px; border: 1px solid var(--line); border-radius: 2px; background: var(--card); max-width: 100%; }
 /* an idea's next step as its agent would take it: a line above the decisions, and the button it means */
 .next-step { display: flex; flex-direction: column; gap: 3px; margin-top: 16px; padding: 2px 0 2px 12px; max-width: 80ch;
   border-left: 3px solid var(--idea); font-size: 14px; }
@@ -747,7 +759,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
 .demo-view .player { position: relative; }
-/* zoomed (detail.tsx useZoom): fixed over the greyed window, above the panel's ✕, with its caption and controls; the player keeps its height in the card */
+/* zoomed (demo.tsx useZoom): fixed over the greyed window, above the panel's ✕, with its caption and controls; the player keeps its height in the card */
 .demo-view .dp.zoomed { position: fixed; z-index: 4; transform-origin: 0 0; box-shadow: var(--lift); }
 .demo-zoom { position: fixed; inset: 0; z-index: 3; background: rgba(15, 12, 8, .78); cursor: zoom-out; animation: fade .38s ease-out; transition: opacity .38s; }
 .demo-zoom.closing { opacity: 0; }
@@ -911,7 +923,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .msg > .quote { margin: 5px 0 4px; }
 .composer .c-field .quote { flex: 1 1 100%; margin: 0 0 2px; }
 .composer .c-field .quote-text { -webkit-line-clamp: 2; }
-/* the place in the demo video the words are about (detail.tsx PlaceChip, SpotLink) */
+/* the place in the demo video the words are about (conversation.tsx PlaceChip, SpotLink) */
 .quote.place { --q: var(--working); align-items: center; gap: 8px; padding: 4px 0 4px 6px; }
 .place-frame { flex: none; width: 48px; border-radius: 2px; background: #222; display: block; }
 .place-text { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); }
@@ -1222,11 +1234,11 @@ span.cl-name { color: inherit; cursor: default; }
 .agent-h { padding-top: 8px; font-weight: 600; }
 .agent-group { display: flex; flex-direction: column; }
 /* a newer Claude Code that is out, with its button: under Claude Code's models, and in the Configuration */
-.claude-update { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
-.claude-update-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.claude-update.failed .claude-update-text { color: var(--error); }
-.claude-update .btn { flex: none; }
-.cfg-box .claude-update { padding: 6px 0; font-size: inherit; }
+.harness-update { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 4px 12px; font-size: 12.5px; color: var(--muted); }
+.harness-update-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.harness-update.failed .harness-update-text { color: var(--error); }
+.harness-update .btn { flex: none; }
+.cfg-box .harness-update { padding: 6px 0; font-size: inherit; }
 .agent-effort-h { border-top: 1px solid var(--line); margin-top: 4px; }
 .agent-efforts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 10px; }
 .agent-effort { border: 1px solid var(--line); background: none; border-radius: 3px; padding: 4px 9px; font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
@@ -1325,7 +1337,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .qlist { list-style: none; padding: 0; margin: 0; }
 .qlist li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px; border-radius: 2px; cursor: pointer; font-size: 13px; }
 .qlist li:hover { background: var(--chip); }
-.qlist li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
+.qlist li .dot, .sheet > ol > li .dot, .s-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .qlist li .q-what { flex: 1; min-width: 0; }
 .qlist li .why { display: block; margin-top: 2px; }
 .qlist li .x { flex: none; padding: 0 4px; font-size: 17px; line-height: 22px; color: var(--muted); background: none; border: 0; cursor: pointer; }
@@ -1409,7 +1421,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
   display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); }
 .c-shot img { height: 100%; max-width: 160px; object-fit: cover; border-radius: 2px; display: block; }
 .c-shot .open { all: unset; height: 100%; cursor: zoom-in; }
-.c-shot .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
+.c-shot .remove, .c-file .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
   background: var(--card); color: var(--ink); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 .c-shot.loading { padding: 0 10px; }
 /* after the first screenshot picked from disk: pasting works too, until confirmed */
@@ -1537,7 +1549,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .sheet > ol { list-style: none; padding: 0; margin: 16px 0 0; }
 .sheet > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 3px; cursor: pointer; font-size: 13px; }
 .sheet > ol > li:hover { background: var(--chip); }
-.sheet > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .sheet > ol > li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
 /* a workstream's text from the plan doc under its title, so the list says what each one is */
 .sheet > ol > li .ws { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -1597,7 +1608,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .s-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 7px 8px; text-align: left; font: inherit; color: var(--ink);
   background: none; border: 0; border-radius: 2px; cursor: pointer; }
 .s-row.active { background: var(--chip); }
-.s-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .s-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .s-ttl { font-size: 14.5px; line-height: 1.3; }
 .s-text { font-size: 12.5px; line-height: 1.4; color: var(--ink); opacity: .8; overflow-wrap: anywhere; }
@@ -1749,7 +1759,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .cfg-existing { width: 100%; max-width: 640px; }
 #config .cfg-existing { resize: none; overflow-y: hidden; }
 .cfg-wide .cfg-control { max-width: 900px; }
-.cfg-add-repo { margin-top: 22px !important; }
 .cfg-clone-leaving { margin: 5px 0 0; font-size: 12.5px; line-height: 1.45; }
 
 .cfg-group.flash { animation: cfg-flash 2.4s ease-out; }
@@ -1938,8 +1947,6 @@ button.link:hover { text-decoration: underline; }
 /* a text pasted outside a field: its first words, on up to two lines */
 .c-file.c-pasted { width: 220px; max-width: none; white-space: normal; font-style: italic; }
 .c-file.c-pasted .name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.35; overflow-wrap: anywhere; }
-.c-file .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
-  background: var(--card); color: var(--ink); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 #ptt.dropping #mic { outline: 2px dashed var(--working); outline-offset: 5px; }
 .ptt-error { font-size: 12px; color: var(--error); background: var(--card); box-shadow: var(--shadow); border-radius: 2px; padding: 4px 10px; max-width: calc((100vw - var(--left, 0px) - var(--side, 0px)) * .6); }
 .tell { margin: 4px 0 6px; }
@@ -2213,10 +2220,8 @@ button.link:hover { text-decoration: underline; }
 .setup .c-how code { padding: 2px 6px; border-radius: 2px; background: var(--card); border: 1px solid var(--line); -webkit-user-select: all; user-select: all; }
 
 /* "Connect a phone" (access.tsx): the QR code beside the address and the code to type */
-#phone { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
-#phone .box { position: relative; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 20px; width: 680px; max-width: 100%; max-height: 100%; overflow: auto; font-size: 14px; }
+#phone .box { padding-bottom: 20px; width: 680px; font-size: 14px; }
 #phone h2 { margin: 0 0 16px; font-size: 23px; }
-#phone .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
 #phone .cfg-field { grid-template-columns: 150px minmax(0, 1fr); }
 .acc-pair { display: flex; gap: 26px; align-items: flex-start; }
 .acc-pair p { margin: 0 0 10px; line-height: 1.45; }

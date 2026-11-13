@@ -16,9 +16,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { repoName } from '../../../../src/adapters/generic.ts';
 import { parseShared, REPO_SETTINGS_FILE } from '../../../../src/adapters/index.ts';
-import type { DemoSite } from '../../../../src/core/types.ts';
+import type { DemoSite } from '../../../../src/core/config.ts';
 import type { PageLanguage } from '../../../../src/server/demo-page.ts';
-import { type Meta, overviewHtml, pageHtml } from '../../../../src/server/site.ts';
+import { type Meta, overviewHtml, pageHtml } from '../../../../src/server/site-pages.ts';
 import { THEME_DIR, THEME_FILE, workingTheme } from '../../../../src/server/theme.ts';
 import { demoSettingsHere } from '../../demo/lib/settings.ts';
 
@@ -102,7 +102,7 @@ const theme = workingTheme(repo);
 if (!theme) fail(`no ${THEME_DIR}/${THEME_FILE} in ${repo}: write the theme first`);
 const settingsFile = join(repo, REPO_SETTINGS_FILE);
 const own = existsSync(settingsFile) ? parseShared(readFileSync(settingsFile, 'utf8')).settings?.demo?.site : undefined;
-const language: PageLanguage = demoSettingsHere().language === 'en' ? 'en' : 'de';
+const language: PageLanguage = demoSettingsHere().language;
 const site: DemoSite = {
   title: own?.title || `${repoNameHere(repo)} demos`,
   url: own?.url || 'https://demos.example',
@@ -126,7 +126,7 @@ for (const [dir, css] of [
       if (video) copyFileSync(video, join(at, 'demo.mp4'));
       writeFileSync(join(at, 'captions.vtt'), 'WEBVTT\n');
     }
-    writeFileSync(join(dir, p.slug, 'index.html'), pageHtml(site, p.slug, p, () => ({ poster: false, tracks: [] }), undefined, false, css));
+    writeFileSync(join(dir, p.slug, 'index.html'), pageHtml(site, p.slug, p, () => ({ poster: false, tracks: [] }), { theme: css }));
   }
 }
 const url = (path: string) => `file:///${path.replace(/\\/g, '/').replace(/^\/+/, '')}`;

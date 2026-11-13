@@ -2,10 +2,10 @@
 
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES } from '../core/messages';
-import { holdsNotes } from '../core/queue';
-import { answering, askable, type CardEvent, type Demo, finishingUp, type Item, needsYou, openQuestions, ownWords, pausableNow, type Question, resumable, started, type Talk as Exchange } from '../core/types';
+import type { CardEvent, Demo, Item, Question } from '../core/types';
+import { ANY, lineOf, openQuestions, ownWords, parseQuestion, resumable, started } from '../core/card';
 import { readAnswer } from './answer';
-import type { Field } from './api';
+import { agentWorks } from './cardState';
 
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
 export interface Turn {
@@ -44,20 +44,45 @@ export interface Talk {
   pending: CardEvent[];
   /** What the owner said that the agent has not read yet, in the order said: it stands below its work, until it reads it. */
   unread: CardEvent[];
-  /**
-   * Obeya's reply to what the agent at work passed on (`to_obeya`), and what Obeya said after it,
-   * while no message of the agent's came yet: it stands below the agent's work, until that message.
-   */
-  passedOn: Turn[];
   /** The questions the card waits on (`openQuestions`), each with the steps that led to it: they stand at the end, to be answered. */
   asked: Turn[];
   /** What came after the last of them, when none of it is the agents': the owner's words the agent read after asking, which stay below the questions. */
   below: Turn[];
 }
 
-/** Obeya's lines that mark where the work stands (the demo linked on the pull request among them), or why an idea clicked to build was not; its other notes (restarts, sessions, what happens on the pull request) fold away. */
-const MILESTONE =
-  /^(Agent gestartet|Agent started|Pull Request gemergt|Pull request merged|Nach der Freigabe auf main gelandet|Landed on main after the approval|Pull Request ohne Merge geschlossen|Pull request closed without a merge|Das Projekt steht jetzt|The project now stands|Nicht gebaut|Not built|Teil gelandet|Part landed|Der Obeya-Checkout stand auf|The Obeya checkout was on|Im Plan-Doc|Ticked off in the plan doc|Den Link zur Demo (als Kommentar|in die Beschreibung)|Commented the demo’s link|Added the demo’s link|main ließ sich nach dem Merge nicht holen: Konflikt|Could not pull main after the merge: it conflicts|Der Merge von PR #\d+ kollidiert|Merging PR #\d+ conflicts|Konflikt mit PR #\d+ gelöst|Conflict with PR #\d+ resolved|main aus dem Remote geholt|Pulled main from the remote|main gepusht|Pushed main|PR #\d+ gemergt\. Live|PR #\d+ merged\. Live|Konflikt gelöst\. Obeya mergt|Conflict resolved\. Obeya merges)/;
+/** Obeya's lines that mark where the work stands besides an agent's start (`started`): the demo linked on the pull request among them, or why an idea clicked to build was not. Its other notes (restarts, sessions, what happens on the pull request) fold away. */
+const milestone = lineOf(
+  (m) => m.worker.merged,
+  (m) => m.worker.mergedTicked,
+  (m) => m.worker.tickedFreed,
+  (m) => m.worker.mergedContribution(ANY),
+  (m) => m.worker.landedMain,
+  (m) => m.worker.pushedLanded(ANY, ANY),
+  (m) => m.worker.keptOnMain(ANY),
+  (m) => m.worker.upstreamStarted(ANY, ANY, ANY),
+  (m) => m.pr.intoMain(ANY, ANY),
+  (m) => m.pr.portRecorded(ANY),
+  (m) => m.pr.mergedUpstream(ANY),
+  (m) => m.worker.prClosed,
+  (m) => m.worker.switchedToMain(ANY, ANY),
+  (m) => m.worker.switchedToMain(null, ANY),
+  (m) => m.worker.pullStopped(ANY, ANY),
+  (m) => m.worker.pullStopped(ANY, null),
+  (m) => m.worker.pullUnresolved(ANY, ANY, ANY),
+  (m) => m.worker.resolvingPull(ANY, ANY),
+  (m) => m.worker.resolvedPull(ANY, ANY),
+  (m) => m.worker.pulledMain(ANY),
+  (m) => m.worker.pushedMain(ANY, ANY),
+  (m) => m.worker.mergingResolved(ANY),
+  (m) => m.idea.becameProject,
+  (m) => m.idea.taskBecameProject,
+  (m) => m.idea.partLanded,
+  (m) => m.idea.notBuiltNoReply,
+  (m) => m.idea.notBuiltQuestions,
+  (m) => m.idea.notBuiltQuestion,
+  (m) => m.share.prLinked(ANY, ANY),
+  (m) => m.share.prCommented(ANY, ANY),
+);
 
 /** The agent that works on the card or thinks the idea through. */
 const agentAuthor = (e: CardEvent) => e.author === 'worker' || e.author === 'explorer';
@@ -88,7 +113,7 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
     case 'denied':
       return 'line';
     case 'state':
-      return e.author === 'explorer' || (e.author === 'obeya' && !MILESTONE.test(e.text) && !limitLine(e) && !wokeLine(e) && !unansweredLine(e) && !waitLine(e)) ? 'step' : 'line';
+      return e.author === 'explorer' || (e.author === 'obeya' && !started(e) && !milestone(e.text) && !limitLine(e) && !wokeLine(e) && !unansweredLine(e) && !waitLine(e)) ? 'step' : 'line';
     default:
       return 'step';
   }
@@ -110,9 +135,9 @@ export function demoHandover(demo: Demo, shown: Turn[]): Turn | undefined {
  * `open`: the questions the card waits on, which leave where they were last asked; the others show how they ended (`ended`). `over`: no agent works on the card, so no message will
  * come for the steps without one (`settle`). `paused`: the agent is paused now, at the last line that says so.
  * `working`: the agent is at work, so the owner's last words may still get a question asked again.
- * Obeya's reply to what the agent passed on (`CardEvent.forwarded`) answers one of its steps: it
- * stands under the agent's message those steps lead to, with what Obeya said after it until then
- * (an answer it looked up), unless the owner's words or a line come first (`passedOn`).
+ * Obeya's reply to what the agent passed on (`CardEvent.forwarded`) answers its last step: the
+ * steps up to there close above it, as before the owner's words, and the agent's next message, which
+ * may build on the reply, stands below it.
  * What Obeya read to look a question up (its steps) is not the agent's work: it folds under the
  * answer it looked up, and while it still looks, under its reply that it does; `answers`: a Question
  * card, whose own agent Obeya's is, so its steps are the card's agent's.
@@ -129,8 +154,6 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
   const limitHolds = !!lastLimit && !events.slice(events.indexOf(lastLimit) + 1).some(agentAuthor);
   // the worker handed over since it started
   let handedOver = false;
-  // Obeya's replies to what the agent passed on, held for the agent's next message
-  let held: Turn[] = [];
   // the steps of Obeya's look-up, for the answer it looks up
   let looking: CardEvent[] = [];
   // Obeya's reply that it looks the question up, where it stands
@@ -142,14 +165,6 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
     looking = [];
     return run;
   };
-  const moved = new Set<Turn>();
-  const release = () => {
-    for (const x of held) moved.add(x);
-    shown.push(...held);
-    held = [];
-  };
-  // the agent's last message, past the replies of Obeya's that moved under it
-  const lastAgent = () => shown.findLast((x) => !moved.has(x));
   // the agent's steps so far, closed above what comes next
   const close = () => {
     const run = closed(steps);
@@ -165,9 +180,8 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
       shown.push({ e, steps });
       steps = [];
       open = false;
-      release();
     } else if (where === 'step' && lookUp(e)) {
-      if (!looking.length) lookingUnder = [...shown, ...held].at(-1);
+      if (!looking.length) lookingUnder = shown.at(-1);
       looking.push(e);
     }
     else if (where === 'step') steps.push(e);
@@ -175,22 +189,23 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
       // closing words after a reply or handover fold under it, the last of its steps; so do the
       // steps the agent took after it in the same turn (a card it proposed, say)
       const last = shown.findLast((x) => !x.line && agentAuthor(x.e));
-      if (last && last === lastAgent()) {
+      if (last && last === shown.at(-1)) {
         (last.then ?? last).steps.push(...steps, e);
         steps = [];
       } else if (last) (last.then ?? last).steps.push(e);
       else steps.push(e);
     }
-    else if (where === 'aside' && (e.forwarded || held.length)) held.push({ e, steps: looked(e) });
     else if (where === 'line' || where === 'aside') {
-      release();
+      // Obeya's reply to what the agent passed on answers its last step: the steps up to there stand
+      // above it, the agent's next message, which may build on the reply, below it
+      if (e.forwarded) close();
       // what the agent did until the owner or the usage limit paused it stays above that line once it
       // went on; while it is paused there, its bubble shows it
       if ((pauseLine(e) && !(opts.paused && e === lastPause)) || snoozeLine(e) || (limitLine(e) && !(limitHolds && e === lastLimit))) close();
       shown.push({ e, steps: where === 'aside' ? looked(e) : [], ...(where === 'line' ? { line: true as const } : {}) });
     }
     else if (where === 'agent') {
-      const prev = lastAgent();
+      const prev = shown.at(-1);
       // a later handover right after the worker's reply says what changed since the one before: it
       // stands under the reply
       if (e.kind === 'review' && handedOver && prev?.e.kind === 'talk' && prev.e.author === 'worker' && !prev.then) prev.then = { e, steps };
@@ -204,25 +219,16 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
       steps = [];
       open = false;
       if (e.kind === 'review') handedOver = true;
-      release();
     } else {
       // a spoken command that became a note or an answer stands once, as that
       if (e.kind === 'say' && duplicate(all, all.indexOf(e))) return;
       if (toAgent(e)) close();
-      release();
       shown.push({ e, steps: [] });
       if (toAgent(e)) open = true;
     }
   });
   // a look-up not answered yet: its steps so far under Obeya's reply that it looks it up
   if (looking.length && lookingUnder && !lookingUnder.line && lookUpAuthor(lookingUnder.e)) lookingUnder.steps.push(...looking);
-  // while the agent works, they wait below its work for its message; else its steps since stand as one
-  let passedOn: Turn[] = [];
-  if (opts.working) passedOn = held;
-  else if (held.length) {
-    if (opts.over) close();
-    release();
-  }
   // an idea's and a proposal's questions are answered in the owner's words; a worker's on their own
   named(shown);
   for (const turn of shown) if (turn.e.kind === 'question' && !turn.picks) Object.assign(turn, answered(events, turn.e));
@@ -236,7 +242,7 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
     settle(shown, steps, events);
     steps = [];
   }
-  return { shown, pending: steps, passedOn, unread: all.filter((e) => e.unread), asked, below };
+  return { shown, pending: steps, unread: all.filter((e) => e.unread), asked, below };
 }
 
 /**
@@ -273,17 +279,23 @@ function repliesLater(events: CardEvent[], i: number): boolean {
 /** The line that the owner paused the card's agent. */
 const pauseLine = (e: CardEvent) => e.kind === 'state' && e.author === 'owner' && LANGUAGES.some((l) => e.text === MESSAGES[l].worker.pausedByOwner);
 
+const snoozed = lineOf((m) => m.worker.snoozed(ANY));
 /** The line that the card was snoozed until a time (or its time changed), by its agent or the owner. */
-export const snoozeLine = (e: CardEvent) => e.kind === 'state' && (e.author === 'worker' || e.author === 'owner') && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].worker.snoozed('\0').split('\0')[0]!));
+export const snoozeLine = (e: CardEvent) => e.kind === 'state' && (e.author === 'worker' || e.author === 'owner') && snoozed(e.text);
 
 /** The line that a snoozed card woke, and why (or, until 2026-10-17, who had snoozed it: „Wieder da (vom Agenten zurückgestellt)“). */
-const wokeLine = (e: CardEvent) => e.kind === 'state' && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].worker.woke('\0').split('\0')[0]!) || e.text.startsWith(`${MESSAGES[l].worker.woke('').replace(/: $/, '')} (`));
+const woke = lineOf(
+  (m) => m.worker.woke(ANY),
+  (m) => `${m.worker.woke('').replace(/: $/, '')} (`,
+);
+const wokeLine = (e: CardEvent) => e.kind === 'state' && woke(e.text);
 
 /** Obeya's line that the agent stopped without answering the owner's words: they write again. */
 const unansweredLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text === MESSAGES[l].worker.unanswered);
 
 /** Obeya's line that the card waits for others before it starts, and why. */
-const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].coordinator.waitsFor('\0', '').split('\0')[0]!));
+const waits = lineOf((m) => m.coordinator.waitsFor(ANY, ANY));
+const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && waits(e.text);
 
 /** Obeya's line that the usage limit stopped the agent's turn, and when it goes on. */
 const limitLine = (e: CardEvent) =>
@@ -444,48 +456,6 @@ function named(shown: Turn[]) {
   }
 }
 
-/** A question as the log holds it (`formatQuestion`): its text and the options after it. */
-export function parseQuestion(text: string): { text: string; options: string[] } {
-  const lines = text.split('\n');
-  let n = lines.length;
-  while (n > 1 && lines[n - 1]!.startsWith('– ')) n--;
-  return {
-    text: lines
-      .slice(0, n)
-      .join('\n')
-      .replace(/ \((Mehrfachauswahl|multiple choice)\)$/, ''),
-    options: lines.slice(n).map((l) => l.slice(2)),
-  };
-}
-
-/**
- * The one field a card has for the owner's words, by its state: the answer to its agent's question,
- * a note while the agent works, feedback on work waiting for review; under a demo whose report asks
- * a question, the answer and feedback together, sorted out by the Coordinator as spoken words are.
- * Null where no agent hears it. Ideas and proposals have fields of their own.
- */
-export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'finishing' | 'branch' | 'prototypeOf' | 'archivedAt' | 'queue'>): Field | null {
-  if (item.state === 'waiting') return item.need === 'question' ? 'answer' : item.need === 'demo' && item.question ? 'demo' : 'feedback';
-  // a finished card's agent is resumed for what the owner asks about it; a planned card holds the note for the agent that takes it on
-  return item.state === 'working' || item.state === 'inPr' || item.finishing || askable(item) || holdsNotes(item) ? 'note' : null;
-}
-
-/**
- * A card an agent or Obeya is at (working on it, taking in the owner's words on its handover,
- * landing it, finding it a turn in the queue), and that waits for nobody: the phone's "Running".
- */
-export const runs = (i: Item) =>
-  !needsYou(i) &&
-  !i.snoozed?.waiting &&
-  (i.state === 'working' || answering(i) || !!i.finishing || !!i.landing || !!i.queue || (i.state === 'inPr' && !!i.pr) || !!i.idea?.thinking || !!i.thread?.thinking);
-
-/**
- * Whether the phone opens a card with its conversation up: while its agent works on it, what the
- * agent says is what there is to see, and a card that waits for answers to its questions shows them,
- * with options to pick or without. Until 2026-10-19 a question without options opened on the page.
- */
-export const opensWithTalk = (i: Item) => (i.state === 'working' && !i.archivedAt) || openQuestions(i).length > 0;
-
 /**
  * The messages of a card's conversation the owner has not seen: those it shows (`talk`, not the words
  * folded into a message's steps) after the last event they saw (`seen`, an event id), and never those
@@ -496,7 +466,7 @@ export const opensWithTalk = (i: Item) => (i.state === 'working' && !i.archivedA
  */
 export const unseen = (talk: Talk, events: CardEvent[], seen = -1): number => {
   const turns = new Set(unseenTurns(talk, events, seen));
-  return [...talk.shown, ...talk.passedOn].filter((x) => turns.has(x) || (x.then && turns.has(x.then))).length;
+  return talk.shown.filter((x) => turns.has(x) || (x.then && turns.has(x.then))).length;
 };
 
 /** Those messages themselves, a handover that follows its reply in the same message (`then`) on its own. */
@@ -504,15 +474,8 @@ export function unseenTurns(talk: Talk, events: CardEvent[], seen = -1): Turn[] 
   const spoke = events.findLast((e) => e.author === 'owner')?.id ?? -1;
   const from = Math.max(seen, spoke);
   const message = (x: Turn) => !x.line && !x.quiet && x.e.author !== 'owner' && x.e.id > from;
-  return [...talk.shown, ...talk.passedOn].flatMap((x) => [x, ...(x.then ? [x.then] : [])]).filter(message);
+  return talk.shown.flatMap((x) => [x, ...(x.then ? [x.then] : [])]).filter(message);
 }
-
-/**
- * Whether the card's agent is at work on it, so its conversation ends with the agent at work: an
- * agent working on something, which the owner can pause (`pausableNow`), or a proposal reworked.
- */
-export const agentWorks = (i: Pick<Item, 'kind' | 'state' | 'idea' | 'thread' | 'inTurn' | 'paused' | 'snoozed' | 'proposal'>) =>
-  pausableNow(i) || (i.state === 'proposal' && !!i.proposal?.revising);
 
 /**
  * Whether the Coordinator still reads what the owner said on the card: their words stand in the log
@@ -523,59 +486,3 @@ export const coordinatorReads = (events: CardEvent[]) => {
   const last = events.at(-1);
   return last?.kind === 'say' && last.author === 'owner';
 };
-
-/**
- * Whether Obeya's conversation shows it at work: reading the owner's words, or looking a question up
- * (not while the usage limit holds it). Words asked in a project's sheet went straight to its project
- * agent: Obeya never replies to them, only their answer is awaited.
- */
-export const obeyaWorks = (talk: Exchange[]) =>
-  talk.some((x) => (x.reply === undefined && !x.heldUntil && !x.askedIn) || (x.question !== undefined && x.answer === undefined && !x.movedTo && !x.limitedUntil));
-
-/**
- * A task an agent has worked on, stopped ones included: what came of it stands beside its
- * conversation. A workstream planned again after a part of it landed has no branch until its rest
- * starts, and still shows what landed.
- */
-export const worked = (i: Pick<Item, 'state' | 'branch' | 'landedPart'>) => i.state !== 'idea' && i.state !== 'proposal' && (!!i.branch || !!i.landedPart);
-
-/** What decides a card's layout. */
-type Laid = Pick<Item, 'state' | 'branch' | 'prototypeEnd' | 'demo' | 'files' | 'pr' | 'landedPart' | 'finishing' | 'brief' | 'prototypes' | 'queue'> & Partial<Pick<Item, 'source' | 'id' | 'archivedAt'>>;
-
-/**
- * What a task an agent worked on shows beside its conversation: a demo, the files it named as the
- * result (or, in a folder, the files it changed there), a pull request, what landed, what remains
- * after the landing, a decided idea's brief, a workstream's text in its plan doc.
- */
-export const result = (i: Laid) =>
-  !!i.demo ||
-  !!i.files ||
-  i.state === 'inPr' ||
-  (!!i.pr && i.state === 'waiting') ||
-  !!i.landedPart ||
-  finishingUp(i) ||
-  (i.brief !== undefined && (!!i.brief.trim() || !!i.prototypes?.length)) ||
-  i.source === 'plan';
-
-/**
- * A card laid out with its conversation beside what it is about (`Split` in detail.tsx): an idea, a
- * proposal, a task waiting for its first start (its text beside the conversation, where notes wait
- * for its agent), a task an agent worked on once there is a result.
- */
-export const split = (i: Laid) => i.state === 'idea' || i.state === 'proposal' || waitsFirstStart(i) || ((!!i.prototypeEnd || worked(i)) && result(i));
-
-/**
- * A task no agent has worked on yet, planned or in the queue: its text stands beside its
- * conversation, where notes wait for the agent that takes it on. Not while the owner writes a card
- * they have just created (`beingWritten`) and has not started yet: its text alone, so the task goes
- * into the text, not into a note.
- */
-export const waitsFirstStart = (i: Pick<Item, 'state' | 'branch' | 'landedPart' | 'queue'> & Partial<Pick<Item, 'id' | 'archivedAt'>>) =>
-  holdsNotes(i) && !worked(i) && (!!i.queue || !(i.id && beingWritten.has(i.id)));
-
-/** The cards created on this page that have stayed open since: the owner is writing their task. */
-export const beingWritten = new Set<string>();
-
-/** A task an agent works or worked on without a result yet: its conversation stands alone, the card only as wide as it. */
-export const talkAlone = (i: Laid) => (!!i.prototypeEnd || worked(i)) && !result(i);
-

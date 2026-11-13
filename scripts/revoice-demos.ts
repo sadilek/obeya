@@ -15,24 +15,24 @@
 
 import { Database } from 'bun:sqlite';
 import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { LANGUAGES, type Language } from '../src/core/locale';
 import { MESSAGES } from '../src/core/messages';
 import { recorded } from '../src/server/instance';
-import { ownerHeaders } from '../src/server/owner';
+import { ownerApi } from '../src/server/owner';
+import { obeyaHome } from '../plugin/skills/demo/lib/settings.ts';
+import { script } from './common';
 
-const args = process.argv.slice(2);
-const option = (name: string, fallback: string) => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 && args[i + 1] ? args.splice(i, 2)[1]! : fallback;
-};
-const home = process.env.OBEYA_HOME || join(homedir(), '.obeya');
-const canvas = option('canvas', 'obeya');
-const count = Number(option('count', '30'));
-const languageArg = option('language', 'en');
-const language = LANGUAGES.find((l) => l === languageArg);
-const [command, ...ids] = args;
+const { values, positionals } = script('revoice-demos').args({
+  canvas: { type: 'string', default: 'obeya' },
+  count: { type: 'string', default: '30' },
+  language: { type: 'string', default: 'en' },
+});
+const home = obeyaHome();
+const canvas = values.canvas;
+const count = Number(values.count);
+const language = LANGUAGES.find((l) => l === values.language);
+const [command, ...ids] = positionals;
 if (!language || !Number.isInteger(count) || (command !== 'list' && command !== 'publish') || (command === 'publish' && !ids.length)) {
   console.error('usage: bun scripts/revoice-demos.ts list [--canvas obeya] [--count 30] [--language en]\n       bun scripts/revoice-demos.ts publish <card id>… [--canvas obeya]');
   process.exit(2);
@@ -91,14 +91,7 @@ if (command === 'list') {
 } else {
   const instance = recorded(home);
   if (!instance) throw new Error(`no Obeya runs on ${home}`);
-  const post = async (path: string, body?: unknown) => {
-    const res = await fetch(`${instance.url}/api/c/${canvas}${path}`, {
-      method: 'POST',
-      headers: { ...ownerHeaders(home), 'content-type': 'application/json' },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    if (!res.ok) throw new Error(`${path}: ${res.status} ${await res.text()}`);
-  };
+  const post = (path: string, json?: unknown) => ownerApi(instance.url, home)(`/api/c/${canvas}${path}`, { method: 'POST', json });
   const byId = new Map(candidates().map((r) => [r.id, r]));
   for (const id of ids) {
     const r = byId.get(id);

@@ -2,8 +2,9 @@
 // offered only where it has one and the browser runs there too (the dialog opens on its screen).
 // One control for the setup assistant's first canvas and a repository's path in the configuration.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from './api';
+import { useAsked } from './asked';
 import { t } from './strings';
 
 /** Asked once per page: neither the machine's dialogs nor where the browser runs change while it is open. */
@@ -16,14 +17,7 @@ const pickerHere = () => (offered ??= api.setupPicker().then((r) => r.picker, ()
  * an earlier attempt said no longer holds), `onError` with what went wrong.
  */
 export function FolderPick({ prompt, onPick, onOpen, onError }: { prompt: string; onPick: (path: string) => void; onOpen: () => void; onError: (e: unknown) => void }) {
-  const [here, setHere] = useState(false);
-  useEffect(() => {
-    let live = true;
-    void pickerHere().then((p) => live && setHere(p));
-    return () => {
-      live = false;
-    };
-  }, []);
+  const here = useAsked(pickerHere);
   const [open, setOpen] = useState(false);
   if (!here) return null;
   const pick = async () => {

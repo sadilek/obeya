@@ -1,9 +1,12 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { AnswerFile, AnswerRef, CardEvent, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, ProposedSetting, RepoCommands, SettingProposal, SettingProposalState, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
-import type { Place } from '../core/layout';
-import type { Wish } from '../core/wish';
+import type { CardEvent, ChangeSize, DeviceView, CardKind, CardState, Need, Preference, PreferenceState, Proposal, ProposedSetting, Queue, SettingProposal, SettingProposalState, Snooze } from '../core/types';
+import type { CardAgent } from '../core/agents';
+import type { RepoCommands } from '../core/config';
+import type { CardFile } from '../core/files';
+import type { PlanDoc } from '../core/plan-doc';
+import type { Detail, HeldComment, Json, LandedState, PageHeard, PausedState, PrState, Scope, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread, Unheard } from './row';
 
 /** Where a page of the archive ends (`Store.archivePage`): the last card's archiving, creation and id. */
 export interface ArchiveCursor {
@@ -12,6 +15,7 @@ export interface ArchiveCursor {
   id: string;
 }
 
+/** A card as stored. A JSON column's type names what it holds (`Json` in row.ts), so `fromJson` reads it typed. */
 export interface CardRow {
   id: string;
   canvas_id: string;
@@ -31,106 +35,117 @@ export interface CardRow {
   /**
    * When something last happened at the card: a change the owner sees (`SEEN`) or a line in its log
    * other than a worker's tool activity. Moving it, grouping it, folding a project or bookkeeping do
-   * not count. Null only on rows from before it was kept.
+   * not count. The migration that added it filled it from `updated_at`.
    */
-  changed_at: string | null;
+  changed_at: string;
   deleted_at: string | null;
   /** Agent session of the card's worker, or of a project's project agent. */
   session_id: string | null;
   /** The model that session runs on, as its harness reported it at the start (`claude-opus-5-5`); its harness is the session's (`sessionHarness`). */
   model: string | null;
-  /** The size of its change as the server last read it (JSON `ChangeSize`), for the page to lay out before it reads the change. */
-  change_size: string | null;
+  /** The size of its change as the server last read it, for the page to lay out before it reads the change. */
+  change_size: Json<ChangeSize> | null;
   /** The effort that session runs with, as Obeya started it (`high`). */
   effort: string | null;
   /** What its agents' sessions cost so far in US dollars, as their harnesses estimated it (`Store.spend`); null before any reported a cost. */
   spent: number | null;
-  /** JSON: the harness, model and effort the owner chose for the card's agent (`CardAgent`), over its group's. */
-  agent: string | null;
+  /** The harness, model and effort the owner chose for the card's agent, over its group's. */
+  agent: Json<CardAgent> | null;
   /** Leased clone and branch while a worker has the card. */
   workspace: string | null;
   branch: string | null;
   /** The worker's latest `report`. */
   status_line: string | null;
-  /** JSON: the open question (`{ text, options }`) or the review summary (`{ summary }`). */
-  detail: string | null;
+  /** The open question, or the handover's summary. */
+  detail: Json<Detail> | null;
   /** A proposal's source card. */
   from_id: string | null;
-  /** JSON: the Coordinator's estimate of the files the card changes (`{ files, reason }`). */
-  scope: string | null;
-  /** JSON: set while the Coordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`), with `since`. */
-  queue: string | null;
-  /** JSON: the card's pull request once approval opened the PR phase (`PrState`); on a review card, the one it reviews from the start. */
-  pr: string | null;
-  /** JSON, review cards only: the contributor's pull request the card reviews (`StoredContribution` in board.ts). */
-  contribution: string | null;
+  /** The Coordinator's estimate of the files the card changes. */
+  scope: Json<Scope> | null;
+  /** Set while the Coordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`), with `since`. */
+  queue: Json<Queue> | null;
+  /** The card's pull request once approval opened the PR phase; on a review card, the one it reviews from the start. */
+  pr: Json<PrState> | null;
+  /** Review cards only: the contributor's pull request the card reviews. */
+  contribution: Json<StoredContribution> | null;
   /** The owner's card's repository on a canvas with several; null is the home repository. */
   repo: string | null;
-  /** JSON: the card's latest demo (`{ kind, dir, chapters, question? }`; no `kind` is a video). */
-  demo: string | null;
-  /** JSON: the demos of earlier handovers a later one replaced, the oldest first, each as `demo` was; append only. */
-  demos: string | null;
+  /** The card's latest demo (no `kind` is a video). */
+  demo: Json<StoredDemo> | null;
+  /** The demos of earlier handovers a later one replaced, the oldest first, each as `demo` was; append only. */
+  demos: Json<StoredDemo[]> | null;
   /** When the owner took the finished card off the canvas into the archive. */
   archived_at: string | null;
-  /** JSON: an idea's status and brief (`{ status, brief }`). */
-  idea: string | null;
+  /** An idea's status and brief. */
+  idea: Json<StoredIdea> | null;
   /** A prototype's idea. */
   prototype_of: string | null;
   /** When the owner approved work that could not land yet; its next handover lands without asking again. */
   approved_at: string | null;
   /**
-   * JSON, while the card's work is on main and its worker finishes what remains (its workspace and
-   * session are kept until then): `{ commit?, restart? }`, `restart` when it waits for Obeya to run the change.
+   * While the card's work is on main and its worker finishes what remains (its workspace and
+   * session are kept until then).
    */
-  landed: string | null;
-  /** JSON: ids of the screenshots the owner attached to the card's task. */
-  images: string | null;
-  /** JSON, projects only: the plan doc as last read (`PlanDoc`), kept for the archive once the doc is gone. */
-  plan: string | null;
+  landed: Json<LandedState> | null;
+  /** Ids of the screenshots the owner attached to the card's task. */
+  images: Json<string[]> | null;
+  /** Projects only: the plan doc as last read, kept for the archive once the doc is gone. */
+  plan: Json<PlanDoc> | null;
   /** A card the work retrospective proposed: what it rests on. */
   retro: string | null;
-  /** JSON, while a worker's proposal waits: `Proposal` (an idea or a task, why, the questions to decide). */
-  proposal: string | null;
-  /** JSON: the plan docs (plan references) the landed work of a card that was an idea added. */
-  plan_docs: string | null;
-  /** JSON, prototypes only: how it ended (`end`, once archived) and its worker's proposal to build the idea on it (`proposal`). */
-  prototype: string | null;
+  /** While a worker's proposal waits: an idea or a task, why, the questions to decide. */
+  proposal: Json<Proposal> | null;
+  /** The plan docs (plan references) the landed work of a card that was an idea added. */
+  plan_docs: Json<string[]> | null;
+  /** Prototypes only: how it ended (`end`, once archived) and its worker's proposal to build the idea on it (`proposal`). */
+  prototype: Json<StoredPrototype> | null;
   /** A card that was an idea and is built on the branch of one of its prototypes: that prototype. */
   built_on: string | null;
-  /** JSON: the demo's page for colleagues (`StoredShare` in share.ts); its slug stays once it was shared. */
-  share: string | null;
+  /** The demo's page for colleagues (share.ts); its slug stays once it was shared. */
+  share: Json<StoredShare> | null;
   /** The group the card belongs to; a project's covers its workstreams, whose own stays null. */
   group_id: string | null;
   /**
-   * JSON, once the card's work landed (`Shipped` in board.ts): the commit it landed with and its
+   * Once the card's work landed: the commit it landed with and its
    * pull request. Kept after its worker is done: a workstream whose plan doc keeps it open is
    * planned again once the read tree holds that commit.
    */
-  shipped: string | null;
+  shipped: Json<Shipped> | null;
   /** When Obeya stopped the app in the card's workspace while the card waited (Parking); gone once its worker heard so. */
   parked: string | null;
-  /** JSON: the owner's comments on places in the demo video Obeya holds back while they watch (event ids, `Item.held`). */
-  held: string | null;
+  /** The owner's comments on places in the demo video Obeya holds back while they watch (event ids, `Item.held`). */
+  held: Json<HeldComment[]> | null;
   /** 1 once the owner decided the card (an idea or a task of theirs) becomes a project: its worker writes the plan doc, and the project takes its place. */
   becomes_project: number;
-  /** JSON, a Question card (and an idea that was one): the thread of looked-up answers it holds (`StoredThread` in board.ts). */
-  thread: string | null;
-  /** JSON, while the owner has paused the card's agent: for a worker what came for it meanwhile (`PausedState` in workers.ts), `{}` for an idea's or a Question card's agent, which keep what waits for them with the idea or the thread. */
-  paused: string | null;
+  /** A Question card (and an idea that was one): the thread of looked-up answers it holds. */
+  thread: Json<StoredThread> | null;
+  /** While the owner has paused the card's agent: for a worker what came for it meanwhile, `{}` for an idea's or a Question card's agent, which keep what waits for them with the idea or the thread. */
+  paused: Json<PausedState> | null;
   /** Since when (ISO) the owner has asked the card's agent to pause once it has brought its work to a safe point; null once it paused, went on or stopped. */
   pausing: string | null;
-  /** JSON: the owner's words Obeya holds for the card's worker until it takes them in, at its next tool step or turn (`Unheard` in workers.ts). */
-  unheard: string | null;
+  /**
+   * 1 when Obeya's workers stopped (a restart, a stop) while the card's worker was in a turn or had
+   * paused for the restart: the next start resumes it even where its card waits (its pull request
+   * open); null once it did.
+   */
+  resumes: number | null;
+  /**
+   * 1 where the owner chose that the card's work goes to the original repository of a fork as a
+   * pull request too (`RepoRef.upstream`), not only onto the main branch; null otherwise.
+   */
+  upstream: number | null;
+  /** The owner's words Obeya holds for the card's worker until it takes them in, at its next tool step or turn. */
+  unheard: Json<Unheard[]> | null;
   /** The address its worker opens the app in the card's workspace at, while it runs (`app_running`); gone once Obeya stops the app or the workspace goes. */
   app: string | null;
   /** Since when the card waits for the owner (`needsYou`), kept while it does; null while it does not. */
   waiting_since: string | null;
-  /** JSON, while the card is snoozed until a point in time (`Snooze`): Obeya wakes it then. */
-  snoozed: string | null;
-  /** JSON: the files its worker named as the result at its latest handover that named any (`CardFile[]`). */
-  files: string | null;
-  /** JSON, projects only: which workstream builds on which, as the Coordinator read it from the plan doc (`StoredDeps` in board.ts). */
-  deps: string | null;
+  /** While the card is snoozed until a point in time: Obeya wakes it then. */
+  snoozed: Json<Snooze> | null;
+  /** The files its worker named as the result at its latest handover that named any. */
+  files: Json<CardFile[]> | null;
+  /** Projects only: which workstream builds on which, as the Coordinator read it from the plan doc. */
+  deps: Json<StoredDeps> | null;
   /** 1 while the owner has a project folded to its head: its workstreams are not shown on the canvas. */
   collapsed: number;
   /**
@@ -140,27 +155,16 @@ export interface CardRow {
    */
   kept_in: string | null;
   /**
-   * JSON: a repository to create for the card before work begins (`NewRepo`); once Obeya made it,
-   * `{ path, canvas, made: true }`, so its worker hears that the repository is new.
+   * A repository to create for the card before work begins; once Obeya made it, with `made`, so its
+   * worker hears that the repository is new.
    */
-  new_repo: string | null;
-  /** What the card's worker last heard of its demo's page (`PageHeard` in workers.ts), so it hears of a change with its next step. */
-  page_heard: string | null;
+  new_repo: Json<StoredNewRepo> | null;
+  /** What the card's worker last heard of its demo's page, so it hears of a change with its next step. */
+  page_heard: Json<PageHeard> | null;
   /** The card's code in addresses (`/c/<canvas>/card/<code>`): the start of its id's hex digits, unique among all cards (`SHORT`). */
   short: string;
   /** The card's number (`K42`): counting across all canvases, given once and never again. */
   number: number;
-}
-
-/** Words the usage limit keeps the Coordinator from reading (`talk.held`): until when, and how it reads them then (`Commander`'s). */
-export interface HeldTalk {
-  until: string;
-  reading: unknown;
-}
-
-/** A card the Coordinator waits on (`talk.waits`), and the step it said it takes once the card gets there. */
-export interface TalkWaitRow extends TalkWait {
-  then: string;
 }
 
 export interface GroupRow {
@@ -169,35 +173,6 @@ export interface GroupRow {
   name: string;
   hue: number;
   created_at: string;
-}
-
-
-/**
- * Where the cards' history stood when it was read: the time, and the latest event and card then.
- * What is written later has a larger id, even within the same millisecond or once the clock went back.
- */
-export interface Mark {
-  at: string;
-  event: number;
-  card: number;
-}
-
-/** A step in a card's history, as the Coordinator reads it; `created` marks a card of the owner's or a proposal. */
-export interface Moment {
-  at: string;
-  cardId: string;
-  kind: CardEvent['kind'] | 'created';
-  author: CardEvent['author'];
-  text: string;
-}
-
-/** Something the owner said: to an agent (`hint` a note or feedback, `answer`), in an idea (`talk`), to the Coordinator (`say`). */
-export interface Utterance {
-  at: string;
-  kind: 'hint' | 'answer' | 'talk' | 'say';
-  text: string;
-  cardId?: string;
-  title?: string;
 }
 
 export interface DecisionRow {
@@ -211,8 +186,8 @@ export interface DecisionRow {
   at: string;
 }
 
-/** The schema Obeya was released with. */
-const SCHEMA = `
+/** The schema Obeya was released with; exported for the migration tests, which build older databases from it. */
+export const SCHEMA = `
   CREATE TABLE canvases (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -467,10 +442,10 @@ export const MIGRATIONS = [
   'ALTER TABLE cards ADD COLUMN kept_in TEXT;',
   // a review card: the pull request of someone outside it reviews (JSON `StoredContribution`)
   'ALTER TABLE cards ADD COLUMN contribution TEXT;',
-  // a repository to create for a card before work begins, and that Obeya made it (JSON `StoredNewRepo` in board.ts);
+  // a repository to create for a card before work begins, and that Obeya made it (JSON `StoredNewRepo` in row.ts);
   // an exchange of no one's in the sheet that says a card moved to another canvas (JSON `TalkMoved`)
   'ALTER TABLE cards ADD COLUMN new_repo TEXT; ALTER TABLE talk ADD COLUMN moved TEXT;',
-  // what a card's worker last heard of its demo's page (JSON `PageHeard` in workers.ts)
+  // what a card's worker last heard of its demo's page (JSON `PageHeard` in row.ts)
   'ALTER TABLE cards ADD COLUMN page_heard TEXT;',
   // Obeya's reply on a card to what its agent passed on from the owner's words (`to_obeya`)
   'ALTER TABLE events ADD COLUMN forwarded INTEGER;',
@@ -582,7 +557,7 @@ export const MIGRATIONS = [
    CREATE INDEX talk_at ON talk (canvas_id, at);
    CREATE INDEX talk_waiting ON talk (canvas_id) WHERE waits IS NOT NULL;
    CREATE INDEX cards_parent ON cards (parent_id) WHERE parent_id IS NOT NULL;`,
-  // which shared cards were written, come or went (`Store.sharedChanges`), so a canvas keeps its
+  // which shared cards were written, come or went (`Store.sharedLog`), so a canvas keeps its
   // shared cards up to date by reading those again rather than all of them with every change
   `CREATE TABLE shared_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -607,7 +582,7 @@ export const MIGRATIONS = [
    UPDATE talk SET answer_by = 'coordinator' WHERE answer_by = 'koordinator';
    UPDATE decisions SET by = 'coordinator' WHERE by = 'koordinator';`,
   // the archive in its order, read a page at a time (`Store.archivePage`); and which of its rows were
-  // written, came or went (`Store.archiveChanges`), as the mark of the archive moves with them, so a
+  // written, came or went (`Store.archiveLog`), as the mark of the archive moves with them, so a
   // canvas keeps its search through the archive up to date by reading those again
   `CREATE INDEX cards_archive_order ON cards (canvas_id, archived_at, created_at, id) WHERE deleted_at IS NULL AND archived_at IS NOT NULL;
   CREATE TABLE archive_changes (
@@ -635,40 +610,54 @@ export const MIGRATIONS = [
   BEGIN
     INSERT INTO archive_changes (canvas_id, card_id) SELECT OLD.canvas_id, value FROM json_each(json_array(OLD.id, OLD.parent_id, OLD.prototype_of)) WHERE value IS NOT NULL;
   END;`,
+  // a card whose worker was at work when Obeya's workers stopped: the next start resumes it (`CardRow.resumes`)
+  'ALTER TABLE cards ADD COLUMN resumes INTEGER;',
+  // a question whose look-up the owner's later words went into: the exchange whose answer answers it too
+  'ALTER TABLE talk ADD COLUMN joined INTEGER;',
+  // a fork's card whose work goes to the original repository as a pull request too (`CardRow.upstream`)
+  'ALTER TABLE cards ADD COLUMN upstream INTEGER;',
 ];
 
-const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
-type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'token'> & {
-  code: CardEvent['code'] | null;
-  images: string | null;
-  mocks: string | null;
-  replyTo: number | null;
-  spot: string | null;
-  answer: string | null;
-  picks: string | null;
-  unread: number | null;
-  readAfter: number | null;
-  wish: string | null;
-  reply: number | null;
-  forwarded: number | null;
-  token: number | null;
-};
-const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, token, ...e }: EventRow): CardEvent => ({
-  ...e,
-  ...(code ? { code } : {}),
-  ...(images ? { images: JSON.parse(images) as string[] } : {}),
-  ...(mocks ? { mocks: JSON.parse(mocks) as Mock[] } : {}),
-  ...(replyTo ? { replyTo } : {}),
-  ...(spot ? { spot: JSON.parse(spot) as Spot } : {}),
-  ...(answer ? { answer: JSON.parse(answer) as AnswerRef } : {}),
-  ...(picks ? { picks: JSON.parse(picks) as string[] } : {}),
-  ...(unread ? { unread: true as const } : {}),
-  ...(readAfter ? { readAfter } : {}),
-  ...(wish ? { wish: JSON.parse(wish) as Wish } : {}),
-  ...(reply ? { reply: true as const } : {}),
-  ...(forwarded ? { forwarded: true as const } : {}),
-  ...(token ? { token: true as const } : {}),
-});
+/**
+ * How each optional field of a log line is stored, in the column of its name in snake case: empty
+ * (absent, false, an empty list) is null, and null is read back as absent.
+ */
+const EVENT_FIELDS = {
+  code: 'text',
+  images: 'list',
+  mocks: 'list',
+  replyTo: 'int',
+  spot: 'json',
+  answer: 'json',
+  picks: 'list',
+  unread: 'flag',
+  readAfter: 'int',
+  wish: 'json',
+  reply: 'flag',
+  forwarded: 'flag',
+  token: 'flag',
+} as const satisfies Partial<Record<keyof CardEvent, 'text' | 'int' | 'flag' | 'json' | 'list'>>;
+type EventField = keyof typeof EVENT_FIELDS;
+const FIELDS = Object.entries(EVENT_FIELDS) as [EventField, (typeof EVENT_FIELDS)[EventField]][];
+const columnOf = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+const EVENT_COLUMNS = ['id', 'card_id AS cardId', 'at', 'kind', 'author', 'text', ...FIELDS.map(([f]) => (columnOf(f) === f ? f : `${columnOf(f)} AS ${f}`))].join(', ');
+const INSERT_EVENT = `INSERT INTO events (card_id, at, kind, author, text, ${FIELDS.map(([f]) => columnOf(f)).join(', ')}) VALUES ($cardId, $at, $kind, $author, $text, ${FIELDS.map(([f]) => `$${f}`).join(', ')}) RETURNING id`;
+type EventRow = Omit<CardEvent, EventField> & Record<EventField, string | number | null>;
+
+/** A line to write into a card's log, said now or (`at`) earlier; an optional field that is empty or false is not stored. */
+export type NewEvent = Pick<CardEvent, 'cardId' | 'kind' | 'author' | 'text'> & Partial<Pick<CardEvent, Exclude<EventField, 'unread' | 'readAfter'> | 'at'>> & { unread?: boolean };
+
+const stored = (how: (typeof EVENT_FIELDS)[EventField], v: unknown): string | number | null =>
+  how === 'flag' ? (v ? 1 : null) : how === 'list' ? ((v as unknown[] | undefined)?.length ? JSON.stringify(v) : null) : how === 'json' ? (v ? JSON.stringify(v) : null) : ((v as string | number | undefined) || null);
+
+function eventOf(r: EventRow): CardEvent {
+  const e: Record<string, unknown> = { id: r.id, cardId: r.cardId, at: r.at, kind: r.kind, author: r.author, text: r.text };
+  for (const [f, how] of FIELDS) {
+    const v = r[f];
+    if (v) e[f] = how === 'flag' ? true : how === 'json' || how === 'list' ? JSON.parse(v as string) : v;
+  }
+  return e as unknown as CardEvent;
+}
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
   Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro' | 'proposal' | 'group_id'>>;
@@ -682,9 +671,6 @@ const SEEN = new Set<string>(['state', 'need', 'title', 'body', 'status_line', '
 
 /** What `Store.update` may change on a card: all but what is set once at its creation, and its times. */
 export type RowUpdate = Partial<Omit<CardRow, 'id' | 'canvas_id' | 'parent_id' | 'plan_ref' | 'prototype_of' | 'retro' | 'created_at' | 'updated_at' | 'changed_at'>>;
-
-/** The kinds of a card's log lines that are milestones of its history (`timeline`), as its index lists them. */
-const MILESTONES = "('state', 'question', 'answer', 'review', 'hint', 'error')";
 
 /** A database this Obeya cannot open as it is: it leaves it alone. */
 export class UnusableDatabase extends Error {}
@@ -708,6 +694,19 @@ export class OlderDatabase extends UnusableDatabase {
 export class Store {
   readonly db: Database;
 
+  /**
+   * The log of shared cards' writes (`shared_changes`): which of a canvas's cards were written, came
+   * or went while they were shared or about to be.
+   */
+  readonly sharedLog = this.changeLog('shared_changes');
+
+  /**
+   * The log of the archive's writes (`archive_changes`): which of a canvas's cards may have changed
+   * archive entries, an archived card written, come or gone, and the archived project or idea of a
+   * workstream or prototype written.
+   */
+  readonly archiveLog = this.changeLog('archive_changes');
+
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path, { strict: true });
@@ -730,6 +729,10 @@ export class Store {
         this.db.run(`PRAGMA user_version = ${v + 1}`);
       })();
     }
+    // a canvas reads its shared cards and its archive afresh when it opens, and only then follows the
+    // logs of their writes: what they hold now no canvas reads, and one never opened again would never drop it
+    this.db.run('DELETE FROM shared_changes');
+    this.db.run('DELETE FROM archive_changes');
   }
 
   /** A canvas's name as last stored; none for a canvas this database has never seen. */
@@ -770,24 +773,29 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND share IS NOT NULL').all({ c: canvasId }) as CardRow[];
   }
 
+  /** Which of these cards are on the canvas: neither deleted nor archived. */
+  openIds(canvasId: string, ids: string[]): Set<string> {
+    const rows = this.db.query('SELECT id FROM cards WHERE id IN (SELECT value FROM json_each($ids)) AND canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId, ids: JSON.stringify(ids) }) as { id: string }[];
+    return new Set(rows.map((r) => r.id));
+  }
+
   /**
-   * The canvas's cards that were written, came or went since the log of shared cards' writes stood
-   * at `after` (`sharedLog`), while they were shared or about to be; and where the log stands now.
-   * The database keeps that log as the rows are written.
+   * A log the database keeps as cards are written: `changes`, the canvas's cards written since it
+   * stood at `after`, and where it stands now; `at`, where it stands now (its entries' ids are never
+   * taken again); `drop`, the canvas read its entries up to `upTo`, which leave it.
    */
-  sharedChanges(canvasId: string, after: number): { upTo: number; ids: string[] } {
-    const rows = this.db.query('SELECT id, canvas_id AS canvas, card_id AS card FROM shared_changes WHERE id > $after').all({ after }) as { id: number; canvas: string; card: string }[];
-    return { upTo: rows.reduce((m, r) => Math.max(m, r.id), after), ids: [...new Set(rows.flatMap((r) => (r.canvas === canvasId ? [r.card] : [])))] };
-  }
-
-  /** Where the log of shared cards' writes stands now (`sharedChanges`); its entries' ids are never taken again. */
-  sharedLog(): number {
-    return (this.db.query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'shared_changes'), 0) AS n").get() as { n: number }).n;
-  }
-
-  /** The canvas read its shared cards' writes up to `upTo`: they leave the log. */
-  dropSharedChanges(canvasId: string, upTo: number) {
-    this.db.query('DELETE FROM shared_changes WHERE canvas_id = $c AND id <= $upTo').run({ c: canvasId, upTo });
+  private changeLog(table: 'shared_changes' | 'archive_changes') {
+    const at = () => (this.db.query(`SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = '${table}'), 0) AS n`).get() as { n: number }).n;
+    return {
+      changes: (canvasId: string, after: number): { upTo: number; ids: string[] } => {
+        const rows = this.db.query(`SELECT card_id AS card FROM ${table} WHERE canvas_id = $c AND id > $after`).all({ c: canvasId, after }) as { card: string }[];
+        return { upTo: Math.max(after, at()), ids: [...new Set(rows.map((r) => r.card))] };
+      },
+      at,
+      drop: (canvasId: string, upTo: number) => {
+        this.db.query(`DELETE FROM ${table} WHERE canvas_id = $c AND id <= $upTo`).run({ c: canvasId, upTo });
+      },
+    };
   }
 
   /**
@@ -821,32 +829,6 @@ export class Store {
   }
 
   /**
-   * The canvas's cards whose archive entries may have changed since the log of the archive's writes
-   * stood at `after` (`archiveLog`): an archived card written, come or gone, and the archived project
-   * or idea of a workstream or prototype written; and where the log stands now. The database keeps
-   * that log as the rows are written.
-   */
-  archiveChanges(canvasId: string, after: number): { upTo: number; ids: string[] } {
-    const rows = this.db.query('SELECT id, card_id AS card FROM archive_changes WHERE canvas_id = $c AND id > $after').all({ c: canvasId, after }) as { id: number; card: string }[];
-    return { upTo: Math.max(after, this.archiveLog()), ids: [...new Set(rows.map((r) => r.card))] };
-  }
-
-  /** Where the log of the archive's writes stands now (`archiveChanges`); its entries' ids are never taken again. */
-  archiveLog(): number {
-    return (this.db.query("SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'archive_changes'), 0) AS n").get() as { n: number }).n;
-  }
-
-  /** The canvas read its archive's writes up to `upTo`: they leave the log. */
-  dropArchiveChanges(canvasId: string, upTo: number) {
-    this.db.query('DELETE FROM archive_changes WHERE canvas_id = $c AND id <= $upTo').run({ c: canvasId, upTo });
-  }
-
-  /**
-   * A mark of the canvas's archive that moves whenever a row its items are made of is written: an
-   * archived card, a workstream of an archived project, a prototype of an archived idea; one leaving
-   * the archive (taken back, deleted) too. Kept by the database as the rows are written.
-   */
-  /**
    * An agent session's estimated cost so far (`usd`, US dollars), as its harness reports it after each
    * turn: cumulative over the session, a resumed one going on from its earlier total. A total below
    * the last one means the harness started counting afresh (a resume without the earlier total, a
@@ -879,6 +861,11 @@ export class Store {
     return new Map(rows.map((r) => [r.project, r.usd]));
   }
 
+  /**
+   * A mark of the canvas's archive that moves whenever a row its items are made of is written: an
+   * archived card, a workstream of an archived project, a prototype of an archived idea; one leaving
+   * the archive (taken back, deleted) too. Kept by the database as the rows are written.
+   */
   archiveRev(canvasId: string): string {
     return String((this.db.query('SELECT rev FROM archive_revs WHERE canvas_id = $c').get({ c: canvasId }) as { rev: number } | null)?.rev ?? 0);
   }
@@ -960,6 +947,11 @@ export class Store {
   /** The card an address names, by its id or its short code. */
   cardNamed(code: string): CardRow | null {
     return this.card(code) ?? ((this.db.query('SELECT * FROM cards WHERE short = $s').get({ s: code.toLowerCase() }) as CardRow | null) ?? null);
+  }
+
+  /** The card that works on a branch, archived ones too: the one that took it last, where several did. */
+  cardOnBranch(branch: string): CardRow | null {
+    return (this.db.query('SELECT * FROM cards WHERE branch = $b AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1').get({ b: branch }) as CardRow | null) ?? null;
   }
 
   /** The card with the number, wherever it is: on any canvas, archived or deleted. */
@@ -1093,31 +1085,15 @@ export class Store {
 
   // ---------------------------------------------------------------- events
 
-  /** A line in a card's log, said now or (`at`) earlier: a thread copied onto its Question card keeps its times. */
-  addEvent(e: Omit<CardEvent, 'id' | 'at'> & { at?: string }): CardEvent {
-    const at = e.at ?? now();
-    const { id } = this.db
-      .query(
-        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, token) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $token) RETURNING id',
-      )
-      .get({
-        ...e,
-        answer: e.answer ? JSON.stringify(e.answer) : null,
-        code: e.code ?? null,
-        images: e.images?.length ? JSON.stringify(e.images) : null,
-        mocks: e.mocks?.length ? JSON.stringify(e.mocks) : null,
-        replyTo: e.replyTo ?? null,
-        spot: e.spot ? JSON.stringify(e.spot) : null,
-        picks: e.picks?.length ? JSON.stringify(e.picks) : null,
-        unread: e.unread ? 1 : null,
-        wish: e.wish ? JSON.stringify(e.wish) : null,
-        reply: e.reply ? 1 : null,
-        forwarded: e.forwarded ? 1 : null,
-        token: e.token ? 1 : null,
-        at,
-      }) as { id: number };
-    if (e.kind !== 'activity') this.db.query('UPDATE cards SET changed_at = max(coalesce(changed_at, updated_at), $at) WHERE id = $id').run({ id: e.cardId, at });
-    return { ...e, id, at };
+  /** Writes a line into a card's log; returns it as it is read back. */
+  addEvent(e: NewEvent): CardEvent {
+    const at = e.at || now();
+    // a new line was read after none (`readAfter` is set as it is read)
+    const fields = Object.fromEntries(FIELDS.map(([f, how]) => [f, stored(how, f === 'readAfter' ? undefined : e[f])])) as Record<EventField, string | number | null>;
+    const head = { cardId: e.cardId, at, kind: e.kind, author: e.author, text: e.text };
+    const { id } = this.db.query(INSERT_EVENT).get({ ...head, ...fields }) as { id: number };
+    if (e.kind !== 'activity') this.db.query('UPDATE cards SET changed_at = max(changed_at, $at) WHERE id = $id').run({ id: e.cardId, at });
+    return eventOf({ id, ...head, ...fields });
   }
 
   /** The latest messages of the card's conversation (`talk`, `question`), however many other lines came between them, oldest first. */
@@ -1302,288 +1278,6 @@ export class Store {
     );
   }
 
-  // ---------------------------------------------------------------- the Coordinator's memory
-
-  /** An exchange of no one's in the canvas's sheet, `reply` saying the card moved to another canvas. */
-  addMoved(canvasId: string, moved: TalkMoved, reply: string): number {
-    return (this.db.query("INSERT INTO talk (canvas_id, at, said, reply, moved) VALUES ($c, $at, '', $reply, $moved) RETURNING id").get({ c: canvasId, at: now(), reply, moved: JSON.stringify(moved) }) as { id: number }).id;
-  }
-
-  addTalk(canvasId: string, said: string, reply: string, cardId: string | null, lookUp?: { question: string; about: string | null }, images: string[] = [], replyTo?: TalkRef, after?: TalkAfter, askedIn?: string, answered?: number): number {
-    return (
-      this.db
-        .query(
-          'INSERT INTO talk (canvas_id, at, said, reply, card_id, question, about, images, reply_to, after_wait, asked_in, after_answer) VALUES ($c, $at, $said, $reply, $cardId, $question, $about, $images, $replyTo, $after, $askedIn, $answered) RETURNING id',
-        )
-        .get({
-          c: canvasId,
-          at: now(),
-          said,
-          reply,
-          cardId,
-          question: lookUp?.question ?? null,
-          about: lookUp?.about ?? null,
-          images: images.length ? JSON.stringify(images) : null,
-          replyTo: replyTo ? JSON.stringify({ talk: replyTo.talk, part: replyTo.part }) : null,
-          after: after ? JSON.stringify(after) : null,
-          askedIn: askedIn ?? null,
-          answered: answered ?? null,
-        }) as { id: number }
-    ).id;
-  }
-
-  /**
-   * The Coordinator's reply to words it has read, the question it looks up for them, and what a draft
-   * for Obeya's makers would start from; with `waits`, one for the sheet waits there unread, as an
-   * answer that was looked up does.
-   */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, answers = waits) {
-    this.db
-      .query('UPDATE talk SET reply = $reply, question = $question, about = $about, wish = $wish, unread = $waits AND card_id IS NULL AND card IS NULL, reply_only = $only WHERE id = $id')
-      .run({ id, reply, question: lookUp?.question ?? null, about: lookUp?.about ?? null, wish: wish ? JSON.stringify(wish) : null, waits: waits ? 1 : 0, only: answers && !lookUp && !wish ? 1 : null });
-  }
-
-  /**
-   * Words the Coordinator was reading when Obeya stopped: they get `reply`; returns them. Words the
-   * usage limit holds wait on; words asked in a project's sheet the Coordinator never reads.
-   */
-  interruptTalk(canvasId: string, reply: string): Talk[] {
-    const rows = this.db.query("SELECT * FROM talk WHERE canvas_id = $c AND reply = '' AND held IS NULL AND asked_in IS NULL ORDER BY id").all({ c: canvasId }) as TalkRow[];
-    this.db.query("UPDATE talk SET reply = $reply WHERE canvas_id = $c AND reply = '' AND held IS NULL AND asked_in IS NULL").run({ c: canvasId, reply });
-    return rows.map(toTalk);
-  }
-
-  /** Words the usage limit keeps the Coordinator from reading until `held.until`; `null` once it reads them. */
-  holdTalk(id: number, held: HeldTalk | null) {
-    this.db.query('UPDATE talk SET held = $held WHERE id = $id').run({ id, held: held ? JSON.stringify(held) : null });
-  }
-
-  /** The words the usage limit holds, oldest first. */
-  heldTalk(canvasId: string): (Talk & { held: HeldTalk })[] {
-    return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND held IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map((r) => ({ ...toTalk(r), held: JSON.parse(r.held!) as HeldTalk }));
-  }
-
-  /** The cards the Coordinator waits on after the exchange's reply; none once it no longer waits on any. */
-  waitTalk(id: number, waits: TalkWaitRow[]) {
-    this.db.query('UPDATE talk SET waits = $waits WHERE id = $id').run({ id, waits: waits.length ? JSON.stringify(waits) : null });
-  }
-
-  /** The exchanges whose reply said the Coordinator waits on a card, oldest first. */
-  waitingTalk(canvasId: string): (Talk & { waiting: TalkWaitRow[] })[] {
-    return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND waits IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map((r) => ({ ...toTalk(r), waiting: JSON.parse(r.waits!) as TalkWaitRow[] }));
-  }
-
-  /**
-   * The step the Coordinator takes once the exchange's looked-up answer is in, and where the owner
-   * was on the canvas when they asked for it; `null` once it has decided it.
-   */
-  thenTalk(id: number, then: string | null, place?: Place) {
-    this.db.query('UPDATE talk SET then_step = $then, then_place = $place WHERE id = $id').run({ id, then, place: then !== null && place ? JSON.stringify(place) : null });
-  }
-
-  /** Looked-up answers that are in, oldest first, whose step the Coordinator has not decided yet. */
-  answeredSteps(canvasId: string): Talk[] {
-    return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND then_step IS NOT NULL AND answer IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map(toTalk);
-  }
-
-  undoTalk(id: number) {
-    this.db.query('UPDATE talk SET undone = 1 WHERE id = $id').run({ id });
-  }
-
-  /** A command that waits for "Undo" until `due`; `body` is what runs then, as JSON. */
-  holdCommand(canvasId: string, token: string, due: string, body: string) {
-    this.db.query('INSERT OR REPLACE INTO commands (token, canvas_id, due, body) VALUES ($token, $c, $due, $body)').run({ token, c: canvasId, due, body });
-  }
-
-  dropCommand(token: string) {
-    this.db.query('DELETE FROM commands WHERE token = $token').run({ token });
-  }
-
-  /** The commands still waiting, oldest first: after a restart, those the stopped server held. */
-  heldCommands(canvasId: string): { token: string; due: string; body: string }[] {
-    return this.db.query('SELECT token, due, body FROM commands WHERE canvas_id = $c ORDER BY due').all({ c: canvasId }) as { token: string; due: string; body: string }[];
-  }
-
-  /**
-   * The answer to a looked-up question, with its files; one for the sheet (no card was open, and its
-   * thread is on no Question card) waits there unread.
-   */
-  answerTalk(id: number, answer: string, by: 'coordinator' | 'project', files: AnswerFile[] = []) {
-    this.db
-      .query('UPDATE talk SET answer = $answer, answer_by = $by, files = $files, unread = card_id IS NULL AND card IS NULL WHERE id = $id')
-      .run({ id, answer, by, files: files.length ? JSON.stringify(files) : null });
-  }
-
-  /** The files an exchange shows while its answer is still being looked up (a walkthrough that plays as it is told). */
-  talkFiles(id: number, files: AnswerFile[]) {
-    this.db.query('UPDATE talk SET files = $files WHERE id = $id').run({ id, files: files.length ? JSON.stringify(files) : null });
-  }
-
-  /** A follow-up continues the answer `follows`, in the thread `thread`. */
-  followTalk(id: number, thread: number, follows: number) {
-    this.db.query('UPDATE talk SET thread = $thread, follows = $follows WHERE id = $id').run({ id, thread, follows });
-  }
-
-  /** The session of the agent that looks the exchange's question up. */
-  talkSession(id: number, session: string) {
-    this.db.query('UPDATE talk SET session_id = $session WHERE id = $id').run({ id, session });
-  }
-
-  /** The exchanges of a thread, oldest first, with the session each was looked up in. */
-  thread(canvasId: string, thread: number): (Talk & { about?: string; session?: string })[] {
-    return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND (id = $t OR thread = $t) ORDER BY id').all({ c: canvasId, t: thread }) as TalkRow[]).map((r) => ({
-      ...withContinues(this.db, r),
-      ...(r.about ? { about: r.about } : {}),
-      ...(r.session_id ? { session: r.session_id } : {}),
-    }));
-  }
-
-  /** The thread moved onto a Question card: its exchanges, and every follow-up asked later, are answered there. */
-  moveThread(canvasId: string, thread: number, card: string) {
-    this.db.query('UPDATE talk SET card = $card, unread = 0 WHERE canvas_id = $c AND (id = $t OR thread = $t)').run({ c: canvasId, t: thread, card });
-  }
-
-  /** The owner saw the sheet's answers, or (`ids`) those of a project's sheet; whether any was unread. */
-  readTalk(canvasId: string, ids?: number[]): boolean {
-    if (ids)
-      return this.db.query('UPDATE talk SET unread = 0 WHERE canvas_id = $c AND unread = 1 AND id IN (SELECT value FROM json_each($ids))').run({ c: canvasId, ids: JSON.stringify(ids) }).changes > 0;
-    return this.db.query('UPDATE talk SET unread = 0 WHERE canvas_id = $c AND unread = 1').run({ c: canvasId }).changes > 0;
-  }
-
-  /**
-   * The latest exchanges of the threads about any of `about` (a project and its workstreams), oldest
-   * first: those its project agent answers.
-   */
-  talkAbout(canvasId: string, about: string[], limit = 100): Talk[] {
-    return (
-      this.db
-        .query(
-          `SELECT t.* FROM talk t JOIN talk r ON r.id = COALESCE(t.thread, t.id)
-           WHERE t.canvas_id = $c AND r.about IN (SELECT value FROM json_each($about)) ORDER BY t.id DESC LIMIT $limit`,
-        )
-        .all({ c: canvasId, about: JSON.stringify(about), limit }) as TalkRow[]
-    )
-      .reverse()
-      .map((r) => withContinues(this.db, r));
-  }
-
-  /** The latest exchanges, oldest first; with `withoutCard`, only those without an open card. */
-  talk(canvasId: string, limit = 20, withoutCard = false): Talk[] {
-    return (this.db.query(`SELECT * FROM talk WHERE canvas_id = $c${withoutCard ? ' AND card_id IS NULL' : ''} ORDER BY id DESC LIMIT $limit`).all({ c: canvasId, limit }) as TalkRow[])
-      .reverse()
-      .map((r) => withContinues(this.db, r));
-  }
-
-  /** A message of the canvas's sheet (an exchange with no card open), as a reply quotes it. */
-  sheetQuote(canvasId: string, ref: TalkRef): TalkQuote | undefined {
-    const sheet = this.db.query('SELECT 1 FROM talk WHERE id = $id AND canvas_id = $c AND card_id IS NULL').get({ id: ref.talk, c: canvasId });
-    return sheet ? quotedTalk(this.db, ref) : undefined;
-  }
-
-  /** The latest exchange on the card whose reply is `reply`: the one a reply in the card's log stands for. */
-  cardReply(cardId: string, reply: string): number | undefined {
-    return (this.db.query('SELECT id FROM talk WHERE card_id = $c AND reply = $reply ORDER BY id DESC LIMIT 1').get({ c: cardId, reply }) as { id: number } | null)?.id;
-  }
-
-  /** One exchange, with the card its question is about. */
-  exchange(id: number): (Talk & { about?: string; thenPlace?: Place }) | null {
-    const r = this.db.query('SELECT * FROM talk WHERE id = $id').get({ id }) as TalkRow | null;
-    return r ? { ...withContinues(this.db, r), ...(r.about ? { about: r.about } : {}), ...(r.then_place ? { thenPlace: JSON.parse(r.then_place) as Place } : {}) } : null;
-  }
-
-  /** Questions being looked up, oldest first. */
-  lookingUp(canvasId: string): number[] {
-    return (this.db.query('SELECT id FROM talk WHERE canvas_id = $c AND question IS NOT NULL AND answer IS NULL ORDER BY id').all({ c: canvasId }) as { id: number }[]).map((r) => r.id);
-  }
-
-  /**
-   * How the cards got where they are, after `since` (ISO time), oldest first: their milestones
-   * (state changes, questions, answers, hand-overs, the owner's notes, errors) and the creation of
-   * cards that come from no plan doc. Deleted cards are left out. After a mark, also what was written
-   * since it, whatever its time; its time still counts, for an event that takes up the id of one the
-   * owner deleted.
-   */
-  timeline(canvasId: string, since: string | Mark, limit: number): Moment[] {
-    const m = typeof since === 'string' ? { at: since, event: Number.MAX_SAFE_INTEGER, card: Number.MAX_SAFE_INTEGER } : since;
-    return (
-      this.db
-        .query(
-          // within one millisecond, cards are created before anything happens to them, each in the order
-          // it was written; each part reads its newest `limit` through an index, so what the history
-          // holds before them is not read
-          `SELECT at, cardId, kind, author, text FROM (
-             SELECT * FROM (SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text, 1 AS phase, e.id AS seq FROM events e CROSS JOIN cards c ON c.id = e.card_id
-               WHERE e.kind IN ${MILESTONES} AND e.at > $since AND c.canvas_id = $c AND c.deleted_at IS NULL ORDER BY e.at DESC, e.id DESC LIMIT $limit)
-             UNION ALL
-             -- written after the mark with an earlier time
-             SELECT * FROM (SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text, 1 AS phase, e.id AS seq FROM events e CROSS JOIN cards c ON c.id = e.card_id
-               WHERE e.id > $event AND +e.at <= $since AND +e.kind IN ${MILESTONES} AND c.canvas_id = $c AND c.deleted_at IS NULL ORDER BY e.at DESC, e.id DESC LIMIT $limit)
-             UNION ALL
-             SELECT * FROM (SELECT created_at AS at, id AS cardId, 'created' AS kind, CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END AS author, '' AS text, 0 AS phase, rowid AS seq FROM cards
-               WHERE canvas_id = $c AND created_at > $since AND deleted_at IS NULL AND plan_ref IS NULL ORDER BY created_at DESC, rowid DESC LIMIT $limit)
-             UNION ALL
-             SELECT * FROM (SELECT created_at AS at, id AS cardId, 'created' AS kind, CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END AS author, '' AS text, 0 AS phase, rowid AS seq FROM cards
-               WHERE rowid > $card AND +created_at <= $since AND +canvas_id = $c AND deleted_at IS NULL AND +plan_ref IS NULL ORDER BY created_at DESC, rowid DESC LIMIT $limit)
-           ) ORDER BY at DESC, phase DESC, seq DESC LIMIT $limit`,
-        )
-        .all({ c: canvasId, since: m.at, event: m.event, card: m.card, limit }) as Moment[]
-    ).reverse();
-  }
-
-  /** Where the cards' history stands now, for `timeline` to go on from. */
-  mark(): Mark {
-    const { event, card } = this.db
-      .query('SELECT (SELECT COALESCE(MAX(id), 0) FROM events) AS event, (SELECT COALESCE(MAX(rowid), 0) FROM cards) AS card')
-      .get() as { event: number; card: number };
-    return { at: now(), event, card };
-  }
-
-  /**
-   * What the owner said after `since` (ISO time), oldest first, at most the latest `limit`: notes,
-   * feedback and answers to agents, an idea's discussion, and what they said to the Coordinator
-   * (unless taken back).
-   */
-  utterances(canvasId: string, since: string, limit: number): Utterance[] {
-    return (
-      this.db
-        .query(
-          `SELECT at, cardId, title, kind, text FROM (
-             SELECT * FROM (SELECT e.at, e.card_id AS cardId, c.title, e.kind, e.text, e.id AS seq FROM events e CROSS JOIN cards c ON c.id = e.card_id
-               WHERE e.author = 'owner' AND e.kind IN ('hint', 'answer', 'talk') AND e.at > $since AND c.canvas_id = $c ORDER BY e.at DESC, e.id DESC LIMIT $limit)
-             UNION ALL
-             SELECT * FROM (SELECT t.at, t.card_id AS cardId, c.title, 'say' AS kind, t.said AS text, t.id AS seq FROM talk t LEFT JOIN cards c ON c.id = t.card_id
-               WHERE t.canvas_id = $c AND t.undone = 0 AND t.after_wait IS NULL AND t.after_answer IS NULL AND t.moved IS NULL AND t.at > $since ORDER BY t.at DESC, t.id DESC LIMIT $limit)
-           ) ORDER BY at DESC, seq DESC LIMIT $limit`,
-        )
-        .all({ c: canvasId, since, limit }) as { at: string; cardId: string | null; title: string | null; kind: Utterance['kind']; text: string }[]
-    )
-      .reverse()
-      .map((r) => ({ at: r.at, kind: r.kind, text: r.text, ...(r.cardId ? { cardId: r.cardId } : {}), ...(r.title ? { title: r.title } : {}) }));
-  }
-
-  /** Proposals the owner accepted or rejected after `since` (ISO time), oldest first. */
-  decidedProposals(canvasId: string, since: string): { at: string; text: string; state: 'active' | 'rejected' | 'filed'; quote?: string; target?: string }[] {
-    return (
-      this.db
-        .query(`SELECT decided_at AS at, text, state, quote, target FROM preferences WHERE canvas_id = $c AND decided_at > $since ORDER BY decided_at`)
-        .all({ c: canvasId, since }) as { at: string; text: string; state: 'active' | 'rejected' | 'filed'; quote: string | null; target: string | null }[]
-    ).map(({ quote, target, ...r }) => ({ ...r, ...(quote ? { quote } : {}), ...(target ? { target } : {}) }));
-  }
-
-  /**
-   * Cards of the owner's deleted after `since` (ISO time), oldest first, with the state they had: a
-   * worker's proposal the owner dismissed, say. Plan cards go with their plan doc, not by a click.
-   */
-  removed(canvasId: string, since: string): { at: string; title: string; state: CardState }[] {
-    // a proposal its agent withdrew went without the owner
-    return this.db
-      .query(
-        `SELECT deleted_at AS at, title, COALESCE(state, 'planned') AS state FROM cards WHERE canvas_id = $c AND plan_ref IS NULL AND deleted_at > $since
-         AND NOT (state = 'proposal' AND json_extract(proposal, '$.superseded') IS NOT NULL) ORDER BY deleted_at`,
-      )
-      .all({ c: canvasId, since }) as { at: string; title: string; state: CardState }[];
-  }
-
   // ---------------------------------------------------------------- the work retrospective
 
   addFriction(canvasId: string, repo: string, cardId: string, notes: FrictionNote[]) {
@@ -1682,11 +1376,6 @@ export class Store {
     return row?.state ?? null;
   }
 
-  /** The cards with a record in the folder at `folder`. */
-  folderCards(folder: string): { card_id: string; state: string }[] {
-    return this.db.query('SELECT card_id, state FROM folder_cards WHERE folder = $f').all({ f: folder }) as { card_id: string; state: string }[];
-  }
-
   /** Keeps the card's record in the folder; null removes it. */
   setFolderCard(cardId: string, folder: string, state: string | null) {
     if (state === null) this.db.query('DELETE FROM folder_cards WHERE card_id = $c').run({ c: cardId });
@@ -1751,82 +1440,4 @@ export interface Friction extends FrictionNote {
   /** The card's title. */
   title: string;
   at: string;
-}
-
-interface TalkRow {
-  id: number;
-  at: string;
-  said: string;
-  reply: string;
-  card_id: string | null;
-  undone: number;
-  question: string | null;
-  about: string | null;
-  answer: string | null;
-  answer_by: 'coordinator' | 'project' | null;
-  images: string | null;
-  unread: number;
-  session_id: string | null;
-  thread: number | null;
-  follows: number | null;
-  files: string | null;
-  card: string | null;
-  reply_to: string | null;
-  wish: string | null;
-  held: string | null;
-  waits: string | null;
-  after_wait: string | null;
-  asked_in: string | null;
-  moved: string | null;
-  then_step: string | null;
-  after_answer: number | null;
-  then_place: string | null;
-  reply_only: number | null;
-}
-
-const toTalk = (r: TalkRow): Talk => ({
-  id: r.id,
-  at: r.at,
-  said: r.said,
-  // empty while the Coordinator reads the words
-  ...(r.reply ? { reply: r.reply } : {}),
-  ...(r.card_id ? { cardId: r.card_id } : {}),
-  ...(r.undone ? { undone: true } : {}),
-  ...(r.question ? { question: r.question } : {}),
-  ...(r.answer !== null ? { answer: r.answer } : {}),
-  ...(r.answer_by ? { answerBy: r.answer_by } : {}),
-  ...(r.unread ? { unread: true } : {}),
-  ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
-  // a looked-up question is a thread of its own until it follows up on one
-  ...(r.question ? { thread: r.thread ?? r.id } : {}),
-  ...(r.follows ? { follows: r.follows } : {}),
-  ...(r.files ? { files: JSON.parse(r.files) as AnswerFile[] } : {}),
-  ...(r.card ? { movedTo: r.card } : {}),
-  ...(r.wish ? { wish: JSON.parse(r.wish) as Wish } : {}),
-  ...(r.held ? { heldUntil: (JSON.parse(r.held) as HeldTalk).until } : {}),
-  ...(r.waits ? { waits: (JSON.parse(r.waits) as TalkWaitRow[]).map(({ card, title, state }) => ({ card, title, state })) } : {}),
-  ...(r.after_wait ? { after: JSON.parse(r.after_wait) as TalkAfter } : {}),
-  ...(r.asked_in ? { askedIn: r.asked_in } : {}),
-  ...(r.moved ? { moved: JSON.parse(r.moved) as TalkMoved } : {}),
-  ...(r.then_step ? { then: r.then_step } : {}),
-  ...(r.after_answer ? { answered: r.after_answer } : {}),
-  ...(r.reply_only ? { replyOnly: true } : {}),
-});
-
-/**
- * An exchange with the question of the answer it continues, when it follows up on one, and the
- * message of the sheet it replies to, when it does.
- */
-function withContinues(db: Database, r: TalkRow): Talk {
-  const followed = r.follows ? (db.query('SELECT question FROM talk WHERE id = $id').get({ id: r.follows }) as { question: string | null } | null) : null;
-  const replyTo = r.reply_to ? quotedTalk(db, JSON.parse(r.reply_to) as TalkRef) : undefined;
-  return { ...toTalk(r), ...(followed?.question ? { continues: followed.question } : {}), ...(replyTo ? { replyTo } : {}) };
-}
-
-/** A message of the sheet as a reply quotes it; none where the exchange or its part is gone. */
-function quotedTalk(db: Database, ref: TalkRef): TalkQuote | undefined {
-  const r = db.query('SELECT said, reply, answer, answer_by FROM talk WHERE id = $id').get({ id: ref.talk }) as Pick<TalkRow, 'said' | 'reply' | 'answer' | 'answer_by'> | null;
-  const text = r?.[ref.part];
-  if (!r || !text) return;
-  return { talk: ref.talk, part: ref.part, by: ref.part === 'said' ? 'owner' : ref.part === 'answer' ? (r.answer_by ?? 'coordinator') : 'coordinator', text };
 }

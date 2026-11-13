@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cuesByScene, cuesOf, frameListText, framesOf, keptTracks, reportOf, retimed, stretched, translationProblems, type Words } from './revoice.ts';
+import { frameListText, framesOf } from './assemble.ts';
+import { cuesByScene, keptTracks, reportOf, retimed, stretched, translationProblems, type Words } from './revoice.ts';
 
 const source: Words = {
   title: 'Vorschläge lassen sich übernehmen',
@@ -14,21 +15,6 @@ const source: Words = {
 };
 
 describe('re-voicing a demo', () => {
-  test('reads the cues of captions and chapters', () => {
-    const vtt = 'WEBVTT\n\n00:00:00.352 --> 00:00:10.292\nEin Vorschlag.\n\n00:01:11.247 --> 00:01:22.467\nJetzt „geht“ es.\n';
-    expect(cuesOf(vtt)).toEqual([
-      { start: 0.352, end: 10.292, text: 'Ein Vorschlag.' },
-      { start: 71.247, end: 82.467, text: 'Jetzt „geht“ es.' },
-    ]);
-  });
-
-  test('a cue of several lines is read whole', () => {
-    expect(cuesOf('WEBVTT\n\n00:00:00.002 --> 00:00:09.000\nVorher:\nkein Vorschlag\n\n00:00:09.000 --> 00:00:12.000\nJetzt\n')).toEqual([
-      { start: 0.002, end: 9, text: 'Vorher:\nkein Vorschlag' },
-      { start: 9, end: 12, text: 'Jetzt' },
-    ]);
-  });
-
   test('a narrated stretch plays as long as its new clip; the rest keeps its length and moves along', () => {
     const at = stretched([
       { from: 10, to: 20, ratio: 1.5 },

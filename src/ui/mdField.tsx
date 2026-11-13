@@ -3,7 +3,7 @@ import { dictating, useSpaceToTalk } from './dictation';
 import { useDraft, useDraftField } from './draft';
 import { keepScroll, useFitHeight } from './fitHeight';
 import { sourceAt } from './markdown';
-import { Body } from './message';
+import { Body } from './markdown';
 import { t } from './strings';
 
 /** Where in the markdown `md` the click at x, y on its formatted text in `box` went: the source's end where it can't tell. */

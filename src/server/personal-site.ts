@@ -11,13 +11,13 @@
 // approved card's latest demo there by itself, as a repository's site does with `publish`. A
 // second machine joins with a connection code, which carries the site and its credentials.
 
+import type { DemoSite } from '../core/config';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import type { DemoSite } from '../adapters/types';
-import { GITHUB_PAGES, GITHUB_PAGES_MAX } from './site-hosts';
-import { parseEnv, SITES_DIR, siteKey } from './site';
+import { GITHUB_PAGES, GITHUB_PAGES_MAX, parseEnv, SITES_DIR } from './site-hosts';
+import { siteKey } from './site';
 
 export const PERSONAL_FILE = 'personal-site.json';
 
@@ -84,14 +84,17 @@ export function personalDemoSite(p: PersonalSite): DemoSite {
   return {
     title: 'Demos',
     url: p.url,
-    deploy: p.host === 'cloudflare' ? cloudflareDeploy(p.project) : `${GITHUB_PAGES} ${p.project}`,
+    ...hostDeploy(p.host, p.project),
     ...(p.env ? { env: p.env } : {}),
-    ...(p.host === 'github' ? { maxFile: GITHUB_PAGES_MAX } : {}),
   };
 }
 
-/** The deploy line of a Cloudflare Pages project, as Obeya's own site has it. */
-export const cloudflareDeploy = (project: string) => `bunx wrangler@4 pages deploy {dir} --project-name ${project} --branch main --commit-dirty=true`;
+/** How a site set up at a host is deployed: a Cloudflare Pages project as Obeya's own site is, a GitHub repository by the deploy Obeya builds in, with GitHub's file limit. */
+export function hostDeploy(host: SiteHost, project: string): Pick<DemoSite, 'deploy' | 'maxFile'> {
+  return host === 'cloudflare'
+    ? { deploy: `bunx wrangler@4 pages deploy {dir} --project-name ${project} --branch main --commit-dirty=true` }
+    : { deploy: `${GITHUB_PAGES} ${project}`, maxFile: GITHUB_PAGES_MAX };
+}
 
 /** Whether the repository at `path` may share on the personal site: a public one always, a private one once ticked. */
 export const allowedHere = (p: PersonalSite, path: string, isPublic: boolean) => isPublic || (p.private ?? []).some((x) => resolve(x) === resolve(path));

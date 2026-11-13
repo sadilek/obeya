@@ -1,7 +1,9 @@
 import { expect, test } from 'bun:test';
-import { type CardEvent, formatQuestion, type Item, needsYou, openQuestions, pausable } from '../core/types';
+import type { CardEvent, Item } from '../core/types';
+import { formatQuestion, needsYou, openQuestions, parseQuestion, pausable } from '../core/card';
 import { answerText } from './answer';
-import { agentWorks, beingWritten, cardTalk, demoHandover, coordinatorReads, obeyaWorks, opensWithTalk, ownerField, parseQuestion, runs, split, talkAlone, talkTurns, unseen, unseenTurns } from './talk';
+import { agentWorks, beingWritten, obeyaWorks, opensWithTalk, ownerField, runs, split, talkAlone } from './cardState';
+import { cardTalk, demoHandover, coordinatorReads, talkTurns, unseen, unseenTurns } from './talk';
 import { MESSAGES } from '../core/messages';
 
 let id = 0;
@@ -148,7 +150,6 @@ test("a worker's closing words after its reply or handover fold under it, also o
         { e: reply, steps: [read, closing] },
       ],
       pending: [],
-      passedOn: [],
       unread: [],
       asked: [],
       below: [],
@@ -195,34 +196,48 @@ test("Obeya's answer that it cannot do what the owner asked stands in the conver
   ]);
 });
 
-test("Obeya's reply to what the worker passed on stands under the worker's message, with the answer it looked up", () => {
+test("Obeya's reply to what the worker passed on stands where it came: the steps that led to it above, the worker's message that builds on it below", () => {
   const asked = ev('hint', 'owner', 'Verlinkt der Commit die Demo?');
   const read = ev('activity', 'worker', 'Liest git log');
   const looking = { ...ev('say', 'coordinator', 'Moment, ich sehe nach, ob der Commit die Demo verlinkt.'), forwarded: true as const };
   const found = ev('say', 'coordinator', 'Ja, der Commit auf main verlinkt die Seite der Demo.');
   const reply = ev('talk', 'worker', 'Das entscheidet Obeya; ich habe die Frage weitergegeben.');
   const review = ev('review', 'worker', 'Übergeben.');
-  // while the worker is at work, Obeya's reply waits below its work for the message
-  expect(talkTurns([asked, read, looking], { working: true })).toMatchObject({ shown: [{ e: asked }], pending: [read], passedOn: [{ e: looking, steps: [] }] });
-  expect(talkTurns([asked, read, looking, found], { working: true }).passedOn.map((x) => x.e)).toEqual([looking, found]);
-  // the answer looked up before the worker's message came moves under it too; what came after the message stays after it
+  // while the worker is at work, its steps up to there close above Obeya's reply, and it works on below
+  const write = ev('activity', 'worker', 'Bearbeitet src/export.ts');
+  expect(talkTurns([asked, read, looking, write], { working: true })).toMatchObject({
+    shown: [{ e: asked }, { e: read, steps: [read], quiet: true }, { e: looking, steps: [] }],
+    pending: [write],
+  });
+  expect(talkTurns([asked, read, looking, found], { working: true }).shown.map((x) => x.e)).toEqual([asked, read, looking, found]);
+  // once it is over, everything stands in the order it came
   expect(talkTurns([asked, read, looking, found, reply, review], { over: true }).shown).toEqual([
-    { e: asked, steps: [] },
-    { e: reply, steps: [read] },
-    { e: looking, steps: [] },
-    { e: found, steps: [] },
-    { e: review, steps: [] },
-  ]);
-  expect(talkTurns([asked, read, looking, reply, review, found], { over: true }).shown.map((x) => x.e)).toEqual([asked, reply, looking, review, found]);
-  // a turn that ends without a message: its steps stand as one, above Obeya's reply
-  expect(talkTurns([asked, read, looking], { over: true }).shown).toEqual([
     { e: asked, steps: [] },
     { e: read, steps: [read], quiet: true },
     { e: looking, steps: [] },
+    { e: found, steps: [] },
+    { e: reply, steps: [] },
+    { e: review, steps: [] },
   ]);
-  // the owner's words before the worker's message: Obeya's reply stays above them, under the steps that led to it
+  expect(talkTurns([asked, read, looking, reply, review, found], { over: true }).shown.map((x) => x.e)).toEqual([asked, read, looking, reply, review, found]);
+  // the owner's words before the worker's message stay where they came
   const more = ev('hint', 'owner', 'Und das Changelog?');
   expect(talkTurns([asked, read, looking, more, reply]).shown.map((x) => x.e)).toEqual([asked, read, looking, more, reply]);
+});
+
+test("the worker's message that builds on what Obeya answered it stands below that answer, its words before passing on above it", () => {
+  const asked = ev('hint', 'owner', 'Hast du den Kontext aus dem Seitenchat gesehen?');
+  const words = ev('say', 'worker', 'Den Seitenchat hole ich über Obeya.');
+  const passing = ev('activity', 'worker', 'to_obeya');
+  const context = { ...ev('say', 'coordinator', 'Hier der Kontext aus dem Seitenchat: fünf Kandidaten, empfohlen ist der erste.'), forwarded: true as const };
+  const check = ev('activity', 'worker', '$ gh issue view 1');
+  const reply = ev('talk', 'worker', 'Nein, ich habe ihn über Obeya geholt und die fünf Kandidaten geprüft.');
+  expect(talkTurns([asked, words, passing, context, check, reply], { over: true }).shown).toEqual([
+    { e: asked, steps: [] },
+    { e: words, steps: [passing] },
+    { e: context, steps: [] },
+    { e: reply, steps: [check] },
+  ]);
 });
 
 test("what Obeya reads to look up a question on a card the worker works on folds under its answer, not into the worker's work", () => {
@@ -235,20 +250,19 @@ test("what Obeya reads to look up a question on a card the worker works on folds
   const found = { ...ev('say', 'coordinator', 'Ja, der Commit verlinkt die Demo.'), answer: { thread: 1 } };
   const reply = ev('talk', 'worker', 'Obeya sieht nach; ich baue weiter.');
   // while Obeya still looks, its steps stand under its reply that it does, the worker's at work apart
-  expect(talkTurns([asked, passing, looking, cat, edit], { working: true })).toMatchObject({ pending: [passing, edit], passedOn: [{ e: looking, steps: [cat] }] });
+  const passed = { e: passing, steps: [passing], quiet: true as const };
+  expect(talkTurns([asked, passing, looking, cat, edit], { working: true })).toMatchObject({ shown: [{ e: asked }, passed, { e: looking, steps: [cat] }], pending: [edit] });
   // its answer takes them
   expect(talkTurns([asked, passing, looking, cat, edit, log, found], { working: true })).toMatchObject({
-    pending: [passing, edit],
-    passedOn: [
-      { e: looking, steps: [] },
-      { e: found, steps: [cat, log] },
-    ],
+    shown: [{ e: asked }, passed, { e: looking, steps: [] }, { e: found, steps: [cat, log] }],
+    pending: [edit],
   });
   expect(talkTurns([asked, passing, looking, cat, edit, log, found, reply], { over: true }).shown).toEqual([
     { e: asked, steps: [] },
-    { e: reply, steps: [passing, edit] },
+    passed,
     { e: looking, steps: [] },
     { e: found, steps: [cat, log] },
+    { e: reply, steps: [edit] },
   ]);
   // asked through the microphone, Obeya's reply that it looks folds away with the worker's steps; its look-up's steps wait for its answer
   const said = ev('say', 'owner', 'Wie weit ist das?');
@@ -302,7 +316,6 @@ test('a conversation nobody works on ends with its last message or line, the ste
       { e: err, steps: [], line: true },
     ],
     pending: [],
-    passedOn: [],
     unread: [],
     asked: [],
     below: [],

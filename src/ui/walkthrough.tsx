@@ -13,11 +13,13 @@ import type { AnswerFile } from '../core/types';
 import { estimatedStarts, itemStarts, SLIDE_HEIGHT, SLIDE_WIDTH, type Walkthrough, wordsOf } from '../core/walkthrough';
 import { answerFile, api, at, beforeReload } from './api';
 import { captionPages, pageOf } from '../core/caption-pages';
-import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF } from '../core/video-player';
-import { known, know } from './known';
+import { CAPTIONS_CHANGED, CAPTIONS_KEY_KNOWN, CAPTIONS_OFF, PLAYER_ICONS } from '../core/video-player';
+import { know, known, local, session, setFlag, takeJson, writeJson, useKnown } from './stored';
 import { t } from './strings';
 import { plainKey, useZoom } from './zoom';
 import { zoomBox } from './zoomBox';
+import { signal } from './signal';
+import { soundOutside } from './sounding';
 
 /** The deck's margin around the slide, on its sides and above it (styles.css `.wt-stage`). */
 const WT_INSET = 10;
@@ -45,10 +47,7 @@ let captionsOn = !known(CAPTIONS_OFF);
 let captionsKeyKnown = known(CAPTIONS_KEY_KNOWN);
 
 function setCaptions(on: boolean) {
-  try {
-    if (on) localStorage.removeItem(CAPTIONS_OFF);
-    else know(CAPTIONS_OFF);
-  } catch {}
+  setFlag(local, CAPTIONS_OFF, !on);
   dispatchEvent(new Event(CAPTIONS_CHANGED));
 }
 
@@ -168,7 +167,7 @@ class Reading implements Sound {
 let voiceElement: HTMLAudioElement | undefined;
 const theVoice = () => {
   if (voiceElement) return voiceElement;
-  voiceElement = new Audio();
+  voiceElement = soundOutside(new Audio());
   voiceElement.preload = 'auto';
   voiceElement.onended = () => speaker?.ended();
   return voiceElement;
@@ -202,10 +201,9 @@ const KEPT_FRESH_MS = 5 * 60_000;
 
 /** The places the reload before this page kept, taken once. */
 const keptPlaces: Map<string, KeptPlace> = (() => {
+  const k = takeJson<{ at: number; places: [string, KeptPlace][] }>(session, KEPT_KEY);
+  // what a page wrote differently, or broken, keeps no place rather than the page from loading
   try {
-    const raw = sessionStorage.getItem(KEPT_KEY);
-    sessionStorage.removeItem(KEPT_KEY);
-    const k = raw ? (JSON.parse(raw) as { at: number; places: [string, KeptPlace][] }) : null;
     return new Map(k && Date.now() - k.at < KEPT_FRESH_MS ? k.places : []);
   } catch {
     return new Map();
@@ -236,7 +234,7 @@ class Playback {
   private reading = false;
   private shown = 0;
   private hide?: ReturnType<typeof setTimeout>;
-  private listeners = new Set<() => void>();
+  private changes = signal();
   version = 0;
 
   constructor(
@@ -270,14 +268,11 @@ class Playback {
     return this.started || this.autoplay ? { slide: this.slide, part: this.part, playing: this.playing || (this.autoplay && !this.autoplayed) } : undefined;
   }
 
-  subscribe = (fn: () => void) => {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  };
+  subscribe = this.changes.on;
 
   private changed() {
     this.version++;
-    for (const fn of this.listeners) fn();
+    this.changes.emit();
   }
 
   /** Draws its player anew: something of the page changed that it shows (captions on or off). */
@@ -506,9 +501,7 @@ beforeReload(() => {
     const at = p.place();
     return at ? [[url, at]] : [];
   });
-  try {
-    if (places.length) sessionStorage.setItem(KEPT_KEY, JSON.stringify({ at: Date.now(), places }));
-  } catch {}
+  if (places.length) writeJson(session, KEPT_KEY, { at: Date.now(), places });
 });
 
 function usePlayback(thread: number, name: string): Playback {
@@ -591,17 +584,17 @@ export function WalkthroughPlayer({ thread, file }: { thread: number; file: Answ
       <div className="wt-controls">
         <button className="btn small" aria-label={t.walkthrough.previous} title={t.walkthrough.previous} disabled={p.slide === 0} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide - 1)}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 5h2.4v14H6zM19 5.6v12.8a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.4a.8.8 0 0 1 1.2.7z" />
+            <path d={PLAYER_ICONS.previous} />
           </svg>
         </button>
         <button className="btn small wt-play" disabled={!slide} aria-label={p.playing ? t.walkthrough.pause : t.walkthrough.resume} title={p.playing ? t.walkthrough.pause : t.walkthrough.resume} onMouseDown={(e) => e.preventDefault()} onClick={p.toggle}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d={p.playing ? 'M6.5 4.5h3.6v15H6.5zM13.9 4.5h3.6v15h-3.6z' : 'M7 4.9v14.2a.9.9 0 0 0 1.4.8l11.2-7.1a.9.9 0 0 0 0-1.6L8.4 4.1A.9.9 0 0 0 7 4.9z'} />
+            <path d={p.playing ? PLAYER_ICONS.pause : PLAYER_ICONS.play} />
           </svg>
         </button>
         <button className="btn small" aria-label={t.walkthrough.next} title={t.walkthrough.next} disabled={!slide || p.slide >= d.slides.length - 1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.go(p.slide + 1)}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15.6 5H18v14h-2.4zM5 5.6v12.8a.8.8 0 0 0 1.2.7l8.2-6.4a.8.8 0 0 0 0-1.4L6.2 4.9A.8.8 0 0 0 5 5.6z" />
+            <path d={PLAYER_ICONS.next} />
           </svg>
         </button>
         {/* a segment per slide, as long as the slide plays */}
@@ -855,7 +848,7 @@ export type Tellable = { talk: number } | { card: string; ev: number };
  */
 export function WalkthroughButton({ of, hint }: { of: Tellable; hint?: boolean }) {
   const [busy, setBusy] = useState(false);
-  const [used, setUsed] = useState(() => known(WALKTHROUGH_KNOWN));
+  const [used, knowUsed] = useKnown(WALKTHROUGH_KNOWN);
   return (
     <button
       className={`msg-act msg-walk${hint && !used ? ' shown' : ''}`}
@@ -864,8 +857,7 @@ export function WalkthroughButton({ of, hint }: { of: Tellable; hint?: boolean }
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         setBusy(true);
-        know(WALKTHROUGH_KNOWN);
-        setUsed(true);
+        knowUsed();
         // asked once: the walkthrough comes as the next answer
         ('talk' in of ? api.walkthrough(of.talk) : api.cardWalkthrough(of.card, of.ev))
           .then(({ thread, file }) => {

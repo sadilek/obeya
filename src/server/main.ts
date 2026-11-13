@@ -47,8 +47,12 @@ import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } fro
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { type RestartReason } from '../core/types';
-import { type CanvasConfig, Canvases } from './canvas';
+import type { RestartReason } from '../core/types';
+import { within } from '../core/late';
+import { messageOf } from '../core/text';
+import type { CanvasConfig } from './canvas';
+import { Canvases } from './canvases';
+import { DemoSettingsDialog } from './demo-settings';
 import { Config, CONFIG_FILE, expandConfig, readConfigFile } from './config';
 import { checkPlugin } from './demo';
 import { Store, UnusableDatabase } from './db';
@@ -56,12 +60,13 @@ import { ghForge, routedForge } from './forge';
 import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
-import { type AgentRuntime, byHarness, claudeExecutable, endAgentsHere, sdkRuntime, withRest } from './runtime';
+import { claudeExecutable, sdkRuntime } from './claude';
+import { type AgentRuntime, byHarness, endAgentsHere, withRest } from './runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
-import { findClaude, MachineSetup, updateClaude, welcome } from './machine';
+import { findClaude, MachineSetup, updateClaude, updateCodex, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
-import { claudeModels, claudeNewest, Harnesses } from './harnesses';
+import { claudeModels, claudeNewest, codexNewest, Harnesses, hostClaude, hostCodex } from './harnesses';
 import { addToPath, extendPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
@@ -72,7 +77,7 @@ import { oldLinuxBun, onGitHub } from './repo';
 import { Access } from './remote';
 import { Push } from './push';
 import { Awake } from './awake';
-import { claudeToken, remote } from './hosts';
+import { claudeToken, hostName, hostNamed } from './hosts';
 import { serve, serveNarration } from './server';
 import { LocalTranscriber, VoiceIn } from './voice';
 import { cloudInUse } from './voice-cloud';
@@ -84,7 +89,7 @@ import { qwen3Serve, speak, voiceSpec } from '../../plugin/skills/demo/lib/voice
 import { Voicing } from './walkthrough';
 import { ScratchEnd } from './scratch';
 import type { Language } from '../core/locale';
-import { agentSetting, conversationLanguage, ownerLanguage, usageMeterView } from './settings';
+import { agentSetting, conversationLanguage, ownerLanguage, switchView } from './settings';
 import { loginLink } from './owner';
 import { Stalls } from './stalls';
 import { hideConsoleWindows, oneStartAtATime } from './spawn';
@@ -217,7 +222,6 @@ let canvases: Canvases | undefined;
 let server: ReturnType<typeof serve> | undefined;
 let exitCode = RESTART;
 const live = () => canvases?.all() ?? [];
-/** Starts the server again once no worker is in the middle of a turn, or when the owner says so. */
 const busy = () => live().flatMap((c) => c.busy().map((card) => ({ canvas: c.id, card })));
 const leave = (reason: RestartReason) => {
   server?.stop(true);
@@ -231,15 +235,13 @@ const leave = (reason: RestartReason) => {
   // after a takeover the app starts it again, not the supervisor
   shutdown(reason === 'takeover' ? TAKEOVER : exitCode);
 };
+/** Starts the server again once no worker is in the middle of a turn, or when the owner says so. */
 const restarter = new Restarter({
   busy,
   // a command in its undo window holds a restart off even when the page that said it reloads
   held: () => (live().some((c) => c.commander.holding()) ? ['voice'] : []),
-  go: (reason) => {
-    // the app that asked hears the answer first, which may be the request that goes at once
-    if (reason === 'takeover') return void setTimeout(() => leave(reason), 100);
-    leave(reason);
-  },
+  // a request that has it go at once (a restart, a stop, an update, the app taking over) gets its answer out first
+  go: (reason) => void setTimeout(() => leave(reason), 100),
 });
 // workers in the middle of a turn hear of a restart that waits for them, and pause for it
 restarter.onChange(() => {
@@ -255,6 +257,9 @@ const commitOf = () => {
   const checkout = own ?? ownCheckout();
   return ranFrom ?? (checkout && headOf(checkout));
 };
+const scratchFrom = process.env.OBEYA_SCRATCH ? resolve(process.env.OBEYA_SCRATCH) : undefined;
+const transcriber = new VoiceIn(home, new LocalTranscriber(), { lazy: !!scratchFrom });
+const voiceSetup = new VoiceSetup({ home, local: transcriber.local });
 const forge = process.env.OBEYA_FORGE_FILE ? fileForge(process.env.OBEYA_FORGE_FILE) : routedForge(ghForge, forgejoForge, originOf, (remote) => onGitHub(remote));
 const narration = new NarrationHost({
   argv: (voice) => qwen3Serve(voice, home),
@@ -284,6 +289,7 @@ const voicing = new Voicing({
 });
 // the disk space demos take, and the frames of old renders deleted (demo-space.ts)
 const demoSpace = new DemoSpace({ home, settings: () => readDemoSettings(home), file: join(home, DEMO_SETTINGS_FILE), log: (line) => console.log(line) }).start();
+const demoSettings = new DemoSettingsDialog({ home, space: demoSpace, narrationUrl });
 const config = new Config({
   file: configFile,
   source,
@@ -291,9 +297,7 @@ const config = new Config({
   store,
   running: () => live().map((c) => c.id),
   server: { port: Number(values.port), home, permissionMode: values['permission-mode'], commit: commitOf() },
-  narrationUrl,
   forge,
-  space: demoSpace,
   onSettings: () => {
     for (const c of live()) c.settingsChanged();
   },
@@ -304,8 +308,7 @@ const config = new Config({
         restart: () => {
           // canvases from the command line come from the saved file from now on
           exitCode = RESTART_FROM_FILE;
-          // after the answer is out: a restart with no worker to wait for stops this server at once
-          setTimeout(() => restart('config', 'the configuration changed'), 100);
+          restart('config', 'the configuration changed');
         },
       }
     : {}),
@@ -318,11 +321,18 @@ const harnesses = new Harnesses({
     return c.version ? { version: c.version, loggedIn: c.loggedIn } : null;
   },
   claudeModels,
-  claudeNewest: () => claudeNewest(),
-  updateClaude: (log) => updateClaude(log),
+  claudeNewest: (channel) => claudeNewest(channel),
+  updateClaude: () => updateClaude(),
+  codexNewest,
+  updateCodex: () => updateCodex(),
+  // the hosts the configuration names now, once a canvas has them registered
+  hosts: () => {
+    const names = new Set(config.current().flatMap((c) => c.repos.flatMap((r) => (r.hosts ?? []).map((h) => h.name))));
+    return [...names].map(hostNamed).filter((h) => !!h).flatMap((h) => [hostClaude(h), hostCodex(h)]);
+  },
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
-await Promise.race([harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${e instanceof Error ? e.message : e}`)), Bun.sleep(5000)]);
+await within(harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${messageOf(e)}`)), 5000);
 canvases = await Canvases.start(
   configs,
   {
@@ -336,7 +346,7 @@ canvases = await Canvases.start(
     setupProposals: true,
     ownCheckout: own,
     config,
-    workerEnv: { OBEYA_URL: narrationUrl, OBEYA_NARRATION_URL: narrationUrl },
+    workerEnv: { OBEYA_URL: narrationUrl },
     voicing,
     ...(process.env.OBEYA_PARK_GRACE ? { parkGrace: Number(process.env.OBEYA_PARK_GRACE) * 1000 } : {}),
     ...(process.env.OBEYA_PR_POLL ? { prPollMs: Number(process.env.OBEYA_PR_POLL) * 1000 } : {}),
@@ -353,8 +363,8 @@ function agentRuntime() {
   // a session waiting longer than its prompt cache lives gives up its process, and its next message resumes it
   // (`OBEYA_REST_AFTER`, in seconds, for demos and live checks)
   const rest = process.env.OBEYA_REST_AFTER ? Number(process.env.OBEYA_REST_AFTER) * 1000 : undefined;
-  // an alias goes to Claude Code here as the newest model of its family it lists, which the alias may not name yet
-  const newest: AgentRuntime = { start: (spec, ...more) => sdkRuntime.start(spec.model && !remote(spec.cwd) ? { ...spec, model: harnesses.claudeModel(spec.model) } : spec, ...more) };
+  // an alias goes to Claude Code (here, or on the host the agent runs on) as the newest model of its family it lists, which the alias may not name yet
+  const newest: AgentRuntime = { start: (spec, ...more) => sdkRuntime.start(spec.model ? { ...spec, model: harnesses.claudeModel(spec.model, hostName(spec.cwd) ?? undefined) } : spec, ...more) };
   const live = byHarness({ claude: withRest(newest, rest), codex: withRest(codexRuntime, rest) });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;
@@ -367,9 +377,6 @@ if (new Set(ids).size !== ids.length) {
   console.error(`two canvases share an id: ${ids.join(', ')}; give them different names`);
   process.exit(2);
 }
-const scratchFrom = process.env.OBEYA_SCRATCH ? resolve(process.env.OBEYA_SCRATCH) : undefined;
-const transcriber = new VoiceIn(home, new LocalTranscriber(), fetch, !!scratchFrom);
-const voiceSetup = new VoiceSetup({ home, local: transcriber.local });
 const updates = new AppUpdates();
 // run from a clone of Obeya's repository: new commits on its upstream, for the owner to pull
 const sources = own ? new SourceUpdates(own) : undefined;
@@ -379,13 +386,24 @@ const usage = new UsageMeters(
     { harness: 'claude', meter: new UsageMeter(() => claudeUsage(home)) },
     { harness: 'codex', meter: new UsageMeter(() => codexUsage(home)) },
   ],
-  { on: usageMeterView(home).on, ready: (h) => harnesses.ready(h) },
+  { on: switchView(home, 'usageMeter').on, ready: (h) => harnesses.ready(h) },
 );
 harnesses.onChange(() => (usage.update(), usage.changed()));
 const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses });
 // the canvas the assistant created gets a first card that says what to try
 welcome(home, canvases.all());
-const shutdown = (code: number) => {
+// Claude Code on the hosts the canvases registered, so the first menu of models has whether it is behind there
+harnesses.lookAtHosts();
+// other devices, when the owner lets them: the phone over the owner's own network
+const access = new Access({ store, home, language: () => ownerLanguage(home) });
+// and what starts waiting for the owner, pushed to the phones that turned notifications on
+const push = new Push({ store, home, language: () => ownerLanguage(home) });
+// while other devices may reach Obeya, the machine stays awake as long as a worker works, or the whole time
+const awake = new Awake({ wanted: () => access.awake() === 'always' || (access.awake() === 'works' && busy().length > 0) }).start();
+// what held the server up, or a page, for the owner to notice: in this log and in the home's stalls.log
+const stalls = new Stalls({ home }).start();
+/** Ends everything started above and exits; a declaration, so `leave` near the top may call it. */
+function shutdown(code: number) {
   canvases?.shutdown();
   usage.stop();
   demoSpace.stop();
@@ -399,7 +417,7 @@ const shutdown = (code: number) => {
   // the supervisor stays across a restart, and gives the entry up when it ends
   if (!process.env.OBEYA_SUPERVISED) (code === TAKEOVER ? takenOver : release)(home, process.pid);
   process.exit(code);
-};
+}
 // stopping waits for the workers like a restart; a second Ctrl-C has it go ahead at once
 const SAME_PRESS_MS = 1000;
 let stopAsked = 0;
@@ -418,14 +436,6 @@ const stop = () => {
 };
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, stop);
 
-// other devices, when the owner lets them: the phone over the owner's own network
-const access = new Access({ store, home, language: () => ownerLanguage(home) });
-// and what starts waiting for the owner, pushed to the phones that turned notifications on
-const push = new Push({ store, home, language: () => ownerLanguage(home) });
-// while other devices may reach Obeya, the machine stays awake as long as a worker works, or the whole time
-const awake = new Awake({ wanted: () => access.awake() === 'always' || (access.awake() === 'works' && busy().length > 0) }).start();
-// what held the server up, or a page, for the owner to notice: in this log and in the home's stalls.log
-const stalls = new Stalls({ home }).start();
 // a scratch Obeya ends by itself once of no more use; an idle worker's card is in a turn that never ends, and uses nothing
 const scratch =
   scratchFrom === undefined
@@ -441,7 +451,25 @@ const scratch =
           shutdown(0);
         },
       });
-server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, updates, access, push, sources, usage, stalls, harnesses, scratch && (() => scratch.used()));
+server = serve(canvases, Number(values.port), {
+  transcriber,
+  voiceSetup,
+  development: values.dev,
+  config,
+  demoSettings,
+  restarter,
+  narration,
+  machine,
+  stop,
+  updates,
+  access,
+  push,
+  sources,
+  usage,
+  stalls,
+  harnesses,
+  ...(scratch ? { used: () => scratch.used() } : {}),
+});
 scratch?.start();
 claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, ...(process.env.OBEYA_FROM_APP ? { app: true } : {}) });
 // the address as a one-time link that signs a browser in (owner.ts)

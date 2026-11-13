@@ -1,4 +1,5 @@
-// Setting up a demo site at a host, and the deploy Obeya builds in for GitHub Pages. Cloudflare
+// Setting up a demo site at a host, the deploy Obeya builds in for GitHub Pages, and the env files
+// under `sites/` that hold a site's credentials for its host. Cloudflare
 // Pages goes through wrangler (with the credentials of a site this machine already deploys to, else
 // the machine's own `wrangler login`), GitHub Pages through gh's login and git. Everything runs as a
 // program with its arguments, never through a shell, so it works on Windows and Linux alike.
@@ -12,11 +13,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
+import { AS_OBEYA } from './git';
+import { UNLISTED_META } from './demo-page';
+import { messageOf } from '../core/text';
 
 /** The deploy line's word for the deploy Obeya builds in: `obeya:github-pages <owner>/<repository>`. */
 export const GITHUB_PAGES = 'obeya:github-pages';
 /** GitHub's limit on one file (100 MiB); a site stays under about 1 GB. */
 export const GITHUB_PAGES_MAX = 100 * 1024 * 1024;
+
+/** Where the sites live under Obeya's home. */
+export const SITES_DIR = 'sites';
+
+/** `KEY=value` lines; blank lines, comments and a leading `export` are allowed, a value may be quoted. */
+export function parseEnv(text: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+    if (!m || line.trimStart().startsWith('#')) continue;
+    const v = m[2]!;
+    env[m[1]!] = /^(["']).*\1$/.test(v) ? v.slice(1, -1) : v;
+  }
+  return env;
+}
 
 /** Runs a program; a stand-in in tests. */
 export type Exec = (argv: string[], o?: { env?: Record<string, string | undefined>; timeout?: number; cwd?: string }) => Promise<{ code: number; out: string; err: string }>;
@@ -26,7 +45,7 @@ export const exec: Exec = async (argv, o = {}) => {
     const r = await spawnOutput(argv, { stdin: 'ignore', env: { ...process.env, ...o.env }, timeout: o.timeout ?? 120_000, ...(o.cwd ? { cwd: o.cwd } : {}) });
     return { code: r.code, out: r.stdout, err: r.stderr };
   } catch (e) {
-    return { code: -1, out: '', err: e instanceof Error ? e.message : String(e) };
+    return { code: -1, out: '', err: messageOf(e) };
   }
 };
 
@@ -50,18 +69,16 @@ const wranglerEnv = (env: Record<string, string>) => ({ ...BUN_ENV, ...env });
  * them.
  */
 export function cloudflareAccounts(home: string): { site: string; env: Record<string, string> }[] {
-  const sites = join(home, 'sites');
+  const sites = join(home, SITES_DIR);
   if (!existsSync(sites)) return [];
   const found: { site: string; env: Record<string, string> }[] = [];
   for (const d of readdirSync(sites, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     if (!d.isDirectory()) continue;
     for (const f of readdirSync(join(sites, d.name)).sort()) {
       if (!f.endsWith('.env')) continue;
+      const all = parseEnv(readFileSync(join(sites, d.name, f), 'utf8'));
       const env: Record<string, string> = {};
-      for (const line of readFileSync(join(sites, d.name, f), 'utf8').split(/\r?\n/)) {
-        const m = /^\s*(?:export\s+)?(CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID)\s*=\s*["']?([^"'\s]+)["']?\s*$/.exec(line);
-        if (m) env[m[1]!] = m[2]!;
-      }
+      for (const key of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) if (all[key]) env[key] = all[key];
       const same = (e: Record<string, string>) => e.CLOUDFLARE_ACCOUNT_ID ? e.CLOUDFLARE_ACCOUNT_ID === env.CLOUDFLARE_ACCOUNT_ID : e.CLOUDFLARE_API_TOKEN === env.CLOUDFLARE_API_TOKEN;
       // a site may name its account alone and deploy with the machine's wrangler login
       if ((env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_ACCOUNT_ID) && !found.some((x) => same(x.env))) found.push({ site: d.name, env });
@@ -154,7 +171,7 @@ export async function setupGithub(o: { name: string; private: boolean; log: (lin
   try {
     user = JSON.parse(await gh('api', 'user'));
   } catch (e) {
-    throw new SetupRefused(`gh is not logged in to GitHub (gh auth login): ${e instanceof Error ? e.message : e}`);
+    throw new SetupRefused(`gh is not logged in to GitHub (gh auth login): ${messageOf(e)}`);
   }
   if (o.private && user.plan?.name === 'free') throw new SetupRefused(NEEDS_PRO, 'cloudflare');
   let name = o.name;
@@ -174,7 +191,7 @@ export async function setupGithub(o: { name: string; private: boolean; log: (lin
   try {
     writeFileSync(join(first, 'index.html'), BLANK_PAGE);
     o.log('Pushing a first, empty page…');
-    await githubPagesDeploy(first, project, join(first, '..', `${name}.git-${Date.now()}`), x, { private: o.private });
+    await githubPagesDeploy(first, project, join(first, '..', `${name}.git-${Date.now()}`), { private: o.private, x });
   } finally {
     rmSync(first, { recursive: true, force: true });
   }
@@ -213,7 +230,7 @@ const NEEDS_PRO = 'GitHub Pages from a private repository needs GitHub Pro, whic
 
 /** A page that says nothing: the root of an unlisted site, and its answer to every address it lacks. */
 export const BLANK_PAGE = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><title></title></head><body></body></html>
+<html><head><meta charset="utf-8">${UNLISTED_META}<title></title></head><body></body></html>
 `;
 
 /**
@@ -223,10 +240,10 @@ export const BLANK_PAGE = `<!doctype html>
  * repository of its own made afresh each time (`gitDir`), with nothing of the machine's git
  * configuration that could leave files out or stop the commit (ignores, hooks, signing).
  */
-export async function githubPagesDeploy(dir: string, repo: string, gitDir: string, x: Exec = exec, o: { private?: boolean } = {}): Promise<string> {
+export async function githubPagesDeploy(dir: string, repo: string, gitDir: string, { private: unlisted = false, x = exec }: { private?: boolean; x?: Exec } = {}): Promise<string> {
   if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repo)) throw new Error(`${GITHUB_PAGES}: expected <owner>/<repository>, got ${repo || 'nothing'}`);
   // an unlisted site goes only into a private repository: a public one lists every page's address
-  if (o.private) {
+  if (unlisted) {
     const v = await x(['gh', 'repo', 'view', repo, '--json', 'visibility', '--jq', '.visibility']);
     const visibility = v.out.trim().toUpperCase();
     if (v.code !== 0 || visibility !== 'PRIVATE') throw new Error(`${repo} is ${v.code === 0 ? visibility.toLowerCase() || 'of unknown visibility' : `not readable (${lastLine(v)})`}, not private: Obeya puts no unlisted page there`);
@@ -242,7 +259,7 @@ export async function githubPagesDeploy(dir: string, repo: string, gitDir: strin
     GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
     GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token.out.trim()}`).toString('base64')}`,
   };
-  const git = ['git', `--git-dir=${gitDir}`, `--work-tree=${dir}`, '-c', 'user.name=Obeya', '-c', 'user.email=obeya@localhost', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', '-c', `core.hooksPath=${join(gitDir, 'none')}`, '-c', `core.excludesFile=${join(gitDir, 'none')}`];
+  const git = ['git', `--git-dir=${gitDir}`, `--work-tree=${dir}`, ...AS_OBEYA, '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', '-c', `core.hooksPath=${join(gitDir, 'none')}`, '-c', `core.excludesFile=${join(gitDir, 'none')}`];
   const step = async (argv: string[], what: string) => {
     const r = await x(argv, { env, timeout: 15 * 60_000 });
     if (r.code !== 0) throw new Error(`${what}: ${lastLine(r)}`);

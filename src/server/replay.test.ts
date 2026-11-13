@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { CUT_MS, GAP_MS, paced, readRecording, recordingRuntime, replayRuntime, Swap } from './replay';
 import type { AgentEvent, AgentSpec, AgentTool } from './runtime';
 import { onStart } from './spawn';
-import { FakeRuntime, gitRepo, identify, until } from './testing';
-import { git } from './workspaces';
+import { commit, FakeRuntime, gitRepo, identify, until } from './testing';
+import { git } from './git';
 
 const THEN = '3f2a9c4e-1b7d-4e8a-9c3f-5d6e7f8a9b0c';
 const NOW = 'b81c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e';
@@ -159,9 +159,7 @@ test('a handover plays the recorded commits into the workspace of today and its 
   const started = headRead();
   recordingRuntime(fake, rec, join(a, 'home')).start(worker(a, then), 'Build it.');
   await started;
-  writeFileSync(join(a, 'ws', 'split.js'), 'export const split = (bill, people) => bill / people;\n');
-  git(join(a, 'ws'), 'add', '-A');
-  git(join(a, 'ws'), 'commit', '-qm', 'Split the bill');
+  commit(join(a, 'ws'), 'split.js', 'export const split = (bill, people) => bill / people;\n', 'Split the bill');
   mkdirSync(join(a, 'demos', 'split', '.work'), { recursive: true });
   writeFileSync(join(a, 'demos', 'split', 'demo.mp4'), 'the video');
   writeFileSync(join(a, 'demos', 'split', '.work', 'frame.png'), 'a frame');
@@ -218,11 +216,6 @@ test("a worker's commits go into the workspace at its next call; rewritten ones 
     tools: [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: () => (seen.push(git(join(dir, 'ws'), 'log', '--format=%s', '-3').replace(/\n/g, ' | ')), 'Shown.') }],
     onEvent: (e) => events.push(e),
   });
-  const commit = (ws: string, file: string, message: string) => {
-    writeFileSync(join(ws, file), `${message}\n`);
-    git(ws, 'add', '-A');
-    git(ws, 'commit', '-qm', message);
-  };
   const a = join(root, 'a');
   gitRepo(join(a, 'ws'));
   identify(join(a, 'ws'));
@@ -230,7 +223,7 @@ test("a worker's commits go into the workspace at its next call; rewritten ones 
   const started = headRead();
   recordingRuntime(fake, rec, join(a, 'home')).start(worker(a, []), 'Build it.');
   await started;
-  commit(join(a, 'ws'), 'one.txt', 'First step');
+  commit(join(a, 'ws'), 'one.txt', 'First step\n', 'First step');
   await fake.last.call('report', { status: 'One step' });
   // amended
   writeFileSync(join(a, 'ws', 'one.txt'), 'First step, amended\n');
@@ -251,6 +244,45 @@ test("a worker's commits go into the workspace at its next call; rewritten ones 
   await until(() => events.some((e) => e.type === 'idle'));
   expect(seen).toEqual(['First step | init', 'First step | First step | init', 'First step | First step | init']);
   expect(readFileSync(join(b, 'ws', 'one.txt'), 'utf8')).toBe('First step, amended\n');
+});
+
+test('a rewritten commit that does not go into the workspace leaves no temp directory behind', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'replay-'));
+  const rec = join(root, 'rec');
+  const worker = (dir: string, run: () => void, events: AgentEvent[] = []): AgentSpec => ({
+    cwd: join(dir, 'ws'),
+    role: 'worker',
+    system: 'You build the card.',
+    tools: [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: () => (run(), 'Shown.') }],
+    onEvent: (e) => events.push(e),
+  });
+  const a = join(root, 'a');
+  gitRepo(join(a, 'ws'));
+  identify(join(a, 'ws'));
+  const fake = new FakeRuntime();
+  const started = headRead();
+  recordingRuntime(fake, rec, join(a, 'home')).start(worker(a, () => {}), 'Build it.');
+  await started;
+  commit(join(a, 'ws'), 'one.txt', 'First step\n', 'First step');
+  await fake.last.call('report', { status: 'One step' });
+  writeFileSync(join(a, 'ws', 'one.txt'), 'First step, amended\n');
+  git(join(a, 'ws'), 'commit', '-qa', '--amend', '--no-edit');
+  await fake.last.call('report', { status: 'Amended' });
+  fake.last.emit({ type: 'idle' });
+
+  const b = join(root, 'b');
+  gitRepo(join(b, 'ws'));
+  identify(join(b, 'ws'));
+  const temps = () => readdirSync(tmpdir()).filter((n) => n.startsWith('obeya-replay-'));
+  const before = temps();
+  const events: AgentEvent[] = [];
+  // the workspace of today changes the same line in between: the amendment does not apply
+  let calls = 0;
+  const log: string[] = [];
+  replayRuntime(rec, { home: join(b, 'home'), log: (l) => log.push(l) }).start(worker(b, () => calls++ === 0 && commit(join(b, 'ws'), 'one.txt', 'Mine\n', 'Mine'), events), 'Build it.');
+  await until(() => events.some((e) => e.type === 'idle'));
+  expect(log.join('\n')).toContain('does not go into the workspace');
+  expect(temps()).toEqual(before);
 });
 
 test("a handover with a merge of main into a pull request's head plays back as that merge, onto the head and main of today", async () => {

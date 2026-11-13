@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
-import { type CanvasInfo, type Item, type Talk, waitingIn } from '../core/types';
+import type { CanvasInfo, Item, Talk } from '../core/types';
+import { waitingIn } from '../core/card';
 import { forYouCount, forYouOf, forYouTotal } from './forYou';
+import { testItem } from './testing';
 
-const card = (id: string, more: Partial<Item> = {}) => ({ id, kind: 'task', state: 'working', title: id, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
+const card = (id: string, more: Partial<Item> = {}) => testItem({ id, state: 'working', title: id, ...more });
 const talk = (id: number, unread = false): Talk => ({ id, at: '2026-11-02T09:00:00Z', said: `q${id}`, reply: '', ...(unread ? { unread: true as const } : {}) });
 
 test('a canvas lists what needs the owner in its order, and not what does not wait, nor what the owner snoozed while it waited', () => {

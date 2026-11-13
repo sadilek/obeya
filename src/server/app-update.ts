@@ -3,6 +3,7 @@
 // restart (the Restarter's `update`), and the shell installs it once the server has ended.
 
 import type { AppUpdate } from '../core/types';
+import { Watched } from '../core/watched';
 import { BadRequest } from './board';
 
 /** Where the app's releases are, as its shell names them (`RELEASES` in app/src/update.rs). */
@@ -11,10 +12,9 @@ const RELEASES = 'https://github.com/sadilek/obeya/releases/';
 /** A shell that reported nothing for this long has gone (the app quit), and its update with it. */
 const FRESH_MS = 10_000;
 
-export class AppUpdates {
-  private last: AppUpdate | null = null;
+/** The update the shell has ready (`current`), while it reports one. */
+export class AppUpdates extends Watched<AppUpdate> {
   private expiry: ReturnType<typeof setTimeout> | undefined;
-  private listeners = new Set<() => void>();
 
   report(input: unknown): AppUpdate {
     const u = (input ?? {}) as Partial<Record<keyof AppUpdate, unknown>>;
@@ -33,22 +33,6 @@ export class AppUpdates {
     this.expiry.unref?.();
     this.set(update);
     return update;
-  }
-
-  /** The update the shell has ready, while it reports one. */
-  current(): AppUpdate | null {
-    return this.last;
-  }
-
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
-  private set(update: AppUpdate | null) {
-    if (JSON.stringify(update) === JSON.stringify(this.last)) return;
-    this.last = update;
-    for (const fn of this.listeners) fn();
   }
 }
 

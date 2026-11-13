@@ -8,13 +8,15 @@
 import { type RefObject, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cite } from './draft';
-import { know, known } from './known';
+import { useKnown } from './stored';
 import { t } from './strings';
+import { oneLine } from '../core/text';
+import { signal } from './signal';
 
 const KNOWN = 'obeya-cite-known';
 
 /** The marked text as the quote has it: one line, without the spaces around it. */
-export const citable = (marked: string) => marked.replace(/\s+/g, ' ').trim();
+export const citable = oneLine;
 
 interface Marked {
   text: string;
@@ -65,10 +67,7 @@ interface FrameMark {
 }
 
 let framed: FrameMark | null = null;
-const onFramed = new Set<() => void>();
-const framedChanged = () => {
-  for (const fn of onFramed) fn();
-};
+const { emit: framedChanged, on: onFramed } = signal();
 
 /** Takes the marking away in the frame that has one: the page in it clears it on `{ obeyaUnmark }`. */
 function unmarkFrame() {
@@ -115,7 +114,8 @@ function hearFrames() {
  */
 export function CiteButton({ box, draft, anywhere, onCite }: { box: RefObject<HTMLElement | null>; draft: string; anywhere?: boolean; onCite?: () => void }) {
   const [marked, setMarked] = useState<Marked | null>(null);
-  const [named, setNamed] = useState(() => !known(KNOWN));
+  const [citeKnown, knowCite] = useKnown(KNOWN);
+  const named = !citeKnown;
   useEffect(() => {
     hearFrames();
     const touch = matchMedia('(pointer: coarse)').matches;
@@ -174,14 +174,14 @@ export function CiteButton({ box, draft, anywhere, onCite }: { box: RefObject<HT
     // any scroll moves the marking: the box's, a column's around it, the page's
     document.addEventListener('scroll', place, true);
     addEventListener('resize', place);
-    onFramed.add(place);
+    const unheard = onFramed(place);
     return () => {
       document.removeEventListener('selectionchange', place);
       document.removeEventListener('pointerdown', down, true);
       document.removeEventListener('pointerup', up, true);
       document.removeEventListener('scroll', place, true);
       removeEventListener('resize', place);
-      onFramed.delete(place);
+      unheard();
     };
   }, [box, anywhere]);
   if (!marked) return null;
@@ -200,8 +200,7 @@ export function CiteButton({ box, draft, anywhere, onCite }: { box: RefObject<HT
         setMarked(null);
         cite(draft, t.talk.cited(marked.text));
         onCite?.();
-        know(KNOWN);
-        setNamed(false);
+        knowCite();
       }}
     >
       <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">

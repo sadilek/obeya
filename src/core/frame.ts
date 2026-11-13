@@ -19,6 +19,18 @@ export function pagePolicy(own?: string): string {
   return `default-src ${here}data: blob:; script-src ${here}'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; style-src ${here}'unsafe-inline' data: blob:; form-action 'none'`;
 }
 
+/**
+ * Text for a `<script>` element that cannot close it: a `</script` in it (in a string, a regular
+ * expression, a comment, a caption) written `<\/script`, which JavaScript reads as the same.
+ */
+export const inScript = (text: string) => text.replace(/<\/(script)/gi, '<\\/$1');
+
+/** A value as JSON for a `<script>` element: each `<` written `\u003c`, so nothing in it closes the element or opens a comment. */
+export const jsonInScript = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
+
+/** CSS for a `<style>` element that cannot close it: a `</style` in it written `<\/style`. */
+export const inStyle = (css: string) => css.replace(/<\/(style)/gi, '<\\/$1');
+
 /** What Obeya's page (`src/ui/index.html`) may show in its frames: its own addresses, where the workers' pages are served, and nothing a frame navigates to elsewhere. */
 export const FRAMES_POLICY = "frame-src 'self' data: blob:";
 
@@ -66,11 +78,14 @@ const HEIGHT_REPORT = `<script>(() => {
   new ResizeObserver(say).observe(document.documentElement);
 })();</script>`;
 
-/** The page with its height report, at the end of its body (or of the page, without one). */
-export function withHeightReport(html: string): string {
+/** `html` with `script` at the end of its body (or of the page, without one). */
+function beforeBodyEnd(html: string, script: string): string {
   const at = html.toLowerCase().lastIndexOf('</body>');
-  return at < 0 ? html + HEIGHT_REPORT : html.slice(0, at) + HEIGHT_REPORT + html.slice(at);
+  return at < 0 ? html + script : html.slice(0, at) + script + html.slice(at);
 }
+
+/** The page with its height report, at the end of its body (or of the page, without one). */
+export const withHeightReport = (html: string): string => beforeBodyEnd(html, HEIGHT_REPORT);
 
 /**
  * What the owner marks in the page, sent to Obeya's page around it, where a button beside it quotes
@@ -106,10 +121,7 @@ const MARK_REPORT = `<script>(() => {
 })();</script>`;
 
 /** The page with its marking report (`MARK_REPORT`), for a page shown on Obeya's own page: at the end of its body, or of the page without one. */
-export function withMarkReport(html: string): string {
-  const at = html.toLowerCase().lastIndexOf('</body>');
-  return at < 0 ? html + MARK_REPORT : html.slice(0, at) + MARK_REPORT + html.slice(at);
-}
+export const withMarkReport = (html: string): string => beforeBodyEnd(html, MARK_REPORT);
 
 /**
  * The height of a mock's content, not of its frame's window (that one only grows as the frame does):

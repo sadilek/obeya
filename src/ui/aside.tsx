@@ -4,6 +4,7 @@
 // away in this browser, it nudges aside and back once after it appears.
 
 import { type ReactNode, useRef, useState } from 'react';
+import { flag, local, setFlag } from './stored';
 
 /** How far a finger moves before the line follows it sideways, or the move counts as one up or down. */
 const SLOP = 8;
@@ -24,13 +25,7 @@ export function goesAside(dx: number, v: number, width: number): boolean {
 }
 
 /** Whether the owner has swiped one aside in this browser of the kind kept under `key`. */
-export function swipedOnce(key = SWIPED): boolean {
-  try {
-    return localStorage.getItem(key) === '1';
-  } catch {
-    return false;
-  }
-}
+export const swipedOnce = (key = SWIPED): boolean => flag(local, key);
 
 /** Which way a line or card went: to the right (1) or to the left (-1). */
 export type Side = 1 | -1;
@@ -81,9 +76,7 @@ export function Aside({
     // a finger that stood still before it lifted flicked nothing
     const v = e.timeStamp - p.last.t > 80 ? 0 : p.v;
     if (e.type === 'pointerup' && goesAside(now, v, width)) {
-      try {
-        localStorage.setItem(learnt, '1');
-      } catch {}
+      setFlag(local, learnt, true);
       const side: Side = now > 0 ? 1 : -1;
       const out = flies(side);
       setDx(out ? side * window.innerWidth : 0);

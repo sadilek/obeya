@@ -6,15 +6,17 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { cardTag } from '../core/card-number';
-import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
-import { type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
-import { ACTIVE, BadRequest, type Board, contributionOf } from './board';
-import type { Utterance } from './db';
-import { type AgentRuntime, type AgentTool, waitQuietly } from './runtime';
+import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, startable, waitsOn } from '../core/queue';
+import { type Item, UNDO_HOLD_MS, type Wait } from '../core/types';
+import { finished, nameless, titleFrom } from '../core/card';
+import { BadRequest, type Board, TITLE_MAX } from './board';
+import { ACTIVE } from './items';
+import { fromJson, toJson } from './row';
+import { type AgentRuntime, readSession, waitQuietly } from './runtime';
 import type { Workers } from './workers';
 import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './workspaces';
 import { LANGUAGE_NAMES } from '../core/locale';
-import { clip, messageOf } from '../core/text';
+import { messageOf, oneLine } from '../core/text';
 
 /** A workstream as the Coordinator scheduled it, in its turn's order. */
 interface Planned {
@@ -24,23 +26,6 @@ interface Planned {
   /** Those of `waitsFor` it builds on. */
   buildsOn: string[];
   reason: string;
-}
-
-/**
- * What the owner said that may hold a lasting preference: to a worker (answer, note, feedback), in
- * an idea's discussion, to the Coordinator in conversation (a command it carried out, or a question
- * or remark it replied to), or in the text of a card they wrote.
- */
-export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea' | 'command' | 'talk' | 'card';
-
-/** What the learner reads an input with. */
-export interface InputContext {
-  /** The question the owner answered. */
-  question?: string;
-  /** The Coordinator's reply to what the owner said to it. */
-  reply?: string;
-  /** The card's text before the owner wrote in it: a proposal's, a follow-up's. */
-  before?: string;
 }
 
 export interface Scope {
@@ -72,10 +57,8 @@ export interface CoordinatorOptions {
   home: () => string;
   /** Whether the owner paused the canvas's agents: a card the Coordinator lets start waits until they resume them (`{ paused }` in its queue). */
   paused?: () => boolean;
-  /** How long a project's start, or taking a card's workspace, waits for the owner to take it back; START_ALL_HOLD_MS and EVICT_HOLD_MS by default. */
+  /** How long a project's start, or taking a card's workspace, waits for the owner to take it back; UNDO_HOLD_MS by default. */
   holdMs?: number;
-  /** After how many of the owner's inputs the retrospective runs; REVIEW_EVERY by default. */
-  reviewEvery?: number;
   /** The files of screenshots by their ids. */
   imageFiles?: (ids?: string[]) => string[];
 }
@@ -90,7 +73,6 @@ export class Coordinator {
   private chain: Promise<unknown> = Promise.resolve();
   /** How many of those are still to come or under way. */
   private queued = 0;
-  private learning: Promise<unknown> = Promise.resolve();
   private draining = false;
   /** A look again at cards waiting for a workspace, which can free up without a change of the board (a dirty clone cleaned up). */
   private recheck?: ReturnType<typeof setTimeout>;
@@ -173,7 +155,7 @@ export class Coordinator {
           this.scheduleDrain();
         });
     };
-    this.evictions.set(cardId, setTimeout(go, this.o.holdMs ?? EVICT_HOLD_MS));
+    this.evictions.set(cardId, setTimeout(go, this.o.holdMs ?? UNDO_HOLD_MS));
     this.o.board.changed();
   }
 
@@ -212,7 +194,7 @@ export class Coordinator {
     const review = this.o.board.item(reviewId);
     if (!review || !unlanded(review)) return this.request(taskId);
     const t = this.o.board.t.coordinator;
-    const reason = t.followsReview(contributionOf(this.o.board.row(reviewId))?.number ?? 0);
+    const reason = t.followsReview(fromJson(this.o.board.row(reviewId).contribution)?.number ?? 0);
     this.setQueue(taskId, { behind: [reviewId], reason, buildsOn: [reviewId] });
     this.o.board.log(taskId, 'state', 'obeya', t.waitsFor(this.o.board.t.quote(review.title), reason));
   }
@@ -224,14 +206,14 @@ export class Coordinator {
    * few seconds, so the owner can take the start back (`dequeue` on the project).
    */
   private requestAll(project: Item): void {
-    const open = this.o.board.items().filter((i) => i.parent === project.id && i.state === 'planned' && !i.queue);
+    const open = startable(project, this.o.board.items());
     if (!open.length) throw new BadRequest('nothingToStart', 'the project has no planned workstream left to start');
     // one the owner set aside to start later goes with them, so a workstream building on it waits for it
     for (const w of open) if (w.snoozed?.start) this.o.board.unsnooze(w.id, 'owner');
     const now = Date.now();
-    open.forEach((w, n) => this.o.board.work(w.id, { queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
+    open.forEach((w, n) => this.o.board.work(w.id, { queue: toJson({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
     this.o.board.log(project.id, 'state', 'owner', this.o.board.t.coordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
-    setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? START_ALL_HOLD_MS);
+    setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? UNDO_HOLD_MS);
   }
 
   /**
@@ -306,18 +288,15 @@ export class Coordinator {
               });
             }
             const missing = kids.filter((k) => !finished(k.state) && !(keys.get(k.id)! in found));
-            if (missing.length) return `Every open workstream once, please: missing ${missing.map((k) => tagOf(tags, k.id)).join(', ')}. Call dependencies again with all of them.`;
+            if (missing.length) return `Every open workstream once, please: missing ${missing.map((k) => cardTag(k.number)).join(', ')}. Call dependencies again with all of them.`;
             on = found;
             return finish('Recorded. End your turn now.');
           },
         },
       ],
       brief: [
-        `The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`,
-        project.plan?.goal ? `Goal: ${project.plan.goal}` : '',
-        `Its workstreams, in the plan's order:\n${kids
-          .map((k) => `- ${tagOf(tags, k.id)}${finished(k.state) ? ' (delivered)' : ''}: ${k.label ? `${k.label} ` : ''}"${k.title}"${k.body ? ` — ${k.body.replace(/\s+/g, ' ').slice(0, 600)}` : ''}`)
-          .join('\n')}`,
+        ...projectHeader(project),
+        `Its workstreams, in the plan's order:\n${kids.map((k) => `- ${cardTag(k.number)}${finished(k.state) ? ' (delivered)' : ''}: ${named(k)}${bodyCut(k, 600)}`).join('\n')}`,
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -388,217 +367,6 @@ export class Coordinator {
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.coordinator.dequeued);
   }
 
-  /**
-   * The owner said something (to a worker, in an idea, to the Coordinator, in a card's text): if it
-   * states a lasting preference, propose it as a rule for every agent; the owner accepts it in the
-   * sheet. `card` is the card it concerns, or the one open; none in a conversation without one.
-   * Runs in the background, one at a time.
-   */
-  learn(card: Item | null, kind: OwnerInput, text: string, context: InputContext = {}) {
-    // what surrounded the input is read now: by its turn, the agent may have answered it
-    const around = this.around(card, kind, text, context);
-    this.learning = this.learning.then(() => this.distill(card, kind, text, context, around)).catch((e) => console.error('Coordinator (learning):', e));
-    this.noticed();
-  }
-
-  /**
-   * The owner said something, or clicked without words (a start, an approval, a dismissed
-   * proposal): every `reviewEvery` of these, the retrospective reads the history since the last one,
-   * after the learner has read the input that completed the count. The count is a setting of the
-   * canvas, so it survives a restart.
-   */
-  noticed() {
-    const b = this.o.board;
-    // the first input counted starts the history; it was logged a moment ago
-    if (!b.setting(REVIEW_SINCE)) b.setSetting(REVIEW_SINCE, new Date(Date.now() - 60_000).toISOString());
-    const count = Number(b.setting(REVIEW_COUNT) ?? 0) + 1;
-    if (count < (this.o.reviewEvery ?? REVIEW_EVERY)) return b.setSetting(REVIEW_COUNT, String(count));
-    const since = b.setting(REVIEW_SINCE)!;
-    b.setSetting(REVIEW_COUNT, '0');
-    b.setSetting(REVIEW_SINCE, new Date().toISOString());
-    this.learning = this.learning.then(() => this.review(since)).catch((e) => console.error('Coordinator (retrospective):', e));
-  }
-
-  /** The retrospective: one session reads what happened since `since` and proposes rules for patterns across cards. */
-  private async review(since: string): Promise<void> {
-    const history = this.history(since);
-    if (!history.length) return;
-    const rules = this.o.board.preferences('active');
-    let proposed = 0;
-    await readSession(this.o.runtime, {
-      cwd: this.o.home(),
-      role: 'coordinator',
-      onLimit: waitQuietly,
-      system: REVIEW_SYSTEM(this.language),
-      tools: (finish): AgentTool[] => [
-        {
-          name: 'propose',
-          description: `Propose a rule to the owner: one short rule in ${this.language}, and why (one short sentence in ${this.language}, under 150 characters, naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
-          schema: { rule: z.string(), why: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
-          run: ({ rule, why, replaces, repos }) => {
-            const r = String(rule).trim().slice(0, 500);
-            if (!r) return 'Empty rule ignored.';
-            if (proposed >= REVIEW_PROPOSALS) return finish(`At most ${REVIEW_PROPOSALS} proposals. End your turn now.`);
-            const targets = this.targets(repos);
-            if (typeof targets === 'string') return targets;
-            const fresh = targets.filter((t) => !this.o.board.preferences('proposed').some((p) => p.text === r && p.target === t));
-            if (!fresh.length) return 'Already proposed.';
-            const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-            for (const t of fresh) this.o.board.proposePreference(r, { review: true, quote: String(why ?? '') }, old?.id, t);
-            proposed++;
-            return proposed < REVIEW_PROPOSALS ? 'Proposed.' : finish('Proposed. That was the last one; end your turn now.');
-          },
-        },
-        { name: 'done', description: 'Nothing (more) to propose.', schema: {}, run: () => finish('Fine. End your turn now.') },
-      ],
-      brief: [`What happened on the canvas since the last retrospective, oldest first:\n${history.join('\n')}`, ...this.rules(null)].filter(Boolean).join('\n\n'),
-    });
-  }
-
-  /**
-   * What the retrospective reads, oldest first, at most the latest REVIEW_HISTORY lines: the cards'
-   * milestones (the owner's notes, answers and clicks, the agents' questions and hand-overs, answers
-   * given in the owner's name), the owner's words in ideas and to the Coordinator (taken back or
-   * not), the cards they deleted or dismissed, and the rule proposals they decided on.
-   */
-  private history(since: string): string[] {
-    const b = this.o.board;
-    const title = (id?: string) => (id ? b.item(id)?.title : undefined);
-    const lines: { at: string; text: string }[] = [
-      ...b.timeline(since, REVIEW_HISTORY).flatMap((m) => {
-        const t = title(m.cardId);
-        if (!t) return [];
-        const who = m.kind === 'answer' && m.author !== 'owner' ? `${WHO[m.author]}, in the owner's name,` : WHO[m.author];
-        const what = m.kind === 'created' ? (m.author === 'owner' ? 'the owner created the card' : 'an agent proposed the card') : `${who}${STEPS[m.kind] ?? ' '}${clip(m.text, 300)}`;
-        return [{ at: m.at, text: `"${t}": ${what}` }];
-      }),
-      ...b
-        .utterances(since, REVIEW_HISTORY)
-        .filter((u) => u.kind === 'talk')
-        .map((u) => ({ at: u.at, text: `"${u.title ?? ''}": the owner in the idea's discussion: ${clip(u.text, 300)}` })),
-      ...b
-        .talk(REVIEW_HISTORY)
-        .filter((t) => t.at > since && t.reply !== undefined)
-        .map((t) => {
-          const open = title(t.cardId);
-          return {
-            at: t.at,
-            text: `the owner to you${open ? ` (with "${open}" open)` : ''}: ${clip(t.said, 300)} → ${clip(t.reply!, 200)}${t.undone ? ' (the owner took it back)' : ''}`,
-          };
-        }),
-      ...b.removed(since).map((r) => ({
-        at: r.at,
-        text: r.state === 'proposal' ? `the owner dismissed the card an agent proposed: "${r.title}"` : `the owner deleted the card "${r.title}" (${r.state})`,
-      })),
-      ...b.decidedProposals(since).map((p) => ({
-        at: p.at,
-        text: `the owner ${p.state === 'rejected' ? 'rejected' : 'accepted'} the proposed rule "${p.text}"${p.state === 'filed' ? ` for the CLAUDE.md of ${p.target}` : ''}${p.quote ? ` (its occasion: ${clip(p.quote, 200)})` : ''}`,
-      })),
-    ];
-    return lines
-      .sort((x, y) => x.at.localeCompare(y.at))
-      .slice(-REVIEW_HISTORY)
-      .map((l) => `- ${l.at.slice(0, 16).replace('T', ' ')} ${l.text}`);
-  }
-
-  /**
-   * What the learner and the retrospective read about the rules: the canvas's repositories, the active
-   * rules (numbered, for `replaces`), the rules on their way into a CLAUDE.md, and the proposals
-   * waiting or rejected.
-   */
-  private rules(card: Item | null): string[] {
-    const b = this.o.board;
-    const repo = card?.repo ?? b.home;
-    const rules = b.preferences('active');
-    const where = (p: Preference) => (p.target ? ` (for the CLAUDE.md of ${p.target})` : '');
-    const list = (ps: Preference[]) => ps.map((p) => `- ${p.text}${where(p)}`).join('\n');
-    const [open, filed, rejected] = [b.preferences('proposed'), b.preferences('filed'), b.preferences('rejected')];
-    return [
-      `The canvas's repositories (ids for repos):\n${b.canvas.repos.map((r) => `- ${r.id}: ${r.name}, at ${r.path}${r.id === repo ? (card ? " (the card's)" : ' (the home repository)') : ''}`).join('\n')}`,
-      rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
-      filed.length ? `Rules the owner accepted for a repository's CLAUDE.md (in it or on their way; do not propose them again):\n${list(filed)}` : '',
-      open.length ? `Proposals waiting for the owner (do not propose them again):\n${list(open)}` : '',
-      rejected.length ? `Proposals the owner rejected (do not propose them again):\n${list(rejected)}` : '',
-    ];
-  }
-
-  /** The repositories a proposal is for (none: the preference memory), or why they are not the canvas's. */
-  private targets(repos: unknown): (string | undefined)[] | string {
-    const ids = Array.isArray(repos) ? [...new Set(repos.map(String).filter(Boolean))] : [];
-    const known = this.o.board.canvas.repos.map((r) => r.id);
-    const unknown = ids.filter((id) => !known.includes(id));
-    if (unknown.length) return `Unknown repository ${unknown.join(', ')}; the canvas has ${known.join(', ')}. Call propose again.`;
-    return ids.length ? ids : [undefined];
-  }
-
-  /** What the learner reads an input in: the card's text, the agent's last message before it, what the owner said in the last days. */
-  private around(card: Item | null, kind: OwnerInput, text: string, { question }: InputContext): string[] {
-    // a card deleted meanwhile has no log to read
-    const events = card && this.o.board.item(card.id) ? this.o.board.events(card.id) : [];
-    // the newest first; a question the owner answered is shown as such
-    const said = question ? undefined : events.find((e) => AGENTS.includes(e.author) && SAYS.includes(e.kind));
-    const recent = this.o.board.utterances(new Date(Date.now() - RECENT_DAYS * 86_400_000).toISOString(), RECENT_UTTERANCES + 1);
-    // the input itself is among them, as the newest with its words (a card's text is not)
-    const self = recent.findLastIndex((u) => u.text === text);
-    if (self >= 0) recent.splice(self, 1);
-    return [
-      card?.body && kind !== 'card' ? `The card's text:\n${clip(card.body, 1500)}` : '',
-      recent.length
-        ? `What the owner said in the last ${RECENT_DAYS} days, oldest first:\n${recent
-            .slice(-RECENT_UTTERANCES)
-            .map((u) => `- ${u.at.slice(0, 10)}, ${UTTERED[u.kind]}${u.title ? ` on "${u.title}"` : ''}: ${clip(u.text, 300)}`)
-            .join('\n')}`
-        : '',
-      said ? `The ${said.author === 'explorer' ? 'idea agent' : 'agent'}'s last message on the card before it:\n${clip(said.text, 1500)}` : '',
-    ];
-  }
-
-  private async distill(card: Item | null, kind: OwnerInput, text: string, context: InputContext, around: string[]): Promise<void> {
-    const rules = this.o.board.preferences('active');
-    const open = this.o.board.preferences('proposed');
-    const { question, reply, before } = context;
-    let proposed = false;
-    await readSession(this.o.runtime, {
-      cwd: card && !card.repoDown ? this.o.repoFor(card).path : this.o.home(),
-      role: 'coordinator',
-      onLimit: waitQuietly,
-      system: LEARN_SYSTEM(this.language),
-      tools: (finish): AgentTool[] => [
-        {
-          name: 'propose',
-          description: `Propose a lasting preference to the owner as one short rule in ${this.language}. Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
-          schema: { rule: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
-          run: ({ rule, replaces, repos }) => {
-            const r = String(rule).trim().slice(0, 500);
-            if (!r) return finish('Empty rule ignored.');
-            if (proposed) return finish('One proposal per input. End your turn now.');
-            const targets = this.targets(repos);
-            if (typeof targets === 'string') return targets;
-            const fresh = targets.filter((t) => !open.some((p) => p.text === r && p.target === t));
-            if (!fresh.length) return finish('Already proposed. End your turn now.');
-            const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-            for (const t of fresh) this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id, t);
-            proposed = true;
-            if (card) this.o.board.log(card.id, 'state', 'coordinator', this.o.board.t.coordinator.proposes(r));
-            return finish('Proposed. End your turn now.');
-          },
-        },
-        { name: 'nothing', description: 'Nothing lasting to record.', schema: {}, run: () => finish('Fine. End your turn now.') },
-      ],
-      brief: [
-        card ? `Card${kind === 'talk' || kind === 'command' ? ' the owner had open' : ''}: ${card.kind === 'project' ? 'project ' : ''}"${card.title}".` : '',
-        ...around,
-        question ? `The worker asked: ${question}` : '',
-        before ? `Before the owner wrote in it, the card's text read:\n${before}` : '',
-        `The owner's ${INPUTS[kind]}: ${text}`,
-        reply ? `You replied: ${reply}` : '',
-        ...this.rules(card),
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-    });
-  }
-
   /** Cards in progress; with a repository, only those a card of it can collide with. */
   inProgress(repo?: string): Item[] {
     return this.o.board
@@ -661,7 +429,7 @@ export class Coordinator {
       if (this.o.board.item(cardId)?.state !== 'working') return;
       try {
         const scope = await this.estimate(card, [], [], [], waitQuietly);
-        this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
+        this.o.board.work(cardId, { scope: toJson({ files: scope.files, reason: scope.reason }) });
       } catch {}
       return;
     }
@@ -676,7 +444,7 @@ export class Coordinator {
     if (!now?.queue) return;
     // its repository stopped running while the Coordinator read
     if (now.repoDown) return this.repoGone(now);
-    this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
+    this.o.board.work(cardId, { scope: toJson({ files: scope.files, reason: scope.reason }) });
     // the workstreams it builds on, and the cards in progress or queued ahead whose changes it
     // expects to conflict with the card's
     const behind = [...active, ...ahead, ...pending].filter((a) => scope.buildsOn.includes(a.id) || scope.conflictsWith.includes(a.id)).map((a) => a.id);
@@ -775,7 +543,7 @@ export class Coordinator {
       if (!still(id)) return before.add(id);
       const behind = p.waitsFor.filter((b) => before.has(b) && this.blocks(b));
       before.add(id);
-      this.o.board.work(id, { scope: JSON.stringify({ files: p.files, reason: p.reason }), queue: JSON.stringify({ checking: true, together: key, since: times[n] }) });
+      this.o.board.work(id, { scope: toJson({ files: p.files, reason: p.reason }), queue: toJson({ checking: true, together: key, since: times[n]! }) });
       const buildsOn = behind.filter((b) => p.buildsOn.includes(b));
       const reason = p.reason || (buildsOn.length ? t.buildsOn : t.likelyConflict);
       if (this.queueOrStart(id, behind, buildsOn, reason, `${project ? t.togetherStarts : t.freedStarts}${p.reason ? ` ${p.reason}` : ''}`, (b) => names.get(b))) started++;
@@ -893,7 +661,7 @@ export class Coordinator {
       const q = w.queue as { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] };
       // a review card whose PR was closed without a merge leaves nothing to build on: what followed
       // up on it goes back to planned, for the owner to decide on
-      const unmerged = items.find((i) => q.buildsOn?.includes(i.id) && i.state === 'done' && contributionOf(this.o.board.row(i.id))?.closed);
+      const unmerged = items.find((i) => q.buildsOn?.includes(i.id) && i.state === 'done' && fromJson(this.o.board.row(i.id).contribution)?.closed);
       if (unmerged) {
         this.setQueue(w.id, null);
         this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.coordinator.reviewClosed(this.o.board.t.quote(unmerged.title)));
@@ -987,7 +755,7 @@ export class Coordinator {
           schema: { title: z.string() },
           run: (a) => {
             if (title !== null) return 'Already named.';
-            title = String(a.title).replace(/\s+/g, ' ').trim().slice(0, 200);
+            title = oneLine(String(a.title)).slice(0, TITLE_MAX);
             return finish('Recorded. End your turn now.');
           },
         },
@@ -1031,7 +799,7 @@ export class Coordinator {
           },
         },
       ],
-      brief: await this.brief(card, active, ahead, pending, tags),
+      brief: await this.brief(card, active, ahead, pending),
     });
     if (!scope) throw new Error(error ?? 'no estimate');
     return scope;
@@ -1083,7 +851,7 @@ export class Coordinator {
               });
             }
             const missing = batch.filter((w) => !seen.has(w.id));
-            if (missing.length) return `Every ${noun} once, please: missing ${missing.map((w) => tagOf(tags, w.id)).join(', ')}. Call schedule again with all of them.`;
+            if (missing.length) return `Every ${noun} once, please: missing ${missing.map((w) => cardTag(w.number)).join(', ')}. Call schedule again with all of them.`;
             plan = order;
             return finish('Recorded. End your turn now.');
           },
@@ -1092,22 +860,19 @@ export class Coordinator {
       brief: [
         ...(project
           ? [
-              `The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`,
-              project.plan?.goal ? `Goal: ${project.plan.goal}` : '',
-              `Its workstreams to schedule, in the plan's order:\n${batch
-                .map((w) => `- ${tagOf(tags, w.id)}: ${w.label ? `${w.label} ` : ''}"${w.title}"${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 600)}` : ''}`)
-                .join('\n')}`,
+              ...projectHeader(project),
+              `Its workstreams to schedule, in the plan's order:\n${batch.map((w) => `- ${cardTag(w.number)}: ${named(w)}${bodyCut(w, 600)}`).join('\n')}`,
             ]
           : [
               `The cards to schedule, freed at once, in their order in the queue, which the owner may have set: keep it where neither a dependency nor a likely conflict asks for another:\n${batch
                 .map((w) => {
                   const of = w.parent ? this.o.board.item(w.parent) : undefined;
                   const where = of?.plan ? ` (workstream ${w.label ?? ''} of the project "${of.title}", plan doc ${of.plan.file})` : '';
-                  return `- ${tagOf(tags, w.id)}: ${w.kind} "${w.title}"${where}${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 1500)}` : ''}`;
+                  return `- ${cardTag(w.number)}: ${w.kind} "${w.title}"${where}${bodyCut(w, 1500)}`;
                 })
                 .join('\n')}`,
             ]),
-        ...(await this.others(batch[0]!, active, ahead, tags)),
+        ...(await this.others(batch[0]!, active, ahead)),
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -1116,20 +881,20 @@ export class Coordinator {
     return plan;
   }
 
-  private async brief(card: Item, active: Item[], ahead: Item[], pending: Item[], tags: Map<string, string>): Promise<string> {
+  private async brief(card: Item, active: Item[], ahead: Item[], pending: Item[]): Promise<string> {
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
-    const siblings = [...active, ...ahead].filter((a) => a.parent === card.parent).map((a) => tagOf(tags, a.id));
+    const siblings = [...active, ...ahead].filter((a) => a.parent === card.parent).map((a) => cardTag(a.number));
     const lines = [
       `The card to start: ${card.kind} "${card.title}".`,
       card.body.trim(),
       project?.plan ? `It is workstream ${card.label ?? ''} of the project "${project.title}"; plan doc ${project.plan.file}.` : '',
-      ...(await this.others(card, active, ahead, tags)),
+      ...(await this.others(card, active, ahead)),
       siblings.length ? `Of these, workstreams of the same project: ${siblings.join(', ')}.` : '',
       pending.length
         ? `The project's other workstreams that have not landed, neither in progress nor queued ahead:\n${pending
             .map((w) => {
               const state = notStarted(w) ? (w.branch ? 'stopped by the owner, not running' : 'not started') : 'queued after this card';
-              return `- ${tagOf(tags, w.id)}: ${w.label ? `${w.label} ` : ''}"${w.title}" (${state})${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 300)}` : ''}`;
+              return `- ${cardTag(w.number)}: ${named(w)} (${state})${bodyCut(w, 300)}`;
             })
             .join('\n')}`
         : '',
@@ -1138,23 +903,26 @@ export class Coordinator {
   }
 
   /** The cards in progress and queued ahead, as a turn of the Coordinator reads them. */
-  private async others(card: Item, active: Item[], ahead: Item[], tags: Map<string, string>): Promise<string[]> {
+  private async others(card: Item, active: Item[], ahead: Item[]): Promise<string[]> {
     const folder = !!this.o.repoFor(card).folder;
     // in a folder nothing is merged later: every path counts
     const soft = folder ? [] : this.o.repoFor(card).adapter.softPaths;
     const described = folder ? (c: Change) => `${c.file} (${c.regions[0] ?? 'changed'})` : describe;
     const hard = (f: string) => !soft.some((s) => overlaps(normalize(f), s));
+    /** A card in progress or ahead: its tag, title and first line, and what it is expected to change. */
+    const head = (a: Item) => [
+      `- ${cardTag(a.number)}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
+      `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+    ];
     // git reads the branches side by side, without holding up the server
     const changes = await Promise.all(active.map((a) => this.o.repoFor(a).workspaces.changes(a.id)));
     return [
       active.length
         ? `Cards in progress:\n${active
             .map((a, n) => {
-              const tag = tagOf(tags, a.id);
               const changed = changes[n]!.filter((c) => hard(c.file));
               return [
-                `- ${tag}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
-                `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+                ...head(a),
                 `  changed so far: ${changed.length ? changed.slice(0, 60).map(described).join(', ') : '(nothing yet)'}`,
               ].join('\n');
             })
@@ -1167,8 +935,7 @@ export class Coordinator {
               const waitsFor =
                 'behind' in q ? q.behind.map((id) => `"${this.o.board.item(id)?.title ?? id}"`).join(', ') : 'workspace' in q ? 'a free workspace (its start is decided)' : 'paused' in q ? "the owner to resume the canvas's paused agents (its start is decided)" : '';
               return [
-                `- ${tagOf(tags, a.id)}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
-                `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+                ...head(a),
                 `  waits for: ${waitsFor || 'your decision'}`,
               ].join('\n');
             })
@@ -1203,7 +970,7 @@ export class Coordinator {
   /** A card keeps the time it came to the Coordinator for as long as it stays queued. */
   private setQueue(cardId: string, q: Wait | null, keep?: string) {
     const since = keep ?? this.o.board.item(cardId)?.queue?.since ?? new Date().toISOString();
-    this.o.board.work(cardId, { queue: q ? JSON.stringify({ ...q, since }) : null });
+    this.o.board.work(cardId, { queue: q ? toJson({ ...q, since }) : null });
   }
 
   private card(id: string): Item {
@@ -1312,169 +1079,23 @@ Both empty: it starts now. A ${b.noun} that waits starts by itself once what it 
 `.trim();
 };
 
-/**
- * Where a rule goes: the preference memory, for how agents work with the owner through Obeya, or a
- * repository's CLAUDE.md, for anything about the repository. Shared by the learner and the retrospective.
- */
-const WHERE_RULES_GO = `
-A rule goes to one of two places:
-- The preference memory, for rules at the level of Obeya: how the agents work with the owner through Obeya, whatever the repository. What to ask the owner and what to decide alone, how many options a question offers, how to report, hand over and demo, what to decide in the owner's name and what not. Leave repos out.
-- A repository's CLAUDE.md, for anything about a repository: its conventions, product requirements, tools, how its code is written, tested and landed, the UI and its wording, and taste in code too, even when it holds in every repository. There it is versioned, colleagues see it, and Claude Code follows it outside Obeya as well. Pass repos: the repository it concerns (usually the card's), or every repository of the canvas when it holds in all of them. A worker writes it into the CLAUDE.md once the owner accepts it; until that has landed, no agent follows it. If the repository's CLAUDE.md or docs say it already (you can read them), propose nothing.
-`.trim();
-
-const REPOS_PARAM =
-  "repos: the ids of the repositories whose CLAUDE.md the rule belongs in (one proposal each); leave it out for a rule on how agents work with the owner through Obeya.";
-
-const LEARN_SYSTEM = (language: string) => `
-You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
-
-You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the canvas's repositories, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting rule that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
-
-${WHERE_RULES_GO}
-
-Signals for one:
-- It is phrased generally: "immer", "nie", "ab jetzt", "grundsätzlich", "jedes Mal", "bei so etwas".
-- It corrects how an agent works rather than what it builds: the agent asked what it could have decided itself, skipped a check, wrote in a style the owner does not want, went beyond its task. The agent's last message shows what the owner reacts to.
-- It repeats something the owner said before, on this card or another: said twice, it should not need saying a third time.
-Not a preference: deciding the case at hand (an option, a name, a date, what this card should do), approving, asking how things stand, correcting a fact. Most of what the owner says is like that: then call nothing.
-
-Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in ${language}, in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
-`.trim();
-
-/** After how many of the owner's inputs the retrospective runs, at most how many rules it proposes, and how much history it reads. */
-export const REVIEW_EVERY = 20;
-const REVIEW_PROPOSALS = 3;
-const REVIEW_HISTORY = 300;
-/** The settings that keep the retrospective's count across restarts, and when its history begins. */
-const REVIEW_COUNT = 'review_inputs';
-const REVIEW_SINCE = 'review_since';
-
-const REVIEW_SYSTEM = (language: string) => `
-You are the Coordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
-
-${WHERE_RULES_GO}
-
-This is the retrospective. You get what happened on the canvas since the last one, oldest first: what the owner said and clicked (notes, answers, feedback, approvals, starts against your advice, cards and proposals they deleted or dismissed, commands they took back, rule proposals they accepted or rejected), and what the agents asked and handed over. Each thing the owner said was already read on its own; look for what only shows across several moments and cards:
-- the same correction or feedback on different cards;
-- the same kind of question, answered the same way each time;
-- proposals of one kind the owner always dismisses, or always takes;
-- your advice to wait overruled again and again;
-- commands taken back, and what the owner did instead.
-Clicks without words count here: what the owner does again and again says what they want as much as what they say.
-
-Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in ${language} in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); why, one short sentence in ${language} for the owner (under 150 characters) naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
-`.trim();
-
-/** How the retrospective names who did something on a card, and what. */
-const WHO: Record<CardEvent['author'], string> = {
-  owner: 'the owner',
-  worker: 'the agent',
-  explorer: 'the idea agent',
-  project: 'the project agent',
-  coordinator: 'you',
-  obeya: 'Obeya',
-};
-const STEPS: Partial<Record<CardEvent['kind'], string>> = {
-  state: ': ',
-  question: ' asked: ',
-  answer: ' answered: ',
-  review: ' handed over: ',
-  hint: ' wrote to the agent: ',
-  error: ', an error: ',
-};
-
-/** How far back the learner reads what the owner said, and at most how much of it. */
-const RECENT_DAYS = 3;
-const RECENT_UTTERANCES = 30;
-
-/** Who on a card speaks for an agent, and in which of its log lines. */
-const AGENTS: CardEvent['author'][] = ['worker', 'explorer'];
-const SAYS: CardEvent['kind'][] = ['say', 'question', 'review', 'report', 'talk'];
-
-/** How the learner hears what the owner said in the last days. */
-const UTTERED: Record<Utterance['kind'], string> = {
-  hint: 'to the agent',
-  answer: "answering the agent's question",
-  talk: "in an idea's discussion",
-  say: 'to you',
-};
-
-/** How the learner hears each kind of input. */
-const INPUTS: Record<OwnerInput, string> = {
-  answer: 'answer',
-  note: 'note to the worker',
-  feedback: 'feedback on the finished work',
-  idea: 'words in the discussion of an idea',
-  command: 'words to you, which you carried out',
-  talk: 'question or remark to you',
-  card: 'text of a card they wrote, the task for an agent',
-};
-
-/**
- * A read-only session that reads `brief` (and `images`) and answers through its tools: it ends with
- * its turn, or once a tool calls `finish`. It settles with the error that ended it before a tool
- * called `finish`, if one did. With `onLimit` it waits for the account's usage limit instead of
- * failing on it (`AgentSpec.onLimit`).
- */
-export function readSession(
-  runtime: AgentRuntime,
-  o: {
-    cwd: string;
-    system: string;
-    tools: (finish: (r: string) => string) => AgentTool[];
-    brief: string;
-    role: AgentRole;
-    images?: string[];
-    onLimit?: (until: number | undefined) => void;
-    /** The card it reads for, whose cost it counts to (`AgentSpec.spendOn`). */
-    spendOn?: string;
-  },
-): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    let done = false;
-    const end = (error?: string) => {
-      if (!done) {
-        done = true;
-        resolve(error);
-      }
-    };
-    const finish = (r: string) => {
-      end();
-      return r;
-    };
-    const session = runtime.start(
-      {
-        cwd: o.cwd,
-        readOnly: true,
-        role: o.role,
-        system: o.system,
-        tools: o.tools(finish),
-        ...(o.onLimit ? { onLimit: o.onLimit } : {}),
-        ...(o.spendOn ? { spendOn: o.spendOn } : {}),
-        onEvent: (e) => {
-          if (e.type === 'idle' || e.type === 'error') {
-            session.close();
-            end(e.type === 'error' ? e.message : undefined);
-          }
-        },
-      },
-      o.brief,
-      o.images,
-    );
-  });
-}
-
 /** A changed file with the places changed in it: "src/a.ts (lines 12-20 in function f; 40)", or "(new)". */
 const describe = (c: Change) =>
   `${c.file} (${c.regions.length ? (c.regions[0] === 'deleted' ? 'deleted' : `lines ${c.regions.slice(0, 8).join('; ')}${c.regions.length > 8 ? '; …' : ''}`) : 'new'})`;
 
-/** The tag a turn of the Coordinator knows a card by. */
 /** A card waited on that still holds back what builds on it: there, and its work not on the main branch yet. */
 const unlanded = (i?: Item) => !!i && !finished(i.state) && !i.archivedAt;
 /** Whether two lists hold the same cards. */
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
-const tagOf = (tags: Map<string, string>, id: string) => [...tags].find(([, x]) => x === id)![0];
+/** A project as a turn of the Coordinator reads it above its workstreams: its title and plan doc, and its goal (empty without one). */
+const projectHeader = (project: Item) => [`The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`, project.plan?.goal ? `Goal: ${project.plan.goal}` : ''];
+
+/** A workstream by its label and title, as a turn of the Coordinator reads it. */
+const named = (w: Item) => `${w.label ? `${w.label} ` : ''}"${w.title}"`;
+
+/** A card's body on one line, cut at `cut` characters, behind a dash; nothing without one. */
+const bodyCut = (w: Item, cut: number) => (w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, cut)}` : '');
 
 const normalize = (p: string) => p.trim().replace(/^\.\//, '').replace(/^\/+/, '');
 

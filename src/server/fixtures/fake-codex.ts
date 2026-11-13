@@ -12,6 +12,7 @@
 // - `patch <path> <text>`: adds a file through `apply_patch`, with the hooks around it.
 // - `unauthorized`: the turn fails for a missing login.
 // - `limit`: the usage limit stops the turn.
+// - `costly`: reports the thread's token usage, then says `done`.
 // - `wait`: the turn goes on until a message steers it.
 // - `late`: the turn goes on until a message comes, then ends before it could take it.
 // - anything else: says `echo: <text>`.
@@ -19,10 +20,49 @@
 // With `FAKE_CODEX_REFUSE_START` set, `thread/start` fails with its text. With `FAKE_CODEX_PLUGINS_MS`,
 // `plugin/list` answers after that many milliseconds, as Codex does once it has fetched its remote
 // plugins, and the log gets `plugin/list answered` then.
+//
+// As the CLI, its state in `~/.fake-codex` (tests, demos): `--version` says the version in `version`
+// (0.159.2 where there is none); `login status` says it is logged in; `update` waits the milliseconds
+// in `update-ms`, then moves to the version in `newest` and lists the models in `newest-models.json`
+// from then on, or fails with the text in `update-fails`; `update --help` is the general help where
+// `old` is there, as of a Codex without the command. The app server lists the models in
+// `models.json` there, unless `FAKE_CODEX_MODELS` names others.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+const state = join(process.env.HOME ?? homedir(), '.fake-codex');
+const read = (name: string) => (existsSync(join(state, name)) ? readFileSync(join(state, name), 'utf8').trim() : undefined);
+const [command, sub] = process.argv.slice(2);
+if (command === '--version') {
+  console.log(`codex-cli ${read('version') ?? '0.159.2'}`);
+  process.exit(0);
+}
+if (command === 'login' && sub === 'status') {
+  console.log('Logged in using ChatGPT');
+  process.exit(0);
+}
+if (command === 'update') {
+  if (sub === '--help') {
+    console.log(read('old') !== undefined ? 'Codex CLI\n\nUsage: codex [OPTIONS] [PROMPT]' : 'Update Codex to the latest version\n\nUsage: codex update [OPTIONS]');
+    process.exit(0);
+  }
+  console.log('Updating Codex via `npm install -g @openai/codex`...');
+  await Bun.sleep(Number(read('update-ms') ?? 0));
+  const fails = read('update-fails');
+  if (fails) {
+    console.error(fails);
+    process.exit(1);
+  }
+  const to = read('newest') ?? read('version') ?? '0.159.2';
+  writeFileSync(join(state, 'version'), `${to}\n`);
+  if (existsSync(join(state, 'newest-models.json'))) copyFileSync(join(state, 'newest-models.json'), join(state, 'models.json'));
+  console.log(`Codex is now at ${to}`);
+  process.exit(0);
+}
 
 const log = process.env.FAKE_CODEX_LOG;
 if (process.env.FAKE_CODEX_PID) writeFileSync(process.env.FAKE_CODEX_PID, String(process.pid));
@@ -173,7 +213,7 @@ process.stdin.setEncoding('utf8').on('data', (d: string) => {
         // `FAKE_CODEX_MODELS`: the catalog as `model/list` gives it (JSON), `fail` for a list that fails, `old` for a Codex without it
         if (process.env.FAKE_CODEX_MODELS === 'fail') send({ id: m.id, error: { code: -32603, message: 'models unavailable' } });
         else if (process.env.FAKE_CODEX_MODELS === 'old') send({ id: m.id, error: { code: -32600, message: 'Invalid request: unknown variant `model/list`, expected one of `initialize`, `thread/start`, `turn/start`' } });
-        else send({ id: m.id, result: { data: process.env.FAKE_CODEX_MODELS ? JSON.parse(process.env.FAKE_CODEX_MODELS) : CATALOG, nextCursor: null } });
+        else send({ id: m.id, result: { data: JSON.parse(process.env.FAKE_CODEX_MODELS ?? read('models.json') ?? 'null') ?? CATALOG, nextCursor: null } });
         break;
       case 'plugin/list': {
         const id = m.id;

@@ -3,15 +3,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { blocksSaving, type CanvasConfig, type ConfigView, type DemoSettingsView, type LanguageView } from '../core/types';
+import type { DemoSettingsView, LanguageView } from '../core/types';
+import { blocksSaving, type CanvasConfig, type ConfigView } from '../core/config';
 import { Board } from './board';
 import { CanvasRuntime, type StartFailure } from './canvas';
-import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './config';
+import { Config, readConfigFile } from './config';
+import { DemoSettingsDialog } from './demo-settings';
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, FakeRuntime, gitClone, gitRepo, noForge, removeDir, syncGitCalls, until } from './testing';
-import { git } from './workspaces';
+import { asOwner, commit, FakeRuntime, gitClone, gitRepo, noForge, removeDir, silentWav, syncGitCalls, until, silent } from './testing';
+import { git } from './git';
 
 let dir: string;
 let store: Store;
@@ -35,8 +37,6 @@ const config = (source: 'file' | 'args', started: CanvasConfig[], running: strin
     store,
     running: () => running,
     server: { port: 4417, home: dir, permissionMode: 'auto' },
-    // not the machine's lock: a demo another agent renders meanwhile would hold up the sample
-    ttsLock: join(dir, 'tts.lock'),
     restart: () => void restarts++,
     apply: (_, ids) => void taken.push(ids),
     onSettings: () => void applied++,
@@ -203,6 +203,37 @@ describe("Obeya's configuration", () => {
     Bun.spawnSync(['git', '-C', api, 'remote', 'add', 'origin', 'https://github.com/acme/api.git']);
     expect((await check([{ path: web, hosts: [host] }, { path: api, hosts: [{ ...host, ssh: 'other@box.local' }] }])).problems).toEqual([{ code: 'hostName', canvas: 0, repo: 1, detail: expect.stringContaining('me@box.local') }]);
     expect((await check([{ path: web, hosts: [{ ...host, name: 'a/b' }] }])).problems.map((p) => p.code)).toEqual(['invalid']);
+  });
+
+  test("a repository on GitHub offers the accounts gh is logged into there; one set that gh lacks is a problem that blocks nothing; it stays this machine's", async () => {
+    const gh = join(dir, 'gh');
+    mkdirSync(gh);
+    writeFileSync(join(gh, 'hosts.yml'), 'github.com:\n    users:\n        alice:\n        work-alice:\n    user: alice\n');
+    const was = process.env.GH_CONFIG_DIR;
+    process.env.GH_CONFIG_DIR = gh;
+    try {
+      const c = config('file', []);
+      Bun.spawnSync(['git', '-C', web, 'remote', 'add', 'origin', 'git@github.com:acme-org/web.git']);
+      const check = (repos: object[]) => c.check([{ repos }]);
+      const ok = await check([{ path: web, githubAccount: ' work-alice ' }, { path: api }]);
+      expect(ok.problems).toEqual([]);
+      expect(ok.canvases[0]!.repos[0]!.githubAccount).toBe('work-alice');
+      expect(ok.resolved[0]!.repos[0]!.github).toEqual({ host: 'github.com', owner: 'acme-org', accounts: ['alice', 'work-alice'], active: 'alice' });
+      // a repository not on GitHub has no account to choose
+      expect(ok.resolved[0]!.repos[1]!.github).toBeUndefined();
+      expect((await check([{ path: web, githubAccount: '' }])).canvases[0]!.repos[0]).not.toHaveProperty('githubAccount');
+      const missing = await check([{ path: web, githubAccount: 'bob' }, { path: api, githubAccount: 'alice' }]);
+      expect(missing.problems.map((p) => [p.code, p.repo])).toEqual([
+        ['githubAccount', 0],
+        ['githubAccount', 1],
+      ]);
+      expect(missing.problems.some(blocksSaving)).toBe(false);
+      // never among the settings "Take over into the repository for everyone" commits
+      expect(ok.canvases[0]!.repos[0]!.settings).toBeUndefined();
+    } finally {
+      if (was === undefined) delete process.env.GH_CONFIG_DIR;
+      else process.env.GH_CONFIG_DIR = was;
+    }
   });
 
   test("a demo site that cannot be used is a problem at the repository", async () => {
@@ -433,10 +464,7 @@ describe("Obeya's configuration", () => {
   test(`"Take over into the repository for everyone" of a demo site's tags: saved with the site, committed with it; once the file has them, nothing is committed`, async () => {
     mkdirSync(join(dir, 'home'));
     const site = { title: 'Demos', url: 'https://demos.example.com', deploy: 'deploy {dir}' };
-    mkdirSync(join(web, '.obeya'));
-    writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'main', demo: { language: 'en', site } }, null, 2));
-    git(web, 'add', '.obeya/settings.json');
-    git(web, 'commit', '--quiet', '-m', 'settings');
+    commit(web, '.obeya/settings.json', JSON.stringify({ land: 'main', demo: { language: 'en', site } }, null, 2), 'settings');
     const c = config('file', []);
     // saved with the site, as the dialog has them
     const tags = { Area: ['Billing', 'Reports'], Kind: ['Fix'] };
@@ -489,10 +517,7 @@ describe("Obeya's configuration", () => {
 
   test(`"Take over into the repository for everyone" of what origin's main holds already: no pull request; this machine's values go only where the main branch Obeya reads has them too`, async () => {
     mkdirSync(join(dir, 'home'));
-    mkdirSync(join(web, '.obeya'));
-    writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'pr', checks: ['bun test'] }));
-    git(web, 'add', '.obeya/settings.json');
-    git(web, 'commit', '--quiet', '-m', 'settings');
+    commit(web, '.obeya/settings.json', JSON.stringify({ land: 'pr', checks: ['bun test'] }), 'settings');
     const origin = join(dir, 'origin.git');
     gitClone(web, origin, { bare: true });
     git(web, 'remote', 'add', 'origin', origin);
@@ -641,7 +666,9 @@ describe('the configuration over HTTP', () => {
   beforeEach(async () => {
     const c = config('args', [{ repos: [{ path: web }] }], ['web']);
     canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c });
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, c);
+    // not the machine's lock: a demo another agent renders meanwhile would hold up the sample
+    const demoSettings = new DemoSettingsDialog({ home: dir, ttsLock: join(dir, 'tts.lock') });
+    server = serve([canvas], 0, { transcriber: silent, config: c, demoSettings });
   });
   afterEach(() => {
     server.stop(true);
@@ -719,7 +746,7 @@ describe('the configuration over HTTP', () => {
 
   test.skipIf(!Bun.which('uv') || !Bun.which('ffmpeg'))('plays a sentence in the voice being chosen, or says why it cannot', async () => {
     const clip = join(dir, 'clip.wav');
-    writeFileSync(clip, wav(0.2));
+    writeFileSync(clip, silentWav(0.2));
     // the owner's command goes to the platform's shell: cmd.exe on Windows
     const windows = process.platform === 'win32';
     const command = windows ? `findstr "^" > "${join(dir, 'said.txt')}" & copy /y "${clip}" "%DEMO_WAV%" >nul` : `cat > ${JSON.stringify(join(dir, 'said.txt'))}; cp ${JSON.stringify(clip)} "$DEMO_WAV"`;
@@ -737,7 +764,7 @@ describe('the configuration over HTTP', () => {
       port: 0,
       fetch: async (req) => {
         asked = { auth: req.headers.get('authorization'), body: await req.json() };
-        return new Response(wav(0.3), { headers: { 'content-type': 'audio/wav' } });
+        return new Response(silentWav(0.3), { headers: { 'content-type': 'audio/wav' } });
       },
     });
     try {
@@ -758,7 +785,7 @@ describe('the configuration over HTTP', () => {
     writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings: { checks: ['bun test'] } }] }]));
     const c = config('file', []);
     const live = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c, settings: (p) => c.repoSettings(p) });
-    const at = serve([live], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, c);
+    const at = serve([live], 0, { transcriber: silent, config: c });
     const post = async (path: string, body?: unknown) => {
       const res = await asOwner(() => at).fetch(new URL(path, at.url), { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }) });
       return { status: res.status, body: res.status === 204 ? null : ((await res.json()) as Record<string, unknown>) };
@@ -819,8 +846,8 @@ describe('a change the Coordinator makes', () => {
     const canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime, forge: noForge, config: config('file', saved, ['web', 'dokumente']), commandDelayMs: 0 });
     try {
       const heard = canvas.commander.hear('Nimm api auf die Leinwand web.', {});
-      await until(() => runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'configure')));
-      const k = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'configure'))!;
+      await until(() => runtime.withTool('configure').length > 0);
+      const k = runtime.withTool('configure')[0]!;
       // the configuration as the Coordinator reads it, with api added, through the tool's schema as its SDK hands the arguments on
       const { canvases } = JSON.parse(await k.call('config', {})) as ConfigView;
       const tool = k.spec.tools.find((t) => t.name === 'configure')!;
@@ -835,50 +862,3 @@ describe('a change the Coordinator makes', () => {
     }
   });
 });
-
-describe('the demo settings', () => {
-  test('say what keeps a voice from speaking', () => {
-    const missing = join(dir, 'nowhere');
-    expect(demoSettingsProblems({ language: 'de', voice: 'piper' }, {})).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'command' }, {})).toEqual(['noCommand']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'http' }, {})).toEqual(['noUrl']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'http', url: 'http://localhost:9' }, {})).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'say' }, {}, 'linux')).toEqual(['notHere']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'say' }, {}, 'darwin')).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'gemini' }, {})).toEqual(['noKey']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'gemini' }, { GEMINI_API_KEY: 'k' })).toEqual([]);
-    expect(demoSettingsProblems({ language: 'de', voice: 'azure', url: 'westeurope' }, {})).toEqual(['noKey']);
-    expect(demoSettingsProblems({ language: 'de', voice: 'openai', keyFile: missing }, {})).toEqual(['keyFileMissing']);
-    writeFileSync(join(dir, 'key'), 'k');
-    expect(demoSettingsProblems({ language: 'en', voice: 'elevenlabs', keyFile: join(dir, 'key') }, {})).toEqual([]);
-  });
-
-  test("say which of Qwen3's clips to clone does not work, by its language", () => {
-    writeFileSync(join(dir, 'me.wav'), '');
-    const s = { language: 'de', voice: 'qwen3', references: { de: join(dir, 'me.wav'), en: join(dir, 'me-en.wav') } } as const;
-    expect(clipProblems(s)).toEqual({ de: 'noTranscript', en: 'referenceMissing' });
-    writeFileSync(join(dir, 'me.txt'), 'Hallo.');
-    expect(clipProblems(s)).toEqual({ en: 'referenceMissing' });
-    // another voice clones nothing
-    expect(clipProblems({ ...s, voice: 'piper' })).toEqual({});
-  });
-});
-
-/** A silent mono 16-bit WAV of `seconds`. */
-function wav(seconds: number, rate = 16000) {
-  const data = Math.round(seconds * rate) * 2;
-  const b = Buffer.alloc(44 + data);
-  b.write('RIFF', 0);
-  b.writeUInt32LE(36 + data, 4);
-  b.write('WAVEfmt ', 8);
-  b.writeUInt32LE(16, 16);
-  b.writeUInt16LE(1, 20);
-  b.writeUInt16LE(1, 22);
-  b.writeUInt32LE(rate, 24);
-  b.writeUInt32LE(rate * 2, 28);
-  b.writeUInt16LE(2, 32);
-  b.writeUInt16LE(16, 34);
-  b.write('data', 36);
-  b.writeUInt32LE(data, 40);
-  return b;
-}

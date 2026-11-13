@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { Item } from '../core/types';
 import { asideMark, changeAside, forgotten, loadAside, staysAside } from './setAside';
+import { memoryStorage, testItem } from './testing';
 
-const card = (over: Partial<Item>): Item => ({ id: 'a', kind: 'task', title: 'A', state: 'working', ...over }) as Item;
+const card = (over: Partial<Item>) => testItem({ id: 'a', title: 'A', state: 'working', ...over });
 
 describe('staysAside', () => {
   test('a card set aside while it waits stays aside while it still waits the same wait', () => {
@@ -38,12 +39,7 @@ describe('forgotten', () => {
 });
 
 describe('changeAside', () => {
-  const store = new Map<string, string>();
-  globalThis.localStorage ??= {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-  } as Storage;
+  globalThis.localStorage ??= memoryStorage();
   afterEach(() => localStorage.removeItem('obeya-phone-aside'));
   test('changes what the browser keeps, so that a change from another tab stays', () => {
     const tab1 = changeAside((a) => ({ ...a, x: { canvas: 'shop', since: null } }));

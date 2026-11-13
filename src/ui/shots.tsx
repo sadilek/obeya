@@ -6,14 +6,15 @@
 import { type ClipboardEvent, type DragEvent, type MouseEvent, type PointerEvent, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES } from '../core/types';
-import { api, ApiError, at } from './api';
+import { api, ApiError, at, failText } from './api';
 import { droppedPath, withBytes } from './appDrop';
-import { draftOf, draftsHome, dropDraft, insertFiles, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
-import { know, known } from './known';
+import { draftOf, type DraftsHome, draftsHome, dropDraft, insertFilesAt, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
+import { useKnown } from './stored';
 import { badgeOf, CLICK_PX, drawMarks, EDGE, type Mark, markOf, markSize, type Point, RED, roundedRect } from './marks';
 import { confirmPasteHint, pastedShots, pickedShots, usePasteHint } from './pasteHint';
-import { failText, pasteKeys, t } from './strings';
+import { pasteKeys, t } from './strings';
 import { behindThumb, type Box, onto, ZOOM_EASE, ZOOM_MS } from './zoomBox';
+import { useLatest } from './latest';
 
 /** The longest side the model looks at in detail; larger screenshots only cost upload and context. */
 export const MAX_SIDE = 2000;
@@ -53,19 +54,20 @@ async function markedImage(src: string, marks: Mark[]): Promise<Blob> {
   return prepareImage(await canvas.convertToBlob({ type: 'image/png' }));
 }
 
-/** Screenshots for a draft, uploaded one after the other; `added` hears each one that arrived. How many did. */
-export async function attachTo(key: string, files: File[], added?: () => void) {
+/**
+ * Files for a draft, one after the other, each by `one`: the draft counts them as uploading meanwhile
+ * and shows the refusal of one that failed. A switch to another canvas meanwhile: they go to the
+ * draft they were pasted or dropped into (`home`). How many arrived.
+ */
+async function eachFile(key: string, files: File[], one: (f: File, home: DraftsHome) => Promise<void>) {
   let arrived = 0;
   if (!files.length) return arrived;
-  // a switch to another canvas meanwhile: the screenshots go to the draft they were pasted into
   const home = draftsHome();
   updateDraft(key, (d) => ({ error: '', uploading: d.uploading + files.length }));
   for (const f of files) {
     try {
-      const id = await api.uploadImage(await prepareImage(await withBytes(f)));
-      updateDraftAt(home, key, (d) => ({ images: [...d.images, id] }));
+      await one(f, home);
       arrived++;
-      added?.();
     } catch (e) {
       updateDraftAt(home, key, { error: failText(e) });
     } finally {
@@ -75,35 +77,36 @@ export async function attachTo(key: string, files: File[], added?: () => void) {
   return arrived;
 }
 
+/** Screenshots for a draft, uploaded one after the other; `added` hears each one that arrived. How many did. */
+const attachTo = (key: string, files: File[], added?: () => void) =>
+  eachFile(key, files, async (f, home) => {
+    const id = await api.uploadImage(await prepareImage(await withBytes(f)));
+    updateDraftAt(home, key, (d) => ({ images: [...d.images, id] }));
+    added?.();
+  });
+
 /**
  * Files for a draft that are no screenshots, one after the other; the path of each goes into its
- * text by `put` as it is known. That is the file's own path: the app's drop names it, and for a
- * browser's Obeya looks for the file on its machine. Where it finds none, the file is uploaded and
- * its copy's path goes in. How many did.
+ * text by `put` as it is known, into the draft's text at `home` without one. That is the file's own
+ * path: the app's drop names it, and for a browser's Obeya looks for the file on its machine. Where
+ * it finds none, the file is uploaded and its copy's path goes in. How many did.
  */
-export async function fileTo(key: string, files: File[], put: (path: string) => void) {
-  let arrived = 0;
-  if (!files.length) return arrived;
-  updateDraft(key, (d) => ({ error: '', uploading: d.uploading + files.length }));
-  for (const f of files) {
-    try {
-      const own = droppedPath(f) ?? (await api.findFile(f).catch(() => null));
-      if (!own && f.size > MAX_FILE_BYTES) throw new ApiError('fileTooLarge', '');
-      put(own ?? (await api.uploadFile(f)));
-      arrived++;
-    } catch (e) {
-      updateDraft(key, { error: failText(e) });
-    } finally {
-      updateDraft(key, (d) => ({ uploading: d.uploading - 1 }));
-    }
-  }
-  return arrived;
-}
+const fileTo = (key: string, files: File[], put?: (path: string) => void) =>
+  eachFile(key, files, async (f, home) => {
+    const own = droppedPath(f) ?? (await api.findFile(f).catch(() => null));
+    if (!own && f.size > MAX_FILE_BYTES) throw new ApiError('fileTooLarge', '');
+    const path = own ?? (await api.uploadFile(f));
+    if (put) put(path);
+    else insertFilesAt(home, key, [pathWord(path)]);
+  });
 
-/** Pasted or dropped files for a draft whose text is its own: the screenshots as screenshots, the others by their paths. How many arrived. */
-export async function filesTo(key: string, files: File[]) {
-  const shots = attachTo(key, files.filter(isImage));
-  const others = fileTo(key, files.filter((f) => !isImage(f)), (path) => insertFiles(key, [pathWord(path)]));
+/**
+ * Pasted or dropped files for a draft: the screenshots as screenshots (`added` hears each), the
+ * others by their paths (`fileTo`, with `put`). How many arrived.
+ */
+export async function filesTo(key: string, files: File[], { added, put }: { added?: () => void; put?: (path: string) => void } = {}) {
+  const shots = attachTo(key, files.filter(isImage), added);
+  const others = fileTo(key, files.filter((f) => !isImage(f)), put);
   return (await shots) + (await others);
 }
 
@@ -122,21 +125,17 @@ export function useShotInput({ draft, initial = [], onChange, off = false, put }
   const { images, uploading, marking, error } = useDraft(key);
   const [dropping, setDropping] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
-  const change = useRef(onChange);
-  change.current = onChange;
+  const change = useLatest(onChange);
   const update = (fn: (cur: string[]) => string[]) => {
     updateDraft(key, (d) => ({ images: fn(d.images) }));
     change.current?.(draftOf(key).images);
   };
   const pasteHint = usePasteHint(key, !off);
-  const putRef = useRef(put);
-  putRef.current = put;
+  const putRef = useLatest(put);
   /** The screenshots among `files` as screenshots, the others by their paths. How many arrived. */
   const attach = async (files: File[]) => {
     if (off) return 0;
-    const shots = attachTo(key, files.filter(isImage), () => change.current?.(draftOf(key).images));
-    const others = fileTo(key, files.filter((f) => !isImage(f)), (path) => (putRef.current ?? ((w) => insertFiles(key, [w])))(pathWord(path)));
-    return (await shots) + (await others);
+    return filesTo(key, files, { added: () => change.current?.(draftOf(key).images), ...(putRef.current ? { put: (path: string) => putRef.current?.(pathWord(path)) } : {}) });
   };
   const failed = (e: unknown) => updateDraft(key, { error: failText(e) });
   return {
@@ -222,7 +221,7 @@ export function ShotStrip({ shots }: { shots: ShotInput }) {
           <button className="open" title={t.shots.markUp} onClick={(e) => enlarge.open(id, e)}>
             <img src={imageUrl(id)} alt={t.shots.alt} />
           </button>
-          <button className="remove" title={t.shots.remove} onClick={() => shots.remove(id)}>
+          <button className="remove" title={t.remove} onClick={() => shots.remove(id)}>
             ×
           </button>
         </span>
@@ -260,8 +259,7 @@ export function AttachButton({ shots, title = t.shots.attach }: { shots: ShotInp
     f.blur();
     f.focus();
   };
-  const backRef = useRef(back);
-  backRef.current = back;
+  const backRef = useLatest(back);
   useEffect(() => {
     const input = shots.picker.current;
     if (!input) return;
@@ -388,7 +386,7 @@ function MarkLayer({ marks, w, h, drawing }: { marks: Mark[]; w: number; h: numb
 
 /**
  * One image over the whole page, outside the panel, which the camera transforms. Like the demo
- * video's zoom (detail.tsx useZoom) it grows out of its thumbnail and goes back into it, wherever
+ * video's zoom (demo.tsx useZoom) it grows out of its thumbnail and goes back into it, wherever
  * that stands by then; Esc or a click closes it. With `marking` a drag on the image frames a
  * region and a click sets a numbered pin; Undo (⌘Z) takes back the last mark, and Done, Esc or a
  * click beside the image closes it with the marks.
@@ -399,16 +397,13 @@ function Lightbox({ src, thumb, marking, onClose }: { src: string; thumb: HTMLIm
   const layer = useRef<SVGSVGElement>(null);
   const [closing, setClosing] = useState(false);
   const [marks, setMarks] = useState(marking?.marks ?? []);
-  const marksRef = useRef(marks);
-  marksRef.current = marks;
+  const marksRef = useLatest(marks);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [drag, setDrag] = useState<{ a: Point; b: Point; from: Point; moved: number } | null>(null);
-  const [marksKnown, setMarksKnown] = useState(() => known(MARKS_KNOWN));
+  const [marksKnown, knowMarks] = useKnown(MARKS_KNOWN);
   const add = (m: Mark) => {
     setMarks((cur) => [...cur, m]);
-    if (marksKnown) return;
-    setMarksKnown(true);
-    know(MARKS_KNOWN);
+    knowMarks();
   };
   const undo = () => setMarks((cur) => cur.slice(0, -1));
   /** Where the pointer is on the image, in its pixels. */
@@ -450,8 +445,7 @@ function Lightbox({ src, thumb, marking, onClose }: { src: string; thumb: HTMLIm
       if (el === img.current) back.onfinish = onClose;
     }
   };
-  const closeRef = useRef(close);
-  closeRef.current = close;
+  const closeRef = useLatest(close);
   // grows out of its thumbnail, which stays hidden while it is out
   useLayoutEffect(() => {
     const el = img.current!;
@@ -491,7 +485,7 @@ function Lightbox({ src, thumb, marking, onClose }: { src: string; thumb: HTMLIm
     // a click here is not one on the card or field the thumbnail sits in
     <div
       className={['lightbox', marking && 'marking', closing && 'closing'].filter(Boolean).join(' ')}
-      title={marking ? undefined : t.shots.close}
+      title={marking ? undefined : t.close}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();

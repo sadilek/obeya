@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, failText } from './api';
+import { useAsked } from './asked';
 import { phoneView } from './phone';
-import { failText, t } from './strings';
+import { t } from './strings';
 
 /** Whether this browser runs on the machine Obeya runs on, asked once per page. */
 let local: Promise<boolean> | undefined;
@@ -20,12 +21,7 @@ export function Reauthenticate({ start = false, token = false }: { start?: boole
   const [command, setCommand] = useState('');
   const [pasted, setPasted] = useState('');
   const [saved, setSaved] = useState(false);
-  const [here, setHere] = useState(() => !phoneView());
-  useEffect(() => {
-    let live = true;
-    if (here) void onThisMachine().then((v) => live && setHere(v));
-    return () => void (live = false);
-  }, []);
+  const here = useAsked(!phoneView() && onThisMachine, !phoneView());
   const login = async () => {
     setBusy(true);
     setStatus('');
@@ -85,13 +81,8 @@ export function CodexLogin({ host, start = false }: { host: string | null; start
   const [status, setStatus] = useState('');
   const [page, setPage] = useState('');
   const [done, setDone] = useState(false);
-  const [here, setHere] = useState(() => !phoneView());
+  const here = useAsked(!phoneView() && onThisMachine, !phoneView());
   const [following, setFollowing] = useState('');
-  useEffect(() => {
-    let live = true;
-    if (here) void onThisMachine().then((v) => live && setHere(v));
-    return () => void (live = false);
-  }, []);
   useEffect(() => {
     if (!following) return;
     let live = true;

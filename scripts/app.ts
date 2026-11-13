@@ -21,33 +21,25 @@
 import { spawn } from 'node:child_process';
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { replace } from './app-replace';
-import { cargoPath } from './common';
+import { cargoPath, git, ROOT, script } from './common';
 
-const ROOT = resolve(import.meta.dir, '..');
+const { fail, args } = script('app');
 const APP = join(ROOT, 'app');
-const args = process.argv.slice(2);
-const install = args[0] === 'install';
-const debug = args.includes('--debug');
+const { values, positionals } = args({ debug: { type: 'boolean' }, 'build-only': { type: 'boolean' }, 'no-open': { type: 'boolean' } });
+if (positionals.some((p) => p !== 'install')) fail(`no command ${positionals.join(' ')} (only install)`);
+const install = positionals[0] === 'install';
+const debug = !!values.debug;
 const target = join(APP, 'target', 'checkout');
 /** What the installed app is called; its identifier keeps it apart from an installed release of Obeya (permissions, single instance). */
 const NAME = 'Obeya (checkout)';
 const IDENTIFIER = 'si.obeya.checkout';
 
-function fail(msg: string): never {
-  console.error(`app: ${msg}`);
-  process.exit(1);
-}
-
 // the shell alone: the server is this checkout's, not a sidecar, and there are no resources to bundle
 const config: Record<string, unknown> = { bundle: { externalBin: null, resources: null } };
 const env: Record<string, string | undefined> = { ...process.env, PATH: cargoPath(), CARGO_TARGET_DIR: target, CI: 'true' };
 if (install) {
-  const git = (...a: string[]) => {
-    const r = Bun.spawnSync(['git', ...a], { cwd: ROOT, stderr: 'ignore' });
-    return r.exitCode === 0 ? r.stdout.toString().trim() : '';
-  };
   Object.assign(config, { identifier: IDENTIFIER });
   Object.assign(env, {
     // compiled in (option_env! in app/src/main.rs and update.rs): started from the desktop, the shell gets no environment of ours
@@ -55,9 +47,9 @@ if (install) {
     // the one the installed shell names when it builds itself anew (started from the desktop, its PATH
     // has none), else the PATH's (Homebrew's link, say) rather than the binary it points at, which an upgrade removes
     OBEYA_BUILT_BUN: process.env.OBEYA_BUN || Bun.which('bun') || process.execPath,
-    OBEYA_BUILT_TREE: git('rev-parse', 'HEAD:app'),
+    OBEYA_BUILT_TREE: git(ROOT, 'rev-parse', 'HEAD:app') ?? '',
     // for the settings, which show it
-    OBEYA_BUILT_COMMIT: git('rev-parse', 'HEAD'),
+    OBEYA_BUILT_COMMIT: git(ROOT, 'rev-parse', 'HEAD') ?? '',
   });
 }
 // on a Mac an app bundle (Info.plist, icon, the system's permissions for it); elsewhere the program is all there is
@@ -81,7 +73,7 @@ if (!install) {
   process.exit(await shell.exited);
 }
 
-if (args.includes('--build-only')) process.exit(0);
+if (values['build-only']) process.exit(0);
 
 /** Puts `from` at `to`, also while the app at `to` runs (app-replace.ts). */
 function put(from: string, to: string) {
@@ -134,7 +126,7 @@ if (process.platform === 'darwin') {
   start = [exe];
 }
 
-if (!args.includes('--no-open')) {
+if (!values['no-open']) {
   // on its own, not as a child of this script, which ends now
   spawn(start[0]!, start.slice(1), { detached: true, stdio: 'ignore' }).unref();
 }

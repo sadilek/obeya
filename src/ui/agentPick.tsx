@@ -4,24 +4,30 @@
 // the menu; a choice of the card's own is named beside it. One component for every button that
 // starts a card.
 
-import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type CardAction, type CardAgent, type Harness, HARNESSES, type Item, modelChoices, modelName } from '../core/types';
-import { useMenuClose } from './queue';
-import { placeOnScreen } from './snooze';
+import type { CardAction, Item } from '../core/types';
+import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, modelChoices, type ModelChoice, modelName } from '../core/agents';
+import { useMenuClose, usePlaced } from './menu';
 import { api } from './api';
+import { usePoll } from './act';
 import { t } from './strings';
 
 /** The harnesses and the workers' group as last heard, shown at once by the next card while it asks again. */
 let last: AgentsView | null = null;
 const agentsView = () => api.agents().then((v) => (last = v));
 
+/** A model as a picker names it, without its version: Claude's by Obeya's names for them, Codex's by the name Codex gives, else its id. */
+export const modelLabel = (harness: Harness, m: Pick<ModelChoice, 'value' | 'name'>) => (harness === 'claude' ? (t.config.agents.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value));
+
+/** The efforts a model of `choices` takes; every effort for one that does not say. */
+export const effortsOf = (choices: ModelChoice[], model: string) => choices.find((m) => m.value === model)?.efforts ?? AGENT_EFFORTS;
+
 /** A harness and model as the owner knows them: "Claude Code · Opus", "Codex · Sol" (a Codex family by its name, without a version). */
 export function agentLabel(view: AgentsView | null, harness: Harness, model: string): string {
-  const a = t.config.agents;
-  if (harness === 'claude') return model === 'default' ? a.models.default : `${t.harnesses.claude} · ${a.models[model as AgentModel] ?? model}`;
-  const choice = modelChoices(view?.harnesses.find((h) => h.id === 'codex'), model).find((c) => c.value === model);
-  return `${t.harnesses.codex} · ${choice?.name ?? model}`;
+  if (harness === 'claude' && model === 'default') return t.config.agents.models.default;
+  const choice = harness === 'codex' ? modelChoices(view?.harnesses.find((h) => h.id === 'codex'), model).find((c) => c.value === model) : undefined;
+  return `${t.harnesses[harness]} · ${modelLabel(harness, choice ?? { value: model })}`;
 }
 
 /** The card's choice without what is empty; nothing left: the group's again. */
@@ -44,32 +50,22 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
     agentsView().then((v) => live && setView(v), () => {});
     return () => void (live = false);
   }, []);
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => menu.current && box.current && placeOnScreen(menu.current, box.current.getBoundingClientRect());
-    place();
-    addEventListener('scroll', place, true);
-    addEventListener('resize', place);
-    return () => {
-      removeEventListener('scroll', place, true);
-      removeEventListener('resize', place);
-    };
-  }, [open, view]);
+  usePlaced(open, menu, () => box.current!.getBoundingClientRect());
   // the menu lies over the page, above the panel and the controls floating over it, and is part of the box for closing it
-  const both = useRef({ contains: (n: Node | null) => !!box.current?.contains(n) || !!menu.current?.contains(n) });
-  useMenuClose(open, both as unknown as RefObject<HTMLElement>, () => setOpen(false), true);
+  useMenuClose(open, [box, menu], () => setOpen(false), true);
   if (!view) return <>{children}</>;
   const p = t.agentPick;
   const efforts = t.config.agents.efforts;
   const group = view.agents.worker;
   const own = item.agent ?? {};
   const listed = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  const harness = own.harness && own.model ? own.harness : group.harness;
-  const model = own.harness && own.model ? own.model : group.model;
+  // the card's own choice, where it names a harness and model
+  const mine = own.harness && own.model ? { harness: own.harness, model: own.model } : null;
+  const { harness, model } = mine ?? group;
   // each harness's models as the Configuration lists them, the one checked among them even where no longer listed
   const choices = (h: Harness) => modelChoices(listed(h), harness === h ? model : undefined);
   // the efforts the model takes (Codex lists them), the one chosen among them
-  const takes = choices(harness).find((m) => m.value === model)?.efforts ?? AGENT_EFFORTS;
+  const takes = effortsOf(choices(harness), model);
   const save = (next: CardAgent | null) => {
     if (JSON.stringify(next) === JSON.stringify(item.agent ?? null)) return;
     setSaving(true);
@@ -81,12 +77,12 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const pickModel = (h: Harness, m: string) => {
     const mine = h !== group.harness || m !== group.model;
     // an effort the new model does not take goes back to the group's
-    const kept = own.effort && (choices(h).find((x) => x.value === m)?.efforts ?? AGENT_EFFORTS).includes(own.effort) ? own.effort : undefined;
+    const kept = own.effort && effortsOf(choices(h), m).includes(own.effort) ? own.effort : undefined;
     save(choice({ ...(mine ? { harness: h, model: m } : {}), ...(kept ? { effort: kept } : {}) }));
   };
-  const pickEffort = (e: AgentEffort) => save(choice({ ...(own.harness && own.model ? { harness: own.harness, model: own.model } : {}), ...(e !== group.effort ? { effort: e } : {}) }));
+  const pickEffort = (e: AgentEffort) => save(choice({ ...mine, ...(e !== group.effort ? { effort: e } : {}) }));
   const effort = own.effort ?? group.effort;
-  const chosen = [own.harness && own.model ? agentLabel(view, own.harness, own.model) : '', own.effort ? p.chosenEffort(efforts[own.effort]) : ''].filter(Boolean).join(' · ');
+  const chosen = [mine ? agentLabel(view, mine.harness, mine.model) : '', own.effort ? p.chosenEffort(efforts[own.effort]) : ''].filter(Boolean).join(' · ');
   return (
     <span className={saving ? 'agent-split saving' : 'agent-split'} ref={box}>
       {children}
@@ -129,12 +125,12 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
                     return (
                       <button key={m.value} className="snooze-opt" role="menuitemradio" aria-checked={on} onClick={() => pickModel(h, m.value)}>
                         <Check on={on} />
-                        {h === 'claude' ? (t.config.agents.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value)}
+                        {modelLabel(h, m)}
                         {m.version && <span className="agent-version">{m.version}</span>}
                       </button>
                     );
                   })}
-                  {h === 'claude' && <ClaudeUpdate view={view} onView={setView} />}
+                  <HarnessUpdate harness={h} view={view} onView={setView} />
                 </div>
               );
             })}
@@ -154,39 +150,45 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
 }
 
 /**
- * A newer Claude Code that is out, with the button that updates it, in a card's menu of models and
- * in the Configuration; while the update runs, the view is asked again until it is done, and then
- * has the new version's models.
+ * A newer version of a harness (Claude Code, Codex) that is out, with the button that updates it, in
+ * a card's menu of models and in the Configuration: a line for this machine and one for each host
+ * whose installation is behind; while an update runs, the view is asked again until it is done, and
+ * then has the new version's models.
  */
-export function ClaudeUpdate({ view, onView }: { view: AgentsView; onView: (view: AgentsView) => void }) {
-  const claude = view.harnesses.find((h) => h.id === 'claude');
-  const update = claude?.update;
-  const running = !!update?.running;
-  const [asked, setAsked] = useState(false);
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => agentsView().then(onView, () => {}), 1500);
-    return () => clearInterval(timer);
-  }, [running]);
-  if (!update) return null;
-  const u = t.claudeUpdate;
-  const start = () => {
-    setAsked(true);
+export function HarnessUpdate({ harness, view, onView }: { harness: Harness; view: AgentsView; onView: (view: AgentsView) => void }) {
+  const found = view.harnesses.find((h) => h.id === harness);
+  const hosts = (found?.hosts ?? []).filter((h) => h.update);
+  const running = !!found?.update?.running || hosts.some((h) => h.update?.running);
+  const [asked, setAsked] = useState<string | null>(null);
+  usePoll(running, () => agentsView().then(onView, () => {}), 1500);
+  const start = (host?: string) => {
+    setAsked(host ?? '');
     api
-      .updateClaude()
+      .updateHarness(harness, host)
       .then((v) => ((last = v), onView(v)))
       .catch(() => {})
-      .finally(() => setAsked(false));
+      .finally(() => setAsked(null));
   };
+  const name = t.harnesses[harness];
+  const line = (update: HarnessUpdateState, now: string | undefined, host?: string) => {
+    const u = t.harnessUpdate;
+    return (
+      <div key={host ?? ''} className={update.error ? 'harness-update failed' : 'harness-update'} title={now ? u.hint(now, host) : undefined}>
+        <span className="harness-update-text">{update.running ? u.running(name, host) : update.error ? u.failed(update.error, host) : u.out(name, update.version, host, now)}</span>
+        {!update.running && (
+          <button className="btn" disabled={asked === (host ?? '')} onClick={() => start(host)}>
+            {update.error ? u.again : u.button}
+          </button>
+        )}
+      </div>
+    );
+  };
+  if (!found?.update && !hosts.length) return null;
   return (
-    <div className={update.error ? 'claude-update failed' : 'claude-update'} title={claude?.version ? u.hint(claude.version) : undefined}>
-      <span className="claude-update-text">{running ? u.running : update.error ? u.failed(update.error) : u.out(update.version)}</span>
-      {!running && (
-        <button className="btn" disabled={asked} onClick={start}>
-          {update.error ? u.again : u.button}
-        </button>
-      )}
-    </div>
+    <>
+      {found?.update && line(found.update, found.version)}
+      {hosts.map((h) => line(h.update!, h.version, h.name))}
+    </>
   );
 }
 
@@ -228,7 +230,8 @@ export function RunsOn({ item }: { item: Item }) {
   if (!starting || !view) return null;
   const group = view.agents.worker;
   const own = item.agent ?? {};
-  const label = [own.harness && own.model ? agentLabel(view, own.harness, own.model) : agentLabel(view, group.harness, group.model), t.agentPick.chosenEffort(efforts[own.effort ?? group.effort])].join(' · ');
+  const on = own.harness && own.model ? { harness: own.harness, model: own.model } : group;
+  const label = [agentLabel(view, on.harness, on.model), t.agentPick.chosenEffort(efforts[own.effort ?? group.effort])].join(' · ');
   return (
     <span className="runs-on" title={t.talk.startsOn(label)}>
       {label}

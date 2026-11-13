@@ -4,20 +4,23 @@
 
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { generic } from '../adapters/generic';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
-import { githubToken, HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
+import { HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
-import { type AgentEvent, sdkRuntime } from './runtime';
-import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, until } from './testing';
+import { claudeModels } from './harnesses';
+import { sdkRuntime } from './claude';
+import type { AgentEvent } from './runtime';
+import { FakeRuntime, fakeSsh, gitClone, gitRepo, identify, removeDir, syncGitCalls, testBoard, until } from './testing';
 import { Workers } from './workers';
-import { git, gitAsync, HERE, RECHECK_MS, Workspaces } from './workspaces';
+import { HERE, RECHECK_MS, Workspaces } from './workspaces';
+import { git, gitAsync, githubToken } from './git';
 
 let dir: string;
 let ssh: string;
@@ -55,9 +58,8 @@ describe('a workspace on a host', () => {
     const repo = gitRepo(join(dir, 'repo'));
     host.tokenFor(repo, () => 'ghp_secret');
     const path = onHost(name, repo);
-    expect(git(path, 'branch', '--show-current')).toBe('main');
     expect(await gitAsync(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
-    expect(() => git(path, 'checkout', 'nowhere')).toThrow('git checkout nowhere');
+    await expect(gitAsync(path, 'checkout', 'nowhere')).rejects.toThrow('git checkout nowhere');
     expect((await host.run('printf %s "$GH_TOKEN"', { cwd: repo })).stdout).toBe('ghp_secret');
     expect((await host.run('printf %s "$GH_TOKEN"', { cwd: dir })).stdout).toBe('');
     expect(log()).toContain('me@box');
@@ -138,7 +140,7 @@ describe('a session on a host', () => {
     const s = spawnSession({
       command: 'sh',
       args: ['-c', 'echo "$PWD|$FOO|$OBEYA_HOME|$CLAUDE_CODE_OAUTH_TOKEN|$OBEYA_URL|$1|$OBEYA_HOLDS_VOICE"; cat "$1/skills/SKILL.md"; echo; read line; echo "got $line"', 'x', join(dir, 'plugin')],
-      env: { FOO: "it's", OBEYA_URL: 'http://localhost:4417', OBEYA_NARRATION_URL: 'http://127.0.0.1:4418' },
+      env: { FOO: "it's", OBEYA_URL: 'http://127.0.0.1:4418' },
     });
     s.p.stdin.write('ping\n');
     expect(await s.exited).toBe(0);
@@ -231,7 +233,7 @@ describe('clones on a host', () => {
     origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ store, path: join(dir, 'main') });
     spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
   });
 
@@ -351,7 +353,7 @@ describe('clones on a host', () => {
     // a free clean one goes from the host's disk; one with work not landed stays, and the pool says so. Each is
     // looked at through git over ssh, twice: a second here, over three on a busy CI runner
     await until(() => !existsSync(join(dir, 'far', '2')) && spaces.pool([]).some((h) => h.kept?.length), 10_000);
-    expect(spaces.pool([]).find((h) => h.name === name)?.kept).toEqual([join(dir, 'far', '3')]);
+    expect(spaces.pool([]).find((h) => h.name === name)?.kept?.map((k) => k.path)).toEqual([join(dir, 'far', '3')]);
     // while the host does not answer, the clone a card gives back stays; the next start looks again
     writeFileSync(join(dir, 'net', 'down'), '');
     spaces.release(a);
@@ -425,13 +427,101 @@ describe('a Codex session on a host', () => {
   });
 });
 
+describe("Claude Code on a host", () => {
+  /** The stand-in's state there (`fixtures/fake-claude.ts`). */
+  let state: string;
+  beforeEach(() => {
+    const bin = join(dir, 'net', 'home', '.local', 'bin');
+    state = join(dir, 'net', 'home', '.fake-claude');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(state, { recursive: true });
+    writeFileSync(join(bin, 'claude'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dir, 'fixtures', 'fake-claude.ts'))} "$@"\n`, { mode: 0o755 });
+    writeFileSync(join(state, 'version'), '2.1.300\n');
+  });
+
+  overSsh('says its version there and the channel it updates from; null where it is not installed', async () => {
+    expect(await host.claude()).toEqual({ version: '2.1.300', channel: 'latest' });
+    // the stand-in's host has this machine's environment, with the tests' own CLAUDE_CONFIG_DIR
+    const config = process.env.CLAUDE_CONFIG_DIR ?? join(dir, 'net', 'home', '.claude');
+    mkdirSync(config, { recursive: true });
+    writeFileSync(join(config, 'settings.json'), JSON.stringify({ autoUpdatesChannel: 'stable' }));
+    expect(await host.claude()).toEqual({ version: '2.1.300', channel: 'stable' });
+    // as a shell says of a program it does not find (this machine, the stand-in's host, may have one on its PATH)
+    writeFileSync(join(dir, 'net', 'home', '.local', 'bin', 'claude'), '#!/bin/sh\nexit 127\n');
+    expect(await host.claude()).toBeNull();
+    writeFileSync(join(dir, 'net', 'down'), '');
+    await expect(host.claude()).rejects.toThrow('Connection refused');
+  });
+
+  overSsh('is updated there, and says why where that fails', async () => {
+    writeFileSync(join(state, 'newest'), '2.1.338');
+    await host.updateClaude();
+    expect((await host.claude())?.version).toBe('2.1.338');
+    writeFileSync(join(state, 'update-fails'), 'Error: no network');
+    await expect(host.updateClaude()).rejects.toThrow('claude update exited with 1: Error: no network');
+  });
+
+  overSsh('lists its models there, from a session started over the connection with the Claude login', async () => {
+    writeFileSync(join(state, 'models.json'), JSON.stringify([{ value: 'fable', resolvedModel: 'claude-fable-5-1' }, { value: 'claude-fable-5-2' }]));
+    expect(await claudeModels('/', host)).toEqual([{ value: 'fable', resolvedModel: 'claude-fable-5-1' }, { value: 'claude-fable-5-2' }]);
+    expect(log()).not.toContain('sk-claude');
+  }, 20_000);
+});
+
+describe('Codex on a host', () => {
+  /** The stand-in's state there (`fixtures/fake-codex.ts`). */
+  let state: string;
+  let bin: string;
+  const fake = join(import.meta.dir, 'fixtures', 'fake-codex.ts');
+  beforeEach(() => {
+    bin = join(dir, 'net', 'home', '.local', 'bin');
+    state = join(dir, 'net', 'home', '.fake-codex');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(state, { recursive: true });
+    writeFileSync(join(bin, 'codex'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(fake)} "$@"\n`, { mode: 0o755 });
+    writeFileSync(join(state, 'version'), '0.159.2\n');
+  });
+
+  overSsh('says its version there; null where it is not installed', async () => {
+    expect(await host.codex()).toEqual({ version: '0.159.2' });
+    writeFileSync(join(bin, 'codex'), '#!/bin/sh\nexit 127\n');
+    expect(await host.codex()).toBeNull();
+    writeFileSync(join(dir, 'net', 'down'), '');
+    await expect(host.codex()).rejects.toThrow('Connection refused');
+  });
+
+  overSsh('is updated there with `codex update`, and says why where that fails', async () => {
+    writeFileSync(join(state, 'newest'), '0.167.0');
+    await host.updateCodex();
+    expect(await host.codex()).toEqual({ version: '0.167.0' });
+    writeFileSync(join(state, 'update-fails'), 'Error: no network');
+    await expect(host.updateCodex()).rejects.toThrow('codex update exited with 1: Error: no network');
+  });
+
+  overSsh('older than `codex update`, is updated by the package manager it lives in, and else says so', async () => {
+    writeFileSync(join(state, 'old'), '');
+    // installed by npm: its package's script, linked onto the PATH
+    const pkg = join(dir, 'net', 'home', 'lib', 'node_modules', '@openai', 'codex', 'bin');
+    mkdirSync(pkg, { recursive: true });
+    renameSync(join(bin, 'codex'), join(pkg, 'codex.js'));
+    symlinkSync(join(pkg, 'codex.js'), join(bin, 'codex'));
+    writeFileSync(join(bin, 'npm'), `#!/bin/sh\necho "$@" > ${JSON.stringify(join(state, 'npm'))}\n`, { mode: 0o755 });
+    await host.updateCodex();
+    expect(readFileSync(join(state, 'npm'), 'utf8').trim()).toBe('install -g @openai/codex@latest');
+    // a copy of its own, which no package manager knows
+    rmSync(join(bin, 'codex'));
+    copyFileSync(join(pkg, 'codex.js'), join(bin, 'codex'));
+    await expect(host.updateCodex()).rejects.toThrow(/Codex at .* is too old to update itself/);
+  });
+});
+
 describe('a worker on a host', () => {
   overSsh('whose connection drops resumes its session once the host answers, with the message it had not taken', async () => {
     gitRepo(join(dir, 'main'));
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: join(dir, 'main') });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toBeNull();
     const runtime = new FakeRuntime();
@@ -491,7 +581,7 @@ describe('a worker on a host', () => {
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
-    const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    const board = testBoard({ store, path: join(dir, 'main') });
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toBeNull();
     const runtime = new FakeRuntime();
@@ -535,7 +625,7 @@ describe('the app of a card on a host', () => {
     const origin = join(dir, 'origin.git');
     gitClone(join(dir, 'main'), origin, { bare: true });
     const store = new Store(':memory:');
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: join(dir, 'main'), branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ store, path: join(dir, 'main') });
     spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: join(dir, 'ws') });
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toBeNull();
     runtime = new FakeRuntime();

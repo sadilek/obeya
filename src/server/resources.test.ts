@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { isMain } from '../../plugin/skills/demo/lib/here.ts';
+import { isMain } from '../../plugin/lib/process.ts';
 import { COMPILED, embedded, resourcesDir } from './resources';
 
 test("paths in Bun's embedded file system, on POSIX and Windows", () => {

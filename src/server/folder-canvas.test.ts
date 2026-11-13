@@ -5,14 +5,13 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { FolderWorkspaces } from './folder';
-import { artifact, FakeRuntime, noForge, removeDir } from './testing';
+import { artifact, bytes, FakeRuntime, noForge, removeDir } from './testing';
 
 let dir: string;
 let docs: string;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 
-const bytes = (n: number, seed: number) => Uint8Array.from({ length: n }, (_, i) => (i * seed + 3) % 251);
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-folder-canvas-'));
@@ -87,7 +86,7 @@ describe('a canvas over a folder without git', () => {
 
   test('the Coordinator holds a card that would touch what one in progress changed, until the owner starts it anyway', async () => {
     const settle = () => new Promise((r) => setTimeout(r, 10));
-    const estimates = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'scope'));
+    const estimates = () => runtime.withTool('scope');
     const sort = canvas.board.create({ title: 'Sort the scans', x: 0, y: 0 });
     canvas.coordinator.request(sort.id);
     await settle();

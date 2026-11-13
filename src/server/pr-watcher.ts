@@ -6,14 +6,17 @@
 // them are merged.
 
 import type { RepoAdapter } from '../adapters/types';
-import { type Board, contributionOf, type PrState, type StoredContribution } from './board';
-import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf, type Forge, type PrStatus } from './forge';
+import type { Board } from './board';
+import { fromJson, type PrState, type StoredContribution, toJson } from './row';
+import type { Forge, PrStatus } from './forge';
+import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf } from './pr-review';
 import type { PrWait } from '../core/types';
+import type { Workers } from './workers';
+import { messageOf } from '../core/text';
+import { mergeBranch, mergeConflictHelp } from './worker-texts';
 
 /** How long reading a PR fails before its card says so. */
 const READ_ERROR_AFTER_MS = 10 * 60_000;
-import type { Workers } from './workers';
-import { messageOf } from '../core/text';
 
 const watched = (state: string | undefined) => state === 'inPr' || state === 'waiting';
 
@@ -35,7 +38,7 @@ export class PrWatcher {
      * The repository's settings, asked each round since they may change while the watcher runs:
      * accounts whose comments are not review feedback (`prNoise`), and whether Obeya merges (`autoMerge`).
      */
-    private settings: () => Pick<RepoAdapter, 'prNoise' | 'autoMerge'> = () => ({}),
+    private settings: () => Partial<Pick<RepoAdapter, 'prNoise' | 'autoMerge'>> = () => ({}),
     /** On a canvas with several repositories: the one whose pull requests this watches. */
     private repo?: string,
     /** Called at the end of every round (the read tree fetches then). */
@@ -86,8 +89,7 @@ export class PrWatcher {
       for (const i of this.board.snapshot().items) {
         if (i.state !== 'inPr' || this.board.row(i.id).landed || (this.repo && i.repo !== this.repo) || this.openPrs(i.id).length) continue;
         if (!this.allMerged(i.id) || this.workers.busyCards().includes(i.id)) continue;
-        const first = this.prsOf(i.id)[0]!;
-        this.workers.merged(i.id, typeof first.merged === 'string' ? first.merged : undefined);
+        this.allMergedDone(i.id);
       }
       await Promise.all(open.map(({ id, url }) => this.check(id, url).catch((e) => console.error(`PR ${url}:`, messageOf(e)))));
     } finally {
@@ -140,7 +142,7 @@ export class PrWatcher {
   /** The card's first pull request as stored, with the further ones in `more`. */
   private stored(cardId: string): PrState | null {
     const row = this.board.row(cardId);
-    return row.pr ? (JSON.parse(row.pr) as PrState) : null;
+    return fromJson(row.pr);
   }
 
   /** Each of the card's pull requests on its own (the first without `more`), the first first. */
@@ -162,154 +164,239 @@ export class PrWatcher {
     return !!first?.url && !!first.merged && more.every((m) => m.merged || m.closed);
   }
 
+  /** The card's pull requests are all merged: it is live, with the first one's merge as its landing. */
+  private allMergedDone(cardId: string) {
+    const first = this.prsOf(cardId)[0]!;
+    return this.workers.merged(cardId, typeof first.merged === 'string' ? first.merged : undefined);
+  }
+
   /**
    * The pull request at `url` merged, with `commit` the merge put on its base where the forge said:
    * once the card's others are merged too, the card is live, with the first one's merge as its
    * landing; until then the card's log says what it still waits for.
    */
-  private mergedPr(cardId: string, pr: PrState, commit?: string) {
+  private mergedPr(cardId: string, pr: PrState, commit?: string, head?: string) {
+    // its head as merged tells the commits the merge brought, should the approval be taken back
+    if (head && this.prsOf(cardId)[0]?.url === pr.url) this.save(cardId, (pr = { ...pr, mergedHead: head }));
     if (this.prsOf(cardId).length === 1) return this.workers.merged(cardId, commit);
     this.save(cardId, { ...pr, merged: commit ?? true });
-    if (this.allMerged(cardId)) {
-      const first = this.prsOf(cardId)[0]!;
-      return this.workers.merged(cardId, typeof first.merged === 'string' ? first.merged : undefined);
-    }
+    if (this.allMerged(cardId)) return this.allMergedDone(cardId);
     const left = this.prsOf(cardId).filter((p) => !p.merged && !p.closed);
     this.board.log(cardId, 'state', 'obeya', this.board.t.pr.mergedOne(prLabel(pr), left.map((p) => (p.url ? prLabel(p) : null))));
   }
 
   private async react(cardId: string, state: string, pr: PrState, s: PrStatus) {
-    const contribution = contributionOf(this.board.row(cardId));
-    if (s.state === 'MERGED') return contribution ? this.workers.merged(cardId, s.mergeCommit) : this.mergedPr(cardId, pr, s.mergeCommit);
+    const contribution = fromJson(this.board.row(cardId).contribution);
+    // a fork's pull request to the original: what is pushed onto it goes onto the fork's main branch as well, the last of it before the card is live
+    if (pr.upstream && !contribution && (state === 'inPr' || s.state === 'MERGED')) {
+      const next = await this.intoMain(cardId, pr, s);
+      if (!next) return;
+      pr = next;
+      if (s.state === 'MERGED' && pr.upstream?.merged !== s.head) return;
+    }
+    if (s.state === 'MERGED') return contribution ? this.workers.merged(cardId, s.mergeCommit) : this.mergedPr(cardId, pr, s.mergeCommit, s.head);
     const settings = this.settings();
     const noise = settings.prNoise ?? [];
     if (contribution) return this.reactToContributor(cardId, state, pr, s, contribution, noise);
     const next: PrState = { ...pr, checks: s.checks, review: reviewOf(s, noise) };
-    // which pull request a message is about, where the card has several
-    const which = this.prsOf(cardId).length > 1 ? ` (${pr.url})` : '';
     // while the owner is being asked, news waits: it is passed on once the card is back in the PR
-    if (state === 'inPr') {
-      if (s.state === 'CLOSED') {
-        // a further one, closed, holds up nothing: the owner says whether it is opened again
-        this.save(cardId, which && this.prsOf(cardId)[0]?.url !== pr.url ? { ...next, closed: true } : next);
-        return this.workers.prClosed(cardId);
-      }
-      // an approval without words asks the worker for nothing
-      // a comment rewritten into something other than a passing verdict is news again (a summary that now asks for a fix)
-      const key = (c: PrStatus['comments'][number]) => (c.edited && !passing(c) ? `${c.id}@${c.edited}` : c.id);
-      const comments = s.comments.filter((c) => !pr.seen.includes(key(c)) && c.author !== s.author && !noise.includes(c.author) && (c.body.trim() || c.verdict === 'changes'));
-      if (comments.length) {
-        next.seen = [...new Set([...pr.seen, ...comments.flatMap((c) => [c.id, key(c)])])];
-        this.workers.prEvent(
-          cardId,
-          this.board.t.pr.comments(comments.length, comments[0]!.author),
-          [
-            `New review comments on your pull request${which}. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or leave it where a change is not right, and push). Each comment on the code gets a reply in its own thread, not one comment for all: what you changed, or why not. Then resolve each thread, unless you still want the reviewer’s answer. A summary or verdict that asks for nothing (a review without findings, an approval) needs no reply. Once you pushed, ask the reviewers for a new review the way the repository does it: Obeya merges only on a review of the latest commit. A comment of yours that mentions an account counts as such a request, and Obeya waits for its answer before it merges. End your turn. Use ask if one questions a decision only the owner can make.`,
-            ...comments.map((c) => `- ${c.author}${c.verdict === 'changes' ? ' (requests changes)' : ''}${c.path ? ` on ${c.path}${c.line ? `:${c.line}` : ''}` : ''}${c.url ? ` (${c.url})` : ''}:\n${c.body}`),
-          ].join('\n\n'),
-        );
-      }
-      const failed = s.checks.filter((c) => c.state === 'failure' && !pr.reported.includes(`${c.name}@${s.head}`));
-      if (failed.length) {
-        next.reported = [...pr.reported, ...failed.map((c) => `${c.name}@${s.head}`)];
-        this.workers.prEvent(
-          cardId,
-          this.board.t.pr.checkFailed(failed.map((c) => c.name).join(', ')),
-          [`Checks failed on your pull request${which}. Find the cause (on GitHub, gh run view --log-failed helps), fix it, push, and end your turn.`, ...failed.map((c) => `- ${c.name}${c.url ? `: ${c.url}` : ''}`)].join('\n'),
-        );
-      }
-      let told = !!(comments.length || failed.length);
-      if (s.mergeable === 'CONFLICTING' && pr.conflictHead !== s.head) {
-        next.conflictHead = s.head;
-        told = true;
-        this.workers.prEvent(
-          cardId,
-          this.board.t.pr.conflict,
-          `Your pull request${which} conflicts with its base branch. Bring it up to date with the latest base the way the repository does it (merge or rebase; push a rebase with --force-with-lease), resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.`,
-        );
-      } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
-      // a branch protection that wants the branch up to date with its base before a merge
-      if (s.mergeState === 'BEHIND' && s.mergeable !== 'CONFLICTING' && pr.behindHead !== s.head) {
-        next.behindHead = s.head;
-        told = true;
-        this.workers.prEvent(
-          cardId,
-          this.board.t.pr.behind,
-          `Your pull request${which} is behind its base branch, and the repository merges only a branch that is up to date with it. Bring it up to date the way the repository does it (merge or rebase; push a rebase with --force-with-lease), run the checks, push, and end your turn.`,
-        );
-      }
-      // ready only while the worker has nothing in hand: what it was told may still change the PR
-      const idle = !told && !this.workers.busyCards().includes(cardId);
-      // a push the reviewer has not seen, and nobody asked for another look: the worker asks, once per commit
-      if (idle && reviewStale(s, noise) && lastAsked(s, noise) < s.changedAt! && pr.staleHead !== s.head) {
-        next.staleHead = s.head;
-        told = true;
-        this.workers.prEvent(
-          cardId,
-          this.board.t.pr.stale,
-          `Your pull request${which} has commits its reviewers have not seen: their last word is older than the head commit, and nobody asked for another look since. Their verdict is about an older state, so Obeya does not merge on it. Ask them for a new review the way the repository does it (its own skill or script for this, if it has one; otherwise a comment mentioning the review bot), and end your turn.`,
-        );
-      }
-      const waits: PrWait[] = [...waitsOf(s, noise), ...(idle && !told ? [] : (['agent'] as const))];
-      const low = confidence(s, noise);
-      const ready = !waits.length;
-      if (ready) delete next.waits;
-      else next.waits = waits;
-      if (ready && low && low.score / low.of < MIN_CONFIDENCE) {
-        // the reviewer doubts it: the owner decides, and merges or tells the worker what is missing
-        const held = { score: `${low.score}/${low.of}`, by: low.by };
-        if (pr.readyHead !== s.head || pr.held?.score !== held.score)
-          this.board.log(cardId, 'state', 'obeya', this.board.t.pr.held(held.by, held.score));
-        next.readyHead = s.head;
-        next.held = held;
-        delete next.mergeError;
-        delete next.manual;
-      } else if (ready && settings.autoMerge === false) {
-        // the repository leaves the merge to the people on the forge: the owner merges there
-        if (pr.readyHead !== s.head || pr.held || !pr.manual) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.readyManual);
-        next.readyHead = s.head;
-        next.manual = true;
-        delete next.held;
-        delete next.mergeError;
-      } else if (ready) {
-        if (pr.readyHead !== s.head || pr.held || pr.manual) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.ready);
-        next.readyHead = s.head;
-        delete next.held;
-        delete next.manual;
-        // the owner's approval covered the merge: Obeya merges, and tries again each round while the forge refuses
-        let commit: string | void;
-        try {
-          commit = await this.forge.merge(this.cwd(cardId), pr.url!, s.head);
-        } catch (e) {
-          if (!this.current(cardId, pr.url!)) return;
-          // the worker took up something meanwhile (on another of the card's PRs, say): not ready while it is at it
-          if (this.workers.busyCards().includes(cardId)) {
-            delete next.readyHead;
-            next.waits = ['agent'];
-            return this.save(cardId, next);
-          }
-          const reason = (messageOf(e)).replace(/^gh pr merge \S+: /, '');
-          if (pr.mergeError !== reason || pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.mergeFailed(reason));
-          next.mergeError = reason;
-          return this.save(cardId, next);
-        }
-        // merged on the forge: a card that moved on meanwhile, or one on a canvas closed since, sees it at its next round
-        if (!this.current(cardId, pr.url!)) return;
-        delete next.mergeError;
-        this.save(cardId, next);
-        return this.mergedPr(cardId, next, commit || undefined);
-      } else {
-        delete next.readyHead;
-        delete next.mergeError;
-        delete next.held;
-        delete next.manual;
-      }
-    } else {
+    if (state !== 'inPr') {
       const waits = waitsOf(s, noise);
       if (waits.length) next.waits = waits;
       else delete next.waits;
+      return this.save(cardId, next);
+    }
+    // which pull request a message is about, where the card has several
+    const which = this.prsOf(cardId).length > 1 ? ` (${pr.url})` : '';
+    if (s.state === 'CLOSED') {
+      // a further one, closed, holds up nothing: the owner says whether it is opened again
+      this.save(cardId, which && this.prsOf(cardId)[0]?.url !== pr.url ? { ...next, closed: true } : next);
+      return this.workers.prClosed(cardId);
+    }
+    const told = this.tell(cardId, pr, s, next, which, noise);
+    return this.settle(cardId, pr, s, next, told, settings.autoMerge !== false, noise);
+  }
+
+  /**
+   * A fork's pull request to the original (`PrState.upstream`): its head, where the fork's main
+   * branch lacks it, merged into that branch, once the worker is not at it (it may push again).
+   * The head it was opened with, where its branch is a port of work on the main branch already, is
+   * recorded as merged without its changes. A conflict goes to the worker, once per head, and is
+   * tried again each round (the worker may have made the merge itself); what stands in the
+   * checkout's way is the owner's, said once. Returns the pull request as stored then; none where
+   * the card moved on meanwhile.
+   */
+  private async intoMain(cardId: string, pr: PrState, s: PrStatus): Promise<PrState | null> {
+    const up = pr.upstream!;
+    const ours = !up.merged && !!up.ported;
+    // the head a port was opened with is recorded at once, before the worker pushes more onto it; a later one waits until the worker is through
+    if (s.head === up.merged || (!ours && this.workers.busyCards().includes(cardId))) return pr;
+    const r = await this.workers.mergeUpstreamHead(cardId, s.head, pr.number, ours);
+    if (!r) return pr;
+    const now = this.current(cardId, pr.url!);
+    if (!now) return null;
+    const next: PrState = { ...now.pr, upstream: { ...now.pr.upstream!, ...up } };
+    const u = next.upstream!;
+    const t = this.board.t.pr;
+    if (!('code' in r)) {
+      u.merged = s.head;
+      delete u.conflict;
+      delete u.blocked;
+      if (!('already' in r)) {
+        this.board.log(cardId, 'state', 'obeya', 'ours' in r && r.ours ? t.portRecorded(u.into) : t.intoMain(u.into, r.to.slice(0, 7)));
+        const pushed = r.pushed;
+        if (pushed && !pushed.problem) this.board.log(cardId, 'state', 'obeya', this.board.t.worker.pushedLanded(pushed.branch, r.to.slice(0, 7)));
+        if (pushed?.problem) this.board.log(cardId, 'error', 'obeya', pushed.moved ? this.board.t.worker.landedPushMoved(pushed.branch) : this.board.t.worker.landedPushRefused(pushed.branch, pushed.problem));
+      }
+    } else if (r.worker) {
+      if (u.conflict !== s.head) {
+        u.conflict = s.head;
+        this.save(cardId, next);
+        this.workers.prEvent(
+          cardId,
+          t.intoMainConflict(u.into),
+          [
+            `Obeya could not merge your pull request's head (${s.head.slice(0, 7)}) into ${u.into}: ${r.detail}.`,
+            r.code === 'landConflict' && !ours ? mergeConflictHelp(this.board.row(cardId).branch ?? 'your branch', u.into, mergeBranch(this.board.row(cardId).branch ?? '', u.into), s.head.slice(0, 7)) : '',
+            'Then end your turn: Obeya tries again once you have.',
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        );
+        return next;
+      }
+    } else if (u.blocked?.head !== s.head || u.blocked.why !== r.detail) {
+      u.blocked = { head: s.head, why: r.detail };
+      this.board.log(cardId, 'error', 'obeya', t.intoMainBlocked(u.into, r.detail));
     }
     this.save(cardId, next);
+    return next;
+  }
+
+  /**
+   * Passes to the worker what is new on its pull request (review comments, failed checks, a conflict,
+   * a branch behind its base, commits the reviewers have not seen), noting in `next` what it was told.
+   * Returns whether it was told anything.
+   */
+  private tell(cardId: string, pr: PrState, s: PrStatus, next: PrState, which: string, noise: string[]): boolean {
+    // an approval without words asks the worker for nothing
+    // a comment rewritten into something other than a passing verdict is news again (a summary that now asks for a fix)
+    const key = (c: PrStatus['comments'][number]) => (c.edited && !passing(c) ? `${c.id}@${c.edited}` : c.id);
+    const comments = s.comments.filter((c) => !pr.seen.includes(key(c)) && c.author !== s.author && !noise.includes(c.author) && (c.body.trim() || c.verdict === 'changes'));
+    if (comments.length) {
+      next.seen = [...new Set([...pr.seen, ...comments.flatMap((c) => [c.id, key(c)])])];
+      this.workers.prEvent(
+        cardId,
+        this.board.t.pr.comments(comments.length, comments[0]!.author),
+        [
+          `New review comments on your pull request${which}. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or leave it where a change is not right, and push). Each comment on the code gets a reply in its own thread, not one comment for all: what you changed, or why not. Then resolve each thread, unless you still want the reviewer’s answer. A summary or verdict that asks for nothing (a review without findings, an approval) needs no reply. Once you pushed, ask the reviewers for a new review the way the repository does it: Obeya merges only on a review of the latest commit. A comment of yours that mentions an account counts as such a request, and Obeya waits for its answer before it merges. End your turn. Use ask if one questions a decision only the owner can make.`,
+          ...comments.map((c) => commentLine(c, true)),
+        ].join('\n\n'),
+      );
+    }
+    const failed = s.checks.filter((c) => c.state === 'failure' && !pr.reported.includes(`${c.name}@${s.head}`));
+    if (failed.length) {
+      next.reported = [...pr.reported, ...failed.map((c) => `${c.name}@${s.head}`)];
+      this.workers.prEvent(
+        cardId,
+        this.board.t.pr.checkFailed(failed.map((c) => c.name).join(', ')),
+        [`Checks failed on your pull request${which}. Find the cause (on GitHub, gh run view --log-failed helps), fix it, push, and end your turn.`, ...failed.map((c) => `- ${c.name}${c.url ? `: ${c.url}` : ''}`)].join('\n'),
+      );
+    }
+    let told = !!(comments.length || failed.length);
+    if (s.mergeable === 'CONFLICTING' && pr.conflictHead !== s.head) {
+      next.conflictHead = s.head;
+      told = true;
+      this.workers.prEvent(
+        cardId,
+        this.board.t.pr.conflict,
+        `Your pull request${which} conflicts with its base branch. Bring it up to date with the latest base the way the repository does it (merge or rebase; push a rebase with --force-with-lease), resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.`,
+      );
+    } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
+    // a branch protection that wants the branch up to date with its base before a merge
+    if (s.mergeState === 'BEHIND' && s.mergeable !== 'CONFLICTING' && pr.behindHead !== s.head) {
+      next.behindHead = s.head;
+      told = true;
+      this.workers.prEvent(
+        cardId,
+        this.board.t.pr.behind,
+        `Your pull request${which} is behind its base branch, and the repository merges only a branch that is up to date with it. Bring it up to date the way the repository does it (merge or rebase; push a rebase with --force-with-lease), run the checks, push, and end your turn.`,
+      );
+    }
+    // a push the reviewer has not seen, and nobody asked for another look: the worker asks, once per
+    // commit, and only while it has nothing else in hand
+    // the original's maintainers review when they do: nobody is nudged
+    if (!told && !pr.upstream && !this.workers.busyCards().includes(cardId) && reviewStale(s, noise) && lastAsked(s, noise) < s.changedAt! && pr.staleHead !== s.head) {
+      next.staleHead = s.head;
+      told = true;
+      this.workers.prEvent(
+        cardId,
+        this.board.t.pr.stale,
+        `Your pull request${which} has commits its reviewers have not seen: their last word is older than the head commit, and nobody asked for another look since. Their verdict is about an older state, so Obeya does not merge on it. Ask them for a new review the way the repository does it (its own skill or script for this, if it has one; otherwise a comment mentioning the review bot), and end your turn.`,
+      );
+    }
+    return told;
+  }
+
+  /**
+   * What the pull request waits for, and once it waits for nothing, whether it is ready: held for the
+   * owner on a reviewer's low confidence, left to the people on the forge (`autoMerge` off), or merged.
+   */
+  private async settle(cardId: string, pr: PrState, s: PrStatus, next: PrState, told: boolean, autoMerge: boolean, noise: string[]) {
+    // ready only while the worker has nothing in hand: what it was told may still change the PR
+    const busy = told || this.workers.busyCards().includes(cardId);
+    const waits: PrWait[] = [...waitsOf(s, noise), ...(busy ? (['agent'] as const) : [])];
+    // a fork's pull request to the original: its maintainers merge it, never Obeya, and it needs the owner for nothing
+    if (pr.upstream) {
+      // a review the maintainers owe is theirs, as is the merge
+      const blocking = waits.filter((w) => w !== 'review' && w !== 'answer');
+      next.waits = blocking.length ? blocking : ['maintainer'];
+      for (const k of ['readyHead', 'held', 'manual', 'mergeError'] as const) delete next[k];
+      return this.save(cardId, next);
+    }
+    const ready = !waits.length;
+    if (ready) delete next.waits;
+    else next.waits = waits;
+    // the reviewer doubts it: the owner decides, and merges or tells the worker what is missing
+    const low = ready ? confidence(s, noise) : undefined;
+    const held = low && low.score / low.of < MIN_CONFIDENCE ? { score: `${low.score}/${low.of}`, by: low.by } : undefined;
+    // the repository leaves the merge to the people on the forge: the owner merges there
+    const manual = ready && !held && !autoMerge;
+    // set or cleared in place, so a round that changes nothing stores nothing
+    if (ready) next.readyHead = s.head;
+    else delete next.readyHead;
+    if (held) next.held = held;
+    else delete next.held;
+    if (manual) next.manual = true;
+    else delete next.manual;
+    // a failed merge stays on the card until a merge succeeds
+    if (!ready || held || manual) delete next.mergeError;
+    if (held && (pr.readyHead !== s.head || pr.held?.score !== held.score)) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.held(held.by, held.score));
+    if (manual && (pr.readyHead !== s.head || pr.held || !pr.manual)) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.readyManual);
+    if (!ready || held || manual) return this.save(cardId, next);
+    if (pr.readyHead !== s.head || pr.held || pr.manual) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.ready);
+    // the owner's approval covered the merge: Obeya merges, and tries again each round while the forge refuses
+    let commit: string | void;
+    try {
+      commit = await this.forge.merge(this.cwd(cardId), pr.url!, s.head);
+    } catch (e) {
+      if (!this.current(cardId, pr.url!)) return;
+      // the worker took up something meanwhile (on another of the card's PRs, say): not ready while it is at it
+      if (this.workers.busyCards().includes(cardId)) {
+        delete next.readyHead;
+        next.waits = ['agent'];
+        return this.save(cardId, next);
+      }
+      const reason = messageOf(e).replace(/^gh pr merge \S+: /, '');
+      if (pr.mergeError !== reason || pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.mergeFailed(reason));
+      next.mergeError = reason;
+      return this.save(cardId, next);
+    }
+    // merged on the forge: a card that moved on meanwhile, or one on a canvas closed since, sees it at its next round
+    if (!this.current(cardId, pr.url!)) return;
+    delete next.mergeError;
+    this.save(cardId, next);
+    return this.mergedPr(cardId, next, commit || undefined);
   }
 
   /**
@@ -325,16 +412,20 @@ export class PrWatcher {
     const next: PrState = { ...pr, checks: s.checks, review: reviewOf(s, noise, self) };
     if (s.mergeable === 'CONFLICTING') next.conflictHead = s.head;
     else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
-    if (s.state === 'CLOSED') {
-      this.save(cardId, next);
-      if (!c.closed) this.workers.contributionClosed(cardId);
-      return;
-    }
     // set aside by the owner until the contributor responds: what they did since the card came to wait for the owner counts
     const awaited = state === 'waiting' ? this.board.snoozedOf(cardId)?.contributor : undefined;
+    const since = awaited?.since ?? c.requested?.at ?? '';
+    const answers = () => s.comments.filter((x) => !pr.seen.includes(x.id) && x.author !== self && !noise.includes(x.author) && (x.edited ?? x.at ?? '') > since);
+    if (s.state === 'CLOSED') {
+      // what they wrote as they closed it goes to the worker with the closing
+      const said = state === 'inPr' || awaited ? answers() : [];
+      next.seen = [...pr.seen, ...said.map((x) => x.id)];
+      this.save(cardId, next);
+      this.workers.contributionClosed(cardId, said.map((x) => commentLine(x, false)));
+      return;
+    }
     if (state === 'inPr' || awaited) {
-      const since = awaited?.since ?? c.requested?.at ?? '';
-      const comments = s.comments.filter((x) => !pr.seen.includes(x.id) && x.author !== self && !noise.includes(x.author) && (x.edited ?? x.at ?? '') > since);
+      const comments = answers();
       const reviewed = c.reviewed ?? pr.headSeen ?? s.head;
       next.headSeen ??= s.head;
       const pushed = s.head !== reviewed && pr.pushedHead !== s.head;
@@ -353,7 +444,7 @@ export class PrWatcher {
             pushed
               ? `Review the new head as you did the first: fetch it (refs/pull/${c.number}/head) into your branch, look at what changed before you run any of it, then the code review, a new demo before and after, the checks and the merge probe against the current main. Hand over again.`
               : 'Tell the owner what they said and what it means for the review: hand over again (the demo on the card stands), or ask where the owner has to decide.',
-            ...comments.map((x) => `- ${x.author}${x.path ? ` on ${x.path}${x.line ? `:${x.line}` : ''}` : ''}${x.url ? ` (${x.url})` : ''}:\n${x.body}`),
+            ...comments.map((x) => commentLine(x, false)),
           ].join('\n\n'),
         );
       }
@@ -371,9 +462,13 @@ export class PrWatcher {
     const { more: _, ...own } = pr;
     const next: PrState =
       root.url === pr.url ? { ...own, ...(root.more ? { more: root.more } : {}) } : { ...root, more: (root.more ?? []).map((m) => (m.url === pr.url ? own : m)) };
-    if (row.pr !== JSON.stringify(next)) this.board.work(cardId, { pr: JSON.stringify(next) });
+    if (row.pr !== JSON.stringify(next)) this.board.work(cardId, { pr: toJson(next) });
   }
 }
 
 /** A pull request as the card's log names it: its number, after its repository where that is another than the card's. */
 export const prLabel = (pr: Pick<PrState, 'number' | 'repo'>) => `${pr.repo ? `${pr.repo.split('/').pop()} ` : ''}#${pr.number}`;
+
+/** A review comment as the worker is told it: who, where, and the text; `verdict` adds a request for changes after the author. */
+const commentLine = (c: PrStatus['comments'][number], verdict: boolean) =>
+  `- ${c.author}${verdict && c.verdict === 'changes' ? ' (requests changes)' : ''}${c.path ? ` on ${c.path}${c.line ? `:${c.line}` : ''}` : ''}${c.url ? ` (${c.url})` : ''}:\n${c.body}`;

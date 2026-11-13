@@ -18,8 +18,10 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { git } from './common';
 import { CHECKOUT, ghEnv } from './gh';
-import { RELEASE, RUNS, type Latest } from './release';
+import { RUNS, type Latest } from './release';
+import { TARGETS } from './targets';
 
 const MAIN = 'main';
 /** What the build workflow signs with (docs/release.md); APPLE_NOTARY_ISSUER only with a team key. */
@@ -56,11 +58,6 @@ export type Status = {
   missing: string[] | null;
   /** What stands in the way. */
   problems: string[];
-};
-
-const git = (cwd: string, ...args: string[]): string | null => {
-  const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
-  return r.status === 0 ? r.stdout.trim() : null;
 };
 
 const commits = (out: string | null): Commit[] =>
@@ -164,7 +161,7 @@ export function report(s: Status): string {
 /** Every file a release holds, as the build workflow makes it. */
 export function expectedAssets(): string[] {
   const names = new Set<string>(['SHA256SUMS', 'latest.json']);
-  for (const r of Object.values(RELEASE)) {
+  for (const r of Object.values(TARGETS)) {
     for (const a of r.installers) names.add(a.name);
     names.add(r.update.name);
     names.add(`${r.update.name}.sig`);
@@ -186,7 +183,7 @@ export function draft(tag: string, gh: Gh): { problems: string[]; notes: string;
   if (json !== null) {
     latest = JSON.parse(json) as Latest;
     if (latest.version !== tag.replace(/^v/, '')) problems.push(`latest.json says version ${latest.version}, not ${tag}.`);
-    const platforms = Object.values(RELEASE).map((r) => r.platform).filter((p) => !latest!.platforms[p]);
+    const platforms = Object.values(TARGETS).map((r) => r.platform).filter((p) => !latest!.platforms[p]);
     if (platforms.length) problems.push(`latest.json names no update for ${platforms.join(', ')} (TAURI_SIGNING_PRIVATE_KEY?).`);
   } else if (have.includes('latest.json')) problems.push('latest.json could not be read.');
   return { problems, notes: release.body ?? '', latest };

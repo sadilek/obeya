@@ -11,7 +11,21 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'scripts/site-sitemap.ts', 'scripts/site-player.ts', 'src/core/video-player.ts', 'src/core/caption-pages.ts', 'src/core/player.css', '.github/workflows/pages.yml']
+    # with site-player.ts each file it builds site/player.js from, as site-player.test.ts checks
+    paths:
+      - 'site/**'
+      - 'scripts/site-sitemap.ts'
+      - 'scripts/site-player.ts'
+      - 'src/server/demo-page.ts'
+      - 'src/core/video-player.ts'
+      - 'src/core/caption-pages.ts'
+      - 'src/core/frame.ts'
+      - 'src/core/player.css'
+      - 'plugin/skills/demo/lib/locale.ts'
+      - 'plugin/skills/demo/lib/subtitles.ts'
+      - 'plugin/skills/demo/lib/timeline.ts'
+      - 'plugin/skills/demo/lib/word-times.ts'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -33,7 +47,7 @@ jobs:
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: oven-sh/setup-bun@v2
-        with: { bun-version: 1.4.3 }
+        with: { bun-version-file: .bun-version }
       - name: Write the sitemap
         run: bun scripts/site-sitemap.ts site https://obeya.si/
       - name: Build the video player

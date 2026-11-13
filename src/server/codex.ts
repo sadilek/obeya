@@ -20,14 +20,16 @@ import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { messageOf } from '../core/text';
-import type { AgentEffort, HarnessModel, UsageLimit } from '../core/types';
-import { AGENT_EFFORTS, codexFamily, codexFamilyName, nearestEffort, resolveCodexModel } from '../core/types';
+import { within, withTimeout } from '../core/late';
+import type { UsageLimit } from '../core/types';
+import { type AgentEffort, type HarnessModel, AGENT_EFFORTS, codexFamily, codexFamilyName, newestOfFamilies } from '../core/agents';
 import type { ToolCall } from './folder';
 import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
-import { BOUNDED_WAITS, carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, FOREGROUND_SLEEP_LIMIT, foregroundSleep, trackHere, withStderr } from './runtime';
+import { carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, lostEvent, stderrTail, trackHere, withStderr } from './runtime';
+import { BOUNDED_WAITS, FOREGROUND_SLEEP_LIMIT, refuseLongWait, waitRefusal } from './shell';
 import { codexCost, type CodexTokens } from './prices';
-import { OWN_GROUP } from './spawn';
+import { OWN_GROUP, spawnOutput } from './spawn';
 import type { PlanLimits, UsageSource } from './usage';
 import { z } from 'zod';
 
@@ -64,37 +66,42 @@ export function endTree(p: ChildProcess) {
 }
 
 
-/** What the CLI says on stdout and stderr, and whether it ended well; null where it could not start or took too long. */
-export function runCodex(bin: string, args: string[], env: Env, ms = 15_000): Promise<{ ok: boolean; out: string } | null> {
-  return new Promise((done) => {
-    const argv = startArgv(bin, args);
-    let out = '';
-    let p: ChildProcess;
-    try {
-      p = spawn(argv[0]!, argv.slice(1), { env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...spawnOptions(argv) });
-    } catch {
-      return done(null);
-    }
-    const timer = setTimeout(() => (p.kill(), done(null)), ms);
-    p.stdout!.on('data', (d) => (out += d));
-    p.stderr!.on('data', (d) => (out += d));
-    p.on('error', () => (clearTimeout(timer), done(null)));
-    p.on('close', (code) => (clearTimeout(timer), done({ ok: code === 0, out: out.trim() })));
-  });
+/** What the CLI says on stdout and stderr; null where it could not start, took too long or did not end well. */
+export async function runCodex(bin: string, args: string[], env: Env, ms = 15_000): Promise<string | null> {
+  const argv = startArgv(bin, args);
+  // killed at the deadline, and not waited for past it: what it started may hold its output open
+  const r = await within(spawnOutput(argv, { env, timeout: ms, killSignal: 'SIGKILL', ...spawnOptions(argv) }).catch(() => null), ms);
+  return r?.code === 0 ? `${r.stdout}${r.stderr}`.trim() : null;
 }
 
 /** The CLI's version (`codex-cli 0.159.2`), or null where it does not answer. */
 export async function codexVersion(bin: string, env: Env): Promise<string | null> {
-  const r = await runCodex(bin, ['--version'], env);
-  return r?.ok ? (r.out.match(/(\d+\.\d+\.\d+\S*)/)?.[1] ?? null) : null;
+  return (await runCodex(bin, ['--version'], env))?.match(/(\d+\.\d+\.\d+\S*)/)?.[1] ?? null;
 }
 
 /** Whether the CLI is logged in, and how it says so ("Logged in using ChatGPT"). */
 export async function codexLogin(bin: string, env: Env): Promise<{ loggedIn: boolean; how?: string }> {
-  const r = await runCodex(bin, ['login', 'status'], env);
-  if (!r?.ok) return { loggedIn: false };
-  const how = r.out.match(/logged in using (.+)/i)?.[1]?.trim();
+  const out = await runCodex(bin, ['login', 'status'], env);
+  if (out === null) return { loggedIn: false };
+  const how = out.match(/logged in using (.+)/i)?.[1]?.trim();
   return { loggedIn: true, ...(how ? { how } : {}) };
+}
+
+/**
+ * The model a Codex family runs on with a catalog (`model/list`): the newest of the family, else the
+ * one the catalog marks as its default; none where the catalog has neither.
+ */
+export function resolveCodexModel<M extends { id: string; isDefault?: true }>(models: M[], family: string): M | undefined {
+  const key = codexFamily(family);
+  return newestOfFamilies(models).find((m) => codexFamily(m.id) === key) ?? models.find((m) => m.isDefault);
+}
+
+/** The effort a model takes nearest to the one chosen, the higher of two as near: the one chosen where it takes it, or says nothing. */
+export function nearestEffort(effort: AgentEffort, takes: AgentEffort[] | undefined): AgentEffort {
+  if (!takes?.length || takes.includes(effort)) return effort;
+  const at = AGENT_EFFORTS.indexOf(effort);
+  const distance = (e: AgentEffort) => Math.abs(AGENT_EFFORTS.indexOf(e) - at);
+  return takes.reduce((best, e) => (distance(e) < distance(best) || (distance(e) === distance(best) && AGENT_EFFORTS.indexOf(e) > AGENT_EFFORTS.indexOf(best)) ? e : best));
 }
 
 /** A process that runs an app server: one started here, or one over `ssh` (`SshHost.session`). */
@@ -110,8 +117,11 @@ export class CodexError extends Error {
   }
 }
 
-/** How much of what the app server said last on stderr a session that ended reports. */
-const STDERR_TAIL = 2000;
+/** What a request to an app server that has ended fails with. */
+const ENDED = 'the Codex app server ended';
+
+/** What a start fails with where Codex is not on this machine. */
+const NOT_INSTALLED = 'Codex is not installed on this machine';
 
 /**
  * A `codex app-server` process and the JSON-RPC connection over its stdio: requests out and their
@@ -152,11 +162,11 @@ export class AppServer {
     });
     void this.exited.then(() => {
       this.dead = true;
-      for (const p of this.pending.values()) p.reject(new CodexError(withStderr('the Codex app server ended', this.stderr)));
+      for (const p of this.pending.values()) p.reject(new CodexError(withStderr(ENDED, this.stderr)));
       this.pending.clear();
     });
     this.proc.stdout!.setEncoding('utf8').on('data', (d: string) => this.take(d));
-    this.proc.stderr?.setEncoding('utf8').on('data', (d: string) => (this.stderr = (this.stderr + d).slice(-STDERR_TAIL)));
+    this.proc.stderr?.setEncoding('utf8').on('data', (d: string) => (this.stderr = stderrTail(this.stderr, d)));
     // a closed pipe as the process ends is no error of Obeya's
     this.proc.stdin!.on('error', () => {});
   }
@@ -168,7 +178,7 @@ export class AppServer {
   }
 
   request<T = Record<string, unknown>>(method: string, params: unknown = {}): Promise<T> {
-    if (this.dead) return Promise.reject(new CodexError(withStderr('the Codex app server ended', this.stderr)));
+    if (this.dead) return Promise.reject(new CodexError(withStderr(ENDED, this.stderr)));
     const id = ++this.next;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
@@ -238,11 +248,25 @@ interface Item {
   prompt?: string | null;
 }
 
-/** A shell's own wrapper around a command (`/bin/zsh -lc 'git status'`), which the log line leaves out. */
+/** A shell's own wrapper around a command (`/bin/zsh -lc 'git status'`), which the log line leaves out: the shell, then its flag. */
+const WRAPPER = { shell: /(?:^|\/)(?:ba|z|da)?sh$/, flag: /^-l?c$/ };
+
+/** A command as the app server reports it, a line, without its shell's wrapper. */
 export function bareCommand(command: string): string {
-  const m = /^(?:\S*\/)?(?:ba|z|da)?sh\s+-l?c\s+(['"])([^]*)\1$/.exec(command.trim());
-  return m ? m[2]!.replace(/'\\''/g, "'") : command;
+  const m = /^(\S+)\s+(\S+)\s+(['"])([^]*)\3$/.exec(command.trim());
+  return m && WRAPPER.shell.test(m[1]!) && WRAPPER.flag.test(m[2]!) ? m[4]!.replace(/'\\''/g, "'") : command;
 }
+
+/** A command as a thread's rollout file records it, an argv, without its shell's wrapper. */
+export function bareArgv(argv: string[]): string {
+  return argv.length === 3 && WRAPPER.shell.test(argv[0]!) && WRAPPER.flag.test(argv[1]!) ? argv[2]! : argv.join(' ');
+}
+
+/** A file a step added (`Write`) or changed, moved or deleted (`Edit`), as Claude Code's tool call would be: one per file, `index` its place in the step. */
+export const fileCall = (step: string, index: number, path: string, added: boolean): ToolCall => ({ id: `${step}:${index}`, name: added ? 'Write' : 'Edit', input: { file_path: path } });
+
+/** A tool of an MCP server, or of a dynamic tool's namespace (Obeya's own where it names none), as Claude Code names it. */
+export const mcpTool = (server: string | null | undefined, tool: string | undefined) => `mcp__${server || 'obeya'}__${tool}`;
 
 /** The tool calls an item stands for, named as Claude Code's are, so the card's log and a folder's watch read them alike. */
 export function itemCalls(item: Item): ToolCall[] {
@@ -250,14 +274,11 @@ export function itemCalls(item: Item): ToolCall[] {
     case 'commandExecution':
       return [{ id: item.id, name: 'Bash', input: { command: bareCommand(item.command ?? '') } }];
     case 'fileChange':
-      return (item.changes ?? []).map((c, i) => {
-        const kind = typeof c.kind === 'string' ? c.kind : (c.kind?.type ?? '');
-        return { id: `${item.id}:${i}`, name: kind === 'add' ? 'Write' : 'Edit', input: { file_path: c.path } };
-      });
+      return (item.changes ?? []).map((c, i) => fileCall(item.id, i, c.path, (typeof c.kind === 'string' ? c.kind : c.kind?.type) === 'add'));
     case 'dynamicToolCall':
-      return [{ id: item.id, name: `mcp__${item.namespace ?? 'obeya'}__${item.tool}`, input: (item.arguments ?? {}) as Record<string, unknown> }];
+      return [{ id: item.id, name: mcpTool(item.namespace, item.tool), input: (item.arguments ?? {}) as Record<string, unknown> }];
     case 'mcpToolCall':
-      return [{ id: item.id, name: `mcp__${item.server}__${item.tool}`, input: (item.arguments ?? {}) as Record<string, unknown> }];
+      return [{ id: item.id, name: mcpTool(item.server, item.tool), input: (item.arguments ?? {}) as Record<string, unknown> }];
     case 'webSearch':
       return [{ id: item.id, name: 'WebSearch', input: { query: item.query ?? '' } }];
     case 'collabAgentToolCall':
@@ -324,8 +345,7 @@ function jsonSchema(shape: z.ZodRawShape): unknown {
 export function patchCalls(id: string, patch: string): ToolCall[] {
   const calls: ToolCall[] = [];
   for (const m of patch.matchAll(/^\*\*\* (Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$/gm)) {
-    const path = (m[2] ?? m[3])!.trim();
-    calls.push({ id: `${id}:${calls.length}`, name: m[1] === 'Add' || m[3] ? 'Write' : 'Edit', input: { file_path: path } });
+    calls.push(fileCall(id, calls.length, (m[2] ?? m[3])!.trim(), m[1] === 'Add' || !!m[3]));
   }
   return calls;
 }
@@ -348,7 +368,9 @@ function hookCalls(h: HookCall): ToolCall[] {
 }
 
 /** Why a command that waits too long in the foreground is not run, in Codex's terms: it has no background task that wakes the session. */
-export const WAIT_REFUSED = `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. Wait in commands that sleep ${FOREGROUND_SLEEP_LIMIT} seconds at most, e.g. \`${BOUNDED_WAITS[0]}\`, and run one again until what you wait for is there. For anything longer, snooze (snooze) and end your turn: Obeya wakes you then.`;
+export const WAIT_REFUSED = waitRefusal(
+  `Wait in commands that sleep ${FOREGROUND_SLEEP_LIMIT} seconds at most, e.g. \`${BOUNDED_WAITS[0]}\`, and run one again until what you wait for is there. For anything longer, snooze (snooze) and end your turn: Obeya wakes you then.`,
+);
 
 /**
  * Where Codex's hooks reach the session: a server on the loopback that only this session's token
@@ -434,10 +456,8 @@ const MODELS_WAIT_MS = 30_000;
  * and a turn that starts before has the next one add the whole list again, the change from the one
  * the conversation last saw: some 2,500 tokens the cache does not hold, at each start or resume.
  */
-function pluginsListed(server: AppServer): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<void>((resolve) => (timer = setTimeout(resolve, 15_000)));
-  return Promise.race([server.request('plugin/list', {}).then(() => {}, () => {}), late]).finally(() => clearTimeout(timer));
+async function pluginsListed(server: AppServer): Promise<void> {
+  await within(server.request('plugin/list', {}).then(() => {}, () => {}), 15_000);
 }
 /** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
 const hookPortThere = () => 30_000 + Math.floor(Math.random() * 30_000);
@@ -502,7 +522,7 @@ class CodexSession implements AgentSession {
     this.done = (unknownHost ? Promise.reject(unknownHost) : this.run())
       .catch((e) => {
         if (this.closed) return;
-        if (this.there && (this.lost || e instanceof HostError)) this.emit({ type: 'lost', message: `the connection to ${this.there!.host.name} was lost` });
+        if (this.there && (this.lost || e instanceof HostError)) this.emit(lostEvent(this.there!.host.name));
         else this.emit({ type: 'error', message: withStderr(messageOf(e), this.server?.stderr ?? '') });
         // a start that failed leaves no app server behind (nor a host's session with it)
         this.server?.close();
@@ -542,17 +562,13 @@ class CodexSession implements AgentSession {
   private async model(server: AppServer): Promise<string> {
     const family = codexFamily(this.spec.model ?? 'default');
     const where = this.there?.host.name ?? 'this machine';
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer in ${MODELS_WAIT_MS / 1000} seconds`)), MODELS_WAIT_MS)));
     let catalog: HarnessModel[];
     try {
-      catalog = await Promise.race([listModels(server), late]);
+      catalog = await withTimeout(listModels(server), MODELS_WAIT_MS, `no answer in ${MODELS_WAIT_MS / 1000} seconds`);
     } catch (e) {
       if (e instanceof CodexError && codexLoginFailed(undefined, e.message)) throw new Error(notLoggedIn(this.there?.host.name ?? null, e.message));
       if (e instanceof CodexError && tooOld(e)) throw new Error(`Codex on ${where} is too old to list its models, so the agent did not start. Update Codex there.`);
       throw new Error(`Codex on ${where} did not list its models, so the agent did not start. (${messageOf(e)})`);
-    } finally {
-      clearTimeout(timer);
     }
     const model = resolveCodexModel(catalog, family);
     if (!model) throw new Error(`Codex on ${where} lists no model of the family ${codexFamilyName(family)} and no default, so the agent did not start.`);
@@ -569,7 +585,7 @@ class CodexSession implements AgentSession {
     const there = this.there;
     const cwd = there ? there.path : spec.cwd;
     const bin = there ? 'codex' : codexExecutable({ ...process.env, ...spec.env });
-    if (!bin) throw new Error('Codex is not installed on this machine: no `codex` on the PATH');
+    if (!bin) throw new Error(`${NOT_INSTALLED}: no \`codex\` on the PATH`);
     const hooks = (this.hooks = new Hooks((h) => this.hook(h)));
     const writable = [...(spec.dirs ?? []), ...(there ? [] : [tmpdir()])];
     const common = spec.readOnly ? undefined : await gitCommonDir(cwd, there?.host);
@@ -593,7 +609,7 @@ class CodexSession implements AgentSession {
         login: false,
         forwards: [`127.0.0.1:${port}:127.0.0.1:${hooks.port}`],
         onExit: (code) => (this.lost = code === LOST && !this.closed),
-        onStderr: (text) => this.server && (this.server.stderr = (this.server.stderr + text).slice(-STDERR_TAIL)),
+        onStderr: (text) => this.server && (this.server.stderr = stderrTail(this.server.stderr, text)),
       });
       server = new AppServer({ process: start({ command: bin, args: ['app-server', ...hooks.args(port, !!spec.watch, false)], cwd, env: { ...spec.env }, signal: new AbortController().signal }) });
     } else {
@@ -652,7 +668,7 @@ class CodexSession implements AgentSession {
     this.pump();
     const code = await exited;
     if (this.closed) return;
-    if (this.lost) this.emit({ type: 'lost', message: `the connection to ${there!.host.name} was lost` });
+    if (this.lost) this.emit(lostEvent(there!.host.name));
     else if (there && code === 127) this.emit({ type: 'error', message: withStderr(`Codex is not installed on ${there.host.name}: no \`codex\` on its PATH`, server.stderr) });
     else this.emit({ type: 'error', message: ended(code, server.stderr) });
   }
@@ -666,9 +682,10 @@ class CodexSession implements AgentSession {
     if (!calls.length || this.closed) return {};
     if (h.hook_event_name === 'PreToolUse') {
       const command = h.tool_name === 'Bash' ? String(calls[0]!.input.command) : '';
-      if (command && foregroundSleep(command) > FOREGROUND_SLEEP_LIMIT) {
+      const refused = command ? refuseLongWait(command, WAIT_REFUSED) : undefined;
+      if (refused) {
         this.emit({ type: 'denied', name: 'Bash', input: { command }, by: 'obeya' });
-        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: WAIT_REFUSED } };
+        return refused;
       }
       if (!this.spec.watch) return {};
       this.hooked.add(h.tool_use_id ?? '');
@@ -880,7 +897,7 @@ export function modelsOf(listed: ListedModel[]): HarnessModel[] {
 /** Asks a short-lived app server `ask` and closes it. */
 async function once<T>(cwd: string, ask: (s: AppServer) => Promise<T>, env: Env = process.env): Promise<T> {
   const bin = codexExecutable(env);
-  if (!bin) throw new Error('Codex is not installed on this machine');
+  if (!bin) throw new Error(NOT_INSTALLED);
   const server = new AppServer({ bin, cwd, env: cleanEnv(env) });
   const timer = setTimeout(() => server.close(), 30_000);
   try {
@@ -931,7 +948,7 @@ export function codexUsageOf(r: { rateLimits?: RateSnapshot | null; rateLimitsBy
     return [b.primary, b.secondary].flatMap((w) => {
       if (!w) return [];
       const { kind, group } = windowKind(w.windowDurationMins);
-      return [{ kind: scope ? 'weekly_scoped' : kind, group, ...(scope ? { scope } : {}), percent: w.usedPercent, ...(w.resetsAt ? { resetsAt: new Date(w.resetsAt * 1000).toISOString() } : {}), severity: severity(w.usedPercent) }];
+      return [{ kind: scope ? 'weekly_scoped' : kind, group, ...(scope ? { scope } : {}), percent: w.usedPercent, ...(w.resetsAt ? { resetsAt: new Date(w.resetsAt * 1000).toISOString() } : {}), ...(w.windowDurationMins ? { windowMinutes: w.windowDurationMins } : {}), severity: severity(w.usedPercent) }];
     });
   });
   return limits.length ? { limits, at: now.toISOString() } : null;
@@ -943,7 +960,7 @@ export function codexUsage(cwd: string): UsageSource {
   let server: AppServer | undefined;
   let ready: Promise<AppServer> | undefined;
   const open = () => {
-    if (!bin) return Promise.reject(new Error('Codex is not installed on this machine'));
+    if (!bin) return Promise.reject(new Error(NOT_INSTALLED));
     server = new AppServer({ bin, cwd, env: cleanEnv() });
     const s = server;
     return s.init().then(() => s);
@@ -987,7 +1004,7 @@ export class CodexLogins {
       server = new AppServer({ process: spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }) });
     } else {
       const bin = codexExecutable(this.env);
-      if (!bin) throw new Error('Codex is not installed on this machine');
+      if (!bin) throw new Error(NOT_INSTALLED);
       server = new AppServer({ bin, cwd: tmpdir(), env: cleanEnv(this.env) });
     }
     const id = randomBytes(9).toString('base64url');
@@ -1003,7 +1020,7 @@ export class CodexLogins {
       if (!r.authUrl) throw new Error('Codex gave no sign-in page');
       loginId = r.loginId;
       this.logins.set(id, login);
-      void server.exited.then(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: withStderr('the Codex app server ended', server.stderr) }));
+      void server.exited.then(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: withStderr(ENDED, server.stderr) }));
       setTimeout(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: 'nobody signed in' }), LOGIN_WAIT).unref?.();
       return { id, url: r.authUrl };
     } catch (e) {

@@ -12,7 +12,11 @@ import { Composer } from './composer';
 import { WISH_DRAFT } from './draft';
 import { useFitHeight } from './fitHeight';
 import { imageUrl, Shots } from './shots';
+import { readJson, type Store, writeJson } from './stored';
 import { clock, errorText, t } from './strings';
+import { oneLine } from '../core/text';
+import { signal } from './signal';
+import { Over } from './over';
 
 /** The issue as it will go out; `raw`: the job wrote nothing, the owner's words stand as they are. */
 interface Issue {
@@ -41,21 +45,17 @@ interface WishState {
 }
 
 let state: WishState = { open: false, issue: null, writing: false, error: '' };
-const listeners = new Set<() => void>();
-let kept: { store: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>; key: string } | null = null;
+const changed = signal();
+let kept: { store: Store; key: string } | null = null;
 
 function set(change: Partial<WishState>) {
   const before = state.issue;
   state = { ...state, ...change };
   if (state.issue !== before) {
-    if (kept)
-      try {
-        if (state.issue) kept.store.setItem(kept.key, JSON.stringify(state.issue));
-        else kept.store.removeItem(kept.key);
-      } catch {}
+    if (kept) writeJson(kept.store, kept.key, state.issue);
     writeAgain();
   }
-  for (const fn of listeners) fn();
+  changed.emit();
 }
 
 let again: ReturnType<typeof setTimeout> | undefined;
@@ -75,31 +75,21 @@ function writeAgain() {
  * for the same canvas, it changes nothing; for another (a switch of canvas in the same page), that
  * canvas's draft takes the place of the one's before, which is written down already.
  */
-export function keepWish(store: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>, canvas: string) {
+export function keepWish(store: Store, canvas: string) {
   const key = `obeya-wish-${canvas}`;
   if (kept?.store === store && kept.key === key) return;
   const switched = !!kept;
   kept = { store, key };
-  let issue: Issue | null = null;
-  try {
-    const saved = JSON.parse(store.getItem(key) ?? 'null') as Issue | null;
-    if (saved && typeof saved.title === 'string' && typeof saved.body === 'string') issue = { ...saved, images: saved.images ?? [] };
-  } catch {}
+  const saved = readJson<Issue>(store, key);
+  const issue = saved && typeof saved.title === 'string' && typeof saved.body === 'string' ? { ...saved, images: saved.images ?? [] } : null;
   // a wish still being written for the canvas before goes into that canvas's draft (`write`)
   if (switched) state = { open: false, issue, writing: false, error: '' };
   else if (issue) state = { ...state, issue };
   writeAgain();
-  if (switched) for (const fn of listeners) fn();
+  if (switched) changed.emit();
 }
 
-export const useWish = () =>
-  useSyncExternalStore(
-    (fn) => {
-      listeners.add(fn);
-      return () => void listeners.delete(fn);
-    },
-    () => state,
-  );
+export const useWish = () => useSyncExternalStore(changed.on, () => state);
 
 /** The dialog's state as it stands, outside React. */
 export const wishNow = () => state;
@@ -207,70 +197,65 @@ export function WishDialog() {
   if (!w.open) return null;
   const { issue } = w;
   return (
-    <div id="wish" onClick={closeWish}>
-      <div className="box" role="dialog" aria-label={t.wish.title} onClick={(e) => e.stopPropagation()}>
-        <button className="close" title={t.close} onClick={closeWish}>
-          ✕
-        </button>
-        <h2>{t.wish.title}</h2>
-        {w.sent ? (
-          <div className="w-sent">
-            {w.sent.map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-            <button className="btn primary" autoFocus onClick={closeWish}>
-              {t.gotIt}
-            </button>
-          </div>
-        ) : (
-          <>
-            {w.pending && (
-              <div className="w-pending">
-                <p>{t.wish.pending}</p>
-                <blockquote>{short(w.pending.said)}</blockquote>
-                <p>{t.wish.pendingThen}</p>
-                <button className="btn small" disabled={w.writing} onClick={discard}>
-                  {t.wish.replace}
+    <Over id="wish" label={t.wish.title} onClose={closeWish}>
+      <h2>{t.wish.title}</h2>
+      {w.sent ? (
+        <div className="w-sent">
+          {w.sent.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+          <button className="btn primary" autoFocus onClick={closeWish}>
+            {t.gotIt}
+          </button>
+        </div>
+      ) : (
+        <>
+          {w.pending && (
+            <div className="w-pending">
+              <p>{t.wish.pending}</p>
+              <blockquote>{short(w.pending.said)}</blockquote>
+              <p>{t.wish.pendingThen}</p>
+              <button className="btn small" disabled={w.writing} onClick={discard}>
+                {t.wish.replace}
+              </button>
+            </div>
+          )}
+          {issue && <IssueFields issue={issue} disabled={w.writing} />}
+          {w.writing && <p className="hint w-writing">{t.wish.writing}</p>}
+          {w.error && <p className="p-error">{w.error}</p>}
+          <Composer
+            className="w-compose"
+            draft={WISH_DRAFT}
+            placeholder={issue ? t.wish.add : t.wish.placeholder}
+            {...(issue ? { label: t.wish.rework } : { action: t.wish.write })}
+            onSend={(text, images) => write({ said: text || '(see the screenshot)' }, images ?? [])}
+          />
+          {issue && (
+            <>
+              <p className="w-public">
+                {t.wish.public}
+                {issue.images.length > 0 && ` ${t.wish.shots(issue.images.length)}`}
+                {issueUrl(issue.title, issue.body, t.wish.cut).trimmed && ` ${t.wish.long(issue.images.length > 0)}`}
+              </p>
+              <div className="w-actions">
+                <button className="w-discard" onClick={discard}>
+                  {t.wish.discard}
+                </button>
+                <button className="btn primary" disabled={w.writing || !issue.title.trim() || !issue.body.trim()} onClick={() => void send(issue)}>
+                  {t.wish.open}
                 </button>
               </div>
-            )}
-            {issue && <IssueFields issue={issue} disabled={w.writing} />}
-            {w.writing && <p className="hint w-writing">{t.wish.writing}</p>}
-            {w.error && <p className="p-error">{w.error}</p>}
-            <Composer
-              className="w-compose"
-              draft={WISH_DRAFT}
-              placeholder={issue ? t.wish.add : t.wish.placeholder}
-              {...(issue ? { label: t.wish.rework } : { action: t.wish.write })}
-              onSend={(text, images) => write({ said: text || '(see the screenshot)' }, images ?? [])}
-            />
-            {issue && (
-              <>
-                <p className="w-public">
-                  {t.wish.public}
-                  {issue.images.length > 0 && ` ${t.wish.shots(issue.images.length)}`}
-                  {issueUrl(issue.title, issue.body, t.wish.cut).trimmed && ` ${t.wish.long(issue.images.length > 0)}`}
-                </p>
-                <div className="w-actions">
-                  <button className="w-discard" onClick={discard}>
-                    {t.wish.discard}
-                  </button>
-                  <button className="btn primary" disabled={w.writing || !issue.title.trim() || !issue.body.trim()} onClick={() => void send(issue)}>
-                    {t.wish.open}
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+            </>
+          )}
+        </>
+      )}
+    </Over>
   );
 }
 
 /** The owner's words of a waiting wish, as the dialog quotes them. */
 const short = (said: string) => {
-  const one = said.replace(/\s+/g, ' ').trim();
+  const one = oneLine(said);
   return one.length > 160 ? `${one.slice(0, 159).trimEnd()} …` : one;
 };
 

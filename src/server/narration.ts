@@ -24,6 +24,7 @@ import { isAbsolute, join } from 'node:path';
 import type { HeldVoice } from '../../plugin/skills/demo/lib/voices.ts';
 import { endGently, lines, pythonSpawn } from './voice.ts';
 import { messageOf } from '../core/text';
+import { within } from '../core/late';
 
 export interface ClipRequest {
   voice: HeldVoice;
@@ -124,18 +125,14 @@ export class NarrationHost {
     if (!this.o.hear) return { unheard: 'Obeya hears nothing back here' };
     const file = join(tmpdir(), `obeya-hear-${crypto.randomUUID()}.wav`);
     writeFileSync(file, wav);
-    let expire = () => {};
-    const late = new Promise<string>((resolve) => {
-      const timer = setTimeout(() => resolve(`hearing it back took longer than ${Math.round((this.o.hearMs ?? HEAR_CLIP_MS) / 1000)} s`), this.o.hearMs ?? HEAR_CLIP_MS);
-      expire = () => clearTimeout(timer);
-    });
+    const ms = this.o.hearMs ?? HEAR_CLIP_MS;
     try {
-      const heard = await Promise.race([this.o.hear(file, language), late]);
+      const heard = await within(this.o.hear(file, language), ms);
+      if (heard === undefined) return { unheard: `hearing it back took longer than ${Math.round(ms / 1000)} s` };
       return typeof heard === 'string' ? { unheard: heard } : { timed: heard };
     } catch (e) {
       return { unheard: `hearing it back failed: ${messageOf(e)}` };
     } finally {
-      expire();
       rmSync(file, { force: true });
     }
   }
@@ -265,7 +262,7 @@ export class NarrationHost {
    */
   private async stuck(voice: Running, doing: string, ms: number): Promise<{ error: string }> {
     if (this.voice === voice) this.voice = undefined;
-    const gone = (wait: number) => Promise.race([voice.child.exited.then(() => true), Bun.sleep(wait).then(() => false)]);
+    const gone = (wait: number) => within(voice.child.exited, wait).then((code) => code !== undefined);
     voice.child.kill();
     // one too stuck for SIGTERM
     if (!(await gone(5000))) {
@@ -292,7 +289,7 @@ export class NarrationHost {
    * wait, since a process the voice started may still hold the pipe open.
    */
   private async said(voice: Running) {
-    await Promise.race([voice.drained, Bun.sleep(1000)]);
+    await within(voice.drained, 1000);
     return voice.stderr.join('\n').trim().slice(-1500);
   }
 

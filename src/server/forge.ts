@@ -4,9 +4,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PrReviewEntry, PrThread, PrWait } from '../core/types';
-import { enterpriseServer, ghHosts, onGitHub, remoteHost } from './repo';
+import { enterpriseServer, ghHosts, onGitHub, parseRemote } from './repo';
 import { spawnOutput } from './spawn';
+import { gitTry, LOGIN_TTL } from './git';
+import type { GithubLogin } from './hosts';
 
 export interface PrStatus {
   state: 'OPEN' | 'MERGED' | 'CLOSED';
@@ -70,6 +71,8 @@ export interface Forge {
    * reason when it cannot. Returns the commit the merge put on the base branch, where GitHub says.
    */
   merge(cwd: string, url: string, head: string): Promise<string | void>;
+  /** Closes the pull request without merging it, its branch left as it is. */
+  close(cwd: string, url: string): Promise<void>;
   /** Opens a pull request from the pushed branch `head` onto `base`; returns its URL. */
   open(cwd: string, pr: { base: string; head: string; title: string; body: string }): Promise<string>;
   /** The URL of pull request `n` of the repository whose checkout `cwd` is (its `origin`). */
@@ -128,14 +131,7 @@ export function parsePrUrl(
 
 /** Whether a git remote (https, ssh, scp-like, or a path) is the repository `owner/repo`. */
 export const sameRepo = (remote: string, owner: string, repo: string) =>
-  remote
-    .trim()
-    .toLowerCase()
-    .replace(/[/\\]+$/, '')
-    .replace(/\.git$/, '')
-    .split(/[/\\:]/)
-    .slice(-2)
-    .join('/') === `${owner}/${repo}`.toLowerCase();
+  parseRemote(remote).path.split(/[/\\]/).slice(-2).join('/').toLowerCase() === `${owner}/${repo}`.toLowerCase();
 
 /**
  * Where work that landed on the default branch without a pull request shows on the forge of
@@ -144,13 +140,9 @@ export const sameRepo = (remote: string, owner: string, repo: string) =>
  * None for a repository on this machine.
  */
 export function landedUrl(remote: string, to: string, from?: string): string | null {
-  const url = remote.trim();
-  const host = remoteHost(url);
-  if (!host) return null;
-  const web = /^https?:\/\//i.test(url)
-    ? url.replace(/^(https?:\/\/)[^@/]*@/i, '$1')
-    : `https://${host}/${url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*\//i, '').replace(/^[^/\\:]*:\/?/, '')}`;
-  const repo = `${web.replace(/\/+$/, '').replace(/\.git$/, '')}${host.includes('gitlab') ? '/-' : ''}`;
+  const { host, web } = parseRemote(remote);
+  if (!host || !web) return null;
+  const repo = `${web}${host.includes('gitlab') ? '/-' : ''}`;
   return from ? `${repo}/compare/${from}...${to}` : `${repo}/commit/${to}`;
 }
 
@@ -160,60 +152,133 @@ export function landedUrl(remote: string, to: string, from?: string): string | n
  */
 export const routedForge = (github: Forge, forgejo: Forge, origin: (cwd: string) => Promise<string | null>, onGitHub: (remote: string) => boolean): Forge => {
   const of = (url: string) => (parsePrUrl(url, onGitHub)?.forge === 'forgejo' ? forgejo : github);
+  /** The forge of the checkout's `origin`; none without one. */
+  const byOrigin = async (cwd: string) => {
+    const remote = await origin(cwd);
+    return remote ? (onGitHub(remote) ? github : forgejo) : null;
+  };
   return {
     status: (cwd, url) => of(url).status(cwd, url),
     body: (cwd, url) => of(url).body(cwd, url),
     setBody: (cwd, url, body) => of(url).setBody(cwd, url, body),
     merge: (cwd, url, head) => of(url).merge(cwd, url, head),
+    close: (cwd, url) => of(url).close(cwd, url),
     contribution: (cwd, url) => of(url).contribution(cwd, url),
-    urlOf: async (cwd, n) => {
-      const remote = await origin(cwd);
-      return (remote && !onGitHub(remote) ? forgejo : github).urlOf(cwd, n);
-    },
+    urlOf: async (cwd, n) => ((await byOrigin(cwd)) ?? github).urlOf(cwd, n),
     comment: (cwd, url, body) => of(url).comment(cwd, url, body),
     requestChanges: (cwd, url, body) => of(url).requestChanges(cwd, url, body),
-    open: async (cwd, pr) => {
-      const remote = await origin(cwd);
-      return (remote && !onGitHub(remote) ? forgejo : github).open(cwd, pr);
-    },
+    open: async (cwd, pr) => ((await byOrigin(cwd)) ?? github).open(cwd, pr),
     visibility: async (cwd) => {
-      const remote = await origin(cwd);
-      if (!remote) return null;
-      const f = onGitHub(remote) ? github : forgejo;
-      return f.visibility ? f.visibility(cwd) : null;
+      const f = await byOrigin(cwd);
+      return f?.visibility ? f.visibility(cwd) : null;
     },
   };
 };
 
 /**
- * Where gh runs: the directory, and the GitHub host (github.com or an Enterprise server) and owner
- * of the repository it works on, where known.
+ * Where gh runs: the directory, and the GitHub host (github.com or an Enterprise server), owner and
+ * name of the repository it works on, where known.
  */
 export interface GhAt {
   cwd: string;
   host?: string;
   owner?: string;
+  repo?: string;
+}
+
+/** A GitHub repository: its host, owner and name. */
+export interface GithubRepo {
+  host: string;
+  owner: string;
+  repo: string;
 }
 
 /**
- * The host and owner of a GitHub repository by its remote URL (https, ssh or scp-like) on
+ * The host, owner and name of a GitHub repository by its remote URL (https, ssh or scp-like) on
  * github.com or a GitHub Enterprise server gh is logged into (`onGitHub`), or none for any other.
  */
-export function githubRepo(remote: string, hosts: () => string[] = ghHosts): { host: string; owner: string } | undefined {
-  const url = remote.trim();
-  const host = remoteHost(url);
-  if (!host || !onGitHub(url, hosts)) return undefined;
-  const path = url.includes('://') ? url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*\//i, '') : url.replace(/^[^:]*:\/?/, '');
-  const owner = /^([^/]+)\/[^/]+?\/?$/.exec(path)?.[1];
+export function githubRepo(remote: string, hosts: () => string[] = ghHosts): GithubRepo | undefined {
+  const { host, path } = parseRemote(remote);
+  if (!host || !onGitHub(remote.trim(), hosts)) return undefined;
+  const m = /^([^/]+)\/([^/]+)$/.exec(path);
   // ssh.github.com, GitHub's SSH over port 443, is github.com to gh
-  return owner ? { host: host.endsWith('.github.com') ? 'github.com' : host, owner } : undefined;
+  return m ? { host: host.endsWith('.github.com') ? 'github.com' : host, owner: m[1]!, repo: m[2]! } : undefined;
 }
 
+/**
+ * The GitHub account the owner set for a repository on this machine (`RepoConfig.githubAccount`), by
+ * the repository on GitHub: gh works on it, and on its pull requests, as that account.
+ */
+const accounts = new Map<string, string>();
+const repoKey = ({ host, owner, repo }: GithubRepo) => `${host}/${owner}/${repo}`.toLowerCase();
 
-/** How long a token gh keeps for an account is taken as it stands. */
-const TOKEN_TTL = 10 * 60_000;
+/** gh works on `repo` as `account` from now on; returns what ends that. */
+export function useGithubAccount(repo: GithubRepo, account: string): () => void {
+  const key = repoKey(repo);
+  accounts.set(key, account);
+  return () => {
+    if (accounts.get(key) === account) accounts.delete(key);
+  };
+}
+
+/** The account gh works as on `owner/repo` on `host`: the one set for it, else the owner's own login (a personal repository). */
+const accountOf = ({ host, owner, repo }: { host: string; owner?: string; repo?: string }) => (owner && repo && accounts.get(repoKey({ host, owner, repo }))) || owner;
+
+
 /** By gh program, host and account: its token as gh hands it out (asked once for calls side by side), and when it was asked. */
 const tokens = new Map<string, { token: Promise<string | null>; at: number }>();
+
+/**
+ * The token of gh's login as `account` on `host` (`gh auth token --user`), asked once per
+ * `LOGIN_TTL`; null where gh has no such login.
+ */
+function accountToken(program: string, host: string, account: string, timeout: number): Promise<string | null> {
+  const key = `${program}\n${host}\n${account}`;
+  let known = tokens.get(key);
+  if (!known || Date.now() - known.at > LOGIN_TTL) {
+    // without the tokens in the environment, which gh would hand back instead of the account's own
+    const { GH_TOKEN: _, GITHUB_TOKEN: __, GH_ENTERPRISE_TOKEN: ___, GITHUB_ENTERPRISE_TOKEN: ____, ...plain } = process.env;
+    const asked = spawnOutput([program, 'auth', 'token', '--hostname', host, '--user', account], { env: plain, stdin: 'ignore', timeout }).then(
+      (r) => (r.code === 0 && r.stdout.trim()) || null,
+      () => null,
+    );
+    known = { token: asked, at: Date.now() };
+    tokens.set(key, known);
+  }
+  return known.token;
+}
+
+/** The variable gh reads a token for `host` from, and the other one it would read instead. */
+const tokenVariables = (host: string) => (enterpriseServer(host) ? (['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'] as const) : (['GH_TOKEN', 'GITHUB_TOKEN'] as const));
+
+/**
+ * The login of `account` on `host`, read in the background and again once older than `LOGIN_TTL`,
+ * the one read before standing meanwhile: its token (for a host's clones, `GithubLogin`), and `env`,
+ * the variable that has gh (and git through gh's credential helper) work as that account in an
+ * agent's environment. None until it is read, or where gh has no such login; `ready` settles once it
+ * was read for the first time.
+ */
+export function accountLogin(host: string, account: string, program = 'gh', timeout = GH_TIMEOUT): GithubLogin & { env: () => Record<string, string> | undefined; ready: () => Promise<unknown> } {
+  let token: string | null = null;
+  let read: Promise<unknown> | undefined;
+  let at = 0;
+  const refresh = () => {
+    at = Date.now();
+    read = accountToken(program, host, account, timeout).then((t) => (token = t));
+    return read;
+  };
+  const login = () => {
+    if (!read || Date.now() - at > LOGIN_TTL) void refresh();
+    return token ?? undefined;
+  };
+  return Object.assign(login, {
+    env: () => {
+      const t = login();
+      return t ? { [tokenVariables(host)[0]]: t } : undefined;
+    },
+    ready: () => read ?? refresh(),
+  });
+}
 
 /**
  * How long one gh call may take before it counts as failed: GitHub slow to answer holds up only the
@@ -228,28 +293,14 @@ const GH_TIMEOUT = 60_000;
  * this machine (another one finds no such repository); else gh as it runs anyway (an
  * organisation's repository, say).
  */
-async function ghEnv(program: string, { host, owner }: Omit<GhAt, 'cwd'>, timeout: number): Promise<NodeJS.ProcessEnv | undefined> {
+async function ghEnv(program: string, { host, owner, repo }: Omit<GhAt, 'cwd'>, timeout: number): Promise<NodeJS.ProcessEnv | undefined> {
   if (!host) return undefined;
-  let token: string | null = null;
-  if (owner) {
-    const key = `${program}\n${host}\n${owner}`;
-    let known = tokens.get(key);
-    if (!known || Date.now() - known.at > TOKEN_TTL) {
-      // without the tokens in the environment, which gh would hand back instead of the account's own
-      const { GH_TOKEN: _, GITHUB_TOKEN: __, GH_ENTERPRISE_TOKEN: ___, GITHUB_ENTERPRISE_TOKEN: ____, ...plain } = process.env;
-      const asked = spawnOutput([program, 'auth', 'token', '--hostname', host, '--user', owner], { env: plain, stdin: 'ignore', timeout }).then(
-        (r) => (r.code === 0 && r.stdout.trim()) || null,
-        () => null,
-      );
-      known = { token: asked, at: Date.now() };
-      tokens.set(key, known);
-    }
-    token = await known.token;
-  }
+  const account = accountOf({ host, owner, repo });
+  const token = account ? await accountToken(program, host, account, timeout) : null;
   const env: NodeJS.ProcessEnv = { ...process.env, GH_HOST: host };
   if (token) {
     // the account's token in place of any the environment has for the host
-    const [name, other] = enterpriseServer(host) ? ['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'] : ['GH_TOKEN', 'GITHUB_TOKEN'];
+    const [name, other] = tokenVariables(host);
     delete env[other];
     env[name] = token;
   }
@@ -272,9 +323,9 @@ export const ghCli =
   };
 
 /** The host and owner of the GitHub repository a checkout's `origin` is, where it is one. */
-async function originRepo(cwd: string): Promise<{ host: string; owner: string } | undefined> {
-  const r = await spawnOutput(['git', '-C', cwd, 'remote', 'get-url', 'origin'], { stdin: 'ignore' });
-  return r.code === 0 ? githubRepo(r.stdout) : undefined;
+async function originRepo(cwd: string): Promise<GithubRepo | undefined> {
+  const remote = await gitTry(cwd, 'remote', 'get-url', 'origin');
+  return remote !== null ? githubRepo(remote) : undefined;
 }
 
 /** A pull request URL read as GitHub's, whatever its host: `routedForge` sent it to gh. */
@@ -289,7 +340,7 @@ const ghUrl = (url: string) => githubPr(url)?.url ?? url;
 /** Where gh runs for the pull request at `url`. */
 const atPr = (cwd: string, url: string): GhAt => {
   const ref = githubPr(url);
-  return ref ? { cwd, host: ref.host, owner: ref.owner } : { cwd };
+  return ref ? { cwd, host: ref.host, owner: ref.owner, repo: ref.repo } : { cwd };
 };
 
 /** The pull request at `url`; throws for a URL that is no GitHub pull request's. */
@@ -326,98 +377,103 @@ interface GhPr {
 /** GitHub through a `gh` runner (the real CLI, or canned output in tests). */
 export const makeGhForge = (
   run: (at: GhAt, ...args: string[]) => string | Promise<string>,
-  repoOf: (cwd: string) => Promise<{ host: string; owner: string } | undefined> = originRepo,
-): Forge => ({
-  async status(cwd, url) {
-    const ref = prRef(url);
-    const at = atPr(cwd, url);
-    // side by side: each is a round trip to GitHub
-    const [pr, inline, threads] = await Promise.all([
-      run(at, 'pr', 'view', ghUrl(url), '--json', 'state,mergeable,mergeStateStatus,headRefOid,mergeCommit,author,statusCheckRollup,comments,reviews'),
-      run(at, 'api', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`, '--paginate'),
-      run(
-        at,
-        'api',
-        'graphql',
-        '-F',
-        `owner=${ref.owner}`,
-        '-F',
-        `repo=${ref.repo}`,
-        '-F',
-        `number=${ref.number}`,
-        '-f',
-        'query=query($owner: String!, $repo: String!, $number: Int!) { viewer { login } repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } comments(last: 100) { nodes { id updatedAt } } commits(last: 30) { nodes { commit { committedDate parents { totalCount } } } } } } }',
-      ),
-    ]);
-    return ghStatus(pr, inline, threads);
-  },
-  async body(cwd, url) {
-    return (JSON.parse(await run(atPr(cwd, url), 'pr', 'view', ghUrl(url), '--json', 'body')) as { body: string }).body;
-  },
-  async setBody(cwd, url, body) {
-    await withBodyFile(body, (file) => run(atPr(cwd, url), 'pr', 'edit', ghUrl(url), '--body-file', file));
-  },
-  async open(cwd, pr) {
-    const at: GhAt = { cwd, ...(await repoOf(cwd)) };
-    // gh prints the new pull request's URL last
-    const out = await withBodyFile(pr.body, (file) => run(at, 'pr', 'create', '--base', pr.base, '--head', pr.head, '--title', pr.title, '--body-file', file));
-    return out.trim().split('\n').at(-1)!.trim();
-  },
-  async urlOf(cwd, n) {
-    const at: GhAt = { cwd, ...(await repoOf(cwd)) };
-    return (await run(at, 'pr', 'view', String(n), '--json', 'url', '--jq', '.url')).trim();
-  },
-  async visibility(cwd) {
-    const at: GhAt = { cwd, ...(await repoOf(cwd)) };
-    const v = (await run(at, 'repo', 'view', '--json', 'visibility', '--jq', '.visibility')).trim().toUpperCase();
-    return v === 'PUBLIC' ? 'public' : v ? 'private' : null;
-  },
-  async contribution(cwd, url) {
-    const ref = prRef(url);
-    const pr = JSON.parse(
-      await run(atPr(cwd, url), 'pr', 'view', ghUrl(url), '--json', 'title,author,state,headRefOid,headRefName,headRepository,headRepositoryOwner,maintainerCanModify'),
-    ) as { title: string; author: { login: string }; state: PrStatus['state']; headRefOid: string; headRefName?: string; headRepository?: { name: string } | null; headRepositoryOwner?: { login: string } | null; maintainerCanModify?: boolean };
-    const owner = pr.headRepositoryOwner?.login;
-    const repo = pr.headRepository?.name;
-    return {
-      title: pr.title,
-      author: pr.author.login,
-      state: pr.state,
-      head: pr.headRefOid,
-      canModify: !!pr.maintainerCanModify,
-      ...(owner && repo ? { headRepo: `https://${ref.host}/${owner}/${repo}.git` } : {}),
-      ...(pr.headRefName ? { headRef: pr.headRefName } : {}),
-    };
-  },
-  async comment(cwd, url, body) {
-    // gh prints the new comment's URL
-    const out = await withBodyFile(body, (file) => run(atPr(cwd, url), 'pr', 'comment', ghUrl(url), '--body-file', file));
-    return out.trim().split('\n').at(-1)?.trim() || undefined;
-  },
-  async requestChanges(cwd, url, body) {
-    const ref = prRef(url);
-    // through the API, which names the review's URL; `gh pr review` does not
-    const out = await withBodyFile(body, (file) =>
-      run(atPr(cwd, url), 'api', '-X', 'POST', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/reviews`, '-f', 'event=REQUEST_CHANGES', '-F', `body=@${file}`, '--jq', '.html_url'),
-    );
-    return out.trim() || undefined;
-  },
-  async merge(cwd, url, head) {
-    const ref = prRef(url);
-    const at = atPr(cwd, url);
-    // the repository's own merge methods (some allow squash only); squash first where it allows several
-    const allows = JSON.parse(await run(at, 'api', `repos/${ref.owner}/${ref.repo}`, '--jq', '{squash: .allow_squash_merge, merge: .allow_merge_commit, rebase: .allow_rebase_merge}')) as Record<string, boolean>;
-    const method = (['squash', 'merge', 'rebase'] as const).find((m) => allows[m] !== false) ?? 'squash';
-    // no --delete-branch: that also switches branches in the workspace; the repository deletes merged branches or not
-    await run(at, 'pr', 'merge', ghUrl(url), `--${method}`, '--match-head-commit', head);
-    try {
-      return (await run(at, 'pr', 'view', ghUrl(url), '--json', 'mergeCommit', '--jq', '.mergeCommit.oid')).trim() || undefined;
-    } catch {
-      // merged all the same: the first fetch after it stands in for the commit (Workers.merged)
-      return undefined;
-    }
-  },
-});
+  repoOf: (cwd: string) => Promise<GithubRepo | { host: string; owner: string } | undefined> = originRepo,
+): Forge => {
+  /** Where gh runs for the repository of the checkout's `origin`. */
+  const atOrigin = async (cwd: string): Promise<GhAt> => ({ cwd, ...(await repoOf(cwd)) });
+  return {
+    async status(cwd, url) {
+      const ref = prRef(url);
+      const at = atPr(cwd, url);
+      // side by side: each is a round trip to GitHub
+      const [pr, inline, threads] = await Promise.all([
+        run(at, 'pr', 'view', ghUrl(url), '--json', 'state,mergeable,mergeStateStatus,headRefOid,mergeCommit,author,statusCheckRollup,comments,reviews'),
+        run(at, 'api', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`, '--paginate'),
+        run(
+          at,
+          'api',
+          'graphql',
+          '-F',
+          `owner=${ref.owner}`,
+          '-F',
+          `repo=${ref.repo}`,
+          '-F',
+          `number=${ref.number}`,
+          '-f',
+          'query=query($owner: String!, $repo: String!, $number: Int!) { viewer { login } repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } comments(last: 100) { nodes { id updatedAt } } commits(last: 30) { nodes { commit { committedDate parents { totalCount } } } } } } }',
+        ),
+      ]);
+      return ghStatus(pr, inline, threads);
+    },
+    async body(cwd, url) {
+      return (JSON.parse(await run(atPr(cwd, url), 'pr', 'view', ghUrl(url), '--json', 'body')) as { body: string }).body;
+    },
+    async setBody(cwd, url, body) {
+      await withBodyFile(body, (file) => run(atPr(cwd, url), 'pr', 'edit', ghUrl(url), '--body-file', file));
+    },
+    async close(cwd, url) {
+      await run(atPr(cwd, url), 'pr', 'close', ghUrl(url));
+    },
+    async open(cwd, pr) {
+      const at = await atOrigin(cwd);
+      // gh prints the new pull request's URL last
+      const out = await withBodyFile(pr.body, (file) => run(at, 'pr', 'create', '--base', pr.base, '--head', pr.head, '--title', pr.title, '--body-file', file));
+      return out.trim().split('\n').at(-1)!.trim();
+    },
+    async urlOf(cwd, n) {
+      return (await run(await atOrigin(cwd), 'pr', 'view', String(n), '--json', 'url', '--jq', '.url')).trim();
+    },
+    async visibility(cwd) {
+      const v = (await run(await atOrigin(cwd), 'repo', 'view', '--json', 'visibility', '--jq', '.visibility')).trim().toUpperCase();
+      return v === 'PUBLIC' ? 'public' : v ? 'private' : null;
+    },
+    async contribution(cwd, url) {
+      const ref = prRef(url);
+      const pr = JSON.parse(
+        await run(atPr(cwd, url), 'pr', 'view', ghUrl(url), '--json', 'title,author,state,headRefOid,headRefName,headRepository,headRepositoryOwner,maintainerCanModify'),
+      ) as { title: string; author: { login: string }; state: PrStatus['state']; headRefOid: string; headRefName?: string; headRepository?: { name: string } | null; headRepositoryOwner?: { login: string } | null; maintainerCanModify?: boolean };
+      const owner = pr.headRepositoryOwner?.login;
+      const repo = pr.headRepository?.name;
+      return {
+        title: pr.title,
+        author: pr.author.login,
+        state: pr.state,
+        head: pr.headRefOid,
+        canModify: !!pr.maintainerCanModify,
+        ...(owner && repo ? { headRepo: `https://${ref.host}/${owner}/${repo}.git` } : {}),
+        ...(pr.headRefName ? { headRef: pr.headRefName } : {}),
+      };
+    },
+    async comment(cwd, url, body) {
+      // gh prints the new comment's URL
+      const out = await withBodyFile(body, (file) => run(atPr(cwd, url), 'pr', 'comment', ghUrl(url), '--body-file', file));
+      return out.trim().split('\n').at(-1)?.trim() || undefined;
+    },
+    async requestChanges(cwd, url, body) {
+      const ref = prRef(url);
+      // through the API, which names the review's URL; `gh pr review` does not
+      const out = await withBodyFile(body, (file) =>
+        run(atPr(cwd, url), 'api', '-X', 'POST', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/reviews`, '-f', 'event=REQUEST_CHANGES', '-F', `body=@${file}`, '--jq', '.html_url'),
+      );
+      return out.trim() || undefined;
+    },
+    async merge(cwd, url, head) {
+      const ref = prRef(url);
+      const at = atPr(cwd, url);
+      // the repository's own merge methods (some allow squash only); squash first where it allows several
+      const allows = JSON.parse(await run(at, 'api', `repos/${ref.owner}/${ref.repo}`, '--jq', '{squash: .allow_squash_merge, merge: .allow_merge_commit, rebase: .allow_rebase_merge}')) as Record<string, boolean>;
+      const method = (['squash', 'merge', 'rebase'] as const).find((m) => allows[m] !== false) ?? 'squash';
+      // no --delete-branch: that also switches branches in the workspace; the repository deletes merged branches or not
+      await run(at, 'pr', 'merge', ghUrl(url), `--${method}`, '--match-head-commit', head);
+      try {
+        return (await run(at, 'pr', 'view', ghUrl(url), '--json', 'mergeCommit', '--jq', '.mergeCommit.oid')).trim() || undefined;
+      } catch {
+        // merged all the same: the first fetch after it stands in for the commit (Workers.merged)
+        return undefined;
+      }
+    },
+  };
+};
 
 /** A PR's status from gh's three answers: the PR, its inline comments, and GraphQL's threads and commits. */
 function ghStatus(prOut: string, inlineOut: string, threadsOut: string): PrStatus {
@@ -452,11 +508,6 @@ function ghStatus(prOut: string, inlineOut: string, threadsOut: string): PrStatu
   );
   const changedAt = (threads.data?.repository?.pullRequest?.commits?.nodes ?? []).findLast((n) => n.commit.parents.totalCount < 2)?.commit.committedDate;
   const updated = new Map((threads.data?.repository?.pullRequest?.comments?.nodes ?? []).map((c) => [c.id, c.updatedAt]));
-  // an edit within a minute of writing is part of writing it
-  const edited = (id: string, at?: string) => {
-    const u = updated.get(id);
-    return u && at && Date.parse(u) - Date.parse(at) > 60_000 ? { edited: u } : {};
-  };
   const checks = (pr.statusCheckRollup ?? []).map((c) => {
     const name = c.name ?? c.context ?? 'check';
     const verdict = (c.conclusion ?? c.state ?? '').toUpperCase();
@@ -484,12 +535,10 @@ function ghStatus(prOut: string, inlineOut: string, threadsOut: string): PrStatu
         author: c.author.login,
         body: c.body,
         ...(c.createdAt ? { at: c.createdAt } : {}),
-        ...edited(c.id, c.createdAt),
+        ...editedAt(c.createdAt, updated.get(c.id)),
         url: c.url,
       })),
-      ...pr.reviews
-        .map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body, ...(r.submittedAt ? { at: r.submittedAt } : {}), ...verdictOf(r.state) }))
-        .filter((r) => r.body.trim() || r.verdict),
+      ...pr.reviews.flatMap((r) => reviewComment({ id: r.id, author: r.author.login, body: r.body, at: r.submittedAt, state: r.state }) ?? []),
       // the REST API names an app `<name>[bot]`, `gh pr view` plain `<name>`: one name for both
       ...inline.map((c) => ({
         id: `i${c.id}`,
@@ -507,224 +556,19 @@ function ghStatus(prOut: string, inlineOut: string, threadsOut: string): PrStatu
 }
 
 /** A review's verdict by the state the forge gives it (GitHub's `CHANGES_REQUESTED`, Forgejo's `REQUEST_CHANGES`); none for a comment. */
-export const verdictOf = (state?: string): { verdict?: 'approved' | 'changes' | 'dismissed' } => {
+const verdictOf = (state?: string): { verdict?: 'approved' | 'changes' | 'dismissed' } => {
   const v = (state ?? '').toUpperCase();
   return v === 'APPROVED' ? { verdict: 'approved' } : v === 'CHANGES_REQUESTED' || v === 'REQUEST_CHANGES' ? { verdict: 'changes' } : v === 'DISMISSED' ? { verdict: 'dismissed' } : {};
 };
 
-export const ghForge = makeGhForge(ghCli());
-
-/**
- * What the card shows of a pull request's review, oldest first: each round a reviewer left comments
- * on the code in, with the replies in each thread, and the conversation between the rounds.
- * Comments by `skip` (bots that are not reviewers) are left out; `mine` marks `self`: the PR's
- * author, which is the worker writing in the owner's name, or on a review card the owner's account.
- */
-export function reviewOf(s: PrStatus, skip: string[] = [], self = s.author): PrReviewEntry[] {
-  const shown = s.comments.filter((c) => !skip.includes(c.author));
-  const mine = (author: string) => (author === self ? { mine: true } : {});
-  const threads = new Map<string, PrThread>();
-  const rounds = new Map<string, Extract<PrReviewEntry, { threads: PrThread[] }>>();
-  const entries: PrReviewEntry[] = [];
-  for (const c of shown) {
-    if (c.replyTo || !c.id.startsWith('i')) continue;
-    const thread: PrThread = {
-      author: c.author,
-      ...mine(c.author),
-      body: readable(c.body),
-      at: c.at ?? '',
-      ...(c.path ? { path: c.path } : {}),
-      ...(c.line ? { line: c.line } : {}),
-      ...(c.url ? { url: c.url } : {}),
-      resolved: !!c.resolved,
-      replies: [],
-    };
-    threads.set(c.id, thread);
-    const key = c.round ?? c.id;
-    const round = rounds.get(key);
-    if (round) round.threads.push(thread);
-    else {
-      const r = { author: c.author, ...mine(c.author), at: c.at ?? '', threads: [thread] };
-      rounds.set(key, r);
-      entries.push(r);
-    }
-  }
-  for (const c of shown) {
-    const reply = { author: c.author, ...mine(c.author), body: readable(c.body), at: c.at ?? '' };
-    if (c.replyTo) threads.get(c.replyTo)?.replies.push(reply);
-    // a comment rewritten since stands where it was last changed
-    else if (!c.id.startsWith('i')) entries.push({ ...reply, ...(c.edited ? { at: c.edited, edited: true } : {}), ...(c.url ? { url: c.url } : {}) });
-  }
-  for (const r of rounds.values()) r.at = r.threads.reduce((a, t) => (t.at && t.at < a ? t.at : a), r.at);
-  return entries.filter((e) => 'threads' in e || e.body).sort((a, b) => a.at.localeCompare(b.at));
-}
-
-/**
- * What the pull request waits for before it can be merged, in the order it is in the way: what the
- * forge sees (a conflict, a branch behind its base, a draft, branch protection, mergeability not
- * worked out yet), checks failed or running, review threads open, a reviewer who has not seen the
- * PR's own latest changes, and whoever was asked for another look not having answered since the
- * author last asked (a review bot answers a re-review by rewriting its summary, often without a new
- * comment). Comments by `skip` do not count as an answer. Nothing for a PR no longer open.
- */
-export function waitsOf(s: PrStatus, skip: string[] = []): PrWait[] {
-  if (s.state !== 'OPEN') return [];
-  const waits: PrWait[] = [];
-  if (s.mergeable === 'CONFLICTING' || s.mergeState === 'DIRTY') waits.push('conflict');
-  else if (s.mergeState === 'BEHIND') waits.push('behind');
-  else if (s.mergeState === 'DRAFT') waits.push('draft');
-  else if (s.mergeState === 'BLOCKED') waits.push('protection');
-  // UNSTABLE: a check not passed, which the checks below name where they hold it
-  else if (s.mergeable !== 'MERGEABLE' || (s.mergeState !== 'CLEAN' && s.mergeState !== 'HAS_HOOKS' && !(s.mergeState === 'UNSTABLE' && s.checks.some((c) => c.state !== 'success'))))
-    waits.push('forge');
-  if (s.checks.some((c) => c.state === 'failure')) waits.push('checksFailed');
-  else if (s.checks.some((c) => c.state !== 'success')) waits.push('checks');
-  const others = reviewers(s, skip);
-  if (others.some((c) => c.id.startsWith('i') && !c.replyTo && !c.resolved)) waits.push('threads');
-  if (changesRequested(s, skip).length) waits.push('changes');
-  if (reviewStale(s, skip)) waits.push('review');
-  else {
-    const asked = requestOf(s, skip);
-    const after = (who?: string) => others.some((c) => (!who || c.author === who) && (c.edited ?? c.at ?? '') > asked!.at);
-    if (asked && !(asked.awaits.length ? asked.awaits.every(after) : after())) waits.push('answer');
-  }
-  return waits;
-}
-
-/** Whether the pull request only waits for the merge: open, and nothing of `waitsOf` in the way. */
-export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
-  return s.state === 'OPEN' && !waitsOf(s, skip).length;
-}
-
-/**
- * Whether a reviewer wrote on the pull request, but nothing since its own changes last changed
- * (a merge of the base does not count): the last verdict is about an older state. A PR merged on Greptile's 3/5 of its first commit
- * (2026-10-02): the fix pushed after it was never reviewed, as nobody asked for another look.
- */
-export function reviewStale(s: PrStatus, skip: string[] = []): boolean {
-  if (!s.changedAt) return false;
-  const last = reviewers(s, skip).reduce((a, c) => latest(a, c.edited ?? c.at), '');
-  return !!last && last < s.changedAt;
-}
-
-/**
- * The author's latest request for another look, and whose answer it waits for: a conversation
- * comment of theirs that answers a reviewer whose latest word in the conversation before it was no
- * passing verdict (a request for changes in a plain comment, which names nobody, is answered so;
- * that reviewer's answer is awaited, another's does not stand in for it), or that mentions an
- * account, as review bots are asked (`@greptile review`; then any reviewer's word answers). A
- * comment that mentions nobody while every reviewer's latest word is a passing verdict (a thank-you
- * for a 5/5 summary without findings) asks for nothing: waiting for its answer stalled a PR whose
- * review was through (2026-11-02). Passing: an approval, or a confidence of at least 4/5. A
- * reviewer's word in a thread on the code is the thread's business, not the conversation's.
- * Comments by `skip` are no reviewer's word.
- */
-export function requestOf(s: PrStatus, skip: string[] = []): { at: string; awaits: string[] } | null {
-  const said = reviewers(s, skip).filter((c) => !c.id.startsWith('i'));
-  const when = (c: PrStatus['comments'][number]) => c.edited ?? c.at ?? '';
-  let found: { at: string; awaits: string[] } | null = null;
-  for (const c of s.comments) {
-    if (c.author !== s.author || !c.id.startsWith('c') || !c.at || (found && c.at < found.at)) continue;
-    const latestOf = new Map<string, PrStatus['comments'][number]>();
-    for (const o of said) if (when(o) <= c.at && (!latestOf.has(o.author) || when(o) >= when(latestOf.get(o.author)!))) latestOf.set(o.author, o);
-    const awaits = [...latestOf].filter(([, o]) => !passing(o)).map(([who]) => who);
-    if (awaits.length || mentions(c.body)) found = { at: c.at, awaits };
-  }
-  return found;
-}
-
-/** When the author last asked for another look (`requestOf`); empty where they never did. */
-export const lastAsked = (s: PrStatus, skip: string[] = []) => requestOf(s, skip)?.at ?? '';
-
-/** Below this share of a reviewer's confidence (4 of 5), Obeya leaves the merge to the owner. */
-export const MIN_CONFIDENCE = 0.8;
-
-/** Whether a reviewer's comment is a verdict that lets the PR go: an approval, or a confidence of at least 4/5. */
-export const passing = (c: PrStatus['comments'][number]) => {
-  if (c.verdict === 'approved') return true;
-  const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(c.body);
-  return !!m && Number(m[1]) / Number(m[2]) >= MIN_CONFIDENCE;
+/** A review as one of `PrStatus.comments`, by its id on the forge; none for one with neither text nor verdict. */
+export const reviewComment = (r: { id: number | string; author: string; body: string; at?: string; state?: string }): PrStatus['comments'][number] | null => {
+  const c = { id: `r${r.id}`, author: r.author, body: r.body, ...(r.at ? { at: r.at } : {}), ...verdictOf(r.state) };
+  return c.body.trim() || c.verdict ? c : null;
 };
 
-/**
- * The reviewers whose request for changes (GitHub's "Request changes") stands: their latest review
- * with a verdict asks for changes, not approved or dismissed since.
- */
-export function changesRequested(s: PrStatus, skip: string[] = []): string[] {
-  const last = new Map<string, { at: string; verdict: string }>();
-  for (const c of reviewers(s, skip)) {
-    if (!c.verdict) continue;
-    const at = c.at ?? '';
-    const known = last.get(c.author);
-    if (!known || at >= known.at) last.set(c.author, { at, verdict: c.verdict });
-  }
-  return [...last].filter(([, v]) => v.verdict === 'changes').map(([who]) => who);
-}
+/** A conversation comment's `edited`, from when it was written and last changed: an edit within a minute of writing is part of writing it. */
+export const editedAt = (created?: string, updated?: string): { edited?: string } =>
+  created && updated && Date.parse(updated) - Date.parse(created) > 60_000 ? { edited: updated } : {};
 
-/** Whether a comment mentions an account (`@name`), outside code (fenced, indented or inline) and quoted lines. */
-const mentions = (body: string) =>
-  /(^|[^\w`@/.-])@[a-z0-9][a-z0-9-]*/i.test(
-    body
-      .replace(/^ {0,3}(```|~~~)[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, '')
-      .replace(/`[^`\n]*`/g, '')
-      .replace(/^ {0,3}>.*$/gm, '')
-      .replace(/^(?: {4}|\t).*$/gm, ''),
-  );
-
-/**
- * The confidence a reviewer gave last, in a comment rewritten or written latest (Greptile's
- * "Confidence Score: 3/5" in its summary); none when no reviewer gives one.
- */
-export function confidence(s: PrStatus, skip: string[] = []): { score: number; of: number; by: string } | undefined {
-  let found: { score: number; of: number; by: string; at: string } | undefined;
-  for (const c of reviewers(s, skip)) {
-    const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(c.body);
-    const at = c.edited ?? c.at ?? '';
-    if (m && (!found || at >= found.at)) found = { score: Number(m[1]), of: Number(m[2]), by: c.author, at };
-  }
-  return found && { score: found.score, of: found.of, by: found.by };
-}
-
-const reviewers = (s: PrStatus, skip: string[]) => s.comments.filter((c) => c.author !== s.author && !skip.includes(c.author));
-const latest = (a: string, b?: string) => (b && b > a ? b : a);
-
-const MAX_BODY = 3000;
-/** Where `readable` took a part out. */
-const GONE = '\u0000';
-
-/**
- * A comment as text the card renders: review bots write HTML (badges, folded prompts for other
- * agents, diagrams) into their Markdown; the badges' names stay, code and folded parts go.
- */
-export function readable(body: string): string {
-  let t = body
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<details>[\s\S]*?<\/details>/gi, `\n${GONE}\n`)
-    .replace(/<picture>[\s\S]*?<\/picture>/gi, '')
-    .replace(/```[\s\S]*?(```|$)/g, `\n${GONE}\n`)
-    .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, '$1')
-    .replace(/<h\d[^>]*>([\s\S]*?)<\/h\d>/gi, '\n### $1\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/\\([\\`*_{}\[\]()#+\-.!|])/g, '$1');
-  // headings become bold lines; a heading whose section went (a diagram, say) goes with it
-  const lines = t.split('\n').map((l) => l.trimEnd());
-  const out: string[] = [];
-  for (const [i, line] of lines.entries()) {
-    const h = /^#{1,6}\s+(.*)$/.exec(line.trim());
-    if (!h) {
-      if (line.trim() !== GONE) out.push(line);
-      continue;
-    }
-    const next = lines.slice(i + 1).find((l) => l.trim());
-    if (next && next.trim() !== GONE && !/^#{1,6}\s/.test(next.trim()) && h[1]!.trim()) out.push(`**${h[1]!.trim()}**`);
-  }
-  t = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return t.length > MAX_BODY ? `${t.slice(0, MAX_BODY).trimEnd()} …` : t;
-}
+export const ghForge = makeGhForge(ghCli());

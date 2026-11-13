@@ -1,6 +1,7 @@
 // The owner's answer to an agent's questions: the options picked and their own words, as one text.
 
 import type { Question } from '../core/types';
+import { oneLine } from '../core/text';
 
 /**
  * One line per answered question (`**question** picks`), then the owner's own words: as in an
@@ -45,4 +46,3 @@ export function toggle(q: Question, picked: string[], option: string): string[] 
   return q.multiple ? q.options.filter((o) => o === option || picked.includes(o)) : [option];
 }
 
-const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();

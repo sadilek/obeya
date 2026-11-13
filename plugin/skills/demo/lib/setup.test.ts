@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { browserPaths, checkSetup, describeSetup, installHint, linuxFamily, type SetupCheck } from './setup.ts';
@@ -9,19 +9,13 @@ beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-demo-setup-'))));
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 /**
- * A directory of fake programs, each printing `out`, first on the PATH (the system's after it, for
- * `cat`). macOS checks a program written moments ago before it first runs, which on a busy machine
- * took seconds: the tests that run them have more than the default 5 s.
+ * Programs that answer `out` for their version, without a process: a probe of programs written
+ * moments ago hung on macOS runners past every timeout, while macOS checked them before their first run.
  */
-function fakePath(programs: Record<string, string>) {
-  const bin = join(dir, 'bin');
-  mkdirSync(bin, { recursive: true });
-  for (const [name, out] of Object.entries(programs)) {
-    writeFileSync(join(bin, name), `#!/bin/sh\ncat <<'EOF'\n${out}\nEOF\n`);
-    chmodSync(join(bin, name), 0o755);
-  }
-  return { PATH: `${bin}:/usr/bin:/bin`, HOME: dir };
-}
+const answering =
+  (programs: Record<string, string>) =>
+  async (cmd: string): Promise<string | null> =>
+    programs[cmd] ?? null;
 
 describe('demo setup', () => {
   test('says how to install each piece on each platform', () => {
@@ -84,22 +78,22 @@ describe('demo setup', () => {
     expect((await voice({ OBEYA_HOLDS_VOICE: '1', OBEYA_URL: 'http://127.0.0.1:41234' }, 'piper'))?.state).toBe('missing');
   });
 
-  test.skipIf(process.platform === 'win32')('takes an old Node and an ffmpeg without libx264 as missing', async () => {
-    const env = fakePath({ node: 'v20.11.0', ffmpeg: 'ffmpeg version 6.1 Copyright\n V..... libopenh264', uv: 'uv 0.8.0 (abc)' });
-    const check = await checkSetup({ language: 'de', voice: 'say' }, { env, home: dir, narrationOnly: true });
+  test('takes an old Node and an ffmpeg without libx264 as missing', async () => {
+    const run = answering({ node: 'v20.11.0', ffmpeg: 'ffmpeg version 6.1 Copyright\n V..... libopenh264', uv: 'uv 0.8.0 (abc)' });
+    const check = await checkSetup({ language: 'de', voice: 'say' }, { env: { HOME: dir }, home: dir, narrationOnly: true, run });
     expect(check.items.map((i) => i.id)).toEqual(['node', 'ffmpeg', 'uv', 'voice']);
     const by = Object.fromEntries(check.items.map((i) => [i.id, i]));
     expect(by.node).toMatchObject({ state: 'missing', found: 'v20.11.0', need: '>= 22.18' });
     expect(by.ffmpeg).toMatchObject({ state: 'missing', found: '6.1', need: 'libx264' });
     expect(by.uv).toMatchObject({ state: 'ok', found: '0.8.0' });
     expect(by.voice).toMatchObject({ state: 'ok', found: 'say' });
-  }, 30_000);
+  });
 
-  test.skipIf(process.platform === 'win32')('takes a current Node and an ffmpeg with libx264', async () => {
-    const env = fakePath({ node: 'v24.1.0', ffmpeg: 'ffmpeg version 7.1 Copyright\n V....D libx264  H.264', uv: 'uv 0.8.0' });
-    const check = await checkSetup({ language: 'de', voice: 'say' }, { env, home: dir, narrationOnly: true });
+  test('takes a current Node and an ffmpeg with libx264', async () => {
+    const run = answering({ node: 'v24.1.0', ffmpeg: 'ffmpeg version 7.1 Copyright\n V....D libx264  H.264', uv: 'uv 0.8.0' });
+    const check = await checkSetup({ language: 'de', voice: 'say' }, { env: { HOME: dir }, home: dir, narrationOnly: true, run });
     expect(check.items.filter((i) => i.state === 'missing')).toEqual([]);
-  }, 30_000);
+  });
 
   test('prints what is missing with the commands under it', () => {
     const check: SetupCheck = {

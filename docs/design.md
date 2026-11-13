@@ -37,7 +37,7 @@ touches, and keep those current in the same change.
   while the agent replies.
 - [Card lifecycle](design/card-lifecycle.md) — a card's states from proposal to done: proposals
   (later starts, taking back, reworking by words), at work, waiting for approval (the handover
-  report), approval and landing, live and done, archive, how projects end.
+  report), approval and landing, taking back an approval, live and done, archive, how projects end.
 - [Communication](design/communication.md) — how workers and Obeya exchange messages: a worker's
   tools, turns that end without a handover (the usage limit), pausing an agent or a canvas's
   agents, snoozing a card, waiting without blocking, refused and confirmed tool calls, notes and
@@ -51,8 +51,8 @@ touches, and keep those current in the same change.
   card, addresses (a card's permalink, Back and Forward), card numbers (`K42`), sheets, visual
   identity, groups on the canvas, refusals.
 - [Agents and workspaces](design/agents-and-workspaces.md) — how agents run and where: agents
-  (Claude Code, Codex), harnesses, models and effort (updating Claude Code at a click), workspaces (taking a card's workspace, slots,
-  the pool in the bar), folders without git, parking, resting agents (an idle agent's process goes
+  (Claude Code, Codex), harnesses, models and effort (updating Claude Code and Codex at a click, here and on hosts), workspaces (taking a card's workspace, slots,
+  the pool in the bar, leftovers in a free clone), folders without git, parking, resting agents (an idle agent's process goes
   after 65 minutes, once Claude Code's prompt cache has expired), hosts (running there, logins and files, a dropped connection).
 - [Landing](design/landing.md) — how approved work reaches `main`: how work lands, the PR loop
   (watching the PR, ready to merge, the PR on the card), review cards for a contributor's pull

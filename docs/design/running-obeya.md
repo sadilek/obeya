@@ -554,7 +554,13 @@ long, stop background work they can restart, and pause at the next safe point by
 (no nudge, no question to the owner; the card's log says so). A turn that starts meanwhile (a message,
 finished background work) hears that it keeps Obeya waiting: the worker takes the message in, leaves
 the work until it is resumed and ends the turn at once. A resumed worker hears that what ran was
-stopped (exit code 137). A worker waiting for its landed work's restart is not in a turn.
+stopped (exit code 137). A worker waiting for its landed work's restart is not in a turn. The next
+start resumes every worker that was in a turn or had paused for the restart when the workers
+stopped, whatever its card's state: one at work on its pull request (review comments, a failed
+check) goes on with what it left for after the restart, while one idle on its pull request sleeps on.
+A restart called off before it happened (a repository's agents whose new configuration does not
+resolve) lets the workers that paused for it go on at once (not one that asked or handed over before it
+paused: its card waits for the owner), and one due later is announced to them anew.
 
 While the restart is due, a card whose worker paused for it, with no background work left that the
 restart waits for, says so in place of "Agent at work" ("Agent waits for restart", "Done ·
@@ -899,15 +905,16 @@ beside the scratch dirs.
   `CreateProcess` ourselves).
 - **Synchronous file and process calls in the server's code are counted against a list with reasons**
   (2026-11-09): a test lists, per file, how many calls of each synchronous API (every function
-  ending in `Sync`: `Bun.spawnSync`, `existsSync`, Obeya's `gitStepsSync`) the file may make and
+  ending in `Sync`: `Bun.spawnSync`, `existsSync`) the file may make and
   why they may stay (startup before the server listens, the plugin's scripts, the stall watcher's
   own log, a stat of a known path where the caller cannot wait). A new one fails it until it is
   made asynchronous or listed with its reason, and a list that allows more than the code has fails
   too, so the list only shrinks. It counts names, not callers: a synchronous helper of Obeya's own
   whose name does not end in `Sync` (the git calls of `gitOrNull`) counts once, by what it calls.
   Rejected: a lint rule (the repository has no linter); forbidding every synchronous call (startup,
-  scripts and a stat of a known path are fine). Where a function serves both the plugin's scripts
-  and the server, the server has an asynchronous sibling of it and the scripts keep theirs. With
+  scripts and a stat of a known path are fine). What the plugin's scripts read of a repository
+  (its main branch, its settings) they read with the server's asynchronous functions, waiting at
+  their top level: no function has a synchronous twin for them (2026-11-11). With
   it, what still waited on the server's thread went asynchronous: a canvas's repository settings
   and adapter module are only ever those read when the canvas resolved or its repository moved
   (no fallback read with git), the first canvas's folder is read without waiting, a demo site's
@@ -1010,6 +1017,11 @@ beside the scratch dirs.
   while its agent had long said there was nothing left. Rejected: ending a finished card's session
   at its paused turn (the worker may have left real work for after the restart, which the message
   told it to).
+- **Whom a restart resumes is kept per card, not read from its state** (2026-11-12): a worker
+  fixing review comments on its open pull request paused for a restart and was never resumed, as a
+  card in its pull request counted as waiting for its reviewers; it sat there until the owner asked
+  what it waited for. Rejected: resuming every card in its pull request after each restart (a turn
+  for every idle one, and Obeya restarts many times a day).
 - **A restart waits for the owner only where it would destroy what they do** (2026-10-02): a playing
   video, a dictation until its words are in, a command in its undo window. Everything else is kept
   across the reload, so a page merely open does not hold new code back. The server, not the page,

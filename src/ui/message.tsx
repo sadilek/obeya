@@ -2,15 +2,14 @@
 // and when above, the text below as paragraphs and lists; a reply quotes the message it answers
 // above its words, as chat apps do.
 
-import { createContext, type ReactNode, type RefObject, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, type ReactNode, useContext, useRef, useState } from 'react';
 import type { AnswerFile, CardEvent, Item } from '../core/types';
 import { answerFile, api } from './api';
-import { type Block, blocks, Inline, ListTree, plain, Table } from './markdown';
+import { useReportedHeight } from './frame';
+import { plain } from './markdown';
 import { clock as time, t } from './strings';
 import type { Quoted } from './reply';
 import { clip } from '../core/text';
-import { CopyIcon } from './cardNumber';
-import { copyOrSelect } from './copy';
 import { isWalkthrough } from '../core/walkthrough';
 import { WalkthroughButton, WalkthroughPlayer } from './walkthrough';
 
@@ -117,118 +116,6 @@ export function Quote({ q, onClear }: { q: Quoted; onClear?: () => void }) {
   );
 }
 
-/**
- * Text from a plan doc or an agent, as markdown: each line a paragraph, a blank line one empty line,
- * lists (list items as a checklist), tables, code, quotes, and headings as bold lines.
- */
-export function Body({ md }: { md: string }) {
-  const nodes = (bs: Block[]): ReactNode[] =>
-    bs.map((b, i) => {
-      switch (b.t) {
-        case 'p':
-          return (
-            <p key={i} className="p-lead">
-              <Inline md={b.text} />
-            </p>
-          );
-        case 'h':
-          return (
-            <p key={i} className="p-lead">
-              <b>
-                <Inline md={b.text} />
-              </b>
-            </p>
-          );
-        case 'list':
-          return <ListTree key={i} list={b.list} className="p-list" />;
-        case 'table':
-          return (
-            <div key={i} className="p-table">
-              <Table head={b.head} rows={b.rows} />
-            </div>
-          );
-        case 'code':
-          return <Code key={i} text={b.text} />;
-        case 'quote':
-          return (
-            <blockquote key={i} className="p-quote">
-              {nodes(b.blocks)}
-            </blockquote>
-          );
-        case 'hr':
-          return <hr key={i} className="p-hr" />;
-        case 'blank':
-          return (
-            <p key={i} className="p-lead p-blank" aria-hidden="true">
-              {'\u00a0'}
-            </p>
-          );
-      }
-    });
-  return <>{nodes(blocks(md, { breaks: true }))}</>;
-}
-
-/**
- * A code block, with a button in its corner that puts its text on the clipboard as it is (a command,
- * a message the owner is to send on) and says so for a moment; where the page may not write the
- * clipboard, it selects the text instead. At the desk the button shows while the pointer is on the
- * block, on a touch screen always.
- */
-function Code({ text }: { text: string }) {
-  const pre = useRef<HTMLPreElement>(null);
-  const [done, setDone] = useState<'copied' | 'selected' | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = async () => {
-    const how = await copyOrSelect(text, pre.current!);
-    setDone(how);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setDone(null), how === 'copied' ? 2000 : 4000);
-  };
-  const label = done === 'copied' ? t.talk.copied : done === 'selected' ? t.talk.selected : t.talk.copy;
-  return (
-    <div className="p-code-box">
-      <pre ref={pre} className="p-code">
-        {text}
-      </pre>
-      <button
-        className={['p-copy', done].filter(Boolean).join(' ')}
-        title={t.talk.copy}
-        aria-label={label}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => void copy()}
-      >
-        {done ? (
-          <span>{label}</span>
-        ) : (
-          <CopyIcon />
-        )}
-      </button>
-    </div>
-  );
-}
-
-/**
- * The frame's height for the page in it to fit: what the page reports (`withHeightReport` in
- * `src/core/frame.ts`) and the frame's border, up to `cap`; undefined until it has reported. A
- * page as high as its frame would grow with each step: it stops after a few.
- */
-export function useReportedHeight(frame: RefObject<HTMLIFrameElement | null>, cap: number) {
-  const [height, setHeight] = useState<number>();
-  useEffect(() => {
-    let steps = 0;
-    const on = (e: MessageEvent) => {
-      const h = e.source === frame.current?.contentWindow && (e.data as { obeyaHeight?: unknown } | null)?.obeyaHeight;
-      const f = frame.current;
-      // the border is inside the frame's height (border-box): without it the page is a few pixels too high and scrolls
-      if (typeof h === 'number' && h > 0 && f && steps++ < 30) setHeight(Math.min(Math.ceil(h) + f.offsetHeight - f.clientHeight, cap));
-    };
-    addEventListener('message', on);
-    return () => removeEventListener('message', on);
-  }, []);
-  return height;
-}
-
 // ------------------------------------------------------------------ looked-up answers
 
 /** The highest a page an answer comes with grows in its frame; a higher one scrolls inside it. */
@@ -287,7 +174,7 @@ export function AnswerFiles({ thread, files }: { thread: number; files?: AnswerF
               <button className="file-open" title={t.answer.open(f.caption)} onMouseDown={(e) => e.preventDefault()} onClick={() => void open(f.name)}>
                 <span className="file-mark">{fileMark(f.name)}</span> {f.name}
               </button>
-              <a className="file-down" href={answerFile(thread, f.name, true)} title={t.answer.download} aria-label={t.answer.download}>
+              <a className="file-down" href={answerFile(thread, f.name, true)} title={t.download} aria-label={t.download}>
                 ↓
               </a>
             </span>
@@ -388,10 +275,10 @@ export function useAnswer(e: CardEvent, hint?: boolean): { head?: ReactNode; fil
   };
 }
 
-/** Under a follow-up: which answer it continues, and while it is looked up, that its agent reads. */
-export const Continues = ({ question, reading }: { question: string; reading?: boolean }) => (
+/** Under a follow-up: which answer it continues (or which look-up its words went into), and while it is looked up, that its agent reads. */
+export const Continues = ({ question, reading, adds }: { question: string; reading?: boolean; adds?: boolean }) => (
   <div className="continues">
-    {t.answer.continues(clip(plain(question), 90))}
+    {(adds ? t.answer.addsTo : t.answer.continues)(clip(plain(question), 90))}
     {reading && ` · ${t.answer.reading}`}
   </div>
 );

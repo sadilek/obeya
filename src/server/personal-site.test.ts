@@ -1,55 +1,34 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { MESSAGES } from '../core/messages';
-import { Board } from './board';
+import type { Board } from './board';
 import { Store } from './db';
 import { allowedHere, allowPrivate, approvedHere, connect, connectionCode, newToken, type PersonalSite, readPersonal, shareApproved, writePersonal } from './personal-site';
-import type { SharePage, ShareSource } from './share';
+import type { ShareSource } from './share';
 import { Sharing } from './share';
-import { MANIFEST, siteKey, siteTarget } from './site';
+import { MANIFEST, type SharePage, siteKey, siteTarget } from './site';
 import { cloudflareAccounts, type Exec, exec, githubPagesDeploy, setupCloudflare, setupGithub, SetupRefused } from './site-hosts';
 import { SiteSetup } from './site-setup';
 import { CanvasRuntime } from './canvas';
-import { FakeRuntime, gitRepo, identify, noForge, removeDir, until } from './testing';
+import { deployScript, FakeRuntime, fakeSiteHost, gitRepo, identify, noForge, removeDir, testBoard, until, videoDemo } from './testing';
 
 let dir: string;
 let home: string;
 let repo: string;
 let demo: string;
 
-// the deploy line's stand-in: copies the site's directory to `deployed/`, the host's snapshot
-const DEPLOY = `
-const { cpSync, rmSync } = require('node:fs');
-const [site, out] = process.argv.slice(2);
-rmSync(out + '/deployed', { recursive: true, force: true });
-cpSync(site, out + '/deployed', { recursive: true });
-`;
-
-// the host: serves what was deployed last, `404.html` for what it lacks (as Cloudflare and GitHub Pages do)
-const server = Bun.serve({
-  port: 0,
-  fetch(req) {
-    let path = decodeURIComponent(new URL(req.url).pathname);
-    if (path.endsWith('/')) path += 'index.html';
-    const file = join(dir, 'deployed', path);
-    if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
-    const missing = join(dir, 'deployed', '404.html');
-    return new Response(existsSync(missing) ? Bun.file(missing) : 'not found', { status: 404 });
-  },
-});
-afterAll(() => server.stop(true));
-const URL_ = `http://localhost:${server.port}/`;
+const DEPLOY = deployScript();
+const { url: URL_, deployed } = fakeSiteHost(() => dir);
 
 const personal = (extra: Partial<PersonalSite> = {}): PersonalSite => ({ host: 'cloudflare', url: URL_, project: 'obeya-ada', secret: 's3cr3tdirectory000000000', ...extra });
 /** The personal site as a target, deploying with the stand-in in place of wrangler. */
 const unlisted = (at = home, machine = 'a') =>
   siteTarget({ title: 'Demos', url: URL_, deploy: `deploy.ts {dir} ${dir}` }, repo, at, MESSAGES.en.share, { machine, checkWaits: [0, 10, 10], by: 'Ada Lovelace', unlisted: { secret: personal().secret! } });
 const siteDir = (at = home) => join(at, 'sites', siteKey(URL_), 'site');
-const deployed = () => join(dir, 'deployed');
-const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({ slug, title: `Title ${slug}`, text: 'One sentence.', kind: 'video', chapters: [[0, 'Before']], pr: null, language: 'en', dir: demo, shared: [], ...extra });
+const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({ slug, demos: [{ title: `Title ${slug}`, text: 'One sentence.', kind: 'video', chapters: [[0, 'Before']], dir: demo }], pr: null, language: 'en', shared: [], ...extra });
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-personal-'));
@@ -58,10 +37,7 @@ beforeEach(() => {
   mkdirSync(repo);
   mkdirSync(home);
   writeFileSync(join(repo, 'deploy.ts'), DEPLOY);
-  demo = join(dir, 'demo');
-  mkdirSync(demo);
-  writeFileSync(join(demo, 'demo.mp4'), 'video');
-  writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n');
+  demo = videoDemo(join(dir, 'demo'));
 });
 afterEach(() => removeDir(dir));
 
@@ -146,7 +122,7 @@ describe('sharing without a site of the repository', () => {
   let source: ShareSource;
   let sharing: Sharing;
   beforeEach(() => {
-    board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+    board = testBoard({ path: repo });
     source = { site: null, repo, isPublic: true };
     writePersonal(home, personal());
     sharing = new Sharing({
@@ -357,7 +333,7 @@ test('the deploy of an unlisted site to GitHub Pages refuses a repository that i
     calls.push(argv);
     return argv.includes('view') ? { code: 0, out: 'PUBLIC\n', err: '' } : { code: 0, out: 'tok\n', err: '' };
   };
-  await expect(githubPagesDeploy(join(dir, 'site'), 'ada/obeya-demos', join(dir, 'git'), x, { private: true })).rejects.toThrow('not private');
+  await expect(githubPagesDeploy(join(dir, 'site'), 'ada/obeya-demos', join(dir, 'git'), { private: true, x })).rejects.toThrow('not private');
   expect(calls.some((c) => c[0] === 'git')).toBe(false);
 });
 
@@ -382,7 +358,7 @@ test('the deploy to GitHub Pages pushes one commit without history, with gh’s 
     return exec(argv, { ...o, env: { ...o?.env, GIT_CONFIG_GLOBAL: join(dir, 'gitconfig') } });
   };
   writeFileSync(join(dir, 'gitconfig'), `[core]\n\texcludesFile = ${JSON.stringify(join(dir, 'ignore'))}\n[commit]\n\tgpgsign = true\n`);
-  const said = await githubPagesDeploy(site, 'ada/obeya-demos', join(dir, 'git'), x);
+  const said = await githubPagesDeploy(site, 'ada/obeya-demos', join(dir, 'git'), { x });
   expect(said).toContain('a/b/demo.mp4');
   expect(said).toContain('.nojekyll');
   expect(said).toContain('commits 1');
@@ -392,7 +368,7 @@ test('the deploy to GitHub Pages pushes one commit without history, with gh’s 
   expect(push!.env.GIT_CONFIG_VALUE_0).toBe(`AUTHORIZATION: basic ${Buffer.from('x-access-token:gho_secret').toString('base64')}`);
   // its repository is made afresh each time and goes afterwards
   expect(existsSync(join(dir, 'git'))).toBe(false);
-  await expect(githubPagesDeploy(site, 'not a repository', join(dir, 'git'), x)).rejects.toThrow('expected <owner>/<repository>');
+  await expect(githubPagesDeploy(site, 'not a repository', join(dir, 'git'), { x })).rejects.toThrow('expected <owner>/<repository>');
 });
 
 describe('setting up at Cloudflare', () => {

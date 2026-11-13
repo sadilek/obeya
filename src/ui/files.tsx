@@ -9,9 +9,9 @@ import { type CardDiff, diffSize, shownChanges, splitDiff } from '../core/diff';
 import { type ChangeRow, changeRows, imageAt, type ShownFile } from '../core/files';
 import type { DemoKind, Item } from '../core/types';
 import { api, cardFile } from './api';
-import { ChangeNote, DiffView, FileDiff, Lines, MARK } from './diff';
+import { ChangeNote, changePath, DiffView, FileDiff, hasLines, Lines, MARK, useFullDiff } from './diff';
 import { Doc, DocImages } from './markdown';
-import { useReportedHeight } from './message';
+import { useReportedHeight } from './frame';
 import { PdfPages } from './pdf';
 import { phoneView } from './phone';
 import { t } from './strings';
@@ -28,29 +28,13 @@ const DEMO = '';
 /** A line of the change list whose file is not read yet (`ChangeList`'s `pending`). */
 type Pending = { pending: number };
 
-/** The card's change, read as the work moves on; `given` where the card has read it already (a folder's change list). */
-function useChange(item: Item, given: CardDiff | null | undefined): CardDiff | null {
-  const [diff, setDiff] = useState<CardDiff | null>(null);
-  const own = given === undefined;
-  useEffect(() => {
-    if (!own) return;
-    let gone = false;
-    api.diff(item.id).then((d) => !gone && setDiff(d), () => {});
-    return () => {
-      gone = true;
-    };
-  }, [own, item.id, item.state, item.need, item.summary, item.workspace, JSON.stringify(item.files)]);
-  return own ? diff : given;
-}
-
 /**
  * The card's left column with its files: the change list, the demo (`demo`) under its first line, a
  * file's view under each line that has one. Without a change it is the demo alone. `diff`: the
- * card's change where the card has read it already. `tab`: the path of the file picked (`''` the
+ * card's change (`useCardDiff`), null until read. `tab`: the path of the file picked (`''` the
  * demo); null for the first.
  */
-export function ResultFiles({ item, diff, demo, tab, onTab }: { item: Item; diff?: CardDiff | null; demo: ReactNode; tab: string | null; onTab: (path: string) => void }) {
-  const change = useChange(item, diff);
+export function ResultFiles({ item, diff: change, demo, tab, onTab }: { item: Item; diff: CardDiff | null; demo: ReactNode; tab: string | null; onTab: (path: string) => void }) {
   // the demo's line says what it is, a video or an artifact; where the card's demos are of both kinds, only that it is the demo
   const kinds = new Set([...(item.demos ?? []), item.demo].map((d) => d?.kind ?? 'video'));
   const demoKind = demo ? (kinds.size === 1 ? [...kinds][0]! : 'any') : undefined;
@@ -255,19 +239,18 @@ export function ChangeList({
           )}
         </div>
       )}
-      {open !== null && <DiffView item={item} file={open} onClose={() => setOpen(null)} onRead={() => {}} />}
-      {whole && <DiffView item={item} onClose={() => setWhole(false)} onRead={() => {}} />}
+      {open !== null && <DiffView item={item} file={open} onClose={() => setOpen(null)} />}
+      {whole && <DiffView item={item} onClose={() => setWhole(false)} />}
     </div>
   );
 }
 
 /** A line of the change list: a file to pick (`onPick`, `tabs`), or one whose diff a click shows (`onDiff`), or neither. */
 function Line({ row, on, onPick, onDiff, tabs }: { row: ChangeRow; on: boolean; onPick?: (changes?: boolean) => void; onDiff?: () => void; tabs: boolean }) {
-  const name = (p: string) => (row.dir ? `${p}/` : p);
-  const path = row.from ? `${name(row.from)} → ${name(row.path)}` : name(row.path);
+  const path = changePath(row);
   // a file the column cannot show is greyed: its name opens nothing, its lines its diff
   const byName = tabs ? onPick : onDiff;
-  const lines = row.added !== undefined && (row.added > 0 || row.removed! > 0);
+  const lines = hasLines(row);
   const onLines = onPick ? () => onPick(row.file?.diff ? true : undefined) : onDiff;
   const count = (text: string) =>
     onLines ? (
@@ -359,7 +342,7 @@ function FileView({ item, file, rev, changes, onChanges }: { item: Item; file: S
             {t.files.show}
           </button>
           {' · '}
-          <a className="link" href={cardFile(item.id, file.path, true)} title={t.files.download} aria-label={t.files.download}>
+          <a className="link" href={cardFile(item.id, file.path, true)} title={t.download} aria-label={t.download}>
             ↓
           </a>
         </span>
@@ -472,17 +455,7 @@ function PdfFrame({ url, title }: { url: string; title: string }) {
 
 /** What the card changed in the file, line by line. */
 function Changes({ item, path }: { item: Item; path: string }) {
-  const [diff, setDiff] = useState<CardDiff | null | 'failed'>(null);
-  useEffect(() => {
-    let gone = false;
-    api.diff(item.id, true).then(
-      (d) => !gone && setDiff(d ?? 'failed'),
-      () => !gone && setDiff('failed'),
-    );
-    return () => {
-      gone = true;
-    };
-  }, [item.id]);
+  const diff = useFullDiff(item.id);
   if (diff === null) return <p className="hint">{t.files.loading}</p>;
   const part = diff === 'failed' ? undefined : splitDiff(diff.patch ?? '').find((p) => p.file === path);
   return part ? (

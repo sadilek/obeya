@@ -2,7 +2,8 @@
 // (`since`). The owner moves a waiting card earlier or later, one place or several at once, past
 // cards it has no wait with: the waits fix the order between the cards they join, the owner the rest.
 
-import { finished, type Item } from './types';
+import type { Item } from './types';
+import { finished } from './card';
 
 /** Waiting to start: being judged, behind others, or for a workspace. */
 export const inQueue = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !!i.queue;
@@ -39,6 +40,9 @@ export const holdsNotes = (i: Pick<Item, 'state' | 'archivedAt'>) => i.state ===
 
 /** A card that has not been started: planned and not in the queue (a stopped one too). */
 export const notStarted = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !i.queue;
+
+/** What starting `project` starts: its planned workstreams that are not with Obeya yet. */
+export const startable = (project: Pick<Item, 'id'>, items: Item[]) => items.filter((i) => i.parent === project.id && notStarted(i));
 
 /** Whether `card` waits for `id`, directly or through cards it waits for. */
 export function waitsOn(card: Item, id: string, items: Item[]): boolean {

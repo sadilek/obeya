@@ -4,36 +4,26 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
-import { needsYou } from '../core/types';
+import { needsYou } from '../core/card';
 import { BadRequest } from './board';
 import { DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
-import { artifact, removeDir, until } from './testing';
-import { Workers } from './workers';
-import { board, dir, eachTest, manual, runtime, setup, setWorkers, spaces, state, workers } from './workers-fixture';
+import { artifact, until } from './testing';
+import { board, dir, eachTest, handedOver, manual, rebuild, runtime, setup, state, workers } from './workers-fixture';
 
 eachTest();
 
 describe('parking: the app of a card that waits for the owner', () => {
   /** Workers whose settings stop the app by writing `parked.log` in the workspace, after a grace of `grace` ms. */
   const parking = (more: Partial<NonNullable<RepoAdapter['app']>> = {}, grace = 10, tryGrace?: number) => {
-    setWorkers(new Workers({
-      board,
-      runtime,
-      workspaces: spaces,
+    rebuild({
       adapter: { ...generic, land: 'main', workspaces: 'clones', app: { run: 'Start it with `bun run stack`.', stop: 'echo stopped >> parked.log', ...more } },
       parkGrace: grace,
       ...(tryGrace !== undefined ? { tryGrace } : {}),
-    }));
+    });
   };
   const stopped = (id: string) => existsSync(join(board.row(id).workspace!, 'parked.log'));
-  const handOver = async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact() });
-    runtime.last.emit({ type: 'idle' });
-    return c;
-  };
+  const handOver = async () => (await handedOver({ summary: 'Fertig.' })).card;
 
   test('a card that waits has its app stopped after the grace, and its worker hears so with the next message', async () => {
     parking();
@@ -90,9 +80,7 @@ describe('parking: the app of a card that waits for the owner', () => {
 
   test('a worker whose background work still runs keeps its app', async () => {
     parking();
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact() });
+    const { card: c } = await handedOver({ summary: 'Fertig.', idle: false });
     runtime.last.emit({ type: 'idle', background: 1 });
     await Bun.sleep(60);
     expect(stopped(c.id)).toBe(false);
@@ -235,7 +223,6 @@ describe('handing over with a demo', () => {
   const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, question: { text: 'Semikolon oder Komma?' } });
 
   test('the worker gets the demo skill from the plugin that comes with Obeya, its brief names it, and it knows where Obeya is', async () => {
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const c = manual();
     await workers.start(c.id);
@@ -247,8 +234,23 @@ describe('handing over with a demo', () => {
     expect(runtime.last.inbox[0]).toContain(`recorded with the demo skill (\`${demoSkillName()}\`; if your session does not know it, read its file ${DEMO_SKILL_FILE} and follow that)`);
   });
 
+  test("the GitHub account set for the repository: the worker's session starts once its token is read, with it in its environment", async () => {
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
+    let token: string | undefined;
+    let release!: () => void;
+    const read = new Promise<void>((r) => (release = r));
+    rebuild({ githubLogin: { env: () => (token ? { GH_TOKEN: token } : undefined), ready: () => read } });
+    const before = runtime.sessions.length;
+    await workers.start(manual().id);
+    // not started on whatever gh has active meanwhile
+    expect(runtime.sessions.length).toBe(before);
+    token = 'gho_work';
+    release();
+    await until(() => runtime.sessions.length > before);
+    expect(runtime.last.spec.env).toEqual({ OBEYA_URL: 'http://127.0.0.1:4417', GH_TOKEN: 'gho_work' });
+  });
+
   test("a repository that names the language of its demos gives it to the worker's demo skill", async () => {
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', demo: { language: 'en' } });
     await workers.start(manual().id);
     expect(runtime.last.spec.env).toEqual({ OBEYA_URL: 'http://127.0.0.1:4417', DEMO_LANGUAGE: 'en' });
@@ -258,13 +260,11 @@ describe('handing over with a demo', () => {
   });
 
   test("a repository that names no language for its demos has its worker demo in the demo settings' narration language, else the conversation's", async () => {
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     await workers.start(manual().id);
     expect(runtime.last.spec.system).toContain("A demo (its narration, report, or an HTML artifact's words) is in German, whatever language the owner talks in.");
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, demoLanguage: () => 'en' }));
+    rebuild({ demoLanguage: () => 'en' });
     await workers.start(manual().id);
     expect(runtime.last.spec.system).toContain("A demo (its narration, report, or an HTML artifact's words) is in English, whatever language the owner talks in.");
   });
@@ -272,9 +272,8 @@ describe('handing over with a demo', () => {
   test('the brief names the demo directory of the demo settings, else ~/demos', async () => {
     await workers.start(manual().id);
     expect(runtime.last.inbox[0]).toContain('an index.html in a new directory under ~/demos (never in git)');
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, demoDirectory: () => '/opt/work/demos' }));
+    rebuild({ demoDirectory: () => '/opt/work/demos' });
     await workers.start(manual().id);
     expect(runtime.last.inbox[0]).toContain('an index.html in a new directory under /opt/work/demos (never in git)');
   });
@@ -300,10 +299,7 @@ describe('handing over with a demo', () => {
   });
 
   test('the question in the demo report is answered on the card; the demo still waits for approval', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: demo(demoDir()) });
     expect(board.item(c.id)!.question).toEqual({ text: 'Semikolon oder Komma?', options: [] });
     const n = runtime.last.inbox.length;
     workers.answer(c.id, 'Semikolon.');
@@ -354,10 +350,7 @@ describe('handing over with a demo', () => {
   });
 
   test('a stand-in that replies to the answer and ends the turn gives the card back to the owner', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: demo(demoDir()) });
     workers.answer(c.id, 'Semikolon.');
     expect(board.item(c.id)!.answering).toBe(true);
     await workers.standIn(c.id, { tool: 'reply', args: { text: 'Bleibt beim Semikolon.' } });
@@ -367,10 +360,7 @@ describe('handing over with a demo', () => {
   });
 
   test('a handover that keeps the demo leaves its answered question with the handover it came with', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: demo(demoDir()) });
     const first = board.events(c.id).findLast((e) => e.kind === 'review')!.id;
     workers.answer(c.id, 'Semikolon.');
     await runtime.last.call('ready_for_review', { summary: 'Entscheidung festgehalten.' });
@@ -381,10 +371,7 @@ describe('handing over with a demo', () => {
   });
 
   test('a worker that reworks its demo after the answer hands over anew; until then the card is at work', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: demo(demoDir()) });
     workers.answer(c.id, 'Komma, bitte.');
     // a turn the session ends before it took in the answer leaves the card with the worker
     runtime.last.emit({ type: 'idle' });
@@ -400,10 +387,7 @@ describe('handing over with a demo', () => {
   });
 
   test('an answer to the owner\'s words without a new demo marks the card answered; a new demo is a demo again', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
     expect(board.item(c.id)!.answered).toBeUndefined();
     // a reply alone
     workers.message(c.id, 'Warum zwei Spalten?');
@@ -432,10 +416,7 @@ describe('handing over with a demo', () => {
   });
 
   test('words its worker never answers do not read as answered, though it answered the ones before', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
     workers.message(c.id, 'Warum zwei Spalten?');
     runtime.last.emit({ type: 'tool', name: 'Read', input: {} });
     runtime.last.call('reply', { text: 'Weil die Tabelle sonst zu breit wird.' });
@@ -473,10 +454,7 @@ describe('handing over with a demo', () => {
   });
 
   test('a worker that a background command wakes after it answered is at work again until its turn ends', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
     workers.message(c.id, 'Auf dem Telefon geht es nicht.');
     runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'bun test', run_in_background: true } });
     runtime.last.call('reply', { text: 'Nachgestellt und behoben; Tests laufen, eine neue Übergabe folgt.' });
@@ -499,10 +477,7 @@ describe('handing over with a demo', () => {
   });
 
   test('a worker that answers while the app it started runs on leaves the card to the owner, with only that app in the background', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
     workers.message(c.id, 'Starte den Testserver nochmal.');
     runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'bun run dev', run_in_background: true } });
     runtime.last.emit({ type: 'background', tasks: [{ id: 'b1', description: 'Start dev server' }] });
@@ -524,10 +499,7 @@ describe('handing over with a demo', () => {
   });
 
   test('a worker that answers while work it waits for runs (a test run, a render) stays at work until that work wakes it', async () => {
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
     // the app it served for the owner runs since an earlier turn
     workers.message(c.id, 'Starte den Testserver.');
     runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'bun run dev', run_in_background: true } });
@@ -599,11 +571,8 @@ describe('handing over with a demo', () => {
   });
 
   test('after feedback, the worker may hand over again without a new demo: the one on the card stands', async () => {
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
+    const { card: c } = await handedOver({ demo: demo(demoDir()), idle: false });
     workers.message(c.id, 'Nur den Text ändern.');
     expect(await runtime.last.call('ready_for_review', { summary: 'Text geändert.' })).toContain('End your turn');
     expect(state(c.id)).toBe('waiting:demo');
@@ -646,7 +615,7 @@ describe('handing over with a demo', () => {
   });
 
   test('a demo handed over before Obeya kept copies is gone once a later one is rendered into its directory', async () => {
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic }));
+    rebuild({ keptDemos: undefined });
     const c = manual();
     await workers.start(c.id);
     const d = demoDir();
@@ -700,7 +669,6 @@ describe('handing over with a demo', () => {
   });
 
   test('where demos are shared, a video or an artifact comes with its page for colleagues, kept with the demo', async () => {
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
     const c = manual();
     await workers.start(c.id);
@@ -725,7 +693,7 @@ describe('handing over with a demo', () => {
 
   test('a session whose tools took no page when it started is not asked for one once the repository shares', async () => {
     let shares = false;
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, shares: () => shares }));
+    rebuild({ shares: () => shares });
     const c = manual();
     await workers.start(c.id);
     // the forge says only now that the repository is public: it shares on the owner's personal site
@@ -739,7 +707,6 @@ describe('handing over with a demo', () => {
   });
 
   test("where the site names tags, the page comes with them, each dimension's from its values alone", async () => {
-    await removeDir(dir);
     const tags = { Area: ['Billing', 'Reports'], Audience: ['Admins', 'Customers'] };
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}', tags } } });
     const c = manual();
@@ -764,7 +731,6 @@ describe('handing over with a demo', () => {
     await workers.start(c.id);
     expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir(), ['Nur eins']) })).toContain('Not handed over');
     expect(state(c.id)).toBe('working');
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const d = manual();
     await workers.start(d.id);
@@ -790,7 +756,6 @@ describe('handing over with a demo', () => {
   });
 
   test('every handover brings a demo: one without is refused; without a recipe the worker finds out how to run the app', async () => {
-    await removeDir(dir);
     await setup({ ...generic, land: 'main', workspaces: 'clones' });
     const c = manual();
     await workers.start(c.id);
@@ -816,15 +781,12 @@ describe('comments on places in the demo video', () => {
   /** A card waiting with a demo of two scenes, the second narrated in two sentences. */
   const waiting = async (question?: string) => {
     images = new Images(join(dir, 'images'));
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic, imageFiles: (ids = []) => ids.flatMap((i) => images.path(i) ?? []), releaseDelay: 5, holdGrace: 60_000 }));
+    rebuild({ imageFiles: (ids = []) => ids.flatMap((i) => images.path(i) ?? []), releaseDelay: 5, holdGrace: 60_000 });
     const d = join(dir, 'demo');
     mkdirSync(d, { recursive: true });
     writeFileSync(join(d, 'demo.mp4'), 'x');
     writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00:00.350 --> 00:00:05.000\nDie Liste.\n\n00:00:06.350 --> 00:00:16.350\nJetzt der Export. Die Datei hat eine Kopfzeile.\n');
-    const c = manual();
-    await workers.start(c.id);
-    await runtime.last.call('ready_for_review', { summary: 'S', demo: { dir: d, chapters: ['Liste', 'Export'], ...(question ? { question: { text: question } } : {}) } });
-    runtime.last.emit({ type: 'idle' });
+    const { card: c } = await handedOver({ demo: { dir: d, chapters: ['Liste', 'Export'], ...(question ? { question: { text: question } } : {}) } });
     return c;
   };
   const still = () => images.save(new Uint8Array([1, 2, 3]), 'image/jpeg');
@@ -902,7 +864,7 @@ describe('comments on places in the demo video', () => {
 
   test('all deleted, nothing goes, also once the wait is over', async () => {
     const c = await waiting();
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic, holdGrace: 10 }));
+    rebuild({ holdGrace: 10 });
     const n = runtime.last.inbox.length;
     workers.message(c.id, 'Doch nicht.', [], false, undefined, { at: 1 });
     workers.unsay(c.id, board.events(c.id).at(-1)!.id);
@@ -926,7 +888,7 @@ describe('comments on places in the demo video', () => {
 
   test('go without a sign from the owner once the last one has waited long enough, also after a restart', async () => {
     const c = await waiting();
-    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic, holdGrace: 10 }));
+    rebuild({ holdGrace: 10 });
     const n = runtime.last.inbox.length;
     workers.message(c.id, 'Hier.', [], false, undefined, { at: 1 });
     workers.shutdown();
@@ -934,6 +896,17 @@ describe('comments on places in the demo video', () => {
     workers.resumeAll();
     await until(() => !board.item(c.id)!.held);
     expect(runtime.sessions.flatMap((s) => s.inbox).at(-1)).toContain('Hier.');
+  });
+
+  test('held back by workers that were shut down, it goes from neither them nor before the new ones resume', async () => {
+    const c = await waiting();
+    rebuild({ holdGrace: 10 });
+    workers.message(c.id, 'Hier.', [], false, undefined, { at: 1 });
+    const sessions = runtime.sessions.length;
+    workers.shutdown();
+    await Bun.sleep(50);
+    expect(runtime.sessions).toHaveLength(sessions);
+    expect(board.item(c.id)!.held).toHaveLength(1);
   });
 
   test('one made while the worker takes in the ones before, which then asks a question, goes with the answer', async () => {

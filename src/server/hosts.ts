@@ -13,8 +13,9 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { SpawnedProcess, SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { resource } from './resources';
-import { OWN_GROUP, spawnOutput } from './spawn';
+import { failureText, OWN_GROUP, spawnOutput } from './spawn';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { messageOf } from '../core/text';
 
 /** Where a workspace on another machine says which machine it is on. */
 const PREFIX = 'ssh://';
@@ -41,12 +42,6 @@ export class HostError extends Error {}
 
 /** A host's exit code for "the connection failed" (ssh's own), whatever the command there did. */
 export const LOST = 255;
-
-/**
- * How long a host whose connection failed counts as unreachable for the commands the server waits
- * for, before one of them has it asked again in the background.
- */
-export const RECHECK_DOWN_MS = 30_000;
 
 /** Directories that come first on the host's PATH: where the official installers put Claude Code and Bun. */
 const PATH_PREFIX = '$HOME/.local/bin:$HOME/.bun/bin';
@@ -92,7 +87,7 @@ export interface HostOptions {
   home: string;
   /** The Claude login the host's sessions run on (`claude setup-token`); without it they run on the host's own. */
   claudeToken?: () => string | undefined;
-  /** The program that is `ssh` (tests run the commands on this machine with a stand-in). */
+  /** The program that is `ssh`, else `OBEYA_SSH`, else `ssh` (tests and demos run the commands on this machine with a stand-in). */
   program?: string;
 }
 
@@ -101,8 +96,8 @@ export class SshHost {
   private prepared?: Promise<string>;
   /** Tokens by the workspace root they are for (a repository's clones there): its GitHub login. */
   private tokens: { root: string; token: GithubLogin }[] = [];
-  /** When the connection last failed, while the host has not answered since; whether it is being asked again. */
-  private down?: { at: number; asking?: boolean };
+  /** Whether the connection failed and the host has not answered since. */
+  private down = false;
   /** Who hears that the host answers again after it did not. */
   private back: (() => void)[] = [];
 
@@ -158,7 +153,7 @@ export class SshHost {
       .join(' ');
     // a forward from here goes on a connection of its own, which ends with it rather than with the shared one
     const forwards = [...(o.forward ?? []).flatMap((f) => ['-R', f]), ...(o.local ? ['-o', 'ExitOnForwardFailure=yes', '-L', o.local] : [])];
-    return [this.o.program ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
+    return [this.o.program ?? process.env.OBEYA_SSH ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
   }
 
   /** The environment line for a command in `cwd`: the GitHub login of the repository it is in. */
@@ -169,7 +164,7 @@ export class SshHost {
 
   /** Whether the host's connection failed and it has not answered since. */
   get unreachable(): boolean {
-    return !!this.down;
+    return this.down;
   }
 
   /** `f` runs each time the host answers again after its connection failed; returns what stops that. */
@@ -181,34 +176,12 @@ export class SshHost {
   /** What a command's exit code says about the connection: `LOST` that it failed, anything else that the host answered. */
   private heard(code: number) {
     if (code === LOST) {
-      if (this.down) this.down.at = Date.now();
-      else this.down = { at: Date.now() };
+      this.down = true;
       return;
     }
     if (!this.down) return;
-    this.down = undefined;
+    this.down = false;
     for (const f of this.back) f();
-  }
-
-  /**
-   * Runs a program there and waits for it (git, mostly: short calls on a shared connection). The
-   * server answers nothing else meanwhile, and ssh gives up on a host that does not answer only
-   * after seconds (a name it cannot resolve, a connection timeout): while the host's connection has
-   * failed, it fails at once instead, and from time to time the host is asked again in the background.
-   */
-  runSync(argv: string[], cwd?: string): { code: number; stdout: string; stderr: string } {
-    if (this.down) {
-      if (!this.down.asking && Date.now() - this.down.at >= RECHECK_DOWN_MS) {
-        const down = this.down;
-        down.asking = true;
-        void this.reachable().finally(() => (down.asking = false));
-      }
-      return { code: LOST, stdout: '', stderr: `${this.name} does not answer` };
-    }
-    const r = Bun.spawnSync(this.argv(argv, { cwd, env: true }), { stdin: Buffer.from(this.envLine(cwd)), stdout: 'pipe', stderr: 'pipe' });
-    const code = r.exitCode ?? LOST;
-    this.heard(code);
-    return { code, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
   }
 
   /** Runs a program (or a shell line) there without blocking the server; `input` is its stdin, after the environment line. */
@@ -232,7 +205,7 @@ export class SshHost {
   async resolveDir(dir: string): Promise<string> {
     const at = dir === '~' ? '"$HOME"' : dir.startsWith('~/') ? `"$HOME"/${sh(dir.slice(2))}` : sh(dir);
     const r = await this.run(`mkdir -p ${at} && cd ${at} && pwd -P`);
-    if (r.code !== 0) throw new HostError(`${this.name}: ${dir}: ${(r.stderr || r.stdout).trim() || `exit code ${r.code}`}`);
+    if (r.code !== 0) throw new HostError(`${this.name}: ${dir}: ${failureText(r)}`);
     return r.stdout.trim();
   }
 
@@ -292,6 +265,64 @@ export class SshHost {
     // written whole and moved into place, so a session reading it meanwhile sees the old or the new file
     const w = await this.run('cat > "$HOME/.claude.json.obeya" && mv "$HOME/.claude.json.obeya" "$HOME/.claude.json"', { input: JSON.stringify(config, null, 2) });
     if (w.code !== 0) throw new HostError(`${this.name}: ${w.stderr.trim()}`);
+  }
+
+  /**
+   * Claude Code there: the version it is at, and the channel it updates from (`autoUpdatesChannel`
+   * in its settings there: `latest`, the default, or `stable`); null where it is not installed.
+   */
+  async claude(): Promise<{ version: string; channel: 'latest' | 'stable' } | null> {
+    const r = await this.run('v=$(claude --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"; cat "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; true', { timeout: 30_000 });
+    if (r.code === 3) return null;
+    if (r.code !== 0) throw new HostError(`${this.name}: ${failureText(r)}`);
+    const [first = '', ...rest] = r.stdout.split('\n');
+    const version = first.match(/^(\d+\.\d+\.\d+)/)?.[1];
+    if (!version) return null;
+    let channel: 'latest' | 'stable' = 'latest';
+    try {
+      if (JSON.parse(rest.join('\n'))?.autoUpdatesChannel === 'stable') channel = 'stable';
+    } catch {}
+    return { version, channel };
+  }
+
+  /** Brings Claude Code there up to date (`claude update`); fails with the last line it said where it exits with another code than 0. */
+  async updateClaude(): Promise<void> {
+    const r = await this.run(['claude', 'update'], { timeout: 10 * 60_000 });
+    if (r.code === 0) return;
+    const last = `${r.stdout}\n${r.stderr}`.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean).at(-1);
+    throw new HostError(r.code === LOST ? `${this.name} does not answer` : `claude update exited with ${r.code}${last ? `: ${last}` : ''}`);
+  }
+
+  /** The version of Codex there; null where it is not installed. */
+  async codex(): Promise<{ version: string } | null> {
+    const r = await this.run('v=$(codex --version 2>/dev/null) || exit 3; printf \'%s\\n\' "$v"', { timeout: 30_000 });
+    if (r.code === 3) return null;
+    if (r.code !== 0) throw new HostError(`${this.name}: ${failureText(r)}`);
+    const version = r.stdout.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
+    return version ? { version } : null;
+  }
+
+  /**
+   * Brings Codex there up to date: `codex update`, or for a Codex older than that command, the
+   * package manager it lives in (as `updateCodex` does here); fails with the last line it said
+   * where it exits with another code than 0.
+   */
+  async updateCodex(): Promise<void> {
+    const script = [
+      'if codex update --help 2>/dev/null | grep -q "^Update Codex"; then exec codex update; fi',
+      'p=$(command -v codex) || exit 3',
+      'r=$(readlink -f "$p" 2>/dev/null || printf %s "$p")',
+      'case "$r" in',
+      '  */.bun/install/global/node_modules/@openai/codex/*) exec bun install -g @openai/codex@latest ;;',
+      '  */node_modules/@openai/codex/*) exec npm install -g @openai/codex@latest ;;',
+      '  */Caskroom/codex/*) exec brew upgrade --cask codex ;;',
+      'esac',
+      'echo "Codex at $p is too old to update itself; update it as it was installed" >&2; exit 4',
+    ].join('\n');
+    const r = await this.run(script, { timeout: 10 * 60_000 });
+    if (r.code === 0) return;
+    const last = `${r.stdout}\n${r.stderr}`.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean).at(-1);
+    throw new HostError(r.code === LOST ? `${this.name} does not answer` : r.code === 4 && last ? last : `codex update exited with ${r.code}${last ? `: ${last}` : ''}`);
   }
 
   /**
@@ -409,40 +440,43 @@ export class SshHost {
    * Codex's app server) through `ssh` in `cwd` once the host has `files` (paths of those directories
    * among its arguments become their copies there), its environment (the SDK's and the session's,
    * Obeya's directory there as `OBEYA_HOME`, the Claude login unless `login` is false) read from
-   * stdin first. A host that cannot be made ready ends the process as a lost connection would. With
-   * `OBEYA_NARRATION_URL` in the environment, a port there is forwarded to it, Obeya's narration
-   * alone, as `OBEYA_URL` there; `forwards` are more (`-R`), for the session's own hooks. `onExit`
+   * stdin first. Without `files`, a session that needs nothing of Obeya's there (one that only asks
+   * Claude Code for its models) starts at once, in the home there without `cwd`. A host that cannot be made ready ends the process as a lost connection would. With
+   * `OBEYA_URL` in the environment (Obeya's narration server, which answers nothing else), a port
+   * there is forwarded to it, as `OBEYA_URL` there; `forwards` are more (`-R`), for the session's own hooks. `onExit`
    * hears the exit code of `ssh` (`LOST`: the connection failed or dropped), `onStderr` what the
    * command there and ssh say on stderr.
    */
-  session(o: { cwd: string; files: HostFiles; login?: boolean; forwards?: string[]; onExit?: (code: number | null) => void; onStderr?: (text: string) => void }): (s: SpawnOptions) => SpawnedProcess {
-    const ready = Promise.all([this.prepare(o.files), this.loginRead(o.cwd)]).then(([dir]) => dir);
+  session(o: { cwd?: string; files?: HostFiles; login?: boolean; forwards?: string[]; onExit?: (code: number | null) => void; onStderr?: (text: string) => void }): (s: SpawnOptions) => SpawnedProcess {
+    const ready = Promise.all([o.files && this.prepare(o.files), this.loginRead(o.cwd)]).then(([dir]) => dir);
     return (s) => {
       const p = deferred(ready, (dir) => {
         const token = o.login === false ? undefined : this.o.claudeToken?.();
-        const local = Object.entries(o.files.dirs);
+        const local = Object.entries(o.files?.dirs ?? {});
         const args = s.args.map((a) => {
           const hit = local.find(([, from]) => a === from);
           return hit ? `${dir}/${hit[0]}` : a;
         });
         // only the narration's port: whoever is on that machine reaches the forward too
-        const here = s.env.OBEYA_NARRATION_URL ? Number(new URL(s.env.OBEYA_NARRATION_URL).port) : 0;
+        const here = s.env.OBEYA_URL ? Number(new URL(s.env.OBEYA_URL).port) : 0;
         // a port of its own per session, so that sessions ending do not take another's forward along
         const there = here ? 30_000 + Math.floor(Math.random() * 30_000) : 0;
         // a session cut off by a dropped connection may still run there: the one that resumes it ends it first;
         // not itself, whose pid a host that restarted since (a container, say) may give out again
-        const pid = sh(`${dir}/sessions/${o.cwd.replace(/[^\w.-]+/g, '-')}.pid`);
-        const previous = `mkdir -p ${sh(`${dir}/sessions`)}; old=$(cat ${pid} 2>/dev/null); [ -n "$old" ] && [ "$old" != $$ ] && ps -p "$old" -o command= 2>/dev/null | grep -q ${sh(basename(s.command))} && kill "$old"; echo $$ > ${pid};`;
+        const pid = dir && o.cwd ? sh(`${dir}/sessions/${o.cwd.replace(/[^\w.-]+/g, '-')}.pid`) : undefined;
+        const previous = pid
+          ? `mkdir -p ${sh(`${dir}/sessions`)}; old=$(cat ${pid} 2>/dev/null); [ -n "$old" ] && [ "$old" != $$ ] && ps -p "$old" -o command= 2>/dev/null | grep -q ${sh(basename(s.command))} && kill "$old"; echo $$ > ${pid};`
+          : '';
         const forward = [...(here ? [`127.0.0.1:${there}:127.0.0.1:${here}`] : []), ...(o.forwards ?? [])];
         const argv = this.argv(`${previous} exec ${[s.command, ...args].map(sh).join(' ')}`, {
-          cwd: o.cwd,
+          ...(o.cwd ? { cwd: o.cwd } : {}),
           env: true,
           ...(forward.length ? { forward } : {}),
         });
         const child = spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
         // with Obeya reachable, a voice it holds loaded narrates from Obeya's machine (OBEYA_HOLDS_VOICE: no need to install it here)
-        const { OBEYA_URL: _, OBEYA_NARRATION_URL: __, ...own } = s.env;
-        const env = { ...own, OBEYA_HOME: dir, ...(here ? { OBEYA_URL: `http://127.0.0.1:${there}`, OBEYA_HOLDS_VOICE: '1' } : {}), ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) };
+        const { OBEYA_URL: _, ...own } = s.env;
+        const env = { ...own, ...(dir ? { OBEYA_HOME: dir } : {}), ...(here ? { OBEYA_URL: `http://127.0.0.1:${there}`, OBEYA_HOLDS_VOICE: '1' } : {}), ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) };
         child.stdin!.write(this.envLine(o.cwd, env));
         // ssh's own complaints (a forward refused, the connection dropped) are no session output
         child.stderr!.on('data', (d: Buffer) => {
@@ -540,7 +574,7 @@ function deferred<T>(ready: Promise<T>, start: (value: T) => ChildProcess): Spaw
       try {
         child = start(value);
       } catch (e) {
-        console.error(e instanceof Error ? e.message : e);
+        console.error(messageOf(e));
         return exit(LOST, null);
       }
       stdin.pipe(child.stdin!);
@@ -549,7 +583,7 @@ function deferred<T>(ready: Promise<T>, start: (value: T) => ChildProcess): Spaw
       child.on('error', (e) => events.emit('error', e));
     },
     (e: unknown) => {
-      console.error(e instanceof Error ? e.message : e);
+      console.error(messageOf(e));
       exit(LOST, null);
     },
   );
@@ -599,6 +633,9 @@ export function sessionFiles(home: string, plugins: string[]): HostFiles {
 /** The hosts of the configuration, by name. */
 const hosts = new Map<string, SshHost>();
 
+/** The host of that name, once registered. */
+export const hostNamed = (name: string): SshHost | undefined => hosts.get(name);
+
 /** Makes a host known under its name; the configuration's hosts are registered at start. */
 export function registerHost(o: HostOptions): SshHost {
   const known = hosts.get(o.name);
@@ -640,9 +677,6 @@ export const TOKEN_HELPER = ['', '!f() { test "$1" = get && test -n "$GH_TOKEN" 
 /** git's options that make a command there use `TOKEN_HELPER`. */
 export const TOKEN_HELPER_ARGS = TOKEN_HELPER.flatMap((h) => ['-c', `credential.helper=${h}`]);
 
-/** How long a repository's GitHub login is asked again after it was read. */
-const TOKEN_TTL = 10 * 60_000;
-
 /**
  * A GitHub login for a host's workspaces (`SshHost.tokenFor`): as last read, and `ready`, which
  * settles once it is read for the first time.
@@ -650,31 +684,4 @@ const TOKEN_TTL = 10 * 60_000;
 export interface GithubLogin {
   (): string | undefined;
   ready?: () => Promise<unknown>;
-}
-
-/**
- * The GitHub login git uses for a repository here (`git credential fill` in its checkout, so the
- * account its own configuration picks), for its clones on a host; none for a remote not on HTTPS.
- * Read in the background, without the server waiting for git: from the start, and again once it is
- * older than `TOKEN_TTL`, the login read before standing meanwhile.
- */
-export function githubToken(repoPath: string, remoteUrl: string | undefined, git: string = 'git'): GithubLogin {
-  const url = remoteUrl?.match(/^https:\/\/([^/]+)\//);
-  let cached: { token: string | undefined; at: number } | undefined;
-  let reading: Promise<void> | undefined;
-  const read = () =>
-    (reading ??= (async () => {
-      const r = await spawnOutput([git, '-C', repoPath, 'credential', 'fill'], {
-        stdin: new Blob([`protocol=https\nhost=${url![1]}\n\n`]),
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      }).catch(() => null);
-      cached = { token: r?.code === 0 ? /^password=(.*)$/m.exec(r.stdout)?.[1] : undefined, at: Date.now() };
-    })().finally(() => (reading = undefined)));
-  if (url) void read();
-  const login: GithubLogin = () => {
-    if (url && (!cached || Date.now() - cached.at >= TOKEN_TTL)) void read();
-    return cached?.token;
-  };
-  login.ready = () => (url && !cached ? read() : Promise.resolve());
-  return login;
 }

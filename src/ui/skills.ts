@@ -6,7 +6,8 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { Skill } from '../core/types';
 import { api } from './api';
-import { know, known } from './known';
+import { know, known } from './stored';
+import { signal } from './signal';
 
 /** Set once the owner has used the menu (moved through it with the arrow keys, or picked a skill): its hint under the field goes. */
 export const SKILLS_KNOWN = 'obeya-skills-known';
@@ -16,12 +17,7 @@ const FRESH_MS = 60_000;
 
 /** The card's list as asked, undefined until it came. */
 const lists = new Map<string, { skills?: Skill[]; at: number }>();
-const listeners = new Set<() => void>();
-const changed = () => listeners.forEach((l) => l());
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => void listeners.delete(l);
-};
+const { emit: changed, on: subscribe } = signal();
 
 function ask(cardId: string) {
   const kept = lists.get(cardId);

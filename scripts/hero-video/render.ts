@@ -18,7 +18,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { demoDirectory } from '../../plugin/skills/demo/lib/settings.ts';
+import { holdPidLock } from '../../plugin/lib/process.ts';
+import { demoDirectory, obeyaHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { measure, quiet, reasons, warning } from './load.ts';
 
 const VOICE = 'IErGHDQU4vPqicCi8dwR';
@@ -65,19 +66,11 @@ if (process.argv.includes('--check-load')) process.exit((await quietEnough()) ? 
 const narrationOnly = process.argv.includes('--narration');
 const lock = path.join(os.tmpdir(), 'obeya-hero-render.pid');
 if (!narrationOnly) {
-  const holder = Number(fs.existsSync(lock) ? fs.readFileSync(lock, 'utf8') : 0);
-  let alive = false;
-  try {
-    alive = holder > 0 && holder !== process.pid && process.kill(holder, 0);
-  } catch {}
-  if (alive) {
+  const holder = holdPidLock(lock);
+  if (holder) {
     console.error(`Another render of the hero video is running (pid ${holder}); a second one would stop its scratch Obeya. Not started.`);
     process.exit(3);
   }
-  fs.writeFileSync(lock, String(process.pid));
-  process.on('exit', () => {
-    if (fs.existsSync(lock) && fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.rmSync(lock);
-  });
 }
 // the narration alone and a dry run record no video
 if (!narrationOnly && !process.argv.includes('--dry') && !process.argv.includes('--ignore-load') && !(await quietEnough())) process.exit(3);
@@ -88,7 +81,7 @@ const settings = qwen
   ? { language: 'en', voice: 'qwen3', ownVoice: true, reference }
   : { language: 'en', voice: 'elevenlabs', ownVoice: true, voiceName: VOICE, keyFile };
 fs.writeFileSync(path.join(home, 'demo.json'), JSON.stringify({ ...settings, directory: DEMOS }, null, 2));
-const voices = path.join(process.env.OBEYA_HOME ?? path.join(os.homedir(), '.obeya'), 'voices');
+const voices = path.join(obeyaHome(), 'voices');
 if (fs.existsSync(voices) && !fs.existsSync(path.join(home, 'voices'))) fs.symlinkSync(voices, path.join(home, 'voices'));
 
 const r = spawnSync('node', [path.join(import.meta.dirname, 'demo.ts'), ...process.argv.slice(2).filter((a) => !own.has(a) && !own.has(path.resolve(a)))], {

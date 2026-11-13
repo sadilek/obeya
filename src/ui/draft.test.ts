@@ -1,13 +1,12 @@
 import { expect, test } from 'bun:test';
 import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, insertPasted, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, pastedIn, setMarkup, updateDraft, updateDraftAt, withoutPasted, withoutWords } from './draft';
+import { api } from './api';
+import { filesTo } from './shots';
+import { memoryStorage } from './testing';
 
-const store = () => {
-  const m = new Map<string, string>();
-  return { m, getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
-};
 
 // `keepDrafts` holds its store for the rest of the page
-const s = store();
+const s = memoryStorage();
 
 test("a card's draft outlives the page: written down per canvas as it changes, taken back by the next page", () => {
   const picks = { of: '[{"text":"Farbe?"}]', picks: [['Blau']] };
@@ -182,4 +181,46 @@ test('a screenshot that arrives after a switch of canvas goes into the draft it 
   dropDraft(OBEYA_DRAFT);
   dropDraft(OBEYA_DRAFT);
   s.removeItem('obeya-drafts-web');
+});
+
+test('a file whose path is found once the page is back on its canvas goes into the draft shown, not into what was written down', async () => {
+  updateDraft(OBEYA_DRAFT, { text: 'see' });
+  let found = (_: string) => {};
+  const was = api.findFile;
+  api.findFile = () => new Promise((done) => (found = done));
+  try {
+    const arrived = filesTo(OBEYA_DRAFT, [new File(['x'], 'notes.txt')]);
+    keepDrafts(s, 'web');
+    keepDrafts(s, 'shop');
+    found('/home/me/notes.txt');
+    expect(await arrived).toBe(1);
+    expect(draftOf(OBEYA_DRAFT).text).toBe('see /home/me/notes.txt');
+  } finally {
+    api.findFile = was;
+    dropDraft(OBEYA_DRAFT);
+    s.removeItem('obeya-drafts-web');
+  }
+});
+
+test("a dropped file's path that is found after a switch of canvas goes into the draft it was dropped into, and its count with it", async () => {
+  updateDraft(OBEYA_DRAFT, { text: 'see' });
+  let found = (_: string) => {};
+  const was = api.findFile;
+  api.findFile = () => new Promise((done) => (found = done));
+  try {
+    const arrived = filesTo(OBEYA_DRAFT, [new File(['x'], 'notes.txt')]);
+    expect(draftOf(OBEYA_DRAFT).uploading).toBe(1);
+    keepDrafts(s, 'web');
+    updateDraft(OBEYA_DRAFT, { text: 'on the website' });
+    found('/home/me/notes.txt');
+    expect(await arrived).toBe(1);
+    expect(draftOf(OBEYA_DRAFT)).toMatchObject({ text: 'on the website', uploading: 0 });
+    expect(JSON.parse(s.getItem('obeya-drafts-shop')!)[OBEYA_DRAFT]).toEqual({ text: 'see /home/me/notes.txt', images: [], files: ['/home/me/notes.txt'] });
+    keepDrafts(s, 'shop');
+    expect(draftOf(OBEYA_DRAFT)).toMatchObject({ text: 'see /home/me/notes.txt', uploading: 0 });
+  } finally {
+    api.findFile = was;
+    dropDraft(OBEYA_DRAFT);
+    s.removeItem('obeya-drafts-web');
+  }
 });

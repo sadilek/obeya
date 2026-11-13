@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, AgentTool } from './runtime';
-import { gitAsync } from './workspaces';
+import { gitAsync, isAncestor } from './git';
 import { messageOf } from '../core/text';
 
 /** What an agent was given of a tool: what the fingerprint of a recording covers. */
@@ -199,11 +199,9 @@ async function headOf(cwd: string): Promise<string | undefined> {
   return gitAsync(cwd, 'rev-parse', 'HEAD').catch(() => undefined);
 }
 
+/** Whether `to` builds on `from`; where git cannot tell, not: the replay of a rewritten head takes what changed as one commit, which goes onto any history. */
 async function descends(cwd: string, from: string, to: string): Promise<boolean> {
-  return gitAsync(cwd, 'merge-base', '--is-ancestor', from, to).then(
-    () => true,
-    () => false,
-  );
+  return isAncestor(cwd, from, to).catch(() => false);
 }
 
 /** A commit as `rebuilt` compares it: what makes two commits of two stagings the same one. */
@@ -498,7 +496,7 @@ export function replayRuntime(dir: string, o: ReplayOptions): AgentRuntime {
       const wrong = refusal ?? mismatch(rec.start, spec, swap);
       if (wrong) {
         refuse(wrong);
-        return refusedSession(spec, `Replay refused: ${wrong}. Record this demo anew with real agents.`);
+        return refusedSession(spec, refusedText(wrong));
       }
       if ((rec.start.first !== undefined ? swap.text(rec.start.first) : undefined) !== firstMessage)
         log(`session ${rec.n} (${rec.start.role ?? 'agent'}) starts with another message than recorded: ${firstDifference(swap.text(rec.start.first ?? ''), firstMessage ?? '')}`);
@@ -507,15 +505,15 @@ export function replayRuntime(dir: string, o: ReplayOptions): AgentRuntime {
   };
 }
 
-/** A session the recording has nothing for: each turn ends at once. */
-function idleSession(spec: AgentSpec, first: boolean): AgentSession {
+/** A session whose turns each do `turn` at once and nothing else; the first one comes by itself when `first`. */
+function stubSession(turn: () => void, first: boolean): AgentSession {
   let end!: () => void;
   const done = new Promise<void>((r) => (end = r));
   let closed = false;
-  const turn = () => queueMicrotask(() => !closed && spec.onEvent({ type: 'idle' }));
-  if (first) turn();
+  const go = () => queueMicrotask(() => !closed && turn());
+  if (first) go();
   return {
-    send: () => turn(),
+    send: () => go(),
     close: () => {
       closed = true;
       end();
@@ -524,27 +522,18 @@ function idleSession(spec: AgentSpec, first: boolean): AgentSession {
   };
 }
 
+/** A session the recording has nothing for: each turn ends at once. */
+const idleSession = (spec: AgentSpec, first: boolean) => stubSession(() => spec.onEvent({ type: 'idle' }), first);
+
 /** A session that fails on every message, with `message`. */
-function refusedSession(spec: AgentSpec, message: string): AgentSession {
-  let end!: () => void;
-  const done = new Promise<void>((r) => (end = r));
-  let closed = false;
-  const fail = () =>
-    queueMicrotask(() => {
-      if (closed) return;
-      spec.onEvent({ type: 'error', message });
-      spec.onEvent({ type: 'idle' });
-    });
-  fail();
-  return {
-    send: () => fail(),
-    close: () => {
-      closed = true;
-      end();
-    },
-    done,
-  };
-}
+const refusedSession = (spec: AgentSpec, message: string) =>
+  stubSession(() => {
+    spec.onEvent({ type: 'error', message });
+    spec.onEvent({ type: 'idle' });
+  }, true);
+
+/** What an agent is told where the recording no longer fits what it does now (`why`). */
+const refusedText = (why: string) => `Replay refused: ${why}. Record this demo anew with real agents.`;
 
 interface Player {
   dir: string;
@@ -608,7 +597,7 @@ function play(rec: Recorded, spec: AgentSpec, p: Player): AgentSession {
         if (closed) return;
         if (why) {
           p.refuse(why);
-          spec.onEvent({ type: 'error', message: `Replay refused: ${why}. Record this demo anew with real agents.` });
+          spec.onEvent({ type: 'error', message: refusedText(why) });
           spec.onEvent({ type: 'idle' });
           return;
         }
@@ -649,18 +638,26 @@ function play(rec: Recorded, spec: AgentSpec, p: Player): AgentSession {
       const [name, email] = (await gitAsync(cwd, 'log', '-1', '--format=%an%n%ae', head.to)).split('\n');
       const as = ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
       if ((await gitAsync(cwd, 'rev-parse', 'HEAD^{tree}')) === (await gitAsync(cwd, 'rev-parse', `${head.to}^{tree}`))) return;
-      const patch = join(mkdtempSync(join(tmpdir(), 'obeya-replay-')), 'change.patch');
       const diff = await gitAsync(cwd, 'diff', '--binary', head.from, head.to);
       if (!diff) return;
-      writeFileSync(patch, `${diff}\n`);
-      await gitAsync(cwd, 'apply', '--3way', '--index', patch);
+      const temp = mkdtempSync(join(tmpdir(), 'obeya-replay-'));
+      try {
+        const patch = join(temp, 'change.patch');
+        writeFileSync(patch, `${diff}\n`);
+        await gitAsync(cwd, 'apply', '--3way', '--index', patch);
+      } finally {
+        rmSync(temp, { recursive: true, force: true });
+      }
       await gitAsync(cwd, ...as, 'commit', '-q', '--allow-empty', '-m', await gitAsync(cwd, 'log', '-1', '--format=%B', head.to));
-      rmSync(dirname(patch), { recursive: true, force: true });
     } finally {
       await gitAsync(cwd, 'update-ref', '-d', ref).catch(() => {});
     }
   };
-  const turnEnds = () => queueMicrotask(() => !closed && spec.onEvent({ type: 'idle' }));
+  /** A message after the last recorded turn: its turn ends at once. */
+  const noTurnFor = () => {
+    p.log(`${who} gets a message the recording has no turn for; the turn ends at once`);
+    queueMicrotask(() => !closed && spec.onEvent({ type: 'idle' }));
+  };
   queueMicrotask(() =>
     run()
       .catch((error) => {
@@ -672,10 +669,7 @@ function play(rec: Recorded, spec: AgentSpec, p: Player): AgentSession {
       .finally(() => {
         over = true;
         // what came after the last recorded message
-        for (; taken < sent.length; taken++) {
-          p.log(`${who} gets a message the recording has no turn for; the turn ends at once`);
-          turnEnds();
-        }
+        for (; taken < sent.length; taken++) noTurnFor();
       }),
   );
   return {
@@ -683,8 +677,7 @@ function play(rec: Recorded, spec: AgentSpec, p: Player): AgentSession {
       sent.push({ text, at: Date.now() });
       if (!over) return wake?.();
       taken++;
-      p.log(`${who} gets a message the recording has no turn for; the turn ends at once`);
-      turnEnds();
+      noTurnFor();
     },
     close() {
       closed = true;

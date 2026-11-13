@@ -7,8 +7,10 @@ import { Fragment, type ReactNode, useEffect, useState } from 'react';
 import { encode } from 'uqr';
 import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
 import { api } from './api';
-import { Field, Head } from './config';
-import { clock, failText, shortDay, t } from './strings';
+import { useAct } from './act';
+import { Field, Head, Seg } from './config';
+import { clock, t, when } from './strings';
+import { Over } from './over';
 
 /** Text with `code` in backticks, as the strings write commands. */
 function Coded({ text }: { text: string }) {
@@ -24,13 +26,18 @@ function useAccess(on: boolean): [AccessView | null, (v: AccessView) => void] {
   const [view, setView] = useState<AccessView | null>(null);
   useEffect(() => {
     if (!on) return;
+    // an answer that comes once the section closed is dropped: a later opening asks afresh
     let live = true;
-    const load = () => api.access().then((v) => live && v.local && setView(v), console.error);
-    void load();
-    const timer = setInterval(load, 2500);
+    const load = () => api.access().then((v) => live && v.local && setView(v));
+    load().catch(console.error);
+    const poll = async () => {
+      await load().catch(console.error);
+      if (live) timer = setTimeout(poll, 2500);
+    };
+    let timer = setTimeout(poll, 2500);
     return () => {
       live = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [on]);
   return [view, setView];
@@ -39,25 +46,11 @@ function useAccess(on: boolean): [AccessView | null, (v: AccessView) => void] {
 /** The devices whose app on the home screen keeps an address other devices no longer reach Obeya at. */
 const moved = (view: AccessView): DeviceView[] => (view.address ? view.devices.filter((d) => d.app && d.app !== view.address) : []);
 
-/** A moment as the device list says it: the time today, else the day. */
-const when = (iso: string) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
-
 /** The setting "Reachable from other devices" and what the network needs for it, with one step each. */
 function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => void }) {
   const a = t.access;
-  const [status, setStatus] = useState('');
-  const [busy, setBusy] = useState(false);
-  const save = async (remote: RemoteSetting | null) => {
-    setBusy(true);
-    setStatus('');
-    try {
-      onView(await api.saveAccess(remote));
-    } catch (e) {
-      setStatus(failText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { status, busy, act } = useAct();
+  const save = (remote: RemoteSetting | null) => act(async () => onView(await api.saveAccess(remote)));
   const via = view.remote?.via ?? null;
   // what the owner set for keeping the machine awake goes along when the way changes
   const awake = view.remote?.awake ? { awake: view.remote.awake } : {};
@@ -68,21 +61,14 @@ function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => 
   return (
     <>
       <Field label={a.setting}>
-        <div className="seg" role="radiogroup" aria-label={a.setting}>
-          {([null, 'tailscale', 'address'] as const).map((x) => (
-            <button
-              key={x ?? 'off'}
-              type="button"
-              role="radio"
-              aria-checked={via === x}
-              className={via === x ? 'on' : undefined}
-              disabled={busy}
-              onClick={() => via !== x && save(x === 'tailscale' ? { via: 'tailscale', ...awake } : x === 'address' ? { via: 'address', address: view.addresses[0] ?? '', ...awake } : null)}
-            >
-              {x === 'tailscale' ? a.tailscale : x === 'address' ? a.address : a.off}
-            </button>
-          ))}
-        </div>
+        <Seg
+          label={a.setting}
+          options={[null, 'tailscale', 'address'] as const}
+          value={via}
+          name={(x) => (x === 'tailscale' ? a.tailscale : x === 'address' ? a.address : a.off)}
+          disabled={busy}
+          onChange={(x) => via !== x && save(x === 'tailscale' ? { via: 'tailscale', ...awake } : x === 'address' ? { via: 'address', address: view.addresses[0] ?? '', ...awake } : null)}
+        />
         <p className="hint">
           <Coded text={via === 'tailscale' ? a.tailscaleHint : via === 'address' ? a.addressHint : a.offHint} />
         </p>
@@ -135,25 +121,18 @@ function Reach({ view, onView }: { view: AccessView; onView: (v: AccessView) => 
       )}
       {view.remote && (
         <Field label={a.awake}>
-          <div className="seg" role="radiogroup" aria-label={a.awake}>
-            {([false, true] as const).map((x) => (
-              <button
-                key={String(x)}
-                type="button"
-                role="radio"
-                aria-checked={always === x}
-                className={always === x ? 'on' : undefined}
-                disabled={busy}
-                onClick={() => {
-                  if (always === x || !view.remote) return;
-                  const { awake: _, ...rest } = view.remote;
-                  void save(x ? { ...rest, awake: 'always' } : rest);
-                }}
-              >
-                {x ? a.awakeAlways : a.awakeWorks}
-              </button>
-            ))}
-          </div>
+          <Seg
+            label={a.awake}
+            options={[false, true] as const}
+            value={always}
+            name={(x) => (x ? a.awakeAlways : a.awakeWorks)}
+            disabled={busy}
+            onChange={(x) => {
+              if (always === x || !view.remote) return;
+              const { awake: _, ...rest } = view.remote;
+              void save(x ? { ...rest, awake: 'always' } : rest);
+            }}
+          />
           <p className="hint">
             {always ? a.awakeAlwaysHint : a.awakeWorksHint} {a.lid}
           </p>
@@ -181,17 +160,13 @@ function Qr({ text, size = 220 }: { text: string; size?: number }) {
 export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () => void }) {
   const a = t.access;
   const [view, setView] = useAccess(on);
-  const [status, setStatus] = useState('');
+  const { status, act } = useAct();
   if (!view) return <Head title={t.config.sections.devices} hint={a.hint} />;
-  const remove = async (id: string) => {
-    setStatus('');
-    try {
+  const remove = (id: string) =>
+    act(async () => {
       await api.removeDevice(id);
       setView({ ...view, devices: view.devices.filter((d) => d.id !== id) });
-    } catch (e) {
-      setStatus(failText(e));
-    }
-  };
+    });
   return (
     <>
       <Head title={t.config.sections.devices} hint={a.hint} file={view.file} />
@@ -209,7 +184,7 @@ export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () =>
               <span className="hint">{a.pairedAt(when(d.pairedAt))}</span>
               <span className="hint">{a.seenAt(when(d.lastSeen))}</span>
               <button className="btn small" onClick={() => void remove(d.id)}>
-                {a.remove}
+                {t.remove}
               </button>
             </li>
           ))}
@@ -308,20 +283,15 @@ export function PhoneDialog({ onClose, onSection }: { onClose: () => void; onSec
     );
   }
   return (
-    <div id="phone" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="box" role="dialog" aria-modal="true" aria-label={a.connect}>
-        <button className="close" title={t.close} onClick={onClose}>
-          ✕
+    <Over id="phone" label={a.connect} onClose={onClose} modal>
+      <h2>{a.connect}</h2>
+      {view && <Moved devices={moved(view)} />}
+      {body}
+      <div className="acc-foot">
+        <button className="btn small" onClick={onSection}>
+          {a.toSection}
         </button>
-        <h2>{a.connect}</h2>
-        {view && <Moved devices={moved(view)} />}
-        {body}
-        <div className="acc-foot">
-          <button className="btn small" onClick={onSection}>
-            {a.toSection}
-          </button>
-        </div>
       </div>
-    </div>
+    </Over>
   );
 }

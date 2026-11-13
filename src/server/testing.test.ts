@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gitClone, gitRepo, identify, removeDir } from './testing';
-import { git } from './workspaces';
+import { git } from './git';
 
 let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-testing-'))));
@@ -33,7 +33,7 @@ describe('gitClone, a copy where it can be', () => {
     // in a process of its own: git sees only the environment a process started with
     const script = `
       import { gitClone, gitRepo, identify, removeTemplates } from ${JSON.stringify(join(import.meta.dir, 'testing.ts'))};
-      import { git } from ${JSON.stringify(join(import.meta.dir, 'workspaces.ts'))};
+      import { git } from ${JSON.stringify(join(import.meta.dir, 'git.ts'))};
       import { existsSync, writeFileSync } from 'node:fs';
       const source = gitRepo(${JSON.stringify(join(dir, 'source'))});
       if (!existsSync(${JSON.stringify(join(dir, 'source', '.git', 'reftable'))})) { console.log('no reftable'); process.exit(0); }

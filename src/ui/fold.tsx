@@ -4,10 +4,12 @@
 // under its button and its sidebar).
 
 import { useSyncExternalStore } from 'react';
+import { local, readJson, writeJson } from './stored';
+import { signal } from './signal';
 
 interface Store {
   ids: string[];
-  listeners: Set<() => void>;
+  changed: ReturnType<typeof signal<[]>>;
 }
 
 const stores = new Map<string, Store>();
@@ -15,12 +17,9 @@ const stores = new Map<string, Store>();
 function storeOf(key: string): Store {
   let s = stores.get(key);
   if (s) return s;
-  let ids: string[] = [];
-  try {
-    const v = JSON.parse(localStorage.getItem(key) ?? '[]');
-    if (Array.isArray(v)) ids = v.filter((x) => typeof x === 'string');
-  } catch {}
-  s = { ids, listeners: new Set() };
+  const v = readJson<unknown>(local, key);
+  const ids = Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  s = { ids, changed: signal() };
   stores.set(key, s);
   return s;
 }
@@ -29,23 +28,14 @@ function storeOf(key: string): Store {
 export function toggleFolded(key: string, id: string) {
   const s = storeOf(key);
   s.ids = s.ids.includes(id) ? s.ids.filter((x) => x !== id) : [...s.ids, id];
-  try {
-    if (s.ids.length) localStorage.setItem(key, JSON.stringify(s.ids));
-    else localStorage.removeItem(key);
-  } catch {}
-  for (const l of s.listeners) l();
+  writeJson(local, key, s.ids.length ? s.ids : null);
+  s.changed.emit();
 }
 
 /** The sections folded under `key`. */
 export function useFolded(key: string): string[] {
   const s = storeOf(key);
-  return useSyncExternalStore(
-    (l) => {
-      s.listeners.add(l);
-      return () => s.listeners.delete(l);
-    },
-    () => s.ids,
-  );
+  return useSyncExternalStore(s.changed.on, () => s.ids);
 }
 
 /** The arrow at a foldable head's left: pointing right while folded, down while open (turned by CSS). */

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { z } from 'zod';
 import { issueFooter, ISSUES_REPO, withoutFooter } from '../core/wish';
 import type { AgentRuntime } from './runtime';
+import { oneLine } from '../core/text';
 
 export interface WishInput {
   /** What the owner wrote or said now. */
@@ -80,7 +81,7 @@ export function writeWish(runtime: AgentRuntime, w: WishInput, footer: string, i
             description: 'The issue: its title and its body (markdown), in English.',
             schema: { title: z.string(), body: z.string() },
             run: (a) => {
-              const title = String(a.title).replace(/\s+/g, ' ').trim().slice(0, 200);
+              const title = oneLine(String(a.title)).slice(0, 200);
               const body = withoutFooter(String(a.body).trim());
               if (!title || !body) return 'Both title and body, please.';
               end({ title, body: `${body}\n\n${footer}` });

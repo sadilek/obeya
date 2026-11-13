@@ -2,57 +2,63 @@
 // workers, project agents and PR watcher), the board, the Coordinator and the voice commands.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
-import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { defaultsFor, readingAdapterModule, readingShared, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
+import { defaultsFor } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
+import { type DefaultRead, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { demoFile } from './demo-page';
+import { demoFile } from './demo-files';
 import { openWithSystem } from './machine';
-import { repoName } from '../adapters/generic';
-import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
+import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
+import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
+import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
+import { AGENT_DEFAULTS, type AgentRole, type AgentSetting } from '../core/agents';
+import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
 import { holdsNotes } from '../core/queue';
-import { BadRequest, Board, DEMO_LOOK_MS, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
+import { BadRequest, Board, TITLE_MAX, replyNote } from './board';
+import { pathOfRef, repoOfRef } from './plan-ref';
+import { DEMO_LOOK_MS } from './shared-pages';
+import { fromJson, toJson, type StoredContribution } from './row';
 import type { ChangeRoute } from '../core/types';
-import { type Command, Commander } from './commands';
+import { type Command, Commander, reaches } from './commands';
 import type { Config } from './config';
 import type { Store } from './db';
 import { Explorers } from './explorers';
 import { Files } from './files';
-import { Images, MAX_IMAGES } from './images';
-import { makeRepo, newRepoPath, realPath } from './new-repo';
-import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge';
+import { IdeaActions } from './idea-actions';
+import { Images } from './images';
+import { Learner } from './learner';
+import { SettingsReads } from './settings-reads';
+import { accountLogin, type ContributionInfo, type Forge, githubRepo, parsePrUrl, sameRepo, useGithubAccount } from './forge';
 import { Coordinator } from './coordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
-import { branchCommit, prepareReadTree, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
+import { prepareReadTree, ReadTree } from './read-tree';
 import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withSpend } from './runtime';
 import { briefFull, type TagCard, tagCards } from './tag-proposal';
-import { commandsOf, heldGroups, withoutHeld } from './trust';
 import { Skills } from './skills';
 
 /** The skill lists of all canvases: several share a repository, and the user's skills are the same on each. */
 const sharedSkills = new Skills();
 import { OBEYA_PLUGIN } from './demo';
 import { changesCode, RESTART_PATIENCE_MS, whenIdle } from './self-update';
-import { Sharing, siteIncomplete } from './share';
-import { siteMissing, siteName } from './site';
-import { allowedHere, approvedHere, personalDemoSite, readPersonal } from './personal-site';
+import { Sharing } from './share';
 import { dimensions } from '../core/page-tags';
 import { type DueRestart, finishedRow, PLANNED_AGAIN, releaseHeld, Workers } from './workers';
-import { branchSetting, type CardWorkspaces, type FileAt, detectingBranch, gitCalls, type GitSteps, gitSteps, isFolder, type Landed, markFolder, readingBranches, together, useBranchSetting, Workspaces } from './workspaces';
+import { type CardWorkspaces, type FileAt, type Landed, Workspaces } from './workspaces';
+import { useBranchSetting } from './branches';
+import { githubToken } from './git';
 import { FolderWorkspaces } from './folder';
-import { readingTheme, type Theme } from './theme';
-import { claudeToken, githubToken, hostName, registerHost } from './hosts';
-import { clip, messageOf, oneLine } from '../core/text';
+import { claudeToken, hostName, registerHost } from './hosts';
+import { messageOf } from '../core/text';
 import { type WishDraft, type WishInput, writeWish } from './wish';
 
 export type { CanvasConfig, RepoConfig };
@@ -79,7 +85,7 @@ export interface CanvasDeps {
   setupProposals?: boolean;
   /** How long a voice command waits for undo. */
   commandDelayMs?: number;
-  /** How long building or starting a card in a new repository waits for undo; NEW_REPO_HOLD_MS when left out. */
+  /** How long building or starting a card in a new repository waits for undo; UNDO_HOLD_MS when left out. */
   newRepoHoldMs?: number;
   /** The checkout this Obeya runs from, when it starts again for new code there (self-update.ts). */
   ownCheckout?: string | null;
@@ -131,7 +137,7 @@ export interface StartFailure {
 }
 
 /** The home repository of a canvas did not start: the canvas does not run. */
-class HomeDown extends Error {
+export class HomeDown extends Error {
   constructor(
     readonly canvas: string,
     cause: unknown,
@@ -207,17 +213,13 @@ const BOARD_ONLY: CardAction['action'][] = ['agent', 'name', 'dequeue', 'reorder
 /** The card's repository does not run on the canvas: nothing goes to its agents (`Item.repoDown`). */
 const repoDown = (card: Pick<Item, 'repo'>) => new BadRequest('repoDown', `the repository ${card.repo} of the card does not run on this canvas`);
 
-/** New repositories being made, one after the other (`makeNewRepo`). */
-let making: Promise<unknown> = Promise.resolve();
-
-/** How often handing a prototype to its workstream is tried, git failing, before it is left to the owner. */
-const SETTLE_TRIES = 3;
-
 export class CanvasRuntime {
   readonly board: Board;
   readonly coordinator: Coordinator;
   /** The work retrospective: friction in the workers' runs, made into proposals. */
   readonly workRetro: WorkRetro;
+  /** The learner and the retrospective: rules proposed from what the owner says and does. */
+  readonly learner: Learner;
   readonly commander: Commander;
   readonly explorers: Explorers;
   /** Screenshots the owner attaches to what they write. */
@@ -226,6 +228,8 @@ export class CanvasRuntime {
   readonly files: Files;
   readonly answers: Answers;
   readonly revisions: Revisions;
+  /** What the owner decides on proposals, ideas and their prototypes, and on a card's new repository. */
+  private readonly ideas: IdeaActions;
   /** The skills of the cards' agents, by repository. */
   private readonly skills: Skills;
   /** Demos shared with colleagues, on the demo site of the card's repository. */
@@ -236,12 +240,8 @@ export class CanvasRuntime {
   private config: CanvasConfig;
   /** By repository's path: what takes back where the main branch the owner set is read. */
   private branchSettings = new Map<string, () => void>();
-  /** By repository's path: its `.obeya/settings.json` as the read tree last had it. */
-  private shared = new Map<string, SharedRead>();
-  /** By repository's path: its commands that do not count until the owner confirms them, as last worked out (`heldOf`). */
-  private held = new Map<string, TrustGroup[]>();
-  /** By repository's path: whether its main branch had an adapter module as the configuration was last resolved, which a repository starting takes. */
-  private adapterModules = new Map<string, boolean>();
+  /** What it last read of its repositories' default branches: their settings for everyone, held commands, themes. */
+  private readonly reads: SettingsReads;
   /** The restart of some repositories' agents that waits, if one does. */
   private pending: RepoRestart | null = null;
   /** Set once the canvas stopped because its home repository did not start again. */
@@ -300,6 +300,18 @@ export class CanvasRuntime {
     const workerRuntime = deps.workerRuntime ?? (deps.idleWorkers ? idleRuntime : undefined);
     deps = { ...deps, runtime: runtime(deps.runtime), ...(workerRuntime ? { workerRuntime: runtime(workerRuntime) } : {}) };
     this.deps = deps;
+    this.reads = new SettingsReads({
+      store: deps.store,
+      // the configuration as it runs may not have a repository new on the canvas yet; the file has it
+      mine: (path) => (deps.settings ? deps.settings(path) : this.config?.repos.find((r) => resolve(r.path) === path)?.settings),
+      takenOver: (path, before, now) => deps.config?.takenOver(path, before, now),
+      themeRead: (path, changed) => {
+        if (this.shutDown) return;
+        if (changed) this.board.changed();
+        const r = this.repos.find((x) => x.info.path === path);
+        if (r) this.proposeTheme(r);
+      },
+    });
     this.skills = deps.skills ?? sharedSkills;
     // the main branch the owner set counts from the start: the repository's id, its settings and its read tree go by it
     for (const r of config.repos) this.useBranch(r);
@@ -314,7 +326,7 @@ export class CanvasRuntime {
       { id, name, repos: [] },
       () => this.planDocs(),
       images,
-      (repo, commit) => !!this.repos.find((r) => r.ref.id === repo)?.read.holds(commit, () => this.board.docsChanged()),
+      (repo, commit) => !!this.repo(repo)?.read.holds(commit, () => this.board.docsChanged()),
       deps.language,
       deps.conversation,
     );
@@ -325,13 +337,19 @@ export class CanvasRuntime {
     this.workRetro = new WorkRetro({
       board,
       runtime: deps.runtime,
-      pathFor: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).read.path,
+      pathFor: (repo) => (this.repo(repo) ?? this.repos[0]!).read.path,
       settingsFor: this.settingsNow,
-      repoLanguage: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).adapter.language,
+      repoLanguage: (repo) => (this.repo(repo) ?? this.repos[0]!).adapter.language,
+    });
+    this.learner = new Learner({
+      board,
+      runtime: deps.runtime,
+      home: () => this.repos[0]!.read.path,
+      pathFor: (card) => this.repoOf(card).read.path,
     });
     board.showSettings(this.settingsNow);
     board.readPlanHistory((ref) => {
-      const repo = this.repos.find((r) => r.ref.id === repoOfRef(ref, board.home));
+      const repo = this.repo(repoOfRef(ref, board.home));
       const path = pathOfRef(ref);
       // a plan folder outside the repository has no history in git
       return repo && !outsidePlanDir(path) ? planHistory(repo.read.path, path) : Promise.resolve([]);
@@ -382,11 +400,29 @@ export class CanvasRuntime {
       preferences: this.preferences,
       pathFor: (card) => this.repoOf(card).read.path,
       repoLanguage: (card) => this.repoOf(card).adapter.language,
-      onOwnerInput: (card, text) => coordinator.learn(card, 'idea', text),
+      onOwnerInput: (card, text) => this.learner.learn(card, 'idea', text),
       imageFiles: this.imageFiles,
-      onReplied: (cardId, replied) => this.replied(cardId, replied),
+      onReplied: (cardId, replied) => this.ideas.replied(cardId, replied),
       toObeya: this.toObeya,
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
+    });
+    this.ideas = new IdeaActions({
+      board,
+      store: deps.store,
+      explorers: this.explorers,
+      coordinator,
+      images,
+      tell: (text) => this.commander.tell(text),
+      repos: () => this.repos,
+      repoOf: (card) => this.repoOf(card),
+      ...(deps.canvases ? { canvases: deps.canvases } : {}),
+      ...(deps.config ? { config: deps.config } : {}),
+      ...(deps.newRepoHoldMs !== undefined ? { newRepoHoldMs: deps.newRepoHoldMs } : {}),
+      forget: (cardId) => {
+        clearTimeout(this.writing.get(cardId)?.timer);
+        this.writing.delete(cardId);
+        this.said.delete(cardId);
+      },
     });
     this.explorers.resumeAll();
     this.answers = new Answers({
@@ -406,7 +442,7 @@ export class CanvasRuntime {
         // looked up for an action: the Coordinator takes it now, hearing the answer with it
         if (this.commander.answerIn(talk)) return;
         // asked in a project's sheet, the question went to its project agent without Obeya reading it
-        const sheet = board.exchange(talk)?.askedIn;
+        const sheet = board.sheet.exchange(talk)?.askedIn;
         const project = sheet ? board.item(sheet)?.title : undefined;
         this.commander.tell(
           project !== undefined
@@ -422,11 +458,12 @@ export class CanvasRuntime {
       execute: (c) => this.run(c),
       imageFiles: this.imageFiles,
       lookUp: (talk) => this.answers.lookUp(talk),
-      onOwnerInput: (card, kind, text, reply) => this.coordinator.learn((card && board.item(card)) || null, kind, text, { reply }),
+      onOwnerInput: (card, kind, text, reply) => this.learner.learn((card && board.item(card)) || null, kind, text, { reply }),
       ...(deps.config ? { config: deps.config } : {}),
       canvases: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => ({ id: c.id, name: c.board.canvas.name })),
       agentSetting: () => agents('coordinator'),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
+      ...(deps.limitMargin !== undefined ? { limitMargin: deps.limitMargin } : {}),
     });
     board.interruptTalk();
     // the undo window of a new repository is not kept across a restart: the card stays as it was
@@ -440,7 +477,7 @@ export class CanvasRuntime {
       pathFor: (card) => this.repoOf(card).read.path,
       imageFiles: this.imageFiles,
       toObeya: this.toObeya,
-      onRevised: (cardId, revised) => this.revised(cardId, revised),
+      onRevised: (cardId, revised) => this.ideas.revised(cardId, revised),
     });
     this.revisions.resume();
     this.sharing = new Sharing({
@@ -453,7 +490,7 @@ export class CanvasRuntime {
         const r = this.runs(card) ? this.repoOf(card) : undefined;
         if (!r) return null;
         const path = r.info.path;
-        return { site: r.site, repo: path, ...(r.isPublic ? { isPublic: true } : {}), theme: () => this.themeOf(path) };
+        return { site: r.site, repo: path, ...(r.isPublic ? { isPublic: true } : {}), theme: () => this.reads.themeOf(path) };
       },
       languageFor: (card) => (this.runs(card) ? this.repoOf(card).adapter.demo?.language : undefined),
       onPage: (cardId, r) => {
@@ -466,15 +503,15 @@ export class CanvasRuntime {
     });
     this.sharing.resume();
     // the pages without tags the Coordinator's sheet offers to tag, by each repository's site
-    board.showVocabulary((repo) => {
-      const site = this.repos.find((r) => r.ref.id === repo)?.site;
+    board.pages.showVocabulary((repo) => {
+      const site = this.repo(repo)?.site;
       return site && dimensions(site.tags).length ? site.tags : undefined;
     });
     // the pages a repository's new theme leaves outdated
-    board.showThemes((repo) => {
-      const r = this.repos.find((x) => x.ref.id === repo);
+    board.pages.showThemes((repo) => {
+      const r = this.repo(repo);
       if (!r) return undefined;
-      const theme = this.themeKnown(r.info.path);
+      const theme = this.reads.themeKnown(r.info.path);
       return theme === undefined ? undefined : (theme?.hash ?? null);
     });
     // snoozed cards wake at their time: one that passed while Obeya was not running, or the machine slept, at once
@@ -482,7 +519,7 @@ export class CanvasRuntime {
     this.waker = setInterval(() => this.wakeDue(), WAKE_EVERY_MS);
     this.waker.unref?.();
     // the owner deletes demos outside Obeya: the notice of outdated pages offers none whose files are gone
-    this.demoLook = setInterval(() => void board.lookAtDemos(), DEMO_LOOK_MS);
+    this.demoLook = setInterval(() => void board.pages.lookAtDemos(), DEMO_LOOK_MS);
     this.demoLook.unref?.();
     // a card another waits on may pass through the state it waits for between two ticks (asked, and answered at once)
     const unwake = board.onChange(() => {
@@ -494,35 +531,22 @@ export class CanvasRuntime {
     });
     const uncount = board.onChange(() => this.countAgents());
     // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
-    const unsettle = board.onChange(() => this.settleLater());
+    const unsettle = board.onChange(() => this.ideas.settleLater());
     this.unwatch = () => {
       unwake();
       uncount();
       unsettle();
     };
     this.countAgents();
-    this.settleLater();
-  }
-
-  /** Looks for prototypes whose idea's project now stands (`settlePrototypes`), once what changed the board is through. */
-  private settleLater() {
-    if (this.settleSoon) return;
-    this.settleSoon = setTimeout(() => {
-      this.settleSoon = undefined;
-      if (!this.shutDown) this.settlePrototypes();
-    }, 0);
+    this.ideas.settleLater();
   }
 
   /** Looks for snoozed cards whose time has come. */
   private waker: ReturnType<typeof setInterval>;
-  /** Looks whether the demos of outdated pages are still on disk (`Board.lookAtDemos`). */
+  /** Looks whether the demos of outdated pages are still on disk (`PageNotice.lookAtDemos`). */
   private demoLook: ReturnType<typeof setInterval>;
   /** A look for snoozed cards to wake after the board changed, and the subscription to its changes. */
   private wakeSoon: ReturnType<typeof setTimeout> | undefined;
-  /** A look for prototypes whose idea's project now stands (`settlePrototypes`), and the ideas whose prototype is being handed to its workstream. */
-  private settleSoon: ReturnType<typeof setTimeout> | undefined;
-  private settling = new Set<string>();
-  private settleTries = new Map<string, number>();
   private unwatch: () => void;
 
   /** Wakes the snoozed cards whose time has come by `now`, and those whose card they wait on got there (or no longer can); so too the steps the Coordinator waits on cards for. */
@@ -573,7 +597,7 @@ export class CanvasRuntime {
   /** A time to snooze until or start at, as ISO: within the coming year. */
   private until(until: unknown): string {
     const at = typeof until === 'string' ? Date.parse(until) : NaN;
-    if (Number.isNaN(at) || at <= Date.now() || at > Date.now() + SNOOZE_LIMIT) throw new BadRequest('snoozeTime', 'until must be a time within the coming year');
+    if (laterTime(at) !== 'ok') throw new BadRequest('snoozeTime', 'until must be a time within the coming year');
     return new Date(at).toISOString();
   }
 
@@ -589,7 +613,7 @@ export class CanvasRuntime {
     if (card.snoozed.start) {
       this.repoOf(cardId).workers.startsNow(cardId, timeUp);
       // one to be started in a new repository makes it first
-      if (card.newRepo) return this.intoNewRepo(cardId);
+      if (card.newRepo) return this.ideas.intoNewRepo(cardId);
       return this.coordinator.request(cardId);
     }
     this.repoOf(cardId).workers.wake(cardId, timeUp, met);
@@ -606,7 +630,7 @@ export class CanvasRuntime {
 
   /** The settings of a repository the work retrospective may propose a value for, as they apply now. */
   private settingsNow = (repo: string): Record<ProposedSetting, string | string[]> | undefined => {
-    const a = this.repos.find((r) => r.ref.id === repo)?.adapter;
+    const a = this.repo(repo)?.adapter;
     return a && { checks: a.checks ?? [], setup: a.setup ?? '', softPaths: a.softPaths, run: a.app?.run ?? '' };
   };
 
@@ -617,72 +641,6 @@ export class CanvasRuntime {
 
   /** Reads the repositories of `config` (`readRepos`), on the main branches the owner set. */
   private readRepos = (config: CanvasConfig) => readRepos(config.repos, (r) => this.settingsOf(r)()?.branch);
-
-  /**
-   * The repository's settings for everyone, as its read tree last had them (read with the rest of
-   * the repository as the canvas resolves it, `resolve`, and again whenever it moves, `reread`),
-   * without the commands that wait for the owner's confirmation (`heldOf`).
-   */
-  private sharedOf = (path: string): (() => SharedSettings | undefined) => () => withoutHeld(this.shared.get(path)?.settings, this.heldOf(path));
-
-  /**
-   * The repository's theme for its shared pages, as its default branch had it when last read
-   * (theme.ts, `movedTo`); null without one. For a page about to go out: one not read yet is read
-   * now, the page waiting for it, not the server.
-   */
-  private themeOf(path: string): Theme | null | Promise<Theme | null> {
-    if (this.themes.has(path)) return this.themes.get(path)!;
-    if (!this.themeReads.has(path)) this.readThemeOf(path, this.shared.get(path)?.obeyaTree);
-    // a read begun meanwhile wins; one that failed leaves the page without a theme
-    return this.themeReads.get(path)!.then(() => (this.themes.has(path) ? this.themes.get(path)! : this.themeReads.has(path) ? this.themeOf(path) : null));
-  }
-
-  /** `themeOf` for the canvas, which does not wait for it: undefined while it is read. */
-  private themeKnown(path: string): Theme | null | undefined {
-    if (!this.themes.has(path) && !this.themeReads.has(path)) this.readThemeOf(path, this.shared.get(path)?.obeyaTree);
-    return this.themes.get(path);
-  }
-
-  /** Reads the repository's theme from `tree` without the server waiting for git; a read or a theme since wins. */
-  private readThemeOf(path: string, tree: string | undefined) {
-    const reading: Promise<void> = readingTheme(path, tree).then(
-      (theme) => void (this.themeReads.get(path) === reading && this.setTheme(path, theme)),
-      () => void (this.themeReads.get(path) === reading && this.themeReads.delete(path)),
-    );
-    this.themeReads.set(path, reading);
-  }
-
-  /** The repository's theme as now read: a different one leaves other pages outdated. */
-  private setTheme(path: string, theme: Theme | null) {
-    this.themeReads.delete(path);
-    const before = this.themes.get(path);
-    this.themes.set(path, theme);
-    if (this.shutDown) return;
-    if (before === undefined || before?.hash !== theme?.hash) this.board.changed();
-    const r = this.repos.find((x) => x.info.path === path);
-    if (r) this.proposeTheme(r);
-  }
-
-  /** By repository's path: its theme (`themeOf`), and a read of it under way. */
-  private themes = new Map<string, Theme | null>();
-  private themeReads = new Map<string, Promise<void>>();
-
-  /**
-   * The groups of the repository's commands that do not count until the owner confirms them: new
-   * or changed on its default branch since (`heldGroups`). Worked out again whenever it moves or
-   * its settings are saved (`moved`).
-   */
-  private heldOf(path: string): TrustGroup[] {
-    let held = this.held.get(path);
-    if (!held) {
-      // the configuration as it runs may not have a repository new on the canvas yet; the file has it
-      const mine = this.deps.settings ? this.deps.settings(path) : this.config?.repos.find((r) => resolve(r.path) === path)?.settings;
-      held = heldGroups(commandsOf(this.shared.get(path)), this.deps.store.trustedCommands(path), mine);
-      this.held.set(path, held);
-      if (held.length) console.warn(`Obeya: ${path}: ${held.join(', ')} of its settings wait for the owner's confirmation in Configuration (held)`);
-    }
-    return held;
-  }
 
   /**
    * Whether an agent working in `cwd` works in a repository of the canvas (its checkout, its
@@ -702,43 +660,15 @@ export class CanvasRuntime {
         if (at >= 0 && (!best || at > best.at)) best = { r, at };
       }
     if (!best) return false;
-    const path = best.r.info.path;
-    const mine = this.deps.settings ? this.deps.settings(path) : best.r.config.settings;
-    const trusted = this.deps.store.trustedCommands(path);
-    const held = (read: SharedRead) => heldGroups(commandsOf(read), trusted, mine).includes('claude');
-    // a folder without git is read as it is
-    if (best.r.info.folder) return held(readSharedFiles(path));
-    const seal = refsSeal(path);
-    const known = this.defaultRead.get(path);
-    const read = seal && known?.seal === seal ? known.read : this.readSettings(path);
-    return read instanceof Promise ? read.then((r) => held(r.shared)) : held(read.shared);
+    return this.reads.claudeHeld(best.r.info.path, !!best.r.info.folder, this.settingsOf(best.r.config)());
   };
-
-  /**
-   * By repository's path: what its default branch had when last read (`claudeHeld`, `moved`), or as
-   * it is being read, under the seal its refs had before (`refsSeal`).
-   */
-  private defaultRead = new Map<string, { seal: string; read: DefaultRead | Promise<DefaultRead> }>();
-
-  /** Keeps `read`, read from the default branch after its refs had `seal`; a read since (another seal) is not undone. */
-  private readAt(path: string, seal: string, read: DefaultRead | Promise<DefaultRead>) {
-    const entry = { seal, read };
-    this.defaultRead.set(path, entry);
-    if (read instanceof Promise) void read.then((r) => this.defaultRead.get(path) === entry && this.defaultRead.set(path, { seal, read: r }), () => this.defaultRead.get(path) === entry && this.defaultRead.delete(path));
-  }
 
   /**
    * What a configuration of this canvas amounts to, with this machine's settings and the
    * repositories' (`resolveCanvas`): those of a repository new here as its read has them.
    */
   private resolve(config: CanvasConfig, reads: RepoReads) {
-    return resolveCanvas(config, this.deps.store, this.settingsOf, this.sharedOf, (path) => {
-      const { seal, read } = reads.repos.get(path) ?? { seal: null, read: null };
-      if (read && seal) this.readAt(path, seal, { shared: read.shared, adapterModule: read.adapterModule, branch: read.info.branch });
-      if (read && !this.shared.has(path)) this.shared.set(path, read.shared);
-      if (read) this.adapterModules.set(path, read.adapterModule);
-      return read;
-    });
+    return resolveCanvas(config, this.deps.store, this.settingsOf, this.reads.sharedOf, this.reads.took(reads));
   }
 
   /** Registers where the main branch the owner set for the repository is read, once per path. */
@@ -751,8 +681,14 @@ export class CanvasRuntime {
   private planDocs() {
     const home = this.repos[0]?.ref.id;
     const read = this.repos.map((r) => {
-      // while git moves the read tree its files are half the one commit and half the other: the docs read before stand
-      if (!r.read.moving || !r.planDocs) r.planDocs = readPlanDocs(r.read.path, r.adapter);
+      // while git is at work in the read tree (Obeya moving it, a pull or rebase in the checkout) its files are half the one
+      // state and half the other, where a doc gone on main may be back for a moment: the docs read before stand until git is done
+      if (!r.read.busy() || !r.planDocs) {
+        const docs = readPlanDocs(r.read.path, r.adapter);
+        // git began while they were read
+        if (!r.planDocs || !r.read.busy()) r.planDocs = docs;
+      }
+      if (r.read.busy()) r.read.afterGit(() => this.board.docsChanged());
       return { r, ...r.planDocs };
     });
     return {
@@ -775,7 +711,7 @@ export class CanvasRuntime {
       ref,
     } = resolved.repos[index]!;
     const isHome = index === 0;
-    for (const p of this.shared.get(info.path)?.problems ?? []) console.warn(`Obeya: ${info.path}: ${p} (ignored)`);
+    for (const p of this.reads.sharedRead(info.path)?.problems ?? []) console.warn(`Obeya: ${info.path}: ${p} (ignored)`);
     const site = siteOf(adapter);
     // public as its forge said last time: workers resumed before it answers again get the tools of a repository that shares
     const isPublic = !info.folder && board.setting(visibilityKey(info.path)) === 'public';
@@ -786,7 +722,7 @@ export class CanvasRuntime {
     const stops: (() => void)[] = [() => (running = false)];
     // filled in below; what is set up here reaches it once it is
     const repo = { config: rc, stops, from: { resolved, index, listed }, ...(isPublic ? { isPublic } : {}) } as Repo;
-    repo.problemSources = this.problemSources(info.path, this.adapterModules.get(info.path) ?? false);
+    repo.problemSources = this.reads.problemSources(info.path, this.reads.adapterModule(info.path) ?? false);
     // where work lands on the local main, the checkout is the read tree; otherwise it is a pool clone on a card's branch
     const folder = !!info.folder;
     const read = new ReadTree({
@@ -807,6 +743,10 @@ export class CanvasRuntime {
       board.docsChanged();
     });
     const remoteHosts = !folder && info.remote && adapter.workspaces === 'clones' && adapter.land !== 'main' ? (rc.hosts ?? []) : [];
+    // the GitHub account set for the repository on this machine: Obeya's gh calls on it, its agents' gh, and its clones on hosts work as that account
+    const onGithub = !folder && rc.githubAccount && info.remote ? githubRepo(info.remote) : undefined;
+    const githubLogin = onGithub && rc.githubAccount ? accountLogin(onGithub.host, rc.githubAccount) : undefined;
+    if (onGithub && rc.githubAccount) stops.push(useGithubAccount(onGithub, rc.githubAccount));
     // the workers set up below say how many are busy where
     let workers!: Workers;
     let workspaces: CardWorkspaces;
@@ -854,7 +794,7 @@ export class CanvasRuntime {
     }
     // clones on other machines, made in the background: a host that is off now gets them once it answers
     if (remoteHosts.length) {
-      const token = githubToken(info.path, info.remote!);
+      const token = githubLogin ?? githubToken(info.path, info.remote!);
       let stopped = false;
       stops.push(() => (stopped = true));
       for (const h of remoteHosts) {
@@ -887,25 +827,28 @@ export class CanvasRuntime {
       machineSettings: this.settingsOf(rc),
       shares: () => !!repo.ref.share,
       repo: ref.id,
+      upstream: () => upstreamOf(info, adapter),
       otherBoards: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => c.board),
       preferences: this.preferences,
-      onOwnerInput: (card, kind, text, context) => this.coordinator.learn(card, kind, text, context),
+      onOwnerInput: (card, kind, text, context) => this.learner.learn(card, kind, text, context),
       onPrOpened: (cardId) => {
         // a card whose own branch has its work go out as a pull request, where the repository's does not yet
         this.watchPrs(repo);
+        // a fork's pull request to the original: the head it was opened with is looked at right away, before the worker pushes more onto it
+        if (fromJson(board.row(cardId).pr)?.upstream) repo.prs?.soon(0);
         this.sharing.prOpened(cardId);
       },
       onApproval: (cardId) => this.sharing.approved(cardId),
       onLanded: (cardId) => void this.sharing.landed(cardId),
       onMerged: () => void read.refresh(),
       onFollowUpTask: (taskId, reviewId) => this.coordinator.followUp(taskId, reviewId),
-      onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
-      onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
+      onPrototype: (prototype, summary, demo) => this.ideas.prototypeReady(prototype, summary, demo),
+      onPrototypeAnswer: (prototype, question, answer) => this.ideas.prototypeAnswered(prototype, question, answer),
       // where work lands on the local main, the read tree is the checkout and moves with the landing;
       // a push leaves the checkout as it is: what it changes applies once the read tree fetches it
       restartsFor: async (l: Landed, pushedFrom?: string) => {
         if (pushedFrom) return false;
-        if (deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && (await changesCode(info.path, l.from, l.to))) return 'obeya';
+        if (deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && (await changesCode(info.path, [l.from, l.to]))) return 'obeya';
         const moved = await this.moved(repo);
         if (moved === 'follow') this.follow();
         return moved === 'due' ? 'repo' : false;
@@ -919,6 +862,7 @@ export class CanvasRuntime {
       ...(workspaces instanceof Workspaces ? { pulls: workspaces } : {}),
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
+      ...(githubLogin ? { githubLogin } : {}),
       demoLanguage: () => readDemoSettings(deps.home).language,
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),
@@ -941,14 +885,22 @@ export class CanvasRuntime {
     console.error(`Obeya: ${r.info.path}: its clones cannot be made, left out of the canvas ${this.id}; its cards are kept: ${messageOf(e)}`);
     this.stopRepo(r);
     this.repos.splice(at, 1);
-    this.board.canvas.repos.splice(0, this.board.canvas.repos.length, ...this.repos.map((x) => x.ref));
+    this.showRepos();
     this.fail(r.ref.id, e);
-    if (at === 0) {
-      this.stopped = true;
-      this.shutdown();
-      this.deps.stopped?.(this, messageOf(e));
-    }
+    if (at === 0) this.homeDown(e);
     this.board.changed();
+  }
+
+  /** Its home repository does not run: the canvas stops, its cards kept, and is left out of those Obeya serves. */
+  private homeDown(e: unknown) {
+    this.stopped = true;
+    this.shutdown();
+    this.deps.stopped?.(this, messageOf(e));
+  }
+
+  /** The board lists the repositories that run, the home one first. */
+  private showRepos() {
+    this.board.canvas.repos.splice(0, this.board.canvas.repos.length, ...this.repos.map((r) => r.ref));
   }
 
   /**
@@ -1143,8 +1095,13 @@ export class CanvasRuntime {
     if (!p) return;
     this.pending = null;
     p.stop();
-    for (const r of this.repos) if (p.paths.has(r.info.path)) r.workers.restartDue(this.obeyaDue);
+    this.undue(p);
     this.emitPending();
+  }
+
+  /** The restart of `p`'s repositories' agents does not happen: their workers hear that only one of all of Obeya may be due. */
+  private undue(p: RepoRestart) {
+    for (const r of this.repos) if (p.paths.has(r.info.path)) r.workers.restartDue(this.obeyaDue);
   }
 
   /**
@@ -1196,7 +1153,7 @@ export class CanvasRuntime {
       resolved = this.resolve(config, reads);
     } catch (e) {
       console.error(`Obeya: the configuration of the canvas ${this.id} does not resolve; its repositories run on as they were: ${messageOf(e)}`);
-      for (const r of this.repos) if (p.paths.has(r.info.path)) r.workers.restartDue(this.obeyaDue);
+      this.undue(p);
       this.emitPending();
       return;
     }
@@ -1247,14 +1204,12 @@ export class CanvasRuntime {
     }
     if (homeDown) {
       // without its home repository the canvas does not run: it stops, its cards kept
-      this.stopped = true;
-      this.shutdown();
       console.error(`Obeya: the home repository of the canvas ${this.id} does not start; the canvas stopped, its cards are kept`);
       this.emitPending();
-      this.deps.stopped?.(this, messageOf(homeDown));
+      this.homeDown(homeDown);
       return;
     }
-    this.board.canvas.repos.splice(0, this.board.canvas.repos.length, ...this.repos.map((r) => r.ref));
+    this.showRepos();
     for (const r of started) {
       this.watch(r);
       if (this.obeyaDue) r.workers.restartDue(this.obeyaDue);
@@ -1412,35 +1367,15 @@ export class CanvasRuntime {
    */
   private moved(r: Repo): Moved | Promise<Moved> {
     const path = r.info.path;
-    const known = r.moving ? undefined : this.readNow(path);
+    const known = r.moving ? undefined : this.reads.readNow(path);
     if (known) return this.movedTo(r, known);
-    const now = (r.moving ?? Promise.resolve()).then(async () => this.movedTo(r, await this.readSettings(path)));
+    const now = (r.moving ?? Promise.resolve()).then(async () => this.movedTo(r, await this.reads.readSettings(path)));
     const moving: Promise<void> = (r.moving = now.then(
       () => {},
       () => {},
     ));
     void moving.then(() => r.moving === moving && delete r.moving);
     return now;
-  }
-
-  /** What `moved` read of the repository at `path` last, where its refs did not move since; a folder without git as it is now. */
-  private readNow(path: string): DefaultRead | undefined {
-    if (isFolder(path)) return { shared: readSharedFiles(path), adapterModule: false, branch: '' };
-    const seal = refsSeal(path);
-    const known = this.defaultRead.get(path);
-    return seal && known?.seal === seal && !(known.read instanceof Promise) ? known.read : undefined;
-  }
-
-  /**
-   * Reads the repository at `path` on its default branch again, without the server waiting for git,
-   * and keeps that (`defaultRead`). Where its refs moved while git read, what it read may be the
-   * commit before: it reads again, a few times at most.
-   */
-  private readSettings(path: string, tries = READ_TRIES): Promise<DefaultRead> {
-    const seal = refsSeal(path);
-    const read = gitSteps(path, readingSettings(path)).then(async (r): Promise<DefaultRead> => (seal && tries > 1 && refsSeal(path) !== seal ? this.readSettings(path, tries - 1) : { ...r, theme: await readingTheme(path, r.shared.obeyaTree) }));
-    if (seal) this.readAt(path, seal, read);
-    return read;
   }
 
   /** `moved`, with what was read of the repository on its default branch. */
@@ -1450,14 +1385,12 @@ export class CanvasRuntime {
     if (this.pending?.paths.has(path)) return 'due';
     // what the canvas follows (`follow`) goes by it
     r.info.branch = read.branch;
-    const shared = this.reread(r, read.shared);
+    const shared = this.reads.reread(path, read.shared);
     // a new theme leaves pages outdated; one read with the settings the server waited for is read now without waiting
-    if (read.theme !== undefined) this.setTheme(path, read.theme);
-    else this.readThemeOf(path, read.shared.obeyaTree);
-    const was = this.held.get(path);
-    this.held.delete(path);
-    const held = JSON.stringify(this.heldOf(path)) !== JSON.stringify(was ?? []);
-    const sources = this.problemSources(path, read.adapterModule);
+    if (read.theme !== undefined) this.reads.setTheme(path, read.theme);
+    else this.reads.readThemeOf(path, read.shared.obeyaTree);
+    const held = this.reads.heldAgain(path);
+    const sources = this.reads.problemSources(path, read.adapterModule);
     const problems = sources !== r.problemSources;
     if (problems) {
       // the page reads the configuration's problems again
@@ -1466,7 +1399,7 @@ export class CanvasRuntime {
       // the settings may be there now, or gone
       this.proposeSetup(r);
     }
-    const layered = layerSettings<RepoSettings>(this.sharedOf(path)(), this.settingsOf(r.config)());
+    const layered = layerSettings<RepoSettings>(this.reads.sharedOf(path)(), this.settingsOf(r.config)());
     const workIn = r.info.folder ? 'folder' : namesClones(r.config, r.info, layered) ? 'clones' : (layered?.workspaces ?? defaultsFor(r.info).workspaces);
     if (workIn !== r.workspaces.mode) {
       this.due([path], shared ? 'repository' : 'config');
@@ -1482,50 +1415,24 @@ export class CanvasRuntime {
   }
 
   /**
-   * What the configuration's problems of the repository are read from on its default branch: its
-   * `.obeya/settings.json` as the file has it (a field that does not count included), and whether a
-   * leftover `.obeya/adapter/` is there (`adapterModule`, as read with the rest), noted for
-   * `proposeSetup`.
-   */
-  private problemSources(path: string, adapterModule: boolean): string {
-    this.adapterModules.set(path, adapterModule);
-    const read = this.shared.get(path);
-    return JSON.stringify([read?.raw, read?.problems, read?.claude, this.heldOf(path), adapterModule]);
-  }
-
-  /**
-   * The repository's `.obeya/settings.json` as its default branch has it now (`now`). Where it
-   * changed, this machine's values that it now holds as well go (they were taken over for everyone,
-   * see `Config.takenOver`). Says whether it changed.
-   */
-  private reread(r: Repo, now: SharedRead): boolean {
-    const path = r.info.path;
-    const before = this.shared.get(path);
-    if (JSON.stringify([now.settings, now.claude]) === JSON.stringify([before?.settings, before?.claude])) {
-      // a field that does not count changed alone: the problems change, the settings do not
-      this.shared.set(path, now);
-      return false;
-    }
-    this.shared.set(path, now);
-    for (const p of now.problems) console.warn(`Obeya: ${path}: ${p} (ignored)`);
-    this.deps.config?.takenOver(path, before?.settings, now.settings);
-    return true;
-  }
-
-  /**
    * What the canvas set up by the repositories' settings follows them: the read tree where work
    * now lands elsewhere, the watched plan directory, the pull requests, what the page shows of
    * each repository (its main branch as last read, `movedTo`).
    */
   private follow() {
     for (const r of this.repos) {
-      for (const k of ['pullRequests', 'direct', 'forge'] as const) delete r.ref[k];
+      for (const k of ['pullRequests', 'direct', 'forge', 'upstream'] as const) delete r.ref[k];
       Object.assign(r.ref, settled(r.info, r.adapter));
       // where work lands on the local main, the checkout is the read tree; otherwise a worktree on the default branch
       r.read.retarget(r.info.folder || r.adapter.land === 'main' ? null : join(this.deps.home, 'read', this.id, r.ref.id));
       this.watch(r);
     }
     this.board.docsChanged();
+  }
+
+  /** The canvas's repository of that id, where it runs here. */
+  private repo(id: string | undefined): Repo | undefined {
+    return this.repos.find((r) => r.ref.id === id);
   }
 
   /**
@@ -1536,7 +1443,7 @@ export class CanvasRuntime {
   repoOf(card: Pick<Item, 'repo'> | string): RepoRuntime {
     const item = typeof card === 'string' ? this.board.item(card) : card;
     if (!item) throw new BadRequest('unknownCard', 'unknown card');
-    const r = this.repos.find((x) => x.ref.id === item.repo);
+    const r = this.repo(item.repo);
     if (!r) throw repoDown(item);
     return r;
   }
@@ -1560,7 +1467,7 @@ export class CanvasRuntime {
     // the archive a page at a time, only as far back as the brief has room for
     const cards = tagCards(this.board.items().filter(mine), summary);
     for (let after: string | undefined, first = true; (first || after) && !briefFull(cards); first = false) {
-      const page = this.board.archivePage(TAG_ARCHIVE_PAGE, after);
+      const page = this.board.archived.page(TAG_ARCHIVE_PAGE, after);
       cards.push(...tagCards(page.items.filter(mine), summary));
       after = page.next;
     }
@@ -1575,7 +1482,7 @@ export class CanvasRuntime {
   /** Whether the card's repository runs on the canvas. */
   private runs(card: Pick<Item, 'repo'> | string): boolean {
     const item = typeof card === 'string' ? this.board.card(card) : card;
-    return !!item && this.repos.some((r) => r.ref.id === item.repo);
+    return !!item && !!this.repo(item.repo);
   }
 
   /** What the card's work changes (`Workers.diff`), for an archived card too. */
@@ -1634,7 +1541,7 @@ export class CanvasRuntime {
     this.writing.delete(cardId);
     const card = this.board.item(cardId);
     const [text, before] = [card?.body.trim() ?? '', w.before.trim()];
-    if (card && text && text !== before) this.coordinator.learn(card, 'card', text, before ? { before } : {});
+    if (card && text && text !== before) this.learner.learn(card, 'card', text, before ? { before } : {});
   }
 
   /** The owner accepts a rule proposal, maybe in their words or for another place (a repository's CLAUDE.md, or none). */
@@ -1672,12 +1579,12 @@ export class CanvasRuntime {
     const p = this.board.settingProposal(id);
     const v = value === undefined ? p.value : typeof p.value === 'string' ? (typeof value === 'string' && value.trim() ? value.trim() : null) : Array.isArray(value) ? value.map(String).map((x) => x.trim()).filter(Boolean) : null;
     if (v === null || (Array.isArray(v) && !v.length)) throw new BadRequest('invalid', 'the value is missing');
-    const r = this.repos.find((x) => x.ref.id === p.repo);
+    const r = this.repo(p.repo);
     if (!r || !this.deps.config) throw new BadRequest('invalid', 'no configuration to set it in');
     const done = await this.deps.config.takeSetting(resolve(r.config.path), p.field, v, where);
     this.board.decideSetting(id, where, v);
     const m = this.board.t.retro;
-    const name = m.settings[p.field];
+    const name = this.board.t.labels.settings[p.field];
     this.board.notify({ text: !done ? m.onMachine(name, r.ref.name) : 'pr' in done ? m.opened(name, r.ref.name, done.pr) : m.committed(name, r.ref.name, done.branch) });
     return done;
   }
@@ -1718,7 +1625,7 @@ export class CanvasRuntime {
     if (card.kind === 'question') return this.act(cardId, { action: 'ask', ...said });
     if (card.state === 'idea') return this.act(cardId, { action: 'discuss', ...said });
     if (card.state === 'proposal') {
-      this.coordinator.learn(card, 'note', text.trim());
+      this.learner.learn(card, 'note', text.trim());
       return this.act(cardId, { action: 'revise', ...said }, true);
     }
     if (card.state === 'waiting' && card.need === 'question') return this.act(cardId, { action: 'answer', ...said, ...(spot ? { spot } : {}) });
@@ -1743,11 +1650,10 @@ export class CanvasRuntime {
     const card = this.board.item(cardId);
     const task = !steps.length && card && card.state !== 'proposal' && (card.body.trim() || card.title.trim());
     const said = this.said.get(cardId) ?? (before ? { text: before.text, spoken: false } : task ? { text: task, spoken: false, task: true } : undefined);
-    const later = steps.length ? ` Obeya itself takes these steps once your card ${steps.map((w) => `${w.state === 'done' ? 'is done' : 'waits for the owner'}: ${w.then.replace(/[.\s]+$/, '')}`).join('; ')}. If you asked for one of them, it is not missing: leave it to Obeya.` : '';
+    const later = steps.length ? ` Obeya itself takes these steps once your card ${steps.map((w) => `${reaches(w.state)}: ${w.then.replace(/[.\s]+$/, '')}`).join('; ')}. If you asked for one of them, it is not missing: leave it to Obeya.` : '';
     if (!said) return `Nothing passed on: the owner has said nothing on your card. to_obeya passes on the owner's own words.${later}`;
     const h = await this.commander.forward(cardId, request, said);
-    if (h.token) this.commander.arm(h.token);
-    this.board.notify({ cardId, text: h.confirm, ...(h.token ? { token: h.token, undoMs: this.commander.delayMs } : {}), ...(h.wish ? { wish: h.wish } : {}) });
+    this.commander.announce(h, cardId);
     // the agent learns what the owner finds under the answer
     if (h.wish) return `${h.confirm} (A draft for Obeya's makers opened for the owner to check and send on GitHub.)`;
     if (h.cannot) return `${h.confirm} (Obeya lacks this; under this answer the owner finds a link to send it to Obeya's makers as a wish.)`;
@@ -1759,18 +1665,18 @@ export class CanvasRuntime {
     return writeWish(this.deps.runtime, w, footer, this.imageFiles(images));
   }
 
-  /** The owner clicks in the card's panel: a click without words the learner reads counts towards the retrospective. */
   /** A script acts as the card's agent, in a scratch Obeya whose workers are idle (`Workers.standIn`). */
   standIn(cardId: string, act: Parameters<Workers['standIn']>[1]) {
     if (!this.deps.idleWorkers) throw new BadRequest('invalid', 'only an Obeya with idle workers (--idle-workers) lets a script stand in for an agent');
     return this.repoOf(cardId).workers.standIn(cardId, act);
   }
 
+  /** The owner clicks in the card's panel: a click without words the learner reads counts towards the retrospective. */
   press(cardId: string, a: CardAction) {
     // the options picked on a proposal go to its reviser without the Coordinator, which would have logged them
     const r = this.act(cardId, a, true);
     // the end of watching a demo is no click of the owner's
-    if (a.action !== 'release' && a.action !== 'unsay' && a.action !== 'name' && !(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.coordinator.noticed();
+    if (a.action !== 'release' && a.action !== 'unsay' && a.action !== 'name' && !(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.learner.noticed();
     return r;
   }
 
@@ -1816,12 +1722,12 @@ export class CanvasRuntime {
       throw new BadRequest('emptyText', 'text must be a non-empty string');
     switch (a.action) {
       case 'start':
-        if (card?.newRepo) return this.intoNewRepo(cardId);
+        if (card?.newRepo) return this.ideas.intoNewRepo(cardId);
         // one snoozed to start later starts now
-        if (this.board.item(cardId)?.snoozed?.start) return this.wake(cardId, false);
+        if (card?.snoozed?.start) return this.wake(cardId, false);
         return this.coordinator.request(cardId);
       case 'stayHere':
-        return this.stayHere(cardId);
+        return this.ideas.stayHere(cardId);
       case 'name':
         return void this.coordinator.name(cardId);
       case 'force':
@@ -1854,72 +1760,71 @@ export class CanvasRuntime {
         return this.board.startAt(cardId, a.at === null ? null : this.until(a.at));
       case 'message':
         // a note to a Question card is a question to its agent
-        if (this.board.item(cardId)?.kind === 'question') return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
+        if (card?.kind === 'question') return this.answers.ask(cardId, text.trim(), { images, spoken: !!a.spoken, replyTo });
         return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken, replyTo, this.spot(a.spot), this.decisions(a.findings));
       case 'release':
         return this.repoOf(cardId).workers.released(cardId, !!a.now);
-      case 'unsay': {
+      case 'unsay':
         // words the card's agent has not read yet, whichever agent it is
-        const card = this.board.item(cardId);
-        if (card?.kind === 'question') return this.answers.unsay(cardId, a.id);
-        if (card?.state === 'idea') return this.explorers.unsay(cardId, a.id);
-        if (card?.state === 'proposal') return this.revisions.unsay(cardId, a.id);
-        return this.repoOf(cardId).workers.unsay(cardId, a.id);
-      }
+        return (card?.state === 'proposal' ? this.revisions : this.agentOf(cardId)).unsay(cardId, a.id);
       case 'answer':
         return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken, replyTo, picks, this.spot(a.spot));
       case 'approve':
-        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings) });
+        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings), ...(typeof a.upstream === 'boolean' ? { upstream: a.upstream } : {}) });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
       case 'pushMain':
         return this.repoOf(cardId).workers.pushMainFor(cardId);
       case 'keepMain':
         return this.repoOf(cardId).workers.keepMainFor(cardId);
+      case 'revoke':
+        return this.repoOf(cardId).workers.revoke(cardId);
+      case 'keepApproval':
+        return this.repoOf(cardId).workers.keepApproval(cardId);
       case 'pushChanges':
         return this.repoOf(cardId).workers.pushContribution(cardId);
       case 'editHeld':
         return this.repoOf(cardId).workers.editHeld(cardId, a.body);
       case 'accept':
-        return this.accept(cardId, a.picks, a.start !== false, a.idea);
+        return this.ideas.accept(cardId, a.picks, a.start !== false, a.idea);
       case 'unaccept':
-        return this.unaccept(cardId);
+        return this.ideas.unaccept(cardId);
       case 'dismiss':
         // a card its agent withdrew or replaced goes like a deleted one, its worker stopped
-        if (this.board.item(cardId)?.superseded) return this.remove(cardId);
+        if (card?.superseded) return this.remove(cardId);
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return this.board.remove(cardId);
       case 'keep':
         return this.board.keep(cardId);
       case 'revise': {
         // said while it is reworked, they wait for the next rework, unread until then
-        const later = !!this.board.item(cardId)?.proposal?.revising;
+        const later = !!card?.proposal?.revising;
         const said = log ? this.board.log(cardId, 'say', 'owner', text.trim(), { images, replyTo, unread: later }).id : undefined;
         return this.revisions.revise(cardId, `${replyNote(this.board.quoted(cardId, replyTo), 'coordinator')}${text.trim()}`, !!a.spoken, said, images);
       }
       case 'discuss':
         return this.explorers.discuss(cardId, text.trim(), !!a.spoken, images, replyTo);
       case 'build':
-        return this.build(cardId);
+        return this.ideas.build(cardId);
       case 'unbuild':
-        return this.unbuild(cardId);
+        return this.ideas.unbuild(cardId);
       case 'splitOff':
-        return this.splitOff(cardId);
+        return this.ideas.splitOff(cardId);
       case 'planDoc':
-        return this.planDoc(cardId);
+        return this.ideas.planDoc(cardId);
       case 'park':
       case 'drop':
-        return this.shelve(cardId, a.action);
+        return this.ideas.shelve(cardId, a.action);
       case 'prototype':
         if (a.variants !== undefined && (!Array.isArray(a.variants) || a.variants.length > 20 || a.variants.some((v) => typeof v !== 'string')))
           throw new BadRequest('invalid', 'variants must be a list of the planned approaches');
-        return this.prototype(cardId, text.trim(), a.variants);
+        return this.ideas.prototype(cardId, text.trim(), a.variants);
       case 'buildPrototype':
-        return this.buildOnPrototype(cardId);
+        return this.ideas.buildOnPrototype(cardId);
       case 'discard':
-        return this.repoOf(this.prototypeCard(cardId)).workers.endPrototype(cardId, 'discarded');
+        return this.ideas.discard(cardId);
       case 'ask':
-        return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
+        return this.answers.ask(cardId, text.trim(), { images, spoken: !!a.spoken, replyTo });
       case 'consult': {
         // the agent passes a request on in its words; the Coordinator reads the owner's own beside them
         this.said.set(cardId, { text: text.trim(), spoken: !!a.spoken });
@@ -1945,7 +1850,7 @@ export class CanvasRuntime {
 
   /** The output directory of a looked-up thread of this canvas. */
   answerDir(thread: number): string {
-    if (!Number.isInteger(thread) || !this.board.threadTalk(thread).length) throw new BadRequest('invalid', 'unknown thread');
+    if (!Number.isInteger(thread) || !this.board.sheet.thread(thread).length) throw new BadRequest('invalid', 'unknown thread');
     return answersDir(this.deps.home, this.id, thread);
   }
 
@@ -1981,7 +1886,7 @@ export class CanvasRuntime {
     if (card.thread?.thinking) throw new BadRequest('ideaThinking', 'its agent is still reading; discuss it as an idea once the answer is there');
     if (!this.runs(card)) throw repoDown(card);
     // a paused agent's question goes into the discussion with the rest of the thread
-    this.board.work(cardId, { kind: 'task', state: 'idea', idea: JSON.stringify({ status: 'open', brief: '' }), session_id: null, paused: null, pausing: null });
+    this.board.work(cardId, { kind: 'task', state: 'idea', idea: toJson({ status: 'open', brief: '' }), session_id: null, paused: null, pausing: null });
     this.board.log(cardId, 'state', 'owner', this.board.t.answer.asIdea);
     this.explorers.tell(cardId, this.answers.opening(cardId));
   }
@@ -1990,7 +1895,7 @@ export class CanvasRuntime {
   remove(cardId: string) {
     clearTimeout(this.writing.get(cardId)?.timer);
     this.writing.delete(cardId);
-    this.keepHere(cardId);
+    this.ideas.keepHere(cardId);
     const { state, landed, workspace, prototype_of } = this.board.row(cardId);
     if (prototype_of) return this.repoOf(cardId).workers.endPrototype(cardId, 'discarded');
     if ((state === 'working' || state === 'waiting' || (landed && workspace)) && this.runs(cardId)) void this.repoOf(cardId).workers.stop(cardId);
@@ -2034,10 +1939,10 @@ export class CanvasRuntime {
    * It goes right of everything on the canvas, at the top.
    */
   adapterSetupCard(repo: string): Item {
-    const r = this.repos.find((x) => x.ref.id === repo);
+    const r = this.repo(repo);
     if (!r) throw new BadRequest('invalid', 'unknown repository');
     const open = this.board.openSetupCard(repo, r.ref.name);
-    if (open?.state === 'proposal') this.accept(open.id, [], false);
+    if (open?.state === 'proposal') this.ideas.accept(open.id, [], false);
     return open ? this.board.card(open.id)! : this.board.setupCard(repo, r.ref.name);
   }
 
@@ -2048,9 +1953,9 @@ export class CanvasRuntime {
    */
   private proposeSetup(r: Repo) {
     if (!this.deps.setupProposals || r.info.folder) return;
-    const settings = this.shared.get(r.info.path)?.settings ?? {};
+    const settings = this.reads.sharedRead(r.info.path)?.settings ?? {};
     const own = SHARED_FIELDS.some((k) => settings[k] !== undefined);
-    this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.adapterModules.get(r.info.path));
+    this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.reads.adapterModule(r.info.path));
   }
 
   /**
@@ -2059,9 +1964,22 @@ export class CanvasRuntime {
    */
   private proposeTheme(r: RepoRuntime) {
     if (!this.deps.setupProposals) return;
-    const theme = this.themeKnown(r.info.path);
+    const theme = this.reads.themeKnown(r.info.path);
     if (theme === undefined) return;
     this.board.proposeTheme(r.ref.id, r.ref.name, { themed: theme !== null, shares: this.board.sharesPages(r.ref.id) });
+  }
+
+  /**
+   * "Commit to a new branch and free the clone" in the Workspaces list: what is uncommitted in a
+   * free clone of the repository (`path` there, on the machine the pool names `host`) goes into a
+   * branch of its own, and the clone is free for the cards. Settles with that branch, '' where
+   * nothing needed keeping.
+   */
+  async keepLeftovers(repo: string, host: string, path: string): Promise<{ branch: string }> {
+    const r = this.repos.find((x) => x.ref.id === repo);
+    const branch = r ? await r.workspaces.keepLeftovers(path, host) : null;
+    if (branch === null) throw new BadRequest('notFreed', 'the clone is not a free one, holds what cannot be kept, or git failed there');
+    return { branch };
   }
 
   /**
@@ -2083,548 +2001,6 @@ export class CanvasRuntime {
     return this.board.card(card.id)!;
   }
 
-  // ---------------------------------------------------------------- proposals
-
-  /**
-   * Accepting a proposal is the owner's go unless they keep it to edit first (`start` false): the
-   * card goes to the Coordinator like a started one, a proposed idea, or a task the owner takes as
-   * one (`asIdea`), to its exploration agent. Clicked while the proposal is reworked, it is accepted
-   * once the new text is there, unless that asks questions.
-   */
-  private accept(cardId: string, picks: string[][] | undefined, start: boolean, asIdea?: boolean) {
-    const card = this.board.item(cardId);
-    if (card?.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    // one the work retrospective made before it stored proposal data has none
-    const proposal = card.proposal ?? { questions: [] };
-    if ((start || asIdea) && proposal.revising) {
-      // the owner knows what comes; the new text still may ask what must be settled first
-      if (this.board.acceptAfterRevision(cardId, asIdea ? 'idea' : true))
-        this.board.log(cardId, 'state', 'owner', this.board.t.proposal.acceptAfterRevision(asIdea ? 'asIdea' : proposal.idea ? 'discuss' : 'start'));
-      return;
-    }
-    const idea = !!asIdea || (start && !!proposal.idea);
-    this.board.accept(cardId, picks, idea);
-    if (idea) this.explorers.open(cardId, proposal.idea ? 'idea' : 'task');
-    // one its agent proposed to start later waits until then, unless that time has passed
-    else if (start && proposal.startAt && Date.parse(proposal.startAt) > Date.now())
-      this.board.snooze(cardId, { until: proposal.startAt, by: 'agent', start: true, ...(proposal.reason ? { why: clip(oneLine(proposal.reason), 200) } : {}) });
-    else if (start) {
-      if (proposal.startAt) this.repoOf(cardId).workers.startsAt(cardId, proposal.startAt, 'agent', true);
-      this.coordinator.request(cardId);
-    }
-  }
-
-  /** Accepting after the revision is taken back: the proposal stays one. */
-  private unaccept(cardId: string) {
-    if (this.board.acceptAfterRevision(cardId, false)) this.board.log(cardId, 'state', 'owner', this.board.t.proposal.notAccepting);
-  }
-
-  /** The revision is over (`revised`, or the agent ended without a text): a proposal accepted meanwhile is accepted now, unless it asks questions. */
-  private revised(cardId: string, revised: boolean) {
-    const card = this.board.item(cardId);
-    // words the owner said meanwhile are reworked in first
-    const armed = card?.proposal?.acceptAfterRevision;
-    if (card?.state !== 'proposal' || !armed || card.proposal!.revising) return;
-    this.board.acceptAfterRevision(cardId, false);
-    const asks = card.proposal!.questions.length;
-    if (revised && !asks) return this.accept(cardId, [], true, armed === 'idea');
-    const t = this.board.t.proposal;
-    this.board.log(cardId, 'state', 'obeya', !revised ? t.notAcceptedNoRevision : asks > 1 ? t.notAcceptedQuestions : t.notAcceptedQuestion);
-  }
-
-  // ---------------------------------------------------------------- ideas
-
-  /**
-   * The idea is built as it stands: its brief becomes the card's task, and the card goes to the
-   * Coordinator to start. A prototype still running for it is discarded: what is built now is the brief.
-   */
-  private build(cardId: string) {
-    const card = this.ideaCard(cardId);
-    if (card.idea?.thinking) {
-      // the owner knows what comes; the reply still may ask what must be settled first
-      if (card.idea.buildAfterReply) return;
-      this.board.setIdea(cardId, { buildAfterReply: true });
-      this.board.log(cardId, 'state', 'owner', this.board.t.idea.buildAfterReply);
-      return;
-    }
-    if (card.newRepo) return this.intoNewRepo(cardId);
-    this.decided(card, { answer: this.board.t.idea.buildAnswer, log: this.board.t.idea.buildLog });
-    this.coordinator.request(cardId);
-  }
-
-  // ---------------------------------------------------------------- a new repository
-
-  /** Cards whose new repository Obeya makes once the undo window is through (`NewRepo.due`). */
-  private newRepos = new Map<string, ReturnType<typeof setTimeout>>();
-
-  /**
-   * "Build it like this" or "Start agent" on a card to be built in a repository that does not exist yet:
-   * after a few seconds in which `stayHere` takes it back, Obeya makes that repository and builds or
-   * starts the card there (`makeNewRepo`). What it cannot do is refused at once where it can tell.
-   */
-  private intoNewRepo(cardId: string) {
-    const card = this.board.item(cardId);
-    const target = card?.newRepo;
-    if (!card || !target) throw new BadRequest('invalid', 'the card has no new repository');
-    if (target.due) return;
-    const t = this.board.t.newRepo;
-    const path = newRepoPath(target.path, t);
-    if (this.deps.config && this.deps.config.view().source !== 'file') throw new BadRequest('newRepoPath', t.fromCommandLine);
-    this.taken(path);
-    const due = Date.now() + (this.deps.newRepoHoldMs ?? NEW_REPO_HOLD_MS);
-    this.board.setNewRepo(cardId, { ...target, due: new Date(due).toISOString() });
-    this.newRepos.set(
-      cardId,
-      setTimeout(() => {
-        this.newRepos.delete(cardId);
-        // one after the other, on any canvas: each adds to the configuration as the one before left it
-        making = making.then(() => this.makeNewRepo(cardId));
-      }, due - Date.now()),
-    );
-  }
-
-  /** The owner takes back building or starting the card in its new repository while the undo window runs. */
-  private stayHere(cardId: string) {
-    if (!this.keepHere(cardId)) throw new BadRequest('newRepoGone', 'the new repository is being made already');
-    this.board.log(cardId, 'state', 'owner', this.board.t.newRepo.stayed);
-  }
-
-  /** Building or starting the card in its new repository does not happen after all, if its undo window still runs; whether it did. */
-  private keepHere(cardId: string): boolean {
-    const timer = this.newRepos.get(cardId);
-    const target = this.board.newRepo(cardId);
-    if (!timer || !target?.due) return false;
-    clearTimeout(timer);
-    this.newRepos.delete(cardId);
-    this.board.setNewRepo(cardId, { ...target, due: undefined });
-    return true;
-  }
-
-  /** Refuses a folder that is a repository of a canvas already: the card is to be built there instead. */
-  private taken(path: string) {
-    const real = realPath(path);
-    for (const c of this.deps.canvases?.() ?? [this]) {
-      const r = c.repos.find((x) => realPath(x.info.path) === real);
-      if (r) throw new BadRequest('newRepoPath', this.board.t.newRepo.taken(path, c.board.canvas.name));
-    }
-  }
-
-  /**
-   * Makes the card's new repository and builds or starts the card there, one step after the other:
-   * the folder and git (`makeRepo`), the configuration with a canvas of its own named after it (or
-   * the repository on this canvas), then the card: an idea is decided as "Build it like this" decides it, and
-   * moves, with its history and decisions, to the new canvas, where it starts. A step that fails takes
-   * back those before it, and the card says why.
-   */
-  private async makeNewRepo(cardId: string) {
-    const t = this.board.t.newRepo;
-    const target = this.board.newRepo(cardId);
-    const card = this.board.item(cardId);
-    if (!card || !target?.due) return;
-    const undo: (() => unknown)[] = [];
-    try {
-      const path = newRepoPath(target.path, t);
-      this.taken(path);
-      const config = this.deps.config;
-      if (!config) throw new Error('no configuration to add the repository to');
-      const repo = makeRepo(path, t);
-      undo.push(repo.undo);
-      const { resolved } = await config.check(config.current());
-      const here = resolved.findIndex((r) => r?.id === this.id);
-      if (here < 0) throw new Error(`the canvas ${this.id} is not in the configuration`);
-      // on the configuration as it is now, and taken back from it as it is then: changes meanwhile stay
-      const added = { path: target.path.trim() };
-      const now = config.current();
-      const after = target.canvas ? [...now, { repos: [added] }] : now.map((c, i) => (i === here ? { ...c, repos: [...c.repos, added] } : c));
-      await config.save(after);
-      const without = () =>
-        config.current().flatMap((c) => {
-          const repos = c.repos.filter((r) => r.path !== added.path);
-          return repos.length ? [{ ...c, repos }] : [];
-        });
-      undo.push(() => config.save(without()));
-      if (!target.canvas) return this.joined(cardId, path, repo.made);
-      const checked = await config.check(after);
-      const id = checked.resolved.at(-1)?.id;
-      const there = id ? this.deps.canvases?.().find((c) => c.id === id) : undefined;
-      if (!there) throw new Error(t.notStarted(checked.problems.filter((p) => p.canvas === after.length - 1).map((p) => p.detail).join('; ') || path));
-      this.moveTo(cardId, there, repo.made);
-    } catch (e) {
-      for (const step of undo.reverse()) {
-        try {
-          await step();
-        } catch (u) {
-          console.error(`Obeya: taking back a step of the new repository of ${cardId}:`, u);
-        }
-      }
-      if (!this.board.item(cardId)) return;
-      this.board.setNewRepo(cardId, { ...target, due: undefined });
-      this.board.log(cardId, 'error', 'obeya', t.failed(messageOf(e)), { code: e instanceof BadRequest ? e.code : undefined });
-    }
-  }
-
-  /** The new repository joined this canvas: the card works in it, an idea built as "Build it like this" builds it. */
-  private joined(cardId: string, path: string, made: boolean) {
-    const r = this.repos.find((x) => x.info.path === path);
-    if (!r) throw new Error(`${path} does not run on the canvas`);
-    const card = this.board.item(cardId)!;
-    const target = this.board.newRepo(cardId)!;
-    this.board.patch(cardId, { repo: r.ref.id });
-    this.board.setNewRepo(cardId, { path: target.path, canvas: false, by: target.by, made: true });
-    this.board.log(cardId, 'state', 'obeya', this.board.t.newRepo.joined(target.path.trim(), made));
-    if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(target.path.trim()), log: this.board.t.idea.buildLog });
-    this.coordinator.request(cardId);
-  }
-
-  /**
-   * The card leaves for the canvas `there`, whose home repository was made for it: an idea is
-   * decided here first (its agent's session ends, its prototypes are discarded), then the card goes
-   * with its history, decisions and screenshots, out of its group, and starts there. This canvas's
-   * sheet says where it went, and a page that has it open follows it.
-   */
-  private moveTo(cardId: string, there: CanvasRuntime, made: boolean) {
-    const card = this.board.item(cardId)!;
-    const target = this.board.newRepo(cardId)!;
-    const shown = target.path.trim();
-    // the screenshots of the task and of its conversation, which the new canvas keeps under its own name
-    const row = this.board.row(cardId);
-    const shots = [...(row.images ? (JSON.parse(row.images) as string[]) : []), ...this.board.events(cardId).flatMap((e) => e.images ?? [])];
-    this.images.copyTo(there.images, shots);
-    if (card.state === 'idea') this.decided(card, { answer: this.board.t.newRepo.buildAnswer(shown), log: this.board.t.idea.buildLog });
-    clearTimeout(this.writing.get(cardId)?.timer);
-    this.writing.delete(cardId);
-    this.said.delete(cardId);
-    const at = there.board.freeSpot(there.inView);
-    this.deps.store.moveCard(cardId, there.id, at, { new_repo: JSON.stringify({ path: target.path, canvas: true, by: target.by, made: true }) });
-    this.deps.store.dropEmptyGroups(this.id);
-    there.board.log(cardId, 'state', 'obeya', there.board.t.newRepo.movedHere(this.board.canvas.name, shown, made));
-    const moved = { card: cardId, title: card.title, canvas: there.id, canvasName: there.board.canvas.name };
-    this.board.moved(moved);
-    this.commander.tell(`The card "${card.title}" moved to the canvas "${there.board.canvas.name}", in its new repository ${shown}, and is built there.`);
-    this.board.notify({ cardId, text: this.board.t.newRepo.movedAway(card.title, there.board.canvas.name), movedTo: there.id });
-    there.board.changed();
-    there.coordinator.request(cardId);
-  }
-
-  /**
-   * "Split off a task": the part its agent marked as settled becomes a task of its own beside the idea,
-   * in its group and linked to it, with the screenshots of the discussion, and starts at once. The
-   * idea stays open with its conversation and its prototypes; its agent hears what became of the part.
-   * Not while the agent works on a reply, which may change the split.
-   */
-  private splitOff(cardId: string) {
-    const idea = this.settledIdea(cardId);
-    const { split } = this.board.idea(cardId);
-    if (!split) throw new BadRequest('noSplit', 'the idea’s agent has marked no task to split off');
-    const t = this.board.t.idea;
-    const shown = this.board.events(cardId).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
-    const images = [...new Set([...(idea.images ?? []), ...shown])].slice(-MAX_IMAGES);
-    const task = this.board.create({ title: split.title, body: `${split.brief}\n\n${t.settledTask(idea.title)}`, from: cardId, ...(images.length ? { images } : {}) });
-    this.board.log(task.id, 'state', 'owner', t.settledFrom(idea.title));
-    this.board.setIdea(cardId, { split: undefined });
-    this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(idea.title), answer: t.splitOffAnswer(split.title), by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', t.splitOffLog(split.title));
-    this.coordinator.request(task.id);
-    this.explorers.tell(
-      cardId,
-      `The owner clicked "${t.splitOffButton}": the part you marked as settled is now the task “${split.title}”, on a card of its own beside this idea, and a worker starts on it. Obeya has cleared the split. This idea stays open, with this conversation and its prototypes, planned and running, for what is still open. Trim the brief to what is open (the built part a line under decisions, as the task “${split.title}”), then reply to the owner in a sentence or two.`,
-    );
-  }
-
-  /** Building after the reply is taken back: the idea stays in its discussion. */
-  private unbuild(cardId: string) {
-    if (!this.ideaCard(cardId).idea?.buildAfterReply) return;
-    this.board.setIdea(cardId, { buildAfterReply: false });
-    this.board.log(cardId, 'state', 'owner', this.board.t.idea.unbuild);
-  }
-
-  /**
-   * The idea's agent has answered all it was told (`replied`), or its turn ended without (an error,
-   * a restart): an idea to build after the reply is built now, unless the reply asks questions.
-   */
-  private replied(cardId: string, replied: boolean) {
-    const card = this.board.item(cardId);
-    if (card?.state !== 'idea' || !card.idea?.buildAfterReply) return;
-    this.board.setIdea(cardId, { buildAfterReply: false });
-    const asks = card.idea.questions.length;
-    if (replied && !asks && card.idea.status === 'open') return this.build(cardId);
-    const t = this.board.t.idea;
-    this.board.log(cardId, 'state', 'obeya', !replied ? t.notBuiltNoReply : asks > 1 ? t.notBuiltQuestions : t.notBuiltQuestion);
-  }
-
-  /**
-   * The idea is built on this prototype: the prototype's workspace and branch become the idea's,
-   * whose worker goes on from there with the brief, the prototype's handover and the owner's answers
-   * on it. The prototype goes into the archive as built, the idea's other prototypes as discarded.
-   * What stands in the way is thrown at once; git renames the branch in the background.
-   */
-  private buildOnPrototype(prototypeId: string) {
-    const prototype = this.prototypeCard(prototypeId);
-    const planning = this.board.item(prototype.prototypeOf!);
-    if (this.board.projectOf(prototype.prototypeOf!) || planning?.becomesProject)
-      throw new BadRequest('projectPending', 'the idea becomes a project: the workstream its plan doc builds on the prototype gets its branch once the project stands');
-    if (!planning) throw new BadRequest('ideaGone', 'the prototype’s idea is no longer on the canvas, and no project of it is');
-    const idea = this.settledIdea(prototype.prototypeOf!);
-    const { workers } = this.repoOf(prototype);
-    return workers.buildOn(prototype.id, idea).then(() => {
-      this.decided(idea, { answer: this.board.t.idea.buildOnAnswer(prototype.title), log: this.board.t.idea.buildOnLog(prototype.title) });
-      this.coordinator.request(idea.id);
-    });
-  }
-
-  /**
-   * Once an idea has become a project, its plan doc settles the prototypes still on the canvas: the
-   * one it builds on goes, with its workspace and branch, to the workstream that builds on it, which
-   * starts on it like any other workstream; the others are discarded. Where the doc builds on none,
-   * or does not say clearly which (or that workstream has been started meanwhile), all are discarded.
-   */
-  private settlePrototypes() {
-    const items = this.board.items();
-    const ideas = new Set(items.flatMap((i) => (i.prototypeOf && !this.settling.has(i.prototypeOf) ? [i.prototypeOf] : [])));
-    for (const ideaId of ideas) {
-      const project = this.board.projectOf(ideaId);
-      if (!project) continue;
-      const prototypes = items.filter((i) => i.prototypeOf === ideaId);
-      // a repository still starting settles them once it is up
-      if (prototypes.some((p) => !this.repos.some((r) => r.ref.id === p.repo))) continue;
-      const open = items.filter((i) => i.parent === project.id && i.kind === 'task' && i.state !== 'live' && i.state !== 'done');
-      const build = prototypeBuild(open, prototypes);
-      const t = this.board.t.idea;
-      const decide = (answer: string, cardId = project.id) => this.board.decide({ project_id: project.id, card_id: cardId, question: t.whichPrototype, answer, by: 'owner' });
-      if (!('workstream' in build) || !buildableOn(build.workstream) || !this.board.row(build.prototype.id).workspace) {
-        decide(t.onNoPrototype(!('none' in build)));
-        this.discardPrototypes(ideaId);
-        continue;
-      }
-      const { workstream: ws, prototype } = build;
-      const named = `${ws.label ? `${ws.label} ` : ''}${this.board.t.quote(ws.title)}`;
-      this.settling.add(ideaId);
-      let built: Promise<unknown>;
-      try {
-        built = this.repoOf(prototype).workers.buildOn(prototype.id, ws, named, 'obeya');
-      } catch (e) {
-        built = Promise.reject(e);
-      }
-      // git still preparing a workspace refuses it: tried again once that is done; where git keeps failing, the prototype stays for the owner to see why
-      void built.then(
-        () => {
-          decide(t.onPrototype(named, prototype.title), ws.id);
-          this.board.log(ws.id, 'state', 'obeya', t.workstreamOnLog(prototype.title));
-          this.discardPrototypes(ideaId);
-          this.settling.delete(ideaId);
-        },
-        (e: unknown) => {
-          const tries = (this.settleTries.get(ideaId) ?? 0) + 1;
-          this.settleTries.set(ideaId, tries);
-          if (tries < SETTLE_TRIES)
-            return void this.repoOf(prototype).workers.prepared().then(() => {
-              this.settling.delete(ideaId);
-              this.settleLater();
-            });
-          this.board.log(ws.id, 'error', 'obeya', messageOf(e));
-          for (const p of this.board.items().filter((i) => i.prototypeOf === ideaId && i.id !== prototype.id)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
-        },
-      );
-    }
-  }
-
-  /** The idea's prototypes still on the canvas go into the archive as discarded. */
-  private discardPrototypes(ideaId: string) {
-    for (const p of this.board.items().filter((i) => i.prototypeOf === ideaId)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
-  }
-
-  /** The idea is decided for building: its agent's conversation ends, the brief becomes the task, the other prototypes are discarded. */
-  private decided(idea: Item, how: { answer: string; log: string }) {
-    const { brief } = this.board.idea(idea.id);
-    this.explorers.close(idea.id);
-    this.discardPrototypes(idea.id);
-    this.board.work(idea.id, { state: 'planned', ...(brief.trim() ? { body: brief.trim() } : {}) });
-    // the screenshots the owner showed in the discussion belong to what is built
-    const shown = this.board.events(idea.id).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
-    if (shown.length) this.addTaskImages(idea.id, shown);
-    this.board.decide({ project_id: null, card_id: idea.id, question: this.board.t.idea.howOn(idea.title), answer: how.answer, by: 'owner' });
-    this.board.log(idea.id, 'state', 'owner', how.log);
-  }
-
-  /**
-   * A big idea becomes a project: a worker writes its plan doc on the idea's card at once, and once
-   * the doc lands, the project takes the idea's place. Its prototypes stay until then: the worker
-   * hears what they showed, and the doc names the one a workstream builds on (`settlePrototypes`).
-   */
-  private planDoc(cardId: string) {
-    const task = this.board.item(cardId);
-    if (task && task.state !== 'idea') return this.planTaskDoc(task);
-    const card = this.settledIdea(cardId);
-    const idea = this.board.idea(cardId);
-    const dir = this.repoOf(card).adapter.planDocs.dir;
-    const outside = this.outsidePlanDoc(card);
-    const prototypes = this.board.items().filter((i) => i.prototypeOf === cardId);
-    const t = this.board.t.idea;
-    this.explorers.close(cardId);
-    this.board.work(cardId, {
-      state: 'planned',
-      becomes_project: 1,
-      ...outside?.row,
-      body: [
-        t.planDocTask(dir, false, outside?.file),
-        t.planDocIdea(card.title),
-        idea.brief.trim() || card.body.trim(),
-        prototypes.length
-          ? [
-              t.planDocPrototypes(prototypes.map(prototypeName)),
-              ...prototypes.map((p) => {
-                const summary = this.board.summary(p.id)?.trim();
-                return summary ? t.planDocHandedOver(prototypeName(p), summary) : t.planDocInProgress(prototypeName(p));
-              }),
-            ].join('\n\n')
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-    });
-    this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(card.title), answer: t.planDocAnswer, by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', t.planDocLog);
-    this.coordinator.request(cardId);
-  }
-
-  /**
-   * A planned task of the owner's that nobody has worked on becomes a project the same way: its
-   * worker writes the plan doc from the task, with its screenshots, on the task's card.
-   */
-  private planTaskDoc(card: Item) {
-    if (!plannableAsProject(card))
-      throw new BadRequest('notPlannable', 'only an idea, or a planned task of your own nobody has worked on yet, can be planned as a project');
-    const t = this.board.t.idea;
-    const dir = this.repoOf(card).adapter.planDocs.dir;
-    const outside = this.outsidePlanDoc(card);
-    this.board.work(card.id, { becomes_project: 1, ...outside?.row, body: [t.planDocTask(dir, true, outside?.file), t.planDocCard(card.title), card.body.trim()].filter(Boolean).join('\n\n') });
-    this.board.decide({ project_id: null, card_id: card.id, question: t.howOnTask(card.title), answer: t.planDocAnswer, by: 'owner' });
-    this.board.log(card.id, 'state', 'owner', t.planDocTaskLog);
-    this.coordinator.request(card.id);
-  }
-
-  /**
-   * The doc a card planned as a project writes where the plan directory is a folder outside the
-   * repository: named after the card, beside the docs there. Nothing of that folder lands, so the
-   * card names its doc from the start (`plan_docs`), and the project takes its place once the
-   * owner has approved the card (`linkOrigins`). None for a plan directory in the repository.
-   */
-  private outsidePlanDoc(card: Item): { file: string; row: { plan_docs: string } } | undefined {
-    const r = this.repoOf(card);
-    const outside = outsidePlanDir(r.adapter.planDocs.dir);
-    // in a folder without git nothing lands either: the doc is there as soon as it is written
-    const dir = outside ?? (r.info.folder ? r.adapter.planDocs.dir.replace(/[/\\]+$/, '') : null);
-    if (!dir) return;
-    const at = (file: string) => (outside ? file : join(r.info.path, file));
-    const name = slug(card.title).slice(0, 60).replace(/^[.-]+|[.-]+$/g, '') || 'plan';
-    // nor one another card was given and has not written yet
-    const given = new Set(this.deps.store.withPlanDocs(this.id).flatMap((row) => (JSON.parse(row.plan_docs!) as string[]).map(pathOfRef)));
-    let file = `${dir}/${name}.md`;
-    for (let n = 2; existsSync(at(file)) || given.has(file); n++) file = `${dir}/${name}-${n}.md`;
-    const ref = r.ref.id === this.repos[0]!.ref.id ? file : `${r.ref.id}:${file}`;
-    return { file, row: { plan_docs: JSON.stringify([ref]) } };
-  }
-
-  /** Parked or dropped, the idea stays on the canvas with its brief; what its agent has not answered yet waits for the conversation to go on. */
-  private shelve(cardId: string, how: 'park' | 'drop') {
-    const card = this.ideaCard(cardId);
-    // parked or dropped in the undo window of its new repository: it is not built there
-    this.keepHere(cardId);
-    this.explorers.interrupt(cardId, how === 'park' ? 'parked' : 'dropped');
-    this.board.setIdea(cardId, { status: how === 'park' ? 'parked' : 'dropped', buildAfterReply: false });
-    const t = this.board.t.idea;
-    if (how === 'drop') this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(card.title), answer: t.dropped, by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', how === 'park' ? t.parked : t.dropped);
-  }
-
-  /**
-   * Workers build throwaway prototypes for the idea, each in its own workspace; they never land
-   * themselves. One per planned variant chosen, each with its approach in its title, and one for
-   * what the owner wrote. Neither chosen nor written: the planned variants that have no prototype
-   * on the canvas, or, with none planned, the idea as it stands.
-   */
-  private prototype(cardId: string, what: string, chosen?: string[]) {
-    const card = this.ideaCard(cardId);
-    // a prototype is a branch thrown away or built on: a folder without git has none
-    if (this.repoOf(card).info.folder) throw new BadRequest('inFolder', 'a folder without git has no prototypes: its cards change the folder itself');
-    const { variants = [] } = this.board.idea(cardId);
-    const t = this.board.t.idea;
-    const running = new Set(this.board.items().flatMap((i) => (i.prototypeOf === cardId && i.variant ? [i.variant] : [])));
-    const picked = chosen ? variants.filter((v) => chosen.includes(v.approach)) : what ? [] : variants.filter((v) => !running.has(v.approach));
-    if (chosen?.length && !picked.length && !what) throw new BadRequest('invalid', 'none of the chosen variants is planned');
-    if (!chosen && !what && variants.length && !picked.length) throw new BadRequest('variantsRunning', 'every planned variant has its prototype on the canvas');
-    const runs = picked.map((v) => {
-      const others = variants.filter((o) => o !== v).map((o) => o.approach);
-      return { approach: v.approach, task: others.length ? `${v.show}\n\n${t.onlyThisVariant(others.join(', '))}` : v.show, variant: v.approach };
-    });
-    if (what || !runs.length) runs.push({ approach: approachOf(what), task: what || t.showAsItStands, variant: '' });
-    const taken = new Set((this.board.item(cardId)?.prototypes ?? []).map((p) => p.title));
-    const started: string[] = [];
-    try {
-      for (const run of runs) {
-        const base = t.prototypeTitle(`${card.title}${run.approach ? ` – ${run.approach}` : ''}`);
-        let title = base;
-        for (let n = 2; taken.has(title); n++) title = `${base} (${n})`;
-        taken.add(title);
-        const prototype = this.board.addPrototype(cardId, title, run.task, run.variant || undefined);
-        try {
-          void this.repoOf(prototype).workers.start(prototype.id).catch((e: unknown) => this.board.log(prototype.id, 'error', 'obeya', messageOf(e)));
-        } catch (e) {
-          this.board.remove(prototype.id);
-          throw e;
-        }
-        started.push(title);
-      }
-    } finally {
-      if (started.length) {
-        // the owner now waits for the prototypes, not the other way round; the agent's reply to a result gives the turn back.
-        // Its suggestion was for the idea before they started: acted on or passed over, it goes
-        this.board.setIdea(cardId, { yourTurn: false, next: undefined });
-        this.board.log(
-          cardId,
-          'state',
-          'owner',
-          started.length > 1 ? t.prototypesStarted(started.map((s) => this.board.t.quote(s)).join(', ')) : t.prototypeStarted(started[0]!, what && !picked.length ? what.replace(/[.!?]$/, '') : ''),
-        );
-      }
-    }
-  }
-
-  /** A prototype handed over: its demo shows on the idea beside those of the other prototypes, and the idea's agent hears what it found. */
-  private prototypeReady(prototype: Item, summary: string, demo: string | undefined) {
-    const idea = this.board.item(prototype.prototypeOf!);
-    if (!idea) return;
-    this.board.log(idea.id, 'state', 'worker', this.board.t.idea.prototypeReady(prototype.title, !!demo));
-    if (idea.state === 'idea')
-      this.explorers.tell(
-        idea.id,
-        `A worker built the throwaway prototype “${prototype.title}” for this idea. Its summary:\n\n${summary}\n\nTake what it showed and what it means for the idea into the brief, then reply to the owner in a sentence or two.`,
-      );
-  }
-
-  /** A question on a prototype was answered: the idea's agent takes it into the brief, so the idea does not ask it again. */
-  private prototypeAnswered(prototype: Item, question: string, answer: string) {
-    this.explorers.tell(
-      prototype.prototypeOf!,
-      `On the prototype “${prototype.title}”, its worker asked: “${question}”\n\nThe owner answered: ${answer}\n\nTake what this settles into the brief (decisions, open questions), so it is not asked again. Do not reply to the owner for it; end your turn without a reply unless it raises something they must decide now.`,
-      true,
-    );
-  }
-
-  private prototypeCard(cardId: string): Item {
-    const card = this.board.item(cardId);
-    if (!card) throw new BadRequest('unknownCard', 'unknown card');
-    if (!card.prototypeOf) throw new BadRequest('notPrototype', 'the card is not a prototype');
-    return card;
-  }
-
-  private ideaCard(cardId: string): Item {
-    const card = this.board.item(cardId);
-    if (!card) throw new BadRequest('unknownCard', 'unknown card');
-    if (card.state !== 'idea') throw new BadRequest('notIdea', 'the card is not an idea');
-    return card;
-  }
-
   /**
    * A new card or idea the owner asked for on another canvas: made there as there, its screenshots
    * copied over; a follow-up of a card here goes there in no group and names that card. Its id, for
@@ -2642,36 +2018,25 @@ export class CanvasRuntime {
 
   /** A card the Coordinator of another canvas makes here for the owner, following up on a card of its own. */
   followUp(c: Extract<Command, { do: 'newCard' }>, from: string): string {
-    const card = this.board.create({ title: c.title, body: c.body, ...(c.images?.length ? { images: c.images } : {}), ...this.board.freeSpot(this.inView) }, from);
-    this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
-    if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
-    else if (c.start || c.until) this.coordinator.request(card.id);
-    return card.id;
+    return this.created(this.board.create({ title: c.title, body: c.body, ...(c.images?.length ? { images: c.images } : {}), ...this.board.freeSpot(this.inView) }, from).id, c);
   }
 
-  /** An idea to build or plan: not while its agent works on a reply, which will change the brief the owner decides on. */
-  private settledIdea(cardId: string): Item {
-    const card = this.ideaCard(cardId);
-    if (card.idea?.thinking) throw new BadRequest('ideaThinking', 'the idea’s agent is still working on its reply; decide once it is there');
-    return card;
+  /**
+   * A card the owner's command made: one for later waits until then, a time that passed in the undo
+   * window starting it now; one to start goes to the Coordinator. Its id.
+   */
+  private created(cardId: string, c: Pick<Extract<Command, { do: 'newCard' }>, 'until' | 'start'>): string {
+    this.board.log(cardId, 'state', 'owner', this.board.t.voice.created);
+    if (c.until && Date.parse(c.until) > Date.now()) this.snooze(cardId, c.until);
+    else if (c.start || c.until) this.coordinator.request(cardId);
+    return cardId;
   }
 
   /** A voice (or typed) command, once its undo window has passed; a new card's id, for a wait on it in the same command. */
   run(c: Command) {
     switch (c.do) {
-      case 'newCard':
-      case 'newIdea':
-        if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
-        break;
-      case 'newRepo': {
-        const card = this.board.item(c.card);
-        if (!card) throw new BadRequest('unknownCard', 'unknown card');
-        this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, by: 'owner' });
-        return this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' });
-      }
-    }
-    switch (c.do) {
       case 'newCard': {
+        if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
         const at = c.from ? { from: c.from } : this.board.freeSpot(c.place ?? this.inView);
         const card = this.board.create({
           title: c.title,
@@ -2680,49 +2045,45 @@ export class CanvasRuntime {
           ...(c.images?.length ? { images: c.images } : {}),
           ...at,
         });
-        this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
-        // one for later waits until then; a time that passed in the undo window starts it now
-        if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
-        else if (c.start || c.until) this.coordinator.request(card.id);
-        return card.id;
+        return this.created(card.id, c);
       }
-      case 'reviewPr':
-        return this.reviewPr(c);
       case 'newIdea': {
+        if (c.canvas && c.canvas !== this.id) return this.elsewhere(c);
         const card = this.board.create({ idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot(c.place ?? this.inView) });
         this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
         // the agent opens the discussion with what the owner said
         this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));
         return;
       }
+      case 'newRepo': {
+        const card = this.board.item(c.card);
+        if (!card) throw new BadRequest('unknownCard', 'unknown card');
+        this.board.setNewRepo(c.card, { path: c.path, canvas: c.canvas, by: 'owner' });
+        return this.act(c.card, { action: card.state === 'idea' ? 'build' : 'start' });
+      }
+      case 'reviewPr':
+        return this.reviewPr(c);
       case 'discuss':
-        return this.act(c.card, { action: 'discuss', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
+      case 'note':
+      case 'feedback':
+      case 'answer':
+      case 'revise':
+        return this.act(c.card, { action: c.do === 'note' || c.do === 'feedback' ? 'message' : c.do, text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
       case 'prototype':
         return this.act(c.card, { action: 'prototype', text: c.text });
+      case 'accept':
+        return this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) });
+      case 'snooze':
+        return this.act(c.card, { action: 'snooze', until: c.until });
+      case 'start':
+      case 'force':
       case 'buildPrototype':
-        return this.act(c.card, { action: 'buildPrototype' });
       case 'discard':
-        return this.act(c.card, { action: 'discard' });
       case 'build':
       case 'splitOff':
       case 'planDoc':
       case 'park':
       case 'drop':
-        return this.act(c.card, { action: c.do });
-      case 'start':
-      case 'force':
-        // screenshots said with the start belong to the task, so the worker gets them with it
-        if (c.images?.length) this.addTaskImages(c.card, c.images);
-        return this.act(c.card, { action: c.do });
-      case 'note':
-      case 'feedback':
-        return this.act(c.card, { action: 'message', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
-      case 'answer':
-        return this.act(c.card, { action: 'answer', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
-      case 'revise':
-        return this.act(c.card, { action: 'revise', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
-      case 'accept':
-        return this.act(c.card, { action: 'accept', ...(c.idea ? { idea: true } : {}) });
       case 'approve':
       case 'dismiss':
       case 'keep':
@@ -2731,11 +2092,10 @@ export class CanvasRuntime {
       case 'pause':
       case 'resume':
       case 'wake':
-        return this.act(c.card, { action: c.do });
-      case 'snooze':
-        return this.act(c.card, { action: 'snooze', until: c.until });
       case 'awaitContributor':
-        return this.act(c.card, { action: 'awaitContributor' });
+        // screenshots said with the start belong to the task, so the worker gets them with it
+        if ((c.do === 'start' || c.do === 'force') && c.images?.length) this.ideas.addTaskImages(c.card, c.images);
+        return this.act(c.card, { action: c.do });
       case 'configure':
         return this.deps.config?.save(c.canvases);
       case 'remember':
@@ -2778,7 +2138,7 @@ export class CanvasRuntime {
    * the words go to its worker. What goes wrong (no such PR, one closed) the owner hears.
    */
   async reviewPr(c: Extract<Command, { do: 'reviewPr' }>): Promise<string | undefined> {
-    const repo = c.repo ? this.repos.find((r) => r.ref.id === c.repo) : this.repos[0];
+    const repo = c.repo ? this.repo(c.repo) : this.repos[0];
     const t = this.board.t;
     const fail = (why: string) => void this.board.notify({ text: t.review.failed(c.pr, why) });
     if (!repo) return fail('no repository');
@@ -2813,7 +2173,7 @@ export class CanvasRuntime {
       return fail(messageOf(e));
     }
     if (info.state !== 'OPEN') return fail(t.review.notOpen(info.state === 'MERGED'));
-    const card = this.board.create({ title: `PR #${ref.number}: ${info.title}`.slice(0, 200), body: c.text, repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
+    const card = this.board.create({ title: `PR #${ref.number}: ${info.title}`.slice(0, TITLE_MAX), body: c.text, repo: repo.ref.id, ...this.board.freeSpot(c.place ?? this.inView) });
     const stored: StoredContribution = {
       url,
       number: ref.number,
@@ -2823,19 +2183,13 @@ export class CanvasRuntime {
       ...(info.headRepo ? { headRepo: info.headRepo } : {}),
       ...(info.headRef ? { headRef: info.headRef } : {}),
     };
-    this.board.work(card.id, { contribution: JSON.stringify(stored) });
+    this.board.work(card.id, { contribution: toJson(stored) });
     this.board.log(card.id, 'state', 'owner', t.voice.created);
     this.watchPrs(repo);
     this.coordinator.request(card.id);
     // the card opens, so the owner sees its review begin
     this.board.notify({ text: t.review.started(ref.number, info.author), cardId: card.id, open: true });
     return card.id;
-  }
-
-  /** Adds screenshots to a card's task, keeping the latest when there are more than a message takes. */
-  private addTaskImages(cardId: string, images: string[]) {
-    const had = this.board.item(cardId)?.images ?? [];
-    this.board.work(cardId, { images: JSON.stringify([...had.filter((i) => !images.includes(i)), ...images].slice(-MAX_IMAGES)) });
   }
 
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */
@@ -2880,7 +2234,7 @@ export class CanvasRuntime {
     clearInterval(this.waker);
     clearInterval(this.demoLook);
     clearTimeout(this.wakeSoon);
-    clearTimeout(this.settleSoon);
+    this.ideas.shutdown();
     this.unwatch();
     this.pending?.stop();
     this.pending = null;
@@ -2888,477 +2242,16 @@ export class CanvasRuntime {
     for (const stop of this.branchSettings.values()) stop();
     for (const r of this.repos) this.stopRepo(r);
     this.coordinator.shutdown();
+    this.commander.shutdown();
     this.explorers.shutdown();
   }
 }
 
-/** A prototype's approach, for its title: the first sentence of what it is to show, kept short. */
-export function approachOf(what: string, max = 40): string {
-  const text = what.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
-  const first = (text.match(/^.+?[.!?;:](?=\s|$)/)?.[0] ?? text).replace(/[.;:]$/, '');
-  if (first.length <= max) return first;
-  const cut = first.slice(0, max - 1);
-  const word = cut.lastIndexOf(' ');
-  return `${(word > max / 2 ? cut.slice(0, word) : cut).replace(/[\s,;:–—-]+$/, '')}…`;
-}
 
-/**
- * Starts the canvases; one that does not start is left out, with why in Obeya's log and in
- * "Configuration" (which checks the configuration again, and shows `failed` of one whose home
- * repository did not start), and the others run.
- */
-export async function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, failed: (f: StartFailure) => void = () => {}): Promise<CanvasRuntime[]> {
-  const started = await Promise.all(
-    configs.map((c) =>
-      CanvasRuntime.start(c, deps).catch((e: unknown) => {
-        const why = e instanceof ConfigError || e instanceof HomeDown ? e.message : e instanceof Error ? (e.stack ?? e.message) : String(e);
-        console.error(`Obeya: the canvas ${c.name ?? c.id ?? c.repos[0]?.path} does not start, left out: ${why}`);
-        if (e instanceof HomeDown) failed({ canvas: e.canvas, detail: e.message });
-        return null;
-      }),
-    ),
-  );
-  return started.filter((c) => c !== null);
-}
-
-/**
- * The canvases Obeya serves, as its configuration has them while it runs (design: Live
- * configuration): a canvas new in it starts at once, one that changed takes the change
- * (`CanvasRuntime.apply`), one no longer in it stops once its agents paused, its cards kept.
- */
-export class Canvases {
-  private list: CanvasRuntime[] = [];
-  private listeners = new Set<() => void>();
-  /** By canvas's id: why one in the configuration does not run (its home repository did not start). */
-  private down = new Map<string, string>();
-  /** The configuration as last saved (`apply`), by canvas's id: a canvas that was starting meanwhile takes it once it runs. */
-  private saved: Map<string, CanvasConfig> | null = null;
-  /** Whether every canvas of the configuration as last saved resolved: one not among them has left it. */
-  private savedWhole = true;
-  /** The ids of canvases starting while Obeya runs. */
-  private starting = new Set<string>();
-
-  /** Starts the canvases of `configs` (`startCanvases`). */
-  static async start(configs: CanvasConfig[], deps: CanvasDeps, started?: (c: CanvasRuntime) => void): Promise<Canvases> {
-    const canvases = new Canvases(deps, started);
-    canvases.list = await canvases.start(configs);
-    return canvases;
-  }
-
-  private constructor(
-    private deps: CanvasDeps,
-    /** A canvas started while Obeya runs. */
-    private started: (c: CanvasRuntime) => void = () => {},
-  ) {
-    this.deps = {
-      ...deps,
-      stopped: (c, why) => {
-        this.list = this.list.filter((x) => x !== c);
-        this.down.set(c.id, why);
-        this.emit();
-      },
-      canvases: () => this.list,
-    };
-  }
-
-  /** Starts canvases, keeping why one did not. */
-  private async start(configs: CanvasConfig[]): Promise<CanvasRuntime[]> {
-    const list = await startCanvases(configs, this.deps, (f) => this.down.set(f.canvas, f.detail));
-    for (const c of list) this.down.delete(c.id);
-    return list;
-  }
-
-  /** The canvases, and repositories of those that run, that do not run as the configuration has them. */
-  failures(): StartFailure[] {
-    return [...[...this.down].map(([canvas, detail]) => ({ canvas, detail })), ...this.list.flatMap((c) => c.failures())];
-  }
-
-  all(): CanvasRuntime[] {
-    return this.list;
-  }
-
-  get(id: string): CanvasRuntime | undefined {
-    return this.list.find((c) => c.id === id);
-  }
-
-  /** Calls `fn` whenever a canvas starts, stops, or changes its name or repositories. */
-  onChange(fn: () => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
-  /**
-   * The configuration saved: `ids` are its canvases' ids as its check resolved them (null where one
-   * does not resolve; then no canvas leaves, since which one it is stays unknown).
-   */
-  apply(configs: CanvasConfig[], ids: (string | null)[]): Promise<void> {
-    this.saved = new Map(configs.flatMap((config, i) => (ids[i] ? [[ids[i], config] as const] : [])));
-    this.savedWhole = !ids.includes(null);
-    // settles once the running canvases took the configuration and the new ones run
-    const starting: Promise<void>[] = [];
-    configs.forEach((config, i) => {
-      const id = ids[i];
-      if (!id) return;
-      const running = this.get(id);
-      if (running) return void starting.push(running.apply(config));
-      if (this.starting.has(id)) return;
-      this.starting.add(id);
-      starting.push(this.startNew(id, config));
-    });
-    this.sort();
-    if (!ids.includes(null)) {
-      // a canvas that did not start and left the configuration is no longer wrong
-      for (const id of [...this.down.keys()]) if (!ids.includes(id)) this.down.delete(id);
-      for (const c of [...this.list])
-        if (!ids.includes(c.id))
-          c.retire(() => {
-            this.list = this.list.filter((x) => x !== c);
-            this.emit();
-          });
-    }
-    this.emit();
-    return Promise.all(starting).then(() => {});
-  }
-
-  /**
-   * Starts a canvas new in the configuration while Obeya runs, the others running on meanwhile. Once
-   * it runs, it takes the configuration saved since; one no longer in it stops again.
-   */
-  private async startNew(id: string, config: CanvasConfig) {
-    let c: CanvasRuntime | undefined;
-    let now: CanvasConfig | undefined;
-    let tried = config;
-    try {
-      // one that did not start tries again with a configuration saved meanwhile
-      for (;;) {
-        [c] = await this.start([tried]);
-        now = this.saved?.get(id);
-        if (c || !now || now === tried || this.closed) break;
-        tried = now;
-      }
-    } finally {
-      this.starting.delete(id);
-    }
-    if (!c) return;
-    if (this.closed || (!now && this.savedWhole)) {
-      c.shutdown();
-      return;
-    }
-    this.list.push(c);
-    console.log(`Obeya: the canvas ${c.board.canvas.name} (/c/${c.id}) runs now`);
-    if (now && now !== tried) void c.apply(now);
-    this.sort();
-    this.started(c);
-    this.emit();
-  }
-
-  /** The configuration's order is the order canvases are listed in (the switcher, the phone); one leaving goes last. */
-  private sort() {
-    const ids = [...(this.saved?.keys() ?? this.list.map((c) => c.id))];
-    const at = (c: CanvasRuntime) => (ids.includes(c.id) ? ids.indexOf(c.id) : ids.length);
-    this.list.sort((a, b) => at(a) - at(b));
-  }
-
-  /** Stops every canvas, for Obeya to end; one still starting stops once it runs. */
-  shutdown() {
-    this.closed = true;
-    for (const c of this.list) c.shutdown();
-  }
-
-  /** Set once Obeya ends (`shutdown`). */
-  private closed = false;
-
-  private emit() {
-    for (const fn of this.listeners) fn();
-  }
-}
-
-/** Why a canvas's configuration does not work; `repo` is the index of the repository in question. */
-export class ConfigError extends Error {
-  constructor(
-    readonly code: ConfigProblemCode,
-    message: string,
-    readonly repo?: number,
-  ) {
-    super(message);
-  }
-}
-
-/**
- * What resolving a repository reads of it with git (`readingRepo`): where it is and its main
- * branch (`info`), that branch as git tells it whatever the owner set (`detected`), whether its
- * main branch still has an adapter module (`hasAdapterModule`), and its `.obeya/settings.json`
- * there (`readShared`).
- */
-export interface RepoRead {
-  info: RepoInfo;
-  detected: string;
-  adapterModule: boolean;
-  shared: SharedRead;
-}
-
-/**
- * Reads a repository for `resolveCanvas`, as git steps; null where `path` is no git repository. A
- * folder without git (`folder`) is read as it is, without git: null where it is no directory. Its
- * main branch is `branch` where the owner set one, else the one detected.
- */
-export function* readingRepo(path: string, folder = false, branch = branchSetting(path)): GitSteps<RepoRead | null> {
-  markFolder(path, folder);
-  if (folder) return readFolder(path);
-  const [[remote, origin], branches] = yield* together(gitCalls(['remote', 'get-url', 'origin'], ['config', '--get', 'remote.origin.url']), readingBranches());
-  if (branches == null) return null;
-  const detected = yield* detectingBranch(branches);
-  const main = branch || detected;
-  const commit = yield* branchCommit(main, branches);
-  const [adapterModule, shared] = yield* together(readingAdapterModule(commit), readingShared(commit));
-  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}) }, detected, adapterModule, shared };
-}
-
-/**
- * What a configuration's repositories are read for, by absolute path, without the server waiting
- * for git: each repository (`readingRepo`, under the seal its refs had before, `refsSeal`), and
- * each workspace it lists (its `origin`; null where it is no git repository). All of them at once.
- */
-export interface RepoReads {
-  repos: Map<string, { seal: string | null; read: RepoRead | null }>;
-  workspaces: Map<string, { origin: string | null } | null>;
-}
-
-/** Reads `repos` (`RepoReads`), each on the main branch `branchOf` says the owner set for it (none: the one detected). */
-export async function readRepos(repos: RepoConfig[], branchOf: (r: RepoConfig) => string | undefined = () => undefined): Promise<RepoReads> {
-  // a repository whose path is still empty is read nowhere (`resolveCanvas` finds its path missing)
-  const named = repos.filter((r) => r.path.trim());
-  const paths = new Map(named.map((r) => [resolve(r.path), r]));
-  const workspaces = new Set(named.flatMap((r) => (r.workspaces ?? []).map((w) => resolve(w))));
-  // one that is also a repository of the configuration is read as that
-  const listed = [...workspaces].filter((w) => !paths.has(w));
-  const [read, found] = await Promise.all([
-    Promise.all(
-      [...paths].map(async ([path, r]) => {
-        const folder = r.git === false;
-        const seal = folder ? null : refsSeal(path);
-        return [path, { seal, read: await gitSteps(path, readingRepo(path, folder, branchOf(r)?.trim() || branchSetting(path))) }] as const;
-      }),
-    ),
-    Promise.all(
-      listed.map(async (w) => {
-        const [dir, origin] = await gitSteps(w, gitCalls(['rev-parse', '--git-dir'], ['remote', 'get-url', 'origin']));
-        return [w, dir != null ? { origin: origin ?? null } : null] as const;
-      }),
-    ),
-  ]);
-  const repoRead = new Map(read);
-  const asRepo = [...workspaces].filter((w) => paths.has(w)).map((w) => {
-    const info = repoRead.get(w)?.read?.info;
-    return [w, info && !info.folder ? { origin: info.remote } : null] as const;
-  });
-  return { repos: repoRead, workspaces: new Map([...found, ...asRepo]) };
-}
-
-/** How often `readSettings` reads a repository whose refs move while git reads it. */
-const READ_TRIES = 5;
 
 /** What `moved` came to (`moved`). */
 type Moved = 'same' | 'follow' | 'due';
 
-/** What a repository's default branch has of its settings: its `.obeya/settings.json` and Claude Code configuration (`readShared`), and whether an adapter module is still there (`hasAdapterModule`). */
-interface DefaultRead {
-  shared: SharedRead;
-  adapterModule: boolean;
-  /** The main branch it was read on (`defaultBranch`). */
-  branch: string;
-  /** The repository's theme (theme.ts), where it was read with the rest. */
-  theme?: Theme | null;
-}
-
-/** `DefaultRead` of the git repository at `path` as git steps. */
-function* readingSettings(path: string): GitSteps<DefaultRead> {
-  const { branch, commit } = yield* readingDefaultBranch(path);
-  const [adapterModule, shared] = yield* together(readingAdapterModule(commit), readingShared(commit));
-  return { shared, adapterModule, branch };
-}
-
-/** A folder without git as `resolveCanvas` reads it: no remote, no branch, its `.obeya/settings.json` as the folder has it. */
-function readFolder(path: string): RepoRead | null {
-  try {
-    if (!statSync(path).isDirectory()) return null;
-  } catch {
-    return null;
-  }
-  return { info: { path, remote: null, branch: '', folder: true }, detected: '', adapterModule: false, shared: readSharedFiles(path) };
-}
-
-/**
- * What a canvas's configuration amounts to, without touching anything: its repositories (home
- * first), each with Obeya's defaults and in front of them the repository's `.obeya/settings.json`
- * (`shared`: where they are read, by the repository's path; as `read` read them when left out) and
- * this machine's settings (`settings`: where a repository's are read; its entry's when left out),
- * each with its id and its settings without this machine's (`values`), and the canvas's id and
- * name. `read` is what was read of each repository, by its absolute path (`readRepos`). Throws a
- * ConfigError.
- */
-export function resolveCanvas(
-  config: CanvasConfig,
-  store: Store,
-  settings: (r: RepoConfig) => () => RepoSettings | undefined = (r) => () => r.settings,
-  shared: ((path: string) => () => SharedSettings | undefined) | undefined,
-  read: (path: string, folder: boolean) => RepoRead | null,
-) {
-  if (!config.repos.length) throw new ConfigError('noRepo', 'a canvas needs at least one repository');
-  const reads = config.repos.map((r, i) => {
-    // an empty path names nothing: resolved, it would be the server's own working directory
-    if (!r.path.trim()) throw new ConfigError('noPath', 'a repository needs a path', i);
-    const folder = r.git === false;
-    const got = read(resolve(r.path), folder);
-    if (!got) throw folder ? new ConfigError('noFolder', `${r.path} is no folder`, i) : new ConfigError('notRepo', `${r.path} is not a git repository`, i);
-    return got;
-  });
-  // a repository runs once on a canvas: twice, it would have two of everything, its plan docs' note too
-  reads.forEach(({ info }, i) => {
-    if (reads.findIndex((x) => x.info.path === info.path) < i) throw new ConfigError('sameRepo', `${config.repos[i]!.path} is on the canvas already`, i);
-  });
-  const sharedOf =
-    shared ??
-    ((path: string) => {
-      const settings = reads.find((x) => x.info.path === path)?.shared.settings;
-      return () => settings;
-    });
-  let repos = config.repos.map((r, i) => ({ config: r, read: reads[i]!, adapter: repoAdapter(r, reads[i]!.info, settings(r), sharedOf(reads[i]!.info.path)) }));
-  const refsOf = () => uniqueRefs(repos.map((x) => x.read.info), repos.map((x) => x.adapter));
-  let refs = refsOf();
-  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : slug(repoName(reads[0]!.info));
-  // the home repository is fixed when the canvas is first served: bare plan references, cards
-  // without a repository and the home workspace directory are its, whatever the order later
-  const stored = store.setting(id, 'home_repo');
-  if (stored && stored !== refs[0]!.id) {
-    const at = refs.findIndex((r) => r.id === stored);
-    if (at < 0) throw new ConfigError('homeMissing', `canvas ${id}: its home repository "${stored}" is not configured; list it (first or anywhere)`);
-    repos = [repos[at]!, ...repos.filter((_, i) => i !== at)];
-    refs = refsOf();
-  }
-  const name = config.name ?? repoName(repos[0]!.read.info);
-  return {
-    config: { ...config, repos: repos.map((x) => x.config) },
-    id,
-    name,
-    repos: repos.map((x, i) => ({ ...x, ref: refs[i]!, values: () => repoValues(x.read.info, namesClones(x.config, x.read.info, { land: x.adapter.land }), sharedOf(x.read.info.path)() ?? {}, x.read.detected) })),
-    stored,
-  };
-}
-
-/** What `resolveCanvas` resolved. */
-type Resolved = ReturnType<typeof resolveCanvas>;
-
-/** The settings the owner set for a repository on this machine (`CanvasDeps.settings`, else its entry's), read whenever they are used. */
-const machineSettings = (deps: Pick<CanvasDeps, 'settings'>, r: RepoConfig): (() => RepoSettings | undefined) =>
-  deps.settings ? () => deps.settings!(resolve(r.path)) : () => r.settings;
-
-/**
- * Where a resolved repository's read tree is made, a worktree of its checkout under Obeya's home;
- * none where work lands on the local main (the checkout is the read tree), or in a folder without
- * git, which is read as it is.
- */
-function readTreeOf(home: string, canvas: string, x: Resolved['repos'][number]): { repoPath: string; dir: string } | null {
-  return x.read.info.folder || x.adapter.land === 'main' ? null : { repoPath: x.read.info.path, dir: join(home, 'read', canvas, x.ref.id) };
-}
-
-/**
- * How a canvas runs a repository: Obeya's defaults with the repository's `shared` settings and this
- * machine's `settings` in front, each read when it is asked for; its workers work in clones where
- * the configuration names some.
- */
-export function repoAdapter(r: RepoConfig, info: RepoInfo, settings: () => RepoSettings | undefined, shared: () => SharedSettings | undefined): RepoAdapter {
-  const layered = () => layerSettings<RepoSettings>(shared(), settings());
-  return withSettings(defaultsFor(info), layered, namesClones(r, info, layered()));
-}
-
-/**
- * The existing clones a repository's configuration lists for its workers: all of them, but for the
- * checkout itself where work lands on its main, which is always on main (see `landOnMain`).
- */
-export function listedClones(r: RepoConfig, info: RepoInfo, layered: RepoSettings | undefined): string[] {
-  const landsHere = (layered?.land ?? defaultsFor(info).land) === 'main';
-  return (r.workspaces ?? []).map((w) => resolve(w)).filter((w) => !landsHere || w !== resolve(info.path));
-}
-
-/** Whether a repository's configuration names clones for its workers (to create, existing ones, on other machines). */
-export const namesClones = (r: RepoConfig, info: RepoInfo, layered: RepoSettings | undefined) => !!r.clones || !!listedClones(r, info, layered).length || !!r.hosts?.length;
-
-/** Repository ids unique on the canvas: the repository's name, with a number when two share one. */
-function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
-  const seen = new Map<string, number>();
-  return infos.map((info, i) => {
-    const base = slug(repoName(info)) || `repo${i + 1}`;
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    return {
-      id: n === 1 ? base : `${base}${n}`,
-      name: repoName(info),
-      path: info.path,
-      ...settled(info, adapters[i]!),
-    };
-  });
-}
-
-/** The URL of the repository's `origin` as it is configured, before git's `insteadOf` rewrites it (as read with the rest, `readingRepo`); null without one. */
-const originUrl = (info: RepoInfo): string | null => (info.remote ? (info.origin ?? info.remote) : null);
-
-/** Whether the repository's `origin` is on a server, as it is configured (git's `insteadOf` aside), rather than a directory on this machine. */
-function onServer(info: RepoInfo): boolean {
-  const url = originUrl(info);
-  return !!url && (/^(https?|ssh|git):\/\//i.test(url) || /^[^/\\\s:]{2,}:/.test(url));
-}
-
-/** What a repository's ref says of its settings, which may change while the canvas runs: its main branch, how work lands. */
-function settled(info: RepoInfo, adapter: RepoAdapter): Pick<RepoRef, 'branch' | 'pullRequests' | 'direct' | 'folder' | 'forge'> {
-  if (info.folder) return { branch: '', folder: true };
-  return {
-    branch: info.branch,
-    // an origin on a server (not a directory on this machine) may get pull requests of others
-    ...(onServer(info) ? { forge: true } : {}),
-    ...(adapter.land === 'pr' ? { pullRequests: true, ...(adapter.direct ? { direct: true } : {}) } : {}),
-  };
-}
-
-/** Where a repository shares demos: the site its settings name, once it is complete; null without one. */
-function siteOf(adapter: RepoAdapter): DemoSite | null {
-  const site = adapter.demo?.site;
-  return site && !siteIncomplete(site) ? site : null;
-}
-
-/** What the UI is told about sharing a repository's demos. */
-const SHARE_FIELDS = ['share', 'shareNeeds', 'shareOnApproval', 'shareTags', 'shareOnPersonal', 'shareUnlisted', 'sharePersonal'] as const;
-type ShareRef = Pick<RepoRef, (typeof SHARE_FIELDS)[number]>;
-
-/**
- * What the canvas tells the UI about it: a site to share on here (its own, where this machine has
- * its credentials, else the owner's personal one, where the repository may go there), the env file
- * its site lacks on this machine, and why the personal site does not take it (none set up, or the
- * repository is private and not ticked).
- */
-function shareRef(site: DemoSite | null, home: string, path: string, isPublic: boolean): ShareRef {
-  const missing = site && siteMissing(home, site);
-  if (site && !missing) {
-    const tags = dimensions(site.tags).length ? { shareTags: Object.fromEntries(dimensions(site.tags)) } : {};
-    return { share: true, ...(site.publish === 'approved' ? { shareOnApproval: true as const } : {}), ...tags };
-  }
-  const needs = site && missing ? { shareNeeds: { site: siteName(site), file: missing } } : {};
-  const p = readPersonal(home);
-  if (!p || siteMissing(home, personalDemoSite(p))) return { ...needs, sharePersonal: 'none' };
-  if (!allowedHere(p, path, isPublic)) return { ...needs, sharePersonal: 'private' };
-  // a repository whose site publishes each approved demo does so on the personal site too, as does one the owner ticked there for it
-  const approved = site?.publish === 'approved' || approvedHere(p, path);
-  return { share: true, shareOnPersonal: true, ...(p.secret ? { shareUnlisted: true as const } : {}), ...(approved ? { shareOnApproval: true as const } : {}) };
-}
-
-/** The canvas setting that keeps the forge's last answer on whether the repository at `path` is public. */
-const visibilityKey = (path: string) => `visibility:${path}`;
-
-/** Tells the UI about sharing on the repository what `share` says, in place of what it was told before. */
-function setShare(ref: RepoRef, share: ShareRef) {
-  for (const f of SHARE_FIELDS) delete ref[f];
-  Object.assign(ref, share);
-}
 
 /** The restart of a repository's agents that waits, as its workers hear of it. */
 const repoDue = (p: RepoRestart): DueRestart => ({ reason: p.reason, deadline: p.deadline, repo: true });
@@ -3370,15 +2263,6 @@ function sameDir(a: string, b: string): boolean {
     return false;
   }
 }
-
-const slug = (s: string) =>
-  s
-    .replace(/ß/g, 'ss')
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9.-]+/g, '-')
-    .replace(/^-|-$/g, '');
 
 /** A workspace as a directory on this machine, for a program that runs here (gh on a pull request's URL); none for one on another machine. */
 const localDir = (workspace: string | null) => (workspace && !hostName(workspace) ? workspace : null);

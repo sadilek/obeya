@@ -155,13 +155,14 @@ is packed again. `bun scripts/check-app.ts <program>` checks an installed app in
 AppImage on Ubuntu 22.04 for its glibc), checks the compiled server there with
 `scripts/check-binary.ts`, and runs typecheck and tests on Linux, Windows and macOS (with uv and
 ffmpeg for the demo voice's tests). `scripts/check-voice.ts` installs the local demo voices (Kokoro, Piper) afresh on
-Linux, Windows and macOS and has each speak a sentence: Kokoro's espeak-ng refused a data path of
-over 150 characters, which only a deep home (a temporary directory) showed (2026-11-06). A run takes about ten minutes. Tauri's DMG script now and then fails on the Intel
+Linux, Windows and macOS and has each speak a sentence through the renders' own path, which makes
+each clip a WAV with ffmpeg, so that job installs ffmpeg too. Kokoro's espeak-ng refused a data path of
+over 150 characters, which only a deep home (a temporary directory) showed (2026-11-06). Under such a path a clip reads a copy of that data in the system's temporary directory, and each clip makes it complete again: macOS deletes files there that were not read for three days but keeps their directories, and a copy reused once its `phontab` was there broke every clip on that Mac (2026-11-12). A run takes about ten minutes. Tauri's DMG script now and then fails on the Intel
 Mac runner where the same commit builds on the next try (2026-11-05 and -06), so a DMG is bundled up
 to three times, the tries after the first with `--verbose`, the only way Tauri shows the script's
 output.
 
-Builds and tests use Bun 1.4.3. Obeya needs Bun 1.3.14 or later: in 1.3.12 on Linux, a closed
+Builds and tests use the Bun that `.bun-version` names. Obeya needs Bun 1.3.14 or later: in 1.3.12 on Linux, a closed
 `fs.watch` can deadlock Bun's work pool, after which every page bundle hangs for good (2026-10-13).
 `bun start` from a checkout runs on the machine's Bun; on Linux with a Bun before 1.3.14 Obeya still
 starts, but warns in the log and with a pill in the bar ("Bun 1.3.12 is too old", the hover saying

@@ -21,7 +21,7 @@ import { LOCAL_HOSTS, hostname, type Gate } from './access';
 import { BadRequest } from './board';
 import type { Store } from './db';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE } from '../../plugin/skills/demo/lib/language.ts';
-import { Owner } from './owner';
+import { cookie, Owner } from './owner';
 import { remoteOf, remoteSetting, saveRemote } from './settings';
 import { type NamedEntry, Tailscale } from './tailscale';
 
@@ -173,10 +173,7 @@ export class Access implements Gate {
 
   private async applyNow(check: boolean) {
     const s = this.setting;
-    if (s?.via !== 'address' && this.listening) {
-      this.listen(null);
-      this.listening = null;
-    }
+    if (s?.via !== 'address') this.stop();
     if (s?.via !== 'tailscale') {
       if (this.served) {
         await this.tailscale.unserve(this.served).catch(() => {});
@@ -184,8 +181,7 @@ export class Access implements Gate {
       }
       if (s?.via === 'address' && this.listening !== s.address) {
         this.problem = undefined;
-        if (this.listening) this.listen(null);
-        this.listening = null;
+        this.stop();
         if (!machineAddresses().includes(s.address)) {
           this.problem = { code: 'listen', detail: `${s.address} is not an address of this machine` };
           return;
@@ -341,12 +337,7 @@ export class Access implements Gate {
 
   /** The paired device a request's cookie names; one unused for too long is removed. */
   device(req: Request): DeviceView | null {
-    const token = req.headers
-      .get('cookie')
-      ?.split(';')
-      .map((c) => c.trim())
-      .find((c) => c.startsWith(`${DEVICE_COOKIE}=`))
-      ?.slice(DEVICE_COOKIE.length + 1);
+    const token = cookie(req, DEVICE_COOKIE);
     if (!token) return null;
     const d = this.store.deviceByToken(sha256(token));
     if (!d) return null;
@@ -384,11 +375,15 @@ export class Access implements Gate {
 
   // ------------------------------------------------------------ pairing
 
+  /** The code under way: one made at another address is gone, also once Obeya is back at the one it was made at. */
+  private pairingAt(address: string | null): typeof this.pairing {
+    if (this.pairing && this.pairing.address !== address) this.pairing = null;
+    return this.pairing;
+  }
+
   private livePairing(): Pairing | null {
     const address = this.address();
-    // a code made at another address is gone, also once Obeya is back at the one it was made at
-    if (this.pairing && this.pairing.address !== address) this.pairing = null;
-    const p = this.pairing;
+    const p = this.pairingAt(address);
     if (!p || !address || p.expires <= this.now()) return null;
     return { code: p.code, url: `${address}/pair?code=${p.code}`, expires: new Date(p.expires).toISOString(), ...(p.paired ? { paired: p.paired } : {}), ...(p.replaced ? { replaced: p.replaced } : {}) };
   }
@@ -402,11 +397,13 @@ export class Access implements Gate {
     return this.livePairing()!;
   }
 
-  /** Pairs the device that brings the current code; its cookie, or `null` for a wrong or expired code. */
-  /** `counts`: a wrong code spends one of the tries; one another site sent the browser here with spends none. */
+  /**
+   * Pairs the device that brings the current code; its cookie, or `null` for a wrong or expired code.
+   * `counts`: a wrong code spends one of the tries; one another site sent the browser here with spends none.
+   */
   redeem(code: string, userAgent: string, counts = true): { token: string; device: DeviceView } | null {
-    if (this.pairing && this.pairing.address !== this.address()) this.pairing = null;
-    const p = this.pairing;
+    const address = this.address();
+    const p = this.pairingAt(address);
     if (!p || p.paired || p.expires <= this.now()) return null;
     if (code.replace(/\D/g, '') !== p.code) {
       // guessing gets five tries at a code, then it is spent
@@ -418,7 +415,6 @@ export class Access implements Gate {
     const device: DeviceView = { id: crypto.randomUUID(), name: deviceName(userAgent), pairedAt: at, lastSeen: at };
     // the same phone again, after Obeya's address changed: the browser keeps a cookie per name, so
     // it pairs anew, and its entry under the old address goes (one per pairing, for two such phones)
-    const address = this.address();
     const old = this.devices()
       .filter((d) => d.name === device.name && d.app && d.app !== address)
       .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0];
@@ -442,8 +438,8 @@ export class Access implements Gate {
     if (!paired) return this.notPairedPage(true);
     // over HTTPS the cookie goes with what a worker's HTML artifact loads in its sandboxed frame too, which counts as another site
     const https = (req.headers.get('x-forwarded-proto') ?? new URL(req.url).protocol.replace(':', '')) === 'https';
-    const cookie = `${DEVICE_COOKIE}=${paired.token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; ${https ? 'SameSite=None; Secure' : 'SameSite=Lax'}`;
-    return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': cookie } });
+    const given = `${DEVICE_COOKIE}=${paired.token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; ${https ? 'SameSite=None; Secure' : 'SameSite=Lax'}`;
+    return new Response(null, { status: 303, headers: { location: '/', 'set-cookie': given } });
   }
 
   private notPairedPage(wrong: boolean): Response {

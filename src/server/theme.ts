@@ -8,9 +8,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { themeData } from './artifact-copy';
-import { demoFile } from './demo-page';
-import { GIT, isFolder } from './workspaces';
+import { themeData } from './css-references';
+import { demoFile } from './demo-files';
+import { isFolder } from './branches';
+import { GIT, gitTry } from './git';
 
 /** The directory a repository's theme is in, and the theme's file there. */
 export const THEME_DIR = '.obeya';
@@ -37,7 +38,7 @@ export async function readingTheme(repo: string, tree: string | undefined): Prom
   if (!tree) return null;
   const key = `${repo}\0${tree}`;
   if (read.has(key)) return read.get(key)!;
-  const blobs = blobsOf(await output([GIT, '-C', repo, 'ls-tree', '-r', '-z', tree]));
+  const blobs = blobsOf((await gitTry(repo, 'ls-tree', '-r', '-z', tree)) ?? '');
   const got = new Map<string, Buffer | null>();
   for (;;) {
     const lacking = new Set<string>();
@@ -76,13 +77,6 @@ function blobsOf(listed: string): Map<string, string> {
     if (m) blobs.set(m[3]!, m[2]!);
   }
   return blobs;
-}
-
-/** What a program printed, as text; empty where it failed. */
-async function output(argv: string[]): Promise<string> {
-  const p = Bun.spawn(argv, { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
-  const out = await new Response(p.stdout).text();
-  return (await p.exited) === 0 ? out : '';
 }
 
 /** The contents of blobs, by their ids, read by one `git cat-file --batch`; one it cannot read is missing. */

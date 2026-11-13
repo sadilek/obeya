@@ -1,10 +1,11 @@
 import { afterAll, beforeEach, expect, test } from 'bun:test';
-import { copyOrSelect } from './copy';
+import { copyOrSelect, copyText } from './copy';
 
 // a page's clipboard, selection and copy command, as the browser offers them: the copy command puts
 // what is selected on the clipboard and reports success even when that is nothing, and an element
 // on the canvas, where no text is selectable, has no text in a selection unless it is made selectable
 type El = { text: string; onCanvas: boolean; style: { userSelect: string; webkitUserSelect: string } };
+let page: El[] = [];
 let clipboard: { writeText: (s: string) => Promise<void> } | undefined;
 let secure = true;
 let copies = false;
@@ -26,6 +27,18 @@ Object.defineProperty(navigator, 'clipboard', { configurable: true, get: () => c
 Object.defineProperty(globalThis, 'isSecureContext', { configurable: true, get: () => secure });
 g.getSelection = () => selection;
 g.document = {
+  body: { append: (el: El) => page.push(el) },
+  createElement: () => {
+    const el = {
+      ...element(''),
+      set textContent(s: string) {
+        el.text = s;
+      },
+      setAttribute: () => {},
+      remove: () => (page = page.filter((x) => x !== el)),
+    };
+    return el;
+  },
   createRange: () => ({ el: null as unknown, selectNodeContents(el: unknown) { this.el = el; } }),
   execCommand: (c: string) => c === 'copy' && copies && (written.push(selection.toString()), true),
   addEventListener: (type: string, f: () => void) => type === 'selectionchange' && onSelectionChange.push(f),
@@ -48,6 +61,7 @@ beforeEach(() => {
   written = [];
   selected = [];
   onSelectionChange = [];
+  page = [];
 });
 
 test('the clipboard API gets the text as it is, and nothing is selected', async () => {
@@ -95,4 +109,22 @@ test('where neither copies, a number on the canvas shows selected until the sele
   changeSelection();
   expect(no.style).toEqual({ userSelect: '', webkitUserSelect: '' });
   expect(onSelectionChange).toEqual([]);
+});
+
+test('a text not on the page (a path a button shows as its title) is copied on an insecure origin too, and leaves nothing behind', async () => {
+  clipboard = undefined;
+  secure = false;
+  copies = true;
+  expect(await copyText('/home/me/ws/shop')).toBe(true);
+  expect(written).toEqual(['/home/me/ws/shop']);
+  expect(page).toEqual([]);
+  expect(selected).toEqual([]);
+});
+
+test('a text not on the page that nothing copies says so, and leaves nothing behind', async () => {
+  clipboard = undefined;
+  secure = false;
+  expect(await copyText('/home/me/ws/shop')).toBe(false);
+  expect(written).toEqual([]);
+  expect(page).toEqual([]);
 });

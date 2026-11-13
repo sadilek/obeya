@@ -19,7 +19,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isMain, lib } from './here.ts';
+import { isMain } from '../../../lib/process.ts';
+import { lib } from './here.ts';
 import { type DemoSettings, demoSettingsHere, expandHome, type NarrationLanguage, obeyaHome, referenceOf, SERVICES } from './settings.ts';
 
 /** Piper's voices: one per language unless the settings name another. */
@@ -95,8 +96,8 @@ export type VoiceSpec =
       lexicon?: string;
       /**
        * The voice can stay loaded: this command starts once per render and answers clip by clip
-       * over its stdin and stdout (the protocol is in `qwen3.py`). Without it, `argv` or `shell`
-       * runs once per clip.
+       * over its stdin and stdout (the protocol is in `qwen3.py`), each clip with its language and
+       * `host`'s reference clip. Without it, `argv` or `shell` runs once per clip.
        */
       serve?: string[];
       /**
@@ -128,6 +129,9 @@ export interface Component {
 export const voicesHome = (home = obeyaHome()) => path.join(home, 'voices');
 const envPython = (dir: string) =>
   path.join(dir, 'env', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
+/** Where a local voice (`kokoro`, `piper`, `qwen3`) is installed, and the Python of its environment. */
+const voiceDir = (voice: string, home: string) => path.join(voicesHome(home), voice);
+const voicePython = (voice: string, home: string) => envPython(voiceDir(voice, home));
 const INSTALLED = '.obeya-installed';
 
 function piperVoice(s: DemoSettings) {
@@ -139,8 +143,7 @@ function piperVoice(s: DemoSettings) {
 
 /** Piper's Python and the voice file of these settings, as installed under Obeya's home. */
 export function piperFiles(s: DemoSettings, home = obeyaHome()) {
-  const dir = path.join(voicesHome(home), 'piper');
-  return { python: envPython(dir), onnx: path.join(dir, `${piperVoice(s).name}.onnx`) };
+  return { python: voicePython('piper', home), onnx: path.join(voiceDir('piper', home), `${piperVoice(s).name}.onnx`) };
 }
 
 /** The Hugging Face cache, where Qwen3's models go (and where an earlier download already is). */
@@ -149,17 +152,21 @@ function hfHub() {
   return path.join(process.env.HF_HOME || path.join(os.homedir(), '.cache', 'huggingface'), 'hub');
 }
 
+/** The snapshots of a model in the Hugging Face cache, as directories; none for a model never downloaded. */
+function snapshots(repo: string) {
+  const dir = path.join(hfHub(), `models--${repo.replace('/', '--')}`, 'snapshots');
+  return fs.existsSync(dir) ? fs.readdirSync(dir).map((snap) => path.join(dir, snap)) : [];
+}
+
 /** Whether these files of a model are in one snapshot in the Hugging Face cache; a `*` in a file's name stands for any text, and at least one file must match it. */
 export function hfFilesPresent(repo: string, files: string[]) {
-  const snapshots = path.join(hfHub(), `models--${repo.replace('/', '--')}`, 'snapshots');
-  if (!fs.existsSync(snapshots)) return false;
   const matches = (pattern: string) => (name: string) => {
     const [head = '', ...rest] = pattern.split('*');
     return rest.length ? name.startsWith(head) && name.endsWith(rest.at(-1) ?? '') : name === pattern;
   };
-  return fs.readdirSync(snapshots).some((snap) =>
+  return snapshots(repo).some((snap) =>
     files.every((f) => {
-      const dir = path.join(snapshots, snap, path.dirname(f));
+      const dir = path.join(snap, path.dirname(f));
       return fs.existsSync(dir) && fs.readdirSync(dir).some(matches(path.basename(f)));
     }),
   );
@@ -167,10 +174,8 @@ export function hfFilesPresent(repo: string, files: string[]) {
 
 /** Whether a model is in the Hugging Face cache: its config and its weights (safetensors, or CTranslate2's `model.bin`). */
 export function hfModelPresent(repo: string) {
-  const snapshots = path.join(hfHub(), `models--${repo.replace('/', '--')}`, 'snapshots');
-  if (!fs.existsSync(snapshots)) return false;
-  return fs.readdirSync(snapshots).some((snap) => {
-    const files = fs.readdirSync(path.join(snapshots, snap));
+  return snapshots(repo).some((snap) => {
+    const files = fs.readdirSync(snap);
     return files.includes('config.json') && files.some((f) => f.endsWith('.safetensors') || f.endsWith('.onnx') || f === 'model.bin');
   });
 }
@@ -214,6 +219,12 @@ function pythonEnv(dir: string, packages: string[], label: string, mb: number): 
   };
 }
 
+/** Downloads a model into the Hugging Face cache with a voice's Python: all of it, or the files matching `files`. */
+const hfDownload =
+  (python: string, repo: string, files?: string[]): Component['install'] =>
+  (log) =>
+    exec(python, ['-c', `from huggingface_hub import snapshot_download; snapshot_download(${JSON.stringify(repo)}${files ? `, allow_patterns=${JSON.stringify(files)}` : ''})`], log);
+
 async function download(url: string, file: string, log: (line: string) => void) {
   log(`downloading ${url}`);
   const res = await fetch(url);
@@ -243,25 +254,22 @@ export function speaking(s: DemoSettings): DemoSettings {
 export function components(given: DemoSettings, home = obeyaHome()): Component[] {
   const s = speaking(given);
   if (s.voice === 'kokoro') {
-    const dir = path.join(voicesHome(home), 'kokoro');
     const files = ['tokenizer.json', KOKORO_MODEL.file, ...KOKORO_MODEL.voices];
     return [
-      pythonEnv(dir, KOKORO_PACKAGES, 'Kokoro', 450),
+      pythonEnv(voiceDir('kokoro', home), KOKORO_PACKAGES, 'Kokoro', 450),
       {
         label: PART_WORDS[s.language].model(KOKORO_MODEL.repo),
         mb: 340,
         installed: () => hfFilesPresent(KOKORO_MODEL.repo, files),
-        install: (log) =>
-          exec(envPython(dir), ['-c', `from huggingface_hub import snapshot_download; snapshot_download(${JSON.stringify(KOKORO_MODEL.repo)}, allow_patterns=${JSON.stringify(files)})`], log),
+        install: hfDownload(voicePython('kokoro', home), KOKORO_MODEL.repo, files),
       },
     ];
   }
   if (s.voice === 'piper') {
-    const dir = path.join(voicesHome(home), 'piper');
     const voice = piperVoice(s);
     const { onnx } = piperFiles(s, home);
     return [
-      pythonEnv(dir, ['piper-tts'], 'Piper', 150),
+      pythonEnv(voiceDir('piper', home), ['piper-tts'], 'Piper', 150),
       {
         label: PART_WORDS[s.language].piperVoice(voice.name),
         mb: 115,
@@ -274,7 +282,7 @@ export function components(given: DemoSettings, home = obeyaHome()): Component[]
     ];
   }
   if (s.voice === 'qwen3') {
-    const dir = path.join(voicesHome(home), 'qwen3');
+    const dir = voiceDir('qwen3', home);
     const repo = qwen3Model(!!referenceOf(s));
     return [
       onMlx() ? pythonEnv(dir, ['mlx-audio', QWEN3_EAR], 'Qwen3-TTS (MLX)', 520) : pythonEnv(dir, ['qwen-tts', QWEN3_EAR], 'Qwen3-TTS (PyTorch)', 4070),
@@ -282,8 +290,7 @@ export function components(given: DemoSettings, home = obeyaHome()): Component[]
         label: PART_WORDS[s.language].model(repo),
         mb: 4300,
         installed: () => hfModelPresent(repo),
-        install: (log) =>
-          exec(envPython(dir), ['-c', `from huggingface_hub import snapshot_download; snapshot_download(${JSON.stringify(repo)})`], log),
+        install: hfDownload(voicePython('qwen3', home), repo),
       },
     ];
   }
@@ -305,19 +312,14 @@ export async function installVoice(s: DemoSettings, log: (line: string) => void 
   }
 }
 
-/** `qwen3.py` for a clone of `reference` or a stock `speaker`, before `--out` or `--serve`. */
-function qwen3Command(voice: HeldVoice, language: NarrationLanguage, home: string) {
-  const who = voice.reference ? ['--reference', voice.reference] : ['--speaker', voice.speaker || QWEN3_SPEAKER];
-  return [envPython(path.join(voicesHome(home), 'qwen3')), lib('qwen3.py'), '--model', qwen3Model(!!voice.reference), '--language', language, ...who];
-}
-
 /**
- * The command Obeya holds a Qwen3 voice with across renders (`src/server/narration.ts`): one for
- * every language, so it names neither language nor reference clip; each clip brings its own. A
- * clone and a stock speaker need different models, so those two stay apart.
+ * The command a Qwen3 voice is served with, by a render (`tts.py`) or by Obeya across renders
+ * (`src/server/narration.ts`): one for every language, so it names neither language nor reference
+ * clip; each clip brings its own. A clone and a stock speaker need different models, so those two
+ * stay apart.
  */
 export const qwen3Serve = (voice: HeldVoice, home = obeyaHome()) => [
-  envPython(path.join(voicesHome(home), 'qwen3')),
+  voicePython('qwen3', home),
   lib('qwen3.py'),
   '--model',
   qwen3Model(!!voice.reference),
@@ -332,9 +334,8 @@ export function voiceSpec(given: DemoSettings, home = obeyaHome()): VoiceSpec {
   switch (s.voice) {
     case 'kokoro': {
       const voice = s.voiceName || KOKORO_VOICE;
-      const python = envPython(path.join(voicesHome(home), 'kokoro'));
       const british = voice.startsWith('b') ? ['--british'] : [];
-      const argv = [python, lib('kokoro.py'), '--model', KOKORO_MODEL.repo, '--file', KOKORO_MODEL.file, '--voice', voice, ...british, '--out', '{out}'];
+      const argv = [voicePython('kokoro', home), lib('kokoro.py'), '--model', KOKORO_MODEL.repo, '--file', KOKORO_MODEL.file, '--voice', voice, ...british, '--out', '{out}'];
       return { kind: 'command', argv, tag: `kokoro|${KOKORO_MODEL.file}|${voice}`, heavy: false };
     }
     case 'piper': {
@@ -352,11 +353,9 @@ export function voiceSpec(given: DemoSettings, home = obeyaHome()): VoiceSpec {
       const clip = referenceOf(s);
       const reference = clip && expandHome(clip);
       const voice = reference ? { reference } : { speaker: s.voiceName || QWEN3_SPEAKER };
-      const run = qwen3Command(voice, s.language, home);
       return {
         kind: 'command',
-        argv: [...run, '--out', '{out}'],
-        serve: [...run, '--serve'],
+        serve: qwen3Serve(voice, home),
         host: voice,
         tag: `qwen3|${qwen3Model(!!reference)}|${reference ?? s.voiceName ?? QWEN3_SPEAKER}`,
         heavy: true,
