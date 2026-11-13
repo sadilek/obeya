@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, BranchChoice, ArchivePage, Pairing, RemoteSetting, CloudPreset, CanvasInfo, CanvasSnapshot, ClientMessage, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, ServerMessage, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
+import type { AccessView, ArchivePage, Pairing, RemoteSetting, CloudPreset, CanvasInfo, CanvasSnapshot, ClientMessage, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, ServerMessage, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
 import type { Waiting } from '../core/card';
 import type { AgentRole, AgentSetting, Harness, AgentsView } from '../core/agents';
 import type { CanvasConfig, ConfigSaved, ConfigView, ConfigChecked, PersonalSiteView, SiteSetupJob, TagProposalJob, RepoTrust, SettingsShared } from '../core/config';
@@ -339,8 +339,6 @@ export const api = {
     return new File([blob], path.split(/[\\/]/).at(-1)!, { type: blob.type });
   },
   events: (id: string) => call<CardEvent[]>('GET', cardAt(id, '/events')),
-  /** The branches of the owner's a new task of the repository may work on. */
-  branches: (repo: string) => call<BranchChoice[]>('GET', at(`/repos/${encodeURIComponent(repo)}/branches`)),
   /** The skills the owner can ask the card's agent for by `/name`. */
   skills: (id: string) => call<Skill[]>('GET', cardAt(id, '/skills')),
   /** Whether the app in the card's workspace answers now. */

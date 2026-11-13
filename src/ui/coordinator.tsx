@@ -125,15 +125,16 @@ export function CoordinatorTalk({ on, talk, items, repos, onOpen, onTell, draft 
   );
 }
 
-/** Where the canvas has seen a review card: the hint on "Review PR #5" is no longer shown. */
+/** Where the canvas has seen a review card or a task on a branch of the owner's: the hint on "Review PR #5" and a PR of one's own is no longer shown. */
 const REVIEW_KNOWN = 'obeya-review-pr-known';
 
 /**
  * Under Obeya's field, where a repository of the canvas is on a forge and until the owner has had a
- * review card once or closed it: one quiet line on how to have someone else's pull request reviewed.
+ * review card or a task on a branch of theirs once, or closed it: one quiet line on how to have
+ * someone else's pull request reviewed, and one's own taken up on its branch.
  */
 function ReviewHint({ items, repos }: { items: Item[]; repos: RepoRef[] }) {
-  const used = items.some((i) => i.contribution);
+  const used = items.some((i) => i.contribution || i.adopted);
   const [closed, close] = useKnown(REVIEW_KNOWN);
   useEffect(() => {
     if (used) know(REVIEW_KNOWN);

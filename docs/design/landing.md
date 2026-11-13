@@ -260,12 +260,13 @@ Approved, the work goes the way the branch does:
   pull request from the branch under its name; with `main` it lands rebased like a card's own
   branch, and the copy on `origin` stays as it was, since nothing is force-pushed.
 
-The owner takes a branch with the field "Branch" on an unstarted task ("new branch" by default; see
-Creating cards in The canvas), by word to Obeya („arbeite auf feature/x weiter“), or with the link
-of a pull request of their own: one whose branch is in `origin` (also one from there against the
-original) becomes a task on that branch, started at once, the owner's words its task, instead of a
-review card. A task on such a branch names it above its title, with its pull request
-("on feature/x · PR #82 (upstream)").
+The owner has a task take a branch through Obeya only: by word („arbeite auf feature/x weiter“), or
+with the link of a pull request of their own: one whose branch is in `origin` (also one from there
+against the original) becomes a task on that branch, started at once, the owner's words its task,
+instead of a review card. The tip under Obeya's field that names "Review PR #5" says so too, until
+the canvas has had such a card or the owner closed it. A task on such a branch names it above its
+title, with its pull request ("on feature/x · PR #82 (upstream)"); in a fork, the branch takes the
+place of the start point.
 
 ### Review cards
 
@@ -733,8 +734,10 @@ A card no agent worked on, a prototype or an archived card has no field.
   original. Rejected: taking over only the owner's pull request from a fork by its link (a special
   case: a branch without a pull request, earlier handwork or an approach left lying, is taken the
   same way); a review card for it (it reviews a stranger's code and sends findings to a contributor);
-  branches of contributors or of other cards (they belong to their review card or card). The field
-  on the task and the word to Obeya both exist, so the feature is found on the card.
+  branches of contributors or of other cards (they belong to their review card or card). Taken
+  through Obeya only, by word or a pull request's link (the owner, 2026-11-13, after the first
+  demo): a "Branch" field on every new task made creating a task more complicated for something
+  rarely needed. It is found through the tip under Obeya's field.
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every

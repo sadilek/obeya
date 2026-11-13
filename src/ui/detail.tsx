@@ -1,8 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
-import { type ReactNode, useContext, useEffect, useRef, useState } from 'react';
-import { Cards } from './message';
-import type { ApproveResult, BranchChoice, CardPatch, Item, RepoRef, UpstreamRef } from '../core/types';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import type { ApproveResult, CardPatch, Item, RepoRef, UpstreamRef } from '../core/types';
 import { agentListens, answering, archiveRefusal, askable, finished, handedOver, plannableAsProject, snoozable, stopped } from '../core/card';
 import { ApiError, api, failText } from './api';
 import { cardPath } from './address';
@@ -268,8 +267,7 @@ function StartAt({ item, act }: { item: Item; act: Act }) {
 }
 
 /** `fresh`: the repository picker offers a new repository (not on a proposal, which starts where it is). */
-/** `act` and `all`: a task's branch is picked too (`BranchPick`). */
-function ManualFields({ item, repos, choice, fresh, onEdit, grow, act, all }: { item: Item; repos: RepoRef[]; choice: RepoChoice; fresh?: boolean; onEdit: (p: CardPatch) => void; grow?: boolean; act?: Act; all?: Item[] }) {
+function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item; repos: RepoRef[]; choice: RepoChoice; fresh?: boolean; onEdit: (p: CardPatch) => void; grow?: boolean }) {
   const [body, setBody] = useState(item.body);
   const ref = useRef<HTMLTextAreaElement>(null);
   // the field's draft holds no text, the card has it: it is where words dictated into the field go
@@ -320,8 +318,6 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow, act, all }: { 
         <DictationLine draft={key} />
         {shots.error && <p className="p-error c-error">{shots.error}</p>}
       </div>
-      {/* below what the task is: where its work goes on */}
-      {!choice.fresh && act && all && <BranchPick item={item} repo={repos.find((r) => r.id === choice.repo)} act={act} all={all} />}
     </>
   );
 }
@@ -402,7 +398,7 @@ function TaskView(v: View) {
   // a task waiting for its first start, planned or in the queue, keeps its text in full beside its conversation, where notes wait for its agent
   const waits = waitsFirstStart(item);
   const proto = prototypeState(item, all, from);
-  const text = (o: { fresh?: boolean; grow?: boolean }) => (editable ? <ManualFields item={item} repos={v.repos} choice={choice} onEdit={v.onEdit} act={act} all={all} {...o} /> : <CardText item={item} />);
+  const text = (o: { fresh?: boolean; grow?: boolean }) => (editable ? <ManualFields item={item} repos={v.repos} choice={choice} onEdit={v.onEdit} {...o} /> : <CardText item={item} />);
   // work waiting for the owner's verdict, with a demo or a summary
   const review = handedOver(item);
   const lands = landing(item, repo, inFolder);
@@ -813,78 +809,6 @@ function UpstreamPick({ item, repo, onEdit }: { item: Item; repo: RepoRef | unde
           {t.upstream.pr(up.branch, up.name)}
         </button>
       </div>
-    </div>
-  );
-}
-
-/**
- * Before work begins on a task: the branch it works on, a new one from the main branch (the default)
- * or one of the owner's that exists already (`BranchChoice`), and that branch's open pull request.
- * Saved as it is picked; a branch another card works on opens that card instead.
- */
-function BranchPick({ item, repo, act, all }: { item: Item; repo: RepoRef | undefined; act: Act; all: Item[] }) {
-  const cards = useContext(Cards);
-  const [list, setList] = useState<BranchChoice[] | null>(null);
-  const [picked, setPicked] = useState(item.adopted?.branch ?? '');
-  useEffect(() => setPicked(item.adopted?.branch ?? ''), [item.adopted?.branch]);
-  const id = repo?.id;
-  useEffect(() => {
-    if (!id) return;
-    let on = true;
-    setList(null);
-    api.branches(id).then(
-      (l) => on && setList(l),
-      () => on && setList([]),
-    );
-    return () => {
-      on = false;
-    };
-  }, [id]);
-  if (!repo || repo.folder || item.prototypeOf || item.builtOn || item.contribution || item.state !== 'planned' || item.branch) return null;
-  const free = (list ?? []).filter((b) => !b.card || b.card.id === item.id);
-  const taken = (list ?? []).filter((b) => b.card && b.card.id !== item.id);
-  // the card's own pick stays in the list while it is read, or where git no longer lists it
-  const own = picked && !free.some((b) => b.name === picked) ? [{ name: picked }] : [];
-  const pick = (name: string) => {
-    const on = taken.find((b) => b.name === name)?.card;
-    if (on) {
-      const card = all.find((i) => i.id === on.id);
-      if (card) cards.open(card);
-      return;
-    }
-    setPicked(name);
-    void act({ action: 'branch', branch: name || null }, { close: false });
-  };
-  const pr = item.adopted?.branch === picked ? item.adopted.pr : undefined;
-  return (
-    <div className="branch-pick">
-      <label title={picked ? t.adopted.hint : t.adopted.freshHint}>
-        <span className="hint">{t.adopted.field}</span>
-        <select value={picked} onChange={(e) => pick(e.target.value)}>
-          <option value="">{t.adopted.fresh}</option>
-          {list === null && !own.length && <option disabled>{t.adopted.loading}</option>}
-          {list?.length === 0 && <option disabled>{t.adopted.none}</option>}
-          {[...own, ...free].map((b) => (
-            <option key={b.name} value={b.name}>
-              {'remoteOnly' in b && b.remoteOnly ? t.adopted.remoteOnly(b.name) : b.name}
-            </option>
-          ))}
-          {taken.length > 0 && (
-            <optgroup label={t.adopted.onCards}>
-              {taken.map((b) => (
-                <option key={b.name} value={b.name}>
-                  {t.adopted.onCard(b.name, plain(b.card!.title))}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-      </label>
-      {pr && (
-        <a className="branch-pr" href={pr.url} target="_blank" rel="noreferrer">
-          {t.adopted.pr(prName(pr))}{'\u00a0'}↗
-        </a>
-      )}
     </div>
   );
 }

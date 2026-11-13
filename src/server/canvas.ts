@@ -14,7 +14,7 @@ import { openWithSystem } from './machine';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import type { Awaited, BranchChoice, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
+import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
 import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
 import { AGENT_DEFAULTS, type AgentRole, type AgentSetting } from '../core/agents';
 import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
@@ -1778,8 +1778,6 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings), ...(typeof a.upstream === 'boolean' ? { upstream: a.upstream } : {}) });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
-      case 'branch':
-        return this.repoOf(cardId).workers.adoptBranch(cardId, a.branch);
       case 'pushMain':
         return this.repoOf(cardId).workers.pushMainFor(cardId);
       case 'keepMain':
@@ -2245,13 +2243,6 @@ export class CanvasRuntime {
     // the card opens, so the owner sees its review begin
     this.board.notify({ text: t.review.started(ref.number, info.author), cardId: card.id, open: true });
     return card.id;
-  }
-
-  /** The branches of the owner's a new task of repository `repo` may work on (`BranchChoice`); none in a folder without git. */
-  async branchChoices(repo: string): Promise<BranchChoice[]> {
-    const r = this.repo(repo);
-    if (!r) throw new BadRequest('invalid', 'unknown repository');
-    return r.info.folder ? [] : r.workers.branchChoices();
   }
 
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */

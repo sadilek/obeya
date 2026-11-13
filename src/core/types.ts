@@ -985,9 +985,8 @@ export interface AdoptedPr {
 }
 
 /**
- * A branch a new task may work on (`GET /api/c/<canvas>/repos/<repo>/branches`): the local ones and
- * `origin`'s, but the main branch, Obeya's own and one checked out; one that is another card's
- * names that card, which opens instead.
+ * A branch a new task may work on (`AdoptedBranches.choices`): the local ones and `origin`'s, but the
+ * main branch, Obeya's own and one checked out; one that is another card's names that card.
  */
 export interface BranchChoice {
   name: string;
@@ -1447,11 +1446,7 @@ export type CardAction =
    */
   /** `upstream`: in a fork, whether the work goes to the original repository as a pull request too, in place of the card's choice (`Item.upstream`). */
   | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute>; upstream?: boolean }
-  /**
-   * Before work begins on a task: the branch of the owner's it works on (`Item.adopted`), one of
-   * `BranchChoice` that is no other card's; null: a new branch from the main branch again.
-   */
-  | { action: 'branch'; branch: string | null }
+
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before ("Discard changes"). */
   | { action: 'undo' }
   /** Start a queued card although it may collide. */
