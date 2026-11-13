@@ -137,6 +137,38 @@ describe('a handover whose work went onto a pull request instead of the branch',
     expect(state(id)).toBe('working');
   });
 
+  test('a comment by the pull request’s author, someone other than the owner, reaches the worker', async () => {
+    status = { ...status, author: 'boris', viewer: 'owner' };
+    const { id, session } = await handOver({ pull_requests: [UPSTREAM] });
+    await workers.approve(id);
+    session.emit({ type: 'idle' });
+    status.comments = [
+      { id: 'c1', author: 'boris', body: 'Please also cover a reset to zero', at: '2026-11-12T10:00:00Z' },
+      { id: 'c2', author: 'owner', body: 'Done in the latest commit', at: '2026-11-12T10:05:00Z' },
+    ];
+    await watcher.poll();
+    expect(session.inbox.at(-1)).toContain('Please also cover a reset to zero');
+    expect(session.inbox.at(-1)).not.toContain('Done in the latest commit');
+  });
+
+  test('approved after the branch took work since the handover, lands nothing and goes back to the worker', async () => {
+    const { id, session } = await handOver({ pull_requests: [UPSTREAM] });
+    commit(board.row(id).workspace!, 'late.ts', 'x\n', 'A late change');
+    expect(await workers.approve(id).catch((e: Error) => e.message)).toContain('holds work since the handover');
+    expect(state(id)).toBe('waiting:demo');
+    expect(board.row(id).landed).toBeNull();
+    expect(session.inbox.at(-1)).toContain('Nothing landed');
+  });
+
+  test('one of them reported again with pr_opened stays one of them, the others kept', async () => {
+    const SECOND = 'https://github.com/owner/bridge/pull/8';
+    const { id, session } = await handOver({ pull_requests: [OWN, SECOND] });
+    await workers.approve(id);
+    await session.call('pr_opened', { url: SECOND });
+    expect(pr(id).url).toBe(OWN);
+    expect(pr(id).more?.map((m) => m.url)).toEqual([SECOND]);
+  });
+
   test('is refused for a URL that is no pull request’s', async () => {
     const { answer } = await handOver({ pull_requests: ['https://github.com/boris/bridge/issues/82'] });
     expect(answer).toContain('is not the URL of a pull request');

@@ -1621,6 +1621,7 @@ export type ErrorCode =
   | 'branchOnCard'
   /** Approving directly onto main a task whose branch has an open pull request: its work goes onto that pull request. */
   | 'branchPr'
+  | 'workSinceHandover'
   /** What only a folder without git has (discarding a card's changes), or what it has not (prototypes, pull requests). */
   | 'notFolder'
   | 'inFolder'

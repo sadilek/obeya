@@ -282,7 +282,9 @@ export class PrWatcher {
     // an approval without words asks the worker for nothing
     // a comment rewritten into something other than a passing verdict is news again (a summary that now asks for a fix)
     const key = (c: PrStatus['comments'][number]) => (c.edited && !passing(c) ? `${c.id}@${c.edited}` : c.id);
-    const comments = s.comments.filter((c) => !pr.seen.includes(key(c)) && c.author !== s.author && !noise.includes(c.author) && (c.body.trim() || c.verdict === 'changes'));
+    // the worker writes as the owner's account; a pull request open before the card (one the worker pushed onto) may be someone else's, whose words count
+    const self = pr.adopted && s.viewer ? s.viewer : s.author;
+    const comments = s.comments.filter((c) => !pr.seen.includes(key(c)) && c.author !== self && !noise.includes(c.author) && (c.body.trim() || c.verdict === 'changes'));
     if (comments.length) {
       next.seen = [...new Set([...pr.seen, ...comments.flatMap((c) => [c.id, key(c)])])];
       this.workers.prEvent(

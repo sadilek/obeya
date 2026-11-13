@@ -968,6 +968,17 @@ export class Workers {
     // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open,
     // unless it went onto pull requests open already, which the card follows then
     const follows = fromJson(this.o.board.row(cardId).detail)?.followsPrs;
+    // the branch took work since a handover that said the work is on those pull requests instead: that is not what the owner saw
+    if (work && follows?.length) {
+      this.o.board.work(cardId, { approved_at: before });
+      this.deliver(
+        cardId,
+        ['The owner approved your handover, but your branch holds commits or uncommitted changes since, while the handover named pull requests your work went onto instead of the branch. Nothing landed, and the card waits for the owner again. Throw away what is not meant to land and hand over again, or hand over without pull_requests if the branch is to land.', comments?.text ?? ''].filter(Boolean).join('\n\n'),
+        comments?.images,
+        { owner: true },
+      );
+      throw new BadRequest('workSinceHandover', 'the branch holds work since the handover, which said the work is on the pull requests it names: the agent hands over again');
+    }
     if (!work && follows?.length) return this.followPrs(cardId, follows, comments);
     if (!work) return void this.close(cardId, 'owner', comments);
     if (lands.land === 'main' || direct || branchPr) return this.land(cardId, 'owner', comments);

@@ -442,10 +442,11 @@ export class WorkerTools {
               ? !sameRepo(upUrl, ref.owner, ref.repo)
               : `${ref.owner}/${ref.repo}`.toLowerCase() !== up.name.toLowerCase()
             : !!this.o.remote && (!sameRepo(this.o.remote, ref.owner, ref.repo) || (!!host && host !== ref.host.toLowerCase()));
-          const known = elsewhere ? root.more?.find((m) => parsePrUrl(m.url ?? '')?.url === ref.url) : undefined;
+          // one of the card's further pull requests reported again is that one, wherever it is
+          const known = root.more?.find((m) => parsePrUrl(m.url ?? '')?.url === ref.url);
           let pr: PrState;
           // the card's own reported again keeps what was told of it; another in its place starts afresh
-          if (!elsewhere)
+          if (!elsewhere && !known)
             pr =
               parsePrUrl(root.url ?? '')?.url === ref.url || !root.url
                 ? { ...root, url: ref.url, number: ref.number, ...(up ? { repo: `${ref.owner}/${ref.repo}` } : {}) }
