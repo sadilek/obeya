@@ -186,6 +186,9 @@ export interface DecisionRow {
   at: string;
 }
 
+/** The setting holding the path of the first repository a canvas without a name is named after. */
+const NAMED_AFTER = 'named_after';
+
 /** The schema Obeya was released with; exported for the migration tests, which build older databases from it. */
 export const SCHEMA = `
   CREATE TABLE canvases (
@@ -1362,6 +1365,29 @@ export class Store {
       )
       .all({ c: canvasId }) as { repo: string }[];
     return rows.map((r) => r.repo);
+  }
+
+  /** Whether the canvas has cards, archived ones included. */
+  hasCards(canvasId: string): boolean {
+    return !!this.db.query('SELECT 1 FROM cards WHERE canvas_id = $c AND deleted_at IS NULL LIMIT 1').get({ c: canvasId });
+  }
+
+  /** The canvas without a name that is named after the repository at `path`, its first (`nameCanvasAfter`). */
+  canvasNamedAfter(path: string): string | null {
+    return (this.db.query('SELECT canvas_id FROM settings WHERE key = $key AND value = $path ORDER BY canvas_id LIMIT 1').get({ key: NAMED_AFTER, path }) as { canvas_id: string } | null)?.canvas_id ?? null;
+  }
+
+  /** The path of the repository the canvas without a name is named after (`nameCanvasAfter`). */
+  namedAfter(canvasId: string): string | null {
+    return this.setting(canvasId, NAMED_AFTER);
+  }
+
+  /** The canvas without a name is named after the repository at `path`, its first, and no other canvas is. */
+  nameCanvasAfter(canvasId: string, path: string) {
+    this.db.transaction(() => {
+      this.db.query('DELETE FROM settings WHERE key = $key AND value = $path AND canvas_id != $c').run({ key: NAMED_AFTER, path, c: canvasId });
+      this.setSetting(canvasId, NAMED_AFTER, path);
+    })();
   }
 
   setting(canvasId: string, key: string): string | null {

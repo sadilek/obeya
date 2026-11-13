@@ -36,7 +36,12 @@ navigation, the phone) they
 stand in the configuration's order, so the owner sets it by moving them in the Configuration dialog;
 the first is also where a page of a stopped canvas goes. A canvas without a name in the configuration is named after
 its first repository (the name in its `origin` URL, else its directory's), and its id follows, so all
-clones of a repository share one canvas. Which canvas a repository is on is this machine's alone.
+clones of a repository share one canvas. That id is given once, when the canvas first runs, and then
+stays with its first repository's path, whatever that repository's `origin` becomes later; only the
+name shown follows the `origin`. A canvas that came back under a new id before ids were kept (its
+first repository given an `origin` that names it otherwise) gets its directory's name back where the
+database still has cards under it, unless that canvas's home is another repository or the canvas
+under the new id has cards already. Which canvas a repository is on is this machine's alone.
 
 A repository's id on its canvas (what its cards, its plan-doc references `<repo>:<path>` and the
 canvas's home go by) is given once, when the repository first runs there: its name (the name in its
@@ -604,6 +609,11 @@ its status lines in German).
 - **A canvas may span several repositories, and one Obeya serves several canvases.** Rejected: one
   canvas per repository.
 - **A canvas belongs to a repository, not a checkout**, named after its `origin`, so clones share one.
+- **A canvas without a name keeps the id it first ran under** (2026-11-13), by its first repository's
+  path, in the database: derived anew at every start, it changed with that repository's `origin`, and
+  the canvas came back without its cards, settings and home. Rejected: writing the id into the
+  canvas's entry of the configuration when it first runs (a configuration given on the command line
+  has no file to write it to, and the owner's file would change by itself at a canvas's first start).
 - **A repository's id is kept from when it first runs on the canvas** (2026-11-12): derived anew at
   every start from the name in `origin`, it changed once an `origin` was set or pointed elsewhere (a
   checkout given a fork as `origin`), and the cards on it no longer found their repository. Rejected:

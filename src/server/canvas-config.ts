@@ -164,7 +164,9 @@ export function resolveCanvas(
       return () => settings;
     });
   let repos = config.repos.map((r, i) => ({ config: r, read: reads[i]!, adapter: repoAdapter(r, reads[i]!.info, settings(r), sharedOf(reads[i]!.info.path)) }));
-  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : slug(repoName(reads[0]!.info));
+  // a canvas without a name is its first repository's (`namedAfter`): the id it was given there first stays
+  const namedAfter = config.id || config.name ? undefined : reads[0]!.info.path;
+  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : unnamedId(store, reads[0]!.info);
   const kept = keptRepoIds(store, id);
   const refsOf = () => uniqueRefs(repos.map((x) => x.read.info), repos.map((x) => x.adapter), kept, () => store.cardRepos(id).concat(store.setting(id, 'home_repo') ?? []));
   let refs = refsOf();
@@ -184,6 +186,7 @@ export function resolveCanvas(
     name,
     repos: repos.map((x, i) => ({ ...x, ref: refs[i]!, values: () => repoValues(x.read.info, x.read.detected, namesClones(x.config, x.read.info, { land: x.adapter.land }), sharedOf(x.read.info.path)() ?? {}) })),
     stored,
+    ...(namedAfter ? { namedAfter } : {}),
   };
 }
 
@@ -251,6 +254,33 @@ function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[], kept: Record<str
     taken.add((ids[i] = id));
   });
   return infos.map((info, i) => ({ id: ids[i]!, name: repoName(info), path: info.path, ...settled(info, adapters[i]!) }));
+}
+
+/**
+ * The id of a canvas without a name whose first repository is `info`: the one it was given when it
+ * first ran (`keepCanvasId`), else its repository's name. Where the canvas came back under a new id
+ * before ids were kept, its `origin` set or changed meanwhile, it gets the one it had: its
+ * directory's name, where that canvas still has cards, no other repository is its home and none
+ * are on the canvas under its new id.
+ */
+function unnamedId(store: Store, info: RepoInfo): string {
+  const kept = store.canvasNamedAfter(info.path);
+  if (kept) return kept;
+  const id = slug(repoName(info));
+  const before = slug(basename(info.path));
+  if (!before || before === id || store.namedAfter(before) || !store.hasCards(before) || store.hasCards(id)) return id;
+  const home = store.setting(before, 'home_repo');
+  const at = Object.entries(keptRepoIds(store, before)).find(([, r]) => r === home)?.[0];
+  return at === undefined || at === info.path ? before : id;
+}
+
+/**
+ * Keeps the id of a canvas without a name (`id`) by the path of the first repository it is named
+ * after (`path`), so it keeps its cards when that repository's name changes, with a new `origin`,
+ * say.
+ */
+export function keepCanvasId(store: Store, id: string, path: string) {
+  if (store.canvasNamedAfter(path) !== id || store.namedAfter(id) !== path) store.nameCanvasAfter(id, path);
 }
 
 /** The ids the canvas's repositories were given, by their paths (`keepRepoIds`). */

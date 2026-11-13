@@ -6,7 +6,7 @@ import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
-import { type DefaultRead, keepRepoIds, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
+import { type DefaultRead, keepCanvasId, keepRepoIds, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-files';
@@ -317,7 +317,7 @@ export class CanvasRuntime {
     for (const r of config.repos) this.useBranch(r);
     this.config = config;
     const resolved = this.resolve(config, reads);
-    const { id, name, repos, stored } = resolved;
+    const { id, name, repos, stored, namedAfter } = resolved;
     this.config = resolved.config;
     const images = (this.images = new Images(join(deps.home, 'images', id)));
     this.files = new Files(join(deps.home, 'files', id));
@@ -333,6 +333,7 @@ export class CanvasRuntime {
     const board = this.board;
     if (!stored) deps.store.setSetting(id, 'home_repo', repos[0]!.ref.id);
     keepRepoIds(deps.store, id, repos.map((x) => x.ref));
+    if (namedAfter) keepCanvasId(deps.store, id, namedAfter);
     if (deps.store.setting(id, 'paused') === '1') this.showPaused(true);
 
     this.workRetro = new WorkRetro({

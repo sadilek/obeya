@@ -441,6 +441,76 @@ describe("a repository whose origin changes keeps its id and its cards", () => {
   });
 });
 
+describe('a canvas without a name whose first repository gets another origin keeps its id and its cards', () => {
+  /** The canvas without a name on the repository at `path`, its work landing on its main. */
+  const config = (path: string) => ({ repos: [{ path, settings: { land: 'main' as const } }] });
+
+  test('the id it was given when it first ran stays', async () => {
+    const store = new Store(':memory:');
+    const ui = repo('web-ui', 'UI');
+    const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
+    const first = await start(config(ui), deps);
+    expect([first.id, first.board.canvas.name]).toEqual(['web-ui', 'web-ui']);
+    const card = first.board.create({ title: 'UI card', x: 0, y: 0 });
+    await stop(first);
+    git(ui, 'remote', 'add', 'origin', join(dir, 'frontend.git'));
+    const again = await start(config(ui), deps);
+    // the name shown follows the origin, the id stays
+    expect([again.id, again.board.canvas.name]).toEqual(['web-ui', 'frontend']);
+    expect(again.board.item(card.id)?.title).toBe('UI card');
+    await stop(again);
+    // and once more, with yet another origin, in a set of canvases as Obeya starts them
+    git(ui, 'remote', 'set-url', 'origin', join(dir, 'app.git'));
+    const set = await startSet([config(ui)], deps);
+    expect(set.all().map((c) => c.id)).toEqual(['web-ui']);
+    expect(set.all()[0]!.board.item(card.id)?.title).toBe('UI card');
+  });
+
+  test("came back under a new id before ids were kept, it takes back its directory's name where its cards still are", async () => {
+    const store = new Store(':memory:');
+    const ui = repo('web-ui', 'UI');
+    const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
+    const first = await start(config(ui), deps);
+    const card = first.board.create({ title: 'UI card', x: 0, y: 0 });
+    await stop(first);
+    // as a store from before ids were kept has it
+    store.setSetting('web-ui', 'named_after', '');
+    git(ui, 'remote', 'add', 'origin', join(dir, 'frontend.git'));
+    const again = await start(config(ui), deps);
+    expect(again.id).toBe('web-ui');
+    expect(again.board.item(card.id)?.title).toBe('UI card');
+    expect(store.canvasNamedAfter(ui)).toBe('web-ui');
+    await stop(again);
+    // without cards under its directory's name, it is named after its origin
+    const fresh = await start(config(ui), { ...deps, store: new Store(':memory:') });
+    expect(fresh.id).toBe('frontend');
+  });
+
+  test("its directory's name stays with another canvas whose home that is, or where it has cards under its new id already", async () => {
+    const store = new Store(':memory:');
+    const ui = repo('web-ui', 'UI');
+    const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
+    const first = await start(config(ui), deps);
+    first.board.create({ title: 'UI card', x: 0, y: 0 });
+    await stop(first);
+    store.setSetting('web-ui', 'named_after', '');
+    // the canvas under the new id has cards of its own
+    const moved = repo('elsewhere/web-ui', 'UI');
+    git(moved, 'remote', 'add', 'origin', join(dir, 'frontend.git'));
+    const other = await start({ name: 'Frontend', repos: [{ path: moved, settings: { land: 'main' as const } }] }, deps);
+    other.board.create({ title: 'Frontend card', x: 0, y: 0 });
+    await stop(other);
+    git(ui, 'remote', 'add', 'origin', join(dir, 'frontend.git'));
+    expect((await start(config(ui), deps)).id).toBe('frontend');
+    // the canvas under its directory's name has another repository as its home
+    const second = new Store(':memory:');
+    const elsewhere = await start({ name: 'web-ui', repos: [{ path: moved, settings: { land: 'main' as const } }] }, { ...deps, store: second });
+    elsewhere.board.create({ title: 'Card elsewhere', x: 0, y: 0 });
+    await stop(elsewhere);
+    expect((await start(config(ui), { ...deps, store: second })).id).toBe('frontend');
+  });
+});
+
 test('canvases start, take a new configuration and restart a repository without the server waiting for git', async () => {
   const web = repo('web', 'Web');
   // a repository with an origin on a server (named after it), its read tree a worktree, clones to make and one listed
