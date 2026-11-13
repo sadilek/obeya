@@ -39,7 +39,12 @@ with your words.
 Approved work lands on `main` or goes out as a pull request on GitHub (GitHub Enterprise too),
 Forgejo or Gitea (Codeberg, for example). Obeya looks after the pull request until it is merged.
 Where your team merges itself, Obeya looks after it until it is ready to merge. Beside the branch,
-the card shows how large the change is, and a click shows the diff.
+the card shows how large the change is, and a click shows the diff. An approval given by mistake
+can be taken back, even after the work landed: Obeya closes the pull request or reverts the change.
+
+Give Obeya a branch of yours, or the link of your own pull request, and the task carries on there:
+its work goes onto that pull request. In a fork, each task can also go to the original repository
+as a pull request, while the fork keeps its own changes.
 
 "Share" puts a demo on a page of its own on your repository's demo site, for colleagues to watch.
 The site can also publish every approved demo without your click. If a repository has no demo
@@ -76,7 +81,7 @@ knows. The bar shows how much of your plan's session and week is used, for Claud
 (which Codex runs on), or for both. If you switch it on in Configuration, the bar also shows what
 the agents cost, per card and per canvas. In "Agents and models" you choose which harness and
 model each group of agents runs on. The menu beside a card's start button sets them for that card
-alone.
+alone. When Claude Code or Codex has an update, Obeya offers it at a click.
 
 ![An Obeya canvas: a project with its workstreams, one at work and one in the queue. Beside it are a demo and a question waiting for you, a task at work, an approved and a live one, and an idea](site/img/canvas.png)
 
