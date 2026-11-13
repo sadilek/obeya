@@ -10,7 +10,7 @@ import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
 import { Sharing } from './share';
-import { MANIFEST, type PageDemo, repoMark, type SharePage, type ShareTarget, siteKey, siteMissing, siteName, siteTarget } from './site';
+import { MANIFEST, type PageDemo, repoMark, type SharePage, type ShareTarget, siteKey, siteMissing, siteName, siteTarget, withoutHostMarkup } from './site';
 import { NOT_FOUND, pagesHash } from './site-pages';
 import { parseEnv } from './site-hosts';
 import { PAGES_HASH } from '../core/page-changes';
@@ -610,6 +610,30 @@ describe('a site Obeya keeps', () => {
   });
 });
 
+describe('what a host added to an HTML file', () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const want = (s: string) => ({ size: enc(s).length, hash: new Bun.CryptoHasher('sha256').update(s).digest('hex') });
+  const own = '<html><head><title>A</title></head><body><p>a < b</p>\n</body></html>\n';
+  const strip = (served: string, budget?: number) => {
+    const r = withoutHostMarkup(enc(served), want(own), budget);
+    return r && new TextDecoder().decode(r);
+  };
+
+  test('one stretch of markup anywhere, whitespace around it included, is taken out', () => {
+    expect(strip(own.replace('</body>', '<script defer src="b.js"></script></body>'))).toBe(own);
+    expect(strip(own.replace('<head>', '<head>\n  <script>x()</script>\n'))).toBe(own);
+    expect(strip(own.replace('</html>', '</html><!-- served by a host -->'))).toBe(own);
+  });
+
+  test('anything else is not: text, two places, a change, a file too short, a search over its budget', () => {
+    expect(strip(own.replace('<p>a', '<p>tracked a'))).toBeNull();
+    expect(strip(own.replace('<head>', '<head><i></i>').replace('</body>', '<i></i></body>'))).toBeNull();
+    expect(strip(own.replace('<title>A', '<title>B'))).toBeNull();
+    expect(strip(own.slice(1))).toBeNull();
+    expect(strip(own.replace('<head>', '<head><script>x()</script>'), own.length * 2)).toBeNull();
+  });
+});
+
 describe('several machines publishing to one site', () => {
   let other: string;
   let b: ShareTarget;
@@ -671,6 +695,52 @@ describe('several machines publishing to one site', () => {
     await make(SITE(), other, 'b', 'de', '').publish(page('c-333333', { shared: ['a-111111', 'b-222222'] }));
     expect(readFileSync(join(deployed(), 'index.html'), 'utf8')).toMatch(/<a href="c-333333\/"><b>Titel c-333333<\/b><span>\d+\. \S+ \d{4} · Erster Satz/);
     expect(html('c-333333')).toMatch(/<div class="when">Geteilt am \d+\. \S+ \d{4}<\/div>/);
+  });
+
+  test('a host adding its own script to the HTML it serves: the pages come over as written, and the deploy goes through', async () => {
+    // as Cloudflare Web Analytics does, right before </body> of every HTML file, an artifact's too
+    const BEACON = `<!-- Host Analytics --><script defer src='https://beacon.example.dev/b.js' data-token='{"token":"x"}'></script><!-- Host Analytics -->`;
+    host.html = (text) => text.replace('</body>', `${BEACON}</body>`);
+    const art = join(dir, 'artifact');
+    mkdirSync(art);
+    writeFileSync(join(art, 'index.html'), '<html><body><h2>Graph</h2></body></html>');
+    await target.publish(page('a-111111'));
+    await target.publish(page('chart-111111', { kind: 'html', chapters: [], dir: art, shared: ['a-111111'] }));
+    const served = await (await fetch(`${URL_}a-111111/index.html`)).text();
+    expect(served).toContain(BEACON);
+    const said: string[] = [];
+    expect(await b.publish(page('b-222222'), (l) => said.push(l))).toMatchObject({ url: `${URL_}b-222222/` });
+    expect(said).toEqual([expect.stringContaining('Downloading 2 pages')]);
+    for (const f of ['a-111111/index.html', 'chart-111111/index.html', 'chart-111111/artifact/index.html']) {
+      expect(readFileSync(join(siteDir(other), f), 'utf8')).toBe(readFileSync(join(siteDir(), f), 'utf8'));
+    }
+    // a page published again there comes over in its newer revision
+    await target.publish(page('a-111111', { title: 'Newer title', shared: ['chart-111111'] }));
+    expect(await b.publish(page('b-222222', { title: 'Again' }))).toMatchObject({ url: `${URL_}b-222222/` });
+    expect(readFileSync(join(siteDir(other), 'a-111111/index.html'), 'utf8')).toContain('Newer title');
+    expect(live().pages).toMatchObject({ 'a-111111': { rev: 2, machine: 'a' }, 'b-222222': { rev: 2, machine: 'b' } });
+  });
+
+  test('a page that does not match its manifest even so stays as it is here, and the others go out', async () => {
+    await target.publish(page('a-111111'));
+    await target.publish(page('c-333333', { shared: ['a-111111'] }));
+    await b.publish(page('b-222222'));
+    await target.publish(page('a-111111', { title: 'Newer title', shared: ['c-333333', 'b-222222'] }));
+    await target.publish(page('d-444444', { shared: ['a-111111', 'b-222222', 'c-333333'] }));
+    // the host rewrites a's page beyond adding something
+    host.html = (text, path) => (path.startsWith('/a-111111/') ? text.replace('Newer title', 'Other title') : text);
+    const said: string[] = [];
+    expect(await b.publish(page('b-222222', { title: 'Again' }), (l) => said.push(l))).toMatchObject({ url: `${URL_}b-222222/` });
+    expect(said).toContain('a-111111/index.html from the site does not match its manifest, even without what the host adds itself. This page goes out as this machine has it; the machine that shared it deploys it again once it notices.');
+    expect(existsSync(join(siteDir(other), 'd-444444/index.html'))).toBe(true);
+    expect(readFileSync(join(siteDir(other), 'a-111111/index.html'), 'utf8')).not.toContain('Newer title');
+    expect(live().pages['a-111111']).toMatchObject({ rev: 1 });
+    // the machine that shared it puts it back
+    delete host.html;
+    expect(await target.audit!(['a-111111', 'c-333333', 'd-444444'])).toEqual({ gone: [], missing: ['a-111111'] });
+    await target.repair!(['a-111111', 'c-333333', 'd-444444']);
+    expect(live().pages['a-111111']).toMatchObject({ rev: 2 });
+    expect(readFileSync(join(deployed(), 'a-111111/index.html'), 'utf8')).toContain('Newer title');
   });
 
   test('a page withdrawn on one machine stays withdrawn: the other removes it and says so', async () => {

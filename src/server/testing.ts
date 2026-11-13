@@ -600,6 +600,8 @@ export interface SiteHostSwitches {
   garbled?: boolean;
   /** `…/index.html` redirects (308) to `…/`, as Cloudflare Pages does. */
   pretty?: boolean;
+  /** What the host makes of each HTML file it serves (`path` from the site's root), as a host adding an analytics script does. */
+  html?: (text: string, path: string) => string;
 }
 
 /**
@@ -623,7 +625,10 @@ export function fakeSiteHost(out: () => string) {
       const file = join(deployed(), path);
       const root = join(deployed(), 'index.html');
       if (host.garbled && path === `/${MANIFEST}`) return new Response(Bun.file(root));
-      if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
+      if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) {
+        if (host.html && /\.html?$/.test(path)) return new Response(host.html(readFileSync(file, 'utf8'), path), { headers: { 'content-type': 'text/html' } });
+        return new Response(Bun.file(file));
+      }
       const missing = join(deployed(), NOT_FOUND);
       if (existsSync(missing)) return new Response(Bun.file(missing), { status: 404 });
       return host.fallback && existsSync(root) ? new Response(Bun.file(root)) : new Response('not found', { status: 404 });

@@ -536,6 +536,15 @@ deploy; a manifest answered with the host's fallback page (HTTP 200: Cloudflare 
 root's `index.html` for a site deployed without a `404.html`) counts as missing. A page
 another machine withdrew loses its link here, with a line naming the machine.
 
+A downloaded file must match its size and hash in the manifest. A host may add markup of its own
+to the HTML it serves (Cloudflare Web Analytics puts its script before `</body>` of every HTML
+file): an HTML file that is larger than listed counts as the page written when taking out one
+stretch of markup (from a tag to a tag, whitespace around it included) gives the listed hash; the
+search stops after hashing about 64 MiB, so a large artifact cannot hold the server up. A page that
+still does not match is left as this machine has it (an older revision, or none) with a line on the
+card, and the deploy goes on with the others: the machine that shared it finds the live site
+lacking that revision with its next check and deploys it again.
+
 ### Decisions
 
 - **Sharing belongs to a demo version; one page per card holds the shared versions, oldest on top**
@@ -674,6 +683,14 @@ another machine withdrew loses its link here, with a line naming the machine.
   nor does an unlisted site's page (`noindex`), nor a page exported as a file (it has no address).
 - **No `robots.txt` on the unlisted site** (2026-10-28): its `Disallow` hides the `noindex` from
   search engines, which may then list a linked address without its content.
+- **What a host adds to a page is taken out by the manifest's hash, not by rules for hosts, and a
+  page that does not match blocks only itself** (2026-11-13): once Cloudflare Web Analytics was on
+  for `demos.obeya.si`, every page Obeya had to download failed its hash, and each such failure
+  refused every share on the site for five hours. One stretch of markup is what analytics and
+  beacons add; the hash proves the rest is the file as written. Rejected: writing a downloaded page
+  anew from its `meta.json` (a page keeps the template it was written with, and another machine may
+  run a newer Obeya), and taking out known snippets of named hosts (rules for one host in the
+  core).
 - **Several machines pull before they push** (2026-10-09). Rejected: refusing deploys while the live
   site has pages missing here (leaves copying by hand), and a shared storage folder or bucket as the
   source (pushes the problem onto each user's setup).

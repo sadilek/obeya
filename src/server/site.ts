@@ -22,6 +22,13 @@
 // own (Cloudflare Pages serves the overview for a site without a `404.html`, as one deployed before
 // Obeya wrote it): a manifest answered that way is missing, not unreadable.
 //
+// A downloaded file must match the size and hash the manifest lists. A host may add markup of its
+// own to the HTML it serves (Cloudflare Web Analytics puts its script before `</body>`): an HTML
+// file that does not match is taken as written when taking out one stretch of markup gives the
+// manifest's hash (`withoutHostMarkup`). A page that still does not match stays as this directory
+// has it (an older revision, or none), with a line in the card's log, and the others go out: the
+// machine that shared it finds the live site lacking it (`audit`) and deploys it again.
+//
 // The pages come from Obeya's own templates (`demo-page.ts`, `site-pages.ts`), each in its demo's
 // language, the overview in the site's. A call writes only its own page and the overview: a page
 // shared earlier keeps the template it was written with until it is published again (the page
@@ -553,7 +560,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       log(t.pulling(fetchList.length, (bytes / 1024 / 1024).toFixed(1)));
     }
     let done = 0;
-    for (const [slug, e] of fetchList) {
+    pages: for (const [slug, e] of fetchList) {
       const into = join(base, 'incoming', slug);
       await rm(into, { recursive: true, force: true });
       for (const [f, want] of Object.entries(e.files ?? {})) {
@@ -577,7 +584,17 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         } catch (err) {
           throw new Refused(t.downloadFailed(name, messageOf(err)));
         }
-        if (bytes.length !== want.size || hash !== want.hash) throw new Refused(t.downloadBad(name));
+        if (bytes.length !== want.size || hash !== want.hash) {
+          // a host may add markup of its own to the HTML it serves
+          const own = /\.html?$/i.test(f) ? withoutHostMarkup(bytes, want) : null;
+          if (!own) {
+            // the page alone stays as this directory has it; its own machine's next check deploys it again (`audit`)
+            await rm(into, { recursive: true, force: true });
+            log(t.pageKept(name, await exists(join(dir, slug))));
+            continue pages;
+          }
+          bytes = own;
+        }
         await writeFile(to, bytes);
       }
       forget(slug);
@@ -1009,6 +1026,44 @@ async function bodyOf(body: ReadableStream<Uint8Array>): Promise<{ bytes: Uint8A
     chunks.push(chunk);
   }
   return { bytes: Buffer.concat(chunks), hash: h.digest('hex') };
+}
+
+/** How much a search for what a host added to an HTML file hashes at most, so a large artifact cannot hold the server up. */
+const ADDED_BUDGET = 64 * 1024 * 1024;
+
+const isSpace = (b: number) => b === 0x20 || b === 0x0a || b === 0x0d || b === 0x09;
+
+/**
+ * An HTML file as Obeya wrote it, from the bytes a host served (`got`): the host may have added
+ * markup of its own (an analytics script, a beacon) in one place. The stretch whose removal gives
+ * the size and hash the manifest lists (`want`) is what the host added: it starts with a tag and
+ * ends with one, give or take whitespace. Null where no such stretch is found, within a budget of
+ * bytes hashed; the stretches nearest the end are tried first, since they cost least.
+ */
+export function withoutHostMarkup(got: Uint8Array, want: { size: number; hash: string }, budget = ADDED_BUDGET): Uint8Array | null {
+  const extra = got.length - want.size;
+  if (extra <= 0) return null;
+  const starts: [number, ReturnType<typeof createHash>][] = [];
+  const prefix = createHash('sha256');
+  let hashed = 0;
+  for (let i = 0; i + extra <= got.length; i++) {
+    let first = i;
+    while (first < i + extra && isSpace(got[first]!)) first++;
+    let last = i + extra - 1;
+    while (last > first && isSpace(got[last]!)) last--;
+    if (got[first] !== 0x3c || got[last] !== 0x3e) continue;
+    prefix.update(got.subarray(hashed, i));
+    hashed = i;
+    starts.push([i, prefix.copy()]);
+  }
+  let spent = got.length;
+  for (const [i, h] of starts.reverse()) {
+    const rest = got.subarray(i + extra);
+    spent += rest.length;
+    if (spent > budget) return null;
+    if (h.update(rest).digest('hex') === want.hash) return Buffer.concat([got.subarray(0, i), rest]);
+  }
+  return null;
 }
 
 /** Runs `fn` on each item, a few at once: a site has hundreds of pages, a process may open fewer files at a time. */

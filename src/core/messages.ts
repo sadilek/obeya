@@ -582,6 +582,8 @@ const de = {
     pulled: (done: number, of: number) => `${done} von ${of} Seiten geladen.`,
     downloadFailed: (file: string, why: string) => `${file} war von der Site nicht zu laden (${why}).`,
     downloadBad: (file: string) => `${file} von der Site passt nicht zu ihrem Manifest.`,
+    pageKept: (file: string, here: boolean) =>
+      `${file} von der Site passt nicht zu ihrem Manifest, auch ohne das, was der Host selbst einfügt. ${here ? 'Diese Seite geht in dem Stand hinaus, den dieser Rechner von ihr hat' : 'Diese Seite fehlt in diesem Deploy'}; der Rechner, der sie geteilt hat, deployt sie wieder, sobald er es bemerkt.`,
     cameBetween: 'Der Deploy eines anderen Rechners kam dazwischen; noch eine Runde.',
     lostTwice: 'Zweimal kam der Deploy eines anderen Rechners dazwischen; die Site zeigt die Änderung nicht. Bitte noch einmal.',
     notSeenYet: 'Die Site zeigt den neuen Stand noch nicht; der nächste Deploy prüft wieder.',
@@ -1106,6 +1108,8 @@ const en: Messages = {
     pulled: (done: number, of: number) => `Downloaded ${done} of ${of} pages.`,
     downloadFailed: (file: string, why: string) => `${file} could not be downloaded from the site (${why}).`,
     downloadBad: (file: string) => `${file} from the site does not match its manifest.`,
+    pageKept: (file: string, here: boolean) =>
+      `${file} from the site does not match its manifest, even without what the host adds itself. ${here ? 'This page goes out as this machine has it' : 'This deploy goes without this page'}; the machine that shared it deploys it again once it notices.`,
     cameBetween: 'Another machine’s deploy came in between; one more round.',
     lostTwice: 'Another machine’s deploy came in between twice; the site does not show the change. Please try again.',
     notSeenYet: 'The site does not show the new state yet; the next deploy checks again.',
