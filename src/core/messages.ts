@@ -476,7 +476,7 @@ const de = {
     /** After `movedHere` or `joined`, for a repository cloned from an existing project; `fork`: the fork Obeya made of it on GitHub. */
     cloned: (path: string, from: string, fork?: string) =>
       fork
-        ? `${path} ist ein Klon von ${fork}, dem Fork von ${from}, den Obeya dafür auf GitHub angelegt hat. Arbeit landet auf seinem Hauptbranch; jede Karte kann zusätzlich als Pull Request an ${from} gehen.`
+        ? `${path} ist ein Klon von ${fork}, einem Fork von ${from}, den Obeya dafür auf GitHub angelegt hat. Arbeit landet auf seinem Hauptbranch; jede Karte kann zusätzlich als Pull Request an ${from} gehen.`
         : `${path} ist ein Klon von ${from}.`,
     /** In Obeya's sheet of the canvas the card left. */
     movedAway: (title: string, canvas: string) => `„${title}“ ist auf die Leinwand „${canvas}“ umgezogen und wird dort gebaut.`,
@@ -1038,7 +1038,7 @@ const en: Messages = {
     joined: (path: string, made: boolean) => `The repository ${path} ${made ? 'is new and ' : ''}belongs to this canvas now; the card works in it.`,
     cloned: (path: string, from: string, fork?: string) =>
       fork
-        ? `${path} is a clone of ${fork}, the fork of ${from} Obeya made for it on GitHub. Work lands on its main branch; each card may also go to ${from} as a pull request.`
+        ? `${path} is a clone of ${fork}, a fork of ${from} that Obeya made for it on GitHub. Work lands on its main branch; each card may also go to ${from} as a pull request.`
         : `${path} is a clone of ${from}.`,
     movedAway: (title: string, canvas: string) => `“${title}” moved to the canvas “${canvas}” and is built there.`,
     buildAnswer: (path: string) => `Build it like this, in the new repository ${path}.`,
