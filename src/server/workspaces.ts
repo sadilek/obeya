@@ -23,7 +23,7 @@ import { failureText } from './spawn';
 import { demoFile } from './demo-files';
 import { sameRemote } from './repo';
 import { branchSetting, type Branches, CARD_BRANCH, detectBranch, readBranches } from './branches';
-import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, hasCommit, isAncestor, LOOK, NO_PROMPT, remoteWorkspace, WorkspaceError } from './git';
+import { AS_OBEYA, GIT, gitAsync, gitNames, gitRun, gitTry, hasCommit, isAncestor, LOOK, NO_PROMPT, pastWorktreeRace, remoteWorkspace, WorkspaceError } from './git';
 
 /** A restored card's branch is no longer in the clone it takes back (`retake`). */
 export class BranchGone extends WorkspaceError {}
@@ -2216,7 +2216,8 @@ export class Workspaces implements CardWorkspaces {
       }
       await removeTree(path);
       mkdirSync(dirname(path), { recursive: true });
-      await gitAsync(repo, ...detachedTree(path, (await commit(repo, ref)) ?? ref));
+      const at = (await commit(repo, ref)) ?? ref;
+      await pastWorktreeRace(() => gitAsync(repo, ...detachedTree(path, at)));
       return path;
     })();
     const added = ready.then(() => {});
@@ -2277,8 +2278,13 @@ export class Workspaces implements CardWorkspaces {
         // a branch of the owner's: the checkout's copy, brought forward to origin's on the way, or origin's where it has none
         const adopted = adopt ? await adopt().catch(() => null) : null;
         if (adopt && !adopted) throw new WorkspaceError(`the branch ${branch} is neither in the checkout nor on origin`);
-        if ((await gitAsync(this.o.repoPath, 'branch', '--list', branch)) !== '') await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch);
-        else await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, adopted ?? (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath)));
+        // where it starts, found once; the branch is looked for again on a retry: the attempt before may have made it
+        let base: string | undefined;
+        await pastWorktreeRace(async () => {
+          if ((await gitAsync(this.o.repoPath, 'branch', '--list', branch)) !== '') return void (await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch));
+          base ??= adopted ?? (await this.startIn(this.o.repoPath, start)) ?? (await this.mainAsync(this.o.repoPath));
+          await gitAsync(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, base);
+        });
         return path;
       },
       () => this.store.removeWorkspace(path),

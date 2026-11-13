@@ -227,7 +227,12 @@ no fetch where the clone's `origin` is a repository on this machine whose branch
 has already),
 the temporary worktree of a finished card's question likewise. Meanwhile the card is at work, its
 status line "Preparing the workspace …"; it holds a slot, a restart waits for it, and the
-owner's words wait unread until the worker starts with its task. A card stopped meanwhile gives
+owner's words wait unread until the worker starts with its task. Worktrees of one repository are
+added in parallel (a project's workstreams start together), but git does not support that fully:
+an add that reads the repository's list of worktrees while another add is writing its entry fails
+("failed to read .git/worktrees/…/commondir"). Obeya tries such an add again a few times after a
+short pause, rather than adding one worktree at a time, which would hold every start back for
+however long the slowest checkout takes (2026-11-13). A card stopped meanwhile gives
 the workspace back once git is done. Where git fails, the workspace goes back, the card returns to
 where it was (planned, its snooze gone, the words kept for its next start) and its conversation
 says why; a clone git failed on is passed over for a while, like a dirty one, so a fetch that keeps

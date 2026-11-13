@@ -231,6 +231,26 @@ async function yesOrNo(cwd: string, args: string[], unsure?: boolean): Promise<b
 }
 
 /**
+ * Runs `step`, git work that adds a worktree (or otherwise reads the repository's list of worktrees),
+ * again where it failed only because git was adding another worktree to the same repository at that
+ * moment: git reads that one's entry before it is fully written and gives up ("failed to read
+ * .git/worktrees/…/commondir"), as when a project's workstreams start together. `step` begins anew,
+ * so it has to be one that can: one that checks first what an earlier attempt left (a branch it made).
+ */
+export async function pastWorktreeRace<T>(step: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await step();
+    } catch (e) {
+      if (attempt >= WORKTREE_RACE_ATTEMPTS || !WORKTREE_RACE.test(e instanceof Error ? e.message : String(e))) throw e;
+      await new Promise((r) => setTimeout(r, 50 * attempt));
+    }
+  }
+}
+const WORKTREE_RACE = /failed to read \S*worktrees[\\/][^\\/\s]+[\\/](commondir|gitdir)\b/;
+const WORKTREE_RACE_ATTEMPTS = 5;
+
+/**
  * Whether commit `a` is an ancestor of `b` in `cwd`. Where git cannot tell (an unknown commit, a
  * broken repository) it is `unsure` where the caller gives what that means for it, else it throws.
  */

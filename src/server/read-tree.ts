@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node
 import { rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { branchSetting, CARD_BRANCH, defaultBranchCommit } from './branches';
-import { gitRun, gitTry, isAncestor, NO_PROMPT } from './git';
+import { gitAsync, gitRun, gitTry, isAncestor, NO_PROMPT, pastWorktreeRace } from './git';
 import { realPath } from './path';
 import { detachedTree } from './workspaces';
 
@@ -434,5 +434,8 @@ async function checkWorktree(repoPath: string, dir: string): Promise<{ state: 's
 /** Adds the worktree at `dir` detached at `target` to the checkout `repoPath`'s repository; whether git could. */
 async function addWorktree(repoPath: string, dir: string, target: string): Promise<boolean> {
   await gitTry(repoPath, 'worktree', 'prune');
-  return (await gitTry(repoPath, ...detachedTree(dir, target))) !== null;
+  return pastWorktreeRace(() => gitAsync(repoPath, ...detachedTree(dir, target))).then(
+    () => true,
+    () => false,
+  );
 }
