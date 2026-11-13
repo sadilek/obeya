@@ -519,7 +519,8 @@ export function syncGitCalls() {
 /**
  * A stand-in for `ssh` that runs the command on this machine, as a host's login shell would; the
  * host counts as unreachable (exit 255, as ssh's own) while `<dir>/down` exists. Its home is
- * `<dir>/home`. Each command it ran is appended to `<dir>/log`, with the target first; each
+ * `<dir>/home`. As with a real ssh, this machine's GitHub login in the environment (Obeya hands
+ * its workers one in `GH_TOKEN`) does not reach the host. Each command it ran is appended to `<dir>/log`, with the target first; each
  * connection it tried, reachable or not, adds a line to `<dir>/tries`. A forward (`-L` from here,
  * `-R` from there, the same on one machine) is a proxy on this machine for as long as the command
  * runs; the command's pid goes to `<dir>/forwards`, each proxy's to `<dir>/proxies`.
@@ -552,6 +553,7 @@ echo x >> ${JSON.stringify(join(dir, 'tries'))}
 [ -e ${JSON.stringify(join(dir, 'down'))} ] && { echo "ssh: connect to host $target: Connection refused" >&2; exit 255; }
 printf '%s %s\\n' "$target" "$*" >> ${JSON.stringify(join(dir, 'log'))}
 HOME=${JSON.stringify(join(dir, 'home'))}; export HOME; mkdir -p "$HOME"
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 [ -z "$fwd" ] && exec sh -c "$*"
 echo $$ >> ${JSON.stringify(join(dir, 'forwards'))}
 proxy=
