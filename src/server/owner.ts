@@ -12,7 +12,7 @@
 import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { jsonInScript } from '../core/frame';
+import { jsonInScript } from '../core/frame.ts';
 import type { Language } from '../core/locale';
 import { MESSAGES } from '../core/messages.ts';
 
