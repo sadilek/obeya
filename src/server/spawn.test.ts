@@ -113,8 +113,11 @@ test('a thread that dies while its process runs fails that call without starting
     // a thread of its own, for which this process is the first
     await endThreads();
     const running = spawnOutput([process.execPath, '-e', `require('fs').appendFileSync(${JSON.stringify(log)}, 'x'); await Bun.sleep(5000)`]);
+    // handed to its thread within a few microtasks, then waited for without a turn of the event
+    // loop: the thread ends before the server has read any message of it, as it may under load
+    for (let i = 0; i < 10; i++) await null;
     const t0 = Date.now();
-    while (!readFileSync(log, { flag: 'a+' }).length && Date.now() - t0 < 5000) await Bun.sleep(20);
+    while (!readFileSync(log, { flag: 'a+' }).length && Date.now() - t0 < 5000) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     await endThreads();
     await expect(running).rejects.toThrow(/thread/);
     // started a second time, it would have written at once

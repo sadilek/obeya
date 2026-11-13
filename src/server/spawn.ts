@@ -159,15 +159,18 @@ type Output = { code: number; stdout: string; stderr: string; signal: string | n
  */
 const THREADS = 2;
 const THREAD_CODE = `
-// first, before any process: a thread that fails without having said so started none
-postMessage({ ready: true });
 const acquire = ${acquire};
 const release = ${release};
 const tookOver = ${tookOver};
-let starts = null, owner = 0, limit = 0;
-self.onmessage = async ({ data: { id, argv, o, lock } }) => {
-  // first, before any process: the lock on starting them (Windows), and who this thread is
-  if (lock) return void ({ starts, owner, limit } = lock);
+let ran = null, starts = null, owner = 0, limit = 0;
+self.onmessage = async ({ data: { id, argv, o, init } }) => {
+  // first, before any process: where it says that it runs, the lock on starting them (Windows),
+  // and who this thread is. A thread the server has given up already starts nothing
+  if (init) {
+    ({ ran, starts, owner, limit } = init);
+    return void Atomics.compareExchange(ran, 0, 0, 1);
+  }
+  if (Atomics.load(ran, 0) !== 1) return;
   try {
     if (starts) tookOver(acquire(starts, owner, limit), limit);
     let p;
@@ -192,8 +195,12 @@ type RefWorker = Worker & { ref(): void; unref(): void };
 interface Thread {
   worker: RefWorker;
   waiting: Map<number, { argv: string[]; o: Options; done: (out: Output) => void; failed: (e: Error) => void }>;
-  /** Whether its code has run: one that fails before then started no process. */
-  ready: boolean;
+  /**
+   * 1 once its code has run, before it starts any process; 2 once the server has given it up
+   * before then, which it starts nothing for. Shared memory, not a message: a thread ended before
+   * the server had read its message that it ran would have its process started a second time.
+   */
+  ran: Int32Array;
   /** Set once it failed or ended: it takes no more processes. */
   lost: boolean;
   /** Its number, as it holds `STARTS`. */
@@ -232,10 +239,9 @@ function thread(): Thread | null {
   }
   // it keeps the server running only while a process it started is waited for
   worker.unref();
-  const t: Thread = { worker, waiting: new Map(), ready: false, lost: false, owner: ++lastOwner };
-  if (STARTS) worker.postMessage({ lock: { starts: STARTS, owner: t.owner, limit: HOLD_MS } });
-  worker.onmessage = ({ data }: MessageEvent<{ ready?: true; id: number; out?: Output; error?: Error & Record<string, unknown> }>) => {
-    if (data.ready) return void (t.ready = true);
+  const t: Thread = { worker, waiting: new Map(), ran: new Int32Array(new SharedArrayBuffer(4)), lost: false, owner: ++lastOwner };
+  worker.postMessage({ init: { ran: t.ran, starts: STARTS, owner: t.owner, limit: HOLD_MS } });
+  worker.onmessage = ({ data }: MessageEvent<{ id: number; out?: Output; error?: Error & Record<string, unknown> }>) => {
     const w = t.waiting.get(data.id);
     if (!w) return;
     t.waiting.delete(data.id);
@@ -260,7 +266,9 @@ function lose(t: Thread, why: string) {
   t.lost = true;
   threads.splice(threads.indexOf(t), 1);
   t.worker.terminate();
-  if (!t.ready) {
+  // one whose code has not run yet never will start a process
+  const ran = Atomics.compareExchange(t.ran, 0, 0, 2) === 1;
+  if (!ran) {
     noThreads = true;
     console.error(`Obeya: processes start on the server's thread, a thread of their own failed to start: ${why}`);
   }
@@ -270,7 +278,7 @@ function lose(t: Thread, why: string) {
     for (const w of given) {
       // one whose code never ran started nothing: what it was given starts here instead. One that
       // ran may have started it: it is not started twice (a push, a landing), it failed
-      if (t.ready) w.failed(new Error(`the thread that started ${w.argv[0]} failed: ${why}`));
+      if (ran) w.failed(new Error(`the thread that started ${w.argv[0]} failed: ${why}`));
       else run(w.argv, w.o).then(w.done, w.failed);
     }
   });
