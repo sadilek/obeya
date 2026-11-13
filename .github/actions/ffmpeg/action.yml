@@ -1,5 +1,8 @@
 # ffmpeg on the runner, where its image has none: tts.py makes every voice's clip a WAV with it, for
-# the tests and the voice check alike.
+# the tests and the voice check alike. Windows takes a build from GitHub (BtbN/FFmpeg-Builds, with
+# libx264 like the demos need): Chocolatey's feed answered 503 at times, and its install then
+# reported success without ffmpeg. The last step fails the job where ffmpeg is missing, rather than
+# the voices failing later without naming it.
 name: ffmpeg
 description: Installs ffmpeg unless the runner has it
 runs:
@@ -9,7 +12,15 @@ runs:
       run: |
         command -v ffmpeg && exit
         case "$RUNNER_OS" in
-          Linux) sudo apt-get update && sudo apt-get install -y ffmpeg ;;
+          Linux) sudo apt-get update && sudo apt-get install -y -o Acquire::Retries=3 ffmpeg ;;
           macOS) brew install ffmpeg ;;
-          Windows) choco install ffmpeg -y --no-progress ;;
+          Windows)
+            name=ffmpeg-master-latest-win64-gpl-shared
+            curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
+              -o "$RUNNER_TEMP/ffmpeg.zip" "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$name.zip"
+            # Windows' own tar reads zip files
+            /c/Windows/System32/tar.exe -xf "$(cygpath -w "$RUNNER_TEMP/ffmpeg.zip")" -C "$(cygpath -w "$RUNNER_TEMP")"
+            cygpath -w "$RUNNER_TEMP/$name/bin" >> "$GITHUB_PATH" ;;
         esac
+    - shell: bash
+      run: command -v ffmpeg && ffmpeg -hide_banner -version > /dev/null

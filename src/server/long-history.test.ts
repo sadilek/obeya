@@ -100,7 +100,10 @@ test('a change to a shared card: the notice of outdated pages is made anew with 
       long.canvas.board.work(shared[n++ % shared.length]!, { title: `Renamed ${n}` });
       await heard();
     }),
-  ).toBeLessThan(8);
+    // four units on an idle machine, five with every core busy, nine on a busy CI runner (the notice
+    // goes over far more memory than the unit's rebuild); reading and judging every shared card
+    // again with each change costs over twenty-five
+  ).toBeLessThan(14);
   expect(long.canvas.board.snapshot().reshare!.outdated).toBeGreaterThan(4000);
 });
 
