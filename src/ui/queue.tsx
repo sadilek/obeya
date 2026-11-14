@@ -112,8 +112,14 @@ export function QueueList({ items, q, onOpen }: { items: Item[]; q: ReturnType<t
   );
 }
 
+/** A card as the queue names it: a workstream after its label (`W3: …`), so it reads as its project's; any other by its title. */
+export const queueName = (i: Item) => (i.label ? `${i.label}: ${plain(i.title)}` : plain(i.title));
+
 /** What a waiting card's line says it waits for: each card by `name`, and whether it has not been started. */
-export function waitedOn(ids: string[], items: Item[], name: (id: string) => string = (id) => plain(items.find((i) => i.id === id)?.title ?? id)) {
+export function waitedOn(ids: string[], items: Item[], name: (id: string) => string = (id) => {
+  const i = items.find((x) => x.id === id);
+  return i ? queueName(i) : id;
+}) {
   return ids.map((id) => {
     const i = items.find((x) => x.id === id);
     return { title: name(id), notStarted: !!i && notStarted(i) };
@@ -153,7 +159,7 @@ function QueueRow(p: {
   const { item, items, onOpen } = p;
   // pulled beyond where its waits let it go: the card that stops it, and why
   const stop = p.drag?.held && reach(item.id, p.drag.held === 'earlier', items);
-  const held = stop && stop.stop && stop.why ? t.queue.stuck[stop.why](plain(stop.stop.title)) : '';
+  const held = stop && stop.stop && stop.why ? t.queue.stuck[stop.why](queueName(stop.stop)) : '';
   return (
     <li className={p.own ? 's-planned own' : 's-planned'} {...p.row} onClick={onOpen && (() => onOpen(item))}>
       {p.grip ? (
@@ -172,7 +178,7 @@ function QueueRow(p: {
       )}
       <span className="dot" />
       <span className="q-what">
-        {plain(item.title)}
+        {queueName(item)}
         <br />
         <span className="hint">{item.queue && 'behind' in item.queue ? t.queue.behind(waitedOn(item.queue.behind, items)) : stateLabel(item)}</span>
         {p.failed && <span className="hint why">{p.failed}</span>}
@@ -214,7 +220,7 @@ export function useQueueMove(item: Item, items: Item[]): { buttons: ReactNode; p
   const order = queueOrder(items);
   const ways = [true, false].map((earlier) => {
     const { past, why: stuck } = move(item.id, earlier, items);
-    return { earlier, past, blocked: past && stuck ? t.queue.stuck[stuck](plain(past.title)) : '' };
+    return { earlier, past, blocked: past && stuck ? t.queue.stuck[stuck](queueName(past)) : '' };
   });
   const button = ({ earlier, past, blocked }: (typeof ways)[number]) => {
     const label = earlier ? t.queue.earlier : t.queue.later;

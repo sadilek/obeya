@@ -9,7 +9,8 @@ edge indicators, minimap, and a frosted top bar the canvas slides under.
 
 Left, after the navigation's button (see The navigation): the search's place, the archive's button
 (see Archive), the queue's and "New task". The queue's button counts the waiting cards; a click
-lists them in turn, each with what it waits for, buttons to move it and a × that takes it out of the
+lists them in turn (a workstream after its label, "W3: …", so it reads as its project's; so too
+where a row names another), each with what it waits for, buttons to move it and a × that takes it out of the
 queue at once, as "Take out of the queue" on the card does (back to planned; no undo, starting it
 again is the way back); a row opens its card. The navigation's, the archive's and
 the queue's lists close on a click beside them and on Esc. Obeya's button is the rightmost (see
