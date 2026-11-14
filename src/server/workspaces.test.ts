@@ -939,8 +939,8 @@ describe('clones the configuration no longer names', () => {
   });
 
   test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main, or a tag origin has, count as landed', async () => {
-    const { spaces, paths } = await make(5);
-    const [tagged, deleted, squashed, odd, released] = paths as [string, string, string, string, string];
+    const { spaces, paths } = await make(6);
+    const [tagged, deleted, squashed, odd, released, moved] = paths as [string, string, string, string, string, string];
     git(tagged, 'checkout', '--quiet', '-b', 'try');
     commit(tagged, 'try.txt');
     git(tagged, 'tag', 'tried');
@@ -973,15 +973,22 @@ describe('clones the configuration no longer names', () => {
     commit(released, 'fix.txt');
     git(released, 'tag', '-a', '-m', 'Release', 'v1.0.1');
     git(released, 'push', '--quiet', 'origin', 'hotfix', 'v1.0.1');
-    git(released, 'checkout', '--quiet', 'main');
+    // and HEAD left on it, which only the tag reaches
+    git(released, 'checkout', '--quiet', '--detach', 'v1.0.1');
     git(released, 'branch', '--quiet', '-D', 'hotfix');
     git(origin, 'branch', '--quiet', '-D', 'hotfix');
+    // the same release's tag, here at a commit of its own
+    git(moved, 'fetch', '--quiet', 'origin', 'tag', 'v1.0.1');
+    commit(moved, 'other-fix.txt');
+    git(moved, 'tag', '--force', 'v1.0.1');
+    git(moved, 'reset', '--quiet', '--hard', 'HEAD~1');
     spaces.keepOnly(null, []);
-    await until(() => !existsSync(squashed) && !existsSync(released) && spaces.pool([])[0]!.kept?.length === 3, 15_000 * PATIENCE);
+    await until(() => !existsSync(squashed) && !existsSync(released) && spaces.pool([])[0]!.kept?.length === 4, 15_000 * PATIENCE);
     const kept: KeptClone[] = [
       { path: tagged, lost: [{ what: 'commits', kind: 'tag', name: 'tried', n: 1 }] },
       { path: deleted, lost: [{ what: 'commits', kind: 'branch', name: 'obeya/gone', n: 1 }] },
       { path: odd, lost: [{ what: 'commits', kind: 'branch', name: 'odd', n: WINDOWS ? 1 : 2 }] },
+      { path: moved, lost: [{ what: 'commits', kind: 'tag', name: 'v1.0.1', n: 1 }] },
     ];
     const byPath = (a: KeptClone, b: KeptClone) => a.path.localeCompare(b.path);
     expect(spaces.pool([])[0]!.kept!.toSorted(byPath)).toEqual(kept.toSorted(byPath));
