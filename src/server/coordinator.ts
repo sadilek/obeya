@@ -12,7 +12,7 @@ import { finished, landedWork, nameless, titleFrom } from '../core/card';
 import { BadRequest, type Board, TITLE_MAX } from './board';
 import { ACTIVE } from './items';
 import { fromJson, toJson } from './row';
-import { type AgentRuntime, type OnLimit, readSession, waitQuietly } from './runtime';
+import { type AgentRuntime, type OnLimit, readSession } from './runtime';
 import type { Workers } from './workers';
 import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './workspaces';
 import { LANGUAGE_NAMES } from '../core/locale';
@@ -429,10 +429,15 @@ export class Coordinator {
       // nothing it could collide with or build on: start at once, and estimate the scope for the cards after it
       this.startNow(cardId, this.o.board.t.coordinator.nothingRuns);
       if (this.o.board.item(cardId)?.state !== 'working') return;
-      try {
-        const scope = await this.estimate(card, [], [], [], waitQuietly);
-        this.o.board.work(cardId, { scope: toJson({ files: scope.files, reason: scope.reason }) });
-      } catch {}
+      // the cards after it are judged once it is estimated, but not while the usage limit holds that up:
+      // they show their own wait then, and the estimate comes in whenever it can
+      let held!: () => void;
+      const limited = new Promise<void>((r) => (held = r));
+      const estimated = this.estimate(card, [], [], [], (until) => until !== undefined && held()).then(
+        (scope) => this.o.board.work(cardId, { scope: toJson({ files: scope.files, reason: scope.reason }) }),
+        () => {},
+      );
+      await Promise.race([estimated, limited]);
       return;
     }
     let scope: Scope;

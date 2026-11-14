@@ -46,7 +46,9 @@ say) are judged together, in one turn as a project's start is (see Starting a wh
 sees them in their order in the queue, keeps that order unless a dependency or a likely conflict
 asks for another, and says which start now and which wait for which, so the first in the queue
 does not start blind to one after it that it should build on or would collide with; a card alone
-starts at once where nothing runs. "Start anyway" starts it at the owner's own risk. While it waits
+starts at once where nothing runs; its files are still estimated, for the cards after it, which
+wait for that estimate, but not while the usage limit holds it up (they are judged meanwhile and show
+their own wait). "Start anyway" starts it at the owner's own risk. While it waits
 it keeps its full card and takes notes for its worker (see Card layout); spoken words there go to
 the Coordinator.
 

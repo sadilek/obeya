@@ -455,6 +455,21 @@ describe('Coordinator', () => {
     expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
   });
 
+  test("the estimate of a card that started at once holds up no card after it while the usage limit stops it", async () => {
+    k = new Coordinator({ board, runtime: withLimitWait(runtime, 10), home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 0 });
+    const a = card('A');
+    k.request(a.id);
+    await settle();
+    expect(item(a.id).state).toBe('working');
+    estimates().at(-1)!.emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() + 60_000 } });
+    const b = card('B');
+    k.request(b.id);
+    // B is judged now, and its own estimate is what shows the limit
+    await until(() => estimates().length === 2);
+    estimates().at(-1)!.emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() + 60_000 } });
+    expect(item(b.id).limitedUntil).toBeDefined();
+  });
+
   test('without an estimate the card still starts, and says why', async () => {
     const a = card('A');
     k.request(a.id);
