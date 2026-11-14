@@ -6,6 +6,7 @@ import type { CardAction, CardPatch, Item } from '../core/types';
 import { archiveRefusal, finishingUp, snoozable } from '../core/card';
 import { api, type Field } from './api';
 import { Naming } from './cardLink';
+import { CardIdRoom } from './cardNumber';
 import { plain } from './markdown';
 import { shownTitle } from './parts';
 import { AgentPick } from './agentPick';
@@ -36,6 +37,7 @@ export type Tell = (text: string, images: string[] | undefined, field: Field, re
 export function CardHead({ item, kind, onEdit }: { item: Item; kind: string; onEdit?: false | ((p: CardPatch) => void) }) {
   return (
     <>
+      <CardIdRoom n={item.number} createdAt={item.createdAt} />
       {kind && <div className="p-kind">{kind}</div>}
       {onEdit ? <ManualTitle item={item} onEdit={onEdit} /> : <div className="p-title">{shownTitle(item)}</div>}
     </>

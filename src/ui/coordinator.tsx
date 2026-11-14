@@ -12,7 +12,7 @@ import { AnswerFiles, Continues, Msg, Quote, Reading, ThreadCard } from './messa
 import { WalkthroughButton } from './walkthrough';
 import { isWalkthrough } from '../core/walkthrough';
 import { type Reply, setReply, talkEv, talkQuote } from './reply';
-import { clock, t } from './strings';
+import { clock, stamp, t } from './strings';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
 import { DictatedArea } from './dictation';
@@ -306,7 +306,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
         if (x.moved)
           return (
             <div key={x.id} className="note ev-state">
-              {clock(x.at)} · {t.coordinator.moved(plain(x.moved.title), x.moved.canvasName)}{' '}
+              {stamp(x.at)} · {t.coordinator.moved(plain(x.moved.title), x.moved.canvasName)}{' '}
               <a className="link" href={cardPath(x.moved.canvas, x.moved.card)}>
                 {t.openThere}
               </a>
@@ -317,7 +317,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
             {/* Obeya took a step up by itself, once a card it waited on got there or the answer it looked up for it came in: no words of the owner's */}
             {x.after ? (
               <div className="note ev-state">
-                {clock(x.at)} · {t.coordinator.after(x.after.title, x.after.met, x.after.state)}
+                {stamp(x.at)} · {t.coordinator.after(x.after.title, x.after.met, x.after.state)}
               </div>
             ) : x.answered ? null : (
               <Msg by="owner" who={t.author.owner} at={x.at} ev={talkEv({ talk: x.id, part: 'said' })} onReply={reply('said', 'owner', x.said)}>

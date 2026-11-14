@@ -1,10 +1,11 @@
 // A card's number (`K42`), on its face and in its sheet: a click puts it on the clipboard, so the
-// owner can name the card by it to the Coordinator and the agents.
+// owner can name the card by it to the Coordinator and the agents. In the sheet, the day the card
+// was made stands before it.
 
 import { useRef } from 'react';
 import { cardTag } from '../core/card-number';
 import { useCopied } from './copy';
-import { t } from './strings';
+import { day, madeOn, t } from './strings';
 
 /** The two sheets of the copy icon. */
 export function CopyIcon({ size = 15 }: { size?: number }) {
@@ -41,5 +42,32 @@ export function CardNumber({ n, className }: { n: number; className?: string }) 
       <span ref={el}>{tag}</span>
       {done ? <span className="card-no-done">{done === 'copied' ? t.copied : t.cardNumber.selected}</span> : <CopyIcon size={12} />}
     </button>
+  );
+}
+
+/** An open card's day of making and its number, side by side in the sheet's head. */
+export function CardId({ n, createdAt, className }: { n: number; createdAt?: string; className: string }) {
+  return (
+    <div className={className}>
+      {createdAt && (
+        <span className="card-made" title={madeOn(createdAt)}>
+          {day(createdAt)}
+        </span>
+      )}
+      <CardNumber n={n} />
+    </div>
+  );
+}
+
+/**
+ * The room the sheet's head (`CardId`, which lies over the sheet) takes beside the first line of
+ * the card's text, kept free so a long title wraps before it: as wide as the head's words.
+ */
+export function CardIdRoom({ n, createdAt }: { n: number; createdAt?: string }) {
+  return (
+    <span className="card-id-room" aria-hidden="true">
+      {createdAt && <span>{day(createdAt)}</span>}
+      <span>{cardTag(n)}</span>
+    </span>
   );
 }

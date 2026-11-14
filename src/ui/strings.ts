@@ -179,6 +179,7 @@ const de = {
   cardNumber: {
     copy: (tag: string) => `Nummer ${tag} kopieren: so nennst du die Karte Obeya und den Agenten`,
     selected: 'Markiert',
+    created: (day: string) => `Erstellt am ${day}`,
   },
   sheetGrip: 'Breite ziehen · Doppelklick: zurück auf die Standardbreite',
   planSheet: 'Projekt · Plan',
@@ -2569,6 +2570,7 @@ const en: Strings = {
   cardNumber: {
     copy: (tag: string) => `Copy the number ${tag}: name the card by it to Obeya and the agents`,
     selected: 'Selected',
+    created: (day: string) => `Created on ${day}`,
   },
   sheetGrip: 'Drag to resize · Double-click: back to the default width',
   planSheet: 'Project · Plan',
@@ -4706,6 +4708,15 @@ export const countdown = (ms: number) => {
 };
 /** A short date: day and month. */
 export const shortDay = (d: Date | string | number) => new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+/** A short date with the year only when it is not this one: „13. Nov.“, „2. Dez. 2025“. */
+export const day = (d: Date | string | number) => {
+  const at = new Date(d);
+  return at.toLocaleDateString(locale, { day: 'numeric', month: 'short', ...(at.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+};
+/** When something happened: the time today, else its day and time („13. Nov., 15:04“). */
+export const stamp = (d: Date | string | number) => (new Date(d).toDateString() === new Date().toDateString() ? clock(d) : `${day(d)}, ${clock(d)}`);
+/** When a card was made, in full: its weekday, date and time. */
+export const madeOn = (d: string) => t.cardNumber.created(`${longDay(new Date(d), new Date())}, ${clock(d)}`);
 /** When something began: the time today, else the day. */
 export const when = (d: string | number) => (new Date(d).toDateString() === new Date().toDateString() ? clock(d) : shortDay(d));
 /** A long date with its weekday; the year only when it is not this one. */
@@ -4778,11 +4789,11 @@ function queueLabel(q: Queue): string {
 /** An idea or a task decided as a project, until the project takes its place; a card that was an idea has the brief it was decided on. */
 export const becomesLabel = (i: { brief?: string }) => (i.brief !== undefined ? t.kind.becomesProject : t.kind.taskBecomesProject);
 
-/** What kind of card it is, in a word or two, on its face and in its head; a plain task says nothing of its kind. */
+/** What kind of card it is, in a word or two, on its face and in its head; a plain task says nothing of its kind, nor does an idea, whose state line says it is one. */
 export const kindLabel = (i: Pick<Item, 'kind' | 'idea' | 'proposal' | 'becomesProject' | 'brief' | 'prototypeOf' | 'adopted'>) =>
   i.kind === 'question'
     ? t.kind.question
-    : i.idea || i.proposal?.idea
+    : i.proposal?.idea
       ? t.kind.idea
       : i.becomesProject
         ? becomesLabel(i)

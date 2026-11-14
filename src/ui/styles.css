@@ -652,8 +652,13 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 }
 #panel.ready .inner { opacity: 1; }
 #panel .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; z-index: 2; }
-/* the card's number, left of the close button */
-#panel .sheet-no { position: absolute; right: 54px; top: 18px; z-index: 2; margin: 0; font-size: 12.5px; }
+/* the day the card was made and its number, left of the close button */
+#panel .sheet-no { position: absolute; right: 54px; top: 18px; z-index: 2; display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+:is(.sheet-no, .ph-no) .card-no { order: 0; margin: -3px -5px; font-size: inherit; }
+.card-made { color: var(--muted); font-variant-numeric: tabular-nums; cursor: default; }
+/* as wide as that head, from the content's edge to past the close button, and only as tall as the first line's top */
+.card-id-room { float: right; display: flex; gap: 10px; height: 10px; margin-left: 40px; overflow: hidden; visibility: hidden; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ph-sheet .card-id-room { display: none; }
 /* the card's rule across the top, as on the card it unfolded from */
 #panel::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--c); z-index: 1; }
 .p-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -2256,7 +2261,7 @@ button.link:hover { text-decoration: underline; }
   background: var(--chip); font-size: 16px; cursor: pointer; }
 .ph-canvas { margin-left: auto; color: var(--muted); font-size: 13px; }
 /* the card's number at the bar's end, after the canvas's name where it shows */
-.ph-bar .ph-no { order: 0; margin: 0 0 0 auto; font-size: 13px; }
+.ph-bar .ph-no { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .ph-canvas + .ph-no { margin-left: 0; }
 .ph-quiet { position: sticky; top: 60px; z-index: 5; margin: 12px 0 0; padding: 10px 12px; border-radius: 3px; background: var(--ink); color: var(--bg); display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
 .ph-quiet b { font-weight: 600; font-size: 14.5px; }

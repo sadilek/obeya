@@ -15,7 +15,7 @@ import { forYouCount, forYouOf, ForYouRows, forYouTotal, PhoneCard, type Swipe }
 import { SWIPED_CARD, swipedOnce } from './aside';
 import { FoldArrow, toggleFolded, useFolded } from './fold';
 import { asideMark, changeAside, forgotten, loadAside, onAsideElsewhere, type SetAside, staysAside } from './setAside';
-import { CardNumber } from './cardNumber';
+import { CardId } from './cardNumber';
 import type { ActDone, Pending } from './cardSheet';
 import { CardLog, TalkElsewhere, useCardLog } from './conversation';
 import { Detail } from './detail';
@@ -639,7 +639,7 @@ function PhoneCardPage({
             {t.phone.back}
           </button>
           {c && several && <span className="ph-canvas">{c.name}</span>}
-          {i && <CardNumber n={i.number} className="ph-no" />}
+          {i && <CardId n={i.number} createdAt={i.createdAt} className="ph-no" />}
         </header>
         {banner}
         <div className="card-sheet ph-sheet">

@@ -7,7 +7,7 @@ import type { AnswerFile, CardEvent, Item } from '../core/types';
 import { answerFile, api } from './api';
 import { useReportedHeight } from './frame';
 import { plain } from './markdown';
-import { clock as time, t } from './strings';
+import { stamp, t } from './strings';
 import type { Quoted } from './reply';
 import { clip } from '../core/text';
 import { isWalkthrough } from '../core/walkthrough';
@@ -47,7 +47,7 @@ export function Msg({
     <div className={['msg', `by-${by}`, onReply && 'replies', className].filter(Boolean).join(' ')} data-ev={ev}>
       <div className="who">
         {who}
-        {at && <span className="t">{time(at)}</span>}
+        {at && <span className="t">{stamp(at)}</span>}
         {(onReply || head) && (
           <span className="msg-acts">
             {/* first of the head's buttons, so it stands rightmost */}

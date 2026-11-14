@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { clock, setLanguage, snoozeWhen, stateLabel, t } from './strings';
+import { clock, day, kindLabel, madeOn, setLanguage, snoozeWhen, stamp, stateLabel, t } from './strings';
 
 afterEach(() => setLanguage('de', []));
 
@@ -104,4 +104,23 @@ test('a card\'s state label: each state, and what goes before it, in order of pr
     ['live', { state: 'live' }, 'Live'],
   ];
   for (const [name, card, label] of labels) expect([name, stateLabel(card)]).toEqual([name, label]);
+});
+
+test("a message's time says its day too when it was not today, and its year when that was another", () => {
+  setLanguage('de', []);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 4);
+  const earlier = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 15, 4);
+  const lastYear = new Date(now.getFullYear() - 1, 1, 3, 9, 30);
+  expect(stamp(today)).toBe('15:04');
+  expect(stamp(earlier)).toBe(`${day(earlier)}, 15:04`);
+  expect(stamp(lastYear)).toBe(`3. Feb. ${now.getFullYear() - 1}, 09:30`);
+  expect(madeOn(lastYear.toISOString())).toBe(`Erstellt am ${lastYear.toLocaleDateString('de', { weekday: 'long' })}, 3. Februar ${now.getFullYear() - 1}, 09:30`);
+});
+
+test('an idea says what it is in its state line, not in a line above its title; a proposal to discuss as an idea still does', () => {
+  setLanguage('en', []);
+  expect(kindLabel({ kind: 'task', idea: { status: 'open' } as never })).toBe('');
+  expect(kindLabel({ kind: 'task', proposal: { idea: true } as never })).toBe('Idea');
+  expect(kindLabel({ kind: 'question' })).toBe('Question');
 });

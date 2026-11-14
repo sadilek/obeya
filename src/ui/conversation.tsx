@@ -26,7 +26,7 @@ import { useStickToEnd } from './stickToEnd';
 import { dismissPlace, type Place, seekTo, usePlace, videoOf } from './spot';
 import { cameInView, useSeen } from './seen';
 import { SnoozeLine } from './snooze';
-import { clock as time, errorText, t } from './strings';
+import { clock as time, errorText, stamp, t } from './strings';
 import { worked as isWorked } from './cardState';
 import { cardTalk, demoHandover, talkState, coordinatorReads, snoozeLine, type Turn, unseenTurns } from './talk';
 import { WishReplyLink } from './wish';
@@ -190,7 +190,7 @@ export function Conversation({
       <div className={`msg by-${by}`}>
         {askedAt && (
           <div className="who">
-            {agent} · {t.talk.question} <span className="t">{time(askedAt)}</span>
+            {agent} · {t.talk.question} <span className="t">{stamp(askedAt)}</span>
           </div>
         )}
         <Steps steps={steps} />
@@ -317,10 +317,10 @@ function Line({
   hint?: boolean;
 }) {
   return snoozed ? (
-    <SnoozeLine item={snoozed} e={turn.e} at={time(turn.e.at)} />
+    <SnoozeLine item={snoozed} e={turn.e} at={stamp(turn.e.at)} />
   ) : turn.line ? (
     <div className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
-      {time(turn.e.at)} · <Linked text={eventText(turn.e)} />
+      {stamp(turn.e.at)} · <Linked text={eventText(turn.e)} />
       {turn.e.kind === 'error' && !explained && claudeLoginFailed(turn.e.text) && <Reauthenticate token={turn.e.token} />}
       {turn.e.kind === 'error' && !explained && codexLoginLost(turn.e.text) && <CodexLogin host={codexLoginLost(turn.e.text)!.host} />}
     </div>
@@ -413,7 +413,7 @@ function Message({
         <div className="then" data-ev={turn.then.e.id}>
           <span className="then-who">
             {t.talk.handover}
-            <span className="t">{time(turn.then.e.at)}</span>
+            <span className="t">{stamp(turn.then.e.at)}</span>
           </span>
           <Body md={turn.then.e.text} />
         </div>
@@ -865,7 +865,7 @@ export function LastFailure({ item }: { item: Item }) {
   if (!last) return null;
   return (
     <div className="question failed">
-      <h4>{t.lastFailure(time(last.at))}</h4>
+      <h4>{t.lastFailure(stamp(last.at))}</h4>
       <div className="q-text" title={last.code ? last.text : undefined}>
         {eventText(last)}
         {claudeLoginFailed(last.text) && <Reauthenticate start token={last.token} />}

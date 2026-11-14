@@ -17,7 +17,7 @@ import { CAPTIONS_CHANGED, PLAYER_ICONS, PLAYER_KEYS, type PlayerWords, SEEK_KEY
 import { zoomedBox } from './walkthrough';
 import { plainKey, useZoom } from './zoom';
 import { showsVersions, watch } from './spot';
-import { clock as time, shortDay, t, uiLanguage } from './strings';
+import { stamp, t, uiLanguage } from './strings';
 import { TalkElsewhere } from './conversation';
 import { ShareIcon } from './share';
 
@@ -127,7 +127,7 @@ function DemoVersions({ item, shown }: { item: Item; shown: ReturnType<typeof us
       </button>
       <span>
         {t.demo.version(at + 1, all.length, latest)}
-        {demo.at && ` · ${handedAt(demo.at)}`}
+        {demo.at && ` · ${stamp(demo.at)}`}
         {demo.handover !== undefined && item.share?.on?.includes(demo.handover) && (
           <span className="on-page" title={t.share.onPageMark} aria-label={t.share.onPageMark}>
             <ShareIcon />
@@ -403,9 +403,6 @@ const playerWords = (): PlayerWords => ({
   fullscreen: t.demo.fullscreen,
   fullscreenOff: t.demo.fullscreenOff,
 });
-
-/** When a demo was handed over: the time of day, with the day when it was not today. */
-const handedAt = (at: string) => (new Date(at).toDateString() === new Date().toDateString() ? time(at) : `${shortDay(at)}, ${time(at)}`);
 
 /** A video standing this long has been watched to its end, as far as the comments on it are concerned. */
 const STOOD_MS = 3 * 60_000;

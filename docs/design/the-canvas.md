@@ -311,7 +311,9 @@ canvas. The number stands at the start of the card's state line on the canvas (i
 the card's buttons show under the pointer), at the top right of an entry in the phone's lists
 (where the state line, wrapping on the narrow screen, has no room to set it apart), at the end of a
 project's head, beside the close button of its sheet and at the end of the phone's bar over the
-card. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
+card. In the sheet and the phone's bar the day the card was made stands before it (with the year
+when it was another; under the pointer its weekday, date and time), so the owner sees how old a
+card is without scrolling through its conversation; a long title wraps before the two. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
 says "Copied" for a moment; under the pointer it shows a copy icon, on a touch screen always. Where
 the page may not write the clipboard, it copies or selects the number as a code block's button does
 (see Conversation on the card), also on the canvas, where no text is selectable otherwise; it says
@@ -358,7 +360,9 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
   The owner's turn is an orange frame (thicker zoomed out, but on the same cards at every zoom: none
   on a snoozed card, 2026-11-11) and a pulsing pushpin with "!" (the pulse, a halo growing and
   fading, changes nothing but size and opacity: an animation the browser has to repaint makes the
-  whole card under it shimmer on a zoomed-out canvas, 2026-10-30); an idea is on rose stock; a
+  whole card under it shimmer on a zoomed-out canvas, 2026-10-30); an idea is on rose stock, with
+  no line naming its kind above its title, since its state line already says "Idea" (a plain task
+  has none either; issue #94, 2026-11-14); a
   proposal only pencilled in (dashed, no stock); a queued card's rule dashed; done and live cards
   fade and yellow slightly (not while their agent still works after landing: then only their state line is in the working ink, with the moving line). The state line at the
   card's foot stays one line, cut short with an ellipsis when it is longer, so it never runs into

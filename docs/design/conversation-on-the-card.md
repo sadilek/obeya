@@ -29,6 +29,10 @@ owner says more. Once no agent works on the card and no question is open, steps 
 message stand where they happened, the agent's last words among them as its message. A card that was
 an idea continues the idea's conversation.
 
+Each message and each line between them says when it came: the time for today's, the day and time
+for an earlier day's (with the year when it was another), so a conversation spread over days reads
+as one (issue #94, 2026-11-14). The Coordinator's conversation does the same.
+
 Beside the heading, once the card's agent has a session, the conversation names what that session
 runs on, once: the harness, the model as the harness reported it when the session started or
 resumed (Claude's model ids by family and version, "Claude Code · Opus 5.5"; Codex's by the name
