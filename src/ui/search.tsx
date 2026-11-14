@@ -1,14 +1,16 @@
 // The search over every card: the canvas's first, the archive's below. It matches as the archive's
-// filter does (every typed word, case and accents aside); a card whose title holds the words comes
-// before one that holds them only in its text (description, summary, last status, open question,
-// a proposal's reason, a project's goal) or label. The server searches the archive, which is not on
+// filter does (every typed word, case and accents aside, or a card number); the card a word names by
+// its number comes first, then one whose title holds the words, then one that holds them only in its
+// text (description, summary, last status, open question, a proposal's reason, a project's goal) or
+// label. The server searches the archive, which is not on
 // the page as a whole. Before the first word it lists the canvas's cards, the one changed last
 // first. The row under the pointer or picked by the arrow keys lights its card up on the canvas.
 
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Item } from '../core/types';
 import { onCardEvent } from './api';
-import { fold, inTitle, searchWords } from '../core/search';
+import { cardTag } from '../core/card-number';
+import { byNumber, fold, inTitle, rank, ranked, searchWords } from '../core/search';
 import { api } from './api';
 import { archiveLabelTexts, labelOf, marked, matches, placeIn, SearchField, useSettled } from './archive';
 import { plain } from './markdown';
@@ -25,12 +27,14 @@ export interface Hit {
   byTitle: boolean;
 }
 
-/** The cards holding every word of `query`, those with all of them in the title first, each group in the given order. */
+/**
+ * The cards holding every word of `query`: the card a word names by its number first, then those
+ * with all of them in the title, then the rest, each group in the given order.
+ */
 export function findCards(query: string, cards: Item[]): Hit[] {
   const words = searchWords(query);
   if (!words.length) return [];
-  const hits = cards.filter((i) => (i.title || i.body) && matches(i, words)).map((item) => ({ item, byTitle: inTitle(item, words) }));
-  return [...hits.filter((h) => h.byTitle), ...hits.filter((h) => !h.byTitle)];
+  return ranked(cards.filter((i) => (i.title || i.body) && matches(i, words)), (i) => rank(i, words)).map((item) => ({ item, byTitle: inTitle(item, words) }));
 }
 
 /**
@@ -208,7 +212,8 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, rev, onAr
                       const k = row++;
                       const project = i.parent ? byId.get(i.parent) : undefined;
                       const label = i.archivedAt ? labelOf(i) : stateLabel(i);
-                      const about = [label, project && [i.label, plain(project.title)].filter(Boolean).join(' · '), i.archivedAt && t.archive.day(new Date(i.archivedAt))].filter(Boolean).join(' · ');
+                      // found by its number, the card says it
+                      const about = [byNumber(i, words) && cardTag(i.number), label, project && [i.label, plain(project.title)].filter(Boolean).join(' · '), i.archivedAt && t.archive.day(new Date(i.archivedAt))].filter(Boolean).join(' · ');
                       return (
                         <li key={i.id}>
                           <button

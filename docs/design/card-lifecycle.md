@@ -243,7 +243,9 @@ canvas and can go back to its place; an ended prototype only shows, read-only, h
 search field, focused on opening, kept between openings and always in sight (only the list under it
 scrolls), filters by every typed word (case and accents aside) in title, text, summary, last status,
 open question, a proposal's reason or label, and a project's goal and workstreams, marking the words
-in the titles. The bar's search finds cards on the canvas and in the archive the same way (see The
+in the titles. A word that is a card number (`K42`, also typed `K 42` or `K-42`) also finds the card with
+exactly that number, whose row then names it: the owner and the agents name cards by their numbers,
+and the number is in none of those fields. A bare `42` stays a word of the text (a year, a port). The bar's search finds cards on the canvas and in the archive the same way (see The
 bar). The list stays under the dim while a card from it is open, so the card folds back into it; a
 card opened from its address scrolls its row into view first.
 

@@ -29,8 +29,9 @@ handover, its pull request), or a line in its conversation other than a worker's
 Moving a card, grouping it, folding a project and the bookkeeping behind a card (its session, its
 workspace, what was read) do not count. With the first word, it finds the cards on the canvas, and below
 them those in the archive, that hold every typed word, matched as the archive's search does. In each
-part, cards with every word in the title come first, then those holding them only in another field
-the archive's search reads, with an excerpt that shows the words there. Each list shows 30 cards and
+part, the card a word names by its number comes first, then cards with every word in the title, then
+those holding them only in another field the archive's search reads, with an excerpt that shows the
+words there. Each list shows 30 cards and
 counts the rest.
 
 The row under the pointer, or the one the arrow keys pick, lights its card up on the canvas with a

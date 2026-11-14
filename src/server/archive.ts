@@ -2,7 +2,7 @@
 // the search through it, which keeps what it reads of the archive while the owner searches.
 
 import type { PlanDoc } from '../core/plan-doc';
-import { type ArchiveLabel, archiveLabel, fold, inTitle, searchText, searchWords } from '../core/search';
+import { type ArchiveLabel, archiveLabel, fold, namesNumber, rank, ranked, searchText, searchWords } from '../core/search';
 import type { ArchivePage, Item } from '../core/types';
 import type { Board } from './board';
 import type { ArchiveCursor, CardRow, Store } from './db';
@@ -27,8 +27,10 @@ interface Indexed {
   /** What a search reads (`searchText`), its label aside. */
   text: string;
   label?: ArchiveLabel;
-  /** Whether its title holds every word. */
-  byTitle: (words: string[]) => boolean;
+  /** Its card number, which a word of a search may name. */
+  number?: number;
+  /** Where a search lists it (`rank`). */
+  rank: (words: string[]) => number;
 }
 
 /** What the search keeps of the archive: each entry by its archived card, read up to `upTo` of the database's log of the archive's writes. */
@@ -41,7 +43,7 @@ interface ArchiveIndex {
 
 function indexed(i: Item, top: string, order: ArchiveCursor, workstreams: Item[] = []): Indexed {
   const label = archiveLabel(i);
-  return { id: i.id, top, ...(i.parent ? { parent: i.parent } : {}), order, text: searchText(i, workstreams), ...(label ? { label } : {}), byTitle: (words) => inTitle(i, words) };
+  return { id: i.id, top, ...(i.parent ? { parent: i.parent } : {}), order, text: searchText(i, workstreams), ...(label ? { label } : {}), number: i.number, rank: (words) => rank(i, words) };
 }
 
 /** The archive's entries in its order, the most recently archived first, each card followed by its workstreams. */
@@ -158,29 +160,30 @@ export class Archive {
 
   /**
    * The archive's cards that hold every word of `query` in what a search reads (`searchText`) or in
-   * their label, which `labels` gives in the owner's words; `count` of them from the `from`th on (the
-   * page before's `next`). The archive's filter (`everywhere` false) finds the archived cards, each
-   * with its workstreams' text, in the archive's order; the search across canvas and archive
-   * (`everywhere`) finds workstreams on their own too, those with every word in the title first, and
-   * names them in `hits`. Only the cards of the page are built: the rest is read from what the search
-   * keeps of the archive (`indexed`), which the first search reads a slice at a time.
+   * their label, which `labels` gives in the owner's words, or that a word names by their number;
+   * `count` of them from the `from`th on (the page before's `next`). The archive's filter
+   * (`everywhere` false) finds the archived cards, each with its workstreams' text, in the archive's
+   * order; the search across canvas and archive (`everywhere`) finds workstreams on their own too,
+   * in the order `rank` gives, and names them in `hits`. Only the cards of the page are built: the
+   * rest is read from what the search keeps of the archive (`indexed`), which the first search
+   * reads a slice at a time.
    */
   async search(query: string, o: { count: number; from?: number; labels?: Partial<Record<ArchiveLabel, string>>; everywhere?: boolean }): Promise<ArchivePage> {
     const words = searchWords(query);
     const index = await this.indexed();
     const labels = new Map(Object.entries(o.labels ?? {}).map(([k, v]) => [k, fold(String(v))]));
-    const holds = (e: Indexed) => words.every((w) => e.text.includes(w) || (!!e.label && !!labels.get(e.label)?.includes(w)));
+    const holds = (e: Indexed) => words.every((w) => e.text.includes(w) || (!!e.label && !!labels.get(e.label)?.includes(w)) || namesNumber(e.number, w));
     const found = (index.order ??= orderOf(index.byTop)).filter((e) => (o.everywhere || !e.parent) && holds(e));
-    const ranked = o.everywhere ? [...found.filter((e) => e.byTitle(words)), ...found.filter((e) => !e.byTitle(words))] : found;
+    const listed = o.everywhere ? ranked(found, (e) => e.rank(words)) : found;
     const from = Math.max(0, o.from ?? 0);
-    const page = ranked.slice(from, from + o.count);
+    const page = listed.slice(from, from + o.count);
     const tops = [...new Set(page.map((e) => e.top))];
     const rank = new Map(tops.map((id, n) => [id, n]));
     const items = this.of(this.store.archivedRows(this.canvasId, tops).sort((a, b) => rank.get(a.id)! - rank.get(b.id)!));
     return {
       items,
-      found: ranked.length,
-      ...(from + o.count < ranked.length ? { next: String(from + o.count) } : {}),
+      found: listed.length,
+      ...(from + o.count < listed.length ? { next: String(from + o.count) } : {}),
       ...(o.everywhere ? { hits: page.map((e) => e.id) } : {}),
     };
   }

@@ -602,6 +602,22 @@ describe('archive', () => {
     expect(await found('stopped', { labels: { stopped: 'Stopped' } })).toEqual(['Halted']);
   });
 
+  test('a search through the archive finds a card by its number, which comes first across canvas and archive', async () => {
+    const a = done('Share a demo');
+    const b = done('Follow-up');
+    board.patch(b.id, { body: `Builds on K${a.number}.` });
+    board.archive([a.id]);
+    await Bun.sleep(2);
+    board.archive([b.id]);
+    const found = async (q: string, everywhere = false) => (await board.archived.search(q, { count: 10, everywhere })).items.map((i) => i.title);
+    for (const q of [`K${a.number}`, `k ${a.number}`, `K-${a.number}`]) expect(await found(q)).toContain('Share a demo');
+    // the number as a whole: a part of it names no card
+    expect(await found(`K${a.number}0`)).toEqual([]);
+    expect(await found(`K${b.number}`)).toEqual(['Follow-up']);
+    // the card it names before one that mentions it
+    expect((await board.archived.search(`K${a.number}`, { count: 10, everywhere: true })).hits).toEqual([a.id, b.id]);
+  });
+
   test('only finished cards of the owner go into the archive', () => {
     const open = board.create({ title: 'Open', x: 0, y: 0 });
     const w1 = board.snapshot().items.find((i) => i.label === 'W1')!;

@@ -7,7 +7,8 @@
 // in as space of the height they had or will roughly have.
 
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ARCHIVE_LABELS, type ArchiveLabel, fold, searchText, searchWords } from '../core/search';
+import { cardTag } from '../core/card-number';
+import { ARCHIVE_LABELS, type ArchiveLabel, byNumber, fold, namesNumber, searchText, searchWords } from '../core/search';
 import type { Item } from '../core/types';
 import { stopped } from '../core/card';
 import { api } from './api';
@@ -198,7 +199,8 @@ export function ArchivePill({ on, onToggle, onClose, held, rev, onItems, done, o
                       </h4>
                     );
                   const i = r.item;
-                  const label = labelOf(i);
+                  // found by its number, the card says it
+                  const label = [byNumber(i, words) && cardTag(i.number), labelOf(i)].filter(Boolean).join(' · ');
                   return (
                     <div key={r.key} data-k={r.key} ref={row(r.key)} className={`a-row${r.first ? ' first' : ''}${r.last ? ' last' : ''}`}>
                       <time>{t.archive.time(new Date(i.archivedAt!))}</time>
@@ -270,10 +272,10 @@ export function archiveLabelTexts(): Record<ArchiveLabel, string> {
   return Object.fromEntries(ARCHIVE_LABELS.map((l) => [l, text(l)])) as Record<ArchiveLabel, string>;
 }
 
-/** Whether a card holds every word of the search, each anywhere in its `searchText` or its label. */
+/** Whether a card holds every word of the search, each anywhere in its `searchText` or its label, or naming its number. */
 export function matches(i: Item, words: string[]) {
   const text = searchText(i, [], labelOf(i));
-  return words.every((w) => text.includes(w));
+  return words.every((w) => text.includes(w) || namesNumber(i.number, w));
 }
 
 /** The title with the words of the search marked where they occur. */

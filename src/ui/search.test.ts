@@ -29,6 +29,16 @@ test('words split between title and text find the card, after the title matches'
   expect(titles('voice parakeet', cards)).toEqual(['Voice and Parakeet', 'Voice']);
 });
 
+test('a card number finds its card first, typed as K42, K 42 or K-42, and none that only shares its digits', () => {
+  const cards = [card('Follow-up', { number: 7, body: 'Builds on K42.' }), card('Share a demo', { number: 42 }), card('Other', { number: 420 })];
+  for (const q of ['K42', 'k 42', 'K-42']) expect(titles(q, cards)).toEqual(['Share a demo', 'Follow-up']);
+  expect(titles('K4', cards)).toEqual(['Follow-up']);
+  // a bare number is a word of the text
+  expect(titles('42', cards)).toEqual(['Follow-up']);
+  expect(titles('K42 demo', cards)).toEqual(['Share a demo']);
+  expect(findCards('K42', cards)[0]!.byTitle).toBe(true);
+});
+
 test('before the first word, every card on the canvas is listed, the one changed last first', () => {
   const cards = [
     card('Old', { changedAt: '2026-10-01T08:00:00.000Z' }),
