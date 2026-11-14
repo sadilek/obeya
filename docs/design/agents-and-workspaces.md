@@ -51,7 +51,8 @@ Refused and confirmed tool calls); Obeya's own tools are allowed by a `PreToolUs
 A Codex session is one `codex app-server` process (JSON-RPC over stdio, its experimental API on),
 with one thread: started with the instructions as developer instructions and Obeya's tools as
 dynamic tools of the namespace `obeya` (the model sees them as `obeya__<name>`), or resumed by the
-thread's id after a restart, since Codex keeps a thread's tools with it. Either way it gets an
+thread's id after a restart, since Codex keeps a thread's tools with it, as they were when the
+thread started (see A resumed session's tools). Either way it gets an
 explicit model: right before starting or resuming, the session asks its own app server for the
 catalog (`model/list`, on the machine it runs on, a host included) and takes the newest model of
 the family it is to run on (see Harnesses, models and effort), else the one the catalog marks as
@@ -555,6 +556,22 @@ they connect, back again, about 2,300 tokens a kept process never pays; the stat
 reports lists those connectors only after a moment, before Obeya's own server. On Codex, waiting
 for its remote plugins' skills does the same (see Codex).
 
+### A resumed session's tools
+
+A session resumed (after a restart, a rest, a snooze, or for a finished card's question) keeps
+Obeya's tools as it first heard of them, on either harness: Claude Code resends the tool definitions
+its session began with, so a tool search brings back the old definition too, and adds only tools
+that are new; a Codex thread keeps the tools it started with and can take none that came later.
+A tool whose parameters or description Obeya changed meanwhile would so go on being called the
+old way (a parameter added since left out). Obeya therefore remembers for every session the
+tools it has heard of (a print of each one's description and schema, by name, kept 90 days after
+the session last started), and a resumed session whose tools differ hears with its first message,
+before it: each changed tool's description and input schema as they are now, to call it so (both
+harnesses pass a parameter missing from their old definition on to the tool, measured 2026-11-14
+on Claude Code 2.1.325 and Codex 0.169); the tools that are gone; and on Codex the new tools it
+cannot reach. Afterwards it has heard of them as they are, and is not told again. A session Obeya
+never saw start hears nothing.
+
 ### Hosts
 
 Other machines a repository's workers run on, over SSH. The configuration lists them per repository
@@ -636,6 +653,14 @@ for its hooks), and what the repository's work needs.
   lifetime to wait for, and a resumed session reads it as a kept one does, once Codex has listed its
   remote plugins' skills before the first turn. Rejected for Codex: 24 hours, OpenAI's longest
   retention (memory held a day for nothing).
+- **A resumed session reads its changed tools' definitions in its message, and keeps its
+  conversation** (2026-11-14): its tools are the harness's to give, and neither gives a resumed
+  session the current ones (tried on both). Rejected: asking the agent to load the tools again with
+  a tool search (Claude Code's search returns the definition the session began with); starting a
+  fresh session when a tool changed (the agent loses what it knows of its work, for a change it
+  can be told in a paragraph); the tools' definitions in every resumed session's message (thousands
+  of tokens for nothing on most resumes). A tool new since a Codex thread started stays out of its
+  reach: Codex takes tools only when a thread starts.
 - **Costs are opt-in, and counted while hidden** (owner, 2026-11-08, GitHub issue #66): the figures
   make the interface busier for something most owners never need, so a setting shows them; counting
   them all along means turning it on later shows what the cards cost from the start.

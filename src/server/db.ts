@@ -633,6 +633,12 @@ export const MIGRATIONS = [
   'CREATE INDEX talk_looking_up ON talk (canvas_id) WHERE question IS NOT NULL AND answer IS NULL AND joined IS NULL AND stopped IS NULL;',
   // a task that works on a branch of the owner's that existed before it (`CardRow.adopted`)
   'ALTER TABLE cards ADD COLUMN adopted TEXT;',
+  // what each agent session last heard of Obeya's tools: each tool's print by its name (JSON, `Store.toolsHeard`)
+  `CREATE TABLE session_tools (
+    session TEXT PRIMARY KEY,
+    prints TEXT NOT NULL,
+    at TEXT NOT NULL
+  );`,
 ];
 
 /**
@@ -707,6 +713,9 @@ export class OlderDatabase extends UnusableDatabase {
     );
   }
 }
+
+/** How long a session's tools are remembered after it last started (`Store.heardTools`): one resumed later hears of no change. */
+const TOOLS_KEPT_DAYS = 90;
 
 export class Store {
   readonly db: Database;
@@ -862,6 +871,23 @@ export class Store {
         .run({ c: canvasId, card: cardId, s: session, u: usd, settled });
       if (cardId) this.db.query('UPDATE cards SET spent = (SELECT sum(usd + settled) FROM spend WHERE card_id = $card) WHERE id = $card').run({ card: cardId });
       return true;
+    })();
+  }
+
+  /**
+   * What an agent session last heard of Obeya's tools (`withToolNews`): each tool's print by its name;
+   * none for a session this database never saw start, or not for longer than `TOOLS_KEPT_DAYS`.
+   */
+  toolsHeard(session: string): Record<string, string> | undefined {
+    const row = this.db.query('SELECT prints FROM session_tools WHERE session = $s').get({ s: session }) as { prints: string } | null;
+    return row ? (JSON.parse(row.prints) as Record<string, string>) : undefined;
+  }
+
+  /** The session has heard of Obeya's tools as `prints` has them; sessions not heard of for `TOOLS_KEPT_DAYS` are forgotten. */
+  heardTools(session: string, prints: Record<string, string>) {
+    this.db.transaction(() => {
+      this.db.query('INSERT INTO session_tools (session, prints, at) VALUES ($s, $p, $at) ON CONFLICT(session) DO UPDATE SET prints = $p, at = $at').run({ s: session, p: JSON.stringify(prints), at: now() });
+      this.db.query('DELETE FROM session_tools WHERE at < $before').run({ before: new Date(Date.now() - TOOLS_KEPT_DAYS * 86_400_000).toISOString() });
     })();
   }
 

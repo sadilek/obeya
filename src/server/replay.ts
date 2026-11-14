@@ -20,8 +20,7 @@
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { z } from 'zod';
-import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, AgentTool } from './runtime';
+import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, type AgentTool, toolSchema } from './runtime';
 import { gitAsync, isAncestor } from './git';
 import { messageOf } from '../core/text';
 
@@ -84,16 +83,7 @@ const REFUSAL = /^(?:Not [a-z ]+|Nothing recorded):/;
 /** How long a step that took a context update waits for it to be there now. */
 const CONTEXT_WAIT_MS = 120_000;
 
-/** What a tool's schema looks like to the agent, as JSON Schema. */
-function schemaOf(t: AgentTool): unknown {
-  try {
-    return z.toJSONSchema(z.object(t.schema), { unrepresentable: 'any' });
-  } catch {
-    return Object.keys(t.schema).sort();
-  }
-}
-
-const printOf = (tools: AgentTool[]): ToolPrint[] => tools.map((t) => ({ name: t.name, description: t.description, schema: schemaOf(t) }));
+const printOf = (tools: AgentTool[]): ToolPrint[] => tools.map((t) => ({ name: t.name, description: t.description, schema: toolSchema(t) }));
 
 /** Whether `dir` may become a recording: missing, empty, or a recording already. */
 export function mayRecordInto(dir: string): boolean {

@@ -7,7 +7,8 @@ import type { ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { remote, type SshHost } from './hosts';
-import type { z } from 'zod';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import { filesIn } from './files';
 import { OWN_GROUP } from './spawn';
 import type { Messages } from '../core/messages';
@@ -205,6 +206,98 @@ export function withSpend(runtime: AgentRuntime, record: (card: string | undefin
   return {
     start: (spec, firstMessage, images) =>
       runtime.start({ ...spec, onEvent: (e) => (e.type === 'spend' ? record(spec.spendOn, e.session, e.usd) : spec.onEvent(e)) }, firstMessage, images),
+  };
+}
+
+/** What a tool's schema looks like to the agent, as JSON Schema. */
+export function toolSchema(t: AgentTool): unknown {
+  try {
+    return z.toJSONSchema(z.object(t.schema), { unrepresentable: 'any' });
+  } catch {
+    return Object.keys(t.schema).sort();
+  }
+}
+
+/** A tool's print: changes with its description and its schema, which the agent reads of it. */
+export const toolPrint = (t: AgentTool) => createHash('sha256').update(JSON.stringify([t.description, toolSchema(t)])).digest('hex').slice(0, 16);
+
+/** The prints of `tools`, by name. */
+export const toolPrints = (tools: AgentTool[]): Record<string, string> => Object.fromEntries(tools.map((t) => [t.name, toolPrint(t)]));
+
+/** What a session remembers of Obeya's tools (`Store`): what it last heard of them, by its id. */
+export interface ToolsHeard {
+  toolsHeard(session: string): Record<string, string> | undefined;
+  heardTools(session: string, prints: Record<string, string>): void;
+}
+
+/**
+ * What a resumed session is told of Obeya's tools that changed since it last heard of them
+ * (`heard`), on `harness`: nothing when none did. Neither harness gives a resumed session the
+ * tools as they are now: Claude Code keeps the definitions its session began with (a new tool it
+ * adds by itself; a tool search brings the old definition back), Codex keeps a thread's tools with
+ * the thread and takes no new ones. So the session reads each changed tool's definition here, and
+ * calls it so, which both pass on to the tool as called. A tool new since then reaches a Codex
+ * thread in no way: it hears it cannot call it.
+ */
+export function toolNews(heard: Record<string, string>, tools: AgentTool[], harness: Harness): string | undefined {
+  const named = (name: string) => (harness === 'claude' ? `mcp__obeya__${name}` : name);
+  const changed = tools.filter((t) => heard[t.name] !== undefined && heard[t.name] !== toolPrint(t));
+  const added = harness === 'codex' ? tools.filter((t) => heard[t.name] === undefined) : [];
+  const gone = Object.keys(heard).filter((name) => !tools.some((t) => t.name === name));
+  if (!changed.length && !added.length && !gone.length) return undefined;
+  const parts = ["Obeya's tools changed since this session last heard of them, and your list of tools still shows them as they were."];
+  if (changed.length) {
+    parts.push(`${changed.length === 1 ? 'This one is' : 'These are'} now as follows; call ${changed.length === 1 ? 'it' : 'them'} so, with the parameters given here:`);
+    for (const t of changed) {
+      const { $schema: _, ...schema } = (toolSchema(t) ?? {}) as Record<string, unknown>;
+      parts.push(`${named(t.name)}: ${t.description}\nInput schema: ${JSON.stringify(schema)}`);
+    }
+  }
+  if (gone.length) parts.push(`Gone, calling ${gone.length === 1 ? 'it' : 'them'} fails: ${gone.map(named).join(', ')}.`);
+  if (added.length) parts.push(`New since, but this session cannot call ${added.length === 1 ? 'it' : 'them'}: ${added.map((t) => named(t.name)).join(', ')}.`);
+  return parts.join('\n\n');
+}
+
+/**
+ * A runtime that tells a session it resumes which of Obeya's tools changed since it last heard of
+ * them (`toolNews`), with its first message, and remembers in `heard` what each session has heard
+ * of them by then: its tools as they are when it starts or resumes. A session `heard` never saw
+ * start hears nothing.
+ */
+export function withToolNews(runtime: AgentRuntime, heard: ToolsHeard): AgentRuntime {
+  return {
+    start(spec, firstMessage, images) {
+      const prints = toolPrints(spec.tools);
+      const before = spec.resume ? heard.toolsHeard(spec.resume) : undefined;
+      let news = before && spec.resume ? toolNews(before, spec.tools, sessionHarness(spec.resume)) : undefined;
+      let id: string | undefined;
+      // what the session has heard is what it was told: the news once a message carried it
+      const told = () => {
+        if (id && !news) heard.heardTools(id, prints);
+      };
+      const withNews = (text: string) => {
+        if (!news) return text;
+        const t = `${news}\n\n${text}`;
+        news = undefined;
+        told();
+        return t;
+      };
+      const session = runtime.start(
+        {
+          ...spec,
+          onEvent: (e) => {
+            if (e.type === 'session') {
+              id = e.id;
+              told();
+            }
+            spec.onEvent(e);
+          },
+        },
+        firstMessage === undefined ? undefined : withNews(firstMessage),
+        images,
+      );
+      return { send: (text, more) => session.send(withNews(text), more), close: () => session.close(), done: session.done };
+    },
   };
 }
 

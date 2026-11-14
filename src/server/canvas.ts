@@ -43,7 +43,7 @@ import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
-import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withSpend } from './runtime';
+import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withSpend, withToolNews } from './runtime';
 import { briefFull, type TagCard, tagCards } from './tag-proposal';
 import { Skills } from './skills';
 
@@ -297,9 +297,12 @@ export class CanvasRuntime {
   constructor(config: CanvasConfig, private deps: CanvasDeps, reads: RepoReads) {
     const agents = deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]);
     // the agents other than workers and Obeya's chat wait for the usage limit through it, each where it shows
-    // and what each costs counts to the card it works for, else to the canvas
+    // and what each costs counts to the card it works for, else to the canvas; a session resumed hears which of its tools changed since it last heard of them
     const runtime = (r: AgentRuntime) =>
-      withSpend(withLimitWait(withRepoTrust(withAgentSetting(r, agents), this.claudeHeld), deps.limitMargin), (card, session, usd) => this.board.spend(card, session, usd));
+      withToolNews(
+        withSpend(withLimitWait(withRepoTrust(withAgentSetting(r, agents), this.claudeHeld), deps.limitMargin), (card, session, usd) => this.board.spend(card, session, usd)),
+        deps.store,
+      );
     const workerRuntime = deps.workerRuntime ?? (deps.idleWorkers ? idleRuntime : undefined);
     deps = { ...deps, runtime: runtime(deps.runtime), ...(workerRuntime ? { workerRuntime: runtime(workerRuntime) } : {}) };
     this.deps = deps;

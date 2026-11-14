@@ -1,5 +1,7 @@
-import { expect, test } from 'bun:test';
-import { type AgentEvent, claudeUnreachable, cleanEnv, failureReason, OUTAGE_OVER, outageRetry, withLimitWait, withRepoTrust, withRest, withSpend } from './runtime';
+import { describe, expect, test } from 'bun:test';
+import { z } from 'zod';
+import { type AgentEvent, type AgentTool, claudeUnreachable, cleanEnv, failureReason, OUTAGE_OVER, outageRetry, withLimitWait, withRepoTrust, withRest, withSpend, withToolNews } from './runtime';
+import { Store } from './db';
 import { MESSAGES } from '../core/messages';
 import { FakeRuntime } from './testing';
 
@@ -195,4 +197,75 @@ test("an agent's cost goes to the card it works for, else to the canvas, and nev
     [undefined, 's2', 0.25],
   ]);
   expect(events).toEqual([{ type: 'idle' }]);
+});
+
+describe('a resumed session hears which of Obeya\'s tools changed since it last heard of them', () => {
+  const tool = (name: string, description: string, schema: z.ZodRawShape): AgentTool => ({ name, description, schema, run: () => 'ok' });
+  const v1 = [tool('ask', 'Ask the owner.', { question: z.string() }), tool('report', 'A status line.', { status: z.string() }), tool('old', 'Gone soon.', {})];
+  // `ask` takes a new parameter, `report` stays, `old` went and `show_demo` came
+  const v2 = [tool('ask', 'Ask the owner.', { question: z.string(), demo: z.object({ result: z.boolean().optional() }).optional() }), tool('report', 'A status line.', { status: z.string() }), tool('show_demo', 'Show a demo.', { dir: z.string() })];
+  const setUp = () => {
+    const fake = new FakeRuntime();
+    return { fake, runtime: withToolNews(fake, new Store(':memory:')) };
+  };
+  const spec = (tools: AgentTool[], resume?: string) => ({ cwd: '/r', system: '', tools, ...(resume ? { resume } : {}), onEvent: () => {} });
+
+  test('on Claude Code: each changed tool with its definition now, and those gone; the new one Claude Code adds by itself', () => {
+    const { fake, runtime } = setUp();
+    runtime.start(spec(v1), 'Los.');
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    runtime.start(spec(v1, 'sess-1'), 'Obeya was restarted.');
+    // nothing changed: the message as it was
+    expect(fake.last.inbox).toEqual(['Obeya was restarted.']);
+    runtime.start(spec(v2, 'sess-1'), 'Obeya was restarted.');
+    const told = fake.last.inbox[0]!;
+    expect(told).toStartWith("Obeya's tools changed since this session last heard of them");
+    expect(told).toContain('mcp__obeya__ask: Ask the owner.\nInput schema: {"type":"object","properties":{"question":{"type":"string"},"demo":');
+    expect(told).toContain('"result":{"type":"boolean"}');
+    expect(told).toContain('Gone, calling it fails: mcp__obeya__old.');
+    expect(told).not.toContain('report');
+    expect(told).not.toContain('show_demo');
+    expect(told).toEndWith('\n\nObeya was restarted.');
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    // told once: resumed again, it hears nothing more
+    runtime.start(spec(v2, 'sess-1'), 'Weiter.');
+    expect(fake.last.inbox).toEqual(['Weiter.']);
+  });
+
+  test('on Codex: by their names in its namespace, and the tool it cannot reach', () => {
+    const { fake, runtime } = setUp();
+    runtime.start(spec(v1), 'Los.');
+    fake.last.emit({ type: 'session', id: 'codex:t-1' });
+    runtime.start(spec(v2, 'codex:t-1'), 'Weiter.');
+    const told = fake.last.inbox[0]!;
+    expect(told).toContain('\n\nask: Ask the owner.');
+    expect(told).toContain('Gone, calling it fails: old.');
+    expect(told).toContain('New since, but this session cannot call it: show_demo.');
+  });
+
+  test('a session started without a message hears it with the first one sent; one never seen start hears nothing', () => {
+    const { fake, runtime } = setUp();
+    runtime.start(spec(v1), 'Los.');
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    const session = runtime.start(spec(v2, 'sess-1'));
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    expect(fake.last.inbox).toEqual([]);
+    session.send('Die Antwort.');
+    session.send('Noch etwas.');
+    expect(fake.last.inbox[0]).toContain('mcp__obeya__ask: Ask the owner.');
+    expect(fake.last.inbox[1]).toBe('Noch etwas.');
+    runtime.start(spec(v2, 'sess-unknown'), 'Weiter.');
+    expect(fake.last.inbox).toEqual(['Weiter.']);
+  });
+
+  test('a session that ends before it was told hears of the change when it resumes next', () => {
+    const { fake, runtime } = setUp();
+    runtime.start(spec(v1), 'Los.');
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    const waiting = runtime.start(spec(v2, 'sess-1'));
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    waiting.close();
+    runtime.start(spec(v2, 'sess-1'), 'Weiter.');
+    expect(fake.last.inbox[0]).toContain('mcp__obeya__ask: Ask the owner.');
+  });
 });
