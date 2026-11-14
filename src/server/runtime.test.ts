@@ -214,6 +214,7 @@ describe('a resumed session hears which of Obeya\'s tools changed since it last 
     const { fake, runtime } = setUp();
     runtime.start(spec(v1), 'Los.');
     fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'idle' });
     runtime.start(spec(v1, 'sess-1'), 'Obeya was restarted.');
     // nothing changed: the message as it was
     expect(fake.last.inbox).toEqual(['Obeya was restarted.']);
@@ -227,6 +228,7 @@ describe('a resumed session hears which of Obeya\'s tools changed since it last 
     expect(told).not.toContain('show_demo');
     expect(told).toEndWith('\n\nObeya was restarted.');
     fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'idle' });
     // told once: resumed again, it hears nothing more
     runtime.start(spec(v2, 'sess-1'), 'Weiter.');
     expect(fake.last.inbox).toEqual(['Weiter.']);
@@ -236,6 +238,7 @@ describe('a resumed session hears which of Obeya\'s tools changed since it last 
     const { fake, runtime } = setUp();
     runtime.start(spec(v1), 'Los.');
     fake.last.emit({ type: 'session', id: 'codex:t-1' });
+    fake.last.emit({ type: 'idle' });
     runtime.start(spec(v2, 'codex:t-1'), 'Weiter.');
     const told = fake.last.inbox[0]!;
     expect(told).toContain('\n\nask: Ask the owner.');
@@ -247,8 +250,10 @@ describe('a resumed session hears which of Obeya\'s tools changed since it last 
     const { fake, runtime } = setUp();
     runtime.start(spec(v1), 'Los.');
     fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'idle' });
     const session = runtime.start(spec(v2, 'sess-1'));
     fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'idle' });
     expect(fake.last.inbox).toEqual([]);
     session.send('Die Antwort.');
     session.send('Noch etwas.');
@@ -262,10 +267,36 @@ describe('a resumed session hears which of Obeya\'s tools changed since it last 
     const { fake, runtime } = setUp();
     runtime.start(spec(v1), 'Los.');
     fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'idle' });
     const waiting = runtime.start(spec(v2, 'sess-1'));
     fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'idle' });
     waiting.close();
     runtime.start(spec(v2, 'sess-1'), 'Weiter.');
     expect(fake.last.inbox[0]).toContain('mcp__obeya__ask: Ask the owner.');
+  });
+  test('a turn that fails before the session took its message tells the news again at the next resume', () => {
+    const { fake, runtime } = setUp();
+    runtime.start(spec(v1), 'Los.');
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'idle' });
+    runtime.start(spec(v2, 'sess-1'), 'Weiter.');
+    fake.last.emit({ type: 'session', id: 'sess-1' });
+    fake.last.emit({ type: 'error', message: 'the turn could not start' });
+    runtime.start(spec(v2, 'sess-1'), 'Weiter.');
+    expect(fake.last.inbox[0]).toContain('mcp__obeya__ask: Ask the owner.');
+  });
+
+  test('on Codex, a tool new since the thread started is named once, and never described as callable when it changes later', () => {
+    const { fake, runtime } = setUp();
+    runtime.start(spec(v1), 'Los.');
+    fake.last.emit({ type: 'session', id: 'codex:t-1' });
+    fake.last.emit({ type: 'idle' });
+    runtime.start(spec(v2, 'codex:t-1'), 'Weiter.');
+    fake.last.emit({ type: 'session', id: 'codex:t-1' });
+    fake.last.emit({ type: 'idle' });
+    const v3 = v2.map((t) => (t.name === 'show_demo' ? tool('show_demo', 'Show a demo, now with a summary.', { dir: z.string(), summary: z.string() }) : t));
+    runtime.start(spec(v3, 'codex:t-1'), 'Noch etwas.');
+    expect(fake.last.inbox).toEqual(['Noch etwas.']);
   });
 });

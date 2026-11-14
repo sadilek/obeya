@@ -149,7 +149,8 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
         tools: [
           {
             name: 'answer_owner',
-            description: `Your answer to the owner, in the owner's language: text in full (markdown, short paragraphs or a list; it stands in the card's log).${b.dir ? ` files: files of yours in ${b.dir} the answer comes with (in the owner's language too), each with its path and a one-line caption in the owner's language; the owner sees them under the text (a page or an image shown inline, any other file to open).` : ''}`,
+            // the same description for every thread of a session resumed for each (a project agent's): the message names its directory
+            description: `Your answer to the owner, in the owner's language: text in full (markdown, short paragraphs or a list; it stands in the card's log).${b.dir ? ` files: files of yours in your output directory (the message names it) the answer comes with (in the owner's language too), each with its path and a one-line caption in the owner's language; the owner sees them under the text (a page or an image shown inline, any other file to open).` : ''}`,
             schema: b.dir ? { text: z.string(), files: z.array(z.object({ path: z.string(), caption: z.string() })).max(MAX_FILES).optional() } : { text: z.string() },
             run: ({ text, files }) => {
               const unheard = answer ? undefined : [unseen, take()].filter(Boolean).join('\n\n');

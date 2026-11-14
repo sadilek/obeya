@@ -224,6 +224,9 @@ export const toolPrint = (t: AgentTool) => createHash('sha256').update(JSON.stri
 /** The prints of `tools`, by name. */
 export const toolPrints = (tools: AgentTool[]): Record<string, string> => Object.fromEntries(tools.map((t) => [t.name, toolPrint(t)]));
 
+/** A Codex thread's tool that came after it started, in place of a print: the thread cannot call it, whatever it becomes. */
+export const UNREACHABLE = 'unreachable';
+
 /** What a session remembers of Obeya's tools (`Store`): what it last heard of them, by its id. */
 export interface ToolsHeard {
   toolsHeard(session: string): Record<string, string> | undefined;
@@ -237,13 +240,13 @@ export interface ToolsHeard {
  * adds by itself; a tool search brings the old definition back), Codex keeps a thread's tools with
  * the thread and takes no new ones. So the session reads each changed tool's definition here, and
  * calls it so, which both pass on to the tool as called. A tool new since then reaches a Codex
- * thread in no way: it hears it cannot call it.
+ * thread in no way: it hears once that it cannot call it.
  */
 export function toolNews(heard: Record<string, string>, tools: AgentTool[], harness: Harness): string | undefined {
   const named = (name: string) => (harness === 'claude' ? `mcp__obeya__${name}` : name);
-  const changed = tools.filter((t) => heard[t.name] !== undefined && heard[t.name] !== toolPrint(t));
+  const changed = tools.filter((t) => heard[t.name] !== undefined && heard[t.name] !== UNREACHABLE && heard[t.name] !== toolPrint(t));
   const added = harness === 'codex' ? tools.filter((t) => heard[t.name] === undefined) : [];
-  const gone = Object.keys(heard).filter((name) => !tools.some((t) => t.name === name));
+  const gone = Object.keys(heard).filter((name) => heard[name] !== UNREACHABLE && !tools.some((t) => t.name === name));
   if (!changed.length && !added.length && !gone.length) return undefined;
   const parts = ["Obeya's tools changed since this session last heard of them, and your list of tools still shows them as they were."];
   if (changed.length) {
@@ -259,36 +262,49 @@ export function toolNews(heard: Record<string, string>, tools: AgentTool[], harn
 }
 
 /**
+ * What a session has heard of `tools` once it was told `toolNews` (after `heard`, on `harness`):
+ * each one's print, but on Codex a tool that came after the thread started stays out of its reach.
+ */
+export function heardNow(heard: Record<string, string> | undefined, tools: AgentTool[], harness: Harness): Record<string, string> {
+  const prints = toolPrints(tools);
+  if (!heard || harness !== 'codex') return prints;
+  return Object.fromEntries(Object.entries(prints).map(([name, print]) => [name, heard[name] === undefined || heard[name] === UNREACHABLE ? UNREACHABLE : print]));
+}
+
+/** Events that show a session took its message: it is at work, or done with it. */
+const AT_WORK = new Set<AgentEvent['type']>(['text', 'tool', 'denied', 'idle', 'spend', 'background']);
+
+/**
  * A runtime that tells a session it resumes which of Obeya's tools changed since it last heard of
  * them (`toolNews`), with its first message, and remembers in `heard` what each session has heard
- * of them by then: its tools as they are when it starts or resumes. A session `heard` never saw
- * start hears nothing.
+ * of them (`heardNow`) once it took a message that carried the news: a turn that failed before
+ * taking it tells it again at the next resume. A session `heard` never saw start hears nothing.
  */
 export function withToolNews(runtime: AgentRuntime, heard: ToolsHeard): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
-      const prints = toolPrints(spec.tools);
+      const harness = spec.resume ? sessionHarness(spec.resume) : (spec.harness ?? 'claude');
       const before = spec.resume ? heard.toolsHeard(spec.resume) : undefined;
-      let news = before && spec.resume ? toolNews(before, spec.tools, sessionHarness(spec.resume)) : undefined;
+      let news = before ? toolNews(before, spec.tools, harness) : undefined;
+      // the news went with a message (or there was none), and what the session heard is written down
+      let carried = !news;
+      let written = false;
       let id: string | undefined;
-      // what the session has heard is what it was told: the news once a message carried it
-      const told = () => {
-        if (id && !news) heard.heardTools(id, prints);
-      };
       const withNews = (text: string) => {
         if (!news) return text;
         const t = `${news}\n\n${text}`;
         news = undefined;
-        told();
+        carried = true;
         return t;
       };
       const session = runtime.start(
         {
           ...spec,
           onEvent: (e) => {
-            if (e.type === 'session') {
-              id = e.id;
-              told();
+            if (e.type === 'session') id = e.id;
+            else if (id && carried && !written && AT_WORK.has(e.type)) {
+              written = true;
+              heard.heardTools(id, heardNow(before, spec.tools, harness));
             }
             spec.onEvent(e);
           },

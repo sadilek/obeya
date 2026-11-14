@@ -10,9 +10,9 @@ test("a worker resumed after Obeya restarted with a changed tool hears that tool
   await workers().start(c.id);
   const s = runtime.last;
   s.emit({ type: 'session', id: 'sess-1' });
-  expect(store.toolsHeard('sess-1')).toEqual(toolPrints(s.spec.tools));
   // mid-turn as Obeya stops; the session began on an `ask` that was different then
   s.emit({ type: 'tool', name: 'Bash', input: { command: 'bun test' } });
+  expect(store.toolsHeard('sess-1')).toEqual(toolPrints(s.spec.tools));
   store.heardTools('sess-1', { ...toolPrints(s.spec.tools), ask: 'ask-before' });
   await restart();
   const resumed = runtime.last;
@@ -23,5 +23,6 @@ test("a worker resumed after Obeya restarted with a changed tool hears that tool
   expect(told).not.toContain('mcp__obeya__report:');
   expect(told).toEndWith(RESTARTED);
   resumed.emit({ type: 'session', id: 'sess-1' });
+  resumed.emit({ type: 'text', text: 'Going on.' });
   expect(store.toolsHeard('sess-1')).toEqual(toolPrints(resumed.spec.tools));
 });

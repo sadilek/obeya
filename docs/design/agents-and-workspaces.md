@@ -569,8 +569,12 @@ the session last started), and a resumed session whose tools differ hears with i
 before it: each changed tool's description and input schema as they are now, to call it so (both
 harnesses pass a parameter missing from their old definition on to the tool, measured 2026-11-14
 on Claude Code 2.1.325 and Codex 0.169); the tools that are gone; and on Codex the new tools it
-cannot reach. Afterwards it has heard of them as they are, and is not told again. A session Obeya
-never saw start hears nothing.
+cannot reach. Once the session took that message (it works on it), it has heard of them as they
+are and is not told again; a turn that failed before hears it again at the next resume. A tool new
+since a Codex thread started is named once and stays out of its reach, whatever it becomes. A
+session Obeya never saw start hears nothing. Tool descriptions therefore stay the same from one
+message to the next: what changes with each (a question's output directory, say) goes in the
+message, or every resume would describe the tool anew.
 
 ### Hosts
 
