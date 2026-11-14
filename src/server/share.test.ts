@@ -592,6 +592,15 @@ describe('several demo versions on one page', () => {
     expect(stored(c.id).demos!.map((d) => d.handover)).toEqual([1, 3]);
   });
 
+  test("a question's demo that shows the result is the page's like a handover's: what it lacks, and shared in place of the one before", async () => {
+    const c = first();
+    await shared(c.id);
+    later(c.id, 2, { asked: true, result: true });
+    expect(share(c.id)).toMatchObject({ on: [1], stale: true });
+    await shared(c.id, () => sharing.share(c.id));
+    expect(stored(c.id).demos!.map((d) => d.handover)).toEqual([2]);
+  });
+
   test('"Share" on a supplement with no page yet puts the demo it supplements above it', async () => {
     const c = first();
     later(c.id, 2, { follows: 'supplements' });

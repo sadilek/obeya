@@ -558,9 +558,16 @@ answer while the worker goes on, among the earlier demos once a handover brings 
 card's handover without a demo shows its changes instead). Words at a place in its video answer
 the question with that place, as a comment would.
 
-A handover without a demo is refused, unless the card has one from an earlier handover, which then
-stands: whether to record a demo again after feedback is the worker's call. A question's demo does
-not stand for one. While the worker works again or waits on a question, the card shows the last
+A question's demo may instead show the result of the work as it stands (`result`): a pull request's
+change reworked after its review, say, shown with the question whether to post the reply. It comes
+with its page for colleagues where the repository shares (and with `follows`), and is the work's
+demo as a handover's is: "Share" beside it, counted as what the page lacks, and kept by the next
+handover that brings no demo of its own. Its page keeps its address, and Obeya links it on the pull
+request as for any share, so the worker leaves the link to Obeya.
+
+A handover without a demo is refused, unless the card has one from an earlier handover, or a
+question's demo that shows the result, which then stands: whether to record a demo again after
+feedback is the worker's call. A question's drafts do not stand for one. While the worker works again or waits on a question, the card shows the last
 demo without autoplay, with a hint that it is the last handover's and the agent is on the task
 again; sharing stays beside it. Demos stay in
 the demo directory, never in git; a pull request links a demo only once it is shared (see Sharing a demo).
@@ -715,6 +722,13 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   designs, say) were a path in the question's text, which the owner had to open by hand. Rejected:
   handing over with the drafts and the demo report's question, which puts work that has only begun
   up for approval.
+- **A question's demo that shows the result is shared like a handover's** (owner, 2026-11-14): a
+  worker on an upstream pull request reworked the change after its review and asked whether to
+  post its reply, with the new video for the PR; it offered to put the link in once the owner
+  shared the demo, which a question's demo could not be. The worker says which it is (`result`), as
+  only it knows whether it shows drafts or the work. Rejected: sharing every question's demo (drafts
+  would go out as the work's result), and handing over instead of asking (the rounds on an open pull
+  request end without a handover, and posting in the owner's name is their decision first).
 - **There is no handover without a demo** (owner, 2026-10-15): without one the owner has to read to
   decide. Rejected: a `no_demo` handover with a reason, and a repository setting leaving demos to the
   worker; a settings file that still has `demo.required` shows it as a problem.

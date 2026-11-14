@@ -772,9 +772,15 @@ export interface Demo {
   handover?: number;
   /**
    * It came with the worker's question (`handover` is then that question's event): drafts or variants
-   * to choose between, not the result of the work, so a handover does not keep it as its demo.
+   * to choose between, not the result of the work, so a handover does not keep it as its demo, unless
+   * it is the result (`result`).
    */
   asked?: true;
+  /**
+   * A question's demo that shows the work's result as it stands (a pull request's change reworked
+   * after its review, say), not drafts: shared, kept and counted like a handover's demo.
+   */
+  result?: true;
   /** When that handover was. */
   at?: string;
   /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */
@@ -794,6 +800,11 @@ export interface Demo {
   silent?: true;
   /** A video's width and height in pixels, read at the handover: the player has its shape before the video's first bytes arrive. */
   size?: [number, number];
+}
+
+/** Whether a demo is drafts a question brought, which no page shows and no handover keeps, rather than the work's result. */
+export function draftsOnly(d: Pick<Demo, 'asked' | 'result'>): boolean {
+  return !!d.asked && !d.result;
 }
 
 /** The size of a card's change (`Item.changeSize`): the lines of its change list (`changeRows`), and the lines added and removed. */

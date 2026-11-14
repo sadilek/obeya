@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlanDoc } from '../core/plan-doc';
-import type { CardState, Demo, EarlierDemo, Idea, Item, PullRequest, Superseded, Thread } from '../core/types';
+import { type CardState, type Demo, draftsOnly, type EarlierDemo, type Idea, type Item, type PullRequest, type Superseded, type Thread } from '../core/types';
 import { finished } from '../core/card';
 import { type AgentEffort, cardAgentOf } from '../core/agents';
 import type { CardRow } from './db';
@@ -249,7 +249,7 @@ function shareOf(r: CardRow, themeNow?: ThemeNow): Item['share'] {
   // asked of a page at rest alone, so the cards never shared ask nothing
   const theme = s.url && !s.state ? themeNow?.(r) : undefined;
   // the newest demo of a handover: drafts shown with a question since are not what the page lacks
-  const latest = r.demo ? [...(fromJson(r.demos) ?? []), fromJson(r.demo)].findLast((d) => !d.asked) : undefined;
+  const latest = r.demo ? [...(fromJson(r.demos) ?? []), fromJson(r.demo)].findLast((d) => !draftsOnly(d)) : undefined;
   const shared = s.url ? sharedDemos(s) : [];
   // the card's demos on the page, by their handovers
   const on = cardDemos(r).flatMap((d) => (d.handover !== undefined && shared.some((x) => sameDemo(x, d)) ? [d.handover] : []));

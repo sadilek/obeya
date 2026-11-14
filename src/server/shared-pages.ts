@@ -6,7 +6,7 @@ import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type KnownChange, missedChanges, type OutdatedBy, PAGE_CHANGES, pagesVersion, THEME_CHANGED } from '../core/page-changes';
 import { pageTags, untagged } from '../core/page-tags';
-import type { DemoKind, PageTags, Reshare } from '../core/types';
+import { type DemoKind, draftsOnly, type PageTags, type Reshare } from '../core/types';
 import type { Board } from './board';
 import type { CardRow, Store } from './db';
 import { repoOfRow } from './plan-ref';
@@ -109,7 +109,7 @@ export function reshareable(r: CardRow, theme?: string | null, there = demoThere
 export function cardDemos(r: CardRow): StoredDemo[] {
   const latest = fromJson(r.demo);
   // drafts a question brought are not the work's result: no page shows them
-  return [...atHand(r).map(({ d }) => d), ...(latest ? [latest] : [])].filter((d) => !d.asked);
+  return [...atHand(r).map(({ d }) => d), ...(latest ? [latest] : [])].filter((d) => !draftsOnly(d));
 }
 
 /**

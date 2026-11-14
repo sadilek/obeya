@@ -5,8 +5,9 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 ### Sharing a demo
 
 Every demo, video or HTML artifact, has a compact "Share" button at the right end of its own line
-(see Earlier demos), on waiting, done and archived cards alike; prototypes are not shared. Once
-shared, the line holds the link, "Copy link" and "Stop sharing".
+(see Earlier demos), on waiting, done and archived cards alike; prototypes are not shared, nor
+drafts a question brought (see Demos → The demo on the card). Once shared, the line holds the link,
+"Copy link" and "Stop sharing".
 
 #### Where a demo goes
 

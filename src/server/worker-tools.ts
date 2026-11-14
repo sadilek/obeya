@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { realPath } from './path';
 import { isAbsolute, join } from 'node:path';
 import { type CardFile, normalPath } from '../core/files';
-import { type AdoptedPr, AWAITED_STATES, type Demo, type DemoKind, type DemoPage, type HeldChanges, type Item, type Question, type RepoRef, type Snooze, type Superseded, type PageTags } from '../core/types';
+import { type AdoptedPr, AWAITED_STATES, type Demo, type DemoKind, type DemoPage, type HeldChanges, type Item, type Question, type RepoRef, type Snooze, type Superseded, type PageTags, draftsOnly } from '../core/types';
 import { answering, awaited, finished, formatQuestion, laterTime, started } from '../core/card';
 import type { CardLanding } from '../core/config';
 import { type Board, type Retracted, titleKey } from './board';
@@ -59,6 +59,30 @@ function checkedDemo(d: { kind?: DemoKind; dir: string; chapters?: string[] }): 
 
 /** A demo as the worker gives it at its handover. */
 type GivenDemo = { kind?: DemoKind; dir: string; chapters?: string[]; question?: { text: string } & Omit<Asked, 'question'>; page?: DemoPage; follows?: 'replaces' | 'supplements' };
+
+/** What a demo the worker gives says of the card's demo before it, for the owner's buttons when the page shows that one. */
+function followsOf(d: GivenDemo, row: CardRow): Pick<StoredDemo, 'follows'> {
+  return row.demo && (d.follows === 'replaces' || d.follows === 'supplements') ? { follows: d.follows } : {};
+}
+
+/**
+ * The page for colleagues a demo the worker gives comes with, its tags checked against the site's
+ * vocabulary; none without one, or why the call is refused (`refused`: how its result begins, and
+ * what to do then): where the repository shares (`shares`), a demo the owner may share needs one.
+ */
+function pageOf(d: GivenDemo, shares: boolean, vocabulary: [string, string[]][], refused: { not: string; again: string }): DemoPage | undefined | string {
+  const { not, again } = refused;
+  const tags = vocabulary.length && d.page?.tags && typeof d.page.tags === 'object' ? (d.page.tags as PageTags) : undefined;
+  const page = d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000), ...(tags ? { tags: tagsOf(tags, Object.fromEntries(vocabulary)) } : {}) } : undefined;
+  if (shares && !page) return `${not}: a demo here needs its page (title and text) for colleagues, in case the owner shares it. ${again[0]!.toUpperCase()}${again.slice(1)} with demo.page.`;
+  if (vocabulary.length) {
+    const wrong = tags ? outside(tags, Object.fromEntries(vocabulary)) : [];
+    const lacking = vocabulary.filter(([dim]) => !tags?.[dim]).map(([dim]) => dim);
+    if (wrong.length) return `${not}: the page's tags come from the site's alone, and these are not among them: ${wrong.join(', ')}. ${again[0]!.toUpperCase()}${again.slice(1)} with demo.page.tags from those its description gives.`;
+    if (lacking.length) return `${not}: the page's tags lack ${lacking.join(', ')}. Give each dimension its values (an empty list where none fits), then ${again}.`;
+  }
+  return page;
+}
 
 /** What the worker gives `ready_for_review`. */
 interface HandOverArgs {
@@ -165,6 +189,38 @@ export class WorkerTools {
     const ownRepo = this.o.repo ?? this.o.board.home;
     const others = this.otherBoards().filter((b) => b.canvas.repos.length);
     const anotherRepo = repos.length > 1 || others.length > 0;
+    // the demo's page for colleagues, and what it does to a page that shows an earlier demo, where the repository shares;
+    // `required` says when the page is required
+    const pageSchema = (required: string) =>
+      shares
+        ? {
+            page: z
+              .object({
+                title: z.string(),
+                text: z.string(),
+                ...(vocabulary.length
+                  ? {
+                      tags: z
+                        .record(z.string(), z.array(z.string()))
+                        .optional()
+                        .describe(
+                          `${required}: for each of these dimensions, the values that fit the change (an empty list where none does), only from those given, so colleagues find the page by them: ${vocabulary.map(([d, v]) => `${d}: ${v.join(', ')}`).join('; ')}`,
+                        ),
+                    }
+                  : {}),
+              })
+              .optional()
+              .describe(
+                `${required}: the page on which the owner may share the demo (the video, or the HTML artifact below the text) with colleagues, in ${pageLanguage}. They know the product but have never seen Obeya, this card or the plan doc. title: what changes, in a few words; text: two to five sentences on what changes for the user and why, without findings, tests or internal process${vocabulary.length ? '; tags: see there' : ''}`,
+              ),
+            follows: z
+              .enum(['replaces', 'supplements'])
+              .optional()
+              .describe(
+                "when the card has a demo from an earlier handover: 'replaces' if this one shows the change afresh, so a shared page should show it instead; 'supplements' if it only shows what was corrected or explained since, to stand on the shared page beside the one before",
+              ),
+          }
+        : {};
     const handOver = () => {
       live.turn.handedOver = true;
       live.nudged = false;
@@ -247,10 +303,17 @@ export class WorkerTools {
               kind: z.enum(['video', 'html']).optional().describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at"),
               dir: z.string().describe('absolute path: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
               chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
+              result: z
+                .boolean()
+                .optional()
+                .describe(
+                  "true when it shows the result of your work as it stands rather than drafts to choose from (the change on a pull request reworked after its review, say): the owner may then share it on the card's page as a handover's demo, and it stands for your next handover's demo unless you bring a new one. The page keeps its address, and where the card has a pull request, Obeya links the page there itself.",
+                ),
+              ...pageSchema('required with result'),
             })
             .optional()
             .describe(
-              "what the owner is to look at to answer, when there is something to see (drafts or variants side by side, as an HTML artifact, say): the card shows it beside your question as it shows a handover's demo. It is no handover: the handover still brings its own demo.",
+              "what the owner is to look at to answer, when there is something to see (drafts or variants side by side, as an HTML artifact, say): the card shows it beside your question as it shows a handover's demo. It is no handover: unless it is the result, the handover still brings its own demo.",
             ),
         },
         run: (args) => {
@@ -273,11 +336,15 @@ export class WorkerTools {
               'Recorded: your question waits for the owner on the card, and their answer arrives as your next message.',
               'if they change your question, ask it anew (the card shows the earlier one as asked again further below)',
             );
-          const given = args.demo as { kind?: DemoKind; dir: string; chapters?: string[] } | undefined;
+          const given = args.demo as (GivenDemo & { result?: boolean }) | undefined;
           if (!given) {
             asked();
             return recorded();
           }
+          // the result of the work may go on the card's page, which takes its text for colleagues; drafts go on none
+          const result = given.result === true;
+          const page = result ? pageOf(given, shares, vocabulary, { not: 'Not asked', again: 'ask again' }) : undefined;
+          if (typeof page === 'string') return page;
           // a demo made on another machine is shown from its copy here
           return this.demoHere(cardId, given.dir).then(async (here) => {
             if ('wrong' in here) return `Not asked: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then ask again.`;
@@ -285,7 +352,14 @@ export class WorkerTools {
             if (ended()) return SESSION_ENDED;
             const shown = checkedDemo({ ...given, dir: here.dir });
             if ('wrong' in shown) return `Not asked: ${shown.wrong}. Fix the ${shown.fix}, then ask again.`;
-            await this.keep(cardId, asked(shown));
+            if (!result) {
+              await this.keep(cardId, asked(shown));
+              return recorded();
+            }
+            // what a video's player needs to know of it, as for a handover's
+            const facts = shown.kind === 'video' ? await videoFacts(shown.dir) : {};
+            if (ended()) return SESSION_ENDED;
+            await this.keep(cardId, asked({ ...shown, ...facts, result: true, ...followsOf(given, this.o.board.row(cardId)), ...(page ? { page } : {}) }));
             return recorded();
           });
         },
@@ -528,35 +602,7 @@ export class WorkerTools {
                 .describe(
                   `only when something needs the owner beyond approve or feedback${review ? ' or the choice on each finding, which the card offers beside it' : ''}; the owner can answer it on the card before approving. As with ask: up to four short answer options when they exist, which the owner picks with a click (several when multiple is true) or answers in their own words; pick and pick_why: the options you would choose and why, in one short sentence in ${language}`,
                 ),
-              ...(shares
-                ? {
-                    page: z
-                      .object({
-                        title: z.string(),
-                        text: z.string(),
-                        ...(vocabulary.length
-                          ? {
-                              tags: z
-                                .record(z.string(), z.array(z.string()))
-                                .optional()
-                                .describe(
-                                  `required: for each of these dimensions, the values that fit the change (an empty list where none does), only from those given, so colleagues find the page by them: ${vocabulary.map(([d, v]) => `${d}: ${v.join(', ')}`).join('; ')}`,
-                                ),
-                            }
-                          : {}),
-                      })
-                      .optional()
-                      .describe(
-                        `required: the page on which the owner may share the demo (the video, or the HTML artifact below the text) with colleagues, in ${pageLanguage}. They know the product but have never seen Obeya, this card or the plan doc. title: what changes, in a few words; text: two to five sentences on what changes for the user and why, without findings, tests or internal process${vocabulary.length ? '; tags: see there' : ''}`,
-                      ),
-                    follows: z
-                      .enum(['replaces', 'supplements'])
-                      .optional()
-                      .describe(
-                        "when the card has a demo from an earlier handover: 'replaces' if this one shows the change afresh, so a shared page should show it instead; 'supplements' if it only shows what was corrected or explained since, to stand on the shared page beside the one before",
-                      ),
-                  }
-                : {}),
+              ...pageSchema('required'),
             })
             .optional(),
           ...(review
@@ -791,8 +837,8 @@ export class WorkerTools {
     if (typeof held === 'string') return held;
     // approved work that could not land comes back to be landed, not reviewed: its demo stands
     const approved = !!row.approved_at;
-    // without a new demo, the one on the card stands, unless it only came with a question
-    const asked = !!row.demo && !!fromJson(row.demo).asked;
+    // without a new demo, the one on the card stands, unless it only came with a question as drafts
+    const asked = !!row.demo && draftsOnly(fromJson(row.demo));
     const kept = !d && !!row.demo && !asked;
     // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
     if (!d && !kept && !approved && !this.folder)
@@ -870,18 +916,10 @@ export class WorkerTools {
 
   /** The new demo `d` as the card keeps it, with its report and its page for colleagues; or why it is not handed over. */
   private demoOf(d: GivenDemo, row: CardRow, x: HandOverContext, facts: Awaited<ReturnType<typeof videoFacts>>): StoredDemo | string {
-    const { vocabulary } = x;
     // what the worker says of it beside the demo before, for the owner's buttons when the page shows that one
-    const report = { ...(d.question?.text.trim() ? demoQuestion(d.question) : {}), ...(row.demo && (d.follows === 'replaces' || d.follows === 'supplements') ? { follows: d.follows } : {}) };
-    const tags = vocabulary.length && d.page?.tags && typeof d.page.tags === 'object' ? (d.page.tags as PageTags) : undefined;
-    const page = d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000), ...(tags ? { tags: tagsOf(tags, Object.fromEntries(vocabulary)) } : {}) } : undefined;
-    if (x.shares && !page) return 'Not handed over: a demo here needs its page (title and text) for colleagues, in case the owner shares it. Call ready_for_review again with demo.page.';
-    if (vocabulary.length) {
-      const wrong = tags ? outside(tags, Object.fromEntries(vocabulary)) : [];
-      const lacking = vocabulary.filter(([dim]) => !tags?.[dim]).map(([dim]) => dim);
-      if (wrong.length) return `Not handed over: the page's tags come from the site's alone, and these are not among them: ${wrong.join(', ')}. Call ready_for_review again with demo.page.tags from those its description gives.`;
-      if (lacking.length) return `Not handed over: the page's tags lack ${lacking.join(', ')}. Give each dimension its values (an empty list where none fits), then call ready_for_review again.`;
-    }
+    const report = { ...(d.question?.text.trim() ? demoQuestion(d.question) : {}), ...followsOf(d, row) };
+    const page = pageOf(d, x.shares, x.vocabulary, { not: 'Not handed over', again: 'call ready_for_review again' });
+    if (typeof page === 'string') return page;
     const shown = checkedDemo(d);
     if ('wrong' in shown) return `Not handed over: ${shown.wrong}. Fix the ${shown.fix}, then call ready_for_review again.`;
     return { ...shown, ...(shown.kind === 'video' ? facts : {}), ...report, ...(page ? { page } : {}) };

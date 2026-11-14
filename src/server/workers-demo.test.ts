@@ -668,6 +668,27 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.demos).toEqual([{ kind: 'html', chapters: [], single: true, asked: true, handover: question.id, at: question.at, n: 0 }]);
   });
 
+  test("a question's demo that shows the result comes with its page where demos are shared, and stands for the handover's demo", async () => {
+    await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
+    const c = manual();
+    await workers.start(c.id);
+    const d = demoDir();
+    // drafts need no page
+    expect(await runtime.last.call('ask', { question: 'Welche Richtung?', demo: demo(d) })).toContain('End your turn');
+    workers.answer(c.id, 'A');
+    expect(await runtime.last.call('ask', { question: 'Antwort so posten?', demo: { ...demo(d), result: true } })).toContain('Not asked: a demo here needs its page');
+    expect(state(c.id)).toBe('working');
+    const page = { title: 'Zählerstände als CSV', text: 'Vermieter laden die Zählerstände jetzt als CSV herunter.' };
+    expect(await runtime.last.call('ask', { question: 'Antwort so posten?', demo: { ...demo(d), result: true, page, follows: 'replaces' } })).toContain('End your turn');
+    const question = board.events(c.id).findLast((e) => e.kind === 'question')!;
+    expect(board.item(c.id)!.demo).toMatchObject({ kind: 'video', asked: true, result: true, page, follows: 'replaces', handover: question.id });
+    workers.answer(c.id, 'Ja');
+    // the handover keeps it as its demo
+    expect(await runtime.last.call('ready_for_review', { summary: 'Gepostet.' })).toContain('End your turn');
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.demo).toMatchObject({ result: true, handover: question.id });
+  });
+
   test('where demos are shared, a video or an artifact comes with its page for colleagues, kept with the demo', async () => {
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
     const c = manual();

@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
-import type { ApproveResult, CardPatch, Item, RepoRef, UpstreamRef } from '../core/types';
+import { type ApproveResult, type CardPatch, draftsOnly, type Item, type RepoRef, type UpstreamRef } from '../core/types';
 import { agentListens, answering, archiveRefusal, askable, finished, handedOver, plannableAsProject, snoozable, stopped } from '../core/card';
 import { ApiError, api, failText } from './api';
 import { cardPath } from './address';
@@ -701,7 +701,7 @@ function TaskResult({ v, diff, tab, onTab, autoplay }: { v: View; diff: CardDiff
                       </p>
                     )}
                     {/* drafts shown with a question are not the work's demo: the handover brings the one to share */}
-                    {sharing && !shown.asked && <DemoShare item={item} demo={shown} repo={v.repo} act={act} run={v.run} onDemoSites={v.onDemoSites} />}
+                    {sharing && !draftsOnly(shown) && <DemoShare item={item} demo={shown} repo={v.repo} act={act} run={v.run} onDemoSites={v.onDemoSites} />}
                   </>
                 ))
               }
