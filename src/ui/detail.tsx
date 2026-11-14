@@ -23,7 +23,7 @@ import { makingWords, newRepoWords, type RepoChoice, RepoPick, useRepoChoice } f
 import { ClockMark, SnoozeMenu, snoozeWho } from './snooze';
 import { kindLabel, snoozeWhen, t } from './strings';
 import { agentWorks, ownerField, talkAlone, waitsFirstStart, worked as isWorked } from './cardState';
-import { type Act, type ActDone, ArchiveButton, Armed, CardHead, DeleteButton, Later, type Pending, RepoDownBox, type Run, StartButton, StartOn, StateLine, SupersededBox, type Tell } from './cardSheet';
+import { type Act, type ActDone, ArchiveButton, Armed, CardHead, DeleteButton, Later, type Pending, MoveToBox, RepoDownBox, type Run, StartButton, StartOn, StateLine, SupersededBox, type Tell } from './cardSheet';
 import { ApproveReview, Findings, holdsUp, useUnsentDecisions } from './review';
 import { IdeaView, PrototypeDemos } from './idea';
 import { Conversation, Fold, LastFailure, Mocks, Split, Talk, TalkColumn, useOpenQuestions, wordsField } from './conversation';
@@ -417,6 +417,7 @@ function TaskView(v: View) {
 
       <SupersededBox item={item} all={all} act={act} onDelete={v.onDelete} />
       <RepoDownBox item={item} />
+      <MoveToBox item={item} act={act} />
 
       {!waits && <QueueBox item={item} all={all} act={act} onClones={v.onClones} />}
 

@@ -20,6 +20,16 @@ export interface AgentSetting {
   harness: Harness;
   model: string;
   effort: AgentEffort;
+  /**
+   * What the group runs on while its harness is at its usage limit (or cannot be reached): a model
+   * of the other harness, with the group's effort. Absent: its agents wait for the limit to lift.
+   */
+  fallback?: AgentFallback;
+}
+/** A group's fallback (`AgentSetting.fallback`): always on the other harness than the group's. */
+export interface AgentFallback {
+  harness: Harness;
+  model: string;
 }
 /**
  * What the owner chose for one card's agent, over the workers' group's (`Item.agent`): a harness with
@@ -82,6 +92,31 @@ export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
   explorer: { harness: 'claude', model: 'opus', effort: 'high' },
   chores: { harness: 'claude', model: 'opus', effort: 'medium' },
 };
+/**
+ * What an agent of a group runs on instead while harness `on` is at its limit: the group's fallback
+ * where it runs on the group's harness, the group's own setting where it runs on the fallback's (a
+ * card chosen for the other harness), each with `effort`; none where the group has no fallback.
+ */
+export function replacement(group: AgentSetting, on: Harness, effort: AgentEffort = group.effort): AgentSetting | undefined {
+  const f = group.fallback;
+  if (!f || f.harness === group.harness) return undefined;
+  if (on === group.harness) return { harness: f.harness, model: f.model, effort };
+  if (on === f.harness) return { harness: group.harness, model: group.model, effort };
+  return undefined;
+}
+
+/** The harnesses by their names, the same in every language. */
+export const HARNESS_NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' };
+
+/** An agent's harness and model as the card's conversation names them: Codex · Sol, Claude Code · Opus. */
+export function agentName(s: { harness: Harness; model: string }): string {
+  const model = s.harness === 'codex' ? codexFamilyName(codexFamily(s.model)) : `${s.model[0]!.toUpperCase()}${s.model.slice(1)}`;
+  return `${HARNESS_NAMES[s.harness]} · ${model}`;
+}
+
+/** The other harness than `h`. */
+export const otherHarness = (h: Harness): Harness => (h === 'claude' ? 'codex' : 'claude');
+
 /** The default of a group on a harness: the preset's effort, with the harness's preset model (Codex's Sol family). */
 export function agentDefault(role: AgentRole, harness: Harness): AgentSetting {
   const preset = AGENT_DEFAULTS[role];

@@ -131,6 +131,39 @@ stores its family. Saving restarts nothing; agents starting afterwards take it, 
 running session keeps its own, except the voice commands' session, which reopens when the
 Coordinator's setting changes (as for another language).
 
+#### At the limit
+
+Each group may also have a fallback on the other harness, chosen in the dialog's last column, "At
+the limit": "Wait" (the preset) or a model of the other harness ("Codex · Sol"), with the group's
+effort; stored beside the group's choice (`"fallback": { "harness": "codex", "model": "gpt-#-sol" }`).
+A group moved onto its fallback's harness has none any more. While a harness is at its usage limit,
+or the Claude API cannot be reached (see Turns that end without a handover in Communication), every
+agent of a group with a fallback that starts anew runs on the fallback, where that harness is ready
+and not at its limit itself; one that resumes a session stays on the harness the session began on
+(a conversation cannot move between harnesses), with the fallback's model where that is the
+fallback's harness. A card chosen for the fallback's harness falls back on its group's own setting.
+Which harness is at its limit Obeya learns from the agents' turns, for every canvas at once: a turn
+the limit stopped says until when, a turn that works again says it lifted.
+
+An agent the limit stops before it did anything (its first turn, nothing said, no tool called)
+starts afresh on the fallback at once, with what it was sent: the Coordinator's check before a card
+starts, naming a card, a look-up, a worker's first turn. One that waits for the limit (every agent
+but a worker and Obeya's chat) and has done nothing moves the moment the owner sets a fallback.
+Obeya's chat reads words the limit stopped once more in a fresh session, which then runs on the
+fallback, and reads the words the limit held at once when a fallback is set. A worker placed on the
+fallback says so in its conversation ("Claude Code has reached its usage limit (until 14:40): this
+card's agent runs on Codex · Sol instead."); other agents move without a word.
+
+A worker that the limit stops in the middle of its work waits for it as before (see Usage limit in
+Communication), and its card offers "Continue with Codex" (or Claude Code) above the conversation,
+saying until when the limit holds and on what the new agent would run: the workers' fallback, else
+their own setting where it is on the other harness, else that harness's preset. The other harness
+has to be ready and not at its limit; the box goes as soon as it is not. The click ends the waiting
+session and starts a new one on the other harness in the card's workspace, briefed as a worker
+resumed on its branch, with the card's conversation so far (who said what, oldest first) and the
+path of the transcript of the agent before it (none on a host). The card runs there from then on,
+after a restart too: its own harness and model become that one's.
+
 A card may run on another harness, model or effort than its group. Joined to each button that
 starts a card (and "Accept and start" on a proposed task, "Build it like this" on an idea, "Start
 as task" on a Question card, "Start anyway" in the queue) is a narrow
@@ -714,6 +747,16 @@ for its hooks), and what the repository's work needs.
   every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in a menu that
   starts the card at once; changing it while the card works (a session cannot move to another
   harness, and a model changed between turns would not be what the owner saw it start with).
+- **A fallback per group for the usage limit, and the owner moves a worker at work** (owner,
+  2026-11-14, GitHub issue #92): with Claude Code at its limit, a card started for Codex stayed
+  at "Obeya checking", since the check ran on Claude Code and waited for its reset, and changing the
+  Coordinator's harness did not move what waited already. Only agents that did nothing yet move by
+  themselves: they lose nothing. A worker at work keeps its conversation in its harness, so moving
+  it loses what it had in mind beyond the conversation and its transcript; the owner decides that
+  with "Continue with …". Rejected: overriding everything ad hoc per use, which leaves the owner to
+  find every waiting agent; a worker moving by itself with a summary of its run, which would trade
+  context away unasked; "Wait" being something other than the preset, which would spend the other
+  plan's quota without the owner having chosen it.
 - **Harness, model and effort are set per group and per card, nowhere else** (owner, 2026-11-05):
   the two levels cover what the owner picks in use, and each further level makes it harder to tell
   what a card will run on. Rejected: defaults per canvas and per project over the machine-wide

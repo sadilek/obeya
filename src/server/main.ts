@@ -61,11 +61,12 @@ import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
 import { claudeExecutable, sdkRuntime } from './claude';
-import { type AgentRuntime, byHarness, endAgentsHere, withRest } from './runtime';
+import { type AgentRuntime, byHarness, endAgentsHere, limitedRuntime, withRest } from './runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
 import { findClaude, MachineSetup, updateClaude, updateCodex, welcome } from './machine';
 import { codexRuntime, codexUsage } from './codex';
+import { HarnessLimits } from './limits';
 import { claudeModels, claudeNewest, codexNewest, Harnesses, hostClaude, hostCodex } from './harnesses';
 import { addToPath, extendPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
@@ -314,6 +315,8 @@ const config = new Config({
     : {}),
 });
 // Claude Code and Codex on this machine: which one a group runs on when the owner chose none, and what the Configuration offers
+// which harness is at its limit, for every canvas: a group's fallback takes over where one is
+const limits = new HarnessLimits();
 const harnesses = new Harnesses({
   cwd: home,
   claude: async () => {
@@ -353,6 +356,8 @@ canvases = await Canvases.start(
     language: () => ownerLanguage(home),
     conversation: () => conversationLanguage(home),
     agents: (role) => agentSetting(home, role, harnesses.preferred()),
+    limits,
+    ready: (h) => harnesses.ready(h),
     settings: (path) => config.repoSettings(path),
   },
   // the canvas the setup assistant created gets a first card that says what to try
@@ -365,7 +370,10 @@ function agentRuntime() {
   const rest = process.env.OBEYA_REST_AFTER ? Number(process.env.OBEYA_REST_AFTER) * 1000 : undefined;
   // an alias goes to Claude Code (here, or on the host the agent runs on) as the newest model of its family it lists, which the alias may not name yet
   const newest: AgentRuntime = { start: (spec, ...more) => sdkRuntime.start(spec.model ? { ...spec, model: harnesses.claudeModel(spec.model, hostName(spec.cwd) ?? undefined) } : spec, ...more) };
-  const live = byHarness({ claude: withRest(newest, rest), codex: withRest(codexRuntime, rest) });
+  // a harness that is at its usage limit for two hours from the start (`OBEYA_FAKE_LIMIT`: claude or codex), for demos and live checks of its fallback
+  const fake = process.env.OBEYA_FAKE_LIMIT;
+  const atLimit = (h: 'claude' | 'codex', r: AgentRuntime) => (fake === h ? limitedRuntime(Date.now() + 2 * 3_600_000) : r);
+  const live = byHarness({ claude: atLimit('claude', withRest(newest, rest)), codex: atLimit('codex', withRest(codexRuntime, rest)) });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;
   const refusedFile = join(home, 'replay-refused.txt');
@@ -468,6 +476,7 @@ server = serve(canvases, Number(values.port), {
   usage,
   stalls,
   harnesses,
+  limits,
   ...(scratch ? { used: () => scratch.used() } : {}),
 });
 scratch?.start();

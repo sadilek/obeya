@@ -5,7 +5,7 @@
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoVoiceCheck, type Language, type NarrationLanguage, type PageTags, type SetupCheck, type Theme, THEMES, type VoiceKind, type VoiceSetupView } from '../core/types';
-import { AGENT_ROLES, type AgentEffort, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices } from '../core/agents';
+import { AGENT_ROLES, type AgentEffort, type AgentFallback, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices, otherHarness } from '../core/agents';
 import { blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
@@ -826,7 +826,7 @@ function AgentsBlock({ on }: { on: boolean }) {
   const { status, busy, act } = useAct();
   if (!view) return null;
   const a = t.config.agents;
-  const choose = (role: AgentRole, choice: Partial<AgentSetting>) => act(async () => setView(await api.saveAgents(role, choice)));
+  const choose = (role: AgentRole, choice: Partial<Omit<AgentSetting, 'fallback'>> & { fallback?: AgentFallback | null }) => act(async () => setView(await api.saveAgents(role, choice)));
   const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
   const unready = view.harnesses.filter((h) => !h.ready);
   return (
@@ -837,11 +837,17 @@ function AgentsBlock({ on }: { on: boolean }) {
         <span className="hint">{a.harness}</span>
         <span className="hint">{a.model}</span>
         <span className="hint">{a.effort}</span>
+        <span className="hint">{a.fallback}</span>
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
           // Codex's families by their newest model; a model chosen that the harness no longer offers stays shown
           const listed = modelChoices(harness(setting.harness), setting.model);
           const efforts = effortsOf(listed, setting.model);
+          // the fallback runs on the other harness, once that is set up here
+          const other = otherHarness(setting.harness);
+          const otherReady = !!harness(other)?.ready;
+          const instead = setting.fallback?.harness === other ? setting.fallback : undefined;
+          const fallbacks = otherReady || instead ? modelChoices(harness(other), instead?.model) : [];
           return (
             <Fragment key={role}>
               <div className="cfg-agent">
@@ -871,6 +877,24 @@ function AgentsBlock({ on }: { on: boolean }) {
                     {a.efforts[x]}
                   </option>
                 ))}
+              </select>
+              <select
+                aria-label={`${a.roles[role].name}: ${a.fallback}`}
+                value={instead?.model ?? ''}
+                disabled={busy}
+                onChange={(e) => choose(role, { fallback: e.target.value ? { harness: other, model: e.target.value } : null })}
+              >
+                <option value="">{a.wait}</option>
+                {fallbacks.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {`${t.harnesses[other]} · ${modelLabel(other, m)}${m.version ? ` ${m.version}` : ''}`}
+                  </option>
+                ))}
+                {!otherReady && !instead && (
+                  <option value="-" disabled>
+                    {a.notReady(t.harnesses[other])}
+                  </option>
+                )}
               </select>
             </Fragment>
           );

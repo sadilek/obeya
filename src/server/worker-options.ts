@@ -4,7 +4,8 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { RepoAdapter } from '../adapters/types';
 import type { Language } from '../core/locale';
 import type { Item, UpstreamRef } from '../core/types';
-import type { Harness } from '../core/agents';
+import type { AgentEffort, AgentSetting, Harness } from '../core/agents';
+import type { Listeners } from '../core/watched';
 import type { RepoSettings } from '../core/config';
 import type { Board } from './board';
 import type { FolderWorkspaces } from './folder';
@@ -102,6 +103,14 @@ export interface WorkerOptions {
   questionHistory?: (cardId: string) => string | undefined;
   /** The harness the workers' group runs on (`withAgentSetting`), where a card chose none: how a worker waits differs by it. Claude Code when left out. */
   harness?: () => Harness;
+  /**
+   * What a card's worker on harness `on` that waits for its limit would go on with ("Continue with
+   * …"): the workers' fallback, else their own setting or the other harness's preset model, with
+   * `effort`; none where that harness is not ready or at its limit itself. Without it no card offers it.
+   */
+  moveTo?: (on: Harness, effort?: AgentEffort) => AgentSetting | undefined;
+  /** Which harness is at its limit (`HarnessLimits`): a waiting worker's card offers to go on elsewhere once that changes. */
+  limits?: Listeners;
   /** Where Obeya keeps a copy of each demo handed over (`keepDemo`), by card and handover; without it a demo's files are only where the worker made them. */
   keptDemos?: string;
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */

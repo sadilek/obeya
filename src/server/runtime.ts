@@ -13,7 +13,9 @@ import { filesIn } from './files';
 import { OWN_GROUP } from './spawn';
 import type { Messages } from '../core/messages';
 import type { ToolWatch } from './folder';
-import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type CardAgent, type Harness, storedModel } from '../core/agents';
+import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type CardAgent, type Harness, replacement, storedModel } from '../core/agents';
+import type { HarnessLimit, HarnessLimits } from './limits';
+import type { Listeners } from '../core/watched';
 import { messageOf } from '../core/text';
 import { claudeLoginFailed, codexLoginLost } from '../core/login';
 
@@ -66,7 +68,13 @@ export type AgentEvent =
    * tried again at `resetsAt` (`outageRetry`), and the turn waits as for the usage limit. `token`
    * when the session signed in with a token rather than this machine's account (`CardEvent.token`).
    */
-  | { type: 'error'; message: string; limit?: TurnLimit; token?: true };
+  | { type: 'error'; message: string; limit?: TurnLimit; token?: true }
+  /**
+   * The agent runs on its group's fallback (`to`), not on harness `from`, which is at its usage
+   * limit (or, with `outage`, cannot be reached) until `until` (milliseconds): it started there, or
+   * a turn there stopped before the agent did anything and it started afresh on the fallback.
+   */
+  | { type: 'moved'; from: Harness; to: AgentSetting; until: number; outage?: true };
 
 /**
  * What keeps a turn from going on until `resetsAt` (milliseconds, where known): the account's usage
@@ -98,6 +106,11 @@ export interface AgentSpec {
   cwd: string;
   /** Appended to the default system prompt. */
   system: string;
+  /**
+   * The system prompt for the harness the agent ends up on, where it differs by harness (how a worker
+   * waits) and that may not be the one its caller expected (`withAgentSetting`'s fallback); `system` otherwise.
+   */
+  systemFor?: (harness: Harness) => string;
   /** Tools the agent reaches as `mcp__obeya__<name>`. */
   tools: AgentTool[];
   /** Resume this session instead of starting one. */
@@ -174,26 +187,204 @@ export const CODEX_SESSION = 'codex:';
 /** The harness a kept session runs on: Codex's threads carry their mark (`CODEX_SESSION`). */
 export const sessionHarness = (session: string): Harness => (session.startsWith(CODEX_SESSION) ? 'codex' : 'claude');
 
+/** What a fallback asks of a harness: whether it is at its limit now, and whether it is ready here (installed, logged in). */
+export interface Availability {
+  limit(h: Harness): HarnessLimit | undefined;
+  ready(h: Harness): boolean;
+}
+
+/** Where an agent runs (`placeAgent`): its harness, model and effort, and the harness it was to run on where its limit moved it to the fallback. */
+export interface Placed extends AgentSetting {
+  moved?: { from: Harness; limit: HarnessLimit };
+}
+
 /**
- * A runtime that starts each agent of a group on its group's harness, model and effort
- * (`agentSetting`), asked at every start, or on the harness and model and the effort chosen for that
- * agent alone (a card's), each where it names one. Claude Code's default model is no model given;
- * a Codex agent always gets a family (`codexFamily`), which its session resolves to a model. A session
- * resumed stays on the harness it began on, with that harness's preset model if the choice has
- * moved on since, so a card goes on with its conversation.
+ * Where an agent of a group starts: on its group's harness, model and effort, or on the harness and
+ * model and the effort chosen for that agent alone (a card's), each where it names one. A session
+ * resumed stays on the harness it began on: with the model chosen there where that is the group's
+ * or its fallback's harness, else that harness's preset model, so a card goes on with its
+ * conversation. A new one whose harness is at its limit (`avail`) starts on the group's fallback
+ * instead (`replacement`), where that harness is ready and not at its limit itself.
  */
-export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting): AgentRuntime {
+export function placeAgent(spec: Pick<AgentSpec, 'role' | 'agent' | 'resume'>, group: AgentSetting, avail?: Availability): Placed {
+  const own = spec.agent;
+  const chosen: AgentSetting = {
+    harness: group.harness,
+    model: group.model,
+    effort: own?.effort ?? group.effort,
+    ...(own?.harness && own.model ? { harness: own.harness, model: own.model } : {}),
+  };
+  const role = spec.role ?? 'worker';
+  if (spec.resume) {
+    const on = sessionHarness(spec.resume);
+    if (on === chosen.harness) return chosen;
+    const other = replacement(group, chosen.harness, chosen.effort);
+    return other?.harness === on ? other : { ...agentDefault(role, on), effort: chosen.effort };
+  }
+  const limit = avail?.limit(chosen.harness);
+  if (!limit) return chosen;
+  const other = replacement(group, chosen.harness, chosen.effort);
+  if (!other || !avail!.ready(other.harness) || avail!.limit(other.harness)) return chosen;
+  return { ...other, moved: { from: chosen.harness, limit } };
+}
+
+/**
+ * A runtime that starts each agent of a group where `placeAgent` places it, asked at every start
+ * (`setting`, the group's as the owner chose it; `avail`, what the fallback asks of a harness).
+ * Claude Code's default model is no model given; a Codex agent always gets a family (`codexFamily`),
+ * which its session resolves to a model. An agent placed on its fallback hears so first (`moved`).
+ */
+export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting, avail?: Availability): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
       if (!spec.role) return runtime.start(spec, firstMessage, images);
-      const group = setting(spec.role);
-      const own = spec.agent;
-      const chosen: AgentSetting = { ...group, ...(own?.harness && own.model ? { harness: own.harness, model: own.model } : {}), ...(own?.effort ? { effort: own.effort } : {}) };
-      const on: Harness = spec.resume ? sessionHarness(spec.resume) : chosen.harness;
-      const { harness, model, effort } = on === chosen.harness ? chosen : { ...agentDefault(spec.role, on), effort: chosen.effort };
-      const { model: _, agent: __, ...rest } = spec;
+      const { harness, model, effort, moved } = placeAgent(spec, setting(spec.role), avail);
+      if (moved) spec.onEvent({ type: 'moved', from: moved.from, to: { harness, model, effort }, until: moved.limit.until, ...(moved.limit.outage ? { outage: true as const } : {}) });
+      const { model: _, agent: __, systemFor, ...rest } = spec;
       const given = storedModel(harness, model);
-      return runtime.start({ ...rest, harness, effort, ...(given === 'default' ? {} : { model: given }) }, firstMessage, images);
+      return runtime.start({ ...rest, ...(systemFor ? { system: systemFor(harness) } : {}), harness, effort, ...(given === 'default' ? {} : { model: given }) }, firstMessage, images);
+    },
+  };
+}
+
+/** `spec` with `extra` after its system prompt, for whichever harness it ends up on (`systemFor`). */
+export function appendSystem<S extends Pick<AgentSpec, 'system' | 'systemFor'>>(spec: S, extra: string): S {
+  const { systemFor } = spec;
+  return { ...spec, system: `${spec.system}\n\n${extra}`, ...(systemFor ? { systemFor: (h: Harness) => `${systemFor(h)}\n\n${extra}` } : {}) };
+}
+
+/** The harness an agent's spec runs on, once `withAgentSetting` has placed it: the one it names, else its session's, else Claude Code. */
+export const specHarness = (spec: Pick<AgentSpec, 'harness' | 'resume'>): Harness => spec.harness ?? (spec.resume ? sessionHarness(spec.resume) : 'claude');
+
+/**
+ * A runtime whose agents tell `limits` what they find out about their harness: a turn the usage
+ * limit (or an outage) stopped, until when it holds; a turn that works, that it lifted.
+ */
+export function withLimitRecord(runtime: AgentRuntime, limits: HarnessLimits): AgentRuntime {
+  return {
+    start(spec, firstMessage, images) {
+      const harness = specHarness(spec);
+      return runtime.start(
+        {
+          ...spec,
+          onEvent: (e) => {
+            if (e.type === 'error' && e.limit) limits.hit(harness, limitLifts(e.limit, 0), !!e.limit.outage);
+            else if (e.type === 'text' || e.type === 'tool') limits.lifted(harness);
+            spec.onEvent(e);
+          },
+        },
+        firstMessage,
+        images,
+      );
+    },
+  };
+}
+
+/**
+ * A runtime whose new agents start afresh on their group's fallback when a turn on their harness
+ * stops at its limit before they did anything: nothing of their conversation is lost, so they need
+ * not wait for the limit to lift. What they were sent goes to the new session, whose id follows the
+ * first one's (`session`), after `moved`. An agent that waits
+ * for the limit (`onLimit`) looks again whenever `changes` says something changed (the owner set a
+ * fallback, say), and moves then. One that acted, or resumes a session, stays where it is: its
+ * conversation cannot move to another harness.
+ */
+export function withFallback(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting, avail: Availability, changes?: Listeners): AgentRuntime {
+  return {
+    start(spec, firstMessage, images) {
+      if (!spec.role || spec.resume) return runtime.start(spec, firstMessage, images);
+      const role = spec.role;
+      let on = placeAgent(spec, setting(role), avail).harness;
+      let agent = spec.agent;
+      let acted = false;
+      let closed = false;
+      // what it was sent after its first message, while it had not acted: the next session gets it too
+      const sent: { text: string; images?: string[] }[] = [];
+      let waiting = false;
+      let off: (() => void) | undefined;
+      let generation = 0;
+      let current!: AgentSession;
+      let ended!: () => void;
+      const done = new Promise<void>((r) => (ended = r));
+      const act = () => {
+        if (acted) return;
+        acted = true;
+        sent.length = 0;
+        off?.();
+        off = undefined;
+      };
+      /** Starts it afresh on the fallback, where one is to be had now; whether it did. */
+      const move = (limit: HarnessLimit): boolean => {
+        if (acted || closed) return false;
+        const group = setting(role);
+        const other = replacement(group, on, agent?.effort ?? spec.agent?.effort ?? group.effort);
+        if (!other || !avail.ready(other.harness) || avail.limit(other.harness)) return false;
+        const from = on;
+        on = other.harness;
+        agent = { harness: other.harness, model: other.model, effort: other.effort };
+        generation++;
+        const before = current;
+        before.close();
+        if (waiting) spec.onLimit?.(undefined);
+        waiting = false;
+        off?.();
+        off = undefined;
+        spec.onEvent({ type: 'moved', from, to: other, until: limit.until, ...(limit.outage ? { outage: true as const } : {}) });
+        begin();
+        return true;
+      };
+      const begin = () => {
+        const mine = ++generation;
+        const s = runtime.start(
+          {
+            ...spec,
+            ...(agent ? { agent } : {}),
+            ...(spec.onLimit
+              ? {
+                  onLimit: (until: number | undefined, outage?: boolean) => {
+                    if (mine !== generation) return;
+                    if (until !== undefined && move({ until, ...(outage ? { outage: true as const } : {}) })) return;
+                    waiting = until !== undefined;
+                    if (waiting && !acted && changes && !off)
+                      off = changes.onChange(() => {
+                        if (mine === generation && waiting) move(avail.limit(on) ?? { until: until! });
+                      });
+                    spec.onLimit!(until, outage);
+                  },
+                }
+              : {}),
+            onEvent: (e) => {
+              if (mine !== generation) return;
+              if (e.type === 'error' && e.limit && !spec.onLimit && move({ until: limitLifts(e.limit, 0), ...(e.limit.outage ? { outage: true as const } : {}) })) return;
+              if (e.type === 'text' || e.type === 'tool' || e.type === 'idle' || e.type === 'error') act();
+              spec.onEvent(e);
+            },
+          },
+          firstMessage,
+          images,
+        );
+        current = s;
+        for (const m of sent) s.send(m.text, m.images);
+        void s.done.then(() => {
+          if (mine !== generation) return;
+          off?.();
+          ended();
+        });
+      };
+      begin();
+      return {
+        send(text, given) {
+          if (!acted) sent.push({ text, ...(given ? { images: given } : {}) });
+          current.send(text, given);
+        },
+        close() {
+          closed = true;
+          off?.();
+          off = undefined;
+          current.close();
+        },
+        done,
+      };
     },
   };
 }
@@ -317,6 +508,35 @@ export function withToolNews(runtime: AgentRuntime, heard: ToolsHeard): AgentRun
   };
 }
 
+/**
+ * A harness at its usage limit until `resetsAt`: every turn of its agents fails at once on it, as
+ * Claude Code's and Codex's do then. For demos and live checks of a group's fallback (`OBEYA_FAKE_LIMIT`).
+ */
+export function limitedRuntime(resetsAt: number): AgentRuntime {
+  return {
+    start(spec, firstMessage) {
+      let closed = false;
+      let ended!: () => void;
+      const done = new Promise<void>((r) => (ended = r));
+      const turn = () =>
+        setTimeout(() => {
+          if (closed) return;
+          spec.onEvent({ type: 'error', message: `You've hit your session limit · resets ${new Date(resetsAt).toISOString()}`, limit: { resetsAt } });
+          spec.onEvent({ type: 'idle' });
+        }, 200);
+      if (firstMessage !== undefined) turn();
+      return {
+        send: () => void turn(),
+        close: () => {
+          closed = true;
+          ended();
+        },
+        done,
+      };
+    },
+  };
+}
+
 /** A runtime that starts each agent on the harness its spec names (`withAgentSetting`), else the one of the session it resumes, else Claude Code. */
 export function byHarness(runtimes: Record<Harness, AgentRuntime>): AgentRuntime {
   return { start: (spec, firstMessage, images) => runtimes[spec.harness ?? (spec.resume ? sessionHarness(spec.resume) : 'claude')].start(spec, firstMessage, images) };
@@ -339,8 +559,7 @@ export function withRepoTrust(runtime: AgentRuntime, untrusted: (cwd: string) =>
         if (!held) return runtime.start(spec, firstMessage, images);
         const file = join(spec.cwd, 'CLAUDE.md');
         const notes = !remote(spec.cwd) && existsSync(file) ? readFileSync(file, 'utf8').trim() : '';
-        const system = notes ? `${spec.system}\n\nThe repository's CLAUDE.md:\n\n${notes}` : spec.system;
-        return runtime.start({ ...spec, untrusted: true, system }, firstMessage, images);
+        return runtime.start({ ...(notes ? appendSystem(spec, `The repository's CLAUDE.md:\n\n${notes}`) : spec), untrusted: true }, firstMessage, images);
       };
       const held = untrusted(spec.cwd);
       if (typeof held === 'boolean') return start(held);

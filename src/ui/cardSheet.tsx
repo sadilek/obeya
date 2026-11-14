@@ -12,7 +12,8 @@ import { shownTitle } from './parts';
 import { AgentPick } from './agentPick';
 import { useFitHeight } from './fitHeight';
 import { contributorChoice, SnoozeMenu } from './snooze';
-import { clock as time, stateLabel, t } from './strings';
+import { clock as time, snoozeWhen, stateLabel, t } from './strings';
+import { agentName } from '../core/agents';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -95,6 +96,26 @@ export function RepoDownBox({ item }: { item: Item }) {
       <div className="q-text">
         {t.repoDown.long(item.repo)}
         {stoppable && ` ${t.repoDown.stopHint}`}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A card whose worker waits for its harness's limit while the other harness could take over: says so,
+ * with "Continue with …", which has an agent there go on now instead of waiting.
+ */
+export function MoveToBox({ item, act }: { item: Item; act: Act }) {
+  const m = item.moveTo;
+  if (!m) return null;
+  const say = m.outage ? t.moveTo.outage : t.moveTo.limit;
+  return (
+    <div className="question move-to">
+      <div className="q-text">{say(t.harnesses[m.from], snoozeWhen(m.until), agentName(m.to))}</div>
+      <div className="actions">
+        <button className="btn primary" onClick={() => act({ action: 'continueElsewhere' }, { close: false })}>
+          {t.moveTo.button(t.harnesses[m.to.harness])}
+        </button>
       </div>
     </div>
   );

@@ -17,7 +17,7 @@ import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
 import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
-import { AGENT_DEFAULTS, type AgentRole, type AgentSetting } from '../core/agents';
+import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, otherHarness, replacement } from '../core/agents';
 import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, TITLE_MAX, replyNote } from './board';
@@ -43,7 +43,8 @@ import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
-import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withSpend, withToolNews } from './runtime';
+import { type AgentRuntime, type Availability, idleRuntime, withAgentSetting, withFallback, withLimitRecord, withLimitWait, withRepoTrust, withSpend, withToolNews } from './runtime';
+import { HarnessLimits } from './limits';
 import { briefFull, type TagCard, tagCards } from './tag-proposal';
 import { Skills } from './skills';
 
@@ -110,6 +111,12 @@ export interface CanvasDeps {
   limitMargin?: number;
   /** The model and effort of a group of agents (`agentSetting`), asked whenever one starts; the defaults when left out. */
   agents?: (role: AgentRole) => AgentSetting;
+  /**
+   * Which harness is at its limit on this machine, shared by its canvases (a canvas of its own when
+   * left out), and which is ready here (both when left out): where a group's fallback takes over.
+   */
+  limits?: HarnessLimits;
+  ready?: (h: Harness) => boolean;
   /** How long a restart of a repository's agents waits for them to pause at most; Obeya's patience for a restart when left out. */
   restartPatienceMs?: number;
   /** How often that restart looks whether they paused; every two seconds when left out. */
@@ -269,6 +276,10 @@ export class CanvasRuntime {
    * card that comes without a place of its own (passed on by an agent, say) goes there.
    */
   inView: Place | undefined;
+  /** Which harness is at its limit (`CanvasDeps.limits`), and what a fallback asks of a harness. */
+  limits!: HarnessLimits;
+  avail!: Availability;
+  private offLimits?: () => void;
 
   /**
    * Starts a canvas: what it reads of its repositories with git (`readRepos`), and the read tree of
@@ -298,9 +309,17 @@ export class CanvasRuntime {
     const agents = deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]);
     // the agents other than workers and Obeya's chat wait for the usage limit through it, each where it shows
     // and what each costs counts to the card it works for, else to the canvas; a session resumed hears which of its tools changed since it last heard of them
+    // a new agent whose harness is at its limit runs on its group's fallback, where the owner set one
+    const limits = (this.limits = deps.limits ?? new HarnessLimits());
+    const ready = deps.ready ?? (() => true);
+    const avail: Availability = { limit: (h) => limits.of(h), ready };
+    this.avail = avail;
     const runtime = (r: AgentRuntime) =>
       withToolNews(
-        withSpend(withLimitWait(withRepoTrust(withAgentSetting(r, agents), this.claudeHeld), deps.limitMargin), (card, session, usd) => this.board.spend(card, session, usd)),
+        withSpend(
+          withFallback(withLimitWait(withRepoTrust(withAgentSetting(withLimitRecord(r, limits), agents, avail), this.claudeHeld), deps.limitMargin), agents, avail, limits),
+          (card, session, usd) => this.board.spend(card, session, usd),
+        ),
         deps.store,
       );
     const workerRuntime = deps.workerRuntime ?? (deps.idleWorkers ? idleRuntime : undefined);
@@ -476,6 +495,11 @@ export class CanvasRuntime {
       ...(deps.config ? { config: deps.config } : {}),
       canvases: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => ({ id: c.id, name: c.board.canvas.name })),
       agentSetting: () => agents('coordinator'),
+      fallsBack: () => {
+        const group = agents('coordinator');
+        const other = this.avail.limit(group.harness) && replacement(group, group.harness);
+        return !!other && this.avail.ready(other.harness) && !this.avail.limit(other.harness);
+      },
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
       ...(deps.limitMargin !== undefined ? { limitMargin: deps.limitMargin } : {}),
     });
@@ -483,6 +507,8 @@ export class CanvasRuntime {
     // the undo window of a new repository is not kept across a restart: the card stays as it was
     for (const i of board.items()) if (i.newRepo?.due) board.setNewRepo(i.id, { ...i.newRepo, due: undefined, making: undefined });
     this.commander.resume();
+    // what the limit holds is read at once once a fallback is to be had
+    this.offLimits = this.limits.onChange(() => this.commander.fallbackReady());
     this.answers.resumeAll();
     this.revisions = new Revisions({
       board,
@@ -888,6 +914,15 @@ export class CanvasRuntime {
       demoLanguage: () => readDemoSettings(deps.home).language,
       questionHistory: (cardId) => questionTask(board, cardId, (thread) => answersDir(deps.home, this.id, thread), this.imageFiles),
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
+      moveTo: (on, effort) => {
+        const group = (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker');
+        const e = effort ?? group.effort;
+        const other =
+          replacement(group, on, e) ??
+          (group.harness !== on ? { harness: group.harness, model: group.model, effort: e } : { ...agentDefault('worker', otherHarness(on)), effort: e });
+        return other.harness !== on && this.avail.ready(other.harness) && !this.avail.limit(other.harness) ? other : undefined;
+      },
+      limits: this.limits,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),
       keptDemos: join(deps.home, 'kept-demos'),
       ...(deps.parkGrace !== undefined ? { parkGrace: deps.parkGrace } : {}),
@@ -1775,6 +1810,8 @@ export class CanvasRuntime {
         return a.safePoint ? this.agentOf(cardId).pauseAtSafePoint(cardId) : this.agentOf(cardId).pause(cardId);
       case 'resume':
         return this.agentOf(cardId).resume(cardId);
+      case 'continueElsewhere':
+        return this.repoOf(cardId).workers.continueElsewhere(cardId);
       case 'snooze':
         return this.snooze(cardId, a.until);
       case 'awaitContributor':
@@ -2347,6 +2384,7 @@ export class CanvasRuntime {
     for (const stop of this.branchSettings.values()) stop();
     for (const r of this.repos) this.stopRepo(r);
     this.coordinator.shutdown();
+    this.offLimits?.();
     this.commander.shutdown();
     this.explorers.shutdown();
   }

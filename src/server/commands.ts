@@ -198,6 +198,8 @@ export interface CommanderOptions {
   board: Board;
   runtime: AgentRuntime;
   cwd: string;
+  /** Whether a session started now would run on the Coordinator's fallback, its harness being at its limit (`replacement`). */
+  fallsBack?: () => boolean;
   /** Runs a command; what it throws is logged on the card. */
   execute: (c: Command) => unknown | Promise<unknown>;
   /** How long a command waits for "Undo". */
@@ -499,6 +501,11 @@ export class Commander {
     for (const [id, { focus, input }] of this.held) this.o.board.sheet.hold(id, { until, ...(this.heldOutage ? { outage: true as const } : {}), reading: { focus, input } });
     this.waitForLimit();
     return { confirm };
+  }
+
+  /** The Coordinator's harness is at its limit and a fallback is to be had now (the owner just set one): what the limit holds is read at once. */
+  fallbackReady() {
+    if (this.held.size && !this.stopped && this.o.fallsBack?.()) void this.drain();
   }
 
   private waitForLimit() {
@@ -1380,7 +1387,8 @@ export class Commander {
     s.reading = undefined;
     if (error && !decided) {
       // a session that waited or talked before may have gone stale: read the command once more in a fresh one
-      if (warmed && retry && !(error instanceof LimitError)) return this.read(transcript, focus, images, input, decide, false);
+      // and one the limit stopped, where a fresh session would run on the fallback
+      if (warmed && retry && (!(error instanceof LimitError) || this.o.fallsBack?.())) return this.read(transcript, focus, images, input, decide, false);
       throw error;
     }
     if (!decided) decide({ commands: [], confirm: this.o.board.t.voice.notUnderstood });

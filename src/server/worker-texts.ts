@@ -8,6 +8,7 @@ import { failureReason } from './runtime';
 import type { Awaited, RestartReason, Snooze, Spot } from '../core/types';
 import { ownWords } from '../core/card';
 import type { DueRestart } from './workers';
+import { type Harness, HARNESS_NAMES } from '../core/agents';
 
 /** Where in the demo video the owner's words are, as the worker reads it above them. */
 export const spotNote = (spot: Spot) => {
@@ -212,3 +213,19 @@ export const mergeBranch = (branch: string, into: string) => `${branch}-into-${i
  */
 export const mergeConflictHelp = (branch: string, into: string, resolved: string, what: string) =>
   `Make that merge yourself, never on ${branch} itself: the pull request's branch must carry nothing of ${into}. In your workspace, git switch -c ${resolved} ${into} (in a clone, from origin's ${into} or as Obeya's checkout has it: git fetch <path of the Obeya checkout> ${into}), git merge ${what === 'your branch' ? branch : what}, resolve the conflicts, run the checks, commit, then git switch ${branch} again. Obeya takes ${resolved} as the merge from there (it fast-forwards ${into} to it, or merges it where ${into} moved on meanwhile).`;
+
+/**
+ * What the agent that takes over a card for "Continue with …" hears after its briefing: why, what
+ * the card's conversation was, and where the transcript of the agent before it is (none on a host).
+ */
+export function takeoverNote(from: Harness, until: number, outage: boolean, conversation: string, transcript: string | null): string {
+  const why = outage ? `${HARNESS_NAMES[from]} could not be reached` : `${HARNESS_NAMES[from]}'s usage limit stopped it`;
+  return [
+    `You take over this card from an agent on ${HARNESS_NAMES[from]} that worked on it before you: ${why} until ${new Date(until).toISOString()}, and the owner chose to have you go on now rather than wait. Its commits and uncommitted changes are in this workspace.`,
+    conversation ? `The card's conversation so far, oldest first:\n\n${conversation}` : '',
+    transcript ? `Its full session transcript (JSONL: its messages, tool calls and their results) is ${transcript}. Read in it what you need to know where it stopped.` : '',
+    'Go on where it stopped. The owner sees your work on the card as they saw its work.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}

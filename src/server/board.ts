@@ -1354,6 +1354,9 @@ export class Board {
     if (inTurn.size) items = items.map((i) => {
       const turn = inTurn.get(i.id);
       if (!turn) return i;
+      // its worker waits for its harness's limit and could go on on the other
+      if (turn.moveTo) i = { ...i, moveTo: turn.moveTo };
+      if (turn.waits) return i;
       const background = turn.tasks.length ? { background: turn.tasks } : {};
       // a worker that paused for the due restart is at work no more
       if (turn.restart) return needsYou(i) ? i : { ...i, restartPaused: true };

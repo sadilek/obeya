@@ -691,6 +691,15 @@ const de = {
     loopAsk: (cards: string[], waits: string[]) =>
       `${listOf(cards, 'und')} warten im Kreis aufeinander, so kann keine davon beginnen: ${waits.join('; ')}. Löse die Schleife auf: Ordne ihre Abhängigkeiten so, dass sie nicht mehr aufeinander warten, in der Reihenfolge, die am meisten Sinn ergibt.`,
   },
+  /** A card whose worker waits for its harness's limit while the other harness could take over (`Item.moveTo`). */
+  moveTo: {
+    /** `when` as `snoozeWhen` says it: „heute, 14:40“. */
+    limit: (from: string, when: string, to: string) =>
+      `${from} hat sein Nutzungslimit erreicht (weiter: ${when}). Statt zu warten, kann jetzt ein Agent auf ${to} übernehmen. Er bekommt die Unterhaltung dieser Karte und das Protokoll des Agenten vor ihm.`,
+    outage: (from: string, when: string, to: string) =>
+      `${from} ist gerade nicht erreichbar (neuer Versuch: ${when}). Statt zu warten, kann jetzt ein Agent auf ${to} übernehmen. Er bekommt die Unterhaltung dieser Karte und das Protokoll des Agenten vor ihm.`,
+    button: (harness: string) => `Mit ${harness} weitermachen`,
+  },
   /** A card whose repository does not run on the canvas (`Item.repoDown`): on the card, and in its panel. */
   repoDown: {
     short: 'Repository läuft nicht',
@@ -706,6 +715,7 @@ const de = {
     dependencyCycle: 'Kein Pfeil: Die beiden Karten würden aufeinander warten, weil die erste schon auf die zweite wartet, direkt oder über andere Karten.',
     planDependency: 'Kein Pfeil: Projekte und ihre Workstreams bekommen ihre Reihenfolge aus dem Plan-Doc.',
     notPlanned: 'Nur eine geplante Aufgabe kann gestartet werden.',
+    notLimited: 'Der Agent wartet nicht mehr auf ein Limit, oder die andere Laufzeit kann gerade nicht übernehmen.',
     queued: 'Die Aufgabe liegt schon bei Obeya.',
     notQueued: 'Die Aufgabe wartet nicht in der Warteschlange.',
     notEvictable: 'Diesen Workspace kann die Karte nicht abgeben.',
@@ -1475,10 +1485,14 @@ const de = {
       title: 'Agenten und Modelle',
       /** By what a group the owner chose nothing for runs on here (`AgentsView.preset`). */
       hint: (preset: Harness) =>
-        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.`,
+        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange ihr Abo am Nutzungslimit ist oder Claude nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
       harness: 'Läuft auf',
       model: 'Modell',
       effort: 'Effort',
+      /** The column of each group's fallback while its harness is at its usage limit. */
+      fallback: 'Am Limit',
+      /** No fallback: the group's agents wait for the limit to lift. */
+      wait: 'Warten',
       /** A harness not installed or not logged in, which no group can be set to. */
       notReady: (name: string) => `${name} (nicht eingerichtet)`,
       /** Where a harness is not set up: what makes it one to choose. */
@@ -3023,6 +3037,13 @@ const en: Strings = {
     loopAsk: (cards: string[], waits: string[]) =>
       `${listOf(cards, 'and')} wait for each other in a loop, so none of them can start: ${waits.join('; ')}. Resolve the loop: reorder their dependencies so they no longer wait for each other, in the order that makes the most sense.`,
   },
+  moveTo: {
+    limit: (from: string, when: string, to: string) =>
+      `${from} has reached its usage limit (continues: ${when}). Instead of waiting, an agent on ${to} can take over now. It gets this card's conversation and the transcript of the agent before it.`,
+    outage: (from: string, when: string, to: string) =>
+      `${from} cannot be reached right now (tries again: ${when}). Instead of waiting, an agent on ${to} can take over now. It gets this card's conversation and the transcript of the agent before it.`,
+    button: (harness: string) => `Continue with ${harness}`,
+  },
   repoDown: {
     short: 'Repository not running',
     long: (repo: string) =>
@@ -3036,6 +3057,7 @@ const en: Strings = {
     dependencyCycle: 'No arrow: the two cards would wait for each other, because the first already waits for the second, directly or through other cards.',
     planDependency: 'No arrow: projects and their workstreams take their order from the plan doc.',
     notPlanned: 'Only a planned task can be started.',
+    notLimited: 'The agent no longer waits for a limit, or the other harness cannot take over right now.',
     queued: 'The task is already with Obeya.',
     notQueued: 'The task is not waiting in the queue.',
     notEvictable: 'This card cannot give up this workspace.',
@@ -3755,10 +3777,12 @@ const en: Strings = {
     agents: {
       title: 'Agents and models',
       hint: (preset: Harness) =>
-        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with.`,
+        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while its plan is at its usage limit or Claude cannot be reached; with “Wait” its agents wait until then.`,
       harness: 'Runs on',
       model: 'Model',
       effort: 'Effort',
+      fallback: 'At the limit',
+      wait: 'Wait',
       notReady: (name: string) => `${name} (not set up)`,
       setUp: 'Set it up under Setup → Agents.',
       roles: {

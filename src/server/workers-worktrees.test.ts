@@ -6,6 +6,7 @@ import { BadRequest, Board } from './board';
 import { artifact, commit, heard, until, ws } from './testing';
 import { board, dir, doc, eachTest, main, manual, newWorkers, rebuild, runtime, setDocs, setup, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { GIT, git, gitOrNull } from './git';
+import { HarnessLimits } from './limits';
 
 eachTest({ ...generic, land: 'main', workspaces: 'worktrees' });
 
@@ -876,6 +877,49 @@ describe('a worktree per card', () => {
     after.resumeAll();
     expect(runtime.last).not.toBe(s);
     expect(runtime.last.spec.resume).toBe('sess-1');
+  });
+
+  test('a worker the usage limit stopped mid-work can go on on the other harness, which takes over with the conversation', async () => {
+    const limits = new HarnessLimits();
+    let codexFree = true;
+    rebuild({ limitMargin: 30, limits, moveTo: (on) => (on === 'claude' && codexFree ? { harness: 'codex', model: 'gpt-#-sol', effort: 'high' } : undefined) });
+    const c = manual();
+    await workers.start(c.id);
+    const s = runtime.last;
+    s.emit({ type: 'session', id: 'claude-1', effort: 'high' });
+    s.emit({ type: 'text', text: 'Ich baue den Import.' });
+    s.emit({ type: 'tool', name: 'Edit', input: { file_path: 'src/import.ts' } });
+    s.emit({ type: 'error', message: "You've hit your session limit · resets 2:40pm (Europe/Berlin)", limit: { resetsAt: Date.now() + 3_600_000 } });
+    s.emit({ type: 'idle' });
+    expect(board.item(c.id)!.moveTo).toMatchObject({ to: { harness: 'codex', model: 'gpt-#-sol' }, from: 'claude' });
+    // while Codex cannot take over, the card does not offer it
+    codexFree = false;
+    limits.changed();
+    expect(board.item(c.id)!.moveTo).toBeUndefined();
+    expect(() => workers.continueElsewhere(c.id)).toThrow(expect.objectContaining({ code: 'notLimited' }));
+    codexFree = true;
+    limits.changed();
+    workers.continueElsewhere(c.id);
+    expect(s.closed).toBe(true);
+    const next = runtime.last;
+    expect(next).not.toBe(s);
+    expect(next.spec.resume).toBeUndefined();
+    expect(next.spec.agent).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
+    expect(next.inbox[0]).toContain('You take over this card from an agent on Claude Code');
+    expect(next.inbox[0]).toContain('The agent: Ich baue den Import.');
+    expect(board.item(c.id)).toMatchObject({ state: 'working' });
+    expect(board.item(c.id)!.moveTo).toBeUndefined();
+    expect(board.item(c.id)!.statusLine).toBeUndefined();
+    expect(board.events(c.id).at(-1)!.text).toContain('Codex · Sol');
+    // the card runs there from now on
+    expect(JSON.parse(board.row(c.id).agent!)).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
+  });
+
+  test("a worker placed on the group's fallback says so in its conversation", async () => {
+    const c = manual();
+    await workers.start(c.id);
+    runtime.last.emit({ type: 'moved', from: 'claude', to: { harness: 'codex', model: 'gpt-#-sol', effort: 'high' }, until: Date.now() + 60_000 });
+    expect(board.events(c.id).at(-1)!.text).toMatch(/^Claude Code hat sein Nutzungslimit erreicht \(bis um \d\d:\d\d\): Der Agent dieser Karte läuft stattdessen auf Codex · Sol\.$/);
   });
 
   test('a turn after the landing that the usage limit stopped waits for the limit and goes on; the card does not finish', async () => {

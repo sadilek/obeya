@@ -3,7 +3,7 @@
 
 import type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
-import type { AgentEffort, CardAgent, Harness } from './agents';
+import type { AgentEffort, AgentSetting, CardAgent, Harness } from './agents';
 import type { Waiting } from './card';
 import type { CardLanding } from './config';
 import type { CardFile } from './files';
@@ -44,6 +44,18 @@ export interface WorkerTurn {
   over: boolean;
   /** The worker ended its turn for the restart that is due, nothing of it runs any more, and it goes on once Obeya runs again. */
   restart?: true;
+  /** The worker waits for its harness's limit, in no turn: it is listed only for `moveTo`. */
+  waits?: true;
+  /** It waits for its harness's limit, and could go on elsewhere (`Item.moveTo`). */
+  moveTo?: MoveTo;
+}
+
+/** Where a card's worker that waits for its harness's limit could go on (`Item.moveTo`): `to`, instead of `from` until `until` (ISO time), an outage there or its usage limit. */
+export interface MoveTo {
+  to: AgentSetting;
+  from: Harness;
+  until: string;
+  outage?: true;
 }
 
 /** What a `waiting` card waits for: `demo` a handover with a demo, `review` one without. */
@@ -288,6 +300,12 @@ export interface Item {
   limitedUntil?: string;
   /** What it waits for (`limitedUntil`) is an outage, the Claude API could not be reached, not the usage limit: Obeya tries again then. */
   limitedByOutage?: true;
+  /**
+   * Its worker waits for the usage limit (or an outage) of its harness, and the other harness is
+   * ready: "Continue with …" has an agent there take over the card's work now, with its conversation
+   * so far, instead of waiting (the workers' fallback, else that harness's model for them).
+   */
+  moveTo?: MoveTo;
   /** Since when it waits for the owner (`needsYou`), for the phone view's "Needs you". */
   waitingSince?: string;
   /**
@@ -1437,6 +1455,8 @@ export type CardAction =
    */
   | { action: 'pause'; safePoint?: true }
   | { action: 'resume' }
+  /** Its worker waits for its harness's limit: an agent on the other harness takes over now (`Item.moveTo`). */
+  | { action: 'continueElsewhere' }
   /**
    * Set aside until `until` (ISO): a card at work stops until then as on a pause, one waiting for the
    * owner leaves them until then. On a snoozed card, it changes the time.
@@ -1609,6 +1629,8 @@ export type ErrorCode =
   /** An action that needs the card's agents while its repository does not run on the canvas (`Item.repoDown`). */
   | 'repoDown'
   | 'notPlanned'
+  /** "Continue with …" on a card whose agent does not wait for a limit (any more), or whose other harness cannot take over now. */
+  | 'notLimited'
   | 'queued'
   | 'notQueued'
   /** Moving a card in the queue: it is first or last already, or the card it would pass has a wait with it or is being judged. */

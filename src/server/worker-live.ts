@@ -1,6 +1,7 @@
 // A worker's session as Obeya follows it, for the `Workers` that run it and the tools it calls.
 
 import type { BackgroundTask } from '../core/types';
+import type { AgentEffort, Harness } from '../core/agents';
 import type { AgentSession, BackgroundWait, PermissionAnswer } from './runtime';
 
 /**
@@ -96,6 +97,8 @@ export interface Live {
   limited?: number;
   /** Whether what it waits for is not the usage limit but the model's service, which could not be reached (an outage): Obeya tries again at `limited`. */
   outage?: boolean;
+  /** The harness its session runs on and the effort it runs with, once the session said (`session`). */
+  on?: { harness: Harness; effort?: AgentEffort };
   /** The card's status line from before the worker waited for the limit, back once it works again. */
   statusBefore?: string | null;
   /** Whether the card's open question is the worker having stopped, not a question it asked. */

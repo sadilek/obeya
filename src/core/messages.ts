@@ -347,6 +347,11 @@ const de = {
     deny: 'Ablehnen',
     limitStatus: 'Nutzungslimit',
     limitStatusUntil: (when: string) => `Nutzungslimit · weiter ${when}`,
+    /** The agent started, or started afresh before it did anything, on its group's fallback: its harness is at its limit. */
+    movedLimit: (from: string, when: string, to: string) => `${from} hat sein Nutzungslimit erreicht (bis ${when}): Der Agent dieser Karte läuft stattdessen auf ${to}.`,
+    movedOutage: (from: string, when: string, to: string) => `${from} ist gerade nicht erreichbar (neuer Versuch ${when}): Der Agent dieser Karte läuft stattdessen auf ${to}.`,
+    /** The owner clicked "Continue with …": an agent on the other harness takes over. */
+    movedByOwner: (from: string, to: string) => `Statt auf ${from} zu warten, macht ein Agent auf ${to} weiter. Er bekommt die Unterhaltung dieser Karte und das Protokoll des Agenten vor ihm.`,
     outageStatus: 'Claude nicht erreichbar',
     outageStatusUntil: (when: string) => `Claude nicht erreichbar · neuer Versuch ${when}`,
     proposesBuild: (reason: string) => `Schlägt vor, die Idee auf diesem Prototyp zu bauen: ${reason}`,
@@ -928,6 +933,9 @@ const en: Messages = {
     deny: 'Deny',
     limitStatus: 'Usage limit',
     limitStatusUntil: (when: string) => `Usage limit · continues ${when}`,
+    movedLimit: (from: string, when: string, to: string) => `${from} has reached its usage limit (until ${when}): this card's agent runs on ${to} instead.`,
+    movedOutage: (from: string, when: string, to: string) => `${from} cannot be reached right now (tries again ${when}): this card's agent runs on ${to} instead.`,
+    movedByOwner: (from: string, to: string) => `Instead of waiting for ${from}, an agent on ${to} goes on. It gets this card's conversation and the transcript of the agent before it.`,
     outageStatus: 'Claude not reachable',
     outageStatusUntil: (when: string) => `Claude not reachable · tries again ${when}`,
     proposesBuild: (reason: string) => `Proposes building the idea on this prototype: ${reason}`,

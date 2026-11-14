@@ -3,7 +3,7 @@ import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
 import type { AccessView, ArchivePage, Pairing, RemoteSetting, CloudPreset, CanvasInfo, CanvasSnapshot, ClientMessage, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, CostsView, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, ServerMessage, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
 import type { Waiting } from '../core/card';
-import type { AgentRole, AgentSetting, Harness, AgentsView } from '../core/agents';
+import type { AgentFallback, AgentRole, AgentSetting, Harness, AgentsView } from '../core/agents';
 import type { CanvasConfig, ConfigSaved, ConfigView, ConfigChecked, PersonalSiteView, SiteSetupJob, TagProposalJob, RepoTrust, SettingsShared } from '../core/config';
 import { setCostsShown } from './costs';
 import type { Wish } from '../core/wish';
@@ -196,7 +196,7 @@ export const api = {
   /** The model and effort of each group of agents. */
   agents: () => call<AgentsView>('GET', '/api/agents'),
   /** Saves the model or the effort of one group. */
-  saveAgents: (role: AgentRole, choice: Partial<AgentSetting>) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
+  saveAgents: (role: AgentRole, choice: Partial<Omit<AgentSetting, 'fallback'>> & { fallback?: AgentFallback | null }) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
   /** Updates Claude Code in the background, here or on the host named; the view says how far it got. */
   updateHarness: (harness: Harness, host?: string) => call<AgentsView>('POST', '/api/agents/update', host === undefined ? { harness } : { harness, host }),
   /** The setup assistant's list: what Obeya needs on this machine. */

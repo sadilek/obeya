@@ -6,9 +6,10 @@ import type { CardDiff } from '../core/diff';
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
-import { type Awaited, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr } from '../core/types';
+import { type Awaited, type MoveTo, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr } from '../core/types';
 import { answering, askable, pausable, pausableNow, formatQuestion, handedOver, needsYou } from '../core/card';
-import { cardAgentOf } from '../core/agents';
+import { agentName, type CardAgent, cardAgentOf, HARNESS_NAMES } from '../core/agents';
+import { findTranscript } from './transcript';
 import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
 import { fromJson, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
@@ -16,7 +17,7 @@ import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
 import { isPlanDoc, outsidePlanDir } from './repo';
-import { type AgentEvent, type AgentSpec, BackgroundWait, atTime, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, OUTAGE_OVER, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
+import { type AgentEvent, type AgentSpec, appendSystem, BackgroundWait, atTime, LIMIT_LIFTED, LIMIT_MARGIN, limitLifts, OUTAGE_OVER, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readSettingsAt, REPO_SETTINGS_FILE } from '../adapters';
@@ -38,7 +39,7 @@ import { appRunning, type Live, newLive, onlyApp } from './worker-live';
 import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
-import { mergeBranch, mergeConflictHelp } from './worker-texts';
+import { mergeBranch, mergeConflictHelp, takeoverNote } from './worker-texts';
 import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
@@ -236,6 +237,7 @@ export class Workers {
 
   /** Ends the subscription to the board's changes. */
   private unwatch: () => void;
+  private unlimits?: () => void;
   /** What the card's worker is told before it does anything: its instructions and its task. */
   private brief: WorkerBriefing;
   /** The app in the card's workspace while its worker is away from it. */
@@ -302,6 +304,10 @@ export class Workers {
     });
     // what a worker does shows on its card while it is in a turn, and only then can it be paused
     o.board.showTurns(() => this.turnsShown());
+    // a card whose worker waits for a limit offers to go on elsewhere as soon as the other harness can take over
+    this.unlimits = o.limits?.onChange(() => {
+      if ([...this.live.values()].some((l) => l.limited !== undefined)) o.board.changed();
+    });
     // a forward to a card's app ends once the card no longer offers it: cleared, parked, its workspace gone
     this.unwatch = o.board.onChange(() => {
       // a forward to a card's app ends once the card no longer offers it: cleared, parked, its workspace gone
@@ -2043,9 +2049,18 @@ export class Workers {
    * itself, `end` ends the one under way as the agent would. A card without a session (one staged at
    * work) gets a stand-in for it. Returns what the agent would have read as the tool's result.
    */
-  async standIn(cardId: string, act: { say: string } | { tool: string; args?: Record<string, unknown> } | { end: true }): Promise<string> {
+  async standIn(cardId: string, act: { say: string } | { tool: string; args?: Record<string, unknown> } | { end: true } | { limit: number }): Promise<string> {
     const card = this.card(cardId);
     const live = this.live.get(cardId);
+    // its harness's usage limit stops the agent's turn, for `limit` minutes
+    if ('limit' in act) {
+      const minutes = Number(act.limit);
+      if (!live || !(minutes > 0)) throw new BadRequest('invalid', 'limit takes the minutes it holds, on a card whose agent is at work');
+      const resetsAt = Date.now() + minutes * 60_000;
+      this.onEvent(cardId, live, { type: 'error', message: `You've hit your session limit · resets ${new Date(resetsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, limit: { resetsAt } });
+      this.onEvent(cardId, live, { type: 'idle' });
+      return 'The usage limit stopped its turn.';
+    }
     // the agent ends its turn, as an idle worker never does by itself
     if ('end' in act) {
       if (live) this.onEvent(cardId, live, { type: 'idle' });
@@ -2396,10 +2411,65 @@ export class Workers {
   private turnsShown(): Map<string, WorkerTurn> {
     const turns = new Map<string, WorkerTurn>();
     for (const [id, l] of this.live) {
-      if (l.busy) turns.set(id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: l.work.waiting });
+      const moveTo = this.moveTo(id, l);
+      const elsewhere = moveTo ? { moveTo } : {};
+      if (l.busy) turns.set(id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: l.work.waiting, ...elsewhere });
       else if (this.pausedForDue(l)) turns.set(id, { tasks: [], over: true, restart: true });
+      else if (moveTo) turns.set(id, { tasks: [], over: true, waits: true, moveTo });
     }
     return turns;
+  }
+
+  /**
+   * What the card's worker could go on with instead of waiting for its harness's limit ("Continue
+   * with …"): while it waits for it at work on the card (or its pull request), and the other harness
+   * is to be had now.
+   */
+  private moveTo(cardId: string, l: Live): MoveTo | undefined {
+    if (l.limited === undefined || !this.o.moveTo) return undefined;
+    // the row alone: the board's items ask this as they are built
+    const row = this.o.board.row(cardId);
+    if (row.state !== 'working' && row.state !== 'inPr') return undefined;
+    const from = l.on?.harness ?? sessionHarness(row.session_id ?? '');
+    const to = this.o.moveTo(from, l.on?.effort);
+    return to && { to, from, until: new Date(l.limited).toISOString(), ...(l.outage ? { outage: true as const } : {}) };
+  }
+
+  /**
+   * "Continue with …" on a card whose worker waits for its harness's limit: its session ends, and a
+   * new one on the other harness (`moveTo`) takes over the card's work, told what the one before did
+   * (its conversation on the card, its transcript, the branch). The card runs there from then on,
+   * after a restart too: its own harness and model become that one's.
+   */
+  continueElsewhere(cardId: string) {
+    const live = this.live.get(cardId);
+    if (!live) throw new BadRequest('notLimited', "no agent works on the card");
+    const move = this.moveTo(cardId, live);
+    if (!move) throw new BadRequest('notLimited', "the card's agent does not wait for a limit, or the other harness cannot take over now");
+    const { to, from } = move;
+    const card = this.card(cardId);
+    const row = this.o.board.row(cardId);
+    const until = live.limited!;
+    const outage = !!live.outage;
+    const transcript = row.session_id && !hostName(row.workspace ?? '') ? findTranscript(row.session_id, row.workspace) : null;
+    const t = this.o.board.t;
+    this.end(cardId);
+    this.unlimited(cardId, live);
+    this.o.board.work(cardId, { agent: toJson<CardAgent>({ harness: to.harness, model: to.model, effort: to.effort }), session_id: null });
+    this.o.board.log(cardId, 'state', 'obeya', t.worker.movedByOwner(HARNESS_NAMES[from], agentName(to)));
+    const briefing = this.brief.briefing(card, row.branch ?? '', true);
+    const takeover = takeoverNote(from, until, outage, this.conversationText(cardId), transcript);
+    this.launch(cardId, `${briefing}\n\n${takeover}`, undefined, this.brief.taskImages(card));
+  }
+
+  /** The card's conversation as an agent that takes it over reads it: who said what, oldest first, the newest last. */
+  private conversationText(cardId: string): string {
+    const who: Record<string, string> = { owner: 'The owner', worker: 'The agent', coordinator: 'Obeya', obeya: 'Obeya', project: "The project's agent", explorer: "The idea's agent" };
+    const lines = this.o.board
+      .events(cardId)
+      .filter((e) => ['say', 'question', 'answer', 'hint', 'review', 'report'].includes(e.kind))
+      .map((e) => `${who[e.author] ?? e.author}${e.kind === 'report' ? ' (status)' : e.kind === 'review' ? ' (handover)' : e.kind === 'question' ? ' (question)' : ''}: ${clip(e.text, 4000)}`);
+    return lines.slice(-60).join('\n\n');
   }
 
   /**
@@ -2466,6 +2536,7 @@ export class Workers {
   shutdown() {
     // workers of a repository started afresh are its new ones: these settle no lease any more
     this.unwatch();
+    this.unlimits?.();
     this.shut = true;
     // a worker in a turn, or paused for the restart, is resumed by the next start whatever its card's state
     for (const [id, l] of this.live) if ((l.busy || l.restartPaused) && this.o.board.item(id)) this.o.board.work(id, { resumes: 1 });
@@ -2529,6 +2600,8 @@ export class Workers {
       ...(plans ? { dirs: [plans] } : {}),
       ...(review ? { untrusted: true } : {}),
       system: this.brief.system(preferences, harness, !!row.prototype_of, this.o.board.item(cardId)),
+      // on the group's fallback it waits as that harness does
+      systemFor: (on) => this.brief.system(preferences, on, !!row.prototype_of, this.o.board.item(cardId)),
       tools: this.tools.for(cardId, live, !!row.prototype_of),
       plugins: [OBEYA_PLUGIN],
       ...(env ? { env } : {}),
@@ -2540,7 +2613,7 @@ export class Workers {
       ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
       onEvent: (e) => this.onEvent(cardId, live, e),
     };
-    const start = (notes: string, withEnv = spec) => this.o.runtime.start(notes ? { ...withEnv, system: `${spec.system}\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` } : withEnv, message, images);
+    const start = (notes: string, withEnv = spec) => this.o.runtime.start(notes ? appendSystem(withEnv, `The repository's CLAUDE.md, as its default branch has it:\n\n${notes}`) : withEnv, message, images);
     // what git still reads of the default branch, and the GitHub login, the session starts once it has; what it is sent meanwhile reaches it then
     if (typeof notes === 'string' && !login) live.session = start(notes);
     else {
@@ -2888,7 +2961,15 @@ export class Workers {
     if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.turn.acted = true;
     if (e.type === 'text' || e.type === 'tool' || (e.type === 'idle' && !e.more)) live.pending = undefined;
     switch (e.type) {
+      case 'moved': {
+        // the session it started afresh in takes the place of the one before, which did nothing
+        this.o.board.work(cardId, { session_id: null });
+        const t = this.o.board.t;
+        this.o.board.log(cardId, 'state', 'obeya', (e.outage ? t.worker.movedOutage : t.worker.movedLimit)(HARNESS_NAMES[e.from], t.when(e.until), agentName(e.to)));
+        break;
+      }
       case 'session': {
+        live.on = { harness: sessionHarness(e.id), ...(e.effort ? { effort: e.effort } : {}) };
         // a session that replaces another (none resumed, say) keeps the one before for the work retrospective
         const before = this.o.board.row(cardId).session_id;
         if (before && before !== e.id) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.newSession(this.o.board.t.worker.earlierRun(before)));

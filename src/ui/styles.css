@@ -1805,7 +1805,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 #config .cfg-host-clones input { width: 64px; }
 .cfg-hosts > .btn.small { margin-top: 0; }
 .cfg-host-rows + .btn.small { margin-top: 6px !important; }
-.cfg-agents { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, .7fr) minmax(170px, 1fr) minmax(130px, .7fr); gap: 0 14px; align-items: center; max-width: 1100px; }
+.cfg-agents { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, .7fr) minmax(170px, 1fr) minmax(130px, .7fr) minmax(170px, 1fr); gap: 0 14px; align-items: center; max-width: 1300px; }
 .cfg-agents > .hint { font-size: 11.5px; padding-bottom: 4px; }
 .cfg-agents > select { min-width: 0; }
 .cfg-agent { display: flex; flex-direction: column; padding: 9px 0; font-size: 14px; }
@@ -1826,7 +1826,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
   .cfg-nav-title { padding: 6px 4px 6px 10px; font-size: 13px; }
   .cfg-nav-group > ul > li > button { padding-left: 10px; }
   .cfg-cols { grid-template-columns: 1fr; }
-  .cfg-agents { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .cfg-agents { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
   .cfg-agent { grid-column: 1 / -1; padding-bottom: 2px; }
   .cfg-agents > span:first-child { display: none; }
 }

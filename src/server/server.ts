@@ -39,6 +39,7 @@ import { parseTagLines, tagLines } from '../core/page-tags';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import type { UsageMeters } from './usage';
 import type { Harnesses } from './harnesses';
+import type { HarnessLimits } from './limits';
 import { VERSION } from './resources';
 import { footerOf } from './wish';
 import { serving } from './owner';
@@ -151,6 +152,8 @@ export interface ServeDeps {
   stalls?: Stalls;
   /** Claude Code and Codex on this machine, for the Configuration's harnesses and models. */
   harnesses?: Harnesses;
+  /** Which harness is at its limit: agents waiting for it look again once the owner saved a fallback. */
+  limits?: HarnessLimits;
   /** Hears of every request from Obeya's own site: a scratch Obeya is in use (scratch.ts). */
   used?: () => void;
 }
@@ -381,7 +384,7 @@ function appRoutes(x: Routing) {
 
 /** The owner's own settings (settings.ts), read and saved in Obeya's home. */
 function ownerSettingsRoutes(x: Routing) {
-  const { pages, config, harnesses, usage } = x;
+  const { pages, config, harnesses, usage, limits } = x;
   return area({
     // the interface language (chosen in the settings, else the system's) and the conversation language (chosen, else the interface's)
     '/api/language': {
@@ -415,7 +418,10 @@ function ownerSettingsRoutes(x: Routing) {
     '/api/agents': {
       GET: needs(config, async (c) => agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred())),
       PUT: needs(config, async (c, req) => {
-        return saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
+        const view = saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
+        // a fallback set now takes over for the agents that wait for the limit
+        limits?.changed();
+        return view;
       }),
     },
     // a harness (`{ harness }`, Claude Code where none is named) brought up to date in the background, here or on the host named (`{ host }`), at the owner's click; the view says how far it got
