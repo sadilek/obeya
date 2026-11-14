@@ -56,7 +56,8 @@ afterEach(async () => {
 
 const hold = (idleMs = 60_000, limits: { loadMs?: number; sentenceMs?: number; deadline?: Deadline } = {}) =>
   (host = new NarrationHost({ argv: (voice) => ['bun', join(dir, 'voice.ts'), join(dir, 'log'), voice.speaker ?? 'clone'], idleMs, ...limits }));
-const log = () => (existsSync(join(dir, 'log')) ? readFileSync(join(dir, 'log'), 'utf8').trim().split('\n') : []);
+// the voice creates the log before its first line is in it
+const log = () => (existsSync(join(dir, 'log')) ? readFileSync(join(dir, 'log'), 'utf8').trim().split('\n').filter(Boolean) : []);
 const clip = (text: string, speaker = 'ryan', language: ClipRequest['language'] = 'de'): ClipRequest => ({ voice: { speaker }, text, out: join(dir, `${text}.wav`), language });
 
 describe('the voice Obeya holds', () => {

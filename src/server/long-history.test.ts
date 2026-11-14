@@ -113,7 +113,9 @@ test('asking the sites which shared pages are gone, after a change', async () =>
       await rebuild(long)();
       await long.canvas.sharing.checkSites();
     }),
-  ).toBeLessThan(10);
+    // five to six units on an idle Mac, up to seven with every core busy, twelve on a busy CI runner;
+    // making each site's target again for every page costs sixteen even on an idle Mac
+  ).toBeLessThan(15);
 });
 
 test('the snoozed cards and the steps the Coordinator waits to take are looked at (every change, and each minute)', async () => {
