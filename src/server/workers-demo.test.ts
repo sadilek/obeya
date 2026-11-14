@@ -689,6 +689,29 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.demo).toMatchObject({ result: true, handover: question.id });
   });
 
+  test("a new demo after a round on the pull request comes with its page where demos are shared, and is the card's demo to share", async () => {
+    await setup({ ...generic, land: 'pr', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
+    const page = { title: 'Zählerstände als CSV', text: 'Vermieter laden die Zählerstände jetzt als CSV herunter.' };
+    const { card: c, session } = await handedOver({ commit: 'export.ts', demo: { ...demo(demoDir()), page }, idle: false });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('inPr');
+    const round = join(dir, 'round');
+    mkdirSync(round);
+    writeFileSync(join(round, 'demo.mp4'), 'x');
+    writeFileSync(join(round, 'captions.vtt'), 'WEBVTT\n\n00:00:00.350 --> 00:00:05.000\nA.\n');
+    const given = { dir: round, chapters: ['Nachher'] };
+    expect(await session.call('show_demo', { summary: 'Mit Kopfzeile.', demo: given })).toContain('Not shown: a demo here needs its page');
+    const result = await session.call('show_demo', { summary: 'Mit Kopfzeile.', demo: { ...given, page: { ...page, title: 'CSV mit Kopfzeile' }, follows: 'supplements' } });
+    // no page is out: the owner decides whether one goes out
+    expect(result).toContain('The owner may share it on a page of its own; Obeya then links that page on the pull request itself.');
+    expect(board.item(c.id)!.demo).toMatchObject({ inPr: true, follows: 'supplements', page: { title: 'CSV mit Kopfzeile' } });
+    // the handover's demo stays among the card's earlier demos
+    expect(board.item(c.id)!.demos).toHaveLength(1);
+    // Obeya keeps a copy of it, as of a handover's
+    expect(board.item(c.id)!.demo!.handover).toBe(board.events(c.id).findLast((e) => e.kind === 'talk')!.id);
+    expect(existsSync(join(dir, 'kept', c.id, String(board.item(c.id)!.demo!.handover), 'demo.mp4'))).toBe(true);
+  });
+
   test('where demos are shared, a video or an artifact comes with its page for colleagues, kept with the demo', async () => {
     await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
     const c = manual();

@@ -86,7 +86,9 @@ done in Card lifecycle). Whatever form a URL was recorded in, each call reads it
 already on a card is recognised in any form (a slash at the end, the host in capitals). An address
 with a login, a query or a fragment before the repository is no PR URL: the host it would be told
 by could differ from the one it is sent to. From then on it may push its
-branch, never merges, and ends its turn after each round instead of handing over.
+branch, never merges, and ends its turn after each round instead of handing over; a round that changes
+what the card's demo showed brings a new demo with `show_demo` first (see The demo on the card in
+Demos).
 
 #### Watching the PR
 

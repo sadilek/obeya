@@ -45,6 +45,12 @@ export interface WorkerOptions {
    * card with a page (`Demo-Video: <url>`).
    */
   onApproval?: (cardId: string) => string | null;
+  /**
+   * The worker put a new demo on the card while its work is in its pull request (`show_demo`).
+   * Returns whether it goes on the card's page by itself (where approving publishes and the page is
+   * out); otherwise the owner shares it.
+   */
+  onRoundDemo?: (cardId: string) => boolean;
   /** The default branch has moved: the card's pull request was merged, or its work pushed there directly. */
   onMerged?: (cardId: string) => void;
   /** A review card's worker made a follow-up task (`followUpTask`): it goes to the Coordinator, to wait for the PR's merge. */

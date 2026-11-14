@@ -379,11 +379,13 @@ function TaskView(v: View) {
   const [opened] = useState(() => openedWith(sessionStorage, item.id, item.demo));
   useEffect(() => () => held.clear(sessionStorage, item.id), []);
   const demoWaits = item.state === 'waiting' && item.need === 'demo';
+  // a demo new to the owner: one waiting for approval, or one the agent brought after a round on the pull request
+  const demoNew = demoWaits || (item.state === 'inPr' && !!item.demo?.inPr);
   // a demo starts by itself only when the owner opens the card to it; one that arrives on the open card waits behind its play button
   const arrived = !!item.demo && arrivedOnOpenCard(opened, item.demo);
   useEffect(() => {
-    if (arrived && demoWaits && item.demo) held.set(sessionStorage, item.id, item.demo);
-  }, [arrived, demoWaits, item.demo?.handover, item.demo && JSON.stringify(item.demo.chapters)]);
+    if (arrived && demoNew && item.demo) held.set(sessionStorage, item.id, item.demo);
+  }, [arrived, demoNew, item.demo?.handover, item.demo && JSON.stringify(item.demo.chapters)]);
   const worked = isWorked(item);
   // in a folder without git the card's change list takes the place of its branch
   const inFolder = !!repo?.folder;
@@ -461,7 +463,7 @@ function TaskView(v: View) {
         // what came of the work on the left, once there is something, the conversation with the owner's one field on the right;
         // the task is the conversation's first message, and the summary its handover
         <Split
-          main={!talkAlone(item) && <TaskResult v={v} diff={change.diff} tab={tab} onTab={setTab} autoplay={demoWaits && !arrived} />}
+          main={!talkAlone(item) && <TaskResult v={v} diff={change.diff} tab={tab} onTab={setTab} autoplay={demoNew && !arrived} />}
           // what is typed into a card waiting to start waits for its agent, not for Obeya
           talk={<TaskTalk item={item} listener={holdsNotes(item) ? undefined : v.listener} act={act} onTell={v.onTell} />}
           cite={!!ownerField(item) && cardDraft(item.id)}
@@ -693,11 +695,13 @@ function TaskResult({ v, diff, tab, onTab, autoplay }: { v: View; diff: CardDiff
                       <p className="hint">
                         {shown.asked && item.state === 'waiting' && item.need === 'question'
                           ? t.demo.asked
-                          : item.state === 'working' || item.state === 'waiting'
-                            ? shown.asked
-                              ? t.demo.askedAgain
-                              : t.demo.again
-                            : t.demo.kept}
+                          : shown.inPr && item.state === 'inPr'
+                            ? t.demo.inPr
+                            : item.state === 'working' || item.state === 'waiting'
+                              ? shown.asked
+                                ? t.demo.askedAgain
+                                : t.demo.again
+                              : t.demo.kept}
                       </p>
                     )}
                     {/* drafts shown with a question are not the work's demo: the handover brings the one to share */}

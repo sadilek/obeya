@@ -180,6 +180,13 @@ export const FOLLOW_UP =
 export const IN_WORKTREE =
   "No clone of the repository was free, so this is a temporary worktree, where the repository's app and tooling may not run. If answering needs a full clone, call need_clone and end your turn: Obeya resumes you in the next free clone.";
 
+/**
+ * What a worker on a pull request hears of its demo: a round there (review comments, a fix) that
+ * changes what the card's demo showed brings a new one, without a question or a handover.
+ */
+export const ROUND_DEMO =
+  "Where a round changes what the card's demo showed (the UI looks or behaves differently now), record a new demo of the change as it stands and put it on the card with show_demo before you end your turn, so that the card, and the page the pull request links once the demo is shared, show what the reviewers now get. It needs no question and no handover.";
+
 /** Where the worker of landed work links its demo's page. */
 export const LINK_DEMO = 'Link it wherever you point people at this work (an issue you close, say).';
 

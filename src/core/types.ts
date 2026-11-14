@@ -781,6 +781,12 @@ export interface Demo {
    * after its review, say), not drafts: shared, kept and counted like a handover's demo.
    */
   result?: true;
+  /**
+   * Put on the card by its worker while the work was in its pull request (`show_demo`), after a round
+   * there changed what the demo before showed: no handover brought it, and `handover` is the worker's
+   * message that came with it.
+   */
+  inPr?: true;
   /** When that handover was. */
   at?: string;
   /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */

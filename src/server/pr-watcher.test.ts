@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -33,6 +33,9 @@ let settings: RepoAdapter;
 let opened: string[];
 /** The language of Obeya's interface, which the lines the watcher logs on a card speak. */
 let language: Language;
+/** Cards whose worker put a new demo on them in a round on the PR, as the canvas passes them to sharing; `toPage` is what sharing answers. */
+let rounds: string[];
+let toPage: boolean;
 const URL_ = 'https://github.com/acme/app/pull/42';
 
 beforeEach(async () => {
@@ -45,8 +48,10 @@ beforeEach(async () => {
   workspaces = await primedClones(store, main, dir);
   runtime = new FakeRuntime();
   opened = [];
+  rounds = [];
+  toPage = false;
   settings = { ...generic, land: 'pr', workspaces: 'clones', prNoise: ['deploy-bot'] };
-  workers = new Workers({ board, runtime, workspaces, adapter: settings, onPrOpened: (id) => opened.push(id) });
+  workers = new Workers({ board, runtime, workspaces, adapter: settings, onPrOpened: (id) => opened.push(id), onRoundDemo: (id) => (rounds.push(id), toPage) });
   status = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [], comments: [] };
   merges = [];
   refuse = undefined;
@@ -130,6 +135,67 @@ describe('the PR phase', () => {
     runtime.last.emit({ type: 'text', text: 'Ich pushe den Branch.' });
     runtime.last.emit({ type: 'idle' });
     expect(runtime.last.inbox.at(-1)).toContain('no pull request for this card yet');
+  });
+});
+
+describe('a new demo after a round on the PR', () => {
+  /** A demo video in a directory of its own. */
+  const video = (name: string) => {
+    const d = join(dir, name);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, 'demo.mp4'), 'x');
+    writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00:00.350 --> 00:00:05.000\nA.\n\n00:00:06.350 --> 00:00:09.000\nB.\n');
+    return { dir: d, chapters: ['Vorher', 'Nachher'] };
+  };
+
+  test('the approval and the review comments ask for one where the round changes what the demo showed', async () => {
+    const id = await inPr();
+    expect(runtime.last.inbox.at(-1)).toContain("Where a round changes what the card's demo showed");
+    runtime.last.call('pr_opened', { url: URL_ });
+    status.comments = [{ id: 'i1', author: 'lead', body: 'Make the button blue.', path: 'src/a.ts', line: 3 }];
+    await watcher.poll();
+    const sent = runtime.last.inbox.at(-1)!;
+    expect(sent).toContain('New review comments on your pull request');
+    expect(sent).toContain('put it on the card with show_demo before you end your turn');
+    expect(state(id)).toBe('inPr');
+  });
+
+  test('show_demo makes it the card’s demo with the worker’s words, while the card stays in its PR; before the approval it is refused', async () => {
+    const c = await handedOver();
+    const first = video('first');
+    // waiting for the approval, a new demo comes with a handover
+    expect(await runtime.last.call('show_demo', { summary: 'Blau.', demo: first })).toContain('Not shown: only while your work is in its pull request');
+    expect(board.item(c.id)!.demo!.inPr).toBeUndefined();
+    await workers.approve(c.id);
+    const id = c.id;
+    runtime.last.call('pr_opened', { url: URL_ });
+    const before = board.item(id)!.demo!;
+    expect(await runtime.last.call('show_demo', { summary: ' ', demo: first })).toContain('the summary is empty');
+    const result = await runtime.last.call('show_demo', { summary: 'Der Button ist jetzt blau, wie im Review gewünscht.', demo: { ...first, follows: 'replaces' } });
+    expect(result).toContain('Shown on the card as its demo.');
+    expect(result).toContain('end your turn once it is done');
+    expect(state(id)).toBe('inPr');
+    const said = board.events(id).findLast((e) => e.kind === 'talk')!;
+    expect(said).toMatchObject({ author: 'worker', text: 'Der Button ist jetzt blau, wie im Review gewünscht.' });
+    expect(board.item(id)!.demo).toMatchObject({ kind: 'video', inPr: true, follows: 'replaces', handover: said.id, at: said.at, chapters: [[0, 'Vorher'], [6, 'Nachher']] });
+    // the demo before stays among the card's earlier demos
+    expect(board.item(id)!.demos!.map((d) => d.handover)).toEqual([before.handover]);
+    expect(rounds).toEqual([id]);
+  });
+
+  test('show_demo tells the worker whether the page the PR links gets it by itself or waits for the owner, who hears of it', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    const notices: string[] = [];
+    board.onNotice((n) => void notices.push(n.text));
+    toPage = true;
+    expect(await runtime.last.call('show_demo', { summary: 'Blau.', demo: video('a') })).toContain('Obeya puts it on the card\'s page itself, the page the pull request links, in place of the demo there');
+    expect(notices).toEqual([]);
+    toPage = false;
+    // a page out with the earlier demo: the owner shares the new one
+    board.work(id, { share: JSON.stringify({ slug: 'export', url: 'https://demos.example/export/', dir: '/d' }) });
+    expect(await runtime.last.call('show_demo', { summary: 'Grün.', demo: video('b') })).toContain('shows the earlier demo until the owner shares this one');
+    expect(notices).toEqual(['Neue Demo nach der Runde am Pull Request: Die Seite, die er verlinkt, zeigt noch die frühere, bis du diese teilst.']);
   });
 });
 

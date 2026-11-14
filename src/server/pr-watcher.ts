@@ -13,7 +13,7 @@ import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, 
 import type { PrWait } from '../core/types';
 import type { Workers } from './workers';
 import { messageOf } from '../core/text';
-import { mergeBranch, mergeConflictHelp } from './worker-texts';
+import { mergeBranch, mergeConflictHelp, ROUND_DEMO } from './worker-texts';
 
 /** How long reading a PR fails before its card says so. */
 const READ_ERROR_AFTER_MS = 10 * 60_000;
@@ -294,7 +294,7 @@ export class PrWatcher {
         cardId,
         this.board.t.pr.comments(comments.length, comments[0]!.author),
         [
-          `New review comments on your pull request${which}. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or leave it where a change is not right, and push). Each comment on the code gets a reply in its own thread, not one comment for all: what you changed, or why not. Then resolve each thread, unless you still want the reviewer’s answer. A summary or verdict that asks for nothing (a review without findings, an approval) needs no reply. Once you pushed, ask the reviewers for a new review the way the repository does it: Obeya merges only on a review of the latest commit. A comment of yours that mentions an account counts as such a request, and Obeya waits for its answer before it merges. End your turn. Use ask if one questions a decision only the owner can make.`,
+          `New review comments on your pull request${which}. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or leave it where a change is not right, and push). Each comment on the code gets a reply in its own thread, not one comment for all: what you changed, or why not. Then resolve each thread, unless you still want the reviewer’s answer. A summary or verdict that asks for nothing (a review without findings, an approval) needs no reply. Once you pushed, ask the reviewers for a new review the way the repository does it: Obeya merges only on a review of the latest commit. A comment of yours that mentions an account counts as such a request, and Obeya waits for its answer before it merges. ${ROUND_DEMO} End your turn. Use ask if one questions a decision only the owner can make.`,
           ...comments.map((c) => commentLine(c, true)),
         ].join('\n\n'),
       );

@@ -240,7 +240,10 @@ or beside the versions where its worker said it supplements (with what it supple
 versions on one page), else in their place, after any share
 still going out; a log line says so. It goes through the queue, so landing does not wait; a failed
 deploy is logged and the card keeps "Share". The same holds for approved PR work, work closed
-without a change, and a held approval landed by the worker's next handover (the newer demo goes).
+without a change, and a held approval landed by the worker's next handover (the newer demo goes). It
+holds too for a demo the worker brings later in a round on the pull request, where the page is out
+or going out (see The demo on the card in Demos), with its own log line ("New demo after the round on
+the pull request replaced on the page, as the approval’s was: …").
 
 Where a repository lands on `main` directly, the landing commit of a card with a page names it in a
 git trailer, `Demo-Video: <url>` (`Demo-Page:` for an artifact), beside the closing trailers. The URL

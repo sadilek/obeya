@@ -155,17 +155,7 @@ export class Sharing {
     if (target && this.publishesOnApproval(card)) {
       const s = this.stored(cardId);
       if (s?.notOnApproval) this.notOnPage(cardId);
-      // a share under way (one the owner chose) goes out first; the latest demo after it
-      else if (s?.state === 'publishing') {
-        this.after.add(cardId);
-        void serial(async () => {
-          this.after.delete(cardId);
-          this.onPage(cardId);
-          // on the page already after all: the page is where it is
-          if (this.stored(cardId)?.state !== 'publishing') this.settled(cardId);
-        });
-      }
-      else this.onPage(cardId);
+      else this.latestOnPage(cardId, 'approved');
     }
     // the page as it is about to be, or as it is
     const page = this.stored(cardId);
@@ -176,6 +166,40 @@ export class Sharing {
     if (!first || !url) return null;
     const kind = this.cardDemo(cardId, first)?.kind ?? sharedDemos(page).find((d) => sameDemo(d, first))?.shown.kind;
     return `${kind === 'html' ? 'Demo-Page' : 'Demo-Video'}: ${url}`;
+  }
+
+  /**
+   * Its worker put a new demo on the card while the work is in its pull request, after a round there
+   * changed what the demo before showed (`show_demo`). The work is approved already: where approving
+   * publishes and the card's page is online or going out (the page the pull request links), the demo
+   * goes on it as an approval's would, so that the reviewers see what they now get. A card whose
+   * owner unticked "Share on approval", or whose page is not out, waits for the owner's click. Returns
+   * whether it goes on the page.
+   */
+  roundDemo(cardId: string): boolean {
+    try {
+      const card = this.find(cardId);
+      const s = this.stored(cardId);
+      if (!card || card.prototypeOf || !s || s.notOnApproval || s.state === 'withdrawing' || !(s.url || s.state === 'publishing')) return false;
+      if (!this.target(card) || !this.publishesOnApproval(card)) return false;
+      this.latestOnPage(cardId, 'round');
+      return true;
+    } catch (e) {
+      this.o.board.log(cardId, 'error', 'obeya', `${this.o.board.t.share.notShared}: ${messageOf(e)}`);
+      return false;
+    }
+  }
+
+  /** The card's latest demo goes on its page as an approval puts it there (`onPage`): after a share under way, one the owner chose. */
+  private latestOnPage(cardId: string, why: 'approved' | 'round') {
+    if (this.stored(cardId)?.state !== 'publishing') return this.onPage(cardId, why);
+    this.after.add(cardId);
+    void serial(async () => {
+      this.after.delete(cardId);
+      this.onPage(cardId, why);
+      // on the page already after all: the page is where it is
+      if (this.stored(cardId)?.state !== 'publishing') this.settled(cardId);
+    });
   }
 
   /**
@@ -217,8 +241,8 @@ export class Sharing {
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.notOnApproval);
   }
 
-  /** The card's latest demo goes on its page as an approval puts it there, unless it is there already or the page is busy. */
-  private onPage(cardId: string) {
+  /** The card's latest demo goes on its page as an approval puts it there (`why`: an approval, or a round on its pull request), unless it is there already or the page is busy. */
+  private onPage(cardId: string, why: 'approved' | 'round') {
     const card = this.find(cardId);
     const demo = this.demo(cardId);
     const s = this.stored(cardId);
@@ -226,7 +250,7 @@ export class Sharing {
     const now: DemoRef[] = s?.url ? sharedDemos(s) : [];
     const add = demo.follows === 'supplements';
     this.set(cardId, { ...this.fresh(card, s), state: 'publishing', next: this.versionsWith(cardId, now, refOf(demo), add).map(refOf) });
-    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.approved(!now.length ? 'share' : add ? 'add' : 'replace'));
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share[why](!now.length ? 'share' : add ? 'add' : 'replace'));
     void serial(() => this.publish(cardId));
   }
 

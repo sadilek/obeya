@@ -1102,6 +1102,53 @@ describe('publishing on approval', () => {
     expect(on(c.id)).toEqual([2]);
   });
 
+  test('a new demo after a round on the pull request goes on the page that is out, in place of the one there or beside it, as the approval’s did', async () => {
+    const c = card('Filter bleiben', { handover: 1 });
+    sharing.approved(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    later(c.id, 2, { inPr: true, follows: 'replaces' });
+    expect(sharing.roundDemo(c.id)).toBe(true);
+    expect(log(c.id).at(-1)).toBe('Neue Demo nach der Runde am Pull Request auf der Seite ersetzt, wie die der Freigabe: Die Seite zeigt jetzt sie statt der geteilten.');
+    await until(() => share(c.id)?.state === 'shared' && on(c.id)[0] === 2);
+    expect(on(c.id)).toEqual([2]);
+    later(c.id, 3, { inPr: true, follows: 'supplements' });
+    expect(sharing.roundDemo(c.id)).toBe(true);
+    await until(() => share(c.id)?.state === 'shared' && on(c.id).length === 2);
+    expect(on(c.id)).toEqual([2, 3]);
+    // a page going out takes it after the share under way
+    later(c.id, 4, { inPr: true });
+    writeFileSync(join(dir, 'hold'), '');
+    sharing.share(c.id, { demo: 2 });
+    expect(sharing.roundDemo(c.id)).toBe(true);
+    rmSync(join(dir, 'hold'));
+    await until(() => share(c.id)?.state === 'shared' && on(c.id)[0] === 4);
+    expect(on(c.id)).toEqual([4]);
+  });
+
+  test('a new demo after a round waits for the owner where no page is out, "Share on approval" was unticked, or the site publishes only on "Share"', async () => {
+    // no page: the pull request links none, and the owner decides whether one goes out
+    const c = card('Filter bleiben', { handover: 1 });
+    later(c.id, 2, { inPr: true });
+    expect(sharing.roundDemo(c.id)).toBe(false);
+    expect(share(c.id)).toBeUndefined();
+    // unticked: the owner shared by hand, and shares the new demo by hand too
+    const d = card('Spalten', { handover: 1 });
+    sharing.onApproval(d.id, false);
+    await shared(d.id);
+    later(d.id, 2, { inPr: true });
+    expect(sharing.roundDemo(d.id)).toBe(false);
+    // a site that publishes on "Share" alone
+    publish = undefined;
+    const e = card('Export', { handover: 1 });
+    await shared(e.id);
+    later(e.id, 2, { inPr: true });
+    expect(sharing.roundDemo(e.id)).toBe(false);
+    await Bun.sleep(50);
+    expect(on(d.id)).toEqual([1]);
+    expect(on(e.id)).toEqual([1]);
+    expect(share(e.id)).toMatchObject({ on: [1], stale: true });
+  });
+
   test('a site that publishes only on "Share" puts nothing out; a page shared before still goes into the trailer', async () => {
     publish = undefined;
     const c = card();

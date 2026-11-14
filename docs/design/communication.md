@@ -35,8 +35,9 @@ visible on a card.
 - `snooze(until, why, card, state)` (see Snoozing a card).
 - `to_obeya(request)`: what the owner's words ask of Obeya rather than of the worker (see Passing a
   request on to Obeya).
-- After the approval: `pr_opened(url)` (see PR loop), `after_restart` (see Restarts for landed code)
-  and `close_unchanged` (see Live and done).
+- After the approval: `pr_opened(url)` (see PR loop), `show_demo(summary, demo)` for a new demo after
+  a round on the pull request (see The demo on the card in Demos), `after_restart` (see Restarts for
+  landed code) and `close_unchanged` (see Live and done). `show_demo` does not end the turn.
 
 A call that ends the turn (`ask`, `ready_for_review`, `pr_opened`, `snooze`, `after_restart`)
 returns "end your turn now". When the owner's words waited for that very step (see Reading order in

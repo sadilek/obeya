@@ -358,6 +358,8 @@ const de = {
     superseded: (by?: string, why?: string) =>
       by ? `Der vorschlagende Agent hat diese Karte ersetzt durch „${by}“${why ? `: ${why}` : '.'}` : `Der vorschlagende Agent hat diese Karte zurückgezogen${why ? `: ${why}` : '.'}`,
     prOpened: (pr: string) => `Pull Request ${pr} geöffnet.`,
+    /** The agent put a new demo on the card after a round on its pull request, and the page the pull request links still shows the one before. */
+    roundDemoNotShared: 'Neue Demo nach der Runde am Pull Request: Die Seite, die er verlinkt, zeigt noch die frühere, bis du diese teilst.',
     prOpenedAfterMain: (pr: string) => `Pull Request ${pr} geöffnet. Die Arbeit bleibt auf main; die Karte ist live, sobald er gemergt ist.`,
     landing: 'Landet auf main',
     waitsForRestart: 'Wartet auf den Neustart von Obeya mit der neuen Version',
@@ -569,6 +571,12 @@ const de = {
         : how === 'add'
           ? 'Mit der Freigabe zur Seite dazugenommen: Die Seite bekommt die neueste Demo als Ergänzung dazu.'
           : 'Mit der Freigabe auf der Seite ersetzt: Die Seite zeigt jetzt die neueste Demo statt der geteilten.',
+    round: (how: 'share' | 'replace' | 'add'): string =>
+      how === 'share'
+        ? 'Neue Demo nach der Runde am Pull Request geteilt, wie die der Freigabe: Die Seite geht online.'
+        : how === 'add'
+          ? 'Neue Demo nach der Runde am Pull Request zur Seite dazugenommen, wie die der Freigabe: Die Seite bekommt sie als Ergänzung dazu.'
+          : 'Neue Demo nach der Runde am Pull Request auf der Seite ersetzt, wie die der Freigabe: Die Seite zeigt jetzt sie statt der geteilten.',
     notOnApproval: 'Mit der Freigabe nicht geteilt: „Mit der Freigabe teilen“ war abgewählt.',
     notAgain: 'Nicht erneut geteilt',
     notLinked: 'Der Link zum Pull Request oder Commit ist nicht auf die Seite gekommen',
@@ -928,6 +936,7 @@ const en: Messages = {
     superseded: (by?: string, why?: string) =>
       by ? `The agent that proposed this card replaced it by “${by}”${why ? `: ${why}` : '.'}` : `The agent that proposed this card withdrew it${why ? `: ${why}` : '.'}`,
     prOpened: (pr: string) => `Pull request ${pr} opened.`,
+    roundDemoNotShared: 'New demo after the round on the pull request: the page it links still shows the earlier one until you share this one.',
     prOpenedAfterMain: (pr: string) => `Pull request ${pr} opened. The work stays on main; the card is live once it is merged.`,
     landing: 'Landing on main',
     waitsForRestart: 'Waits for Obeya to restart with the new version',
@@ -1125,6 +1134,12 @@ const en: Messages = {
         : how === 'add'
           ? 'Added to the page with the approval: the page gets the latest demo as an addendum.'
           : 'Replaced on the page with the approval: the page now shows the latest demo instead of the shared ones.',
+    round: (how: 'share' | 'replace' | 'add'): string =>
+      how === 'share'
+        ? 'New demo after the round on the pull request shared, as the approval’s was: the page goes online.'
+        : how === 'add'
+          ? 'New demo after the round on the pull request added to the page, as the approval’s was: the page gets it as an addendum.'
+          : 'New demo after the round on the pull request replaced on the page, as the approval’s was: the page now shows it instead of the shared ones.',
     notOnApproval: 'Not shared with the approval: “Share on approval” was unticked.',
     notAgain: 'Not shared again',
     notLinked: 'The link to the pull request or commit did not get onto the page',

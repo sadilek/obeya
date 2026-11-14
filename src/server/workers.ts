@@ -39,7 +39,7 @@ import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
 import { mergeBranch, mergeConflictHelp } from './worker-texts';
-import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
 
@@ -1008,6 +1008,7 @@ export class Workers {
         card.adopted ? `Your branch ${card.adopted.branch} is the owner's and existed before this card: open the pull request from it under that name${card.adopted.remote ? `, pushing onto ${card.adopted.branch}${this.o.remote ? ` at ${this.o.remote}` : ''} fast-forward only (never force: what is there is published)` : ''}.` : '',
         shared ? `Your demo video is shared with the team on a page of its own: ${shared}. Link it in the pull request's description.` : '',
         'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask). Where the work also needs a pull request in another repository, report that one with pr_opened too: Obeya watches each, and the card is live once all are merged.',
+        ROUND_DEMO,
         comments?.text ?? '',
       ]
         .filter(Boolean)
@@ -1140,6 +1141,7 @@ export class Workers {
       [
         `${by === 'owner' ? 'The owner approved your work, and Obeya' : 'Obeya'} pushed it onto ${branch}, the branch of the open pull request ${name} (${found.url})${result.from === result.to ? ', which had it already' : ''}. Do not merge it: ${merger}.`,
         `From now on Obeya passes you review comments, failed checks and conflicts on it; handle them on your branch the way the repository does, and push them onto ${branch} yourself${this.o.remote ? ` there, at ${this.o.remote} (git push ${this.o.remote} HEAD:${branch}; your workspace's origin may be the local checkout instead)` : ''}. Its commits are published: never rewrite them (no rebase, amend or force push); to bring its base in, merge it. End your turn after each round instead of handing over.`,
+        ROUND_DEMO,
         shared ? `Your demo video is shared on a page of its own: ${shared}. Link it on the pull request where it helps its readers.` : '',
         comments?.text ?? '',
       ]
@@ -1172,6 +1174,7 @@ export class Workers {
       [
         `The owner approved your work. Nothing lands from your branch: the card follows the pull request${prs.length > 1 ? 's' : ''} your work went onto until ${prs.length > 1 ? 'all are' : 'it is'} merged. ${prs.map((p) => `${adoptedPrName(p)} (${p.url}): do not merge it; ${merger(p)}.`).join(' ')}`,
         `From now on Obeya passes you review comments, failed checks and conflicts on ${prs.length > 1 ? 'them' : 'it'}; handle them the way its repository does, on its branch, and push them there yourself. Its commits are published: never rewrite them (no rebase, amend or force push); to bring its base in, merge it. End your turn after each round instead of handing over.`,
+        ROUND_DEMO,
         shared ? `Your demo video is shared on a page of its own: ${shared}. Link it on the pull request where it helps its readers.` : '',
         comments?.text ?? '',
       ]
@@ -1348,6 +1351,7 @@ export class Workers {
           : `The owner approved your work, and it goes to ${up.name}, the original repository of this fork, as a pull request too. It landed on ${up.into} as usual (${landed.to.slice(0, 7)}).${pushedNote} Your branch started from ${up.into}, so it was built and tested on ${up.into}, with this fork's own work, which does not belong in the pull request: make the pull request's branch anew from ${start ? `${start.slice(0, 7)}, the newest commit of ${up.ref}` : `the newest commit of ${up.ref}`}, in a worktree of its own (git worktree add -b ${branch}-pr <dir> <that commit>), leaving this branch as it is, and carry the change over without what only this fork has. It has not run on the original's state yet: run the checks there and look whether it still does what the demo showed; where it does not, tell the owner (ask) before you open the pull request.`,
         `Open the pull request against ${up.ref.slice(up.ref.indexOf('/') + 1)} of ${up.name} the way the repository does it (its own skills and conventions; with gh: gh pr create --repo ${up.name} --base ${up.branch} --head <owner of origin>:<branch>), after pushing its branch to origin. Whoever reads it has not seen Obeya, the card, nor ${up.into}. ${shared ? `Your demo video is shared on a page of its own: ${shared}. Link it in the description where it helps the maintainers. ` : ''}Then report it with pr_opened${based ? '' : ': what the pull request holds then counts as on ' + up.into + ' already'}.`,
         `Its maintainers merge it, not Obeya. Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does. Every commit you push onto the pull request later, Obeya merges into ${up.into} as well: make each fix on the pull request's branch alone, and never merge ${up.into} into it, which would carry this fork's own work into the pull request. A comment that questions a decision is the owner's (ask). The card is live once the maintainers merged it.`,
+        ROUND_DEMO,
         comments?.text ?? '',
       ]
         .filter(Boolean)

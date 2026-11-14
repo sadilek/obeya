@@ -577,6 +577,25 @@ export class WorkerTools {
           return ending('Recorded. End your turn now; Obeya watches the pull request.', 'Recorded: Obeya watches the pull request.', 'a change to the work goes onto the pull request');
         },
       },
+      // a round on the pull request may change what the card's demo showed; a review card hands over in its rounds, and a folder has no pull request
+      ...(review || prototype || this.folder
+        ? []
+        : ([
+            {
+              name: 'show_demo',
+              description: `After the owner approved, while your work is in its pull request: put a new demo on the card when a round on the pull request (review comments, a fix) changed what the card's demo showed. It becomes the card's demo, the one its page for colleagues shows, and that page is the one the pull request links. It is no handover and asks nothing: go on with the round, and end your turn once it is done. summary: what the new demo shows that the one before did not, a sentence or two in ${language}, shown with it in the card's conversation.`,
+              schema: {
+                summary: z.string(),
+                demo: z.object({
+                  kind: z.enum(['video', 'html']).optional().describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at"),
+                  dir: z.string().describe('absolute path: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
+                  chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
+                  ...pageSchema('required'),
+                }),
+              },
+              run: (args) => this.showDemo(cardId, String(args.summary ?? ''), args.demo as GivenDemo, { shares, vocabulary, ended }),
+            },
+          ] satisfies AgentTool[])),
       {
         name: 'ready_for_review',
         description: `Hand the finished work to the owner, after committing it, running the checks and making the demo. The summary (in ${language}) is what this handover tells the owner beyond what the card's conversation already holds: on your first handover, what changed from the user's point of view and what they really need to know (something left open or not verified, a decision you took for them), in a few short paragraphs at most; on a later one, only what your last handover and your replies since have not said yet, often a sentence. Obeya keeps your handovers and replies together as the card's report for whoever reads it later. A problem you noticed outside the task goes to propose_card, not into the summary, as does a follow-up to your task that is due only later (start_at). The demo: a video's directory and chapter titles in scene order, or an HTML artifact's directory, with its report (in the language of its narration); without a new one, the demo already on the card stands. Then end your turn.`,
@@ -869,6 +888,52 @@ export class WorkerTools {
             ? ` Approving lands your branch's change to ${changed.length === 1 ? '1 file' : `${changed.length} files`}: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}.`
             : '';
     return x.ending(`${END_TURN}${lands}`, `Recorded: your handover waits for the owner's approval.${lands}`, 'if they change what you handed over, hand it over again');
+  }
+
+  /**
+   * `show_demo`: a new demo on the card while its work is in its pull request, after a round there
+   * changed what the demo before showed. It becomes the card's demo with the worker's words in the
+   * conversation, the one before kept among the earlier ones; where approving publishes and the
+   * card's page is out, it goes on the page by itself, else the owner shares it.
+   */
+  private async showDemo(cardId: string, summary: string, given: GivenDemo | undefined, x: Pick<HandOverContext, 'shares' | 'vocabulary' | 'ended'>): Promise<string> {
+    const inPr = (row: CardRow) => row.state === 'inPr' && !!row.pr && !row.landed;
+    const notInPr = 'Not shown: only while your work is in its pull request, after the owner approved it, does a demo go on the card without a handover. Before that, bring it with ready_for_review (or with ask, as demo.result, where the owner has to decide something about it).';
+    if (!inPr(this.o.board.row(cardId))) return notInPr;
+    const text = summary.trim();
+    if (!text) return 'Not shown: the summary is empty. Say in a sentence or two what the new demo shows, then call show_demo again.';
+    const long = tooLong(text, 4000, 'show_demo');
+    if (long) return long;
+    if (!given?.dir) return 'Not shown: the demo is missing. Give its directory (demo.dir), then call show_demo again.';
+    const page = pageOf(given, x.shares, x.vocabulary, { not: 'Not shown', again: 'call show_demo again' });
+    if (typeof page === 'string') return page;
+    // a demo made on another machine is shown from its copy here
+    const here = await this.demoHere(cardId, given.dir);
+    if ('wrong' in here) return `Not shown: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then call show_demo again.`;
+    const shown = checkedDemo({ ...given, dir: here.dir });
+    if ('wrong' in shown) return `Not shown: ${shown.wrong}. Fix the ${shown.fix}, then call show_demo again.`;
+    // what a video's player needs to know of it, as for a handover's
+    const facts = shown.kind === 'video' ? await videoFacts(shown.dir) : {};
+    // copying and reading it take a while, in which the owner may stop the session or the pull request be merged
+    if (x.ended()) return SESSION_ENDED;
+    const row = this.o.board.row(cardId);
+    if (!inPr(row)) return notInPr;
+    const e = this.o.board.log(cardId, 'talk', 'worker', text);
+    // the demo it replaces stays with the card, for the owner to go back to
+    this.o.board.work(cardId, {
+      demo: toJson({ ...shown, ...facts, inPr: true, ...followsOf(given, row), ...(page ? { page } : {}), handover: e.id, at: e.at }),
+      ...(row.demo ? { demos: this.earlier(cardId, row) } : {}),
+    });
+    await this.keep(cardId, e.id);
+    const onPage = this.o.onRoundDemo?.(cardId) ?? false;
+    const then = 'Go on with the round, and end your turn once it is done.';
+    if (onPage) return `Shown on the card as its demo. As for approved work, Obeya puts it on the card's page itself, the page the pull request links${given.follows === 'supplements' ? ', beside the demo there' : ', in place of the demo there'}. ${then}`;
+    const card = this.o.board.item(cardId);
+    if (card?.share?.url) {
+      this.o.board.notify({ cardId, text: this.o.board.t.worker.roundDemoNotShared });
+      return `Shown on the card as its demo. The card's page, which the pull request links, shows the earlier demo until the owner shares this one; Obeya has told them. ${then}`;
+    }
+    return x.shares ? `Shown on the card as its demo. The owner may share it on a page of its own; Obeya then links that page on the pull request itself. ${then}` : `Shown on the card as its demo. ${then}`;
   }
 
   /**

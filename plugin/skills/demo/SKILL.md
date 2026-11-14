@@ -233,9 +233,10 @@ Iterate until it is clean.
 
 Under Obeya, hand the demo over with `ready_for_review` (its directory and chapter titles): the card
 shows the video and the handover summary, not the report page, so what the report's summary would
-tell the owner goes into the handover summary. A later demo of the same card either shows the
+tell the owner goes into the handover summary. Once the work is in its pull request, a demo after a
+round there goes on the card with `show_demo` instead, with a sentence on what it shows. A later demo of the same card either shows the
 change afresh or only what was corrected or explained since the one before (often after feedback,
-a short one); where `ready_for_review` asks for the demo's `follows`, say which (`replaces` or
+a short one); where `ready_for_review` (or `show_demo`) asks for the demo's `follows`, say which (`replaces` or
 `supplements`): the owner can share a supplement beside the earlier demo on the same page, and a
 demo recorded afresh in its place. Where it asks for the page's `tags`, choose for each dimension
 it names the values that fit the change, from those it gives (an empty list where none does):

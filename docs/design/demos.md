@@ -565,6 +565,21 @@ demo as a handover's is: "Share" beside it, counted as what the page lacks, and 
 handover that brings no demo of its own. Its page keeps its address, and Obeya links it on the pull
 request as for any share, so the worker leaves the link to Obeya.
 
+Once the work is in its pull request (approved, see PR loop in Landing), the rounds there end without
+a handover, but a round may change what the card's demo showed: a reviewer asks for another layout,
+say. The worker then records a new demo of the change as it stands and puts it on the card with
+`show_demo`, with a sentence or two in the conversation on what it shows and, where the repository
+shares, its page and `follows`, without asking or handing over; the messages that bring the rounds ask
+for it wherever the round changes what is visible. It becomes the card's demo, the one before kept
+among the earlier demos, with the hint "New demo after a round on the pull request." while the PR is
+open. It is new to the owner like a handover's: it plays by itself when they open the card. It is the
+work's demo for its page: where approving publishes (see Publishing on approval in Sharing demos) and
+the page is out or going out, it goes on it at once, in place of the demo there or beside it where it
+supplements it, so the page the pull request links shows the reviewers what they now get; elsewhere
+the card offers "Share" or "Replace on the page" as for any later demo, and where a page is out a
+notice tells the owner that it still shows the earlier demo. Before the approval `show_demo` is refused:
+a demo then comes with a handover, or with a question as its result.
+
 A handover without a demo is refused, unless the card has one from an earlier handover, or a
 question's demo that shows the result, which then stands: whether to record a demo again after
 feedback is the worker's call. A question's drafts do not stand for one. While the worker works again or waits on a question, the card shows the last
@@ -575,7 +590,8 @@ the demo directory, never in git; a pull request links a demo only once it is sh
 #### Watching the demo
 
 A demo plays by itself, with sound, only when the owner opens its card to it in a visible page and
-this browser has not played it yet (each handover's demo counts as new, and so does a new render).
+this browser has not played it yet (each handover's demo counts as new, and so does a new render),
+on a card waiting for approval or one in its pull request with a demo from a round there.
 A demo counts as played once its video runs, by itself or on a click, not once it has been shown
 or while it still loads after the click. One that arrives on a card already open (the first
 handover or any later one) does not start: it waits behind the big play button. Closed without
@@ -729,6 +745,17 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   only it knows whether it shows drafts or the work. Rejected: sharing every question's demo (drafts
   would go out as the work's result), and handing over instead of asking (the rounds on an open pull
   request end without a handover, and posting in the owner's name is their decision first).
+- **A round on the pull request brings its new demo without a question** (2026-11-14): once work is in
+  its pull request, the worker ends its rounds without handing over, so a change a reviewer asked for
+  could reach the card only with a question (`ask` with a result demo), and the page the pull request
+  links kept showing the reviewers the old behaviour. `show_demo` puts it on the card as the work's
+  demo, asking nothing. Where approving publishes, it goes on a page that is out by itself: the work
+  was approved to go out, the round's commits reach the pull request without the owner's click, and
+  the page is there for the reviewers. Where the owner unticked "Share on approval", the site publishes
+  only on "Share", or no page is out yet, it waits for the owner's click, as a page that does not
+  exist yet is the owner's to put out. Rejected: handing over again in the PR loop (it would put
+  approved work up for approval again), and a question for every new demo (the owner has nothing to
+  decide, and the worker would wait on the answer).
 - **There is no handover without a demo** (owner, 2026-10-15): without one the owner has to read to
   decide. Rejected: a `no_demo` handover with a reason, and a repository setting leaving demos to the
   worker; a settings file that still has `demo.required` shows it as a problem.
