@@ -899,7 +899,7 @@ describe('a worktree per card', () => {
     expect(() => workers.continueElsewhere(c.id)).toThrow(expect.objectContaining({ code: 'notLimited' }));
     codexFree = true;
     limits.changed();
-    workers.continueElsewhere(c.id);
+    await workers.continueElsewhere(c.id);
     expect(s.closed).toBe(true);
     const next = runtime.last;
     expect(next).not.toBe(s);

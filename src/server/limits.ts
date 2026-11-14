@@ -13,30 +13,34 @@ export interface HarnessLimit {
 }
 
 export class HarnessLimits extends Listeners {
-  private held = new Map<Harness, HarnessLimit>();
-  private timers = new Map<Harness, ReturnType<typeof setTimeout>>();
+  /** By harness on this machine, or on a host (`<host> <harness>`), whose logins are its own. */
+  private held = new Map<string, HarnessLimit>();
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  /** A turn on `harness` stopped at its limit, which holds until `until`. */
-  hit(harness: Harness, until: number, outage = false) {
-    const before = this.held.get(harness);
-    this.held.set(harness, { until, ...(outage ? { outage: true as const } : {}) });
-    clearTimeout(this.timers.get(harness));
-    const timer = setTimeout(() => this.lifted(harness), Math.max(0, until - Date.now()));
+  /** A turn on `harness` (on `host`, else here) stopped at its limit, which holds until `until`. */
+  hit(harness: Harness, until: number, outage = false, host?: string | null) {
+    const key = keyOf(harness, host);
+    const before = this.held.get(key);
+    this.held.set(key, { until, ...(outage ? { outage: true as const } : {}) });
+    clearTimeout(this.timers.get(key));
+    // a timer runs at most about 24 days
+    const timer = setTimeout(() => this.lifted(harness, host), Math.min(Math.max(0, until - Date.now()), 2 ** 31 - 1));
     timer.unref?.();
-    this.timers.set(harness, timer);
+    this.timers.set(key, timer);
     if (!before || before.until !== until || !!before.outage !== outage) this.emit();
   }
 
-  /** An agent on `harness` works: whatever held it has lifted. */
-  lifted(harness: Harness) {
-    clearTimeout(this.timers.get(harness));
-    this.timers.delete(harness);
-    if (this.held.delete(harness)) this.emit();
+  /** An agent on `harness` (on `host`, else here) works: whatever held it has lifted. */
+  lifted(harness: Harness, host?: string | null) {
+    const key = keyOf(harness, host);
+    clearTimeout(this.timers.get(key));
+    this.timers.delete(key);
+    if (this.held.delete(key)) this.emit();
   }
 
-  /** The limit `harness` is at now, if any. */
+  /** The limit `harness` is at now on this machine, if any. */
   of(harness: Harness): HarnessLimit | undefined {
-    const l = this.held.get(harness);
+    const l = this.held.get(keyOf(harness));
     return l && l.until > Date.now() ? l : undefined;
   }
 
@@ -45,3 +49,5 @@ export class HarnessLimits extends Listeners {
     this.emit();
   }
 }
+
+const keyOf = (harness: Harness, host?: string | null) => (host ? `${host} ${harness}` : harness);

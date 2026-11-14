@@ -1387,8 +1387,8 @@ export class Commander {
     s.reading = undefined;
     if (error && !decided) {
       // a session that waited or talked before may have gone stale: read the command once more in a fresh one
-      // and one the limit stopped, where a fresh session would run on the fallback
-      if (warmed && retry && (!(error instanceof LimitError) || this.o.fallsBack?.())) return this.read(transcript, focus, images, input, decide, false);
+      // and one the limit stopped, where a fresh session would run on the fallback (a fresh one too, once it had begun)
+      if (retry && (error instanceof LimitError ? !!this.o.fallsBack?.() : warmed)) return this.read(transcript, focus, images, input, decide, false);
       throw error;
     }
     if (!decided) decide({ commands: [], confirm: this.o.board.t.voice.notUnderstood });

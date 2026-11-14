@@ -143,7 +143,9 @@ and not at its limit itself; one that resumes a session stays on the harness the
 (a conversation cannot move between harnesses), with the fallback's model where that is the
 fallback's harness. A card chosen for the fallback's harness falls back on its group's own setting.
 Which harness is at its limit Obeya learns from the agents' turns, for every canvas at once: a turn
-the limit stopped says until when, a turn that works again says it lifted.
+the limit stopped says until when, a turn that works again says it lifted. A host's harnesses run on
+its own logins: a limit there is that host's, and agents working on a host wait for it as before,
+without a fallback or "Continue with …".
 
 An agent the limit stops before it did anything (its first turn, nothing said, no tool called)
 starts afresh on the fallback at once, with what it was sent: the Coordinator's check before a card
@@ -159,7 +161,7 @@ Communication), and its card offers "Continue with Codex" (or Claude Code) above
 saying until when the limit holds and on what the new agent would run: the workers' fallback, else
 their own setting where it is on the other harness, else that harness's preset. The other harness
 has to be ready and not at its limit; the box goes as soon as it is not. The click ends the waiting
-session and starts a new one on the other harness in the card's workspace, briefed as a worker
+session and, once it has gone (its background work with it), starts a new one on the other harness in the card's workspace, briefed as a worker
 resumed on its branch, with the card's conversation so far (who said what, oldest first) and the
 path of the transcript of the agent before it (none on a host). The card runs there from then on,
 after a restart too: its own harness and model become that one's.

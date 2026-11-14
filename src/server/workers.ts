@@ -2430,6 +2430,8 @@ export class Workers {
     // the row alone: the board's items ask this as they are built
     const row = this.o.board.row(cardId);
     if (row.state !== 'working' && row.state !== 'inPr') return undefined;
+    // a host's harnesses and logins are its own: there the worker waits
+    if (hostName(row.workspace)) return undefined;
     const from = l.on?.harness ?? sessionHarness(row.session_id ?? '');
     const to = this.o.moveTo(from, l.on?.effort);
     return to && { to, from, until: new Date(l.limited).toISOString(), ...(l.outage ? { outage: true as const } : {}) };
@@ -2441,7 +2443,7 @@ export class Workers {
    * (its conversation on the card, its transcript, the branch). The card runs there from then on,
    * after a restart too: its own harness and model become that one's.
    */
-  continueElsewhere(cardId: string) {
+  continueElsewhere(cardId: string): Promise<void> {
     const live = this.live.get(cardId);
     if (!live) throw new BadRequest('notLimited', "no agent works on the card");
     const move = this.moveTo(cardId, live);
@@ -2453,13 +2455,20 @@ export class Workers {
     const outage = !!live.outage;
     const transcript = row.session_id && !hostName(row.workspace ?? '') ? findTranscript(row.session_id, row.workspace) : null;
     const t = this.o.board.t;
+    const still = this.sameRun(cardId);
+    // the new agent starts once the one before has gone (its background work with it), so the two never work in the workspace at once
+    const gone = live.session.done;
     this.end(cardId);
     this.unlimited(cardId, live);
     this.o.board.work(cardId, { agent: toJson<CardAgent>({ harness: to.harness, model: to.model, effort: to.effort }), session_id: null });
     this.o.board.log(cardId, 'state', 'obeya', t.worker.movedByOwner(HARNESS_NAMES[from], agentName(to)));
     const briefing = this.brief.briefing(card, row.branch ?? '', true);
     const takeover = takeoverNote(from, until, outage, this.conversationText(cardId), transcript);
-    this.launch(cardId, `${briefing}\n\n${takeover}`, undefined, this.brief.taskImages(card));
+    return gone.then(() => {
+      // stopped, or taken on otherwise, meanwhile
+      if (!still() || this.live.has(cardId) || this.o.board.item(cardId)?.state !== card.state) return;
+      this.launch(cardId, `${briefing}\n\n${takeover}`, undefined, this.brief.taskImages(card));
+    });
   }
 
   /** The card's conversation as an agent that takes it over reads it: who said what, oldest first, the newest last. */

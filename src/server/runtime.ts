@@ -6,7 +6,7 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { remote, type SshHost } from './hosts';
+import { hostName, remote, type SshHost } from './hosts';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { filesIn } from './files';
@@ -203,10 +203,10 @@ export interface Placed extends AgentSetting {
  * model and the effort chosen for that agent alone (a card's), each where it names one. A session
  * resumed stays on the harness it began on: with the model chosen there where that is the group's
  * or its fallback's harness, else that harness's preset model, so a card goes on with its
- * conversation. A new one whose harness is at its limit (`avail`) starts on the group's fallback
- * instead (`replacement`), where that harness is ready and not at its limit itself.
+ * conversation. A new one on this machine whose harness is at its limit here (`avail`) starts on the
+ * group's fallback instead (`replacement`), where that harness is ready and not at its limit itself.
  */
-export function placeAgent(spec: Pick<AgentSpec, 'role' | 'agent' | 'resume'>, group: AgentSetting, avail?: Availability): Placed {
+export function placeAgent(spec: Pick<AgentSpec, 'role' | 'agent' | 'resume' | 'cwd'>, group: AgentSetting, avail?: Availability): Placed {
   const own = spec.agent;
   const chosen: AgentSetting = {
     harness: group.harness,
@@ -221,7 +221,8 @@ export function placeAgent(spec: Pick<AgentSpec, 'role' | 'agent' | 'resume'>, g
     const other = replacement(group, chosen.harness, chosen.effort);
     return other?.harness === on ? other : { ...agentDefault(role, on), effort: chosen.effort };
   }
-  const limit = avail?.limit(chosen.harness);
+  // on a host, whose harnesses and logins are its own, the agent waits for the limit there
+  const limit = hostName(spec.cwd) ? undefined : avail?.limit(chosen.harness);
   if (!limit) return chosen;
   const other = replacement(group, chosen.harness, chosen.effort);
   if (!other || !avail!.ready(other.harness) || avail!.limit(other.harness)) return chosen;
@@ -264,12 +265,14 @@ export function withLimitRecord(runtime: AgentRuntime, limits: HarnessLimits): A
   return {
     start(spec, firstMessage, images) {
       const harness = specHarness(spec);
+      // a host's harnesses run on its own logins
+      const host = hostName(spec.cwd);
       return runtime.start(
         {
           ...spec,
           onEvent: (e) => {
-            if (e.type === 'error' && e.limit) limits.hit(harness, limitLifts(e.limit, 0), !!e.limit.outage);
-            else if (e.type === 'text' || e.type === 'tool') limits.lifted(harness);
+            if (e.type === 'error' && e.limit) limits.hit(harness, limitLifts(e.limit, 0), !!e.limit.outage, host);
+            else if (e.type === 'text' || e.type === 'tool') limits.lifted(harness, host);
             spec.onEvent(e);
           },
         },
@@ -287,12 +290,12 @@ export function withLimitRecord(runtime: AgentRuntime, limits: HarnessLimits): A
  * first one's (`session`), after `moved`. An agent that waits
  * for the limit (`onLimit`) looks again whenever `changes` says something changed (the owner set a
  * fallback, say), and moves then. One that acted, or resumes a session, stays where it is: its
- * conversation cannot move to another harness.
+ * conversation cannot move to another harness; so does one on a host, whose logins are its own.
  */
 export function withFallback(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting, avail: Availability, changes?: Listeners): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
-      if (!spec.role || spec.resume) return runtime.start(spec, firstMessage, images);
+      if (!spec.role || spec.resume || hostName(spec.cwd)) return runtime.start(spec, firstMessage, images);
       const role = spec.role;
       let on = placeAgent(spec, setting(role), avail).harness;
       let agent = spec.agent;
@@ -355,6 +358,8 @@ export function withFallback(runtime: AgentRuntime, setting: (role: AgentRole) =
               : {}),
             onEvent: (e) => {
               if (mine !== generation) return;
+              // where it actually started: the placement may have been decided only later (`startingLater`)
+              if (e.type === 'session') on = sessionHarness(e.id);
               if (e.type === 'error' && e.limit && !spec.onLimit && move({ until: limitLifts(e.limit, 0), ...(e.limit.outage ? { outage: true as const } : {}) })) return;
               if (e.type === 'text' || e.type === 'tool' || e.type === 'idle' || e.type === 'error') act();
               spec.onEvent(e);
@@ -518,9 +523,11 @@ export function limitedRuntime(resetsAt: number): AgentRuntime {
       let closed = false;
       let ended!: () => void;
       const done = new Promise<void>((r) => (ended = r));
+      const id = `${spec.harness === 'codex' ? CODEX_SESSION : ''}${crypto.randomUUID()}`;
       const turn = () =>
         setTimeout(() => {
           if (closed) return;
+          spec.onEvent({ type: 'session', id });
           spec.onEvent({ type: 'error', message: `You've hit your session limit · resets ${new Date(resetsAt).toISOString()}`, limit: { resetsAt } });
           spec.onEvent({ type: 'idle' });
         }, 200);

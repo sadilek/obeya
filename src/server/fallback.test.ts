@@ -22,16 +22,16 @@ test("a group's fallback is the other harness's model, and a card on that harnes
 
 test('a new agent whose harness is at its limit starts on the fallback where that is ready and free; a resumed one stays, with the fallback model', () => {
   const later = Date.now() + 60_000;
-  expect(placeAgent({ role: 'worker' }, claude, avail({}))).toEqual({ harness: 'claude', model: 'opus', effort: 'high' });
-  expect(placeAgent({ role: 'worker' }, claude, avail({ claude: later }))).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high', moved: { from: 'claude', limit: { until: later } } });
+  expect(placeAgent({ cwd: '/r', role: 'worker' }, claude, avail({}))).toEqual({ harness: 'claude', model: 'opus', effort: 'high' });
+  expect(placeAgent({ cwd: '/r', role: 'worker' }, claude, avail({ claude: later }))).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high', moved: { from: 'claude', limit: { until: later } } });
   // no fallback, the fallback not set up, or at its limit too: it stays and waits
-  expect(placeAgent({ role: 'worker' }, { ...claude, fallback: undefined }, avail({ claude: later })).harness).toBe('claude');
-  expect(placeAgent({ role: 'worker' }, claude, avail({ claude: later }, ['claude'])).harness).toBe('claude');
-  expect(placeAgent({ role: 'worker' }, claude, avail({ claude: later, codex: later })).harness).toBe('claude');
+  expect(placeAgent({ cwd: '/r', role: 'worker' }, { ...claude, fallback: undefined }, avail({ claude: later })).harness).toBe('claude');
+  expect(placeAgent({ cwd: '/r', role: 'worker' }, claude, avail({ claude: later }, ['claude'])).harness).toBe('claude');
+  expect(placeAgent({ cwd: '/r', role: 'worker' }, claude, avail({ claude: later, codex: later })).harness).toBe('claude');
   // a card chosen for Codex goes to the group's own setting while Codex is at its limit
-  expect(placeAgent({ role: 'worker', agent: { harness: 'codex', model: 'gpt-#-terra' } }, claude, avail({ codex: later }))).toMatchObject({ harness: 'claude', model: 'opus' });
+  expect(placeAgent({ cwd: '/r', role: 'worker', agent: { harness: 'codex', model: 'gpt-#-terra' } }, claude, avail({ codex: later }))).toMatchObject({ harness: 'claude', model: 'opus' });
   // resumed on the fallback's harness, it keeps the fallback's model, not that harness's preset
-  expect(placeAgent({ role: 'worker', resume: 'codex:t1' }, { ...claude, fallback: { harness: 'codex', model: 'gpt-#-terra' } }, avail({}))).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'high' });
+  expect(placeAgent({ cwd: '/r', role: 'worker', resume: 'codex:t1' }, { ...claude, fallback: { harness: 'codex', model: 'gpt-#-terra' } }, avail({}))).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'high' });
 });
 
 test('an agent placed on the fallback hears so first, and gets the system prompt of that harness', () => {
@@ -116,4 +116,14 @@ test('the fallback is saved per group on the other harness, and a group moved on
   expect(agentSetting(home, 'worker').fallback).toBeUndefined();
   saveAgents(home, { coordinator: { harness: 'codex' } });
   expect(agentSetting(home, 'coordinator').fallback).toBeUndefined();
+});
+
+test("a limit on a host is that host's: agents here keep their harness, and one on the host waits there", () => {
+  const limits = new HarnessLimits();
+  limits.hit('claude', Date.now() + 60_000, false, 'build-box');
+  expect(limits.of('claude')).toBeUndefined();
+  const a: Availability = { limit: (h) => limits.of(h), ready: () => true };
+  limits.hit('claude', Date.now() + 60_000);
+  expect(placeAgent({ cwd: 'ssh://build-box/repo', role: 'worker' }, claude, a).harness).toBe('claude');
+  expect(placeAgent({ cwd: '/r', role: 'worker' }, claude, a).harness).toBe('codex');
 });
