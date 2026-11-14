@@ -8,7 +8,8 @@ import { finished, openQuestions, parseQuestion, pausableNow, started, taskAutho
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
-import { api, type Field, onCardEvent, onCardEventGone, onReconnect } from './api';
+import { api, type Field, onCardEvent, onCardEventGone, onReconnect, storedFile } from './api';
+import { linkStoredFiles } from './storedFiles';
 import type { Act, Tell } from './cardSheet';
 import { PlayMark, StopMark } from './parts';
 import { holdsNotes } from '../core/queue';
@@ -391,7 +392,7 @@ function Message({
       {quoted && <Quote q={eventQuote(quoted)} />}
       {answer.continues}
       {e.spot && <SpotLink cardId={e.cardId} spot={e.spot} />}
-      {!turn.quiet && <Body md={q ? q.text : (turn.words ?? e.text)} />}
+      {!turn.quiet && <Body md={q ? q.text : ownerSide(e) ? linkStoredFiles(turn.words ?? e.text, storedFile) : (turn.words ?? e.text)} />}
       {e.wish && <WishReplyLink wish={e.wish} />}
       {q && turn.end !== 'settled' && q.options.length > 0 && (
         <ul className="q-opts">

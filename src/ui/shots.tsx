@@ -101,6 +101,24 @@ const fileTo = (key: string, files: File[], put?: (path: string) => void) =>
   });
 
 /**
+ * A text too long for a message (`MAX_MESSAGE_CHARS`) as a file Obeya keeps, named `name`: its path
+ * goes into the draft's text as a dropped file's does (`fileTo`), in place of `replaces` where the
+ * text still holds it. Whether it arrived; until then the field shows it uploading and does not send.
+ */
+export const textAsFile = async (key: string, text: string, { name = 'pasted-text.txt', replaces }: { name?: string; replaces?: string } = {}) =>
+  (await eachFile(key, [new File([text], name, { type: 'text/plain' })], async (f, home) => {
+    const word = pathWord(await api.uploadFile(f));
+    let swapped = false;
+    if (replaces)
+      updateDraftAt(home, key, (d) => {
+        if (!d.text.includes(replaces)) return {};
+        swapped = true;
+        return { text: d.text.replace(replaces, () => word), files: [...(d.files ?? []), word] };
+      });
+    if (!swapped) insertFilesAt(home, key, [word]);
+  })) > 0;
+
+/**
  * Pasted or dropped files for a draft: the screenshots as screenshots (`added` hears each), the
  * others by their paths (`fileTo`, with `put`). How many arrived.
  */

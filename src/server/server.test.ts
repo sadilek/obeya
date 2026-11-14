@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { ArchivePage, CardAction, ClientMessage, ServerMessage } from '../core/types';
+import { MAX_MESSAGE_CHARS } from '../core/types';
 import type { Board } from './board';
 import { CanvasRuntime } from './canvas';
 import { Canvases } from './canvases';
@@ -904,6 +905,8 @@ describe('screenshots', () => {
     const c = working();
     expect((await act(c.id, { action: 'message', text: '', images: [id] })).status).toBe(204);
     expect(await codeOf(act(c.id, { action: 'message', text: '' }))).toBe('emptyText');
+    // a text too long for a message is refused as such, not as an empty one
+    expect(await codeOf(act(c.id, { action: 'message', text: 'x'.repeat(MAX_MESSAGE_CHARS + 1) }))).toBe('textTooLong');
     expect(await codeOf(act(c.id, { action: 'message', text: 'x', images: ['0000.png'] } as CardAction))).toBe('invalid');
     expect(await codeOf(upload(png, 'text/html'))).toBe('imageType');
     expect(await codeOf(upload(new Uint8Array(4_000_000)))).toBe('imageTooLarge');
@@ -929,6 +932,16 @@ describe('other files', () => {
     expect(dirname(dirname(out.path))).toBe(canvas.files.dir);
   });
 
+  test("open from the conversation by their folder and name, the owner's alone, and nothing beside them", async () => {
+    const { path } = (await (await upload(new TextEncoder().encode('a long log'), 'pasted-text.txt')).json()) as { path: string };
+    const id = basename(dirname(path));
+    const open = (route: string) => fetch(new URL(api(route), server.url));
+    const shown = await open(`/files/stored/${id}/pasted-text.txt`);
+    expect(await shown.text()).toBe('a long log');
+    expect(shown.headers.get('content-security-policy')).toBe('sandbox');
+    expect((await globalThis.fetch(new URL(api(`/files/stored/${id}/pasted-text.txt`), server.url))).status).toBe(401);
+    for (const route of [`/files/stored/${id}/other.txt`, `/files/stored/not-an-id/pasted-text.txt`, `/files/stored/${id}/..%2F..%2Fobeya.db`]) expect((await open(route)).status).toBe(404);
+  });
 });
 
 describe('a walkthrough an answer comes with', () => {

@@ -1434,6 +1434,10 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 /* the marked version is being drawn and uploaded, to take its place */
 .c-shot.marking img { opacity: .5; }
 .c-error { flex-basis: 100%; margin: 0; }
+/* longer than a message may be: why it does not send, and the way out beside it */
+.c-too-long { display: flex; align-items: center; gap: 12px; line-height: 1.4; }
+.c-too-long span { flex: 1; }
+.c-too-long .btn { flex: none; color: var(--ink); }
 .shots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .shot { border: 1px solid var(--line); border-radius: 2px; padding: 0; background: var(--card); cursor: zoom-in; line-height: 0; }
 .shot img { height: 88px; max-width: 240px; object-fit: cover; border-radius: 2px; display: block; }

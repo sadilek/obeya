@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import type { CanvasInfo, CanvasSnapshot, CardPatch, Item, PendingRestart, AppUpdate, SourceUpdate, Usage } from '../core/types';
+import { MAX_MESSAGE_CHARS } from '../core/types';
 import { archivedWithDone, nameless, needsYou, titleFrom, unreadAnswers, unreadPerProject, type Waiting, waitingIn } from '../core/card';
 import type { ConfigProblem } from '../core/config';
 import { api, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
@@ -39,7 +40,7 @@ import { movesWith, shifted } from './selection';
 import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
 import { PlanDirNote, planDirBoxes, useHiddenEmptyNotes } from './planDirs';
 import { pastedShots, pastedText } from './pasteHint';
-import { filesTo, imageFiles } from './shots';
+import { filesTo, imageFiles, textAsFile } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, fieldOrMic, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
@@ -931,6 +932,8 @@ function Canvas({
       const text = e.clipboardData?.getData('text/plain').trim() ?? '';
       if (!text) return;
       e.preventDefault();
+      // too long for a message: it goes in as a file, by its path
+      if (text.length > MAX_MESSAGE_CHARS) return void textAsFile(key, text);
       pastedText();
       insertPasted(key, [text]);
     };

@@ -748,6 +748,14 @@ function fileRoutes(x: Routing) {
         return new Response(Bun.file(image.file), { headers: { 'content-type': image.type, 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
       }),
     },
+    // a file Obeya keeps for a message (`/files`), opened from the conversation: shown, never run
+    '/api/c/:canvas/files/stored/:id/:name': {
+      GET: on((c, req) => {
+        const file = c.files.stored(req.params.id!, req.params.name!);
+        if (!file) return notFound();
+        return new Response(Bun.file(file), { headers: { 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' } });
+      }),
+    },
     '/api/c/:canvas/images/:file': {
       GET: (req) => {
         const file = pages.canvas(req.params.canvas)?.images.path(req.params.file);

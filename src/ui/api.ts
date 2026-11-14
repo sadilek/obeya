@@ -89,6 +89,8 @@ export const standalone = () => matchMedia('(display-mode: standalone)').matches
 const canvasApi = (canvas: string, path = '') => `/api/c/${encodeURIComponent(canvas)}${path}`;
 /** A path in the shown canvas's API. */
 export const at = (path: string) => canvasApi(canvasId, path);
+/** Where a file Obeya keeps for a message on `canvas` opens (`storedFiles.ts`): a whole address, as a link in markdown needs. */
+export const storedFile = (canvas: string, id: string, name: string) => new URL(canvasApi(canvas, `/files/stored/${id}/${encodeURIComponent(name)}`), location.href).href;
 /**
  * The canvas each card is on, where the page shows the cards of several (the phone view). A call
  * about a card goes to its canvas even once another is in view: the card closing puts Obeya's in

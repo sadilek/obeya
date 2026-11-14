@@ -110,6 +110,17 @@ export class Files {
     writeFileSync(path, bytes);
     return path;
   }
+
+  /** The stored file `name` in folder `id` (as `save` made them), for the owner to open; null for anything else. */
+  stored(id: string, name: string): string | null {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id) || safeName(name) !== name) return null;
+    const path = join(this.dir, id, name);
+    try {
+      return statSync(path).isFile() ? path : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 /** The images a drop in the app may hand to the page by their path, for it to attach them as screenshots, with their media types. */
