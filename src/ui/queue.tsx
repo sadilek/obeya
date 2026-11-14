@@ -112,14 +112,30 @@ export function QueueList({ items, q, onOpen }: { items: Item[]; q: ReturnType<t
   );
 }
 
-/** A card as the queue names it: a workstream after its label (`W3: …`), so it reads as its project's; any other by its title. */
-export const queueName = (i: Item) => (i.label ? `${i.label}: ${plain(i.title)}` : plain(i.title));
+/** A card's own name in the queue: a workstream after its label (`W3: …`), any other by its title. */
+const ownName = (i: Item) => (i.label ? `${i.label}: ${plain(i.title)}` : plain(i.title));
+
+/** The project a workstream belongs to, unless `beside` (the card it is named on) belongs to it too. */
+const projectOf = (i: Item, items: Item[], beside?: Item) => (i.parent && i.parent !== beside?.parent ? items.find((x) => x.id === i.parent) : undefined);
+
+/**
+ * A card as the queue names it: a workstream after its project and label (`Checkout · W3: …`), so
+ * it reads as that project's, the project left out on a card of the same project (`beside`); any
+ * other card by its title.
+ */
+export function queueName(i: Item, items: Item[], beside?: Item): string {
+  const project = projectOf(i, items, beside);
+  return project ? `${plain(project.title)} · ${ownName(i)}` : ownName(i);
+}
+
+/** A card by `queueName` in its own place: by id, as `beside` names it; an id that is no card stands for itself. */
+const nameOf = (items: Item[], beside?: Item) => (id: string) => {
+  const i = items.find((x) => x.id === id);
+  return i ? queueName(i, items, beside) : id;
+};
 
 /** What a waiting card's line says it waits for: each card by `name`, and whether it has not been started. */
-export function waitedOn(ids: string[], items: Item[], name: (id: string) => string = (id) => {
-  const i = items.find((x) => x.id === id);
-  return i ? queueName(i) : id;
-}) {
+export function waitedOn(ids: string[], items: Item[], name: (id: string) => string = nameOf(items)) {
   return ids.map((id) => {
     const i = items.find((x) => x.id === id);
     return { title: name(id), notStarted: !!i && notStarted(i) };
@@ -159,7 +175,8 @@ function QueueRow(p: {
   const { item, items, onOpen } = p;
   // pulled beyond where its waits let it go: the card that stops it, and why
   const stop = p.drag?.held && reach(item.id, p.drag.held === 'earlier', items);
-  const held = stop && stop.stop && stop.why ? t.queue.stuck[stop.why](queueName(stop.stop)) : '';
+  const project = projectOf(item, items);
+  const held = stop && stop.stop && stop.why ? t.queue.stuck[stop.why](queueName(stop.stop, items, item)) : '';
   return (
     <li className={p.own ? 's-planned own' : 's-planned'} {...p.row} onClick={onOpen && (() => onOpen(item))}>
       {p.grip ? (
@@ -178,9 +195,10 @@ function QueueRow(p: {
       )}
       <span className="dot" />
       <span className="q-what">
-        {queueName(item)}
+        {project && <span className="q-project">{`${plain(project.title)} · `}</span>}
+        {ownName(item)}
         <br />
-        <span className="hint">{item.queue && 'behind' in item.queue ? t.queue.behind(waitedOn(item.queue.behind, items)) : stateLabel(item)}</span>
+        <span className="hint">{item.queue && 'behind' in item.queue ? t.queue.behind(waitedOn(item.queue.behind, items, nameOf(items, item))) : stateLabel(item)}</span>
         {p.failed && <span className="hint why">{p.failed}</span>}
       </span>
       {onOpen && (
@@ -220,7 +238,7 @@ export function useQueueMove(item: Item, items: Item[]): { buttons: ReactNode; p
   const order = queueOrder(items);
   const ways = [true, false].map((earlier) => {
     const { past, why: stuck } = move(item.id, earlier, items);
-    return { earlier, past, blocked: past && stuck ? t.queue.stuck[stuck](queueName(past)) : '' };
+    return { earlier, past, blocked: past && stuck ? t.queue.stuck[stuck](queueName(past, items, item)) : '' };
   });
   const button = ({ earlier, past, blocked }: (typeof ways)[number]) => {
     const label = earlier ? t.queue.earlier : t.queue.later;

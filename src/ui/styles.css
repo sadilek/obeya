@@ -1344,6 +1344,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .qlist li:hover { background: var(--chip); }
 .qlist li .dot, .sheet > ol > li .dot, .s-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .qlist li .q-what { flex: 1; min-width: 0; }
+.qlist li .q-project { color: var(--muted); }
 .qlist li .why { display: block; margin-top: 2px; }
 .qlist li .x { flex: none; padding: 0 4px; font-size: 17px; line-height: 22px; color: var(--muted); background: none; border: 0; cursor: pointer; }
 .qlist li .x:hover { color: var(--ink); }
