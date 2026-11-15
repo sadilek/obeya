@@ -132,7 +132,8 @@ running session keeps its own, except the voice commands' session, which reopens
 Coordinator's setting changes (as for another language).
 
 A card may run on another harness, model or effort than its group. Joined to each button that
-starts a card (and "Accept and start" on a proposed task, "Start anyway" in the queue) is a narrow
+starts a card (and "Accept and start" on a proposed task, "Build it like this" on an idea, "Start
+anyway" in the queue) is a narrow
 part with a triangle that opens a menu: each ready harness's models, as "Agents and models" lists
 them, and the efforts the model takes, with what applies checked (the workers' setting until the
 card has one of its own). Picking what the workers have is no choice of the card's: it follows
@@ -140,8 +141,9 @@ their setting. What the card chose of its own stands small beside the button ("C
 effort very high"); without a choice nothing does. The choice is the card's, stored with it, and
 goes with every session of its next run, the ones resumed after a restart included, and with the
 instructions that differ by harness (how a worker waits); what it leaves out is the workers'. It
-changes only while the card waits to start (planned, proposed, in the queue); once it is at work the
-choice stays as it began.
+changes only while the card waits to start (planned, proposed, in the queue, an idea still under
+discussion, whose exploration agent it leaves alone); once it is at work the choice stays as it
+began.
 
 #### Updating Claude Code and Codex
 

@@ -85,22 +85,25 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const chosen = [mine ? agentLabel(view, mine.harness, mine.model) : '', own.effort ? p.chosenEffort(efforts[own.effort]) : ''].filter(Boolean).join(' · ');
   return (
     <span className={saving ? 'agent-split saving' : 'agent-split'} ref={box}>
-      {children}
-      <button
-        className={['btn', primary && 'primary', 'agent-pick'].filter(Boolean).join(' ')}
-        title={p.hint}
-        aria-label={p.hint}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => {
-          if (!open) agentsView().then(setView, () => {});
-          setOpen(!open);
-        }}
-      >
-        <svg className="agent-caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden>
-          <path d="M1.5 3.2h7L5 7.2z" fill="currentColor" />
-        </svg>
-      </button>
+      {/* the two parts as one button, which an idea's suggested step rings as a whole */}
+      <span className="agent-join">
+        {children}
+        <button
+          className={['btn', primary && 'primary', 'agent-pick'].filter(Boolean).join(' ')}
+          title={p.hint}
+          aria-label={p.hint}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => {
+            if (!open) agentsView().then(setView, () => {});
+            setOpen(!open);
+          }}
+        >
+          <svg className="agent-caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden>
+            <path d="M1.5 3.2h7L5 7.2z" fill="currentColor" />
+          </svg>
+        </button>
+      </span>
       {chosen && (
         <span className="agent-chosen hint" title={p.chosenHint}>
           {chosen}

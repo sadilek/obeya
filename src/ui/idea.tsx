@@ -9,7 +9,7 @@ import { Composer } from './composer';
 import { makingWords, newRepoWords, type RepoChoice, RepoPick } from './repoPick';
 import { snoozeWho } from './snooze';
 import { stateLabel, t } from './strings';
-import { type Act, ArchiveButton, Armed, DeleteButton, Later, RepoDownBox, type Run, StateLine, SupersededBox, type Tell } from './cardSheet';
+import { type Act, ArchiveButton, Armed, DeleteButton, Later, RepoDownBox, type Run, StartOn, StateLine, SupersededBox, type Tell } from './cardSheet';
 import { Mocks, Split, Talk, wordsField } from './conversation';
 import { DemoView } from './demo';
 
@@ -123,14 +123,17 @@ export function IdeaView({
             ) : (
               // while the agent works, the click waits for its reply in view; else the panel closes on the built card;
               // built in a new repository, it stays open for "Undo" and then follows the card to its canvas
-              <button
-                className={btn('build')}
-                disabled={!!fresh && !fresh.ready}
-                title={fresh?.hint}
-                onClick={() => act({ action: 'build' }, idea.thinking || fresh ? { close: false } : { close: true, ack: t.idea.built })}
-              >
-                {fresh?.button ?? t.idea.build}
-              </button>
+              // what its worker runs on, beside it as beside "Start"
+              <StartOn item={item} act={act} on={!fresh} primary={btn('build').includes('primary')}>
+                <button
+                  className={btn('build')}
+                  disabled={!!fresh && !fresh.ready}
+                  title={fresh?.hint}
+                  onClick={() => act({ action: 'build' }, idea.thinking || fresh ? { close: false } : { close: true, ack: t.idea.built })}
+                >
+                  {fresh?.button ?? t.idea.build}
+                </button>
+              </StartOn>
             )}
             <button className={btn('planDoc')} disabled={idea.thinking} onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
               {t.idea.planDoc}

@@ -443,6 +443,18 @@ describe('an idea', () => {
     expect(() => canvas.act(i.id, { action: 'discuss', text: 'Noch was.' })).toThrow('not an idea');
   });
 
+  test('the harness and model chosen for it go to the worker who builds it, not to its exploration agent', async () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'agent', agent: { harness: 'claude', model: 'sonnet', effort: 'low' } });
+    expect(item(i.id).agent).toEqual({ harness: 'claude', model: 'sonnet', effort: 'low' });
+    canvas.act(i.id, { action: 'discuss', text: 'Los.' });
+    expect(explorer().spec).toMatchObject({ model: 'opus', effort: 'high' });
+    turn(explorer(), 'Gut.', () => explorer().call('update_brief', { brief: '**Ziel:** CSV-Export.' }));
+    canvas.act(i.id, { action: 'build' });
+    await settle();
+    expect(runtime.withTool('ready_for_review')[0]!.spec).toMatchObject({ harness: 'claude', model: 'sonnet', effort: 'low' });
+  });
+
   test('its agent shows variants as mocks, in its reply and under the brief, and the worker who builds it gets them', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Wie sähe der Knopf aus?' });

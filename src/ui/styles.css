@@ -1219,11 +1219,14 @@ span.cl-name { color: inherit; cursor: default; }
 .snooze-pick input { min-width: 0; font: inherit; font-size: 13px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink); }
 .snooze-pick .btn { padding: 6px 12px; }
 /* the button that starts a card, joined to a narrow part with a triangle that opens the menu of what its agent runs on (placed by script), and that choice beside them where the card has one */
-.agent-split { display: inline-flex; align-items: stretch; }
-.agent-split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.agent-split > .agent-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding: 0 6px; display: inline-flex; align-items: center; }
-.agent-split > .btn.agent-pick:not(.primary) { box-shadow: inset 1px 0 0 var(--line); }
-.agent-split.saving > .btn:first-child { pointer-events: none; opacity: 0.7; }
+.agent-split, .agent-join { display: inline-flex; align-items: stretch; }
+.agent-join { border-radius: 3px; }
+.agent-join > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.agent-join > .agent-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding: 0 6px; display: inline-flex; align-items: center; }
+.agent-join > .btn.agent-pick:not(.primary) { box-shadow: inset 1px 0 0 var(--line); }
+.agent-join:has(> .btn.suggested:first-child) { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--idea); }
+.agent-join > .btn.suggested:first-child { box-shadow: none; }
+.agent-split.saving .agent-join > .btn:first-child { pointer-events: none; opacity: 0.7; }
 .agent-caret { flex: none; opacity: 0.8; }
 .agent-chosen { align-self: center; margin: 0 0 0 10px; font-size: 12.5px; white-space: nowrap; }
 .agent-menu { position: fixed; z-index: 75; bottom: auto; max-width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
