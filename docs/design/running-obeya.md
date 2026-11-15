@@ -644,6 +644,10 @@ telling to stage afresh. It loads the speech recognition only for a recording (t
 to speak) or a walkthrough that needs it, not ahead when the cursor goes into Obeya's field, as
 the owner's Obeya does.
 
+A card it stages at work has no workspace and so no worker that could start: the owner's notes and
+Obeya's news for it wait as for a worker in the middle of a turn (the note shows as not read yet),
+instead of the send failing, so a demo can write to a working card.
+
 Every staging also stops, in the background, the scratch Obeyas whose code does not end them so
 (staged before this rule, from an older commit with `--code`, or started by hand on a scratch dir):
 those whose working directory is gone, and those that have run for more than 12 hours; it ends what
