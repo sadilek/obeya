@@ -5,7 +5,7 @@ import { pagePolicy } from '../core/frame';
 import type { Notice } from '../core/types';
 import { waitingOn } from '../core/card';
 import { inform } from './advisor';
-import { answersDir } from './answers';
+import { answersDir, questionTask } from './answers';
 import { serveAnswerFile } from './serve-files';
 import { board, canvas, dir, eachTest, main, restart, runtime, say, settle } from './canvas-fixture';
 import { type FakeSession, fakeVoicing, until } from './testing';
@@ -1083,9 +1083,15 @@ describe('a thread on a Question card', () => {
     expect(worker.spec.system).toContain("the language their words in the card's conversation as a question is written in");
     // what the worker says later is no part of the question it started from
     board().log(card.id, 'say', 'worker', 'Ich ergänze Oktober.');
-    expect(canvas.answers.taskHistory(card.id)).not.toContain('Ich ergänze Oktober.');
+    expect(questionTask(board(), card.id, (t) => answersDir(dir, canvas.id, t))).not.toContain('Ich ergänze Oktober.');
     // the owner's words now go to the worker
     expect(() => canvas.act(card.id, { action: 'asTask' })).toThrow('no Question card');
+    // a worker resumed as Obeya starts again still has the conversation as its task
+    await reopen();
+    await settle();
+    const resumed = runtime.withTool('ready_for_review').at(-1)!;
+    expect(resumed).not.toBe(worker);
+    expect(resumed.inbox.join('\n')).toContain('The owner: "Bitte die Tabelle um Oktober ergänzen."');
   });
 
   test('its agent tells a walkthrough that plays in its conversation from the first slide on, until the answer takes its place; paused, the turn takes it along', async () => {

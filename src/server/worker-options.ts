@@ -98,7 +98,7 @@ export interface WorkerOptions {
   githubLogin?: { env: () => Record<string, string> | undefined; ready: () => Promise<unknown> };
   /** The narration language of the demo settings, for a repository that names none for its demos; the conversation language when left out. */
   demoLanguage?: () => Language;
-  /** What the worker of a task that was a Question card reads of that card's conversation (`Answers.taskHistory`). */
+  /** What the worker of a task that was a Question card reads of that card's conversation (`questionTask`). */
   questionHistory?: (cardId: string) => string | undefined;
   /** The harness the workers' group runs on (`withAgentSetting`), where a card chose none: how a worker waits differs by it. Claude Code when left out. */
   harness?: () => Harness;

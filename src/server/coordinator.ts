@@ -61,7 +61,7 @@ export interface CoordinatorOptions {
   holdMs?: number;
   /** The files of screenshots by their ids. */
   imageFiles?: (ids?: string[]) => string[];
-  /** The conversation of a task that was a Question card, which is its task (`Answers.taskHistory`). */
+  /** The conversation of a task that was a Question card, which is its task (`questionTask`). */
   questionHistory?: (cardId: string) => string | undefined;
 }
 

@@ -559,7 +559,7 @@ export class Answers {
   /**
    * "Start as a task" on a Question card: its agent stops at once, in the middle of a step if need
    * be, and its session ends with the card's change. What it was asked and had not answered counts
-   * as read: the task's worker gets it with the rest of the conversation (`taskHistory`). A
+   * as read: the task's worker gets it with the rest of the conversation (`questionTask`). A
    * follow-up asked in Obeya's sheet stops there.
    */
   release(cardId: string) {
@@ -567,29 +567,6 @@ export class Answers {
     this.o.board.readNow(cardId, pending.flatMap((p) => p.said));
     for (const p of pending) if (p.talk) this.o.board.sheet.stop(p.talk, true);
     this.turnEnds.get(cardId)?.abort();
-  }
-
-  /**
-   * What a task that was a Question card holds as its task: the conversation up to its start as a
-   * task (the owner's words with their screenshots, the answers with their files) and the directory
-   * those files are in. Nothing for any other card.
-   */
-  taskHistory(cardId: string): string | undefined {
-    const row = this.o.board.row(cardId);
-    const thread = row.thread ? this.o.board.thread(cardId) : undefined;
-    if (!thread?.tasked || row.kind !== 'task' || row.state === 'idea') return;
-    const lines = this.o.board
-      .events(cardId)
-      .filter((e) => e.id < thread.tasked! && inConversation(e))
-      .map((e) => {
-        const shots = e.author === 'owner' ? (this.o.imageFiles?.(e.images) ?? []) : [];
-        return `${e.author === 'owner' ? `The owner: "${e.text}"` : `Obeya: ${e.text}${fileList(e.answer?.files)}`}${shots.length ? `\n(screenshots: ${shots.join(', ')})` : ''}`;
-      });
-    return [
-      'This card was a question the owner looked up with Obeya and asked on, then made a task. Its conversation, oldest first:',
-      lines.join('\n\n'),
-      `The files of its answers are in ${this.o.dirOf(thread.talk)}.`,
-    ].join('\n\n');
   }
 
   /** One turn of a Question card's agent: what the owner asked since its last answer, answered on the card. */
@@ -977,6 +954,30 @@ const fileList = (files?: AnswerFile[]) => (files?.length ? `\n(files: ${files.m
 
 /** Whether a line of a Question card's log is a message of its conversation: the owner's words or an answer. */
 const inConversation = (e: CardEvent) => e.kind === 'talk' || (e.kind === 'say' && !!e.answer);
+
+/**
+ * What a task that was a Question card holds as its task: the conversation up to its start as a
+ * task (the owner's words with their screenshots, the answers with their files) and the directory
+ * those files are in (`dirOf`). Nothing for any other card. Free of the canvas's look-ups, so a
+ * worker resumed as Obeya starts reads it before they are there.
+ */
+export function questionTask(board: Board, cardId: string, dirOf: (thread: number) => string, imageFiles?: (ids?: string[]) => string[]): string | undefined {
+  const row = board.row(cardId);
+  const thread = row.thread ? board.thread(cardId) : undefined;
+  if (!thread?.tasked || row.kind !== 'task' || row.state === 'idea') return;
+  const lines = board
+    .events(cardId)
+    .filter((e) => e.id < thread.tasked! && inConversation(e))
+    .map((e) => {
+      const shots = e.author === 'owner' ? (imageFiles?.(e.images) ?? []) : [];
+      return `${e.author === 'owner' ? `The owner: "${e.text}"` : `Obeya: ${e.text}${fileList(e.answer?.files)}`}${shots.length ? `\n(screenshots: ${shots.join(', ')})` : ''}`;
+    });
+  return [
+    'This card was a question the owner looked up with Obeya and asked on, then made a task. Its conversation, oldest first:',
+    lines.join('\n\n'),
+    `The files of its answers are in ${dirOf(thread.talk)}.`,
+  ].join('\n\n');
+}
 
 /** A message of a Question card's conversation, as an agent that starts afresh reads it. */
 const said = (e: CardEvent) => (e.author === 'owner' ? `The owner: "${e.text}"` : `You: ${e.text}${fileList(e.answer?.files)}`);

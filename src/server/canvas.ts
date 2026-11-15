@@ -6,7 +6,7 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { mkdirSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor } from '../adapters';
-import { Answers, answersDir, answerTag } from './answers';
+import { Answers, answersDir, answerTag, questionTask } from './answers';
 import { type DefaultRead, keepCanvasId, keepRepoIds, listedClones, machineSettings, namesClones, originUrl, readRepos, readTreeOf, type RepoReads, type Resolved, resolveCanvas, setShare, SHARE_FIELDS, settled, shareRef, siteOf, upstreamOf, visibilityKey } from './canvas-config';
 import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -398,7 +398,7 @@ export class CanvasRuntime {
         return { workers: r.workers, workspaces: r.workspaces, adapter: r.adapter, path: r.read.path, folder: !!r.info.folder };
       },
       imageFiles: this.imageFiles,
-      questionHistory: (cardId) => this.answers.taskHistory(cardId),
+      questionHistory: (cardId) => questionTask(board, cardId, (thread) => answersDir(deps.home, id, thread), this.imageFiles),
     }));
     coordinator.resume();
     // a card whose page closed before Obeya named it
@@ -886,7 +886,7 @@ export class CanvasRuntime {
       ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       ...(githubLogin ? { githubLogin } : {}),
       demoLanguage: () => readDemoSettings(deps.home).language,
-      questionHistory: (cardId) => this.answers.taskHistory(cardId),
+      questionHistory: (cardId) => questionTask(board, cardId, (thread) => answersDir(deps.home, this.id, thread), this.imageFiles),
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),
       keptDemos: join(deps.home, 'kept-demos'),
@@ -1920,7 +1920,7 @@ export class CanvasRuntime {
 
   /**
    * "Start as a task" on a Question card: it becomes a task with its conversation, and goes to the
-   * Coordinator to start like "Start agent". Its worker starts from the thread (`Answers.taskHistory`):
+   * Coordinator to start like "Start agent". Its worker starts from the thread (`questionTask`):
    * what the owner asked in it is the task. An agent still reading stops: the worker gets what it
    * was asked with the rest.
    */
