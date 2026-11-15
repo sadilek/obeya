@@ -1079,6 +1079,8 @@ describe('a thread on a Question card', () => {
     expect(task).toContain('The owner: "Bitte die Tabelle um Oktober ergänzen."');
     expect(task).toContain(answersDir(dir, canvas.id, first));
     expect(task).toContain('Your task is what the owner asked for in this conversation');
+    // the owner's words there tell the worker their language
+    expect(worker.spec.system).toContain("the language their words in the card's conversation as a question is written in");
     // what the worker says later is no part of the question it started from
     board().log(card.id, 'say', 'worker', 'Ich ergänze Oktober.');
     expect(canvas.answers.taskHistory(card.id)).not.toContain('Ich ergänze Oktober.');

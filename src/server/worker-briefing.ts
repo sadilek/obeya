@@ -55,7 +55,12 @@ export class WorkerBriefing {
   system(preferences: string, harness: Harness, prototype = false, card?: Item): string {
     // a task the owner wrote is their first words to the worker; one an agent or a plan doc wrote is not
     const by = card?.body.trim() ? taskAuthor(card) : undefined;
-    const language = by === 'owner' ? ownersLanguage(this.o.board.conversation(), "the card's task") : `${ownersLanguage(this.o.board.conversation())}${by ? ` ${TASK_BY[by]}` : ''}`;
+    // a Question card made a task: the owner's words in its conversation are their first words to the worker
+    const asked = !!card && !by && !!this.o.questionHistory?.(card.id);
+    const language =
+      by === 'owner' || asked
+        ? ownersLanguage(this.o.board.conversation(), asked ? "their words in the card's conversation as a question" : "the card's task")
+        : `${ownersLanguage(this.o.board.conversation())}${by ? ` ${TASK_BY[by]}` : ''}`;
     const folder = !!this.folder;
     return `
 You are a worker agent directed through Obeya, a canvas on which the owner directs coding agents like an engineering director directs a team. ${
