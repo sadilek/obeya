@@ -398,6 +398,7 @@ export class CanvasRuntime {
         return { workers: r.workers, workspaces: r.workspaces, adapter: r.adapter, path: r.read.path, folder: !!r.info.folder };
       },
       imageFiles: this.imageFiles,
+      questionHistory: (cardId) => this.answers.taskHistory(cardId),
     }));
     coordinator.resume();
     // a card whose page closed before Obeya named it
@@ -885,6 +886,7 @@ export class CanvasRuntime {
       ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       ...(githubLogin ? { githubLogin } : {}),
       demoLanguage: () => readDemoSettings(deps.home).language,
+      questionHistory: (cardId) => this.answers.taskHistory(cardId),
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),
       keptDemos: join(deps.home, 'kept-demos'),
@@ -1856,6 +1858,8 @@ export class CanvasRuntime {
       }
       case 'asIdea':
         return this.questionAsIdea(cardId);
+      case 'asTask':
+        return this.questionAsTask(cardId);
       case 'share':
         return this.sharing.share(cardId, { demo: Number.isInteger(a.demo) ? a.demo : undefined, add: a.add === true });
       case 'unshare':
@@ -1912,6 +1916,23 @@ export class CanvasRuntime {
     this.board.work(cardId, { kind: 'task', state: 'idea', idea: toJson({ status: 'open', brief: '' }), session_id: null, paused: null, pausing: null });
     this.board.log(cardId, 'state', 'owner', this.board.t.answer.asIdea);
     this.explorers.tell(cardId, this.answers.opening(cardId));
+  }
+
+  /**
+   * "Start as a task" on a Question card: it becomes a task with its conversation, and goes to the
+   * Coordinator to start like "Start agent". Its worker starts from the thread (`Answers.taskHistory`):
+   * what the owner asked in it is the task. An agent still reading stops: the worker gets what it
+   * was asked with the rest.
+   */
+  private questionAsTask(cardId: string) {
+    const card = this.board.item(cardId);
+    if (card?.kind !== 'question') throw new BadRequest('notQuestion', 'the card is no Question card');
+    if (!this.runs(card)) throw repoDown(card);
+    this.answers.release(cardId);
+    const e = this.board.log(cardId, 'state', 'owner', this.board.t.answer.asTask);
+    this.board.setThread(cardId, { thinking: false, pending: [], tasked: e.id });
+    this.board.work(cardId, { kind: 'task', state: 'planned', session_id: null, model: null, paused: null, pausing: null });
+    this.coordinator.request(cardId);
   }
 
   /** Deletes a card of the owner's, stopping its worker first; a prototype is discarded into the archive instead. */

@@ -1579,6 +1579,8 @@ export type CardAction =
   | { action: 'ask'; text: string; spoken?: boolean; images?: string[]; replyTo?: number }
   /** Question cards: the thread becomes an idea, whose exploration agent starts from it. */
   | { action: 'asIdea' }
+  /** Question cards: the card becomes a task and starts, its worker starting from the thread. */
+  | { action: 'asTask' }
   /** Projects: the owner's words in the project's sheet, straight to its project agent, maybe replying to a message there. */
   | { action: 'consult'; text: string; spoken?: boolean; images?: string[]; replyTo?: TalkRef };
 

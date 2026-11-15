@@ -108,6 +108,7 @@ const de = {
     /** On the card the question was asked on: an outage stopped the look-up, which Obeya tries again by itself. */
     unreachable: (when: string) => `Claude ist gerade nicht erreichbar, meist eine Störung bei Anthropic (status.claude.com). Obeya schlägt das ${when} von selbst nach.`,
     asIdea: 'Als Idee weiter besprochen.',
+    asTask: 'Als Aufgabe gestartet: Der Agent beginnt mit diesem Verlauf.',
     /** "Show as walkthrough": the owner's words, as the button says, and Obeya's reply. */
     walkthroughAsked: deLabels.walkthrough,
     walkthroughReply: 'Ich erzähle die Antwort als Walkthrough.',
@@ -730,6 +731,7 @@ const en: Messages = {
     limited: (when: string) => `The usage limit is reached. Obeya looks this up by itself ${when}.`,
     unreachable: (when: string) => `Claude cannot be reached right now, usually an outage at Anthropic (status.claude.com). Obeya looks this up by itself ${when}.`,
     asIdea: 'Discussed further as an idea.',
+    asTask: 'Started as a task: its agent begins with this conversation.',
     walkthroughAsked: enLabels.walkthrough,
     walkthroughReply: 'I’ll tell the answer as a walkthrough.',
   },

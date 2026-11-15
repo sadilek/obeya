@@ -318,6 +318,8 @@ export interface StoredThread {
   pending?: (Message & { talk?: number })[];
   answers: number;
   files: number;
+  /** The card became a task ("Start as a task"): the line that says so, before which its conversation as a question stands. */
+  tasked?: number;
 }
 
 export interface Unread {

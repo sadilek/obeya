@@ -147,6 +147,9 @@ function QuestionView({ item, act, run, onTell, error }: View) {
             >
               {t.question.asIdea}
             </button>
+            <button className="btn" title={t.question.asTaskHint} onClick={() => act({ action: 'asTask' }, { close: false })}>
+              {t.question.asTask}
+            </button>
             <ArchiveButton item={item} run={run} className="btn primary" label={t.question.done} hint={t.question.doneHint} />
           </>
         )}

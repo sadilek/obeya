@@ -502,9 +502,14 @@ card goes to it too.
 
 It holds answers, not work: a look of its own ("QUESTION"), the number of answers and files, not
 archived with all finished cards at once (see Archive), no build, plan, prototype or park buttons.
-It has two: "Discuss as idea" (not while its agent reads) makes it an idea whose agent starts from
-the thread and its directory, and "Done" archives it. The Coordinator lists Question cards among
-the cards it sees.
+It has three: "Discuss as idea" (not while its agent reads) makes it an idea whose agent starts from
+the thread and its directory; "Start as task" makes it a task with its conversation and starts it
+like "Start agent" (see Scheduling); "Done" archives it. The task's worker gets the conversation up
+to that click (the owner's words with their screenshots, the answers with their files, their
+directory) as its task: what the owner asked for in it, above all in their latest words; the
+Coordinator's estimate reads it too. The title stays the question. Clicked while its agent reads,
+the agent stops at once, and what it had not answered goes to the worker with the rest. The
+Coordinator lists Question cards among the cards it sees.
 
 #### Asking in a project's sheet
 
@@ -740,6 +745,12 @@ passed the words on through `to_obeya` hears that the owner finds the link under
   the owner asked in the sheet is looked for where it was asked, not only on Obeya's button. A
   speech bubble rather than a second number, so it is not taken for workstreams that need the owner.
   Answers asked of Obeya about the project stay on Obeya's button alone: they were asked there.
+- **A Question card becomes a task without an idea in between** (owner, 2026-11-15): asked on until
+  what to do is clear (“then change the values like this”), the thread is a task already, and an idea's
+  discussion and brief only delayed it. The worker reads the conversation itself rather than a task
+  text an agent writes from it first, so the click starts at once and nothing of the thread is lost
+  in a summary. It does not wait for an answer being read: the owner has decided, and the worker
+  answers what is left.
 - **The Coordinator's memory lives in the store, not the session**: a session is never resumed, and
   a new one starts from the stored conversation and the cards' history. That keeps the context short
   over weeks and makes restart and renewal one path; the history is in it because the owner asks

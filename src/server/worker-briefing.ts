@@ -133,6 +133,13 @@ ${idea.idea.brief}` : '',
           .join('\n\n'),
       );
     if (card.body.trim()) parts.push(`${card.body.trim()}${this.o.board.numbersNote(card.body, card.id)}`);
+    // a Question card made a task: its conversation is the task
+    const asked = this.o.questionHistory?.(card.id);
+    if (asked)
+      parts.push(
+        asked,
+        "Your task is what the owner asked for in this conversation, above all in their latest words, with what its answers found out. The owner's words there are their own: write to them in their language. Where it leaves open what to do, ask.",
+      );
     // the owner's own words: the language the worker writes them in until they say more (`ownersLanguage`)
     if (card.body.trim() && taskAuthor(card) === 'owner') parts.push('The owner wrote this task themselves: write to them in its language.');
     if (card.mocks?.length) parts.push(mocksText(card.mocks));

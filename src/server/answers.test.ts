@@ -1055,6 +1055,37 @@ describe('a thread on a Question card', () => {
     expect(board().item(done.id)).toBeDefined();
   });
 
+  test('"Start as task" makes it a task that starts at once, its worker starting from the thread; an agent still reading stops', async () => {
+    const { first, card } = await moved();
+    canvas.tell(card.id, 'Bitte die Tabelle um Oktober ergänzen.', [], false);
+    const reading = answerer();
+    expect(board().item(card.id)!.thread!.thinking).toBe(true);
+    canvas.act(card.id, { action: 'asTask' });
+    expect(board().item(card.id)).toMatchObject({ kind: 'task', state: 'planned', title: 'September feed-in credits: correct?', body: '', queue: { checking: true } });
+    expect(board().item(card.id)!.thread!.thinking).toBeFalsy();
+    expect(board().row(card.id).session_id).toBeNull();
+    // what the agent had not read yet goes to the worker, read
+    expect(board().events(card.id).filter((e) => e.unread)).toEqual([]);
+    expect(board().events(card.id).at(-1)).toMatchObject({ kind: 'state', author: 'owner', text: board().t.answer.asTask });
+    await settle();
+    expect(reading.closed).toBe(true);
+    expect(board().item(card.id)!.state).toBe('working');
+    const worker = runtime.withTool('ready_for_review').at(-1)!;
+    expect(worker.spec.resume).toBeUndefined();
+    const task = worker.inbox[0]!;
+    expect(task).toContain('The owner: "stimmen die septembergutschriften?"');
+    expect(task).toContain('Obeya: Hier die Tabelle.');
+    expect(task).toContain('numbers.xlsx – Die Viertelstunden');
+    expect(task).toContain('The owner: "Bitte die Tabelle um Oktober ergänzen."');
+    expect(task).toContain(answersDir(dir, canvas.id, first));
+    expect(task).toContain('Your task is what the owner asked for in this conversation');
+    // what the worker says later is no part of the question it started from
+    board().log(card.id, 'say', 'worker', 'Ich ergänze Oktober.');
+    expect(canvas.answers.taskHistory(card.id)).not.toContain('Ich ergänze Oktober.');
+    // the owner's words now go to the worker
+    expect(() => canvas.act(card.id, { action: 'asTask' })).toThrow('no Question card');
+  });
+
   test('its agent tells a walkthrough that plays in its conversation from the first slide on, until the answer takes its place; paused, the turn takes it along', async () => {
     const { first, card } = await moved();
     canvas.tell(card.id, 'wie entsteht die tabelle?', [], false);

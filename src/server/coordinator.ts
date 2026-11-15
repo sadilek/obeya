@@ -61,6 +61,8 @@ export interface CoordinatorOptions {
   holdMs?: number;
   /** The files of screenshots by their ids. */
   imageFiles?: (ids?: string[]) => string[];
+  /** The conversation of a task that was a Question card, which is its task (`Answers.taskHistory`). */
+  questionHistory?: (cardId: string) => string | undefined;
 }
 
 export class Coordinator {
@@ -887,6 +889,7 @@ export class Coordinator {
     const lines = [
       `The card to start: ${card.kind} "${card.title}".`,
       card.body.trim(),
+      this.o.questionHistory?.(card.id) ?? '',
       project?.plan ? `It is workstream ${card.label ?? ''} of the project "${project.title}"; plan doc ${project.plan.file}.` : '',
       ...(await this.others(card, active, ahead)),
       siblings.length ? `Of these, workstreams of the same project: ${siblings.join(', ')}.` : '',
