@@ -429,7 +429,9 @@ runs out from where it was assigned, the territory overshoots and settles, and a
 along the new edge, all in under a second (see the decision on large animations).
 
 Marking: Shift + drag draws a lasso (without Shift it pans), Shift + click toggles a card (a
-workstream: its project; a click beside a project's workstreams marks the project); a lasso adds to what is marked. Marked cards carry drifting dashes and a
+workstream: its project; a click beside a project's workstreams marks the project); a lasso adds to what is marked. A click on a
+group's name marks the group's cards on the canvas in place of what was marked (a project as a whole), Shift + click adds them, or
+takes them out where all were marked; the name shows it can be clicked by its pointer, a stronger colour and a tooltip on hover. Marked cards carry drifting dashes and a
 line with their count and "Group …". Dragging a marked card moves all marked ones, an unmarked one
 alone. A click on the empty canvas or Esc unmarks. Two hints teach it, each until used once: after a
 card was moved alone, how to mark several; beside two or more marked cards, that dragging one moves

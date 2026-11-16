@@ -161,6 +161,8 @@ const de = {
     remove: 'Gruppe löschen',
     removed: (name: string) => `Gruppe „${name}“ gelöscht`,
     open: (n: number) => (n === 0 ? 'Keine offenen Aufgaben' : n === 1 ? '1 offene Aufgabe' : `${n} offene Aufgaben`),
+    /** On a group's name on the canvas. */
+    markTip: 'Klick: alle Aufgaben der Gruppe markieren (mit Umschalt: dazunehmen)',
   },
   /** The cards marked on the canvas, to move them together or group them. */
   marked: {
@@ -2555,6 +2557,7 @@ const en: Strings = {
     remove: 'Delete group',
     removed: (name: string) => `Group “${name}” deleted`,
     open: (n: number) => (n === 0 ? 'No open tasks' : n === 1 ? '1 open task' : `${n} open tasks`),
+    markTip: 'Click: mark all tasks of the group (with Shift: add them)',
   },
   marked: {
     count: (n: number) => `${n} marked`,

@@ -355,11 +355,12 @@ export function useGroupNames(shapes: Shape[], placed: Placed, notes: Bounds[], 
   return { names, boxesAt };
 }
 
-/** One name, centred in the box it was placed in; the letter spacing after the last letter is left out of the centring. */
+/** One name, centred in the box it was placed in; the letter spacing after the last letter is left out of the centring. A click on it marks the group's cards (see `groupAt`). */
 function NameText({ g, at, look }: { g: Group; at: NameAt; look: Look }) {
   const { box, font } = at;
   return (
-    <text className={`gname ${look}`} x={box.x + box.w / 2 + (LOOK[look].spacing * font) / 2} y={box.y + box.h / 2 + (CAPS * font) / 2} style={{ ...hue(g.hue), fontSize: font }}>
+    <text className={`gname ${look}`} data-group={g.id} x={box.x + box.w / 2 + (LOOK[look].spacing * font) / 2} y={box.y + box.h / 2 + (CAPS * font) / 2} style={{ ...hue(g.hue), fontSize: font }}>
+      <title>{t.groups.markTip}</title>
       {g.name}
     </text>
   );
@@ -380,6 +381,9 @@ export function GroupNames({ names, over }: { names: Named[]; over?: boolean }) 
     </svg>
   );
 }
+
+/** The group whose name is under the point (screen), if any. */
+export const groupAt = (x: number, y: number) => document.elementFromPoint(x, y)?.closest<SVGElement>('.gname')?.dataset.group;
 
 // ------------------------------------------------------------------ lasso
 

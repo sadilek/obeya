@@ -1,4 +1,5 @@
-// The cards the owner has marked on the canvas (Shift + click, Shift + lasso), to move them together
+// The cards the owner has marked on the canvas (Shift + click, Shift + lasso, a click on a group's
+// name), to move them together
 // or put them into a group at once. A workstream counts as its project, as in the lasso: it moves
 // only inside its project.
 
@@ -14,6 +15,12 @@ export const toggle = (sel: string[], id: string) => (sel.includes(id) ? sel.fil
 
 /** The selection with `ids` added (a lasso adds to what is marked, as Shift does elsewhere). */
 export const addAll = (sel: string[], ids: string[]) => [...sel, ...ids.filter((id) => !sel.includes(id))];
+
+/** The selection with `ids` taken in, or all of them out when they all were in (a Shift + click on a group's name). */
+export const toggleAll = (sel: string[], ids: string[]) => (ids.length && ids.every((id) => sel.includes(id)) ? sel.filter((x) => !ids.includes(x)) : addAll(sel, ids));
+
+/** What marking group `group` marks: its cards on the canvas, a project as a whole. */
+export const inGroup = (placed: { item: Pick<Item, 'id' | 'parent' | 'group'> }[], group: string) => [...new Set(placed.filter((p) => p.item.group === group).map((p) => markable(p.item)))];
 
 /** The marked cards that move along when the owner drags `id`: the others of the selection, if `id` is in it. */
 export const movesWith = (sel: string[], id: string) => (sel.includes(id) ? sel.filter((x) => x !== id) : []);

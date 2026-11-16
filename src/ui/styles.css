@@ -2088,6 +2088,13 @@ button.link:hover { text-decoration: underline; }
 .gname.near { font-weight: 700; letter-spacing: .12em; fill: hsl(var(--h) 65% var(--tel) / .9); }
 .z-far .gname.far { opacity: 1; }
 .z-far .gname.near { opacity: 0; }
+/* a click on the name shown marks the group's cards; the one faded out takes no clicks */
+.gname { pointer-events: none; cursor: pointer; }
+.gname.near, .z-far .gname.far { pointer-events: all; }
+.z-far .gname.near { pointer-events: none; }
+.gname.near:hover { fill: hsl(var(--h) 75% var(--tel)); }
+.z-far .gname.far:hover { fill: hsl(var(--h) 60% var(--tel) / calc(var(--tna) * 2.5)); }
+#viewport.panning .gname { cursor: inherit; }
 
 #lasso { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 40; pointer-events: none; }
 #lasso .lfill { fill: color-mix(in srgb, var(--working) 8%, transparent); }

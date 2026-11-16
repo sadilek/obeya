@@ -1149,13 +1149,13 @@ function Canvas({
     const p = panRef.current;
     panRef.current = null;
     setPanning(false);
-    // a click on the empty canvas lets go of what is marked
-    if (p && Math.hypot(e.clientX - p.from.x, e.clientY - p.from.y) < 5) marking.clear();
+    // a click on a group's name marks its cards; one on the empty canvas lets go of what is marked
+    if (p && Math.hypot(e.clientX - p.from.x, e.clientY - p.from.y) < 5 && !marking.clickName(p.from)) marking.clear();
   }
 
   function onDoubleClick(e: React.MouseEvent) {
     // the pointer capture retargets the event to the viewport, so look at what is under the pointer
-    if (focusRef.current || document.elementFromPoint(e.clientX, e.clientY)?.closest('.item, .plan-dir')) return;
+    if (focusRef.current || document.elementFromPoint(e.clientX, e.clientY)?.closest('.item, .plan-dir, .gname')) return;
     createAt(toWorld(camRef.current, e.clientX, e.clientY));
     if (!dblKnown) {
       knowDbl();

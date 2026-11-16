@@ -1,5 +1,5 @@
 // Marking cards on the canvas: Shift + drag draws a lasso, Shift + click on a card takes it in or
-// out. What is marked moves together, and goes into a group at once through the colour ring, which a
+// out, a click on a group's name marks the group's cards. What is marked moves together, and goes into a group at once through the colour ring, which a
 // right click on a card opens too.
 
 import { useEffect, useRef, useState } from 'react';
@@ -8,9 +8,9 @@ import type { Group, Item } from '../core/types';
 import { openPerGroup } from '../core/card';
 import { api } from './api';
 import { type Cam, type Sides, TOP, toWorld } from './camera';
-import { growFrom, inside, Lasso, MarkHint, Marked, Ring } from './groups';
+import { groupAt, growFrom, inside, Lasso, MarkHint, Marked, Ring } from './groups';
 import type { Pos } from './optimistic';
-import { addAll, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, toggle } from './selection';
+import { addAll, inGroup, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, toggle, toggleAll } from './selection';
 import { useKnown } from './stored';
 import { t } from './strings';
 
@@ -60,8 +60,14 @@ export function useMarking({ placed, byId, cam, showAck, fail }: { placed: Place
     lassoRef.current = null;
     setLasso([]);
     const c = cam.current;
-    // a Shift + click on a project beside its workstreams marks the project
     if (l.every((p) => Math.hypot(p.x - l[0]!.x, p.y - l[0]!.y) < 5)) {
+      // a Shift + click on a group's name takes its cards in, or out when all were in
+      const g = groupAt(l[0]!.x, l[0]!.y);
+      if (g) {
+        setSelection((sel) => toggleAll(sel, inGroup(placed, g)));
+        return true;
+      }
+      // a Shift + click on a project beside its workstreams marks the project
       const el = document.elementFromPoint(l[0]!.x, l[0]!.y)?.closest<HTMLElement>('.item');
       const i = el && byId(el.dataset.id!);
       if (i) setSelection((sel) => toggle(sel, markable(i)));
@@ -70,6 +76,13 @@ export function useMarking({ placed, byId, cam, showAck, fail }: { placed: Place
     // what the lasso caught: each card whose middle lies inside, a workstream as its project
     const ids = [...new Set(placed.filter(({ b }) => inside({ x: c.x + (b.x + b.w / 2) * c.s, y: c.y + (b.y + b.h / 2) * c.s }, l)).map(({ item }) => markable(item)))];
     setSelection((sel) => addAll(sel, ids));
+    return true;
+  };
+  /** A click on a group's name at `at` (screen) marks its cards instead of what was marked; false where no name is there. */
+  const clickName = (at: Pos) => {
+    const g = groupAt(at.x, at.y);
+    if (!g) return false;
+    setSelection(inGroup(placed, g));
     return true;
   };
   /** A Shift + click on a card takes it in or out. */
@@ -123,6 +136,7 @@ export function useMarking({ placed, byId, cam, showAck, fail }: { placed: Place
     drawLasso,
     endLasso,
     flip,
+    clickName,
     dropped,
     clear: () => setSelection([]),
     ringAt,
