@@ -314,7 +314,10 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
     root.toggleAttribute('data-captions', show);
     render();
   };
-  on(window, CAPTIONS_CHANGED, showCaptions);
+  on(window, CAPTIONS_CHANGED, () => {
+    setModes();
+    showCaptions();
+  });
   on(video.textTracks, 'addtrack', offerTracks);
   on(video.textTracks, 'removetrack', offerTracks);
 
