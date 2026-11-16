@@ -263,12 +263,28 @@ export function videoPlayer(root: HTMLElement, video: HTMLVideoElement, o: Playe
     store(CAPTIONS_OFF, show ? null : '1');
     dispatchEvent(new Event(CAPTIONS_CHANGED));
   };
+  // Only in a browser's own full-screen player (an iPhone's) does the browser draw the captions: the
+  // player's are not on screen there. Everywhere else it would draw them over the picture, beside the player's.
+  const nativeFull = () => !!(video as HTMLVideoElement & { webkitDisplayingFullscreen?: boolean }).webkitDisplayingFullscreen;
+  const setModes = () => {
+    const mine: TextTrackMode = nativeFull() && captionsWanted() ? 'showing' : 'hidden';
+    for (const x of tracks()) {
+      const want = x === track ? mine : 'disabled';
+      if (x.mode !== want) x.mode = want;
+    }
+  };
   const useTrack = (t: TextTrack | null) => {
     track = t;
-    for (const x of tracks()) x.mode = x === t ? 'hidden' : 'disabled';
+    setModes();
     shownKey = null;
     render();
   };
+  // Safari shows a track marked `default` (obeya.si's) by itself once the video's data has loaded,
+  // the iPad over the picture: the player takes that back, except in the browser's full-screen
+  // player, where a pick from its own menu stands
+  on(video.textTracks, 'change', () => nativeFull() || setModes());
+  on(video, 'webkitbeginfullscreen', setModes);
+  on(video, 'webkitendfullscreen', setModes);
   const offerTracks = () => {
     const ts = tracks();
     language.replaceChildren(

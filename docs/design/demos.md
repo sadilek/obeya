@@ -864,6 +864,12 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   card and on the shared pages, which carry its source, so the two cannot drift apart. Rejected: the
   browser's own controls (captions over the picture behind a menu, a bar without chapters, controls
   that kept every key once clicked and needed the focus handed back).
+  The browser draws no captions of its own beside the player's: Safari switches a track marked
+  `default` (obeya.si marks its own, so that it shows captions without JavaScript) to showing by
+  itself once the video's data has loaded, and the iPad drew them over the picture, so the player
+  sets a track back whenever its mode changes. Only in the browser's own full-screen player (an
+  iPhone's), where the player's captions are not on screen, does the browser draw them, when they
+  are on, and a pick from its menu stands there (2026-11-16).
 - **Space and the arrows reach the video; the microphone's 200 ms wait holds only with a video
   open** (2026-10-14). Rejected: a microphone flickering at every tap, and controls that kept the
   keys once clicked.
