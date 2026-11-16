@@ -754,7 +754,7 @@ function PhoneHome({
   const swipeRunning: Swipe = { onGone: putAside, label: t.phone.asideLabel, hint };
   const runningCards = cardsOf(running, onOpen, swipeRunning);
   // of those, the ones an agent or Obeya is at this moment, not between steps
-  const atWork = (c: CanvasInfo) => running.filter(({ item, canvas }) => canvas.id === c.id && !isUnderway(item.id) && atWorkNow(item)).length;
+  const atWork = (c: CanvasInfo) => running.filter(({ item, canvas }) => canvas.id === c.id && atWorkNow(item)).length;
   const lists = { canvases: ordered, several, onOpen };
   return (
     <>

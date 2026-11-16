@@ -55,8 +55,8 @@ export interface StageCard {
   demo?: Record<string, unknown>;
   /** Waiting in the queue `behind` the cards of these keys; `since` defaults to now. */
   queue?: { behind?: string[]; reason?: string; since?: string; checking?: true };
-  /** Snoozed by its agent until the card with key `on` gets to `state` (default done). */
-  snoozed?: { on: string; state?: string; why?: string };
+  /** Snoozed by its agent until the card with key `on` gets to `state` (default done), or `in` a time from now ("14h"). */
+  snoozed?: { on?: string; state?: string; in?: string; why?: string };
   /** The files it works on. */
   scope?: string[];
   /** In a folder without git (`"git": false`), what it changed there: the files are as `files` and `copy` leave them, a changed one without a copy from before; `from` for a move. */
@@ -246,6 +246,8 @@ export interface Stage {
     wish?: { said: string; answer?: string };
     /** The key of the project whose sheet the words were written in, straight to its project agent, with an empty `reply`. */
     askedIn?: string;
+    /** A question without `answer`, followed up while it was looked up: the index of the later exchange whose answer answers both. */
+    joinedInto?: number;
   }[];
 }
 
@@ -697,9 +699,16 @@ function holdGoneHosts(db: Database, ctx: Context) {
 }
 
 function ago(s: string): string {
-  const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(s) ?? fail(`"${s}" is no time ago (like "15m", "2h", "3d")`);
-  const unit = { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's' | 'm' | 'h' | 'd'];
-  return new Date(Date.now() - Number(m[1]) * unit * 1000).toISOString();
+  return new Date(Date.now() - seconds(s) * 1000).toISOString();
+}
+
+function fromNow(s: string): string {
+  return new Date(Date.now() + seconds(s) * 1000).toISOString();
+}
+
+function seconds(s: string): number {
+  const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(s) ?? fail(`"${s}" is no duration (like "15m", "2h", "3d")`);
+  return Number(m[1]) * { s: 1, m: 60, h: 3600, d: 86400 }[m[2] as 's' | 'm' | 'h' | 'd'];
 }
 
 function copyArtifact(from: string, to: string) {
@@ -731,9 +740,16 @@ async function writeCard(db: Database, ctx: Context, c: StageCard, i: number) {
       since: c.queue.since ?? new Date().toISOString(),
     };
   if (c.snoozed !== undefined) {
-    const on = ids[c.snoozed.on] ?? fail(`card ${key}: snoozed names ${c.snoozed.on}, which does not exist`);
-    const title = stage.cards.find((x) => x.key === c.snoozed!.on)?.title ?? '';
-    row.snoozed = { on: { card: on, title, state: c.snoozed.state ?? 'done' }, by: 'agent', ...(c.snoozed.why ? { why: c.snoozed.why } : {}) };
+    const { on: onKey, in: wait } = c.snoozed;
+    if (onKey === undefined && wait === undefined) fail(`card ${key}: snoozed needs \`on\` or \`in\``);
+    const on = onKey !== undefined ? (ids[onKey] ?? fail(`card ${key}: snoozed names ${onKey}, which does not exist`)) : undefined;
+    const title = stage.cards.find((x) => x.key === onKey)?.title ?? '';
+    row.snoozed = {
+      ...(on ? { on: { card: on, title, state: c.snoozed.state ?? 'done' } } : {}),
+      ...(wait ? { until: fromNow(wait) } : {}),
+      by: 'agent',
+      ...(c.snoozed.why ? { why: c.snoozed.why } : {}),
+    };
   }
   if (c.scope !== undefined) row.scope = { files: c.scope, reason: '' };
   // a card at work or waiting for the owner has the branch its start gave it, as every started card
@@ -901,6 +917,11 @@ function writeTalk(db: Database, { stage, canvas, ids, home }: Context) {
       mkdirSync(dirname(to), { recursive: true });
       writeFileSync(to, f.from ? readFileSync(f.from) : (f.content ?? ''));
     }
+  }
+  for (const [i, x] of (stage.talk ?? []).entries()) {
+    if (x.joinedInto === undefined) continue;
+    const into = talkIds[x.joinedInto] ?? fail(`talk ${i}: joinedInto ${x.joinedInto} does not exist`);
+    db.query('UPDATE talk SET joined = $into WHERE id = $id').run({ into, id: talkIds[i]! });
   }
 }
 
