@@ -174,10 +174,13 @@ does once its canvas is gone. It shows five lists:
   navigation shows the same entries in the same order, built once for both, as light rows, those
   set aside on the phone among them (see The navigation).
 - **"Running"**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
-  words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
-  at the end, those the owner snoozed while they waited for them among them. Every card that leaves
-  "Needs you" without being done stands here, unless it is set aside.
-- **"Set aside"**: the cards of the two lists above that the owner set aside on this phone (below).
+  words, landing, Obeya deciding on a queued card's turn, in a PR, an idea's agent thinking …), with
+  their status line.
+- **"On hold"**: the cards of "Running" that go on only later: snoozed ones (those the owner snoozed
+  while they waited for them among them), those whose agent the owner paused, and those waiting in
+  the queue for their turn. Every card that leaves "Needs you" without being done stands in one of
+  the two, unless it is set aside.
+- **"Set aside"**: the cards of the lists above that the owner set aside on this phone (below).
 - **"Planned"**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
   what it does on the canvas ("Start agent", "Later …"), so a task can be started from the phone.
@@ -203,16 +206,16 @@ that waits is set aside ("Running" likewise, each for its own cards). Until the 
 card once in this browser, a line says how above the first card in sight that can be swiped (in
 "Needs you", else in "Running"), which nudges aside and back.
 
-"Set aside", "Planned" and "Done" are closed until their head (with the count) is tapped, since
+"On hold", "Set aside", "Planned" and "Done" are closed until their head (with the count) is tapped, since
 each may hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar
 so its cards show; it stays open while a card is open and over a reload, and is closed again in a
 new tab. Without such cards it is not there.
 
 With several canvases, each list holds its cards canvas by canvas in the switcher's order, each
 canvas under a head with its name and how many cards it has there (orange in "Needs you", as the
-navigation counts; in "Running" split as "2 + 1", the snoozed cards and those whose agent has yet
-to take up the owner's words, then in blue those an agent or Obeya is at, since the list holds both;
-either alone without the "+"); a tap on the head folds that canvas's cards in that list away and keeps the
+navigation counts; in "Running" split as "2 + 1", the cards between steps (in a PR, their agent
+waiting for a command of its own or yet to take up the owner's words), then in blue those an agent
+or Obeya is at this moment, since the list holds both; either alone without the "+"); a tap on the head folds that canvas's cards in that list away and keeps the
 count, as the navigation folds its canvases, kept per list and canvas in the browser. A canvas
 without cards in a list has no head there. The cards look as on the canvas, as wide as the screen
 and without the pin; where two of at least 340 px fit (the phone turned) they stand side by side.
@@ -224,7 +227,9 @@ is also whom the microphone speaks to with no card open (none with one canvas or
 button opens the conversation an answer waits in when the picked one has none, and the picker
 follows. The panel holds the conversation, its field and below it room for the microphone, which
 never stands over the field; only the conversation scrolls. Its address is `?talk`; its answers count
-as read once it is open. A card opened from it opens over it; Back returns.
+as read once it is open. The button carries a working card's moving line while Obeya
+reads the owner's words or looks a question up on any canvas; not for a look-up the owner stopped,
+nor for one they followed up on while it ran, whose answer comes under the later words. A card opened from it opens over it; Back returns.
 
 The panel takes the part of the screen the keyboard leaves, its field right above the keyboard: the
 page asks to be shrunk while the keyboard is up (`interactive-widget=resizes-content`, heeded by
@@ -707,6 +712,13 @@ beside the scratch dirs.
 - **Done cards on the phone in a list of their own, closed by default** (2026-10-28, the owner):
   the owner wants to see what is done but not archived from the phone, without it pushing what
   waits and what runs further down.
+- **What goes on only later leaves "Running" for "On hold"** (2026-11-16, the owner): "Running"
+  listed snoozed cards (at its end) and counted queued ones in blue as at work, so a phone where no
+  agent worked at all showed a full "Running" and a blue count; the owner read both as agents at
+  work. Snoozed, paused and queued cards now stand in a list of their own, closed like "Planned",
+  and the blue count holds only what an agent or Obeya is at this moment. Rejected: queued cards
+  into "Planned" (a card queued again after it began is not planned), and keeping them in
+  "Running" uncounted (the list still read as busy).
 - **Cards are set aside on the phone by a swipe, until they need the owner anew** (2026-11-06, the
   owner): with many cards at work the phone's lists overwhelmed, though much of it the owner only
   handles at the desk. It ends with a new wait, not with a time (that is snoozing, which also takes

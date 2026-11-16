@@ -28,6 +28,21 @@ export const runs = (i: Item) =>
   (i.state === 'working' || answering(i) || !!i.finishing || !!i.landing || !!i.queue || (i.state === 'inPr' && !!i.pr) || !!i.idea?.thinking || !!i.thread?.thinking);
 
 /**
+ * A card of the phone's "Running" that goes on only later, which "On hold" lists instead: snoozed, its
+ * agent paused by the owner, or waiting in the queue for its turn (other cards, a workspace, the
+ * canvas's pause) rather than Obeya deciding on it.
+ */
+export const onHold = (i: Item) => !!i.snoozed || !!i.paused || (!!i.queue && !('checking' in i.queue));
+
+/**
+ * A card an agent or Obeya is at this moment: its agent in a turn (`agentWorks`), Obeya landing it
+ * or deciding on its turn in the queue. The blue count of the phone's "Running"; the others there
+ * wait between steps (in a pull request, for a command of their agent's, for their agent to take up
+ * the owner's words).
+ */
+export const atWorkNow = (i: Item) => !onHold(i) && (agentWorks(i) || !!i.landing || (!!i.queue && 'checking' in i.queue));
+
+/**
  * Whether the phone opens a card with its conversation up: while its agent works on it, what the
  * agent says is what there is to see, and a card that waits for answers to its questions shows them,
  * with options to pick or without. Until 2026-10-19 a question without options opened on the page.
@@ -43,11 +58,16 @@ export const agentWorks = (i: Pick<Item, 'kind' | 'state' | 'idea' | 'thread' | 
 
 /**
  * Whether Obeya's conversation shows it at work: reading the owner's words, or looking a question up
- * (not while the usage limit holds it). Words asked in a project's sheet went straight to its project
- * agent: Obeya never replies to them, only their answer is awaited.
+ * (not while the usage limit holds it, nor once the owner stopped the look-up or followed up on it
+ * while it ran, which the answer under the later words answers). Words asked in a project's sheet
+ * went straight to its project agent: Obeya never replies to them, only their answer is awaited.
  */
 export const obeyaWorks = (talk: Exchange[]) =>
-  talk.some((x) => (x.reply === undefined && !x.heldUntil && !x.askedIn) || (x.question !== undefined && x.answer === undefined && !x.movedTo && !x.limitedUntil));
+  talk.some(
+    (x) =>
+      (x.reply === undefined && !x.heldUntil && !x.askedIn) ||
+      (x.question !== undefined && x.answer === undefined && !x.movedTo && !x.limitedUntil && !x.joinedInto && !x.stopped),
+  );
 
 /**
  * A task an agent has worked on, stopped ones included: what came of it stands beside its

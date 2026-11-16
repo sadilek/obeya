@@ -32,7 +32,7 @@ import { videoOf } from './spot';
 import { flag, local, read, session, setFlag, write } from './stored';
 import { forTouch, t, when } from './strings';
 import { UsagePill } from './usage';
-import { agentWorks, obeyaWorks, opensWithTalk, runs } from './cardState';
+import { agentWorks, atWorkNow, obeyaWorks, onHold, opensWithTalk, runs } from './cardState';
 import { cardTalk, coordinatorReads, unseen } from './talk';
 import { seenOf } from './seen';
 import { showNotice, tellers, useAck } from './tell';
@@ -732,8 +732,10 @@ function PhoneHome({
   // what "Needs you" leaves out: the cards the owner acted on, and those set aside
   const leftOut = (id: string) => isUnderway(id) || setAside.has(id);
   const active = (i: Item) => runs(i) || !!i.snoozed?.waiting || isUnderway(i.id);
-  // a snoozed card at the end, after those at work now; one the owner snoozed while it waited for them among them
-  const running = all.filter(({ item }) => active(item) && !setAside.has(item.id)).sort((a, b) => Number(!!a.item.snoozed) - Number(!!b.item.snoozed));
+  // what goes on only later (snoozed, paused, queued) stands in "On hold", not among the cards at work; one the owner snoozed while it waited for them among them
+  const held = (i: Item) => !isUnderway(i.id) && onHold(i);
+  const running = all.filter(({ item }) => active(item) && !held(item) && !setAside.has(item.id));
+  const holding = all.filter(({ item }) => active(item) && held(item) && !setAside.has(item.id));
   // what would stand in "Needs you" or "Running" but for being set aside
   const putAway = all.filter(({ item }) => setAside.has(item.id) && (needsYou(item) || active(item)));
   // the tasks nobody has started yet (stopped ones and those set to start at a time among them), but nothing the lists above show already
@@ -751,8 +753,8 @@ function PhoneHome({
   const swipeWaiting: Swipe = { onGone: putAside, label: t.phone.asideLabel, snooze: true, hint };
   const swipeRunning: Swipe = { onGone: putAside, label: t.phone.asideLabel, hint };
   const runningCards = cardsOf(running, onOpen, swipeRunning);
-  // of those, the ones an agent or Obeya is at right now, not snoozed nor waiting for their agent to pick up the owner's words
-  const atWork = (c: CanvasInfo) => running.filter(({ item, canvas }) => canvas.id === c.id && runs(item) && !item.snoozed).length;
+  // of those, the ones an agent or Obeya is at this moment, not between steps
+  const atWork = (c: CanvasInfo) => running.filter(({ item, canvas }) => canvas.id === c.id && !isUnderway(item.id) && atWorkNow(item)).length;
   const lists = { canvases: ordered, several, onOpen };
   return (
     <>
@@ -794,12 +796,13 @@ function PhoneHome({
         </section>
         <section className="ph-section">
           <h2>{t.phone.running}</h2>
-          {ordered.length > 0 && !running.length && <p className="ph-none">{putAway.some(({ item }) => active(item)) ? t.phone.nothingElseRuns : t.phone.nothingRuns}</p>}
+          {ordered.length > 0 && !running.length && <p className="ph-none">{putAway.some(({ item }) => active(item) && !held(item)) ? t.phone.nothingElseRuns : t.phone.nothingRuns}</p>}
           {hintIn === 'running' && <p className="ph-hint">{t.phone.swipeHintRunning}</p>}
           <ByCanvas list="running" canvases={ordered} several={several} count={runningCards.count} atWork={atWork}>
             {runningCards.cards}
           </ByCanvas>
         </section>
+        <FoldedList list="held" label={t.phone.onHold} entries={holding} swipe={swipeRunning} {...lists} />
         <FoldedList list="aside" label={t.phone.setAside} entries={putAway} swipe={{ onGone: bringBack, label: t.phone.backLabel }} hint={t.phone.setAsideHint} {...lists} />
         <FoldedList list="planned" label={t.phone.planned} entries={planned} {...lists} />
         <FoldedList list="done" label={t.phone.done} entries={done} {...lists} />
@@ -840,11 +843,11 @@ const cardsOf = (entries: Entry[], onOpen: (i: Item) => void, swipe?: Swipe) => 
   cards: (c: CanvasInfo) => entries.filter((x) => x.canvas.id === c.id).map(({ item: i }) => <PhoneCard key={i.id} item={i} swipe={swipe} onOpen={onOpen} />),
 });
 
-/** Whether the owner opened "Set aside", "Planned" or "Done" in this tab; each starts closed. */
-const LIST_OPEN = { aside: 'obeya-phone-aside-open', planned: 'obeya-phone-planned', done: 'obeya-phone-done' };
+/** Whether the owner opened "On hold", "Set aside", "Planned" or "Done" in this tab; each starts closed. */
+const LIST_OPEN = { held: 'obeya-phone-held', aside: 'obeya-phone-aside-open', planned: 'obeya-phone-planned', done: 'obeya-phone-done' };
 
 /**
- * "Set aside", "Planned" or "Done", below the others while it holds any cards: closed until opened,
+ * "On hold", "Set aside", "Planned" or "Done", below the others while it holds any cards: closed until opened,
  * and as the owner left it while a card is open and over a reload.
  */
 function FoldedList({ list, label, entries, swipe, hint, canvases, several, onOpen }: { list: keyof typeof LIST_OPEN; label: string; entries: Entry[]; swipe?: Swipe; hint?: string; canvases: CanvasInfo[]; several: boolean; onOpen: (i: Item) => void }) {
@@ -866,7 +869,7 @@ function FoldedList({ list, label, entries, swipe, hint, canvases, several, onOp
  * with its name and how many it holds, which folds them away and keeps the count, as the navigation's
  * canvases do (kept per list and canvas in this browser); with one, the entries alone. A canvas with
  * none in the list has no head. With `atWork`, the count splits into the entries at rest and, in the
- * colour of work, those at work ("2 + 1"), since "Running" also holds snoozed cards.
+ * colour of work, those at work this moment ("2 + 1"), since "Running" also holds cards between steps.
  */
 function ByCanvas({ list, canvases, several, waits, count, atWork, children }: { list: string; canvases: CanvasInfo[]; several: boolean; waits?: boolean; count: (c: CanvasInfo) => number; atWork?: (c: CanvasInfo) => number; children: (c: CanvasInfo) => ReactNode }) {
   const folded = useFolded(CANVASES_FOLDED);

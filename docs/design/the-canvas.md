@@ -508,7 +508,7 @@ code, a generic one otherwise.
 - **A snoozed card leaves "Needs you"** (issue #50, 2026-11-03): the owner put it off, so it
   waits for nobody until it comes back, and listing it under what needs them (uncounted, at the
   end) only made the list longer. On the canvas it still stands, greyed; on the phone it moves to
-  the end of "Running", which already ended in the snoozed cards there.
+  "On hold".
 - **Each canvas folds by itself, not as an accordion** (2026-11-03, issue #49): the
   owner folds away canvases they are not attending to while keeping several open side by side; an
   accordion would close one canvas as another opens, hiding what waits there. The counts on the

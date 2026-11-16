@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { CardEvent, Item } from '../core/types';
 import { formatQuestion, needsYou, openQuestions, parseQuestion, pausable } from '../core/card';
 import { answerText } from './answer';
-import { agentWorks, beingWritten, obeyaWorks, opensWithTalk, ownerField, runs, split, talkAlone } from './cardState';
+import { agentWorks, atWorkNow, beingWritten, obeyaWorks, onHold, opensWithTalk, ownerField, runs, split, talkAlone } from './cardState';
 import { cardTalk, demoHandover, coordinatorReads, talkTurns, unseen, unseenTurns } from './talk';
 import { MESSAGES } from '../core/messages';
 
@@ -769,6 +769,28 @@ test(`the phone's "Running" holds a handed-over card while its worker takes in t
   expect(runs({ kind: 'task', state: 'planned' } as Item)).toBe(false);
 });
 
+test(`the phone's "Running" counts in blue only what an agent or Obeya is at this moment, and leaves what goes on later to "On hold"`, () => {
+  const working = { kind: 'task', state: 'working', inTurn: true } as Item;
+  expect(atWorkNow(working)).toBe(true);
+  expect(onHold(working)).toBe(false);
+  // between two turns, waiting for a command of its own: still in "Running", not counted at work
+  expect(atWorkNow({ ...working, inTurn: undefined } as Item)).toBe(false);
+  expect(onHold({ ...working, inTurn: undefined } as Item)).toBe(false);
+  // snoozed until tomorrow, or paused by the owner: on hold
+  const snoozed = { ...working, inTurn: undefined, snoozed: { until: '2026-10-18T08:00:00Z', by: 'agent' } } as Item;
+  expect(onHold(snoozed)).toBe(true);
+  expect(atWorkNow(snoozed)).toBe(false);
+  expect(onHold({ ...working, paused: true } as Item)).toBe(true);
+  // queued behind another card: on hold; Obeya deciding on its turn: at work
+  const behind = { kind: 'task', state: 'planned', queue: { behind: ['c2'], reason: 'same files', since: '2026-10-17T10:00:00Z' } } as Item;
+  expect(runs(behind)).toBe(true);
+  expect(onHold(behind)).toBe(true);
+  expect(atWorkNow(behind)).toBe(false);
+  const checking = { kind: 'task', state: 'planned', queue: { checking: true, since: '2026-10-17T10:00:00Z' } } as Item;
+  expect(onHold(checking)).toBe(false);
+  expect(atWorkNow(checking)).toBe(true);
+});
+
 test("Obeya's conversation shows it at work while it reads the owner's words or looks a question up, not while the usage limit holds it", () => {
   const done = { id: 1, at: '2026-10-17T10:00:00Z', said: 'Was läuft?', reply: 'Zwei Karten.' };
   expect(obeyaWorks([done])).toBe(false);
@@ -779,6 +801,9 @@ test("Obeya's conversation shows it at work while it reads the owner's words or 
   expect(obeyaWorks([{ ...asked, answer: 'In src/export.ts.' }])).toBe(false);
   expect(obeyaWorks([{ ...asked, limitedUntil: '2026-10-17T12:00:00Z' }])).toBe(false);
   expect(obeyaWorks([{ ...asked, movedTo: 'q1' }])).toBe(false);
+  // stopped by the owner, or followed up while it ran: the later words' look-up answers both
+  expect(obeyaWorks([{ ...asked, stopped: true }])).toBe(false);
+  expect(obeyaWorks([{ ...asked, joinedInto: 2 }, { id: 2, at: '2026-10-17T10:01:00Z', said: 'Und der Import?', reply: 'Schaue nach.', question: 'Und der Import?', answer: 'Beide in src/io.' }])).toBe(false);
   // asked in a project's sheet: no reply of Obeya's ever comes, only the project agent's answer
   const inSheet = { id: 3, at: '2026-10-17T10:02:00Z', said: 'Plan beenden?', question: 'Plan beenden?', askedIn: 'p1' };
   expect(obeyaWorks([inSheet])).toBe(true);

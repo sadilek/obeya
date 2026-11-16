@@ -254,7 +254,7 @@ On the canvas a snoozed card is pushed back on greyed stock with a clock: "◷ S
 tomorrow, 00:05" (or "until “…” is done", with "at the latest …" when it has a time too), with who
 snoozed it and why. One waiting on another card shows that wait while the pointer is on either, as a
 queued card does (see Cards on the canvas). It counts neither as at work nor as needing the owner,
-and "Needs you" does not list it; on the phone it stands at the end of "Running". Its conversation
+and "Needs you" does not list it; on the phone it stands in "On hold". Its conversation
 shows a line where it was snoozed, carrying "Wake now" and "Change" (the same menu, whoever snoozed
 it) while it lasts, and on waking a line that says why it is back ("Woke up: the time has come", "…
 woken by you", …).
