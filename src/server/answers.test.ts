@@ -1094,6 +1094,21 @@ describe('a thread on a Question card', () => {
     expect(resumed.inbox.join('\n')).toContain('The owner: "Bitte die Tabelle um Oktober ergänzen."');
   });
 
+  test('the harness and model chosen on it go to the worker "Start as task" starts, not to its agent answering', async () => {
+    const { card } = await moved();
+    canvas.act(card.id, { action: 'agent', agent: { harness: 'claude', model: 'sonnet', effort: 'low' } });
+    expect(board().item(card.id)!.agent).toEqual({ harness: 'claude', model: 'sonnet', effort: 'low' });
+    canvas.tell(card.id, 'Bitte die Tabelle um Oktober ergänzen.', [], false);
+    expect(answerer().spec).not.toMatchObject({ model: 'sonnet' });
+    canvas.act(card.id, { action: 'asTask' });
+    await settle();
+    expect(runtime.withTool('ready_for_review').at(-1)!.spec).toMatchObject({ harness: 'claude', model: 'sonnet', effort: 'low' });
+    // archived, it is past choosing
+    const other = (await moved()).card;
+    board().archive([other.id]);
+    expect(() => canvas.act(other.id, { action: 'agent', agent: { effort: 'low' } })).toThrow();
+  });
+
   test('its agent tells a walkthrough that plays in its conversation from the first slide on, until the answer takes its place; paused, the turn takes it along', async () => {
     const { first, card } = await moved();
     canvas.tell(card.id, 'wie entsteht die tabelle?', [], false);

@@ -504,7 +504,8 @@ It holds answers, not work: a look of its own ("QUESTION"), the number of answer
 archived with all finished cards at once (see Archive), no build, plan, prototype or park buttons.
 It has three: "Discuss as idea" (not while its agent reads) makes it an idea whose agent starts from
 the thread and its directory; "Start as task" makes it a task with its conversation and starts it
-like "Start agent" (see Scheduling); "Done" archives it. The task's worker gets the conversation up
+like "Start agent" (see Scheduling), with that button's menu of the harness, model and effort its
+worker runs on (see Agents and workspaces); "Done" archives it. The task's worker gets the conversation up
 to that click (the owner's words with their screenshots, the answers with their files, their
 directory) as its task: what the owner asked for in it, above all in their latest words; the
 Coordinator's estimate reads it too. The title stays the question. Clicked while its agent reads,

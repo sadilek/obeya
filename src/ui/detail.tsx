@@ -147,9 +147,12 @@ function QuestionView({ item, act, run, onTell, error }: View) {
             >
               {t.question.asIdea}
             </button>
-            <button className="btn" title={t.question.asTaskHint} onClick={() => act({ action: 'asTask' }, { close: false })}>
-              {t.question.asTask}
-            </button>
+            {/* what its worker runs on, beside it as beside "Start" */}
+            <StartOn item={item} act={act} primary={false}>
+              <button className="btn" title={t.question.asTaskHint} onClick={() => act({ action: 'asTask' }, { close: false })}>
+                {t.question.asTask}
+              </button>
+            </StartOn>
             <ArchiveButton item={item} run={run} className="btn primary" label={t.question.done} hint={t.question.doneHint} />
           </>
         )}
