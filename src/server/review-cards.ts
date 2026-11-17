@@ -8,7 +8,7 @@ import { answering, askable, finished, handedOver } from '../core/card';
 import { BadRequest } from './board';
 import { fromJson, type HeldComment, type Json, type LandedState, type Resolving, type StoredContribution, type Unheard, toJson } from './row';
 import { hostName } from './hosts';
-import type { PullStopped } from './workspaces';
+import type { PullStopped, Rewritten } from './workspaces';
 import { defaultBranchCommit, isFolder } from './branches';
 import { gitAsync, gitTry, hasCommit, isAncestor } from './git';
 import { headSeal, refsSeal } from './read-tree';
@@ -979,7 +979,7 @@ export class ReviewCards {
    * The unpushed commits on the local main were rebased (`rewritten`, each old commit by its new
    * one): the cards that landed them name the new ones, and their shared pages link those.
    */
-  private reshipped(rewritten: Record<string, string> | undefined) {
+  private reshipped(rewritten: Rewritten | undefined) {
     if (!rewritten) return;
     for (const id of this.o.board.rewritten(this.o.repo, rewritten)) this.o.onLanded?.(id);
   }

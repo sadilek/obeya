@@ -420,7 +420,9 @@ onto `main`; without commits of its own it fast-forwards, uncommitted changes ou
 kept. A pull that rebases (Obeya's, or by the owner's configuration) gives the unpushed commits new
 hashes, as does the pull before "Push main": the cards that landed them name the new commits from
 then on, each found again by its change (`git patch-id`), or by its subject where a resolved
-conflict altered the change, in order, and their shared pages go out again with the new link
+conflict altered the change, between the commits found around it; where a card's range started
+after a commit the rebase dropped (its change was on `origin` already), it starts after the commit
+before it now. Their shared pages go out again with the new link
 (see The page and the commit in Sharing demos). A PR closed without a merge asks the owner whether the card can go; "Yes, close the card"
 closes it as done.
 

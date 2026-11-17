@@ -20,6 +20,7 @@ import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewEvent, 
 import { History } from './history';
 import { Sheet } from './sheet';
 import { atWork, begun, finishing, stateOf, tickedAhead, toItems, workDone, type Worked } from './items';
+import type { Rewritten } from './workspaces';
 import { docOfRef, keyOfRef, repoOfRef, workstreamRef } from './plan-ref';
 import { PageNotice } from './shared-pages';
 import { Archive } from './archive';
@@ -318,21 +319,21 @@ export class Board {
   }
 
   /**
-   * The unpushed commits on repository `repo`'s default branch were rebased (`rewritten`, each old
-   * commit by its new one; every repository's where none is named): the cards that landed them,
-   * archived ones too, name the new ones. Returns those cards.
+   * The unpushed commits on repository `repo`'s default branch were rebased (`rewritten`; every
+   * repository's where none is named): the cards that landed them, archived ones too, name the new
+   * ones, and where their work starts. Returns those cards.
    */
-  rewritten(repo: string | undefined, rewritten: Record<string, string>): string[] {
+  rewritten(repo: string | undefined, { commits, bases }: Rewritten): string[] {
     const moved: string[] = [];
     for (const r of this.store.landed(this.canvas.id)) {
       const s = fromJson(r.shipped);
-      const commit = s?.commit && rewritten[s.commit];
+      const commit = s?.commit && commits[s.commit];
       if (!s || !commit || (repo && (r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home)) !== repo)) continue;
       const l = fromJson(r.landed);
       this.work(r.id, {
-        shipped: toJson({ ...s, commit, ...(s.base && rewritten[s.base] ? { base: rewritten[s.base] } : {}) }),
+        shipped: toJson({ ...s, commit, ...(s.base && bases[s.base] ? { base: bases[s.base] } : {}) }),
         // the worker still finishing after its landing names the new one too
-        ...(l?.commit && rewritten[l.commit] ? { landed: toJson({ ...l, commit: rewritten[l.commit] }) } : {}),
+        ...(l?.commit && commits[l.commit] ? { landed: toJson({ ...l, commit: commits[l.commit] }) } : {}),
       });
       moved.push(r.id);
     }

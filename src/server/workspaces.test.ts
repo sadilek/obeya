@@ -675,7 +675,7 @@ describe('the pull after a merge', () => {
     const r = await spaces.pullMain();
     const under = git(checkout, 'rev-parse', `${own}~1`);
     // the commit has a new hash now, which the card that landed it is to name
-    expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { [own]: git(checkout, 'rev-parse', 'HEAD'), [under]: merged } });
+    expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { commits: { [own]: git(checkout, 'rev-parse', 'HEAD') }, bases: { [under]: merged, [own]: git(checkout, 'rev-parse', 'HEAD') } } });
     // the owner's commit on top of the merge, no merge commit
     expect(git(checkout, 'rev-parse', 'HEAD~1')).toBe(merged);
     expect(git(checkout, 'log', '-1', '--format=%s')).toBe('notes.md: mine');
@@ -722,7 +722,31 @@ describe('the pull after a merge', () => {
     expect(r).not.toHaveProperty('problem');
     expect(readFileSync(join(checkout, 'README.md'), 'utf8')).toBe('then theirs\n');
     // the commit after it is found again by its change
-    expect((r as Pulled).rewritten).toMatchObject({ [kept]: git(checkout, 'rev-parse', 'HEAD') });
+    expect((r as Pulled).rewritten!.commits).toMatchObject({ [kept]: git(checkout, 'rev-parse', 'HEAD') });
+  });
+
+  test('a commit the remote has cherry-picked: the next one is found by its change, not by a subject they share, and starts after what is before it now', async () => {
+    const a = commit(checkout, 'a.md', 'a\n', 'Tidy up');
+    const b = commit(checkout, 'b.md', 'b\n', 'Tidy up');
+    edit(origin, 'README.md', 'theirs\n');
+    git(origin, 'fetch', '--quiet', checkout, a);
+    git(origin, 'cherry-pick', a);
+    const r = (await spaces.pullMain()) as Pulled;
+    const upstream = git(origin, 'rev-parse', 'HEAD');
+    const now = git(checkout, 'rev-parse', 'HEAD');
+    expect(git(checkout, 'rev-parse', 'HEAD~1')).toBe(upstream);
+    // the dropped one is not taken for the other; a range that started after it starts after the remote's main
+    expect(r.rewritten!.commits).toEqual({ [b]: now });
+    expect(r.rewritten!.bases[a]).toBe(upstream);
+  });
+
+  test('the pushed commit the unpushed ones stood on is no rewritten commit: only the start of ranges', async () => {
+    const pushed = git(checkout, 'rev-parse', 'HEAD');
+    edit(checkout, 'notes.md', 'mine\n');
+    edit(origin, 'README.md', 'theirs\n');
+    const r = (await spaces.pullMain()) as Pulled;
+    expect(r.rewritten!.commits[pushed]).toBeUndefined();
+    expect(r.rewritten!.bases[pushed]).toBe(git(origin, 'rev-parse', 'HEAD'));
   });
 
   test('where the owner pulls by a merge, the conflict is the merge’s as a whole', async () => {
@@ -751,7 +775,7 @@ describe('pushing main', () => {
     const theirs = edit(origin, 'README.md', 'theirs\n');
     const own = git(checkout, 'rev-parse', 'HEAD');
     const r = await spaces.pushMain();
-    expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { [own]: git(checkout, 'rev-parse', 'HEAD'), [git(checkout, 'rev-parse', `${own}~1`)]: theirs } });
+    expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { commits: { [own]: git(checkout, 'rev-parse', 'HEAD') }, bases: { [git(checkout, 'rev-parse', `${own}~1`)]: theirs, [own]: git(checkout, 'rev-parse', 'HEAD') } } });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(git(checkout, 'rev-parse', 'HEAD'));
     expect(git(origin, 'rev-parse', 'HEAD~1')).toBe(theirs);
   });
@@ -834,7 +858,7 @@ describe('a resolved pull lands', () => {
     const head = git(ws, 'rev-parse', 'HEAD');
     // the unpushed commit is found again by its new one
     const base = git(checkout, 'merge-base', at.main, at.upstream);
-    expect(await spaces.landResolution(ws, at)).toEqual({ from: at.main, to: head, rewritten: { [base]: at.upstream, [at.main]: head } });
+    expect(await spaces.landResolution(ws, at)).toEqual({ from: at.main, to: head, rewritten: { commits: { [at.main]: head }, bases: { [base]: at.upstream, [at.main]: head } } });
     expect(git(checkout, 'rev-parse', 'HEAD')).toBe(head);
     expect(git(checkout, 'rev-parse', 'HEAD~1')).toBe(at.upstream);
     expect(readFileSync(join(checkout, 'README.md'), 'utf8')).toBe('merged and mine\n');

@@ -60,7 +60,7 @@ export interface Landed {
  * (`rewrites`).
  */
 export interface Pulled extends Landed {
-  rewritten?: Record<string, string>;
+  rewritten?: Rewritten;
 }
 
 /**
@@ -403,14 +403,26 @@ async function diverged(repo: string, a: string, b: string): Promise<boolean> {
 }
 
 /**
- * After the local main's unpushed commits (those of `old` that `upstream` lacks) were rebased onto
- * `upstream` as `tip` (by a pull, or by a worker resolving one that stopped): each of them, and the
- * commit they stood on, by the commit that took its place, so that what a card landed is found
- * again. A commit is found again by its change (`git patch-id`), one whose change a resolved
- * conflict altered by its subject, each in order; one the rebase dropped (its change was on
- * `upstream` already) or split while resolving is not.
+ * What a rebase of the local main's unpushed commits made of them (`rewrites`): `commits`, each that
+ * is there again by its new commit; `bases`, each of them and the commit they stood on by the commit
+ * a range that started after it starts after now, so that `base..commit` of a card that landed some
+ * of them is again what it landed (a commit the rebase dropped, its change on `upstream` already, by
+ * the new commit of the last one before it that is there, or by `upstream`).
  */
-export async function rewrites(repo: string, old: string, upstream: string, tip: string): Promise<Record<string, string>> {
+export interface Rewritten {
+  commits: Record<string, string>;
+  bases: Record<string, string>;
+}
+
+/**
+ * After the local main's unpushed commits (those of `old` that `upstream` lacks) were rebased onto
+ * `upstream` as `tip` (by a pull, or by a worker resolving one that stopped): where each of them is
+ * now, so that what a card landed is found again. A commit is found again by its change (`git
+ * patch-id`); one whose change a resolved conflict altered, by its subject among the new commits
+ * between those of its neighbours found so. One the rebase dropped (its change was on `upstream`
+ * already) or split while resolving is not.
+ */
+export async function rewrites(repo: string, old: string, upstream: string, tip: string): Promise<Rewritten> {
   const under = await gitAsync(repo, 'merge-base', old, upstream);
   const list = async (range: string) => {
     const [log, patches] = await Promise.all([
@@ -421,18 +433,30 @@ export async function rewrites(repo: string, old: string, upstream: string, tip:
     return log.split('\n').filter(Boolean).map((l) => ({ commit: l.slice(0, l.indexOf(' ')), subject: l.slice(l.indexOf(' ') + 1), patch: ids.get(l.slice(0, l.indexOf(' '))) }));
   };
   const [before, after] = await Promise.all([list(`${under}..${old}`), list(`${upstream}..${tip}`)]);
-  const out: Record<string, string> = { [under]: upstream };
+  // the index in `after` of each commit of `before` found there; the rebase keeps their order
+  const at: (number | undefined)[] = [];
   let next = 0;
-  for (const c of before) {
-    // the rebase keeps their order: a commit is looked for after the one found last
-    const rest = after.slice(next);
-    const at = rest.findIndex((n) => !!c.patch && n.patch === c.patch);
-    const found = at >= 0 ? at : rest.findIndex((n) => n.subject === c.subject);
-    if (found < 0) continue;
-    out[c.commit] = rest[found]!.commit;
-    next += found + 1;
+  for (const [i, c] of before.entries()) {
+    const j = c.patch ? after.findIndex((n, k) => k >= next && n.patch === c.patch) : -1;
+    if (j >= 0) [at[i], next] = [j, j + 1];
   }
-  return out;
+  // a change a resolved conflict altered: by its subject, between the commits found around it
+  for (const [i, c] of before.entries()) {
+    if (at[i] !== undefined) continue;
+    const from = (at.slice(0, i).findLast((j) => j !== undefined) ?? -1) + 1;
+    const to = at.slice(i + 1).find((j) => j !== undefined) ?? after.length;
+    const j = after.findIndex((n, k) => k >= from && k < to && n.subject === c.subject && !at.includes(k));
+    if (j >= 0) at[i] = j;
+  }
+  const commits: Record<string, string> = {};
+  const bases: Record<string, string> = { [under]: upstream };
+  let last = upstream;
+  for (const [i, c] of before.entries()) {
+    const j = at[i];
+    if (j !== undefined) commits[c.commit] = last = after[j]!.commit;
+    bases[c.commit] = last;
+  }
+  return { commits, bases };
 }
 
 /** Whether this machine's git merges trees only as commits (`git merge-tree` takes trees from 2.45 on); found out by the first replay that tried. */
@@ -1649,7 +1673,7 @@ export class Workspaces implements CardWorkspaces {
       const to = await gitAsync(repo, 'rev-parse', 'HEAD');
       // rebased (Obeya's way where the local main has commits of its own, or the owner's): its unpushed commits have new hashes now
       if (await isAncestor(repo, from, to, false)) return { from, to };
-      return { from, to, rewritten: await rewrites(repo, from, upstream, to).catch(() => ({})) };
+      return { from, to, rewritten: await rewrites(repo, from, upstream, to).catch(() => ({ commits: {}, bases: {} })) };
     } catch (e) {
       return { problem: messageOf(e) };
     }
@@ -1662,7 +1686,7 @@ export class Workspaces implements CardWorkspaces {
    * where `origin`'s main stood before and stands now, and the unpushed commits that pull rebased
    * (`Pulled.rewritten`).
    */
-  pushMain(): Promise<{ from: string; to: string; rewritten?: Record<string, string> } | { problem: string; rewritten?: Record<string, string> }> {
+  pushMain(): Promise<{ from: string; to: string; rewritten?: Rewritten } | { problem: string; rewritten?: Rewritten }> {
     return oneAtATime(landings, this.o.repoPath, async () => {
       const repo = this.o.repoPath;
       try {
@@ -1721,7 +1745,7 @@ export class Workspaces implements CardWorkspaces {
    * top by themselves); what blocks the checkout the owner's. `already` where the checkout has the
    * merge by now (the owner pulled it). `rewritten`: each unpushed commit's new one (`rewrites`).
    */
-  landResolution(ws: string, at: { main: string; upstream: string }): Promise<(Landed & { rewritten: Record<string, string> }) | { already: string } | (LandProblem & { main?: string })> {
+  landResolution(ws: string, at: { main: string; upstream: string }): Promise<(Landed & { rewritten: Rewritten }) | { already: string } | (LandProblem & { main?: string })> {
     return oneAtATime(landings, this.o.repoPath, async () => {
       if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
       const repo = this.o.repoPath;
