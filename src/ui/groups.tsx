@@ -464,11 +464,15 @@ const LABEL_RADIUS = 124;
 /** How wide a group's name gets before it ends in "…" (the full name shows on hover). */
 const LABEL_MAX = 140;
 const RING_MARGIN = 120;
+/** Half a ball's width (`.ball` in styles.css). */
+const BALL_RADIUS = 19;
+/** How far beyond its edge a ball takes clicks, where its neighbours leave room for that. */
+const BALL_REACH = 8;
 
 /**
  * A ring of colour balls around `at` (screen): the groups, each with its name and how many of its
- * cards are still to be done beside it, a new one, none. Moving towards a ball or onto its name picks it, a click takes it; a new group asks for its
- * name first. The picked group's name carries a × that deletes the group.
+ * cards are still to be done beside it, a new one, none. A ball or its name lights up under the pointer and a click takes it; a new
+ * group asks for its name first. A click anywhere else closes the ring. The lit group's name carries a × that deletes the group.
  */
 export function Ring({
   at: pointer,
@@ -500,6 +504,9 @@ export function Ring({
   const [open, setOpen] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const angle = (k: number) => -Math.PI / 2 + (k * 2 * Math.PI) / balls.length;
+  // a ball's click area reaches at most halfway to the next ball, so with many groups a click on a
+  // ball's visible edge never lands in its neighbour's area
+  const reach = Math.min(BALL_REACH, Math.max(0, RADIUS * Math.sin(Math.PI / balls.length) - BALL_RADIUS));
   useEffect(() => {
     const frame = requestAnimationFrame(() => setOpen(true));
     // Escape closes the ring before anything else hears it
@@ -514,32 +521,19 @@ export function Ring({
   useEffect(() => {
     if (naming) input.current?.focus();
   }, [naming]);
-  /** The ball in the direction of the pointer; none near the middle. */
-  function aimed(e: React.PointerEvent): number {
-    const dx = e.clientX - at.x;
-    const dy = e.clientY - at.y;
-    if (Math.hypot(dx, dy) < 30) return -1;
-    const a = Math.atan2(dy, dx);
-    let best = 0;
-    let bd = Infinity;
-    balls.forEach((_, k) => {
-      const d = Math.abs(Math.atan2(Math.sin(a - angle(k)), Math.cos(a - angle(k))));
-      if (d < bd) [bd, best] = [d, k];
-    });
-    return best;
-  }
-  // a click picks where it is, also when no move came before it
   function pick(k: number) {
-    const b = balls[k];
-    if (!b) return onClose();
+    const b = balls[k]!;
     if (b.kind === 'new') return setNaming(true);
     onPick(b.kind === 'group' ? b.g.id : null);
   }
   const hb = balls[hot];
   const caption = naming ? '' : !hb ? t.groups.cards(count) : hb.kind === 'group' ? hb.g.name : hb.kind === 'new' ? t.groups.create : t.groups.none;
+  // a ball or a name lights up under the pointer and takes a click; a click anywhere else closes the ring unchanged
+  const hover = (k: number) => (e: React.PointerEvent) => (e.stopPropagation(), naming || setHot(k));
+  const take = (k: number) => (e: React.PointerEvent) => (e.preventDefault(), e.stopPropagation(), naming ? onClose() : pick(k));
   return (
-    <div id="ringback" onPointerMove={(e) => naming || setHot(aimed(e))} onPointerDown={(e) => (e.preventDefault(), naming ? onClose() : pick(aimed(e)))} onContextMenu={(e) => e.preventDefault()}>
-      <div className={`ring${open ? ' open' : ''}`} style={{ left: at.x, top: at.y }}>
+    <div id="ringback" onPointerMove={() => setHot(-1)} onPointerDown={(e) => (e.preventDefault(), onClose())} onContextMenu={(e) => e.preventDefault()}>
+      <div className={`ring${open ? ' open' : ''}`} style={{ left: at.x, top: at.y, '--reach': `${reach}px` } as React.CSSProperties}>
         <div className="rhalo" />
         {balls.map((b, k) => (
           <div
@@ -554,6 +548,8 @@ export function Ring({
                 transitionDelay: `${k * 28}ms`,
               } as React.CSSProperties
             }
+            onPointerMove={hover(k)}
+            onPointerDown={take(k)}
           >
             {b.kind === 'new' ? '+' : b.kind === 'none' ? '∅' : ''}
           </div>
@@ -576,8 +572,8 @@ export function Ring({
                     transitionDelay: `${k * 28 + 80}ms`,
                   } as React.CSSProperties
                 }
-                onPointerMove={(e) => (e.stopPropagation(), naming || setHot(k))}
-                onPointerDown={(e) => (e.preventDefault(), e.stopPropagation(), naming ? onClose() : pick(k))}
+                onPointerMove={hover(k)}
+                onPointerDown={take(k)}
               >
                 <span>{b.g.name}</span>
                 {k === hot && !naming && (
