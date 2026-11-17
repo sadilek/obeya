@@ -278,6 +278,10 @@ const LABEL_RADIUS = 124;
 /** How wide a group's name gets before it ends in "…" (the full name shows on hover). */
 const LABEL_MAX = 140;
 const RING_MARGIN = 120;
+/** Half a ball's width (`.ball` in styles.css). */
+const BALL_RADIUS = 19;
+/** How far beyond its edge a ball takes clicks, where its neighbours leave room for that. */
+const BALL_REACH = 8;
 
 /**
  * A ring of colour balls around `at` (screen): the groups, each with its name and how many of its
@@ -314,6 +318,9 @@ export function Ring({
   const [open, setOpen] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const angle = (k: number) => -Math.PI / 2 + (k * 2 * Math.PI) / balls.length;
+  // a ball's click area reaches at most halfway to the next ball, so with many groups a click on a
+  // ball's visible edge never lands in its neighbour's area
+  const reach = Math.min(BALL_REACH, Math.max(0, RADIUS * Math.sin(Math.PI / balls.length) - BALL_RADIUS));
   useEffect(() => {
     const frame = requestAnimationFrame(() => setOpen(true));
     // Escape closes the ring before anything else hears it
@@ -340,7 +347,7 @@ export function Ring({
   const take = (k: number) => (e: React.PointerEvent) => (e.preventDefault(), e.stopPropagation(), naming ? onClose() : pick(k));
   return (
     <div id="ringback" onPointerMove={() => setHot(-1)} onPointerDown={(e) => (e.preventDefault(), onClose())} onContextMenu={(e) => e.preventDefault()}>
-      <div className={`ring${open ? ' open' : ''}`} style={{ left: at.x, top: at.y }}>
+      <div className={`ring${open ? ' open' : ''}`} style={{ left: at.x, top: at.y, '--reach': `${reach}px` } as React.CSSProperties}>
         <div className="rhalo" />
         {balls.map((b, k) => (
           <div
