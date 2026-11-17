@@ -9,7 +9,7 @@ import { Store } from './db';
 import { runAppCommand, scriptOf } from './app-command';
 import { onStart } from './spawn';
 import { alive, commit, gitClone, gitRepo, identify, leftBehind, ownGlobalGitConfig, PATIENCE, removeDir, testBoard, until } from './testing';
-import { addTrailer, originFetch, pushRefusal, statusEntries, unlanded, Workspaces } from './workspaces';
+import { addTrailer, originFetch, type Pulled, pushRefusal, statusEntries, unlanded, Workspaces } from './workspaces';
 import { defaultBranch } from './branches';
 import { git, hasCommit, isAncestor } from './git';
 
@@ -673,7 +673,9 @@ describe('the pull after a merge', () => {
     const own = edit(checkout, 'notes.md', 'mine\n');
     const merged = edit(origin, 'README.md', 'merged\n');
     const r = await spaces.pullMain();
-    expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD') });
+    const under = git(checkout, 'rev-parse', `${own}~1`);
+    // the commit has a new hash now, which the card that landed it is to name
+    expect(r).toEqual({ from: own, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { [own]: git(checkout, 'rev-parse', 'HEAD'), [under]: merged } });
     // the owner's commit on top of the merge, no merge commit
     expect(git(checkout, 'rev-parse', 'HEAD~1')).toBe(merged);
     expect(git(checkout, 'log', '-1', '--format=%s')).toBe('notes.md: mine');
@@ -684,7 +686,8 @@ describe('the pull after a merge', () => {
     git(checkout, 'config', 'pull.rebase', 'false');
     const own = edit(checkout, 'notes.md', 'mine\n');
     const merged = edit(origin, 'README.md', 'merged\n');
-    expect(await spaces.pullMain()).not.toHaveProperty('problem');
+    // a merge rewrites nothing
+    expect(await spaces.pullMain()).not.toHaveProperty('rewritten');
     expect(git(checkout, 'rev-parse', 'HEAD^1')).toBe(own);
     expect(git(checkout, 'rev-parse', 'HEAD^2')).toBe(merged);
   });
@@ -713,10 +716,13 @@ describe('the pull after a merge', () => {
     git(origin, 'fetch', '--quiet', checkout, own);
     git(origin, 'cherry-pick', own);
     edit(origin, 'README.md', 'then theirs\n');
+    const kept = edit(checkout, 'notes.md', 'mine\n');
     const r = await spaces.pullMain();
     expect(r).not.toHaveProperty('stopped');
     expect(r).not.toHaveProperty('problem');
     expect(readFileSync(join(checkout, 'README.md'), 'utf8')).toBe('then theirs\n');
+    // the commit after it is found again by its change
+    expect((r as Pulled).rewritten).toMatchObject({ [kept]: git(checkout, 'rev-parse', 'HEAD') });
   });
 
   test('where the owner pulls by a merge, the conflict is the merge’s as a whole', async () => {
@@ -743,8 +749,9 @@ describe('pushing main', () => {
   test('puts the unpushed commits on the remote, after what the remote has of its own', async () => {
     edit(checkout, 'notes.md', 'mine\n');
     const theirs = edit(origin, 'README.md', 'theirs\n');
+    const own = git(checkout, 'rev-parse', 'HEAD');
     const r = await spaces.pushMain();
-    expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD') });
+    expect(r).toEqual({ from: theirs, to: git(checkout, 'rev-parse', 'HEAD'), rewritten: { [own]: git(checkout, 'rev-parse', 'HEAD'), [git(checkout, 'rev-parse', `${own}~1`)]: theirs } });
     expect(git(origin, 'rev-parse', 'HEAD')).toBe(git(checkout, 'rev-parse', 'HEAD'));
     expect(git(origin, 'rev-parse', 'HEAD~1')).toBe(theirs);
   });

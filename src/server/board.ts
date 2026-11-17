@@ -317,6 +317,28 @@ export class Board {
     });
   }
 
+  /**
+   * The unpushed commits on repository `repo`'s default branch were rebased (`rewritten`, each old
+   * commit by its new one; every repository's where none is named): the cards that landed them,
+   * archived ones too, name the new ones. Returns those cards.
+   */
+  rewritten(repo: string | undefined, rewritten: Record<string, string>): string[] {
+    const moved: string[] = [];
+    for (const r of this.store.landed(this.canvas.id)) {
+      const s = fromJson(r.shipped);
+      const commit = s?.commit && rewritten[s.commit];
+      if (!s || !commit || (repo && (r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home)) !== repo)) continue;
+      const l = fromJson(r.landed);
+      this.work(r.id, {
+        shipped: toJson({ ...s, commit, ...(s.base && rewritten[s.base] ? { base: rewritten[s.base] } : {}) }),
+        // the worker still finishing after its landing names the new one too
+        ...(l?.commit && rewritten[l.commit] ? { landed: toJson({ ...l, commit: rewritten[l.commit] }) } : {}),
+      });
+      moved.push(r.id);
+    }
+    return moved;
+  }
+
   /** Plan docs changed on disk: read them again. */
   docsChanged() {
     this.docs = null;

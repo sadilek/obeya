@@ -172,6 +172,17 @@ describe('landing on main from a clone of the remote', () => {
     expect(state(c.id)).toBe('live');
     expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['Zählerstände als CSV', 'Andere Karte', 'init']);
   });
+
+  test('landed on a main origin lacks yet: the worker hears to link no commit of it, as a pull before the push gives it a new hash', async () => {
+    rebuild({ remote: origin });
+    const c = board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
+    await workers.start(c.id);
+    commit(board.row(c.id).workspace!, 'k.ts', 'k', 'Zählerstände als CSV');
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    await workers.approve(c.id);
+    expect(runtime.last.inbox.at(-1)).toContain('Origin does not have it yet');
+    expect(runtime.last.inbox.at(-1)).toContain('Link no commit of it');
+  });
 });
 
 describe('landing on main, then pushing main to origin (`push`)', () => {
@@ -199,6 +210,7 @@ describe('landing on main, then pushing main to origin (`push`)', () => {
     expect(git(origin, 'rev-parse', 'main')).toBe(git(main, 'rev-parse', 'main'));
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: `Zu origin/main gepusht (${git(main, 'rev-parse', '--short=7', 'main')}).` });
     expect(session.inbox.at(-1)).toContain('Obeya pushed main to origin as well.');
+    expect(session.inbox.at(-1)).not.toContain('Link no commit');
   });
 
   test('a push origin refuses leaves the work landed and the card live, and tells the owner and the worker why', async () => {

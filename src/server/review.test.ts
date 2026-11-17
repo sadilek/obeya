@@ -70,6 +70,8 @@ let fake: ReturnType<typeof fakeForge>;
 let approvals: string[];
 /** The follow-up tasks made, each with its review card, as the Coordinator hears of them. */
 let followed: [string, string][];
+/** The cards whose landing Obeya told the shared pages of (`onLanded`). */
+let landed: string[];
 let prHead: string;
 
 /** A commit on the contributor's side, published as the PR's head in `origin`. */
@@ -96,8 +98,9 @@ beforeEach(async () => {
   fake = fakeForge(() => git(origin, 'rev-parse', 'contrib'));
   approvals = [];
   followed = [];
+  landed = [];
   const settings: RepoAdapter = { ...generic, land: 'main', workspaces: 'clones', checks: ['bun test'] };
-  makeWorkers = () => new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, pulls: workspaces, pushHold: 10, pushSettle: 1, onApproval: (id) => (approvals.push(id), null), onFollowUpTask: (task, review) => followed.push([task, review]) });
+  makeWorkers = () => new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, pulls: workspaces, pushHold: 10, pushSettle: 1, onApproval: (id) => (approvals.push(id), null), onFollowUpTask: (task, review) => followed.push([task, review]), onLanded: (id) => landed.push(id) });
   workers = makeWorkers();
   watcher = new PrWatcher(board, workers, fake.forge, () => main, () => settings);
 });
@@ -846,11 +849,29 @@ describe('a review card', () => {
     expect(await resolver.call('ready_for_review', { summary: 'Kept both.' })).toContain('Landed');
     expect(git(main, 'rev-parse', 'HEAD~1').trim()).toBe(upstream);
     expect(git(main, 'log', '-1', '--format=%s').trim()).toBe('Polls every minute');
+    // the card that landed it names the rebased commit, and its shared page hears of it
+    expect(JSON.parse(board.row(x).shipped!)).toEqual({ commit: git(main, 'rev-parse', 'HEAD').trim(), base: upstream });
+    expect(landed).toEqual([x]);
     expect(board.events(id).some((e) => e.text.startsWith(board.t.worker.pulledMain('').slice(0, 10)))).toBe(true);
     expect(board.item(x)!.statusLine).toBeUndefined();
     // its session ends with its turn
     resolver.emit({ type: 'idle' });
     await until(() => !board.row(x).workspace && !existsSync(ws));
+  });
+
+  test('a pull after the merge that rebases the unpushed commits: the cards that landed them name the new commits, and their pages hear of it', async () => {
+    const x = landedLocally('notes.ts', 'Notes on polling');
+    const old = JSON.parse(board.row(x).shipped!).commit;
+    const id = await reviewCard();
+    await handOver();
+    await workers.approve(id);
+    await until(() => board.events(id).some((e) => e.text.startsWith(board.t.worker.pulledMain('').slice(0, 10))));
+    const upstream = git(origin, 'rev-parse', 'main').trim();
+    expect(git(main, 'rev-parse', 'HEAD~1').trim()).toBe(upstream);
+    const now = git(main, 'rev-parse', 'HEAD').trim();
+    expect(now).not.toBe(old);
+    expect(JSON.parse(board.row(x).shipped!)).toEqual({ commit: now, base: upstream });
+    expect(landed).toEqual([x]);
   });
 
   test('"Push main" puts the unpushed commits on the remote after its undo window, and the agent brings the PR up to date', async () => {
@@ -869,6 +890,8 @@ describe('a review card', () => {
     await until(() => board.item(id)!.state === 'working');
     expect(git(origin, 'log', '-1', '--format=%s', 'main').trim()).toBe('Polls every minute');
     expect(board.item(id)!.contribution!.clash).toBeUndefined();
+    // nothing to rebase: origin had nothing the local main lacked
+    expect(landed).toEqual([]);
     const told = review.inbox.at(-1)!;
     expect(told).toContain('push the local main to origin');
     expect(told).toContain('amerlander allows maintainers');

@@ -139,7 +139,8 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - Commit directly to `main`; this repo uses no feature branches or pull requests. An Obeya worker
   is the exception: it commits on its card's branch, and Obeya lands that branch on `main`.
 - When a task handles a GitHub issue, its worker closes the issue once the work has landed, with a
-  comment linking the demo video and the commit on `main`.
+  comment linking the demo video and the commit on `main` (by its subject instead, where Obeya says
+  `origin` does not have the commit yet: a later pull may give it a new hash).
 - Once the owner approves the demo of an external contributor's pull request: comment on the PR
   with the demo link, squash-merge it, then `git pull` on `main` so the local checkout is current.
 - Pull requests Obeya opens in other people's repositories carry no Obeya attribution: no

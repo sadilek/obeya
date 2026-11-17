@@ -263,7 +263,10 @@ from the checkout's `origin`, `<web address of the repository>/commit/<sha>` or
 once the work landed Obeya publishes it again as it is with the link, or gives a share still going
 out a second round, as for a PR opened late; the log says "The shared page now links the
 commit on main". A card with a PR links the PR only. Where `main` is pushed later than it lands, the
-link answers once it is pushed; accepted, since nothing else names the commit before.
+link answers once it is pushed; accepted, since nothing else names the commit before. A pull that
+rebases the unpushed commits before then (see Landing) gives the card a new commit, and its page,
+archived card or not, goes out again the same way with the new link (2026-11-17: pages kept the
+hash from before the rebase and linked a commit GitHub never had).
 
 #### Export without a site
 

@@ -55,6 +55,15 @@ export interface Landed {
 }
 
 /**
+ * A pull of the remote's default branch into the checkout (`Workspaces.pullMain`): where it moved,
+ * and where it rebased the local branch's unpushed commits, each of them by its new commit
+ * (`rewrites`).
+ */
+export interface Pulled extends Landed {
+  rewritten?: Record<string, string>;
+}
+
+/**
  * Where pulling the remote's default branch into the checkout stops on a conflict: at `commit`
  * (with its `subject`) of the local default branch's `unpushed` commits, in `files`.
  */
@@ -395,16 +404,35 @@ async function diverged(repo: string, a: string, b: string): Promise<boolean> {
 
 /**
  * After the local main's unpushed commits (those of `old` that `upstream` lacks) were rebased onto
- * `upstream` as `tip`: each of them, and the commit they stood on, by the commit that took its
- * place, so that what a card landed is found again. Paired in order, where the commits are as many
- * and their subjects alike; none otherwise (a commit dropped or split while resolving).
+ * `upstream` as `tip` (by a pull, or by a worker resolving one that stopped): each of them, and the
+ * commit they stood on, by the commit that took its place, so that what a card landed is found
+ * again. A commit is found again by its change (`git patch-id`), one whose change a resolved
+ * conflict altered by its subject, each in order; one the rebase dropped (its change was on
+ * `upstream` already) or split while resolving is not.
  */
-async function rewrites(repo: string, old: string, upstream: string, tip: string): Promise<Record<string, string>> {
+export async function rewrites(repo: string, old: string, upstream: string, tip: string): Promise<Record<string, string>> {
   const under = await gitAsync(repo, 'merge-base', old, upstream);
-  const list = async (range: string) => (await gitAsync(repo, 'log', '--reverse', '--no-merges', '--format=%H %s', range)).split('\n').filter(Boolean).map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)] as const);
+  const list = async (range: string) => {
+    const [log, patches] = await Promise.all([
+      gitAsync(repo, 'log', '--reverse', '--no-merges', '--format=%H %s', range),
+      gitAsync(repo, 'log', '-p', '--no-merges', '--no-color', '--no-decorate', '--no-ext-diff', '--format=commit %H', range).then((p) => gitRun(repo, ['patch-id', '--stable'], { stdin: `${p}\n` })),
+    ]);
+    const ids = new Map(patches.stdout.split('\n').filter(Boolean).map((l) => l.split(' ').reverse() as [string, string]));
+    return log.split('\n').filter(Boolean).map((l) => ({ commit: l.slice(0, l.indexOf(' ')), subject: l.slice(l.indexOf(' ') + 1), patch: ids.get(l.slice(0, l.indexOf(' '))) }));
+  };
   const [before, after] = await Promise.all([list(`${under}..${old}`), list(`${upstream}..${tip}`)]);
-  if (before.length !== after.length || before.some(([, s], i) => s !== after[i]![1])) return {};
-  return Object.fromEntries([[under, upstream], ...before.map(([c], i) => [c, after[i]![0]])]);
+  const out: Record<string, string> = { [under]: upstream };
+  let next = 0;
+  for (const c of before) {
+    // the rebase keeps their order: a commit is looked for after the one found last
+    const rest = after.slice(next);
+    const at = rest.findIndex((n) => !!c.patch && n.patch === c.patch);
+    const found = at >= 0 ? at : rest.findIndex((n) => n.subject === c.subject);
+    if (found < 0) continue;
+    out[c.commit] = rest[found]!.commit;
+    next += found + 1;
+  }
+  return out;
 }
 
 /** Whether this machine's git merges trees only as commits (`git merge-tree` takes trees from 2.45 on); found out by the first replay that tried. */
@@ -1593,11 +1621,11 @@ export class Workspaces implements CardWorkspaces {
    * local main's unpushed commits would stop the pull on a conflict (`replayClash`), nothing is
    * pulled, and it says where (`stopped`); a pull that fails all the same is undone and says why.
    */
-  pullMain(): Promise<Landed | { problem: string } | { stopped: PullStopped }> {
+  pullMain(): Promise<Pulled | { problem: string } | { stopped: PullStopped }> {
     return oneAtATime(landings, this.o.repoPath, () => this.pull());
   }
 
-  private async pull(): Promise<Landed | { problem: string } | { stopped: PullStopped }> {
+  private async pull(): Promise<Pulled | { problem: string } | { stopped: PullStopped }> {
     const repo = this.o.repoPath;
     try {
       const base = await this.checkoutBase();
@@ -1618,7 +1646,10 @@ export class Workspaces implements CardWorkspaces {
         await gitAsync(repo, 'rebase', '--abort').catch(() => gitAsync(repo, 'merge', '--abort')).catch(() => {});
         return { problem: messageOf(e) };
       }
-      return { from, to: await gitAsync(repo, 'rev-parse', 'HEAD') };
+      const to = await gitAsync(repo, 'rev-parse', 'HEAD');
+      // rebased (Obeya's way where the local main has commits of its own, or the owner's): its unpushed commits have new hashes now
+      if (await isAncestor(repo, from, to, false)) return { from, to };
+      return { from, to, rewritten: await rewrites(repo, from, upstream, to).catch(() => ({})) };
     } catch (e) {
       return { problem: messageOf(e) };
     }
@@ -1628,22 +1659,30 @@ export class Workspaces implements CardWorkspaces {
    * Pushes the checkout's main to `origin`, never forced: what landed on it and nobody pushed goes
    * out. Where `origin`'s main has commits the local one lacks, they are pulled first as `pullMain`
    * pulls them; where that would stop on a conflict, nothing is pushed and it says why. Returns
-   * where `origin`'s main stood before and stands now.
+   * where `origin`'s main stood before and stands now, and the unpushed commits that pull rebased
+   * (`Pulled.rewritten`).
    */
-  pushMain(): Promise<{ from: string; to: string } | { problem: string }> {
+  pushMain(): Promise<{ from: string; to: string; rewritten?: Record<string, string> } | { problem: string; rewritten?: Record<string, string> }> {
     return oneAtATime(landings, this.o.repoPath, async () => {
       const repo = this.o.repoPath;
       try {
         const base = await this.checkoutBase();
         const from = await fetchedMain(repo, base);
+        let pulled: Awaited<ReturnType<Workspaces['pull']>> | undefined;
         if (!(await isAncestor(repo, from, `refs/heads/${base}`, false))) {
-          const pulled = await this.pull();
+          pulled = await this.pull();
           if ('stopped' in pulled) return { problem: `origin's ${base} has commits of its own that conflict with the local ${base}'s (${pulled.stopped.commit.slice(0, 7)} “${pulled.stopped.subject}” in ${pulled.stopped.files.join(', ')})` };
           if ('problem' in pulled) return pulled;
         }
         const to = await gitAsync(repo, 'rev-parse', `refs/heads/${base}`);
-        await gitAsync(repo, 'push', '--quiet', 'origin', `refs/heads/${base}:refs/heads/${base}`);
-        return { from, to };
+        const rewritten = pulled && 'rewritten' in pulled ? pulled.rewritten : undefined;
+        try {
+          await gitAsync(repo, 'push', '--quiet', 'origin', `refs/heads/${base}:refs/heads/${base}`);
+        } catch (e) {
+          // what the pull rewrote stays rewritten
+          return { problem: messageOf(e), ...(rewritten ? { rewritten } : {}) };
+        }
+        return { from, to, ...(rewritten ? { rewritten } : {}) };
       } catch (e) {
         return { problem: messageOf(e) };
       }

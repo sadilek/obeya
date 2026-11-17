@@ -40,7 +40,7 @@ import { WorkerTools } from './worker-tools';
 import { folderOf, sharesOf, type WorkerOptions } from './worker-options';
 import { describeTool, permissionWhat, SPOKEN } from './agent-lines';
 import { mergeBranch, mergeConflictHelp, takeoverNote } from './worker-texts';
-import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
+import { AFTER_DONE, AFTER_LANDING, AFTER_RESTART, answerNote, UNPUSHED_LINK, FOLLOW_UP, FOLLOW_UP_FOLDER, ASK_FOR_LINK, failureText, hostResumed, IN_WORKTREE, LINK_DEMO, NOT_LANDED, PAUSE_STILL, PAUSE_TAKEN_BACK, pauseNotice, REPO_RESTARTED, RESTART_OFF, RESTARTED, RESUMED, restartNotice, restartWaits, ROUND_DEMO, RUNS_YOUR_CHANGE, sentence, SESSION_ENDED, spotNote, stillDue, wokeNote } from './worker-texts';
 
 export type { WorkerOptions } from './worker-options';
 
@@ -1271,7 +1271,8 @@ export class Workers {
           ? `${by === 'owner' ? 'The owner approved your work to go directly onto main, and Obeya' : 'Obeya'} pushed it there without a pull request (${result.to.slice(0, 7)}); the card is live.`
           : `${by === 'owner' ? 'The owner approved your work, and it' : 'Your work'} is on main now (${result.to.slice(0, 7)}); the card is live.` +
             (pushed && !pushed.problem ? ` Obeya pushed ${pushed.branch} to origin as well.` : '') +
-            (pushed?.problem ? ` Obeya could not push ${pushed.branch} to origin, so origin does not have your work yet (${pushed.moved ? `origin's ${pushed.branch} has commits the local one lacks` : pushed.problem}); the owner sees why on the card. Link no commit of it where people outside this machine would follow the link.` : ''),
+            (pushed?.problem ? ` Obeya could not push ${pushed.branch} to origin, so origin does not have your work yet (${pushed.moved ? `origin's ${pushed.branch} has commits the local one lacks` : pushed.problem}); the owner sees why on the card. ${UNPUSHED_LINK}` : '') +
+            (!pushed && this.o.remote ? ` Origin does not have it yet: main goes there later, and a pull of origin's main before then gives your commit a new hash. ${UNPUSHED_LINK}` : ''),
         sw
           ? `The Obeya checkout was on ${sw.branch ? `the branch ${sw.branch}` : `a detached HEAD at ${sw.commit}`}, not on main: Obeya switched it to main to land your work.` +
             (sw.commits

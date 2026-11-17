@@ -774,7 +774,10 @@ export class ReviewCards {
     if (!this.o.board.card(cardId)) return;
     if ('stopped' in r) return this.resolvePull(cardId, r.stopped);
     if ('problem' in r) this.o.board.log(cardId, 'error', 'obeya', t.pullFailed(r.problem));
-    else this.pulled(cardId, r.to);
+    else {
+      this.reshipped(r.rewritten);
+      this.pulled(cardId, r.to);
+    }
   }
 
   /** The local main has a review card's merge now: its log says so, the read tree reads it, and the other review cards look again at what the move means for them. */
@@ -843,6 +846,7 @@ export class ReviewCards {
   private async pushMainNow(cardId: string) {
     const t = this.o.board.t.worker;
     const r = await this.pulls()!.pushMain().catch((e: unknown) => ({ problem: messageOf(e) }));
+    if ('rewritten' in r) this.reshipped(r.rewritten);
     if (!this.o.board.item(cardId)) return;
     if ('problem' in r) {
       this.o.board.log(cardId, 'error', 'obeya', t.pushFailed(r.problem));
@@ -971,16 +975,13 @@ export class ReviewCards {
     ].join('\n\n');
   }
 
-  /** The unpushed commits on the local main were rebased (`rewritten`, each old commit by its new one): the cards that landed them name the new ones. */
-  private reshipped(rewritten: Record<string, string>) {
-    for (const i of this.o.board.items()) {
-      if (this.o.repo && i.repo !== this.o.repo) continue;
-      const row = this.o.board.row(i.id);
-      const s = fromJson(row.shipped);
-      const commit = s?.commit && rewritten[s.commit];
-      if (!s || !commit) continue;
-      this.o.board.work(i.id, { shipped: toJson({ ...s, commit, ...(s.base && rewritten[s.base] ? { base: rewritten[s.base] } : {}) }) });
-    }
+  /**
+   * The unpushed commits on the local main were rebased (`rewritten`, each old commit by its new
+   * one): the cards that landed them name the new ones, and their shared pages link those.
+   */
+  private reshipped(rewritten: Record<string, string> | undefined) {
+    if (!rewritten) return;
+    for (const id of this.o.board.rewritten(this.o.repo, rewritten)) this.o.onLanded?.(id);
   }
 
   /**

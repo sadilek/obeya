@@ -417,7 +417,11 @@ Merged, the card is `live`, and where work lands on `main` the checkout pulls th
 does it there. Where neither the repository nor the global git configuration sets a way of pulling
 and the local `main` has commits of its own, it pulls with a rebase, as Obeya brings its own work
 onto `main`; without commits of its own it fast-forwards, uncommitted changes outside the merge
-kept. A PR closed without a merge asks the owner whether the card can go; "Yes, close the card"
+kept. A pull that rebases (Obeya's, or by the owner's configuration) gives the unpushed commits new
+hashes, as does the pull before "Push main": the cards that landed them name the new commits from
+then on, each found again by its change (`git patch-id`), or by its subject where a resolved
+conflict altered the change, in order, and their shared pages go out again with the new link
+(see The page and the commit in Sharing demos). A PR closed without a merge asks the owner whether the card can go; "Yes, close the card"
 closes it as done.
 
 #### Own changes wait for the approval
@@ -499,7 +503,7 @@ resolves the conflict, runs the checks and hands over with `ready_for_review`, w
 Obeya then puts the local `main` at the worker's `HEAD` with whatever landed on it meanwhile on top,
 without the owner (`git reset --keep`, so uncommitted changes in the checkout survive or stop it);
 those commits were never pushed, so no published history is rewritten. The cards that landed them
-name the rebased commits from then on. Both cards' conversations
+name the rebased commits from then on, as after any pull that rebases. Both cards' conversations
 say what happened, and the resolving card's status line names the PR. What is wrong in the
 worker's workspace (its `HEAD` not on the merge, the commits landed meanwhile conflicting with its
 own) goes back to it; what blocks the checkout goes to the owner. A worker that ends its turn
@@ -519,7 +523,10 @@ The worker is told its work is on main (or its PR merged) and may finish what re
 workspace (the card is `live`, "Live · agent working"; notes, pause and "Stop" work as usual).
 Ending a turn with nothing to wait for ends its session and frees the workspace. That message (and
 the one for work closed without a change) also names the demo's page, which the worker links where it
-points people at the work, such as an issue it closes (see The page and the landing). Work approved while
+points people at the work, such as an issue it closes (see The page and the landing). Where the work
+landed on a local `main` that `origin` lacks yet (no `push`, or a push refused), the worker hears
+to link no commit of it outside this machine and to name it by its subject: a pull before the push
+gives it a new hash, which a link posted now would miss, while the page's link follows it. Work approved while
 a reply's turn ends lands, and the landing notice starts a turn of its own: each message Obeya sends
 carries a uuid, checked against those the turn's result names as taken (the CLI also lists those
 taken mid-turn), and the session stays until the turn that took the last one ends.
@@ -589,6 +596,11 @@ A card no agent worked on, a prototype or an archived card has no field.
   and other cards build on it. Rejected: the card back in review (a new approval would land nothing
   new); pulling `origin`'s `main` first where it moved, which rewrites landed commits without the
   owner.
+- **A commit `origin` lacks yet is named by its subject, not linked** (2026-11-17): issue comments
+  and pages linked commits that a pull rebased before `main` went out, which GitHub never had. The
+  cards and their pages follow the rebase; a comment the worker posted cannot. Rejected: holding the
+  worker's session until `main` is pushed (that can take days, the workspace held all the while);
+  Obeya correcting the comments afterwards (it does not know where the worker posted them).
 - **An approval holds through fixes to land it**; a stop or a problem for the owner takes it back.
 - **Landing does not block the server** (2026-10-10). Rejected: landing inside the request, which
   froze the server and kept the card needing the owner.

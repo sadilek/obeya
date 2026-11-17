@@ -789,6 +789,11 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId }) as CardRow[];
   }
 
+  /** The canvas's cards, archived ones too, whose work landed (`shipped`). */
+  landed(canvasId: string): CardRow[] {
+    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND shipped IS NOT NULL').all({ c: canvasId }) as CardRow[];
+  }
+
   /** The canvas's cards, archived ones too, that were ever shared or are about to be; with `ids`, those among them. */
   shared(canvasId: string, ids?: string[]): CardRow[] {
     if (ids)
