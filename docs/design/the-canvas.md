@@ -255,6 +255,11 @@ A card dragged to an edge of the view scrolls it, faster nearer the edge, but on
 canvas reaches plus room to drop the card; a card picked up at an edge scrolls only once the pointer
 moves towards it.
 
+The wheel pans; with Ctrl or ⌘ it zooms about the pointer, as does a trackpad's pinch. A pinch
+follows the fingers; a mouse wheel's notch, which browsers on Linux and Windows report as one large
+delta, zooms one step of about 15 %, so from the farthest zoom to the nearest takes about nine
+notches.
+
 Panning and zooming stop while a strip of the nearest card is still in sight, so the view never lands
 on emptiness; wider gaps are crossed via the minimap. When the last card leaves the view (cards go,
 the window shrinks), the camera flies to the nearest. The minimap sits bottom left, clear of the

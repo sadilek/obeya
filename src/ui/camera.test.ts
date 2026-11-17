@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { besideSheet, type Cam, NO_SIDES, CHASE_MS, chaseStep, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView, placeIn, shows } from './camera';
+import { besideSheet, type Cam, MAX_ZOOM, MIN_ZOOM, NO_SIDES, toWorld, wheelZoom, CHASE_MS, chaseStep, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView, placeIn, shows } from './camera';
 
 const view = { left: 0, top: 70, right: 1000, bottom: 800 };
 const cam: Cam = { x: 0, y: 0, s: 1 };
@@ -143,4 +143,29 @@ test('a card shows when it lies wholly in the view', () => {
   expect(shows(cam, view, { x: 100, y: 100, w: 300, h: 136 })).toBe(true);
   expect(shows(cam, view, { x: 800, y: 100, w: 300, h: 136 })).toBe(false);
   expect(shows(cam, view, { x: 100, y: 0, w: 300, h: 136 })).toBe(false);
+});
+
+test('a mouse wheel notch with Ctrl zooms one step, not from one end of the range to the other', () => {
+  const at = { clientX: 500, clientY: 400, deltaMode: 0 };
+  // Chrome on Linux and Windows: 100 or 120 pixels a notch
+  for (const notch of [100, 120]) {
+    const out = wheelZoom(cam, { ...at, deltaY: notch });
+    expect(out.s).toBeGreaterThan(0.8);
+    expect(out.s).toBeLessThan(0.9);
+    const back = wheelZoom(out, { ...at, deltaY: -notch });
+    expect(back.s).toBeCloseTo(1);
+  }
+  // Firefox counting lines: 3 a notch
+  expect(wheelZoom(cam, { ...at, deltaMode: 1, deltaY: 3 }).s).toBeCloseTo(wheelZoom(cam, { ...at, deltaY: 100 }).s);
+  // a trackpad's pinch, small deltas, follows the fingers as before
+  expect(wheelZoom(cam, { ...at, deltaY: -5 }).s).toBeCloseTo(Math.exp(0.06));
+  // the point under the pointer stays put
+  const z = wheelZoom({ x: 30, y: 20, s: 1 }, { ...at, deltaY: -100 });
+  expect(toWorld(z, 500, 400)).toEqual(toWorld({ x: 30, y: 20, s: 1 }, 500, 400));
+  // the range still ends at MIN_ZOOM and MAX_ZOOM
+  let c = cam;
+  for (let i = 0; i < 20; i++) c = wheelZoom(c, { ...at, deltaY: -100 });
+  expect(c.s).toBe(MAX_ZOOM);
+  for (let i = 0; i < 20; i++) c = wheelZoom(c, { ...at, deltaY: 100 });
+  expect(c.s).toBe(MIN_ZOOM);
 });

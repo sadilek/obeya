@@ -10,7 +10,7 @@ import type { ConfigProblem } from '../core/config';
 import { api, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { goTo, onSwitch } from './switch';
 import { GroupNames, TerritoryLayer, useGroupNames, useTerritories } from './groups';
-import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
+import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, midX, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld, wheelPixels, wheelZoom } from './camera';
 import { plain } from './markdown';
 import { CardId } from './cardNumber';
 import type { ActDone, Pending } from './cardSheet';
@@ -1170,10 +1170,8 @@ function Canvas({
       if (focusRef.current?.type === 'card') return;
       stopFlight();
       const c = camRef.current;
-      if (e.ctrlKey || e.metaKey) {
-        const s = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, c.s * Math.exp(-e.deltaY * 0.012)));
-        setCam(kept({ s, x: e.clientX - (e.clientX - c.x) * (s / c.s), y: e.clientY - (e.clientY - c.y) * (s / c.s) }));
-      } else setCam(kept({ ...c, x: c.x - e.deltaX, y: c.y - e.deltaY }));
+      if (e.ctrlKey || e.metaKey) setCam(kept(wheelZoom(c, e)));
+      else setCam(kept({ ...c, x: c.x - wheelPixels(e.deltaX, e.deltaMode), y: c.y - wheelPixels(e.deltaY, e.deltaMode) }));
     };
     vp.addEventListener('wheel', onWheel, { passive: false });
     return () => vp.removeEventListener('wheel', onWheel);

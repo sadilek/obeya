@@ -18,6 +18,23 @@ export const TOP = 70;
 
 export const toWorld = (cam: Cam, sx: number, sy: number) => ({ x: (sx - cam.x) / cam.s, y: (sy - cam.y) / cam.s });
 
+/** A wheel event's delta in pixels, whatever unit the browser counts it in (Firefox may count lines). */
+export const wheelPixels = (delta: number, mode: number) => delta * (mode === 1 ? 40 : mode === 2 ? 800 : 1);
+
+/** The most one wheel event zooms by, in pixels of delta: one notch of a mouse wheel is a step of about 15 %. */
+export const WHEEL_STEP = 12;
+
+/**
+ * Zooming with Ctrl or ⌘ and the wheel, about the pointer. A trackpad's pinch comes as many small
+ * deltas and follows the fingers; a mouse wheel's notch comes as one large delta (100 or 120 pixels
+ * on Linux and Windows), which unbounded would cross the whole zoom range at once.
+ */
+export function wheelZoom(c: Cam, e: { deltaY: number; deltaMode: number; clientX: number; clientY: number }): Cam {
+  const d = Math.max(-WHEEL_STEP, Math.min(WHEEL_STEP, wheelPixels(e.deltaY, e.deltaMode)));
+  const s = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, c.s * Math.exp(-d * 0.012)));
+  return { s, x: e.clientX - (e.clientX - c.x) * (s / c.s), y: e.clientY - (e.clientY - c.y) * (s / c.s) };
+}
+
 /**
  * What the panels docked at the window's edges take of it: the navigation pinned on the left, a
  * sheet on the right. The canvas is the rest between them.
