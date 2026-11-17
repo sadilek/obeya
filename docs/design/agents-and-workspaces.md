@@ -97,11 +97,13 @@ of the change as Codex reports it, which may be after it began.
 Every agent belongs to one of four groups: the Coordinator (voice commands, estimates and schedules,
 look-ups, project agents, learner, retrospective, proposal rewrites), workers, ideas' exploration agents,
 and small jobs (the work retrospective's notes and proposals, a shared demo page's text, a card's
-title). The Configuration dialog's "Agents and models" sets for each group, in this order, the
-harness (column "Runs on": Claude Code or Codex; one not installed or not logged in is shown, not offered), the model
+title). The Configuration dialog's "Agents and models" sets for each group, in column "Runs on", the
+harness (Claude Code or Codex; one not installed or not logged in is shown, not offered), the model
 (for Claude Code an alias: Fable, Opus, Sonnet, Haiku; for Codex a model family, Sol, Terra, Luna
 and whatever else its catalog for the login on this machine lists) and the effort (low to max, for a
-Codex family those its newest model here takes), and marks the presets: Claude Code with Opus
+Codex family those its newest model here takes), all three in one picker that names them ("Claude
+Code · Opus 5.5 · effort medium") and opens the same menu as the narrow part of a card's start button
+(see below), and marks the presets: Claude Code with Opus
 throughout, high effort for workers and exploration agents, medium otherwise. A Codex family shows
 by its name (Sol, Terra; Codex Max for `gpt-#-codex-max`; one named only by its version, as `o#`,
 by its newest model here, o3) and stands for whatever is newest of it where an agent runs (see
@@ -133,9 +135,11 @@ Coordinator's setting changes (as for another language).
 
 #### At the limit
 
-Each group may also have a fallback on the other harness, chosen in the dialog's last column, "At
-the limit": "Wait" (the preset) or a model of the other harness ("Codex · Sol"), with the group's
-effort; stored beside the group's choice (`"fallback": { "harness": "codex", "model": "gpt-#-sol" }`).
+Each group may also have a fallback on the other harness, chosen in the dialog's second column, "At
+the limit", in a picker of the same kind whose menu offers "Wait" (the preset) and the other
+harness's models and efforts ("Codex · Sol 6.1 · effort high"; the group's effort until one is picked
+for it); stored beside the group's choice (`"fallback": { "harness": "codex", "model": "gpt-#-sol",
+"effort": "high" }`, the effort only where picked).
 A group moved onto its fallback's harness has none any more. While a harness is at its usage limit,
 or the Claude API cannot be reached (see Turns that end without a handover in Communication), every
 agent of a group with a fallback that starts anew runs on the fallback, where that harness is ready
@@ -158,8 +162,10 @@ card's agent runs on Codex · Sol instead."); other agents move without a word.
 
 A worker that the limit stops in the middle of its work waits for it as before (see Usage limit in
 Communication), and its card offers "Continue with Codex" (or Claude Code) above the conversation,
-saying until when the limit holds and on what the new agent would run: the workers' fallback, else
-their own setting where it is on the other harness, else that harness's preset. The other harness
+saying until when the limit holds. Beside the button, as on a start button, a narrow part opens the
+other harness's models and efforts, and what the new agent will run on stands next to it: the
+workers' fallback, else their own setting where it is on the other harness, else that harness's
+preset, until the owner picks another there. The other harness
 has to be ready and not at its limit; the box goes as soon as it is not. The click ends the waiting
 session and, once it has gone (its background work with it), starts a new one on the other harness in the card's workspace, briefed as a worker
 resumed on its branch, with the card's conversation so far (who said what, oldest first) and the
@@ -758,7 +764,11 @@ for its hooks), and what the repository's work needs.
   with "Continue with …". Rejected: overriding everything ad hoc per use, which leaves the owner to
   find every waiting agent; a worker moving by itself with a summary of its run, which would trade
   context away unasked; "Wait" being something other than the preset, which would spend the other
-  plan's quota without the owner having chosen it.
+  plan's quota without the owner having chosen it. The dialog shows each choice, the group's and the
+  fallback's, in one picker with the card's menu of models (owner, 2026-11-17): a row of three
+  selects beside a fourth that picked only a model read as if the fallback had no effort of its own,
+  and the owner picks model and effort the same way everywhere; "Continue with …" offers the same
+  menu, since the owner may want another model or effort for the takeover.
 - **Harness, model and effort are set per group and per card, nowhere else** (owner, 2026-11-05):
   the two levels cover what the owner picks in use, and each further level makes it harder to tell
   what a card will run on. Rejected: defaults per canvas and per project over the machine-wide

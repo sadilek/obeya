@@ -5,13 +5,13 @@
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoVoiceCheck, type Language, type NarrationLanguage, type PageTags, type SetupCheck, type Theme, THEMES, type VoiceKind, type VoiceSetupView } from '../core/types';
-import { AGENT_ROLES, type AgentEffort, type AgentFallback, type AgentRole, type AgentSetting, type Harness, HARNESSES, modelChoices, otherHarness } from '../core/agents';
+import { AGENT_ROLES, type AgentRole, HARNESSES, otherHarness } from '../core/agents';
 import { blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
-import { effortsOf, HarnessUpdate, modelLabel } from './agentPick';
+import { HarnessUpdate, ModelMenu, ModelPicker, onModelLabel } from './agentPick';
 import { api, reload, type SiteHow, failText } from './api';
 import { useAct, useLoaded, usePoll } from './act';
 import { useLatest } from './latest';
@@ -817,17 +817,17 @@ function ToggleSetting({ on, load, save, text }: { on: boolean; load: () => Prom
 }
 
 /**
- * The harness, model and effort of each group of agents, chosen in that order: saved on each change,
- * taken by the next agent that starts. A harness not set up on this machine is shown but not offered;
- * the models and efforts are those of the chosen harness.
+ * The harness, model and effort of each group of agents, and what it switches to at the limit, each
+ * in the menu a card's start button opens (`ModelMenu`): saved on each change, taken by the next
+ * agent that starts. A harness not set up on this machine is shown but not offered; at the limit
+ * only the other harness's models are, after "Wait".
  */
 function AgentsBlock({ on }: { on: boolean }) {
   const [view, setView] = useLoaded(on, api.agents);
   const { status, busy, act } = useAct();
   if (!view) return null;
   const a = t.config.agents;
-  const choose = (role: AgentRole, choice: Partial<Omit<AgentSetting, 'fallback'>> & { fallback?: AgentFallback | null }) => act(async () => setView(await api.saveAgents(role, choice)));
-  const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
+  const choose = (role: AgentRole, choice: Parameters<typeof api.saveAgents>[1]) => act(async () => setView(await api.saveAgents(role, choice)));
   const unready = view.harnesses.filter((h) => !h.ready);
   return (
     <>
@@ -835,67 +835,50 @@ function AgentsBlock({ on }: { on: boolean }) {
       <div className="cfg-agents">
         <span />
         <span className="hint">{a.harness}</span>
-        <span className="hint">{a.model}</span>
-        <span className="hint">{a.effort}</span>
         <span className="hint">{a.fallback}</span>
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
-          // Codex's families by their newest model; a model chosen that the harness no longer offers stays shown
-          const listed = modelChoices(harness(setting.harness), setting.model);
-          const efforts = effortsOf(listed, setting.model);
-          // the fallback runs on the other harness, once that is set up here
+          // the fallback runs on the other harness, with the group's effort until one is chosen for it
           const other = otherHarness(setting.harness);
-          const otherReady = !!harness(other)?.ready;
-          const instead = setting.fallback?.harness === other ? setting.fallback : undefined;
-          const fallbacks = otherReady || instead ? modelChoices(harness(other), instead?.model) : [];
+          const instead = setting.fallback?.harness === other ? { harness: other, model: setting.fallback.model, effort: setting.fallback.effort ?? setting.effort } : null;
+          const name = a.roles[role].name;
           return (
             <Fragment key={role}>
               <div className="cfg-agent">
-                {a.roles[role].name}
+                {name}
                 <span className="hint">{a.roles[role].hint}</span>
               </div>
-              <select aria-label={`${a.roles[role].name}: ${a.harness}`} value={setting.harness} disabled={busy} onChange={(e) => choose(role, { harness: e.target.value as Harness })}>
-                {HARNESSES.map((h) => {
-                  const ready = !!harness(h)?.ready;
-                  return (
-                    <option key={h} value={h} disabled={!ready && h !== setting.harness}>
-                      {ready ? t.harnesses[h] : a.notReady(t.harnesses[h])}
-                    </option>
-                  );
-                })}
-              </select>
-              <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value })}>
-                {listed.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {`${modelLabel(setting.harness, m)}${m.version ? ` ${m.version}` : ''}`}
-                  </option>
-                ))}
-              </select>
-              <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={setting.effort} disabled={busy} onChange={(e) => choose(role, { effort: e.target.value as AgentEffort })}>
-                {(efforts.includes(setting.effort) ? efforts : [...efforts, setting.effort]).map((x) => (
-                  <option key={x} value={x}>
-                    {a.efforts[x]}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label={`${a.roles[role].name}: ${a.fallback}`}
-                value={instead?.model ?? ''}
+              <ModelPicker
+                name={`${name}: ${a.harness}`}
+                label={onModelLabel(view, setting)}
                 disabled={busy}
-                onChange={(e) => choose(role, { fallback: e.target.value ? { harness: other, model: e.target.value } : null })}
-              >
-                <option value="">{a.wait}</option>
-                {fallbacks.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {`${t.harnesses[other]} · ${modelLabel(other, m)}${m.version ? ` ${m.version}` : ''}`}
-                  </option>
-                ))}
-                {!otherReady && !instead && (
-                  <option value="-" disabled>
-                    {a.notReady(t.harnesses[other])}
-                  </option>
+                menu={() => (
+                  <ModelMenu
+                    view={view}
+                    onView={setView}
+                    harnesses={HARNESSES}
+                    on={setting}
+                    onModel={(harness, model) => choose(role, { harness, model })}
+                    onEffort={(effort) => choose(role, { effort })}
+                  />
                 )}
-              </select>
+              />
+              <ModelPicker
+                name={`${name}: ${a.fallback}`}
+                label={instead ? onModelLabel(view, instead) : a.wait}
+                disabled={busy}
+                menu={(close) => (
+                  <ModelMenu
+                    view={view}
+                    onView={setView}
+                    harnesses={[other]}
+                    on={instead}
+                    none={{ label: a.wait, onPick: () => (close(), choose(role, { fallback: null })) }}
+                    onModel={(harness, model) => choose(role, { fallback: { harness, model, effort: instead?.effort ?? setting.effort } })}
+                    onEffort={(effort) => instead && choose(role, { fallback: { ...instead, effort } })}
+                  />
+                )}
+              />
             </Fragment>
           );
         })}

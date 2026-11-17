@@ -150,10 +150,11 @@ function agentsOf(input: unknown): Partial<Record<AgentRole, Chosen>> {
 
 /** A fallback as the file holds it: a harness with a model it takes (a Codex model as its family); none for anything else. */
 function fallbackOf(input: unknown): AgentFallback | undefined {
-  const f = (input && typeof input === 'object' ? input : {}) as { harness?: unknown; model?: unknown };
+  const f = (input && typeof input === 'object' ? input : {}) as { harness?: unknown; model?: unknown; effort?: unknown };
   const harness = HARNESSES.find((h) => h === f.harness);
   if (!harness || typeof f.model !== 'string' || !modelFits(harness, f.model)) return undefined;
-  return { harness, model: storedModel(harness, f.model) };
+  const effort = AGENT_EFFORTS.find((e) => e === f.effort);
+  return { harness, model: storedModel(harness, f.model), ...(effort ? { effort } : {}) };
 }
 
 /**
@@ -181,8 +182,8 @@ export function agentsView(home: string, harnesses: HarnessView[] = [], fallback
 /**
  * Saves the choices for the groups given (`{ worker: { harness: 'codex' } }`). A harness chosen
  * without a model takes that harness's preset model; a Codex model is saved as its family (a model
- * id given saves the family it belongs to). `fallback` (`{ harness, model }` on the other harness,
- * `null` for none) is what the group runs on while its harness is at its limit. Other groups and
+ * id given saves the family it belongs to). `fallback` (`{ harness, model, effort? }` on the other
+ * harness, `null` for none) is what the group runs on while its harness is at its limit. Other groups and
  * settings in the file stay.
  */
 export function saveAgents(home: string, input: unknown, harnesses: HarnessView[] = [], fallback?: Harness): AgentsView {
@@ -207,12 +208,13 @@ export function saveAgents(home: string, input: unknown, harnesses: HarnessView[
     let nextFallback = settings.agents?.[r]?.fallback;
     if (instead === null) nextFallback = undefined;
     else if (instead !== undefined) {
-      const f = (typeof instead === 'object' ? instead : {}) as { harness?: unknown; model?: unknown };
+      const f = (typeof instead === 'object' ? instead : {}) as { harness?: unknown; model?: unknown; effort?: unknown };
       const fh = HARNESSES.find((h) => h === f.harness);
       if (!fh) throw new BadRequest('invalid', `a fallback's harness must be one of ${HARNESSES.join(', ')}`);
       if (fh === on) throw new BadRequest('invalid', "a fallback runs on the other harness than the group's");
       if (f.model !== undefined && (typeof f.model !== 'string' || !modelFits(fh, f.model))) throw new BadRequest('invalid', "the fallback's model is not one its harness takes");
-      nextFallback = { harness: fh, model: storedModel(fh, (f.model as string | undefined) ?? agentDefault(r, fh).model) };
+      if (f.effort !== undefined && !AGENT_EFFORTS.some((e) => e === f.effort)) throw new BadRequest('invalid', `the fallback's effort must be one of ${AGENT_EFFORTS.join(', ')}`);
+      nextFallback = { harness: fh, model: storedModel(fh, (f.model as string | undefined) ?? agentDefault(r, fh).model), ...(f.effort ? { effort: f.effort as AgentEffort } : {}) };
     }
     // a group moved onto its fallback's harness has none any more
     if (nextFallback?.harness === on) nextFallback = undefined;

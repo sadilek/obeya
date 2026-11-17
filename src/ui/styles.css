@@ -852,7 +852,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 .split.alone { grid-template-columns: minmax(0, 1fr); }
 .p-state + .p-src { margin-top: 4px; }
 /* its scrollbar's place stays: a bar coming as an artifact's frame grew narrowed the page in it, which grew anew */
-.split-main { overflow: auto; min-height: 0; padding-right: 4px; scrollbar-gutter: stable; }
+/* the scrolling box reaches 2px above its content: a box at the top keeps its top border inside the clip */
+.split-main { overflow: auto; min-height: 0; padding-right: 4px; padding-top: 2px; margin-top: -2px; scrollbar-gutter: stable; }
 .split-main > :first-child { margin-top: 0; }
 .split-main .question, .split-main .p-body-field, .split-main .p-body { max-width: none; }
 .split-talk { display: flex; flex-direction: column; min-height: 0; }
@@ -1805,9 +1806,16 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 #config .cfg-host-clones input { width: 64px; }
 .cfg-hosts > .btn.small { margin-top: 0; }
 .cfg-host-rows + .btn.small { margin-top: 6px !important; }
-.cfg-agents { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, .7fr) minmax(170px, 1fr) minmax(130px, .7fr) minmax(170px, 1fr); gap: 0 14px; align-items: center; max-width: 1300px; }
+.cfg-agents { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(220px, 1fr) minmax(220px, 1fr); gap: 0 14px; align-items: center; max-width: 1100px; }
+/* a picker that opens the menu of models (agentPick.tsx), looking like the dialog's selects */
+.model-picker { display: block; min-width: 0; }
+.model-picker-btn { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; font: inherit; font-size: 13px; padding: 6px 12px 6px 9px; border-radius: 2px; text-align: left; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--ink) 16%, var(--panel)); background: color-mix(in srgb, var(--ink) 5%, var(--panel));
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.model-picker-btn:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--panel)); }
+.model-picker-btn:disabled { cursor: default; opacity: 0.7; }
+.model-picker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-agents > .hint { font-size: 11.5px; padding-bottom: 4px; }
-.cfg-agents > select { min-width: 0; }
 .cfg-agent { display: flex; flex-direction: column; padding: 9px 0; font-size: 14px; }
 .cfg-agent > .hint { font-size: 12px; }
 @media (max-width: 900px) {
@@ -1826,7 +1834,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
   .cfg-nav-title { padding: 6px 4px 6px 10px; font-size: 13px; }
   .cfg-nav-group > ul > li > button { padding-left: 10px; }
   .cfg-cols { grid-template-columns: 1fr; }
-  .cfg-agents { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .cfg-agents { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .cfg-agent { grid-column: 1 / -1; padding-bottom: 2px; }
   .cfg-agents > span:first-child { display: none; }
 }

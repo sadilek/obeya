@@ -699,6 +699,8 @@ const de = {
     outage: (from: string, when: string, to: string) =>
       `${from} ist gerade nicht erreichbar (neuer Versuch: ${when}). Statt zu warten, kann jetzt ein Agent auf ${to} übernehmen. Er bekommt die Unterhaltung dieser Karte und das Protokoll des Agenten vor ihm.`,
     button: (harness: string) => `Mit ${harness} weitermachen`,
+    /** The narrow part beside it, which opens the models and efforts of that harness. */
+    pickHint: 'Modell und Effort des neuen Agenten wählen',
   },
   /** A card whose repository does not run on the canvas (`Item.repoDown`): on the card, and in its panel. */
   repoDown: {
@@ -1485,10 +1487,8 @@ const de = {
       title: 'Agenten und Modelle',
       /** By what a group the owner chose nothing for runs on here (`AgentsView.preset`). */
       hint: (preset: Harness) =>
-        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange ihr Abo am Nutzungslimit ist oder Claude nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
+        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange die Laufzeit, auf der sie läuft, an ihrem Nutzungslimit oder nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
       harness: 'Läuft auf',
-      model: 'Modell',
-      effort: 'Effort',
       /** The column of each group's fallback while its harness is at its usage limit. */
       fallback: 'Am Limit',
       /** No fallback: the group's agents wait for the limit to lift. */
@@ -3043,6 +3043,7 @@ const en: Strings = {
     outage: (from: string, when: string, to: string) =>
       `${from} cannot be reached right now (tries again: ${when}). Instead of waiting, an agent on ${to} can take over now. It gets this card's conversation and the transcript of the agent before it.`,
     button: (harness: string) => `Continue with ${harness}`,
+    pickHint: "Choose the new agent's model and effort",
   },
   repoDown: {
     short: 'Repository not running',
@@ -3777,10 +3778,8 @@ const en: Strings = {
     agents: {
       title: 'Agents and models',
       hint: (preset: Harness) =>
-        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while its plan is at its usage limit or Claude cannot be reached; with “Wait” its agents wait until then.`,
+        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while the harness it runs on is at its usage limit or cannot be reached; with “Wait” its agents wait until then.`,
       harness: 'Runs on',
-      model: 'Model',
-      effort: 'Effort',
       fallback: 'At the limit',
       wait: 'Wait',
       notReady: (name: string) => `${name} (not set up)`,

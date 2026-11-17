@@ -112,6 +112,10 @@ test('the fallback is saved per group on the other harness, and a group moved on
   saveAgents(home, { coordinator: { fallback: { harness: 'codex' } } });
   expect(agentSetting(home, 'coordinator').fallback).toEqual({ harness: 'codex', model: 'gpt-#-sol' });
   expect(() => saveAgents(home, { worker: { fallback: { harness: 'claude' } } })).toThrow('other harness');
+  // with an effort of its own
+  saveAgents(home, { worker: { fallback: { harness: 'codex', model: 'gpt-#-sol', effort: 'low' } } });
+  expect(agentSetting(home, 'worker').fallback).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'low' });
+  expect(replacement(agentSetting(home, 'worker'), 'claude')).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'low' });
   saveAgents(home, { worker: { fallback: null } });
   expect(agentSetting(home, 'worker').fallback).toBeUndefined();
   saveAgents(home, { coordinator: { harness: 'codex' } });

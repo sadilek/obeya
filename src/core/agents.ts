@@ -26,10 +26,11 @@ export interface AgentSetting {
    */
   fallback?: AgentFallback;
 }
-/** A group's fallback (`AgentSetting.fallback`): always on the other harness than the group's. */
+/** A group's fallback (`AgentSetting.fallback`): always on the other harness than the group's; its effort, else the group's. */
 export interface AgentFallback {
   harness: Harness;
   model: string;
+  effort?: AgentEffort;
 }
 /**
  * What the owner chose for one card's agent, over the workers' group's (`Item.agent`): a harness with
@@ -94,13 +95,14 @@ export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
 };
 /**
  * What an agent of a group runs on instead while harness `on` is at its limit: the group's fallback
- * where it runs on the group's harness, the group's own setting where it runs on the fallback's (a
- * card chosen for the other harness), each with `effort`; none where the group has no fallback.
+ * (with its own effort, else `effort`) where it runs on the group's harness, the group's own setting
+ * where it runs on the fallback's (a card chosen for the other harness), with `effort`; none where
+ * the group has no fallback.
  */
 export function replacement(group: AgentSetting, on: Harness, effort: AgentEffort = group.effort): AgentSetting | undefined {
   const f = group.fallback;
   if (!f || f.harness === group.harness) return undefined;
-  if (on === group.harness) return { harness: f.harness, model: f.model, effort };
+  if (on === group.harness) return { harness: f.harness, model: f.model, effort: f.effort ?? effort };
   if (on === f.harness) return { harness: group.harness, model: group.model, effort };
   return undefined;
 }

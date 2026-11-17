@@ -1811,7 +1811,7 @@ export class CanvasRuntime {
       case 'resume':
         return this.agentOf(cardId).resume(cardId);
       case 'continueElsewhere':
-        return this.repoOf(cardId).workers.continueElsewhere(cardId);
+        return this.repoOf(cardId).workers.continueElsewhere(cardId, a.agent);
       case 'snooze':
         return this.snooze(cardId, a.until);
       case 'awaitContributor':

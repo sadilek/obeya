@@ -64,8 +64,6 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const { harness, model } = mine ?? group;
   // each harness's models as the Configuration lists them, the one checked among them even where no longer listed
   const choices = (h: Harness) => modelChoices(listed(h), harness === h ? model : undefined);
-  // the efforts the model takes (Codex lists them), the one chosen among them
-  const takes = effortsOf(choices(harness), model);
   const save = (next: CardAgent | null) => {
     if (JSON.stringify(next) === JSON.stringify(item.agent ?? null)) return;
     setSaving(true);
@@ -112,39 +110,182 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
       {open &&
         createPortal(
           <div className="snooze-menu agent-menu" role="menu" ref={menu}>
-            {HARNESSES.map((h: Harness) => {
-              const found = listed(h);
-              if (!found?.ready)
-                return (
-                  <div key={h} className="snooze-h agent-h">
-                    {t.config.agents.notReady(t.harnesses[h])}
-                  </div>
-                );
+            <ModelMenu view={view} onView={setView} harnesses={HARNESSES} on={{ harness, model, effort }} onModel={pickModel} onEffort={pickEffort} />
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
+/** The harnesses and the groups' settings, as last heard until asked again. */
+export function useAgentsView(): [AgentsView | null, (v: AgentsView) => void] {
+  const [view, setView] = useState<AgentsView | null>(last);
+  useEffect(() => {
+    let live = true;
+    agentsView().then((v) => live && setView(v), () => {});
+    return () => void (live = false);
+  }, []);
+  return [view, setView];
+}
+
+/**
+ * "Continue with Codex" (or Claude Code) on a card whose worker waits for its harness's limit, joined
+ * to a narrow part with a triangle that opens the other harness's models and efforts: what the
+ * new agent runs on, `to` until the owner picks another. `onGo` gets the pick.
+ */
+export function ContinueOn({ to, onGo }: { to: OnModel; onGo: (on: OnModel) => void }) {
+  const [view, setView] = useAgentsView();
+  const [on, setOn] = useState<OnModel>(to);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  usePlaced(open, menu, () => box.current!.getBoundingClientRect());
+  useMenuClose(open, [box, menu], () => setOpen(false), true);
+  const pickModel = (harness: Harness, model: string) => {
+    const takes = view ? effortsOf(modelChoices(view.harnesses.find((h) => h.id === harness), model), model) : AGENT_EFFORTS;
+    setOn({ harness, model, effort: takes.includes(on.effort) ? on.effort : (takes.at(-1) ?? on.effort) });
+  };
+  const changed = on.model !== to.model || on.effort !== to.effort;
+  return (
+    <span className="agent-split" ref={box}>
+      <button className="btn primary" onClick={() => onGo(on)}>
+        {t.moveTo.button(t.harnesses[on.harness])}
+      </button>
+      {view && (
+        <button className="btn primary agent-pick" title={t.moveTo.pickHint} aria-label={t.moveTo.pickHint} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <svg className="agent-caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden>
+            <path d="M1.5 3.2h7L5 7.2z" fill="currentColor" />
+          </svg>
+        </button>
+      )}
+      {view && <span className={changed ? 'agent-chosen' : 'agent-chosen hint'}>{onModelLabel(view, on)}</span>}
+      {open &&
+        view &&
+        createPortal(
+          <div className="snooze-menu agent-menu" role="menu" ref={menu}>
+            <ModelMenu view={view} onView={setView} harnesses={[to.harness]} on={on} onModel={pickModel} onEffort={(effort) => setOn({ ...on, effort })} />
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
+/** What a picker shows as chosen: a harness's model and the effort it runs with. */
+export interface OnModel {
+  harness: Harness;
+  model: string;
+  effort: AgentEffort;
+}
+
+/**
+ * The content of a menu of models (a card's start button, the Configuration's pickers, "Continue
+ * with …"): each harness of `harnesses` with its models as the Configuration lists them (one not set
+ * up named as such), "Wait" first where `none` is given, then the efforts the chosen model takes.
+ * `on`: what is checked; none while "Wait" is.
+ */
+export function ModelMenu({
+  view,
+  onView,
+  harnesses,
+  on,
+  onModel,
+  onEffort,
+  none,
+}: {
+  view: AgentsView;
+  onView: (v: AgentsView) => void;
+  harnesses: readonly Harness[];
+  on: OnModel | null;
+  onModel: (h: Harness, model: string) => void;
+  onEffort: (e: AgentEffort) => void;
+  none?: { label: string; onPick: () => void };
+}) {
+  const listed = (h: Harness) => view.harnesses.find((x) => x.id === h);
+  // the one checked among them even where no longer listed
+  const choices = (h: Harness) => modelChoices(listed(h), on?.harness === h ? on.model : undefined);
+  const efforts = t.config.agents.efforts;
+  // the efforts the model takes (Codex lists them), the one chosen among them
+  const takes = on ? effortsOf(choices(on.harness), on.model) : [];
+  return (
+    <>
+      {none && (
+        <button className="snooze-opt" role="menuitemradio" aria-checked={!on} onClick={none.onPick}>
+          <Check on={!on} />
+          {none.label}
+        </button>
+      )}
+      {harnesses.map((h: Harness) => {
+        const found = listed(h);
+        if (!found?.ready)
+          return (
+            <div key={h} className="snooze-h agent-h">
+              {t.config.agents.notReady(t.harnesses[h])}
+            </div>
+          );
+        return (
+          <div key={h} className="agent-group" role="group" aria-label={t.harnesses[h]}>
+            <div className="snooze-h agent-h">{t.harnesses[h]}</div>
+            {choices(h).map((m) => {
+              const checked = on?.harness === h && on.model === m.value;
               return (
-                <div key={h} className="agent-group" role="group" aria-label={t.harnesses[h]}>
-                  <div className="snooze-h agent-h">{t.harnesses[h]}</div>
-                  {choices(h).map((m) => {
-                    const on = harness === h && model === m.value;
-                    return (
-                      <button key={m.value} className="snooze-opt" role="menuitemradio" aria-checked={on} onClick={() => pickModel(h, m.value)}>
-                        <Check on={on} />
-                        {modelLabel(h, m)}
-                        {m.version && <span className="agent-version">{m.version}</span>}
-                      </button>
-                    );
-                  })}
-                  <HarnessUpdate harness={h} view={view} onView={setView} />
-                </div>
+                <button key={m.value} className="snooze-opt" role="menuitemradio" aria-checked={checked} onClick={() => onModel(h, m.value)}>
+                  <Check on={checked} />
+                  {modelLabel(h, m)}
+                  {m.version && <span className="agent-version">{m.version}</span>}
+                </button>
               );
             })}
-            <div className="snooze-h agent-h agent-effort-h">{p.effort}</div>
-            <div className="agent-efforts" role="group" aria-label={p.effort}>
-              {takes.map((e) => (
-                <button key={e} className={effort === e ? 'agent-effort on' : 'agent-effort'} role="menuitemradio" aria-checked={effort === e} onClick={() => pickEffort(e)}>
-                  {efforts[e]}
-                </button>
-              ))}
-            </div>
+            <HarnessUpdate harness={h} view={view} onView={onView} />
+          </div>
+        );
+      })}
+      {on && (
+        <>
+          <div className="snooze-h agent-h agent-effort-h">{t.agentPick.effort}</div>
+          <div className="agent-efforts" role="group" aria-label={t.agentPick.effort}>
+            {(takes.includes(on.effort) ? takes : [...takes, on.effort]).map((e) => (
+              <button key={e} className={on.effort === e ? 'agent-effort on' : 'agent-effort'} role="menuitemradio" aria-checked={on.effort === e} onClick={() => onEffort(e)}>
+                {efforts[e]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** A harness, model and effort as a picker's button names them: "Codex · Sol 6.1 · effort high". */
+export function onModelLabel(view: AgentsView, on: OnModel): string {
+  const choice = modelChoices(view.harnesses.find((h) => h.id === on.harness), on.model).find((c) => c.value === on.model);
+  const model = `${modelLabel(on.harness, choice ?? { value: on.model })}${choice?.version ? ` ${choice.version}` : ''}`;
+  return [t.harnesses[on.harness], model, t.agentPick.chosenEffort(t.config.agents.efforts[on.effort])].join(' · ');
+}
+
+/**
+ * A button that names what is chosen and opens a menu of models (`ModelMenu`) under it: the
+ * Configuration's pickers. `name`: what it picks, for its accessible name.
+ */
+export function ModelPicker({ label, name, className, disabled, menu }: { label: string; name?: string; className?: string; disabled?: boolean; menu: (close: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  usePlaced(open, list, () => box.current!.getBoundingClientRect());
+  useMenuClose(open, [box, list], () => setOpen(false), true);
+  return (
+    <span className={['model-picker', className].filter(Boolean).join(' ')} ref={box}>
+      <button className="model-picker-btn" aria-label={name ? `${name}: ${label}` : label} aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen(!open)}>
+        <span className="model-picker-label">{label}</span>
+        <svg className="agent-caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden>
+          <path d="M1.5 3.2h7L5 7.2z" fill="currentColor" />
+        </svg>
+      </button>
+      {open &&
+        createPortal(
+          <div className="snooze-menu agent-menu" role="menu" ref={list}>
+            {menu(() => setOpen(false))}
           </div>,
           document.body,
         )}

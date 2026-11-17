@@ -1455,8 +1455,8 @@ export type CardAction =
    */
   | { action: 'pause'; safePoint?: true }
   | { action: 'resume' }
-  /** Its worker waits for its harness's limit: an agent on the other harness takes over now (`Item.moveTo`). */
-  | { action: 'continueElsewhere' }
+  /** Its worker waits for its harness's limit: an agent on the other harness takes over now (`Item.moveTo`), on `agent` where the owner picked a model or effort there. */
+  | { action: 'continueElsewhere'; agent?: AgentSetting }
   /**
    * Set aside until `until` (ISO): a card at work stops until then as on a pause, one waiting for the
    * owner leaves them until then. On a snoozed card, it changes the time.

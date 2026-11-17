@@ -9,11 +9,10 @@ import { Naming } from './cardLink';
 import { CardIdRoom } from './cardNumber';
 import { plain } from './markdown';
 import { shownTitle } from './parts';
-import { AgentPick } from './agentPick';
+import { AgentPick, ContinueOn } from './agentPick';
 import { useFitHeight } from './fitHeight';
 import { contributorChoice, SnoozeMenu } from './snooze';
 import { clock as time, snoozeWhen, stateLabel, t } from './strings';
-import { agentName } from '../core/agents';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -111,11 +110,9 @@ export function MoveToBox({ item, act }: { item: Item; act: Act }) {
   const say = m.outage ? t.moveTo.outage : t.moveTo.limit;
   return (
     <div className="question move-to">
-      <div className="q-text">{say(t.harnesses[m.from], snoozeWhen(m.until), agentName(m.to))}</div>
+      <div className="q-text">{say(t.harnesses[m.from], snoozeWhen(m.until), t.harnesses[m.to.harness])}</div>
       <div className="actions">
-        <button className="btn primary" onClick={() => act({ action: 'continueElsewhere' }, { close: false })}>
-          {t.moveTo.button(t.harnesses[m.to.harness])}
-        </button>
+        <ContinueOn to={m.to} onGo={(agent) => act({ action: 'continueElsewhere', agent }, { close: false })} />
       </div>
     </div>
   );

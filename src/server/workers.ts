@@ -8,7 +8,7 @@ import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { type Awaited, type MoveTo, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr } from '../core/types';
 import { answering, askable, pausable, pausableNow, formatQuestion, handedOver, needsYou } from '../core/card';
-import { agentName, type CardAgent, cardAgentOf, HARNESS_NAMES } from '../core/agents';
+import { AGENT_EFFORTS, agentName, type AgentSetting, type CardAgent, cardAgentOf, type Harness, HARNESS_NAMES, modelFits, storedModel } from '../core/agents';
 import { findTranscript } from './transcript';
 import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
@@ -183,6 +183,16 @@ const HOLD_GRACE = 10 * 60_000;
 /** Closing the card with "Approve" also ends the watching: the approval takes the comments then. */
 const RELEASE_DELAY = 1500;
 /** Whether the card's status line is the one it shows while its worker waits for a usage limit or an outage, in either language. */
+/** The model and effort the owner picked for "Continue with …" (`AgentSetting` from the page), on the harness `on` it moves to. */
+function pickedOn(pick: unknown, on: Harness): AgentSetting {
+  const p = (pick && typeof pick === 'object' ? pick : {}) as Record<string, unknown>;
+  if (p.harness !== on) throw new BadRequest('invalid', `the agent that takes over runs on ${on}`);
+  if (typeof p.model !== 'string' || !modelFits(on, p.model)) throw new BadRequest('invalid', 'model is not one that harness takes');
+  const effort = AGENT_EFFORTS.find((e) => e === p.effort);
+  if (!effort) throw new BadRequest('invalid', `effort must be one of ${AGENT_EFFORTS.join(', ')}`);
+  return { harness: on, model: storedModel(on, p.model), effort };
+}
+
 const limitLine = (line: string | null | undefined) => !!line && LANGUAGES.some((l) => line.startsWith(MESSAGES[l].worker.limitStatus) || line.startsWith(MESSAGES[l].worker.outageStatus));
 
 /** How often Obeya asks whether a machine whose connection was lost answers again. */
@@ -2443,12 +2453,13 @@ export class Workers {
    * (its conversation on the card, its transcript, the branch). The card runs there from then on,
    * after a restart too: its own harness and model become that one's.
    */
-  continueElsewhere(cardId: string): Promise<void> {
+  continueElsewhere(cardId: string, pick?: unknown): Promise<void> {
     const live = this.live.get(cardId);
     if (!live) throw new BadRequest('notLimited', "no agent works on the card");
     const move = this.moveTo(cardId, live);
     if (!move) throw new BadRequest('notLimited', "the card's agent does not wait for a limit, or the other harness cannot take over now");
-    const { to, from } = move;
+    const { from } = move;
+    const to = pick === undefined || pick === null ? move.to : pickedOn(pick, move.to.harness);
     const card = this.card(cardId);
     const row = this.o.board.row(cardId);
     const until = live.limited!;

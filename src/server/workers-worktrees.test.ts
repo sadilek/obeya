@@ -899,20 +899,22 @@ describe('a worktree per card', () => {
     expect(() => workers.continueElsewhere(c.id)).toThrow(expect.objectContaining({ code: 'notLimited' }));
     codexFree = true;
     limits.changed();
-    await workers.continueElsewhere(c.id);
+    // the owner may pick the model and effort there, but not the harness at its limit
+    expect(() => workers.continueElsewhere(c.id, { harness: 'claude', model: 'opus', effort: 'high' })).toThrow('runs on codex');
+    await workers.continueElsewhere(c.id, { harness: 'codex', model: 'gpt-6.1-terra', effort: 'xhigh' });
     expect(s.closed).toBe(true);
     const next = runtime.last;
     expect(next).not.toBe(s);
     expect(next.spec.resume).toBeUndefined();
-    expect(next.spec.agent).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
+    expect(next.spec.agent).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'xhigh' });
     expect(next.inbox[0]).toContain('You take over this card from an agent on Claude Code');
     expect(next.inbox[0]).toContain('The agent: Ich baue den Import.');
     expect(board.item(c.id)).toMatchObject({ state: 'working' });
     expect(board.item(c.id)!.moveTo).toBeUndefined();
     expect(board.item(c.id)!.statusLine).toBeUndefined();
-    expect(board.events(c.id).at(-1)!.text).toContain('Codex · Sol');
+    expect(board.events(c.id).at(-1)!.text).toContain('Codex · Terra');
     // the card runs there from now on
-    expect(JSON.parse(board.row(c.id).agent!)).toEqual({ harness: 'codex', model: 'gpt-#-sol', effort: 'high' });
+    expect(JSON.parse(board.row(c.id).agent!)).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'xhigh' });
   });
 
   test("a worker placed on the group's fallback says so in its conversation", async () => {
