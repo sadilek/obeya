@@ -192,6 +192,8 @@ interface Repo extends RepoRuntime {
   moving?: Promise<unknown>;
   /** Settles once its read tree is in place and the clones it was to make are made (or failed). */
   ready: Promise<void>;
+  /** Whether it was empty (`isEmptyRepo`) when its setup card was last considered (`proposeSetup`), to consider it again once that changes. */
+  emptySeen?: boolean;
 }
 
 /**
@@ -1462,10 +1464,8 @@ export class CanvasRuntime {
       this.proposeSetup(r);
     }
     // the first work may have landed in a repository that was empty
-    if (this.reads.empty(path) !== read.empty) {
-      this.reads.setEmpty(path, read.empty);
-      this.proposeSetup(r);
-    }
+    this.reads.setEmpty(path, read.empty);
+    if (r.emptySeen !== read.empty) this.proposeSetup(r);
     const layered = layerSettings<RepoSettings>(this.reads.sharedOf(path)(), this.settingsOf(r.config)());
     const workIn = r.info.folder ? 'folder' : namesClones(r.config, r.info, layered) ? 'clones' : (layered?.workspaces ?? defaultsFor(r.info).workspaces);
     if (workIn !== r.workspaces.mode) {
@@ -2050,7 +2050,8 @@ export class CanvasRuntime {
    * repository while it is empty (`isEmptyRepo`): there is nothing to run yet.
    */
   private proposeSetup(r: Repo) {
-    if (!this.deps.setupProposals || r.info.folder || this.reads.empty(r.info.path)) return;
+    r.emptySeen = !!this.reads.empty(r.info.path);
+    if (!this.deps.setupProposals || r.info.folder || r.emptySeen) return;
     const settings = this.reads.sharedRead(r.info.path)?.settings ?? {};
     const own = SHARED_FIELDS.some((k) => settings[k] !== undefined);
     this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.reads.adapterModule(r.info.path));

@@ -322,6 +322,9 @@ describe('the first canvas', () => {
     };
     const shop = await first(gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', 'src/shop.ts': 'export {};\n' }));
     expect(shop.titles).toEqual([shop.t.welcome.title]);
+    // a folder counts as work whatever its name
+    const agents = await first(gitRepo(join(dir, 'agents'), { 'README.md': 'Agents\n', 'agents/main.py': 'print(1)\n' }));
+    expect(agents.titles).toEqual([agents.t.welcome.title]);
     // a README, a licence and git's own files are not yet anything to change
     const fresh = await first(gitRepo(join(dir, 'fresh'), { 'README.md': '# Fresh\n', LICENSE: 'MIT\n', '.gitignore': 'dist/\n' }));
     expect(fresh.titles).toEqual([fresh.t.welcomeEmpty.title]);

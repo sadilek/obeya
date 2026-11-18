@@ -190,8 +190,13 @@ export async function isEmptyRepo(repoPath: string): Promise<boolean> {
 
 /** `isEmptyRepo` at the main branch's `commit` (`branchCommit`: `HEAD` where it has none). */
 export async function emptyAt(repoPath: string, commit: string): Promise<boolean> {
-  const tree = await gitTry(repoPath, 'ls-tree', '--name-only', commit);
+  // `<mode> <type> <object>\t<path>` per entry (no `--format`, which git before 2.36 lacks)
+  const tree = await gitTry(repoPath, 'ls-tree', '-z', commit);
   // no commit to list (a repository without one): nothing in it
   if (tree === null) return (await gitTry(repoPath, 'rev-parse', '--git-dir')) !== null && (await gitTry(repoPath, 'rev-parse', '--verify', '--quiet', commit)) === null;
-  return tree.split('\n').every((f) => !f || HOUSEKEEPING.test(f));
+  // files alone: a directory (`agents/`, say) holds work whatever its name
+  return tree.split('\0').every((entry) => {
+    const [meta = '', name = ''] = entry.split('\t');
+    return !entry || (meta.split(' ')[1] === 'blob' && HOUSEKEEPING.test(name));
+  });
 }
