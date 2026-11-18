@@ -23,6 +23,7 @@ import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/setti
 import { checkSetup, type LinuxFamily, linuxFamily, output } from '../../plugin/skills/demo/lib/setup.ts';
 import { installVoice } from '../../plugin/skills/demo/lib/voices.ts';
 import { BadRequest } from './board';
+import { isEmptyRepo } from './branches';
 import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
@@ -300,18 +301,23 @@ function folderOf(input: unknown): string {
 /** The marker of a canvas the assistant created: once it runs, it gets a first card that says what to try. */
 export const WELCOME_FILE = 'welcome';
 
-/** Puts the first card on the canvas the assistant created, once, when it runs. */
-export function welcome(home: string, canvases: CanvasRuntime[]) {
+/**
+ * Puts the first card on the canvas the assistant created, once, when it runs: in a repository that
+ * is still empty (`isEmptyRepo`) one that asks what to build, else one that suggests a small change.
+ */
+export async function welcome(home: string, canvases: CanvasRuntime[]) {
   const file = join(home, WELCOME_FILE);
   if (!existsSync(file)) return;
   const id = readFileSync(file, 'utf8').trim();
   rmSync(file, { force: true });
   const c = canvases.find((x) => x.id === id);
   if (!c) return;
+  const path = c.board.canvas.repos[0]?.path;
+  const empty = !!path && (await isEmptyRepo(path).catch(() => false));
   const items = c.board.items();
   // right of the plan docs' projects the repository brings, at their top
   const at = items.length ? { x: Math.max(...items.map((i) => i.x)) + 560, y: Math.min(...items.map((i) => i.y)) } : { x: 0, y: 0 };
-  const { title, body } = c.board.t.welcome;
+  const { title, body } = empty ? c.board.t.welcomeEmpty : c.board.t.welcome;
   c.board.create({ title, body, ...at });
 }
 

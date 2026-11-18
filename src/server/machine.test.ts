@@ -310,15 +310,26 @@ describe('the first canvas', () => {
     expect(cloneName('/srv/git/shop/')).toBe('shop');
   });
 
-  test('the canvas the assistant created gets one first card that says what to try', () => {
-    const board = new Board(store, { id: 'shop', name: 'Shop', repos: [{ id: 'shop', name: 'Shop', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
-    const canvas = { id: 'shop', board } as unknown as CanvasRuntime;
-    writeFileSync(join(home, WELCOME_FILE), 'shop');
-    welcome(home, [canvas]);
-    welcome(home, [canvas]);
-    const cards = board.snapshot().items.filter((i) => i.kind === 'task');
-    expect(cards.map((c) => c.title)).toEqual([board.t.welcome.title]);
-    expect(existsSync(join(home, WELCOME_FILE))).toBe(false);
+  test('the canvas the assistant created gets one first card that says what to try; in an empty repository, to describe what to build', async () => {
+    const first = async (path: string) => {
+      const id = `c${Math.random().toString(36).slice(2, 8)}`;
+      const board = new Board(store, { id, name: 'Shop', repos: [{ id: 'shop', name: 'Shop', path, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+      const canvas = { id, board } as unknown as CanvasRuntime;
+      writeFileSync(join(home, WELCOME_FILE), id);
+      await Promise.all([welcome(home, [canvas]), welcome(home, [canvas])]);
+      expect(existsSync(join(home, WELCOME_FILE))).toBe(false);
+      return { titles: board.snapshot().items.filter((i) => i.kind === 'task').map((c) => c.title), t: board.t };
+    };
+    const shop = await first(gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', 'src/shop.ts': 'export {};\n' }));
+    expect(shop.titles).toEqual([shop.t.welcome.title]);
+    // a README, a licence and git's own files are not yet anything to change
+    const fresh = await first(gitRepo(join(dir, 'fresh'), { 'README.md': '# Fresh\n', LICENSE: 'MIT\n', '.gitignore': 'dist/\n' }));
+    expect(fresh.titles).toEqual([fresh.t.welcomeEmpty.title]);
+    // nor is a repository without a single commit
+    const unborn = join(dir, 'unborn');
+    mkdirSync(unborn);
+    git(unborn, 'init', '--quiet', '-b', 'main');
+    expect((await first(unborn)).titles).toEqual([fresh.t.welcomeEmpty.title]);
   });
 });
 

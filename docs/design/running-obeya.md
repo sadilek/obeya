@@ -525,7 +525,12 @@ URL; into the home directory unless another is given). It shows the main branch 
 folder without git gets the offer to set it up (see Setting up git in a folder), whose confirmation
 also creates the canvas. Obeya writes `canvases.json` (worktrees, or two clones when the repository's
 settings say clones), starts the canvas at once (see Live configuration) and the page opens it, with
-a first card that says what to try. Later "Check setup" in the Configuration dialog opens the
+a first card that says what to try: a small change, such as a line in the README, in a repository
+with something in it; in one that is still empty ("First task: describe what to build"), to write
+down what to build (what for, for whom, what the first version must do) and discuss it as an idea,
+whose "Build it like this" has the first version built. Empty means no commit on the main branch,
+or nothing on it but a README, a licence, git's own files (`.gitignore`, `.gitattributes`,
+`.editorconfig`) and instructions for agents (`CLAUDE.md`, `AGENTS.md`). Later "Check setup" in the Configuration dialog opens the
 same list over the canvas, without the first canvas. A scratch Obeya with `"setup": true` starts like
 a first start.
 
@@ -1094,3 +1099,10 @@ beside the scratch dirs.
   checks run `bun run test`, which picks the number by platform.
 - **The first canvas is chosen with two cards and radio buttons**: pills read as buttons in a user
   test, not as a choice.
+- **An empty repository's first card asks what to build** (2026-11-18, the owner): the card that
+  suggested a small change had nothing to change there. It points to discussing the project as an
+  idea, since an empty repository leaves the most open (platform, technology, scope); starting the
+  agent at once stays possible. The setup card waits as long as the repository is empty, since its
+  agent would find nothing to run; the worker that builds the first version writes the settings.
+  Rejected: an idea card made by Obeya (an idea starts from the owner's words, which Obeya does not
+  have yet).

@@ -659,6 +659,11 @@ const de = {
     title: 'Erste Aufgabe: etwas Kleines ändern',
     body: 'Schreib in diese Karte, was ein Agent in diesem Repository tun soll, zum Beispiel: „Ergänze im README, wie man das Projekt startet.“ Dann „Agent starten“: Er arbeitet auf einem eigenen Branch, fragt nach, wenn er etwas nicht selbst entscheiden soll, und zeigt dir zum Schluss eine Demo. Du gibst sie frei oder schreibst, was noch fehlt.\n\nWeitere Aufgaben legst du mit „+ Neue Aufgabe“ an, oder du sagst sie: Leertaste halten und sprechen. „Konfiguration“ → „Einrichtung prüfen“ prüft auch später, was Obeya auf diesem Rechner braucht.',
   },
+  /** The same, on a canvas whose repository is still empty: what to build comes first. */
+  welcomeEmpty: {
+    title: 'Erste Aufgabe: beschreiben, was entstehen soll',
+    body: 'Dieses Repository ist noch leer. Schreib in diese Karte, was darin entstehen soll: wofür, für wen und was die erste Version können muss, zum Beispiel: „Eine Web-App, in der unser Verein Hallenzeiten bucht. Zuerst nur: freie Zeiten sehen und eine buchen.“ Dann „Als Idee besprechen“: Ein Agent fragt nach, was noch offen ist (Plattform, Technik, Umfang), zeigt Varianten oder einen Prototyp, und „So bauen“ lässt die erste Version bauen. Weißt du schon genau, was du willst, geht auch gleich „Agent starten“. Der Agent, der die erste Version baut, richtet das Repository mit ein: ein CLAUDE.md dazu, wie man darin arbeitet, und die Einstellungen, mit denen Obeya die App startet und vorführt.\n\nWeitere Aufgaben legst du mit „+ Neue Aufgabe“ an, oder du sagst sie: Leertaste halten und sprechen. „Konfiguration“ → „Einrichtung prüfen“ prüft auch später, was Obeya auf diesem Rechner braucht.',
+  },
   adapterSetup: {
     title: (repo: string) => `Obeya für ${repo} einrichten`,
     body: 'Füll mit dem Skill `obeya:settings` die Einstellungen dieses Repositorys für alle aus (`.obeya/settings.json`, in der Konfiguration unter „Einstellungen“ als „aus dem Repository“ zu sehen): welche Prüfungen laufen, wie Arbeit landet, wie ein Agent die App betreibt (starten, nach einer Änderung, für eine Demo), wie Obeya sie stoppt, und wo die Plan-Docs liegen, die Obeya als Projekte zeigt. Hat das Repository noch ein `.obeya/adapter/`, übernimm, was darin steht, in die Einstellungen und lösch es. Was du im Repository nicht herausfindest (Login, Testdaten), frag mich.',
@@ -1231,6 +1236,10 @@ const en: Messages = {
   welcome: {
     title: 'First task: change something small',
     body: 'Write into this card what an agent should do in this repository, for example: “Add to the README how to start the project.” Then “Start agent”: it works on a branch of its own, asks when something is not its to decide, and shows you a demo at the end. You approve it or write what is still missing.\n\nMore tasks come from “+ New task”, or you say them: hold Space and speak. “Configuration” → “Check setup” checks again later what Obeya needs on this machine.',
+  },
+  welcomeEmpty: {
+    title: 'First task: describe what to build',
+    body: 'This repository is still empty. Write into this card what you want to build here: what for, for whom, and what the first version must do, for example: “A web app in which our club books hall times. To begin with only: see the free times and book one.” Then “Discuss as an idea”: an agent asks about what is still open (platform, technology, scope), shows variants or a prototype, and “Build it like this” has the first version built. If you already know exactly what you want, “Start agent” works right away too. The agent that builds the first version also sets up the repository: a CLAUDE.md on how to work in it, and the settings with which Obeya starts and demos the app.\n\nMore tasks come from “+ New task”, or you say them: hold Space and speak. “Configuration” → “Check setup” checks again later what Obeya needs on this machine.',
   },
   adapterSetup: {
     title: (repo: string) => `Set up Obeya for ${repo}`,

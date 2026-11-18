@@ -171,3 +171,27 @@ export async function remoteUrls(cwd: string): Promise<Record<string, string>> {
   }
   return out;
 }
+
+/**
+ * What a repository may hold on its main branch and still be empty: what a forge or `git init`
+ * puts in before any work (a README, a licence, git's own files) and instructions for agents.
+ */
+const HOUSEKEEPING = /^(readme|licen[cs]e|copying|claude|agents)(\.[^/]*)?$|^\.(gitignore|gitattributes|editorconfig)$/i;
+
+/**
+ * Whether the repository at `repoPath` has nothing on its main branch to work on yet: no commit
+ * at all, or nothing but housekeeping files (`HOUSEKEEPING`). A folder without git is never empty
+ * in this sense: its cards work on what is in it.
+ */
+export async function isEmptyRepo(repoPath: string): Promise<boolean> {
+  if (isFolder(repoPath)) return false;
+  return emptyAt(repoPath, (await defaultBranchCommit(repoPath)).commit);
+}
+
+/** `isEmptyRepo` at the main branch's `commit` (`branchCommit`: `HEAD` where it has none). */
+export async function emptyAt(repoPath: string, commit: string): Promise<boolean> {
+  const tree = await gitTry(repoPath, 'ls-tree', '--name-only', commit);
+  // no commit to list (a repository without one): nothing in it
+  if (tree === null) return (await gitTry(repoPath, 'rev-parse', '--git-dir')) !== null && (await gitTry(repoPath, 'rev-parse', '--verify', '--quiet', commit)) === null;
+  return tree.split('\n').every((f) => !f || HOUSEKEEPING.test(f));
+}

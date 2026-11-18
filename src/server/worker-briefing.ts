@@ -47,6 +47,11 @@ export class WorkerBriefing {
     return sharesOf(this.o);
   }
 
+  /** What a worker in a repository without anything in it yet sets up beside its task. */
+  private setUpBeside(): string {
+    return `Besides the task, set it up as part of your work: a CLAUDE.md with what the task says about how to work in this repository, and its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as the card “${this.o.board.t.adapterSetup.title(basename(this.o.repoPath ?? ''))}” would.`;
+  }
+
   /** The language of the card's demos (design: Language): the repository's, else the demo settings' narration language. */
   demoLanguage(): Language {
     return this.o.adapter.demo?.language ?? this.o.demoLanguage?.() ?? this.o.board.conversation();
@@ -193,8 +198,9 @@ ${idea.idea.brief}` : '',
       );
     else if (made?.made)
       parts.push(
-        `This repository is new: Obeya created it for this card with a first commit of what its folder held (a default .gitignore, else nothing). It is local only, with no remote. Besides the task, set it up as part of your work: a CLAUDE.md with what the task says about how to work in this repository, and its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as the card “${this.o.board.t.adapterSetup.title(basename(this.o.repoPath ?? ''))}” would.`,
+        `This repository is new: Obeya created it for this card with a first commit of what its folder held (a default .gitignore, else nothing). It is local only, with no remote. ${this.setUpBeside()}`,
       );
+    else if (this.o.empty?.()) parts.push(`This repository is still empty: its main branch holds nothing to work on yet, at most a README, a licence or git's own files. ${this.setUpBeside()}`);
     const { run, stop } = this.o.adapter.app ?? {};
     const parking = stop ? ' While the card waits for the owner, Obeya stops the app in your workspace; your next message then says so.' : '';
     const far = hostName(this.o.board.row(card.id).workspace) ? " (this workspace is on another machine: Obeya forwards that address's port, and only that one, to the owner's)" : '';

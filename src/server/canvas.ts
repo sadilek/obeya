@@ -908,6 +908,7 @@ export class CanvasRuntime {
       toObeya: this.toObeya,
       forge: deps.forge,
       repoPath: info.path,
+      empty: () => this.reads.empty(info.path) === true,
       remote: originUrl(info),
       ...(workspaces instanceof Workspaces ? { pulls: workspaces } : {}),
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
@@ -1458,6 +1459,11 @@ export class CanvasRuntime {
       r.problemSources = sources;
       r.ref.configRev = (r.ref.configRev ?? 0) + 1;
       // the settings may be there now, or gone
+      this.proposeSetup(r);
+    }
+    // the first work may have landed in a repository that was empty
+    if (this.reads.empty(path) !== read.empty) {
+      this.reads.setEmpty(path, read.empty);
       this.proposeSetup(r);
     }
     const layered = layerSettings<RepoSettings>(this.reads.sharedOf(path)(), this.settingsOf(r.config)());
@@ -2040,10 +2046,11 @@ export class CanvasRuntime {
   /**
    * Obeya proposes the card that fills in a repository's settings where it knows them not (nothing
    * of the repository's own in `.obeya/settings.json`, or an adapter module left on its main branch),
-   * as the Configuration dialog offers it; a folder without git is left alone.
+   * as the Configuration dialog offers it; a folder without git is left alone, and so is a
+   * repository while it is empty (`isEmptyRepo`): there is nothing to run yet.
    */
   private proposeSetup(r: Repo) {
-    if (!this.deps.setupProposals || r.info.folder) return;
+    if (!this.deps.setupProposals || r.info.folder || this.reads.empty(r.info.path)) return;
     const settings = this.reads.sharedRead(r.info.path)?.settings ?? {};
     const own = SHARED_FIELDS.some((k) => settings[k] !== undefined);
     this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.reads.adapterModule(r.info.path));

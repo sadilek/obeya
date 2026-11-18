@@ -465,7 +465,10 @@ title and text and the dialog's reason beside it. Accepted, it is the owner's ca
 makes it (no mark of an agent's proposal); the button, pressed while the proposal is open, accepts it
 as planned and opens it. Obeya proposes it once per repository and canvas: dismissed, accepted or made
 from the dialog, it does not come back. A proposal still open goes by itself once the settings are on
-the main branch, withdrawn rather than dismissed.
+the main branch, withdrawn rather than dismissed. A repository that is still empty (see The first canvas) gets no proposal
+while it is: there is no app yet to run or check. Its workers hear instead that it is empty and set
+it up beside their task, as in a new repository (a CLAUDE.md, the settings with `obeya:settings`);
+once work is on its main branch and the settings are still missing, the proposal comes.
 
 #### Saving
 

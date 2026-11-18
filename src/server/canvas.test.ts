@@ -796,8 +796,8 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test("where a repository has none, Obeya proposes the card that fills them in, once; the dialog's button takes it on as the owner's card", async () => {
-    const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n' });
-    const done = gitRepo(join(dir, 'done'), { 'README.md': 'Done\n', '.obeya/settings.json': '{ "checks": ["bun test"] }\n' });
+    const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', 'src/shop.ts': 'export {};\n' });
+    const done = gitRepo(join(dir, 'done'), { 'README.md': 'Done\n', 'src/done.ts': 'export {};\n', '.obeya/settings.json': '{ "checks": ["bun test"] }\n' });
     const store = new Store(':memory:');
     const open = () => start({ repos: [{ path: shop }, { path: done }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
     canvas = await open();
@@ -817,8 +817,8 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
   });
 
   test('dismissed, the proposal does not come back; still open, it goes once the repository has settings', async () => {
-    const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n' });
-    const web = gitRepo(join(dir, 'web'), { 'README.md': 'Web\n' });
+    const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', 'src/shop.ts': 'export {};\n' });
+    const web = gitRepo(join(dir, 'web'), { 'README.md': 'Web\n', 'src/web.ts': 'export {};\n' });
     identify(web);
     const store = new Store(':memory:');
     const open = () => start({ repos: [{ path: shop }, { path: web }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
@@ -836,6 +836,25 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     await stop(canvas);
     canvas = await open();
     expect(setup('web')).toBeUndefined();
+  });
+
+  test('an empty repository gets no setup card while it is empty; once work is on its main branch, it does', async () => {
+    const shop = gitRepo(join(dir, 'shop'), { 'README.md': 'Shop\n', LICENSE: 'MIT\n', '.gitignore': 'node_modules/\n' });
+    identify(shop);
+    const store = new Store(':memory:');
+    canvas = await start({ repos: [{ path: shop }] }, { store, home: dir, runtime, forge: noForge, setupProposals: true });
+    const setup = () => canvas.board.snapshot().items.find((i) => i.proposal?.setup);
+    expect(setup()).toBeUndefined();
+    // its first worker hears that it sets the repository up beside its task
+    const card = canvas.board.create({ title: 'Booking app', x: 0, y: 0 });
+    canvas.act(card.id, { action: 'start' });
+    await until(() => runtime.sessions.some((s) => s.spec.role === 'worker'));
+    const brief = runtime.sessions.find((s) => s.spec.role === 'worker')!.inbox[0]!;
+    expect(brief).toContain('This repository is still empty');
+    expect(brief).toContain('obeya:settings');
+    commit(shop, 'src/app.ts', 'export {};\n', 'First version');
+    await canvas.settingsChanged();
+    expect(setup()).toMatchObject({ state: 'proposal', title: 'Obeya für shop einrichten' });
   });
 
   test('once a page of a repository without a theme is online, Obeya proposes the card that writes one, once; a theme takes it away', async () => {

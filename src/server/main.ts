@@ -364,7 +364,7 @@ canvases = await Canvases.start(
     settings: (path) => config.repoSettings(path),
   },
   // the canvas the setup assistant created gets a first card that says what to try
-  (c) => welcome(home, [c]),
+  (c) => void welcome(home, [c]),
 );
 /** The agents' runtime: Claude Code's through the Agent SDK, Codex's app server or Gemini's `agy acp`, recorded (`--record`), or a recording played back (`--replay`). */
 function agentRuntime() {
@@ -405,7 +405,7 @@ const usage = new UsageMeters(
 harnesses.onChange(() => (usage.update(), usage.changed()));
 const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses });
 // the canvas the assistant created gets a first card that says what to try
-welcome(home, canvases.all());
+void welcome(home, canvases.all());
 // Claude Code on the hosts the canvases registered, so the first menu of models has whether it is behind there
 harnesses.lookAtHosts();
 // other devices, when the owner lets them: the phone over the owner's own network
