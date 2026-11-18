@@ -574,7 +574,8 @@ const de = {
   unapprove: 'Doch nicht freigeben',
   unpush: 'Doch nicht pushen',
   approvesAfterReplyAck: 'Freigegeben, sobald der Agent geantwortet hat.',
-  approvesAfterReplyShort: 'Freigabe nach der Antwort',
+  approvesAfterReplyShort: 'Gibt nach der Antwort frei',
+  approvesAfterReplyHint: 'Der Agent arbeitet noch an deiner Nachricht. Sobald seine Antwort da ist, wird freigegeben, mit der Arbeit, wie sie dann steht; fragt er noch etwas, nicht.',
   upstream: {
     approve: (name: string) => `Freigeben + PR an ${name}`,
     approveMine: 'Freigeben, nur für mich',
@@ -2951,7 +2952,8 @@ const en: Strings = {
   unapprove: 'Don’t approve after all',
   unpush: 'Don’t push after all',
   approvesAfterReplyAck: 'Approved once the agent has replied.',
-  approvesAfterReplyShort: 'approval after the reply',
+  approvesAfterReplyShort: 'Approves after the reply',
+  approvesAfterReplyHint: 'The agent is still at work on your message. Once its reply is there, the approval goes ahead with the work as it stands then; if the agent still asks something, it does not.',
   upstream: {
     approve: (name: string) => `Approve + PR to ${name}`,
     approveMine: 'Approve, for me only',

@@ -498,10 +498,12 @@ function TaskView(v: View) {
 
       {/* the decisions below what the card shows, as on every card */}
       <TaskActions v={v} worked={worked} proto={proto} approve={<ApproveButton item={item} act={act} lands={lands} change={change} upstream={upstreamOf(item, repo, lands)} />} />
-      {review && item.noChange && !item.prototypeOf && (
+      {/* approved while the agent is at work: what happens once it has replied, in place of what the buttons would do */}
+      {review && item.approvesAfterReply && <p className="hint go-waits">{t.approvesAfterReplyHint}</p>}
+      {review && !item.approvesAfterReply && item.noChange && !item.prototypeOf && (
         <p className="hint">{inFolder ? t.folder.noChangeHint : item.followsPrs ? t.follows.hint(item.followsPrs.map(prName), item.followsPrs.some((p) => p.maintainers)) : t.noChangeHint}</p>
       )}
-      {review && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
+      {review && !item.approvesAfterReply && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
       {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
     </>
   );

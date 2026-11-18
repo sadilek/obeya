@@ -157,8 +157,8 @@ review card's merge or "Push only", by click or by word through the Coordinator 
 `to_obeya`). The reply often changes the work (the owner asked for one more fix), and work that
 landed without it would be what the owner did not approve. Meanwhile the panel stays open, the
 button reads "Approves after the reply …" ("Pushes after the reply …") with "Don't approve after
-all" beside it, the canvas card adds "approval after the reply", and the conversation says what
-waits. The worker hears of it with its next step. Once its turn is over (with a new handover or
+all" beside it and a line below that says what happens then, the canvas card reads "Approves after
+the reply", and the conversation says what waits. The worker hears of it with its next step. Once its turn is over (with a new handover or
 words for the owner) Obeya carries the approval out as clicked, with the work as the branch holds
 it then, and the landing goes as any (refused, the card waits for the owner again). If the worker
 asks the owner something instead, or its turn ends without a reply (an error, its session ended),
