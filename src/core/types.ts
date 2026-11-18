@@ -132,6 +132,12 @@ export interface Item {
    */
   answering?: true;
   /**
+   * The owner approved the card (`approve`) or pushed a review card's own changes (`push`) while its
+   * worker was still at work on their words: Obeya carries it out once the worker has replied,
+   * unless it asks the owner something; until then "Don't approve after all" takes it back.
+   */
+  approvesAfterReply?: 'approve' | 'push';
+  /**
    * Its worker answered what the owner wrote or said on its handover without a new demo: the card
    * waits for the owner because of that answer, not a demo to watch.
    */
@@ -677,7 +683,8 @@ export interface Clash {
 export type ChangeRoute = 'contributor' | 'self' | 'later' | 'drop';
 
 /** What approving a review card did instead of merging: its PR conflicts with main, which its agent resolves, or only the contributor can. */
-export type ApproveResult = { conflict: 'agent' | 'contributor' } | undefined;
+/** What an approval did beyond what its click says: a review card's PR in conflict, or an approval that waits for the worker's reply (`afterReply`). */
+export type ApproveResult = { conflict: 'agent' | 'contributor' } | { afterReply: true } | undefined;
 
 /** One finding of a review card's review, as its worker keeps it. */
 export interface Finding {
@@ -1498,6 +1505,7 @@ export type CardAction =
    */
   | { action: 'revoke' }
   | { action: 'keepApproval' }
+  | { action: 'unapprove' }
   /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging ("Push only"). */
   | { action: 'pushChanges' }
   /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
@@ -1652,6 +1660,8 @@ export type ErrorCode =
   | 'snoozeTime'
   | 'noQuestion'
   | 'notReady'
+  /** "Discard changes" while the card's agent is still at work on the owner's words. */
+  | 'agentAtWork'
   /** A review card's action on a card that reviews no pull request. */
   | 'notReview'
   /** "Change it myself" on a review card whose contributor does not allow maintainers' edits, or a decision on a finding it does not have open. */

@@ -1638,7 +1638,7 @@ function cardLine(i: Item, c: LineContext): string {
 function stateOf(i: Item, items: Item[]): string {
   if (i.queue) return queued(i.queue, items);
   if (i.need)
-    return `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}`;
+    return `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : i.answered ? ', its agent answered what the owner wrote on its handover' : ''}${i.approvesAfterReply ? '; the owner approved it already, which Obeya carries out once its agent has replied, unless it asks something' : ''}`;
   if (i.idea && i.idea.status !== 'open') return `idea: ${i.idea.status}`;
   if (i.idea?.thinking) return `idea, its agent is working on its reply${i.idea.buildAfterReply ? '; built once the reply is there, unless it asks questions' : ''}`;
   if (i.kind === 'question') return `question card: a thread of answers you looked up, moved onto a card; its agent ${i.thread?.thinking ? 'is reading' : 'answers what the owner asks on it (note)'}`;

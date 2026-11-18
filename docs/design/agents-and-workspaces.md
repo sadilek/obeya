@@ -588,7 +588,8 @@ file's name or line counts opening its diff, with "See the whole diff" beside it
 **Undo.** "Discard changes" on a card waiting for approval puts back what the card changed after
 eight seconds in which the button counts down and a hint beside it says a second click calls it
 off, since this undo cannot
-itself be undone. Before a card's first write, Obeya prepares it under `undo/<canvas>/<repo>/<card>`
+itself be undone. While the worker is at work on the owner's words, the button is greyed out and the
+server refuses it: what the worker still changes would come after the undo. Before a card's first write, Obeya prepares it under `undo/<canvas>/<repo>/<card>`
 in its home: where the file system clones (APFS `clonefile`, reflink on btrfs and XFS; probed with
 `COPYFILE_FICLONE_FORCE`), a clone of the whole folder, sharing bytes until a file changes (8.1 GB in
 0.86 s, no space taken): full undo. Elsewhere (another volume, NTFS, ext4, Windows' ReFS and Dev

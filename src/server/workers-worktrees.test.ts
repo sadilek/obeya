@@ -284,6 +284,8 @@ describe('a worktree per card', () => {
     expect(sc.inbox.at(-1)).toContain('the owner approved your work, but Obeya could not land it on main');
     expect(sc.inbox.at(-1)).toContain('Warum ist das nicht gelandet?');
     // approved again in vain, then once the owner cleared the checkout: the worker hears it landed, not an earlier failure
+    sc.emit({ type: 'tool', name: 'Read', input: {} });
+    sc.call('reply', { text: 'Lokale Änderungen im Checkout stehen im Weg.' });
     sc.emit({ type: 'idle' });
     await workers.approve(c.id).catch(() => {});
     rmSync(join(main, 'mine.ts'));
@@ -704,7 +706,7 @@ describe('a worktree per card', () => {
     expect(git(main, 'branch', '--list', branch)).toBe('');
   });
 
-  test('work approved while its worker ends a reply lands, and the worker still hears so and finishes what remains', async () => {
+  test('work approved while its worker ends a reply lands once the reply is there, and the worker hears so and finishes what remains', async () => {
     const c = manual();
     await workers.start(c.id);
     const wc = board.row(c.id).workspace!;
@@ -714,12 +716,13 @@ describe('a worktree per card', () => {
     s.emit({ type: 'idle' });
     // the owner says yes to publishing after the landing, and approves while the worker still answers
     workers.message(c.id, 'ja');
+    s.emit({ type: 'tool', name: 'Read', input: {} });
     s.call('reply', { text: 'I will publish once it is on main.' });
-    await workers.approve(c.id);
-    expect(s.inbox.at(-1)).toContain('is on main now');
-    // the notice came too late for the reply's turn: the session takes it in a turn of its own
-    s.emit({ type: 'text', text: 'Nothing is published yet.' });
-    s.emit({ type: 'idle', more: true });
+    expect(await workers.approve(c.id)).toEqual({ afterReply: true });
+    expect(state(c.id)).toBe('waiting:demo');
+    s.emit({ type: 'idle' });
+    // the reply's turn is over: the work lands, and the session takes the notice in a turn of its own
+    await until(() => s.inbox.at(-1)?.includes('is on main now'));
     expect(s.closed).toBe(false);
     expect(board.row(c.id).workspace).toBe(wc);
     expect(board.item(c.id)!.finishing).toBe(true);

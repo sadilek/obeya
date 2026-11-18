@@ -207,6 +207,15 @@ const de = {
     approvedFollows: (prs: string[]) =>
       prs.length > 1 ? `Freigegeben. Vom Branch landet nichts; die Karte verfolgt die PRs ${prs.join(', ')}, bis alle gemergt sind.` : `Freigegeben. Vom Branch landet nichts; die Karte verfolgt PR ${prs[0]}, bis er gemergt ist.`,
     approvedDirect: 'Freigegeben und direkt auf main gepusht.',
+    approveAfterReply: (how: 'approve' | 'direct' | 'push'): string =>
+      how === 'direct'
+        ? 'Direkt auf main pushen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gepusht.'
+        : how === 'push'
+          ? 'Die Änderungen pushen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gepusht.'
+          : 'Freigeben, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht freigegeben.',
+    unapproved: (push: boolean): string => (push ? 'Doch nicht pushen.' : 'Doch nicht freigeben.'),
+    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply') =>
+      `${how === 'approve' ? 'Nicht freigegeben' : 'Nicht gepusht'}: ${why === 'question' ? 'Der Agent hat noch eine Frage.' : 'Die Antwort kam nicht zustande.'}`,
     landedDirect: 'Nach der Freigabe direkt auf main gepusht.',
     approvedMain: 'Freigegeben und auf main.',
     landedMain: 'Nach der Freigabe auf main gelandet.',
@@ -816,6 +825,15 @@ const en: Messages = {
     approvedFollows: (prs: string[]) =>
       prs.length > 1 ? `Approved. Nothing lands from the branch; the card follows PRs ${prs.join(', ')} until all are merged.` : `Approved. Nothing lands from the branch; the card follows PR ${prs[0]} until it is merged.`,
     approvedDirect: 'Approved and pushed straight to main.',
+    approveAfterReply: (how: 'approve' | 'direct' | 'push') =>
+      how === 'direct'
+        ? 'Push it straight to main once the reply is there; if the agent still asks something, it is not pushed.'
+        : how === 'push'
+          ? 'Push the changes once the reply is there; if the agent still asks something, they are not pushed.'
+          : 'Approve it once the reply is there; if the agent still asks something, it is not approved.',
+    unapproved: (push: boolean) => (push ? 'Not pushing them after all.' : 'Not approving it after all.'),
+    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply') =>
+      `${how === 'approve' ? 'Not approved' : 'Not pushed'}: ${why === 'question' ? 'the agent still has a question.' : 'the reply did not come.'}`,
     landedDirect: 'Pushed straight to main after the approval.',
     approvedMain: 'Approved and on main.',
     landedMain: 'Landed on main after the approval.',

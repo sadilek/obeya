@@ -6,13 +6,13 @@ import type { CardDiff } from '../core/diff';
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
-import { type Awaited, type MoveTo, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr } from '../core/types';
+import { type Awaited, type MoveTo, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr, type ApproveResult } from '../core/types';
 import { answering, askable, pausable, pausableNow, formatQuestion, handedOver, needsYou } from '../core/card';
 import { AGENT_EFFORTS, agentName, type AgentSetting, type CardAgent, cardAgentOf, type Harness, HARNESS_NAMES, HARNESSES, modelFits, storedModel } from '../core/agents';
 import { findTranscript } from './transcript';
 import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
-import { fromJson, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
+import { fromJson, type ApproveAfter, type AskedPermission, type Json, type HeldComment, type LandedState, type PageHeard, type PausedState, type PrState, type Resolving, type Shipped, type Unheard, toJson } from './row';
 import { decisionLog } from './advisor';
 import { OBEYA_PLUGIN, placeIn } from './demo';
 import { imageNote } from './images';
@@ -71,7 +71,7 @@ function landedAt(row: CardRow): { base: string; commit: string } | undefined {
 }
 
 /** What the card's row becomes when it is planned again, its worker stopped (`Workers.stop`, also where its repository does not run). */
-export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, paused: null, pausing: null, snoozed: null, app: null } satisfies RowUpdate;
+export const PLANNED_AGAIN = { state: 'planned', need: null, detail: null, pr: null, approved_at: null, approve_after: null, paused: null, pausing: null, snoozed: null, app: null } satisfies RowUpdate;
 
 /** What the card's row becomes once landed work's worker is done (`Workers.finish`, also where its repository does not run). */
 export const finishedRow = (row: CardRow): RowUpdate => ({
@@ -88,6 +88,9 @@ export const finishedRow = (row: CardRow): RowUpdate => ({
 
 /** What the card's row becomes where the owner's approval holds while its worker fixes what stands in the way of landing it. */
 export const approvalKept = (row: CardRow): RowUpdate => ({ state: 'working', need: null, detail: null, status_line: null, approved_at: row.approved_at ?? new Date().toISOString() });
+
+/** Which of the owner's approvals waits for the worker's reply, as its lines in the conversation name it. */
+const approvalHow = (how: ApproveAfter) => (how.push ? 'push' : how.direct ? 'direct' : 'approve');
 
 /** What the card's row becomes where its work is the owner's to approve again. */
 export const ownersAgain = (row: CardRow): RowUpdate => ({ state: 'waiting', need: row.demo ? 'demo' : 'review', status_line: null, approved_at: null });
@@ -398,7 +401,7 @@ export class Workers {
     const contribution = fromJson(row.contribution);
     const pr = contribution ? toJson<PrState>({ url: contribution.url, number: contribution.number, seen: [], reported: [] }) : null;
     // a fresh session knows of no app that was stopped
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, approve_after: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
     const launch = (headProblem?: string | null) =>
@@ -933,19 +936,22 @@ export class Workers {
   /**
    * `direct`: the work goes onto the default branch at once instead of into a pull request, where
    * the repository's settings allow it. `findings`: on a review card, what the owner decided for its
-   * findings and had not sent yet, which goes with the approval (`mergeContribution`).
+   * findings and had not sent yet, which goes with the approval (`mergeContribution`). Clicked while
+   * the worker is still at work on the owner's words, the approval waits for its reply (`approveAfterReply`).
    */
-  async approve(cardId: string, { direct = false, findings, upstream }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined; upstream?: boolean } = {}) {
+  async approve(cardId: string, { direct = false, findings, upstream }: { direct?: boolean; findings?: Record<number, ChangeRoute> | undefined; upstream?: boolean } = {}): Promise<ApproveResult | void> {
     const card = this.card(cardId);
     if (!handedOver(card) || this.landing.has(cardId) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
-    if (card.contribution) {
-      if (direct) throw new BadRequest('noDirect', 'a review card merges its pull request');
-      return this.reviews.mergeContribution(cardId, findings && Object.keys(findings).length ? { findings } : {});
+    const decided = findings && Object.keys(findings).length ? findings : undefined;
+    if (card.contribution && direct) throw new BadRequest('noDirect', 'a review card merges its pull request');
+    if (!card.contribution) {
+      if (decided) throw new BadRequest('notReview', 'only a review card has findings to decide on');
+      if (upstream && (!this.o.upstream?.() || direct || card.prototypeOf || this.folder)) throw new BadRequest('noUpstream', 'this repository is no fork whose work lands on its main branch, with an original repository to send a pull request to');
+      if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
+      if (direct && card.adopted?.pr) throw new BadRequest('branchPr', `the branch ${card.adopted.branch} has an open pull request, which the work goes onto`);
     }
-    if (findings && Object.keys(findings).length) throw new BadRequest('notReview', 'only a review card has findings to decide on');
-    if (upstream && (!this.o.upstream?.() || direct || card.prototypeOf || this.folder)) throw new BadRequest('noUpstream', 'this repository is no fork whose work lands on its main branch, with an original repository to send a pull request to');
-    if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
-    if (direct && card.adopted?.pr) throw new BadRequest('branchPr', `the branch ${card.adopted.branch} has an open pull request, which the work goes onto`);
+    if (this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, { ...(direct ? { direct } : {}), ...(decided ? { findings: decided } : {}), ...(upstream !== undefined ? { upstream } : {}) });
+    if (card.contribution) return this.reviews.mergeContribution(cardId, decided ? { findings: decided } : {});
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) {
       this.takeHeld(cardId);
@@ -1045,6 +1051,8 @@ export class Workers {
     const card = this.card(cardId);
     if (!this.folder) throw new BadRequest('notFolder', 'only the changes of a card in a folder without git are undone');
     if (!handedOver(card) || this.landing.has(cardId)) throw new BadRequest('notReady', 'only a card waiting for approval has its changes discarded');
+    // what the worker still changes in the folder would come after the undo
+    if (this.atWorkOn(cardId, card)) throw new BadRequest('agentAtWork', 'the agent is still at work on the owner’s words: its changes are discarded once it has replied');
     const report = await this.folder.undo(cardId);
     const t = this.o.board.t.worker;
     const files = (list: string[]) => list.join(', ');
@@ -1730,9 +1738,79 @@ export class Workers {
     this.revocations.keep(cardId);
   }
 
-  /** "Push only" on a review card (`ReviewCards.pushContribution`). */
-  pushContribution(cardId: string) {
+  /** "Push only" on a review card (`ReviewCards.pushContribution`); clicked while its worker is still at work on the owner's words, it waits for the reply. */
+  pushContribution(cardId: string): ApproveResult | Promise<ApproveResult | void> {
+    const card = this.card(cardId);
+    if (card.contribution && handedOver(card) && !this.approving.has(cardId) && this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, { push: true });
     return this.reviews.pushContribution(cardId);
+  }
+
+  /**
+   * Whether the worker of the handed-over card is still at work on it: taking in the owner's words
+   * (the card says so), or in a turn of its own that has not handed over (yet). Its work may still
+   * change meanwhile; a turn that handed over only ends.
+   */
+  private atWorkOn(cardId: string, card: Item): boolean {
+    return answering(card) || (this.takesLater(cardId) && !this.live.get(cardId)?.turn.handedOver);
+  }
+
+  /**
+   * The owner approved (or pushed a review card's changes) while the worker is still at work on
+   * their words: the approval waits for its reply (`afterReply`), which may change the work, the way
+   * "Build it like this" waits for an idea's. The worker hears of it with its next step. A second
+   * click while it waits says how instead of the first.
+   */
+  private approveAfterReply(cardId: string, how: ApproveAfter): ApproveResult {
+    const before = this.o.board.row(cardId).approve_after;
+    this.o.board.work(cardId, { approve_after: toJson(how) });
+    if (!before) {
+      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.approveAfterReply(approvalHow(how)));
+      const live = this.live.get(cardId);
+      if (live) live.toldApproval = false;
+    }
+    return { afterReply: true };
+  }
+
+  /** "Don't approve after all": the approval that waited for the worker's reply is taken back, and the card waits for the owner once it replies. */
+  unapprove(cardId: string) {
+    const how = fromJson(this.o.board.row(cardId).approve_after);
+    if (!how) return;
+    this.o.board.work(cardId, { approve_after: null });
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.unapproved(!!how.push));
+    const live = this.live.get(cardId);
+    if (live?.toldApproval) this.tellLater(cardId, 'The owner took back the approval they gave while you were at work: once your turn is over, the card waits for them again, as after any handover.');
+  }
+
+  /** The owner's approval that waits for the worker's reply, passed once with its next tool result. */
+  private approvalNote(cardId: string, live: Live): string | undefined {
+    if (live.toldApproval || this.live.get(cardId) !== live || !this.o.board.row(cardId).approve_after) return;
+    live.toldApproval = true;
+    return 'The owner approved your work while you are still at it on their words. Once you have replied and your turn is over, Obeya carries out their approval with your work as it stands then (your new handover, if you hand over again), without asking them again. Should you ask them something instead, it lapses, and the card waits for them.';
+  }
+
+  /**
+   * The worker may be done with the owner's words (`replied`: with words for them or a new handover;
+   * not: its turn broke off, its session ended): an approval that waited for that is carried out now,
+   * after the code that ended the turn has run, unless the worker is still at work or asks the owner
+   * something. What refuses it then (a landing turned away) shows on the card, which waits for the owner.
+   */
+  private afterReply(cardId: string, replied: boolean) {
+    queueMicrotask(() => void this.approveAfterAll(cardId, replied));
+  }
+
+  private async approveAfterAll(cardId: string, replied: boolean) {
+    const card = this.o.board.item(cardId);
+    const how = card && fromJson(this.o.board.row(cardId).approve_after);
+    if (!card || !how) return;
+    if (card.state === 'waiting' && card.need !== 'question' && this.atWorkOn(cardId, card)) return;
+    this.o.board.work(cardId, { approve_after: null });
+    const t = this.o.board.t.worker;
+    if (!handedOver(card) || !replied) return this.o.board.log(cardId, 'state', 'obeya', t.notApproved(approvalHow(how), card.need === 'question' ? 'question' : 'noReply'));
+    try {
+      await (how.push ? this.reviews.pushContribution(cardId) : this.approve(cardId, how));
+    } catch (e) {
+      this.o.board.log(cardId, 'error', 'obeya', messageOf(e), e instanceof BadRequest ? { code: e.code } : {});
+    }
   }
 
   /** The owner's own wording of the text that goes onto the PR with the worker's held changes (`ReviewCards.editHeld`). */
@@ -2631,7 +2709,7 @@ export class Workers {
       plugins: [OBEYA_PLUGIN],
       ...(env ? { env } : {}),
       contextUpdate: () =>
-        [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
+        [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.approvalNote(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
       askOwner: (request, signal) => this.askOwner(cardId, live, request, signal),
       ...(this.folder ? { watch: this.folder.watch(cardId) } : {}),
       ...(resume ? { resume } : {}),
@@ -3056,6 +3134,7 @@ export class Workers {
         live.work.running = e.background ?? 0;
         if (!live.work.running) live.tasks.clear();
         this.turnEnded(cardId, live, live.work.running, false, this.unheardStarts(cardId, live) || e.more);
+        this.afterReply(cardId, true);
         this.apps.parkLater(cardId);
         break;
     }
@@ -3289,6 +3368,7 @@ export class Workers {
     const answered = spoke || !!before;
     this.o.board.work(cardId, { detail: toJson({ ...rest, ...(answered ? { answered: true } : {}) }) });
     if (!answered) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.unanswered);
+    this.afterReply(cardId, answered);
   }
 
   /** The worker's ended turn waits no more: neither for its background work to wake it, nor for the usage limit to lift. */
@@ -3313,6 +3393,7 @@ export class Workers {
     this.setBusy(live, false);
     if (this.live.get(cardId) !== live) return;
     this.turnEnded(cardId, live, 0, true);
+    this.afterReply(cardId, true);
     this.apps.parkLater(cardId);
   }
 

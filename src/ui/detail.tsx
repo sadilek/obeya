@@ -90,14 +90,20 @@ export function Detail(p: Props) {
     }
   };
   // an approval that posts the text for the PR takes the owner's edit of it as it stands, saved or not
-  const act: Act = (a, done) =>
-    run(async () => {
-      if (a.action === 'approve' || a.action === 'pushChanges') await saveHeld(item.id);
-      const r = await api.act<ApproveResult | void>(item.id, a);
-      // the decisions on findings that went with the approval are no longer the field's to send
-      if (a.action === 'approve' && a.findings) updateDraft(cardDraft(item.id), { findings: undefined });
-      return r;
-    }, done);
+  const act: Act = (a, done) => {
+    const approves = a.action === 'approve' || a.action === 'pushChanges';
+    return run(
+      async () => {
+        if (approves) await saveHeld(item.id);
+        const r = await api.act<ApproveResult | void>(item.id, a);
+        // the decisions on findings that went with the approval are no longer the field's to send
+        if (a.action === 'approve' && a.findings) updateDraft(cardDraft(item.id), { findings: undefined });
+        return r;
+      },
+      // while the agent is at work on the owner's words, the approval waits for its reply in view, as "Build it like this" does on an idea
+      approves && answering(item) ? { close: false } : approves && done.close ? { ...done, ackFor: (r) => (r && typeof r === 'object' && 'afterReply' in r ? t.approvesAfterReplyAck : done.ackFor?.(r)) } : done,
+    );
+  };
   const choice = useRepoChoice(item, p.onEdit);
   const repo = p.repos.find((r) => r.id === item.repo);
   // a proposal being reworked takes the agent's title and text: the fields come back with them, rather than keeping a draft
@@ -849,6 +855,9 @@ function upstreamOf(item: Item, repo: RepoRef | undefined, lands: ReturnType<typ
 
 /** Approving the card's work: a review card's merge, in a folder without git with "Discard changes" beside it, else as the work lands. */
 function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act: Act; lands: ReturnType<typeof landing>; change: CardChange; upstream?: UpstreamRef | undefined }) {
+  // approved while the agent was at work on the owner's words: it waits for the reply
+  const after = item.approvesAfterReply;
+  if (after) return <Armed label={after === 'push' ? t.pushesAfterReply : t.approvesAfterReply} undo={after === 'push' ? t.unpush : t.unapprove} onUndo={() => act({ action: 'unapprove' }, { close: false })} />;
   if (item.contribution) return <ApproveReview item={item} act={act} />;
   if (lands.inFolder)
     return (
@@ -856,7 +865,7 @@ function ApproveButton({ item, act, lands, change, upstream }: { item: Item; act
         <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.folder.approved })}>
           {item.noChange ? t.approveNoChange : t.approve}
         </button>
-        <DiscardChanges diff={change.diff} act={act} onDone={change.reload} />
+        <DiscardChanges diff={change.diff} act={act} onDone={change.reload} busy={!!item.answering} />
       </>
     );
   // in a fork: the card's choice is the first button, the other one beside it

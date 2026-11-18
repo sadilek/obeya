@@ -6,7 +6,7 @@ import type { CardAgent } from '../core/agents';
 import type { RepoCommands } from '../core/config';
 import type { CardFile } from '../core/files';
 import type { PlanDoc } from '../core/plan-doc';
-import type { Detail, HeldComment, Json, LandedState, PageHeard, PausedState, PrState, Scope, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread, Unheard } from './row';
+import type { ApproveAfter, Detail, HeldComment, Json, LandedState, PageHeard, PausedState, PrState, Scope, Shipped, StoredContribution, StoredDemo, StoredDeps, StoredIdea, StoredNewRepo, StoredPrototype, StoredShare, StoredThread, Unheard } from './row';
 
 /** Where a page of the archive ends (`Store.archivePage`): the last card's archiving, creation and id. */
 export interface ArchiveCursor {
@@ -82,6 +82,11 @@ export interface CardRow {
   prototype_of: string | null;
   /** When the owner approved work that could not land yet; its next handover lands without asking again. */
   approved_at: string | null;
+  /**
+   * The owner's approval of a handed-over card given while its worker was still at work on their
+   * words (`ApproveAfter`): it is carried out once the worker has replied; null otherwise.
+   */
+  approve_after: Json<ApproveAfter> | null;
   /**
    * While the card's work is on main and its worker finishes what remains (its workspace and
    * session are kept until then).
@@ -639,6 +644,8 @@ export const MIGRATIONS = [
     prints TEXT NOT NULL,
     at TEXT NOT NULL
   );`,
+  // an approval clicked while the card's worker was still at work on the owner's words (`CardRow.approve_after`)
+  'ALTER TABLE cards ADD COLUMN approve_after TEXT;',
 ];
 
 /**

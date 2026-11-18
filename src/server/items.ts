@@ -214,6 +214,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(demo?.question && !demo.answer && r.need === 'demo' ? { question: { text: demo.question, options: demo.options ?? [], ...(demo.multiple ? { multiple: true } : {}), ...(demo.pick ? { pick: demo.pick } : {}) } } : {}),
     ...(detail.summary && handed ? { summary: detail.summary } : {}),
     ...(answering ? { answering: true } : {}),
+    ...(r.approve_after && handed ? { approvesAfterReply: fromJson(r.approve_after).push ? ('push' as const) : ('approve' as const) } : {}),
     ...(detail.answered && !answering && handed ? { answered: true } : {}),
     ...(r.held ? { held: fromJson(r.held).map((h) => h.id) } : {}),
     // approved work is held for its next handover while the card is at work or asks the owner; on a waiting card it is landing

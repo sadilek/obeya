@@ -1,7 +1,7 @@
 // What a card's row (`CardRow` in db.ts) stores in its JSON columns: the shape of each, and how it
 // is read.
 
-import type { AdoptedPr, Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
+import type { AdoptedPr, ChangeRoute, Contribution, Demo, DemoKind, HeldChanges, Idea, Mock, NewRepo, NextStep, PageTags, PlannedPrototype, PrReviewEntry, PrWait, Question, SettledPart } from '../core/types';
 import type { CardLanding } from '../core/config';
 import type { PullStopped } from './workspaces';
 
@@ -40,6 +40,18 @@ export interface Detail {
   upstreamNew?: number;
   answering?: boolean;
   answered?: boolean;
+}
+
+/**
+ * An approval the owner gave a handed-over card while its worker was still at work on their words
+ * (`CardRow.approve_after`), as they gave it: the arguments of `Workers.approve`, or `push` for a
+ * review card's "Push only". Carried out once the worker has replied.
+ */
+export interface ApproveAfter {
+  direct?: boolean;
+  upstream?: boolean;
+  findings?: Record<number, ChangeRoute>;
+  push?: boolean;
 }
 
 /** The Coordinator's estimate of the files a card changes (`CardRow.scope`). */

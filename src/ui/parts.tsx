@@ -222,6 +222,7 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
           {item.proposal?.acceptAfterRevision && ` · ${t.acceptsAfterRevision}`}
           {item.state === 'proposal' && item.proposal?.startAt && !item.proposal.idea && ` · ${t.startAt.short(snoozeWhen(item.proposal.startAt))}`}
           {item.idea?.buildAfterReply && ` · ${t.idea.buildsAfterReply}`}
+          {item.approvesAfterReply && ` · ${t.approvesAfterReplyShort}`}
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
           {since && <span className="since"> · {since}</span>}
         </span>
