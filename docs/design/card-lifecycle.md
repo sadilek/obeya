@@ -161,9 +161,12 @@ all" beside it and a line below that says what happens then, the canvas card rea
 the reply", and the conversation says what waits. The worker hears of it with its next step. Once its turn is over (with a new handover or
 words for the owner) Obeya carries the approval out as clicked, with the work as the branch holds
 it then, and the landing goes as any (refused, the card waits for the owner again). If the worker
-asks the owner something instead, or its turn ends without a reply (an error, its session ended),
-nothing is carried out, the conversation says why, and the owner decides again. The approval waiting
-holds across a restart, which resumes the worker's turn (2026-11-18: an approval straight to main
+asks the owner something instead (a question, a permission, a question in its new demo report), or
+its turn ends without a reply (an error, its session ended), nothing is carried out, the
+conversation says why, and the owner decides again. On a review card, whose merge goes out with the
+head its worker handed over, the same holds where the worker changed its workspace without handing
+over again. The approval waiting
+holds across a restart, which resumes the worker's turn (or carries it out, where the turn had handed over already) (2026-11-18: an approval straight to main
 went out without the fix its worker was still making, and main's CI stayed red).
 
 ### Taking back an approval

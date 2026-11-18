@@ -481,6 +481,39 @@ describe('approving directly onto main where work goes out as a pull request', (
       expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
     });
 
+    test('a new handover that asks something in its demo report lets the approval lapse too', async () => {
+      const { c, session, clone } = await answering();
+      await workers.approve(c.id, { direct: true });
+      commitIn(clone, 'golden.json', 'Goldens');
+      await session.call('ready_for_review', { summary: 'Goldens erneuert.', demo: { ...artifact(), question: { text: 'Auch die dritte Szene?' } } });
+      session.emit({ type: 'idle' });
+      await until(() => board.events(c.id).some((e) => e.text === 'Nicht gepusht: Der Agent hat noch eine Frage.'));
+      expect(state(c.id)).toBe('waiting:demo');
+      expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+    });
+
+    test('asking the owner for a permission lets it lapse at once', async () => {
+      const { c, session } = await answering();
+      await workers.approve(c.id, { direct: true });
+      void session.spec.askOwner!({ name: 'Bash', input: { command: 'rm -rf build' } }, new AbortController().signal);
+      await until(() => board.item(c.id)!.need === 'question');
+      expect(board.item(c.id)).toMatchObject({ state: 'waiting', need: 'question' });
+      expect(board.item(c.id)!.approvesAfterReply).toBeUndefined();
+      expect(board.events(c.id).at(-1)).toMatchObject({ text: 'Nicht gepusht: Der Agent hat noch eine Frage.' });
+    });
+
+    test('a restart after the new handover, before the turn ended, carries the approval out', async () => {
+      const { c, session, clone } = await answering();
+      await workers.approve(c.id, { direct: true });
+      commitIn(clone, 'golden.json', 'Goldens');
+      await session.call('ready_for_review', { summary: 'Goldens erneuert.', demo: artifact() });
+      workers.shutdown();
+      rebuild();
+      workers.resumeAll();
+      await until(() => state(c.id) === 'live');
+      expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['Goldens', 'X', 'init']);
+    });
+
     test('a turn that broke off without a reply carries out nothing', async () => {
       const { c, session } = await answering();
       await workers.approve(c.id, { direct: true });

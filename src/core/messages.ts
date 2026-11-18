@@ -214,8 +214,8 @@ const de = {
           ? 'Die Änderungen pushen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gepusht.'
           : 'Freigeben, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht freigegeben.',
     unapproved: (push: boolean): string => (push ? 'Doch nicht pushen.' : 'Doch nicht freigeben.'),
-    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply') =>
-      `${how === 'approve' ? 'Nicht freigegeben' : 'Nicht gepusht'}: ${why === 'question' ? 'Der Agent hat noch eine Frage.' : 'Die Antwort kam nicht zustande.'}`,
+    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply' | 'unhanded') =>
+      `${how === 'approve' ? 'Nicht freigegeben' : 'Nicht gepusht'}: ${why === 'question' ? 'Der Agent hat noch eine Frage.' : why === 'unhanded' ? 'Der Agent hat die Arbeit geändert, ohne sie neu zu übergeben.' : 'Die Antwort kam nicht zustande.'}`,
     landedDirect: 'Nach der Freigabe direkt auf main gepusht.',
     approvedMain: 'Freigegeben und auf main.',
     landedMain: 'Nach der Freigabe auf main gelandet.',
@@ -832,8 +832,8 @@ const en: Messages = {
           ? 'Push the changes once the reply is there; if the agent still asks something, they are not pushed.'
           : 'Approve it once the reply is there; if the agent still asks something, it is not approved.',
     unapproved: (push: boolean) => (push ? 'Not pushing them after all.' : 'Not approving it after all.'),
-    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply') =>
-      `${how === 'approve' ? 'Not approved' : 'Not pushed'}: ${why === 'question' ? 'the agent still has a question.' : 'the reply did not come.'}`,
+    notApproved: (how: 'approve' | 'direct' | 'push', why: 'question' | 'noReply' | 'unhanded') =>
+      `${how === 'approve' ? 'Not approved' : 'Not pushed'}: ${why === 'question' ? 'the agent still has a question.' : why === 'unhanded' ? 'the agent changed the work without handing it over again.' : 'the reply did not come.'}`,
     landedDirect: 'Pushed straight to main after the approval.',
     approvedMain: 'Approved and on main.',
     landedMain: 'Landed on main after the approval.',

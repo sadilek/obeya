@@ -52,6 +52,10 @@ export interface ApproveAfter {
   upstream?: boolean;
   findings?: Record<number, ChangeRoute>;
   push?: boolean;
+  /** The worker's latest handover (its log line's id) when the owner clicked. */
+  handover?: number;
+  /** A review card's: its workspace's head when the owner clicked. */
+  head?: string;
 }
 
 /** The Coordinator's estimate of the files a card changes (`CardRow.scope`). */

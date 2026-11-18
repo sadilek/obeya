@@ -950,7 +950,7 @@ export class Workers {
       if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
       if (direct && card.adopted?.pr) throw new BadRequest('branchPr', `the branch ${card.adopted.branch} has an open pull request, which the work goes onto`);
     }
-    if (this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, { ...(direct ? { direct } : {}), ...(decided ? { findings: decided } : {}), ...(upstream !== undefined ? { upstream } : {}) });
+    if (this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, card, { ...(direct ? { direct } : {}), ...(decided ? { findings: decided } : {}), ...(upstream !== undefined ? { upstream } : {}) });
     if (card.contribution) return this.reviews.mergeContribution(cardId, decided ? { findings: decided } : {});
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) {
@@ -1739,9 +1739,9 @@ export class Workers {
   }
 
   /** "Push only" on a review card (`ReviewCards.pushContribution`); clicked while its worker is still at work on the owner's words, it waits for the reply. */
-  pushContribution(cardId: string): ApproveResult | Promise<ApproveResult | void> {
+  pushContribution(cardId: string): Promise<ApproveResult | void> {
     const card = this.card(cardId);
-    if (card.contribution && handedOver(card) && !this.approving.has(cardId) && this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, { push: true });
+    if (card.contribution && handedOver(card) && !this.approving.has(cardId) && this.atWorkOn(cardId, card)) return this.approveAfterReply(cardId, card, { push: true });
     return this.reviews.pushContribution(cardId);
   }
 
@@ -1758,17 +1758,32 @@ export class Workers {
    * The owner approved (or pushed a review card's changes) while the worker is still at work on
    * their words: the approval waits for its reply (`afterReply`), which may change the work, the way
    * "Build it like this" waits for an idea's. The worker hears of it with its next step. A second
-   * click while it waits says how instead of the first.
+   * click while it waits says how instead of the first. A review card's approval goes out with the
+   * PR's head its worker handed over, so it notes the handover it saw and the workspace's head then:
+   * work changed since without a new handover would not go out with it.
    */
-  private approveAfterReply(cardId: string, how: ApproveAfter): ApproveResult {
+  private async approveAfterReply(cardId: string, card: Item, how: ApproveAfter): Promise<ApproveResult> {
+    const row = this.o.board.row(cardId);
+    const handover = this.o.board.events(cardId).findLast((e) => e.kind === 'review' && e.author === 'worker')?.id;
+    const head = card.contribution && row.workspace && !hostName(row.workspace) ? await gitAsync(row.workspace, 'rev-parse', 'HEAD').catch(() => undefined) : undefined;
     const before = this.o.board.row(cardId).approve_after;
-    this.o.board.work(cardId, { approve_after: toJson(how) });
+    this.o.board.work(cardId, { approve_after: toJson({ ...how, ...(handover !== undefined ? { handover } : {}), ...(head ? { head } : {}) }) });
     if (!before) {
       this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.approveAfterReply(approvalHow(how)));
       const live = this.live.get(cardId);
       if (live) live.toldApproval = false;
     }
+    // the turn may have ended while git read the head
+    this.afterReply(cardId, true);
     return { afterReply: true };
+  }
+
+  /** The worker asks the owner something while an approval waits for its reply: the approval lapses, and the card waits for them. */
+  private lapseApproval(cardId: string) {
+    const how = fromJson(this.o.board.row(cardId).approve_after);
+    if (!how) return;
+    this.o.board.work(cardId, { approve_after: null });
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.notApproved(approvalHow(how), 'question'));
   }
 
   /** "Don't approve after all": the approval that waited for the worker's reply is taken back, and the card waits for the owner once it replies. */
@@ -1798,6 +1813,11 @@ export class Workers {
     queueMicrotask(() => void this.approveAfterAll(cardId, replied));
   }
 
+  /** Whether the worker handed over again after the handover `id` (none: after none). */
+  private handedOverSince(cardId: string, id: number | undefined): boolean {
+    return this.o.board.events(cardId).some((e) => e.kind === 'review' && e.author === 'worker' && (id === undefined || e.id > id));
+  }
+
   private async approveAfterAll(cardId: string, replied: boolean) {
     const card = this.o.board.item(cardId);
     const how = card && fromJson(this.o.board.row(cardId).approve_after);
@@ -1805,7 +1825,14 @@ export class Workers {
     if (card.state === 'waiting' && card.need !== 'question' && this.atWorkOn(cardId, card)) return;
     this.o.board.work(cardId, { approve_after: null });
     const t = this.o.board.t.worker;
-    if (!handedOver(card) || !replied) return this.o.board.log(cardId, 'state', 'obeya', t.notApproved(approvalHow(how), card.need === 'question' ? 'question' : 'noReply'));
+    // a question of its own, also one in a new demo report, is the owner's to answer first
+    const asks = card.need === 'question' || (handedOver(card) && !!card.question);
+    if (!handedOver(card) || asks || !replied) return this.o.board.log(cardId, 'state', 'obeya', t.notApproved(approvalHow(how), asks ? 'question' : 'noReply'));
+    if (card.contribution && how.head && !this.handedOverSince(cardId, how.handover)) {
+      const ws = this.o.board.row(cardId).workspace;
+      const now = ws ? await gitAsync(ws, 'rev-parse', 'HEAD').catch(() => undefined) : undefined;
+      if (now !== how.head) return this.o.board.log(cardId, 'state', 'obeya', t.notApproved(approvalHow(how), 'unhanded'));
+    }
     try {
       await (how.push ? this.reviews.pushContribution(cardId) : this.approve(cardId, how));
     } catch (e) {
@@ -2258,6 +2285,8 @@ export class Workers {
         this.resumeLanded(i, landed, row.session_id, repo);
         continue;
       }
+      // an approval that waited for a turn the restart cut off after its handover: that turn is over
+      if (row.approve_after && !answering(i)) this.afterReply(i.id, true);
       // a worker taking in the owner's words on its handover was in the middle of a turn too
       if (answering(i)) {
         if (row.workspace && row.session_id) this.launch(i.id, restarted, row.session_id);
@@ -3134,7 +3163,8 @@ export class Workers {
         live.work.running = e.background ?? 0;
         if (!live.work.running) live.tasks.clear();
         this.turnEnded(cardId, live, live.work.running, false, this.unheardStarts(cardId, live) || e.more);
-        this.afterReply(cardId, true);
+        // a turn that broke off with an error brought no reply
+        this.afterReply(cardId, !live.failed);
         this.apps.parkLater(cardId);
         break;
     }
@@ -3393,7 +3423,7 @@ export class Workers {
     this.setBusy(live, false);
     if (this.live.get(cardId) !== live) return;
     this.turnEnded(cardId, live, 0, true);
-    this.afterReply(cardId, true);
+    this.afterReply(cardId, false);
     this.apps.parkLater(cardId);
   }
 
@@ -3538,6 +3568,7 @@ export class Workers {
     this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
     this.wokenForOwner(cardId);
     this.o.board.work(cardId, { state: 'waiting', need: 'question', detail: toJson({ question: q, permission: asked }) });
+    this.lapseApproval(cardId);
     this.setBusy(live, false);
     return new Promise((resolve) => {
       live.permission = (answer) => {
