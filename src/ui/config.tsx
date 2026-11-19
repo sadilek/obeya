@@ -753,7 +753,7 @@ function Canvases({ view, rows, n, checked, changed, busy, focus, onAsk, onReche
           onReload={onReload}
           {...(prepare ? { prepare } : {})}
           onChange={(y) => onCanvas(n, y)}
-          {...(pin ? { onDelete: () => onDelete(n), othersChanged: changed } : {})}
+          {...(pin ? { deletes: pin, onDelete: () => onDelete(n), othersChanged: changed } : {})}
         />
       ) : (
         <Head title={c.sections.canvases} {...(file.file ? { file: file.file } : { hint: file.notice })} />
@@ -1662,6 +1662,8 @@ interface CanvasProps {
   onMove?: (earlier: boolean) => void;
   /** It is the last canvas: it cannot move down. */
   last?: boolean;
+  /** The id it is saved under, which deleting it goes by. */
+  deletes?: string;
   /** Deletes it at once, apart from the draft; none for a canvas not saved yet, which its bin just takes out of the draft. */
   onDelete?: () => Promise<void>;
   /** The draft holds changes, which stay waiting for Save when it is deleted. */
@@ -1669,7 +1671,7 @@ interface CanvasProps {
 }
 
 /** A canvas as its own page: its title with id, order and removal, its name, then each repository with its settings. */
-function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin, saved, problems, focus, ask, onRecheck, onReload, prepare, onChange, onMove, last, onDelete, othersChanged }: CanvasProps) {
+function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin, saved, problems, focus, ask, onRecheck, onReload, prepare, onChange, onMove, last, deletes, onDelete, othersChanged }: CanvasProps) {
   // the panel that deletes it, under its title line
   const [deleting, setDeleting] = useState(false);
   const fresh = resolved && !running.includes(resolved.id);
@@ -1713,7 +1715,9 @@ function CanvasBlock({ n, canvas, file, notice, checking, resolved, running, pin
           )}
           <RemoveButton label={onDelete ? t.config.deleteCanvas : t.config.removeCanvas} pressed={onDelete ? deleting : undefined} onClick={() => (onDelete ? setDeleting(!deleting) : onChange(null))} />
         </div>
-        {onDelete && deleting && resolved && <DeletePanel id={resolved.id} name={canvas.name?.trim() || resolved.name} repos={canvas.repos.length} othersChanged={!!othersChanged} onDelete={onDelete} onCancel={() => setDeleting(false)} />}
+        {deletes && onDelete && deleting && (
+          <DeletePanel id={deletes} name={canvas.name?.trim() || resolved?.name || here} repos={canvas.repos.length} othersChanged={!!othersChanged} onDelete={onDelete} onCancel={() => setDeleting(false)} />
+        )}
         {notice && <p className="hint">{notice}</p>}
         <p className="hint">{t.config.settings.hint}</p>
       </header>

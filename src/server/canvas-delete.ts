@@ -2,8 +2,7 @@
 // rows left the database. Its repositories or folders, the clones the owner listed, pushed branches
 // and open pull requests stay as they are.
 
-import { existsSync, readdirSync, renameSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { readdir, rename, rm, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { messageOf } from '../core/text';
 import { gitTry } from './git';
@@ -38,9 +37,9 @@ export interface CanvasRemains {
 export async function removeCanvasRemains(r: CanvasRemains): Promise<{ removed: Promise<void> }> {
   await Promise.all(r.repos.map((repo) => repo.quiet().catch((e) => console.error(`Obeya: ending what runs in the workspaces of ${repo.path}: ${messageOf(e)}`))));
   const keep = r.repos.flatMap((repo) => [repo.path, ...repo.listed]).map((p) => resolve(p));
-  const trash = CANVAS_DIRS.flatMap((d) => moveAside(join(r.home, d, r.canvas), keep));
+  const trash = (await Promise.all(CANVAS_DIRS.map((d) => moveAside(join(r.home, d, r.canvas), keep)))).flat();
   for (const repo of r.repos) {
-    if (!repo.git || !existsSync(repo.path)) continue;
+    if (!repo.git || !(await there(repo.path))) continue;
     // the worktrees moved aside are no longer there: git forgets them, and then lets their branches go
     await gitTry(repo.path, 'worktree', 'prune');
     for (const branch of repo.branches) await gitTry(repo.path, 'branch', '-D', '--', branch);
@@ -54,23 +53,26 @@ export async function removeCanvasRemains(r: CanvasRemains): Promise<{ removed: 
  * id starts without it; returns where it went. Where a path in `keep` (a repository, a clone the
  * owner listed) lies inside it, only what is beside that path moves, level by level.
  */
-function moveAside(dir: string, keep: string[]): string[] {
-  if (!existsSync(dir)) return [];
+async function moveAside(dir: string, keep: string[]): Promise<string[]> {
+  if (!(await there(dir))) return [];
   const inside = keep.filter((k) => k === dir || k.startsWith(dir + sep));
   if (inside.includes(dir)) return [];
   if (inside.length) {
-    let names: string[] = [];
-    try {
-      names = readdirSync(dir);
-    } catch {}
-    return names.flatMap((name) => moveAside(join(dir, name), inside));
+    const names = await readdir(dir).catch(() => [] as string[]);
+    return (await Promise.all(names.map((name) => moveAside(join(dir, name), inside)))).flat();
   }
   const to = `${dir}.deleted-${Date.now()}`;
   try {
-    renameSync(dir, to);
+    await rename(dir, to);
     return [to];
   } catch (e) {
     console.error(`Obeya: moving ${dir} aside: ${messageOf(e)}`);
     return [];
   }
 }
+
+/** Whether something is at `path`. */
+const there = (path: string) => stat(path).then(
+  () => true,
+  () => false,
+);
