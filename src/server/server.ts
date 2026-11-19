@@ -594,6 +594,9 @@ function configRoutes(x: Routing) {
     '/api/config/share-settings': { POST: needs(config, async (c, req) => c.shareSettings(await req.json())) },
     // a repository's commands, new or changed on its default branch, confirmed by the owner: they count from now on
     '/api/config/trust': { POST: needs(config, async (c, req) => (await c.trust(await req.json()), {})) },
+    // the panel under a canvas's title: what deleting it takes with it, counted now; and deleting it, apart from any draft
+    '/api/config/canvases/:id/deletion': { GET: needs(config, (c, req) => c.deletion((req as Req).params.id!)) },
+    '/api/config/canvases/:id': { DELETE: needs(config, (c, req) => c.deleteCanvas((req as Req).params.id!)) },
     // "Try again": what did not start as the configuration has it tries again
     '/api/config/retry': { POST: needs(config, (c) => c.retry()) },
     // what the configuration amounts to and what is wrong with it: as saved, or a draft as the owner edits it

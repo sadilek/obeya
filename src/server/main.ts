@@ -304,6 +304,9 @@ const config = new Config({
   },
   apply: (configs, ids) => canvases?.apply(configs, ids),
   failures: () => canvases?.failures() ?? [],
+  deleteCanvases: (ids, saved) => (canvases ? canvases.delete(ids, saved) : Promise.reject(new Error('the canvases have not started yet'))),
+  atWork: (id) => canvases?.get(id)?.atWork().map((i) => i.title) ?? [],
+  deletion: (id) => canvases?.get(id)?.deletion(),
   ...(process.env.OBEYA_SUPERVISED
     ? {
         restart: () => {

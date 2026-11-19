@@ -267,3 +267,57 @@ test('the migration gives what the Coordinator said, looked up and decided as `k
     expect(after.cardDecisions('c', 'card').map((d) => d.by)).toEqual(['coordinator']);
     after.db.close();
   }));
+
+test('deleting a canvas leaves nothing of it in any table, and every other canvas as it was', () => {
+  const store = new Store(':memory:');
+  const db = store.db;
+  const tables = (db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((r) => r.name);
+  type Column = { name: string; type: string; notnull: number; dflt_value: string | null; pk: number };
+  const columns = (table: string) => db.query(`PRAGMA table_info(${table})`).all() as Column[];
+  let n = 0;
+  // a row with what is given, and a value of its type in every other column that needs one
+  const insert = (table: string, given: Record<string, string | number | null>) => {
+    const row = { ...given };
+    for (const c of columns(table)) {
+      if (c.name in row || (c.pk && c.type === 'INTEGER')) continue;
+      if ((c.notnull && c.dflt_value === null) || c.pk) row[c.name] = c.type === 'INTEGER' || c.type === 'REAL' ? ++n : `${table}-${c.name}-${++n}`;
+    }
+    const keys = Object.keys(row);
+    db.query(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${keys.map((k) => `$${k}`).join(', ')})`).run(row);
+  };
+  // every table that holds something of a canvas, whatever tables come: by its id, a card's or an agent session's
+  const holding = tables.filter((t) => columns(t).some((c) => ['canvas_id', 'card_id', 'session'].includes(c.name)) && !['groups', 'cards'].includes(t));
+  for (const canvas of ['gone', 'stay']) {
+    store.ensureCanvas(canvas, canvas);
+    insert('groups', { id: `group-${canvas}`, canvas_id: canvas });
+    insert('cards', { id: `card-${canvas}`, canvas_id: canvas, group_id: `group-${canvas}`, session_id: `session-${canvas}` });
+    for (const table of holding) {
+      const has = new Set(columns(table).map((c) => c.name));
+      insert(table, {
+        ...(has.has('canvas_id') ? { canvas_id: canvas } : {}),
+        ...(has.has('card_id') ? { card_id: `card-${canvas}` } : {}),
+        ...(has.has('session') ? { session: `session-${canvas}` } : {}),
+      });
+    }
+  }
+  // a card of the canvas that stays came from one of the deleted canvas's
+  insert('cards', { id: 'came-from-gone', canvas_id: 'stay', from_id: 'card-gone', built_on: 'card-gone' });
+  store.deleteCanvas('gone');
+  const count = (table: string, column: string, value: string) => (db.query(`SELECT count(*) AS n FROM ${table} WHERE ${column} = $v`).get({ v: value }) as { n: number }).n;
+  for (const table of [...holding, 'groups', 'cards']) {
+    const has = new Set(columns(table).map((c) => c.name));
+    for (const [column, gone, stay] of [
+      ['canvas_id', 'gone', 'stay'],
+      ['card_id', 'card-gone', 'card-stay'],
+      ['session', 'session-gone', 'session-stay'],
+    ] as const) {
+      if (!has.has(column)) continue;
+      expect({ table, column, n: count(table, column, gone) }).toEqual({ table, column, n: 0 });
+      expect(count(table, column, stay)).toBeGreaterThan(0);
+    }
+  }
+  expect(store.canvasName('gone')).toBeNull();
+  expect(store.card('came-from-gone')).toMatchObject({ from_id: null, built_on: null });
+  // anything still writing for it afterwards is refused, so nothing of it comes back
+  expect(() => insert('cards', { id: 'late', canvas_id: 'gone' })).toThrow();
+});

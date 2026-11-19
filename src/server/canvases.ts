@@ -2,6 +2,8 @@
 
 import { type CanvasConfig, type CanvasDeps, CanvasRuntime, HomeDown, type StartFailure } from './canvas';
 import { ConfigError } from './canvas-config';
+import { BadRequest } from './board';
+import { type CanvasRemains, removeCanvasRemains } from './canvas-delete';
 import { Listeners } from '../core/watched';
 
 /**
@@ -26,8 +28,9 @@ export async function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, f
 /**
  * The canvases Obeya serves, as its configuration has them while it runs (design: Live
  * configuration): a canvas new in it starts at once, one that changed takes the change
- * (`CanvasRuntime.apply`), one no longer in it stops once its agents paused, its cards kept. Its
- * listeners hear whenever a canvas starts, stops, or changes its name or repositories.
+ * (`CanvasRuntime.apply`), one no longer in it stops once its agents paused, its cards kept; one
+ * deleted (`delete`) stops at once and goes with its cards. Its listeners hear whenever a canvas
+ * starts, stops, or changes its name or repositories.
  */
 export class Canvases extends Listeners {
   private list: CanvasRuntime[] = [];
@@ -147,6 +150,37 @@ export class Canvases extends Listeners {
     this.sort();
     this.started(c);
     this.emit();
+  }
+
+  /**
+   * Deletes the canvases `ids` (design: Deleting a canvas), refused while one of their agents is at
+   * work or one is still starting. Nothing lies between that check and their stopping, so no agent
+   * starts in between: `saved` writes the configuration without them, each stops at once, and its
+   * rows leave the database, so anything of it still under way can write nothing back; their pages
+   * go to the first canvas. Settles once what they left on disk is out of the way of a canvas added
+   * again under the same id, its folders removed in the background (`removed`).
+   */
+  async delete(ids: string[], saved: () => void): Promise<{ removed: Promise<void> }> {
+    const atWork = ids.flatMap((id) => {
+      if (this.starting.has(id)) return [`${id} (starting)`];
+      const c = this.get(id);
+      const cards = c?.atWork() ?? [];
+      return cards.length ? [`${c!.board.canvas.name}: ${cards.map((i) => `“${i.title}”`).join(', ')}`] : [];
+    });
+    if (atWork.length) throw new BadRequest('canvasAtWork', `agents are at work on ${atWork.join('; ')}`);
+    saved();
+    const remains: CanvasRemains[] = [];
+    for (const id of ids) {
+      const c = this.get(id);
+      this.list = this.list.filter((x) => x !== c);
+      this.down.delete(id);
+      this.saved?.delete(id);
+      remains.push(c ? c.stopForDeletion() : { canvas: id, home: this.deps.home, repos: [] });
+      this.deps.store.deleteCanvas(id);
+    }
+    this.emit();
+    const done = await Promise.all(remains.map((r) => removeCanvasRemains(r)));
+    return { removed: Promise.all(done.map((d) => d.removed)).then(() => {}) };
   }
 
   /** The configuration's order is the order canvases are listed in (the switcher, the phone); one leaving goes last. */

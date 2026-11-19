@@ -784,6 +784,41 @@ export class Store {
       .run({ id, name, now: now() });
   }
 
+  /**
+   * Deletes everything stored of the canvas (design: Deleting a canvas): its cards, archived and
+   * deleted ones included, with their logs, decisions, friction, costs and workspaces; its groups,
+   * the Coordinator's sheet and memory, its settings, proposals and commands waiting for their undo
+   * window; and the canvas itself, so that anything still writing for it afterwards is refused.
+   * Other canvases' cards that came from one of its cards keep nothing pointing at it.
+   */
+  deleteCanvas(canvasId: string) {
+    const mine = '(SELECT id FROM cards WHERE canvas_id = $c)';
+    const run = (sql: string) => this.db.query(sql).run({ c: canvasId });
+    this.db.transaction(() => {
+      for (const col of ['parent_id', 'from_id', 'prototype_of', 'built_on']) run(`UPDATE cards SET ${col} = NULL WHERE canvas_id != $c AND ${col} IN ${mine}`);
+      run(`UPDATE talk SET card_id = NULL WHERE canvas_id != $c AND card_id IN ${mine}`);
+      run(`UPDATE preferences SET card_id = NULL WHERE canvas_id != $c AND card_id IN ${mine}`);
+      run('UPDATE preferences SET replaces = NULL WHERE canvas_id != $c AND replaces IN (SELECT id FROM preferences WHERE canvas_id = $c)');
+      run(`DELETE FROM session_tools WHERE session IN (SELECT session_id FROM cards WHERE canvas_id = $c AND session_id IS NOT NULL UNION SELECT session_id FROM talk WHERE canvas_id = $c AND session_id IS NOT NULL)`);
+      run(`DELETE FROM events WHERE card_id IN ${mine}`);
+      run(`DELETE FROM folder_cards WHERE card_id IN ${mine}`);
+      for (const table of ['decisions', 'friction', 'spend', 'workspaces']) run(`DELETE FROM ${table} WHERE canvas_id = $c OR card_id IN ${mine}`);
+      run(`DELETE FROM decisions WHERE project_id IN ${mine}`);
+      run('UPDATE preferences SET replaces = NULL WHERE canvas_id = $c');
+      for (const table of ['preferences', 'talk', 'commands', 'setting_proposals', 'settings']) run(`DELETE FROM ${table} WHERE canvas_id = $c`);
+      run('DELETE FROM cards WHERE canvas_id = $c');
+      run('DELETE FROM groups WHERE canvas_id = $c');
+      // the cards' going moved the marks and logs of what changed on the canvas: they go after them
+      for (const table of ['share_revs', 'archive_revs', 'shared_changes', 'archive_changes']) run(`DELETE FROM ${table} WHERE canvas_id = $c`);
+      run('DELETE FROM canvases WHERE id = $c');
+    })();
+  }
+
+  /** The canvas's cards, archived and deleted ones too, as deleting the canvas counts them and finds their branches. */
+  everyCard(canvasId: string): Pick<CardRow, 'id' | 'repo' | 'branch' | 'adopted' | 'workspace' | 'deleted_at'>[] {
+    return this.db.query('SELECT id, repo, branch, adopted, workspace, deleted_at FROM cards WHERE canvas_id = $c').all({ c: canvasId }) as Pick<CardRow, 'id' | 'repo' | 'branch' | 'adopted' | 'workspace' | 'deleted_at'>[];
+  }
+
   /** Every card on the canvas: not deleted, not archived. */
   cards(canvasId: string): CardRow[] {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId }) as CardRow[];

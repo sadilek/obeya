@@ -1070,6 +1070,7 @@ describe("the Coordinator and Obeya's configuration", () => {
       return { canvases, resolved: [], problems };
     },
     checkSaved: () => config.check(view.canvases),
+    leftOut: async () => [] as { id: string; name: string; atWork: string[] }[],
   };
   const withConfig = () => new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, config });
 
