@@ -2243,13 +2243,13 @@ export class Workspaces implements CardWorkspaces {
    * with nothing to find it by. Best effort: the folder goes either way.
    */
   /**
-   * The canvas is being deleted: the apps and other processes that run from the workspaces Obeya
-   * made on this machine end, so that their folders can go. Clones the owner listed are left as
-   * they are.
+   * The canvas is being deleted: what ends the apps and other processes that run from the
+   * workspaces Obeya made on this machine, so that their folders can go, read now, while they are
+   * still registered. Clones the owner listed are left as they are.
    */
-  async quietOwn(): Promise<void> {
+  quietOwn(): () => Promise<void> {
     const own = this.list().filter((w) => hostName(w.path) === null && dirname(w.path) === this.o.dir);
-    await Promise.all(own.map((w) => this.quiet(w.path).catch(() => {})));
+    return async () => void (await Promise.all(own.map((w) => this.quiet(w.path).catch(() => {}))));
   }
 
   private async quiet(path: string) {

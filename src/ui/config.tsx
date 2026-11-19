@@ -135,7 +135,8 @@ const rowsOf = (canvases: CanvasConfig[], origin: (string | null)[] = []): Row[]
  * added has none.
  */
 function pinned(rows: Row[], loaded: CanvasConfig[], resolved: Checked['resolved'], running: string[]): Row[] {
-  const taken = new Set<number>();
+  // a saved canvas a row has already is no other row's
+  const taken = new Set<number>(resolved.flatMap((r, j) => (r && rows.some((x) => x.origin === r.id) ? [j] : [])));
   return rows.map((r) => {
     if (r.origin) return r;
     const c = r.canvas;
@@ -219,14 +220,16 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       if (n !== savedSeq.current) return;
       setSaved(c);
       onProblems(c.problems.length);
-      const loaded = unpinned.current;
       unpinned.current = null;
       const ids = c.resolved.map((r) => r?.id ?? null);
-      // the draft follows canvases deleted meanwhile (another tab, the Coordinator), and Save removes none
+      // rows without an id yet (loaded before the check, or saved new just now) take the saved canvas's with their
+      // repositories; the draft then follows canvases deleted meanwhile (another tab, the Coordinator), and Save removes none
       setRows((rows) => {
-        const pins = loaded ? pinned(rows, loaded, c.resolved, running.current) : rows;
+        const pins = pinned(rows, c.canvases, c.resolved, running.current);
         return reconciled(pins, c.canvases, ids, (canvas, origin) => ({ key: rowKeys++, origin, canvas })) ?? pins;
       });
+      // what is saved is what was checked: Discard goes back to it, by the ids it resolved to
+      setView((v) => (v && JSON.stringify(v.canvases) !== JSON.stringify(c.canvases) ? { ...v, canvases: c.canvases } : v));
     }, console.error);
   };
 
@@ -419,7 +422,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
       },
       close: onClose,
     });
-    if (!closed) setLeaving(false);
+    setLeaving(false);
+    return closed;
   };
   const moveCanvas = (from: number, to: number) => {
     setRows(moved(rows, from, to));

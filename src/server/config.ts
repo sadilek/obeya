@@ -706,12 +706,14 @@ export class Config {
   /**
    * The canvases saved now that a configuration resolved as `resolved` leaves out, which saving it
    * with `deletes` deletes; with the titles of their cards whose agents are at work, which keep
-   * them from it. Known only where every canvas resolves, before and after: none otherwise.
+   * them from it. Known only where every canvas of the new configuration resolves: none
+   * otherwise. A saved canvas that does not resolve (its folder gone) has no id to go by: one left
+   * out leaves the file alone, its cards kept in the database.
    */
   async leftOut(resolved: (ResolvedCanvas | null)[]): Promise<{ id: string; name: string; atWork: string[] }[]> {
+    if (!resolved.every(Boolean)) return [];
     const before = await this.checkSaved();
-    if (!before.resolved.every(Boolean) || !resolved.every(Boolean)) return [];
-    return before.resolved.flatMap((r) => (resolved.some((x) => x?.id === r!.id) ? [] : [{ id: r!.id, name: r!.name, atWork: this.o.atWork?.(r!.id) ?? [] }]));
+    return before.resolved.flatMap((r) => (!r || resolved.some((x) => x?.id === r.id) ? [] : [{ id: r.id, name: r.name, atWork: this.o.atWork?.(r.id) ?? [] }]));
   }
 
   /** What deleting the canvas `id` would take with it, counted now (`CanvasDeletion`). */

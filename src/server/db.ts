@@ -639,6 +639,12 @@ export const MIGRATIONS = [
     prints TEXT NOT NULL,
     at TEXT NOT NULL
   );`,
+  // the highest card number a deleted canvas took with it (`Store.deleteCanvas`): numbers are given
+  // once and never again, so a new card never answers to a number that named another
+  `CREATE TABLE numbers_gone (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    number INTEGER NOT NULL
+  );`,
 ];
 
 /**
@@ -806,6 +812,8 @@ export class Store {
       run(`DELETE FROM decisions WHERE project_id IN ${mine}`);
       run('UPDATE preferences SET replaces = NULL WHERE canvas_id = $c');
       for (const table of ['preferences', 'talk', 'commands', 'setting_proposals', 'settings']) run(`DELETE FROM ${table} WHERE canvas_id = $c`);
+      run(`INSERT INTO numbers_gone (id, number) SELECT 1, max(number) FROM cards WHERE canvas_id = $c HAVING max(number) IS NOT NULL
+           ON CONFLICT(id) DO UPDATE SET number = max(number, excluded.number)`);
       run('DELETE FROM cards WHERE canvas_id = $c');
       run('DELETE FROM groups WHERE canvas_id = $c');
       // the cards' going moved the marks and logs of what changed on the canvas: they go after them
@@ -1040,7 +1048,7 @@ export class Store {
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
       `INSERT INTO cards (id, short, number, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at, changed_at)
-       VALUES ($id, $short, (SELECT coalesce(max(number), 0) + 1 FROM cards), $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now, $now)`,
+       VALUES ($id, $short, (SELECT max(coalesce((SELECT max(number) FROM cards), 0), coalesce((SELECT number FROM numbers_gone), 0)) + 1), $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now, $now)`,
     );
     const taken = this.db.query('SELECT 1 FROM cards WHERE short = $s');
     const ids = this.db.transaction(() =>

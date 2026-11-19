@@ -2350,7 +2350,13 @@ export class CanvasRuntime {
    */
   atWork(): Item[] {
     const busy = new Set(this.busy());
-    return this.board.items().filter((i) => !needsYou(i) && (busy.has(i.id) || pausableNow(i)));
+    // a turn that ended and only waits for background work holds nothing where the card waits for the owner
+    return this.board.items().filter((i) => (busy.has(i.id) && (i.inTurn || !needsYou(i))) || pausableNow(i) || !!i.proposal?.revising);
+  }
+
+  /** The repositories it runs and the clones they list: what deleting another canvas never touches. */
+  ownPaths(): string[] {
+    return this.repos.flatMap((r) => [r.info.path, ...(r.config.workspaces ?? [])].map((p) => resolve(p)));
   }
 
   /** What deleting the canvas takes with it, counted now (`CanvasDeletion`), but for what the configuration says of it. */
@@ -2379,17 +2385,18 @@ export class CanvasRuntime {
    * The canvas is being deleted: it stops at once, its agents with it, and nothing of it runs or
    * starts again. Returns what is left of it on disk, for `removeCanvasRemains` once its rows are gone.
    */
-  stopForDeletion(): CanvasRemains {
+  stopForDeletion(keep: string[]): CanvasRemains {
     const cards = this.deps.store.everyCard(this.id);
     const remains: CanvasRemains = {
       canvas: this.id,
       home: this.deps.home,
+      keep,
       repos: this.repos.map((r) => ({
         path: r.info.path,
         git: !r.info.folder,
         listed: (r.config.workspaces ?? []).map((w) => resolve(w)),
         branches: [...new Set(cards.filter((c) => c.branch && !c.adopted && (c.repo ?? this.repos[0]!.ref.id) === r.ref.id).map((c) => c.branch!))],
-        quiet: () => (r.workspaces instanceof Workspaces ? r.workspaces.quietOwn() : Promise.resolve()),
+        quiet: r.workspaces instanceof Workspaces ? r.workspaces.quietOwn() : () => Promise.resolve(),
       })),
     };
     this.retiring = null;

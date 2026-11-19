@@ -97,8 +97,9 @@ describe('deleting a canvas apart from the draft', () => {
     const rows = [row('Developer docs', 'docs'), row('Blog', 'blog'), row('Wiki', null)];
     expect(reconciled(rows, saved, ['shop', 'docs'], make)).toEqual([make(saved[0]!, 'shop'), rows[0]!, rows[2]!]);
     expect(reconciled([row('Shop', 'shop'), row('Docs', 'docs')], saved, ['shop', 'docs'], make)).toBeNull();
-    // which is which is not known yet: the draft stays as it is
-    expect(reconciled(rows, saved, ['shop', null], make)).toBeNull();
+    // a saved canvas that does not resolve may be any of them: none leaves the draft, the one that resolves comes back
+    expect(reconciled(rows, saved, ['shop', null], make)).toEqual([make(saved[0]!, 'shop'), ...rows]);
+    expect(reconciled(rows, saved, [null, null], make)).toBeNull();
   });
 });
 

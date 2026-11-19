@@ -1,6 +1,7 @@
 // The set of canvases Obeya serves, started from the configuration and kept in step with it.
 
 import { type CanvasConfig, type CanvasDeps, CanvasRuntime, HomeDown, type StartFailure } from './canvas';
+import { resolve } from 'node:path';
 import { ConfigError } from './canvas-config';
 import { BadRequest } from './board';
 import { type CanvasRemains, removeCanvasRemains } from './canvas-delete';
@@ -169,13 +170,18 @@ export class Canvases extends Listeners {
     });
     if (atWork.length) throw new BadRequest('canvasAtWork', `agents are at work on ${atWork.join('; ')}`);
     saved();
+    // whatever the configuration lists stays, on any canvas, wherever it lies
+    const keep = [
+      ...this.list.flatMap((c) => c.ownPaths()),
+      ...[...(this.saved?.values() ?? [])].flatMap((c) => c.repos.flatMap((r) => [r.path, ...(r.workspaces ?? [])])).map((p) => resolve(p)),
+    ];
     const remains: CanvasRemains[] = [];
     for (const id of ids) {
       const c = this.get(id);
       this.list = this.list.filter((x) => x !== c);
       this.down.delete(id);
       this.saved?.delete(id);
-      remains.push(c ? c.stopForDeletion() : { canvas: id, home: this.deps.home, repos: [] });
+      remains.push(c ? c.stopForDeletion(keep) : { canvas: id, home: this.deps.home, keep, repos: [] });
       this.deps.store.deleteCanvas(id);
     }
     this.emit();

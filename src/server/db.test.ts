@@ -321,3 +321,18 @@ test('deleting a canvas leaves nothing of it in any table, and every other canva
   // anything still writing for it afterwards is refused, so nothing of it comes back
   expect(() => insert('cards', { id: 'late', canvas_id: 'gone' })).toThrow();
 });
+
+test("a deleted canvas's card numbers are not given again", () => {
+  const store = new Store(':memory:');
+  store.ensureCanvas('gone', 'Gone');
+  store.ensureCanvas('stay', 'Stay');
+  store.insert([{ canvas_id: 'stay', kind: 'task', x: 0, y: 0 }]);
+  const [last] = store.insert([{ canvas_id: 'gone', kind: 'task', x: 0, y: 0 }]);
+  store.deleteCanvas('gone');
+  // the newest card went with its canvas: the next one gets the number after it, not its number
+  expect(store.insert([{ canvas_id: 'stay', kind: 'task', x: 0, y: 0 }])[0]!.number).toBe(last!.number! + 1);
+  // deleting a canvas without cards changes nothing of it
+  store.ensureCanvas('empty', 'Empty');
+  store.deleteCanvas('empty');
+  expect(store.insert([{ canvas_id: 'stay', kind: 'task', x: 0, y: 0 }])[0]!.number).toBe(last!.number! + 2);
+});

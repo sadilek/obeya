@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanvasConfig } from '../core/config';
@@ -155,6 +155,26 @@ test("a clone the owner listed stays as it is; the clones Obeya made go", async 
   await config.deleteCanvas('shop');
   expect(existsSync(made)).toBe(false);
   expect(readFileSync(join(listed, 'mine.txt'), 'utf8')).toBe('the owner’s\n');
+});
+
+test("nothing another canvas lists goes, even inside the deleted canvas's folder; a link there is not followed; its apps are stopped first", async () => {
+  const stopped = join(dir, 'stopped.txt');
+  const outside = join(dir, 'outside');
+  mkdirSync(join(outside, 'precious'), { recursive: true });
+  writeFileSync(join(outside, 'precious', 'x'), 'x');
+  // another canvas works in a clone that lies in the deleted canvas's folder; a link there leads elsewhere
+  const inside = gitClone(blog, join(home, 'workspaces', 'shop', 'blog-clone'));
+  await open([
+    { name: 'Shop', repos: [{ path: shop, settings: { land: 'pr', app: { run: 'bun dev', stop: `echo stopped > ${stopped}` } } }] },
+    { name: 'Blog', repos: [{ path: blog, workspaces: [inside], settings: { land: 'pr' } }] },
+  ]);
+  const { handOver } = await atWork('shop', 'Checkout');
+  await handOver();
+  symlinkSync(outside, join(home, 'workspaces', 'shop', 'link'));
+  await config.deleteCanvas('shop');
+  expect(existsSync(join(inside, '.git'))).toBe(true);
+  expect(readFileSync(join(outside, 'precious', 'x'), 'utf8')).toBe('x');
+  expect(existsSync(stopped)).toBe(true);
 });
 
 test('saving removes no canvas; the only canvas is not deleted', async () => {

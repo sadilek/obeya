@@ -93,10 +93,9 @@ export function withoutDeleted<R extends Pinned>(rows: R[], id: string): R[] {
  * Save removes no canvas. Null where it changes nothing.
  */
 export function reconciled<R extends Pinned>(rows: R[], saved: CanvasConfig[], ids: (string | null)[], row: (canvas: CanvasConfig, origin: string) => R): R[] | null {
-  // which saved canvas is which is only known where all of them resolve
-  if (!ids.every(Boolean)) return null;
-  const kept = rows.filter((r) => !r.origin || ids.includes(r.origin));
-  const missing = ids.flatMap((id, i) => (kept.some((r) => r.origin === id) ? [] : [{ i, id: id! }]));
+  // that a canvas is gone is only known where all saved ones resolve: one that does not may be it
+  const kept = ids.every(Boolean) ? rows.filter((r) => !r.origin || ids.includes(r.origin)) : rows;
+  const missing = ids.flatMap((id, i) => (!id || kept.some((r) => r.origin === id) ? [] : [{ i, id }]));
   if (kept.length === rows.length && !missing.length) return null;
   const out = [...kept];
   for (const { i, id } of missing) out.splice(Math.min(i, out.length), 0, row(saved[i]!, id));
