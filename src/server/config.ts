@@ -720,8 +720,10 @@ export class Config {
     const r = resolved.find((x) => x?.id === id);
     if (!r) throw new BadRequest('invalid', `no canvas ${id} in the configuration`);
     // a canvas that does not run has nothing at work, and only its cards to count
+    const rows = this.o.store.everyCard(id).filter((c) => !c.deleted_at);
     const counted = (await this.o.deletion?.(id)) ?? {
-      cards: this.o.store.everyCard(id).filter((c) => !c.deleted_at).length,
+      cards: rows.length,
+      archived: rows.filter((c) => c.archived_at).length,
       unlanded: 0,
       prs: 0,
       running: [],

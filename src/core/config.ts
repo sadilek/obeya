@@ -473,6 +473,8 @@ export interface CanvasDeletion {
   name: string;
   /** Its cards, archived ones included: they go with their conversations and workspaces. */
   cards: number;
+  /** Of those, the ones in the archive. */
+  archived: number;
   /** Cards whose workspace holds work that never landed: it is lost. */
   unlanded: number;
   /** Cards with a pull request still open: it stays open on the forge, no longer followed. */

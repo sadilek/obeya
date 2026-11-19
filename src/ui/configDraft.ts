@@ -72,3 +72,49 @@ export function withClones(draft: CanvasConfig[], saved: CanvasConfig[], resolve
   }));
   return changed ? next : null;
 }
+
+/** A canvas of the dialog's draft as far as deleting one goes: the id it had when loaded, if it was saved. */
+interface Pinned {
+  origin: string | null;
+}
+
+/**
+ * The draft once the canvas `id` was deleted (on its own, apart from the draft): its row goes, and
+ * every other change of the draft stays as it was, waiting for Save.
+ */
+export function withoutDeleted<R extends Pinned>(rows: R[], id: string): R[] {
+  return rows.filter((r) => r.origin !== id);
+}
+
+/**
+ * The draft as the configuration saved now has its canvases (`saved`, with the ids they resolved
+ * to): a canvas deleted meanwhile (in another tab, by the Coordinator) leaves it, and a saved one
+ * the draft lacks (left out by the bin before it deleted) comes back at its saved place, since
+ * Save removes no canvas. Null where it changes nothing.
+ */
+export function reconciled<R extends Pinned>(rows: R[], saved: CanvasConfig[], ids: (string | null)[], row: (canvas: CanvasConfig, origin: string) => R): R[] | null {
+  // which saved canvas is which is only known where all of them resolve
+  if (!ids.every(Boolean)) return null;
+  const kept = rows.filter((r) => !r.origin || ids.includes(r.origin));
+  const missing = ids.flatMap((id, i) => (kept.some((r) => r.origin === id) ? [] : [{ i, id: id! }]));
+  if (kept.length === rows.length && !missing.length) return null;
+  const out = [...kept];
+  for (const { i, id } of missing) out.splice(Math.min(i, out.length), 0, row(saved[i]!, id));
+  return out;
+}
+
+/** What the owner chose in the dialog that asks before Configuration closes with changes not saved. */
+export type LeaveChoice = 'stay' | 'discard' | 'save';
+
+/**
+ * Carries out the owner's choice: Stay keeps the dialog open as it is; Discard changes resets the
+ * drafts and closes; Save saves them and closes, but leaves the dialog open where saving showed
+ * problems (`save` says whether everything was saved). Says whether it closed.
+ */
+export async function leave(choice: LeaveChoice, o: { save: () => Promise<boolean>; discard: () => void; close: () => void }): Promise<boolean> {
+  if (choice === 'stay') return false;
+  if (choice === 'save' && !(await o.save())) return false;
+  if (choice === 'discard') o.discard();
+  o.close();
+  return true;
+}

@@ -1515,7 +1515,6 @@ const de = {
     runs: 'läuft',
     fresh: 'neu',
     freshHint: 'Neue Kennung: Obeya zeigt hier eine neue, leere Leinwand.',
-    gone: (names: string) => `Nicht mehr dabei: ${names}. Ihre Aufgaben und Projekte bleiben gespeichert und kommen mit der Leinwand zurück.`,
     path: 'Pfad zum Repository',
     pickPrompt: 'Ordner des Repositories',
     home: 'Heimat-Repository',
@@ -1694,6 +1693,41 @@ const de = {
     removeRepo: 'Repository entfernen',
     addCanvas: '+ Leinwand',
     removeCanvas: 'Leinwand entfernen',
+    deleteCanvas: 'Leinwand löschen',
+    deletion: {
+      counting: (name: string) => `Zähle, was mit ${name} geht …`,
+      ask: (name: string) => `${name} jetzt löschen?`,
+      cards: (n: number, archived: number) =>
+        n === 0
+          ? 'Sie hat keine Karten.'
+          : n === 1
+            ? `Ihre eine Karte${archived ? ' (im Archiv)' : ''} geht, mit Gespräch und Arbeitsbereich.`
+            : `Ihre ${n} Karten${archived ? ` (${archived} davon im Archiv)` : ''} gehen, mit ihren Gesprächen und Arbeitsbereichen.`,
+      unlanded: (n: number) => (n === 1 ? 'Eine hat Arbeit, die nie gelandet ist: Sie geht verloren.' : `${n} haben Arbeit, die nie gelandet ist: Sie geht verloren.`),
+      prs: (n: number) =>
+        n === 1 ? 'Eine hat einen offenen Pull Request: Er bleibt offen, aber Obeya verfolgt ihn nicht mehr.' : `${n} haben offene Pull Requests: Sie bleiben offen, aber Obeya verfolgt sie nicht mehr.`,
+      repoStays: (n: number): string => (n === 1 ? 'Das Repository bleibt, wie es ist.' : 'Ihre Repositories bleiben, wie sie sind.'),
+      folderStays: 'Ein Ordner ohne git bleibt, mit allem, was die Agenten darin geändert haben.',
+      delete: (name: string) => `${name} löschen`,
+      cancel: 'Abbrechen',
+      othersStay: 'Deine anderen ungespeicherten Änderungen bleiben im Entwurf.',
+      atWork: (name: string) => `${name} lässt sich nicht löschen, solange Agenten darauf arbeiten:`,
+      atWorkHint: 'Halte sie an oder warte, bis sie fertig sind; dann lässt sie sich löschen.',
+      pause: (n: number) => (n === 1 ? 'Ihren laufenden Agenten pausieren' : `Ihre ${n} laufenden Agenten pausieren`),
+      pausing: 'Sie pausieren an einer sicheren Stelle …',
+      last: (name: string) => `${name} ist die einzige Leinwand, und Obeya braucht eine: Sie lässt sich nicht löschen.`,
+      close: 'Schließen',
+      deleted: (name: string) => `${name} gelöscht.`,
+    },
+    leave: {
+      title: 'Nicht gespeicherte Änderungen',
+      text: (what: string) => `Noch nicht gespeichert: ${what}.`,
+      order: 'die Reihenfolge der Leinwände',
+      demos: 'Demos',
+      stay: 'Bleiben',
+      discard: 'Änderungen verwerfen',
+      save: 'Speichern',
+    },
     moveUp: 'Nach oben',
     moveDown: 'Nach unten',
     server: 'Server (von der Kommandozeile)',
@@ -3805,7 +3839,6 @@ const en: Strings = {
     runs: 'running',
     fresh: 'new',
     freshHint: 'New id: Obeya shows a new, empty canvas here.',
-    gone: (names: string) => `No longer included: ${names}. Their tasks and projects stay saved and come back with the canvas.`,
     path: 'Path to the repository',
     pickPrompt: 'Folder of the repository',
     home: 'Home repository',
@@ -3985,6 +4018,41 @@ const en: Strings = {
     removeRepo: 'Remove repository',
     addCanvas: '+ Canvas',
     removeCanvas: 'Remove canvas',
+    deleteCanvas: 'Delete canvas',
+    deletion: {
+      counting: (name: string) => `Counting what goes with ${name} …`,
+      ask: (name: string) => `Delete ${name} now?`,
+      cards: (n: number, archived: number) =>
+        n === 0
+          ? 'It has no cards.'
+          : n === 1
+            ? `Its one card${archived ? ' (in the archive)' : ''} goes, with its conversation and workspace.`
+            : `Its ${n} cards${archived ? ` (${archived} of them in the archive)` : ''} go, with their conversations and workspaces.`,
+      unlanded: (n: number) => (n === 1 ? 'One holds work that never landed: it is lost.' : `${n} hold work that never landed: it is lost.`),
+      prs: (n: number) =>
+        n === 1 ? 'One has an open pull request: it stays open, but Obeya no longer follows it.' : `${n} have open pull requests: they stay open, but Obeya no longer follows them.`,
+      repoStays: (n: number) => (n === 1 ? 'The repository stays as it is.' : 'Its repositories stay as they are.'),
+      folderStays: 'A folder without git stays, with whatever the agents changed in it.',
+      delete: (name: string) => `Delete ${name}`,
+      cancel: 'Cancel',
+      othersStay: 'Your other unsaved changes stay in the draft.',
+      atWork: (name: string) => `${name} can’t be deleted while agents work on it:`,
+      atWorkHint: 'Stop them, or wait until they’re done; then it can be deleted.',
+      pause: (n: number) => (n === 1 ? 'Pause its running agent' : `Pause its ${n} running agents`),
+      pausing: 'They pause at a safe point …',
+      last: (name: string) => `${name} is the only canvas, and Obeya needs one: it can’t be deleted.`,
+      close: 'Close',
+      deleted: (name: string) => `${name} deleted.`,
+    },
+    leave: {
+      title: 'Unsaved changes',
+      text: (what: string) => `Not saved yet: ${what}.`,
+      order: 'the order of the canvases',
+      demos: 'Demos',
+      stay: 'Stay',
+      discard: 'Discard changes',
+      save: 'Save',
+    },
     moveUp: 'Move up',
     moveDown: 'Move down',
     server: 'Server (from the command line)',

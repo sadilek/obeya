@@ -2367,6 +2367,7 @@ export class CanvasRuntime {
     );
     return {
       cards: rows.length,
+      archived: rows.filter((r) => r.archived_at).length,
       unlanded: holds.filter(Boolean).length,
       prs: items.filter((i) => !finished(i.state) && [i.pr, ...(i.morePrs ?? [])].some((p) => p && !p.merged && !p.closed)).length,
       running: this.atWork().map((i) => ({ id: i.id, title: i.title, ...(i.short ? { short: i.short } : {}), ...(i.statusLine ? { statusLine: i.statusLine } : {}) })),

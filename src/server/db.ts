@@ -815,8 +815,8 @@ export class Store {
   }
 
   /** The canvas's cards, archived and deleted ones too, as deleting the canvas counts them and finds their branches. */
-  everyCard(canvasId: string): Pick<CardRow, 'id' | 'repo' | 'branch' | 'adopted' | 'workspace' | 'deleted_at'>[] {
-    return this.db.query('SELECT id, repo, branch, adopted, workspace, deleted_at FROM cards WHERE canvas_id = $c').all({ c: canvasId }) as Pick<CardRow, 'id' | 'repo' | 'branch' | 'adopted' | 'workspace' | 'deleted_at'>[];
+  everyCard(canvasId: string): Pick<CardRow, 'id' | 'repo' | 'branch' | 'adopted' | 'workspace' | 'deleted_at' | 'archived_at'>[] {
+    return this.db.query('SELECT id, repo, branch, adopted, workspace, deleted_at, archived_at FROM cards WHERE canvas_id = $c').all({ c: canvasId }) as Pick<CardRow, 'id' | 'repo' | 'branch' | 'adopted' | 'workspace' | 'deleted_at' | 'archived_at'>[];
   }
 
   /** Every card on the canvas: not deleted, not archived. */

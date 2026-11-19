@@ -119,7 +119,7 @@ test('deleting a canvas takes its cards, workspaces, branches and files, and lea
     mkdirSync(join(home, d, 'shop'), { recursive: true });
     writeFileSync(join(home, d, 'shop', 'x'), 'x');
   }
-  expect(await config.deletion('shop')).toMatchObject({ id: 'shop', name: 'Shop', unlanded: 1, prs: 0, running: [], folder: false, last: false });
+  expect(await config.deletion('shop')).toMatchObject({ id: 'shop', name: 'Shop', cards: 3, archived: 0, unlanded: 1, prs: 0, running: [], folder: false, last: false });
 
   await config.deleteCanvas('shop');
   expect(set.all().map((c) => c.id)).toEqual(['blog']);
