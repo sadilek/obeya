@@ -447,7 +447,10 @@ worktrees Obeya made for it, read trees, screenshots, files, looked-up answers a
 snapshots. Git forgets its worktrees, and the cards' local branches go from the repository (a branch
 of the owner's that a card took over stays). Never touched: the repository or folder itself, clones
 the owner listed, clones on other machines, branches pushed to a remote, open pull requests and
-shared demo pages. A canvas added again under the same name starts empty.
+shared demo pages; nor anything a canvas of the configuration lists, wherever it lies, and a link in
+those folders is not followed. A repository that had left the canvas before keeps the branches its
+cards made there. Its cards' numbers are not given again (see Card numbers in The canvas). A canvas
+added again under the same name starts empty.
 
 The Coordinator's `configure` follows the same rules: a canvas left out of the list is deleted, as
 with the bin, and refused while one of its agents is at work, both when the Coordinator calls it
