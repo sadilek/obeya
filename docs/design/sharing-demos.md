@@ -131,6 +131,11 @@ an owner's file into a public page. Still not loading: a Web Worker's script, an
 computed path, a font set from a script, and behind a login a file a script names at run time. A
 ZIP's page opened from disk lets the frame keep its origin (`file:` has no site to protect).
 
+On a site the frame loads the artifact by its directory's address (`…/artifact/`, a later version's
+`…/2/artifact/`), and on a listed site the copy's `index.html` names that address for search engines
+(`<link rel="canonical">`, absolute, in place of one the artifact names itself), so each artifact is
+listed once. A ZIP's page names `artifact/index.html`: opened from disk, a directory shows no page.
+
 A shared page sends nothing to the internet, under the rule of a worker's page inside Obeya (see The
 demo on the card): each HTML page of the copy starts with that CSP as a meta tag (own files, inline,
 `data:`, `blob:`), naming its files by `'self'` and the site's address (for Safari), in a ZIP by
@@ -569,6 +574,12 @@ lacking that revision with its next check and deploys it again.
   nothing loads in CORS mode. Rejected: `allow-same-origin` (the artifact's scripts could read the
   whole site with the viewer's cookie), and the page around fetching files for the frame (fails from
   disk; markup lacks images until a script inserts them).
+- **An artifact on a site goes by its directory's address** (2026-11-19): Google listed about 46
+  artifacts of `demos.obeya.si` under `…/artifact/index.html` and 44 under `…/artifact/`, splitting
+  each one's impressions, though Cloudflare Pages redirects the first to the second: the frame named
+  `index.html`, and the artifact named no address. Every host answers the directory's address, as it
+  does a page's. Rejected: a canonical to the page around it (a different page, which search
+  engines take as a hint they may ignore), `noindex` on artifacts (an analysis is worth finding).
 - **A page of work landed without a PR links its commit** (owner, 2026-10-30): a repository that
   commits to `main` directly has no PR to link back to, but its commit is as good a source. Several
   commits get the comparison over them, since the last alone shows only part of the change.

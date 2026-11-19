@@ -374,7 +374,8 @@ describe('a site Obeya keeps', () => {
     // it loads its own files and nothing from elsewhere, its policy first, the site named for Safari
     const origin = new URL(URL_).origin;
     expect(copy).toStartWith(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self' ${origin} data: blob:;`);
-    expect(copy).toContain('<meta http-equiv="x-dns-prefetch-control" content="off"><html><body><h2>Graph</h2>');
+    // in its head it names the address search engines list it under, the one its frame loads
+    expect(copy).toContain(`<meta http-equiv="x-dns-prefetch-control" content="off"><link rel="canonical" href="${URL_}auswertung-abc123/artifact/"><html><body><h2>Graph</h2>`);
     // the host sends that again with its files, with the sandbox, and keeps their connections to the site
     expect(readFileSync(join(siteDir(), '_headers'), 'utf8')).toBe(
       ['/:slug/artifact/*', '/:slug/:n/artifact/*']
@@ -386,7 +387,8 @@ describe('a site Obeya keeps', () => {
     );
     const html = readFileSync(join(at, 'index.html'), 'utf8');
     // the frame opens no window, and the page lets it show nothing but the site's own files
-    expect(html).toContain('<iframe src="artifact/index.html" sandbox="allow-scripts" ');
+    expect(html).toContain('<iframe src="artifact/" sandbox="allow-scripts" ');
+    expect(html).not.toContain('artifact/index.html');
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:;`);
     // alone in its window it stays in the frame: its own file would run in the site's origin
     expect(html).toContain('<a href="?alone" target="_blank"');
@@ -570,13 +572,15 @@ describe('a site Obeya keeps', () => {
     expect(r).toMatchObject({ url: `${URL_}filter/` });
     const at = join(deployed(), 'filter');
     expect(readFileSync(join(at, 'demo.mp4'), 'utf8')).toBe('video');
-    expect(readFileSync(join(at, '2', 'artifact', 'index.html'), 'utf8')).toStartWith('<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy"');
+    const copy = readFileSync(join(at, '2', 'artifact', 'index.html'), 'utf8');
+    expect(copy).toStartWith('<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy"');
+    expect(copy.match(/<link rel="canonical" href="([^"]*)">/g)).toEqual([`<link rel="canonical" href="${URL_}filter/2/artifact/">`]);
     expect(readFileSync(join(at, '3', 'demo.mp4'), 'utf8')).toBe('later video');
     const html = readFileSync(join(at, 'index.html'), 'utf8');
     expect(html).toContain('<h1>Titel filter</h1>');
     expect(html).toContain('<nav class="sections"><a href="#v1">1. Demo</a><a href="#v2">2. Ergänzung vom ');
     expect(html).toContain('<h3>Die Tabelle</h3>');
-    expect(html).toContain('<iframe src="2/artifact/index.html" sandbox="allow-scripts"');
+    expect(html).toContain('<iframe src="2/artifact/" sandbox="allow-scripts"');
     expect(html).toContain('<a href="?alone=2" target="_blank"');
     expect(html).toContain('src="3/demo.mp4"');
     expect(html).toContain('3/captions.de.vtt');

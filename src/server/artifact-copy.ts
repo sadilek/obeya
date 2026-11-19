@@ -21,6 +21,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { inScript, jsonInScript, sealed, withHeightReport } from '../core/frame';
 import { demoFile } from './demo-files';
+import { esc } from './demo-page';
 import { DATA_BUDGET, dataUrl, type Inlining, inside, withStyleData } from './css-references';
 
 /** What a page names in its markup or its styles, which the copy inlines there, so it stays out of the table of files to fetch. */
@@ -36,9 +37,11 @@ function read(dir: string, f: string): Buffer | null {
  * The artifact's files whose copy differs from the artifact's own: its `index.html` (with the height
  * report, see `withHeightReport`, and the policy that lets it load its own files alone, those at
  * `own`) and its other pages (with that policy too: the artifact may open one in its frame), each
- * with the files it names inside it.
+ * with the files it names inside it. `canonical`: the address search engines are to list its
+ * `index.html` under (a listed site's `…/artifact/`, which its host also answers `…/artifact/index.html`
+ * at), in place of one the artifact names itself.
  */
-export async function artifactCopy(dir: string, files: string[], own: string): Promise<Map<string, string>> {
+export async function artifactCopy(dir: string, files: string[], own: string, canonical?: string): Promise<Map<string, string>> {
   const copy = new Map<string, string>();
   for (const f of files) if (f !== 'index.html' && /\.html?$/i.test(f)) {
     const page = read(dir, f);
@@ -49,6 +52,8 @@ export async function artifactCopy(dir: string, files: string[], own: string): P
   if (!index) throw new Error(`${join(dir, 'index.html')} is no file of the artifact`);
   let html = withData(await withModules(index.toString('utf8'), dir), dir, '.');
   if (embedded.length) html = withFiles(html, dir, embedded);
+  // in the head `sealed` opens, whatever the artifact's own markup starts with
+  if (canonical) html = `<link rel="canonical" href="${esc(canonical)}">${html.replace(/<link\b[^>]*\brel\s*=\s*["']?canonical\b[^>]*>/gi, '')}`;
   copy.set('index.html', sealed(withHeightReport(html), own));
   return copy;
 }

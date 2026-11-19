@@ -63,7 +63,7 @@ import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/setti
 import type { Theme } from './theme';
 import { ARTIFACT_DIR, type PageCommit, type PageLanguage } from './demo-page';
 import { artifactFiles, captionTracks, demoFiles, silentVideo } from './demo-files';
-import { artifactHeaders, FEED, feedXml, HEADERS, type Meta, newest, NOT_FOUND, notFoundHtml, overviewHtml, pageHtml, pageUrl, ROBOTS, robotsTxt, SITEMAP, sitemapXml, unlistedHeaders, type VersionFiles } from './site-pages';
+import { artifactHeaders, artifactPath, FEED, feedXml, HEADERS, type Meta, newest, NOT_FOUND, notFoundHtml, overviewHtml, pageHtml, pageUrl, ROBOTS, robotsTxt, SITEMAP, sitemapXml, unlistedHeaders, type VersionFiles } from './site-pages';
 import { artifactCopy } from './artifact-copy';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
@@ -845,13 +845,15 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             const files = html ? artifactFiles(d.dir) : await demoFiles(d.dir);
             for (const f of html ? ['index.html'] : ['demo.mp4', 'captions.vtt']) if (!files.includes(f)) throw new Refused(t.fileMissing(f, d.dir));
             // what the artifact loads in CORS mode goes into its copy (artifact-copy.ts)
-            const copy = html ? await artifactCopy(d.dir, files, new URL(site.url).origin) : new Map<string, string>();
+            // on a listed site it names its address for search engines
+            const sub = i ? String(i + 1) : '';
+            const copy = html ? await artifactCopy(d.dir, files, new URL(site.url).origin, unlisted ? undefined : pageUrl(site, slug) + artifactPath(sub)) : new Map<string, string>();
             const max = site.maxFile ?? MAX_FILE;
             for (const f of files) {
               const size = copy.has(f) ? Buffer.byteLength(copy.get(f)!) : (await stat(join(d.dir, f))).size;
               if (size > max) throw new Refused(t.fileTooLarge(f, (size / 1024 / 1024).toFixed(1), String(Math.round((max / 1024 / 1024) * 10) / 10)));
             }
-            return { d, sub: i ? String(i + 1) : '', html, files, copy };
+            return { d, sub, html, files, copy };
           }),
         );
         const target = join(dir, slug);
