@@ -319,6 +319,30 @@ not only the exit of its `ssh`, which Obeya hears of a while later: in between, 
 to a dead port. A page calling an API on another port finds nothing (the worker's
 brief says so).
 
+Opened from another device (see Other devices in Running Obeya), the link cannot lead to
+`localhost`, which there is the phone itself. Obeya then puts a proxy of its own in front of the
+app, at the address that device reaches Obeya under, with a port of its own: through Tailscale
+`https://<machine>.<tailnet>.ts.net:<port>` (a `tailscale serve` entry to the proxy on `127.0.0.1`),
+on another address `http://<address>:<port>`. The port is the app's own number where nothing serves
+on it there yet (never one of the three Obeya's own address may take), else the proxy's
+system-picked one; the address keeps the app's path and query. The proxy admits only paired
+devices, as Obeya does (others get the page that says how to connect); since the device cookie goes
+with what other sites' pages send too, from them (`Sec-Fetch-Site: cross-site`, or an `Origin` not
+the proxy's own) only opening a page of the app with GET passes, never a form post, a fetch or a
+WebSocket. A device removed loses its WebSockets to the apps at once, as its pages' to Obeya. It
+passes requests and
+WebSockets on as if they came from this machine: under the app's own `Host`, with `Origin` and
+`Referer` of the device's address turned into the app's, without Obeya's cookies (`obeya-*`) or
+forwarding headers; the app's redirects to its own address are turned into the device's, and a cookie
+`obeya-*` it sets is dropped, so it cannot sign the device out of Obeya. The request's path is
+joined to the app's origin as text, so a path such as `//host/…` stays a path of the app. One proxy serves each app
+address for all its cards. It goes once the app missed three looks in a row, a minute apart (a dev
+server restarting answers again soon), when the network for other devices changes or is turned off,
+and when Obeya stops. Its entries are noted in `tailscale-serve-apps.json` in the home until
+Tailscale has let them go, so one a run left behind (killed first, or Tailscale refusing) is removed
+at the next start, before Obeya serves its own entry (removing rewrites the whole configuration). Where the proxy cannot be made
+(Tailscale refusing the entry, say), the device gets a page that says so with Tailscale's words.
+
 ### Screenshots
 
 What the owner writes on a card may carry screenshots: pasted, dropped or picked with the field's
@@ -535,6 +559,14 @@ image.
   Rejected: Obeya guessing ports (Docker listens elsewhere, only the worker knows the page), a mark
   on the canvas card, starting a parked app from the link. Only the reported port is forwarded
   (owner): more would need the worker to name them and keep their numbers here.
+- **From the phone, the app opens through a proxy of Obeya's at its address for other devices,
+  behind the pairing** (2026-11-20, the owner's report that "Open app" led the phone to `localhost`).
+  Rejected: a `tailscale serve` entry straight to the app's port, which would serve the app
+  (and a dev server's files) to everyone in the tailnet, shared devices included, without pairing;
+  the app under a path of Obeya's own address, which breaks the app's absolute paths; plain HTTP on
+  the machine's tailnet address, where the device cookie (`Secure`) does not go and the phone's
+  browser allows no microphone. The app's own port number where free, so the address reads like
+  the one the worker reported.
 - **A card's files are its result, in tabs beside the demo** (owner, 2026-10-21), named files first.
   Rejected: an open button per change-list entry (no place for the result, Markdown unread in the
   browser), Markdown formatted only in the diff overlay (the result hidden behind "Show"), a

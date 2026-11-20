@@ -310,6 +310,8 @@ const de = {
     parkFailed: (output: string) => `Die App im Workspace zu stoppen, ist fehlgeschlagen: ${output}`,
     /** The page the owner's browser gets for a card whose app no longer runs. */
     appGone: 'Die App dieser Karte läuft nicht mehr. Soll der Agent sie wieder starten, sag es ihm auf der Karte.',
+    /** The page another device gets for a card's app that Obeya could not make reachable for it. */
+    appUnreachable: (why: string) => `Die App dieser Karte läuft, aber Obeya konnte sie für dieses Gerät nicht erreichbar machen: ${why}`,
     stoppedPrOpen: (n: number) => `Gestoppt. Pull Request #${n} bleibt offen.`,
     restartDue: (pause: Pause) =>
       `${pause === 'stop' ? 'Beenden von Obeya' : pause === 'repo' ? 'Neustart der Agenten dieses Repositorys' : 'Neustart von Obeya'} angekündigt; der Agent pausiert beim nächsten sicheren Punkt.`,
@@ -901,6 +903,8 @@ const en: Messages = {
     parkFailed: (output: string) => `Stopping the app in the workspace failed: ${output}`,
     /** The page the owner's browser gets for a card whose app no longer runs. */
     appGone: 'The app of this card no longer runs. To have the agent start it again, tell it on the card.',
+    /** The page another device gets for a card's app that Obeya could not make reachable for it. */
+    appUnreachable: (why: string) => `The app of this card runs, but Obeya could not make it reachable from this device: ${why}`,
     stoppedPrOpen: (n: number) => `Stopped. Pull request #${n} stays open.`,
     restartDue: (pause: Pause) => `Obeya is about to ${pause === 'stop' ? 'stop' : pause === 'repo' ? "restart this repository's agents" : 'restart'}; the agent pauses at the next safe point.`,
     restartWaits: (pause: Pause) =>

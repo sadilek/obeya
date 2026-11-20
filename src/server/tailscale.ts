@@ -189,22 +189,49 @@ export class Tailscale {
     return r.ok ? { config: next } : { problem: this.problemOf(r.out) };
   }
 
-  /** Removes the entry Obeya served, if it is still Obeya's. */
-  async unserve(entry: NamedEntry): Promise<void> {
-    const config = await this.config().catch(() => ({}) as ServeConfig);
-    if (!serves(config, entry)) return;
-    await this.drop(config, [entry]);
+  /**
+   * Serves `target` (a card's app, behind Obeya's gate) over HTTPS at `name`, on the first port of
+   * `wanted` that no entry serves on and that is not one of `SERVE_PORTS`, which stay Obeya's own.
+   */
+  async serveApp(name: string, wanted: number[], target: string): Promise<{ entry: NamedEntry } | { problem: RemoteProblem }> {
+    let config: ServeConfig;
+    try {
+      config = await this.config();
+    } catch (e) {
+      return { problem: this.problemOf((e as Error).message) };
+    }
+    const https = wanted.find((p) => p > 0 && p < 65536 && !(SERVE_PORTS as readonly number[]).includes(p) && !config.TCP?.[String(p)]);
+    if (!https) return { problem: { code: 'portsTaken' } };
+    const r = await this.run(['serve', '--bg', `--https=${https}`, target], 20_000);
+    return r.ok ? { entry: { name, https, target } } : { problem: this.problemOf(r.out) };
+  }
+
+  /** Removes entries Obeya served, each only while it is still Obeya's; whether none of them is served any more. */
+  async unserve(entries: NamedEntry | NamedEntry[]): Promise<boolean> {
+    const mine = [entries].flat();
+    let config: ServeConfig;
+    try {
+      config = await this.config();
+    } catch {
+      return false;
+    }
+    if (!mine.some((e) => serves(config, e))) return true;
+    return 'config' in (await this.drop(config, mine));
   }
 
   /** As `unserve`, waiting for it: Obeya stopping, which ends the process right after. */
-  unserveSync(entry: NamedEntry) {
+  unserveSync(entries: NamedEntry | NamedEntry[]): boolean {
+    const mine = [entries].flat();
     const run = (args: string[], input?: string) =>
       Bun.spawnSync([this.bin!, ...args], { stdin: input === undefined ? 'ignore' : new TextEncoder().encode(input), stdout: 'pipe', stderr: 'pipe', timeout: 5000 });
     const status = run(['serve', 'status', '--json']);
     try {
+      if (!status.success) return false;
       const config = parseServe(status.stdout.toString());
-      if (serves(config, entry)) run(['serve', 'set-raw'], JSON.stringify(without(config, [entry])));
-    } catch {}
+      return !mine.some((e) => serves(config, e)) || run(['serve', 'set-raw'], JSON.stringify(without(config, mine))).success;
+    } catch {
+      return false;
+    }
   }
 
   private problemOf(output: string): RemoteProblem {

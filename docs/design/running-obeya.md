@@ -93,7 +93,8 @@ own for it and is never on the open internet. "Reachable from other devices" (`r
   on the best port they held, so the address stays without a port where it had none; other entries
   stay. `tailscale serve --https=<port> off` reaches only entries under the current name, so Obeya
   removes entries through `tailscale serve set-raw`, with the configuration it read minus its own. Bun's dev server answers for scripts only under the name it listens on, so an Obeya with
-  `--dev` shows a blank page through `tailscale serve`.
+  `--dev` shows a blank page through `tailscale serve`. A card's app opened from the phone gets an
+  entry of its own on another port (see Trying the app by hand in Conversation on the card).
 - *At an address*: Obeya also listens, in plain HTTP, on an address of one of the machine's
   interfaces (another VPN's). The section says a phone's browser allows microphone and push only over
   HTTPS.

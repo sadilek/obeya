@@ -18,6 +18,7 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'advisor.ts': { why: "server path, cheap: a stat of each file the assistant's answer names, to tell which are none", calls: { existsSync: 1, statSync: 1 } },
   'answers.ts': { why: "server path, cheap: creates an answer's directory before its agent starts", calls: { mkdirSync: 2 } },
   'app-command.ts': { why: "server path, cheap: whether the script an app command names is there, before it starts", calls: { existsSync: 1 } },
+  'app-reach.ts': { why: "the tailscale serve entries made for cards' apps: a small file written when one is made or goes, and the entries taken back as the server stops", calls: { existsSync: 1, readFileSync: 1, rmSync: 1, unserveSync: 1, writeFileSync: 1 } },
   'artifact-copy.ts': {
     why: "server path: an artifact's own files read by their real path while its copy is put together (a share, an export); small files, a candidate for fs/promises",
     calls: { readFileSync: 1, realpathSync: 2 },

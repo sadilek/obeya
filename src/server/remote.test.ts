@@ -6,6 +6,7 @@ import type { AccessView, Pairing } from '../core/types';
 import { canvas, dir, eachTest, store } from './canvas-fixture';
 import { Config } from './config';
 import { MachineSetup } from './machine';
+import { AppReach } from './app-reach';
 import { Access, deviceName, machineAddresses, PAIRING_MS, UNUSED_MS } from './remote';
 import { serve } from './server';
 import { Tailscale } from './tailscale';
@@ -184,6 +185,135 @@ describe('through Tailscale', () => {
     linux.start(4417, () => {});
     expect((await linux.save({ remote: { via: 'tailscale' } })).problem).toEqual({ code: 'operator' });
   });
+});
+
+describe("a card's app on the phone", () => {
+  /** A card's app on this machine: it answers with what it was sent, and echoes over its WebSocket. */
+  const startApp = () =>
+    Bun.serve<undefined>({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req, srv) =>
+        srv.upgrade(req, { headers: { 'sec-websocket-protocol': 'vite-hmr' } })
+          ? undefined
+          : req.url.endsWith('/go')
+            ? Response.redirect(`http://localhost:${srv.port}/there`, 302)
+            : Response.json(
+                { path: new URL(req.url).pathname, host: req.headers.get('host'), cookie: req.headers.get('cookie'), origin: req.headers.get('origin') },
+                { headers: { 'set-cookie': 'obeya-device=taken; Path=/' } },
+              ),
+      websocket: { message: (ws, m) => void ws.send(`echo ${m}`) },
+    });
+  const pairPhone = async () => cookieOf(await viaTailnet(`/pair?code=${(await pairing()).code}`));
+  const openApp = (cardId: string, cookie: string) => viaTailnet(`/api/c/main/cards/${cardId}/app/open`, { cookie });
+  const config = () => JSON.parse(readFileSync(join(ts, 'serve.json'), 'utf8'));
+
+  test('opens at the tailnet name with the app’s port, through a proxy that lets in paired devices only and hides Obeya from the app', async () => {
+    const app = startApp();
+    try {
+      await turnOn();
+      const cookie = await pairPhone();
+      const card = canvas.board.create({ title: 'Shop', x: 0, y: 0 });
+      canvas.board.work(card.id, { state: 'waiting', need: 'review', workspace: join(dir, 'ws'), app: `http://localhost:${app.port}/shop?x=1` });
+      // on this machine the link opens the app where it runs
+      expect((await local(`/api/c/main/cards/${card.id}/app/open`, { redirect: 'manual' })).headers.get('location')).toBe(`http://localhost:${app.port}/shop?x=1`);
+      const there = await openApp(card.id, `${cookie}; other=1`);
+      expect(there.status).toBe(302);
+      expect(there.headers.get('location')).toBe(`https://${NAME}:${app.port}/shop?x=1`);
+      // the tailnet serves that port from Obeya's proxy, which `tailscale serve` reaches on 127.0.0.1
+      const proxy = config().Web[`${NAME}:${app.port}`].Handlers['/'].Proxy as string;
+      expect(proxy).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+      expect(JSON.parse(readFileSync(join(dir, 'tailscale-serve-apps.json'), 'utf8'))).toEqual([{ name: NAME, https: app.port, target: proxy }]);
+      const origin = `https://${NAME}:${app.port}`;
+      const through = (path: string, headers: Record<string, string> = {}) =>
+        fetch(proxy + path, { redirect: 'manual', headers: { host: `${NAME}:${app.port}`, 'x-forwarded-for': '100.64.0.7', 'x-forwarded-host': `${NAME}:${app.port}`, 'x-forwarded-proto': 'https', ...headers } });
+      expect((await through('/shop')).status).toBe(401);
+      const res = await through('/shop?x=1', { cookie: `${cookie}; other=1`, origin });
+      expect(await res.json()).toEqual({ path: '/shop', host: `localhost:${app.port}`, cookie: 'other=1', origin: `http://localhost:${app.port}` });
+      // the app sets no cookie of Obeya's on the phone, and its redirects stay at the address the phone has
+      expect(res.headers.getSetCookie()).toEqual([]);
+      expect((await through('/go', { cookie })).headers.get('location')).toBe(`${origin}/there`);
+      // its WebSocket too, with the protocol the app picks
+      const ws = new WebSocket(proxy.replace('http', 'ws') + '/', { headers: { host: `${NAME}:${app.port}`, 'x-forwarded-proto': 'https', cookie, origin }, protocols: ['vite-hmr'] } as unknown as string[]);
+      const echoed = await new Promise<string>((done, fail) => {
+        ws.onopen = () => ws.send('hi');
+        ws.onmessage = (e) => done(`${ws.protocol}: ${e.data}`);
+        ws.onerror = fail;
+      });
+      expect(echoed).toBe('vite-hmr: echo hi');
+      // what another site's page sends with the device's cookie does not reach the app; a link from there opens it
+      expect((await through('/shop', { cookie, origin: 'https://elsewhere.example', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors' })).status).toBe(403);
+      const posted = await fetch(proxy + '/shop', { method: 'POST', body: 'x=1', headers: { host: `${NAME}:${app.port}`, 'x-forwarded-proto': 'https', cookie, origin: 'https://elsewhere.example', 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' } });
+      expect(posted.status).toBe(403);
+      expect((await through('/shop', { cookie, 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' })).status).toBe(200);
+      const foreign = new WebSocket(proxy.replace('http', 'ws') + '/', { headers: { host: `${NAME}:${app.port}`, 'x-forwarded-proto': 'https', cookie, origin: 'https://elsewhere.example' } } as unknown as string[]);
+      expect(await new Promise<string>((done) => ((foreign.onopen = () => done('open')), (foreign.onerror = () => done('refused'))))).toBe('refused');
+      // a path that reads like another host stays a path of the app
+      expect(((await (await through('//127.0.0.1:1/x', { cookie })).json()) as { path: string }).path).toEndWith('/127.0.0.1:1/x');
+      // the device removed, its WebSocket to the app closes too
+      const closed = new Promise<number>((r) => (ws.onclose = (e) => r(e.code)));
+      const devices = (await view()).devices;
+      await local(`/api/access/devices/${devices[0]!.id}`, { method: 'DELETE' });
+      expect(await closed).toBe(1008);
+      expect((await through('/shop', { cookie })).status).toBe(401);
+      const again = await pairPhone();
+      // a second open reuses the proxy; turned off, the entry goes with it
+      expect((await openApp(card.id, again)).headers.get('location')).toBe(`https://${NAME}:${app.port}/shop?x=1`);
+      expect(Object.keys(config().Web)).toHaveLength(2);
+      await turnOn(null);
+      expect(config().Web[`${NAME}:${app.port}`]).toBeUndefined();
+      expect(existsSync(join(dir, 'tailscale-serve-apps.json'))).toBe(false);
+      expect(await fetch(proxy).then(() => 'answered', () => 'gone')).toBe('gone');
+    } finally {
+      await app.stop(true);
+    }
+  });
+
+  test('takes another port where the app’s is served already; Obeya stopping removes the entry, and one a run before left behind goes at the start', async () => {
+    const app = startApp();
+    try {
+      writeFileSync(join(ts, 'serve.json'), JSON.stringify({ TCP: { [app.port!]: { HTTPS: true } }, Web: { [`${NAME}:${app.port}`]: { Handlers: { '/': { Proxy: 'http://127.0.0.1:3000' } } } } }));
+      await turnOn();
+      const cookie = await pairPhone();
+      const card = canvas.board.create({ title: 'Shop', x: 0, y: 0 });
+      canvas.board.work(card.id, { state: 'waiting', need: 'review', workspace: join(dir, 'ws'), app: `http://127.0.0.1:${app.port}/` });
+      const at = new URL((await openApp(card.id, cookie)).headers.get('location')!);
+      expect(at.hostname).toBe(NAME);
+      expect(at.port).not.toBe(String(app.port));
+      expect(config().Web[`${NAME}:${at.port}`].Handlers['/'].Proxy).toBe(`http://127.0.0.1:${at.port}`);
+      const noted = readFileSync(join(dir, 'tailscale-serve-apps.json'), 'utf8');
+      access.release();
+      expect(config().Web[`${NAME}:${at.port}`]).toBeUndefined();
+      expect(config().Web[`${NAME}:${app.port}`].Handlers['/'].Proxy).toBe('http://127.0.0.1:3000');
+      // a run that ended without removing it: the next start does
+      const left = { ...config(), TCP: { ...config().TCP, [at.port]: { HTTPS: true } }, Web: { ...config().Web, [`${NAME}:${at.port}`]: { Handlers: { '/': { Proxy: `http://127.0.0.1:${at.port}` } } } } };
+      writeFileSync(join(ts, 'serve.json'), JSON.stringify(left));
+      writeFileSync(join(dir, 'tailscale-serve-apps.json'), noted);
+      const again = new Access({ store, home: dir, tailscale: new Tailscale(fakeTailscale(ts)) });
+      await again.start(server.port!, () => {});
+      await until(() => !existsSync(join(dir, 'tailscale-serve-apps.json')));
+      expect(config().Web[`${NAME}:${at.port}`]).toBeUndefined();
+      again.release();
+    } finally {
+      await app.stop(true);
+    }
+  });
+});
+
+test("the proxy in front of a card's app goes once the app has stopped answering for a while", async () => {
+  const app = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('app') });
+  const reach = new AppReach({ tailscale: new Tailscale(fakeTailscale(ts)), paired: () => 'phone', notPaired: () => new Response(null, { status: 401 }) });
+  const at = await reach.reach(`http://localhost:${app.port}/`, { via: 'tailscale', name: NAME });
+  const served = () => !!JSON.parse(readFileSync(join(ts, 'serve.json'), 'utf8')).Web[new URL(at).host];
+  expect(served()).toBe(true);
+  await reach.sweep();
+  await app.stop(true);
+  // a dev server restarting misses a look or two
+  await reach.sweep();
+  await reach.sweep();
+  expect(served()).toBe(true);
+  await reach.sweep();
+  expect(served()).toBe(false);
 });
 
 describe('pairing', () => {
@@ -455,6 +585,25 @@ describe('on another address', () => {
     expect(await (await there('/api/access', { cookie: cookieOf(paired) })).json()).toEqual({ local: false, tailnet: false });
     expect((await turnOn(null)).address).toBeNull();
     expect(await there('/').then(() => 'answered', () => 'gone')).toBe('gone');
+  });
+
+  test.skipIf(!lan)("a card's app opens there at the app's port, through the proxy for paired devices", async () => {
+    const app = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (req) => new Response(`app at ${req.headers.get('host')}`) });
+    try {
+      await turnOn({ via: 'address', address: lan });
+      const there = (url: string, headers: Record<string, string> = {}) => fetch(url, { redirect: 'manual', headers: { 'user-agent': IPHONE, ...headers } });
+      const cookie = cookieOf(await there(`http://${lan}:${server.port}/pair?code=${(await pairing()).code}`));
+      const card = canvas.board.create({ title: 'Shop', x: 0, y: 0 });
+      canvas.board.work(card.id, { state: 'waiting', need: 'review', workspace: join(dir, 'ws'), app: `http://localhost:${app.port}/` });
+      const at = (await there(`http://${lan}:${server.port}/api/c/main/cards/${card.id}/app/open`, { cookie })).headers.get('location')!;
+      expect(new URL(at).hostname).toBe(lan!);
+      expect((await there(at)).status).toBe(401);
+      expect(await (await there(at, { cookie })).text()).toBe(`app at localhost:${app.port}`);
+      await turnOn(null);
+      expect(await there(at, { cookie }).then(() => 'answered', () => 'gone')).toBe('gone');
+    } finally {
+      await app.stop(true);
+    }
   });
 
   test('an address that is not this machine’s is refused with a reason', async () => {

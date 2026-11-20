@@ -699,16 +699,26 @@ function canvasRoutes(x: Routing) {
     // the app running in the card's workspace: whether it answers, and the owner opening it to try it by hand
     '/api/c/:canvas/cards/:id/app': { GET: on((c, req) => c.appUp(req.params.id!)) },
     '/api/c/:canvas/cards/:id/app/open': {
-      GET: async (req) => {
+      GET: async (req, srv) => {
         const c = pages.canvas(req.params.canvas);
         if (!c) return notFound();
+        const text = (body: string, status: number) => new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
         let url: string | null = null;
         try {
           url = await c.openApp(req.params.id);
         } catch (e) {
           if (!(e instanceof BadRequest)) throw e;
         }
-        return url ? Response.redirect(url, 302) : new Response(c.board.t.worker.appGone, { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+        if (!url) return text(c.board.t.worker.appGone, 404);
+        // another device cannot reach this machine's localhost: it opens the app through a proxy at Obeya's address for it
+        if (!x.access.isLocal(req, srv)) {
+          try {
+            url = await x.access.reach(url);
+          } catch (e) {
+            return text(c.board.t.worker.appUnreachable((e as Error).message), 502);
+          }
+        }
+        return Response.redirect(url, 302);
       },
     },
     '/api/c/:canvas/cards/:id/plan': { GET: on((c, req) => c.board.planDoc(req.params.id!)) },
