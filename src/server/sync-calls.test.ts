@@ -140,8 +140,8 @@ const ALLOWED: Record<string, { why: string; calls: Record<string, number> }> = 
   'tailscale.ts': { why: 'tailscale serve taken back as the server stops; the binary found by a stat', calls: { existsSync: 1, spawnSync: 1 } },
   'theme.ts': { why: "a folder's theme, read from the folder's few files (a repository's is read from git without waiting)", calls: { readFileSync: 1 } },
   'transcript.ts': {
-    why: "server path, in the background: the work retrospective finds a session's transcript by listing Claude's and Codex's session directories and reads it whole; a candidate for fs/promises",
-    calls: { existsSync: 2, readFileSync: 1, readdirSync: 3, statSync: 1 },
+    why: "server path, in the background: the work retrospective finds a session's transcript by listing Claude's and Codex's session directories (Gemini's by its path) and reads it whole; a candidate for fs/promises",
+    calls: { existsSync: 3, readFileSync: 1, readdirSync: 3, statSync: 1 },
   },
   'voice-cloud.ts': { why: "the cloud voice's settings file, small, read when used and written when the owner saves", calls: { chmodSync: 1, existsSync: 1, readFileSync: 1, writeFileSync: 1 } },
   'walkthrough.ts': {

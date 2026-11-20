@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { cardAgentOf, modelFamily, familyName, type HarnessView, modelChoices, modelFits, modelName, modelVersion, newestOfFamilies } from './agents';
+import { agentDefault, agentName, cardAgentOf, modelFamily, familyName, type HarnessView, modelChoices, modelFits, modelName, modelVersion, newestOfFamilies, storedModel } from './agents';
 
 test('modelName names Claude models by family and version, any other as its harness does', () => {
   expect(modelName('claude-opus-5-5')).toBe('Opus 5.5');
@@ -60,4 +60,21 @@ test("both pickers offer Codex's families by name, the version apart, as Claude 
   // an alias with the version of the model it stands for here, once Claude Code has said
   expect(modelChoices(claude).map((c) => c.version)).toEqual(['5.5', undefined]);
   expect([modelVersion('claude-haiku-4-5-20251001'), modelVersion('gpt-6.1-sol'), modelVersion('opus')]).toEqual(['4.5', '6.1', undefined]);
+});
+
+test("a Gemini setting names one of Gemini's own families, as Codex's do, and runs on Neon until the owner chooses another", () => {
+  expect(modelFits('gemini', 'gemini-#-neon')).toBe(true);
+  expect(modelFits('gemini', 'gemini-4-argon')).toBe(true);
+  expect(modelFits('gemini', 'default')).toBe(true);
+  for (const other of ['claude-opus-5-5', 'gpt-oss-120b', 'opus', 'gpt-#-sol']) expect(modelFits('gemini', other)).toBe(false);
+  expect(storedModel('gemini', 'gemini-3.8-flash')).toBe('gemini-#-flash');
+  expect(storedModel('gemini', 'default')).toBe('gemini-#-neon');
+  expect(cardAgentOf(JSON.stringify({ harness: 'gemini', model: 'gemini-4-neon' }))).toEqual({ harness: 'gemini', model: 'gemini-#-neon' });
+  expect(agentDefault('worker', 'gemini')).toEqual({ harness: 'gemini', model: 'gemini-#-neon', effort: 'high' });
+  expect(agentName({ harness: 'gemini', model: 'gemini-#-hydrogen' })).toBe('Gemini · Hydrogen');
+  const view: HarnessView = { id: 'gemini', ready: true, models: [{ id: 'gemini-4-neon', name: 'Gemini 4 Neon', efforts: ['low', 'high', 'xhigh'] }, { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', efforts: ['medium'] }] };
+  expect(modelChoices(view)).toEqual([
+    { value: 'gemini-#-neon', name: 'Neon', version: '4', efforts: ['low', 'high', 'xhigh'] },
+    { value: 'gemini-#-flash', name: 'Flash', version: '3.8', efforts: ['medium'] },
+  ]);
 });

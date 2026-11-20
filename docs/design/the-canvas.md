@@ -48,17 +48,17 @@ from its row, and the list stays under the dim to fold back into, as in the arch
 keeps its words between openings. The archive and the search drop down one at a time. The phone
 view has no search.
 
-Right, before the workspace pool: the usage limits of the plans Claude Code and Codex on this
-machine are logged in with, every limit of a plan as a thin meter, one above the other in the
+Right, before the workspace pool: the usage limits of the plans Claude Code, Codex and Gemini on
+this machine are logged in with, every limit of a plan as a thin meter, one above the other in the
 order of the list below, without labels or numbers (the session's, five hours, above the week's for
 all models and the week's for a single model), coloured in the grade the plan's usage endpoint gives
-it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). A tick on each meter
+it (warning, critical; for Codex and Gemini, which give none, from 80 % and at 100 %). A tick on each meter
 marks how much of its window has gone by (Claude's session five hours, its week seven days, a Codex
-window as long as Codex says it is, counted back from when it starts anew; no tick where the length
-or the reset is unknown): green while the usage is at or under it, red once the usage runs ahead of
+window as long as Codex says it is, Gemini's five hours and week, counted back from when it starts
+anew; no tick where the length or the reset is unknown): green while the usage is at or under it, red once the usage runs ahead of
 the time, so a glance tells whether the limit lasts until it starts anew. The bar shows
-every plan with a login, whether agents run on it or not, each beside its name ("Claude", "Codex")
-when it shows two, without one when it shows one. A click lists every limit of
+every plan with a login, whether agents run on it or not, each beside its name ("Claude", "Codex",
+"Gemini") when it shows more than one, without one when it shows one. A click lists every limit of
 every plan (the session, the week for all models, the week for a single model) with its meter and
 percentage, when it starts anew and how long until then ("in 3 h 12 min", counting down while the
 list is open), and where the numbers come from and as of when; a line under it says what the tick
@@ -593,6 +593,10 @@ code, a generic one otherwise.
 - **Codex's limits come from its app server's `account/rateLimits/read`** (2026-11-03), asked of an
   idle app server as Claude Code's are of an idle session; its windows take the session's and the
   week's place by their length.
+- **Gemini's limits come from `agy -p /quota`** (2026-11-20), which starts no turn: the five hours
+  and the week of Gemini's models, and the week of a model with a quota of its own (Argon on a Pro
+  plan) as a single model's. agy's group of Claude and GPT models is left out, since no agent of
+  Obeya's runs on it. A login by API key has no quota: the bar shows nothing for it.
 - **The bar shows every plan with a login** (owner, 2026-11-04): what is left of a plan is what the
   owner decides on before starting an agent on it, a card on Codex say, so it shows while no agent
   runs there yet. Rejected: only the plans agents run on, which hid Codex's limits until a Codex

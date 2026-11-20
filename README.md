@@ -25,7 +25,7 @@ listed there with the demo its agent recorded.
 
 ## How it works
 
-Each card gets its own agent, Claude Code or Codex. The agent works in its own clone or worktree of
+Each card gets its own agent: Claude Code, Codex or Gemini. The agent works in its own clone or worktree of
 your repository, on this machine or on another one that Obeya reaches over SSH. When it needs a
 decision, it asks on the card. When it is done, it hands over with a demo. Usually that is a
 narrated screen recording of the change, or a silent one with subtitles in as many languages as
@@ -78,10 +78,11 @@ several, and one Obeya runs all of them.
 You can pause and resume a card's agent, or all agents of a canvas from the canvas list. Each
 agent finishes its current step first. Typing "/" in a card's field offers the skills its agent
 knows. The bar shows how much of your plan's session and week is used, for Claude, for ChatGPT
-(which Codex runs on), or for both. If you switch it on in Configuration, the bar also shows what
+(which Codex runs on), for Google AI (which Gemini runs on), or for each of them you use. If you switch it on in Configuration, the bar also shows what
 the agents cost, per card and per canvas. In "Agents and models" you choose which harness and
 model each group of agents runs on. The menu beside a card's start button sets them for that card
-alone. When Claude Code or Codex has an update, Obeya offers it at a click.
+alone. When Claude Code or Codex has an update, Obeya offers it at a click; Gemini (the Antigravity
+CLI) keeps itself up to date.
 
 ![An Obeya canvas: a project with its workstreams, one at work and one in the queue. Beside it are a demo and a question waiting for you, a task at work, an approved and a live one, and an idea](site/img/canvas.png)
 
@@ -208,7 +209,7 @@ prints a new link that signs another browser in. An Obeya that is older than the
 on the home (an app not yet updated after a newer checkout, for example) leaves the database alone
 and tells you to update.
 
-Agents run on the Claude Code or Codex login of the machine. You can see and change the canvases
+Agents run on the Claude Code, Codex or Gemini login of the machine. You can see and change the canvases
 and their repositories in the app ("Configuration") or by telling Obeya. Saving writes
 `canvases.json`, and the running canvases pick up the change at once. An Obeya that was started
 with repositories on the command line restarts with the file.

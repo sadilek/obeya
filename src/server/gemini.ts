@@ -245,7 +245,11 @@ const OBEYA_TOOL = /^mcp_obeya_(.+)$/;
 export function geminiCall(id: string, name: string, args: Record<string, unknown>): ToolCall {
   const str = (v: unknown) => (typeof v === 'string' ? v : '');
   const obeya = OBEYA_TOOL.exec(name);
-  if (obeya) return { id, name: `mcp__obeya__${obeya[1]}`, input: args };
+  // agy adds a summary of its own to every call, which the tool never gets
+  if (obeya) {
+    const { toolSummary: _, ...input } = args;
+    return { id, name: `mcp__obeya__${obeya[1]}`, input };
+  }
   switch (name) {
     case 'run_command':
       return { id, name: 'Bash', input: { command: str(args.CommandLine) } };
@@ -472,8 +476,22 @@ export function quotaExhausted(message: string): boolean {
 /** Obeya's tools for every Gemini session, one server for all of them. */
 const toolServer = new McpToolServer();
 
+/** The Gemini directories of the runtimes made, where their sessions' transcripts lie (`geminiTranscript`). */
+const runtimeDirs = new Set<string>();
+
+/**
+ * Where agy keeps the transcript of a session (`<gemini dir>/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`):
+ * in the Gemini directory of each runtime of this process, one of which ran it.
+ */
+export function geminiTranscripts(session: string): string[] {
+  const id = session.slice(GEMINI_SESSION.length);
+  if (!session.startsWith(GEMINI_SESSION) || !/^[\w-]+$/.test(id)) return [];
+  return [...runtimeDirs].map((dir) => join(dir, 'antigravity-cli', 'brain', id, '.system_generated', 'logs', 'transcript.jsonl'));
+}
+
 /** Runs agents through `agy acp` on this machine's Antigravity login, with `dir` as Obeya's own Gemini directory. */
 export function geminiRuntime(o: { dir: string; own?: string }): AgentRuntime {
+  runtimeDirs.add(o.dir);
   const dir = new GeminiDir(o.dir, o.own);
   return { start: (spec, firstMessage, images) => new GeminiSession(spec, dir, firstMessage, images) };
 }
