@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { geminiLoginLost } from '../core/login';
 import type { ToolCall } from './folder';
-import { geminiCall, geminiLogin, geminiModels, geminiModelsOf, geminiRuntime, geminiUsageOf, hooksFile, quotaResets, resolveGeminiModel, WAIT_REFUSED } from './gemini';
+import { GeminiDir, geminiCall, geminiLogin, geminiModels, geminiModelsOf, geminiRuntime, geminiUsageOf, hooksFile, quotaResets, resolveGeminiModel, WAIT_REFUSED } from './gemini';
 import { findGemini, Harnesses } from './harnesses';
 import { geminiCost } from './prices';
 import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
@@ -92,6 +92,12 @@ describe.skipIf(process.platform === 'win32')('a Gemini session through agy acp'
     await until(() => s.idles() === 1);
     expect(s.events.find((e) => e.type === 'tool')).toEqual({ type: 'tool', name: 'mcp__obeya__report', input: { status: 'half done' } });
     expect(s.texts()).toEqual(['tool said: shown: half done\n\nThe owner wrote meanwhile.']);
+  });
+
+  test("a tool's arguments are checked against its schema, as on Claude Code", async () => {
+    const s = start({}, 'tool report {"status":5}');
+    await until(() => s.idles() === 1);
+    expect(s.texts()[0]).toStartWith('tool said: Invalid arguments for report');
   });
 
   test('a resumed session gets the tools anew, from a server of its own, and its mode set again', async () => {
@@ -349,4 +355,21 @@ test("Gemini's tokens at Google's list prices of the day: Argon and Flash rise o
   expect(geminiCost('gemini-3.8-flash', tokens, new Date('2027-01-01T12:00:00Z'))).toBeCloseTo(1.5 + 0.15 + 7.5, 6);
   expect(geminiCost('gemini-4.1-hydrogen', tokens)).toBeCloseTo(1.5 + 0.075 + 7.5, 6);
   expect(geminiCost('gemini-5-carbon', tokens)).toBeCloseTo(3 + 0.15 + 15, 6);
+});
+
+test("sessions starting at once each keep their sandbox grants: no start writes an older picture over another's", async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-gemini-dir-'));
+  try {
+    const g = new GeminiDir(join(dir, 'gemini'), join(dir, 'own'));
+    const a = {};
+    const b = {};
+    await Promise.all([g.prepare(a, { read: [], write: ['/a'] }, []), g.prepare(b, { read: [], write: ['/b'] }, [])]);
+    const allow = () => JSON.parse(readFileSync(join(dir, 'gemini', 'config', 'projects', 'default-cli-project.json'), 'utf8')).permissionGrants.permissionGrants.allow;
+    expect(allow()).toEqual(['write_file(/a)', 'write_file(/b)']);
+    g.release(a);
+    await g.prepare(b, { read: [], write: ['/b'] }, []);
+    expect(allow()).toEqual(['write_file(/b)']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -322,8 +322,10 @@ block no save.
 Some of what a repository brings runs on this machine outside Claude Code's permission checks, or is
 contacted without a click: `app.stop` and `app.keep`, and `demo.site` (`deploy` with its `env` file,
 `url` and `headers` read when the owner comes back to the page, `publish` deploying with each
-approval). And agent sessions run what the repository's own Claude Code configuration names
-(everything under `.claude/` and `.mcp.json`) without asking, read-only agents included: tried on
+approval). And agent sessions run what the repository's own configuration of their harness names
+(Claude Code's: everything under `.claude/` and `.mcp.json`; Antigravity's for Gemini: everything
+under `.agents/`, `.agent/`, `_agents/` and `_agent/`, its hooks, MCP servers and plugins among it)
+without asking, read-only agents included: tried on
 2026-10-16 (SDK 0.3.285, no `settingSources`), a repository's `SessionStart` hook ran in a session
 with only Read, Grep and Glob, as did an MCP server its own `enableAllProjectMcpServers` approved;
 with `disableAllHooks` and `strictMcpConfig` its `apiKeyHelper` still ran and an `ANTHROPIC_BASE_URL`
@@ -333,10 +335,12 @@ unnoticed (VS Code has Workspace Trust for the same reason).
 So they count only as the owner last trusted them. Obeya keeps per repository path the trusted
 values themselves (not a hash, so the dialog shows a diff) in three groups: `app` (stop and keep
 together, since a stop without its keep could stop what it keeps), `site`, and `claude` (each file
-under `.claude/` and `.mcp.json`). A group the main branch has otherwise is held: the settings are
-read without it (no stop or keep, no site; demos are exported), and an agent working in the
-repository starts with `settingSources: ['user']` and gets its directory's CLAUDE.md in its
-instructions instead (not on another machine), trust being worked out afresh at each agent start
+under `.claude/` and `.mcp.json`, and under Antigravity's directories). A group the main branch has
+otherwise is held: the settings are read without it (no stop or keep, no site; demos are exported),
+and an agent working in the repository starts with `settingSources: ['user']` and gets its
+directory's CLAUDE.md in its instructions instead (not on another machine); a Gemini agent, whose
+agy reads a workspace's customizations whatever it is told, does not start where the workspace has
+hooks, MCP servers or plugins of agy's, and says so on its card, trust being worked out afresh at each agent start
 from the main branch as it is then, a commit made there outside Obeya included. What was read there
 last stands while the repository's own branches, `origin`'s, its packed refs and the branch its
 checkout is on are as they were (a few `stat`s; the cards' branches do not count, and a branch that

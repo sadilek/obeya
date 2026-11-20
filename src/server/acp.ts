@@ -261,6 +261,8 @@ export class McpToolServer {
     } catch {
       return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'not JSON' } }, { status: 400 });
     }
+    // closed while the request came in: the path opens nothing any more
+    if (this.sessions.get(path.slice(5)) !== s) return new Response('', { status: 404 });
     // a notification (`notifications/initialized`) needs no answer
     if (m.id === undefined || m.id === null) return new Response(null, { status: 202 });
     const ok = (result: unknown) => Response.json({ jsonrpc: '2.0', id: m.id, result });
@@ -275,10 +277,13 @@ export class McpToolServer {
         const name = m.params?.name;
         const tool = s.tools.find((t) => t.name === name);
         if (!tool) return ok({ content: [{ type: 'text', text: `No tool ${String(name)} here.` }], isError: true });
+        // checked against the tool's schema, as Claude Code's tools are
+        const args = z.object(tool.schema).safeParse(m.params?.arguments ?? {});
+        if (!args.success) return ok({ content: [{ type: 'text', text: `Invalid arguments for ${tool.name}: ${z.prettifyError(args.error)}` }], isError: true });
         let text: string;
         let isError = false;
         try {
-          text = await tool.run((m.params?.arguments ?? {}) as Record<string, unknown>);
+          text = await tool.run(args.data as Record<string, unknown>);
         } catch (e) {
           text = messageOf(e);
           isError = true;

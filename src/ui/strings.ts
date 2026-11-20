@@ -1526,7 +1526,7 @@ const de = {
     trust: {
       app: 'App stoppen und behalten (app.stop, app.keep): Obeya führt sie aus, wenn eine Karte wartet. Bis dahin bleibt die App laufen.',
       site: 'Demo-Seite (demo.site): Obeya veröffentlicht mit diesem Befehl und liest die Seite unter dieser Adresse. Bis dahin werden Demos exportiert.',
-      claude: 'Claude-Code-Konfiguration des Repositorys (.claude/, .mcp.json): Agenten führen ihre Hooks und MCP-Server ohne Rückfrage aus. Bis dahin arbeiten sie ohne sie.',
+      claude: 'Agenten-Konfiguration des Repositorys (.claude/, .mcp.json; .agents/ für Gemini): Agenten führen ihre Hooks und MCP-Server ohne Rückfrage aus. Bis dahin arbeiten sie ohne sie, Gemini startet in so einem Repository dann nicht.',
       trust: 'Diesen Befehlen vertrauen',
       blankOnly: (files: string) => `In ${files} hat sich nur Leerraum am Anfang oder Ende geändert, den die Ansicht nicht zeigt. Er kann entscheiden, ob ein Hook läuft.`,
     },
@@ -3821,7 +3821,7 @@ const en: Strings = {
     trust: {
       app: 'Stopping and keeping the app (app.stop, app.keep): Obeya runs them while a card waits. Until then the app keeps running.',
       site: 'Demo site (demo.site): Obeya deploys with this command and reads the site at this address. Until then demos are exported.',
-      claude: 'The repository’s Claude Code configuration (.claude/, .mcp.json): agents run its hooks and MCP servers without asking. Until then they work without it.',
+      claude: 'The repository’s agent configuration (.claude/, .mcp.json; .agents/ for Gemini): agents run its hooks and MCP servers without asking. Until then they work without it, and Gemini does not start in such a repository.',
       trust: 'Trust these commands',
       blankOnly: (files: string) => `In ${files} only space at the start or end changed, which the view does not show. It can decide whether a hook runs.`,
     },

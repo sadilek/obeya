@@ -364,10 +364,19 @@ export class GeminiDir {
     private own = join(homedir(), '.gemini'),
   ) {}
 
+  /** Starts one after the other, so a start never writes an older picture of the grants over a later one's. */
+  private writing: Promise<unknown> = Promise.resolve();
+
   /** Makes it ready for a session that needs `grants` and loads `plugins`; the grants stay until `release`. */
-  async prepare(key: object, grants: Grants, plugins: string[], windows = process.platform === 'win32'): Promise<void> {
+  prepare(key: object, grants: Grants, plugins: string[], windows = process.platform === 'win32'): Promise<void> {
     this.grants.set(key, grants);
     for (const p of plugins) this.plugins.add(p);
+    const done = this.writing.then(() => this.write(windows));
+    this.writing = done.catch(() => {});
+    return done;
+  }
+
+  private async write(windows: boolean): Promise<void> {
     const config = join(this.dir, 'config');
     await mkdir(join(config, 'projects'), { recursive: true });
     await writeIfChanged(join(config, 'hooks.json'), `${JSON.stringify(hooksFile(windows), null, 2)}\n`);
@@ -503,6 +512,8 @@ class GeminiSession implements AgentSession {
   private tools: { url: string; close: () => void } | undefined;
   private closed = false;
   private id: string | undefined;
+  /** The session is open, its model, effort and mode set: prompts may go. */
+  private open = false;
   /** Messages no turn has taken yet. */
   private queue: { text: string; images?: string[] }[] = [];
   /** The prompts of the turn under way not answered yet: the first started it, the others steer it. */
@@ -516,6 +527,8 @@ class GeminiSession implements AgentSession {
   private effort: AgentEffort | undefined;
   /** The session's tokens so far, from its turns. */
   private tokens: GeminiTokens = { inputTokens: 0, cachedReadTokens: 0, outputTokens: 0 };
+  /** The error the turn under way ends with, once every prompt of it has its answer. */
+  private failure: { message: string; limit?: { resetsAt?: number } } | undefined;
   /** What a refused permission tells the agent at its next turn: agy ends a turn without a word to it. */
   private refusals: string[] = [];
   /** A folder's watch hears of calls one after the other. */
@@ -613,10 +626,13 @@ class GeminiSession implements AgentSession {
     // the mode is the session's own, and a resumed one is back at the default: set at every start
     await acp.request('session/set_mode', { sessionId: this.id, modeId: spec.readOnly ? 'default' : 'auto' });
     if (this.closed) return;
+    this.open = true;
     this.emit({ type: 'session', id: `${GEMINI_SESSION}${this.id}`, model: this.model, ...(this.effort ? { effort: this.effort } : {}) });
     this.pump();
     const code = await acp.exited;
     if (!this.closed) this.emit({ type: 'error', message: withStderr(`agy acp exited${code === null ? '' : ` with code ${code}`}`, acp.stderr) });
+    // what agy started (a dev server sent off with `&`) goes with it
+    acp.close();
   }
 
   /**
@@ -636,14 +652,17 @@ class GeminiSession implements AgentSession {
   /** Starts a turn with what waits, or steers the one under way with it. */
   private pump() {
     const acp = this.acp;
-    if (!acp || !this.id || this.closed || !this.queue.length) return;
+    if (!acp || !this.open || this.closed || !this.queue.length) return;
     const waiting = this.queue.splice(0);
     const said = this.refusals.splice(0);
     const id = this.id;
     this.prompts++;
     // in the order they came: a prompt's images are read before it goes, the next one goes after it (not after its answer)
     this.sending = this.sending.then(async () => {
+      // closed while its images were read: nothing goes to a session that ends
+      if (this.closed) return;
       const prompt = [...(said.length ? [{ type: 'text', text: said.join('\n\n') }] : []), ...(await Promise.all(waiting.map((m) => promptOf(m.text, m.images)))).flat()];
+      if (this.closed) return;
       acp.request<{ stopReason?: string; usage?: AcpUsage }>('session/prompt', { sessionId: id, prompt }).then(
         (r) => this.answered(r.usage),
         (e) => void this.failed(messageOf(e)),
@@ -660,29 +679,34 @@ class GeminiSession implements AgentSession {
         outputTokens: this.tokens.outputTokens + (usage.outputTokens ?? 0),
       };
     }
-    if (--this.prompts > 0 || this.closed) return;
-    this.flush();
-    const usd = geminiCost(this.model, this.tokens);
-    if (usd > 0) this.emit({ type: 'spend', session: `${GEMINI_SESSION}${this.id}`, usd });
-    this.emit({ type: 'idle', background: 0, ...(this.queue.length || this.refusals.length ? { more: true } : {}) });
-    if (!this.queue.length && this.refusals.length) this.queue.push({ text: 'Go on with your work.' });
-    this.pump();
+    this.settled();
   }
 
-  /** A prompt that failed: the turn's error, a quota's with when it resets. */
+  /** A prompt that failed: the turn's error once it ends, a quota's with when it resets. */
   private async failed(message: string) {
-    if (this.closed) return;
     let limit: { resetsAt?: number } | undefined;
-    if (quotaExhausted(message)) {
+    if (quotaExhausted(message) && !this.closed) {
       const bin = await geminiExecutable({ ...process.env, ...this.spec.env });
       const q = bin ? await quota(bin, cleanEnv()) : undefined;
       const resetsAt = q && 'report' in q ? quotaResets(q.report, this.model) : undefined;
       limit = resetsAt ? { resetsAt } : {};
     }
+    // a steer that failed with the turn says nothing new: the turn's own error counts
+    this.failure ??= { message: geminiLoginFailed(message) ? notLoggedIn(message) : message, ...(limit ? { limit } : {}) };
+    this.settled();
+  }
+
+  /** One prompt of the turn has its answer; the last one ends the turn, with its cost and its error, if any. */
+  private settled() {
     if (--this.prompts > 0 || this.closed) return;
     this.flush();
-    this.emit({ type: 'error', message: geminiLoginFailed(message) ? notLoggedIn(message) : message, ...(limit ? { limit } : {}) });
-    this.emit({ type: 'idle', background: 0 });
+    const usd = geminiCost(this.model, this.tokens);
+    if (usd > 0) this.emit({ type: 'spend', session: `${GEMINI_SESSION}${this.id}`, usd });
+    const failure = this.failure;
+    this.failure = undefined;
+    if (failure) this.emit({ type: 'error', ...failure });
+    this.emit({ type: 'idle', background: 0, ...(this.queue.length || this.refusals.length ? { more: true } : {}) });
+    if (!this.queue.length && this.refusals.length) this.queue.push({ text: 'Go on with your work.' });
     this.pump();
   }
 
@@ -716,7 +740,8 @@ class GeminiSession implements AgentSession {
    * folder's watch hears of each call before it runs and after. Anything else is agy's to decide.
    */
   private async hook(h: HookCall): Promise<unknown> {
-    if (this.closed) return undefined;
+    // the session has ended: nothing of it runs any more
+    if (this.closed) return h.hookEventName === 'PreToolUse' ? { decision: 'deny', reason: 'The session has ended.' } : {};
     const name = h.toolCall?.name ?? '';
     const call = geminiCall(h.toolCall?.id ?? '', name, h.toolCall?.args ?? {});
     if (h.hookEventName === 'PostToolUse') {
