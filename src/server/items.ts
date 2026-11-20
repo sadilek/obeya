@@ -62,6 +62,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.retro ? { retro: r.retro } : {}),
         ...(r.proposal ? (r.state === 'proposal' ? { proposal: fromJson(r.proposal)! } : { proposed: true as const, ...supersededOf(r) }) : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
+        ...(r.check_note !== null && r.check_note !== undefined ? { check: r.check_note } : {}),
         ...newRepoOf(r),
       });
       continue;

@@ -2,7 +2,7 @@
 
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { type ApproveResult, type CardPatch, draftsOnly, type Item, type RepoRef, type UpstreamRef } from '../core/types';
-import { agentListens, answering, archiveRefusal, askable, finished, handedOver, plannableAsProject, snoozable, stopped } from '../core/card';
+import { agentListens, answering, archiveRefusal, askable, finished, handedOver, markable, plannableAsProject, snoozable, stopped } from '../core/card';
 import { ApiError, api, failText } from './api';
 import { cardPath } from './address';
 import { Naming } from './cardLink';
@@ -29,6 +29,7 @@ import { IdeaView, PrototypeDemos } from './idea';
 import { Conversation, Fold, LastFailure, Mocks, Split, Talk, TalkColumn, useOpenQuestions, wordsField } from './conversation';
 import { DemoView } from './demo';
 import { PrBox, saveHeld } from './pr';
+import { useFitHeight } from './fitHeight';
 import { DemoShare } from './share';
 
 interface Props {
@@ -415,6 +416,7 @@ function TaskView(v: View) {
       <TaskState item={item} />
       <Where item={item} parent={parent} worked={worked} inFolder={inFolder} change={change} onReadPlan={v.onReadPlan} />
 
+      <CheckBox v={v} />
       <SupersededBox item={item} all={all} act={act} onDelete={v.onDelete} />
       <RepoDownBox item={item} />
       <MoveToBox item={item} act={act} />
@@ -496,6 +498,70 @@ function TaskView(v: View) {
       {review && lands.direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
       {review && heldUp.length > 0 && <p className="hint">{t.review.heldUp(heldUp)}</p>}
     </>
+  );
+}
+
+/**
+ * A task the owner marked to check by hand: their note on what, saved as they type, and the button
+ * that takes the mark off, after which the archive may take the card again.
+ */
+function CheckBox({ v }: { v: View }) {
+  const { item } = v;
+  // a local draft: the server echo must not overwrite what is being typed
+  const [note, setNote] = useState(item.check ?? '');
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useFitHeight(ref, note);
+  // the mark taken off: a new one starts without the old note
+  useEffect(() => {
+    if (item.check === undefined) setNote('');
+  }, [item.check === undefined]);
+  // just marked: the cursor goes into the note
+  useEffect(() => {
+    if (item.check === '' && sessionStorage.getItem(MARKED) === item.id) {
+      sessionStorage.removeItem(MARKED);
+      ref.current?.focus();
+    }
+  }, [item.check]);
+  if (item.check === undefined) return null;
+  return (
+    <div className="question check">
+      <h4>⚑ {t.check.title}</h4>
+      <textarea
+        ref={ref}
+        rows={1}
+        value={note}
+        placeholder={t.check.placeholder}
+        maxLength={20_000}
+        onChange={(e) => {
+          setNote(e.target.value);
+          v.onEdit({ check: e.target.value });
+        }}
+      />
+      <div className="actions">
+        <button className="btn" onClick={() => v.run(() => api.patch(item.id, { check: null }), { close: false })}>
+          {t.check.done}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The card the owner just marked to check, whose note takes the cursor once its box shows. */
+const MARKED = 'obeya.justMarked';
+
+/** Marks a task to check by hand (`CheckBox`). */
+function MarkButton({ v }: { v: View }) {
+  return (
+    <button
+      className="btn"
+      title={t.check.markHint}
+      onClick={async () => {
+        sessionStorage.setItem(MARKED, v.item.id);
+        await v.run(() => api.patch(v.item.id, { check: '' }), { close: false });
+      }}
+    >
+      {t.check.mark}
+    </button>
   );
 }
 
@@ -981,8 +1047,10 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
   const decide = handedOver(item) ? prototype || approve : (unworked || running || (halted && !item.archivedAt)) && prototype;
   // a stopped task whose workspace holds work shows the button, which says why it stays
   const refusal = archiveRefusal(item);
-  const archive = worked && (!refusal || refusal === 'holdsWork');
-  if (!unworked && !(running || archive || halted || onPrototype || rest || snoozable(item) || item.revocable)) return null;
+  const archive = worked && (!refusal || refusal === 'holdsWork' || refusal === 'marked');
+  // a task an agent worked on may be marked to check something by hand; once marked, its box takes the mark off
+  const mark = worked && markable(item) && item.check === undefined;
+  if (!unworked && !(running || archive || halted || onPrototype || rest || mark || snoozable(item) || item.revocable)) return null;
   return (
     <>
       <div className="actions">
@@ -1015,6 +1083,7 @@ function TaskActions({ v, worked, proto, approve }: { v: View; worked: boolean; 
           </>
         )}
         {archive && <ArchiveButton item={item} run={v.run} />}
+        {mark && <MarkButton v={v} />}
         {own && (unworked || (halted && !item.archivedAt)) && <DeleteButton onDelete={v.onDelete} />}
       </div>
       {unworked && fresh && <p className="hint">{fresh.hint}</p>}
