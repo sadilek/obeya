@@ -1490,7 +1490,7 @@ const de = {
       title: 'Agenten und Modelle',
       /** By what a group the owner chose nothing for runs on here (`AgentsView.preset`). */
       hint: (preset: Harness) =>
-        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange die Laufzeit, auf der sie läuft, an ihrem Nutzungslimit oder nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
+        `Worauf jede Gruppe von Agenten läuft (Claude Code, Codex oder Gemini, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit Sol, da auf diesem Rechner Claude Code nicht eingerichtet ist' : preset === 'gemini' ? 'Gemini mit Neon, da auf diesem Rechner nur Gemini eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Ein Codex- oder Gemini-Modell steht für seine Familie: Ein Agent läuft auf ihrer neuesten Version auf dem Rechner, auf dem er arbeitet. Gemini gibt es bisher nur auf diesem Rechner: Agenten auf anderen Rechnern laufen dort auf dem, worauf ihre Gruppe am Limit ausweicht, sonst auf Claude Code. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann. „Am Limit“: Worauf eine Gruppe ausweicht, solange die Laufzeit, auf der sie läuft, an ihrem Nutzungslimit oder nicht erreichbar ist; mit „Warten“ warten ihre Agenten bis dahin.`,
       harness: 'Läuft auf',
       /** The column of each group's fallback while its harness is at its usage limit. */
       fallback: 'Am Limit',
@@ -1969,7 +1969,7 @@ const de = {
     readyLater: 'geht, der Rest lädt beim ersten Gebrauch',
     open: (n: number) => (n === 1 ? '1 fehlt' : `${n} fehlen`),
     sections: {
-      needed: { title: 'Agenten', hint: 'Ohne Claude Code oder Codex, und ohne git, arbeitet kein Agent. Eins von beiden reicht: Claude Code läuft auf deinem Claude-Abo, Codex auf deinem ChatGPT-Abo; welche Agenten worauf laufen, wählst du in der Konfiguration unter Agenten und Modelle. Die Agenten committen unter deinem Namen.' },
+      needed: { title: 'Agenten', hint: 'Ohne Claude Code, Codex oder Gemini, und ohne git, arbeitet kein Agent. Eins davon reicht: Claude Code läuft auf deinem Claude-Abo, Codex auf deinem ChatGPT-Abo, Gemini (die Antigravity CLI) auf deinem Google-AI-Abo; welche Agenten worauf laufen, wählst du in der Konfiguration unter Agenten und Modelle. Die Agenten committen unter deinem Namen.' },
       pr: { title: 'Pull Requests', hint: 'Freigegebene Arbeit geht als Pull Request auf GitHub, außer die Einstellungen eines Repositorys sagen etwas anderes. Nötig erst bei der ersten Freigabe.' },
       voice: { title: 'Sprachbefehle', hint: 'Leertaste halten und sagen, was zu tun ist. Obeya bestätigt schriftlich: auf der Karte oder in Obeyas Fenster (Schaltfläche oben rechts, Taste C).' },
       demos: { title: 'Demos', hint: 'Agenten zeigen ihre Arbeit als vertontes Video. Ohne das schicken sie eine Zusammenfassung.' },
@@ -1979,6 +1979,8 @@ const de = {
       claudeLogin: 'Anmeldung bei Claude',
       codex: 'Codex',
       codexLogin: 'Anmeldung bei Codex',
+      gemini: 'Gemini (Antigravity CLI)',
+      geminiLogin: 'Anmeldung bei Google (Gemini)',
       git: 'git',
       gitUser: 'Name und E-Mail für Commits',
       gh: 'GitHub CLI (gh)',
@@ -1986,14 +1988,15 @@ const de = {
     } satisfies Record<NeededId | PrId, string>,
     loggedIn: 'angemeldet',
     loggedInAs: (who: string) => `angemeldet als ${who}`,
-    /** Codex, which says how it is logged in rather than as whom. */
+    /** Codex and Gemini, which say how they are logged in rather than as whom. */
     loggedInVia: (how: string) => `angemeldet über ${how}`,
     loggedOut: 'nicht angemeldet',
     claudeFirst: 'erst Claude Code installieren',
     codexFirst: 'erst Codex installieren',
-    /** Beside the other harness's missing pieces once one harness is ready. */
+    geminiFirst: 'erst die Antigravity CLI installieren',
+    /** Beside the other harnesses' missing pieces once one harness is ready. */
     orOther: (other: string) => `nicht nötig, ${other} ist eingerichtet`,
-    /** Beside Codex's missing pieces while neither harness is ready. */
+    /** Beside Codex's and Gemini's missing pieces while no harness is ready. */
     instead: (other: string) => `geht auch statt ${other}`,
     ghFirst: 'erst gh installieren',
     noIdentity: 'nicht eingetragen',
@@ -3786,7 +3789,7 @@ const en: Strings = {
     agents: {
       title: 'Agents and models',
       hint: (preset: Harness) =>
-        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex model stands for its family: an agent runs on its newest version on the machine it works on. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while the harness it runs on is at its usage limit or cannot be reached; with “Wait” its agents wait until then.`,
+        `What each group of agents runs on (Claude Code, Codex or Gemini, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with Sol throughout, since Claude Code is not set up on this machine' : preset === 'gemini' ? 'Gemini with Neon throughout, since only Gemini is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. A Codex or Gemini model stands for its family: an agent runs on its newest version on the machine it works on. Gemini runs on this machine only so far: agents on other machines run there on their group’s fallback, else on Claude Code. Applies at once to every agent that starts afterwards; one at work keeps what it started with. “At the limit”: what a group switches to while the harness it runs on is at its usage limit or cannot be reached; with “Wait” its agents wait until then.`,
       harness: 'Runs on',
       fallback: 'At the limit',
       wait: 'Wait',
@@ -4261,7 +4264,7 @@ const en: Strings = {
     readyLater: 'works, the rest loads on first use',
     open: (n: number) => `${n} missing`,
     sections: {
-      needed: { title: 'Agents', hint: 'Without Claude Code or Codex, and without git, no agent works. Either one is enough: Claude Code runs on your Claude subscription, Codex on your ChatGPT subscription; which agents run on which you choose in the configuration under Agents and models. The agents commit under your name.' },
+      needed: { title: 'Agents', hint: 'Without Claude Code, Codex or Gemini, and without git, no agent works. One of them is enough: Claude Code runs on your Claude subscription, Codex on your ChatGPT subscription, Gemini (the Antigravity CLI) on your Google AI subscription; which agents run on which you choose in the configuration under Agents and models. The agents commit under your name.' },
       pr: { title: 'Pull requests', hint: 'Approved work goes out as a pull request on GitHub, unless a repository’s settings say otherwise. Needed only at the first approval.' },
       voice: { title: 'Voice commands', hint: 'Hold Space and say what to do. Obeya confirms in writing: on the card or in Obeya’s panel (button at the top right, key C).' },
       demos: { title: 'Demos', hint: 'Agents show their work as a narrated video. Without it they send a summary.' },
@@ -4271,6 +4274,8 @@ const en: Strings = {
       claudeLogin: 'Claude login',
       codex: 'Codex',
       codexLogin: 'Codex login',
+      gemini: 'Gemini (Antigravity CLI)',
+      geminiLogin: 'Google login (Gemini)',
       git: 'git',
       gitUser: 'Name and e-mail for commits',
       gh: 'GitHub CLI (gh)',
@@ -4282,6 +4287,7 @@ const en: Strings = {
     loggedOut: 'not logged in',
     claudeFirst: 'install Claude Code first',
     codexFirst: 'install Codex first',
+    geminiFirst: 'install the Antigravity CLI first',
     orOther: (other: string) => `not needed, ${other} is set up`,
     instead: (other: string) => `works instead of ${other} too`,
     ghFirst: 'install gh first',

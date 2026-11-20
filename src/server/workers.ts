@@ -8,7 +8,7 @@ import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { type Awaited, type MoveTo, type WorkerTurn, type ChangeSize, type Item, type Question, type RestartReason, type Share, type Snooze, type Spot, type SpotInput, type ChangeRoute, type UpstreamRef, type AdoptedPr } from '../core/types';
 import { answering, askable, pausable, pausableNow, formatQuestion, handedOver, needsYou } from '../core/card';
-import { AGENT_EFFORTS, agentName, type AgentSetting, type CardAgent, cardAgentOf, type Harness, HARNESS_NAMES, modelFits, storedModel } from '../core/agents';
+import { AGENT_EFFORTS, agentName, type AgentSetting, type CardAgent, cardAgentOf, type Harness, HARNESS_NAMES, HARNESSES, modelFits, storedModel } from '../core/agents';
 import { findTranscript } from './transcript';
 import type { CardLanding } from '../core/config';
 import { BadRequest, type Board, notPaused, pauseRefused, replyNote } from './board';
@@ -184,9 +184,10 @@ const HOLD_GRACE = 10 * 60_000;
 const RELEASE_DELAY = 1500;
 /** Whether the card's status line is the one it shows while its worker waits for a usage limit or an outage, in either language. */
 /** The model and effort the owner picked for "Continue with …" (`AgentSetting` from the page), on the harness `on` it moves to. */
-function pickedOn(pick: unknown, on: Harness): AgentSetting {
+function pickedOn(pick: unknown, from: Harness): AgentSetting {
   const p = (pick && typeof pick === 'object' ? pick : {}) as Record<string, unknown>;
-  if (p.harness !== on) throw new BadRequest('invalid', `the agent that takes over runs on ${on}`);
+  const on = HARNESSES.find((h) => h === p.harness && h !== from);
+  if (!on) throw new BadRequest('invalid', `the agent that takes over runs on another harness than ${from}`);
   if (typeof p.model !== 'string' || !modelFits(on, p.model)) throw new BadRequest('invalid', 'model is not one that harness takes');
   const effort = AGENT_EFFORTS.find((e) => e === p.effort);
   if (!effort) throw new BadRequest('invalid', `effort must be one of ${AGENT_EFFORTS.join(', ')}`);
@@ -2450,7 +2451,7 @@ export class Workers {
 
   /**
    * "Continue with …" on a card whose worker waits for its harness's limit: its session ends, and a
-   * new one on the other harness (`moveTo`) takes over the card's work, told what the one before did
+   * new one on another harness (`moveTo`, or the one picked) takes over the card's work, told what the one before did
    * (its conversation on the card, its transcript, the branch). The card runs there from then on,
    * after a restart too: its own harness and model become that one's.
    */
@@ -2460,7 +2461,10 @@ export class Workers {
     const move = this.moveTo(cardId, live);
     if (!move) throw new BadRequest('notLimited', "the card's agent does not wait for a limit, or the other harness cannot take over now");
     const { from } = move;
-    const to = pick === undefined || pick === null ? move.to : pickedOn(pick, move.to.harness);
+    const picked = pick === undefined || pick === null ? undefined : pickedOn(pick, from);
+    // a harness picked that cannot take over now (not ready, at its own limit) is refused
+    if (picked && picked.harness !== move.to.harness && !this.o.moveTo?.(from, live.on?.effort, picked.harness)) throw new BadRequest('notLimited', `${HARNESS_NAMES[picked.harness]} cannot take over now`);
+    const to = picked ?? move.to;
     const card = this.card(cardId);
     const row = this.o.board.row(cardId);
     const until = live.limited!;

@@ -2091,8 +2091,8 @@ export interface VoiceSetupView {
 
 /** The setup assistant's list (`src/server/machine.ts`): what Obeya needs on this machine, by what it is for. */
 export type MachineSectionId = 'needed' | 'pr' | 'voice' | 'demos';
-/** Claude Code or Codex with its login, git and git's name and e-mail for commits. */
-export type NeededId = 'claude' | 'claudeLogin' | 'codex' | 'codexLogin' | 'git' | 'gitUser';
+/** Claude Code, Codex or Gemini with its login, git and git's name and e-mail for commits. */
+export type NeededId = 'claude' | 'claudeLogin' | 'codex' | 'codexLogin' | 'gemini' | 'geminiLogin' | 'git' | 'gitUser';
 /** gh and its login. */
 export type PrId = 'gh' | 'ghLogin';
 

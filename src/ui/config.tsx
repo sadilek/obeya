@@ -5,7 +5,7 @@
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoVoiceCheck, type Language, type NarrationLanguage, type PageTags, type SetupCheck, type Theme, THEMES, type VoiceKind, type VoiceSetupView } from '../core/types';
-import { AGENT_ROLES, type AgentRole, HARNESSES, otherHarness } from '../core/agents';
+import { AGENT_ROLES, type AgentRole, HARNESSES } from '../core/agents';
 import { blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSite, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type HostConfig, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, START_FAILED } from '../core/config';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
@@ -838,9 +838,10 @@ function AgentsBlock({ on }: { on: boolean }) {
         <span className="hint">{a.fallback}</span>
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
-          // the fallback runs on the other harness, with the group's effort until one is chosen for it
-          const other = otherHarness(setting.harness);
-          const instead = setting.fallback?.harness === other ? { harness: other, model: setting.fallback.model, effort: setting.fallback.effort ?? setting.effort } : null;
+          // the fallback runs on another harness, with the group's effort until one is chosen for it
+          const others = HARNESSES.filter((h) => h !== setting.harness);
+          const f = setting.fallback;
+          const instead = f && f.harness !== setting.harness ? { harness: f.harness, model: f.model, effort: f.effort ?? setting.effort } : null;
           const name = a.roles[role].name;
           return (
             <Fragment key={role}>
@@ -871,7 +872,7 @@ function AgentsBlock({ on }: { on: boolean }) {
                   <ModelMenu
                     view={view}
                     onView={setView}
-                    harnesses={[other]}
+                    harnesses={others}
                     on={instead}
                     none={{ label: a.wait, onPick: () => (close(), choose(role, { fallback: null })) }}
                     onModel={(harness, model) => choose(role, { fallback: { harness, model, effort: instead?.effort ?? setting.effort } })}

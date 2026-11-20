@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { cardAgentOf, codexFamily, codexFamilyName, type HarnessView, modelChoices, modelFits, modelName, modelVersion, newestOfFamilies } from './agents';
+import { cardAgentOf, modelFamily, familyName, type HarnessView, modelChoices, modelFits, modelName, modelVersion, newestOfFamilies } from './agents';
 
 test('modelName names Claude models by family and version, any other as its harness does', () => {
   expect(modelName('claude-opus-5-5')).toBe('Opus 5.5');
@@ -12,12 +12,12 @@ test('modelName names Claude models by family and version, any other as its harn
 });
 
 test("a Codex setting names a family: a model id is read as its family, `default` as the preset's (Sol)", () => {
-  expect(codexFamily('gpt-6.1-sol')).toBe('gpt-#-sol');
-  expect(codexFamily('gpt-#-sol')).toBe('gpt-#-sol');
-  expect(codexFamily('gpt-5.1-codex-max')).toBe('gpt-#-codex-max');
-  expect(codexFamily('o3')).toBe('o#');
-  expect(codexFamily('codex-mini-latest')).toBe('codex-mini-latest');
-  expect(codexFamily('default')).toBe('gpt-#-sol');
+  expect(modelFamily('gpt-6.1-sol')).toBe('gpt-#-sol');
+  expect(modelFamily('gpt-#-sol')).toBe('gpt-#-sol');
+  expect(modelFamily('gpt-5.1-codex-max')).toBe('gpt-#-codex-max');
+  expect(modelFamily('o3')).toBe('o#');
+  expect(modelFamily('codex-mini-latest')).toBe('codex-mini-latest');
+  expect(modelFamily('default')).toBe('gpt-#-sol');
   // a family has one `#` where the version was, and is no Claude Code alias
   expect(['gpt-#-sol', 'gpt-6.1-sol', 'o#', 'default'].every((m) => modelFits('codex', m))).toBe(true);
   expect(['#', 'gpt-##-sol', 'gpt-#-#', 'opus', 'gpt 6 sol'].some((m) => modelFits('codex', m))).toBe(false);
@@ -51,10 +51,10 @@ test("both pickers offer Codex's families by name, the version apart, as Claude 
   // a family named by its newest model has its version in the name already
   expect(modelChoices({ id: 'codex', ready: true, models: [{ id: 'o3', name: 'o3' }] })).toEqual([{ value: 'o#', name: 'o3', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] }]);
   expect(modelChoices(codex, 'gpt-#-terra').at(-1)).toEqual({ value: 'gpt-#-terra', name: 'Terra', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] });
-  expect(codexFamilyName('gpt-#-codex-max')).toBe('Codex Max');
+  expect(familyName('gpt-#-codex-max')).toBe('Codex Max');
   // a family named only by its version goes by its newest model's name here
-  expect(codexFamilyName('o#', 'o3')).toBe('o3');
-  expect(codexFamilyName('gpt-#')).toBe('gpt');
+  expect(familyName('o#', 'o3')).toBe('o3');
+  expect(familyName('gpt-#')).toBe('gpt');
   const claude: HarnessView = { id: 'claude', ready: true, models: [{ id: 'opus', resolved: 'claude-opus-5-5' }, { id: 'haiku' }] };
   expect(modelChoices(claude, 'default').map((c) => c.value)).toEqual(['opus', 'haiku', 'default']);
   // an alias with the version of the model it stands for here, once Claude Code has said

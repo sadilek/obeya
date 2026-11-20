@@ -31,7 +31,8 @@ import { parseRemote, repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable, machineClaude, runClaudeHere } from './claude';
 import { codexExecutable, CodexLogins, type CodexLoginState, runCodex, spawnOptions, startArgv } from './codex';
-import { findCodex, type HarnessFound, type Harnesses } from './harnesses';
+import { findCodex, findGemini, type HarnessFound, type Harnesses } from './harnesses';
+import { geminiExecutable } from './gemini';
 import { extendPath, freshPath, which } from './path';
 import { ownerLanguage } from './settings';
 import type { VoiceSetup } from './voice-setup';
@@ -47,9 +48,14 @@ const INSTALLERS = {
   uv: { unix: 'curl -LsSf https://astral.sh/uv/install.sh | sh', win: 'irm https://astral.sh/uv/install.ps1 | iex', url: 'https://docs.astral.sh/uv/getting-started/installation/' },
 };
 
+/** Where Antigravity's installation is described, for Windows, where Obeya knows no installer command of it. */
+const AGY_INSTALL = 'https://antigravity.google/docs/install';
+
 /** How to install what the needed parts and pull requests need, on this platform. */
-export function machineHint(id: 'claude' | 'codex' | 'uv' | 'git' | 'gh', platform: string, family: LinuxFamily, brew: boolean): NonNullable<MachineItem['install']> {
+export function machineHint(id: 'claude' | 'codex' | 'gemini' | 'uv' | 'git' | 'gh', platform: string, family: LinuxFamily, brew: boolean): NonNullable<MachineItem['install']> {
   const win = platform === 'win32';
+  // the Antigravity CLI by its own installer, into ~/.local/bin
+  if (id === 'gemini') return { commands: win ? [] : ['curl -fsSL https://antigravity.google/cli/install.sh | bash'], url: AGY_INSTALL };
   // Codex has no installer of its own: Homebrew's cask on a Mac, else npm's package
   if (id === 'codex') return { commands: [platform === 'darwin' && brew ? 'brew install --cask codex' : 'npm install -g @openai/codex'], url: 'https://developers.openai.com/codex/cli' };
   if (id === 'claude' || id === 'uv') {
@@ -328,6 +334,8 @@ export interface MachineOptions {
   harnesses?: Harnesses;
   /** Looks at Codex; tests give their own. */
   findCodex?: (env: Env) => Promise<HarnessFound | null>;
+  /** Looks at Gemini; tests give their own. */
+  findGemini?: (env: Env) => Promise<HarnessFound | null>;
 }
 
 /** What the check found, with how Obeya acts on each piece. */
@@ -374,7 +382,7 @@ export class MachineSetup {
     const arch = this.o.arch ?? process.arch;
     const family = platform === 'linux' ? linuxFamily() : null;
     const brew = platform === 'darwin' && !!which('brew', env);
-    const hint = (id: 'claude' | 'codex' | 'uv' | 'git' | 'gh') => machineHint(id, platform, family, brew);
+    const hint = (id: 'claude' | 'codex' | 'gemini' | 'uv' | 'git' | 'gh') => machineHint(id, platform, family, brew);
     /** A missing piece, offered at a click where its first command runs without a password. */
     const missing = (item: Omit<MachineItem, 'state'>): MachineItem => {
       const command = item.install?.commands[0];
@@ -383,8 +391,8 @@ export class MachineSetup {
     const logins: Found['logins'] = {};
 
     const agentsPart = async (): Promise<MachineItem[]> => {
-      const [claude, codex] = await Promise.all([findClaude(env, this.o.compiled ?? COMPILED, platform, arch), (this.o.findCodex ?? findCodex)(env)]);
-      this.o.harnesses?.set({ claude: claude.version ? { version: claude.version, loggedIn: claude.loggedIn } : null, codex });
+      const [claude, codex, gemini] = await Promise.all([findClaude(env, this.o.compiled ?? COMPILED, platform, arch), (this.o.findCodex ?? findCodex)(env), (this.o.findGemini ?? findGemini)(env)]);
+      this.o.harnesses?.set({ claude: claude.version ? { version: claude.version, loggedIn: claude.loggedIn } : null, codex, gemini });
       const claudeItems: MachineItem[] = [];
       if (claude.sdk) claudeItems.push({ id: 'claude', state: 'ok', found: `${CHECKED_CLAUDE} (Agent SDK)` });
       else claudeItems.push(claude.version ? { id: 'claude', state: 'ok', found: claude.version } : missing({ id: 'claude', install: hint('claude') }));
@@ -400,12 +408,19 @@ export class MachineSetup {
       if (codex?.loggedIn) codexItems.push({ id: 'codexLogin', state: 'ok', ...(codex.how ? { found: codex.how } : {}) });
       else if (codex) codexItems.push(missing({ id: 'codexLogin', install: { commands: ['codex login'] }, act: 'login' }));
       else codexItems.push({ id: 'codexLogin', state: 'missing' });
-      // either harness with its login is enough: the other one's pieces are then not needed, nor Codex's while neither is ready
+      const geminiBin = await geminiExecutable(env);
+      const geminiItems: MachineItem[] = [gemini ? { id: 'gemini', state: 'ok', found: gemini.version! } : missing({ id: 'gemini', install: hint('gemini') })];
+      // agy signs in with a code pasted into the terminal, which works over SSH too
+      if (gemini && geminiBin) logins.geminiLogin = [geminiBin, 'acp', '--login'];
+      if (gemini?.loggedIn) geminiItems.push({ id: 'geminiLogin', state: 'ok', ...(gemini.how ? { found: gemini.how } : {}) });
+      else if (gemini) geminiItems.push(missing({ id: 'geminiLogin', install: { commands: ['agy acp --login'] }, act: 'login' }));
+      else geminiItems.push({ id: 'geminiLogin', state: 'missing' });
+      // one harness with its login is enough: the others' pieces are then not needed, nor Codex's and Gemini's while none is ready
       const ready = (items: MachineItem[]) => items.every((i) => i.state === 'ok');
       const either = (items: MachineItem[]) => items.map((i): MachineItem => (i.state === 'ok' ? i : { ...i, or: true }));
-      if (ready(claudeItems)) return [...claudeItems, ...either(codexItems)];
-      if (ready(codexItems)) return [...either(claudeItems), ...codexItems];
-      return [...claudeItems, ...either(codexItems)];
+      const all = [claudeItems, codexItems, geminiItems];
+      const first = all.find(ready) ?? claudeItems;
+      return all.flatMap((items) => (items === first ? items : either(items)));
     };
 
     const gitPart = async (): Promise<MachineItem[]> => {
@@ -530,7 +545,7 @@ export class MachineSetup {
     const { section, id, token } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id']; token?: boolean };
     const { item, found } = await this.item(section!, id!);
     const login = found.logins[item.id];
-    if (!login || (item.act !== 'login' && item.id !== 'claudeLogin')) throw new BadRequest('invalid', `${id} needs no login`);
+    if (!login || (item.act !== 'login' && item.id !== 'claudeLogin' && item.id !== 'geminiLogin')) throw new BadRequest('invalid', `${id} needs no login`);
     if (token && item.id !== 'claudeLogin') throw new BadRequest('invalid', `${id} takes no token`);
     const argv = token ? [login[0]!, 'setup-token'] : login;
     return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };

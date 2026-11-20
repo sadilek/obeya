@@ -17,7 +17,7 @@ import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import type { Awaited, CardAction, CardPatch, Item, PendingRestart, RepoRef, ProposedSetting, Skill, SpotInput } from '../core/types';
 import { agentListens, awaited, awaitsContributorNext, untouched, finished, nameless, needsYou, pausable, halted, snoozable, laterTime, plannedToStart } from '../core/card';
-import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, otherHarness, replacement } from '../core/agents';
+import { AGENT_DEFAULTS, agentDefault, type AgentRole, type AgentSetting, type Harness, HARNESSES, replacement } from '../core/agents';
 import { type CanvasConfig, layerSettings, type RepoConfig, repoShape, type RepoSettings, type SettingsShared, SHARED_FIELDS, type DemoSite } from '../core/config';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, TITLE_MAX, replyNote } from './board';
@@ -916,13 +916,12 @@ export class CanvasRuntime {
       demoLanguage: () => readDemoSettings(deps.home).language,
       questionHistory: (cardId) => questionTask(board, cardId, (thread) => answersDir(deps.home, this.id, thread), this.imageFiles),
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
-      moveTo: (on, effort) => {
+      moveTo: (on, effort, to) => {
         const group = (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker');
         const e = effort ?? group.effort;
-        const other =
-          replacement(group, on, e) ??
-          (group.harness !== on ? { harness: group.harness, model: group.model, effort: e } : { ...agentDefault('worker', otherHarness(on)), effort: e });
-        return other.harness !== on && this.avail.ready(other.harness) && !this.avail.limit(other.harness) ? other : undefined;
+        // the workers' fallback, else their own setting, else another harness's preset: the first that can take over
+        const candidates = [replacement(group, on, e), group.harness !== on ? { harness: group.harness, model: group.model, effort: e } : undefined, ...HARNESSES.map((h) => ({ ...agentDefault('worker', h), effort: e }))];
+        return candidates.find((c): c is AgentSetting => !!c && c.harness !== on && (!to || c.harness === to) && this.avail.ready(c.harness) && !this.avail.limit(c.harness));
       },
       limits: this.limits,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),

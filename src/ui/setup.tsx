@@ -7,6 +7,7 @@
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { CLOUD_PRESETS, CLOUD_VOICES, type CloudPreset, type GitSetupPreview, LARGE_FILE, type Language, type MachineItem, type MachineSection, type MachineView, type SetupItem, type VoiceSetupItem } from '../core/types';
 import { LANGUAGES } from '../core/locale';
+import { HARNESSES } from '../core/agents';
 import { api, reload } from './api';
 import { useAct, usePoll } from './act';
 import { useCopy } from './copy';
@@ -285,16 +286,17 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
   const state = (section: MachineSection) => (i: MachineItem) => {
     if (section.id === 'voice') return voiceState(i);
     if (section.id === 'demos') return demoState(i);
-    const login = i.id === 'claudeLogin' || i.id === 'codexLogin' || i.id === 'ghLogin';
-    if (i.state === 'ok') return login ? (i.found ? (i.id === 'codexLogin' ? s.loggedInVia : s.loggedInAs)(i.found) : s.loggedIn) : (i.found ?? t.config.setup.there);
-    // a harness's piece the other harness makes unneeded, or which may stand in for it
+    const login = i.id === 'claudeLogin' || i.id === 'codexLogin' || i.id === 'geminiLogin' || i.id === 'ghLogin';
+    if (i.state === 'ok') return login ? (i.found ? (i.id === 'codexLogin' || i.id === 'geminiLogin' ? s.loggedInVia : s.loggedInAs)(i.found) : s.loggedIn) : (i.found ?? t.config.setup.there);
+    // a harness's piece another harness makes unneeded, or which may stand in for it
     if (i.or) {
-      const other = i.id === 'codex' || i.id === 'codexLogin' ? 'claude' : 'codex';
-      const otherReady = section.items.filter((x) => x.id === other || x.id === `${other}Login`).every((x) => x.state === 'ok');
-      return otherReady ? s.orOther(t.harnesses[other]) : s.instead(t.harnesses[other]);
+      const mine = HARNESSES.find((h) => i.id === h || i.id === `${h}Login`);
+      const ready = HARNESSES.find((h) => h !== mine && section.items.filter((x) => x.id === h || x.id === `${h}Login`).every((x) => x.state === 'ok'));
+      return ready ? s.orOther(t.harnesses[ready]) : s.instead(t.harnesses.claude);
     }
     if (i.id === 'claudeLogin' && !i.act) return s.claudeFirst;
     if (i.id === 'codexLogin' && !i.act) return s.codexFirst;
+    if (i.id === 'geminiLogin' && !i.act) return s.geminiFirst;
     if (i.id === 'ghLogin' && !i.act) return s.ghFirst;
     if (login) return s.loggedOut;
     if (i.id === 'gitUser') return s.noIdentity;

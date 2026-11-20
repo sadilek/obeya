@@ -31,6 +31,9 @@ process.env.TMPDIR = process.env.TEMP = process.env.TMP = run;
 // the machine's login from there, so they set it back while they run (from `OBEYA_MACHINE_CLAUDE_CONFIG_DIR`).
 if (process.env.CLAUDE_CONFIG_DIR) process.env.OBEYA_MACHINE_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 const claude = (process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'obeya-claude-')));
+// the machine's own Antigravity CLI is never asked (its look at the login's quota takes seconds): a
+// test that needs one names a fake of its own
+process.env.OBEYA_AGY = join(run, 'no-agy');
 
 afterAll(() => {
   removeTemplates();

@@ -96,6 +96,9 @@ describe('what Obeya needs on this machine', () => {
       // Codex could stand in for Claude Code: neither is ready, so Claude Code is the one asked for
       { id: 'codex', state: 'missing', install: { commands: ['npm install -g @openai/codex'], url: 'https://developers.openai.com/codex/cli' }, or: true },
       { id: 'codexLogin', state: 'missing', or: true },
+      // Gemini likewise, by Antigravity's installer
+      { id: 'gemini', state: 'missing', install: { commands: ['curl -fsSL https://antigravity.google/cli/install.sh | bash'], url: 'https://antigravity.google/docs/install' }, act: 'install', or: true },
+      { id: 'geminiLogin', state: 'missing', or: true },
       { id: 'git', state: 'ok', found: '2.45.0' },
       expect.objectContaining({ id: 'gitUser', state: 'missing', act: 'identity' }),
     ]);
@@ -117,7 +120,7 @@ describe('what Obeya needs on this machine', () => {
     const needed = section(v, 'needed').items;
     expect(needed[0]).toMatchObject({ id: 'claude', state: 'missing', install: { commands: ['curl -fsSL https://claude.ai/install.sh | bash'] }, act: 'install' });
     expect(needed[1]).toEqual({ id: 'claudeLogin', state: 'missing' });
-    expect(needed[5]).toEqual({ id: 'gitUser', state: 'ok', found: 'Ada <Ada>' });
+    expect(needed[7]).toEqual({ id: 'gitUser', state: 'ok', found: 'Ada <Ada>' });
     expect(section(v, 'pr').items).toEqual([
       { id: 'gh', state: 'ok', found: '2.60.0' },
       { id: 'ghLogin', state: 'ok', found: 'ada' },

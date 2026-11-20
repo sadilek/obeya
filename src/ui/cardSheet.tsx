@@ -104,7 +104,7 @@ export function RepoDownBox({ item }: { item: Item }) {
 }
 
 /**
- * A card whose worker waits for its harness's limit while the other harness could take over: says so,
+ * A card whose worker waits for its harness's limit while another harness could take over: says so,
  * with "Continue with …", which has an agent there go on now instead of waiting.
  */
 export function MoveToBox({ item, act }: { item: Item; act: Act }) {
@@ -115,7 +115,7 @@ export function MoveToBox({ item, act }: { item: Item; act: Act }) {
     <div className="question move-to">
       <div className="q-text">{say(t.harnesses[m.from], snoozeWhen(m.until), t.harnesses[m.to.harness])}</div>
       <div className="actions">
-        <ContinueOn to={m.to} onGo={(agent) => act({ action: 'continueElsewhere', agent }, { close: false })} />
+        <ContinueOn from={m.from} to={m.to} onGo={(agent) => act({ action: 'continueElsewhere', agent }, { close: false })} />
       </div>
     </div>
   );

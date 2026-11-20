@@ -882,7 +882,8 @@ describe('a worktree per card', () => {
   test('a worker the usage limit stopped mid-work can go on on the other harness, which takes over with the conversation', async () => {
     const limits = new HarnessLimits();
     let codexFree = true;
-    rebuild({ limitMargin: 30, limits, moveTo: (on) => (on === 'claude' && codexFree ? { harness: 'codex', model: 'gpt-#-sol', effort: 'high' } : undefined) });
+    // Codex takes over while it can; Gemini is not ready
+    rebuild({ limitMargin: 30, limits, moveTo: (on, _effort, to) => (on === 'claude' && codexFree && (!to || to === 'codex') ? { harness: 'codex', model: 'gpt-#-sol', effort: 'high' } : undefined) });
     const c = manual();
     await workers.start(c.id);
     const s = runtime.last;
@@ -899,8 +900,9 @@ describe('a worktree per card', () => {
     expect(() => workers.continueElsewhere(c.id)).toThrow(expect.objectContaining({ code: 'notLimited' }));
     codexFree = true;
     limits.changed();
-    // the owner may pick the model and effort there, but not the harness at its limit
-    expect(() => workers.continueElsewhere(c.id, { harness: 'claude', model: 'opus', effort: 'high' })).toThrow('runs on codex');
+    // the owner may pick another harness's model and effort, but not the harness at its limit, nor one that cannot take over
+    expect(() => workers.continueElsewhere(c.id, { harness: 'claude', model: 'opus', effort: 'high' })).toThrow('another harness than claude');
+    expect(() => workers.continueElsewhere(c.id, { harness: 'gemini', model: 'gemini-#-neon', effort: 'high' })).toThrow('Gemini cannot take over now');
     await workers.continueElsewhere(c.id, { harness: 'codex', model: 'gpt-6.1-terra', effort: 'xhigh' });
     expect(s.closed).toBe(true);
     const next = runtime.last;

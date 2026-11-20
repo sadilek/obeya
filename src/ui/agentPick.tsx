@@ -7,7 +7,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CardAction, Item } from '../core/types';
-import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, modelChoices, type ModelChoice, modelName } from '../core/agents';
+import { AGENT_EFFORTS, type AgentEffort, type AgentModel, type AgentsView, byFamily, type HarnessUpdate as HarnessUpdateState, type CardAgent, type Harness, HARNESSES, modelChoices, type ModelChoice, modelName } from '../core/agents';
 import { useMenuClose, usePlaced } from './menu';
 import { api } from './api';
 import { usePoll } from './act';
@@ -17,16 +17,16 @@ import { t } from './strings';
 let last: AgentsView | null = null;
 const agentsView = () => api.agents().then((v) => (last = v));
 
-/** A model as a picker names it, without its version: Claude's by Obeya's names for them, Codex's by the name Codex gives, else its id. */
+/** A model as a picker names it, without its version: Claude's by Obeya's names for them, Codex's and Gemini's by their family's name, else its id. */
 export const modelLabel = (harness: Harness, m: Pick<ModelChoice, 'value' | 'name'>) => (harness === 'claude' ? (t.config.agents.models[m.value as AgentModel] ?? m.value) : (m.name ?? m.value));
 
 /** The efforts a model of `choices` takes; every effort for one that does not say. */
 export const effortsOf = (choices: ModelChoice[], model: string) => choices.find((m) => m.value === model)?.efforts ?? AGENT_EFFORTS;
 
-/** A harness and model as the owner knows them: "Claude Code · Opus", "Codex · Sol" (a Codex family by its name, without a version). */
+/** A harness and model as the owner knows them: "Claude Code · Opus", "Codex · Sol", "Gemini · Neon" (a family by its name, without a version). */
 export function agentLabel(view: AgentsView | null, harness: Harness, model: string): string {
   if (harness === 'claude' && model === 'default') return t.config.agents.models.default;
-  const choice = harness === 'codex' ? modelChoices(view?.harnesses.find((h) => h.id === 'codex'), model).find((c) => c.value === model) : undefined;
+  const choice = byFamily(harness) ? modelChoices(view?.harnesses.find((h) => h.id === harness), model).find((c) => c.value === model) : undefined;
   return `${t.harnesses[harness]} · ${modelLabel(harness, choice ?? { value: model })}`;
 }
 
@@ -130,11 +130,11 @@ export function useAgentsView(): [AgentsView | null, (v: AgentsView) => void] {
 }
 
 /**
- * "Continue with Codex" (or Claude Code) on a card whose worker waits for its harness's limit, joined
- * to a narrow part with a triangle that opens the other harness's models and efforts: what the
- * new agent runs on, `to` until the owner picks another. `onGo` gets the pick.
+ * "Continue with Codex" (or another harness) on a card whose worker waits for the limit of its
+ * harness (`from`), joined to a narrow part with a triangle that opens the other harnesses' models
+ * and efforts: what the new agent runs on, `to` until the owner picks another. `onGo` gets the pick.
  */
-export function ContinueOn({ to, onGo }: { to: OnModel; onGo: (on: OnModel) => void }) {
+export function ContinueOn({ from, to, onGo }: { from: Harness; to: OnModel; onGo: (on: OnModel) => void }) {
   const [view, setView] = useAgentsView();
   const [on, setOn] = useState<OnModel>(to);
   const [open, setOpen] = useState(false);
@@ -146,7 +146,7 @@ export function ContinueOn({ to, onGo }: { to: OnModel; onGo: (on: OnModel) => v
     const takes = view ? effortsOf(modelChoices(view.harnesses.find((h) => h.id === harness), model), model) : AGENT_EFFORTS;
     setOn({ harness, model, effort: takes.includes(on.effort) ? on.effort : (takes.at(-1) ?? on.effort) });
   };
-  const changed = on.model !== to.model || on.effort !== to.effort;
+  const changed = on.harness !== to.harness || on.model !== to.model || on.effort !== to.effort;
   return (
     <span className="agent-split" ref={box}>
       <button className="btn primary" onClick={() => onGo(on)}>
@@ -164,7 +164,7 @@ export function ContinueOn({ to, onGo }: { to: OnModel; onGo: (on: OnModel) => v
         view &&
         createPortal(
           <div className="snooze-menu agent-menu" role="menu" ref={menu}>
-            <ModelMenu view={view} onView={setView} harnesses={[to.harness]} on={on} onModel={pickModel} onEffort={(effort) => setOn({ ...on, effort })} />
+            <ModelMenu view={view} onView={setView} harnesses={HARNESSES.filter((h) => h !== from)} on={on} onModel={pickModel} onEffort={(effort) => setOn({ ...on, effort })} />
           </div>,
           document.body,
         )}
@@ -349,8 +349,8 @@ const Check = ({ on }: { on: boolean }) => (
  */
 export function RunsOn({ item }: { item: Item }) {
   const starting = !item.runsOn && (item.state === 'working' || (item.state === 'planned' && !!item.queue));
-  // Codex's models go by the names Codex gives them, as in the menu and before the session started
-  const codex = item.runsOn?.harness === 'codex';
+  // Codex's and Gemini's models go by the names their harness gives them, as in the menu and before the session started
+  const codex = !!item.runsOn && byFamily(item.runsOn.harness);
   const [view, setView] = useState<AgentsView | null>(last);
   useEffect(() => {
     if (!starting && !codex) return;
@@ -363,10 +363,11 @@ export function RunsOn({ item }: { item: Item }) {
     const { harness, model, effort } = item.runsOn;
     // not the id first and the name a moment later
     if (codex && !view) return null;
-    const name = codex ? (view?.harnesses.find((h) => h.id === 'codex')?.models.find((m) => m.id === model)?.name ?? model) : modelName(model);
+    const name = codex ? (view?.harnesses.find((h) => h.id === harness)?.models.find((m) => m.id === model)?.name ?? model) : modelName(model);
     return (
       <span className="runs-on" title={t.talk.runsOn(t.harnesses[harness], model, effort && efforts[effort])}>
-        {t.harnesses[harness]} · {name}
+        {/* Gemini's models carry their harness's name already (Gemini 4 Neon) */}
+        {name.startsWith(t.harnesses[harness]) ? name : `${t.harnesses[harness]} · ${name}`}
         {effort && ` · ${t.agentPick.chosenEffort(efforts[effort])}`}
       </span>
     );

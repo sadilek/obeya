@@ -31,7 +31,7 @@ import { clock as time, errorText, stamp, t } from './strings';
 import { worked as isWorked } from './cardState';
 import { cardTalk, demoHandover, talkState, coordinatorReads, snoozeLine, type Turn, unseenTurns } from './talk';
 import { WishReplyLink } from './wish';
-import { claudeLoginFailed, codexLoginLost } from '../core/login';
+import { claudeLoginFailed, codexLoginLost, geminiLoginLost } from '../core/login';
 import { CodexLogin, Reauthenticate } from './reauthenticate';
 import { clip } from '../core/text';
 import { DecidedChip, useUnsentDecisions } from './review';
@@ -324,6 +324,7 @@ function Line({
       {stamp(turn.e.at)} · <Linked text={eventText(turn.e)} />
       {turn.e.kind === 'error' && !explained && claudeLoginFailed(turn.e.text) && <Reauthenticate token={turn.e.token} />}
       {turn.e.kind === 'error' && !explained && codexLoginLost(turn.e.text) && <CodexLogin host={codexLoginLost(turn.e.text)!.host} />}
+      {turn.e.kind === 'error' && !explained && geminiLoginLost(turn.e.text) && <Reauthenticate gemini />}
     </div>
   ) : (
     <Message turn={turn} {...rest} />
@@ -871,6 +872,7 @@ export function LastFailure({ item }: { item: Item }) {
         {eventText(last)}
         {claudeLoginFailed(last.text) && <Reauthenticate start token={last.token} />}
         {codexLoginLost(last.text) && <CodexLogin start host={codexLoginLost(last.text)!.host} />}
+        {geminiLoginLost(last.text) && <Reauthenticate start gemini />}
       </div>
     </div>
   );

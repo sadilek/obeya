@@ -4,6 +4,7 @@
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
 import { type CardAction, type CardPatch, type NewCard, type PageTags, type SpotInput, type TalkRef, MAX_FILE_BYTES } from '../core/types';
+import { HARNESSES } from '../core/agents';
 import index from '../ui/index.html';
 import { type Gate, guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
@@ -428,7 +429,7 @@ function ownerSettingsRoutes(x: Routing) {
     '/api/agents/update': {
       POST: needs(config, async (c, req) => {
         const { harness, host } = await someFields(req);
-        harnesses?.update(harness === 'codex' ? 'codex' : 'claude', typeof host === 'string' ? host : undefined);
+        harnesses?.update(HARNESSES.find((h) => h === harness) ?? 'claude', typeof host === 'string' ? host : undefined);
         return agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred());
       }),
     },
