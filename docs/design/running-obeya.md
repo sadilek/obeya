@@ -505,6 +505,16 @@ window gets the focus back. Obeya puts `~/.local/bin` and on a Mac Homebrew's di
 `PATH`, so what was installed is found from a process the desktop started; on Windows every check
 rereads `PATH` from the registry.
 
+Started by its app on a Mac or Linux, Obeya gets the desktop session's bare `PATH`, without what a
+terminal adds (`/etc/paths.d` on a Mac, the owner's profile and rc files), which agents need to
+find what the owner reaches from any terminal (`dotnet`, say). Obeya then asks the owner's login
+shell (`SHELL`, started as a login shell and interactive, without a terminal, at most 10 seconds)
+for its `PATH` as it starts and before every check: that goes first, Obeya's own directories after
+it. Started from a terminal, Obeya keeps the `PATH` it was started with. Only `PATH` is taken, not
+the shell's whole environment (2026-11-20): a key or token an rc file exports (an API key,
+say) would otherwise change which login the agents run on. Rejected: fixed directories per tool
+in Obeya or in a repository's settings, which are wrong on other machines.
+
 #### The first canvas
 
 On the first start the page ends with "Where is your project?": two cards with a radio button each,

@@ -70,7 +70,7 @@ import { findClaude, MachineSetup, updateClaude, updateCodex, welcome } from './
 import { codexRuntime, codexUsage } from './codex';
 import { HarnessLimits } from './limits';
 import { claudeModels, claudeNewest, codexNewest, Harnesses, hostClaude, hostCodex } from './harnesses';
-import { addToPath, extendPath } from './path';
+import { addToPath, extendPath, terminalPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
 import { SourceUpdates } from './source-update';
@@ -124,7 +124,8 @@ mkdirSync(home, { recursive: true, mode: 0o700 });
 if (process.platform !== 'win32' && (statSync(home).mode & 0o077) !== 0 && statSync(home).uid === process.getuid?.()) chmodSync(home, 0o700);
 // a machine that runs on a token runs on the newest one the owner gave Obeya (claude-token), not one its environment kept since
 if (process.env.CLAUDE_CODE_OAUTH_TOKEN) process.env.CLAUDE_CODE_OAUTH_TOKEN = claudeToken(home) ?? process.env.CLAUDE_CODE_OAUTH_TOKEN;
-// what the official installers and Homebrew install is found from a process the desktop started too
+// started from the desktop, the PATH a new terminal has; and what the official installers and Homebrew install
+await terminalPath();
 extendPath();
 // and from a checkout the bun this runs on, for the workers' and scripts' `bun` (the app's shell names it by its path)
 if (!COMPILED) addToPath(process.env, [dirname(process.execPath)]);
