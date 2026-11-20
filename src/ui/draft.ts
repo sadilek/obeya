@@ -7,7 +7,7 @@
 // switching to another canvas and back, or a restart. So are the marks on screenshots (`Markup`).
 
 import type { ChangeRoute } from '../core/types';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
 import type { Mark } from './marks';
 import type { Reply } from './reply';
 import { readJson, type Store, writeJson } from './stored';
@@ -245,6 +245,13 @@ export const useDrafting = (key: string): boolean => useSyncExternalStore(subscr
  * what is written in it.
  */
 export function useDraftField(key: string, el: () => HTMLTextAreaElement | null, images: boolean, on = true, sends = true) {
+  // a field shown afresh has its cursor behind its text, where a quote put in before it showed
+  // ends: the browser would put it before the text once the field gets the focus (the phone's
+  // panel, which a quote brings up). Before the page draws, so that nothing focuses it sooner.
+  useLayoutEffect(() => {
+    const f = el();
+    if (f && f !== document.activeElement) f.setSelectionRange(f.value.length, f.value.length);
+  }, [key, on]);
   useEffect(() => {
     const f = el();
     if (!f) return;

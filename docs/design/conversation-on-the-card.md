@@ -178,7 +178,8 @@ stands at the end where the pointer let go, outside the marking; on a touch scre
 of the marking's last line, clear of the selection handles and of the system's menu above. A press
 puts the marked text, on one line, in quotation marks of the UI language into the field, followed by
 " - ", with the cursor behind it and the focus in the field (on the phone the keyboard opens at the
-first tap). Where it goes depends on where the cursor stood when it left the field: at the end of
+first tap). A field that only comes up with the quote, as the phone's panel does, shows with its
+cursor behind its text, where browsers would put it before the text on focus. Where it goes depends on where the cursor stood when it left the field: at the end of
 the text (or never in this field since it was shown), at the end, after a line break unless that is
 the start of a line; anywhere else, as the line after the cursor's line. It is typed in as by hand,
 so ⌘Z takes it back. Unlike replying to a message, the quote is plain text of the draft: the agent
