@@ -523,21 +523,22 @@ const cycles = (() => {
 })();
 
 /**
- * What `run` costs the thread that runs the server's code, once what listens to changes heard of
- * those before it: its CPU time (CPU cycles on Windows), which leaves out the waits for a core of a
- * busy machine. Only ratios of such costs, measured on the same machine, say anything.
+ * The CPU time the thread that runs the server's code has used so far (its CPU cycles on Windows),
+ * which leaves out the waits for a core of a busy machine: the difference of two reads is what ran
+ * in between. Only ratios of such differences, measured on the same machine, say anything.
  */
+export function cpuNow(): number {
+  if (cycles) return cycles();
+  const used = process.threadCpuUsage();
+  return (used.user + used.system) / 1000;
+}
+
+/** What `run` costs the thread that runs the server's code (`cpuNow`), once what listens to changes heard of those before it. */
 export async function cpuTime(run: () => unknown): Promise<number> {
   await heard();
-  if (cycles) {
-    const start = cycles();
-    await run();
-    return cycles() - start;
-  }
-  const start = process.threadCpuUsage();
+  const start = cpuNow();
   await run();
-  const used = process.threadCpuUsage(start);
-  return (used.user + used.system) / 1000;
+  return cpuNow() - start;
 }
 
 /** Starts a process that runs on in `cwd` the way an app's start script leaves one behind: detached, its starter gone. Its pid. */

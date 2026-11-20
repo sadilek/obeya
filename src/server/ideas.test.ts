@@ -833,12 +833,14 @@ describe('an idea', () => {
     canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
     const s = explorer();
     s.emit({ type: 'session', id: 'sess-1' });
-    s.emit({ type: 'error', message: "You've hit your session limit · resets 2:40pm (Europe/Berlin)", limit: { resetsAt: Date.now() + 20 } });
+    const resetsAt = Date.now() + 20;
+    s.emit({ type: 'error', message: "You've hit your session limit · resets 2:40pm (Europe/Berlin)", limit: { resetsAt } });
     s.emit({ type: 'idle' });
     // no error in its conversation: the card says when it goes on, and the agent still works on its reply
     expect(board().events(i.id).some((e) => e.kind === 'error' || e.text.includes('hit your'))).toBe(false);
     expect(item(i.id).idea).toMatchObject({ thinking: true });
-    expect(Date.parse(item(i.id).limitedUntil!)).toBeGreaterThan(Date.now());
+    // the limit's time, not the clock's: a busy runner took longer than its 20 ms to get here
+    expect(Date.parse(item(i.id).limitedUntil!)).toBeGreaterThanOrEqual(resetsAt);
     expect(s.closed).toBe(false);
     canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
     expect(s.inbox).toHaveLength(1);
