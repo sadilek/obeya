@@ -248,7 +248,10 @@ directory is polled every half second. On macOS Bun shares one FSEvents stream p
 restarts it "since now" for each new watch, losing every watch's events until it is live (up to
 200 ms), so watches stay open rather than being reopened per change; and a saturated fseventsd
 delivers events late or not at all (2026-10-14: Bun, Node and fswatch alike), so the plan directory
-is also polled every 2 s against its state at the last read.
+is also polled every 2 s against its state at the last read. A repository folder that is gone
+altogether (on a cloud or network drive that is not mounted, after the machine slept, say) leaves
+nothing to watch: Obeya keeps running and looks every 2 s whether it is back, then reads its docs
+again.
 
 ### Repository settings
 

@@ -266,18 +266,28 @@ export function watchPlanDocs(
     let above = dirname(dir);
     while (!existsSync(above) && above.length > root.length) [below, above] = [above, dirname(above)];
     const name = basename(below);
-    wanted.set(below, () =>
-      watchDir(above, (file) => {
-        if (file && file !== name) return;
-        fire();
-      }),
-    );
+    if (existsSync(above))
+      wanted.set(below, () =>
+        watchDir(above, (file) => {
+          if (file && file !== name) return;
+          fire();
+        }),
+      );
+    // the repository itself is gone (a folder on a network or cloud drive that is not mounted, say):
+    // nothing is left to watch, so whether it is back is looked at every few seconds
+    else wanted.set(`${above}?`, () => whenBack(above, fire));
     for (const [key, stop] of open)
       if (!watchKeepsPath || !wanted.has(key)) {
         stop();
         open.delete(key);
       }
-    for (const [key, start] of wanted) if (!open.has(key)) open.set(key, start());
+    for (const [key, start] of wanted)
+      if (!open.has(key))
+        try {
+          open.set(key, start());
+        } catch {
+          // gone since it was looked at: the watch above it reports that, and the next arm watches what is there then
+        }
   };
   arm();
   return () => {
@@ -348,6 +358,16 @@ function watchDir(path: string, onChange: (file?: string) => void): () => void {
   if (watchIsInertAfterRecreate && recreated.has(path)) return pollDir(path, onChange);
   const watcher = watch(path, (_, file) => onChange(file ? String(file) : undefined));
   return () => watcher.close();
+}
+
+/** Calls `fn` once `path` exists again, looking every few seconds; returns the stop. */
+function whenBack(path: string, fn: () => void): () => void {
+  const interval = setInterval(() => {
+    if (!existsSync(path)) return;
+    clearInterval(interval);
+    fn();
+  }, 2000);
+  return () => clearInterval(interval);
 }
 
 function pollDir(path: string, onChange: (file?: string) => void): () => void {

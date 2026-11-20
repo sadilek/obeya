@@ -250,6 +250,37 @@ describe('watchPlanDocs', () => {
 
     expect(await sees('docs/plan', () => rmSync(join(repo, 'docs/plan'), { recursive: true }))).toBe(true);
   }, 4 * budget);
+
+  test('a repository that is gone (its cloud drive not mounted, say) is watched for coming back, and its docs then', async () => {
+    const parent = mkdtempSync(join(tmpdir(), 'obeya-gone-'));
+    const repo = join(parent, 'repo');
+    let calls = 0;
+    const stop = watchPlanDocs(repo, generic, () => calls++, { poll: 0 });
+    cleanup.push(stop, () => rmSync(parent, { recursive: true, force: true }));
+    mkdirSync(join(repo, 'docs/plan'), { recursive: true });
+    writeFileSync(join(repo, 'docs/plan/a.md'), DOC);
+    for (const end = Date.now() + 10_000; !calls && Date.now() < end; ) await Bun.sleep(50);
+    expect(calls).toBeGreaterThan(0);
+  });
+
+  test('the repository going while it is watched stops nothing, and its coming back is seen', async () => {
+    const parent = mkdtempSync(join(tmpdir(), 'obeya-gone-'));
+    const repo = join(parent, 'repo');
+    mkdirSync(join(repo, 'docs/plan'), { recursive: true });
+    writeFileSync(join(repo, 'docs/plan/a.md'), DOC);
+    let calls = 0;
+    const stop = watchPlanDocs(repo, generic, () => calls++, { poll: 50 });
+    cleanup.push(stop, () => rmSync(parent, { recursive: true, force: true }));
+    await live();
+    rmSync(repo, { recursive: true });
+    for (const end = Date.now() + 10_000; !calls && Date.now() < end; ) await Bun.sleep(50);
+    expect(calls).toBeGreaterThan(0);
+    const gone = calls;
+    mkdirSync(join(repo, 'docs/plan'), { recursive: true });
+    writeFileSync(join(repo, 'docs/plan/a.md'), DOC);
+    for (const end = Date.now() + 10_000; calls === gone && Date.now() < end; ) await Bun.sleep(50);
+    expect(calls).toBeGreaterThan(gone);
+  }, budget);
 });
 
 describe('a remote on GitHub', () => {
