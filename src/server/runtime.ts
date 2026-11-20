@@ -778,7 +778,7 @@ export function withRest(runtime: AgentRuntime, after = REST_AFTER_MS): AgentRun
   };
 }
 
-/** Claude Code and Codex processes started on this machine that still run. */
+/** The harnesses' processes started on this machine that still run. */
 const here = new Set<ChildProcess>();
 
 /** Counts a process among the agents' that `endAgentsHere` ends as Obeya stops. */

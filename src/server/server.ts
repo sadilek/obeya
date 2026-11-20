@@ -151,7 +151,7 @@ export interface ServeDeps {
   usage?: UsageMeters;
   /** Where the stalls of the pages go, beside the server's own. */
   stalls?: Stalls;
-  /** Claude Code and Codex on this machine, for the Configuration's harnesses and models. */
+  /** Claude Code, Codex and Gemini on this machine, for the Configuration's harnesses and models. */
   harnesses?: Harnesses;
   /** Which harness is at its limit: agents waiting for it look again once the owner saved a fallback. */
   limits?: HarnessLimits;

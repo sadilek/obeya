@@ -1959,7 +1959,7 @@ const de = {
     title: 'Einrichtung',
     close: 'Schließen',
     introFirst:
-      'Obeya prüft, was es auf diesem Rechner braucht. Nötig sind Claude Code oder Codex mit deiner Anmeldung, und git; der Rest geht auch später. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da. Danach legst du die erste Leinwand an.',
+      'Obeya prüft, was es auf diesem Rechner braucht. Nötig sind Claude Code, Codex oder Gemini mit deiner Anmeldung, und git; der Rest geht auch später. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da. Danach legst du die erste Leinwand an.',
     intro: 'Was Obeya auf diesem Rechner braucht. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da.',
     platform: (platform: string) => `Geprüft auf ${platform}. Die Liste prüft erneut, sobald du aus einem Terminal oder Installer hierher zurückkommst.`,
     needed: 'nötig',
@@ -2184,7 +2184,7 @@ const de = {
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
       label: 'Anzeigen',
-      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code und Codex auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen.',
+      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code, Codex und Gemini auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen.',
     },
   },
   /** What the agents cost (src/ui/costs.tsx), and the setting that shows it. */
@@ -4254,7 +4254,7 @@ const en: Strings = {
     title: 'Setup',
     close: 'Close',
     introFirst:
-      'Obeya checks what it needs on this machine. Claude Code or Codex with your login, and git, are needed; the rest can wait. What installs without admin rights, Obeya installs at a click; for the rest the command is there. Then you create the first canvas.',
+      'Obeya checks what it needs on this machine. Claude Code, Codex or Gemini with your login, and git, are needed; the rest can wait. What installs without admin rights, Obeya installs at a click; for the rest the command is there. Then you create the first canvas.',
     intro: 'What Obeya needs on this machine. What installs without admin rights, Obeya installs at a click; for the rest the command is there.',
     platform: (platform: string) => `Checked on ${platform}. The list checks again when you come back here from a terminal or an installer.`,
     needed: 'needed',
@@ -4464,7 +4464,7 @@ const en: Strings = {
     setting: {
       title: 'Usage limits in the bar',
       label: 'Show',
-      hint: 'How much of the session and the weekly limit is used of the plans that Claude Code and Codex on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show.',
+      hint: 'How much of the session and the weekly limit is used of the plans that Claude Code, Codex and Gemini on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show.',
     },
   },
   costs: {
