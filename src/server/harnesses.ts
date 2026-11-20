@@ -57,7 +57,7 @@ export interface HostHarness {
   update(): Promise<void>;
 }
 
-const NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' };
+const NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' };
 
 /**
  * A harness installed on one machine, this one or a host: its version as last looked at, the
@@ -189,7 +189,7 @@ export class Harnesses extends Listeners {
   private found: Partial<Record<Harness, HarnessFound | null>> = {};
   private models: { at: number; list: Promise<HarnessModel[]> } | undefined;
   /** When each harness here was last looked at. */
-  private lookedAt: Record<Harness, number> = { claude: Date.now(), codex: Date.now() };
+  private lookedAt: Record<Harness, number> = { claude: Date.now(), codex: Date.now(), gemini: Date.now() };
   /** Each harness on this machine. */
   private here: Record<Harness, Install>;
   /**
@@ -250,12 +250,25 @@ export class Harnesses extends Listeners {
         ready: () => this.ready('codex'),
         changed,
       }),
+      // SPIKE: Antigravity's `agy`, logged in where it answers with its version
+      gemini: new Install({
+        harness: 'gemini',
+        look: async () => {
+          const out = Bun.spawnSync(['agy', '--version'], { stdout: 'pipe', stderr: 'pipe' });
+          const version = out.exitCode === 0 ? String(out.stdout).trim() : '';
+          this.lookedAt.gemini = Date.now();
+          this.set({ gemini: version ? { version, loggedIn: true } : null });
+        },
+        ready: () => this.ready('gemini'),
+        changed,
+      }),
     };
+    void this.here.gemini.look().catch(() => {});
   }
 
   /** Looks at the harnesses again. */
   async refresh(): Promise<void> {
-    this.lookedAt = { claude: Date.now(), codex: Date.now() };
+    this.lookedAt = { claude: Date.now(), codex: Date.now(), gemini: Date.now() };
     const [claude, codex] = await Promise.all([this.o.claude?.(), (this.o.codex ?? findCodex)()]);
     this.set({ ...(claude !== undefined ? { claude } : {}), codex });
   }
@@ -354,7 +367,18 @@ export class Harnesses extends Listeners {
     };
     const listed = this.ready('codex') ? await this.codexModels() : [];
     const codex: HarnessView = { id: 'codex', ready: this.ready('codex'), ...this.version('codex'), models: newestOfFamilies(listed), ...this.updates('codex') };
-    return [claude, codex];
+    const gemini: HarnessView = {
+      id: 'gemini',
+      ready: this.ready('gemini'),
+      ...this.version('gemini'),
+      models: [
+        { id: 'neon', name: 'Gemini 4 Neon', efforts: ['low', 'medium', 'high', 'xhigh'] },
+        { id: 'argon', name: 'Gemini 4 Argon', efforts: ['low', 'medium', 'high'] },
+        { id: 'hydrogen', name: 'Gemini 4 Hydrogen', efforts: ['low', 'medium', 'high', 'xhigh'] },
+        { id: 'flash', name: 'Gemini 3.8 Flash', efforts: ['low', 'medium', 'high'] },
+      ],
+    };
+    return [claude, codex, gemini];
   }
 
   private version(h: Harness) {
@@ -477,10 +501,10 @@ async function npmNewest(pkg: string, tag: string): Promise<string | undefined> 
   return typeof version === 'string' ? version : undefined;
 }
 
-const onHosts = new WeakMap<SshHost, Record<Harness, HostHarness>>();
+const onHosts = new WeakMap<SshHost, Record<Exclude<Harness, 'gemini'>, HostHarness>>();
 
 /** A host's harnesses, asked over its connection: the same ones for each host, which `Harnesses` knows them by. */
-function onHost(host: SshHost): Record<Harness, HostHarness> {
+function onHost(host: SshHost): Record<Exclude<Harness, 'gemini'>, HostHarness> {
   let them = onHosts.get(host);
   if (!them) {
     const reachable = () => !host.unreachable;

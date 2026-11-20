@@ -4,7 +4,7 @@
 export const AGENT_ROLES = ['coordinator', 'worker', 'explorer', 'chores'] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 /** The coding agents Obeya runs its agents on, each on the machine's own installation and login. */
-export const HARNESSES = ['claude', 'codex'] as const;
+export const HARNESSES = ['claude', 'codex', 'gemini'] as const;
 export type Harness = (typeof HARNESSES)[number];
 /** Claude Code's models a setting may name: its default, or one of its aliases, each the newest of its family; the menus offer the aliases. */
 export const AGENT_MODELS = ['default', 'fable', 'opus', 'sonnet', 'haiku'] as const;
@@ -85,7 +85,7 @@ export function cardAgentOf(stored: string): CardAgent {
 }
 /** Whether `model` is one a group on `harness` may run with: Claude Code's aliases are no Codex model, but for the default. */
 export const modelFits = (harness: Harness, model: string): boolean =>
-  harness === 'claude' ? AGENT_MODELS.some((m) => m === model) : CODEX_MODEL.test(model) && (model === 'default' || !AGENT_MODELS.some((m) => m === model));
+  harness === 'gemini' ? GEMINI_MODELS.includes(model as never) : harness === 'claude' ? AGENT_MODELS.some((m) => m === model) : CODEX_MODEL.test(model) && (model === 'default' || !AGENT_MODELS.some((m) => m === model));
 /** What applies until the owner chooses otherwise: Opus throughout, high effort for workers and exploration agents. */
 export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
   coordinator: { harness: 'claude', model: 'opus', effort: 'medium' },
@@ -108,11 +108,14 @@ export function replacement(group: AgentSetting, on: Harness, effort: AgentEffor
 }
 
 /** The harnesses by their names, the same in every language. */
-export const HARNESS_NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex' };
+export const HARNESS_NAMES: Record<Harness, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' };
+/** SPIKE: Gemini's model families through Antigravity (`agy acp`). */
+export const GEMINI_MODELS = ['neon', 'argon', 'hydrogen', 'flash'] as const;
+const GEMINI_NAMES: Record<string, string> = { neon: 'Neon', argon: 'Argon', hydrogen: 'Hydrogen', flash: 'Flash' };
 
 /** An agent's harness and model as the card's conversation names them: Codex · Sol, Claude Code · Opus. */
 export function agentName(s: { harness: Harness; model: string }): string {
-  const model = s.harness === 'codex' ? codexFamilyName(codexFamily(s.model)) : `${s.model[0]!.toUpperCase()}${s.model.slice(1)}`;
+  const model = s.harness === 'gemini' ? (GEMINI_NAMES[s.model] ?? s.model) : s.harness === 'codex' ? codexFamilyName(codexFamily(s.model)) : `${s.model[0]!.toUpperCase()}${s.model.slice(1)}`;
   return `${HARNESS_NAMES[s.harness]} · ${model}`;
 }
 
@@ -122,6 +125,7 @@ export const otherHarness = (h: Harness): Harness => (h === 'claude' ? 'codex' :
 /** The default of a group on a harness: the preset's effort, with the harness's preset model (Codex's Sol family). */
 export function agentDefault(role: AgentRole, harness: Harness): AgentSetting {
   const preset = AGENT_DEFAULTS[role];
+  if (harness === 'gemini') return { harness, model: 'neon', effort: preset.effort };
   return harness === preset.harness ? preset : { harness, model: CODEX_PRESET, effort: preset.effort };
 }
 
@@ -177,6 +181,7 @@ export interface ModelChoice {
  * where the harness no longer lists it. Codex's are its families, each named without a version, which `version` carries.
  */
 export function modelChoices(harness: HarnessView | undefined, chosen?: string): ModelChoice[] {
+  if (harness?.id === 'gemini') return (harness.models ?? []).map((m) => ({ value: m.id, name: m.name ?? m.id, efforts: m.efforts ?? AGENT_EFFORTS }));
   const codex = harness?.id === 'codex';
   const listed: ModelChoice[] = newestOfFamilies(harness?.models ?? []).map((m) => {
     const name = codex ? codexFamilyName(codexFamily(m.id), m.name ?? m.id) : undefined;

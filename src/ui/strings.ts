@@ -2154,15 +2154,15 @@ const de = {
   },
   /** The plan's usage limits in the bar (src/ui/usage.tsx), and the setting that shows or hides them. */
   /** The harnesses agents run on, by their names. */
-  harnesses: { claude: 'Claude Code', codex: 'Codex' } satisfies Record<Harness, string>,
+  harnesses: { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' } satisfies Record<Harness, string>,
   usage: {
     /** The two groups of limits by name, for a limit of a kind the list does not know. */
     groups: { session: 'Sitzung', weekly: 'Woche' } as Record<string, string>,
     title: 'Nutzungslimits deiner Abos',
     /** Beside a plan's meters in the bar, once there are two plans. */
-    short: { claude: 'Claude', codex: 'Codex' } satisfies Record<Harness, string>,
+    short: { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } satisfies Record<Harness, string>,
     /** A plan's heading in the list. */
-    plans: { claude: 'Claude-Abo', codex: 'ChatGPT-Abo (Codex)' } satisfies Record<Harness, string>,
+    plans: { claude: 'Claude-Abo', codex: 'ChatGPT-Abo (Codex)', gemini: 'Google-AI-Abo (Gemini)' } satisfies Record<Harness, string>,
     /** Beside a plan no group of agents runs on, which the bar leaves out. */
     /** A limit by its kind, in the list under the bar's button. */
     kinds: { session: 'Sitzung (5 Stunden)', weekly_all: 'Woche, alle Modelle' } as Record<string, string>,
@@ -4440,12 +4440,12 @@ const en: Strings = {
       `\`${checkout}\` has uncommitted changes to files the new commits change: ${files}. Commit them or put them aside with \`git stash\`; then "git pull" here brings in the commits.`,
     failed: (error: string) => `"git pull" failed: ${error}`,
   },
-  harnesses: { claude: 'Claude Code', codex: 'Codex' },
+  harnesses: { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini' },
   usage: {
     groups: { session: 'Session', weekly: 'Week' },
     title: 'Usage limits of your plans',
-    short: { claude: 'Claude', codex: 'Codex' },
-    plans: { claude: 'Claude plan', codex: 'ChatGPT plan (Codex)' },
+    short: { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' },
+    plans: { claude: 'Claude plan', codex: 'ChatGPT plan (Codex)', gemini: 'Google AI plan (Gemini)' },
     kinds: { session: 'Session (5 hours)', weekly_all: 'Week, all models' },
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,

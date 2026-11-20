@@ -185,7 +185,7 @@ export interface AgentRuntime {
 export const CODEX_SESSION = 'codex:';
 
 /** The harness a kept session runs on: Codex's threads carry their mark (`CODEX_SESSION`). */
-export const sessionHarness = (session: string): Harness => (session.startsWith(CODEX_SESSION) ? 'codex' : 'claude');
+export const sessionHarness = (session: string): Harness => (session.startsWith(CODEX_SESSION) ? 'codex' : session.startsWith('gemini:') ? 'gemini' : 'claude');
 
 /** What a fallback asks of a harness: whether it is at its limit now, and whether it is ready here (installed, logged in). */
 export interface Availability {

@@ -61,6 +61,7 @@ import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
 import { claudeExecutable, sdkRuntime } from './claude';
+import { geminiRuntime } from './gemini';
 import { type AgentRuntime, byHarness, endAgentsHere, limitedRuntime, withRest } from './runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
@@ -373,7 +374,7 @@ function agentRuntime() {
   // a harness that is at its usage limit for two hours from the start (`OBEYA_FAKE_LIMIT`: claude or codex), for demos and live checks of its fallback
   const fake = process.env.OBEYA_FAKE_LIMIT;
   const atLimit = (h: 'claude' | 'codex', r: AgentRuntime) => (fake === h ? limitedRuntime(Date.now() + 2 * 3_600_000) : r);
-  const live = byHarness({ claude: atLimit('claude', withRest(newest, rest)), codex: atLimit('codex', withRest(codexRuntime, rest)) });
+  const live = byHarness({ claude: atLimit('claude', withRest(newest, rest)), codex: atLimit('codex', withRest(codexRuntime, rest)), gemini: geminiRuntime });
   if (values.record) return recordingRuntime(live, resolve(values.record), home);
   if (!values.replay) return live;
   const refusedFile = join(home, 'replay-refused.txt');
