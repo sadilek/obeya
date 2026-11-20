@@ -299,6 +299,18 @@ const de = {
   stoppedState: 'Gestoppt',
   startAgain: 'Neu starten',
   startAgainHint: 'Ein neuer Agent beginnt mit neuer Sitzung auf dem Branch der Aufgabe; committete Arbeit dort bleibt.',
+  /** A task the owner marks to check something by hand (after its landing, say): it stands out and stays out of the archive until they remove the mark. */
+  check: {
+    mark: 'Zum Prüfen markieren',
+    markHint: 'Die Karte bleibt hervorgehoben auf der Leinwand, mit einer Notiz, was du noch von Hand prüfen willst. Für ihren Agenten ist sie erledigt; ins Archiv geht sie erst, wenn du die Markierung entfernst.',
+    title: 'Noch von Hand prüfen',
+    placeholder: 'Was willst du noch prüfen? Eine Notiz für dich, der Agent liest sie nicht.',
+    done: 'Geprüft, Markierung entfernen',
+    /** On the card on the canvas, before the note. */
+    short: 'Zu prüfen',
+    /** Why the archive does not take the card. */
+    archiveHeld: 'Zum Prüfen markiert: erst die Markierung entfernen.',
+  },
   landedPart: {
     short: 'Teil gelandet',
     long: 'Ein Teil ist schon gelandet, das Plan-Doc hält den Workstream aber offen. Ein neuer Lauf macht den Rest.',
@@ -800,6 +812,7 @@ const de = {
     fileTooLarge: 'Die Datei ist zu groß (höchstens 100 MB).',
     notDone: 'Archivieren lässt sich nur eine eigene Aufgabe, die live, erledigt oder gestoppt ist, oder eine geparkte oder verworfene Idee.',
     holdsWork: 'Auf dem Branch liegt Arbeit, die noch nicht gelandet ist. Starte die Aufgabe neu oder lösche sie.',
+    marked: 'Die Karte ist zum Prüfen markiert. Entferne zuerst die Markierung.',
     notArchived: 'Das liegt nicht mehr im Archiv.',
     notIdea: 'Das ist keine Idee (mehr).',
     notUntouched: 'Zusammenführen und Löschen geht nur bei geplanten Aufgaben, an denen noch niemand gearbeitet hat.',
@@ -2779,6 +2792,15 @@ const en: Strings = {
   stoppedState: 'Stopped',
   startAgain: 'Start again',
   startAgainHint: 'A new agent starts with a new session on the task’s branch; committed work there stays.',
+  check: {
+    mark: 'Mark to check',
+    markHint: 'Keeps the card on the canvas, highlighted, with a note on what you still want to check by hand. Its agent counts it as done; it goes into the archive only once you remove the mark.',
+    title: 'To check by hand',
+    placeholder: 'What do you still want to check? A note for yourself; the agent does not read it.',
+    done: 'Checked, remove mark',
+    short: 'To check',
+    archiveHeld: 'Marked to check: remove the mark first.',
+  },
   landedPart: {
     short: 'Part landed',
     long: 'A part has landed already, but the plan doc keeps the workstream open. A new run does the rest.',
@@ -3223,6 +3245,7 @@ const en: Strings = {
     fileTooLarge: 'The file is too large (100 MB at most).',
     notDone: 'Only your own task that is live, done or stopped, or a parked or dropped idea, can be archived.',
     holdsWork: 'Its branch holds work that has not landed. Start the task again or delete it.',
+    marked: 'The card is marked to check. Remove the mark first.',
     notArchived: 'This is no longer in the archive.',
     notIdea: 'This is not an idea (any more).',
     notUntouched: 'Only planned tasks nobody has worked on yet can be merged or deleted.',

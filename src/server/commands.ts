@@ -1681,6 +1681,7 @@ function cardLine(i: Item, c: LineContext): string {
   const s = i.superseded;
   if (s) parts.push(` — the agent that proposed it ${s.by ? `replaced it by "${s.title ?? ''}"` : 'withdrew it'}${s.why ? ` (${clip(oneLine(s.why), 200)})` : ''}; the owner removes it (dismiss) or keeps it (keep)`);
   if (i.statusLine) parts.push(` — status: ${clip(oneLine(i.statusLine), 160)}`);
+  if (i.check !== undefined) parts.push(` — marked by the owner to check by hand${i.check.trim() ? `: ${clip(oneLine(i.check), 200)}` : ''} (it stays out of the archive until they take the mark off on the card)`);
   parts.push(asks(i));
   const x = i.idea;
   if (x?.next) parts.push(` — its agent would ${NEXT_ACTION[x.next.step]} next: ${clip(oneLine(x.next.why), 200)}`);

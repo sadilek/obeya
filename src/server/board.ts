@@ -67,6 +67,7 @@ const ARCHIVE_REFUSED: Record<ArchiveRefusal, string> = {
   holdsWork: 'its workspace holds work that has not landed',
   prototypeRunning: 'a prototype for this idea is still on the canvas',
   planCard: 'a workstream stays with its project',
+  marked: 'the card is marked to check by hand; take the mark off first',
 };
 
 /** How long an empty card of the owner's (no title, text or screenshots) may exist before Obeya drops it on start. */
@@ -2036,7 +2037,7 @@ export class Board {
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need', 'upstream']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo', 'upstream'];
+    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need', 'upstream']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo', 'upstream', 'check'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
@@ -2047,7 +2048,12 @@ export class Board {
     if (p.images !== undefined) this.checkImages(p.images);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
-    const { repo, images, collapsed, newRepo, upstream, ...fields } = p;
+    if (p.check !== undefined) {
+      if (p.check !== null) checkText(p.check, 'check', BODY_MAX);
+      if (row.kind !== 'task' || row.prototype_of) throw new BadRequest('invalid', 'only a task is marked to check by hand');
+      if (row.archived_at) throw new BadRequest('invalid', 'a card in the archive is not marked');
+    }
+    const { repo, images, collapsed, newRepo, upstream, check, ...fields } = p;
     if (newRepo !== undefined) this.checkNewRepo(row, newRepo);
     if (upstream !== undefined) {
       if (typeof upstream !== 'boolean') throw new BadRequest('invalid', 'upstream must be true or false');
@@ -2079,6 +2085,7 @@ export class Board {
       ...(images !== undefined ? { images: images.length ? toJson(images) : null } : {}),
       ...(collapsed !== undefined ? { collapsed: collapsed ? 1 : 0 } : {}),
       ...(upstream !== undefined ? { upstream: upstream ? 1 : null } : {}),
+      ...(check !== undefined ? { check_note: check } : {}),
     });
     this.changed();
   }
