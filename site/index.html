@@ -206,6 +206,16 @@
     </div>
     <ul class="fits">
       <li>
+        <h3>Claude Code, Codex or Gemini</h3>
+        <p>Agents run on your own Claude, ChatGPT or Google AI subscription.
+          You choose which one each kind of agent uses, and with which model, for a single card too.</p>
+      </li>
+      <li>
+        <h3>At the usage limit</h3>
+        <p>The bar shows how much of each subscription's session and week is used.
+          When one reaches its limit, agents can switch to another, or wait until it resets.</p>
+      </li>
+      <li>
         <h3>Agents on other machines</h3>
         <p>Agents can also run on other computers that Obeya reaches over SSH. Obeya clones the repository there
           and starts new cards there when this machine has no free slot.</p>
@@ -316,7 +326,7 @@
   <section class="start" id="start">
     <div class="head">
       <h2>Get started</h2>
-      <p>Obeya is an app for macOS, Windows and Linux and runs locally. The agents use the official Claude Code or Codex installation on your machine, with your own subscription.</p>
+      <p>Obeya is an app for macOS, Windows and Linux and runs locally. The agents use the official Claude Code, Codex or Gemini (Antigravity CLI) installation on your machine, with your own subscription.</p>
     </div>
     <div class="cols">
       <div>
@@ -327,13 +337,13 @@
           <li><b>Linux</b> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage">AppImage x64</a> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage">arm64</a>
             <a href="https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb">.deb x64</a> <a href="https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb">arm64</a></li>
         </ul>
-        <p class="small">On its first start Obeya checks for Claude Code or Codex, git and gh, installs what it can and opens your first canvas.
+        <p class="small">On its first start Obeya checks for Claude Code, Codex or Gemini, git and gh, installs what it can and opens your first canvas.
           The Windows installer is not signed yet (applied for at the SignPath Foundation): when SmartScreen warns, choose “More info”, then “Run anyway”.
           <a href="code-signing/">Code signing policy</a></p>
       </div>
       <div>
         <h3>From source</h3>
-<pre><code><span class="c"># needs Bun, Claude Code or Codex (logged in), git and gh</span>
+<pre><code><span class="c"># needs Bun, Claude Code, Codex or Gemini (logged in), git and gh</span>
 git clone https://github.com/sadilek/obeya && cd obeya
 <span class="c"># runs the same setup as the app, then opens your first canvas</span>
 bun install && bun start</code></pre>

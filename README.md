@@ -119,8 +119,8 @@ commercial software. The interface and the voice input work in English and Germa
 | Linux | AppImage for [x64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage), .deb for [x64](https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb) |
 
 The app needs neither Bun nor a checkout. On its first start it checks the machine for what Obeya
-needs ([Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli)
-with your login, and git) and for what can wait (the [GitHub CLI](https://cli.github.com) for pull
+needs ([Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex/cli)
+or Gemini (the [Antigravity CLI](https://antigravity.google)) with your login, and git) and for what can wait (the [GitHub CLI](https://cli.github.com) for pull
 requests, voice, demos). It installs what it can without admin rights and shows the command for
 the rest. Then it opens your first canvas on one of your repositories.
 
@@ -164,8 +164,9 @@ checkout moves to new code. When `origin` has new commits, the bar says so and o
 them.
 
 - [Bun](https://bun.sh) 1.3.14 or newer (on Linux, older 1.3 releases can hang the canvas).
-- [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli),
-  installed and logged in. Either is enough, and both work side by side. Obeya starts it for every
+- [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex/cli)
+  or Gemini (the [Antigravity CLI](https://antigravity.google)), installed and logged in. One is
+  enough, and they work side by side. Obeya starts it for every
   agent, and the agents run on your own login.
 - git, and the [GitHub CLI](https://cli.github.com) (`gh`, logged in) for repositories whose work
   lands through pull requests.
@@ -260,7 +261,7 @@ change, you have to trust them again.
 It's a big word for a short list, but here are some extensions that would be nice to have and that
 are too large to simply build with a single card in Obeya.
 
-- Support more coding subs (Grok, Gemini).
+- Support more coding subs (Grok).
 - Support more coding harnesses (OpenCode, Pi) – not sure how much value that would bring, maybe for local models?
 - I personally let Codex (and sometimes Grok) review all Opus-made changes, but that's happening at my user-level prompt, so it's not built into Obeya. That could be a good built-in feature though because at least at the moment still, I find it makes a big difference in the quality of the result.
 - App in the App/Play stores. The phone app is just a web app that you need to "install" to your home screen for the best experience.
