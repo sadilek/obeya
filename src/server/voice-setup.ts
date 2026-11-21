@@ -28,6 +28,8 @@ export interface VoiceSetupOptions {
   /** The check's sentence; Obeya's own by default. */
   clip?: string;
   fetcher?: typeof fetch;
+  /** How a program is run for its answer (`output`); tests answer for it without starting one. */
+  run?: typeof output;
 }
 
 export class VoiceSetup {
@@ -54,12 +56,13 @@ export class VoiceSetup {
     const hint = (id: 'ffmpeg' | 'uv') => installHint(id, platform, arch, family);
     const kit = listenKit(listen);
     const python = env.OBEYA_WHISPER_PYTHON;
+    const run = this.o.run ?? output;
     const has = `import importlib.util,sys; sys.exit(not importlib.util.find_spec(${JSON.stringify(kit.module)}))`;
     const [ffmpegOut, uvOut, packageOut] = await Promise.all([
-      output('ffmpeg', ['-hide_banner', '-version'], env),
-      output('uv', ['--version'], env),
+      run('ffmpeg', ['-hide_banner', '-version'], env),
+      run('uv', ['--version'], env),
       // offline: only what uv has in its cache counts as there
-      python ? output(python, ['-c', has], env) : output('uv', ['run', '--offline', '--quiet', '--no-project', ...kit.uvArgs, 'python', '-c', has], env),
+      python ? run(python, ['-c', has], env) : run('uv', ['run', '--offline', '--quiet', '--no-project', ...kit.uvArgs, 'python', '-c', has], env),
     ]);
     const items: VoiceSetupItem[] = [];
     // uv fetches the recognition unless its Python is given

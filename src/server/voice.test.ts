@@ -7,7 +7,7 @@ import { resource } from './resources';
 import { listenBackend, LocalTranscriber, looping, silence, VoiceIn } from './voice';
 import { CloudError, cloudInUse, readVoiceFile, VOICE_FILE } from './voice-cloud';
 import { CHECK_CLIP, VoiceSetup } from './voice-setup';
-import { fakeProgram, removeDir } from './testing';
+import { removeDir } from './testing';
 
 test('a loop is one word, phrase or syllable six times in a row, whatever the case and punctuation', () => {
   for (const loop of [
@@ -84,11 +84,12 @@ test('"Install" loads the recognition and times it on a short sentence, and says
   const home = mkdtempSync(join(tmpdir(), 'obeya-voice-setup-'));
   try {
     let loaded = 0;
-    // uv is there; the package is not in its cache
-    fakeProgram(home, 'uv', 'case "$1" in --version) echo "uv 0.9.2";; *) exit 1;; esac');
+    // uv is there; the package is not in its cache. Answered without a process: a program written
+    // moments ago hung on macOS runners past every timeout, while macOS checked it before its first run.
+    const run = async (cmd: string, args: string[]) => (cmd === 'uv' && args[0] === '--version' ? 'uv 0.9.2' : null);
     // it loads once the test has seen it running: a look at the machine (uv) may take longer than the loading
     const { promise: seen, resolve: go } = Promise.withResolvers<void>();
-    const setup = new VoiceSetup({ home, local: { ...hearing('Starte die Karte', 30), prepare: () => seen.then(() => void loaded++) }, env: { PATH: home } });
+    const setup = new VoiceSetup({ home, local: { ...hearing('Starte die Karte', 30), prepare: () => seen.then(() => void loaded++) }, env: { PATH: home }, run });
     await setup.install();
     expect((await setup.view()).job).toMatchObject({ running: true });
     go();
@@ -101,10 +102,10 @@ test('"Install" loads the recognition and times it on a short sentence, and says
     expect(typeof speed === 'object' && speed.seconds).toBeGreaterThan(0.02);
     // kept for the next start, for this backend only
     expect(readVoiceFile(home).speed?.backend).toBe('parakeet');
-    const whisper = new VoiceSetup({ home, local: { ...hearing(''), backend: 'faster' }, env: { PATH: home } });
+    const whisper = new VoiceSetup({ home, local: { ...hearing(''), backend: 'faster' }, env: { PATH: home }, run });
     expect((await whisper.view()).items.find((i) => i.id === 'recognition')!.speed).toBeUndefined();
 
-    const failing = new VoiceSetup({ home, local: { ...hearing(''), prepare: () => Promise.reject(new Error('transcription sidecar exited (1)')) }, env: { PATH: home } });
+    const failing = new VoiceSetup({ home, local: { ...hearing(''), prepare: () => Promise.reject(new Error('transcription sidecar exited (1)')) }, env: { PATH: home }, run });
     await failing.install();
     await failing.finished().catch(() => {});
     expect((await failing.view()).job).toMatchObject({ running: false, error: 'transcription sidecar exited (1)' });
